@@ -109,14 +109,15 @@ Quando elas chegarem, boa parte do `glue.rs` deve encolher, por isso a lib mant�
 Os consumidores das etapas 1 a 3 são o Heat Generator e o Metallurgic Infuser. Um consumidor que não seja de máquina,
 como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 
-## Decisões em aberto
+## Decisões
 
-1. **Formato no NBT:** versionar o formato dos tanques desde o início. É o contrato entre mods, e mudá-lo depois quebra
-   mundos salvos.
-2. **Registro de recursos:** arquivos de dados em `data/<ns>/machinery_basis/resource/` ou código. Dados combinam com a
-   ideia da lib, mas ainda falta testar como ler arquivos próprios no servidor.
-3. **Repositório:** a lib tem público próprio e pode ir para um repo separado. Por enquanto fica aqui, para mudar junto
-   com o primeiro consumidor.
+1. **Registro de recursos por dados:** cada recurso é um arquivo em `data/<ns>/machinery_basis/resource/<nome>.json`, lido
+   pelo `native_add_server_reload_listeners` (API 400). O id vira `<ns>:<nome>`. Isso vale para mods de conteúdo e para
+   data packs do mundo, e o `/reload` relê. A leitura só existe no servidor: o cliente recebe o que precisa pela rede.
+2. **Repositório:** a lib fica neste repo por enquanto, para mudar junto com o primeiro consumidor.
+
+Em aberto: versionar o formato dos tanques no NBT desde o início. É o contrato entre mods, e mudá-lo depois quebra mundos
+salvos.
 
 ## Verificado
 
@@ -125,6 +126,7 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Mod de teste na Nightly `f319701` | `native.py check` OK |
 | `[api]` usando `[[crate]]` pelo caminho do stage, com outro mod tipado chamando | `native-build` OK, sem rodar em mundo |
 | Gerador e bateria em mundo, com salvamento | OK, ver [modding-horizon.md](modding-horizon.md) |
+| Recursos por dados em mundo | Mod de conteúdo lido ao abrir; data pack do mundo entrou no `/reload`; arquivo `.txt` ignorado |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
 
 Lido, não executado: redes, telas, receitas de tipo próprio, `native_force_chunk` e `native_container_accepts`.
