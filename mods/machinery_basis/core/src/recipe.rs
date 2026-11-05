@@ -32,19 +32,19 @@ impl ResourceInput {
     }
 }
 
-/// Onde ficam as partes de uma receita de item e recurso que dá um item.
+/// Onde ficam as partes de uma receita de máquina. Sem `resource`, ela só pede o item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ItemResourceFields {
+pub struct RecipeFields {
     pub item: &'static str,
-    pub resource: &'static str,
+    pub resource: Option<&'static str>,
     pub output: &'static str,
 }
 
-/// Uma receita de item e recurso que dá um item.
+/// Uma receita de máquina: um item e, às vezes, um recurso, que dão um item.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ItemResourceRecipe {
+pub struct MachineRecipeData {
     pub item: ItemInput,
-    pub resource: ResourceInput,
+    pub resource: Option<ResourceInput>,
     pub output: Value,
 }
 
@@ -85,15 +85,22 @@ fn amount(json: &Value) -> Option<u64> {
         .filter(|&amount| amount > 0)
 }
 
-impl ItemResourceRecipe {
-    pub fn parse(json: &Value, fields: &ItemResourceFields) -> Option<Self> {
-        let resource = json.get(fields.resource)?;
+fn resource_input(json: &Value) -> Option<ResourceInput> {
+    Some(ResourceInput {
+        ingredient: json.get(ITEM_INGREDIENT)?.as_str()?.to_owned(),
+        amount: amount(json)?,
+    })
+}
+
+impl MachineRecipeData {
+    pub fn parse(json: &Value, fields: &RecipeFields) -> Option<Self> {
+        let resource = match fields.resource {
+            Some(field) => Some(resource_input(json.get(field)?)?),
+            None => None,
+        };
         Some(Self {
             item: item_input(json.get(fields.item)?)?,
-            resource: ResourceInput {
-                ingredient: resource.get(ITEM_INGREDIENT)?.as_str()?.to_owned(),
-                amount: amount(resource)?,
-            },
+            resource,
             output: json.get(fields.output)?.clone(),
         })
     }
@@ -114,9 +121,9 @@ impl Conversion {
 mod tests {
     use super::*;
 
-    const FIELDS: ItemResourceFields = ItemResourceFields {
+    const FIELDS: RecipeFields = RecipeFields {
         item: "item_input",
-        resource: "chemical_input",
+        resource: Some("chemical_input"),
         output: "output",
     };
     const CONVERSION: ConversionFields = ConversionFields {
@@ -134,11 +141,24 @@ mod tests {
 
     #[test]
     fn reads_a_recipe_by_the_fields_it_was_told() {
-        let parsed = ItemResourceRecipe::parse(&recipe(), &FIELDS).unwrap();
+        let parsed = MachineRecipeData::parse(&recipe(), &FIELDS).unwrap();
         assert_eq!(parsed.item.count, 4);
         assert_eq!(parsed.item.ingredient, "#c:ingots/iron");
-        assert_eq!(parsed.resource.amount, 10);
+        assert_eq!(parsed.resource.unwrap().amount, 10);
         assert_eq!(parsed.output, json!({"id": "a:steel"}));
+    }
+
+    #[test]
+    fn a_recipe_of_items_alone_has_no_resource() {
+        const ITEMS: RecipeFields = RecipeFields {
+            item: "input",
+            resource: None,
+            output: "output",
+        };
+        let json = json!({"input": {"ingredient": "a:b"}, "output": {"count": 2, "id": "a:c"}});
+        let parsed = MachineRecipeData::parse(&json, &ITEMS).unwrap();
+        assert_eq!(parsed.resource, None);
+        assert_eq!(parsed.output, json!({"count": 2, "id": "a:c"}));
     }
 
     #[test]
@@ -146,7 +166,7 @@ mod tests {
         for field in ["chemical_input", "item_input", "output"] {
             let mut json = recipe();
             json.as_object_mut().unwrap().remove(field);
-            assert_eq!(ItemResourceRecipe::parse(&json, &FIELDS), None);
+            assert_eq!(MachineRecipeData::parse(&json, &FIELDS), None);
         }
     }
 
@@ -154,10 +174,10 @@ mod tests {
     fn nothing_is_not_an_amount() {
         let mut json = recipe();
         json["chemical_input"]["amount"] = json!(0);
-        assert_eq!(ItemResourceRecipe::parse(&json, &FIELDS), None);
+        assert_eq!(MachineRecipeData::parse(&json, &FIELDS), None);
         let mut json = recipe();
         json["item_input"]["count"] = json!(0);
-        assert_eq!(ItemResourceRecipe::parse(&json, &FIELDS), None);
+        assert_eq!(MachineRecipeData::parse(&json, &FIELDS), None);
     }
 
     #[test]

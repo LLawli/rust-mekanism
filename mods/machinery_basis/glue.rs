@@ -3,7 +3,7 @@
 use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
 use crate::game::{Game, GameLevel, NativeReloadListener};
 use horizon_client::containers::ModBlockEntity;
-use horizon_client::crafting::Ingredient;
+use horizon_client::crafting::{Cooking, Ingredient};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Direction;
@@ -16,7 +16,7 @@ use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::machine::{self, Step, Supply};
 use machinery_basis_core::recipe::{
-    Conversion, ConversionFields, ItemResourceFields, ItemResourceRecipe, ResourceInput,
+    Conversion, ConversionFields, MachineRecipeData, RecipeFields, ResourceInput,
 };
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
@@ -72,12 +72,12 @@ pub(in crate::game) struct PanelStyle {
     pub slot: &'static str,
 }
 
-/// Uma receita de item e recurso, com o que o jogo resolveu.
+/// Uma receita de máquina, com o que o jogo resolveu.
 pub(in crate::game) struct MachineRecipe {
     pub id: String,
     pub item: Ingredient,
     pub count: u32,
-    pub resource: ResourceInput,
+    pub resource: Option<ResourceInput>,
     pub output: ItemStack,
 }
 
@@ -89,10 +89,26 @@ pub(in crate::game) struct ItemConversion {
     pub amount: u64,
 }
 
-/// O que define uma máquina de item e recurso que dá um item.
-pub(in crate::game) struct ItemResourceMachine {
-    pub recipe_type: &'static str,
-    pub fields: ItemResourceFields,
+/// De onde vêm as receitas de uma máquina.
+#[derive(Clone, Copy)]
+pub(in crate::game) enum RecipeSource {
+    /// Arquivos de um tipo próprio.
+    Custom(&'static str, RecipeFields),
+    /// As receitas de cozimento do jogo, de um tipo como `smelting`.
+    Cooking(&'static str),
+}
+
+impl RecipeSource {
+    fn key(&self) -> &'static str {
+        match self {
+            Self::Custom(recipe_type, _) | Self::Cooking(recipe_type) => recipe_type,
+        }
+    }
+}
+
+/// O que define uma máquina de progresso.
+pub(in crate::game) struct RecipeMachine {
+    pub recipes: RecipeSource,
     pub ticks: u32,
     pub energy_per_tick: i32,
     pub input: usize,
@@ -212,18 +228,9 @@ pub(in crate::game) fn data_loaded() {
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
-/// As receitas de um tipo. Fica de fora a que cita um item que o jogo não conhece.
-pub(in crate::game) fn machine_recipes(
-    game: &Game<'_>,
-    recipe_type: &str,
-    fields: &ItemResourceFields,
-) -> Arc<Vec<MachineRecipe>> {
-    let mut index = MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(recipes) = index.get(recipe_type) {
-        return recipes.clone();
-    }
+fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> Vec<MachineRecipe> {
     let recipes = game.native_recipes_of_type(recipe_type).iter().filter_map(|recipe| {
-        let parsed = ItemResourceRecipe::parse(&recipe.json, fields)?;
+        let parsed = MachineRecipeData::parse(&recipe.json, fields)?;
         Some(MachineRecipe {
             id: recipe.id.clone(),
             item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
@@ -232,8 +239,37 @@ pub(in crate::game) fn machine_recipes(
             output: game.native_recipe_result(&parsed.output)?,
         })
     });
-    let recipes = Arc::new(recipes.collect::<Vec<_>>());
-    index.insert(recipe_type.to_owned(), recipes.clone());
+    recipes.collect()
+}
+
+fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
+    let of_kind = |recipe: &&Cooking| recipe.kind.strip_prefix("minecraft:").unwrap_or(&recipe.kind) == kind;
+    let cooking = game.recipes().cooking.iter().filter(of_kind);
+    cooking
+        .map(|recipe| MachineRecipe {
+            id: recipe.id.clone(),
+            item: recipe.ingredient.clone(),
+            count: 1,
+            resource: None,
+            output: recipe.result.clone(),
+        })
+        .collect()
+}
+
+/// As receitas de uma máquina. Fica de fora a que cita um item que o jogo não conhece.
+pub(in crate::game) fn machine_recipes(
+    game: &Game<'_>,
+    source: &RecipeSource,
+) -> Arc<Vec<MachineRecipe>> {
+    let mut index = MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(recipes) = index.get(source.key()) {
+        return recipes.clone();
+    }
+    let recipes = Arc::new(match source {
+        RecipeSource::Custom(recipe_type, fields) => custom_recipes(game, recipe_type, fields),
+        RecipeSource::Cooking(kind) => cooking_recipes(game, kind),
+    });
+    index.insert(source.key().to_owned(), recipes.clone());
     recipes
 }
 
@@ -267,16 +303,18 @@ pub(in crate::game) fn conversions(
 fn matching_recipe<'a>(
     recipes: &'a [MachineRecipe],
     stack: Option<&ItemStack>,
-    tank: &Tank,
+    tank: Option<&Tank>,
     tags: &Tags,
 ) -> Option<&'a MachineRecipe> {
     let stack = stack?;
-    let held = tank.resource()?;
     recipes.iter().find(|recipe| {
-        recipe.item.test(stack)
-            && stack.count >= recipe.count
-            && recipe.resource.accepts(held, tags)
-            && tank.amount() >= recipe.resource.amount
+        let paid = recipe.resource.as_ref().is_none_or(|input| {
+            tank.is_some_and(|tank| {
+                tank.resource().is_some_and(|held| input.accepts(held, tags))
+                    && tank.amount() >= input.amount
+            })
+        });
+        recipe.item.test(stack) && stack.count >= recipe.count && paid
     })
 }
 
@@ -288,7 +326,11 @@ pub(in crate::game) fn is_recipe_input(
 ) -> bool {
     let tags = resource::current_tags();
     recipes.iter().any(|recipe| {
-        recipe.item.test(stack) && held.is_none_or(|held| recipe.resource.accepts(held, &tags))
+        let usable = match (&recipe.resource, held) {
+            (Some(input), Some(held)) => input.accepts(held, &tags),
+            _ => true,
+        };
+        recipe.item.test(stack) && usable
     })
 }
 
@@ -300,7 +342,8 @@ pub(in crate::game) fn is_recipe_resource(
 ) -> bool {
     let tags = resource::current_tags();
     recipes.iter().any(|recipe| {
-        recipe.resource.accepts(resource, &tags) && stack.is_none_or(|stack| recipe.item.test(stack))
+        let accepted = recipe.resource.as_ref().is_some_and(|input| input.accepts(resource, &tags));
+        accepted && stack.is_none_or(|stack| recipe.item.test(stack))
     })
 }
 
@@ -341,16 +384,17 @@ fn save_progress(entity: &mut ModBlockEntity, recipe: &str, progress: u32) {
     entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
 }
 
-/// Um tick de uma máquina de item e recurso. Diz o que houve e em que tick a operação está.
+/// Um tick de uma máquina de progresso. Diz o que houve e em que tick a operação está.
 pub(in crate::game) fn run_machine(
     game: &Game<'_>,
     entity: &mut ModBlockEntity,
-    tank: &mut Tank,
-    spec: &ItemResourceMachine,
+    mut tank: Option<&mut Tank>,
+    spec: &RecipeMachine,
 ) -> (Step, u32) {
-    let recipes = machine_recipes(game, spec.recipe_type, &spec.fields);
+    let recipes = machine_recipes(game, &spec.recipes);
     let tags = resource::current_tags();
-    let found = matching_recipe(&recipes, entity.items[spec.input].as_ref(), tank, &tags);
+    let stack = entity.items[spec.input].as_ref();
+    let found = matching_recipe(&recipes, stack, tank.as_deref(), &tags);
     let id = found.map_or("", |recipe| recipe.id.as_str());
     // Outra receita recomeça do zero, como um CachedRecipe novo.
     let mut progress = saved_progress(entity, id);
@@ -366,7 +410,9 @@ pub(in crate::game) fn run_machine(
     set_stored_energy(entity, stored - step.energy_used);
     if let Some(recipe) = found.filter(|_| step.finished) {
         take_from_slot(entity, spec.input, recipe.count);
-        tank.extract(recipe.resource.amount, Action::Execute);
+        if let (Some(input), Some(tank)) = (&recipe.resource, tank.as_deref_mut()) {
+            tank.extract(input.amount, Action::Execute);
+        }
         match &mut entity.items[spec.output] {
             Some(held) => held.count += recipe.output.count,
             empty => *empty = Some(recipe.output.clone()),

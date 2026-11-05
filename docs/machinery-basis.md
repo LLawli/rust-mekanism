@@ -54,7 +54,7 @@ serve a outros mods.
 | Recursos tipados e seus tanques | Químico como fluido não dá paridade: o Chemical Tank Elite tem 1.024.000 mB e o Ultimate 8.192.000, acima do limite de 1.000.000. Um mod de fluidos também trataria hidrogênio como líquido | 1.519 linhas (`api/chemical`) |
 | Lados configuráveis por máquina | Faces do Horizon são por tipo de bloco | Parte de 2.449 (`tile/component`) |
 | Ejetor | Empurra saídas conforme a configuração de lados | Parte de 2.449 (`tile/component`) |
-| Base de máquina | Progresso, operação, consumo por tick e controle de redstone | 1.589 (`tile/prefab`) |
+| Base de máquina | Progresso, operação e consumo por tick; falta o controle de redstone | 1.589 (`tile/prefab`) |
 | Redes de transporte | `connects_to` só dá a forma do cabo, não a rede | 5.172 (`lib/transmitter`, `content/network`) |
 | Motor de multibloco | Não existe | 2.614 (`lib/multiblock`) |
 
@@ -158,6 +158,7 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
 | Máquina de progresso em mundo, com o Metallurgic Infuser | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
+| Máquina só de itens em mundo, com receitas de tipo próprio e de fornalha | Enrichment Chamber, Crusher e Energized Smelter usam a mesma `run_machine`, sem tanque |
 | Recursos, tags e conversões em mundo | 8 recursos lidos; carvão vira 10 mB de carbono a 1 item por tick; a redstone não converte com ferro na entrada, porque nenhuma receita junta os dois |
 | Hoppers por face em mundo | Topo, esquerda e frente entregam na entrada; pedra, sem receita, fica no hopper; hopper na direita não entrega |
 | Lava dentro do bloco, em mundo | Balde com shift enche, a lava corre com níveis 2, 4 e 6 pelas quatro laterais e nada sai pela base; balde vazio tira e ela recua; parede removida com a lava parada abre o fluxo; quebrar com picareta deixa `lava[level=0]`; luz 15 com o bloco cercado de vidro; sem shift só abre a tela |
