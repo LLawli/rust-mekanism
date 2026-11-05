@@ -106,6 +106,23 @@ Ainda difere do original em:
 - quebrar o bloco solta o conteúdo, em vez de guardar no item;
 - `per_tick_usage` não é lido: nenhuma receita de infusão usa, mas a Chemical Injection Chamber vai precisar.
 
+## Máquinas elétricas: estado atual
+
+Enrichment Chamber, Crusher e Energized Smelter são uma tabela só em `native/glue.rs`, porque no original as três são
+`TileEntityElectricMachine` e só mudam em id, receitas e consumo: 5, 8 e 5 J por tick, com 200 ticks e buffer de quatro
+ticks de uso. O Smelter não tem arquivos de receita próprios: usa as receitas de fornalha do jogo, como o `WrappedSmelterRecipe`.
+
+As 460 receitas de `mekanism:enriching` e `mekanism:crushing` são os arquivos originais. As tags `c:` do NeoForge que o vanilla
+não tem foram escritas à mão em `data/c/tags/item/`, com os mesmos itens. Ficam dormentes as receitas de estanho, chumbo,
+urânio, fluorita, sal e o que vem do processamento de minério em mais etapas, até esses itens existirem.
+
+Testado em mundo: craft das quatro peças, minério bruto em pó (3 para 4), carvão em `enriched_carbon`, ferro em pó,
+pedregulho em cascalho, pó em lingote, `enriched_carbon` dando 80 mB de carbono no infuser, hoppers por face e item sem
+receita recusado por hopper e por shift-click.
+
+Têm as diferenças do infuser que valem para máquina: faces fixas, sem upgrades, sem controle de redstone, sem slot de energia
+funcional, luz 13 em vez de 8 e conteúdo solto ao quebrar. Além disso, o `bio_fuel` não queima como combustível.
+
 ## Licença e créditos
 
 O Mekanism é MIT (Copyright 2017-2025 Aidan C. Brady), o que permite o port e cumpre a política do registro, desde que:
