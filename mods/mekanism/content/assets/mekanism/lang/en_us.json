@@ -2,5 +2,12 @@
   "block.mekanism.osmium_ore": "Osmium Ore",
   "block.mekanism.deepslate_osmium_ore": "Deepslate Osmium Ore",
   "item.mekanism.raw_osmium": "Raw Osmium",
-  "item.mekanism.ingot_osmium": "Osmium Ingot"
+  "item.mekanism.ingot_osmium": "Osmium Ingot",
+  "block.mekanism.metallurgic_infuser": "Metallurgic Infuser",
+  "container.mekanism.metallurgic_infuser": "Metallurgic Infuser",
+  "item.mekanism.alloy_infused": "Infused Alloy",
+  "item.mekanism.basic_control_circuit": "Basic Control Circuit",
+  "item.mekanism.dust_steel": "Steel Dust",
+  "item.mekanism.enriched_iron": "Enriched Iron",
+  "item.mekanism.ingot_steel": "Steel Ingot"
 }

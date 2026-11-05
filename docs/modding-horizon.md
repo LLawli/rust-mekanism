@@ -353,6 +353,9 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
   `registry-v1.bin`: o cache não sabe que o código do mod mudou.
 - `native_draw_cube` usa unidades de modelo, de 0 a 16.
 - O cliente só tem a block entity se o servidor mandar uma cópia, por `block_entity_update_tag`.
+- `native_menu_slot_rules` roda em `horizon_client::menu`, fora de `crate::game`: o helper não alcança um `[[module]]` do mod.
+- `horizon-ctl open` separa os argumentos por espaço: um mundo com espaço no nome se abre pela tela, com `click <id da linha>`.
+- `/data get block X Y Z` mostra o NBT de uma block entity de mod, bom para conferir o estado num teste.
 - Cancelar `right_click_block` não cancela o uso do item, que chega depois como outro evento: para um item agir no bloco,
   use `use_item_on`. Se o item trocar na mão, o uso seguinte ainda vê o item novo em `use_item`.
 - `native-build` recusa versão não preparada antes de resolver dependências ou compilar. O `prepare` precisa de uma

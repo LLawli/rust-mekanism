@@ -35,14 +35,14 @@ Sugestão de primeiro marco: os passos 1 a 3, porque exercitam mundo, energia, m
 | Tanques de fluido | `ModFluidTanks` | Coberto para tanques; sem bloco nem balde de fluido de mod |
 | Menus e telas | Tipo de menu próprio, `native_screen`, `native_sprite` | Coberto |
 | Cabos | `connects_to` e `thickness` dão a forma | Parcial: a rede é código nosso |
-| Químicos (`#mekanism:redstone`, `#mekanism:carbon`) | Não existe | Código nosso, guardado no NBT da máquina |
+| Químicos (`#mekanism:redstone`, `#mekanism:carbon`) | Não existe | Recursos e tags da `machinery_basis`, com o tanque no NBT da máquina |
 | Lados configuráveis por máquina | Faces fixas por tipo de bloco | Lacuna (abaixo) |
 
 ## Pontos que mudam o desenho
 
 **O infuser depende de químicos.** O carbono e a redstone do Metallurgic Infuser são químicos, não itens, e entram por
-receitas `mekanism:chemical_conversion`. O Horizon não tem esse sistema. Para o começo do jogo basta um tanque interno
-no NBT da máquina. Os tubos de químicos podem esperar.
+receitas `mekanism:chemical_conversion`. O Horizon não tem esse sistema, então cada químico é um recurso da `machinery_basis`
+e a máquina guarda um tanque no NBT. Os tubos de químicos podem esperar.
 
 **Lados configuráveis.** No Mekanism, cada máquina escolhe o que entra e sai por cada face. No Horizon, as faces são
 declaradas uma vez por tipo de bloco e são direções absolutas. `native_container_accepts` permite recusar itens por
@@ -78,6 +78,33 @@ Ainda difere do original em:
 - sem slot de energia funcional, transferência de calor pela face de baixo, som, partículas, abas e tooltips da tela;
 - tela sem os sprites finais do Mekanism e sem o ícone de raio;
 - lava num tanque da lib: não recebe de cano de fluido.
+
+## Metallurgic Infuser: estado atual
+
+Segue `TileEntityMetallurgicInfuser` e `CachedRecipe`, com os valores da 26.3: 200 ticks, 5 J por tick, buffer de 20 J e
+tanque de 1.000 mB. As receitas `mekanism:metallurgic_infusing` e `mekanism:chemical_conversion` são os arquivos originais.
+Uma receita que cita um item que ainda não existe fica de fora sozinha e entra quando o item chegar.
+
+Funciona em mundo: modelo, forma real, receita da máquina, tela com slots, barras, seta e botão de esvaziar, shift-click para
+o slot certo, conversão de item em químico, processamento, energia por todas as faces e hoppers por face. Sem energia ou
+com a saída cheia o progresso espera; sem entrada, ou com outra receita, volta a zero. Progresso, tanque e receita
+sobrevivem a fechar e reabrir o mundo.
+
+Os itens de agora são `enriched_iron`, `dust_steel`, `ingot_steel`, `basic_control_circuit` e `alloy_infused`. Dos oito
+químicos de infusão, carbono, redstone e fungi já têm item de origem.
+
+Ainda difere do original em:
+
+- um clique do jogador põe qualquer item nos slots de entrada: `native_menu_slot_rules` roda fora de `crate::game` e não
+  alcança as receitas. Hoppers e shift-click respeitam a regra, e a saída recusa item;
+- as faces são as padrão, sem configuração. A saída fica à direita e um hopper só puxa de cima, então ela sai à mão. Hopper
+  não aponta para cima, então o slot de químico da base só entra pela tela;
+- sem upgrades, controle de redstone, ejetor, tubo de químico, som, abas e o nome do químico no tooltip;
+- sem slot de energia funcional. Redstone não serviria: `energy_conversion` dá 10.000 J, e o original só aceita se tudo
+  couber, o que nunca acontece num buffer de 20 J;
+- a luz da máquina ligada é 13, do template da fornalha, e não 8;
+- quebrar o bloco solta o conteúdo, em vez de guardar no item;
+- `per_tick_usage` não é lido: nenhuma receita de infusão usa, mas a Chemical Injection Chamber vai precisar.
 
 ## Licença e créditos
 

@@ -16,6 +16,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mekanism-rules"
+version = "0.1.0"
+dependencies = [
+ "machinery-basis-core",
+]
+
+[[package]]
 name = "mekanismgenerators-rules"
 version = "0.1.0"
 dependencies = [

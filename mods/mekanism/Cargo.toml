@@ -1,0 +1,13 @@
+# Só para `cargo test`: compila as regras puras do mod, sem o jogo.
+[package]
+name = "mekanism-rules"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "native/runtime.rs"
+
+[dependencies]
+machinery-basis-core = { path = "../machinery_basis/core" }
