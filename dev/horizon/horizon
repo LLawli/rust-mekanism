@@ -7,6 +7,14 @@
 # o render node da GPU, um socket Wayland em sandbox (wp_security_context_v1: sem captura
 # de tela, área de transferência alheia ou input virtual) e rede própria com firewall (só
 # internet, nunca host, LAN ou VPN) e um servidor de áudio próprio que só reproduz.
+#
+# A conta Microsoft não entra aqui: um container curto, sem jogo nem mods, gera a sessão e
+# sai antes de o jogo abrir. O refresh token fica fora do alcance dos mods. O access token
+# entra no jogo e vale cerca de 24 h; `horizon offline` abre sem sessão nenhuma.
+#
+#   horizon                  abre online
+#   horizon offline          abre sem conta
+#   horizon conta sign-in    faz login (e outros comandos de `account`)
 set -eu
 
 opt="$HOME/.local/opt/horizon"
@@ -19,6 +27,33 @@ rt=/run/user/$uid
 run="$rt/jogo-isolado/$name"
 cache="$HOME/.cache/jogo-isolado/$name"
 state="${XDG_STATE_HOME:-$HOME/.local/state}/jogo-isolado/$name"
+
+# Roda um comando no container curto da conta, que não monta nada do jogo.
+conta() {
+    mkdir -p -m 0700 "$conta_dados/data" "$conta_dados/config"
+    rede="jogo-isolado-$name-conta"
+    docker network inspect "$rede" >/dev/null 2>&1 || docker network create "$rede" >/dev/null
+    docker run --rm -i --init --name "$name-conta" --user "$uid:$gid" --cap-drop ALL \
+        --security-opt no-new-privileges --read-only --tmpfs /tmp --memory 256m --pids-limit 64 \
+        --network "$rede" --tmpfs "$HOME:uid=$uid,gid=$gid,mode=0700" \
+        -v "$conta_dados:$conta_dados" -v /etc/machine-id:/etc/machine-id:ro \
+        -e HOME="$HOME" -e XDG_DATA_HOME="$conta_dados/data" \
+        -e XDG_CONFIG_HOME="$conta_dados/config" -e HORIZON_LAUNCHER_NO_SELF_UPDATE=1 \
+        "$image" sh -c "$1"
+}
+
+if [ "${1:-}" = conta ]; then
+    shift
+    conta "horizon-launcher account $*"
+    exit
+fi
+
+modo=online
+if [ "${1:-}" = offline ]; then
+    modo=offline
+    shift
+fi
+if [ -n "${JOGO_CMD:-}" ]; then modo=offline; fi
 
 if [ "${1:-}" = --session ]; then
     # Roda dentro do wl-sandbox, que segura o socket Wayland, e mantém o áudio dedicado
@@ -107,4 +142,13 @@ if [ "$(docker inspect --type container -f '{{.State.Running}}' "$name" 2>/dev/n
     fi
 fi
 
-exec docker exec "$name" sh -c "$cmd"' "$@"' sh "$@"
+if [ "$modo" = offline ]; then
+    exec docker exec "$name" sh -c "$cmd"' "$@"' sh "$@"
+fi
+
+sessao=$(conta "f=\$(horizon-launcher account session '$conta_nome') && cat \"\$f\" && rm -f \"\$f\"")
+if [ -z "$sessao" ]; then
+    echo "$name: sem sessão (rode: horizon conta sign-in)" >&2
+    exit 1
+fi
+printf '%s' "$sessao" | docker exec -i "$name" sh -c "$cmd"' --session-stdin "$@"' sh "$@"

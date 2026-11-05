@@ -4,7 +4,7 @@ set -eu
 aqui=$(dirname "$(readlink -f "$0")")
 opt="$HOME/.local/opt/horizon"
 mkdir -p "$opt" "$HOME/.local/bin"
-cp "$aqui/Dockerfile" "$aqui/jogo.conf" "$aqui/wl-sandbox" "$aqui/idle-watch" "$aqui/firewall" \
+cp "$aqui/Dockerfile" "$aqui/jogo.conf" "$aqui/wl-sandbox" "$aqui/idle-watch" "$aqui/firewall" "$aqui/jogar" \
     "$aqui/pulse.conf" "$aqui/asound.conf" "$opt/"
 cp "$aqui/horizon" "$HOME/.local/bin/horizon"
 docker build -t jogo-horizon:latest "$opt"

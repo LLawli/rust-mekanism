@@ -6,8 +6,9 @@ Wayland em sandbox, áudio que só reproduz e rede só para a internet.
 
 ```sh
 ./instalar                        # copia para ~/.local/opt/horizon e constrói a imagem
-horizon                           # abre o jogo
-JOGO_CMD='horizon-launcher account sign-in' horizon
+horizon conta sign-in             # login, uma vez
+horizon                           # abre online
+horizon offline                   # abre sem conta
 JOGO_CMD='horizon-launcher native-build ~/Games/Horizon/mods/<pasta> --profile dev --trust-native-code' horizon
 ```
 
@@ -20,7 +21,8 @@ container nunca enxerga os snapshots.
 
 | Caminho | Conteúdo |
 |---|---|
-| `~/.local/share/jogo-isolado/horizon` | Launcher, jogo, mundos e sessão da conta (escrita) |
+| `~/.local/share/jogo-isolado/horizon` | Launcher, jogo e mundos (escrita) |
+| `~/.local/share/jogo-isolado/horizon-conta` | Conta Microsoft, nunca montada no container do jogo |
 | `~/Games/Horizon/mods` | Mods (somente leitura) |
 | `~/.local/state/jogo-isolado/horizon` | Logs |
 
@@ -28,4 +30,5 @@ Para operar o jogo de fora, use o `horizon-ctl` da versão em uso, que fala pelo
 `state`, `screenshot`, `command`, `click-button` e outros. Com o monitor desligado, o jogo continuou renderizando.
 `HORIZON_BACKEND=headless horizon` troca o backend do gamescope (não testado).
 
-Um mod malicioso alcança a pasta de dados, inclusive a sessão da conta Microsoft que fica lá.
+O refresh token fica fora do alcance dos mods. No modo online, o access token entra no processo do jogo e vale cerca de
+24 h: um mod malicioso instalado consegue lê-lo a cada abertura online. `horizon offline` não entrega nenhum token.

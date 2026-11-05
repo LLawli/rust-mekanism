@@ -22,7 +22,7 @@ RUN sed -i 's/^Components: main$/Components: main contrib/' /etc/apt/sources.lis
     && rm -rf /var/lib/apt/lists/*
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games
 COPY --from=launcher /out/horizon-launcher /usr/local/bin/horizon-launcher
-COPY idle-watch firewall /usr/local/bin/
+COPY idle-watch firewall jogar /usr/local/bin/
 # O jogo fala ALSA; o som sai pelo Pulse dedicado do container.
 COPY asound.conf /etc/asound.conf
 USER 1000:1000

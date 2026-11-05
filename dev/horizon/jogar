@@ -1,0 +1,12 @@
+#!/bin/sh
+# Abre o jogo direto, sem o launcher: aqui dentro não existe conta. A sessão, quando há,
+# chega por --session-stdin, e o processo do jogo nunca vê o refresh token.
+set -eu
+l=$XDG_DATA_HOME/horizon-launcher
+tag=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$l/instances.json" | head -n 1)
+v=$l/versions/$tag
+export HORIZON_HOME="$XDG_DATA_HOME/horizon"
+export PIPEWIRE_PROPS='{ application.name = "Horizon" media.role = "Game" }'
+mkdir -p "$HORIZON_HOME"
+cd "$HORIZON_HOME"
+exec "$v/horizon-client" --resources "$v/.local/horizon-client/26.3" "$@"
