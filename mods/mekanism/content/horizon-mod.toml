@@ -1,0 +1,8 @@
+id = "mekanism"
+name = "Mekanism"
+version = "0.1.0"
+description = "Port não oficial do Mekanism para o Horizon: ósmio e a base dos outros mods."
+authors = ["Aidan C. Brady e colaboradores do Mekanism", "Leonardo Lucas de Castro Filho"]
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
