@@ -211,9 +211,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
 
     let front = basis::front(game, pos);
     let sides = sides(front);
-    let mut energy_sides = Sides::default();
-    energy_sides.output[front as usize] = true;
-    basis::distribute_energy(game, pos, entity, &energy_sides);
+    basis::distribute_energy(game, pos, entity);
     // Só o balde vazio sai: combustível fica no slot.
     let empty_bucket = entity.items[FUEL_SLOT]
         .as_ref()
