@@ -1,0 +1,130 @@
+# machinery_basis: escopo
+
+Biblioteca genérica para mods de máquina no Horizon. Nada nela é exclusivo do Mekanism: ela não conhece hidrogênio nem
+Metallurgic Infuser. Um mod de magia usa os mesmos tanques para mana, e o Mekanism registra químicos como dados.
+
+Levantado em 2026-11-05. Pin: Nightly `f319701` (API 409), a primeira com `native_container_accepts` e
+`native_menu_extra_data`. O mod de teste compilou nela sem mudanças. A pesquisa em `main` foi feita no commit `85d8e28`.
+
+## Regra de escopo
+
+Entra na lib o que atende às três condições:
+
+1. Dois mods sem relação entre si precisariam disso.
+2. O Horizon não oferece, ou oferece com um limite que a lib resolve.
+3. Um consumidor real vai usar agora.
+
+A terceira segura o motor de multibloco: ele é parte do plano, mas só nasce com a primeira estrutura real.
+
+## Decisão por item
+
+**Usar como está:** a lib não embrulha, e o mod chama o Horizon direto.
+
+| Item | No Horizon | Observação |
+|---|---|---|
+| Registrar blocos, itens e menus | Hooks `blocks`, `items`; `data/<id>/horizon/menu/` | |
+| Block entity, tick e salvamento | `block_entity`, `block_entity_ticks`, `block_entity_tick` | Salvamento testado em mundo |
+| Slots de item e funis | `ModContainer`, `native_insert_item`, `native_extract_item`, `native_move_items` | Interopera com hoppers |
+| Buffer de energia | `ModEnergyBuffer`, `native_energy_insert` | Testado em mundo. `i32` cobre o maior cubo não criativo (256.000.000) |
+| Energia em itens | `item_energy_buffer` | Para o `energy_tablet` |
+| Tanques de fluido | `ModFluidTanks`, `native_move_fluids` | Até 16 tanques de 1.000.000 mB; o Fluid Tank Ultimate tem 256.000 |
+| Fluido em itens | `native_item_fluid_tank` | |
+| Estado do bloco | `state_properties`, `native_set_block_property` | `facing`, `active` |
+| Redstone | `neighbor_signal`, `native_update_signal_neighbors` | |
+| Manter chunk carregado | `native_force_chunk` | Tickets não são salvos: guarde e reaplique |
+| Rede cliente e servidor | `native_net_send_to_player`, `native_net_send_to_server` | |
+
+**Embrulhar:** existe, mas tem uma armadilha que todo mod repetiria.
+
+| Item | Problema | A lib oferece |
+|---|---|---|
+| Distribuir energia | O bloco em tick sai do mundo: `native_energy` responde `None` e `native_move_energy` não esvazia o próprio bloco | `distribuir_energia(game, pos, entity, faces)` |
+| Data slots | Trafegam em 16 bits | Codec que divide `i32` e `i64` em slots |
+| Receitas de tipo próprio | `native_recipes_of_type` entrega JSON cru, sem busca | Índice por tipo, refeito em `server_data_loaded` |
+| Telas | `native_screen` e `native_sprite` são primitivas | Barra de energia, medidor de tanque, seta de progresso, botões |
+| Faces relativas | `faces` são absolutas e por tipo de bloco, e a máquina gira | Conversão de lado relativo para direção, pelo `facing` |
+
+**Reimplementar:** o Horizon não tem, ou não serve para a meta.
+
+| Item | Por quê | Tamanho no Mekanism |
+|---|---|---|
+| Recursos tipados e seus tanques | Químico como fluido não dá paridade: o Chemical Tank Elite tem 1.024.000 mB e o Ultimate 8.192.000, acima do limite de 1.000.000. Um mod de fluidos também trataria hidrogênio como líquido | 1.519 linhas (`api/chemical`) |
+| Lados configuráveis por máquina | Faces do Horizon são por tipo de bloco | Parte de 2.449 (`tile/component`) |
+| Ejetor | Empurra saídas conforme a configuração de lados | Parte de 2.449 (`tile/component`) |
+| Base de máquina | Progresso, operação, consumo por tick e controle de redstone | 1.589 (`tile/prefab`) |
+| Redes de transporte | `connects_to` só dá a forma do cabo, não a rede | 5.172 (`lib/transmitter`, `content/network`) |
+| Motor de multibloco | Não existe | 2.614 (`lib/multiblock`) |
+
+### Lados configuráveis
+
+A máquina declara `inputs` e `outputs` vazios, então hopper nenhum a enxerga. Quem age é ela, imitando o hopper e
+respeitando as faces configuradas. Assim a regra vale por instância e acompanha a rotação.
+
+| Situação | O que a máquina faz |
+|---|---|
+| Hopper logo abaixo, com a face de baixo como saída | Entrega um item, mesmo com o push desligado, porque um hopper puxa do bloco acima |
+| Hopper em outra face | Não entrega: hopper só puxa de cima |
+| Hopper apontando para a máquina, com aquela face como entrada | Recebe um item, como se ele entregasse |
+| Hopper apontando para outro lugar | Ignora |
+| Hopper travado por redstone (`enabled=false`) | Ignora |
+
+O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O push ligado na configuração é outra coisa:
+entrega ativa para qualquer vizinho pelas faces de saída, com `native_insert_item`, `native_fluid_insert` e
+`native_energy_insert`.
+
+Limites: outros mods que automatizam pelas faces do Horizon também não enxergam a máquina, e fluido ou energia vindos
+deles seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem
+sincronizar com o cooldown interno do hopper, que os helpers não expõem.
+
+## Fora da lib
+
+Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora
+upgrades específicos, configurador, segurança por dono, QIO e radiação, até dois mods precisarem deles.
+
+## Arquitetura
+
+Um mod `machinery_basis` com três partes, cada uma com um papel que os testes confirmaram:
+
+| Parte | Tipo | Conteúdo | Quem alcança |
+|---|---|---|---|
+| `core/` | `[[crate]]` | Regras puras, sem tipos do jogo, e os registros de recursos | Mixin e `[api]`, uma cópia só |
+| `glue.rs` | `[[module]]` | Tudo que chama o jogo | Só mixin, como `crate::game::machinery_basis` |
+| `api/` | `[api]` | `pub use` do `core` e a dependência | Mods tipados, como `machinery_basis::core` |
+
+O `core` guarda quase toda a lógica e testa com `cargo test`, sem jogo. O `[api]` alcança o `core` por um caminho que só
+existe no build do launcher, `../../native-crates/machinery_basis/core`, então o `cargo test` local roda só no `core`.
+
+Limite atual: um mod só tipado usa o `core`, mas não o `glue.rs`, porque o `Host` não tem energia. Esse mod precisa de
+mixin para mover energia até o trabalho de [capabilities](https://github.com/horizon-rust/horizon/issues/7387) chegar.
+Quando elas chegarem, boa parte do `glue.rs` deve encolher, por isso a lib mantém o código do jogo isolado ali.
+
+## Ordem
+
+1. **`core`:** recursos, tanque, lados, progresso de máquina, codec de data slots e índice de receitas.
+2. **`glue.rs`:** salvar tanques no NBT, distribuir energia e ejetar.
+3. **Telas:** barra, medidor e seta, com a primeira tela real.
+4. **Rede:** cabo de energia, depois tubo de fluido e de químico.
+5. **Multibloco:** com a primeira estrutura do Mekanism, como o Dynamic Tank.
+
+Os consumidores das etapas 1 a 3 são o Heat Generator e o Metallurgic Infuser. Um consumidor que não seja de máquina,
+como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
+
+## Decisões em aberto
+
+1. **Formato no NBT:** versionar o formato dos tanques desde o início. É o contrato entre mods, e mudá-lo depois quebra
+   mundos salvos.
+2. **Registro de recursos:** arquivos de dados em `data/<ns>/machinery_basis/resource/` ou código. Dados combinam com a
+   ideia da lib, mas ainda falta testar como ler arquivos próprios no servidor.
+3. **Repositório:** a lib tem público próprio e pode ir para um repo separado. Por enquanto fica aqui, para mudar junto
+   com o primeiro consumidor.
+
+## Verificado
+
+| Teste | Resultado |
+|---|---|
+| Mod de teste na Nightly `f319701` | `native.py check` OK |
+| `[api]` usando `[[crate]]` pelo caminho do stage, com outro mod tipado chamando | `native-build` OK, sem rodar em mundo |
+| Gerador e bateria em mundo, com salvamento | OK, ver [modding-horizon.md](modding-horizon.md) |
+| Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
+
+Lido, não executado: redes, telas, receitas de tipo próprio, `native_force_chunk` e `native_container_accepts`.

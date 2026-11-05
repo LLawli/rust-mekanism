@@ -46,9 +46,8 @@ no NBT da máquina. Os tubos de químicos podem esperar.
 
 **Lados configuráveis.** No Mekanism, cada máquina escolhe o que entra e sai por cada face. No Horizon, as faces são
 declaradas uma vez por tipo de bloco e são direções absolutas. `native_container_accepts` permite recusar itens por
-posição e face, o que resolve a entrada de itens, mas ele só existe em `main`: não está na Nightly de 2026-11-04 nem no
-catálogo. Saída, energia e fluidos por instância ainda precisam de estudo. Para o primeiro marco, faces fixas são
-suficientes.
+posição e face, o que resolve a entrada de itens; ele existe a partir da Nightly `f319701`. Saída, energia e fluidos por
+instância ficam com os canos e ejetores da `machinery_basis`. Para o primeiro marco, faces fixas são suficientes.
 
 **O worldgen precisa ser reescrito.** Os arquivos usam `mekanism:ore`, `mekanism:disableable`,
 `mekanism:configurable_constant` e `mekanism:configurable`, que dependem de código Java. É preciso trocá-los pelos tipos

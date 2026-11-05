@@ -268,6 +268,9 @@ cadeia precisa ter `[api]`, ainda que o crate seja mínimo. Uma cadeia de três 
 crate `[api]` de cada um chamando o do mod de baixo. Um `.hnmod` nesse formato passa em `cargo horizon-mod check`, mas
 `native.py` não aceita o manifesto e `package` não inclui o crate.
 
+Um crate `[api]` também alcança um `[[crate]]` do mesmo mod, pelo caminho do stage
+(`../../native-crates/<mod>/<crate>`). Isso dá uma cópia só de código puro para mods mixin e tipados.
+
 O assunto está em andamento. A API de mods é desenvolvida primeiro no fork
 [arismoko/horizon](https://github.com/arismoko/horizon):
 
@@ -301,8 +304,8 @@ Em singleplayer, o jogo da janela e o do servidor rodam em threads separadas, en
 
 ## Versões e pin
 
-Cada hook novo aumenta `NATIVE_HOOKS_API`. A Nightly de 2026-11-04 tem 359, e `main` já está em 409, então confira se
-o hook existe na Nightly antes de usar.
+Cada hook novo aumenta `NATIVE_HOOKS_API`. Das Nightlies, `6475f62` (2026-11-04) tem 359 e `f319701` (2026-11-05) tem
+409, então confira se o hook existe na Nightly antes de usar.
 
 - **Só hook points:** o mod declara `"hooks": N` e compila em qualquer Horizon com versão N ou maior.
 - **Funções internas do jogo:** o mod fica preso ao commit de `horizon_revision`, e todos os mods pinados de um build
