@@ -16,6 +16,9 @@ Entra na lib o que atende às três condições:
 
 A terceira segura o motor de multibloco: ele é parte do plano, mas só nasce com a primeira estrutura real.
 
+Na primeira condição, código que vários blocos do Mekanism usam conta a favor: o que se repete dentro do mod provavelmente
+serve a outros mods.
+
 ## Decisão por item
 
 **Usar como está:** a lib não embrulha, e o mod chama o Horizon direto.
@@ -40,7 +43,7 @@ A terceira segura o motor de multibloco: ele é parte do plano, mas só nasce co
 |---|---|---|
 | Distribuir energia | O bloco em tick sai do mundo: `native_energy` responde `None` e `native_move_energy` não esvazia o próprio bloco | `distribuir_energia(game, pos, entity, faces)` |
 | Data slots | Trafegam em 16 bits | Codec que divide `i32` e `i64` em slots |
-| Receitas de tipo próprio | `native_recipes_of_type` entrega JSON cru, sem busca | Índice por tipo, refeito em `server_data_loaded` |
+| Receitas de tipo próprio | `native_recipes_of_type` entrega JSON cru, sem busca | Índice por tipo, refeito depois de `server_data_loaded`. O mod diz em quais campos cada parte fica |
 | Telas | `native_screen` e `native_sprite` são primitivas | Barra de energia, medidor de tanque, seta de progresso, botões |
 | Faces relativas | `faces` são absolutas e por tipo de bloco, e a máquina gira | Conversão de lado relativo para direção, pelo `facing` |
 
@@ -137,7 +140,9 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
    data packs do mundo, e o `/reload` relê. A leitura só existe no servidor: o cliente recebe o que precisa pela rede.
 2. **Repositório:** a lib fica neste repo por enquanto, para mudar junto com o primeiro consumidor.
 
-3. **Formato dos tanques:** versionado desde o início, com `v: 1` no NBT, em `machinery_basis.tanks`. É o contrato entre
+3. **Tags de recursos:** ficam em `data/<ns>/tags/machinery_basis/resource/<nome>.json`, o caminho de uma tag de registro,
+   com a lista em `values`. Uma receita aponta para `#<ns>:<nome>` ou para o id do recurso.
+4. **Formato dos tanques:** versionado desde o início, com `v: 1` no NBT, em `machinery_basis.tanks`. É o contrato entre
    mods. Uma versão desconhecida carrega vazia.
 
 ## Verificado
@@ -152,9 +157,12 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Tanque depois de fechar e reabrir | Preservado, com 100 de hidrogênio |
 | Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
+| Máquina de progresso em mundo, com o Metallurgic Infuser | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
+| Recursos, tags e conversões em mundo | 8 recursos lidos; carvão vira 10 mB de carbono a 1 item por tick; a redstone não converte com ferro na entrada, porque nenhuma receita junta os dois |
+| Hoppers por face em mundo | Topo, esquerda e frente entregam na entrada; pedra, sem receita, fica no hopper; hopper na direita não entrega |
 | Lava dentro do bloco, em mundo | Balde com shift enche, a lava corre com níveis 2, 4 e 6 pelas quatro laterais e nada sai pela base; balde vazio tira e ela recua; parede removida com a lava parada abre o fluxo; quebrar com picareta deixa `lava[level=0]`; luz 15 com o bloco cercado de vidro; sem shift só abre a tela |
 
-Lido, não executado: redes, telas, receitas de tipo próprio, `native_force_chunk` e `native_container_accepts`.
+Lido, não executado: redes, `native_force_chunk` e `native_container_accepts`.
 
 Os ritmos têm teste puro no `core`, sem o jogo: hopper a exatos 8 ticks, ejetor a exatos 11, e o ejetor comparado tick a
 tick com o laço do `TileComponentEjector` por 1.000 ticks.

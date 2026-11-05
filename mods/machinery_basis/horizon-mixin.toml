@@ -101,3 +101,11 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "draw", ty = "&mut crate::game::native_block_entity_draw::BlockEntityDraw", value = "&mut *draw" },
 ]
+
+[[injection]]
+id = "server_data_loaded"
+hook = "server_data_loaded"
+hook_version = 1
+kind = "HEAD"
+helper = "server_data_loaded.rs"
+bindings = []

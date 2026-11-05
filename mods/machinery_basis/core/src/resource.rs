@@ -1,12 +1,18 @@
 //! Recursos tipados: o que um tanque guarda. A lib não conhece nenhum: cada mod os declara em
 //! `data/<ns>/machinery_basis/resource/<nome>.json`, e o id vira `<ns>:<nome>`.
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
 /// A pasta que o mod escuta, dentro de `data/<ns>/`.
 pub const DATA_FOLDER: &str = "machinery_basis/resource";
+
+/// A pasta das tags de recursos, dentro de `data/<ns>/`. O caminho é o de uma tag de registro.
+pub const TAGS_FOLDER: &str = "tags/machinery_basis/resource";
+
+/// O que marca uma tag num ingrediente.
+pub const TAG_PREFIX: char = '#';
 
 /// Um recurso declarado.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -111,7 +117,34 @@ impl Registry {
     }
 }
 
+/// As tags de recursos de uma carga de dados.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Tags {
+    tags: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl Tags {
+    /// Monta as tags com o que o jogo leu. Um arquivo sem `values` não acrescenta nada.
+    pub fn load(files: &[(String, Value)]) -> Self {
+        let mut tags = Self::default();
+        for (id, json) in files {
+            let values = json.get("values").and_then(Value::as_array);
+            let members = values.into_iter().flatten().filter_map(Value::as_str);
+            tags.tags
+                .entry(id.clone())
+                .or_default()
+                .extend(members.map(str::to_owned));
+        }
+        tags
+    }
+
+    pub fn contains(&self, tag: &str, resource: &str) -> bool {
+        self.tags.get(tag).is_some_and(|tag| tag.contains(resource))
+    }
+}
+
 static CURRENT: RwLock<Option<Arc<Registry>>> = RwLock::new(None);
+static CURRENT_TAGS: RwLock<Option<Arc<Tags>>> = RwLock::new(None);
 
 /// Troca o registro em uso: a cada carga de dados, inclusive no `/reload`.
 pub fn set_current(registry: Registry) {
@@ -122,6 +155,18 @@ pub fn set_current(registry: Registry) {
 /// O registro em uso: vazio antes da primeira carga.
 pub fn current() -> Arc<Registry> {
     let current = CURRENT.read().unwrap_or_else(|e| e.into_inner());
+    current.clone().unwrap_or_default()
+}
+
+/// Troca as tags em uso: a cada carga de dados, inclusive no `/reload`.
+pub fn set_current_tags(tags: Tags) {
+    let mut current = CURRENT_TAGS.write().unwrap_or_else(|e| e.into_inner());
+    *current = Some(Arc::new(tags));
+}
+
+/// As tags em uso: vazias antes da primeira carga.
+pub fn current_tags() -> Arc<Tags> {
+    let current = CURRENT_TAGS.read().unwrap_or_else(|e| e.into_inner());
     current.clone().unwrap_or_default()
 }
 
@@ -197,5 +242,19 @@ mod tests {
         set_current(second);
         assert!(current().get("a:x").is_none());
         assert!(current().get("a:y").is_some());
+    }
+
+    #[test]
+    fn a_tag_holds_what_its_file_lists() {
+        let tags = Tags::load(&[file("a:infuse", json!({"values": ["a:carbon", "a:gold"]}))]);
+        assert!(tags.contains("a:infuse", "a:carbon"));
+        assert!(!tags.contains("a:infuse", "a:tin"));
+        assert!(!tags.contains("a:outra", "a:carbon"));
+    }
+
+    #[test]
+    fn a_tag_file_with_no_values_holds_nothing() {
+        let tags = Tags::load(&[file("a:vazia", json!({}))]);
+        assert!(!tags.contains("a:vazia", "a:carbon"));
     }
 }

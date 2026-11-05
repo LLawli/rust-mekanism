@@ -44,6 +44,11 @@ impl Face {
         }
     }
 
+    /// A face à esquerda de quem olha uma máquina de frente, como `RelativeSide.LEFT`.
+    pub fn left_of(self) -> Face {
+        self.right_of().opposite()
+    }
+
     /// O deslocamento até o bloco vizinho por esta face.
     pub fn offset(self) -> [i32; 3] {
         match self {
@@ -68,6 +73,15 @@ impl Face {
             _ => None,
         }
     }
+}
+
+/// Os slots que uma face alcança.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FaceSlots {
+    /// Onde um item que entra pode cair, na ordem de preferência.
+    pub inputs: &'static [usize],
+    /// De onde um item pode sair.
+    pub outputs: &'static [usize],
 }
 
 /// Por quais faces uma máquina aceita entrada e entrega saída.
@@ -117,6 +131,14 @@ mod tests {
         assert_eq!(face, Face::North);
         assert_eq!(Face::North.right_of(), Face::West);
         assert_eq!(Face::Up.right_of(), Face::Up);
+    }
+
+    #[test]
+    fn left_faces_the_right() {
+        for face in [Face::North, Face::South, Face::West, Face::East] {
+            assert_eq!(face.left_of(), face.right_of().opposite());
+        }
+        assert_eq!(Face::North.left_of(), Face::East);
     }
 
     #[test]
