@@ -34,7 +34,7 @@ Sugestão de primeiro marco: os passos 1 a 3, porque exercitam mundo, energia, m
 | Energia | `ModEnergyBuffer`, em `i32` | Coberto; o maior cubo não criativo (256.000.000) cabe em `i32` |
 | Tanques de fluido | `ModFluidTanks` | Coberto para tanques; sem bloco nem balde de fluido de mod |
 | Menus e telas | Tipo de menu próprio, `native_screen`, `native_sprite` | Coberto |
-| Cabos | `connects_to` e `thickness` dão a forma | Parcial: a rede é código nosso |
+| Cabos | `connects_to` e `thickness` dão a forma | Coberto: a rede é da `machinery_basis`; falta o item e o fluido |
 | Químicos (`#mekanism:redstone`, `#mekanism:carbon`) | Não existe | Recursos e tags da `machinery_basis`, com o tanque no NBT da máquina |
 | Lados configuráveis por máquina | Faces fixas por tipo de bloco | Lacuna (abaixo) |
 
@@ -123,6 +123,27 @@ receita recusado por hopper e por shift-click.
 Têm as diferenças do infuser que valem para máquina: faces fixas, sem upgrades, sem controle de redstone, sem slot de energia
 funcional, luz 13 em vez de 8 e conteúdo solto ao quebrar. Além disso, o `bio_fuel` não queima como combustível.
 
+## Universal Cable: estado atual
+
+Os quatro tiers guardam 8.000, 128.000, 1.024.000 e 8.192.000 J (`CableTier`), e tiers diferentes se ligam. Como no original,
+um cabo só se liga onde há troca de energia, e entrada é diferente de saída. Cada bloco declara seus lados em
+`data/<ns>/machinery_basis/energy/<bloco>.json`: o Heat Generator tem saída só pela frente, uma máquina tem entrada por todos
+os lados, e uma bateria pode ter os dois. Um lado de saída liga o cabo, mas a rede não entrega por ele.
+
+Testado em mundo: um gerador alimentando três máquinas pela mesma rede; com energia escassa, 925, 928 e 930 J para cada
+uma em 300 ticks; cortar o cabo pausa as máquinas sem perder progresso; religar com outro tier volta em menos de um segundo;
+a energia do cabo sobrevive a reabrir o mundo; craft do básico e do avançado.
+
+Ainda difere do original em:
+
+- a energia fica no cabo que a recebeu, não num buffer somado da rede. No original a capacidade soma todos os cabos, então
+  aqui a rede guarda e aceita por tick só o que os cabos de entrada comportam, e quebrar um deles perde o que ele tinha;
+- uma mudança na rede leva até um segundo para valer, porque a travessia é guardada por 20 ticks;
+- o modelo é uma aproximação em JSON, não o OBJ original: sem a parte translúcida do braço, sem o conteúdo verde animado
+  (`mek_liquid/energy`, com alfa pelo nível da rede), sem o flange na ligação com máquina e sem esconder a junção em trechos
+  retos. A textura usada no braço é a variante `opaque/`;
+- sem modos de conexão por lado (normal, push, pull, none), controle por redstone e upgrade de tier no lugar.
+
 ## Licença e créditos
 
 O Mekanism é MIT (Copyright 2017-2025 Aidan C. Brady), o que permite o port e cumpre a política do registro, desde que:
@@ -142,8 +163,9 @@ Tomadas em 2026-11-05:
    `<id>:*`, porque só podem ser declarados em `data/<id>/horizon/`, e o campo `namespaces` não resolve isso.
 2. **Mods separados:** Mekanism e Mekanism Generators, como no original.
 3. **Licença:** MIT, com os avisos do original em `THIRD_PARTY_NOTICES.md`.
-4. **Fidelidade:** versão simplificada no começo, com paridade exata como meta. Cada simplificação fica registrada como
-   diferença conhecida, para não virar comportamento definitivo.
+4. **Fidelidade:** paridade 1:1 com o original, decidida pelo usuário em 2026-11-05. Substitui a decisão anterior de começar
+   com uma versão simplificada. Nada se decide por simplicidade ou desempenho. Plano em
+   [plano-paridade.md](plano-paridade.md).
 
 5. **Valores de jogo:** sempre os padrões da versão mais nova do Mekanism, a branch 26.3. A wiki e os valores que muita
    gente lembra (200 J/t, tanque de 24 baldes, 10 mB/t) são da 1.21.x e anteriores. A 1.21.11 reescalou energia e queima de
