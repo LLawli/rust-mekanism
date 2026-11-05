@@ -6,18 +6,23 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import mekanism.api.MekanismRegistries;
+import mekanism.api.RelativeSide;
 import mekanism.api.inventory.IInventorySlot;
 import mekanism.api.recipes.cache.CachedRecipe.OperationTracker.RecipeError;
 import mekanism.api.upgrade.Upgrade;
 import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.block.attribute.Attribute;
+import mekanism.common.lib.transmitter.TransmissionType;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismItems;
 import mekanism.common.tests.helpers.MekGameTestHelper;
+import mekanism.common.tile.component.config.ConfigInfo;
+import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
 import mekanism.common.tile.machine.TileEntityEnrichmentChamber;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
@@ -25,6 +30,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.testframework.DynamicTest;
@@ -39,6 +45,7 @@ import net.neoforged.testframework.gametest.StructureTemplateBuilder;
 public class MachineTraceTest {
 
     private static final BlockPos CHAMBER = new BlockPos(1, 0, 0);
+    private static final BlockPos CHEST = new BlockPos(2, 0, 0);
     private static final int INPUT = 0;
     private static final int OUTPUT = 1;
     private static final int TIMEOUT = 60 * SharedConstants.TICKS_PER_SECOND;
@@ -317,6 +324,47 @@ public class MachineTraceTest {
         );
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the output ejecting into a chest, one transaction across two blocks, with room for all, part and none.")
+    public static void chamberEject(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 1, 1)
+              .fill(1, 0, 0, 1, 0, 0, MekanismBlocks.ENRICHMENT_CHAMBER.defaultState())
+              .fill(2, 0, 0, 2, 0, 0, Blocks.CHEST.defaultBlockState()));
+        Trace trace = new Trace("chamber_eject");
+        trace.recordChest = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("eject on, output clay_ball 40");
+                  trace.ejectEast();
+                  trace.setSlot(OUTPUT, Items.CLAY_BALL, 40);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("chest room 2, output clay_ball 5");
+                  trace.fillChest(Items.STONE, 64);
+                  trace.chest().setItem(26, new ItemStack(Items.CLAY_BALL, 62));
+                  trace.setSlot(OUTPUT, Items.CLAY_BALL, 5);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("chest room 0, output clay_ball 5");
+                  trace.fillChest(Items.STONE, 64);
+                  trace.setSlot(OUTPUT, Items.CLAY_BALL, 5);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("chest clear");
+                  trace.chest().clearContent();
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("clay 1, energy 20000");
+                  trace.setSlot(INPUT, Items.CLAY, 1);
+                  trace.setEnergy(20_000);
+              })
+              .thenExecuteAfter(230, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
@@ -328,6 +376,7 @@ public class MachineTraceTest {
         private final List<String> marks = new ArrayList<>();
         private MekGameTestHelper helper;
         private int tick;
+        boolean recordChest;
 
         Trace(String name) {
             this.name = name;
@@ -344,6 +393,28 @@ public class MachineTraceTest {
         TileEntityEnrichmentChamber chamber() {
             BlockEntity tile = helper.getLevel().getBlockEntity(helper.absolutePos(CHAMBER));
             return tile instanceof TileEntityEnrichmentChamber chamber ? chamber : null;
+        }
+
+        ChestBlockEntity chest() {
+            return (ChestBlockEntity) helper.getLevel().getBlockEntity(helper.absolutePos(CHEST));
+        }
+
+        void fillChest(Item item, int count) {
+            for (int i = 0; i < chest().getContainerSize(); i++) {
+                chest().setItem(i, new ItemStack(item, count));
+            }
+        }
+
+        /// Liga o ejetor de itens e põe a saída no lado do baú.
+        void ejectEast() {
+            ConfigInfo info = chamber().getConfig().getConfig(TransmissionType.ITEM);
+            for (RelativeSide side : RelativeSide.values()) {
+                if (side.getDirection(chamber().getDirection()) == Direction.EAST) {
+                    info.setDataType(DataType.OUTPUT, side);
+                    chamber().getConfig().sideChanged(TransmissionType.ITEM, side);
+                }
+            }
+            info.setEjecting(true);
         }
 
         void setSlot(int slot, Item item, int count) {
@@ -400,7 +471,21 @@ public class MachineTraceTest {
                     first = false;
                 }
             }
-            lines.add(line.append("]}").toString());
+            line.append(']');
+            if (recordChest) {
+                line.append(",\"chest\":[");
+                boolean firstSlot = true;
+                for (int i = 0; i < chest().getContainerSize(); i++) {
+                    ItemStack stack = chest().getItem(i);
+                    if (!stack.isEmpty()) {
+                        line.append(firstSlot ? "" : ",").append('[').append(i).append(",\"")
+                              .append(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath()).append("\",").append(stack.getCount()).append(']');
+                        firstSlot = false;
+                    }
+                }
+                line.append(']');
+            }
+            lines.add(line.append('}').toString());
         }
 
         void write() {
