@@ -5,6 +5,7 @@ pub mod heat;
 pub mod hopper;
 pub mod machine;
 pub mod network;
+pub mod operation_tracker;
 pub mod recipe;
 pub mod resource;
 pub mod sides;
