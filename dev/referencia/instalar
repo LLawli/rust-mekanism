@@ -15,3 +15,7 @@ docker build -t jogo-mekanism-ref:latest "$opt"
 if [ -n "${1:-}" ] && [ ! -d "$dados/src" ]; then
     cp -a "$1" "$dados/src"
 fi
+# Os testes que gravam o estado tick a tick entram junto dos testes do próprio Mekanism.
+if [ -d "$dados/src" ]; then
+    cp "$aqui"/testes/*.java "$dados/src/src/gameTest/java/mekanism/common/tests/network/"
+fi
