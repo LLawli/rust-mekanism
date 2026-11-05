@@ -1,14 +1,22 @@
 // Tudo da lib que fala com o jogo. As regras ficam em machinery_basis_core; este arquivo só as
 // liga ao Horizon. Outros mods chamam daqui como crate::game::machinery_basis.
-use crate::game::{Game, NativeReloadListener};
+use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
+use crate::game::{Game, GameLevel, NativeReloadListener};
 use horizon_client::containers::ModBlockEntity;
+use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Direction;
+use horizon_core::position::BlockPos;
+use horizon_world::level::Ticks;
 use horizon_world::nbt::{Compound, JavaString, Tag};
+use horizon_world::registry::BlockStateId;
+use machinery_basis_core::fluid_logged;
+use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::resource::{self, Registry};
 use machinery_basis_core::sides::{Face, Sides};
 use machinery_basis_core::tank::{FORMAT, Tank};
+use std::sync::atomic::{AtomicI64, Ordering};
 
 const LISTENER: &str = "machinery_basis:resources";
 const HOPPER: &str = "minecraft:hopper";
@@ -17,6 +25,103 @@ const ENERGY: &str = "energy";
 // Um contador por face, mais um para o ejetor.
 const COOLDOWNS: usize = 7;
 const EJECT_COOLDOWN: usize = 6;
+const LAVA: &str = "minecraft:lava";
+const LAVA_SPRITE: &str = "block/lava_still";
+// A lava dentro do bloco, um pouco para dentro das faces do modelo, na altura de uma fonte. Em
+// unidades de modelo, de 0 a 16.
+const LOGGED_LAVA_FROM: [f32; 3] = [0.03, 0.03, 0.03];
+const LOGGED_LAVA_TO: [f32; 3] = [15.97, 14.2, 15.97];
+const FULL_BRIGHT: u32 = 0xF0F0;
+const WHITE: u32 = 0xFF_FF_FF;
+/// `LavaFluid.getTickDelay` fora do Nether.
+const LAVA_TICK_DELAY: i32 = 30;
+const CREATIVE: i32 = 1;
+// O tick da última troca de balde, e por quantos ticks o uso do item que vem junto é ignorado.
+const BUCKET_SWAP_TICKS: i64 = 2;
+static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
+
+/// Se o bloco em `pos` guarda lava no estado `fluid_logged`.
+pub(in crate::game) fn has_logged_lava(game: &Game<'_>, pos: [i32; 3]) -> bool {
+    game.native_block_property(pos, fluid_logged::PROPERTY).as_deref() == Some(fluid_logged::LAVA)
+}
+
+/// Põe ou tira a lava do bloco. Posta, ela começa a correr como a água de um bloco alagado.
+fn set_logged_lava(game: &mut Game<'_>, pos: [i32; 3], logged: bool) {
+    let value = if logged {
+        fluid_logged::LAVA
+    } else {
+        fluid_logged::EMPTY
+    };
+    game.native_set_block_property(pos, fluid_logged::PROPERTY, value);
+    if logged {
+        game.with_level(|_, level, ticks| {
+            level.native_schedule_fluid_tick(ticks, pos, LAVA, LAVA_TICK_DELAY)
+        });
+    }
+}
+
+/// Um balde coloca ou tira a lava de um bloco com `fluid_logged`, como água numa escada. Um bloco
+/// com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.
+pub(in crate::game) fn use_item_on(
+    game: &mut Game<'_>,
+    stack: &ItemStack,
+    pos: [i32; 3],
+    claimed: &mut bool,
+) {
+    if *claimed || game.native_block_property(pos, fluid_logged::PROPERTY).is_none() {
+        return;
+    }
+    let Some(swap) = fluid_logged::bucket_swap(&stack.item, has_logged_lava(game, pos)) else {
+        return;
+    };
+    set_logged_lava(game, pos, swap.logged);
+    LAST_BUCKET_SWAP.store(game.world.game_time, Ordering::Relaxed);
+    let creative = game
+        .native_acting_player()
+        .is_some_and(|player| player.game_mode == CREATIVE);
+    if !creative && game.native_take_items(swap.take, 1) == 1 {
+        game.native_give_items(swap.give, 1);
+    }
+    *claimed = true;
+}
+
+/// O mesmo clique ainda chega como uso do item, já com o balde cheio na mão: sem isto, ele despeja
+/// a lava que acabou de sair do bloco.
+pub(in crate::game) fn use_item(game: &Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+    let since_swap = game.world.game_time - LAST_BUCKET_SWAP.load(Ordering::Relaxed);
+    if &*stack.item == fluid_logged::LAVA_BUCKET && (0..=BUCKET_SWAP_TICKS).contains(&since_swap) {
+        *claimed = true;
+    }
+}
+
+/// O mesher lê o fluido de `FluidState::from_block`, que nenhuma injeção alcança nesta versão. Quem
+/// desenha é a block entity, e o bloco precisa mandar uma cópia dela ao cliente.
+pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEntityDraw) {
+    if !has_logged_lava(game, pos) {
+        return;
+    }
+    let face = Some(CubeFace {
+        sprite: LAVA_SPRITE,
+        uv: None,
+    });
+    draw.light = FULL_BRIGHT;
+    game.native_draw_cube(draw, LOGGED_LAVA_FROM, LOGGED_LAVA_TO, [face; 6], WHITE);
+}
+
+/// Um vizinho mudou: a lava do bloco olha de novo para onde pode correr.
+pub(in crate::game) fn update_shape(
+    level: &GameLevel<'_>,
+    ticks: &mut Ticks,
+    pos: BlockPos,
+    state: BlockStateId,
+) {
+    let logged = level.registry.state(state).is_some_and(|s| {
+        s.properties.get(fluid_logged::PROPERTY).map(String::as_str) == Some(fluid_logged::LAVA)
+    });
+    if logged {
+        level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], LAVA, LAVA_TICK_DELAY);
+    }
+}
 
 pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener>) {
     listeners.push(NativeReloadListener::json(LISTENER, resource::DATA_FOLDER));
@@ -203,7 +308,7 @@ fn take_one(
     face: Face,
     entity: &mut ModBlockEntity,
     inputs: &[usize],
-    accepts: &dyn Fn(&ItemStack) -> bool,
+    accepts: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
 ) -> bool {
     let reached = direction(face.opposite());
     let dimension = game.native_dimension();
@@ -212,7 +317,7 @@ fn take_one(
     };
     // Como o hopper: o primeiro item que o destino aceita, na ordem dos slots.
     let found = slots.iter().find_map(|s| {
-        let stack = s.stack.as_ref().filter(|stack| s.can_take && accepts(stack))?;
+        let stack = s.stack.as_ref().filter(|stack| s.can_take && accepts(game, stack))?;
         Some((s.slot, room_in(game, entity, inputs, &stack.item)?))
     });
     let Some((from, into)) = found else {
@@ -237,7 +342,7 @@ pub(in crate::game) fn tick_hoppers(
     sides: &Sides,
     inputs: &[usize],
     outputs: &[usize],
-    accepts: &dyn Fn(&ItemStack) -> bool,
+    accepts: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
 ) {
     let mut values = cooldowns(entity);
     for face in Face::ALL {
@@ -292,4 +397,56 @@ pub(in crate::game) fn eject_items(
     }
     values[EJECT_COOLDOWN] = i32::from(ejector.delay);
     save_cooldowns(entity, values);
+}
+
+/// A temperatura do ar numa posição. Usa a temperatura base do bioma, sem o ajuste por altura.
+pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> f64 {
+    let [x, y, z] = pos;
+    let biome = game.world.chunks.get(&(x >> 4, z >> 4)).map(|chunk| {
+        world_biomes!(game).list[chunk.biome(x, y, z) as usize].temperature
+    });
+    biome.map_or(heat::AMBIENT_TEMP, |temperature| heat::ambient(f64::from(temperature)))
+}
+
+/// Um painel de nove partes: cantos fixos e bordas e miolo esticados, de um sprite `size` x `size`.
+pub(in crate::game) fn nine_slice(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    sprite: &str,
+    size: f32,
+    border: f32,
+    rect: [f32; 4],
+) {
+    let [x, y, w, h] = rect;
+    let inner = size - 2.0 * border;
+    let columns = [
+        (0.0, border, x, border),
+        (border, inner, x + border, w - 2.0 * border),
+        (size - border, border, x + w - border, border),
+    ];
+    let rows = [
+        (0.0, border, y, border),
+        (border, inner, y + border, h - 2.0 * border),
+        (size - border, border, y + h - border, border),
+    ];
+    for (src_y, src_h, dst_y, dst_h) in rows {
+        for (src_x, src_w, dst_x, dst_w) in columns {
+            game.native_sprite(batch, sprite, [src_x, src_y, src_w, src_h], [dst_x, dst_y, dst_w, dst_h]);
+        }
+    }
+}
+
+/// Um medidor que enche de baixo para cima, sobre um fundo escuro.
+pub(in crate::game) fn gauge(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    rect: [f32; 4],
+    fraction: f32,
+    argb: u32,
+) {
+    const BACKGROUND: u32 = 0xFF_1E_1E_1E;
+    let [x, y, w, h] = rect;
+    game.native_fill(batch, rect, BACKGROUND);
+    let filled = h * fraction.clamp(0.0, 1.0);
+    game.native_fill(batch, [x, y + h - filled, w, filled], argb);
 }

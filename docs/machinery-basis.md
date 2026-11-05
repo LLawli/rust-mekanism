@@ -76,6 +76,27 @@ Limites: outros mods que automatizam pelas faces do Horizon também não enxerga
 deles seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem
 sincronizar com o cooldown interno do hopper, que os helpers não expõem.
 
+### Fluido dentro do bloco
+
+Um bloco de qualquer mod guarda lava declarando `fluid_logged` nos `state_properties`, com os valores `empty` e `lava`.
+A lib cuida do balde, do fluxo, da luz e do desenho.
+
+| Parte | Como |
+|---|---|
+| Fonte de lava real | Injeção em `set_state_properties`, que escreve lava na linha do estado na tabela do motor de fluidos. O Horizon só reconhece fluido em bloco para água. É um alvo interno, preso à versão do jogo |
+| Balde | Hooks `use_item_on` e `use_item`: balde de lava enche, balde vazio tira. Um bloco com tela só recebe o balde com shift |
+| Fluxo | Hook `update_shape`: um vizinho mudou, a lava olha de novo para onde correr |
+| Luz | Nível 15 no estado com lava |
+| Desenho | A block entity desenha a lava (hook `block_entity_submit`), e o bloco precisa responder `block_entity_update_tag` |
+
+A lava respeita a forma do bloco, como no vanilla: não passa por uma face toda fechada. O Heat Generator tem a base sólida,
+então a lava sai pelas laterais e nunca por baixo. O atraso do fluxo é o do Overworld, 30 ticks, também no Nether.
+
+Limites: o mesher, a física de entidades e a colisão de fluido leem `FluidState::from_block`, que nenhuma injeção alcança
+na versão fixada, porque o corpo usa `?` e o retorno usa `Self`. Por isso um bloco sem block entity flui mas não mostra a
+lava, e uma entidade dentro do bloco não conta como dentro de lava. Um estado com lava posto por comando ou pela geração do
+mundo só corre quando um vizinho muda, porque só o balde agenda o fluxo.
+
 ## Fora da lib
 
 Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora
@@ -131,6 +152,7 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Tanque depois de fechar e reabrir | Preservado, com 100 de hidrogênio |
 | Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
+| Lava dentro do bloco, em mundo | Balde com shift enche, a lava corre com níveis 2, 4 e 6 pelas quatro laterais e nada sai pela base; balde vazio tira e ela recua; parede removida com a lava parada abre o fluxo; quebrar com picareta deixa `lava[level=0]`; luz 15 com o bloco cercado de vidro; sem shift só abre a tela |
 
 Lido, não executado: redes, telas, receitas de tipo próprio, `native_force_chunk` e `native_container_accepts`.
 

@@ -32,6 +32,18 @@ impl Face {
         }
     }
 
+    /// A face à direita de quem olha uma máquina de frente, como `RelativeSide.RIGHT`. Só faz
+    /// sentido para faces horizontais.
+    pub fn right_of(self) -> Face {
+        match self {
+            Face::North => Face::West,
+            Face::West => Face::South,
+            Face::South => Face::East,
+            Face::East => Face::North,
+            vertical => vertical,
+        }
+    }
+
     /// O deslocamento até o bloco vizinho por esta face.
     pub fn offset(self) -> [i32; 3] {
         match self {
@@ -94,6 +106,17 @@ mod tests {
             let [x, y, z] = face.opposite().offset();
             assert_eq!([a + x, b + y, c + z], [0, 0, 0]);
         }
+    }
+
+    #[test]
+    fn right_goes_around_the_four_sides() {
+        let mut face = Face::North;
+        for _ in 0..4 {
+            face = face.right_of();
+        }
+        assert_eq!(face, Face::North);
+        assert_eq!(Face::North.right_of(), Face::West);
+        assert_eq!(Face::Up.right_of(), Face::Up);
     }
 
     #[test]
