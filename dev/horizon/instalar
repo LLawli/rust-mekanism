@@ -1,0 +1,25 @@
+#!/bin/sh
+# Instala no host do jogo: arquivos em ~/.local/opt/horizon, script em ~/.local/bin, imagem.
+set -eu
+aqui=$(dirname "$(readlink -f "$0")")
+opt="$HOME/.local/opt/horizon"
+mkdir -p "$opt" "$HOME/.local/bin"
+cp "$aqui/Dockerfile" "$aqui/jogo.conf" "$aqui/wl-sandbox" "$aqui/idle-watch" "$aqui/firewall" \
+    "$aqui/pulse.conf" "$aqui/asound.conf" "$opt/"
+cp "$aqui/horizon" "$HOME/.local/bin/horizon"
+docker build -t jogo-horizon:latest "$opt"
+icone="$HOME/.local/share/icons/hicolor/256x256/apps"
+mkdir -p "$icone" "$HOME/.local/share/applications"
+cp "$aqui/horizon.png" "$icone/horizon.png"
+cat >"$HOME/.local/share/applications/horizon.desktop" <<FIM
+[Desktop Entry]
+Type=Application
+Name=Horizon
+Comment=Minecraft em Rust, num container isolado
+Exec=$HOME/.local/bin/horizon
+Icon=horizon
+Terminal=false
+Categories=Game;
+StartupWMClass=gamescope
+FIM
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true

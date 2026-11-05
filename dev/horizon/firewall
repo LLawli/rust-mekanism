@@ -1,0 +1,13 @@
+#!/bin/sh
+# Libera a internet e bloqueia host, LAN, VPN e outros containers. O jogo não tem
+# NET_ADMIN, então um mod nativo não consegue desfazer estas regras.
+set -eu
+for t in iptables ip6tables; do
+    $t -P INPUT DROP
+    $t -P FORWARD DROP
+    $t -A INPUT -i lo -j ACCEPT
+    $t -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    $t -A OUTPUT -o lo -j ACCEPT
+done
+ip6tables -P OUTPUT DROP
+iptables -A OUTPUT -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10,224.0.0.0/4,240.0.0.0/4 -j REJECT

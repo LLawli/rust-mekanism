@@ -1,0 +1,110 @@
+#!/bin/sh
+# Abre o Horizon num container isolado e descartável, dentro de um gamescope. Baseado no
+# launcher da skill jogo-isolado e no aagl. Encerra sozinho 5 minutos depois que nada mais
+# roda dentro dele.
+#
+# O container só recebe: a pasta de dados, os mods (somente leitura), o cache de shaders,
+# o render node da GPU, um socket Wayland em sandbox (wp_security_context_v1: sem captura
+# de tela, área de transferência alheia ou input virtual) e rede própria com firewall (só
+# internet, nunca host, LAN ou VPN) e um servidor de áudio próprio que só reproduz.
+set -eu
+
+opt="$HOME/.local/opt/horizon"
+. "$opt/jogo.conf"
+
+self=$(readlink -f "$0")
+uid=$(id -u)
+gid=$(id -g)
+rt=/run/user/$uid
+run="$rt/jogo-isolado/$name"
+cache="$HOME/.cache/jogo-isolado/$name"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/jogo-isolado/$name"
+
+if [ "${1:-}" = --session ]; then
+    # Roda dentro do wl-sandbox, que segura o socket Wayland, e mantém o áudio dedicado
+    # enquanto o container existir.
+    XDG_RUNTIME_DIR="$run" PIPEWIRE_REMOTE="$rt/pipewire-0" \
+        pipewire-pulse -c "$opt/pulse.conf" >>"$state/pulse.log" 2>&1 &
+    pulse=$!
+    trap 'kill $pulse 2>/dev/null' EXIT
+    i=0
+    until docker inspect --type container "$name" >/dev/null 2>&1; do
+        i=$((i + 1))
+        [ $i -gt 60 ] && exit 1
+        sleep 1
+    done
+    docker wait "$name" >/dev/null 2>&1 || true
+    exit 0
+fi
+
+mkdir -p "$cache" "$state" "$dados/data" "$dados/config" "$dados/tmp" "$mounts_ro"
+
+if [ "$(docker inspect --type container -f '{{.State.Running}}' "$name" 2>/dev/null)" != true ]; then
+    mkdir -p -m 0700 "$rt/jogo-isolado" "$run"
+    rm -rf "$run/wayland" "$run/pulse/native"
+    # Sem entrada no passwd, o Xwayland do gamescope recusa até o próprio gamescope.
+    printf 'root:x:0:0:root:/root:/usr/sbin/nologin\n%s:x:%s:%s::%s:/usr/sbin/nologin\n' \
+        "$USER" "$uid" "$gid" "$HOME" >"$run/passwd"
+    setsid -f "$opt/wl-sandbox" "$run/wayland" "jogo-isolado.$name" -- "$self" --session \
+        </dev/null >>"$state/session.log" 2>&1
+    i=0
+    until [ -S "$run/wayland" ] && [ -S "$run/pulse/native" ]; do
+        i=$((i + 1))
+        if [ $i -gt 100 ]; then
+            echo "$name: os sockets de Wayland/áudio não subiram (veja $state/session.log)" >&2
+            exit 1
+        fi
+        sleep 0.1
+    done
+
+    extra=
+    for e in $envs; do
+        extra="$extra -e $e"
+    done
+    for d in /dev/dri/renderD*; do
+        if [ -e "$d" ]; then extra="$extra --device $d"; fi
+    done
+    # O gamescope exige que o Vulkan reporte o nó primário, mas só lê o número dele: o
+    # nó aparece sem poder ser aberto, porque o cgroup só libera o render node.
+    for d in /dev/dri/card*; do
+        if [ -e "$d" ]; then extra="$extra -v $d:$d:ro"; fi
+    done
+
+    net="jogo-isolado-$name"
+    docker network inspect "$net" >/dev/null 2>&1 || docker network create "$net" >/dev/null
+
+    # /tmp com exec: scripts de build dos crates rodam de lá.
+    docker run -d --rm --init --name "$name" \
+        --user "$uid:$gid" \
+        --group-add "$(getent group render | cut -d: -f3)" \
+        --cap-drop ALL --security-opt no-new-privileges \
+        --read-only --tmpfs /tmp:exec --shm-size 1g \
+        --memory "$memory" --pids-limit 4096 \
+        --network "$net" $extra \
+        -v /etc/localtime:/etc/localtime:ro \
+        -v "$run/passwd:/etc/passwd:ro" \
+        --tmpfs "$HOME:exec,uid=$uid,gid=$gid,mode=0700" \
+        --tmpfs "$rt:uid=$uid,gid=$gid,mode=0700" \
+        -v "$mounts:$mounts" \
+        -v "$mounts_ro:$mounts_ro:ro" \
+        -v "$cache:$HOME/.cache" \
+        --mount "type=bind,src=$run/wayland,dst=$rt/wayland-0" \
+        --mount "type=bind,src=$run/pulse/native,dst=$rt/pulse/native" \
+        -e HOME="$HOME" -e USER="$USER" \
+        -e XDG_RUNTIME_DIR="$rt" \
+        -e WAYLAND_DISPLAY=wayland-0 \
+        -e PULSE_SERVER="unix:$rt/pulse/native" \
+        -e LANG=C.UTF-8 \
+        "$image" >/dev/null
+
+    # Firewall no namespace de rede do container, aplicado por um auxiliar com NET_ADMIN
+    # só ali. Se falhar, nada roda.
+    if ! docker run --rm --network "container:$name" --cap-drop ALL --cap-add NET_ADMIN \
+        --user 0 "$image" firewall >>"$state/session.log" 2>&1; then
+        docker stop "$name" >/dev/null
+        echo "$name: falha ao aplicar o firewall (veja $state/session.log)" >&2
+        exit 1
+    fi
+fi
+
+exec docker exec "$name" sh -c "$cmd"' "$@"' sh "$@"

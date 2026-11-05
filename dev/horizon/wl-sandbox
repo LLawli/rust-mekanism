@@ -1,0 +1,149 @@
+#!/usr/bin/python3 -I
+"""Cria um socket Wayland isolado via wp_security_context_v1.
+
+Clientes que conectam por ele são marcados como sandbox pelo compositor e
+não enxergam protocolos privilegiados (captura de tela, área de transferência
+de outros apps, teclado/mouse virtuais). O socket deixa de aceitar conexões
+quando este processo termina.
+
+Uso:
+  wl-sandbox --list [SOCKET]          lista os globais visíveis num socket
+  wl-sandbox SOCKET APP_ID -- CMD...  cria SOCKET e o mantém enquanto CMD roda
+"""
+import array
+import os
+import socket
+import struct
+import subprocess
+import sys
+
+
+class Wayland:
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+        self.next_id = 2
+        self.buf = b""
+        self.fds = []
+
+    def new_id(self):
+        i = self.next_id
+        self.next_id += 1
+        return i
+
+    @staticmethod
+    def string(s):
+        b = s.encode() + b"\0"
+        return struct.pack("<I", len(b)) + b + b"\0" * (-len(b) % 4)
+
+    def send(self, obj, opcode, payload=b"", fds=()):
+        msg = struct.pack("<II", obj, (8 + len(payload)) << 16 | opcode) + payload
+        anc = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array("i", fds))] if fds else []
+        self.sock.sendmsg([msg], anc)
+
+    def read_event(self):
+        while len(self.buf) < 8 or len(self.buf) < (struct.unpack_from("<I", self.buf, 4)[0] >> 16):
+            data, anc, _, _ = self.sock.recvmsg(65536, socket.CMSG_SPACE(16 * 4))
+            if not data:
+                raise ConnectionError("compositor fechou a conexão")
+            for level, kind, raw in anc:
+                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                    fds = array.array("i")
+                    fds.frombytes(raw[: len(raw) - len(raw) % 4])
+                    self.fds.extend(fds)
+            self.buf += data
+        obj, word = struct.unpack_from("<II", self.buf)
+        size = word >> 16
+        payload, self.buf = self.buf[8:size], self.buf[size:]
+        return obj, word & 0xFFFF, payload
+
+    def roundtrip(self, on_event=None):
+        """wl_display.sync; devolve quando o callback chega. Erros viram exceção."""
+        cb = self.new_id()
+        self.send(1, 0, struct.pack("<I", cb))
+        while True:
+            obj, op, payload = self.read_event()
+            if obj == 1 and op == 0:  # wl_display.error
+                oid, code = struct.unpack_from("<II", payload)
+                (n,) = struct.unpack_from("<I", payload, 8)
+                raise RuntimeError(f"erro Wayland no objeto {oid} (código {code}): {payload[12:12 + n - 1].decode()}")
+            if obj == cb:
+                return
+            if on_event:
+                on_event(obj, op, payload)
+
+    def globals(self):
+        registry = self.new_id()
+        self.send(1, 1, struct.pack("<I", registry))  # wl_display.get_registry
+        found = {}
+
+        def on_event(obj, op, payload):
+            if obj == registry and op == 0:  # wl_registry.global
+                name, n = struct.unpack_from("<II", payload)
+                iface = payload[8:8 + n - 1].decode()
+                (version,) = struct.unpack_from("<I", payload, 8 + n + (-n % 4))
+                found[iface] = (name, version)
+
+        self.roundtrip(on_event)
+        return registry, found
+
+
+def default_socket():
+    rt = os.environ["XDG_RUNTIME_DIR"]
+    return os.path.join(rt, os.environ.get("WAYLAND_DISPLAY", "wayland-1"))
+
+
+def list_globals(path):
+    _, found = Wayland(path).globals()
+    for iface in sorted(found):
+        print(iface)
+
+
+def serve(path, app_id, cmd):
+    wl = Wayland(default_socket())
+    registry, found = wl.globals()
+    iface = "wp_security_context_manager_v1"
+    if iface not in found:
+        sys.exit(f"o compositor não oferece {iface}")
+    name, _ = found[iface]
+    manager = wl.new_id()
+    # wl_registry.bind(name, interface, version, new_id)
+    wl.send(registry, 0, struct.pack("<I", name) + Wayland.string(iface) + struct.pack("<II", 1, manager))
+
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(path)
+    listener.listen(16)
+    close_r, close_w = os.pipe()
+
+    ctx = wl.new_id()
+    wl.send(manager, 1, struct.pack("<I", ctx), fds=(listener.fileno(), close_r))  # create_listener
+    wl.send(ctx, 1, Wayland.string("docker"))  # set_sandbox_engine
+    wl.send(ctx, 2, Wayland.string(app_id))  # set_app_id
+    wl.send(ctx, 3, Wayland.string(app_id))  # set_instance_id
+    wl.send(ctx, 4)  # commit
+    wl.roundtrip()
+    listener.close()
+    os.close(close_r)
+
+    try:
+        return subprocess.call(cmd)
+    finally:
+        os.close(close_w)  # o compositor para de aceitar conexões no socket
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    if args[:1] == ["--list"]:
+        list_globals(args[1] if len(args) > 1 else default_socket())
+    elif len(args) >= 4 and args[2] == "--":
+        sys.exit(serve(args[0], args[1], args[3:]))
+    else:
+        sys.exit(__doc__)

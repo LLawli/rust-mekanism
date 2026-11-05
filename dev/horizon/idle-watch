@@ -1,0 +1,23 @@
+#!/bin/sh
+# Encerra o container depois de IDLE_GRACE segundos sem nenhum processo além deste
+# (e de servidores de apoio como o Xwayland, que sozinhos não contam como uso).
+grace=${IDLE_GRACE:-300}
+idle=0
+while :; do
+    sleep 15
+    busy=0
+    for p in /proc/[0-9]*; do
+        pid=${p#/proc/}
+        [ "$pid" = 1 ] || [ "$pid" = $$ ] && continue
+        read -r comm < "$p/comm" 2>/dev/null || continue
+        case $comm in sleep|idle-watch|Xwayland) continue ;; esac
+        busy=1
+        break
+    done
+    if [ $busy = 1 ]; then
+        idle=0
+    else
+        idle=$((idle + 15))
+        [ $idle -ge "$grace" ] && exit 0
+    fi
+done
