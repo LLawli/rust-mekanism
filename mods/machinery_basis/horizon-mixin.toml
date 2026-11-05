@@ -1,0 +1,41 @@
+[mod]
+id = "machinery_basis"
+version = "0.1.0"
+priority = 100
+
+[compatibility]
+horizon_revision = "f319701e8c9ab657ff562250b3ba07b2d654e3bc"
+
+[api]
+path = "api"
+
+[[crate]]
+id = "core"
+path = "core"
+
+[[module]]
+id = "glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_basis"
+source = "glue.rs"
+
+[[injection]]
+id = "reload-listeners"
+hook = "add_server_reload_listeners"
+hook_version = 1
+kind = "HEAD"
+helper = "reload_listeners.rs"
+bindings = [
+  { name = "listeners", ty = "&mut Vec<crate::game::NativeReloadListener>", value = "&mut *listeners" },
+]
+
+[[injection]]
+id = "reload-apply"
+hook = "server_reload_listener_apply"
+hook_version = 1
+kind = "HEAD"
+helper = "reload_apply.rs"
+bindings = [
+  { name = "listener", ty = "&crate::game::NativeReloadListener", value = "listener" },
+  { name = "files", ty = "&[(String, serde_json::Value)]", value = "files" },
+]

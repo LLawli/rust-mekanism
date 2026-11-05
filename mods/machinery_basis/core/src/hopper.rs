@@ -8,6 +8,9 @@ use crate::sides::{Face, Sides};
 /// Ticks entre duas transferências de um hopper (`HopperBlockEntity.MOVE_ITEM_SPEED`).
 pub const COOLDOWN_TICKS: u8 = 8;
 
+/// A espera do ejetor depois de um disparo (`MekanismUtils.TICKS_PER_HALF_SECOND`).
+pub const EJECT_DELAY_TICKS: u8 = 10;
+
 /// O que importa de um hopper vizinho.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hopper {
@@ -55,6 +58,25 @@ impl Cooldown {
 
     pub fn moved(&mut self) {
         self.ticks = COOLDOWN_TICKS;
+    }
+}
+
+/// O ritmo do push, como `TileComponentEjector`: dispara com a espera em zero e a refaz, tenha
+/// saído algo ou não. A contagem até zero consome os ticks, então os disparos ficam a 11 ticks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ejector {
+    pub delay: u8,
+}
+
+impl Ejector {
+    /// Conta um tick e diz se o ejetor dispara agora.
+    pub fn tick(&mut self) -> bool {
+        if self.delay == 0 {
+            self.delay = EJECT_DELAY_TICKS;
+            return true;
+        }
+        self.delay -= 1;
+        false
     }
 }
 
@@ -145,6 +167,50 @@ mod tests {
             }
         }
         assert_eq!(moved, 10);
+    }
+
+    /// Os ticks em que `fires` diz sim, de `0` a `ticks`.
+    fn firing_ticks(ticks: u32, mut fires: impl FnMut() -> bool) -> Vec<u32> {
+        (0..ticks).filter(|_| fires()).collect()
+    }
+
+    #[test]
+    fn hopper_transfers_are_exactly_eight_ticks_apart() {
+        let mut cooldown = Cooldown::default();
+        let fired = firing_ticks(81, || {
+            let ready = cooldown.tick();
+            if ready {
+                cooldown.moved();
+            }
+            ready
+        });
+        assert_eq!(fired, (0..=80).step_by(8).collect::<Vec<u32>>());
+    }
+
+    #[test]
+    fn ejector_fires_at_once_then_every_eleven_ticks() {
+        let mut ejector = Ejector::default();
+        let fired = firing_ticks(111, || ejector.tick());
+        assert_eq!(fired, (0..=110).step_by(11).collect::<Vec<u32>>());
+    }
+
+    #[test]
+    fn ejector_rhythm_matches_the_java_loop() {
+        // Reprodução direta de TileComponentEjector.tickServer, para comparar tick a tick.
+        let mut tick_delay = 0;
+        let mut java = || {
+            if tick_delay == 0 {
+                tick_delay = 10;
+                true
+            } else {
+                tick_delay -= 1;
+                false
+            }
+        };
+        let mut ejector = Ejector::default();
+        for tick in 0..1_000 {
+            assert_eq!(ejector.tick(), java(), "tick {tick}");
+        }
     }
 
     #[test]

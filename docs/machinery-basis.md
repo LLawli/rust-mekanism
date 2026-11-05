@@ -69,8 +69,8 @@ respeitando as faces configuradas. Assim a regra vale por instância e acompanha
 | Hopper travado por redstone (`enabled=false`) | Ignora |
 
 O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O push ligado na configuração é outra coisa:
-entrega ativa para qualquer vizinho pelas faces de saída, com `native_insert_item`, `native_fluid_insert` e
-`native_energy_insert`.
+entrega ativa a qualquer inventário que aceite entrada, pelas faces de saída, hopper incluído, como um dropper atirando
+num hopper. O ritmo é o do ejetor do Mekanism: dispara a cada 11 ticks, tenha saído algo ou não.
 
 Limites: outros mods que automatizam pelas faces do Horizon também não enxergam a máquina, e fluido ou energia vindos
 deles seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem
@@ -116,8 +116,8 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
    data packs do mundo, e o `/reload` relê. A leitura só existe no servidor: o cliente recebe o que precisa pela rede.
 2. **Repositório:** a lib fica neste repo por enquanto, para mudar junto com o primeiro consumidor.
 
-Em aberto: versionar o formato dos tanques no NBT desde o início. É o contrato entre mods, e mudá-lo depois quebra mundos
-salvos.
+3. **Formato dos tanques:** versionado desde o início, com `v: 1` no NBT, em `machinery_basis.tanks`. É o contrato entre
+   mods. Uma versão desconhecida carrega vazia.
 
 ## Verificado
 
@@ -127,6 +127,12 @@ salvos.
 | `[api]` usando `[[crate]]` pelo caminho do stage, com outro mod tipado chamando | `native-build` OK, sem rodar em mundo |
 | Gerador e bateria em mundo, com salvamento | OK, ver [modding-horizon.md](modding-horizon.md) |
 | Recursos por dados em mundo | Mod de conteúdo lido ao abrir; data pack do mundo entrou no `/reload`; arquivo `.txt` ignorado |
+| Lib real com consumidor separado, em mundo | Energia, hoppers, ejetor, tanque e recursos funcionam; 85 itens entraram e 85 chegaram aos baús |
+| Tanque depois de fechar e reabrir | Preservado, com 100 de hidrogênio |
+| Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
 
 Lido, não executado: redes, telas, receitas de tipo próprio, `native_force_chunk` e `native_container_accepts`.
+
+Os ritmos têm teste puro no `core`, sem o jogo: hopper a exatos 8 ticks, ejetor a exatos 11, e o ejetor comparado tick a
+tick com o laço do `TileComponentEjector` por 1.000 ticks.

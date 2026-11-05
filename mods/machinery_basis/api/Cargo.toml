@@ -1,0 +1,11 @@
+[package]
+name = "mod-machinery_basis"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+horizon-client = { git = "https://github.com/horizon-rust/horizon", rev = "f319701e8c9ab657ff562250b3ba07b2d654e3bc" }
+# Este caminho só existe no build do launcher: é onde ele coloca o [[crate]] core.
+machinery-basis-core = { path = "../../native-crates/machinery_basis/core" }

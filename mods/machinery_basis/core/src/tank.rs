@@ -1,5 +1,8 @@
 //! Tanque de um recurso tipado, em quantidades que passam de `i32`.
 
+/// Versão do formato salvo dos tanques. É o contrato entre mods: mudar pede migração.
+pub const FORMAT: i32 = 1;
+
 /// Se a operação muda o tanque ou só diz o que aconteceria.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
