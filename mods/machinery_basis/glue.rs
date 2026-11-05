@@ -23,7 +23,7 @@ use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{Action, FORMAT, Tank};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
 const LISTENER: &str = "machinery_basis:resources";
@@ -976,4 +976,32 @@ pub(in crate::game) fn machine_panel(
     }
     let title_x = x + (width - game.native_text_width(title)) / 2.0;
     game.native_text(batch, title, [title_x, y + TITLE_TOP], LABEL_COLOR, false);
+}
+
+/// Liga a instrumentação de medida da comparação das opções B e C: `MEKTRACE` a cada tick de uma máquina e `MEKBENCH` a
+/// cada janela. É o único lugar que a liga e desliga.
+pub(in crate::game) const MEDIR: bool = true;
+/// A janela do `MEKBENCH`, em ticks do jogo.
+const BENCH_WINDOW_TICKS: i64 = 1200;
+static BENCH_MACHINE_TICKS: AtomicU64 = AtomicU64::new(0);
+static BENCH_NANOS: AtomicU64 = AtomicU64::new(0);
+static BENCH_WINDOW: AtomicI64 = AtomicI64::new(i64::MIN);
+
+/// Soma o tempo da lógica de um tick de uma máquina, e a cada [`BENCH_WINDOW_TICKS`] imprime
+/// `MEKBENCH ticks=<ticks de máquina na janela> ns=<soma>` e zera.
+pub(in crate::game) fn bench_record(game_time: i64, nanos: u64) {
+    let window = game_time.div_euclid(BENCH_WINDOW_TICKS);
+    let last = BENCH_WINDOW.swap(window, Ordering::Relaxed);
+    if last != i64::MIN && last != window {
+        let ticks = BENCH_MACHINE_TICKS.swap(0, Ordering::Relaxed);
+        let nanos_sum = BENCH_NANOS.swap(0, Ordering::Relaxed);
+        eprintln!("MEKBENCH ticks={ticks} ns={nanos_sum}");
+    }
+    BENCH_MACHINE_TICKS.fetch_add(1, Ordering::Relaxed);
+    BENCH_NANOS.fetch_add(nanos, Ordering::Relaxed);
+}
+
+/// Uma linha de `MEKTRACE`: o JSON de um tick, com os campos dos rastros.
+pub(in crate::game) fn trace(json: &str) {
+    eprintln!("MEKTRACE {json}");
 }

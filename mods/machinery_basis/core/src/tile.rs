@@ -1,13 +1,15 @@
-//! Porte de `TileEntityMekanism`, `TileEntityRecipeMachine`, `TileEntityProgressMachine` e `TileEntityElectricMachine`.
-use crate::cached_recipe::{
-    CachedRecipeHolder, ItemToItemRecipe, OneInputHolder, OneInputItemRecipe,
-};
-use crate::containers::{
-    AutomationType, ContentsListener, InventorySlot, MachineEnergyContainer, redstone_signal,
-};
+//! Porte de `TileEntityMekanism`, `TileEntityRecipeMachine`, `TileEntityProgressMachine` e `TileEntityElectricMachine`,
+//! como objetos vivos: o tile, os contêineres e a receita em cache são compartilhados, e cada um avisa o outro por closure,
+//! como no Java.
+use crate::cached_recipe::{CachedRecipe, ItemToItemRecipe, OneInputItemRecipe};
+use crate::containers::{EnergyContainer, InventorySlot, redstone_signal};
+use crate::ejector::{EjectGroup, ItemEjector};
+use crate::item_handler::ItemCapabilities;
 use crate::operation_tracker::{RecipeError, RecipeErrors};
-use crate::recipe_monitor::{RecipeCacheLookupMonitor, RecipeLookupHandler};
-use crate::transaction::Transaction;
+use crate::recipe_monitor::{MonitorFlags, RecipeCacheLookupMonitor, RecipeLookupHandler};
+use crate::transaction::Callback;
+use std::cell::{Cell, Ref, RefCell, RefMut};
+use std::rc::Rc;
 
 /// `TileEntityRecipeMachine.RECIPE_CHECK_FREQUENCY`.
 pub const RECIPE_CHECK_FREQUENCY: u64 = 100;
@@ -196,57 +198,276 @@ pub struct ElectricMachineConfig {
     pub base_ticks_required: i32,
     pub deactivation_delay: i32,
     pub upgrades: UpgradeRules,
-    pub recipes: Vec<ItemToItemRecipe>,
+    pub recipes: Vec<Rc<ItemToItemRecipe>>,
     /// `TRACKED_ERROR_TYPES`, na ordem da tela.
     pub tracked_errors: Vec<RecipeError>,
     /// O sorteio de `shouldRecheckAllErrors`, de 0 a [`RECIPE_CHECK_FREQUENCY`].
     pub check_offset: u64,
 }
 
-/// Tudo da máquina menos o monitor, que roda a receita em cima disto.
-#[derive(Clone, Debug)]
-pub struct ElectricMachineState {
-    pub tile: TileBase,
-    pub energy: MachineEnergyContainer,
-    pub input: InventorySlot,
-    pub output: InventorySlot,
-    pub energy_slot: InventorySlot,
-    config: ElectricMachineConfig,
-    ticks_required: i32,
-    operating_ticks: i32,
-    tracked_errors: Vec<bool>,
-    speed_upgrades: i32,
-    energy_upgrades: i32,
-    players_using: u32,
-    game_time: u64,
-    finished_operations: Option<i32>,
+/// O que o tile guarda e as closures das receitas e dos contêineres alcançam.
+struct Shared {
+    tile: RefCell<TileBase>,
+    upgrades: UpgradeRules,
+    base_ticks_required: i32,
+    tracked_error_kinds: Vec<RecipeError>,
+    check_offset: u64,
+    recipes: RefCell<Rc<Vec<Rc<ItemToItemRecipe>>>>,
+    /// `invalidateCache`: lido uma vez por quem o recarregou.
+    cache_invalid: Cell<bool>,
+    ticks_required: Cell<i32>,
+    operating_ticks: Cell<i32>,
+    tracked_errors: RefCell<Vec<bool>>,
+    speed_upgrades: Cell<i32>,
+    energy_upgrades: Cell<i32>,
+    players_using: Cell<u32>,
+    game_time: Cell<u64>,
 }
 
-impl ElectricMachineState {
+impl Shared {
+    /// `shouldRecheckAllErrors`.
+    fn recheck_all_errors(&self) -> bool {
+        self.players_using.get() > 0
+            && self.game_time.get() % RECIPE_CHECK_FREQUENCY == self.check_offset
+    }
+
+    /// `onErrorsChanged`.
+    fn on_errors_changed(&self, errors: RecipeErrors) {
+        let mut tracked = self.tracked_errors.borrow_mut();
+        for (index, error) in self.tracked_error_kinds.iter().enumerate() {
+            tracked[index] = errors.contains(*error);
+        }
+    }
+}
+
+/// O `IRecipeLookupHandler` do tile: acha a receita e monta a `CachedRecipe` com os callbacks dele.
+struct ChamberLookup {
+    shared: Rc<Shared>,
+    energy: EnergyContainer,
+    input: InventorySlot,
+    output: InventorySlot,
+}
+
+impl RecipeLookupHandler for ChamberLookup {
+    fn get_recipe(&self) -> Option<Rc<ItemToItemRecipe>> {
+        let resource = self.input.resource()?;
+        // `findFirstRecipe` olha só o tipo do item: a quantidade quem confere é o `process`.
+        let recipes = self.shared.recipes.borrow();
+        recipes
+            .iter()
+            .find(|recipe| recipe.input.matches(&resource))
+            .cloned()
+    }
+
+    fn create_new_cached_recipe(&self, recipe: Rc<ItemToItemRecipe>) -> CachedRecipe {
+        let shared = &self.shared;
+        let logic = OneInputItemRecipe::new(recipe, self.input.clone(), self.output.clone());
+        let recheck = {
+            let shared = shared.clone();
+            move || shared.recheck_all_errors()
+        };
+        let errors_changed = {
+            let shared = shared.clone();
+            move |errors| shared.on_errors_changed(errors)
+        };
+        let can_function = {
+            let shared = shared.clone();
+            move || shared.tile.borrow().is_redstone_activated()
+        };
+        let set_active = {
+            let shared = shared.clone();
+            move |active| shared.tile.borrow_mut().set_active(active)
+        };
+        let per_tick = {
+            let energy = self.energy.clone();
+            move || energy.energy_per_tick()
+        };
+        let required_ticks = {
+            let shared = shared.clone();
+            move || shared.ticks_required.get()
+        };
+        let operating_ticks = {
+            let shared = shared.clone();
+            move |ticks| shared.operating_ticks.set(ticks)
+        };
+        CachedRecipe::new(Box::new(logic), Box::new(recheck))
+            .set_errors_changed(errors_changed)
+            .set_can_holder_function(can_function)
+            .set_active(set_active)
+            .set_energy_requirements(per_tick, self.energy.clone())
+            .set_required_ticks(required_ticks)
+            .set_operating_ticks_changed(operating_ticks)
+    }
+
+    fn saved_operating_ticks(&self) -> i32 {
+        self.shared.operating_ticks.get()
+    }
+
+    fn invalidate_cache(&self) -> bool {
+        self.shared.cache_invalid.take()
+    }
+
+    fn on_cached_recipe_changed(&self) {
+        self.shared.tracked_errors.borrow_mut().fill(false);
+    }
+}
+
+/// `TileEntityElectricMachine`.
+pub struct ElectricMachine {
+    shared: Rc<Shared>,
+    energy: EnergyContainer,
+    input: InventorySlot,
+    output: InventorySlot,
+    energy_slot: InventorySlot,
+    monitor: RecipeCacheLookupMonitor,
+    ejector: ItemEjector,
+}
+
+impl ElectricMachine {
+    pub fn new(config: ElectricMachineConfig) -> Self {
+        let shared = Rc::new(Shared {
+            tile: RefCell::new(TileBase::new(config.deactivation_delay)),
+            upgrades: config.upgrades,
+            base_ticks_required: config.base_ticks_required,
+            check_offset: config.check_offset,
+            recipes: RefCell::new(Rc::new(config.recipes)),
+            cache_invalid: Cell::new(false),
+            ticks_required: Cell::new(config.base_ticks_required),
+            operating_ticks: Cell::new(0),
+            tracked_errors: RefCell::new(vec![false; config.tracked_errors.len()]),
+            tracked_error_kinds: config.tracked_errors,
+            speed_upgrades: Cell::new(0),
+            energy_upgrades: Cell::new(0),
+            players_using: Cell::new(0),
+            game_time: Cell::new(0),
+        });
+        let flags = MonitorFlags::new();
+        // Os listeners do `TileEntityRecipeMachine`: o do monitor, o de salvar, e os que despausam.
+        let tile_changed = {
+            let shared = shared.clone();
+            move || shared.tile.borrow_mut().set_changed()
+        };
+        let input_listener: Callback = {
+            let (flags, tile_changed) = (flags.clone(), tile_changed.clone());
+            Rc::new(move || {
+                tile_changed();
+                flags.on_change();
+            })
+        };
+        let output_listener: Callback = {
+            let (flags, tile_changed) = (flags.clone(), tile_changed.clone());
+            Rc::new(move || {
+                tile_changed();
+                flags.unpause();
+            })
+        };
+        let decreased: Callback = {
+            let flags = flags.clone();
+            Rc::new(move || flags.output_decreased())
+        };
+        let unpause_save_only: Callback = {
+            let flags = flags.clone();
+            Rc::new(move || flags.unpause())
+        };
+        let energy_slot_listener: Callback = Rc::new(tile_changed);
+        let energy = EnergyContainer::input(
+            STORAGE_MULTIPLIER * i64::from(config.energy_per_tick),
+            config.energy_per_tick,
+            Some(unpause_save_only),
+        );
+        let input = InventorySlot::new(Some(input_listener));
+        let output = InventorySlot::output(Some(output_listener), Some(decreased));
+        let energy_slot = InventorySlot::new(Some(energy_slot_listener));
+        let lookup = ChamberLookup {
+            shared: shared.clone(),
+            energy: energy.clone(),
+            input: input.clone(),
+            output: output.clone(),
+        };
+        let monitor = RecipeCacheLookupMonitor::new(Rc::new(lookup), flags, true);
+        // O ejetor de itens sai pelo slot de saída, em nenhuma face até a configuração mandar.
+        let ejector = ItemEjector::new(vec![EjectGroup::new(vec![output.clone()], Vec::new())]);
+        Self {
+            shared,
+            energy,
+            input,
+            output,
+            energy_slot,
+            monitor,
+            ejector,
+        }
+    }
+
+    pub fn tile(&self) -> Ref<'_, TileBase> {
+        self.shared.tile.borrow()
+    }
+
+    pub fn tile_mut(&self) -> RefMut<'_, TileBase> {
+        self.shared.tile.borrow_mut()
+    }
+
+    pub fn energy(&self) -> &EnergyContainer {
+        &self.energy
+    }
+
+    pub fn input(&self) -> &InventorySlot {
+        &self.input
+    }
+
+    pub fn output(&self) -> &InventorySlot {
+        &self.output
+    }
+
+    pub fn energy_slot(&self) -> &InventorySlot {
+        &self.energy_slot
+    }
+
+    pub fn monitor(&self) -> &RecipeCacheLookupMonitor {
+        &self.monitor
+    }
+
+    pub fn ejector_mut(&mut self) -> &mut ItemEjector {
+        &mut self.ejector
+    }
+
     pub fn ticks_required(&self) -> i32 {
-        self.ticks_required
+        self.shared.ticks_required.get()
     }
 
     pub fn recipe_progress(&self) -> i32 {
-        self.operating_ticks
+        self.shared.operating_ticks.get()
+    }
+
+    /// Carrega o progresso salvo: a receita em cache o lê quando nasce (`getSavedOperatingTicks`).
+    pub fn load_operating_ticks(&self, operating_ticks: i32) {
+        self.shared.operating_ticks.set(operating_ticks);
     }
 
     /// `getWarningCheck`.
     pub fn has_error(&self, error: RecipeError) -> bool {
         let position = self
-            .config
-            .tracked_errors
+            .shared
+            .tracked_error_kinds
             .iter()
             .position(|tracked| *tracked == error);
-        position.is_some_and(|index| self.tracked_errors[index])
+        position.is_some_and(|index| self.shared.tracked_errors.borrow()[index])
     }
 
-    pub fn open(&mut self) {
-        self.players_using += 1;
+    /// Troca as receitas, quando os dados recarregam: o cache se refaz no próximo tick.
+    pub fn set_recipes(&self, recipes: Vec<Rc<ItemToItemRecipe>>) {
+        *self.shared.recipes.borrow_mut() = Rc::new(recipes);
+        self.shared.cache_invalid.set(true);
     }
 
-    pub fn close(&mut self) {
-        self.players_using = self.players_using.saturating_sub(1);
+    pub fn open(&self) {
+        self.shared
+            .players_using
+            .set(self.shared.players_using.get() + 1);
+    }
+
+    pub fn close(&self) {
+        let using = self.shared.players_using.get();
+        self.shared.players_using.set(using.saturating_sub(1));
     }
 
     /// `getRedstoneLevel`, com os slots de `getInventorySlots`.
@@ -254,203 +475,37 @@ impl ElectricMachineState {
         redstone_signal(&[&self.input, &self.output, &self.energy_slot])
     }
 
+    pub fn set_upgrades(&self, speed: i32, energy: i32) {
+        self.shared.speed_upgrades.set(speed);
+        self.shared.energy_upgrades.set(energy);
+        self.recalculate_upgrades();
+    }
+
     /// `recalculateUpgrades` de velocidade e energia, na ordem do Java: tempo, consumo, capacidade.
-    fn recalculate_upgrades(&mut self) {
-        let rules = self.config.upgrades;
-        self.ticks_required = rules.ticks(self.config.base_ticks_required, self.speed_upgrades);
-        let base = self.energy.base_energy_per_tick();
-        self.energy.set_energy_per_tick(rules.energy_per_tick(
-            base,
-            self.speed_upgrades,
-            self.energy_upgrades,
-        ));
-        let buffer = STORAGE_MULTIPLIER.max(i64::from(self.ticks_required));
-        self.energy
-            .set_max_energy(i64::from(self.energy.energy_per_tick()) * buffer);
-    }
-}
-
-impl CachedRecipeHolder for ElectricMachineState {
-    fn can_function(&self) -> bool {
-        self.tile.is_redstone_activated()
-    }
-
-    fn set_active(&mut self, active: bool) {
-        self.tile.set_active(active);
-    }
-
-    fn required_ticks(&self) -> i32 {
-        self.ticks_required
-    }
-
-    fn on_finish(&mut self, operations: i32) {
-        self.finished_operations = Some(operations);
-    }
-
-    fn per_tick_energy(&self) -> i32 {
-        self.energy.energy_per_tick()
-    }
-
-    fn stored_energy(&self) -> i32 {
-        self.energy.amount_as_int()
-    }
-
-    fn use_energy(&mut self, energy: i32, transaction: Transaction) -> i32 {
-        self.energy
-            .extract(energy, transaction, AutomationType::Internal)
-    }
-
-    fn on_errors_change(&mut self, errors: RecipeErrors) {
-        for (index, error) in self.config.tracked_errors.iter().enumerate() {
-            self.tracked_errors[index] = errors.contains(*error);
-        }
-    }
-
-    fn operating_ticks_changed(&mut self, operating_ticks: i32) {
-        self.operating_ticks = operating_ticks;
-    }
-
-    fn recheck_all_errors(&self) -> bool {
-        self.players_using > 0
-            && self.game_time % RECIPE_CHECK_FREQUENCY == self.config.check_offset
-    }
-
-    fn close_transaction(&mut self, transaction: Transaction, commit: bool) {
-        self.energy.close(transaction, commit);
-        self.input.close(transaction, commit);
-        self.output.close(transaction, commit);
-        self.energy_slot.close(transaction, commit);
-    }
-}
-
-impl OneInputHolder for ElectricMachineState {
-    fn input_slot(&self) -> &InventorySlot {
-        &self.input
-    }
-
-    fn input_slot_mut(&mut self) -> &mut InventorySlot {
-        &mut self.input
-    }
-
-    fn output_slot_mut(&mut self) -> &mut InventorySlot {
-        &mut self.output
-    }
-}
-
-impl RecipeLookupHandler for ElectricMachineState {
-    type Recipe = ItemToItemRecipe;
-    type Logic = OneInputItemRecipe;
-
-    fn find_recipe(&self) -> Option<(String, ItemToItemRecipe)> {
-        let resource = self.input.resource()?;
-        // `findFirstRecipe` olha só o tipo do item: a quantidade quem confere é o `process`.
-        let recipe = self
-            .config
-            .recipes
-            .iter()
-            .find(|recipe| recipe.input == *resource)?;
-        Some((recipe.id.clone(), recipe.clone()))
-    }
-
-    fn create_new_cached_recipe(&mut self, recipe: ItemToItemRecipe) -> OneInputItemRecipe {
-        OneInputItemRecipe { recipe }
-    }
-
-    fn saved_operating_ticks(&self) -> i32 {
-        self.operating_ticks
-    }
-
-    fn on_cached_recipe_changed(&mut self) {
-        self.tracked_errors.fill(false);
-    }
-}
-
-/// `TileEntityElectricMachine`.
-#[derive(Clone, Debug)]
-pub struct ElectricMachine {
-    pub state: ElectricMachineState,
-    monitor: RecipeCacheLookupMonitor<OneInputItemRecipe>,
-}
-
-impl ElectricMachine {
-    pub fn new(config: ElectricMachineConfig) -> Self {
-        let tracked_errors = vec![false; config.tracked_errors.len()];
-        let state = ElectricMachineState {
-            tile: TileBase::new(config.deactivation_delay),
-            energy: MachineEnergyContainer::new(
-                STORAGE_MULTIPLIER * i64::from(config.energy_per_tick),
-                config.energy_per_tick,
-                ContentsListener::RecipeCacheUnpauseSaveOnly,
-            ),
-            input: InventorySlot::new(ContentsListener::RecipeCache),
-            output: InventorySlot::new(ContentsListener::RecipeCacheUnpause),
-            energy_slot: InventorySlot::new(ContentsListener::Tile),
-            ticks_required: config.base_ticks_required,
-            operating_ticks: 0,
-            tracked_errors,
-            speed_upgrades: 0,
-            energy_upgrades: 0,
-            players_using: 0,
-            game_time: 0,
-            finished_operations: None,
-            config,
-        };
-        Self {
-            state,
-            monitor: RecipeCacheLookupMonitor::new(true),
-        }
-    }
-
-    pub fn monitor(&self) -> &RecipeCacheLookupMonitor<OneInputItemRecipe> {
-        &self.monitor
-    }
-
-    pub fn set_upgrades(&mut self, speed: i32, energy: i32) {
-        self.state.speed_upgrades = speed;
-        self.state.energy_upgrades = energy;
-        self.state.recalculate_upgrades();
-    }
-
-    /// Entrega os avisos dos contêineres, que no Java disparam na hora.
-    pub fn flush_listeners(&mut self) {
-        let state = &mut self.state;
-        let changes = [
-            state.energy.take_change(),
-            state.input.take_change(),
-            state.output.take_change(),
-            state.energy_slot.take_change(),
-        ];
-        for listener in changes.into_iter().flatten() {
-            match listener {
-                ContentsListener::Tile => state.tile.set_changed(),
-                ContentsListener::RecipeCache => {
-                    state.tile.set_changed();
-                    self.monitor.on_change();
-                }
-                ContentsListener::RecipeCacheUnpause => {
-                    state.tile.set_changed();
-                    self.monitor.unpause();
-                }
-                ContentsListener::RecipeCacheUnpauseSaveOnly => self.monitor.unpause(),
-            }
-        }
-        if state.output.take_decrease() {
-            self.monitor.output_decreased();
-        }
+    fn recalculate_upgrades(&self) {
+        let shared = &self.shared;
+        let rules = shared.upgrades;
+        let (speed, energy) = (shared.speed_upgrades.get(), shared.energy_upgrades.get());
+        let ticks_required = rules.ticks(shared.base_ticks_required, speed);
+        shared.ticks_required.set(ticks_required);
+        let per_tick = rules.energy_per_tick(self.energy.base_energy_per_tick(), speed, energy);
+        self.energy.set_energy_per_tick(per_tick);
+        let buffer = STORAGE_MULTIPLIER.max(i64::from(ticks_required));
+        self.energy.set_max_energy(i64::from(per_tick) * buffer);
     }
 
     /// `tickServer`. Devolve se o comparador precisa avisar os vizinhos.
-    pub fn tick_server(&mut self, game_time: u64) -> bool {
-        self.state.game_time = game_time;
-        self.flush_listeners();
-        self.state.tile.tick_delay();
-        self.monitor.update_and_process(&mut self.state);
-        self.flush_listeners();
-        if let Some(operations) = self.state.finished_operations.take() {
-            self.monitor.set_recipe_used(operations);
-        }
-        let level = self.state.redstone_level();
-        self.state.tile.finish_tick(|| level)
+    pub fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) -> bool {
+        self.shared.game_time.set(game_time);
+        self.shared.tile.borrow_mut().tick_delay();
+        // `onUpdateServer`: o ejetor, do `TileEntityConfigurableMachine`, e depois a receita.
+        self.ejector.tick_server(neighbours);
+        self.monitor.update_and_process();
+        let (input, output, energy_slot) = (&self.input, &self.output, &self.energy_slot);
+        self.shared
+            .tile
+            .borrow_mut()
+            .finish_tick(|| redstone_signal(&[input, output, energy_slot]))
     }
 }
 

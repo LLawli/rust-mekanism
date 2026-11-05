@@ -1,23 +1,49 @@
-//! Porte de `RecipeCacheLookupMonitor`, `ProgressRecipeCacheLookupMonitor` e `getUpdatedCache`.
-use crate::cached_recipe::{CachedRecipe, CachedRecipeHolder, RecipeLogic};
+//! Porte de `RecipeCacheLookupMonitor` e `getUpdatedCache`. O monitor é também o `IContentsListener` dos slots, e por isso
+//! o que os listeners tocam fica em [`MonitorFlags`], compartilhado: um aviso no commit da raiz nunca pede emprestado o
+//! monitor que está processando.
+use crate::cached_recipe::{CachedRecipe, ItemToItemRecipe};
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 /// Prefixo das receitas sintéticas que embrulham uma receita do jogo.
 const GENERATED_PREFIX: &str = "/mekanism_generated/";
 const SYNTHETIC_PREFIX: char = '/';
 
-/// Quem acha e cria as receitas do monitor.
-pub trait RecipeLookupHandler: CachedRecipeHolder {
-    type Recipe;
-    type Logic: RecipeLogic<Self>
-    where
-        Self: Sized;
+/// O que os listeners do monitor mexem.
+#[derive(Debug, Default)]
+pub struct MonitorFlags {
+    has_no_recipe: Cell<bool>,
+    should_unpause: Cell<bool>,
+    reset_last_recipe: Cell<bool>,
+}
 
-    /// `getRecipe`: ignora o que está em cache, e devolve o id junto.
-    fn find_recipe(&self) -> Option<(String, Self::Recipe)>;
-    fn create_new_cached_recipe(&mut self, recipe: Self::Recipe) -> Self::Logic
-    where
-        Self: Sized;
+impl MonitorFlags {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self::default())
+    }
+
+    /// `onChange`: pode haver receita de novo.
+    pub fn on_change(&self) {
+        self.has_no_recipe.set(false);
+        self.unpause();
+    }
+
+    pub fn unpause(&self) {
+        self.should_unpause.set(true);
+    }
+
+    pub fn output_decreased(&self) {
+        self.reset_last_recipe.set(true);
+    }
+}
+
+/// Quem acha e cria as receitas do monitor: o `IRecipeLookupHandler` do tile.
+pub trait RecipeLookupHandler {
+    /// `getRecipe`: ignora o que está em cache.
+    fn get_recipe(&self) -> Option<Rc<ItemToItemRecipe>>;
+    /// `createNewCachedRecipe`.
+    fn create_new_cached_recipe(&self, recipe: Rc<ItemToItemRecipe>) -> CachedRecipe;
     fn saved_operating_ticks(&self) -> i32 {
         0
     }
@@ -25,92 +51,88 @@ pub trait RecipeLookupHandler: CachedRecipeHolder {
     fn invalidate_cache(&self) -> bool {
         false
     }
-    /// `clearRecipeErrors`.
-    fn on_cached_recipe_changed(&mut self) {}
+    /// `onCachedRecipeChanged`: `clearRecipeErrors`.
+    fn on_cached_recipe_changed(&self) {}
+    /// `markForSave`.
+    fn mark_for_save(&self) {}
 }
 
-#[derive(Clone, Debug)]
-pub struct RecipeCacheLookupMonitor<L> {
-    cached_recipe: Option<CachedRecipe<L>>,
-    recipe_id: Option<String>,
-    has_no_recipe: bool,
-    should_unpause: bool,
-    has_item_output: bool,
+#[derive(Debug, Default)]
+struct UsedRecipes {
     recipes_used: BTreeMap<String, i32>,
     last_recipe_used: Option<String>,
     last_recipe_crafted_amount: i32,
-    reset_last_recipe: bool,
 }
 
-impl<L> RecipeCacheLookupMonitor<L> {
-    pub fn new(has_item_output: bool) -> Self {
-        Self {
-            cached_recipe: None,
-            recipe_id: None,
-            has_no_recipe: false,
-            should_unpause: false,
-            has_item_output,
-            recipes_used: BTreeMap::new(),
-            last_recipe_used: None,
-            last_recipe_crafted_amount: 0,
-            reset_last_recipe: false,
-        }
-    }
-
-    pub fn cached_recipe(&self) -> Option<&CachedRecipe<L>> {
-        self.cached_recipe.as_ref()
-    }
-
-    pub fn recipes_used(&self) -> &BTreeMap<String, i32> {
-        &self.recipes_used
-    }
-
-    /// `onChange`: pode haver receita de novo.
-    pub fn on_change(&mut self) {
-        self.has_no_recipe = false;
-        self.unpause();
-    }
-
-    pub fn unpause(&mut self) {
-        self.should_unpause = true;
-    }
-
-    pub fn output_decreased(&mut self) {
-        self.reset_last_recipe = true;
-    }
-
+impl UsedRecipes {
     /// `setRecipeUsed`, com as receitas sintéticas filtradas como no Java.
-    pub fn set_recipe_used(&mut self, operations: i32) {
-        let Some(id) = self.recipe_id.clone() else {
-            return;
-        };
-        let (namespace, path) = id.split_once(':').unwrap_or(("", &id));
+    fn set_recipe_used(
+        &mut self,
+        id: &str,
+        operations: i32,
+        has_item_output: bool,
+        flags: &MonitorFlags,
+    ) {
+        let (namespace, path) = id.split_once(':').unwrap_or(("", id));
         let id = if let Some(path) = path.strip_prefix(GENERATED_PREFIX) {
             format!("{namespace}:{path}")
         } else if path.starts_with(SYNTHETIC_PREFIX) {
             return;
         } else {
-            id.clone()
+            id.to_owned()
         };
         *self.recipes_used.entry(id.clone()).or_default() += operations;
-        if self.has_item_output {
-            if !self.reset_last_recipe && self.last_recipe_used.as_ref() == Some(&id) {
+        if has_item_output {
+            if !flags.reset_last_recipe.get() && self.last_recipe_used.as_ref() == Some(&id) {
                 self.last_recipe_crafted_amount += operations;
             } else {
                 self.last_recipe_used = Some(id);
                 self.last_recipe_crafted_amount = operations;
-                self.reset_last_recipe = false;
+                flags.reset_last_recipe.set(false);
             }
         }
     }
+}
 
-    /// `getUpdatedCache`. Devolve se o cache mudou.
-    fn updated_cache<H>(&mut self, holder: &mut H) -> bool
-    where
-        H: RecipeLookupHandler<Logic = L>,
-        L: RecipeLogic<H>,
-    {
-        let cache_invalid = holder.invalidate_cache();
+pub struct RecipeCacheLookupMonitor {
+    handler: Rc<dyn RecipeLookupHandler>,
+    flags: Rc<MonitorFlags>,
+    used: Rc<RefCell<UsedRecipes>>,
+    has_item_output: bool,
+    cached_recipe: Option<CachedRecipe>,
+}
+
+impl RecipeCacheLookupMonitor {
+    pub fn new(
+        handler: Rc<dyn RecipeLookupHandler>,
+        flags: Rc<MonitorFlags>,
+        has_item_output: bool,
+    ) -> Self {
+        Self {
+            handler,
+            flags,
+            used: Rc::default(),
+            has_item_output,
+            cached_recipe: None,
+        }
+    }
+
+    pub fn flags(&self) -> &Rc<MonitorFlags> {
+        &self.flags
+    }
+
+    pub fn cached_recipe(&self) -> Option<&CachedRecipe> {
+        self.cached_recipe.as_ref()
+    }
+
+    /// `getRecipesUsed`.
+    pub fn recipes_used(&self) -> BTreeMap<String, i32> {
+        self.used.borrow().recipes_used.clone()
+    }
+
+    /// `getUpdatedCache`. Devolve se o cache mudou, que é quando o Java compara a referência.
+    fn updated_cache(&mut self) -> bool {
+        let cache_invalid = self.handler.invalidate_cache();
         let mut changed = false;
         if cache_invalid {
             changed = self.cached_recipe.take().is_some();
@@ -118,39 +140,46 @@ impl<L> RecipeCacheLookupMonitor<L> {
         let valid = self
             .cached_recipe
             .as_ref()
-            .is_some_and(|cached| cached.is_input_valid(holder));
-        if valid || !(cache_invalid || !self.has_no_recipe) {
+            .is_some_and(CachedRecipe::is_input_valid);
+        if valid || !(cache_invalid || !self.flags.has_no_recipe.get()) {
             return changed;
         }
-        let Some((id, recipe)) = holder.find_recipe() else {
-            self.has_no_recipe = true;
+        let Some(recipe) = self.handler.get_recipe() else {
+            self.flags.has_no_recipe.set(true);
             return changed;
         };
-        let mut cached = CachedRecipe::new(holder.create_new_cached_recipe(recipe));
+        let id = recipe.id.clone();
+        let handler = self.handler.clone();
+        let used = self.used.clone();
+        let flags = self.flags.clone();
+        let has_item_output = self.has_item_output;
+        let mut cached =
+            self.handler
+                .create_new_cached_recipe(recipe)
+                .set_on_finish(move |operations| {
+                    handler.mark_for_save();
+                    used.borrow_mut()
+                        .set_recipe_used(&id, operations, has_item_output, &flags);
+                });
         if self.cached_recipe.is_none() {
-            cached.load_saved_operating_ticks(holder, holder.saved_operating_ticks());
+            cached.load_saved_operating_ticks(self.handler.saved_operating_ticks());
         }
         self.cached_recipe = Some(cached);
-        self.recipe_id = Some(id);
         true
     }
 
     /// `updateAndProcess`. Devolve se havia receita para rodar.
-    pub fn update_and_process<H>(&mut self, holder: &mut H) -> bool
-    where
-        H: RecipeLookupHandler<Logic = L>,
-        L: RecipeLogic<H>,
-    {
-        if self.updated_cache(holder) {
-            holder.on_cached_recipe_changed();
+    pub fn update_and_process(&mut self) -> bool {
+        if self.updated_cache() {
+            self.handler.on_cached_recipe_changed();
         }
         let Some(cached) = &mut self.cached_recipe else {
             return false;
         };
-        if std::mem::take(&mut self.should_unpause) {
+        if self.flags.should_unpause.take() {
             cached.unpause_errors();
         }
-        cached.process(holder);
+        cached.process();
         true
     }
 }

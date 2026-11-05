@@ -2,9 +2,11 @@
 pub mod cached_recipe;
 pub mod containers;
 pub mod data_slots;
+pub mod ejector;
 pub mod fluid_logged;
 pub mod heat;
 pub mod hopper;
+pub mod item_handler;
 pub mod machine;
 pub mod network;
 pub mod operation_tracker;
@@ -16,4 +18,5 @@ pub mod sim;
 pub mod tank;
 pub mod tile;
 pub mod transaction;
+pub mod transit;
 pub mod units;

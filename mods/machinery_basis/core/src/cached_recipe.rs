@@ -1,90 +1,141 @@
-//! Porte de `CachedRecipe` e `OneInputCachedRecipe`. Os callbacks do Java viram [`CachedRecipeHolder`], e a parte abstrata
-//! vira [`RecipeLogic`].
-use crate::containers::{InventorySlot, ItemResource};
+//! Porte de `CachedRecipe` e `OneInputCachedRecipe`. Como no Java, a receita guarda os callbacks do tile (`setActive`,
+//! `setEnergyRequirements`, `setOnFinish`...) como closures, e a parte abstrata é a [`RecipeLogic`].
+use crate::containers::{
+    AutomationType, EnergyContainer, InventorySlot, ItemResource, SlotContents,
+};
 use crate::operation_tracker::{OperationTracker, RecipeError, RecipeErrors};
 use crate::transaction::Transaction;
+use std::fmt;
+use std::rc::Rc;
 
-/// Quem roda a receita. Os padrões são os do `CachedRecipe`.
-pub trait CachedRecipeHolder {
-    fn can_function(&self) -> bool {
-        true
-    }
-    fn set_active(&mut self, _active: bool) {}
-    fn required_ticks(&self) -> i32 {
-        1
-    }
-    fn on_finish(&mut self, _operations: i32) {}
-    fn per_tick_energy(&self) -> i32 {
-        0
-    }
-    fn stored_energy(&self) -> i32 {
-        0
-    }
-    fn use_energy(&mut self, _energy: i32, _transaction: Transaction) -> i32 {
-        0
-    }
-    fn baseline_max_operations(&self) -> i32 {
-        1
-    }
-    fn post_process_operations(&mut self, _tracker: &mut OperationTracker) {}
-    fn operations_cost(&self) -> bool {
-        false
-    }
-    fn on_errors_change(&mut self, _errors: RecipeErrors) {}
-    fn operating_ticks_changed(&mut self, _operating_ticks: i32) {}
-    fn recheck_all_errors(&self) -> bool;
-    /// Fecha a transação em todos os contêineres do holder.
-    fn close_transaction(&mut self, transaction: Transaction, commit: bool);
-}
-
-/// O que muda de uma receita para outra.
-pub trait RecipeLogic<H> {
-    fn setup_variable_values(&mut self, _holder: &mut H) {}
-    /// Roda depois do cálculo da energia, que é comum a todas.
+/// O que muda de uma receita para outra: o que o Java deixa abstrato em `CachedRecipe`.
+pub trait RecipeLogic {
+    /// `setupVariableValues`.
+    fn setup_variable_values(&mut self) {}
+    /// `calculateOperationsThisTick`, depois do cálculo da energia, que é comum a todas.
     fn calculate_operations_this_tick(
         &mut self,
-        holder: &mut H,
         tracker: &mut OperationTracker,
-        transaction: Transaction,
+        transaction: &Transaction,
     );
-    fn is_input_valid(&self, holder: &H) -> bool;
-    fn finish_processing(
-        &mut self,
-        holder: &mut H,
-        operations: i32,
-        transaction: Transaction,
-    ) -> bool;
-    fn use_resources(
-        &mut self,
-        _holder: &mut H,
-        _operations: i32,
-        _transaction: Transaction,
-    ) -> bool {
+    fn is_input_valid(&self) -> bool;
+    fn finish_processing(&mut self, operations: i32, transaction: &Transaction) -> bool;
+    fn use_resources(&mut self, _operations: i32, _transaction: &Transaction) -> bool {
         true
     }
     fn reset_cache(&mut self) {}
 }
 
-#[derive(Clone, Debug)]
-pub struct CachedRecipe<L> {
-    logic: L,
+/// `CachedRecipe`.
+pub struct CachedRecipe {
+    logic: Box<dyn RecipeLogic>,
     errors: RecipeErrors,
     paused_for_errors: bool,
+    recheck_all_errors: Box<dyn Fn() -> bool>,
+    can_holder_function: Box<dyn Fn() -> bool>,
+    set_active: Box<dyn Fn(bool)>,
+    required_ticks: Box<dyn Fn() -> i32>,
+    on_finish: Box<dyn Fn(i32)>,
+    per_tick_energy: Box<dyn Fn() -> i32>,
+    energy_container: Option<EnergyContainer>,
+    baseline_max_operations: Box<dyn Fn() -> i32>,
+    post_process_operations: Box<dyn Fn(&mut OperationTracker)>,
+    on_errors_change: Box<dyn Fn(RecipeErrors)>,
     operating_ticks: i32,
+    operating_ticks_changed: Box<dyn Fn(i32)>,
+    multiple_operations_cost: bool,
 }
 
-impl<L> CachedRecipe<L> {
-    pub fn new(logic: L) -> Self {
+impl fmt::Debug for CachedRecipe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CachedRecipe")
+            .field("errors", &self.errors)
+            .field("paused_for_errors", &self.paused_for_errors)
+            .field("operating_ticks", &self.operating_ticks)
+            .finish_non_exhaustive()
+    }
+}
+
+impl CachedRecipe {
+    /// Os padrões são os do `CachedRecipe`.
+    pub fn new(logic: Box<dyn RecipeLogic>, recheck_all_errors: Box<dyn Fn() -> bool>) -> Self {
         Self {
             logic,
             errors: RecipeErrors::EMPTY,
             paused_for_errors: false,
+            recheck_all_errors,
+            can_holder_function: Box::new(|| true),
+            set_active: Box::new(|_| {}),
+            required_ticks: Box::new(|| 1),
+            on_finish: Box::new(|_| {}),
+            per_tick_energy: Box::new(|| 0),
+            energy_container: None,
+            baseline_max_operations: Box::new(|| 1),
+            post_process_operations: Box::new(|_| {}),
+            on_errors_change: Box::new(|_| {}),
             operating_ticks: 0,
+            operating_ticks_changed: Box::new(|_| {}),
+            multiple_operations_cost: false,
         }
     }
 
-    pub fn logic(&self) -> &L {
-        &self.logic
+    pub fn set_can_holder_function(mut self, f: impl Fn() -> bool + 'static) -> Self {
+        self.can_holder_function = Box::new(f);
+        self
+    }
+
+    pub fn set_active(mut self, f: impl Fn(bool) + 'static) -> Self {
+        self.set_active = Box::new(f);
+        self
+    }
+
+    /// `setEnergyRequirements`: o consumo por tick e o contêiner de onde sai a energia.
+    pub fn set_energy_requirements(
+        mut self,
+        per_tick_energy: impl Fn() -> i32 + 'static,
+        energy_container: EnergyContainer,
+    ) -> Self {
+        self.per_tick_energy = Box::new(per_tick_energy);
+        self.energy_container = Some(energy_container);
+        self
+    }
+
+    pub fn set_required_ticks(mut self, f: impl Fn() -> i32 + 'static) -> Self {
+        self.required_ticks = Box::new(f);
+        self
+    }
+
+    pub fn set_operating_ticks_changed(mut self, f: impl Fn(i32) + 'static) -> Self {
+        self.operating_ticks_changed = Box::new(f);
+        self
+    }
+
+    pub fn set_on_finish(mut self, f: impl Fn(i32) + 'static) -> Self {
+        self.on_finish = Box::new(f);
+        self
+    }
+
+    pub fn set_baseline_max_operations(mut self, f: impl Fn() -> i32 + 'static) -> Self {
+        self.baseline_max_operations = Box::new(f);
+        self
+    }
+
+    pub fn set_post_process_operations(
+        mut self,
+        f: impl Fn(&mut OperationTracker) + 'static,
+    ) -> Self {
+        self.post_process_operations = Box::new(f);
+        self
+    }
+
+    pub fn set_operations_cost(mut self, value: bool) -> Self {
+        self.multiple_operations_cost = value;
+        self
+    }
+
+    pub fn set_errors_changed(mut self, f: impl Fn(RecipeErrors) + 'static) -> Self {
+        self.on_errors_change = Box::new(f);
+        self
     }
 
     pub fn operating_ticks(&self) -> i32 {
@@ -103,52 +154,54 @@ impl<L> CachedRecipe<L> {
         self.paused_for_errors = false;
     }
 
-    pub fn load_saved_operating_ticks<H: CachedRecipeHolder>(
-        &mut self,
-        holder: &H,
-        operating_ticks: i32,
-    ) {
-        if operating_ticks > 0 && operating_ticks < holder.required_ticks() {
+    pub fn load_saved_operating_ticks(&mut self, operating_ticks: i32) {
+        if operating_ticks > 0 && operating_ticks < (self.required_ticks)() {
             self.operating_ticks = operating_ticks;
         }
     }
 
-    fn update_errors<H: CachedRecipeHolder>(&mut self, holder: &mut H, errors: RecipeErrors) {
+    pub fn is_input_valid(&self) -> bool {
+        self.logic.is_input_valid()
+    }
+
+    fn update_errors(&mut self, errors: RecipeErrors) {
         if self.errors != errors {
             self.errors = errors;
             self.paused_for_errors = self.errors.len() > 1
                 || !self
                     .errors
                     .contains(RecipeError::NOT_ENOUGH_ENERGY_REDUCED_RATE);
-            holder.on_errors_change(errors);
+            (self.on_errors_change)(errors);
         }
     }
 
-    fn use_energy<H: CachedRecipeHolder>(
-        holder: &mut H,
-        operations: i32,
-        transaction: Transaction,
-    ) -> bool {
-        let mut energy = holder.per_tick_energy();
-        if holder.operations_cost() {
+    /// `energyUsage.useEnergy`: tira do contêiner como quem é interno.
+    fn use_energy_from_container(&self, energy: i32, transaction: &Transaction) -> i32 {
+        self.energy_container.as_ref().map_or(0, |container| {
+            container.extract(energy, transaction, AutomationType::Internal)
+        })
+    }
+
+    fn use_energy(&self, operations: i32, transaction: &Transaction) -> bool {
+        let mut energy = (self.per_tick_energy)();
+        if self.multiple_operations_cost {
             energy *= operations;
         }
-        holder.use_energy(energy, transaction) == energy
+        self.use_energy_from_container(energy, transaction) == energy
     }
 
-    fn calculate_energy<H: CachedRecipeHolder>(
-        holder: &mut H,
-        tracker: &mut OperationTracker,
-        transaction: Transaction,
-    ) {
+    fn calculate_energy(&self, tracker: &mut OperationTracker, transaction: &Transaction) {
         if tracker.should_continue_checking() {
-            let energy_per_tick = holder.per_tick_energy();
+            let energy_per_tick = (self.per_tick_energy)();
             if energy_per_tick > 0 {
-                let simulation = transaction.open_nested();
-                let stored = holder.stored_energy();
-                let available = holder.use_energy(stored, simulation);
-                let operations = available / energy_per_tick;
-                holder.close_transaction(simulation, false);
+                let stored = self
+                    .energy_container
+                    .as_ref()
+                    .map_or(0, EnergyContainer::amount_as_int);
+                let operations = {
+                    let simulation = Transaction::open(Some(transaction));
+                    self.use_energy_from_container(stored, &simulation) / energy_per_tick
+                };
                 tracker.max_for_energy = operations;
                 if operations == 0 {
                     tracker.update_operations(operations);
@@ -157,40 +210,28 @@ impl<L> CachedRecipe<L> {
             }
         }
     }
-}
 
-impl<L> CachedRecipe<L> {
-    pub fn is_input_valid<H>(&self, holder: &H) -> bool
-    where
-        L: RecipeLogic<H>,
-    {
-        self.logic.is_input_valid(holder)
-    }
-
-    /// `process`. Cada saída fecha a raiz: com commit, se a operação andou.
-    pub fn process<H: CachedRecipeHolder>(&mut self, holder: &mut H)
-    where
-        L: RecipeLogic<H>,
-    {
+    /// `process`. Cada saída fecha a raiz: com commit se a operação andou, e sem, a transação volta tudo ao sair.
+    pub fn process(&mut self) {
         if self.paused_for_errors {
-            holder.set_active(false);
+            (self.set_active)(false);
             return;
         }
         let transaction = Transaction::open_root();
-        let operations = if holder.can_function() {
-            self.logic.setup_variable_values(holder);
+        let operations = if (self.can_holder_function)() {
+            self.logic.setup_variable_values();
             let mut tracker = OperationTracker::new(
                 self.errors,
-                holder.recheck_all_errors(),
-                holder.baseline_max_operations(),
+                (self.recheck_all_errors)(),
+                (self.baseline_max_operations)(),
             );
-            Self::calculate_energy(holder, &mut tracker, transaction);
+            self.calculate_energy(&mut tracker, &transaction);
             self.logic
-                .calculate_operations_this_tick(holder, &mut tracker, transaction);
+                .calculate_operations_this_tick(&mut tracker, &transaction);
             if tracker.should_continue_checking() {
-                holder.post_process_operations(&mut tracker);
+                (self.post_process_operations)(&mut tracker);
                 if tracker.should_continue_checking()
-                    && holder.operations_cost()
+                    && self.multiple_operations_cost
                     && tracker.cap_at_max_for_energy()
                 {
                     tracker.add_error(RecipeError::NOT_ENOUGH_ENERGY_REDUCED_RATE);
@@ -198,49 +239,76 @@ impl<L> CachedRecipe<L> {
             }
             let operations = tracker.current_max();
             if tracker.has_errors_to_copy() {
-                self.update_errors(holder, tracker.errors());
+                self.update_errors(tracker.errors());
             }
             operations
         } else {
             if !self.errors.is_empty() {
-                self.update_errors(holder, RecipeErrors::EMPTY);
+                self.update_errors(RecipeErrors::EMPTY);
             }
             0
         };
-        if operations > 0 && Self::use_energy(holder, operations, transaction) {
-            let ticks_required = holder.required_ticks();
+        if operations > 0 && self.use_energy(operations, &transaction) {
+            let ticks_required = (self.required_ticks)();
             if self.operating_ticks >= ticks_required - 1 {
-                if self
-                    .logic
-                    .finish_processing(holder, operations, transaction)
-                {
-                    holder.set_active(true);
-                    holder.close_transaction(transaction, true);
-                    holder.on_finish(operations);
+                if self.logic.finish_processing(operations, &transaction) {
+                    (self.set_active)(true);
+                    transaction.commit();
+                    (self.on_finish)(operations);
                     self.logic.reset_cache();
                     if ticks_required > 1 {
                         self.operating_ticks = 0;
-                        holder.operating_ticks_changed(0);
+                        (self.operating_ticks_changed)(0);
                     }
                     return;
                 }
-            } else if self.logic.use_resources(holder, operations, transaction) {
-                holder.set_active(true);
-                holder.close_transaction(transaction, true);
+            } else if self.logic.use_resources(operations, &transaction) {
+                (self.set_active)(true);
+                transaction.commit();
                 if ticks_required > 1 {
                     self.operating_ticks += 1;
-                    holder.operating_ticks_changed(self.operating_ticks);
+                    (self.operating_ticks_changed)(self.operating_ticks);
                 }
                 return;
             }
         }
-        holder.set_active(false);
+        (self.set_active)(false);
         if operations < 0 {
             self.operating_ticks = 0;
-            holder.operating_ticks_changed(0);
+            (self.operating_ticks_changed)(0);
             self.logic.reset_cache();
         }
-        holder.close_transaction(transaction, false);
+    }
+}
+
+/// Um item que uma receita aceita. A lib não conhece ids: quem usa diz o que casa.
+#[derive(Clone)]
+pub struct ItemIngredient {
+    test: Rc<dyn Fn(&ItemResource) -> bool>,
+}
+
+impl ItemIngredient {
+    /// Um item só, pelo id.
+    pub fn item(id: &str) -> Self {
+        let id: Rc<str> = Rc::from(id);
+        Self::matching(move |resource| resource.id == id)
+    }
+
+    /// Qualquer item que o predicado aceite, como uma tag.
+    pub fn matching(test: impl Fn(&ItemResource) -> bool + 'static) -> Self {
+        Self {
+            test: Rc::new(test),
+        }
+    }
+
+    pub fn matches(&self, resource: &ItemResource) -> bool {
+        (self.test)(resource)
+    }
+}
+
+impl fmt::Debug for ItemIngredient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("ItemIngredient")
     }
 }
 
@@ -252,77 +320,90 @@ pub struct ItemOutput {
 }
 
 /// Uma receita de um item para um item.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct ItemToItemRecipe {
     pub id: String,
-    pub input: ItemResource,
+    pub input: ItemIngredient,
     pub input_count: u32,
     pub output: ItemOutput,
 }
 
 impl ItemToItemRecipe {
-    fn test(&self, slot: &InventorySlot) -> bool {
-        slot.resource() == Some(&self.input) && slot.amount() >= self.input_count
+    /// `getMatchingInstance`: item diferente, ou menos do que a receita pede, não casa.
+    pub fn test(&self, contents: &SlotContents) -> bool {
+        contents
+            .resource
+            .as_ref()
+            .is_some_and(|resource| self.input.matches(resource))
+            && contents.amount >= self.input_count
     }
 }
 
-/// Holder com um slot de entrada e um de saída.
-pub trait OneInputHolder: CachedRecipeHolder {
-    fn input_slot(&self) -> &InventorySlot;
-    fn input_slot_mut(&mut self) -> &mut InventorySlot;
-    fn output_slot_mut(&mut self) -> &mut InventorySlot;
-}
-
 /// `OneInputCachedRecipe` com o `ItemInputHandler` e o handler de saída de slot.
-#[derive(Clone, Debug)]
 pub struct OneInputItemRecipe {
-    pub recipe: ItemToItemRecipe,
+    recipe: Rc<ItemToItemRecipe>,
+    input: InventorySlot,
+    output: InventorySlot,
 }
 
 impl OneInputItemRecipe {
+    pub fn new(recipe: Rc<ItemToItemRecipe>, input: InventorySlot, output: InventorySlot) -> Self {
+        Self {
+            recipe,
+            input,
+            output,
+        }
+    }
+
     /// `OutputHelper.calculateOperationsCanSupport`.
-    fn output_operations<H: OneInputHolder>(
-        &self,
-        holder: &mut H,
-        tracker: &mut OperationTracker,
-        transaction: Transaction,
-    ) {
+    fn output_operations(&self, tracker: &mut OperationTracker, transaction: &Transaction) {
         let output = &self.recipe.output;
-        let simulation = transaction.open_nested();
-        let slot = holder.output_slot_mut();
-        let amount_used = slot.insert(&output.resource, output.resource.max_stack_size, simulation);
+        let simulation = Transaction::open(Some(transaction));
+        let amount_used = self.output.insert(
+            &output.resource,
+            output.resource.max_stack_size,
+            &simulation,
+            AutomationType::Internal,
+        );
         let operations = (amount_used / output.count) as i32;
         tracker.update_operations(operations);
         if operations == 0 {
-            if amount_used == 0 && !slot.is_full() {
+            if amount_used == 0 && !self.output.is_full() {
                 tracker.add_error(RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT);
             } else {
                 tracker.add_error(RecipeError::NOT_ENOUGH_OUTPUT_SPACE);
             }
         }
-        holder.close_transaction(simulation, false);
     }
 }
 
-impl<H: OneInputHolder> RecipeLogic<H> for OneInputItemRecipe {
+impl RecipeLogic for OneInputItemRecipe {
     fn calculate_operations_this_tick(
         &mut self,
-        holder: &mut H,
         tracker: &mut OperationTracker,
-        transaction: Transaction,
+        transaction: &Transaction,
     ) {
         if !tracker.should_continue_checking() {
             return;
         }
-        // `getMatchingInstance`: item diferente, ou menos do que a receita pede, volta vazio.
-        if !self.recipe.test(holder.input_slot()) {
+        let contents = self.input.contents();
+        let Some(resource) = contents
+            .resource
+            .clone()
+            .filter(|_| self.recipe.test(&contents))
+        else {
             tracker.mismatched_recipe();
             return;
-        }
-        let simulation = transaction.open_nested();
-        let slot = holder.input_slot_mut();
-        let available = slot.extract(&self.recipe.input, slot.amount(), simulation);
-        holder.close_transaction(simulation, false);
+        };
+        let available = {
+            let simulation = Transaction::open(Some(transaction));
+            self.input.extract(
+                &resource,
+                contents.amount,
+                &simulation,
+                AutomationType::Internal,
+            )
+        };
         let operations = (available / self.recipe.input_count) as i32;
         if operations > 0 {
             tracker.update_operations(operations);
@@ -330,34 +411,34 @@ impl<H: OneInputHolder> RecipeLogic<H> for OneInputItemRecipe {
             tracker.reset_progress(RecipeError::NOT_ENOUGH_INPUT);
         }
         if tracker.should_continue_checking() {
-            self.output_operations(holder, tracker, transaction);
+            self.output_operations(tracker, transaction);
         }
     }
 
-    fn is_input_valid(&self, holder: &H) -> bool {
-        self.recipe.test(holder.input_slot())
+    fn is_input_valid(&self) -> bool {
+        self.recipe.test(&self.input.contents())
     }
 
-    fn finish_processing(
-        &mut self,
-        holder: &mut H,
-        operations: i32,
-        transaction: Transaction,
-    ) -> bool {
+    fn finish_processing(&mut self, operations: i32, transaction: &Transaction) -> bool {
         let operations = operations as u32;
+        let Some(resource) = self.input.resource() else {
+            return false;
+        };
         let amount = self.recipe.input_count * operations;
-        if holder
-            .input_slot_mut()
-            .extract(&self.recipe.input, amount, transaction)
+        if self
+            .input
+            .extract(&resource, amount, transaction, AutomationType::Internal)
             != amount
         {
             return false;
         }
         let output = &self.recipe.output;
         let amount = output.count * operations;
-        holder
-            .output_slot_mut()
-            .insert(&output.resource, amount, transaction)
-            == amount
+        self.output.insert(
+            &output.resource,
+            amount,
+            transaction,
+            AutomationType::Internal,
+        ) == amount
     }
 }

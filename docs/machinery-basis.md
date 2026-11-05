@@ -120,6 +120,18 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
+## Objetos vivos das máquinas (opção B)
+
+A base de máquina é uma cópia literal do Java: `Transaction` com gerenciador por thread, contêineres (`EnergyContainer`,
+`InventorySlot`) como `Rc` que se registram sozinhos na transação, listeners como closures que disparam no commit da raiz, e
+`CachedRecipe` guardando as closures do tile. O ejetor de itens (`ItemEjector`) abre uma raiz por envio, cobrindo a saída da
+máquina e o inventário do vizinho.
+
+No Horizon o objeto de uma máquina é um cache da `ModBlockEntity`. Mora numa tabela por thread, chave (dimensão, posição), em
+`mods/mekanism/native/glue.rs`. Nasce no primeiro tick depois de uma lacuna, refeito dos itens, da energia e do progresso que a
+`ModBlockEntity` guarda; todo tick lê dela o que mudou fora (tela, hopper, cabo) e escreve o que mudou; é varrido depois de
+100 ticks sem andar. Salvar e reabrir o mundo funciona porque a `ModBlockEntity` é a verdade.
+
 ## Fora da lib
 
 Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora

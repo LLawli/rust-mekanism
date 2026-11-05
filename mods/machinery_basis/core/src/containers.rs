@@ -1,5 +1,8 @@
-//! Porte de `MachineEnergyContainer` e `BasicInventorySlot`: guardam o conteúdo dentro das transações e dizem quando mudou.
-use crate::transaction::{SnapshotJournal, Transaction};
+//! Porte de `MachineEnergyContainer` e `BasicInventorySlot` (com `OutputInventorySlot`): objetos compartilhados, que se
+//! registram sozinhos na transação que os muda e avisam quem escuta no commit da raiz.
+use crate::transaction::{Callback, JournalCell, Journaled, Transaction, fire};
+use std::fmt;
+use std::rc::Rc;
 
 /// Quem está mexendo no contêiner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -9,129 +12,24 @@ pub enum AutomationType {
     Manual,
 }
 
-/// O que o contêiner avisa ao mudar, no lugar do `IContentsListener` do Java.
+/// Os predicados de `AutomationType` que o Mekanism passa aos contêineres.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ContentsListener {
-    /// `onContentsChanged` do tile.
-    Tile,
-    /// `RecipeCacheLookupMonitor`: avisa o tile, volta a procurar receita e despausa.
-    RecipeCache,
-    /// `getRecipeCacheUnpauseListener(this)`: avisa o tile e despausa.
-    RecipeCacheUnpause,
-    /// `getRecipeCacheUnpauseListener` com o listener de salvar: só salva e despausa.
-    RecipeCacheUnpauseSaveOnly,
+pub enum Access {
+    /// `alwaysTrue`.
+    Any,
+    /// `notExternal`.
+    NotExternal,
+    /// `internalOnly`.
+    InternalOnly,
 }
 
-/// Energia em `i64`, com capacidade e consumo que mudam com os upgrades.
-#[derive(Clone, Debug)]
-pub struct MachineEnergyContainer {
-    stored: i64,
-    journal: SnapshotJournal<i64>,
-    base_max_energy: i64,
-    current_max_energy: i64,
-    base_energy_per_tick: i32,
-    current_energy_per_tick: i32,
-    listener: ContentsListener,
-    changed: bool,
-}
-
-impl MachineEnergyContainer {
-    pub fn new(max_energy: i64, energy_per_tick: i32, listener: ContentsListener) -> Self {
-        Self {
-            stored: 0,
-            journal: SnapshotJournal::default(),
-            base_max_energy: max_energy,
-            current_max_energy: max_energy,
-            base_energy_per_tick: energy_per_tick,
-            current_energy_per_tick: energy_per_tick,
-            listener,
-            changed: false,
+impl Access {
+    pub fn allows(self, automation: AutomationType) -> bool {
+        match self {
+            Self::Any => true,
+            Self::NotExternal => automation != AutomationType::External,
+            Self::InternalOnly => automation == AutomationType::Internal,
         }
-    }
-
-    pub fn amount(&self) -> i64 {
-        self.stored
-    }
-
-    /// Satura como `getAmountAsInt`.
-    pub fn amount_as_int(&self) -> i32 {
-        saturated_cast(self.stored)
-    }
-
-    /// Nunca abaixo do guardado: é o `Math.max` do Java.
-    pub fn capacity(&self) -> i64 {
-        self.current_max_energy.max(self.stored)
-    }
-
-    pub fn base_max_energy(&self) -> i64 {
-        self.base_max_energy
-    }
-
-    /// Como a capacidade nunca fica abaixo do guardado, o clamp do Java não corta nada aqui.
-    pub fn set_max_energy(&mut self, max_energy: i64) {
-        self.current_max_energy = max_energy;
-    }
-
-    pub fn energy_per_tick(&self) -> i32 {
-        self.current_energy_per_tick
-    }
-
-    pub fn base_energy_per_tick(&self) -> i32 {
-        self.base_energy_per_tick
-    }
-
-    pub fn set_energy_per_tick(&mut self, energy_per_tick: i32) {
-        self.current_energy_per_tick = energy_per_tick;
-    }
-
-    /// Fora de transação, como `setEnergy(energy, null)`.
-    pub fn set_energy(&mut self, energy: i64) {
-        if self.stored != energy {
-            self.stored = energy;
-            self.changed = true;
-        }
-    }
-
-    pub fn extract(
-        &mut self,
-        amount: i32,
-        transaction: Transaction,
-        automation: AutomationType,
-    ) -> i32 {
-        // `notExternal`: quem está de fora não tira energia da máquina.
-        if self.stored == 0 || amount == 0 || automation == AutomationType::External {
-            return 0;
-        }
-        let to_remove = amount.min(saturated_cast(self.stored));
-        if to_remove > 0 {
-            self.journal.update_snapshots(transaction, &self.stored);
-            self.stored -= i64::from(to_remove);
-        }
-        to_remove
-    }
-
-    pub fn insert(&mut self, amount: i32, transaction: Transaction) -> i32 {
-        let needed = saturated_cast(self.capacity() - self.stored);
-        if amount == 0 || needed <= 0 {
-            return 0;
-        }
-        let to_add = amount.min(needed);
-        self.journal.update_snapshots(transaction, &self.stored);
-        self.stored += i64::from(to_add);
-        to_add
-    }
-
-    pub fn close(&mut self, transaction: Transaction, commit: bool) {
-        if let Some(original) = self.journal.close(transaction, commit, &mut self.stored)
-            && original != self.stored
-        {
-            self.changed = true;
-        }
-    }
-
-    /// O listener a chamar, se o conteúdo mudou desde a última vez.
-    pub fn take_change(&mut self) -> Option<ContentsListener> {
-        std::mem::take(&mut self.changed).then_some(self.listener)
     }
 }
 
@@ -139,157 +37,415 @@ fn saturated_cast(value: i64) -> i32 {
     value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
-/// `Item.ABSOLUTE_MAX_STACK_SIZE`: a capacidade do slot, antes do limite da pilha do item.
-const ABSOLUTE_MAX_STACK_SIZE: u32 = 99;
+struct EnergyState {
+    stored: i64,
+    base_max_energy: i64,
+    current_max_energy: i64,
+    base_energy_per_tick: i32,
+    current_energy_per_tick: i32,
+    can_extract: Access,
+    can_insert: Access,
+    listener: Option<Callback>,
+}
+
+impl Journaled for EnergyState {
+    type Snapshot = i64;
+
+    fn revert_to_snapshot(&mut self, snapshot: i64) {
+        // Sem avisar: o `revertToSnapshot` do Java ignora a checagem de mudança.
+        self.stored = snapshot;
+    }
+
+    fn on_root_commit(&mut self, original: i64) -> Vec<Callback> {
+        if self.stored == original {
+            return Vec::new();
+        }
+        self.listener.iter().cloned().collect()
+    }
+}
+
+/// `MachineEnergyContainer`: energia em `i64`, com capacidade e consumo que mudam com os upgrades.
+#[derive(Clone)]
+pub struct EnergyContainer {
+    cell: Rc<JournalCell<EnergyState>>,
+}
+
+impl fmt::Debug for EnergyContainer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EnergyContainer({})", self.amount())
+    }
+}
+
+impl EnergyContainer {
+    /// `MachineEnergyContainer.input`: quem está de fora não tira energia da máquina.
+    pub fn input(max_energy: i64, energy_per_tick: i32, listener: Option<Callback>) -> Self {
+        Self::new(
+            max_energy,
+            energy_per_tick,
+            Access::NotExternal,
+            Access::Any,
+            listener,
+        )
+    }
+
+    pub fn new(
+        max_energy: i64,
+        energy_per_tick: i32,
+        can_extract: Access,
+        can_insert: Access,
+        listener: Option<Callback>,
+    ) -> Self {
+        Self {
+            cell: JournalCell::new(EnergyState {
+                stored: 0,
+                base_max_energy: max_energy,
+                current_max_energy: max_energy,
+                base_energy_per_tick: energy_per_tick,
+                current_energy_per_tick: energy_per_tick,
+                can_extract,
+                can_insert,
+                listener,
+            }),
+        }
+    }
+
+    pub fn amount(&self) -> i64 {
+        self.cell.borrow().stored
+    }
+
+    /// Satura como `getAmountAsInt`.
+    pub fn amount_as_int(&self) -> i32 {
+        saturated_cast(self.amount())
+    }
+
+    /// Nunca abaixo do guardado: é o `Math.max` do Java.
+    pub fn capacity(&self) -> i64 {
+        let state = self.cell.borrow();
+        state.current_max_energy.max(state.stored)
+    }
+
+    pub fn base_max_energy(&self) -> i64 {
+        self.cell.borrow().base_max_energy
+    }
+
+    /// Como a capacidade nunca fica abaixo do guardado, o clamp do Java não corta nada aqui.
+    pub fn set_max_energy(&self, max_energy: i64) {
+        self.cell.borrow_mut().current_max_energy = max_energy;
+    }
+
+    pub fn energy_per_tick(&self) -> i32 {
+        self.cell.borrow().current_energy_per_tick
+    }
+
+    pub fn base_energy_per_tick(&self) -> i32 {
+        self.cell.borrow().base_energy_per_tick
+    }
+
+    pub fn set_energy_per_tick(&self, energy_per_tick: i32) {
+        self.cell.borrow_mut().current_energy_per_tick = energy_per_tick;
+    }
+
+    /// `setEnergy`: sem transação, o aviso dispara na hora.
+    pub fn set_energy(&self, energy: i64, transaction: Option<&Transaction>) {
+        let callbacks = {
+            let mut state = self.cell.borrow_mut();
+            if state.stored == energy {
+                return;
+            }
+            match transaction {
+                Some(transaction) => {
+                    self.cell.update_snapshots(transaction, || state.stored);
+                    state.stored = energy;
+                    Vec::new()
+                }
+                None => {
+                    state.stored = energy;
+                    state.listener.iter().cloned().collect()
+                }
+            }
+        };
+        fire(callbacks);
+    }
+
+    pub fn extract(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
+        let (stored, to_remove) = {
+            let state = self.cell.borrow();
+            if state.stored == 0 || amount == 0 || !state.can_extract.allows(automation) {
+                return 0;
+            }
+            (state.stored, amount.min(saturated_cast(state.stored)))
+        };
+        if to_remove > 0 {
+            self.set_energy(stored - i64::from(to_remove), Some(transaction));
+        }
+        to_remove
+    }
+
+    pub fn insert(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
+        if amount == 0 || !self.cell.borrow().can_insert.allows(automation) {
+            return 0;
+        }
+        let stored = self.amount();
+        let needed = saturated_cast(self.capacity() - stored);
+        if needed <= 0 {
+            return 0;
+        }
+        let to_add = amount.min(needed);
+        self.set_energy(stored + i64::from(to_add), Some(transaction));
+        to_add
+    }
+}
 
 /// Um item, com o limite da pilha dele. A lib não conhece ids: quem usa diz qual é.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ItemResource {
-    pub id: String,
+    pub id: Rc<str>,
     pub max_stack_size: u32,
 }
 
 impl ItemResource {
-    pub fn new(id: impl Into<String>, max_stack_size: u32) -> Self {
+    pub fn new(id: &str, max_stack_size: u32) -> Self {
         Self {
-            id: id.into(),
+            id: Rc::from(id),
             max_stack_size,
         }
     }
 }
 
+/// `Item.ABSOLUTE_MAX_STACK_SIZE`: a capacidade do slot, antes do limite da pilha do item.
+const ABSOLUTE_MAX_STACK_SIZE: u32 = 99;
+
+/// `LargeResourceStack`: o que um slot guarda. Vazio é sem recurso e com zero.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct SlotContents {
-    resource: Option<ItemResource>,
-    amount: u32,
+pub struct SlotContents {
+    pub resource: Option<ItemResource>,
+    pub amount: u32,
 }
 
-/// Slot de item. `onDecrease` do slot de saída vira [`InventorySlot::take_decrease`].
-#[derive(Clone, Debug)]
-pub struct InventorySlot {
-    contents: SlotContents,
-    journal: SnapshotJournal<SlotContents>,
-    listener: ContentsListener,
-    changed: bool,
-    decreased: bool,
-}
-
-impl InventorySlot {
-    pub fn new(listener: ContentsListener) -> Self {
-        Self {
-            contents: SlotContents::default(),
-            journal: SnapshotJournal::default(),
-            listener,
-            changed: false,
-            decreased: false,
+impl SlotContents {
+    pub fn new(resource: Option<ItemResource>, amount: u32) -> Self {
+        if amount == 0 || resource.is_none() {
+            return Self::default();
         }
+        Self { resource, amount }
     }
 
-    pub fn resource(&self) -> Option<&ItemResource> {
-        self.contents.resource.as_ref()
+    fn is_empty(&self) -> bool {
+        self.resource.is_none()
     }
+}
 
-    pub fn amount(&self) -> u32 {
-        self.contents.amount
-    }
+struct SlotState {
+    contents: SlotContents,
+    can_extract: Access,
+    can_insert: Access,
+    listener: Option<Callback>,
+    /// `OutputInventorySlot.onDecrease`.
+    on_decrease: Option<Callback>,
+}
 
-    pub fn is_empty(&self) -> bool {
-        self.contents.resource.is_none()
-    }
-
-    /// Um slot vazio tem capacidade, e é por isso que ele entra na média do comparador.
-    pub fn capacity(&self) -> u32 {
-        self.capacity_for(self.contents.resource.as_ref())
-    }
-
-    fn capacity_for(&self, resource: Option<&ItemResource>) -> u32 {
+impl SlotState {
+    fn capacity_for(resource: Option<&ItemResource>) -> u32 {
         resource.map_or(ABSOLUTE_MAX_STACK_SIZE, |resource| {
             ABSOLUTE_MAX_STACK_SIZE.min(resource.max_stack_size)
         })
     }
 
-    pub fn is_full(&self) -> bool {
-        self.contents.amount >= self.capacity()
+    /// `onContentsChanged(originalState)`, do slot e do slot de saída: primeiro o aviso, depois o `onDecrease`.
+    fn contents_changed(&self, original: &SlotContents) -> Vec<Callback> {
+        let mut callbacks: Vec<Callback> = self.listener.iter().cloned().collect();
+        if let Some(on_decrease) = &self.on_decrease
+            && !original.is_empty()
+            && (original.resource != self.contents.resource
+                || self.contents.amount < original.amount)
+        {
+            callbacks.push(on_decrease.clone());
+        }
+        callbacks
+    }
+}
+
+impl Journaled for SlotState {
+    type Snapshot = SlotContents;
+
+    fn revert_to_snapshot(&mut self, snapshot: SlotContents) {
+        self.contents = snapshot;
     }
 
-    /// Fora de transação, como `setContents(type, amount, null)`.
-    pub fn set_contents(&mut self, resource: Option<ItemResource>, amount: u32) {
-        let new = SlotContents {
-            amount: if resource.is_some() { amount } else { 0 },
-            resource: resource.filter(|_| amount > 0),
-        };
-        if self.contents != new {
-            let original = std::mem::replace(&mut self.contents, new);
-            self.note_change(&original);
+    fn on_root_commit(&mut self, original: SlotContents) -> Vec<Callback> {
+        if original == self.contents {
+            return Vec::new();
         }
+        self.contents_changed(&original)
+    }
+}
+
+/// Slot de item. Compartilhado: quem o guarda e a transação que o muda falam com o mesmo objeto.
+#[derive(Clone)]
+pub struct InventorySlot {
+    cell: Rc<JournalCell<SlotState>>,
+}
+
+impl fmt::Debug for InventorySlot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "InventorySlot({:?})", self.cell.borrow().contents)
+    }
+}
+
+impl InventorySlot {
+    /// `BasicInventorySlot.at(listener, ..)`.
+    pub fn new(listener: Option<Callback>) -> Self {
+        Self::with(Access::Any, Access::Any, listener, None)
+    }
+
+    /// `OutputInventorySlot.at(listener, ..)`: só quem é interno insere, e `on_decrease` avisa quando a quantidade cai.
+    pub fn output(listener: Option<Callback>, on_decrease: Option<Callback>) -> Self {
+        Self::with(Access::Any, Access::InternalOnly, listener, on_decrease)
+    }
+
+    pub fn with(
+        can_extract: Access,
+        can_insert: Access,
+        listener: Option<Callback>,
+        on_decrease: Option<Callback>,
+    ) -> Self {
+        Self {
+            cell: JournalCell::new(SlotState {
+                contents: SlotContents::default(),
+                can_extract,
+                can_insert,
+                listener,
+                on_decrease,
+            }),
+        }
+    }
+
+    pub fn same_slot(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.cell, &other.cell)
+    }
+
+    pub fn resource(&self) -> Option<ItemResource> {
+        self.cell.borrow().contents.resource.clone()
+    }
+
+    pub fn amount(&self) -> u32 {
+        self.cell.borrow().contents.amount
+    }
+
+    pub fn contents(&self) -> SlotContents {
+        self.cell.borrow().contents.clone()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cell.borrow().contents.is_empty()
+    }
+
+    /// Um slot vazio tem capacidade, e é por isso que ele entra na média do comparador.
+    pub fn capacity(&self) -> u32 {
+        SlotState::capacity_for(self.cell.borrow().contents.resource.as_ref())
+    }
+
+    pub fn is_full(&self) -> bool {
+        let state = self.cell.borrow();
+        state.contents.amount >= SlotState::capacity_for(state.contents.resource.as_ref())
+    }
+
+    /// `setContents`: sem transação, o aviso dispara na hora, e só se o conteúdo mudou.
+    pub fn set_contents(
+        &self,
+        resource: Option<ItemResource>,
+        amount: u32,
+        transaction: Option<&Transaction>,
+    ) {
+        let new = SlotContents::new(resource, amount);
+        let callbacks = {
+            let mut state = self.cell.borrow_mut();
+            if state.contents == new {
+                return;
+            }
+            match transaction {
+                Some(transaction) => {
+                    self.cell
+                        .update_snapshots(transaction, || state.contents.clone());
+                    state.contents = new;
+                    Vec::new()
+                }
+                None => {
+                    let original = std::mem::replace(&mut state.contents, new);
+                    state.contents_changed(&original)
+                }
+            }
+        };
+        fire(callbacks);
     }
 
     pub fn insert(
-        &mut self,
+        &self,
         resource: &ItemResource,
         amount: u32,
-        transaction: Transaction,
+        transaction: &Transaction,
+        automation: AutomationType,
     ) -> u32 {
-        if self.resource().is_some_and(|stored| stored != resource) {
-            return 0;
-        }
-        let room = self
-            .capacity_for(Some(resource))
-            .saturating_sub(self.contents.amount);
-        let to_add = amount.min(room);
-        if to_add > 0 {
-            self.journal.update_snapshots(transaction, &self.contents);
-            self.contents.resource = Some(resource.clone());
-            self.contents.amount += to_add;
-        }
+        let (stored, to_add) = {
+            let state = self.cell.borrow();
+            if amount == 0 {
+                return 0;
+            }
+            if state
+                .contents
+                .resource
+                .as_ref()
+                .is_some_and(|held| held != resource)
+            {
+                return 0;
+            }
+            let stored = state.contents.amount;
+            let needed = SlotState::capacity_for(Some(resource)).saturating_sub(stored);
+            if needed == 0 || !state.can_insert.allows(automation) {
+                return 0;
+            }
+            (stored, amount.min(needed))
+        };
+        self.set_contents(Some(resource.clone()), stored + to_add, Some(transaction));
         to_add
     }
 
     pub fn extract(
-        &mut self,
+        &self,
         resource: &ItemResource,
         amount: u32,
-        transaction: Transaction,
+        transaction: &Transaction,
+        automation: AutomationType,
     ) -> u32 {
-        if self.resource() != Some(resource) {
-            return 0;
-        }
-        let to_remove = amount.min(self.contents.amount);
-        if to_remove > 0 {
-            self.journal.update_snapshots(transaction, &self.contents);
-            self.contents.amount -= to_remove;
-            if self.contents.amount == 0 {
-                self.contents.resource = None;
+        let (stored, to_remove) = {
+            let state = self.cell.borrow();
+            if amount == 0
+                || state.contents.resource.as_ref() != Some(resource)
+                || !state.can_extract.allows(automation)
+            {
+                return 0;
             }
+            let stored = state.contents.amount;
+            (stored, amount.min(stored))
+        };
+        if to_remove > 0 {
+            self.set_contents(
+                Some(resource.clone()),
+                stored - to_remove,
+                Some(transaction),
+            );
         }
         to_remove
-    }
-
-    pub fn close(&mut self, transaction: Transaction, commit: bool) {
-        if let Some(original) = self.journal.close(transaction, commit, &mut self.contents)
-            && original != self.contents
-        {
-            self.note_change(&original);
-        }
-    }
-
-    fn note_change(&mut self, original: &SlotContents) {
-        self.changed = true;
-        if original.resource.is_some()
-            && (original.resource != self.contents.resource
-                || self.contents.amount < original.amount)
-        {
-            self.decreased = true;
-        }
-    }
-
-    pub fn take_change(&mut self) -> Option<ContentsListener> {
-        std::mem::take(&mut self.changed).then_some(self.listener)
-    }
-
-    /// Se a quantidade caiu desde a última vez, o `onDecrease` do `OutputInventorySlot`.
-    pub fn take_decrease(&mut self) -> bool {
-        std::mem::take(&mut self.decreased)
     }
 }
 
@@ -318,65 +474,112 @@ pub fn redstone_signal(slots: &[&InventorySlot]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     fn clay() -> ItemResource {
         ItemResource::new("clay", 64)
     }
 
+    fn counting() -> (Callback, Rc<Cell<u32>>) {
+        let count = Rc::new(Cell::new(0));
+        let inner = count.clone();
+        (Rc::new(move || inner.set(inner.get() + 1)), count)
+    }
+
     #[test]
     fn capacity_follows_what_is_stored() {
-        let mut energy = MachineEnergyContainer::new(20, 5, ContentsListener::Tile);
-        energy.set_energy(1_200);
+        let energy = EnergyContainer::input(20, 5, None);
+        energy.set_energy(1_200, None);
         assert_eq!(energy.capacity(), 1_200);
-        energy.set_energy(3);
+        energy.set_energy(3, None);
         assert_eq!(energy.capacity(), 20);
     }
 
     #[test]
     fn a_rolled_back_change_says_nothing() {
+        let (listener, count) = counting();
+        let slot = InventorySlot::new(Some(listener));
         let root = Transaction::open_root();
-        let mut slot = InventorySlot::new(ContentsListener::Tile);
-        slot.insert(&clay(), 3, root);
-        slot.close(root, false);
+        slot.insert(&clay(), 3, &root, AutomationType::Internal);
+        drop(root);
         assert!(slot.is_empty());
-        assert_eq!(slot.take_change(), None);
+        assert_eq!(count.get(), 0);
     }
 
     #[test]
     fn a_commit_back_to_the_original_says_nothing() {
+        let (listener, count) = counting();
+        let energy = EnergyContainer::input(100, 5, Some(listener));
+        energy.set_energy(50, None);
+        assert_eq!(count.get(), 1);
         let root = Transaction::open_root();
-        let mut energy = MachineEnergyContainer::new(100, 5, ContentsListener::Tile);
-        energy.set_energy(50);
-        energy.take_change();
-        energy.extract(10, root, AutomationType::Internal);
-        energy.insert(10, root);
-        energy.close(root, true);
-        assert_eq!(energy.take_change(), None);
+        energy.extract(10, &root, AutomationType::Internal);
+        energy.insert(10, &root, AutomationType::Internal);
+        root.commit();
+        assert_eq!(count.get(), 1);
+    }
+
+    #[test]
+    fn a_committed_change_says_it_once_at_the_root() {
+        let (listener, count) = counting();
+        let slot = InventorySlot::new(Some(listener));
+        let root = Transaction::open_root();
+        let nested = Transaction::open(Some(&root));
+        slot.insert(&clay(), 3, &nested, AutomationType::Internal);
+        nested.commit();
+        assert_eq!(count.get(), 0);
+        root.commit();
+        assert_eq!(count.get(), 1);
+        assert_eq!(slot.amount(), 3);
     }
 
     #[test]
     fn a_slot_holds_what_the_item_stacks_to() {
         let root = Transaction::open_root();
         for (max_stack_size, expected) in [(16, 16), (64, 64), (99, 99)] {
-            let mut slot = InventorySlot::new(ContentsListener::Tile);
+            let slot = InventorySlot::new(None);
             let item = ItemResource::new("item", max_stack_size);
-            assert_eq!(slot.insert(&item, 200, root), expected);
+            assert_eq!(
+                slot.insert(&item, 200, &root, AutomationType::Internal),
+                expected
+            );
             assert!(slot.is_full());
         }
     }
 
     #[test]
+    fn the_output_slot_only_takes_internal_inserts() {
+        let root = Transaction::open_root();
+        let slot = InventorySlot::output(None, None);
+        assert_eq!(slot.insert(&clay(), 3, &root, AutomationType::External), 0);
+        assert_eq!(slot.insert(&clay(), 3, &root, AutomationType::Internal), 3);
+        assert_eq!(slot.extract(&clay(), 2, &root, AutomationType::External), 2);
+    }
+
+    #[test]
+    fn a_decrease_is_reported_to_the_output_slot() {
+        let (decrease, count) = counting();
+        let slot = InventorySlot::output(None, Some(decrease));
+        slot.set_contents(Some(clay()), 5, None);
+        assert_eq!(count.get(), 0);
+        slot.set_contents(Some(clay()), 6, None);
+        assert_eq!(count.get(), 0);
+        slot.set_contents(Some(clay()), 2, None);
+        assert_eq!(count.get(), 1);
+    }
+
+    #[test]
     fn the_signal_matches_the_recorded_levels() {
-        let empty = InventorySlot::new(ContentsListener::Tile);
-        let mut input = InventorySlot::new(ContentsListener::Tile);
-        let mut output = InventorySlot::new(ContentsListener::Tile);
+        let empty = InventorySlot::new(None);
+        let input = InventorySlot::new(None);
+        let output = InventorySlot::new(None);
         assert_eq!(redstone_signal(&[&input, &output, &empty]), 0);
-        input.set_contents(Some(clay()), 3);
+        input.set_contents(Some(clay()), 3, None);
         assert_eq!(redstone_signal(&[&input, &output, &empty]), 1);
-        input.set_contents(Some(clay()), 64);
+        input.set_contents(Some(clay()), 64, None);
         assert_eq!(redstone_signal(&[&input, &output, &empty]), 5);
-        input.set_contents(Some(clay()), 62);
-        output.set_contents(Some(ItemResource::new("clay_ball", 64)), 8);
+        input.set_contents(Some(clay()), 62, None);
+        output.set_contents(Some(ItemResource::new("clay_ball", 64)), 8, None);
         assert_eq!(redstone_signal(&[&input, &output, &empty]), 6);
     }
 }

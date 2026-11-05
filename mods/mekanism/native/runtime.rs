@@ -1,7 +1,12 @@
 // Regras das máquinas, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o módulo
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
+use machinery_basis_core::cached_recipe::ItemToItemRecipe;
+use machinery_basis_core::containers::InventorySlot;
+use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::tile::{ElectricMachine, ElectricMachineConfig, UpgradeRules};
+use std::rc::Rc;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
 pub const INFUSING: &str = "mekanism:metallurgic_infusing";
@@ -43,6 +48,82 @@ pub const INFUSER_USAGE: i32 = 5;
 pub const ENRICHMENT_USAGE: i32 = 5;
 pub const CRUSHER_USAGE: i32 = 8;
 pub const SMELTER_USAGE: i32 = 5;
+
+/// `blockDeactivationDelay`, o padrão de `GeneralConfig`: quantos ticks o bloco espera para apagar.
+pub const BLOCK_DEACTIVATION_DELAY: i32 = 60;
+/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`) e o máximo de cada um.
+pub const UPGRADE_MULTIPLIER: f64 = 10.0;
+pub const MAX_UPGRADES: i32 = 8;
+
+/// `TileEntityEnrichmentChamber.TRACKED_ERROR_TYPES`, na ordem da tela.
+pub const CHAMBER_TRACKED_ERRORS: [RecipeError; 4] = [
+    RecipeError::NOT_ENOUGH_ENERGY,
+    RecipeError::NOT_ENOUGH_INPUT,
+    RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
+    RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
+];
+
+/// A Enrichment Chamber como a lib a recebe: valores do mod, receitas de quem as leu do jogo. O teste dos rastros usa
+/// esta mesma configuração.
+pub fn chamber_config(
+    recipes: Vec<Rc<ItemToItemRecipe>>,
+    check_offset: u64,
+) -> ElectricMachineConfig {
+    ElectricMachineConfig {
+        energy_per_tick: ENRICHMENT_USAGE,
+        base_ticks_required: TICKS_REQUIRED as i32,
+        deactivation_delay: BLOCK_DEACTIVATION_DELAY,
+        upgrades: UpgradeRules {
+            max_upgrade_multiplier: UPGRADE_MULTIPLIER,
+            max_speed: MAX_UPGRADES,
+            max_energy: MAX_UPGRADES,
+        },
+        recipes,
+        tracked_errors: CHAMBER_TRACKED_ERRORS.to_vec(),
+        check_offset,
+    }
+}
+
+/// O `MEKTRACE` de um tick: os campos dos rastros de `dev/referencia/rastros`, na mesma ordem.
+pub fn trace_line(now: i64, machine: &ElectricMachine) -> String {
+    let path = |id: &str| {
+        id.split_once(':')
+            .map_or(id.to_owned(), |(_, path)| path.to_owned())
+    };
+    let slot = |slot: &InventorySlot| {
+        let id = slot
+            .resource()
+            .map_or(String::new(), |resource| path(&resource.id));
+        format!("[\"{id}\",{}]", slot.amount())
+    };
+    let names = [
+        (RecipeError::NOT_ENOUGH_ENERGY, "energy"),
+        (RecipeError::NOT_ENOUGH_INPUT, "input"),
+        (RecipeError::NOT_ENOUGH_OUTPUT_SPACE, "output_space"),
+        (RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT, "wrong_output"),
+    ];
+    let errors: Vec<String> = names
+        .iter()
+        .filter(|(error, _)| machine.has_error(*error))
+        .map(|(_, name)| format!("\"{name}\""))
+        .collect();
+    let tile = machine.tile();
+    format!(
+        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]}}",
+        machine.recipe_progress(),
+        machine.ticks_required(),
+        machine.energy().amount(),
+        machine.energy().capacity(),
+        machine.energy().energy_per_tick(),
+        tile.active(),
+        tile.block_active(),
+        tile.is_powered(),
+        tile.current_redstone_level(),
+        slot(machine.input()),
+        slot(machine.output()),
+        errors.join(",")
+    )
+}
 
 /// `AttributeEnergy.STORAGE_MULTIPLIER`: o buffer guarda quatro ticks de uso.
 pub const fn energy_capacity(usage: i32) -> i32 {
