@@ -119,6 +119,26 @@ Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo
 comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui `CachedRecipe` completo, com `OperationTracker`,
 `pausedForErrors`, `recheckAllErrors`, erros e avisos da tela, e `usedSoFar` para `per_tick_usage`.
 
+Estado em 2026-11-05: a parte pura da Enrichment Chamber bate com o original, mas nada disso está ligado ao jogo ainda, e a fase
+segue aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `operation_tracker`, `cached_recipe`, `recipe_monitor`,
+`tile` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 8 rastros de `dev/referencia/rastros/`, gravados por
+`dev/referencia/testes/MachineTraceTest.java`. Duas rodadas dos 6 primeiros cenários deram arquivos idênticos.
+
+Falta na Fase 1:
+
+- Ligar ao Horizon: os blocos ainda usam `machine.rs` e `recipe.rs`, e nada do que está acima roda em mundo.
+- `TwoInputCachedRecipe`, `ItemStackConstantChemicalToObjectCachedRecipe` com `usedSoFar`, e os handlers de fluido e químico.
+- Ingrediente por tag: `ItemToItemRecipe` aceita um item só.
+- Regras de inserção dos slots (`containsRecipe`, saída só interna) e limites de taxa.
+- Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto.
+- NBT, `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
+- Sem rastro ainda: `recheckAllErrors` com jogador olhando, `NOT_ENOUGH_ENERGY_REDUCED_RATE` e `setRecipeUsed`.
+- `sim` tem um bloco e o sinal ao lado: faltam vizinhos e chunks.
+
+**Comportamento do original que parece bug e fica.** Limpar os erros deixa `pausedForErrors` em `true`, porque o conjunto vazio não
+contém `NOT_ENOUGH_ENERGY_REDUCED_RATE`. Com a máquina sem sinal no modo HIGH, ligar o sinal depois disso não a faz andar: só um
+listener despausa (`chamber_paused`, tick 35). PULSE também não existe na Enrichment Chamber: `supportsMode` recusa e cai em DISABLED.
+
 **Fase 2, lados coloridos.** Porte de `TileComponentConfig`, `ConfigInfo`, `DataType`, `ISlotInfo`, `TransmissionType` e
 `TileComponentEjector`: por instância, por tipo de transmissão, com as cores, salvo no NBT, `AttachedSideConfig` como padrão.
 Tela de lados, Configurator e os slots por `DataType` (`INPUT_1`, `INPUT_2`, `EXTRA`). Substitui `Sides`, `FaceSlots` e o
