@@ -63,6 +63,22 @@ bindings = [
   { name = "ticks", ty = "&mut Ticks", value = "&mut *ticks" },
   { name = "pos", ty = "BlockPos", value = "pos" },
   { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "direction", ty = "Direction", value = "direction" },
+  { name = "neighbour", ty = "BlockStateId", value = "neighbour" },
+  { name = "new", ty = "&mut Option<BlockStateId>", value = "&mut *new" },
+]
+
+[[injection]]
+id = "state_for_placement"
+hook = "state_for_placement"
+hook_version = 1
+kind = "HEAD"
+helper = "state_for_placement.rs"
+bindings = [
+  { name = "level", ty = "&GameLevel<'_>", value = "self" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "context", ty = "&PlacementContext", value = "context" },
+  { name = "answer", ty = "&mut Option<Option<BlockStateId>>", value = "&mut *answer" },
 ]
 
 [[injection]]

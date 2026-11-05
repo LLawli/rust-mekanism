@@ -55,7 +55,7 @@ serve a outros mods.
 | Lados configuráveis por máquina | Faces do Horizon são por tipo de bloco | Parte de 2.449 (`tile/component`) |
 | Ejetor | Empurra saídas conforme a configuração de lados | Parte de 2.449 (`tile/component`) |
 | Base de máquina | Progresso, operação e consumo por tick; falta o controle de redstone | 1.589 (`tile/prefab`) |
-| Redes de transporte | `connects_to` só dá a forma do cabo, não a rede | 5.172 (`lib/transmitter`, `content/network`) |
+| Redes de transporte | `connects_to` só dá a forma do cabo, não a rede. A de energia está pronta; faltam fluido, químico e item | 5.172 (`lib/transmitter`, `content/network`) |
 | Motor de multibloco | Não existe | 2.614 (`lib/multiblock`) |
 
 ### Lados configuráveis
@@ -99,6 +99,26 @@ Limites: o mesher, a física de entidades e a colisão de fluido leem `FluidStat
 na versão fixada, porque o corpo usa `?` e o retorno usa `Self`. Por isso um bloco sem block entity flui mas não mostra a
 lava, e uma entidade dentro do bloco não conta como dentro de lava. Um estado com lava posto por comando ou pela geração do
 mundo só corre quando um vizinho muda, porque só o balde agenda o fluxo.
+
+### Rede de energia
+
+Não existe objeto de rede. Um transmissor é um bloco com block entity e `ModEnergyBuffer`, e quem gera entrega nele como numa
+máquina, o que vale para qualquer mod. Quem entra na rede se declara em `data/<ns>/machinery_basis/energy/<bloco>.json`:
+`{"transmitter": true}`, ou `inputs` e `outputs` com os lados relativos ao `facing`, como `{"inputs": "all"}` ou
+`{"inputs": ["back"], "outputs": ["front"]}`. Os hooks `state_for_placement` e `update_shape` decidem as ligações por esses
+dados, no lugar da regra de tag do `PipeBlock`: qualquer um dos dois tipos liga o cabo, e só `inputs` recebe da rede. As faces
+do `ModEnergyBuffer` continuam absolutas e por tipo de bloco, então quem usa o Horizon direto, sem a lib, não vê essa regra. O transmissor com energia percorre as ligações (as propriedades de lado do bloco),
+pergunta quanto cada consumidor aceita e divide como o `SplitInfo` do Mekanism: quem pede menos leva o que pediu, e o resto da
+divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de graça, e um transmissor vazio só custa o tick.
+
+| Medida, perfil `performance` | Tempo |
+|---|---|
+| Travessia de 4 cabos | 6 a 17 µs |
+| Travessia de 1.004 cabos, ligados nas seis faces | 1 a 3 ms |
+| A mesma rede com a travessia guardada, por tick | Cerca de 2 µs, e 1 a 3 ms a cada 20 ticks |
+
+Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
+uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
 ## Fora da lib
 
@@ -159,6 +179,7 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
 | Máquina de progresso em mundo, com o Metallurgic Infuser | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
 | Máquina só de itens em mundo, com receitas de tipo próprio e de fornalha | Enrichment Chamber, Crusher e Energized Smelter usam a mesma `run_machine`, sem tanque |
+| Rede de energia em mundo | Um gerador alimenta três máquinas; a divisão escassa fica igual; cortar pausa, religar volta em menos de um segundo |
 | Recursos, tags e conversões em mundo | 8 recursos lidos; carvão vira 10 mB de carbono a 1 item por tick; a redstone não converte com ferro na entrada, porque nenhuma receita junta os dois |
 | Hoppers por face em mundo | Topo, esquerda e frente entregam na entrada; pedra, sem receita, fica no hopper; hopper na direita não entrega |
 | Lava dentro do bloco, em mundo | Balde com shift enche, a lava corre com níveis 2, 4 e 6 pelas quatro laterais e nada sai pela base; balde vazio tira e ela recua; parede removida com a lava parada abre o fluxo; quebrar com picareta deixa `lava[level=0]`; luz 15 com o bloco cercado de vidro; sem shift só abre a tela |

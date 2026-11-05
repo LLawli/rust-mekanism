@@ -3,6 +3,9 @@ fn machinery_basis_update_shape(
     ticks: &mut Ticks,
     pos: BlockPos,
     state: BlockStateId,
+    direction: Direction,
+    neighbour: BlockStateId,
+    new: &mut Option<BlockStateId>,
 ) {
-    crate::game::machinery_basis::update_shape(level, ticks, pos, state);
+    crate::game::machinery_basis::update_shape(level, ticks, pos, state, direction, neighbour, new);
 }

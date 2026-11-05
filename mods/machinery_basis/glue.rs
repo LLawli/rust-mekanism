@@ -15,18 +15,20 @@ use machinery_basis_core::fluid_logged;
 use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::machine::{self, Step, Supply};
+use machinery_basis_core::network::{self, EnergyBlocks, Link};
 use machinery_basis_core::recipe::{
     Conversion, ConversionFields, MachineRecipeData, RecipeFields, ResourceInput,
 };
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{Action, FORMAT, Tank};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 const LISTENER: &str = "machinery_basis:resources";
 const TAGS_LISTENER: &str = "machinery_basis:resource_tags";
+const ENERGY_LISTENER: &str = "machinery_basis:energy";
 const HOPPER: &str = "minecraft:hopper";
 const SAVED: &str = "machinery_basis";
 const ENERGY: &str = "energy";
@@ -53,6 +55,12 @@ static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
 // Os índices de receitas por tipo. Só valem até a próxima carga de dados.
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
+// A travessia de uma rede custa 1 ms a cada mil transmissores. Guardada por um segundo, uma mudança
+// demora até isso para valer, e nada se perde: a energia só espera no transmissor.
+const NETWORK_REFRESH_TICKS: i64 = 20;
+type NetworkWalk = (i64, Arc<Vec<([i32; 3], Face)>>);
+static NETWORK_WALKS: LazyLock<Mutex<HashMap<(&'static str, [i32; 3]), NetworkWalk>>> =
+    LazyLock::new(Default::default);
 
 // A parte da tela que toda máquina tem, nas posições do inventário vanilla.
 const INVENTORY_LEFT: f32 = 7.0;
@@ -183,13 +191,72 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEn
     game.native_draw_cube(draw, LOGGED_LAVA_FROM, LOGGED_LAVA_TO, [face; 6], WHITE);
 }
 
-/// Um vizinho mudou: a lava do bloco olha de novo para onde pode correr.
+fn face_of(direction: Direction) -> Face {
+    match direction {
+        Direction::Down => Face::Down,
+        Direction::Up => Face::Up,
+        Direction::North => Face::North,
+        Direction::South => Face::South,
+        Direction::West => Face::West,
+        Direction::East => Face::East,
+    }
+}
+
+/// Se um transmissor se liga ao bloco `neighbour` pela face `face` dele.
+fn joins(level: &GameLevel<'_>, energy: &EnergyBlocks, neighbour: BlockStateId, face: Face) -> bool {
+    level.registry.state(neighbour).is_some_and(|state| {
+        let facing = state.properties.get("facing");
+        let front = facing.and_then(|facing| Face::from_property(facing));
+        energy.joins(&state.name, front.unwrap_or(Face::North), face)
+    })
+}
+
+fn with_side(level: &GameLevel<'_>, state: BlockStateId, side: Face, joined: bool) -> BlockStateId {
+    let value = if joined { "true" } else { "false" };
+    level.native_state_with_property(state, side.name(), value).unwrap_or(state)
+}
+
+fn is_transmitter_state(level: &GameLevel<'_>, energy: &EnergyBlocks, state: BlockStateId) -> bool {
+    level.native_state_block(state).is_some_and(|block| energy.is_transmitter(block))
+}
+
+/// O transmissor sendo colocado: cada lado se liga só ao que troca energia por aquela face.
+pub(in crate::game) fn state_for_placement(
+    level: &GameLevel<'_>,
+    state: BlockStateId,
+    pos: BlockPos,
+    answer: &mut Option<Option<BlockStateId>>,
+) {
+    let energy = network::current();
+    if !is_transmitter_state(level, &energy, state) {
+        return;
+    }
+    let placed = Face::ALL.iter().fold(state, |placed, &side| {
+        let [x, y, z] = neighbour([pos.x, pos.y, pos.z], side);
+        let joined = joins(level, &energy, level.world.block(x, y, z), side.opposite());
+        with_side(level, placed, side, joined)
+    });
+    *answer = Some(Some(placed));
+}
+
+/// Um vizinho mudou: o transmissor refaz a ligação daquele lado, e a lava do bloco olha de novo
+/// para onde pode correr.
 pub(in crate::game) fn update_shape(
     level: &GameLevel<'_>,
     ticks: &mut Ticks,
     pos: BlockPos,
     state: BlockStateId,
+    direction: Direction,
+    around: BlockStateId,
+    new: &mut Option<BlockStateId>,
 ) {
+    let energy = network::current();
+    if is_transmitter_state(level, &energy, state) {
+        let side = face_of(direction);
+        let joined = joins(level, &energy, around, side.opposite());
+        *new = Some(with_side(level, state, side, joined));
+        return;
+    }
     let logged = level.registry.state(state).is_some_and(|s| {
         s.properties.get(fluid_logged::PROPERTY).map(String::as_str) == Some(fluid_logged::LAVA)
     });
@@ -201,6 +268,7 @@ pub(in crate::game) fn update_shape(
 pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener>) {
     listeners.push(NativeReloadListener::json(LISTENER, resource::DATA_FOLDER));
     listeners.push(NativeReloadListener::json(TAGS_LISTENER, resource::TAGS_FOLDER));
+    listeners.push(NativeReloadListener::json(ENERGY_LISTENER, network::ENERGY_FOLDER));
 }
 
 pub(in crate::game) fn reload_apply(
@@ -209,6 +277,10 @@ pub(in crate::game) fn reload_apply(
 ) {
     if listener.id == TAGS_LISTENER {
         resource::set_current_tags(Tags::load(files));
+        return;
+    }
+    if listener.id == ENERGY_LISTENER {
+        network::set_current(EnergyBlocks::load(files));
         return;
     }
     if listener.id != LISTENER {
@@ -226,6 +298,7 @@ pub(in crate::game) fn reload_apply(
 pub(in crate::game) fn data_loaded() {
     MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner()).clear();
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> Vec<MachineRecipe> {
@@ -580,23 +653,27 @@ fn save_cooldowns(entity: &mut ModBlockEntity, values: Vec<i32>) {
     entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
 }
 
-/// Empurra a energia do bloco em tick para os vizinhos das faces de saída. O bloco em tick está
-/// fora do mundo, então lê e grava o próprio NBT em vez de usar `native_move_energy`.
+/// Empurra a energia do bloco em tick pelas faces de saída que ele declarou, para os vizinhos que
+/// aceitam por aquela face. O bloco em tick está fora do mundo, então lê e grava o próprio NBT em
+/// vez de usar `native_move_energy`.
 pub(in crate::game) fn distribute_energy(
     game: &mut Game<'_>,
     pos: [i32; 3],
     entity: &mut ModBlockEntity,
-    sides: &Sides,
 ) -> i32 {
+    let energy = network::current();
+    let sides = energy.sides(&entity.id, front(game, pos));
     let start = stored_energy(entity);
     let mut stored = start;
     for face in Face::ALL {
         if stored == 0 {
             break;
         }
-        if sides.gives_output(face) {
+        let at = neighbour(pos, face);
+        let block = game.native_block(at);
+        if sides.gives_output(face) && energy.receives(&block, front(game, at), face.opposite()) {
             let reached = direction(face.opposite());
-            stored -= game.native_energy_insert(neighbour(pos, face), reached, stored, false);
+            stored -= game.native_energy_insert(at, reached, stored, false);
         }
     }
     set_stored_energy(entity, stored);
@@ -719,6 +796,66 @@ pub(in crate::game) fn tick_hoppers(
         values[face as usize] = i32::from(cooldown.ticks);
     }
     save_cooldowns(entity, values);
+}
+
+/// O que cada lado do transmissor em `pos` alcança. Uma saída de outro bloco liga o cabo, mas não
+/// é consumidor: a rede só entrega por uma face de entrada.
+fn links(game: &Game<'_>, pos: [i32; 3], energy: &EnergyBlocks) -> [Option<Link>; 6] {
+    Face::ALL.map(|face| {
+        if game.native_block_property(pos, face.name()).as_deref() != Some("true") {
+            return None;
+        }
+        let at = neighbour(pos, face);
+        let block = game.native_block(at);
+        if energy.is_transmitter(&block) {
+            Some(Link::Transmitter)
+        } else {
+            energy.receives(&block, front(game, at), face.opposite()).then_some(Link::Acceptor)
+        }
+    })
+}
+
+/// Quem a rede alcança a partir de `pos`, numa travessia guardada por `NETWORK_REFRESH_TICKS`.
+fn network_acceptors(game: &Game<'_>, pos: [i32; 3]) -> Arc<Vec<([i32; 3], Face)>> {
+    let now = game.world.game_time;
+    let key = (game.native_dimension(), pos);
+    let mut walks = NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((expires, acceptors)) = walks.get(&key)
+        && now < *expires
+    {
+        return acceptors.clone();
+    }
+    walks.retain(|_, (expires, _)| now < *expires);
+    let energy = network::current();
+    let acceptors = Arc::new(network::acceptors(pos, |at| links(game, at, &energy)));
+    walks.insert(key, (now + NETWORK_REFRESH_TICKS, acceptors.clone()));
+    acceptors
+}
+
+/// Um tick de um transmissor de energia: o que ele guarda vai para os consumidores que a rede
+/// alcança, divididos por igual. As ligações são as propriedades de lado do bloco.
+pub(in crate::game) fn transmit_energy(
+    game: &mut Game<'_>,
+    pos: [i32; 3],
+    entity: &mut ModBlockEntity,
+) {
+    let stored = stored_energy(entity);
+    if stored == 0 {
+        return;
+    }
+    let acceptors = network_acceptors(game, pos);
+    let wanted: Vec<i32> = acceptors
+        .iter()
+        .map(|&(at, face)| game.native_energy_insert(at, direction(face), stored, true))
+        .collect();
+    let shares = network::split_fairly(stored, &wanted);
+    let mut sent = 0;
+    for (&(at, face), share) in acceptors.iter().zip(shares) {
+        if share > 0 {
+            sent += game.native_energy_insert(at, direction(face), share, false);
+        }
+    }
+    set_stored_energy(entity, stored - sent);
 }
 
 /// O push: entrega os itens de saída a qualquer inventário vizinho que os aceite, pelas faces de

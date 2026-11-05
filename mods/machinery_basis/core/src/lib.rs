@@ -4,6 +4,7 @@ pub mod fluid_logged;
 pub mod heat;
 pub mod hopper;
 pub mod machine;
+pub mod network;
 pub mod recipe;
 pub mod resource;
 pub mod sides;

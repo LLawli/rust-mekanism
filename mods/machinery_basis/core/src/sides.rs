@@ -61,6 +61,18 @@ impl Face {
         }
     }
 
+    /// O nome da face, como as propriedades de um bloco a escrevem.
+    pub fn name(self) -> &'static str {
+        match self {
+            Face::Down => "down",
+            Face::Up => "up",
+            Face::North => "north",
+            Face::South => "south",
+            Face::West => "west",
+            Face::East => "east",
+        }
+    }
+
     /// O valor da propriedade `facing` de um bloco vanilla.
     pub fn from_property(value: &str) -> Option<Face> {
         match value {
@@ -144,6 +156,9 @@ mod tests {
     #[test]
     fn unknown_property_is_no_face() {
         assert_eq!(Face::from_property("down"), Some(Face::Down));
+        for face in Face::ALL {
+            assert_eq!(Face::from_property(face.name()), Some(face));
+        }
         assert_eq!(Face::from_property("sideways"), None);
     }
 }
