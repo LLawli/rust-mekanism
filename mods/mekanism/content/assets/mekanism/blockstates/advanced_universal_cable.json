@@ -1,0 +1,62 @@
+{
+ "multipart": [
+  {
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_center"
+   }
+  },
+  {
+   "when": {
+    "north": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side"
+   }
+  },
+  {
+   "when": {
+    "east": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side",
+    "y": 90
+   }
+  },
+  {
+   "when": {
+    "south": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side",
+    "y": 180
+   }
+  },
+  {
+   "when": {
+    "west": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side",
+    "y": 270
+   }
+  },
+  {
+   "when": {
+    "up": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side",
+    "x": 270
+   }
+  },
+  {
+   "when": {
+    "down": "true"
+   },
+   "apply": {
+    "model": "mekanism:block/universal_cable/advanced_side",
+    "x": 90
+   }
+  }
+ ]
+}

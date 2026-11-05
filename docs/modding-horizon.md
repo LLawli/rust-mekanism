@@ -355,6 +355,9 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
 - O cliente só tem a block entity se o servidor mandar uma cópia, por `block_entity_update_tag`.
 - `native_menu_slot_rules` roda em `horizon_client::menu`, fora de `crate::game`: o helper não alcança um `[[module]]` do mod.
 - `horizon-ctl open` separa os argumentos por espaço: um mundo com espaço no nome se abre pela tela, com `click <id da linha>`.
+- Um mod de conteúdo só pode ter arquivos no próprio namespace, em `data/minecraft/tags/` e em `data/c/tags/`. Um arquivo fora
+  disso recusa o mod inteiro, sem erro na tela: os blocos dele viram ar no mundo, e o motivo só aparece em `logs/latest.log`
+  (`content not loaded`). Uma tag pode citar id de outro mod: uma entrada sem dono é ignorada.
 - `/data get block X Y Z` mostra o NBT de uma block entity de mod, bom para conferir o estado num teste.
 - Cancelar `right_click_block` não cancela o uso do item, que chega depois como outro evento: para um item agir no bloco,
   use `use_item_on`. Se o item trocar na mão, o uso seguinte ainda vê o item novo em `use_item`.

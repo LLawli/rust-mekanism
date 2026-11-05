@@ -124,6 +124,10 @@ fn is_machine(block: &str) -> bool {
     is_infuser(block) || electric_machine(block).is_some()
 }
 
+fn is_cable(block: &str) -> bool {
+    rules::cable_capacity(block).is_some()
+}
+
 fn inside(rect: [f32; 4], at: [f32; 2]) -> bool {
     let [x, y, w, h] = rect;
     (x..x + w).contains(&at[0]) && (y..y + h).contains(&at[1])
@@ -135,18 +139,27 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 }
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
-    if is_machine(block) && entity.is_none() {
+    if (is_machine(block) || is_cable(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
-    if is_machine(block) {
+    if is_machine(block) || is_cable(block) {
         *ticks = true;
     }
 }
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
+    if let Some(capacity) = rules::cable_capacity(block) {
+        *energy = Some(ModEnergyBuffer {
+            capacity,
+            max_insert: capacity,
+            insert_faces: [true; 6],
+            ..Default::default()
+        });
+        return;
+    }
     let usage = match electric_machine(block) {
         Some(electric) => electric.machine.energy_per_tick,
         None if is_infuser(block) => rules::INFUSER_USAGE,
@@ -258,7 +271,9 @@ fn tick_electric(
 }
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
-    if is_infuser(&entity.id) {
+    if is_cable(&entity.id) {
+        basis::transmit_energy(game, pos, entity);
+    } else if is_infuser(&entity.id) {
         tick_infuser(game, pos, entity);
     } else if let Some(electric) = electric_machine(&entity.id) {
         tick_electric(game, pos, entity, electric);

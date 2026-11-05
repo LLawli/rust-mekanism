@@ -28,6 +28,14 @@ pub const ENRICHING: &str = "mekanism:enriching";
 pub const CRUSHING: &str = "mekanism:crushing";
 pub const SMELTING: &str = "smelting";
 
+/// `CableTier`: o id de cada cabo e quanto ele guarda.
+pub const UNIVERSAL_CABLES: [(&str, i32); 4] = [
+    ("mekanism:basic_universal_cable", 8_000),
+    ("mekanism:advanced_universal_cable", 128_000),
+    ("mekanism:elite_universal_cable", 1_024_000),
+    ("mekanism:ultimate_universal_cable", 8_192_000),
+];
+
 /// `BASE_TICKS_REQUIRED`, `MAX_INFUSE` e os padrões de `UsageConfig`.
 pub const TICKS_REQUIRED: u32 = 200;
 pub const TANK_CAPACITY: u64 = 1_000;
@@ -57,6 +65,12 @@ pub const ELECTRIC_SLOTS: usize = 3;
 const INPUT_SLOTS: &[usize] = &[INPUT_SLOT];
 const INFUSION_SLOTS: &[usize] = &[INFUSION_SLOT];
 const ELECTRIC_INPUT_SLOTS: &[usize] = &[ELECTRIC_INPUT_SLOT];
+
+/// Quanto o cabo guarda, se o bloco for um cabo.
+pub fn cable_capacity(block: &str) -> Option<i32> {
+    let cable = UNIVERSAL_CABLES.iter().find(|(id, _)| *id == block);
+    cable.map(|&(_, capacity)| capacity)
+}
 
 /// `LightConfigInfo.EXTRA_MACHINE`: a direita é saída, a base é o slot extra, as costas são o slot
 /// de energia e o resto é entrada. O slot de energia ainda não aceita nada.
@@ -148,6 +162,19 @@ mod tests {
                 .inputs
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn each_cable_tier_has_its_capacity() {
+        assert_eq!(
+            cable_capacity("mekanism:basic_universal_cable"),
+            Some(8_000)
+        );
+        assert_eq!(
+            cable_capacity("mekanism:ultimate_universal_cable"),
+            Some(8_192_000)
+        );
+        assert_eq!(cable_capacity(INFUSER), None);
     }
 
     #[test]

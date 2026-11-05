@@ -42,5 +42,9 @@
   "block.mekanism.crusher": "Crusher",
   "container.mekanism.crusher": "Crusher",
   "block.mekanism.energized_smelter": "Energized Smelter",
-  "container.mekanism.energized_smelter": "Energized Smelter"
+  "container.mekanism.energized_smelter": "Energized Smelter",
+  "block.mekanism.basic_universal_cable": "Basic Universal Cable",
+  "block.mekanism.advanced_universal_cable": "Advanced Universal Cable",
+  "block.mekanism.elite_universal_cable": "Elite Universal Cable",
+  "block.mekanism.ultimate_universal_cable": "Ultimate Universal Cable"
 }
