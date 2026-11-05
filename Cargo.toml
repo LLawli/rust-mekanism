@@ -1,0 +1,4 @@
+# Só para testes e lint locais: os mods são compilados pelo launcher, dentro do jogo.
+[workspace]
+resolver = "3"
+members = ["mods/machinery_basis/core", "mods/mekanismgenerators"]

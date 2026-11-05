@@ -340,6 +340,21 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
 - Dedicated server exige export próprio (`--server-output`), e mods nativos ainda não entram na checagem de mods ao
   conectar.
 - Mods de conteúdo são lidos só ao iniciar o jogo: depois de editar, reinicie.
+- Features de mod vão em `worldgen/configured_feature/`, embora o vanilla 26.3 use `worldgen/feature/`. Na pasta errada, o
+  `build` passa e o log só diz "placed features cannot run".
+- As tags `c:` (`#c:ingots/iron`) não existem no vanilla: o mod que as usa em receitas precisa declará-las.
+- Com `own_background`, a tela desenha também as molduras do inventário do jogador.
+- Um bloco com modelo menor que um cubo precisa de `occludes: false`, senão as faces dos vizinhos somem.
+- O alvo de uma injeção usa o nome do crate alvo: `mod_content` e o resto de `client_lib.rs` são `horizon_client_lib::`, não
+  `horizon_client::`, embora os helpers importem por `horizon_client::`.
+- `?` no corpo do alvo barra `OVERWRITE`, `RETURN` e as injeções que reescrevem o corpo, e `Self` no retorno barra HEAD
+  cancelável. `FluidState::from_block` tem os dois, então só dá para mudar o que ele devolve nas tabelas que vêm depois.
+- Uma injeção que muda as tabelas de conteúdo não vale até apagar `.horizon-cache/mod-content`, `behaviours-v2.bin` e
+  `registry-v1.bin`: o cache não sabe que o código do mod mudou.
+- `native_draw_cube` usa unidades de modelo, de 0 a 16.
+- O cliente só tem a block entity se o servidor mandar uma cópia, por `block_entity_update_tag`.
+- Cancelar `right_click_block` não cancela o uso do item, que chega depois como outro evento: para um item agir no bloco,
+  use `use_item_on`. Se o item trocar na mão, o uso seguinte ainda vê o item novo em `use_item`.
 - `native-build` recusa versão não preparada antes de resolver dependências ou compilar. O `prepare` precisa de uma
   instalação do Minecraft 26.3 ou de uma conta Microsoft que tenha o jogo.
 

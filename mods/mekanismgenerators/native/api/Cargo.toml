@@ -1,0 +1,9 @@
+[package]
+name = "mod-mekanismgenerators_native"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+horizon-client = { git = "https://github.com/horizon-rust/horizon", rev = "f319701e8c9ab657ff562250b3ba07b2d654e3bc" }

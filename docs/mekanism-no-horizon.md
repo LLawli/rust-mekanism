@@ -61,6 +61,24 @@ slots.
 `[api]`. Seguir o padrão do Deepbore: helpers mínimos, `glue.rs` com os tipos do jogo e regras puras testáveis. A lógica
 pesada pode ir para um `[[crate]]`, que compila uma vez só.
 
+## Heat Generator: estado atual
+
+Segue a simulação de calor oficial (`TileEntityHeatGenerator`). A curva bate com a referência tirada do Java, e os valores
+são os padrões do código atual: tanque de 1.000 mB, 100 mB por tick, buffer de 240.
+
+Funciona em mundo: modelo, forma real de colisão, receita, combustíveis de fornalha (viram lava pela proporção do tempo de
+queima), geração passiva por lados com lava, lava dentro do bloco com shift + balde, que corre pelas laterais como lava
+real, energia pela frente, hoppers e tela.
+
+Ainda difere do original em:
+
+- temperatura do bioma sem o ajuste por altura;
+- lava dentro do bloco desenhada pela block entity, e uma entidade ali dentro não conta como dentro de lava (limites em
+  [machinery-basis.md](machinery-basis.md#fluido-dentro-do-bloco));
+- sem slot de energia funcional, transferência de calor pela face de baixo, som, partículas, abas e tooltips da tela;
+- tela sem os sprites finais do Mekanism e sem o ícone de raio;
+- lava num tanque da lib: não recebe de cano de fluido.
+
 ## Licença e créditos
 
 O Mekanism é MIT (Copyright 2017-2025 Aidan C. Brady), o que permite o port e cumpre a política do registro, desde que:
@@ -82,6 +100,10 @@ Tomadas em 2026-11-05:
 3. **Licença:** MIT, com os avisos do original em `THIRD_PARTY_NOTICES.md`.
 4. **Fidelidade:** versão simplificada no começo, com paridade exata como meta. Cada simplificação fica registrada como
    diferença conhecida, para não virar comportamento definitivo.
+
+5. **Valores de jogo:** sempre os padrões da versão mais nova do Mekanism, a branch 26.3. A wiki e os valores que muita
+   gente lembra (200 J/t, tanque de 24 baldes, 10 mB/t) são da 1.21.x e anteriores. A 1.21.11 reescalou energia e queima de
+   todo o mod, então misturar as duas versões desequilibra o jogo.
 
 ## Lib compartilhada
 

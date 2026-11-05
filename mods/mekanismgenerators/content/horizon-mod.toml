@@ -1,0 +1,8 @@
+id = "mekanismgenerators"
+name = "Mekanism Generators"
+version = "0.1.0"
+description = "Port não oficial do Mekanism Generators para o Horizon. Precisa do mod Mekanism."
+authors = ["Aidan C. Brady e colaboradores do Mekanism", "Leonardo Lucas de Castro Filho"]
+api = "0.2"
+side = "both"
+capabilities = ["registries"]

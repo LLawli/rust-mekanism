@@ -11,3 +11,6 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Recursos tipados declarados por dados e tanques da `machinery_basis`.
 - Bundle da `machinery_basis`: tanques salvos no NBT, registro de recursos, distribuição de energia, regra de hoppers e
   ejetor de itens.
+- Heat Generator jogável, com tela, e minério de ósmio gerado no mundo.
+- Lava dentro do bloco na `machinery_basis`: um bloco com a propriedade `fluid_logged` recebe lava com shift + balde, e ela
+  corre como lava real, ilumina e fica no lugar quando o bloco quebra.
