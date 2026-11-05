@@ -11,15 +11,16 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
-use machinery_basis_core::sides::{Face, Sides};
+use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{Action, Tank};
+use machinery_basis_core::units::format_energy;
 
 const FUEL_SLOT: usize = 0;
 const SLOTS: usize = 2;
+const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
 const NETHER: &str = "minecraft:the_nether";
 const LAVA_BLOCK: &str = "minecraft:lava";
-const ENERGY_KEY: &str = "energy";
 const HEAT_KEY: &str = "heat";
 
 // Os data slots da tela.
@@ -32,17 +33,15 @@ const DATA_SLOTS: usize = 6;
 // A tela, nas posições de GuiHeatGenerator.
 const WIDTH: f32 = 176.0;
 const HEIGHT: f32 = 166.0;
-const BASE: &str = "mekanism:gui/sprites/base";
 const SLOT: &str = "mekanism:gui/sprites/slot/normal";
-const BASE_SIZE: f32 = 16.0;
-const BASE_BORDER: f32 = 4.0;
+const PANEL: basis::PanelStyle = basis::PanelStyle {
+    base: "mekanism:gui/sprites/base",
+    base_size: 16.0,
+    base_border: 4.0,
+    slot: SLOT,
+};
 const SLOT_SIZE: f32 = 18.0;
 const SLOT_POSITIONS: [[f32; 2]; SLOTS] = [[17.0, 35.0], [143.0, 35.0]];
-const INVENTORY_LEFT: f32 = 7.0;
-const INVENTORY_TOP: f32 = 83.0;
-const HOTBAR_GAP: f32 = 4.0;
-const INVENTORY_COLUMNS: usize = 9;
-const INVENTORY_ROWS: usize = 3;
 const FUEL_BAR: [f32; 4] = [6.0, 15.0, 6.0, 54.0];
 const ENERGY_BAR: [f32; 4] = [164.0, 15.0, 6.0, 54.0];
 const INFO_PANEL: [f32; 4] = [48.0, 23.0, 80.0, 40.0];
@@ -53,7 +52,6 @@ const INFO_BACKGROUND: u32 = 0xFF_00_00_00;
 const INFO_TEXT: u32 = 0x3C_FE_5A;
 const FUEL_COLOR: u32 = 0xFF_C8_8A_1E;
 const ENERGY_COLOR: u32 = 0xFF_1E_B4_32;
-const LABEL_COLOR: u32 = 0x40_40_40;
 
 fn is_generator(block: &str) -> bool {
     block == rules::HEAT_GENERATOR
@@ -169,12 +167,6 @@ pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<Comp
     }
 }
 
-fn front(game: &Game<'_>, pos: [i32; 3]) -> Face {
-    game.native_block_property(pos, "facing")
-        .and_then(|facing| Face::from_property(&facing))
-        .unwrap_or(Face::North)
-}
-
 /// Combustível entra por todas as faces menos a direita, e o balde vazio sai por baixo.
 fn sides(front: Face) -> Sides {
     let mut sides = Sides {
@@ -184,13 +176,6 @@ fn sides(front: Face) -> Sides {
     sides.input[front.right_of() as usize] = false;
     sides.output[Face::Down as usize] = true;
     sides
-}
-
-fn stored_energy(entity: &ModBlockEntity) -> i32 {
-    match entity.nbt.get(&JavaString::from(ENERGY_KEY)) {
-        Some(Tag::Int(stored)) => *stored,
-        _ => 0,
-    }
 }
 
 fn load_heat(entity: &ModBlockEntity, ambient: f64) -> Capacitor {
@@ -216,15 +201,15 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         ambient,
     };
     let mut heat = load_heat(entity, ambient);
-    let stored = stored_energy(entity);
+    let stored = basis::stored_energy(entity);
     let full = stored >= rules::ENERGY_CAPACITY;
     let produced = rules::tick(&mut heat, &around, tank.amount(), full);
     tank.extract(produced.lava_used, Action::Execute);
     let filled = (stored + produced.energy).min(rules::ENERGY_CAPACITY);
-    entity.nbt.insert(JavaString::from(ENERGY_KEY), Tag::Int(filled));
+    basis::set_stored_energy(entity, filled);
     entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(heat.heat.to_bits()));
 
-    let front = front(game, pos);
+    let front = basis::front(game, pos);
     let sides = sides(front);
     let mut energy_sides = Sides::default();
     energy_sides.output[front as usize] = true;
@@ -233,13 +218,17 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let empty_bucket = entity.items[FUEL_SLOT]
         .as_ref()
         .is_some_and(|stack| &*stack.item == EMPTY_BUCKET);
-    let outputs: &[usize] = if empty_bucket { &[FUEL_SLOT] } else { &[] };
-    basis::tick_hoppers(game, pos, entity, &sides, &[FUEL_SLOT], outputs, &is_fuel);
+    let slots = FaceSlots {
+        inputs: FUEL_SLOTS,
+        outputs: if empty_bucket { FUEL_SLOTS } else { &[] },
+    };
+    let accepts = |game: &Game<'_>, _: usize, stack: &ItemStack| is_fuel(game, stack);
+    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots, &accepts);
     let lit = if produced.active { "true" } else { "false" };
     game.native_set_block_property(pos, "lit", lit);
 
     let mut data = vec![0; DATA_SLOTS];
-    let energy = data_slots::split(stored_energy(entity) as u32);
+    let energy = data_slots::split(basis::stored_energy(entity) as u32);
     data[DATA_ENERGY] = energy[0];
     data[DATA_ENERGY + 1] = energy[1];
     data[DATA_LAVA] = tank.amount() as i32;
@@ -265,20 +254,12 @@ pub(in crate::game) fn screen_draw(
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
     let get = |i: usize| data.get(i).copied().unwrap_or(0);
 
-    basis::nine_slice(game, batch, BASE, BASE_SIZE, BASE_BORDER, [x, y, WIDTH, HEIGHT]);
+    let title = lang::get("container.mekanismgenerators.heat_generator");
+    basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
     for (i, [slot_x, slot_y]) in SLOT_POSITIONS.into_iter().enumerate() {
         let sprite = if i == FUEL_SLOT { SLOT } else { ENERGY_SLOT_FRAME };
         let dst = [x + slot_x, y + slot_y, SLOT_SIZE, SLOT_SIZE];
         game.native_sprite(batch, sprite, [0.0, 0.0, SLOT_SIZE, SLOT_SIZE], dst);
-    }
-    for row in 0..=INVENTORY_ROWS {
-        let gap = if row == INVENTORY_ROWS { HOTBAR_GAP } else { 0.0 };
-        let slot_y = y + INVENTORY_TOP + row as f32 * SLOT_SIZE + gap;
-        for column in 0..INVENTORY_COLUMNS {
-            let slot_x = x + INVENTORY_LEFT + column as f32 * SLOT_SIZE;
-            let dst = [slot_x, slot_y, SLOT_SIZE, SLOT_SIZE];
-            game.native_sprite(batch, SLOT, [0.0, 0.0, SLOT_SIZE, SLOT_SIZE], dst);
-        }
     }
     let lava = get(DATA_LAVA);
     let fuel = lava as f32 / rules::TANK_CAPACITY as f32;
@@ -288,9 +269,9 @@ pub(in crate::game) fn screen_draw(
     basis::gauge(game, batch, at(ENERGY_BAR), fill, ENERGY_COLOR);
     game.native_fill(batch, at(INFO_PANEL), INFO_BACKGROUND);
     let lines = [
-        rules::format_energy(energy),
+        format_energy(energy),
         format!("Fuel: {lava} mB"),
-        format!("Out: {}/t", rules::format_energy(get(DATA_PRODUCTION) as u32)),
+        format!("Out: {}/t", format_energy(get(DATA_PRODUCTION) as u32)),
         format!("{} K", data_slots::join(get(DATA_TEMPERATURE), get(DATA_TEMPERATURE + 1))),
     ];
     let [panel_x, panel_y, _, _] = at(INFO_PANEL);
@@ -298,8 +279,4 @@ pub(in crate::game) fn screen_draw(
         let line_y = panel_y + INFO_PADDING + i as f32 * INFO_LINE_HEIGHT;
         game.native_text(batch, line, [panel_x + INFO_PADDING, line_y], INFO_TEXT, false);
     }
-
-    let title = lang::get("container.mekanismgenerators.heat_generator");
-    let title_x = x + (WIDTH - game.native_text_width(&title)) / 2.0;
-    game.native_text(batch, &title, [title_x, y + 6.0], LABEL_COLOR, false);
 }
