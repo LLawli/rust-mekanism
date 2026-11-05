@@ -1,0 +1,5 @@
+#!/bin/sh
+# Compila e abre o Mekanism do commit de referência, com os mods que o `runClient` carrega.
+set -eu
+cd "$FONTE"
+exec ./gradlew --no-daemon runClient "$@"

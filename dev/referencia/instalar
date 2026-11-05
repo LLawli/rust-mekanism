@@ -1,0 +1,17 @@
+#!/bin/sh
+# Instala no host do jogo. Precisa da imagem do Horizon, e reaproveita os scripts dele.
+# Uso: ./instalar <pasta do repositório do Mekanism, no commit de referência>
+set -eu
+aqui=$(dirname "$(readlink -f "$0")")
+horizon="$aqui/../horizon"
+opt="$HOME/.local/opt/mekanism-ref"
+dados="$HOME/.local/share/jogo-isolado/mekanism-ref"
+mkdir -p "$opt" "$HOME/.local/bin" "$dados/tmp" "$dados/somente-leitura"
+cp "$aqui/Dockerfile" "$aqui/jogo.conf" "$aqui/jogar" "$opt/"
+cp "$horizon/wl-sandbox" "$horizon/idle-watch" "$horizon/firewall" "$horizon/pulse.conf" "$opt/"
+sed 's#/.local/opt/horizon#/.local/opt/mekanism-ref#' "$horizon/horizon" >"$HOME/.local/bin/mekanism-ref"
+chmod +x "$HOME/.local/bin/mekanism-ref"
+docker build -t jogo-mekanism-ref:latest "$opt"
+if [ -n "${1:-}" ] && [ ! -d "$dados/src" ]; then
+    cp -a "$1" "$dados/src"
+fi

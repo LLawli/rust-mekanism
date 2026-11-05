@@ -14,7 +14,10 @@ ponto de partida, não entrega. Cada fase refaz sua parte a partir do Java.
 4. **Otimizações do original são portadas**, não trocadas por outras. Nada de cache por tempo.
 5. **Bloqueio do Horizon:** tente injeção no jogo; se não der, registre na tabela abaixo e pergunte ao usuário.
 6. **"Igual ao original" só se diz depois de comparar.** Modelo, textura e som: o mesmo arquivo, carregado do mesmo jeito.
-7. **Em mundo:** superplano, peças colocadas como jogador (`place`, não `setblock`), prints e vídeo no WhatsApp por etapa.
+7. **Testes sem o jogo primeiro:** a lógica roda num mundo simulado, tick a tick, comparando estados, sem ninguém interagir.
+   Cenários como rede com cabos quebrados, chunks saindo, fusão de redes e receitas pausando devem caber aí.
+8. **Em mundo, só o que falta:** visual, som e a integração com o Horizon. Superplano, peças colocadas como jogador (`place`,
+   não `setblock`), prints e vídeo no WhatsApp por etapa.
 
 Onde o código fica segue a regra do `CLAUDE.md`: mecânica reaproveitável vai para a `machinery_basis`, sem nada exclusivo do
 Mekanism.
@@ -41,6 +44,13 @@ Sem código de jogo. O resultado preenche a tabela e decide o caminho das fases 
 | Tooltip de item e do bloco, com shift para detalhes | `ItemBlockTooltip`, `DETAILS` | `tooltip`, `tooltip_component` |
 | Tela com abas, botões e sub-janelas | Abas de energia, redstone, segurança, upgrades e configuração | `screen_*`, `native_screen` |
 | Rodar o Mekanism real em NeoForge 26.3 para comparar | Referência de comportamento lado a lado | Perguntar ao usuário: precisa de cliente Java e conta |
+
+## Referência e simulador
+
+O Mekanism original compilado do commit de referência fica no desktop: `dev/referencia/README.md`. A Fase 1 começa criando na
+`machinery_basis` um mundo simulado para testes, com blocos, block entities, ticks e chunks falsos atrás das mesmas regras que
+o jogo chama. Onde der, gere as sequências esperadas do próprio Java: o Mekanism tem `gameTestServer`, que roda sem ninguém
+interagir e pode produzir o estado tick a tick de um cenário, para o teste em Rust comparar.
 
 ## Fases
 
