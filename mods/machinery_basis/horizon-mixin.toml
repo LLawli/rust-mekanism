@@ -19,6 +19,12 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_basis"
 source = "glue.rs"
 
+[[module]]
+id = "slot-accepts"
+file = "crates/horizon-client/src/game/machines/native_items.rs"
+name = "machinery_slot_accepts"
+source = "slot_accepts.rs"
+
 [[injection]]
 id = "reload-listeners"
 hook = "add_server_reload_listeners"

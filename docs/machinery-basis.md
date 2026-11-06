@@ -120,6 +120,12 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
+## Regra de slot do vizinho
+
+`slot_accepts.rs` é um módulo injetado em `game/machines/native_items.rs`, porque as regras de slot são privadas ali. Ele só lê: expõe
+`machinery_slot_accepts`, a parte de `move_in_item` que decide se o item entra, sem escrever nem mexer no cooldown do hopper. Módulo de
+mixin não aceita `//!` no topo, que conta como atributo de arquivo.
+
 ## Objetos vivos das máquinas
 
 A base de máquina é uma cópia literal do Java: `Transaction` com gerenciador por thread, contêineres (`EnergyContainer`,

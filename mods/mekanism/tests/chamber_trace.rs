@@ -1,7 +1,9 @@
 //! Repete, tick a tick, os rastros gravados da Enrichment Chamber original em `dev/referencia/rastros`.
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
-use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, VanillaContainer};
+use machinery_basis_core::item_handler::{
+    ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer,
+};
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
@@ -15,6 +17,8 @@ const MINIMUM_LINES: usize = 70;
 
 /// O baú do cenário de ejeção: 27 slots, como o `ChestBlockEntity`.
 const CHEST_SLOTS: usize = 27;
+/// `AbstractFurnaceBlockEntity.SLOT_FUEL`.
+const FURNACE_FUEL_SLOT: usize = 1;
 
 struct Chamber(ElectricMachine);
 
@@ -48,13 +52,34 @@ fn recipe(input: &str, input_count: u32, output: &str, count: u32) -> Rc<ItemToI
 struct Scene {
     world: SimWorld<Chamber>,
     chest: Rc<VanillaContainer>,
+    /// O número do primeiro slot que o lado alcança: o `1` do combustível, no forno.
+    first_slot: usize,
 }
 
 fn scene() -> Scene {
     let chest = VanillaContainer::new(CHEST_SLOTS, Rc::new(|| {}));
     let mut world = chamber();
     world.neighbours.set(Face::East, chest.clone());
-    Scene { world, chest }
+    Scene {
+        world,
+        chest,
+        first_slot: 0,
+    }
+}
+
+/// O forno pela lateral: só o slot de combustível, e só o que queima.
+fn furnace_scene() -> Scene {
+    let fuel = VanillaContainer::new(1, Rc::new(|| {}));
+    let mut world = chamber();
+    let burns = |_: usize, resource: &ItemResource| matches!(&*resource.id, "coal" | "charcoal");
+    world
+        .neighbours
+        .set(Face::East, Rc::new(RuledHandler::new(fuel.clone(), burns)));
+    Scene {
+        world,
+        chest: fuel,
+        first_slot: FURNACE_FUEL_SLOT,
+    }
 }
 
 fn chamber() -> SimWorld<Chamber> {
@@ -159,12 +184,12 @@ fn errors(machine: &ElectricMachine) -> Value {
 }
 
 /// O baú como o rastro o grava: só os slots com algo, `[índice, id, quantidade]`.
-fn chest(chest: &VanillaContainer) -> Value {
+fn chest(chest: &VanillaContainer, first_slot: usize) -> Value {
     chest
         .stacks()
         .into_iter()
         .map(|(index, resource, amount)| {
-            serde_json::json!([index, resource.id.to_string(), amount])
+            serde_json::json!([index + first_slot, resource.id.to_string(), amount])
         })
         .collect()
 }
@@ -183,7 +208,11 @@ fn replay(scenario: &str) {
         "rastro curto demais: {}",
         lines.len()
     );
-    let mut scene = scene();
+    let mut scene = if scenario == "chamber_eject_furnace" {
+        furnace_scene()
+    } else {
+        scene()
+    };
     let mut upgrades = (0, 0);
     for expected in &lines {
         scene.world.tick();
@@ -211,14 +240,16 @@ fn replay(scenario: &str) {
         });
         // Só o cenário de ejeção grava o baú.
         if expected.get("chest").is_some() {
-            actual["chest"] = chest(&scene.chest);
+            actual["chest"] = chest(&scene.chest, scene.first_slot);
         }
         // O `MEKTRACE` do jogo tem os mesmos campos dos rastros, com as marcas vazias.
         let stacks: Vec<(usize, String, u32)> = scene
             .chest
             .stacks()
             .into_iter()
-            .map(|(index, resource, amount)| (index, resource.id.to_string(), amount))
+            .map(|(index, resource, amount)| {
+                (index + scene.first_slot, resource.id.to_string(), amount)
+            })
             .collect();
         let with_chest = expected.get("chest").is_some().then_some(stacks.as_slice());
         let line = trace_line(expected["t"].as_i64().unwrap(), machine, with_chest);
@@ -271,6 +302,11 @@ fn a_paused_recipe_ignores_what_does_not_notify_it() {
 #[test]
 fn upgrades() {
     replay("chamber_upgrades");
+}
+
+#[test]
+fn the_output_only_enters_a_furnace_side_as_fuel() {
+    replay("chamber_eject_furnace");
 }
 
 #[test]

@@ -6,6 +6,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O ejetor respeita a regra de cada slot do vizinho: pela lateral, um forno só recebe combustível.
 - Base de máquina da `machinery_basis` portada do Mekanism como objetos vivos: transações
   com diários que se registram sozinhos, contêineres compartilhados, `CachedRecipe` com closures, monitor de receita, tile e
   o ejetor de itens numa transação que cobre a máquina e o baú, conferidos tick a tick com a Enrichment Chamber original.

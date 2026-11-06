@@ -25,12 +25,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.testframework.DynamicTest;
@@ -365,6 +365,39 @@ public class MachineTraceTest {
         );
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the output ejecting into a furnace, whose side only takes fuel.")
+    public static void chamberEjectFurnace(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 1, 1)
+              .fill(1, 0, 0, 1, 0, 0, MekanismBlocks.ENRICHMENT_CHAMBER.defaultState())
+              .fill(2, 0, 0, 2, 0, 0, Blocks.FURNACE.defaultBlockState()));
+        Trace trace = new Trace("chamber_eject_furnace");
+        trace.recordChest = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("eject on, output clay_ball 5");
+                  trace.ejectEast();
+                  trace.setSlot(OUTPUT, Items.CLAY_BALL, 5);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("output coal 5");
+                  trace.setSlot(OUTPUT, Items.COAL, 5);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("output charcoal 5");
+                  trace.setSlot(OUTPUT, Items.CHARCOAL, 5);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("output coal 64");
+                  trace.setSlot(OUTPUT, Items.COAL, 64);
+              })
+              .thenExecuteAfter(30, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
@@ -395,8 +428,8 @@ public class MachineTraceTest {
             return tile instanceof TileEntityEnrichmentChamber chamber ? chamber : null;
         }
 
-        ChestBlockEntity chest() {
-            return (ChestBlockEntity) helper.getLevel().getBlockEntity(helper.absolutePos(CHEST));
+        Container chest() {
+            return (Container) helper.getLevel().getBlockEntity(helper.absolutePos(CHEST));
         }
 
         void fillChest(Item item, int count) {

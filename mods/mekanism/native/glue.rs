@@ -11,7 +11,7 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
-use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, VanillaContainer};
+use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
 use machinery_basis_core::tank::Action;
@@ -525,14 +525,14 @@ fn slot_to_entity(entity: &mut ModBlockEntity, index: usize, slot: &InventorySlo
     entity.items[index] = new;
 }
 
-/// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo. O Horizon não simula inserção, então o
-/// diário guarda a cópia (um baú, primeiro slot que aceita, na ordem) e o que entrou nela vai ao vizinho de verdade, por
-/// `native_insert_item`, depois que a transação commitou. Um vizinho com regra própria de slot (forno, outra máquina, hopper)
-/// pode recusar o que a cópia aceitou: ver `ejected`.
+/// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo, com a regra real de cada slot para o item que
+/// está saindo. O Horizon não simula inserção, então o diário guarda a cópia, e o que entrou nela vai ao vizinho de verdade, por
+/// `native_insert_item`, depois que a transação commitou. O ejetor roda antes da receita: só o item da saída pode sair no tick.
 struct GameNeighbours<'a, 'g> {
     game: &'a Game<'g>,
     dimension: &'static str,
     pos: [i32; 3],
+    offered: Option<(Rc<str>, ItemStack)>,
     created: RefCell<Vec<CopiedContainer>>,
 }
 
@@ -562,7 +562,19 @@ impl ItemCapabilities for GameNeighbours<'_, '_> {
             container: container.clone(),
             original,
         });
-        Some(container)
+        let (offered, accepted) = match &self.offered {
+            Some((id, stack)) => (
+                Some(id.clone()),
+                slots
+                    .iter()
+                    .map(|slot| self.game.machinery_slot_accepts(at, slot.slot, stack, reached))
+                    .collect(),
+            ),
+            None => (None, Vec::new()),
+        };
+        Some(Rc::new(RuledHandler::new(container, move |index, resource: &ItemResource| {
+            offered.as_ref() == Some(&resource.id) && accepted.get(index).copied().unwrap_or(false)
+        })))
     }
 }
 
@@ -598,20 +610,25 @@ impl GameNeighbours<'_, '_> {
     }
 }
 
-/// Entrega ao vizinho de verdade o que o diário mandou. O que ele recusar volta ao slot de saída da `ModBlockEntity`, para
-/// nada se perder; se o slot já tem outro item, o excesso se perde e vai para o log.
+/// A pilha de um item que sai da máquina: a da receita, com dano e componentes, ou a do id.
+fn stack_of(recipes: &[basis::MachineRecipe], id: &str) -> ItemStack {
+    let template = recipes.iter().find(|recipe| *recipe.output.item == *id);
+    template.map_or_else(
+        || ItemStack {
+            item: Arc::from(id),
+            count: 1,
+            damage: 0,
+            extra: None,
+        },
+        |recipe| recipe.output.clone(),
+    )
+}
+
+/// Entrega ao vizinho de verdade o que o diário mandou. A regra de cada slot já foi perguntada e nada mudou no vizinho desde
+/// então, então ele aceita tudo. O resto, se houver, volta ao slot de saída da `ModBlockEntity`.
 fn deliver(game: &mut Game<'_>, entity: &mut ModBlockEntity, recipes: &[basis::MachineRecipe], ejected: Vec<Ejected>) {
     for sent in ejected {
-        let template = recipes.iter().find(|recipe| *recipe.output.item == *sent.id);
-        let mut stack = template.map_or_else(
-            || ItemStack {
-                item: Arc::from(&*sent.id),
-                count: 1,
-                damage: 0,
-                extra: None,
-            },
-            |recipe| recipe.output.clone(),
-        );
+        let mut stack = stack_of(recipes, &sent.id);
         stack.count = sent.count;
         let Some(rest) = game.native_insert_item(sent.at, sent.reached, stack) else {
             continue;
@@ -692,10 +709,15 @@ fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.eject_side = Some(right);
     }
 
+    let offered = live.machine.output().resource().map(|resource| {
+        let stack = stack_of(&recipes, &resource.id);
+        (resource.id, stack)
+    });
     let neighbours = GameNeighbours {
         game: &*game,
         dimension,
         pos,
+        offered,
         created: RefCell::new(Vec::new()),
     };
     let comparator_changed = live.machine.tick_server(now as u64, &neighbours);

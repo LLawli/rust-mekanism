@@ -121,12 +121,16 @@ comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui
 
 Estado em 2026-11-05: a Enrichment Chamber roda na base nova em jogo, e a fase segue aberta. As outras máquinas continuam em `machine.rs`
 e `recipe.rs`. Em `machinery_basis/core` estão `transaction`, `containers`, `operation_tracker`, `cached_recipe`, `recipe_monitor`,
-`tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 9 rastros de
+`tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 10 rastros de
 `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`. Duas rodadas dos 6 primeiros cenários deram
 arquivos idênticos.
 
 Em jogo só o cenário `chamber_energy` foi comparado estado a estado, com 342 estados iguais ao original. Ejetor, redstone e salvar e
 reabrir foram conferidos em jogo, mas sem comparar cada tick com um rastro.
+
+O Horizon não simula inserção, então o ejetor transaciona numa cópia do vizinho, e `slot_accepts.rs`, injetado em
+`game/machines/native_items.rs`, dá a regra real de cada slot, que é privada ali: é o `isValid` do `ResourceHandler`. O rastro
+`chamber_eject_furnace` confere a regra sem o jogo, e em jogo forno e baú quase cheio deram o que o original dá.
 
 Falta na Fase 1:
 
@@ -137,9 +141,7 @@ Falta na Fase 1:
 - `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
 - Comparador em jogo: falta o hook `analog_output`, sem ele nenhum comparador lê o nível. A notificação roda dentro do tick, e a Fase 0 pede
   enfileirar para `level_tick_post`.
-- Ejetor em jogo: o Horizon não simula inserção, então a transação roda numa cópia do vizinho que aceita qualquer item até o limite da
-  pilha. Vizinho com regra de slot pode recusar depois do commit: o resto volta à saída, e se ela já tiver outro item o resto se perde.
-  O original não tem esse caminho. Pede injeção ou decisão do usuário.
+- Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
 - Sem rastro ainda: `recheckAllErrors` com jogador olhando, `NOT_ENOUGH_ENERGY_REDUCED_RATE` e `setRecipeUsed`.
 - `sim` ainda não tem chunks.

@@ -49,6 +49,66 @@ pub trait ItemHandler {
     }
 }
 
+/// Se o slot aceita o item.
+type SlotRule = Box<dyn Fn(usize, &ItemResource) -> bool>;
+
+/// Um inventário com regra por slot: o `isValid` do `ResourceHandler`, como o forno, que pela lateral só aceita combustível.
+/// O limite de pilha continua com o inventário de dentro.
+pub struct RuledHandler {
+    inner: Rc<dyn ItemHandler>,
+    accepts: SlotRule,
+}
+
+impl RuledHandler {
+    pub fn new(
+        inner: Rc<dyn ItemHandler>,
+        accepts: impl Fn(usize, &ItemResource) -> bool + 'static,
+    ) -> Self {
+        Self {
+            inner,
+            accepts: Box::new(accepts),
+        }
+    }
+}
+
+impl ItemHandler for RuledHandler {
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+
+    fn resource(&self, index: usize) -> Option<ItemResource> {
+        self.inner.resource(index)
+    }
+
+    fn amount(&self, index: usize) -> u32 {
+        self.inner.amount(index)
+    }
+
+    fn insert_at(
+        &self,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &Transaction,
+    ) -> u32 {
+        if (self.accepts)(index, resource) {
+            self.inner.insert_at(index, resource, amount, transaction)
+        } else {
+            0
+        }
+    }
+
+    fn extract_at(
+        &self,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &Transaction,
+    ) -> u32 {
+        self.inner.extract_at(index, resource, amount, transaction)
+    }
+}
+
 /// Quem diz, de um bloco vizinho, o que ele expõe de itens por uma face (`BlockCapabilityCache.getCapability`).
 pub trait ItemCapabilities {
     fn item_handler(&self, face: crate::sides::Face) -> Option<Rc<dyn ItemHandler>>;
