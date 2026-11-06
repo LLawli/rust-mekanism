@@ -7,7 +7,7 @@ use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
     CHEMICAL_ID_SLOTS, ChemicalSlots, DataLayout, ELECTRIC_DATA, ELECTRIC_SCREEN,
     ELECTRIC_TRACKED_ERRORS, INFUSER_DATA, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData,
-    ScreenElement, ScreenSpec, WarningType, tab_tooltip,
+    ScreenElement, ScreenSpec, WarningType, clear_chemical_screen, tab_tooltip,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -455,4 +455,26 @@ fn the_tab_tooltip_has_the_yellow_header_and_one_wrapped_block_per_issue() {
     );
     // E a primeira frase, de 41 caracteres a seis pixels, de fato quebrou.
     assert!(body.len() > 2);
+}
+
+#[test]
+fn dumping_the_tank_clears_the_screen_slots_without_a_tick() {
+    // O botão de esvaziar age quando o pacote chega, mesmo com o servidor parado: os data slots do tanque voltam ao que o tick
+    // escreveria para um tanque vazio, e o resto da tela fica como estava.
+    let mut data = full().write(&INFUSER_DATA);
+    let before = data.clone();
+    clear_chemical_screen(&INFUSER_DATA, &mut data);
+    let expected = ScreenData {
+        chemical_amount: 0,
+        chemical_tint: 0,
+        chemical_icon: 0,
+        chemical_id: [0; CHEMICAL_ID_SLOTS],
+        ..full()
+    };
+    assert_eq!(data, expected.write(&INFUSER_DATA));
+    assert_ne!(data, before);
+    let mut electric = full().write(&ELECTRIC_DATA);
+    let untouched = electric.clone();
+    clear_chemical_screen(&ELECTRIC_DATA, &mut electric);
+    assert_eq!(electric, untouched, "uma máquina sem tanque não muda");
 }

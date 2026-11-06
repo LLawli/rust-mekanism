@@ -431,6 +431,30 @@ pub fn write_upgrade_sync(data: &mut [i32], layout: &DataLayout, sync: &UpgradeS
     }
 }
 
+/// O tanque de químico esvaziado fora do tick (`IHasDumpButton.dump`, que o pacote `GuiInteraction.DUMP_BUTTON` roda quando chega):
+/// põe nos data slots o que o tick escreveria para um tanque vazio. O Java sincroniza o tanque ao jogador no `broadcastChanges` do
+/// menu, que roda mesmo com o servidor parado (`tick freeze`); aqui os data slots são do bloco e só o tick os escrevia.
+pub fn clear_chemical_screen(layout: &DataLayout, data: &mut [i32]) {
+    let Some(chemical) = layout.chemical else {
+        return;
+    };
+    let empty = ScreenData::default().write(layout);
+    let slots = [
+        chemical.amount,
+        chemical.tint,
+        chemical.tint + 1,
+        chemical.icon,
+    ];
+    for index in slots
+        .into_iter()
+        .chain(chemical.id..chemical.id + CHEMICAL_ID_SLOTS)
+    {
+        if let Some(slot) = data.get_mut(index) {
+            *slot = empty[index];
+        }
+    }
+}
+
 /// O que o cliente lê dos data slots dos upgrades.
 pub fn read_upgrade_sync(layout: &DataLayout, data: &[i32]) -> UpgradeSync {
     UpgradeSync::read(data.get(layout.upgrade..).unwrap_or_default())

@@ -1790,9 +1790,13 @@ pub(in crate::game) fn menu_button(entity: &mut ModBlockEntity, id: i32) {
         return;
     }
     // `dump()`: `dumpOrClearContents` no tanque de infusão, que fora a radiação (que não existe aqui) só o esvazia. O objeto
-    // vivo o relê no tick seguinte, como um `setContents` de fora.
+    // vivo o relê no tick seguinte, como um `setContents` de fora. O pacote age na hora, e o menu sincroniza o tanque ao jogador no
+    // mesmo instante, mesmo com o servidor parado: os data slots da tela mudam junto, não no próximo tick.
     if !read_tank(entity).is_empty() {
         write_tank(entity, &TankContents::default());
+        if let Some(machine) = machine_of(&entity.id) {
+            rules::clear_chemical_screen(machine.screen.data, &mut entity.data);
+        }
     }
 }
 
