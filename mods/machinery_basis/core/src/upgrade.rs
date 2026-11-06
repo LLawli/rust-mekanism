@@ -114,6 +114,11 @@ impl UpgradeTypes {
         self.types.get(id)
     }
 
+    /// Os ids declarados, na ordem do registro.
+    pub fn ids(&self) -> impl Iterator<Item = &String> {
+        self.types.keys()
+    }
+
     pub fn len(&self) -> usize {
         self.types.len()
     }
@@ -212,6 +217,52 @@ pub fn current_tags() -> Arc<UpgradeTags> {
     current.clone().unwrap_or_default()
 }
 
+/// O que o servidor manda ao cliente que não leu os dados dele: os tipos e as tags. No original os tipos são um registro
+/// sincronizado; aqui eles vêm da carga de dados do servidor, que um cliente de outro processo não faz.
+pub fn encode_sync(types: &UpgradeTypes, tags: &UpgradeTags) -> Vec<u8> {
+    let types: serde_json::Map<String, Value> = types
+        .types
+        .iter()
+        .map(|(id, ty)| {
+            (
+                id.clone(),
+                serde_json::json!({ "max": ty.max, "color": ty.color }),
+            )
+        })
+        .collect();
+    let tags: serde_json::Map<String, Value> = tags
+        .tags
+        .iter()
+        .map(|(id, values)| (id.clone(), Value::from(values.clone())))
+        .collect();
+    serde_json::json!({ "types": types, "tags": tags })
+        .to_string()
+        .into_bytes()
+}
+
+/// O inverso de [`encode_sync`]. `None` quando os bytes não são o que o servidor manda.
+pub fn decode_sync(bytes: &[u8]) -> Option<(UpgradeTypes, UpgradeTags)> {
+    let json: Value = serde_json::from_slice(bytes).ok()?;
+    let mut types = UpgradeTypes::default();
+    for (id, ty) in json.get("types")?.as_object()? {
+        let max = i32::try_from(ty.get("max")?.as_i64()?)
+            .ok()
+            .filter(|max| *max > 0)?;
+        let color = ty.get("color")?.as_str()?.to_owned();
+        types.types.insert(id.clone(), UpgradeType { max, color });
+    }
+    let mut tags = UpgradeTags::default();
+    for (id, values) in json.get("tags")?.as_object()? {
+        let values = values
+            .as_array()?
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned))
+            .collect::<Option<Vec<_>>>()?;
+        tags.tags.insert(id.clone(), values);
+    }
+    Some((types, tags))
+}
+
 /// O que uma máquina sabe dos upgrades: os tipos e seus máximos, o que a tag dela aceita (`getSupportedUpgrade`) e o item que os
 /// carrega (`IUpgradeHelper`: `asResource` e `dataComponent`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -263,6 +314,11 @@ impl UpgradeData {
             types,
             supported,
         }
+    }
+
+    /// Todos os tipos declarados, na ordem do registro (a dos ids): o `Registry<Upgrade>` que a janela percorre.
+    pub fn type_ids(&self) -> Vec<String> {
+        self.types.keys().map(|id| id.to_string()).collect()
     }
 
     /// `upgrade.value().max()`.
@@ -418,6 +474,11 @@ impl UpgradeComponent {
 
     pub fn upgrade_output_slot(&self) -> &InventorySlot {
         &self.0.upgrade_output_slot
+    }
+
+    /// `upgradeTicks`: o que o servidor sincroniza para quem tem a janela de upgrades aberta.
+    pub fn upgrade_ticks(&self) -> i32 {
+        self.0.upgrade_ticks.get()
     }
 
     /// `getScaledUpgradeProgress`.
@@ -633,6 +694,38 @@ mod tests {
 
     fn upgrade(id: &str) -> ItemResource {
         data().resource_of(id)
+    }
+
+    #[test]
+    fn sync_round_trips_types_and_tags() {
+        let files = vec![
+            (
+                "mod:speed".to_owned(),
+                json!({"display_name": "a", "description": "b", "color": "red", "max": 8}),
+            ),
+            (
+                "mod:muffling".to_owned(),
+                json!({"display_name": "a", "description": "b", "color": "#ff00ff"}),
+            ),
+        ];
+        let (types, errors) = UpgradeTypes::load(&files);
+        assert!(errors.is_empty());
+        let tags = UpgradeTags::load(&[(
+            "mod:supported/machine".to_owned(),
+            json!({"values": ["mod:speed", "#mod:other"]}),
+        )]);
+        let (back_types, back_tags) = decode_sync(&encode_sync(&types, &tags)).unwrap();
+        assert_eq!(back_types, types);
+        assert_eq!(back_tags, tags);
+        assert_eq!(back_types.len(), 2);
+        assert_eq!(back_types.get("mod:muffling").unwrap().max, 1);
+    }
+
+    #[test]
+    fn sync_refuses_garbage() {
+        assert!(decode_sync(b"nope").is_none());
+        assert!(decode_sync(br#"{"types":{"a:b":{"max":0,"color":"red"}},"tags":{}}"#).is_none());
+        assert!(decode_sync(br#"{"types":{},"tags":{"t":[1]}}"#).is_none());
     }
 
     type Calls = Rc<RefCell<Vec<(String, i32)>>>;

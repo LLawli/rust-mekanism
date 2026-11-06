@@ -1087,6 +1087,29 @@ pub(in crate::game) fn menu_tooltip(
     mouse: (f32, f32),
     widget: [f32; 4],
 ) {
+    menu_tooltip_with(game, batch, lines, mouse, widget, true);
+}
+
+/// Como [`menu_tooltip`], para um texto que o jogo quebrou em linhas (`Tooltip.create`): sem o intervalo de dois pixels depois da
+/// primeira linha, que só o tooltip com título tem.
+pub(in crate::game) fn menu_tooltip_flat(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    lines: &[(String, Option<u32>)],
+    mouse: (f32, f32),
+    widget: [f32; 4],
+) {
+    menu_tooltip_with(game, batch, lines, mouse, widget, false);
+}
+
+fn menu_tooltip_with(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    lines: &[(String, Option<u32>)],
+    mouse: (f32, f32),
+    widget: [f32; 4],
+    title_gap: bool,
+) {
     let lines: Vec<(horizon_client::text::Text, u32)> = lines
         .iter()
         .map(|(text, color)| {
@@ -1099,7 +1122,16 @@ pub(in crate::game) fn menu_tooltip(
         .collect();
     let atlas = &game.gui.atlas;
     // O tamanho não depende de onde o tooltip cai; a posição é a do `MenuTooltipPositioner`.
-    let (_, _, w, h) = Game::tooltip_geometry(atlas, &lines, (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+    let (_, _, mut w, mut h) = Game::tooltip_geometry(atlas, &lines, (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+    if !title_gap {
+        // Cada linha medida sozinha: a largura é a maior, e a altura 10 por linha menos 2.
+        w = 0.0;
+        for line in &lines {
+            let (_, _, line_w, _) = Game::tooltip_geometry(atlas, std::slice::from_ref(line), (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+            w = w.max(line_w);
+        }
+        h = 10.0 * lines.len() as f32 - 2.0;
+    }
     let [x, y] = tooltip::menu_position(
         [batch.width as i32, batch.height as i32],
         [mouse.0 as i32, mouse.1 as i32],
@@ -1111,7 +1143,13 @@ pub(in crate::game) fn menu_tooltip(
     for sprite in ["gui/sprites/tooltip/background", "gui/sprites/tooltip/frame"] {
         horizon_client::ui::nine_slice(batch, atlas, sprite, x as f32 - 12.0, y as f32 - 12.0, w + 24.0, h + 24.0, u32::MAX);
     }
-    Game::tooltip_text(batch, atlas, &lines, x as f32, y as f32);
+    if title_gap {
+        Game::tooltip_text(batch, atlas, &lines, x as f32, y as f32);
+    } else {
+        for (n, line) in lines.iter().enumerate() {
+            Game::tooltip_text(batch, atlas, std::slice::from_ref(line), x as f32, y as f32 + 10.0 * n as f32);
+        }
+    }
 }
 
 /// O fundo de uma tela de máquina: o painel (`GuiMekanism.extractBackground`), os slots do inventário do jogador

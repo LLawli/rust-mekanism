@@ -19,6 +19,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_basis"
 source = "glue.rs"
 
+# A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
+# privados de lá.
+[[module]]
+id = "windows"
+file = "crates/horizon-client/src/game/native_hooks.rs"
+name = "machinery_basis_windows"
+source = "windows.rs"
+
 [[module]]
 id = "slot-accepts"
 file = "crates/horizon-client/src/game/machines/native_items.rs"
@@ -130,7 +138,9 @@ hook = "server_data_loaded"
 hook_version = 1
 kind = "HEAD"
 helper = "server_data_loaded.rs"
-bindings = []
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
 
 # A capacidade de energia de uma máquina muda com os upgrades, e o `ModEnergyBuffer` do bloco é um só. Quem anda diz a capacidade
 # da instância, e a injeção responde com ela no lugar da do bloco, no mesmo ponto que o spike validou para as faces por instância.
@@ -143,4 +153,140 @@ helper = "energy_capacity.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
+# ---- janelas de GUI e a janela de upgrades ----
+# Hooks do catálogo que leem a tela aberta, a janela do jogo e o menu de LAN (estrutura privada).
+[[injection]]
+id = "window_frame"
+hook = "frame"
+hook_version = 1
+kind = "HEAD"
+helper = "window_frame.rs"
+bindings = [{ name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" }]
+
+[[injection]]
+id = "window_key"
+hook = "screen_key_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_key.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "key", ty = "&str", value = "key" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "window_press"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_press.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "modifiers", ty = "u32", value = "modifiers" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "window_release"
+hook = "screen_mouse_button_released_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_release.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "window_drag"
+hook = "screen_mouse_dragged_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_drag.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "window_scroll"
+hook = "screen_mouse_scrolled_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_scroll.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "window_net"
+hook = "net_from_client"
+hook_version = 1
+kind = "HEAD"
+helper = "window_net.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+  { name = "channel", ty = "&str", value = "channel" },
+  { name = "data", ty = "&[u8]", value = "data" },
+]
+
+# O registro de upgrades vai do servidor ao cliente que não leu os dados: na entrada do jogador e a cada carga de dados.
+[[injection]]
+id = "window_player_in"
+hook = "player_logged_in"
+hook_version = 1
+kind = "HEAD"
+helper = "window_player_in.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+]
+
+[[injection]]
+id = "window_net_server"
+hook = "net_from_server"
+hook_version = 1
+kind = "HEAD"
+helper = "window_net_server.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "channel", ty = "&str", value = "channel" },
+  { name = "data", ty = "&[u8]", value = "data" },
+]
+
+# A ordem de desenho dos slots: itens, janela, itens virtuais, e o tooltip e o item no cursor por cima. Alvo cru.
+[[injection]]
+id = "window_draw_slots"
+target = "horizon_client::game::Game<'_>::draw_inventory_slots"
+kind = "HEAD"
+cancellable = true
+helper = "window_draw_slots.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "ox", ty = "f32", value = "ox" },
+  { name = "oy", ty = "f32", value = "oy" },
+]
+
+# O alvo do mouse: um slot coberto pela janela não pode ser alvo, e o virtual dela sim. Alvo cru.
+[[injection]]
+id = "window_slot_at"
+target = "horizon_client::game::Game<'_>::slot_at"
+kind = "RETURN"
+helper = "window_slot_at.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "found", ty = "Option<usize>", value = "$value" },
+  { name = "x", ty = "f32", value = "x" },
+  { name = "y", ty = "f32", value = "y" },
 ]
