@@ -711,7 +711,7 @@ entre parênteses.
 ### H22 escurecimento do mundo atrás de telas (correção, sem hook)
 
 - **O que acontece:** os cantos transparentes do painel dão 72 px de diferença por estado (162 em escala 3). O mundo sai 2 a 3
-  níveis mais escuro: 10 no Horizon, contra 13 no original, depois do escurecimento.
+  níveis mais escuro: 10 a 11 no Horizon, contra 13 a 14 no original, depois do escurecimento.
 - **Mesma causa:** o tooltip de barra dá 12 px, e o rótulo "Inventory" sob um tooltip dá 4 px.
 - **Pedido:** que o renderer escureça o mundo atrás de telas como o original, sem o vazamento pelos cantos transparentes do painel.
 

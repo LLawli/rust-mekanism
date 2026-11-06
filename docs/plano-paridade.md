@@ -155,8 +155,14 @@ Falta na Fase 1:
   - o sprite do químico do Infuser e a lava do medidor são tiras animadas do atlas de blocos. A tira vai no caminho do original
     (`textures/mek_chemical`) com o `assets/minecraft/atlases/blocks.json` dele, e o HUD do Horizon a anima como o jogo, sem
     injeção. Em imagem, os quadros inteiros são idênticos (16 de 40 prints do ciclo do químico e 37 de 40 da lava casam pixel a
-    pixel com um estado do port); nos prints entre dois quadros, o original interpola com a fração do tick (o `partialTick`) e o
-    Horizon com ticks inteiros, o que dá até 64 pixels de diferença de um nível. Não fecha sem mudar o renderer;
+    pixel com um estado do port); nos prints entre dois quadros a diferença é de um nível em até 64 pixels, e **não** vem do
+    `partialTick`: o original também interpola com ticks inteiros (`AnimationState.tick` soma `subFrame`, `drawToAtlas` manda
+    `(int)(subFrame / time * 1000)` e o shader faz `mix(atual, próximo, millis / 1000)`), e o Horizon usa a mesma conta. O que muda é o
+    arredondamento da mistura para 8 bits: o Horizon faz em inteiros, com o empate exato para cima (`+ 500`), e o original, na GPU do
+    desktop, arredonda os empates para baixo e ainda tem cerca de 0,5 % das amostras perto do empate (fração .52 a .56) que nenhuma
+    regra fechada reproduziu. Medido nos prints existentes: `base` 40 de 40 com o empate para baixo (16 de 40 com o do Horizon);
+    `bio` 19 de 40 (12) e `fungi` 22 de 40 (4). Os três prints da lava e os 464 pixels de `barra_energia` eram do gerador queimando a
+    lava (a energia sobe, e o port estava um passo adiantado), não da animação: o caso agora usa energia cheia;
   - o mundo atrás da tela, e o brilho dos quatro cantos transparentes do painel, saem 2 a 3 níveis mais escuros no Horizon (13 contra
     10). Os cantos são 72 pixels por tela e entram na tabela à parte;
   - o ícone de um item de bloco no slot (carvão não, que é plano; argila, areia) e a borda do tooltip de item são desenhados pelo
