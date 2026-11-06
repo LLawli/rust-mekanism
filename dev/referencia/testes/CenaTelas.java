@@ -159,6 +159,7 @@ public class CenaTelas {
             open(minecraft, caso);
         } else if (caseTick == base + OPEN_WAIT) {
             hideUnimplementedTabs(minecraft);
+            clicks(minecraft, caso);
             hover(minecraft, caso);
             shotsTaken = 0;
         } else if (cycle > 0 && caseTick > base + OPEN_WAIT + 10 && shotsTaken < captures && (caseTick - base) % 6 == 0) {
@@ -244,11 +245,60 @@ public class CenaTelas {
         if (caso.args().containsKey("lava") && tile instanceof TileEntityHeatGenerator generator) {
             generator.lavaTank.setContents(FluidResource.of(Fluids.LAVA), Long.parseLong(caso.args().get("lava")), null);
         }
+        upgrades(server, tile, caso);
         if (caso.args().containsKey("energia")) {
             BasicEnergyContainer container = (BasicEnergyContainer) tile.getEnergyContainer();
             String value = caso.args().get("energia");
             Mekanism.logger.info("cena: {} capacidade {}", caso.name(), container.getCapacityAsLong());
             container.setEnergy(value.equals("cap") ? container.getCapacityAsLong() : Long.parseLong(value), null);
+        }
+    }
+
+    private static Holder<mekanism.api.upgrade.Upgrade> upgrade(MinecraftServer server, String name) {
+        return server.overworld().registryAccess().getOrThrow(
+              net.minecraft.resources.ResourceKey.create(mekanism.api.MekanismRegistries.Keys.UPGRADES, Mekanism.rl(name)));
+    }
+
+    private static net.minecraft.world.item.ItemStack upgradeItem(MinecraftServer server, String spec) {
+        String[] parts = spec.split(":");
+        return mekanism.api.upgrade.IUpgradeHelper.INSTANCE.asStack(upgrade(server, parts[0]), Integer.parseInt(parts[1]));
+    }
+
+    /// `upgrades=speed:3,energy:2` instala, `upgradeentrada=speed:5` e `upgradesaida=speed:7` enchem os dois slots do componente.
+    private static void upgrades(MinecraftServer server, TileEntityMekanism tile, Caso caso) {
+        var component = tile.getComponent();
+        if (component == null) {
+            return;
+        }
+        if (caso.args().containsKey("upgrades")) {
+            for (String spec : caso.args().get("upgrades").split(",")) {
+                String[] parts = spec.split(":");
+                component.addUpgrades(server.overworld().registryAccess(), upgrade(server, parts[0]), Integer.parseInt(parts[1]));
+            }
+        }
+        if (caso.args().containsKey("upgradeentrada")) {
+            var stack = upgradeItem(server, caso.args().get("upgradeentrada"));
+            component.getUpgradeSlot().setContents(ItemResource.of(stack), stack.count(), null);
+        }
+        if (caso.args().containsKey("upgradesaida")) {
+            var stack = upgradeItem(server, caso.args().get("upgradesaida"));
+            component.getUpgradeOutputSlot().setContents(ItemResource.of(stack), stack.count(), null);
+        }
+    }
+
+    /// `clicar=x,y;x,y`: cliques do botão esquerdo, em pixels de GUI relativos ao canto da tela, pelo `mouseClicked` da tela como o mouse faria.
+    private static void clicks(Minecraft minecraft, Caso caso) {
+        if (!caso.args().containsKey("clicar") || !(minecraft.gui.screen() instanceof mekanism.client.gui.IGuiWrapper wrapper)) {
+            return;
+        }
+        var screen = minecraft.gui.screen();
+        for (String point : caso.args().get("clicar").split(";")) {
+            String[] xy = point.split(",");
+            double x = wrapper.getLeftPos() + Double.parseDouble(xy[0]) + 0.5;
+            double y = wrapper.getTopPos() + Double.parseDouble(xy[1]) + 0.5;
+            var info = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
+            screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
+            screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
         }
     }
 
@@ -259,6 +309,7 @@ public class CenaTelas {
             for (var child : screen.children()) {
                 if (child instanceof mekanism.client.gui.element.GuiElement element
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && element instanceof mekanism.client.gui.element.GuiSideHolder) {
                     element.visible = false;
                 }

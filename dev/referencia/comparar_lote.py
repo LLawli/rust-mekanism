@@ -105,7 +105,7 @@ def principal(argv):
     original, port, saida = argv[:3]
     escalas = [int(e) for e in argv[3:]]
     os.makedirs(saida, exist_ok=True)
-    casos = [c for c in cena_telas.casos() if not so or c["nome"] in so]
+    casos = [c for c in cena_telas.casos() + cena_telas.casos_aba() if not so or c["nome"] in so]
     resultados = []
     falhas = 0
     for escala in escalas:
@@ -142,8 +142,11 @@ def principal(argv):
                 continue
             tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
             a, b = ct.ler_png(caminho_a), ct.ler_png(caminho_b)
+            # Com a janela aberta, os filhos dela têm prioridade e o recorte inclui a janela e a aba.
+            janela = ct.JANELA if "clicar" in c["args"] else None
             resultado, diferenca = ct.comparar(
-                a, b, tela, escala, regioes=regioes_do_caso(c, a, b, escala), mascarar_abas=False
+                a, b, tela, escala, regioes=regioes_do_caso(c, a, b, escala), mascarar_abas=False,
+                margem=28 if "_aba_" in c["nome"] else 0, prioridade=janela,
             )
             resultado["caso"] = nome
             resultados.append(resultado)

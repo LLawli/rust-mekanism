@@ -78,6 +78,27 @@ ABA_AVISOS = {
     "generator": (LARGURA, 109, 26, 26),
 }
 
+# A aba de upgrades (`GuiUpgradeWindowTab`: 26 por 26 em `imageWidth`, 6), que as máquinas elétricas e o Infuser têm.
+ABA_UPGRADES = (LARGURA, 6, 26, 26)
+
+# A janela de upgrades aberta no lugar padrão (`GuiUpgradeWindow` em (-11, 15), 198 por 94): cada filho no lugar dele, e a sombra em volta.
+# Valem antes dos elementos da tela, porque a janela cobre os dois. Em pixels de GUI relativos ao canto da tela.
+JANELA = {
+    "janela_fechar": (-5, 21, 8, 8),
+    "janela_fixar": (5, 21, 16, 8),
+    "janela_titulo": (23, 20, 160, 12),
+    "janela_lista": (-5, 33, 108, 50),
+    "janela_aceitos": (-5, 83, 167, 14),
+    "janela_tela_interna": (103, 33, 59, 50),
+    "janela_progresso_instalar": (165, 52, 10, 14),
+    "janela_progresso_remover": (165, 73, 12, 12),
+    "janela_uninstall": (104, 69, 56, 12),
+    "janela_slot_entrada": (163, 32, 18, 18),
+    "janela_slot_saida": (163, 86, 18, 18),
+    # Por último: a primeira região que contém o pixel leva a contagem, e a sombra cobre a janela inteira.
+    "janela_fundo": (-14, 12, 204, 100),
+}
+
 # As colunas onde as abas ficam, de cada lado da tela. O port ainda não tem as de configuração, transporte, cadeado, livro, energia,
 # redstone e upgrades; a aba de avisos, que tem, sai da máscara.
 COLUNA_ESQUERDA = (-26, -1, 26, ALTURA + 2)
@@ -200,6 +221,8 @@ def elementos_da_tela(tela):
         raise ValueError(f"tela desconhecida: {tela} (use {', '.join(sorted(TELAS))})")
     elementos = dict(TELAS[tela])
     elementos["aba_avisos"] = ABA_AVISOS[tela]
+    if tela != "generator":
+        elementos["aba_upgrades"] = ABA_UPGRADES
     elementos.update(COMUNS)
     elementos.update(CANTOS)
     return elementos
@@ -212,10 +235,11 @@ def dentro(rect, x, y):
 
 def mascara_das_abas(tela):
     """O que sai da conta: as colunas das abas que o port não tem, menos a aba de avisos, que ele tem."""
-    return [COLUNA_ESQUERDA, COLUNA_DIREITA], [ABA_AVISOS[tela]]
+    return [COLUNA_ESQUERDA, COLUNA_DIREITA], [ABA_AVISOS[tela], ABA_UPGRADES]
 
 
-def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), tolerancia=0, regioes=None, mascarar_abas=True):
+def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), tolerancia=0, regioes=None, mascarar_abas=True,
+             prioridade=None):
     """Compara os dois prints (cada um `(largura, altura, rgba)`).
 
     Devolve (resultado, imagem), com `resultado` um dicionário com os totais e os elementos, e `imagem` o `(largura, altura, rgba)`
@@ -231,6 +255,9 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     ox, oy = origem
     elementos = elementos_da_tela(tela)
     regioes = dict(regioes or {})
+    prioridade = dict(prioridade or {})
+    # O que tem prioridade conta antes dos elementos da tela e estende o recorte, para a janela caber inteira.
+    regioes.update({nome: rect for nome, rect in prioridade.items() if nome not in regioes})
     mascara, liberado = mascara_das_abas(tela) if mascarar_abas else ([], [])
     mascara = list(mascara) + list(mascaras)
     caixa = (-margem, -margem, LARGURA + 2 * margem, ALTURA + 2 * margem)
@@ -259,7 +286,8 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
             if any(dentro(m, gx, gy) for m in mascara) and not any(dentro(m, gx, gy) for m in liberado):
                 classe[chave] = None
             else:
-                nome = next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)
+                nome = next((nome for nome, rect in prioridade.items() if dentro(rect, gx, gy)), None)
+                nome = nome or next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)
                 if nome is None:
                     # A região só vale fora da tela: dentro dela cada pixel é de um elemento ou do fundo.
                     tela_inteira = (0, 0, LARGURA, ALTURA)

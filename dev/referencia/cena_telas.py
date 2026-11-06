@@ -115,6 +115,57 @@ def casos():
     return out
 
 
+# A janela de upgrades (0,0 = canto da tela). A janela abre em (-11, 15): a aba é clicada em (190, 19), uma linha da lista em (29, 40), o
+# botão Uninstall em (132, 75) e o rótulo "Supported:" em (-2, 85).
+ABA = (190, 19)
+LINHA = (29, 40)
+UNINSTALL = (132, 75)
+
+
+def casos_aba():
+    out = []
+    todos = "speed:3,energy:2,muffling:1,xp_containment:1"
+    for m in ("chamber", "crusher", "smelter", "infuser"):
+        out += [
+            caso(f"{m}_aba_fechada", m, energia="0"),
+            caso(f"{m}_aba_vazia", m, energia="0", clicar=f"{ABA[0]},{ABA[1]}"),
+            caso(f"{m}_aba_upgrades", m, energia="0", upgrades=todos, clicar=f"{ABA[0]},{ABA[1]}"),
+        ]
+    out += [
+        caso("chamber_aba_hover", "chamber", energia="0", hover=ABA),
+        caso("chamber_aba_selecionado", "chamber", energia="0", upgrades=todos,
+             clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}"),
+        caso("chamber_aba_botao_hover", "chamber", energia="0", upgrades=todos,
+             clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}", hover=UNINSTALL),
+        caso("chamber_aba_instalando", "chamber", energia="0", upgradeentrada="speed:5", passos="10",
+             clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("chamber_aba_instalado", "chamber", energia="0", upgradeentrada="speed:5", passos="30",
+             clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("chamber_aba_saida", "chamber", energia="0", upgrades="speed:3", upgradesaida="speed:7",
+             clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("chamber_aba_hover_lista", "chamber", energia="0", upgrades=todos,
+             clicar=f"{ABA[0]},{ABA[1]}", hover=LINHA),
+        caso("chamber_aba_hover_aceitos", "chamber", energia="0", upgrades="speed:1",
+             clicar=f"{ABA[0]},{ABA[1]}", hover=(-2, 95)),
+        # A ordem da lista do original é a de um `Object2IntOpenHashMap` de chaves por identidade (muda a cada partida): com mais de um
+        # tipo o print do original só se compara por linha. Com um tipo só a lista, a seleção e o texto têm ordem única.
+        caso("chamber_aba_um_upgrades", "chamber", energia="0", upgrades="speed:3", clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("chamber_aba_um_selecionado", "chamber", energia="0", upgrades="speed:3",
+             clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}"),
+        caso("chamber_aba_um_botao_hover", "chamber", energia="0", upgrades="speed:3",
+             clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}", hover=UNINSTALL),
+        caso("chamber_aba_um_hover_lista", "chamber", energia="0", upgrades="speed:3",
+             clicar=f"{ABA[0]},{ABA[1]}", hover=LINHA),
+        # A regra do clique: com a janela aberta, o Dump (26, 64) fica atrás dela e o clique é consumido (o químico fica). Com a janela
+        # fechada pelo X (-1, 25), o mesmo clique chega ao Dump e esvazia o tanque.
+        caso("infuser_aba_clique_dentro", "infuser", energia="0", quimico="bio:500",
+             clicar=f"{ABA[0]},{ABA[1]};26,64"),
+        caso("infuser_aba_clique_fechada", "infuser", energia="0", quimico="bio:500",
+             clicar=f"{ABA[0]},{ABA[1]};-1,25;26,64"),
+    ]
+    return out
+
+
 def ciclos(c, lado):
     """Quantos prints de ciclo o `lado` (`oficial` ou `port`) tira em `c`: `ciclo`, ou `ciclo_port` no port quando o caso o pede."""
     ciclo = int(c["args"].get("ciclo", "0"))
@@ -127,7 +178,7 @@ def escreve_oficial(escalas, saida, so=None):
     linhas = []
     for escala in escalas:
         linhas.append(f"escala {escala}")
-        for c in casos():
+        for c in casos() + casos_aba():
             if so and c["nome"] not in so:
                 continue
             args = dict(c["args"])
@@ -172,6 +223,26 @@ def nbt_itens(c, maquina):
     return itens
 
 
+def item_upgrade(texto):
+    tipo, n = texto.split(":")
+    return f'{{type:{{id:"mekanism:upgrade",components:{{"mekanism:upgrade_type":"mekanism:{tipo}"}}}},amount:{n}L}}'
+
+
+def componente_upgrade(c):
+    a = c["args"]
+    partes, itens = [], []
+    if "upgrades" in a:
+        mapa = ",".join(f'"mekanism:{t}":{n}' for t, n in (p.split(":") for p in a["upgrades"].split(",")))
+        partes.append(f"upgrades:{{{mapa}}}")
+    if "upgradeentrada" in a:
+        itens.append(f"{{container:0b,stored:{item_upgrade(a['upgradeentrada'])}}}")
+    if "upgradesaida" in a:
+        itens.append(f"{{container:1b,stored:{item_upgrade(a['upgradesaida'])}}}")
+    if itens:
+        partes.append("items:[" + ",".join(itens) + "]")
+    return "{" + ",".join(partes) + "}" if partes else None
+
+
 def monta_port(c, x, escala):
     m = c["maquina"]
     spec = MAQUINAS[m]
@@ -182,6 +253,10 @@ def monta_port(c, x, escala):
     comando(f"fill {x - 6} -61 -6 {x + 6} -50 10 minecraft:black_concrete hollow")
     comando(f"setblock {pos} minecraft:air")
     comando(f"setblock {pos} {spec['block']}")
+    # Os upgrades entram antes do primeiro tick: o objeto vivo os lê do NBT ao nascer, como o `deserialize`.
+    comp = componente_upgrade(c)
+    if comp:
+        comando(f"data merge block {pos} {{component_upgrade:{comp}}}")
     # Um tick para o bloco nascer e a capacidade valer, como no `CenaTelas`.
     comando("tick step 1")
     ctl("wait", "4")
@@ -199,6 +274,7 @@ def monta_port(c, x, escala):
         nbt.append(f'machinery_basis:{{v:1,tanks:[{{resource:"minecraft:lava",amount:{c["args"]["lava"]}L}}]}}')
     if nbt:
         comando(f"data merge block {pos} {{{','.join(nbt)}}}")
+
     ctl("tp", f"{x}.0", "-60.0", "0.0")
     passos = int(c["args"].get("passos", "2"))
     comando(f"tick step {passos}")
@@ -210,14 +286,17 @@ def tira_port(c, x, escala, destino):
     ctl("look", "0", "0")
     ctl("interact", str(x), "-60", "3")
     ctl("wait", "60")
+    # `centered_origin`: a janela em pixels de GUI arredondada para cima, e a tela truncada no centro.
+    gui_l = -(-1920 // escala)
+    gui_a = -(-1080 // escala)
+    esquerda = (gui_l - 176) // 2
+    topo = (gui_a - 166) // 2
+    for clique in filter(None, c["args"].get("clicar", "").split(";")):
+        cx, cy = (int(v) for v in clique.split(","))
+        ctl("click-at", str(esquerda + cx), str(topo + cy))
+        ctl("wait", "6")
     if "hover" in c["args"]:
         # O Horizon dá o cursor em pixels de GUI da janela: o canto da tela mais o ponto dentro dela.
-        largura, altura = 1920 // escala, 1080 // escala
-        # `centered_origin`: a janela em pixels de GUI arredondada para cima, e a tela truncada no centro.
-        gui_l = -(-1920 // escala)
-        gui_a = -(-1080 // escala)
-        esquerda = (gui_l - 176) // 2
-        topo = (gui_a - 166) // 2
         hx, hy = c["args"]["hover"]
         ctl("scroll-at", str(esquerda + hx), str(topo + hy), "0")
     else:
@@ -244,7 +323,7 @@ def roda_port(destino, escalas, so=None):
     for escala in escalas:
         ctl("options-set", "guiScale", str(escala))
         x = 3
-        for c in casos():
+        for c in casos() + casos_aba():
             if so and c["nome"] not in so:
                 continue
             monta_port(c, x, escala)

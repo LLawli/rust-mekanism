@@ -36,6 +36,26 @@ def na_tela(x_gui, y_gui, tela_origem=None):
 
 
 class CompararTela(unittest.TestCase):
+    def test_um_pixel_da_janela_de_upgrades_conta_no_filho_dela_e_nao_no_elemento_da_tela(self):
+        a = imagem()
+        b = copia(a)
+        # (30, 40) em GUI cai na lista da janela, que cobre o slot de entrada da tela (63, 16) só em outra posição: use o fundo da lista.
+        px, py = na_tela(0, 40)
+        pintar(b, px, py)
+        resultado, _ = ct.comparar(a, b, "electric", ESCALA, margem=28, prioridade=ct.JANELA, mascarar_abas=False)
+        self.assertEqual(resultado["elementos"]["janela_lista"]["diferentes"], 1)
+        # Fora da janela o mesmo pixel é de outro elemento: sem a prioridade, não há filho da janela na conta.
+        sem, _ = ct.comparar(a, b, "electric", ESCALA, margem=28, mascarar_abas=False)
+        self.assertNotIn("janela_lista", sem["elementos"])
+
+    def test_a_aba_de_upgrades_tem_o_retangulo_dela(self):
+        a = imagem()
+        b = copia(a)
+        px, py = na_tela(ct.LARGURA + 3, 10)
+        pintar(b, px, py)
+        resultado, _ = ct.comparar(a, b, "infuser", ESCALA, margem=28, mascarar_abas=False)
+        self.assertEqual(resultado["elementos"]["aba_upgrades"]["diferentes"], 1)
+
     def test_a_tela_fica_no_centro_da_janela(self):
         # 640 por 480 com escala 2 é 320 por 240 de GUI: (320 - 176) / 2 e (240 - 166) / 2, em pixels.
         self.assertEqual(ct.origem_da_tela(640, 480, 2), (144, 74))
