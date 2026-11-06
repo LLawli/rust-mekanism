@@ -26,12 +26,27 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - O realce da frente do slot sob o cursor, nas telas do Mekanism e do Generators, usa o sprite de trás, como o original
   (`VirtualSlotContainerScreen.extractSlotHighlightFront` chama o `Back`). Uma injeção em `draw_slot_highlight`.
 
+### Fixed
+
+- O convidado de LAN ou de servidor dedicado vê a janela de upgrades completa: os tipos e as tags de upgrade vão do servidor ao cliente
+  por `native_net_send_to_player` quando o jogador entra e a cada `/reload`. Antes a janela aparecia vazia, sem lista nem "Supported:".
+- O progresso de instalação da janela de upgrades mostra o valor de um tick atrás, como o cliente do original.
+
 ### Added
 
 - `machinery_basis`: `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda (receita que gasta o químico a cada
   tick), os handlers de entrada e de saída de fluido e de químico, o contêiner de recurso grande genérico (`ChemicalTank` e `FluidTank`),
   `fillTankFromSlot` para item com capability de químico e o `ChemicalAttributeValidator`. Conferido tick a tick com o Osmium
   Compressor original (`compressor_run`). Nenhuma máquina do jogo usa ainda: o comportamento visível é o mesmo.
+- A aba de upgrades e a janela dela nas quatro máquinas (Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser), como
+  `GuiUpgradeWindowTab` e `GuiUpgradeWindow`: a aba na lateral direita; a janela arrastável pela faixa de cima, com os botões de fechar e
+  de fixar, a lista dos upgrades instalados com barra de rolagem, a faixa "Supported:", a tela interna com nome, quantidade e efeito, os
+  progressos de instalação e de remoção, o botão Uninstall (shift remove todos) e os dois slots de upgrade. Esc fecha a janela que não
+  está fixa; a posição e o estado fixo persistem em `config/mekanism/client.toml`. Os slots de upgrade ficam no fim do menu, o
+  shift-clique segue o `quickMoveStack` (o upgrade só entra com a janela aberta, e sem ela vai para a barra de atalhos), e o servidor
+  guarda a janela escolhida por jogador. Os textos `gui.mekanism.upgrades*`, os sprites e os quatro tipos de upgrade que faltavam (anchor,
+  chemical, filter, stone_generator) têm o texto, a textura e o modelo do original. `data_slots` passa de 8 para 17 e de 28 para 37, e
+  `slots` de 3 para 5 e de 4 para 6.
 - `dev/referencia/cena_telas.py`, `comparar_lote.py` e `testes/CenaTelas.java`: os mesmos estados de tela (vazia, em operação, barra
   cheia e a meio, aviso, tanque, hover) montados no original e no port, e a comparação deles por elemento.
 - `dev/referencia/comparar_tela.py`: compara dois prints da tela de uma máquina, no original e no port, com o mesmo `guiScale`.

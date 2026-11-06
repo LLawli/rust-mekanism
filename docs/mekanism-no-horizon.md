@@ -171,6 +171,27 @@ Tomadas em 2026-11-05:
    gente lembra (200 J/t, tanque de 24 baldes, 10 mB/t) são da 1.21.x e anteriores. A 1.21.11 reescalou energia e queima de
    todo o mod, então misturar as duas versões desequilibra o jogo.
 
+## Janela de upgrades: o que o Horizon faz diferente
+
+- **Sincronização.** No Java, `upgradeTicks` e o mapa de upgrades só viajam para quem abriu a janela (`startTracking` por jogador). Os
+  data slots do Horizon são por bloco, então o menu leva 9 data slots a mais (`upgradeTicks` e uma contagem por tipo, na ordem do
+  registro) e o servidor só escreve valores neles enquanto algum jogador acompanha (`CONTAINER_TRACK_UPGRADES` sem `STOP`); no resto do
+  tempo eles ficam em zero e não geram tráfego. Diferença visível: nenhuma. Diferença de tráfego: com a janela aberta para um jogador,
+  todos os que olham o mesmo bloco recebem os 9 valores quando mudam, e o Java mandaria só a quem abriu. Um segundo `TRACK` sem `STOP`
+  deixa o acompanhamento ligado depois do `STOP`, como o contêiner do Java faz (rastros `*_container_tracking`).
+- **Ordem da lista.** O Java lista `Object2IntOpenHashMap.keySet()`, ordem de hash de objetos sem `hashCode` próprio, ou seja, não
+  definida. A lista aqui segue a ordem do registro (por id).
+- **Dados do cliente.** Os tipos e as tags de upgrade são lidos onde a carga de dados roda, e um cliente de outro processo (convidado
+  de LAN, servidor dedicado) não a faz. No original os tipos são um registro sincronizado. Aqui o servidor manda
+  `upgrade::encode_sync` (tipos e tags, JSON) por `native_net_send_to_player`, no canal `machinery_basis:upgrade_types`, quando o
+  jogador entra (`player_logged_in`) e a cada carga de dados (`server_data_loaded`, o `/reload`); o cliente guarda por
+  `net_from_server` na fonte `sync`. `datapack_sync` não serve: ele leva só receitas. Medido em jogo com dois clientes (2026-11-06): o
+  convidado vê a lista e os ícones de "Supported:". Limite: a fonte `sync` fica até o próximo envio, então um cliente que sai de um
+  servidor e abre um mundo local carrega os tipos do servidor antigo até a primeira carga local (os tipos vêm dos mesmos arquivos do
+  mod). Os 9 data slots do `upgradeTicks` e do mapa ficam: o envio por jogador só pouparia o tráfego de quem não abriu a janela.
+- **Um tick de atraso.** O cliente do original mostra o progresso de instalação de um tick atrás (medido: o print do original com 10
+  passos é igual ao do port com 9). O port escreve nos data slots o valor do tick anterior (`upgrade_sync_seen`).
+
 ## Lib compartilhada
 
 `machinery_basis` é um terceiro mod genérico, sem nada exclusivo do Mekanism, para outros mods usarem: tanques tipados,

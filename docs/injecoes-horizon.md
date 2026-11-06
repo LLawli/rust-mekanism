@@ -18,19 +18,19 @@ Contagem em 2026-11-06, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 41 | |
+| `[[injection]]` no total | 52 | |
 | Hook do catálogo, usado só com o contrato dele | 26 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 8 | sim |
-| Injeção crua (`target = ...`) | 7 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 6 | sim |
+| Hook do catálogo, usado com estrutura privada do jogo | 17 | sim |
+| Injeção crua (`target = ...`) | 9 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 7 | sim |
 
-26 + 8 + 7 = 41. Os 6 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-15 injeções e 6 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 17 + 9 = 52. Os 7 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+26 injeções e 7 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 7 | 6 | 8 |
-| Provada em spike | 8 | 1 | 8 |
+| Em uso | 9 | 7 | 17 |
+| Provada em spike | 6 | 0 | 1 |
 | Prevista | 5 | 1 | 0 |
 
 As provadas em spike não contam `native_energy_at`, que já está em uso. As previstas vêm do plano e não foram compiladas.
@@ -38,7 +38,7 @@ As provadas em spike não contam `native_energy_at`, que já está em uso. As pr
 ### Hook proposto contra injeções que ele elimina
 
 Todos os nomes são propostas: nenhum existe no pin. "v2" é uma nova versão de um hook do catálogo, porque o contrato antigo nunca
-muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H24 em
+muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H25 em
 [Correções pedidas ao renderer do Horizon](#correções-pedidas-ao-renderer-do-horizon).
 
 | Proposta | Tipo | Elimina | Estado |
@@ -51,10 +51,10 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H6 `item_model_node` | hook | `component_item_model` | em uso |
 | H7 `item_container_accepts` | helper | módulo `slot-accepts` | em uso |
 | H8 helpers de leitura e escrita | helpers | 8 hooks com estrutura privada, os módulos `glue` | em uso (8) |
-| H9 `screen_layout` | hook | módulo `spike` em `native_hooks.rs`, escrita em `mod_screen` | spike |
-| H10 `screen_slot_at` | hook | `slot_at` (RETURN) | spike |
-| H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | spike |
-| H12 `menu_hide_slots` | helper | uso de `lan.hub` em `net_from_client` | spike |
+| H9 `screen_layout` | hook | módulo `windows` em `native_hooks.rs`, escrita em `mod_screen` | em uso (módulo) |
+| H10 `screen_slot_at` | hook | `slot_at` (RETURN) | em uso |
+| H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | em uso |
+| H12 `menu_hide_slots` | helper | uso de `lan.hub` em `net_from_client` | em uso |
 | H13 `block_entity_save` | hook | `save_level` | spike |
 | H14 `block_entity_removed` | hook | `remove_entity` | spike |
 | H15 `visuals` v2 | hook | `native_frame_visuals` | spike |
@@ -67,6 +67,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H22 escurecimento do mundo atrás de telas | correção | nenhuma (diferença de pixel) | pedido |
 | H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
 | H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
+| H25 item desenhado em escala (`renderItem(..., 0.75)`) | correção | nenhuma (diferença de pixel) | pedido |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -88,18 +89,36 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 10 | 8 | 2 | 2 |
+| `mods/machinery_basis/horizon-mixin.toml` | 21 | 17 | 4 | 3 |
 | `mods/mekanism/native/horizon-mixin.toml` | 22 | 18 | 4 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 9 | 8 | 1 | 2 |
-| Total | 41 | 34 | 7 | 6 |
+| Total | 52 | 43 | 9 | 7 |
 
-Todas são `kind = "HEAD"`. Seis das sete cruas são `cancellable = true`; a que não é, `logged-fluid-row`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
-`impl Hooks for Mod {}`. Os 24 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das nove cruas são `cancellable = true`; as que não são: `logged-fluid-row` e `window_slot_at`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
+`impl Hooks for Mod {}`. Os 26 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 34 hooks, 8 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`.
+Dos 43 hooks, 17 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 17 com estrutura privada são os 8 de antes e os 9 da janela de upgrades (`window_*`).
 
-## Injeções cruas em uso (7)
+## Injeções cruas em uso (9)
+
+### `window_draw_slots` (machinery_basis)
+
+- **Alvo:** `Game::draw_inventory_slots` (`game.rs:9461`), HEAD cancelável. **Proposta:** H11.
+- **Para quê:** a ordem de desenho do original: itens dos slots, janela de upgrades, itens dos slots virtuais, e só depois o tooltip e o
+  item no cursor. `native_screen_draw` fica sob os itens e `screen_render_post` cobre o tooltip, então nenhum hook do catálogo dá essa
+  ordem. Sem janela aberta devolve `Continue` e o Horizon desenha como sempre.
+- **Java:** `GuiMekanism.extractContents` (`GuiMekanism.java:199-246`), `GuiVirtualSlot.drawContents`.
+- **Risco:** é o núcleo do desenho do inventário e muda sempre que o Horizon mexe na tela. O helper reimplementa o laço com
+  `slot_view`, `slot_position` e `draw_slot_item`.
+
+### `window_slot_at` (machinery_basis)
+
+- **Alvo:** `Game::slot_at` (`game.rs:9349`), RETURN. **Proposta:** H10.
+- **Para quê:** `GuiMekanism.isHovering` (`GuiMekanism.java:702-706`): sob a janela só os slots virtuais dela são alvo, e um slot da
+  máquina coberto não é, esteja ele antes ou depois do virtual na ordem dos slots. Vale para hover, tooltip, clique, as teclas 1 a 9,
+  F e Q e a divisão por arrasto, que `screen_mouse_button_pressed_pre` cancelando não alcança.
+- **Risco:** mudar o retorno de `slot_at` ou quem o chama.
 
 ### `energy_capacity` (machinery_basis)
 
@@ -214,7 +233,7 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`.
 
 ## Hooks do catálogo com estrutura privada
 
-Os 8 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 17 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -224,9 +243,18 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game` |
 | `use_item` (basis) | `use_item` | `game.world.game_time` | `level_game_time`, que já existe |
 | `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, e o método do módulo `slot-accepts` no ejetor | `level_game_time` e H7 |
-| `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`) | H8: `cooking_recipes(kind)` |
+| `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`), `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Mekanism enche) | H8: `cooking_recipes(kind)`; falta um helper de escrita no inventário de quem age |
 | `use_item_on` (mekanism) | `use_item_on` | `game.world.block_entities.get/get_mut`, `game.world.modified.insert`, `game.held_mut()`, `game.recipes()` | H8: `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `block_entity_tick` (generators) | `block_entity_tick` | `game.res.providers().burn_time(world_items!)`, `game.world.chunks` e `world_biomes!` | H8: `burn_time(stack)`, `biome_temperature(dimension, pos)` |
+| `window_frame` (basis) | `frame` | `game.mod_screen` (escreve `screen.slots`), `game.renderer`, `game.remote`, `game.world.block_entities` | H9 |
+| `window_key` (basis) | `screen_key_pressed_pre` | `game.mod_screen` (o bloco da tela aberta) | H9 |
+| `window_press` (basis) | `screen_mouse_button_pressed_pre` | `game.mod_screen`, `game.renderer` (o tamanho da tela em pixels de GUI) | H9 |
+| `window_release` (basis) | `screen_mouse_button_released_pre` | `game.mod_screen` | H9 |
+| `window_drag` (basis) | `screen_mouse_dragged_pre` | `game.mod_screen`, `game.renderer` | H9 |
+| `window_scroll` (basis) | `screen_mouse_scrolled_pre` | `game.mod_screen`, `game.renderer` | H9 |
+| `window_net` (basis) | `net_from_client` | `game.lan.hub.guests`, `hide_menu_slots` e `play.crafting.machine` do menu de LAN, `game.container`, `game.world.block_entities` | H12 |
+| `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
+| `window_net_server` (basis) | `net_from_server` | o módulo `machinery_basis_windows`, que guarda os tipos de upgrade nos estáticos da lib | H12 |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
 os dois primeiros; `ItemUpgrade.useOn` (`ItemUpgrade.java:28-45`) para o `use_item_on` do Mekanism; `MekanismRecipeType.java:334` e
@@ -270,7 +298,7 @@ usar antes de ter número de API:
 
 Pedido: carimbar esses fragmentos (`python3 tools/stamp_native_hooks.py`) e listar os quatro helpers documentados em `helpers`.
 
-## Módulos (6)
+## Módulos (7)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -279,6 +307,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (machinery_basis) | `game.rs` | liga a lib ao jogo: 1.077 linhas, tudo `pub(in crate::game)` | H8 e o que está em [Dependências a vigiar](#dependências-a-vigiar) |
 | `glue` (mekanism) | `game.rs` | liga as máquinas e a tela: 1.596 linhas | idem |
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 280 linhas | idem |
+| `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
@@ -321,30 +350,31 @@ Riscos: `spike_energy_at`, `spike_save_level` e `spike_remove_entity` quebram em
 `NewBlock` e do formato de linha. `spike_obj_kd` e `spike_sort_translucent` são os mais frágeis: alteram a pipeline de render, e
 `spike_sort_translucent` reordena todos os vértices de `outline_fill`, o que muda com qualquer ajuste de camada.
 
-### Aba de upgrades
+### Aba de upgrades (em uso desde 2026-11-06)
 
-Diff `~/.cache/rust-mekanism/spike-upgrade/spike-upgrade-A-fim.diff` e a página `gotchas/spike-aba-de-upgrades-viabilidade.md` do
-ai-memory. Medido em jogo, no desktop, com dois clientes. Java: `GuiWindow.mouseClicked` (`GuiWindow.java:101`), `onDrag` (`:128`),
-`InteractionStrategy` (`:244`), `GuiUpgradeWindow` (`GuiUpgradeWindow.java:34`), `VirtualInventoryContainerSlot`
-(`VirtualInventoryContainerSlot.java:11`).
+A aba e a janela saíram do spike e estão em uso: os 9 itens `window_*` e o módulo `windows` acima, mais o `menu_quick_move` do
+Mekanism, que passou a ter `&mut Game`. O que o spike provou em jogo (diff `~/.cache/rust-mekanism/spike-upgrade/spike-upgrade-A-fim.diff`
+e a página `gotchas/spike-aba-de-upgrades-viabilidade.md` do ai-memory) continua valendo; a etapa 1 desta versão não rodou em jogo.
 
-| Injeção | Alvo | Estado | O que provou | Proposta |
-|---|---|---|---|---|
-| módulo `spike` | `game/native_hooks.rs` | spike | `OpenNativeScreen` tem campos privados de `native_hooks`; o módulo reescreve `mod_screen.screen.slots[i]` (Some, None, posição) no hook `frame` | H9 |
-| `spike_draw_slots` | `Game::draw_inventory_slots` (`game.rs:9461`), HEAD cancelável | spike | a ordem do original: itens, janela, itens virtuais, tooltip e item no cursor por cima. `native_screen_draw` fica sob os itens e `screen_render_post` cobre o tooltip | H11 |
-| `spike_slot_at` | `Game::slot_at` (`game.rs:9349`), RETURN | spike | devolve o slot virtual sob o cursor e `None` para o slot coberto. Vale para hover, tooltip, clique, teclas 1 a 9, F e Q, e divisão por arrasto | H10 |
+Decisões que o código tem e o spike não tinha:
 
-Hooks do catálogo que o spike usou com estrutura privada (7): `frame`, `screen_key_pressed_pre`,
-`screen_mouse_button_pressed_pre`, `screen_mouse_button_released_pre`, `screen_mouse_dragged_pre`, `screen_render_post` (todos
-leem `self.mod_screen`, `self.renderer`, `self.container` ou `self.world.block_entities`) e `net_from_client` (chama
-`self.lan.hub.hide_menu_slots(conn, ...)` e zera `play.crafting.machine`). Proposta: H9 a H12.
+- **Clique.** `GuiWindow.mouseClicked` (`GuiWindow.java:100-125`) com `InteractionStrategy.ALL`: o clique DENTRO do retângulo da janela é
+  consumido pela janela, porque ela é um `AbstractWidget` ativo e o `clicked` dele é o `isMouseOver` (`GuiElement.java:494-496`); só o
+  clique FORA dela atravessa para a tela. Os slots atrás ficam bloqueados por `GuiMekanism.isHovering` (`:702-706`), que é o filtro em
+  `slot_at`. O spike cancelava sempre dentro da janela, e o código faz o mesmo, exceto sobre um slot virtual, onde o clique segue para o
+  jogo (`GuiVirtualSlot.mouseClicked` chama `slotClicked`).
+- **Esc.** `GuiMekanism.keyPressed` (`:577-585`) pergunta a cada janela: a que não está fixa fecha e consome a tecla; fixa, a tecla
+  segue e a tela fecha (`GuiWindow.keyPressed`, `:152-162`).
+- **Seleção por jogador no servidor.** `net_from_client` guarda a escolha por (contêiner, jogador) e esconde os slots virtuais no menu
+  de quem está sem janela. Quem sai sem avisar é largado em `mod_container_viewers` (`prune`): o hook de jogador (`player_container_close`)
+  não dispara para o anfitrião, e a contagem do `mod_container_viewers` dispara para os dois casos.
+- **Posição.** Fica no cliente, em `config/<ns>/client.toml`, tabela `[window.upgrade]` com `x`, `y` e `pinned`, gravada em `close()`
+  e lida na primeira janela: persiste entre sessões como o `lastWindowPositions` do `ClientConfig` (`ClientConfig.java:59,145-158`),
+  que o NeoForge grava em `config/mekanism/client.toml`.
 
-Riscos: `slot_at` e `draw_inventory_slots` são o núcleo do desenho de inventário e mudam sempre que o Horizon mexe na tela. O
-módulo em `native_hooks.rs` depende de um arquivo de 11 mil linhas. `hide_menu_slots` e `play.crafting.machine` são o
-protocolo de menu de LAN: mudar quem fala com o convidado quebra a seleção por jogador, sem erro.
-
-Falta decidir no Java: `GuiWindow.mouseClicked` com `InteractionStrategy.ALL` não consome o clique no fundo, e o spike cancela
-sempre. A limpeza da seleção se o cliente cair pode usar `player_container_close`, que existe (API 152).
+Riscos: `slot_at` e `draw_inventory_slots` são o núcleo do desenho de inventário e mudam sempre que o Horizon mexe na tela. O módulo
+em `native_hooks.rs` depende de um arquivo de 11 mil linhas. `hide_menu_slots` e `play.crafting.machine` são o protocolo de menu de LAN:
+mudar quem fala com o convidado quebra a seleção por jogador, sem erro.
 
 ## Previstas
 
@@ -707,6 +737,14 @@ Mekanism. Por decisão do usuário, não são corrigidas por injeção: entram n
 
 Os valores são em `guiScale` 2, medidos com `dev/referencia/comparar_tela.py`. Em escala 3 os números são outros, e aparecem
 entre parênteses.
+
+### H25 item desenhado em escala (correção, sem hook)
+
+Medido em 2026-11-06 na janela de upgrades, guiScale 2 e 3, quatro máquinas. O original desenha os ícones de "Supported:" (escala 0,75) e os
+das linhas da lista (0,5) com `guiGraphics.item` sob uma matriz escalada; o Horizon escala os quads do item depois de montá-los
+(`native_item_stack`, `scale_since`). A textura é a mesma (md5 igual) e a posição também; muda a amostragem das bordas: 545 pixels em
+2 (448 acima de 3 níveis, máximo 199) e 665 em 3 nos 8 ícones de "Supported:", e 65 pixels em 3 no ícone da linha da lista. O pedido ao Horizon é
+um desenho de item em escala que amostre como o `GuiRenderer` do 26.x. Sem ele não há como zerar esses pixels pelo mod.
 
 ### H22 escurecimento do mundo atrás de telas (correção, sem hook)
 
