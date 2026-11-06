@@ -166,21 +166,27 @@ de energia só marcam para salvar, a saída despausa).
 
 | Peça da lib | Java |
 |---|---|
-| `chemical::ChemicalTank` | `BasicChemicalTank` sobre `BasicResourceContainer`, com diário, `canInsert`, `canExtract` e validador |
-| `chemical::fill_tank_or_convert` | `ChemicalInventorySlot.fillTankOrConvert` |
-| `recipe_handlers` | `InputResourceHandler` e o `OutputHelper` de slot |
+| `resource_tank::ResourceTank` | `BasicResourceContainer`, com diário, `canInsert`, `canExtract` e validador, para qualquer recurso grande |
+| `chemical::ChemicalTank`, `fluid::FluidTank` | `BasicChemicalTank` e `BasicFluidTank`: o mesmo contêiner, para químico e para fluido |
+| `chemical::ChemicalAttributeValidator` | `ChemicalAttributeValidator` (`DEFAULT`, `ALWAYS_ALLOW`, `create`, `createStrict` e o `process` sobrescrito) |
+| `chemical::fill_tank_or_convert`, `fill_tank_from_slot` | `ChemicalInventorySlot.fillTankOrConvert` e `fillTankFromSlot` |
+| `resource_tank::fill_container_from_slot` | `ResourceHandlerSlot.fillContainerFromSlot`, sobre a capability de recurso do item |
+| `recipe_handlers` | `InputResourceHandler`, `IOutputHandler` e o `OutputHelper` de slot, de tanque de químico e de tanque de fluido |
 | `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |
 | `recipe_cache` | `InputRecipeCache` (`SingleInputRecipeCache`, `DoubleInputRecipeCache`) e os `IInputCache` por tipo, componentes e químico |
+| `item_chemical_constant_recipe` | `ItemStackConstantChemicalToObjectCachedRecipe` e `ChemicalUsageMultiplier`, com o `usedSoFar` |
 
 A lib não conhece id nenhum: o ingrediente de item e o de químico são predicados, e as conversões e as receitas chegam como
 dados. O tanque do Infuser só aceita um químico que alguma receita usa (`containsRecipeB`) e, com item na entrada, que combine
 com ele (`containsRecipeBA`).
 
-Limites conhecidos: `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda não foram portados, porque as 19
-receitas de infusão têm `per_tick_usage: false`; o glue deixa de fora, com um aviso, uma receita que tenha `true`. O
-`fillTankFromSlot` do Java (item com a capability de químico) não existe, porque nenhum item do jogo a tem. O
-`ChemicalAttributeValidator` não existe, porque nenhum químico dos tanques portados tem atributo. A regra de inserção do
-slot de entrada (`containsRecipeAB`) segue no glue, na regra do hopper, e o tanque tem a dele.
+Limites conhecidos: a receita de uso constante (`per_tick_usage`) existe na lib e está conferida com o Osmium Compressor original, mas
+o `ProgressMachine` e o glue ainda não a escolhem: o glue deixa de fora, com um aviso, uma receita que tenha `true`. O `usedSoFar`
+chega à receita nova pelo monitor (`RecipeLookupHandler::saved_used_so_far`, o `ConstantUsageRecipeLookupHandler`). O
+`fillTankFromSlot` e o `ChemicalAttributeValidator` existem, mas nenhum item portado tem a capability de químico (o tile entrega
+`ChemicalItems`) e nenhum mapa de atributos é lido (o mod entrega `ChemicalAttributes`); sem eles o comportamento é o de antes.
+O `FluidResource` é só o id, sem o `DataComponentPatch` do NeoForge. A regra de inserção do slot de entrada (`containsRecipeAB`)
+segue no glue, na regra do hopper, e o tanque tem a dele.
 
 ### Upgrades
 

@@ -12,8 +12,8 @@ use std::rc::Rc;
 
 /// O que muda de uma receita para outra: o que o Java deixa abstrato em `CachedRecipe`.
 pub trait RecipeLogic {
-    /// `setupVariableValues`.
-    fn setup_variable_values(&mut self) {}
+    /// `setupVariableValues`. O Java lê `getOperatingTicks()` da receita; aqui ela o entrega.
+    fn setup_variable_values(&mut self, _operating_ticks: i32) {}
     /// `calculateOperationsThisTick`, depois do cálculo da energia, que é comum a todas.
     fn calculate_operations_this_tick(
         &mut self,
@@ -26,6 +26,8 @@ pub trait RecipeLogic {
         true
     }
     fn reset_cache(&mut self) {}
+    /// `ItemStackConstantChemicalToObjectCachedRecipe.loadSavedUsageSoFar`: só a receita de uso constante guarda isso.
+    fn load_saved_usage_so_far(&mut self, _used_so_far: i32) {}
 }
 
 /// `CachedRecipe`.
@@ -162,6 +164,11 @@ impl CachedRecipe {
         }
     }
 
+    /// `loadSavedUsageSoFar`, do `RecipeCacheLookupMonitor.loadSavedData`.
+    pub fn load_saved_usage_so_far(&mut self, used_so_far: i32) {
+        self.logic.load_saved_usage_so_far(used_so_far);
+    }
+
     pub fn is_input_valid(&self) -> bool {
         self.logic.is_input_valid()
     }
@@ -221,7 +228,7 @@ impl CachedRecipe {
         }
         let transaction = Transaction::open_root();
         let operations = if (self.can_holder_function)() {
-            self.logic.setup_variable_values();
+            self.logic.setup_variable_values(self.operating_ticks);
             let mut tracker = OperationTracker::new(
                 self.errors,
                 (self.recheck_all_errors)(),

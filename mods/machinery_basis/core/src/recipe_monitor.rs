@@ -52,6 +52,10 @@ pub trait RecipeLookupHandler<R> {
     fn saved_operating_ticks(&self) -> i32 {
         0
     }
+    /// `ConstantUsageRecipeLookupHandler.getSavedUsedSoFar`: `None` se o tile não é um `ConstantUsageRecipeLookupHandler`.
+    fn saved_used_so_far(&self) -> Option<i32> {
+        None
+    }
     /// `invalidateCache`: as tags ou as receitas recarregaram.
     fn invalidate_cache(&self) -> bool {
         false
@@ -204,6 +208,10 @@ impl<R: RecipeId + 'static> RecipeCacheLookupMonitor<R> {
                 });
         if self.cached_recipe.is_none() {
             cached.load_saved_operating_ticks(self.handler.saved_operating_ticks());
+            // `loadSavedData` do monitor: depois dos ticks, o quanto do químico de uso constante já foi gasto.
+            if let Some(used_so_far) = self.handler.saved_used_so_far() {
+                cached.load_saved_usage_so_far(used_so_far);
+            }
         }
         self.cached_recipe = Some(cached);
         true

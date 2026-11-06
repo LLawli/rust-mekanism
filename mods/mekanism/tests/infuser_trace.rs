@@ -199,7 +199,7 @@ fn the_infuser_follows_the_recorded_run_tick_by_tick() {
 }
 
 /// As 19 receitas de infusão do Mekanism gastam o químico de uma vez, no fim: nenhuma tem `per_tick_usage`, e é por isso
-/// que `ItemStackConstantChemicalToObjectCachedRecipe` fica de fora.
+/// que o `ProgressMachine::chemical` monta só o `TwoInputCachedRecipe`, sem escolher a receita de uso constante.
 #[test]
 fn no_infusing_recipe_spends_the_chemical_per_tick() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))

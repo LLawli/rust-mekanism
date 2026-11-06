@@ -14,8 +14,9 @@ use std::rc::Rc;
 
 /// Uma receita de um item e um químico para um item. Os valores e os ids vêm do mod.
 ///
-/// `per_tick_usage` não existe aqui: a receita que gasta o químico a cada tick pede
-/// `ItemStackConstantChemicalToObjectCachedRecipe`, que a lib ainda não porta, e quem monta as receitas deixa essas de fora.
+/// `per_tick_usage` não existe aqui: a receita que gasta o químico a cada tick usa
+/// [`crate::item_chemical_constant_recipe::ItemChemicalConstantUsageRecipe`], e quem monta o tile escolhe uma ou outra como
+/// o `createNewCachedRecipe` do Java (`recipe.perTickUsage()`).
 #[derive(Clone, Debug)]
 pub struct ItemChemicalToItemRecipe {
     pub id: String,

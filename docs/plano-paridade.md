@@ -138,9 +138,15 @@ O Horizon não simula inserção, então o ejetor transaciona numa cópia do viz
 
 Falta na Fase 1:
 
-- `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda, e os handlers de fluido. As 19 receitas do Infuser têm
-  `per_tick_usage: false`: quem precisa disso são as máquinas que usam químico por tick, e receita assim fica de fora com um aviso no log.
-- `fillTankFromSlot`, de item com capability de químico, e `ChemicalAttributeValidator`: nada portado usa ainda.
+- Ligar a receita de uso constante às máquinas. `ItemChemicalConstantUsageRecipe` (`ItemStackConstantChemicalToObjectCachedRecipe`), o
+  `ChemicalUsageMultiplier`, o `usedSoFar` e os handlers de fluido e de saída de químico estão na lib, conferidos tick a tick com o
+  Osmium Compressor original (`compressor_run`). Falta o `ProgressMachine` e o glue escolherem por `per_tick_usage`, como o
+  `createNewCachedRecipe` do Java: hoje uma receita assim segue fora, com um aviso no log, e as máquinas que a usam (Osmium
+  Compressor, Purification Chamber, Chemical Injection Chamber) não estão portadas.
+- `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, mas nada os alimenta: nenhum item portado tem a capability
+  de químico (`ChemicalItems`), e nenhum mapa de dados de atributos (`chemical_attribute_*`) é lido para o `ChemicalAttributes`. O
+  `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer`
+  o lê e nenhum slot portado o chama.
 - Ligar o índice de receitas. A lib tem `recipe_cache`, porte de `InputRecipeCache` (`Single` e `Double`, com `containsInput*`,
   `findFirstRecipe` e `findTypeBasedRecipe`), conferido contra o Java em `dev/referencia/rastros/recipe_cache.jsonl`, mas
   `ElectricLookup`, `ChemicalLookup` e `ItemChemicalRecipes` ainda procuram na ordem da lista (e `ElectricLookup` olha só o tipo,
@@ -239,7 +245,7 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 **Máquinas (infuser e elétricas)**
 
 - Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
-- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` ausente.
+- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só na lib, sem máquina que o use.
 - Clique põe qualquer item na entrada. Slot de energia sem função.
 - Sem upgrades, controle de redstone, comparador, som, partículas, abas, nome do químico no tooltip.
 - Luz 13 em vez de 8. Conteúdo solto ao quebrar, em vez de guardado no item.

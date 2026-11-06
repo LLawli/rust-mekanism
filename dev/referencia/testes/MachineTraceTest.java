@@ -43,6 +43,8 @@ import mekanism.common.registration.impl.ContainerTypeRegistryObject;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismContainerTypes;
 import mekanism.common.registries.MekanismItems;
+import mekanism.common.resource.PrimaryResource;
+import mekanism.common.resource.ResourceType;
 import mekanism.common.tests.helpers.MekGameTestHelper;
 import mekanism.common.tile.component.TileComponentUpgrade;
 import mekanism.common.tile.base.TileEntityMekanism;
@@ -52,6 +54,7 @@ import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
 import mekanism.common.tile.machine.TileEntityElectrolyticSeparator;
 import mekanism.common.tile.machine.TileEntityMetallurgicInfuser;
+import mekanism.common.tile.prefab.TileEntityAdvancedElectricMachine;
 import mekanism.common.tile.prefab.TileEntityElectricMachine;
 import mekanism.common.tile.prefab.TileEntityProgressMachine;
 import mekanism.common.tile.prefab.TileEntityRecipeMachine;
@@ -558,6 +561,58 @@ public class MachineTraceTest {
                   trace.setSlot(0, Items.REDSTONE, 3);
               })
               .thenExecuteAfter(240, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Osmium Compressor, whose recipe spends the osmium every tick: a tank that runs dry and pauses the recipe, a speed upgrade that makes the spending catch up, and the energy running out.")
+    public static void compressorRun(final DynamicTest test) {
+        template(test, MekanismBlocks.OSMIUM_COMPRESSOR::defaultState);
+        Trace trace = new Trace("compressor_run");
+        trace.inputSlot = 0;
+        trace.outputSlot = 2;
+        trace.refillTicks = 3;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("item glowstone_dust 3, osmium 210");
+                  trace.setSlot(0, Items.GLOWSTONE_DUST, 3);
+                  trace.setOsmium(210);
+              })
+              .thenExecuteAfter(235, () -> {
+                  trace.mark("osmium 100");
+                  trace.setOsmium(100);
+              })
+              .thenExecuteAfter(120, () -> {
+                  trace.mark("speed 4, osmium 210");
+                  trace.addUpgrades(UpgradeIds.SPEED, 4);
+                  trace.setOsmium(210);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("osmium 0");
+                  trace.setOsmium(0);
+              })
+              .thenExecuteAfter(15, () -> {
+                  trace.mark("osmium 100");
+                  trace.setOsmium(100);
+              })
+              .thenExecuteAfter(15, () -> {
+                  trace.mark("energy 0, no top ups");
+                  trace.refillTicks = 0;
+                  trace.setEnergy(0);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("top ups back");
+                  trace.refillTicks = 3;
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("gas slot ingot_osmium 2, osmium 5");
+                  trace.setSlot(1, MekanismItems.getProcessedResource(ResourceType.INGOT, PrimaryResource.OSMIUM).asItem(), 2);
+                  trace.setOsmium(5);
+              })
+              .thenExecuteAfter(30, trace::write)
               .thenSucceed()
         );
     }
@@ -1942,6 +1997,23 @@ public class MachineTraceTest {
             tank.setContents(amount == 0 ? ChemicalResource.EMPTY : ChemicalResource.of(redstone), amount, null);
         }
 
+        void setOsmium(long amount) {
+            IChemicalTank tank = ((TileEntityAdvancedElectricMachine<?, ?>) machine()).chemicalTank;
+            Holder<Chemical> osmium = helper.getLevel().registryAccess().getOrThrow(ChemicalIds.OSMIUM);
+            tank.setContents(amount == 0 ? ChemicalResource.EMPTY : ChemicalResource.of(osmium), amount, null);
+        }
+
+        /// O `usedSoFar` do `TileEntityAdvancedElectricMachine`, que é privado.
+        private static int usedSoFar(TileEntityAdvancedElectricMachine<?, ?> machine) {
+            try {
+                Field field = TileEntityAdvancedElectricMachine.class.getDeclaredField("usedSoFar");
+                field.setAccessible(true);
+                return field.getInt(machine);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
         Container chest() {
             return (Container) helper.getLevel().getBlockEntity(helper.absolutePos(CHEST));
         }
@@ -2199,6 +2271,13 @@ public class MachineTraceTest {
                 line.append(",\"infusion\":[");
                 slot(line, chamber.getInventorySlots().get(0));
                 line.append(']');
+            }
+            if (chamber instanceof TileEntityAdvancedElectricMachine<?, ?> advanced) {
+                line.append(",\"tank\":").append(advanced.chemicalTank.amountAsLong());
+                line.append(",\"gas_slot\":[");
+                slot(line, chamber.getInventorySlots().get(1));
+                line.append("],\"used_so_far\":").append(usedSoFar(advanced));
+                line.append(",\"max_operations\":").append(chamber.getOperationsPerTick());
             }
             if (recordUpgrades) {
                 line.append(",\"speed\":").append(chamber.getComponent().getUpgrades(upgrade(UpgradeIds.SPEED)))
