@@ -184,9 +184,11 @@ slot de entrada (`containsRecipeAB`) segue no glue, na regra do hopper, e o tanq
 ### Upgrades
 
 `upgrade.rs` porta o `TileComponentUpgrade`, os dois `UpgradeInventorySlot` e o que o `Upgrade` e o `IUpgradeHelper` dão à máquina,
-sem conhecer upgrade nenhum. O mod entrega, como dados, os tipos com o máximo de cada um (`data/<ns>/machinery_basis/upgrade/<nome>.json`,
-o mesmo arquivo do `Upgrade.DIRECT_CODEC`), as tags de suporte (`data/<ns>/tags/machinery_basis/upgrade/...`, com `#` para tag dentro
-de tag) e o item que os carrega. O item é um `ItemResource` com `variant`, o valor que distingue itens do mesmo id, como o
+sem conhecer upgrade nenhum. O mod entrega, como dados, os tipos com o máximo de cada um
+(`data/mekanism/mekanism/upgrade/<nome>.json`, o mesmo arquivo do `Upgrade.DIRECT_CODEC`), as tags de suporte
+(`data/mekanism/tags/mekanism/upgrade/...`, com `#` para tag dentro de tag) e o item que os carrega. Quem não tem formato
+próprio usa `data/<ns>/machinery_basis/upgrade/<nome>.json` e `data/<ns>/tags/machinery_basis/upgrade/...`, com o mesmo formato.
+O item é um `ItemResource` com `variant`, o valor que distingue itens do mesmo id, como o
 `DataComponentPatch` do `ItemResource` do NeoForge: no Mekanism, o valor do componente `mekanism:upgrade_type`. Os ids de velocidade e de
 energia, que mexem no tempo e no consumo, entram em `tile::UpgradeConfig` junto do `maxUpgradeMultiplier`.
 
@@ -249,12 +251,14 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 
 ## Decisões
 
-1. **Registro de recursos por dados:** cada recurso é um arquivo em `data/<ns>/machinery_basis/resource/<nome>.json`, lido
-   pelo `native_add_server_reload_listeners` (API 400). O id vira `<ns>:<nome>`. Isso vale para mods de conteúdo e para
+1. **Registro de recursos por dados:** cada recurso é um arquivo em `data/mekanism/mekanism/chemical/<nome>.json` no Mekanism,
+   ou em `data/<ns>/machinery_basis/resource/<nome>.json` para quem não tem formato próprio, lido pelo
+   `native_add_server_reload_listeners` (API 400). O id vira `<ns>:<nome>`. Isso vale para mods de conteúdo e para
    data packs do mundo, e o `/reload` relê. A leitura só existe no servidor: o cliente recebe o que precisa pela rede.
 2. **Repositório:** a lib fica neste repo por enquanto, para mudar junto com o primeiro consumidor.
 
-3. **Tags de recursos:** ficam em `data/<ns>/tags/machinery_basis/resource/<nome>.json`, o caminho de uma tag de registro,
+3. **Tags de recursos:** ficam em `data/mekanism/tags/mekanism/chemical/<nome>.json` no Mekanism, ou em
+   `data/<ns>/tags/machinery_basis/resource/<nome>.json` para quem não tem formato próprio, o caminho de uma tag de registro,
    com a lista em `values`. Uma receita aponta para `#<ns>:<nome>` ou para o id do recurso.
 4. **Formato dos tanques:** versionado desde o início, com `v: 1` no NBT, em `machinery_basis.tanks`. É o contrato entre
    mods. Uma versão desconhecida carrega vazia. Vale para o `Tank` simples, que o Heat Generator usa. O tanque de químico da
