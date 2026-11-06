@@ -205,18 +205,6 @@ bindings = [
 
 # O modelo do upgrade escolhido pelo componente: o original usa um modelo de item próprio (`mekanism:component_item`), e aqui
 # a propriedade de condição `mekanism:upgrade_type/<tipo>` faz o mesmo papel.
-[[injection]]
-id = "item_model_property"
-hook = "item_model_property"
-hook_version = 1
-kind = "HEAD"
-helper = "item_model_property.rs"
-bindings = [
-  { name = "property", ty = "&str", value = "property" },
-  { name = "stack", ty = "&StackView", value = "stack" },
-  { name = "value", ty = "&mut bool", value = "&mut *value" },
-]
-
 # Shift e clique direito com o upgrade na mão (`ItemUpgrade.useOn`).
 [[injection]]
 id = "use_item_on"
@@ -230,3 +218,23 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
 ]
+
+# `mekanism:component_item` não existe no Horizon: o arquivo do item fica igual ao do original, e o tipo é decodificado aqui.
+[[injection]]
+id = "component_item_model"
+target = "horizon_assets::item_model::foreign::decode_node"
+kind = "HEAD"
+cancellable = true
+helper = "component_item_model.rs"
+bindings = [
+  { name = "kind", ty = "&str", value = "kind" },
+  { name = "m", ty = "&Map<String, Value>", value = "m" },
+]
+
+[[injection]]
+id = "command_components"
+target = "horizon_command::item::ItemState<'_,'_>::component_type"
+kind = "HEAD"
+cancellable = true
+helper = "command_components.rs"
+bindings = [{ name = "state", ty = "&mut ItemState<'_, '_>", value = "&mut *self" }]

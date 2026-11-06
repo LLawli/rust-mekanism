@@ -120,6 +120,14 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
+## Componente de item nos modelos e nos comandos
+
+O Horizon só conhece os componentes vanilla nos dois lugares, e o Mekanism injeta o seu. `component_item_model.rs` entra em
+`foreign::decode_node` e transforma `mekanism:component_item` num `select` sobre o componente, com o `items/upgrade.json` igual ao do
+original. `command_components.rs` entra em `ItemState::component_type`, o parser do argumento de item, e aceita `mekanism:upgrade_type`.
+Um alvo com duas lifetimes se escreve `ItemState<'_,'_>`, sem espaço. O mixin recusa `RETURN` em função que devolve `Self` ou que tem função
+aninhada, e uma ligação só pode ser parâmetro ou `self` inteiro.
+
 ## Regra de slot do vizinho
 
 `slot_accepts.rs` é um módulo injetado em `game/machines/native_items.rs`, porque as regras de slot são privadas ali. Ele só lê: expõe

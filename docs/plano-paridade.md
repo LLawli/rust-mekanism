@@ -142,7 +142,7 @@ Falta na Fase 1:
 - Upgrades: faltam a aba da tela, o tooltip do item, os efeitos de `muffling` e `xp_containment`, a receita do `muffling` e os tipos que
   nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique e reabrir. A instalação de 20 ticks só foi comparada sem
   o jogo, e a capacidade por instância em `native_energy_at` só compilou.
-- `/give` com `mekanism:upgrade_type` não funciona: o comando do Horizon só aceita componentes vanilla.
+- Upgrade sem tipo aparece vazio, e o original mostra o modelo de item ausente.
 - `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.

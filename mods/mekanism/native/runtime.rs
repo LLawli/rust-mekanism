@@ -68,9 +68,6 @@ pub const ENERGY_UPGRADE: &str = "mekanism:energy";
 /// `MekanismTags.Upgrades.DEFAULT_MACHINE_UPGRADES`: o que `AttributeUpgradeSupport.DEFAULT_MACHINE_UPGRADES` aceita, e que as
 /// quatro máquinas portadas usam.
 pub const DEFAULT_MACHINE_UPGRADES: &str = "mekanism:upgrade_support/default_machine";
-/// O prefixo da propriedade de modelo que diz o tipo do upgrade na mão: `mekanism:upgrade_type/<nome>`. É o lugar do
-/// `ComponentItemModel` do original, que escolhe a textura pelo componente.
-pub const UPGRADE_MODEL_PROPERTY: &str = "mekanism:upgrade_type/";
 
 /// Os dados de upgrade que as quatro máquinas portadas usam: os tipos, o que a tag `default_machine` aceita, e o item que os
 /// carrega, com o limite de pilha dele.

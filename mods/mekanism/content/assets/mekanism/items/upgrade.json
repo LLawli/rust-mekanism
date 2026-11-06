@@ -1,38 +1,7 @@
 {
- "model": {
-  "type": "minecraft:condition",
-  "property": "mekanism:upgrade_type/speed",
-  "on_true": {
-   "type": "minecraft:model",
-   "model": "mekanism:item/upgrade/speed"
-  },
-  "on_false": {
-   "type": "minecraft:condition",
-   "property": "mekanism:upgrade_type/energy",
-   "on_true": {
-    "type": "minecraft:model",
-    "model": "mekanism:item/upgrade/energy"
-   },
-   "on_false": {
-    "type": "minecraft:condition",
-    "property": "mekanism:upgrade_type/muffling",
-    "on_true": {
-     "type": "minecraft:model",
-     "model": "mekanism:item/upgrade/muffling"
-    },
-    "on_false": {
-     "type": "minecraft:condition",
-     "property": "mekanism:upgrade_type/xp_containment",
-     "on_true": {
-      "type": "minecraft:model",
-      "model": "mekanism:item/upgrade/xp_containment"
-     },
-     "on_false": {
-      "type": "minecraft:model",
-      "model": "mekanism:item/upgrade"
-     }
-    }
-   }
+  "model": {
+    "type": "mekanism:component_item",
+    "mek_data": "mekanism:upgrade",
+    "model": "mekanism:item/upgrade"
   }
- }
 }

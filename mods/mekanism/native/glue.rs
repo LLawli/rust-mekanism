@@ -2,7 +2,6 @@
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, GameLevel, machinery_basis as basis};
-use horizon_assets::item_model::StackView;
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::Ingredient;
 use horizon_client::hud::HudBatch;
@@ -1184,19 +1183,6 @@ fn report_comparator(live: &mut Live, key: (&'static str, [i32; 3])) {
 /// `NativeComponentTypes`: o componente que guarda o tipo do upgrade no item (`MekanismDataComponents.UPGRADE_TYPE`).
 pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::UPGRADE_TYPE_COMPONENT.to_owned());
-}
-
-/// O lugar do `ComponentItemModel`: o original escolhe a textura do upgrade pelo componente do item, e o Horizon só deixa o mod
-/// responder a uma propriedade de condição própria. O modelo de cada tipo, em `assets/mekanism/items/upgrade.json`, pergunta
-/// `mekanism:upgrade_type/<tipo>`, e a resposta é se o item carrega esse tipo.
-pub(in crate::game) fn item_model_property(property: &str, stack: &StackView, value: &mut bool) {
-    let Some(kind) = property.strip_prefix(rules::UPGRADE_MODEL_PROPERTY) else {
-        return;
-    };
-    let wanted = format!("mekanism:{kind}");
-    let held = stack.patch.get(rules::UPGRADE_TYPE_COMPONENT);
-    *value = stack.item == rules::UPGRADE_ITEM
-        && matches!(held, Some(Some(serde_json::Value::String(held))) if *held == wanted);
 }
 
 /// `ItemUpgrade.useOn`: com shift, o upgrade na mão entra na máquina que o aceita, e o que entrou sai da pilha. Um clique em máquina
