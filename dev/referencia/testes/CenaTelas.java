@@ -156,10 +156,12 @@ public class CenaTelas {
         // O `tick step` roda a 20 ticks por segundo, o mesmo ritmo do cliente: espera os passos e uma folga.
         int base = 25 + steps + 20;
         if (caseTick == base) {
+            report(minecraft, caso, "ao abrir");
             open(minecraft, caso);
         } else if (caseTick == base + OPEN_WAIT) {
             hideUnimplementedTabs(minecraft);
             clicks(minecraft, caso);
+            report(minecraft, caso, "depois dos cliques");
             hover(minecraft, caso);
             shotsTaken = 0;
         } else if (cycle > 0 && caseTick > base + OPEN_WAIT + 10 && shotsTaken < captures && (caseTick - base) % 6 == 0) {
@@ -315,6 +317,25 @@ public class CenaTelas {
                 }
             }
         }
+    }
+
+    /// O que o servidor tem do gerador (energia, lava, calor, produção) e do tanque do Infuser, no `cena:` do log, para comparar com o
+    /// `MEKTRACE` do port. O servidor parado não muda enquanto o print sai.
+    private static void report(Minecraft minecraft, Caso caso, String when) {
+        var server = minecraft.getSingleplayerServer();
+        if (server == null) {
+            return;
+        }
+        server.execute(() -> {
+            TileEntityMekanism tile = tile(server, caso);
+            if (tile instanceof TileEntityHeatGenerator generator) {
+                Mekanism.logger.info("cena: {} {} energia {} lava {} calor {} producao {}", caso.name(), when,
+                      ((BasicEnergyContainer) generator.getEnergyContainer()).getAmountAsLong(), generator.lavaTank.amountAsLong(), generator.getTemperature(),
+                      generator.getProductionRate());
+            } else if (tile instanceof TileEntityMetallurgicInfuser machine) {
+                Mekanism.logger.info("cena: {} {} tanque {}", caso.name(), when, machine.infusionTank.amountAsLong());
+            }
+        });
     }
 
     private static void open(Minecraft minecraft, Caso caso) {

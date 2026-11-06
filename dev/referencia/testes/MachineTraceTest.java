@@ -17,6 +17,7 @@ import mekanism.api.chemical.Chemical;
 import mekanism.api.chemical.ChemicalIds;
 import mekanism.api.chemical.ChemicalResource;
 import mekanism.api.chemical.IChemicalTank;
+import mekanism.api.heat.HeatAPI;
 import mekanism.api.inventory.IInventorySlot;
 import mekanism.api.recipes.cache.CachedRecipe.OperationTracker.RecipeError;
 import mekanism.api.text.ILangEntry;
@@ -26,6 +27,7 @@ import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.block.attribute.Attribute;
 import mekanism.common.block.attribute.AttributeEnergy;
 import mekanism.common.capabilities.energy.MachineEnergyContainer;
+import mekanism.common.capabilities.heat.BasicHeatCapacitor;
 import mekanism.common.config.MekanismConfig;
 import mekanism.common.inventory.container.MekanismContainer;
 import mekanism.common.inventory.container.SelectedWindowData;
@@ -46,6 +48,8 @@ import mekanism.common.registries.MekanismItems;
 import mekanism.common.resource.PrimaryResource;
 import mekanism.common.resource.ResourceType;
 import mekanism.common.tests.helpers.MekGameTestHelper;
+import mekanism.generators.common.registries.GeneratorsBlocks;
+import mekanism.generators.common.tile.TileEntityHeatGenerator;
 import mekanism.common.tile.component.TileComponentUpgrade;
 import mekanism.common.tile.base.TileEntityMekanism;
 import mekanism.common.tile.component.TileComponentUpgrade;
@@ -89,6 +93,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
@@ -1704,6 +1709,216 @@ public class MachineTraceTest {
                 default -> throw new IllegalArgumentException(path);
             };
             return registry.getOrThrow(key);
+        }
+    }
+
+    private static final BlockPos GENERATOR = new BlockPos(1, 0, 0);
+    private static final int FUEL_SLOT = 0;
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator burning a tank of lava until it runs out, then living off the heat it stored, a tank with less than a burn of lava, and a full energy buffer.")
+    public static void heatGeneratorLavaRun(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatTrace trace = new HeatTrace("heat_generator_lava_run");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("lava 500");
+                  trace.setLava(500);
+              })
+              .thenExecuteAfter(90, () -> {
+                  trace.mark("lava 150");
+                  trace.setLava(150);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("lava 1000, energy 235");
+                  trace.setLava(1_000);
+                  trace.setEnergy(235);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("energy 0");
+                  trace.setEnergy(0);
+              })
+              .thenExecuteAfter(120, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator burning solid fuel, which the fuel slot turns into lava, a lava bucket that does not fit and one into an empty tank, and fuel that does not fit and that fits exactly.")
+    public static void heatGeneratorFuelRun(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatTrace trace = new HeatTrace("heat_generator_fuel_run");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("fuel coal 3");
+                  trace.setFuel(Items.COAL, 3);
+              })
+              .thenExecuteAfter(80, () -> {
+                  trace.mark("lava 40, fuel lava_bucket 1");
+                  trace.setFuel(Items.LAVA_BUCKET, 1);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("lava 0, fuel lava_bucket 1");
+                  trace.setLava(0);
+                  trace.setFuel(Items.LAVA_BUCKET, 1);
+              })
+              .thenExecuteAfter(50, () -> {
+                  trace.mark("lava 950, fuel coal 2");
+                  trace.setLava(950);
+                  trace.setFuel(Items.COAL, 2);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("lava 920, fuel coal 1");
+                  trace.setLava(920);
+                  trace.setFuel(Items.COAL, 1);
+              })
+              .thenExecuteAfter(100, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator warmed by lava blocks around it, with and without fuel in the tank.")
+    public static void heatGeneratorLavaSides(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatTrace trace = new HeatTrace("heat_generator_lava_sides");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("lava_block 0 0 0, lava_block 2 0 0");
+                  trace.setBlock(new BlockPos(0, 0, 0), Blocks.LAVA);
+                  trace.setBlock(new BlockPos(2, 0, 0), Blocks.LAVA);
+              })
+              .thenExecuteAfter(120, () -> {
+                  trace.mark("lava_block 1 0 -1, lava 300");
+                  trace.setBlock(new BlockPos(1, 0, -1), Blocks.LAVA);
+                  trace.setLava(300);
+              })
+              .thenExecuteAfter(80, () -> {
+                  trace.mark("air 0 0 0, air 2 0 0, air 1 0 -1");
+                  trace.setBlock(new BlockPos(0, 0, 0), Blocks.AIR);
+                  trace.setBlock(new BlockPos(2, 0, 0), Blocks.AIR);
+                  trace.setBlock(new BlockPos(1, 0, -1), Blocks.AIR);
+              })
+              .thenExecuteAfter(200, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    /// Grava o Heat Generator a cada tick: o calor guardado, a temperatura, o ambiente, a energia, a lava, o combustível e o que o tile expõe.
+    private static class HeatTrace {
+
+        private final String name;
+        private final List<String> lines = new ArrayList<>();
+        private final List<String> marks = new ArrayList<>();
+        private MekGameTestHelper helper;
+        private int tick;
+        /// O calor antes do primeiro tick gravado: o capacitor chega ali depois de ticks de preparação, com o ambiente de cada face.
+        private double heatBefore;
+
+        HeatTrace(String name) {
+            this.name = name;
+        }
+
+        void start(MekGameTestHelper helper) {
+            this.helper = helper;
+            heatBefore = heat();
+        }
+
+        void mark(String mark) {
+            marks.add(mark);
+        }
+
+        TileEntityHeatGenerator tile() {
+            return (TileEntityHeatGenerator) helper.getLevel().getBlockEntity(helper.absolutePos(GENERATOR));
+        }
+
+        double heat() {
+            try {
+                Field field = TileEntityHeatGenerator.class.getDeclaredField("heatCapacitor");
+                field.setAccessible(true);
+                return ((BasicHeatCapacitor) field.get(tile())).getHeat();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        void setBlock(BlockPos pos, net.minecraft.world.level.block.Block block) {
+            helper.getLevel().setBlockAndUpdate(helper.absolutePos(pos), block.defaultBlockState());
+        }
+
+        /// Quantos vizinhos têm lava (fonte ou corrente), como o `getBoost` do tile conta.
+        int lavaFaces() {
+            int faces = 0;
+            for (Direction side : Direction.values()) {
+                if (helper.getLevel().getFluidState(tile().getBlockPos().relative(side)).is(FluidTags.LAVA)) {
+                    faces++;
+                }
+            }
+            return faces;
+        }
+
+        void setLava(long amount) {
+            tile().lavaTank.setContents(amount == 0 ? FluidResource.EMPTY : FluidResource.of(Fluids.LAVA), amount, null);
+        }
+
+        void setEnergy(long energy) {
+            tile().energyContainer().setEnergy(energy, null);
+        }
+
+        void setFuel(Item item, int count) {
+            tile().getInventorySlots().get(FUEL_SLOT).setContents(ItemResource.of(item), count, null);
+        }
+
+        void record() {
+            if (helper == null) {
+                return;
+            }
+            TileEntityHeatGenerator tile = tile();
+            StringBuilder line = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":[");
+            for (int i = 0; i < marks.size(); i++) {
+                line.append(i == 0 ? "" : ",").append('"').append(marks.get(i)).append('"');
+            }
+            marks.clear();
+            line.append("],\"heat_before\":").append(tick == 1 ? heatBefore : 0).append(",\"heat\":").append(heat())
+                  .append(",\"temperature\":").append(tile.getTemperature())
+                  .append(",\"ambient\":").append(HeatAPI.getAmbientTemp(helper.getLevel(), tile.getBlockPos()))
+                  .append(",\"ambient_faces\":[");
+            for (Direction side : Direction.values()) {
+                line.append(side.ordinal() == 0 ? "" : ",").append(tile.getAmbientTemperature(side));
+            }
+            line.append("]")
+                  .append(",\"epsilon\":").append(HeatAPI.EPSILON)
+                  .append(",\"lava_faces\":").append(lavaFaces())
+                  .append(",\"energy\":").append(tile.energyContainer().getAmountAsLong())
+                  .append(",\"capacity\":").append(tile.energyContainer().getCapacityAsLong())
+                  .append(",\"lava\":").append(tile.lavaTank.amountAsLong())
+                  .append(",\"produced\":").append(tile.getProductionRate())
+                  .append(",\"transfer_loss\":").append(tile.getLastTransferLoss())
+                  .append(",\"environment_loss\":").append(tile.getLastEnvironmentLoss())
+                  .append(",\"active\":").append(tile.getActive())
+                  .append(",\"block_active\":").append(Attribute.isActive(tile.getBlockState()))
+                  .append(",\"comparator\":").append(tile.getCurrentRedstoneLevel())
+                  .append(",\"fuel\":[");
+            Trace.slot(line, tile.getInventorySlots().get(FUEL_SLOT));
+            line.append("]}");
+            lines.add(line.toString());
+        }
+
+        void write() {
+            helper = null;
+            try {
+                Path file = Path.of("trace", name + ".jsonl");
+                Files.createDirectories(file.getParent());
+                Files.write(file, lines);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
         }
     }
 

@@ -111,6 +111,8 @@ def casos():
         caso("generator_hover_medidor", "generator", energia="120", lava="500", hover=HOVER["generator"]["medidor_lava"]),
         caso("generator_hover_medidor_vazio", "generator", energia="0", hover=HOVER["generator"]["medidor_lava"]),
         caso("generator_hover_slot", "generator", energia="0", hover=HOVER["generator"]["slot_combustivel"]),
+        # Queima a lava com a energia subindo: a barra e o `MEKTRACE` do port, contra o servidor do original, passo a passo.
+        caso("generator_queima", "generator", energia="0", lava="500", passos="100"),
     ]
     return out
 
