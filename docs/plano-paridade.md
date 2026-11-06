@@ -149,12 +149,22 @@ Falta na Fase 1:
   máscara de erros e o redstone vão nos data slots. Falta a lista de trackers do `MekanismContainer`, som, nome, experiência e
   `xpContainmentChanged`.
 - Tela, ainda diferente do original:
-  - rótulo "Inventory";
   - abas laterais: duas à esquerda e três à direita, energia embaixo à esquerda, redstone embaixo à direita e o aviso dela,
-    que pede o blend `DST_COLOR` que `native_sprite` não tem;
-  - moldura colorida dos slots por `findDataType` e o ícone de raio do slot de energia;
-  - `bar/base` e `bar/vertical_power` e o tanque do Infuser;
-  - a seta de progresso divide por `TICKS_REQUIRED` fixo, e o original usa `ticksRequired` com speed.
+    que pede o blend `DST_COLOR` que `native_sprite` não tem. Ficam fora do retângulo da tela, então não mexem em nenhum pixel dos
+    elementos que existem; `dev/referencia/comparar_tela.py` as tira da conta;
+  - o sprite do químico do Infuser e a lava do medidor são tiras animadas do atlas de blocos. A tira vai no caminho do original
+    (`textures/mek_chemical`) com o `assets/minecraft/atlases/blocks.json` dele, e o HUD do Horizon a anima como o jogo, sem
+    injeção. Em imagem, os quadros inteiros são idênticos (16 de 40 prints do ciclo do químico e 37 de 40 da lava casam pixel a
+    pixel com um estado do port); nos prints entre dois quadros, o original interpola com a fração do tick (o `partialTick`) e o
+    Horizon com ticks inteiros, o que dá até 64 pixels de diferença de um nível. Não fecha sem mudar o renderer;
+  - o mundo atrás da tela, e o brilho dos quatro cantos transparentes do painel, saem 2 a 3 níveis mais escuros no Horizon (13 contra
+    10). Os cantos são 72 pixels por tela e entram na tabela à parte;
+  - o ícone de um item de bloco no slot (carvão não, que é plano; argila, areia) e a borda do tooltip de item são desenhados pelo
+    próprio Horizon, com sombreamento e cantos diferentes do vanilla;
+  - o que a tela desenha agora segue o Java (`GuiBar`, `GuiVerticalPowerBar`, `GuiChemicalBar`, `GuiFluidGauge`, `GuiSlot`,
+    `GuiProgress`, rótulos e tooltips de widget), coberto por testes sem o jogo e comparado em imagem com o original, por
+    `dev/referencia/comparar_lote.py`, em 36 estados por escala de GUI (2 e 3): slots, barras, setas, medidor, rótulos, título e
+    tooltips de widget com 0 pixels diferentes, fora as diferenças de renderer acima.
 - `NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT` não acenderam em nenhum dos dois jogos, e o overlay de nível >= 0,98 e
   PULSE só têm teste de unidade.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
@@ -226,8 +236,9 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 - Temperatura do bioma sem ajuste por altura.
 - Lava dentro do bloco desenhada pela block entity; entidade ali dentro não conta como dentro de lava.
-- Sem slot de energia funcional, transferência de calor pela base, som, partículas, abas, tooltips e ícone de raio.
-- Tanque de lava não recebe de cano. Slots da tela 1 pixel deslocados.
+- Sem slot de energia funcional, transferência de calor pela base, som, partículas e abas (energia, calor e a que guarda os slots de
+  armadura). A tela tem o medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java.
+- Tanque de lava não recebe de cano.
 
 ## Pronto significa
 

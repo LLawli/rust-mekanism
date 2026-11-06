@@ -18,18 +18,18 @@ Contagem em 2026-11-06, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 40 | |
-| Hook do catálogo, usado só com o contrato dele | 27 | não |
+| `[[injection]]` no total | 41 | |
+| Hook do catálogo, usado só com o contrato dele | 26 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 8 | sim |
-| Injeção crua (`target = ...`) | 5 | sim |
+| Injeção crua (`target = ...`) | 7 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 6 | sim |
 
-27 + 8 + 5 = 40. Os 6 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-13 injeções e 6 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 8 + 7 = 41. Os 6 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+15 injeções e 6 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 5 | 6 | 8 |
+| Em uso | 7 | 6 | 8 |
 | Provada em spike | 8 | 1 | 8 |
 | Prevista | 5 | 1 | 0 |
 
@@ -45,7 +45,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H1 `block_entity_energy_instance` | hook | `energy_capacity` | em uso |
 | H2 `block_entity_container_instance` | hook | `Containers::view`, `can_take`, `native_container_accepts`, `native_fluid_at` | prevista (4) |
 | H3 `block_fluid` | hook | `logged-fluid-row` | em uso |
-| H4 `screen_tooltip` v2 | hook | `warning_tab_tooltip` | em uso |
+| H4 `screen_tooltip` v2 | hook | `widget_tooltip` (mekanism e mekanismgenerators) | em uso (2) |
 | H5 `component_types` v2 | hook | `command_components` | em uso |
 | H6 `item_model_node` | hook | `component_item_model` | em uso |
 | H7 `item_container_accepts` | helper | módulo `slot-accepts` | em uso |
@@ -62,8 +62,9 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H18 `properties.light` condicional | dado | `override_gameplay` | spike |
 | H19 `looping_sound` | helpers | módulo de som | prevista |
 | H20 `menu_slot_rules` v2 | hook | alvo ainda sem nome | prevista |
+| H21 `screen_slot_highlight` | hook | `slot_highlight` (mekanism) | em uso (1) |
 
-H1 a H6 e H13 a H15 são genéricos: qualquer mod de máquina, de rede ou de fluido usa. Nada neles cita o Mekanism.
+H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
 ## Termos e estados
 
@@ -84,17 +85,17 @@ H1 a H6 e H13 a H15 são genéricos: qualquer mod de máquina, de rede ou de flu
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 10 | 8 | 2 | 2 |
-| `mods/mekanism/native/horizon-mixin.toml` | 22 | 19 | 3 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 8 | 8 | 0 | 2 |
-| Total | 40 | 35 | 5 | 6 |
+| `mods/mekanism/native/horizon-mixin.toml` | 22 | 18 | 4 | 2 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 9 | 8 | 1 | 2 |
+| Total | 41 | 34 | 7 | 6 |
 
-Todas são `kind = "HEAD"`. Três das cinco cruas são `cancellable = true`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
-`impl Hooks for Mod {}`. Os 25 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`. Seis das sete cruas são `cancellable = true`; a que não é, `logged-fluid-row`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
+`impl Hooks for Mod {}`. Os 24 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 35 hooks, 8 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`.
+Dos 34 hooks, 8 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`.
 
-## Injeções cruas em uso (5)
+## Injeções cruas em uso (7)
 
 ### `energy_capacity` (machinery_basis)
 
@@ -128,22 +129,40 @@ e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`.
   Hoje o `block_entity_submit` desenha a lava pela block entity porque o mesher lê `FluidState::from_block`, que nenhuma injeção
   alcança: H3 acabaria com esse desvio visual também.
 
-### `warning_tab_tooltip` (mekanism)
+### `widget_tooltip` (mekanism)
 
 - **Estado:** em uso. **Alvo:** `horizon_client::game::native_hooks::Game<'_>::draw_native_screen_tooltip`, HEAD, cancelável
-  (`native_hooks.rs:10131`).
-- **Helper:** `mods/mekanism/native/warning_tab_tooltip.rs`. Lê `game.carried`, `game.cursor` e `game.native_screen_at()`, todos
-  privados, e chama `machinery_basis::menu_tooltip`, que usa `game.gui.atlas`, `Game::tooltip_geometry`, `game.tooltip_box` e
-  `Game::tooltip_text`.
-- **Por que é necessária:** `GuiWarningTab.updateTooltip` (`GuiWarningTab.java:45-61`) põe o cabeçalho em `EnumColor.YELLOW`
-  (0xFFDD4F) e posiciona o tooltip junto do widget (`MenuTooltipPositioner`), não sobre o cursor.
+  (`native_hooks.rs:10131`). É o mesmo alvo do `widget_tooltip` de `mekanismgenerators`.
+- **Helper:** `mods/mekanism/native/widget_tooltip.rs`. Lê `game.carried`, `game.cursor` e `game.native_screen_at()`, todos
+  privados. A glue (`mods/mekanism/native/glue.rs`, `widget_tooltip`) chama `machinery_basis::menu_tooltip`, que usa
+  `game.gui.atlas`, `Game::tooltip_geometry`, `game.tooltip_box` e `Game::tooltip_text`.
+- **Por que é necessária:** cobre três widgets: a aba de avisos, a barra de energia e a barra de químico. `GuiWarningTab.updateTooltip`
+  (`GuiWarningTab.java:45-61`) põe o cabeçalho em `EnumColor.YELLOW` (0xFFDD4F). A barra de energia e a de químico seguem
+  `GuiBar.updateTooltip` (`GuiBar.java:96`), e a de químico é um `GuiTankBar` (`GuiChemicalBar.java:26`). Nos três, o tooltip fica
+  por cima ou por baixo do widget, e não sobre o cursor.
 - **Hook mais próximo:** `screen_tooltip` (`collect`, `lines: &mut Vec<String>`). Entrega só texto com os códigos `§`, que têm 16
   cores e não 0xFFDD4F, e `draw_native_screen_tooltip` sempre posiciona no cursor. O Horizon já converte as linhas em
-  `Vec<(Text, u32)>` por dentro: o formato que falta existe, só não é exposto.
+  `Vec<(Text, u32)>` por dentro: o formato que falta existe, só não é exposto. O Mekanism deixou de usar `screen_tooltip` nesta
+  mudança, porque a posição é o que o hook não dá.
 - **Hook proposto:** H4.
 - **Risco:** a injeção depende de quatro funções de desenho e de três campos de `Game`. Mudar o tema do tooltip, a ordem de
   parâmetros de `tooltip_geometry` ou o nome de `native_screen_at` quebra o build. Um ajuste no desenho do tooltip muda o
   resultado sem erro.
+
+### `widget_tooltip` (mekanismgenerators)
+
+- **Estado:** em uso. **Alvo:** o mesmo de `mekanism`: `horizon_client::game::native_hooks::Game<'_>::draw_native_screen_tooltip`,
+  HEAD, cancelável (`native_hooks.rs:10131`).
+- **Helper:** `mods/mekanismgenerators/native/widget_tooltip.rs`, que chama `mekanismgenerators_glue::widget_tooltip`
+  (`glue.rs:294`). Lê os mesmos campos privados de `Game` que o do Mekanism.
+- **Por que é necessária:** o Heat Generator tem a barra de energia, `GuiVerticalPowerBar` (`GuiHeatGenerator.java:41`, um
+  `GuiBar`, `GuiBar.java:96`), e o medidor de lava, `GuiFluidGauge` (`GuiHeatGenerator.java:40`, que estende `GuiGauge`,
+  `GuiGauge.java:130`). Os dois têm tooltip próprio no original, e o `native_screen_tooltip` do Horizon põe o texto sempre sobre o
+  cursor, sem posição do widget.
+- **Hook mais próximo:** `screen_tooltip`, o mesmo do `mekanism`: sem posição e sem cor por linha.
+- **Hook proposto:** H4, o mesmo que cobre o `widget_tooltip` do `mekanism`.
+- **Risco:** a mesma causa do `mekanism`: `carried`, `cursor`, `native_screen_at` e `draw_native_screen_tooltip` são privados. Um
+  nome que mude quebra o build, e um ajuste no desenho do tooltip muda o resultado sem erro.
 
 ### `component_item_model` (mekanism)
 
@@ -173,6 +192,21 @@ e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`.
 - **Hook proposto:** H5.
 - **Risco:** o helper lê `state.reader.cursor` e chama `super::args::read_identifier`: privados de `horizon-command`. Mudar o
   leitor de argumentos quebra o build.
+
+### `slot_highlight` (mekanism)
+
+- **Estado:** em uso. **Alvo:** `horizon_client::game::Game<'_>::draw_slot_highlight`, HEAD, cancelável (`game.rs:9365`, método
+  privado de `impl Game`).
+- **Helper:** `mods/mekanism/native/slot_highlight.rs`. Só age na camada da frente (`front`) e só numa tela de bloco `mekanism*`.
+- **Por que é necessária:** `VirtualSlotContainerScreen.extractSlotHighlightFront` chama `super.extractSlotHighlightBack` (linha 74),
+  e não `Front`: o realce da frente sai com o sprite de trás (`VirtualSlotContainerScreen.java:70-75`). O vanilla não faz isso, e o
+  original faz, então o port faz também.
+- **Hook mais próximo:** nenhum do catálogo troca o realce do slot. `screen_draw_over_slots` (H11) pinta por cima, mas não troca o
+  desenho padrão do realce.
+- **Hook proposto:** H21.
+- **Risco:** o helper chama `game.draw_slot_highlight(batch, false, x, y)` de dentro da própria injeção; ele não recursa só porque
+  sai no `if !front`. Mudar a assinatura de `draw_slot_highlight` ou a ordem das camadas quebra o build, ou faz o realce sair certo
+  só numa das camadas, sem erro.
 
 ## Hooks do catálogo com estrutura privada
 
@@ -419,6 +453,10 @@ fn block_fluid(&self, _host: &dyn Host, event: &mut BlockFluidEvent<'_>) {
 - **Lado:** cliente. **Contrato:** `collect` sobre uma estrutura, `out = tooltip`.
 - **Quando dispara:** no mesmo lugar do v1, em `draw_native_screen_tooltip`, com a mesma condição (sem item no cursor e sem slot
   sob ele). Se v1 e v2 existirem, v2 roda depois.
+- **Quem precisa:** hoje duas injeções cruas fazem este trabalho, as duas com o nome `widget_tooltip` (uma em `mekanism_native`,
+  outra em `mekanismgenerators_native`, ver [Injeções cruas em uso](#injeções-cruas-em-uso-7)). O tooltip da aba de avisos, da
+  barra de energia, da barra de químico e do medidor de lava fica por cima ou por baixo do widget, e o da aba de avisos sai com o
+  cabeçalho amarelo. Com o v2, as duas injeções saem.
 - **Assinatura:**
 
 ```rust
@@ -436,9 +474,9 @@ pub struct NativeScreenTooltip {
 
 ```rust
 fn screen_tooltip_v2(&self, _host: &dyn Host, event: &mut ScreenTooltipV2Event<'_>) {
-    if warning_tab(event.block).contains(event.at) {
-        event.tooltip.lines.push((Text::literal("Problemas"), 0xFFFF_DD4F));
-        event.tooltip.anchor = Some(warning_tab(event.block).rect());
+    if let Some(widget) = widget_at(event.block, event.at) {
+        event.tooltip.lines.extend(widget.lines());
+        event.tooltip.anchor = Some(widget.rect());
     }
 }
 ```
@@ -632,6 +670,32 @@ fn stop_sound(&mut self, handle: SoundHandle)
 - **Exemplo:** o Combiner aceita no segundo slot só o item que forma receita com o que está no primeiro
   (`TileEntityCombiner.java:114-117`).
 
+### H21 `screen_slot_highlight`
+
+- **Lado:** cliente. **Contrato:** `cancel`, `out = handled`: o mod desenha o realce e o Horizon não desenha o padrão.
+- **Quando dispara:** no começo de `draw_slot_highlight`, a cada chamada, nas duas camadas (`front` diz qual). Vale com a tela
+  aberta, e o mod recebe o bloco da tela e os dados dela, como em H11.
+- **Assinatura:**
+
+```rust
+fn native_screen_slot_highlight(&self, block: &str, data: &[i32], front: bool, at: [f32; 2], batch: &mut HudBatch) -> bool
+```
+
+- **Exemplo:**
+
+```rust
+fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighlightEvent<'_>) {
+    if event.front && is_slot_screen(event.block) {
+        draw_back_highlight(event.batch, event.at);
+        event.handled = true;
+    }
+}
+```
+
+- **Nota:** o original desenha a frente do realce com o sprite de trás (`VirtualSlotContainerScreen.java:70-75`). O hook deixa
+  cada mod escolher o desenho de cada camada, e hoje a injeção crua `slot_highlight` faz esse papel. Não é um pedido de correção
+  do Horizon: o padrão do Horizon, sem mod, está certo para o vanilla.
+
 ## Como manter o documento
 
 1. **Toda injeção crua nova entra aqui no mesmo change que a cria**, com a ficha completa: alvo exato e tipo, arquivo do helper, o
@@ -653,8 +717,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=40 hook=35 target=5 module=6 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 8 tem de somar `hook`.
+   Hoje: `injection=41 hook=34 target=7 module=6 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 8 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

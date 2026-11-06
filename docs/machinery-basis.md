@@ -44,7 +44,7 @@ serve a outros mods.
 | Distribuir energia | O bloco em tick sai do mundo: `native_energy` responde `None` e `native_move_energy` não esvazia o próprio bloco | `distribuir_energia(game, pos, entity, faces)` |
 | Data slots | Trafegam em 16 bits | Codec que divide `i32` e `i64` em slots |
 | Receitas de tipo próprio | `native_recipes_of_type` entrega JSON cru, sem busca | Índice por tipo, refeito depois de `server_data_loaded`. O mod diz em quais campos cada parte fica |
-| Telas | `native_screen` e `native_sprite` são primitivas | Barra de energia, medidor de tanque, seta de progresso, botões |
+| Telas | `native_screen` e `native_sprite` são primitivas, e o Horizon só lê o `gui.scaling` dos sprites do vanilla | Painel e molduras de nove partes pelo `.mcmeta` do mod, mosaico com âncora e corte, barra e medidor de tanque, seta de progresso, slots pelo papel que a configuração de lados dá, rótulos, tooltip de widget |
 | Faces relativas | `faces` são absolutas e por tipo de bloco, e a máquina gira | Conversão de lado relativo para direção, pelo `facing` |
 
 **Reimplementar:** o Horizon não tem, ou não serve para a meta.
