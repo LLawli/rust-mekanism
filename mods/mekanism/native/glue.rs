@@ -1,7 +1,7 @@
 // As máquinas do Mekanism no jogo. As regras ficam em mekanism_rules, e o que é genérico em
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
-use crate::game::{Game, machinery_basis as basis};
+use crate::game::{Game, GameLevel, machinery_basis as basis};
 use horizon_client::containers::{ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::Ingredient;
 use horizon_client::hud::HudBatch;
@@ -9,6 +9,7 @@ use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
+use horizon_world::registry::BlockStateId;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
@@ -258,6 +259,8 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
 //   da tabela. Um bloco novo na mesma posição não herda nada: sem a chave `redstone` na `ModBlockEntity` (o Java a grava sempre), nasce outro.
 thread_local! {
     static LIVE_MACHINES: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
+    static COMPARATOR_LEVELS: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
+    static COMPARATOR_QUEUE: RefCell<Vec<(&'static str, [i32; 3])>> = const { RefCell::new(Vec::new()) };
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
 }
 
@@ -301,6 +304,8 @@ struct Live {
     saved: Option<SavedState>,
     used_version: Option<u32>,
     /// O `lit` que o bloco tem, para só escrever quando muda.
+    /// O nível que os comparadores já viram.
+    reported_level: Option<i32>,
     lit: Option<bool>,
     /// A face de saída do ejetor, a direita da frente.
     eject_side: Option<Face>,
@@ -613,6 +618,7 @@ fn born(
         last_seen: i64::MIN,
         saved: None,
         used_version: None,
+        reported_level: None,
         lit: None,
         eject_side: None,
     }
@@ -888,7 +894,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         offered,
         created: RefCell::new(Vec::new()),
     };
-    let comparator_changed = live.machine.tick_server(now as u64, &neighbours);
+    live.machine.tick_server(now as u64, &neighbours);
     let ejected = neighbours.ejected();
 
     let machine = &live.machine;
@@ -917,9 +923,6 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.used_version = Some(version);
     }
     deliver(game, entity, &recipes, slots.output, ejected);
-    if comparator_changed {
-        game.native_update_output_neighbors(dimension, pos);
-    }
     let progress = machine.recipe_progress();
     if let Some(started) = started {
         basis::bench_record(now, u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
@@ -978,14 +981,51 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         }
     }
 
+    report_comparator(&mut live, key);
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
         machines.insert(key, live);
         if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
             LAST_SWEEP.set(now);
             machines.retain(|_, live| now - live.last_seen <= STALE_TICKS);
+            COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.retain(|key, _| machines.contains_key(key)));
         }
     });
+}
+
+/// `notifyComparatorChange`, mais o nível que `getAnalogOutputSignal` devolve. O objeto vivo sai da tabela durante o próprio
+/// tick, e um comparador pode perguntar nessa hora, por isso o nível fica em outra tabela.
+fn report_comparator(live: &mut Live, key: (&'static str, [i32; 3])) {
+    let level = live.machine.tile().current_redstone_level();
+    if live.reported_level != Some(level) {
+        live.reported_level = Some(level);
+        COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert(key, level));
+        COMPARATOR_QUEUE.with_borrow_mut(|queue| queue.push(key));
+    }
+}
+
+/// `hasAnalogOutputSignal`: toda máquina do mod tem `AttributeComparator`.
+pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
+    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some()) {
+        *output = true;
+    }
+}
+
+/// `getAnalogOutputSignal`: o `currentRedstoneLevel` do tile.
+pub(in crate::game) fn analog_output(dimension: &'static str, pos: [i32; 3], output: &mut i32) {
+    if let Some(level) = COMPARATOR_LEVELS.with_borrow(|levels| levels.get(&(dimension, pos)).copied()) {
+        *output = level;
+    }
+}
+
+/// Avisa os comparadores depois do tick do nível: dentro do `block_entity_tick` a máquina está fora do mundo.
+pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) {
+    let pending = COMPARATOR_QUEUE.with_borrow_mut(std::mem::take);
+    for (at, pos) in pending {
+        if at == dimension {
+            game.native_update_output_neighbors(dimension, pos);
+        }
+    }
 }
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {

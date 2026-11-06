@@ -141,8 +141,6 @@ Falta na Fase 1:
 - `findFirstRecipe` segue a ordem da lista de receitas, não o mapa por item do Java.
 - Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto, e em jogo ficam em 0.
 - `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
-- Comparador em jogo: falta o hook `analog_output`, sem ele nenhum comparador lê o nível. A notificação roda dentro do tick, e a Fase 0 pede
-  enfileirar para `level_tick_post`.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
 - Sem rastro ainda: `recheckAllErrors` com jogador olhando, `NOT_ENOUGH_ENERGY_REDUCED_RATE` e `setRecipeUsed`.

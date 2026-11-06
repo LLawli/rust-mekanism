@@ -1,0 +1,3 @@
+fn mekanism_has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
+    crate::game::mekanism_glue::has_analog_output(level, state, output);
+}
