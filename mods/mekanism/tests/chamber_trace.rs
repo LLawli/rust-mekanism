@@ -504,6 +504,28 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
 
 /// Salvar e reabrir com upgrades instalados e nos dois slots: o objeto novo nasce do que o Java grava, recalcula tempo, consumo e
 /// capacidade, e o que estava no slot de entrada segue a instalação de onde a máquina parou.
+/// `chamber_placed`: colocada do item, como um jogador, a máquina recalcula os upgrades. O `setBlock` dos outros rastros não passa
+/// por aí, e a capacidade deles começa em 4 ticks de consumo, não nos ticks da receita.
+#[test]
+fn a_machine_placed_or_loaded_recalculates_its_capacity() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/chamber_placed.jsonl");
+    let text = std::fs::read_to_string(path).unwrap();
+    let first: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+    let mut world = chamber();
+    let saved = chamber().block_entity.0.saved_state();
+    world.block_entity.0.restore(&saved, false);
+    let machine = &world.block_entity.0;
+    assert_eq!(
+        serde_json::json!(machine.energy().capacity()),
+        first["capacity"]
+    );
+    assert_eq!(
+        serde_json::json!(machine.ticks_required()),
+        first["required"]
+    );
+}
+
 #[test]
 fn the_installed_upgrades_and_both_slots_survive_a_reopen() {
     let before = chamber();

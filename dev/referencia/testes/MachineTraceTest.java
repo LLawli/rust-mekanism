@@ -35,6 +35,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -548,6 +549,29 @@ public class MachineTraceTest {
         );
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records a chamber placed from its item, as a player does: the upgrades recalculate, unlike with setBlock.")
+    public static void chamberPlacedByPlayer(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(2, 2, 1)
+              .fill(1, 0, 0, 1, 0, 0, Blocks.STONE.defaultBlockState()));
+        Trace trace = new Trace("chamber_placed");
+        trace.pos = new BlockPos(1, 1, 0);
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Player player = helper.makeMockPlayerLookingAt(1, 0, 0, Direction.UP);
+                  helper.useOn(new BlockPos(1, 0, 0), new ItemStack(MekanismBlocks.ENRICHMENT_CHAMBER.asItem()), player, Direction.UP);
+              })
+              .thenExecuteAfter(2, () -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("energy 500");
+                  trace.setEnergy(500);
+              })
+              .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
@@ -561,6 +585,7 @@ public class MachineTraceTest {
         private int tick;
         boolean recordChest;
         boolean recordUpgrades;
+        BlockPos pos = CHAMBER;
         int inputSlot = INPUT;
         int outputSlot = OUTPUT;
 
@@ -577,7 +602,7 @@ public class MachineTraceTest {
         }
 
         TileEntityProgressMachine<?> machine() {
-            BlockEntity tile = helper.getLevel().getBlockEntity(helper.absolutePos(CHAMBER));
+            BlockEntity tile = helper.getLevel().getBlockEntity(helper.absolutePos(pos));
             return tile instanceof TileEntityProgressMachine<?> machine ? machine : null;
         }
 

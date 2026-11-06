@@ -1207,7 +1207,7 @@ pub(in crate::game) fn use_item_on(
     pos: [i32; 3],
     claimed: &mut bool,
 ) {
-    if *claimed || *stack.item != *rules::UPGRADE_ITEM || !game.has_shift_down() {
+    if *claimed || *stack.item != *rules::UPGRADE_ITEM || !game.native_sneaking() {
         return;
     }
     let block = game.native_block(pos);

@@ -122,7 +122,7 @@ comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui
 Estado em 2026-11-05: Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser rodam na base nova em jogo, e a fase segue
 aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`, `recipe_handlers`,
 `two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e
-`infuser_trace.rs` repetem tick a tick os 13 rastros de `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
+`infuser_trace.rs` repetem tick a tick os rastros de `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
 Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
 estados até o primeiro evento e, dali em diante, as transições, porque os comandos não caem no tick exato do rastro. Ejetor, redstone e salvar
@@ -139,7 +139,10 @@ Falta na Fase 1:
 - `fillTankFromSlot`, de item com capability de químico, e `ChemicalAttributeValidator`: nada portado usa ainda.
 - Regras de inserção dos slots (`containsRecipe`, `containsRecipeAB`) na lib, em vez de no glue, e limites de taxa.
 - `findFirstRecipe` segue a ordem da lista de receitas, não o mapa por item do Java.
-- Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto, e em jogo ficam em 0.
+- Upgrades: faltam a aba da tela, o tooltip do item, os efeitos de `muffling` e `xp_containment`, a receita do `muffling` e os tipos que
+  nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique e reabrir. A instalação de 20 ticks só foi comparada sem
+  o jogo, e a capacidade por instância em `native_energy_at` só compilou.
+- `/give` com `mekanism:upgrade_type` não funciona: o comando do Horizon só aceita componentes vanilla.
 - `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.

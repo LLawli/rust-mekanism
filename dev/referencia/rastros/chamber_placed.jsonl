@@ -1,0 +1,10 @@
+{"t":0,"marks":[],"progress":0,"required":200,"energy":0,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":1,"marks":[],"progress":0,"required":200,"energy":0,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":2,"marks":[],"progress":0,"required":200,"energy":0,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":3,"marks":[],"progress":0,"required":200,"energy":0,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":4,"marks":[],"progress":0,"required":200,"energy":0,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":5,"marks":["energy 500"],"progress":0,"required":200,"energy":500,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":6,"marks":[],"progress":0,"required":200,"energy":500,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":7,"marks":[],"progress":0,"required":200,"energy":500,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":8,"marks":[],"progress":0,"required":200,"energy":500,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
+{"t":9,"marks":[],"progress":0,"required":200,"energy":500,"capacity":1000,"per_tick":5,"active":false,"block_active":false,"powered":false,"comparator":0,"input":["",0],"output":["",0],"errors":[]}
