@@ -119,21 +119,37 @@ Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo
 comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui `CachedRecipe` completo, com `OperationTracker`,
 `pausedForErrors`, `recheckAllErrors`, erros e avisos da tela, e `usedSoFar` para `per_tick_usage`.
 
-Estado em 2026-11-05: a parte pura da Enrichment Chamber bate com o original, mas nada disso está ligado ao jogo ainda, e a fase
-segue aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `operation_tracker`, `cached_recipe`, `recipe_monitor`,
-`tile` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 8 rastros de `dev/referencia/rastros/`, gravados por
-`dev/referencia/testes/MachineTraceTest.java`. Duas rodadas dos 6 primeiros cenários deram arquivos idênticos.
+Estado em 2026-11-05: a Enrichment Chamber roda na base nova em jogo, e a fase segue aberta. As outras máquinas continuam em `machine.rs`
+e `recipe.rs`. Em `machinery_basis/core` estão `transaction`, `containers`, `operation_tracker`, `cached_recipe`, `recipe_monitor`,
+`tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 9 rastros de
+`dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`. Duas rodadas dos 6 primeiros cenários deram
+arquivos idênticos.
+
+Em jogo só o cenário `chamber_energy` foi comparado estado a estado, com 342 estados iguais ao original. Ejetor, redstone e salvar e
+reabrir foram conferidos em jogo, mas sem comparar cada tick com um rastro.
 
 Falta na Fase 1:
 
-- Ligar ao Horizon: os blocos ainda usam `machine.rs` e `recipe.rs`, e nada do que está acima roda em mundo.
+- Ligar Crusher, Energized Smelter e Metallurgic Infuser à base nova.
 - `TwoInputCachedRecipe`, `ItemStackConstantChemicalToObjectCachedRecipe` com `usedSoFar`, e os handlers de fluido e químico.
-- Ingrediente por tag: `ItemToItemRecipe` aceita um item só.
-- Regras de inserção dos slots (`containsRecipe`, saída só interna) e limites de taxa.
-- Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto.
-- NBT, `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
+- Regras de inserção dos slots (`containsRecipe`) e limites de taxa.
+- Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto, e em jogo ficam em 0.
+- `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
+- Comparador em jogo: falta o hook `analog_output`, sem ele nenhum comparador lê o nível. A notificação roda dentro do tick, e a Fase 0 pede
+  enfileirar para `level_tick_post`.
+- Ejetor em jogo: o Horizon não simula inserção, então a transação roda numa cópia do vizinho que aceita qualquer item até o limite da
+  pilha. Vizinho com regra de slot pode recusar depois do commit: o resto volta à saída, e se ela já tiver outro item o resto se perde.
+  O original não tem esse caminho. Pede injeção ou decisão do usuário.
+- Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
 - Sem rastro ainda: `recheckAllErrors` com jogador olhando, `NOT_ENOUGH_ENERGY_REDUCED_RATE` e `setRecipeUsed`.
-- `sim` tem um bloco e o sinal ao lado: faltam vizinhos e chunks.
+- `sim` ainda não tem chunks.
+
+**Desenho da base (usuário, 2026-11-05).** Duas opções foram implementadas e medidas em jogo, com critérios fixados antes, e ficou a que
+se saiu melhor. B é a cópia literal do Java: closures, contêineres compartilhados e transação que registra sozinha quem mudou. C mantinha
+traits no lugar das closures, com a mesma transação. Paridade e estabilidade empataram, e o custo decidiu: 200 câmaras, 3 rodadas de 6000
+ticks, perfil `dev`, B com 29.206 ns por tick de máquina (desvio 108) e C com 32.251 (desvio 263). A margem é de 10% e não foi medida em
+`release`. Medir só depois de as duas fazerem o mesmo trabalho importou: na primeira rodada, B fazia menos e C regravava um JSON a cada
+tick, e a diferença parecia ser de 19 vezes.
 
 **Comportamento do original que parece bug e fica.** Limpar os erros deixa `pausedForErrors` em `true`, porque o conjunto vazio não
 contém `NOT_ENOUGH_ENERGY_REDUCED_RATE`. Com a máquina sem sinal no modo HIGH, ligar o sinal depois disso não a faz andar: só um

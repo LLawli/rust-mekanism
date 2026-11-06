@@ -257,7 +257,7 @@ fn tick_infuser(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity)
     basis::save_tanks(entity, &tanks);
 }
 
-// Os objetos vivos da Enrichment Chamber (a opção B: o desenho do Java, com contêineres e receita em cache como objetos).
+// Os objetos vivos da Enrichment Chamber (o desenho do Java, com contêineres e receita em cache como objetos).
 //
 // Moram aqui, numa tabela por thread, uma por block entity, na chave (dimensão, posição). O Horizon entrega a block entity
 // por `&mut` só durante o tick, e `ModBlockEntity` guarda `Items`, `nbt` e `data`, sem lugar para um objeto vivo: então o

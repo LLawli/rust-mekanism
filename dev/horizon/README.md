@@ -28,7 +28,9 @@ container nunca enxerga os snapshots.
 
 Para operar o jogo de fora, use o `horizon-ctl` da versão em uso, que fala pelo socket de `HORIZON_CONTROL`:
 `state`, `screenshot`, `command`, `click-button` e outros. Com o monitor desligado, o jogo continuou renderizando.
-`HORIZON_BACKEND=headless horizon` troca o backend do gamescope (não testado).
+Para testar sem janela, passe o gamescope em `JOGO_CMD`: `gamescope -W 1280 -H 720 -w 1280 -h 720 -r 15 --backend headless -- env -u
+WAYLAND_DISPLAY jogar --world <mundo> --creative --width 1280 --height 720 --control-socket $HORIZON_CONTROL`. O `-r 15` poupa a GPU para
+quem estiver jogando outra coisa. Ao compilar no desktop, use `docker update --cpus 6 horizon` e `CARGO_BUILD_JOBS=6`.
 
 O refresh token fica fora do alcance dos mods. No modo online, o access token entra no processo do jogo e vale cerca de
 24 h: um mod malicioso instalado consegue lê-lo a cada abertura online. `horizon offline` não entrega nenhum token.

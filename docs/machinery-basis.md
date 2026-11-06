@@ -120,7 +120,7 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
-## Objetos vivos das máquinas (opção B)
+## Objetos vivos das máquinas
 
 A base de máquina é uma cópia literal do Java: `Transaction` com gerenciador por thread, contêineres (`EnergyContainer`,
 `InventorySlot`) como `Rc` que se registram sozinhos na transação, listeners como closures que disparam no commit da raiz, e

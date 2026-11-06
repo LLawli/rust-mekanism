@@ -6,7 +6,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
-- Base de máquina da `machinery_basis` portada do Mekanism como objetos vivos (opção B, cópia literal do Java): transações
+- Base de máquina da `machinery_basis` portada do Mekanism como objetos vivos: transações
   com diários que se registram sozinhos, contêineres compartilhados, `CachedRecipe` com closures, monitor de receita, tile e
   o ejetor de itens numa transação que cobre a máquina e o baú, conferidos tick a tick com a Enrichment Chamber original.
 - Enrichment Chamber ligada à base nova no jogo (as outras máquinas seguem no código antigo), com `MEKTRACE` e `MEKBENCH`
