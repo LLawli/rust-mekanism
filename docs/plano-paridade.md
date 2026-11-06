@@ -128,6 +128,13 @@ entities que somem e voltam com o chunk; `sim/open_hash.rs` porta a ordem de ite
 `mods/mekanism/tests/chamber_trace.rs` e `infuser_trace.rs` repetem tick a tick os rastros de
 `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
+O Heat Generator tem três rastros, `heat_generator_lava_run`, `heat_generator_fuel_run` e `heat_generator_lava_sides`, e
+`mods/mekanismgenerators/tests/heat_trace.rs` os repete tick a tick, igual ao bit: calor, temperatura, energia, lava, produção, queima,
+combustível, a lava que acaba, o calor guardado que segue gerando, o buffer cheio, o item que não cabe e o que cabe por exato, o balde, e
+as faces com lava. Dois erros que só o rastro mostrou ficaram corrigidos: a perda para o ambiente usa o ar de cada face
+(`getAmbientTemperature(side)`, o do bloco vizinho) e `HeatAPI.EPSILON` é `1e-6` (um `float` ampliado), não `1e-5`. Com a regra do tile
+igual ao Java, a diferença da barra de energia e do medidor de lava na comparação de telas não vem dela.
+
 Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
 estados até o primeiro evento e, dali em diante, as transições, porque os comandos não caem no tick exato do rastro. Ejetor, redstone e salvar
 e reabrir foram conferidos em jogo sem comparar cada tick. Um mundo antigo migrou o tanque para `chemical_tanks`.
@@ -172,7 +179,10 @@ Falta na Fase 1:
     `(int)(subFrame / time * 1000)` e o shader faz `mix(atual, próximo, millis / 1000)`), e o Horizon usa a mesma conta. O que muda é o
     arredondamento da mistura para 8 bits: o Horizon faz em inteiros, com o empate exato para cima (`+ 500`), e o original, na GPU do
     desktop, arredonda os empates para baixo e ainda tem cerca de 0,5 % das amostras perto do empate (fração .52 a .56) que nenhuma
-    regra fechada reproduziu. Medido nos prints existentes: `base` 40 de 40 com o empate para baixo (16 de 40 com o do Horizon);
+    regra fechada reproduziu. A injeção `sprite_ties` (H26) mistura com o empate para baixo, e medida em jogo contra o original, sem
+    tolerância e sem máscara, dá 40 de 40 em `base` (antes 18), 16 em `bio` (antes 10, pior caso 72 px contra 208) e 21 em `fungi`
+    (antes 6, pior 84 contra 184), e a lava segue 40 de 40. Nenhum caso piorou; o resto é a precisão da GPU. Medido nos prints
+    existentes, antes da injeção: `base` 40 de 40 com o empate para baixo (16 de 40 com o do Horizon);
     `bio` 19 de 40 (12) e `fungi` 22 de 40 (4). Os três prints da lava e os 464 pixels de `barra_energia` eram do gerador queimando a
     lava (a energia sobe, e o port estava um passo adiantado), não da animação: o caso agora usa energia cheia;
   - o mundo atrás da tela, e o brilho dos quatro cantos transparentes do painel, saem 2 a 3 níveis mais escuros no Horizon (13 contra
@@ -254,7 +264,18 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 **Heat Generator**
 
-- Temperatura do bioma sem ajuste por altura.
+- Temperatura do bioma sem ajuste por altura (`Biome.getTemperature(pos, seaLevel)` baixa a temperatura acima de `seaLevel + 17`, com um
+  ruído por posição). O rastro mostrou: no mundo do `gameTestServer` o ar do bloco e o de cada vizinho diferem na terceira casa.
+- O atraso de desligar do bloco está portado: `lit` segue por `blockDeactivationDelay` (60 ticks) depois que o gerador para, com
+  `currentActive` e `updateDelay` salvos (`active_state`, `update_delay`). `heat_trace.rs` compara o `block_active` tick a tick, e em jogo
+  o bloco ficou aceso 60 ticks depois do segundo desligamento (`update_delay` 60, 30, 1, 0).
+- Conferido em jogo (2026-11-06): o glue do Generators compila; queima com lava no tanque, com carvão e com balde; `face_ambient` lê o
+  bioma de cada vizinho (262,5, 280 e 330 K com `fillbiome` em baixo, sul e leste); `lava_faces` conta as faces com lava.
+- A barra de energia: o "58→66 contra 60" não se reproduz. Com a mesma cena nos dois jogos (`generator_queima`, energia 0, lava 500, 100
+  passos) o servidor do original e o `MEKTRACE` do port dão energia 20, lava 0 e temperatura 300,3102685960236, e em `generator_lava_meio`,
+  `generator_lava_cheia` e `generator_hover_barra` (energia 120) a barra tem 0 pixel de diferença em escala 2 e 3. Os números antigos vinham
+  de uma cena em que o gerador queimava lava durante o print, com a energia subindo 1 a 3 por tick, então o que mudava era quantos
+  ticks passavam entre montar o estado e o print, não a regra. Sobra o medidor de lava (fase da animação em prints únicos).
 - Lava dentro do bloco desenhada pela block entity; entidade ali dentro não conta como dentro de lava.
 - Sem slot de energia funcional, transferência de calor pela base, som, partículas e abas (energia, calor e a que guarda os slots de
   armadura). A tela tem o medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java.

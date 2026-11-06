@@ -18,18 +18,18 @@ Contagem em 2026-11-06, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 52 | |
+| `[[injection]]` no total | 53 | |
 | Hook do catálogo, usado só com o contrato dele | 26 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 17 | sim |
-| Injeção crua (`target = ...`) | 9 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 7 | sim |
+| Injeção crua (`target = ...`) | 10 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 8 | sim |
 
-26 + 17 + 9 = 52. Os 7 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-26 injeções e 7 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 17 + 10 = 53. Os 8 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+27 injeções e 8 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 9 | 7 | 17 |
+| Em uso | 10 | 8 | 17 |
 | Provada em spike | 6 | 0 | 1 |
 | Prevista | 5 | 1 | 0 |
 
@@ -38,7 +38,7 @@ As provadas em spike não contam `native_energy_at`, que já está em uso. As pr
 ### Hook proposto contra injeções que ele elimina
 
 Todos os nomes são propostas: nenhum existe no pin. "v2" é uma nova versão de um hook do catálogo, porque o contrato antigo nunca
-muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H25 em
+muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H26 em
 [Correções pedidas ao renderer do Horizon](#correções-pedidas-ao-renderer-do-horizon).
 
 | Proposta | Tipo | Elimina | Estado |
@@ -68,6 +68,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
 | H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
 | H25 item desenhado em escala (`renderItem(..., 0.75)`) | correção | nenhuma (diferença de pixel) | pedido |
+| H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -89,18 +90,18 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 21 | 17 | 4 | 3 |
+| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 4 |
 | `mods/mekanism/native/horizon-mixin.toml` | 22 | 18 | 4 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 9 | 8 | 1 | 2 |
-| Total | 52 | 43 | 9 | 7 |
+| Total | 53 | 43 | 10 | 8 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das nove cruas são `cancellable = true`; as que não são: `logged-fluid-row` e `window_slot_at`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das dez cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at` e `sprite_ties`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
 `impl Hooks for Mod {}`. Os 26 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
 Dos 43 hooks, 17 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 17 com estrutura privada são os 8 de antes e os 9 da janela de upgrades (`window_*`).
 
-## Injeções cruas em uso (9)
+## Injeções cruas em uso (10)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -231,6 +232,24 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
   sai no `if !front`. Mudar a assinatura de `draw_slot_highlight` ou a ordem das camadas quebra o build, ou faz o realce sair certo
   só numa das camadas, sem erro.
 
+### `sprite_ties` (machinery_basis)
+
+- **Estado:** em uso. **Alvo:** `horizon_client_render::hud::HudRenderer::animate_sprites`, HEAD, não cancelável (`hud.rs:2631`, método
+  público de `impl HudRenderer`). **Proposta:** H26.
+- **Helper:** `mods/machinery_basis/sprite_ties_head.rs`, mais o módulo `sprite-ties` (`sprite_ties.rs`, enxertado em `hud.rs` como
+  `pub mod machinery_sprite_ties`), onde `sprite_tinted` e `tiled_sprite` do `glue` registram o retângulo do atlas de cada sprite que
+  uma tela de mod desenha.
+- **Por que é necessária:** o `HudRenderer` só tem o `Rect` de cada animação, não o nome do sprite, então o único jeito de saber quais
+  sprites animados são de uma tela de mod é a tela dizer. O helper mistura os quadros desses sprites antes do laço do Horizon e grava
+  o estado em `previous`, e o laço original pula o sprite. Quadro inteiro (`millis == 0`) e sprite que nenhuma tela de mod desenhou
+  ficam com o laço do Horizon.
+- **Java:** `SpriteContents.AnimationState.drawToAtlas` e `animate_sprite_interpolate.fsh`: `mix(atual, proximo, id / 1000.0)` em float,
+  na GPU, gravado em 8 bits.
+- **Hook mais próximo:** nenhum. `animate_sprites` não é hook do catálogo, e a diferença está dentro dele.
+- **Hook proposto:** nenhum, é a correção H26 (a mistura do próprio renderer).
+- **Risco:** mudar a assinatura de `animate_sprites`, o tipo de `sprite_animations` (`(Rect, SpriteAnimation, (usize, usize, u32))`) ou
+  `SpriteAnimation::{blend, resized_pixels}`. O módulo exige que `hud.rs` não tenha `use ...::*` de topo (o planejador recusa).
+
 ## Hooks do catálogo com estrutura privada
 
 Os 17 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
@@ -298,7 +317,7 @@ usar antes de ter número de API:
 
 Pedido: carimbar esses fragmentos (`python3 tools/stamp_native_hooks.py`) e listar os quatro helpers documentados em `helpers`.
 
-## Módulos (7)
+## Módulos (8)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -309,6 +328,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 280 linhas | idem |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
+| `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 
@@ -738,6 +758,28 @@ Mekanism. Por decisão do usuário, não são corrigidas por injeção: entram n
 Os valores são em `guiScale` 2, medidos com `dev/referencia/comparar_tela.py`. Em escala 3 os números são outros, e aparecem
 entre parênteses.
 
+### H26 mistura de sprites animados na GPU, em float (correção, sem hook)
+
+- **O que acontece:** um sprite animado com `interpolate` (os químicos do Infuser, `bio` e `fungi`) é misturado no original por
+  `animate_sprite_interpolate.fsh`, na GPU: `mix(atual, próximo, id / 1000.0)` em `float`, gravado em 8 bits. O Horizon mistura na CPU, em
+  inteiros (`(a*(1000-m) + b*m + 500) / 1000`, `HudRenderer::animate_sprites`, `hud.rs:2631`). Os dois diferem nos empates exatos e em cerca
+  de 0,5 % das amostras perto do empate, que dependem da precisão da GPU (RX 9060 XT, headless): 48 combinações de `float32` e `float16`
+  testadas, nenhuma fecha tudo.
+- **Medido em 2026-11-06** (guiScale 2, 40 prints do ciclo por químico, sem tolerância e sem máscara, `cena_telas.py` e `comparar_lote.py`;
+  cada número é quantos prints do original têm um estado idêntico no port):
+
+  | Sprite | Horizon como é | Com a injeção `sprite_ties` (empate para baixo) | Pior print sem par |
+  |---|---|---|---|
+  | `carbon` (`base`) | 18 de 40 | 40 de 40 | 64 px, depois 0 |
+  | `bio` | 10 de 40 | 16 de 40 | 208 px, depois 72 |
+  | `fungi` | 6 de 40 | 21 de 40 | 184 px, depois 84 |
+  | `lava_still` | 40 de 40 | 40 de 40 | 0 |
+
+- **Por que é injeção:** o mod não tem como mudar a mistura, e o `HudRenderer` só guarda o `Rect` de cada animação. Por decisão do
+  usuário (2026-11-06) a injeção entra mesmo sem fechar tudo (ver `sprite_ties`).
+- **Pedido:** que o Horizon misture os quadros interpolados na GPU, em `float`, como o `animate_sprite_interpolate.fsh` do vanilla (ou
+  imite a conta com o mesmo arredondamento), para qualquer pack e mod. Com isso a injeção e o módulo `sprite-ties` saem.
+
 ### H25 item desenhado em escala (correção, sem hook)
 
 Medido em 2026-11-06 na janela de upgrades, guiScale 2 e 3, quatro máquinas. O original desenha os ícones de "Supported:" (escala 0,75) e os
@@ -787,8 +829,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=41 hook=34 target=7 module=6 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 8 tem de somar `hook`.
+   Hoje: `injection=53 hook=43 target=10 module=8 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 17 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

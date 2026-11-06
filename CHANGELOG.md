@@ -28,12 +28,31 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O Heat Generator perde calor para o ar de cada face com a temperatura do bloco vizinho, como `simulateEnvironment` (antes usava a do
+  próprio bloco nas seis), e a troca de calor menor que `HeatAPI.EPSILON` é ignorada com o valor do original (`1e-6`, antes `1e-5`).
+  Os rastros do Java (`heat_generator_*`) e `heat_trace.rs` confirmam o calor, a energia e a lava tick a tick. Conferido em jogo com
+  `fillbiome` em três vizinhos: o `MEKTRACE` leu 262,5, 280 e 330 K nas faces de baixo, sul e leste.
+- O bloco do Heat Generator segue aceso por `blockDeactivationDelay` (60 ticks) depois que o gerador para, como `setActive(false)` do
+  `TileEntityMekanism`: o desligamento sem atraso armado apaga na hora, e ligar é sempre instantâneo. `active_state` e `update_delay`
+  são salvos como no Java. `heat_trace.rs` compara o `block_active` dos três rastros tick a tick.
+- O botão Dump do Infuser esvazia o tanque na tela na hora, mesmo com o servidor parado (`tick freeze`): o pacote `DUMP_BUTTON` do
+  original age quando chega e o menu sincroniza o tanque no mesmo instante. Antes a tela só mudava no tick seguinte do bloco.
+- A mistura dos quadros de sprites animados e interpolados nas telas (químicos do Infuser, lava do medidor) arredonda os empates para
+  baixo, como o `animate_sprite_interpolate.fsh` na GPU: injeção `sprite_ties` em `HudRenderer::animate_sprites`. Medido contra o
+  original, prints do ciclo com um estado idêntico no port, antes e depois: `base` 18 e 40 de 40, `bio` 10 e 16, `fungi` 6 e 21, lava 40 e 40
+  (ver `docs/injecoes-horizon.md`, H26).
+
 - O convidado de LAN ou de servidor dedicado vê a janela de upgrades completa: os tipos e as tags de upgrade vão do servidor ao cliente
   por `native_net_send_to_player` quando o jogador entra e a cada `/reload`. Antes a janela aparecia vazia, sem lista nem "Supported:".
 - O progresso de instalação da janela de upgrades mostra o valor de um tick atrás, como o cliente do original.
 
 ### Added
 
+- O `MEKTRACE` do Heat Generator (`trace_line`, ligado por `MEDIR` como o das máquinas), com os campos dos rastros `heat_generator_*`;
+  `heat_trace.rs` confere que a linha dele é igual ao que o replay calcula. `cena_telas.py` ganha `generator_queima` (100 passos
+  queimando a lava) e `CenaTelas.java` registra a energia, a lava, o calor e o tanque do Infuser no log (`cena:`), para comparar o
+  servidor do original com o `MEKTRACE` do port. Conferido: energia 20, lava 0 e temperatura 300,3102685960236 iguais nos dois
+  depois de 100 passos, e 0 pixel de diferença na barra de energia.
 - `machinery_basis`: `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda (receita que gasta o químico a cada
   tick), os handlers de entrada e de saída de fluido e de químico, o contêiner de recurso grande genérico (`ChemicalTank` e `FluidTank`),
   `fillTankFromSlot` para item com capability de químico e o `ChemicalAttributeValidator`. Conferido tick a tick com o Osmium
