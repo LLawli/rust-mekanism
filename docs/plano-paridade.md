@@ -123,7 +123,9 @@ comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui
 Estado em 2026-11-05: Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser rodam na base nova em jogo, e a fase segue
 aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`,
 `recipe_handlers`, `two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector`, `warning`, `gui`,
-`tooltip` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e `infuser_trace.rs` repetem tick a tick os rastros de
+`tooltip` e `sim`, que agora tem chunks falsos (`sim/chunks.rs`: níveis de ticket, `toDrop`, carga e descarga na ordem do NeoForge, block
+entities que somem e voltam com o chunk; `sim/open_hash.rs` porta a ordem de iteração do fastutil, conferida contra o jar real).
+`mods/mekanism/tests/chamber_trace.rs` e `infuser_trace.rs` repetem tick a tick os rastros de
 `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
 Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
@@ -179,7 +181,9 @@ Falta na Fase 1:
   Este último só existe no Electrolytic Separator, que não está portado: `separator_reduced_rate` é usado só pelo tracker de avisos.
 - `players_using` vem do hook `mod_container_viewers`, que não conta espectador. O `PacketTileButtonPress` do Java abre a tela sem
   checar espectador, então esse caminho diverge. O caso de `born` com a tela já aberta não foi exercitado em jogo.
-- `sim` ainda não tem chunks.
+- `sim::chunks` (carga, descarga, blocos, block entities e a ordem dos eventos) existe e é testado, mas ainda não cobre as notificações
+  de vizinhança do `setBlock` (`onNeighborBlockChange`), os testes de rede em si são da Fase 3, e a ordem dos eventos veio de ler o
+  NeoForge 26.3.0.100, não de um rastro: falta gravar `reloadIntermediary` e `inaccessibleNotUnloaded` no `gameTestServer` e comparar.
 
 Nota: `dev/referencia/rastros/upgrade_table.jsonl` tem 324 combinações medidas no Java, e `mods/mekanism/tests/upgrade_table.rs`
 confere o port. O upgrade de energia reduz a capacidade, porque as quatro máquinas aceitam speed.
