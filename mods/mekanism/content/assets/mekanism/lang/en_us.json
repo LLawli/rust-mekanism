@@ -67,5 +67,17 @@
   "gui.mekanism.issues.no_space.overflow": " - Not enough room in output, overflow stored in internal buffer",
   "gui.mekanism.issues.redstone_pulse_required": " - Redstone pulse required to activate.",
   "gui.mekanism.issues.redstone_signal_absent": " - Redstone signal absent, provide one to activate.",
-  "gui.mekanism.issues.redstone_signal_present": " - Redstone signal present, remove it to activate."
+  "gui.mekanism.issues.redstone_signal_present": " - Redstone signal present, remove it to activate.",
+  "gui.mekanism.empty": "Empty",
+  "generic.mekanism.fraction": "%1$s/%2$s",
+  "generic.mekanism.stored.mb": "%1$s: %2$s mB",
+  "energy.mekanism.forge.short": "FE",
+  "chemical.mekanism.bio": "Biomass",
+  "chemical.mekanism.carbon": "Carbon",
+  "chemical.mekanism.diamond": "Diamond",
+  "chemical.mekanism.fungi": "Fungi",
+  "chemical.mekanism.gold": "Gold",
+  "chemical.mekanism.redstone": "Redstone",
+  "chemical.mekanism.refined_obsidian": "Refined Obsidian",
+  "chemical.mekanism.tin": "Tin"
 }

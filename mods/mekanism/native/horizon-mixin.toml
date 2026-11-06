@@ -118,26 +118,14 @@ bindings = [
   { name = "button", ty = "&mut Option<i32>", value = "&mut *button" },
 ]
 
+# Os tooltips dos widgets da tela (aba de avisos, barra de energia e de químico): ficam por cima ou por baixo do widget, e o amarelo do
+# cabeçalho da aba é `EnumColor.YELLOW` (0xFFDD4F), que `native_screen_tooltip` não dá.
 [[injection]]
-id = "screen_tooltip"
-hook = "screen_tooltip"
-hook_version = 1
-kind = "HEAD"
-helper = "screen_tooltip.rs"
-bindings = [
-  { name = "block", ty = "&str", value = "block" },
-  { name = "data", ty = "&[i32]", value = "data" },
-  { name = "at", ty = "[f32; 2]", value = "at" },
-  { name = "lines", ty = "&mut Vec<String>", value = "&mut *lines" },
-]
-
-# O tooltip da aba de avisos: o amarelo do cabeçalho é `EnumColor.YELLOW` (0xFFDD4F), que `native_screen_tooltip` não dá.
-[[injection]]
-id = "warning_tab_tooltip"
+id = "widget_tooltip"
 target = "horizon_client::game::native_hooks::Game<'_>::draw_native_screen_tooltip"
 kind = "HEAD"
 cancellable = true
-helper = "warning_tab_tooltip.rs"
+helper = "widget_tooltip.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
@@ -286,4 +274,20 @@ helper = "reload_apply.rs"
 bindings = [
   { name = "listener", ty = "&crate::game::NativeReloadListener", value = "listener" },
   { name = "files", ty = "&[(String, serde_json::Value)]", value = "files" },
+]
+
+# O realce da frente do slot nas telas do Mekanism é o sprite de trás: `VirtualSlotContainerScreen.extractSlotHighlightFront` chama o
+# `extractSlotHighlightBack`.
+[[injection]]
+id = "slot_highlight"
+target = "horizon_client::game::Game<'_>::draw_slot_highlight"
+kind = "HEAD"
+cancellable = true
+helper = "slot_highlight.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+  { name = "front", ty = "bool", value = "front" },
+  { name = "x", ty = "f32", value = "x" },
+  { name = "y", ty = "f32", value = "y" },
 ]

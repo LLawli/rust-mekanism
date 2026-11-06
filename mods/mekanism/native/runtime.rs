@@ -4,22 +4,46 @@ use machinery_basis_core::cached_recipe::ItemToItemRecipe;
 use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::containers::InventorySlot;
 use machinery_basis_core::data_slots;
+use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::slot_view::{
+    ContainerSlotType, DataType, ItemConfig, SlotOverlay, SlotSpec, SlotType, slot_type,
+};
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
     RedstoneSync, UpgradeConfig,
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::warning::{ErrorMask, WarningTracker};
 use serde_json::Value;
 use std::rc::Rc;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
+
+/// O `gui.scaling` dos sprites que a tela desenha com escala própria, como os `.png.mcmeta` do original dizem (um teste confere
+/// cada um contra o arquivo): o painel `base`, a moldura `bar/base`, a moldura `gauge/normal` e o mosaico de `bar/vertical_power`.
+pub const PANEL_SLICE: NineSlice = NineSlice {
+    size: [16.0, 16.0],
+    border: [4.0; 4],
+    stretch_inner: false,
+};
+pub const BAR_FRAME_SLICE: NineSlice = NineSlice {
+    size: [5.0, 5.0],
+    border: [1.0; 4],
+    stretch_inner: false,
+};
+pub const GAUGE_FRAME_SLICE: NineSlice = NineSlice {
+    size: [5.0, 5.0],
+    border: [2.0; 4],
+    stretch_inner: false,
+};
+pub const POWER_BAR_TILE: [f32; 2] = [2.0, 2.0];
 pub const INFUSING: &str = "mekanism:metallurgic_infusing";
 pub const CHEMICAL_CONVERSION: &str = "mekanism:chemical_conversion";
 pub const INFUSING_FIELDS: RecipeFields = RecipeFields {
@@ -324,20 +348,37 @@ pub fn machine_warnings<'a>(
     tracker
 }
 
-/// Onde cada valor fica nos data slots da tela de uma máquina. Cada slot trafega em 16 bits: energia, cor e capacidade ocupam dois.
-/// A capacidade muda com os upgrades e a tela não a sabe de cabeça. A máscara de erros e o redstone são o que `SyncedMachine` lê.
+/// Onde cada valor fica nos data slots da tela de uma máquina. Cada slot trafega em 16 bits: energia, tint e capacidade ocupam dois.
+/// A capacidade muda com os upgrades e a tela não a sabe de cabeça, e os `ticksRequired` também (`TileEntityProgressMachine`
+/// sincroniza os dois). A máscara de erros e o redstone são o que `SyncedMachine` lê.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DataLayout {
     pub energy: usize,
-    /// A quantidade no tanque de químico (um slot) e a cor dele (dois), nas máquinas que têm tanque.
-    pub chemical: Option<(usize, usize)>,
+    /// O tanque de químico, nas máquinas que têm um.
+    pub chemical: Option<ChemicalSlots>,
     pub progress: usize,
     pub capacity: usize,
     pub errors: usize,
     pub redstone: usize,
+    /// `ticksRequired`: com upgrades de velocidade a seta de progresso se enche por ele, não pelo de base.
+    pub ticks_required: usize,
     /// Quantos data slots o menu declara: o `data_slots` do arquivo de menu.
     pub len: usize,
 }
+
+/// Os data slots do tanque de químico: a quantidade (um slot), o `tint` ARGB do que ele guarda (dois), o sprite (um, o índice em
+/// [`CHEMICAL_ICONS`] mais um, e zero sem sprite) e o id (`CHEMICAL_ID_SLOTS` slots, dois bytes em cada), de onde sai o nome do
+/// tooltip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChemicalSlots {
+    pub amount: usize,
+    pub tint: usize,
+    pub icon: usize,
+    pub id: usize,
+}
+
+/// Quantos data slots levam o id do químico: 32 caracteres, o bastante para `mekanism:refined_obsidian`.
+pub const CHEMICAL_ID_SLOTS: usize = 16;
 
 pub const ELECTRIC_DATA: DataLayout = DataLayout {
     energy: 0,
@@ -346,17 +387,24 @@ pub const ELECTRIC_DATA: DataLayout = DataLayout {
     capacity: 3,
     errors: 5,
     redstone: 6,
-    len: 7,
+    ticks_required: 7,
+    len: 8,
 };
 
 pub const INFUSER_DATA: DataLayout = DataLayout {
     energy: 0,
-    chemical: Some((2, 3)),
+    chemical: Some(ChemicalSlots {
+        amount: 2,
+        tint: 3,
+        icon: 11,
+        id: 12,
+    }),
     progress: 5,
     capacity: 6,
     errors: 8,
     redstone: 9,
-    len: 10,
+    ticks_required: 10,
+    len: 12 + CHEMICAL_ID_SLOTS,
 };
 
 /// O que o servidor escreve nos data slots de uma máquina e o cliente lê.
@@ -365,9 +413,14 @@ pub struct ScreenData {
     pub energy: u32,
     pub capacity: u32,
     pub progress: i32,
-    /// A quantidade do tanque de químico e a cor do que ele guarda.
+    /// `ticksRequired`, zero antes de o servidor mandar.
+    pub ticks_required: i32,
+    /// A quantidade do tanque de químico, o `tint` ARGB do que ele guarda e o sprite (índice em [`CHEMICAL_ICONS`] mais um).
     pub chemical_amount: i32,
-    pub chemical_color: u32,
+    pub chemical_tint: u32,
+    pub chemical_icon: u32,
+    /// O id do químico, empacotado como [`data_slots::pack_text`]; vazio sem químico.
+    pub chemical_id: [u16; CHEMICAL_ID_SLOTS],
     pub errors: ErrorMask,
     pub redstone: RedstoneSync,
 }
@@ -382,54 +435,147 @@ impl ScreenData {
         let [low, high] = data_slots::split(self.capacity);
         data[layout.capacity] = low;
         data[layout.capacity + 1] = high;
-        if let Some((amount, color)) = layout.chemical {
-            data[amount] = self.chemical_amount;
-            let [low, high] = data_slots::split(self.chemical_color);
-            data[color] = low;
-            data[color + 1] = high;
+        if let Some(chemical) = layout.chemical {
+            data[chemical.amount] = self.chemical_amount;
+            let [low, high] = data_slots::split(self.chemical_tint);
+            data[chemical.tint] = low;
+            data[chemical.tint + 1] = high;
+            data[chemical.icon] = self.chemical_icon as i32;
+            for (index, slot) in self.chemical_id.iter().enumerate() {
+                data[chemical.id + index] = i32::from(*slot as i16);
+            }
         }
         data[layout.errors] = self.errors.to_slot();
         data[layout.redstone] = self.redstone.to_slot();
+        data[layout.ticks_required] = self.ticks_required;
         data
     }
 
     /// O que o cliente lê. Antes dos primeiros valores do servidor os data slots estão vazios, e o que falta vale zero.
     pub fn read(layout: &DataLayout, data: &[i32]) -> Self {
         let get = |index: usize| data.get(index).copied().unwrap_or(0);
-        let (chemical_amount, chemical_color) =
-            layout.chemical.map_or((0, 0), |(amount, color)| {
-                (get(amount), data_slots::join(get(color), get(color + 1)))
-            });
+        let chemical = layout.chemical.map(|chemical| {
+            let mut id = [0u16; CHEMICAL_ID_SLOTS];
+            for (index, slot) in id.iter_mut().enumerate() {
+                *slot = get(chemical.id + index) as u16;
+            }
+            (
+                get(chemical.amount),
+                data_slots::join(get(chemical.tint), get(chemical.tint + 1)),
+                get(chemical.icon) as u32 & 0xFFFF,
+                id,
+            )
+        });
+        let (chemical_amount, chemical_tint, chemical_icon, chemical_id) =
+            chemical.unwrap_or_default();
         Self {
             energy: data_slots::join(get(layout.energy), get(layout.energy + 1)),
             capacity: data_slots::join(get(layout.capacity), get(layout.capacity + 1)),
             progress: get(layout.progress),
+            ticks_required: get(layout.ticks_required),
             chemical_amount,
-            chemical_color,
+            chemical_tint,
+            chemical_icon,
+            chemical_id,
             errors: ErrorMask::from_slot(get(layout.errors)),
             redstone: RedstoneSync::from_slot(get(layout.redstone)),
         }
     }
 }
 
-/// O que a tela de um tipo de máquina sabe dos avisos: os erros que a máquina rastreia, os registros dos elementos e os data slots.
+/// O que a tela de um tipo de máquina sabe: os avisos (os erros que a máquina rastreia e os registros dos elementos), os data
+/// slots e os slots de item com a configuração de lados que decide a moldura deles.
 #[derive(Clone, Copy, Debug)]
 pub struct ScreenSpec {
     pub tracked: &'static [RecipeError],
     pub warnings: &'static ScreenWarnings,
     pub data: &'static DataLayout,
+    pub item_config: &'static ItemConfig,
+    pub slots: &'static [SlotSpec],
 }
+
+/// `TileComponentConfig.setupItemIOConfig`, o que `TileEntityElectricMachine` registra: entrada, saída, os dois juntos e energia.
+pub const ELECTRIC_ITEM_CONFIG: ItemConfig = ItemConfig {
+    entries: &[
+        (DataType::Input, &[ELECTRIC_INPUT_SLOT]),
+        (DataType::Output, &[ELECTRIC_OUTPUT_SLOT]),
+        (
+            DataType::InputOutput,
+            &[ELECTRIC_INPUT_SLOT, ELECTRIC_OUTPUT_SLOT],
+        ),
+        (DataType::Energy, &[ELECTRIC_ENERGY_SLOT]),
+    ],
+};
+
+/// `setupItemIOExtraConfig`, do Metallurgic Infuser: a mesma coisa mais o slot extra, o do químico.
+pub const INFUSER_ITEM_CONFIG: ItemConfig = ItemConfig {
+    entries: &[
+        (DataType::Input, &[INPUT_SLOT]),
+        (DataType::Output, &[OUTPUT_SLOT]),
+        (DataType::InputOutput, &[INPUT_SLOT, OUTPUT_SLOT]),
+        (DataType::Extra, &[INFUSION_SLOT]),
+        (DataType::Energy, &[ENERGY_SLOT]),
+    ],
+};
+
+/// Os slots de `TileEntityElectricMachine.getInitialInventory`, na ordem dos índices `ELECTRIC_*_SLOT`: a posição é a do item,
+/// e o `EnergyInventorySlot` leva o raio por cima da moldura.
+pub const ELECTRIC_SLOTS_SPEC: [SlotSpec; ELECTRIC_SLOTS] = [
+    SlotSpec {
+        item: [64.0, 17.0],
+        container: ContainerSlotType::Input,
+        overlay: None,
+    },
+    SlotSpec {
+        item: [116.0, 35.0],
+        container: ContainerSlotType::Output,
+        overlay: None,
+    },
+    SlotSpec {
+        item: [64.0, 53.0],
+        container: ContainerSlotType::Power,
+        overlay: Some(SlotOverlay::Power),
+    },
+];
+
+/// Os slots de `TileEntityMetallurgicInfuser.getInitialInventory`, na ordem dos índices: o do químico é `EXTRA` no contêiner.
+pub const INFUSER_SLOTS_SPEC: [SlotSpec; SLOTS] = [
+    SlotSpec {
+        item: [17.0, 35.0],
+        container: ContainerSlotType::Extra,
+        overlay: None,
+    },
+    SlotSpec {
+        item: [51.0, 43.0],
+        container: ContainerSlotType::Input,
+        overlay: None,
+    },
+    SlotSpec {
+        item: [109.0, 43.0],
+        container: ContainerSlotType::Output,
+        overlay: None,
+    },
+    SlotSpec {
+        item: [143.0, 35.0],
+        container: ContainerSlotType::Power,
+        overlay: Some(SlotOverlay::Power),
+    },
+];
 
 pub const ELECTRIC_SCREEN: ScreenSpec = ScreenSpec {
     tracked: &ELECTRIC_TRACKED_ERRORS,
     warnings: &ELECTRIC_WARNINGS,
     data: &ELECTRIC_DATA,
+    item_config: &ELECTRIC_ITEM_CONFIG,
+    slots: &ELECTRIC_SLOTS_SPEC,
 };
 
 pub const INFUSER_SCREEN: ScreenSpec = ScreenSpec {
     tracked: &INFUSER_TRACKED_ERRORS,
     warnings: &INFUSER_WARNINGS,
     data: &INFUSER_DATA,
+    item_config: &INFUSER_ITEM_CONFIG,
+    slots: &INFUSER_SLOTS_SPEC,
 };
 
 /// O que a tela desenha de aviso, decidido do que o cliente tem dos data slots: a aba (`hasWarning`), as linhas dela
@@ -455,6 +601,11 @@ impl WarningView {
 }
 
 impl ScreenSpec {
+    /// A moldura do slot `index` (`GuiMekanism.addSlots` com `findDataType`).
+    pub fn slot_type(&self, index: usize) -> Option<SlotType> {
+        slot_type(Some(self.item_config), index, self.slots[index].container)
+    }
+
     /// A máquina como o cliente a vê.
     pub fn synced(&self, data: &[i32]) -> SyncedMachine {
         let read = ScreenData::read(self.data, data);
@@ -509,6 +660,44 @@ pub fn tab_tooltip(
         }
     }
     lines
+}
+
+/// As chaves de idioma que os tooltips das barras usam: `MekanismLang.GENERIC_FRACTION`, `GENERIC_STORED_MB`, `EMPTY` e a unidade
+/// de energia (`ENERGY_FORGE`).
+pub const FRACTION_LANG: &str = "generic.mekanism.fraction";
+pub const STORED_MB_LANG: &str = "generic.mekanism.stored.mb";
+pub const EMPTY_LANG: &str = "gui.mekanism.empty";
+pub const ENERGY_UNIT_LANG: &str = "energy.mekanism.forge.short";
+
+/// A chave de idioma do nome de um químico (`Chemical.getTranslationKey`: `chemical.<namespace>.<nome>`).
+pub fn chemical_lang_key(id: &str) -> String {
+    match id.split_once(':') {
+        Some((namespace, name)) => format!("chemical.{namespace}.{name}"),
+        None => format!("chemical.{id}"),
+    }
+}
+
+/// O tooltip de `GuiVerticalPowerBar`: `EnergyDisplay.getTextComponent`, a energia e a capacidade como fração (só a energia se a
+/// capacidade for zero).
+pub fn energy_tooltip(energy: u64, capacity: u64, translate: &dyn Fn(&str) -> String) -> String {
+    energy_fraction(
+        energy,
+        capacity,
+        &translate(ENERGY_UNIT_LANG),
+        &translate(FRACTION_LANG),
+    )
+}
+
+/// O tooltip de `GuiChemicalBar` (`GuiTankBar.getContentsTooltips`): `Empty`, ou o nome e a quantidade em mB.
+pub fn chemical_tooltip(
+    name: Option<&str>,
+    amount: u64,
+    translate: &dyn Fn(&str) -> String,
+) -> String {
+    match name {
+        None => translate(EMPTY_LANG),
+        Some(name) => stored_mb(&translate(STORED_MB_LANG), name, amount),
+    }
 }
 
 /// `MekanismLang.ISSUES`.
@@ -783,6 +972,32 @@ fn chemical_color(json: &Value) -> Option<u32> {
         .map(|(_, rgb)| *rgb)
 }
 
+/// Os sprites que um tanque de infusão desenha (`Chemical.icon`), na ordem em que o data slot os numera. São tiras animadas do atlas
+/// de blocos do original (`assets/minecraft/atlases/blocks.json` lista a pasta `mek_chemical`), e o HUD do Horizon as anima como o
+/// jogo. Um químico com sprite fora desta lista não desenha o sprite; o teste dos dados confere que os de infusão estão todos aqui.
+pub const CHEMICAL_ICONS: [&str; 3] = [
+    "mekanism:mek_chemical/infuse_type/base",
+    "mekanism:mek_chemical/infuse_type/bio",
+    "mekanism:mek_chemical/infuse_type/fungi",
+];
+
+/// O valor do data slot para um sprite: o índice em [`CHEMICAL_ICONS`] mais um, e zero sem sprite.
+pub fn chemical_icon_slot(icon: Option<&str>) -> u32 {
+    icon.and_then(|icon| CHEMICAL_ICONS.iter().position(|known| *known == icon))
+        .map_or(0, |index| index as u32 + 1)
+}
+
+/// O sprite de um valor de data slot.
+pub fn chemical_icon(slot: u32) -> Option<&'static str> {
+    CHEMICAL_ICONS.get((slot as usize).checked_sub(1)?).copied()
+}
+
+/// `tint` e `color_representation` de um químico: ARGB com o alfa que o arquivo traz, `#aarrggbb`.
+fn chemical_tint(json: &Value) -> Option<u32> {
+    let text = json.get("tint").and_then(Value::as_str)?;
+    u32::from_str_radix(text.strip_prefix('#')?, 16).ok()
+}
+
 /// Lê um arquivo de `mekanism/chemical`, no formato do original.
 pub fn chemical_resource(id: &str, json: &Value) -> Option<Resource> {
     if id == EMPTY_CHEMICAL {
@@ -795,10 +1010,13 @@ pub fn chemical_resource(id: &str, json: &Value) -> Option<Resource> {
     } else {
         CHEMICAL_KIND
     };
+    // Os pigmentos não têm `icon` nem `tint`: a tela deles ainda não existe.
     Some(Resource {
         id: id.to_owned(),
         kind: kind.to_owned(),
         color,
+        icon: json.get("icon").and_then(Value::as_str).map(str::to_owned),
+        tint: chemical_tint(json).unwrap_or(machinery_basis_core::resource::NO_TINT),
     })
 }
 

@@ -1,12 +1,13 @@
 //! A tela dos avisos sem o jogo: o que o servidor escreve nos data slots, o que o cliente lê deles e o que a tela decide
 //! desenhar por máquina, contra os rastros do original.
+use machinery_basis_core::data_slots;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::tile::{RedstoneControl, RedstoneSync};
 use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
-    DataLayout, ELECTRIC_DATA, ELECTRIC_SCREEN, ELECTRIC_TRACKED_ERRORS, INFUSER_DATA,
-    INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData, ScreenElement, ScreenSpec, WarningType,
-    tab_tooltip,
+    CHEMICAL_ID_SLOTS, ChemicalSlots, DataLayout, ELECTRIC_DATA, ELECTRIC_SCREEN,
+    ELECTRIC_TRACKED_ERRORS, INFUSER_DATA, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData,
+    ScreenElement, ScreenSpec, WarningType, tab_tooltip,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -32,8 +33,11 @@ fn full() -> ScreenData {
         energy: 256_000_000,
         capacity: 256_000_000,
         progress: 199,
+        ticks_required: 100,
         chemical_amount: 1_000,
-        chemical_color: 0x59_C1_5F,
+        chemical_tint: 0xFF_59_C1_5F,
+        chemical_icon: 2,
+        chemical_id: data_slots::pack_text("mekanism:bio"),
         errors: ErrorMask::from_flags(&[true, false, true, true, true]),
         redstone: RedstoneSync {
             control_type: RedstoneControl::Low,
@@ -47,7 +51,9 @@ fn full() -> ScreenData {
 fn the_electric_layout_round_trips_through_sixteen_bits() {
     let data = ScreenData {
         chemical_amount: 0,
-        chemical_color: 0,
+        chemical_tint: 0,
+        chemical_icon: 0,
+        chemical_id: [0; CHEMICAL_ID_SLOTS],
         ..full()
     };
     let written = data.write(&ELECTRIC_DATA);
@@ -80,7 +86,15 @@ fn the_old_slots_keep_their_place() {
         ),
         (0, 2, 3)
     );
-    assert_eq!(INFUSER_DATA.chemical, Some((2, 3)));
+    assert_eq!(
+        INFUSER_DATA.chemical,
+        Some(ChemicalSlots {
+            amount: 2,
+            tint: 3,
+            icon: 11,
+            id: 12
+        })
+    );
     assert_eq!(
         (
             INFUSER_DATA.energy,
@@ -102,8 +116,15 @@ fn assert_layout_is_disjoint(layout: &DataLayout) {
     used.push(layout.capacity + 1);
     used.push(layout.errors);
     used.push(layout.redstone);
-    if let Some((amount, color)) = layout.chemical {
-        used.extend([amount, color, color + 1]);
+    used.push(layout.ticks_required);
+    if let Some(chemical) = layout.chemical {
+        used.extend([
+            chemical.amount,
+            chemical.tint,
+            chemical.tint + 1,
+            chemical.icon,
+        ]);
+        used.extend(chemical.id..chemical.id + CHEMICAL_ID_SLOTS);
     }
     let mut sorted = used.clone();
     sorted.sort_unstable();
