@@ -5,8 +5,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import mekanism.api.MekanismRegistries;
@@ -25,12 +27,25 @@ import mekanism.common.block.attribute.Attribute;
 import mekanism.common.block.attribute.AttributeEnergy;
 import mekanism.common.capabilities.energy.MachineEnergyContainer;
 import mekanism.common.config.MekanismConfig;
+import mekanism.common.inventory.container.MekanismContainer;
+import mekanism.common.inventory.container.SelectedWindowData;
+import mekanism.common.inventory.container.SelectedWindowData.WindowType;
+import mekanism.common.inventory.container.sync.ISyncableData;
+import mekanism.common.inventory.container.tile.MekanismTileContainer;
 import mekanism.common.inventory.warning.WarningTracker;
 import mekanism.common.inventory.warning.WarningTracker.WarningType;
 import mekanism.common.lib.transmitter.TransmissionType;
+import mekanism.common.network.to_server.PacketGuiInteract;
+import mekanism.common.network.to_server.PacketGuiInteract.GuiInteraction;
+import mekanism.common.network.to_server.PacketRemoveUpgrade;
+import mekanism.common.network.to_server.PacketWindowSelect;
+import mekanism.common.registration.impl.ContainerTypeRegistryObject;
 import mekanism.common.registries.MekanismBlocks;
+import mekanism.common.registries.MekanismContainerTypes;
 import mekanism.common.registries.MekanismItems;
 import mekanism.common.tests.helpers.MekGameTestHelper;
+import mekanism.common.tile.component.TileComponentUpgrade;
+import mekanism.common.tile.base.TileEntityMekanism;
 import mekanism.common.tile.component.TileComponentUpgrade;
 import mekanism.common.tile.component.config.ConfigInfo;
 import mekanism.common.tile.component.config.DataType;
@@ -48,6 +63,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -57,6 +74,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.transfer.fluid.FluidResource;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.testframework.DynamicTest;
@@ -1058,6 +1076,270 @@ public class MachineTraceTest {
         }
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the upgrade window as a player uses it: window selected and tracked by the real packets, upgrades installed by clicking the virtual slot.")
+    public static void chamberUpgradeWindowInstall(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_upgrade_window_install");
+        trace.recordUpgrades = true;
+        trace.recordUpgradeWindow = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("open container");
+                  trace.openMenu(MekanismContainerTypes.ENRICHMENT_CHAMBER);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("select upgrade window, track upgrades");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("click upgrade slot with speed 3");
+                  trace.clickUpgradeSlot(UpgradeIds.SPEED, 3);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("click upgrade slot with speed 10");
+                  trace.clickUpgradeSlot(UpgradeIds.SPEED, 10);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("click upgrade slot with energy 2");
+                  trace.clickUpgradeSlot(UpgradeIds.ENERGY, 2);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("drop what is carried");
+                  trace.dropCarried();
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("stop tracking, deselect window");
+                  trace.interact(GuiInteraction.CONTAINER_STOP_TRACKING);
+                  trace.selectWindow(null);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("click upgrade slot with energy 1, no window");
+                  trace.clickUpgradeSlot(UpgradeIds.ENERGY, 1);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("close container");
+                  trace.closeMenu();
+              })
+              .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the real remove upgrade packet, one and all, with an empty output slot, a full one, one with another type and one with room for part.")
+    public static void chamberUpgradeRemoveByPacket(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_upgrade_remove_by_packet");
+        trace.recordUpgrades = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("install speed 5, energy 4");
+                  trace.addUpgrades(UpgradeIds.SPEED, 5);
+                  trace.addUpgrades(UpgradeIds.ENERGY, 4);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed one, output empty");
+                  trace.removePacket(UpgradeIds.SPEED, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed all, output holds speed 1");
+                  trace.removePacket(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  int full = trace.upgradeStack(UpgradeIds.SPEED, 1).getMaxStackSize();
+                  trace.mark("install speed 8, output speed " + full);
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.setUpgradeOutput(UpgradeIds.SPEED, full);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed one, output full");
+                  trace.removePacket(UpgradeIds.SPEED, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed all, output full");
+                  trace.removePacket(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  int room = trace.upgradeStack(UpgradeIds.ENERGY, 1).getMaxStackSize() - 2;
+                  trace.mark("output energy " + room + " with room for 2");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, room);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed one, output holds another type");
+                  trace.removePacket(UpgradeIds.SPEED, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed all, output holds another type");
+                  trace.removePacket(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy all, installed 4 and room for 2");
+                  trace.removePacket(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy one, output now full");
+                  trace.removePacket(UpgradeIds.ENERGY, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("output cleared, packet remove energy all");
+                  trace.clearUpgradeSlot();
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, 0);
+                  trace.removePacket(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove xp_containment, not installed");
+                  trace.removePacket(UpgradeIds.XP_CONTAINMENT, false);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records quickMoveStack on the upgrade slots with the upgrade window selected and without it, going in and coming out.")
+    public static void chamberUpgradeSlotQuickMove(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_upgrade_slot_quick_move");
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  trace.openMenu(MekanismContainerTypes.ENRICHMENT_CHAMBER);
+                  trace.layout();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: upgrade speed 3 from main slot 9");
+                  trace.quickMoveFromPlayer(9, trace.upgradeStack(UpgradeIds.SPEED, 3));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: clay 10 from main slot 10");
+                  trace.quickMoveFromPlayer(10, new ItemStack(Items.CLAY, 10));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("select upgrade window");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade speed 3 from main slot 11");
+                  trace.quickMoveFromPlayer(11, trace.upgradeStack(UpgradeIds.SPEED, 3));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade energy 2 from main slot 12, input slot already has speed");
+                  trace.quickMoveFromPlayer(12, trace.upgradeStack(UpgradeIds.ENERGY, 2));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade the machine does not support from main slot 13");
+                  trace.quickMoveFromPlayer(13, trace.unsupportedUpgradeStack());
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: clay 10 from main slot 14");
+                  trace.quickMoveFromPlayer(14, new ItemStack(Items.CLAY, 10));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade speed 3 from hotbar slot 0");
+                  trace.quickMoveFromPlayer(0, trace.upgradeStack(UpgradeIds.SPEED, 3));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: from the virtual input slot back to the inventory");
+                  trace.quickMoveFromMenu(0);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: output slot holds energy 3, quick move it out");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, 3);
+                  trace.quickMoveFromMenu(1);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("deselect window, input slot holds speed 2");
+                  trace.selectWindow(null);
+                  trace.setUpgradeSlot(UpgradeIds.SPEED, 2);
+                  trace.snapshot();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: quick move the virtual input slot");
+                  trace.quickMoveFromMenu(0);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: output slot holds energy 3, quick move it");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, 3);
+                  trace.quickMoveFromMenu(1);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("machine slots: quick move the clay in the input slot out");
+                  trace.quickMoveFromMenu(2);
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    private static void containerTracking(DynamicTest test, String name, ContainerTypeRegistryObject<?> type) {
+        Trace trace = new Trace(name);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  trace.mark("container created");
+                  trace.openMenu(type);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketWindowSelect upgrade");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_STOP_TRACKING");
+                  trace.interact(GuiInteraction.CONTAINER_STOP_TRACKING);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES again");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES a second time, without stopping");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketWindowSelect none");
+                  trace.selectWindow(null);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("container closed");
+                  trace.closeMenu();
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the order and class of the data the Enrichment Chamber container tracks, and what the upgrade window adds and removes.")
+    public static void chamberContainerTracking(final DynamicTest test) {
+        template(test);
+        containerTracking(test, "chamber_container_tracking", MekanismContainerTypes.ENRICHMENT_CHAMBER);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the same for the Metallurgic Infuser container.")
+    public static void infuserContainerTracking(final DynamicTest test) {
+        template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
+        containerTracking(test, "infuser_container_tracking", MekanismContainerTypes.METALLURGIC_INFUSER);
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
@@ -1082,6 +1364,9 @@ public class MachineTraceTest {
         /// Se maior que zero, devolve 1/refillFraction do consumo de um tick.
         int refillFraction;
         private Player player;
+        MekanismTileContainer<TileEntityMekanism> menu;
+        boolean recordUpgradeWindow;
+        private List<ISyncableData> previousTracked = List.of();
         private WarningTracker warningTracker;
         private BooleanSupplier recheck;
         private int recheckOffset = -1;
@@ -1131,12 +1416,209 @@ public class MachineTraceTest {
         }
 
         /// Abre o tile com um jogador falso olhando para ele, como a tela faz: entra em `playersUsing`.
-        void openPlayer() {
+        Player player() {
             if (player == null) {
                 player = helper.makeMockPlayerLookingAt(pos, Direction.NORTH);
             }
-            tile().open(player);
+            return player;
         }
+
+        void openPlayer() {
+            tile().open(player());
+        }
+
+        /// O contexto de um pacote: só o jogador, que é tudo o que os `handle` do Mekanism pedem.
+        IPayloadContext context() {
+            Player who = player();
+            return (IPayloadContext) Proxy.newProxyInstance(IPayloadContext.class.getClassLoader(), new Class<?>[]{IPayloadContext.class},
+                  (proxy, method, args) -> {
+                      if (method.getName().equals("player")) {
+                          return who;
+                      }
+                      throw new UnsupportedOperationException(method.getName());
+                  });
+        }
+
+        /// Abre a janela como o servidor faz: cria o container, que põe o jogador em `playersUsing`, e o deixa como o menu aberto.
+        void openMenu(ContainerTypeRegistryObject<?> type) {
+            Player who = player();
+            menu = new MekanismTileContainer<>(type, 100, who.getInventory(), (TileEntityMekanism) tile());
+            who.containerMenu = menu;
+        }
+
+        void closeMenu() {
+            menu.removed(player);
+            player.containerMenu = player.inventoryMenu;
+        }
+
+        /// `PacketWindowSelect.handle`, o real.
+        void selectWindow(SelectedWindowData window) {
+            new PacketWindowSelect(window).handle(context());
+        }
+
+        /// `PacketGuiInteract.handle`, o real.
+        void interact(GuiInteraction interaction) {
+            new PacketGuiInteract(interaction, helper.absolutePos(pos), MekanismContainer.UPGRADE_WINDOW).handle(context());
+        }
+
+        /// `PacketRemoveUpgrade.handle`, o real.
+        void removePacket(net.minecraft.resources.ResourceKey<Upgrade> key, boolean all) {
+            new PacketRemoveUpgrade(helper.absolutePos(pos), upgrade(key), all).handle(context());
+        }
+
+        ItemStack upgradeStack(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            return IUpgradeHelper.INSTANCE.asResource(upgrade(key)).toStack(count);
+        }
+
+        /// O primeiro upgrade do registro que a máquina não aceita.
+        ItemStack unsupportedUpgradeStack() {
+            TileComponentUpgrade component = tile().getComponent();
+            Holder<Upgrade> holder = helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).listElements()
+                  .filter(upgrade -> !component.supports(upgrade)).map(upgrade -> (Holder<Upgrade>) upgrade).findFirst().orElseThrow();
+            mark("unsupported upgrade is " + holder.getRegisteredName());
+            return IUpgradeHelper.INSTANCE.asResource(holder).toStack(1);
+        }
+
+        void setUpgradeOutput(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            ItemResource resource = count == 0 ? ItemResource.EMPTY : IUpgradeHelper.INSTANCE.asResource(upgrade(key));
+            machine().getComponent().getUpgradeOutputSlot().setContents(resource, count, null);
+        }
+
+        /// O jogador com o upgrade na mão clica no slot virtual: o caminho do `AbstractContainerMenu.clicked`.
+        void clickUpgradeSlot(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            menu.setCarried(upgradeStack(key, count));
+            menu.clicked(menu.getUpgradeSlot().index, 0, ContainerInput.PICKUP, player);
+        }
+
+        void dropCarried() {
+            menu.setCarried(ItemStack.EMPTY);
+        }
+
+        int playerSlotIndex(int inventorySlot) {
+            for (Slot slot : menu.slots) {
+                if (slot.container == player.getInventory() && slot.getContainerSlot() == inventorySlot) {
+                    return slot.index;
+                }
+            }
+            throw new IllegalStateException("no container slot for inventory slot " + inventorySlot);
+        }
+
+        private String window() {
+            SelectedWindowData window = menu.getSelectedWindow(player.getUUID());
+            return window == null ? "none" : window.type().name().toLowerCase();
+        }
+
+        private static String itemJson(ItemStack stack) {
+            return "[\"" + (stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath() + (stack.has(IUpgradeHelper.INSTANCE.dataComponent())
+                  ? ":" + stack.get(IUpgradeHelper.INSTANCE.dataComponent()).getRegisteredName().substring("mekanism:".length()) : "")) + "\"," + stack.getCount() + "]";
+        }
+
+        private String slotsJson() {
+            StringBuilder out = new StringBuilder("[");
+            for (Slot slot : menu.slots) {
+                if (slot.hasItem()) {
+                    out.append(out.length() == 1 ? "" : ",").append('[').append(slot.index).append(",\"").append(slot.getClass().getSimpleName()).append("\",")
+                          .append(itemJson(slot.getItem()).substring(1));
+                }
+            }
+            return out.append(']').toString();
+        }
+
+        private String marksJson() {
+            StringBuilder out = new StringBuilder("[");
+            for (int i = 0; i < marks.size(); i++) {
+                out.append(i == 0 ? "" : ",").append('"').append(marks.get(i)).append('"');
+            }
+            marks.clear();
+            return out.append(']').toString();
+        }
+
+        /// Todos os slots do container, na ordem, com a classe: onde cada coisa pode ir.
+        void layout() {
+            StringBuilder out = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":").append(marksJson()).append(",\"layout\":[");
+            for (Slot slot : menu.slots) {
+                out.append(slot.index == 0 ? "" : ",").append('[').append(slot.index).append(",\"").append(slot.getClass().getSimpleName()).append("\"]");
+            }
+            lines.add(out.append("],\"slots\":").append(slotsJson()).append('}').toString());
+        }
+
+        void snapshot() {
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"window\":\"" + window() + "\",\"slots\":" + slotsJson()
+                  + ",\"upgrade_ticks\":" + upgradeTicks(tile().getComponent()) + "}");
+        }
+
+        /// `quickMoveStack` a partir de um slot do inventário do jogador, que antes recebe o item.
+        void quickMoveFromPlayer(int inventorySlot, ItemStack stack) {
+            player.getInventory().setItem(inventorySlot, stack);
+            quickMove(playerSlotIndex(inventorySlot));
+        }
+
+        void quickMoveFromMenu(int index) {
+            quickMove(index);
+        }
+
+        private void quickMove(int index) {
+            ItemStack returned = menu.quickMoveStack(player, index);
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"from\":" + index + ",\"window\":\"" + window() + "\",\"returned\":"
+                  + itemJson(returned) + ",\"slots\":" + slotsJson() + "}");
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<ISyncableData> trackedData() {
+            try {
+                Field field = MekanismContainer.class.getDeclaredField("trackedData");
+                field.setAccessible(true);
+                return (List<ISyncableData>) field.get(menu);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private static int upgradeTicks(TileComponentUpgrade component) {
+            try {
+                Field field = TileComponentUpgrade.class.getDeclaredField("upgradeTicks");
+                field.setAccessible(true);
+                return field.getInt(component);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private static String className(Object data) {
+            return data.getClass().getName().substring(data.getClass().getName().lastIndexOf('.') + 1);
+        }
+
+        /// A ordem de `trackedData` com a classe de cada um, e o que entrou e saiu desde a linha anterior.
+        void trackingLine() {
+            List<ISyncableData> tracked = trackedData();
+            StringBuilder out = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":").append(marksJson())
+                  .append(",\"window\":\"").append(window()).append("\",\"players\":").append(tile().playersUsing.size())
+                  .append(",\"count\":").append(tracked.size()).append(",\"added\":[");
+            boolean first = true;
+            for (int i = 0; i < tracked.size(); i++) {
+                ISyncableData data = tracked.get(i);
+                if (previousTracked.stream().noneMatch(old -> old == data)) {
+                    out.append(first ? "" : ",").append('[').append(i).append(",\"").append(className(data)).append("\"]");
+                    first = false;
+                }
+            }
+            out.append("],\"removed\":[");
+            first = true;
+            for (int i = 0; i < previousTracked.size(); i++) {
+                ISyncableData old = previousTracked.get(i);
+                if (tracked.stream().noneMatch(data -> data == old)) {
+                    out.append(first ? "" : ",").append('[').append(i).append(",\"").append(className(old)).append("\"]");
+                    first = false;
+                }
+            }
+            out.append("],\"tracked\":[");
+            for (int i = 0; i < tracked.size(); i++) {
+                out.append(i == 0 ? "" : ",").append('"').append(className(tracked.get(i))).append('"');
+            }
+            lines.add(out.append("]}").toString());
+            previousTracked = new ArrayList<>(tracked);
+        }
+
 
         void closePlayer() {
             tile().close(player);
@@ -1302,6 +1784,17 @@ public class MachineTraceTest {
             }
             if (recordWarnings) {
                 appendWarnings(line);
+            }
+            if (recordUpgradeWindow) {
+                TileComponentUpgrade component = tile().getComponent();
+                List<String> installed = new ArrayList<>();
+                component.getInstalledTypes().stream().sorted(Comparator.comparing(Holder::getRegisteredName))
+                      .forEach(type -> installed.add("\"" + type.getRegisteredName().substring("mekanism:".length()) + "\":" + component.getUpgrades(type)));
+                line.append(",\"upgrade_ticks\":").append(upgradeTicks(component)).append(",\"upgrade_map\":{").append(String.join(",", installed)).append('}');
+                if (menu != null) {
+                    line.append(",\"window\":\"").append(window()).append("\",\"tracked\":").append(trackedData().size())
+                          .append(",\"carried\":").append(itemJson(menu.getCarried())).append(",\"players\":").append(tile().playersUsing.size());
+                }
             }
         }
 
