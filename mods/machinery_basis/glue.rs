@@ -980,7 +980,7 @@ pub(in crate::game) fn machine_panel(
 
 /// Liga a instrumentação de medida da comparação das opções B e C: `MEKTRACE` a cada tick de uma máquina e `MEKBENCH` a
 /// cada janela. É o único lugar que a liga e desliga.
-pub(in crate::game) const MEDIR: bool = true;
+pub(in crate::game) const MEDIR: bool = false;
 /// A janela do `MEKBENCH`, em ticks do jogo.
 const BENCH_WINDOW_TICKS: i64 = 1200;
 static BENCH_MACHINE_TICKS: AtomicU64 = AtomicU64::new(0);

@@ -209,19 +209,26 @@ fn replay(scenario: &str) {
             "output": slot(machine.output()),
             "errors": errors(machine),
         });
+        // Só o cenário de ejeção grava o baú.
+        if expected.get("chest").is_some() {
+            actual["chest"] = chest(&scene.chest);
+        }
         // O `MEKTRACE` do jogo tem os mesmos campos dos rastros, com as marcas vazias.
-        let mut traced: Value =
-            serde_json::from_str(&trace_line(expected["t"].as_i64().unwrap(), machine)).unwrap();
+        let stacks: Vec<(usize, String, u32)> = scene
+            .chest
+            .stacks()
+            .into_iter()
+            .map(|(index, resource, amount)| (index, resource.id.to_string(), amount))
+            .collect();
+        let with_chest = expected.get("chest").is_some().then_some(stacks.as_slice());
+        let line = trace_line(expected["t"].as_i64().unwrap(), machine, with_chest);
+        let mut traced: Value = serde_json::from_str(&line).unwrap();
         traced["marks"] = expected["marks"].clone();
         assert_eq!(
             traced, actual,
             "{scenario}, tick {}: MEKTRACE",
             expected["t"]
         );
-        // Só o cenário de ejeção grava o baú.
-        if expected.get("chest").is_some() {
-            actual["chest"] = chest(&scene.chest);
-        }
         assert_eq!(&actual, expected, "{scenario}, tick {}", expected["t"]);
     }
 }
@@ -318,4 +325,40 @@ fn tick_with_energy(world: &mut SimWorld<Chamber>) {
     let energy = world.block_entity.0.energy();
     energy.set_energy(energy.capacity(), None);
     world.tick();
+}
+
+/// Tudo o que o Java persiste volta: redstone, modo, estado ativo e atraso, nível do comparador, progresso, receitas usadas,
+/// a última e o ejetor. Nada de `pausedForErrors`: o objeto novo anda como o Java depois de carregar.
+#[test]
+fn the_saved_state_round_trips_everything_the_java_persists() {
+    let mut before = chamber();
+    {
+        let machine = &mut before.block_entity.0;
+        machine.input().set_contents(Some(item("clay")), 3, None);
+        machine.tile_mut().set_control_type(RedstoneControl::High);
+        machine.tile_mut().update_power(true);
+        machine.ejector_mut().set_ejecting(true);
+    }
+    // Uma operação inteira (200 ticks) e mais um pouco da seguinte.
+    for _ in 0..230 {
+        tick_with_energy(&mut before);
+    }
+    let saved = before.block_entity.0.saved_state();
+    assert_eq!(saved.control_type, RedstoneControl::High);
+    assert!(saved.redstone && saved.active && saved.ejecting);
+    assert!(saved.progress > 0 && saved.progress < 200);
+    assert_eq!(
+        saved.recipes_used.get("mekanism:enriching/clay_ball"),
+        Some(&1)
+    );
+    assert_eq!(
+        saved.last_recipe_used.as_deref(),
+        Some("mekanism:enriching/clay_ball")
+    );
+    assert_eq!(saved.last_recipe_amount, 1);
+
+    let mut reborn = chamber();
+    reborn.block_entity.0.restore(&saved, true);
+    assert_eq!(reborn.block_entity.0.saved_state(), saved);
+    assert!(reborn.block_entity.0.tile().block_active());
 }

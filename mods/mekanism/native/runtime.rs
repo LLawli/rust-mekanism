@@ -85,7 +85,11 @@ pub fn chamber_config(
 }
 
 /// O `MEKTRACE` de um tick: os campos dos rastros de `dev/referencia/rastros`, na mesma ordem.
-pub fn trace_line(now: i64, machine: &ElectricMachine) -> String {
+pub fn trace_line(
+    now: i64,
+    machine: &ElectricMachine,
+    chest: Option<&[(usize, String, u32)]>,
+) -> String {
     let path = |id: &str| {
         id.split_once(':')
             .map_or(id.to_owned(), |(_, path)| path.to_owned())
@@ -108,8 +112,16 @@ pub fn trace_line(now: i64, machine: &ElectricMachine) -> String {
         .map(|(_, name)| format!("\"{name}\""))
         .collect();
     let tile = machine.tile();
+    // Com o ejetor ligado o rastro grava o baú: `[slot, id, quantidade]` dos slots com algo.
+    let chest = chest.map_or(String::new(), |stacks| {
+        let stacks: Vec<String> = stacks
+            .iter()
+            .map(|(index, id, amount)| format!("[{index},\"{id}\",{amount}]"))
+            .collect();
+        format!(",\"chest\":[{}]", stacks.join(","))
+    });
     format!(
-        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]}}",
+        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]{}}}",
         machine.recipe_progress(),
         machine.ticks_required(),
         machine.energy().amount(),
@@ -121,7 +133,8 @@ pub fn trace_line(now: i64, machine: &ElectricMachine) -> String {
         tile.current_redstone_level(),
         slot(machine.input()),
         slot(machine.output()),
-        errors.join(",")
+        errors.join(","),
+        chest
     )
 }
 

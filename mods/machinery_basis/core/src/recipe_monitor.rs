@@ -62,6 +62,8 @@ struct UsedRecipes {
     recipes_used: BTreeMap<String, i32>,
     last_recipe_used: Option<String>,
     last_recipe_crafted_amount: i32,
+    /// Sobe a cada mudança, para quem salva saber sem comparar o mapa.
+    version: u32,
 }
 
 impl UsedRecipes {
@@ -81,6 +83,7 @@ impl UsedRecipes {
         } else {
             id.to_owned()
         };
+        self.version = self.version.wrapping_add(1);
         *self.recipes_used.entry(id.clone()).or_default() += operations;
         if has_item_output {
             if !flags.reset_last_recipe.get() && self.last_recipe_used.as_ref() == Some(&id) {
@@ -123,6 +126,39 @@ impl RecipeCacheLookupMonitor {
 
     pub fn cached_recipe(&self) -> Option<&CachedRecipe> {
         self.cached_recipe.as_ref()
+    }
+
+    /// `saveAdditional`: as receitas usadas, a última e quanto dela saiu em sequência.
+    pub fn used_snapshot(&self) -> (BTreeMap<String, i32>, Option<String>, i32) {
+        let used = self.used.borrow();
+        (
+            used.recipes_used.clone(),
+            used.last_recipe_used.clone(),
+            used.last_recipe_crafted_amount,
+        )
+    }
+
+    /// `usedRecipesLoaded`.
+    pub fn restore_used(
+        &self,
+        recipes_used: BTreeMap<String, i32>,
+        last_recipe_used: Option<String>,
+        last_recipe_amount: i32,
+    ) {
+        let mut used = self.used.borrow_mut();
+        used.recipes_used = recipes_used;
+        self.flags.reset_last_recipe.set(false);
+        used.last_recipe_crafted_amount = if last_recipe_used.is_some() {
+            last_recipe_amount
+        } else {
+            0
+        };
+        used.last_recipe_used = last_recipe_used;
+        used.version = used.version.wrapping_add(1);
+    }
+
+    pub fn used_version(&self) -> u32 {
+        self.used.borrow().version
     }
 
     /// `getRecipesUsed`.

@@ -11,14 +11,16 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
-use machinery_basis_core::item_handler::NoNeighbours;
+use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, VanillaContainer};
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
 use machinery_basis_core::tank::Action;
-use machinery_basis_core::tile::{ElectricMachine, RECIPE_CHECK_FREQUENCY};
+use machinery_basis_core::tile::{ElectricMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
 use machinery_basis_core::units::format_energy;
 use basis::RecipeSource::{Cooking, Custom};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use horizon_core::geometry::Direction;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -265,19 +267,29 @@ fn tick_infuser(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity)
 //   foi trocado): refeito dos itens, da energia e do progresso que a `ModBlockEntity` tem. É o `deserialize` do Java.
 // - Vive enquanto o tick seguinte for o do tick seguinte do jogo. Todo tick começa lendo da `ModBlockEntity` o que mudou
 //   fora dele (a tela, um hopper, um cabo), como um `setContents` do Java, que dispara os listeners; e termina escrevendo o
-//   que mudou. Salvar, abrir a tela e mandar energia funcionam sem o objeto saber.
+//   que mudou, em tags simples com os nomes que o Java grava. Salvar, abrir a tela e mandar energia funcionam sem o objeto saber.
 // - Morre pela varredura: sem andar por `STALE_TICKS`, o que acontece com bloco quebrado ou chunk descarregado, o objeto sai
-//   da tabela. Um bloco novo na mesma posição não herda nada: sem a chave `TILE_KEY` na `ModBlockEntity`, nasce outro.
+//   da tabela. Um bloco novo na mesma posição não herda nada: sem a chave `redstone` na `ModBlockEntity` (o Java a grava sempre), nasce outro.
 thread_local! {
     static CHAMBERS: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
 }
 
-/// O compound do tile na `ModBlockEntity`: o que o Java salva em `loadAdditional` do monitor, só o progresso.
-const TILE_KEY: &str = "mekanism_tile";
-const PROGRESS_KEY: &str = "progress";
-/// `progress` que ninguém gravou ainda: força a primeira escrita, que cria `TILE_KEY`.
-const UNSAVED: i32 = -1;
+/// Os nomes de `SerializationConstants` que o Java grava, em tags simples no NBT da `ModBlockEntity`. `REDSTONE` é a
+/// marca de que o tile já foi salvo: o Java a escreve sempre.
+const REDSTONE: &str = "redstone";
+const CONTROL_TYPE: &str = "control_type";
+const ACTIVE_STATE: &str = "active_state";
+const UPDATE_DELAY: &str = "update_delay";
+const CURRENT_REDSTONE: &str = "current_redstone";
+const PROGRESS: &str = "progress";
+const RECIPES_USED: &str = "recipes_used";
+const LAST_RECIPE_USED: &str = "last_recipe_used";
+const LAST_RECIPE_AMOUNT: &str = "last_recipe_amount";
+/// `SerializationConstants.EJECT + TransmissionType.ITEM.ordinal()`: ENERGY, FLUID, CHEMICAL, ITEM.
+const EJECT_ITEM: &str = "eject3";
+/// A chave que liga o ejetor por comando: `/data merge block x y z {mekanism_eject:1}`.
+const EJECT_SWITCH: &str = "mekanism_eject";
 /// De quanto em quanto tempo a tabela é varrida, e quanto sem andar um objeto vive.
 const SWEEP_TICKS: i64 = 200;
 const STALE_TICKS: i64 = 100;
@@ -289,9 +301,13 @@ struct Live {
     /// As receitas de onde as da máquina saíram: uma carga nova de dados as troca.
     recipes: Arc<Vec<basis::MachineRecipe>>,
     last_seen: i64,
-    saved_progress: i32,
+    /// O que já está no NBT, para só escrever quando muda.
+    saved: Option<SavedState>,
+    used_version: Option<u32>,
     /// O `lit` que o bloco tem, para só escrever quando muda.
     lit: Option<bool>,
+    /// A face de saída do ejetor, a direita da frente.
+    eject_side: Option<Face>,
 }
 
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
@@ -335,40 +351,129 @@ fn core_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Ve
     converted
 }
 
-fn has_tile_key(entity: &ModBlockEntity) -> bool {
-    entity.nbt.contains_key(&JavaString::from(TILE_KEY))
+fn has_saved(entity: &ModBlockEntity) -> bool {
+    entity.nbt.contains_key(&JavaString::from(REDSTONE))
 }
 
-fn saved_chamber_progress(entity: &ModBlockEntity) -> i32 {
-    let saved = entity.nbt.get(&JavaString::from(TILE_KEY));
-    match saved {
-        Some(Tag::Compound(tile)) => match tile.get(&JavaString::from(PROGRESS_KEY)) {
-            Some(Tag::Int(progress)) => *progress,
-            _ => 0,
-        },
+fn nbt_int(entity: &ModBlockEntity, key: &str) -> i32 {
+    match entity.nbt.get(&JavaString::from(key)) {
+        Some(Tag::Int(value)) => *value,
         _ => 0,
     }
 }
 
-fn save_chamber_progress(entity: &mut ModBlockEntity, progress: i32) {
-    let mut tile = Compound::default();
-    tile.insert(JavaString::from(PROGRESS_KEY), Tag::Int(progress));
-    entity.nbt.insert(JavaString::from(TILE_KEY), Tag::Compound(tile));
+fn nbt_bool(entity: &ModBlockEntity, key: &str) -> bool {
+    matches!(entity.nbt.get(&JavaString::from(key)), Some(Tag::Byte(value)) if *value != 0)
+}
+
+fn nbt_string(entity: &ModBlockEntity, key: &str) -> Option<String> {
+    match entity.nbt.get(&JavaString::from(key)) {
+        Some(Tag::String(value)) => Some(value.to_string_lossy()),
+        _ => None,
+    }
+}
+
+/// `loadAdditional` do `TileEntityMekanism` e do monitor, do que a `ModBlockEntity` guarda.
+fn read_saved(entity: &ModBlockEntity) -> SavedState {
+    let mut recipes_used = BTreeMap::new();
+    if let Some(Tag::Compound(used)) = entity.nbt.get(&JavaString::from(RECIPES_USED)) {
+        for (id, amount) in used {
+            if let Tag::Int(amount) = amount {
+                recipes_used.insert(id.to_string_lossy(), *amount);
+            }
+        }
+    }
+    SavedState {
+        redstone: nbt_bool(entity, REDSTONE),
+        control_type: RedstoneControl::from_serialized_name(
+            &nbt_string(entity, CONTROL_TYPE).unwrap_or_default(),
+        ),
+        active: nbt_bool(entity, ACTIVE_STATE),
+        update_delay: nbt_int(entity, UPDATE_DELAY),
+        current_redstone: nbt_int(entity, CURRENT_REDSTONE),
+        progress: nbt_int(entity, PROGRESS),
+        recipes_used,
+        last_recipe_used: nbt_string(entity, LAST_RECIPE_USED),
+        last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
+        ejecting: nbt_bool(entity, EJECT_ITEM),
+    }
+}
+
+fn put(entity: &mut ModBlockEntity, key: &str, tag: Tag) {
+    entity.nbt.insert(JavaString::from(key), tag);
+}
+
+/// `saveAdditional` do que muda a cada tick, só dos campos que mudaram desde `old`.
+fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &SavedState) {
+    let changed = |same: fn(&SavedState, &SavedState) -> bool| old.is_none_or(|old| !same(old, new));
+    if changed(|a, b| a.redstone == b.redstone) {
+        put(entity, REDSTONE, Tag::Byte(i8::from(new.redstone)));
+    }
+    if changed(|a, b| a.control_type == b.control_type) {
+        let name = JavaString::from(new.control_type.serialized_name());
+        put(entity, CONTROL_TYPE, Tag::String(name));
+    }
+    if changed(|a, b| a.active == b.active) {
+        put(entity, ACTIVE_STATE, Tag::Byte(i8::from(new.active)));
+    }
+    if changed(|a, b| a.update_delay == b.update_delay) {
+        put(entity, UPDATE_DELAY, Tag::Int(new.update_delay));
+    }
+    if changed(|a, b| a.current_redstone == b.current_redstone) {
+        put(entity, CURRENT_REDSTONE, Tag::Int(new.current_redstone));
+    }
+    if changed(|a, b| a.progress == b.progress) {
+        put(entity, PROGRESS, Tag::Int(new.progress));
+    }
+    if changed(|a, b| a.ejecting == b.ejecting) {
+        put(entity, EJECT_ITEM, Tag::Byte(i8::from(new.ejecting)));
+    }
+}
+
+/// `saveAdditional` do monitor: as receitas usadas, a última e quanto dela saiu. Como no Java, a quantidade só vai se
+/// for maior que zero, e a última só se existe.
+fn write_used(entity: &mut ModBlockEntity, new: &SavedState) {
+    let mut used = Compound::default();
+    for (id, amount) in &new.recipes_used {
+        used.insert(JavaString::from(id.as_str()), Tag::Int(*amount));
+    }
+    put(entity, RECIPES_USED, Tag::Compound(used));
+    match &new.last_recipe_used {
+        Some(id) => put(entity, LAST_RECIPE_USED, Tag::String(JavaString::from(id.as_str()))),
+        None => {
+            entity.nbt.remove(&JavaString::from(LAST_RECIPE_USED));
+        }
+    }
+    if new.last_recipe_amount > 0 {
+        put(entity, LAST_RECIPE_AMOUNT, Tag::Int(new.last_recipe_amount));
+    } else {
+        entity.nbt.remove(&JavaString::from(LAST_RECIPE_AMOUNT));
+    }
 }
 
 /// `ElectricMachine` nova, do que a `ModBlockEntity` guarda.
-fn born(game: &Game<'_>, entity: &ModBlockEntity, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Live {
+fn born(
+    game: &Game<'_>,
+    pos: [i32; 3],
+    entity: &ModBlockEntity,
+    recipes: &Arc<Vec<basis::MachineRecipe>>,
+) -> Live {
     // `ThreadLocalRandom.nextInt(RECIPE_CHECK_FREQUENCY)`: o sorteio de `shouldRecheckAllErrors`.
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| u64::from(since.subsec_nanos()));
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| u64::from(since.subsec_nanos()));
     let config = rules::chamber_config(core_recipes(game, recipes), nanos % RECIPE_CHECK_FREQUENCY);
-    let machine = ElectricMachine::new(config);
-    machine.load_operating_ticks(saved_chamber_progress(entity));
+    let mut machine = ElectricMachine::new(config);
+    let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
+    machine.restore(&read_saved(entity), block_active);
     Live {
         machine,
         recipes: recipes.clone(),
         last_seen: i64::MIN,
-        saved_progress: UNSAVED,
+        saved: None,
+        used_version: None,
         lit: None,
+        eject_side: None,
     }
 }
 
@@ -420,17 +525,137 @@ fn slot_to_entity(entity: &mut ModBlockEntity, index: usize, slot: &InventorySlo
     entity.items[index] = new;
 }
 
+/// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo. O Horizon não simula inserção, então o
+/// diário guarda a cópia (um baú, primeiro slot que aceita, na ordem) e o que entrou nela vai ao vizinho de verdade, por
+/// `native_insert_item`, depois que a transação commitou. Um vizinho com regra própria de slot (forno, outra máquina, hopper)
+/// pode recusar o que a cópia aceitou: ver `ejected`.
+struct GameNeighbours<'a, 'g> {
+    game: &'a Game<'g>,
+    dimension: &'static str,
+    pos: [i32; 3],
+    created: RefCell<Vec<CopiedContainer>>,
+}
+
+struct CopiedContainer {
+    at: [i32; 3],
+    reached: Direction,
+    container: Rc<VanillaContainer>,
+    original: Vec<(usize, ItemResource, u32)>,
+}
+
+impl ItemCapabilities for GameNeighbours<'_, '_> {
+    fn item_handler(&self, face: Face) -> Option<Rc<dyn ItemHandler>> {
+        let [x, y, z] = face.offset();
+        let at = [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z];
+        let reached = basis::direction(face.opposite());
+        let slots = self.game.native_container_slots(self.dimension, at, reached)?;
+        let container = VanillaContainer::new(slots.len(), Rc::new(|| {}));
+        for (index, slot) in slots.iter().enumerate() {
+            if let Some(stack) = &slot.stack {
+                container.set_item(index, Some(resource_of(self.game, stack)), stack.count);
+            }
+        }
+        let original = container.stacks();
+        self.created.borrow_mut().push(CopiedContainer {
+            at,
+            reached,
+            container: container.clone(),
+            original,
+        });
+        Some(container)
+    }
+}
+
+/// O que entrou nas cópias durante o tick: por vizinho, quanto de cada item.
+struct Ejected {
+    at: [i32; 3],
+    reached: Direction,
+    id: Rc<str>,
+    count: u32,
+}
+
+impl GameNeighbours<'_, '_> {
+    fn ejected(self) -> Vec<Ejected> {
+        let mut ejected = Vec::new();
+        for copied in self.created.into_inner() {
+            for (index, resource, amount) in copied.container.stacks() {
+                let before = copied
+                    .original
+                    .iter()
+                    .find(|(slot, held, _)| *slot == index && *held == resource)
+                    .map_or(0, |(_, _, amount)| *amount);
+                if amount > before {
+                    ejected.push(Ejected {
+                        at: copied.at,
+                        reached: copied.reached,
+                        id: resource.id.clone(),
+                        count: amount - before,
+                    });
+                }
+            }
+        }
+        ejected
+    }
+}
+
+/// Entrega ao vizinho de verdade o que o diário mandou. O que ele recusar volta ao slot de saída da `ModBlockEntity`, para
+/// nada se perder; se o slot já tem outro item, o excesso se perde e vai para o log.
+fn deliver(game: &mut Game<'_>, entity: &mut ModBlockEntity, recipes: &[basis::MachineRecipe], ejected: Vec<Ejected>) {
+    for sent in ejected {
+        let template = recipes.iter().find(|recipe| *recipe.output.item == *sent.id);
+        let mut stack = template.map_or_else(
+            || ItemStack {
+                item: Arc::from(&*sent.id),
+                count: 1,
+                damage: 0,
+                extra: None,
+            },
+            |recipe| recipe.output.clone(),
+        );
+        stack.count = sent.count;
+        let Some(rest) = game.native_insert_item(sent.at, sent.reached, stack) else {
+            continue;
+        };
+        let slot = &mut entity.items[rules::ELECTRIC_OUTPUT_SLOT];
+        match slot.as_mut() {
+            None => *slot = Some(rest),
+            Some(held) if held.item == rest.item => held.count += rest.count,
+            Some(_) => eprintln!(
+                "mekanism: {} x{} recusados pelo vizinho se perderam",
+                rest.item, rest.count
+            ),
+        }
+    }
+}
+
+/// O baú como o rastro o grava, lido do jogo: `[slot, id, quantidade]` dos slots com algo.
+fn chest_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], face: Face) -> Vec<(usize, String, u32)> {
+    let [x, y, z] = face.offset();
+    let at = [pos[0] + x, pos[1] + y, pos[2] + z];
+    let reached = basis::direction(face.opposite());
+    let slots = game.native_container_slots(dimension, at, reached).unwrap_or_default();
+    slots
+        .into_iter()
+        .filter_map(|slot| {
+            let stack = slot.stack?;
+            let path = stack.item.split_once(':').map_or(&*stack.item, |(_, path)| path).to_owned();
+            Some((slot.slot, path, stack.count))
+        })
+        .collect()
+}
+
 /// Um tick da Enrichment Chamber sobre o objeto vivo: a base nova, no lugar de `run_machine`.
 fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, electric: &Electric) {
     let now = game.world.game_time;
-    let key = (game.native_dimension(), pos);
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
     let recipes = basis::machine_recipes(game, &electric.machine.recipes);
 
     let started = basis::MEDIR.then(Instant::now);
     let alive = CHAMBERS.with_borrow_mut(|chambers| chambers.remove(&key));
     let mut live = match alive {
-        Some(live) if live.last_seen + 1 == now && has_tile_key(entity) => live,
-        _ => born(game, entity, &recipes),
+        Some(live) if live.last_seen + 1 == now && has_saved(entity) => live,
+        _ => born(game, pos, entity, &recipes),
     };
     if !Arc::ptr_eq(&live.recipes, &recipes) {
         live.machine.set_recipes(core_recipes(game, &recipes));
@@ -444,8 +669,37 @@ fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if machine.energy().amount() != stored {
         machine.energy().set_energy(stored, None);
     }
+    // `updatePower`: o sinal dos vizinhos, lido a cada tick.
+    let powered = game.native_neighbor_signal(dimension, pos) > 0;
+    if machine.tile().is_powered() != powered {
+        machine.tile_mut().update_power(powered);
+    }
+    // O ejetor liga e desliga por `mekanism_eject`; sai pela direita da frente.
+    let switch = match entity.nbt.get(&JavaString::from(EJECT_SWITCH)) {
+        Some(Tag::Byte(on)) => Some(*on != 0),
+        Some(Tag::Int(on)) => Some(*on != 0),
+        _ => None,
+    };
+    if let Some(on) = switch
+        && live.machine.ejector().is_ejecting() != on
+    {
+        live.machine.ejector_mut().set_ejecting(on);
+    }
+    let front = basis::front(game, pos);
+    let right = front.right_of();
+    if live.machine.ejector().is_ejecting() && live.eject_side != Some(right) {
+        live.machine.ejector_mut().set_sides(0, vec![right]);
+        live.eject_side = Some(right);
+    }
 
-    live.machine.tick_server(now as u64, &NoNeighbours);
+    let neighbours = GameNeighbours {
+        game: &*game,
+        dimension,
+        pos,
+        created: RefCell::new(Vec::new()),
+    };
+    let comparator_changed = live.machine.tick_server(now as u64, &neighbours);
+    let ejected = neighbours.ejected();
 
     let machine = &live.machine;
     slot_to_entity(entity, rules::ELECTRIC_INPUT_SLOT, machine.input(), &recipes);
@@ -455,14 +709,28 @@ fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if basis::stored_energy(entity) != energy {
         basis::set_stored_energy(entity, energy);
     }
-    let progress = machine.recipe_progress();
-    if progress != live.saved_progress {
-        save_chamber_progress(entity, progress);
-        live.saved_progress = progress;
+    let scalars = machine.saved_scalars();
+    if live.saved.as_ref() != Some(&scalars) {
+        write_scalars(entity, live.saved.as_ref(), &scalars);
+        live.saved = Some(scalars);
     }
+    let version = machine.used_version();
+    if live.used_version != Some(version) {
+        write_used(entity, &machine.saved_state());
+        live.used_version = Some(version);
+    }
+    deliver(game, entity, &recipes, ejected);
+    if comparator_changed {
+        game.native_update_output_neighbors(dimension, pos);
+    }
+    let progress = machine.recipe_progress();
     if let Some(started) = started {
         basis::bench_record(now, u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
-        basis::trace(&rules::trace_line(now, machine));
+        let chest = machine
+            .ejector()
+            .is_ejecting()
+            .then(|| chest_of(game, dimension, pos, right));
+        basis::trace(&rules::trace_line(now, machine, chest.as_deref()));
     }
 
     let lit = machine.tile().block_active();
@@ -476,7 +744,6 @@ fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         entity.data = data.to_vec();
     }
 
-    let front = basis::front(game, pos);
     let accepts = |_: &Game<'_>, _: usize, stack: &ItemStack| basis::is_recipe_input(&recipes, stack, None);
     let slots = |face| rules::electric_item_slots(front, face);
     let sides = rules::sides(front, rules::electric_item_slots);

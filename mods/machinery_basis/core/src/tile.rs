@@ -26,6 +26,26 @@ pub enum RedstoneControl {
 }
 
 impl RedstoneControl {
+    /// `getSerializedName`: o nome do enum em minúsculas, que `RedstoneControl.CODEC` grava.
+    pub fn serialized_name(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::High => "high",
+            Self::Low => "low",
+            Self::Pulse => "pulse",
+        }
+    }
+
+    /// O inverso; um nome desconhecido é `DISABLED`, como o `orElse` do Java.
+    pub fn from_serialized_name(name: &str) -> Self {
+        match name {
+            "high" => Self::High,
+            "low" => Self::Low,
+            "pulse" => Self::Pulse,
+            _ => Self::Disabled,
+        }
+    }
+
     /// `getNext` de quem não aceita PULSE, o padrão de `ITileRedstone`.
     fn supported(self) -> Self {
         match self {
@@ -33,6 +53,24 @@ impl RedstoneControl {
             other => other,
         }
     }
+}
+
+/// O que o Java persiste de uma máquina de receita (`saveAdditional` de `TileEntityMekanism` e do monitor), sem o que vive
+/// nos contêineres. `pausedForErrors`, os erros e a receita em cache não entram: o Java não os salva.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedState {
+    pub redstone: bool,
+    pub control_type: RedstoneControl,
+    pub active: bool,
+    pub update_delay: i32,
+    pub current_redstone: i32,
+    /// `ProgressRecipeCacheLookupMonitor.operatingTicks`.
+    pub progress: i32,
+    pub recipes_used: std::collections::BTreeMap<String, i32>,
+    pub last_recipe_used: Option<String>,
+    pub last_recipe_amount: i32,
+    /// `ConfigInfo.isEjecting` dos itens.
+    pub ejecting: bool,
 }
 
 /// O que todo tile faz a cada tick, além da máquina em si.
@@ -69,6 +107,21 @@ impl TileBase {
 
     pub fn active(&self) -> bool {
         self.current_active
+    }
+
+    pub fn update_delay(&self) -> i32 {
+        self.update_delay
+    }
+
+    /// `loadAdditional` do `TileEntityMekanism`: `redstone`, `controlType` (já ajustado ao que o bloco aceita),
+    /// `currentActive`, `updateDelay` e `currentRedstoneLevel`. `block_active` vem do estado do bloco no mundo.
+    pub fn restore(&mut self, saved: &SavedState, block_active: bool) {
+        self.redstone = saved.redstone;
+        self.set_control_type(saved.control_type);
+        self.current_active = saved.active;
+        self.update_delay = saved.update_delay;
+        self.current_redstone_level = saved.current_redstone;
+        self.block_active = block_active;
     }
 
     /// O estado do bloco, que atrasa em relação a [`TileBase::active`] ao desligar.
@@ -426,6 +479,10 @@ impl ElectricMachine {
         &self.monitor
     }
 
+    pub fn ejector(&self) -> &ItemEjector {
+        &self.ejector
+    }
+
     pub fn ejector_mut(&mut self) -> &mut ItemEjector {
         &mut self.ejector
     }
@@ -436,6 +493,52 @@ impl ElectricMachine {
 
     pub fn recipe_progress(&self) -> i32 {
         self.shared.operating_ticks.get()
+    }
+
+    /// `saveAdditional`, só do que a lib tem.
+    pub fn saved_state(&self) -> SavedState {
+        let mut saved = self.saved_scalars();
+        (
+            saved.recipes_used,
+            saved.last_recipe_used,
+            saved.last_recipe_amount,
+        ) = self.monitor.used_snapshot();
+        saved
+    }
+
+    /// `saved_state` sem as receitas usadas, que são um mapa: quem salva a cada tick compara só isto e olha
+    /// `used_version` para saber se o mapa mudou.
+    pub fn saved_scalars(&self) -> SavedState {
+        let tile = self.shared.tile.borrow();
+        SavedState {
+            redstone: tile.is_powered(),
+            control_type: tile.control_type(),
+            active: tile.active(),
+            update_delay: tile.update_delay(),
+            current_redstone: tile.current_redstone_level(),
+            progress: self.shared.operating_ticks.get(),
+            recipes_used: Default::default(),
+            last_recipe_used: None,
+            last_recipe_amount: 0,
+            ejecting: self.ejector.is_ejecting(),
+        }
+    }
+
+    /// Muda quando as receitas usadas mudam.
+    pub fn used_version(&self) -> u32 {
+        self.monitor.used_version()
+    }
+
+    /// `loadAdditional`: o que `saved_state` devolveu volta ao objeto novo. Chame antes do primeiro tick.
+    pub fn restore(&mut self, saved: &SavedState, block_active: bool) {
+        self.shared.tile.borrow_mut().restore(saved, block_active);
+        self.shared.operating_ticks.set(saved.progress);
+        self.monitor.restore_used(
+            saved.recipes_used.clone(),
+            saved.last_recipe_used.clone(),
+            saved.last_recipe_amount,
+        );
+        self.ejector.set_ejecting(saved.ejecting);
     }
 
     /// Carrega o progresso salvo: a receita em cache o lê quando nasce (`getSavedOperatingTicks`).
