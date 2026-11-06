@@ -10,7 +10,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::rc::Rc;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// `SharedConstants.TICKS_PER_SECOND`: quanto uma máquina leva para instalar um upgrade.
 pub const UPGRADE_TICKS_REQUIRED: i32 = 20;
@@ -167,11 +167,19 @@ impl UpgradeTags {
 
 static CURRENT_TYPES: RwLock<Option<Arc<UpgradeTypes>>> = RwLock::new(None);
 static CURRENT_TAGS: RwLock<Option<Arc<UpgradeTags>>> = RwLock::new(None);
+static TYPE_SOURCES: Mutex<BTreeMap<String, UpgradeTypes>> = Mutex::new(BTreeMap::new());
+static TAG_SOURCES: Mutex<BTreeMap<String, UpgradeTags>> = Mutex::new(BTreeMap::new());
 
 /// Troca os tipos em uso: a cada carga de dados, inclusive no `/reload`.
-pub fn set_current_types(types: UpgradeTypes) {
+pub fn set_types_source(source: &str, types: UpgradeTypes) {
+    let mut sources = TYPE_SOURCES.lock().unwrap_or_else(|e| e.into_inner());
+    sources.insert(source.to_owned(), types);
+    let mut merged = UpgradeTypes::default();
+    for types in sources.values() {
+        merged.types.extend(types.types.clone());
+    }
     let mut current = CURRENT_TYPES.write().unwrap_or_else(|e| e.into_inner());
-    *current = Some(Arc::new(types));
+    *current = Some(Arc::new(merged));
 }
 
 /// Os tipos em uso: vazios antes da primeira carga.
@@ -181,9 +189,21 @@ pub fn current_types() -> Arc<UpgradeTypes> {
 }
 
 /// Troca as tags em uso: a cada carga de dados, inclusive no `/reload`.
-pub fn set_current_tags(tags: UpgradeTags) {
+pub fn set_tags_source(source: &str, tags: UpgradeTags) {
+    let mut sources = TAG_SOURCES.lock().unwrap_or_else(|e| e.into_inner());
+    sources.insert(source.to_owned(), tags);
+    let mut merged = UpgradeTags::default();
+    for tags in sources.values() {
+        for (tag, values) in &tags.tags {
+            merged
+                .tags
+                .entry(tag.clone())
+                .or_default()
+                .extend(values.iter().cloned());
+        }
+    }
     let mut current = CURRENT_TAGS.write().unwrap_or_else(|e| e.into_inner());
-    *current = Some(Arc::new(tags));
+    *current = Some(Arc::new(merged));
 }
 
 /// As tags em uso: vazias antes da primeira carga.

@@ -10,7 +10,6 @@ publish = false
 path = "native/runtime.rs"
 
 [dependencies]
+serde_json = "1"
 machinery-basis-core = { path = "../machinery_basis/core" }
 
-[dev-dependencies]
-serde_json = "1"

@@ -1,7 +1,7 @@
 // As máquinas do Mekanism no jogo. As regras ficam em mekanism_rules, e o que é genérico em
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
-use crate::game::{Game, GameLevel, machinery_basis as basis};
+use crate::game::{Game, GameLevel, NativeReloadListener, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::Ingredient;
 use horizon_client::hud::HudBatch;
@@ -1280,6 +1280,46 @@ pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) 
         if at == dimension {
             game.native_update_output_neighbors(dimension, pos);
         }
+    }
+}
+
+/// O nome destas pastas entre as fontes de dados da lib.
+const DATA_SOURCE: &str = "mekanism";
+const CHEMICALS_LISTENER: &str = "mekanism:chemicals";
+const CHEMICAL_TAGS_LISTENER: &str = "mekanism:chemical_tags";
+const UPGRADES_LISTENER: &str = "mekanism:upgrades";
+const UPGRADE_TAGS_LISTENER: &str = "mekanism:upgrade_tags";
+
+/// As pastas do original. A lib não sabe delas: o mod lê os arquivos e entrega o resultado.
+pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener>) {
+    listeners.push(NativeReloadListener::json(CHEMICALS_LISTENER, rules::CHEMICAL_FOLDER));
+    listeners.push(NativeReloadListener::json(CHEMICAL_TAGS_LISTENER, rules::CHEMICAL_TAGS_FOLDER));
+    listeners.push(NativeReloadListener::json(UPGRADES_LISTENER, rules::UPGRADE_FOLDER));
+    listeners.push(NativeReloadListener::json(UPGRADE_TAGS_LISTENER, rules::UPGRADE_TAGS_FOLDER));
+}
+
+pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(String, serde_json::Value)]) {
+    if listener.id == CHEMICALS_LISTENER {
+        let chemicals = files.iter().filter_map(|(id, json)| {
+            let chemical = rules::chemical_resource(id, json);
+            if chemical.is_none() && id != rules::EMPTY_CHEMICAL {
+                eprintln!("mekanism: químico {id} recusado");
+            }
+            chemical
+        });
+        let registry = resource::Registry::from_resources(chemicals);
+        eprintln!("mekanism: {} químicos", registry.len());
+        resource::set_source(DATA_SOURCE, registry);
+    } else if listener.id == CHEMICAL_TAGS_LISTENER {
+        resource::set_tags_source(DATA_SOURCE, resource::Tags::load(files));
+    } else if listener.id == UPGRADES_LISTENER {
+        let (types, errors) = upgrade::UpgradeTypes::load(files);
+        for (id, error) in errors {
+            eprintln!("mekanism: upgrade {id} recusado: {error}");
+        }
+        upgrade::set_types_source(DATA_SOURCE, types);
+    } else if listener.id == UPGRADE_TAGS_LISTENER {
+        upgrade::set_tags_source(DATA_SOURCE, upgrade::UpgradeTags::load(files));
     }
 }
 

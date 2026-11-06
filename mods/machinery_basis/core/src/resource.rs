@@ -1,9 +1,10 @@
 //! Recursos tipados: o que um tanque guarda. A lib não conhece nenhum: cada mod os declara em
-//! `data/<ns>/machinery_basis/resource/<nome>.json`, e o id vira `<ns>:<nome>`.
+//! `data/<ns>/machinery_basis/resource/<nome>.json`, e o id vira `<ns>:<nome>`. Um mod que já tem
+//! pasta e formato próprios lê os dele e entrega o resultado como outra fonte, por [`set_source`].
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// A pasta que o mod escuta, dentro de `data/<ns>/`.
 pub const DATA_FOLDER: &str = "machinery_basis/resource";
@@ -84,6 +85,16 @@ pub struct Registry {
 }
 
 impl Registry {
+    /// Um registro já lido por quem conhece o formato.
+    pub fn from_resources(resources: impl IntoIterator<Item = Resource>) -> Self {
+        Self {
+            resources: resources
+                .into_iter()
+                .map(|resource| (resource.id.clone(), resource))
+                .collect(),
+        }
+    }
+
     /// Monta o registro com o que o jogo leu. Um arquivo ruim fica de fora e volta na lista de
     /// erros: como nos dados do jogo, ele não derruba os outros.
     pub fn load(files: &[(String, Value)]) -> (Self, Vec<(String, ResourceError)>) {
@@ -144,12 +155,20 @@ impl Tags {
 }
 
 static CURRENT: RwLock<Option<Arc<Registry>>> = RwLock::new(None);
+static SOURCES: Mutex<BTreeMap<String, Registry>> = Mutex::new(BTreeMap::new());
+static TAG_SOURCES: Mutex<BTreeMap<String, Tags>> = Mutex::new(BTreeMap::new());
 static CURRENT_TAGS: RwLock<Option<Arc<Tags>>> = RwLock::new(None);
 
 /// Troca o registro em uso: a cada carga de dados, inclusive no `/reload`.
-pub fn set_current(registry: Registry) {
+pub fn set_source(source: &str, registry: Registry) {
+    let mut sources = SOURCES.lock().unwrap_or_else(|e| e.into_inner());
+    sources.insert(source.to_owned(), registry);
+    let mut merged = Registry::default();
+    for registry in sources.values() {
+        merged.resources.extend(registry.resources.clone());
+    }
     let mut current = CURRENT.write().unwrap_or_else(|e| e.into_inner());
-    *current = Some(Arc::new(registry));
+    *current = Some(Arc::new(merged));
 }
 
 /// O registro em uso: vazio antes da primeira carga.
@@ -159,9 +178,21 @@ pub fn current() -> Arc<Registry> {
 }
 
 /// Troca as tags em uso: a cada carga de dados, inclusive no `/reload`.
-pub fn set_current_tags(tags: Tags) {
+pub fn set_tags_source(source: &str, tags: Tags) {
+    let mut sources = TAG_SOURCES.lock().unwrap_or_else(|e| e.into_inner());
+    sources.insert(source.to_owned(), tags);
+    let mut merged = Tags::default();
+    for tags in sources.values() {
+        for (tag, members) in &tags.tags {
+            merged
+                .tags
+                .entry(tag.clone())
+                .or_default()
+                .extend(members.iter().cloned());
+        }
+    }
     let mut current = CURRENT_TAGS.write().unwrap_or_else(|e| e.into_inner());
-    *current = Some(Arc::new(tags));
+    *current = Some(Arc::new(merged));
 }
 
 /// As tags em uso: vazias antes da primeira carga.
@@ -236,10 +267,10 @@ mod tests {
     #[test]
     fn a_reload_replaces_the_registry() {
         let (first, _) = Registry::load(&[file("a:x", json!({"kind": "g", "color": "000000"}))]);
-        set_current(first);
+        set_source("teste", first);
         assert!(current().get("a:x").is_some());
         let (second, _) = Registry::load(&[file("a:y", json!({"kind": "g", "color": "000000"}))]);
-        set_current(second);
+        set_source("teste", second);
         assert!(current().get("a:x").is_none());
         assert!(current().get("a:y").is_some());
     }
@@ -256,5 +287,22 @@ mod tests {
     fn a_tag_file_with_no_values_holds_nothing() {
         let tags = Tags::load(&[file("a:vazia", json!({}))]);
         assert!(!tags.contains("a:vazia", "a:carbon"));
+    }
+
+    #[test]
+    fn sources_add_up_and_a_reload_replaces_only_its_own() {
+        let one = |id: &str| {
+            Registry::from_resources([Resource {
+                id: id.into(),
+                kind: "gas".into(),
+                color: 0,
+            }])
+        };
+        set_source("fonte_a", one("a:um"));
+        set_source("fonte_b", one("b:dois"));
+        assert!(current().get("a:um").is_some() && current().get("b:dois").is_some());
+        set_source("fonte_a", one("a:tres"));
+        assert!(current().get("a:um").is_none());
+        assert!(current().get("a:tres").is_some() && current().get("b:dois").is_some());
     }
 }

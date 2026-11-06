@@ -238,3 +238,24 @@ kind = "HEAD"
 cancellable = true
 helper = "command_components.rs"
 bindings = [{ name = "state", ty = "&mut ItemState<'_, '_>", value = "&mut *self" }]
+
+[[injection]]
+id = "reload-listeners"
+hook = "add_server_reload_listeners"
+hook_version = 1
+kind = "HEAD"
+helper = "reload_listeners.rs"
+bindings = [
+  { name = "listeners", ty = "&mut Vec<crate::game::NativeReloadListener>", value = "&mut *listeners" },
+]
+
+[[injection]]
+id = "reload-apply"
+hook = "server_reload_listener_apply"
+hook_version = 1
+kind = "HEAD"
+helper = "reload_apply.rs"
+bindings = [
+  { name = "listener", ty = "&crate::game::NativeReloadListener", value = "listener" },
+  { name = "files", ty = "&[(String, serde_json::Value)]", value = "files" },
+]

@@ -120,6 +120,14 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
 
+## Dados de um mod que já tem formato
+
+A lib lê `machinery_basis/resource`, `machinery_basis/upgrade` e as tags deles, no formato dela, para quem não tem formato próprio. Um mod
+que já tem pasta e formato lê os dele e entrega o resultado como outra fonte (`resource::set_source`, `set_tags_source`,
+`upgrade::set_types_source`, `set_tags_source`), e a lib junta tudo. Cada fonte troca só a própria parte num `/reload`. O Mekanism lê
+`mekanism/chemical`, `mekanism/upgrade` e as tags deles, com os arquivos do original, para um datapack feito para o Mekanism valer aqui.
+`machinery_basis/energy` e `horizon/` continuam no port porque não têm equivalente: no original isso é código.
+
 ## Componente de item nos modelos e nos comandos
 
 O Horizon só conhece os componentes vanilla nos dois lugares, e o Mekanism injeta o seu. `component_item_model.rs` entra em

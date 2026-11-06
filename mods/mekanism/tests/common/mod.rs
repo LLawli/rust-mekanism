@@ -46,9 +46,9 @@ fn load(folder: &str) -> Vec<(String, Value)> {
 
 /// Os dados de upgrade das máquinas portadas: os tipos e as tags que o mod entrega, e nada escrito à mão.
 pub fn upgrade_data() -> Rc<UpgradeData> {
-    let (types, errors) = UpgradeTypes::load(&load("machinery_basis/upgrade"));
+    let (types, errors) = UpgradeTypes::load(&load(mekanism_rules::UPGRADE_FOLDER));
     assert!(errors.is_empty(), "tipos recusados: {errors:?}");
     assert!(types.len() >= 4, "faltam tipos: {}", types.len());
-    let tags = UpgradeTags::load(&load("tags/machinery_basis/upgrade"));
+    let tags = UpgradeTags::load(&load(mekanism_rules::UPGRADE_TAGS_FOLDER));
     build_upgrade_data(&types, &tags, UPGRADE_STACK_SIZE)
 }

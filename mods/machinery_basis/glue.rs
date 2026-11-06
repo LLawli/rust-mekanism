@@ -258,6 +258,9 @@ pub(in crate::game) fn update_shape(
     }
 }
 
+/// O nome das pastas da própria lib, entre as fontes de dados.
+const BASIS_SOURCE: &str = "machinery_basis";
+
 pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener>) {
     listeners.push(NativeReloadListener::json(LISTENER, resource::DATA_FOLDER));
     listeners.push(NativeReloadListener::json(TAGS_LISTENER, resource::TAGS_FOLDER));
@@ -271,7 +274,7 @@ pub(in crate::game) fn reload_apply(
     files: &[(String, serde_json::Value)],
 ) {
     if listener.id == TAGS_LISTENER {
-        resource::set_current_tags(Tags::load(files));
+        resource::set_tags_source(BASIS_SOURCE, Tags::load(files));
         return;
     }
     if listener.id == ENERGY_LISTENER {
@@ -279,7 +282,7 @@ pub(in crate::game) fn reload_apply(
         return;
     }
     if listener.id == UPGRADE_TAGS_LISTENER {
-        upgrade::set_current_tags(UpgradeTags::load(files));
+        upgrade::set_tags_source(BASIS_SOURCE, UpgradeTags::load(files));
         return;
     }
     if listener.id == UPGRADES_LISTENER {
@@ -288,7 +291,7 @@ pub(in crate::game) fn reload_apply(
             eprintln!("machinery_basis: upgrade {id} recusado: {error}");
         }
         eprintln!("machinery_basis: {} upgrades", types.len());
-        upgrade::set_current_types(types);
+        upgrade::set_types_source(BASIS_SOURCE, types);
         return;
     }
     if listener.id != LISTENER {
@@ -299,7 +302,7 @@ pub(in crate::game) fn reload_apply(
         eprintln!("machinery_basis: recurso {id} recusado: {error}");
     }
     eprintln!("machinery_basis: {} recursos", registry.len());
-    resource::set_current(registry);
+    resource::set_source(BASIS_SOURCE, registry);
 }
 
 /// Os dados mudaram: os índices de receitas se refazem no próximo uso.

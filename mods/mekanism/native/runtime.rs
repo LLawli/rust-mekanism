@@ -5,12 +5,14 @@ use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::containers::InventorySlot;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
+use machinery_basis_core::resource::Resource;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, UpgradeConfig,
 };
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
+use serde_json::Value;
 use std::rc::Rc;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
@@ -318,6 +320,73 @@ pub fn sides(front: Face, slots: fn(Face, Face) -> FaceSlots) -> Sides {
         sides.input[face as usize] = !slots(front, face).inputs.is_empty();
     }
     sides
+}
+
+/// As pastas do original: `data/<ns>/mekanism/chemical` e as outras, para datapacks do Mekanism valerem aqui.
+pub const CHEMICAL_FOLDER: &str = "mekanism/chemical";
+pub const CHEMICAL_TAGS_FOLDER: &str = "tags/mekanism/chemical";
+pub const UPGRADE_FOLDER: &str = "mekanism/upgrade";
+pub const UPGRADE_TAGS_FOLDER: &str = "tags/mekanism/upgrade";
+/// `MekanismAPI.EMPTY_CHEMICAL_KEY`: o químico vazio é a ausência dele, não algo que um tanque guarde.
+pub const EMPTY_CHEMICAL: &str = "mekanism:empty";
+const INFUSION_KIND: &str = "infusion";
+const CHEMICAL_KIND: &str = "chemical";
+const INFUSE_ICON: &str = "/infuse_type/";
+
+/// `EnumColor`, pelo nome que os pigmentos usam em `color`.
+const ENUM_COLORS: [(&str, u32); 18] = [
+    ("black", 0x40_40_40),
+    ("blue", 0x36_6B_D0),
+    ("green", 0x59_C1_5F),
+    ("cyan", 0x00_F3_D0),
+    ("dark_red", 0xC9_07_1F),
+    ("purple", 0xA4_60_D9),
+    ("orange", 0xFF_A1_60),
+    ("light_gray", 0xCF_CF_CF),
+    ("gray", 0x7A_7A_7A),
+    ("light_blue", 0x55_9E_FF),
+    ("lime", 0x75_FF_89),
+    ("aqua", 0x30_FF_F9),
+    ("red", 0xFF_38_3C),
+    ("magenta", 0xD5_5E_CB),
+    ("yellow", 0xFF_DD_4F),
+    ("white", 0xFF_FF_FF),
+    ("brown", 0xA1_76_49),
+    ("pink", 0xFF_BC_C4),
+];
+
+/// A cor de um químico. `color_representation` no Java cai na `tint`, e os pigmentos têm só o nome da cor.
+fn chemical_color(json: &Value) -> Option<u32> {
+    let text = ["color_representation", "tint"]
+        .iter()
+        .find_map(|key| json.get(*key).and_then(Value::as_str));
+    if let Some(text) = text {
+        return Some(u32::from_str_radix(text.strip_prefix('#')?, 16).ok()? & 0xFF_FFFF);
+    }
+    let name = json.get("color").and_then(Value::as_str)?;
+    ENUM_COLORS
+        .iter()
+        .find(|(color, _)| *color == name)
+        .map(|(_, rgb)| *rgb)
+}
+
+/// Lê um arquivo de `mekanism/chemical`, no formato do original.
+pub fn chemical_resource(id: &str, json: &Value) -> Option<Resource> {
+    if id == EMPTY_CHEMICAL {
+        return None;
+    }
+    let color = chemical_color(json)?;
+    let icon = json.get("icon").and_then(Value::as_str).unwrap_or_default();
+    let kind = if icon.contains(INFUSE_ICON) {
+        INFUSION_KIND
+    } else {
+        CHEMICAL_KIND
+    };
+    Some(Resource {
+        id: id.to_owned(),
+        kind: kind.to_owned(),
+        color,
+    })
 }
 
 #[cfg(test)]
