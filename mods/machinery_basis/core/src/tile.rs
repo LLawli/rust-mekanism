@@ -62,6 +62,63 @@ impl RedstoneControl {
             other => other,
         }
     }
+
+    /// `ordinal`, que `SyncableEnum` manda: a ordem das variantes é a do `enum` do Java.
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `RedstoneControl.BY_ID`: um número fora da faixa é `DISABLED`, o valor que `SyncableEnum.create` recebe como padrão.
+    pub fn from_ordinal(ordinal: i32) -> Self {
+        match ordinal {
+            1 => Self::High,
+            2 => Self::Low,
+            3 => Self::Pulse,
+            _ => Self::Disabled,
+        }
+    }
+}
+
+/// O que o cliente recebe de redstone de um tile: `controlType`, `redstone` e `redstoneLastTick`, os três `container.track` de
+/// `TileEntityMekanism.addContainerTrackers`. O Java manda cada um num sync próprio; aqui os três vão num data slot só.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RedstoneSync {
+    pub control_type: RedstoneControl,
+    pub powered: bool,
+    pub was_powered: bool,
+}
+
+/// Os dois bits do modo, e os bits de `redstone` e de `redstoneLastTick`, acima deles.
+const CONTROL_BITS: i32 = 0b11;
+const POWERED_BIT: i32 = 1 << 2;
+const WAS_POWERED_BIT: i32 = 1 << 3;
+
+impl RedstoneSync {
+    /// `isRedstoneActivated`, sobre o que o cliente tem (e o servidor, pelos mesmos campos).
+    pub fn is_activated(self) -> bool {
+        match self.control_type {
+            RedstoneControl::Disabled => true,
+            RedstoneControl::High => self.powered,
+            RedstoneControl::Low => !self.powered,
+            RedstoneControl::Pulse => self.powered && !self.was_powered,
+        }
+    }
+
+    /// O valor do data slot: cabe em 16 bits, sem sinal.
+    pub fn to_slot(self) -> i32 {
+        self.control_type.ordinal()
+            | if self.powered { POWERED_BIT } else { 0 }
+            | if self.was_powered { WAS_POWERED_BIT } else { 0 }
+    }
+
+    /// O inverso. O cliente pode receber o slot como negativo: só os bits baixos contam.
+    pub fn from_slot(slot: i32) -> Self {
+        Self {
+            control_type: RedstoneControl::from_ordinal(slot & CONTROL_BITS),
+            powered: slot & POWERED_BIT != 0,
+            was_powered: slot & WAS_POWERED_BIT != 0,
+        }
+    }
 }
 
 /// O que o Java persiste de uma máquina de receita (`saveAdditional` de `TileEntityMekanism`, do monitor e do Infuser), sem o que vive
@@ -187,11 +244,15 @@ impl TileBase {
     }
 
     pub fn is_redstone_activated(&self) -> bool {
-        match self.control_type {
-            RedstoneControl::Disabled => true,
-            RedstoneControl::High => self.redstone,
-            RedstoneControl::Low => !self.redstone,
-            RedstoneControl::Pulse => self.redstone && !self.redstone_last_tick,
+        self.redstone_sync().is_activated()
+    }
+
+    /// O que o servidor manda ao cliente de redstone: o modo, `redstone` e `redstoneLastTick`.
+    pub fn redstone_sync(&self) -> RedstoneSync {
+        RedstoneSync {
+            control_type: self.control_type,
+            powered: self.redstone,
+            was_powered: self.redstone_last_tick,
         }
     }
 
@@ -1032,6 +1093,48 @@ mod tests {
         max_speed: 8,
         max_energy: 8,
     };
+
+    #[test]
+    fn the_redstone_slot_round_trips_every_combination() {
+        for ordinal in 0..4 {
+            for powered in [false, true] {
+                for was_powered in [false, true] {
+                    let sync = RedstoneSync {
+                        control_type: RedstoneControl::from_ordinal(ordinal),
+                        powered,
+                        was_powered,
+                    };
+                    let slot = sync.to_slot();
+                    assert!((0..=0xF).contains(&slot), "cabe em quatro bits");
+                    assert_eq!(RedstoneSync::from_slot(slot), sync);
+                    // O Horizon manda 16 bits com sinal, e o cliente lê o que chega.
+                    assert_eq!(RedstoneSync::from_slot(i32::from(slot as i16)), sync);
+                }
+            }
+        }
+        assert_eq!(RedstoneControl::from_ordinal(9), RedstoneControl::Disabled);
+        assert_eq!(RedstoneControl::Pulse.ordinal(), 3);
+    }
+
+    #[test]
+    fn the_client_activation_follows_the_server_one() {
+        let mut tile = TileBase::new(3);
+        for control in [
+            RedstoneControl::Disabled,
+            RedstoneControl::High,
+            RedstoneControl::Low,
+        ] {
+            tile.set_control_type(control);
+            for powered in [false, true] {
+                tile.update_power(powered);
+                assert_eq!(
+                    RedstoneSync::from_slot(tile.redstone_sync().to_slot()).is_activated(),
+                    tile.is_redstone_activated(),
+                    "{control:?} powered={powered}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn upgrades_match_the_recorded_values() {

@@ -12,6 +12,8 @@ use horizon_world::level::Ticks;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::fluid_logged;
+use machinery_basis_core::gui;
+use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
@@ -896,6 +898,28 @@ pub(in crate::game) fn nine_slice(
     }
 }
 
+/// Os sprites de aviso de um elemento (`GuiElement.WARNING_BACKGROUND_TEXTURE` e `WARNING_TEXTURE`). Os dois têm `gui.scaling`
+/// do tipo `tile`, que o Horizon não aplica: `tile` é o tamanho do mosaico, o `width` e o `height` do `.mcmeta`.
+pub(in crate::game) struct WarningSprites {
+    pub background: &'static str,
+    pub overlay: &'static str,
+    pub tile: [f32; 2],
+}
+
+/// Um sprite em mosaico: repete a partir do canto de cima e da esquerda de `dst`, corta o que passa da borda (`clip` é o scissor).
+pub(in crate::game) fn tiled_sprite(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    sprite: &str,
+    tile: [f32; 2],
+    dst: [f32; 4],
+    clip: Option<[f32; 4]>,
+) {
+    for cell in gui::tile_cells(dst, tile, clip) {
+        game.native_sprite(batch, sprite, cell.src, cell.dst);
+    }
+}
+
 /// Um medidor que enche de baixo para cima, sobre um fundo escuro.
 pub(in crate::game) fn gauge(
     game: &Game<'_>,
@@ -904,26 +928,101 @@ pub(in crate::game) fn gauge(
     fraction: f32,
     argb: u32,
 ) {
-    const BACKGROUND: u32 = 0xFF_08_08_08;
-    let [x, y, w, h] = rect;
-    game.native_fill(batch, rect, BACKGROUND);
-    let filled = h * fraction.clamp(0.0, 1.0);
-    game.native_fill(batch, [x, y + h - filled, w, filled], argb);
+    warned_gauge(game, batch, rect, fraction, argb, None);
 }
 
-/// Uma barra que enche da esquerda para a direita, com o sprite vazio e o cheio do mesmo tamanho.
+/// [`gauge`] com o aviso de `GuiBar.drawBackground`: o fundo do aviso dentro da moldura, antes do conteúdo, e, com a barra quase
+/// cheia, o aviso de novo por cima, só na metade de trás.
+pub(in crate::game) fn warned_gauge(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    rect: [f32; 4],
+    fraction: f32,
+    argb: u32,
+    warning: Option<&WarningSprites>,
+) {
+    const BACKGROUND: u32 = 0xFF_08_08_08;
+    let [x, y, w, h] = rect;
+    let level = fraction.clamp(0.0, 1.0);
+    let warned = warning.map(|sprites| (sprites, gui::bar_warning(rect, f64::from(level), false)));
+    game.native_fill(batch, rect, BACKGROUND);
+    if let Some((sprites, bar)) = &warned {
+        tiled_sprite(game, batch, sprites.background, sprites.tile, bar.background, None);
+    }
+    let filled = h * level;
+    game.native_fill(batch, [x, y + h - filled, w, filled], argb);
+    if let Some((sprites, bar)) = &warned
+        && let Some(overlay) = bar.overlay
+    {
+        tiled_sprite(game, batch, sprites.overlay, sprites.tile, overlay.dst, Some(overlay.clip));
+    }
+}
+
+/// Os três sprites de um tipo de `ProgressType`: o vazio, o cheio e o do aviso, todos do tamanho do elemento.
+pub(in crate::game) struct ProgressSprites {
+    pub empty: &'static str,
+    pub full: &'static str,
+    pub warning: &'static str,
+}
+
+/// `GuiProgress.drawBackground` de um progresso horizontal que enche da esquerda para a direita: o sprite vazio, e por cima o
+/// cheio até onde o progresso chegou (pelo menos um pixel). Com aviso é o sprite do aviso, com o progresso em 1.
+/// `inner_offset` é a moldura que o sprite não preenche (`ProgressType.BAR` tem um pixel de cada lado).
 pub(in crate::game) fn progress_bar(
     game: &Game<'_>,
     batch: &mut HudBatch,
-    empty: &str,
-    full: &str,
+    sprites: &ProgressSprites,
     rect: [f32; 4],
     fraction: f32,
+    inner_offset: f32,
+    warning: bool,
 ) {
     let [x, y, w, h] = rect;
-    game.native_sprite(batch, empty, [0.0, 0.0, w, h], rect);
-    let filled = w * fraction.clamp(0.0, 1.0);
-    game.native_sprite(batch, full, [0.0, 0.0, filled, h], [x, y, filled, h]);
+    game.native_sprite(batch, sprites.empty, [0.0, 0.0, w, h], rect);
+    if let Some((offset, width)) = gui::progress_fill(w, inner_offset, fraction, warning) {
+        let sprite = if warning { sprites.warning } else { sprites.full };
+        game.native_sprite(batch, sprite, [offset, 0.0, width, h], [x + offset, y, width, h]);
+    }
+}
+
+/// `GuiWarningTab`, à esquerda da tela: `sprite` na posição que o Java dá, a partir do canto `origin` da tela.
+pub(in crate::game) fn warning_tab(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, origin: [f32; 2]) {
+    let [x, y, w, h] = gui::WARNING_TAB_LEFT;
+    game.native_sprite(batch, sprite, [0.0, 0.0, w, h], [origin[0] + x, origin[1] + y, w, h]);
+}
+
+/// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor
+/// mas por cima ou por baixo do `widget` (`MenuTooltipPositioner`), em vez de sobre o cursor como o tooltip de um item. O hook
+/// `native_screen_tooltip` só entrega texto com os códigos `§` do vanilla, que não têm as cores de `EnumColor`, e posiciona sempre
+/// no cursor. `mouse` e `widget` (`[x, y, largura, altura]`) estão em pixels de GUI da janela.
+pub(in crate::game) fn menu_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    lines: &[(String, Option<u32>)],
+    mouse: (f32, f32),
+    widget: [f32; 4],
+) {
+    let lines: Vec<(horizon_client::text::Text, u32)> = lines
+        .iter()
+        .map(|(text, color)| {
+            let text = match color {
+                Some(color) => horizon_client::text::Text::colored(text.as_str(), *color),
+                None => horizon_client::text::Text::literal(text.as_str()),
+            };
+            (text, u32::MAX)
+        })
+        .collect();
+    let atlas = &game.gui.atlas;
+    // O tamanho não depende de onde o tooltip cai; a posição é a do `MenuTooltipPositioner`.
+    let (_, _, w, h) = Game::tooltip_geometry(atlas, &lines, (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+    let [x, y] = tooltip::menu_position(
+        [batch.width as i32, batch.height as i32],
+        [mouse.0 as i32, mouse.1 as i32],
+        [w as i32, h as i32],
+        widget.map(|edge| edge.round() as i32),
+    );
+    game.tooltip_box(batch, None, x as f32, y as f32, w, h);
+    Game::tooltip_text(batch, atlas, &lines, x as f32, y as f32);
 }
 
 /// O fundo de uma tela de máquina: o painel, o título e os slots do inventário do jogador.
