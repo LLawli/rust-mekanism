@@ -3,14 +3,16 @@
 use machinery_basis_core::cached_recipe::ItemToItemRecipe;
 use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::containers::InventorySlot;
+use machinery_basis_core::data_slots;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
-    UpgradeConfig,
+    RedstoneSync, UpgradeConfig,
 };
+use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::warning::{ErrorMask, WarningTracker};
@@ -168,16 +170,45 @@ impl WarningType {
 /// comentário fala só da taxa reduzida, mas o corte também esconde os avisos de redstone, que vêm depois dela no `enum`.
 pub const WARNINGS_STOP_AFTER: WarningType = WarningType::NotEnoughEnergy;
 
-/// Os pares (tipo, erro) que a tela de uma `TileEntityElectricMachine` registra: `GuiElectricMachine` (a barra de energia e a
-/// seta de progresso) e os slots de `TileEntityElectricMachine.getInitialInventory` (entrada e saída).
-pub const ELECTRIC_WARNINGS: [(WarningType, RecipeError); 4] = [
-    (WarningType::NotEnoughEnergy, RecipeError::NOT_ENOUGH_ENERGY),
+/// Os elementos da tela que mostram um aviso: cada um tem a própria verificação (`ISupportsWarning.warning`), e o que ele desenha
+/// depende só dela, não do aviso que a aba lista.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScreenElement {
+    /// `GuiVerticalPowerBar`.
+    EnergyBar,
+    /// `GuiProgress`.
+    Progress,
+    /// `GuiChemicalBar`, a barra de infusão do Metallurgic Infuser.
+    ChemicalBar,
+    /// O slot de entrada, `InputInventorySlot`.
+    InputSlot,
+    /// O slot de saída, `OutputInventorySlot`.
+    OutputSlot,
+}
+
+/// Os registros de aviso de uma tela de máquina: o elemento, o tipo que a aba lista e o erro que o liga.
+pub type ScreenWarnings = [(ScreenElement, WarningType, RecipeError)];
+
+/// O que a tela de uma `TileEntityElectricMachine` registra: `GuiElectricMachine` (a barra de energia e a seta de progresso) e os
+/// slots de `TileEntityElectricMachine.getInitialInventory` (entrada e saída).
+pub const ELECTRIC_WARNINGS: [(ScreenElement, WarningType, RecipeError); 4] = [
     (
+        ScreenElement::EnergyBar,
+        WarningType::NotEnoughEnergy,
+        RecipeError::NOT_ENOUGH_ENERGY,
+    ),
+    (
+        ScreenElement::Progress,
         WarningType::InputDoesntProduceOutput,
         RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
     ),
-    (WarningType::NoMatchingRecipe, RecipeError::NOT_ENOUGH_INPUT),
     (
+        ScreenElement::InputSlot,
+        WarningType::NoMatchingRecipe,
+        RecipeError::NOT_ENOUGH_INPUT,
+    ),
+    (
+        ScreenElement::OutputSlot,
         WarningType::NoSpaceInOutput,
         RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
     ),
@@ -185,18 +216,29 @@ pub const ELECTRIC_WARNINGS: [(WarningType, RecipeError); 4] = [
 
 /// O mesmo do Metallurgic Infuser: `GuiMetallurgicInfuser` e `TileEntityMetallurgicInfuser.getInitialInventory`. A barra do
 /// químico e o slot de entrada dão os dois `NO_MATCHING_RECIPE`, e a falta de saída vem do slot de saída.
-pub const INFUSER_WARNINGS: [(WarningType, RecipeError); 5] = [
-    (WarningType::NotEnoughEnergy, RecipeError::NOT_ENOUGH_ENERGY),
+pub const INFUSER_WARNINGS: [(ScreenElement, WarningType, RecipeError); 5] = [
     (
+        ScreenElement::EnergyBar,
+        WarningType::NotEnoughEnergy,
+        RecipeError::NOT_ENOUGH_ENERGY,
+    ),
+    (
+        ScreenElement::Progress,
         WarningType::InputDoesntProduceOutput,
         RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
     ),
     (
+        ScreenElement::ChemicalBar,
         WarningType::NoMatchingRecipe,
         RecipeError::NOT_ENOUGH_SECONDARY_INPUT,
     ),
-    (WarningType::NoMatchingRecipe, RecipeError::NOT_ENOUGH_INPUT),
     (
+        ScreenElement::InputSlot,
+        WarningType::NoMatchingRecipe,
+        RecipeError::NOT_ENOUGH_INPUT,
+    ),
+    (
+        ScreenElement::OutputSlot,
         WarningType::NoSpaceInOutput,
         RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
     ),
@@ -227,23 +269,21 @@ impl WarningSource for ProgressMachine {
 }
 
 /// O que o cliente tem da máquina: a máscara de erros rastreados de um data slot, a lista rastreada que o mod conhece (a mesma da
-/// máquina) e o modo de redstone com o estado dele.
+/// máquina) e o que `addContainerTrackers` manda de redstone (o modo, `redstone` e `redstoneLastTick`).
 #[derive(Clone, Copy, Debug)]
 pub struct SyncedMachine {
     pub tracked: &'static [RecipeError],
     pub errors: ErrorMask,
-    pub control_type: RedstoneControl,
-    pub redstone_activated: bool,
+    pub redstone: RedstoneSync,
 }
 
 impl SyncedMachine {
-    /// O que o servidor manda de uma máquina: a máscara e o modo de redstone. Os mesmos valores que o cliente lê dos data slots.
+    /// O que o servidor manda de uma máquina: a máscara e o redstone. Os mesmos valores que o cliente lê dos data slots.
     pub fn of(machine: &ProgressMachine, tracked: &'static [RecipeError]) -> Self {
         Self {
             tracked,
             errors: machine.tracked_errors_mask(),
-            control_type: machine.tile().control_type(),
-            redstone_activated: machine.tile().is_redstone_activated(),
+            redstone: machine.tile().redstone_sync(),
         }
     }
 }
@@ -254,11 +294,11 @@ impl WarningSource for SyncedMachine {
     }
 
     fn control_type(&self) -> RedstoneControl {
-        self.control_type
+        self.redstone.control_type
     }
 
     fn is_redstone_activated(&self) -> bool {
-        self.redstone_activated
+        self.redstone.is_activated()
     }
 }
 
@@ -266,10 +306,10 @@ impl WarningSource for SyncedMachine {
 /// toda máquina com controle de redstone registra.
 pub fn machine_warnings<'a>(
     source: &'a dyn WarningSource,
-    pairs: &[(WarningType, RecipeError)],
+    pairs: &ScreenWarnings,
 ) -> WarningTracker<'a, WarningType> {
     let mut tracker = WarningTracker::new(Some(WARNINGS_STOP_AFTER));
-    for &(kind, error) in pairs {
+    for &(_, kind, error) in pairs {
         tracker.track(kind, move || source.has_error(error));
     }
     for (kind, control) in [
@@ -283,6 +323,196 @@ pub fn machine_warnings<'a>(
     }
     tracker
 }
+
+/// Onde cada valor fica nos data slots da tela de uma máquina. Cada slot trafega em 16 bits: energia, cor e capacidade ocupam dois.
+/// A capacidade muda com os upgrades e a tela não a sabe de cabeça. A máscara de erros e o redstone são o que `SyncedMachine` lê.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DataLayout {
+    pub energy: usize,
+    /// A quantidade no tanque de químico (um slot) e a cor dele (dois), nas máquinas que têm tanque.
+    pub chemical: Option<(usize, usize)>,
+    pub progress: usize,
+    pub capacity: usize,
+    pub errors: usize,
+    pub redstone: usize,
+    /// Quantos data slots o menu declara: o `data_slots` do arquivo de menu.
+    pub len: usize,
+}
+
+pub const ELECTRIC_DATA: DataLayout = DataLayout {
+    energy: 0,
+    chemical: None,
+    progress: 2,
+    capacity: 3,
+    errors: 5,
+    redstone: 6,
+    len: 7,
+};
+
+pub const INFUSER_DATA: DataLayout = DataLayout {
+    energy: 0,
+    chemical: Some((2, 3)),
+    progress: 5,
+    capacity: 6,
+    errors: 8,
+    redstone: 9,
+    len: 10,
+};
+
+/// O que o servidor escreve nos data slots de uma máquina e o cliente lê.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScreenData {
+    pub energy: u32,
+    pub capacity: u32,
+    pub progress: i32,
+    /// A quantidade do tanque de químico e a cor do que ele guarda.
+    pub chemical_amount: i32,
+    pub chemical_color: u32,
+    pub errors: ErrorMask,
+    pub redstone: RedstoneSync,
+}
+
+impl ScreenData {
+    pub fn write(&self, layout: &DataLayout) -> Vec<i32> {
+        let mut data = vec![0; layout.len];
+        let [low, high] = data_slots::split(self.energy);
+        data[layout.energy] = low;
+        data[layout.energy + 1] = high;
+        data[layout.progress] = self.progress;
+        let [low, high] = data_slots::split(self.capacity);
+        data[layout.capacity] = low;
+        data[layout.capacity + 1] = high;
+        if let Some((amount, color)) = layout.chemical {
+            data[amount] = self.chemical_amount;
+            let [low, high] = data_slots::split(self.chemical_color);
+            data[color] = low;
+            data[color + 1] = high;
+        }
+        data[layout.errors] = self.errors.to_slot();
+        data[layout.redstone] = self.redstone.to_slot();
+        data
+    }
+
+    /// O que o cliente lê. Antes dos primeiros valores do servidor os data slots estão vazios, e o que falta vale zero.
+    pub fn read(layout: &DataLayout, data: &[i32]) -> Self {
+        let get = |index: usize| data.get(index).copied().unwrap_or(0);
+        let (chemical_amount, chemical_color) =
+            layout.chemical.map_or((0, 0), |(amount, color)| {
+                (get(amount), data_slots::join(get(color), get(color + 1)))
+            });
+        Self {
+            energy: data_slots::join(get(layout.energy), get(layout.energy + 1)),
+            capacity: data_slots::join(get(layout.capacity), get(layout.capacity + 1)),
+            progress: get(layout.progress),
+            chemical_amount,
+            chemical_color,
+            errors: ErrorMask::from_slot(get(layout.errors)),
+            redstone: RedstoneSync::from_slot(get(layout.redstone)),
+        }
+    }
+}
+
+/// O que a tela de um tipo de máquina sabe dos avisos: os erros que a máquina rastreia, os registros dos elementos e os data slots.
+#[derive(Clone, Copy, Debug)]
+pub struct ScreenSpec {
+    pub tracked: &'static [RecipeError],
+    pub warnings: &'static ScreenWarnings,
+    pub data: &'static DataLayout,
+}
+
+pub const ELECTRIC_SCREEN: ScreenSpec = ScreenSpec {
+    tracked: &ELECTRIC_TRACKED_ERRORS,
+    warnings: &ELECTRIC_WARNINGS,
+    data: &ELECTRIC_DATA,
+};
+
+pub const INFUSER_SCREEN: ScreenSpec = ScreenSpec {
+    tracked: &INFUSER_TRACKED_ERRORS,
+    warnings: &INFUSER_WARNINGS,
+    data: &INFUSER_DATA,
+};
+
+/// O que a tela desenha de aviso, decidido do que o cliente tem dos data slots: a aba (`hasWarning`), as linhas dela
+/// (`getWarnings`) e que elementos estão em aviso.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WarningView {
+    /// `getWarnings`, na ordem da tela e com o corte de `WARNINGS_STOP_AFTER`.
+    pub issues: Vec<WarningType>,
+    tab: bool,
+    elements: Vec<ScreenElement>,
+}
+
+impl WarningView {
+    /// A aba aparece (`GuiWarningTab.updateVisibility`).
+    pub fn tab(&self) -> bool {
+        self.tab
+    }
+
+    /// O elemento está em aviso: alguma das verificações dele diz que sim (`ISupportsWarning.compound`).
+    pub fn element(&self, element: ScreenElement) -> bool {
+        self.elements.contains(&element)
+    }
+}
+
+impl ScreenSpec {
+    /// A máquina como o cliente a vê.
+    pub fn synced(&self, data: &[i32]) -> SyncedMachine {
+        let read = ScreenData::read(self.data, data);
+        SyncedMachine {
+            tracked: self.tracked,
+            errors: read.errors,
+            redstone: read.redstone,
+        }
+    }
+
+    pub fn view(&self, data: &[i32]) -> WarningView {
+        let source = self.synced(data);
+        let tracker = machine_warnings(&source, self.warnings);
+        let mut elements = Vec::new();
+        for &(element, _, error) in self.warnings {
+            if source.has_error(error) && !elements.contains(&element) {
+                elements.push(element);
+            }
+        }
+        WarningView {
+            issues: tracker.warnings(),
+            tab: tracker.has_warning(),
+            elements,
+        }
+    }
+}
+
+/// Uma linha do tooltip da aba, e a cor dela quando não é a do padrão.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TooltipLine {
+    pub text: String,
+    pub color: Option<u32>,
+}
+
+/// O tooltip de `GuiWarningTab.updateTooltip`: `MekanismLang.ISSUES` em amarelo e uma linha por aviso, cada uma cortada na
+/// largura do tooltip (`Tooltip.create`). `translate` traduz uma chave de idioma e `width` mede texto em pixels de GUI.
+pub fn tab_tooltip(
+    issues: &[WarningType],
+    translate: &dyn Fn(&str) -> String,
+    width: &dyn Fn(&str) -> f32,
+) -> Vec<TooltipLine> {
+    let mut lines = Vec::new();
+    for text in tooltip::split_lines(&translate(ISSUES_LANG), tooltip::MAX_WIDTH, width) {
+        lines.push(TooltipLine {
+            text,
+            color: Some(ENUM_YELLOW),
+        });
+    }
+    for issue in issues {
+        for text in tooltip::split_lines(&translate(issue.lang_key()), tooltip::MAX_WIDTH, width) {
+            lines.push(TooltipLine { text, color: None });
+        }
+    }
+    lines
+}
+
+/// `MekanismLang.ISSUES`.
+pub const ISSUES_LANG: &str = "gui.mekanism.issues";
 
 /// O que as máquinas de progresso do Mekanism partilham: os valores de `UsageConfig`, `GeneralConfig` e `UpgradeUtils`.
 fn machine_config(
@@ -514,6 +744,9 @@ const CHEMICAL_KIND: &str = "chemical";
 const INFUSE_ICON: &str = "/infuse_type/";
 
 /// `EnumColor`, pelo nome que os pigmentos usam em `color`.
+/// `EnumColor.YELLOW`, que o cabeçalho da aba de avisos usa.
+const ENUM_YELLOW: u32 = 0xFF_DD_4F;
+
 const ENUM_COLORS: [(&str, u32); 18] = [
     ("black", 0x40_40_40),
     ("blue", 0x36_6B_D0),
@@ -529,7 +762,7 @@ const ENUM_COLORS: [(&str, u32); 18] = [
     ("aqua", 0x30_FF_F9),
     ("red", 0xFF_38_3C),
     ("magenta", 0xD5_5E_CB),
-    ("yellow", 0xFF_DD_4F),
+    ("yellow", ENUM_YELLOW),
     ("white", 0xFF_FF_FF),
     ("brown", 0xA1_76_49),
     ("pink", 0xFF_BC_C4),

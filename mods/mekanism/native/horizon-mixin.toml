@@ -131,6 +131,18 @@ bindings = [
   { name = "lines", ty = "&mut Vec<String>", value = "&mut *lines" },
 ]
 
+# O tooltip da aba de avisos: o amarelo do cabeçalho é `EnumColor.YELLOW` (0xFFDD4F), que `native_screen_tooltip` não dá.
+[[injection]]
+id = "warning_tab_tooltip"
+target = "horizon_client::game::native_hooks::Game<'_>::draw_native_screen_tooltip"
+kind = "HEAD"
+cancellable = true
+helper = "warning_tab_tooltip.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]
+
 [[injection]]
 id = "menu_button"
 hook = "menu_button"

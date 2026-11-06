@@ -13,7 +13,7 @@ use horizon_world::registry::BlockStateId;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents};
 use machinery_basis_core::containers::{InventorySlot, ItemResource, SlotContents};
-use machinery_basis_core::data_slots;
+use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
@@ -50,6 +50,8 @@ struct Machine {
     recipes: basis::RecipeSource,
     energy_per_tick: i32,
     slots: Slots,
+    /// Os data slots da tela e os avisos dela.
+    screen: &'static rules::ScreenSpec,
 }
 
 const ELECTRIC_SLOT_LAYOUT: Slots = Slots {
@@ -71,6 +73,7 @@ const fn electric(
         recipes,
         energy_per_tick,
         slots: ELECTRIC_SLOT_LAYOUT,
+        screen: &rules::ELECTRIC_SCREEN,
     }
 }
 
@@ -104,20 +107,9 @@ static MACHINES: [Machine; 4] = [
             energy: rules::ENERGY_SLOT,
             infusion: Some(rules::INFUSION_SLOT),
         },
+        screen: &rules::INFUSER_SCREEN,
     },
 ];
-
-// Os data slots das telas.
-const DATA_ENERGY: usize = 0;
-const DATA_INFUSION: usize = 2;
-const DATA_COLOR: usize = 3;
-const DATA_PROGRESS: usize = 5;
-/// A capacidade de energia da máquina, em dois slots: ela muda com os upgrades, e a tela não a sabe de cabeça.
-const DATA_CAPACITY: usize = 6;
-const DATA_SLOTS: usize = 8;
-const ELECTRIC_DATA_PROGRESS: usize = 2;
-const ELECTRIC_DATA_CAPACITY: usize = 3;
-const ELECTRIC_DATA_SLOTS: usize = 5;
 
 // As telas, nas posições de GuiMetallurgicInfuser e GuiElectricMachine. Um slot guarda a posição do
 // item, e a moldura fica um pixel antes.
@@ -125,10 +117,31 @@ const WIDTH: f32 = 176.0;
 const HEIGHT: f32 = 166.0;
 const SLOT: &str = "mekanism:gui/sprites/slot/normal";
 const ENERGY_SLOT_FRAME: &str = "mekanism:gui/sprites/slot/power";
-const PROGRESS_EMPTY: &str = "mekanism:gui/sprites/progress/right/empty";
-const PROGRESS_FULL: &str = "mekanism:gui/sprites/progress/right/full";
-const BAR_EMPTY: &str = "mekanism:gui/sprites/progress/bar/empty";
-const BAR_FULL: &str = "mekanism:gui/sprites/progress/bar/full";
+/// `ProgressType.RIGHT` e `ProgressType.BAR`: o sprite vazio, o cheio e o do aviso.
+const PROGRESS_RIGHT: basis::ProgressSprites = basis::ProgressSprites {
+    empty: "mekanism:gui/sprites/progress/right/empty",
+    full: "mekanism:gui/sprites/progress/right/full",
+    warning: "mekanism:gui/sprites/progress/right/warning",
+};
+const PROGRESS_BAR_TYPE: basis::ProgressSprites = basis::ProgressSprites {
+    empty: "mekanism:gui/sprites/progress/bar/empty",
+    full: "mekanism:gui/sprites/progress/bar/full",
+    warning: "mekanism:gui/sprites/progress/bar/warning",
+};
+/// O pixel de moldura que `ProgressType.BAR` tem de cada lado e `RIGHT` não tem.
+const PROGRESS_BAR_FRAME: f32 = 1.0;
+const PROGRESS_RIGHT_FRAME: f32 = 0.0;
+/// `GuiSlot.WARNING`, no lugar da textura do slot.
+const SLOT_WARNING: &str = "mekanism:gui/sprites/slot/warning";
+/// `GuiElement.WARNING_BACKGROUND_TEXTURE` e `WARNING_TEXTURE`: `warning_background.png.mcmeta` e `warning.png.mcmeta` dizem
+/// `gui.scaling` do tipo `tile`, 16 por 16.
+const WARNING_SPRITES: basis::WarningSprites = basis::WarningSprites {
+    background: "mekanism:gui/sprites/warning_background",
+    overlay: "mekanism:gui/sprites/warning",
+    tile: [16.0, 16.0],
+};
+/// `GuiWarningTab.WARNING_LEFT`.
+const WARNING_TAB_SPRITE: &str = "mekanism:gui/sprites/tab/warning_info_left";
 const UP_ARROW: &str = "mekanism:gui/sprites/arrow/up";
 const DUMP_SPRITE: &str = "mekanism:gui/sprites/button/dump";
 const PANEL: basis::PanelStyle = basis::PanelStyle {
@@ -143,7 +156,7 @@ const ELECTRIC_SLOT_POSITIONS: [[f32; 2]; rules::ELECTRIC_SLOTS] = [[64.0, 17.0]
 const INFUSION_BAR: [f32; 4] = [7.0, 15.0, 6.0, 54.0];
 const ENERGY_BAR: [f32; 4] = [164.0, 15.0, 6.0, 54.0];
 const ELECTRIC_ENERGY_BAR: [f32; 4] = [164.0, 16.0, 6.0, 54.0];
-const PROGRESS_BAR: [f32; 4] = [72.0, 47.0, 32.0, 8.0];
+const INFUSER_PROGRESS: [f32; 4] = [72.0, 47.0, 32.0, 8.0];
 const ELECTRIC_PROGRESS_BAR: [f32; 4] = [86.0, 38.0, 25.0, 9.0];
 const ELECTRIC_ARROW: [f32; 4] = [68.0, 38.0, 8.0, 10.0];
 const DUMP_RECT: [f32; 4] = [16.0, 59.0, 21.0, 10.0];
@@ -1113,32 +1126,21 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         game.native_set_block_property(pos, "lit", if lit { "true" } else { "false" });
         live.lit = Some(lit);
     }
-    let split = data_slots::split(energy as u32);
-    let capacity_split = data_slots::split(capacity as u32);
-    let data = match machine.chemical_side() {
-        None => vec![
-            split[0],
-            split[1],
-            progress,
-            capacity_split[0],
-            capacity_split[1],
-        ],
-        Some(side) => {
-            let held = side.tank.resource();
-            let color = held.and_then(|held| resource::current().get(&held.id).map(|infusion| infusion.color));
-            let color = data_slots::split(color.unwrap_or(0));
-            let mut data = vec![0; DATA_SLOTS];
-            data[DATA_ENERGY] = split[0];
-            data[DATA_ENERGY + 1] = split[1];
-            data[DATA_INFUSION] = side.tank.amount() as i32;
-            data[DATA_COLOR] = color[0];
-            data[DATA_COLOR + 1] = color[1];
-            data[DATA_PROGRESS] = progress;
-            data[DATA_CAPACITY] = capacity_split[0];
-            data[DATA_CAPACITY + 1] = capacity_split[1];
-            data
-        }
+    let mut screen = rules::ScreenData {
+        energy: energy as u32,
+        capacity: capacity as u32,
+        progress,
+        errors: machine.tracked_errors_mask(),
+        redstone: machine.tile().redstone_sync(),
+        ..Default::default()
     };
+    if let Some(side) = machine.chemical_side() {
+        let held = side.tank.resource();
+        let color = held.and_then(|held| resource::current().get(&held.id).map(|infusion| infusion.color));
+        screen.chemical_amount = side.tank.amount() as i32;
+        screen.chemical_color = color.unwrap_or(0);
+    }
+    let data = screen.write(spec.screen.data);
     if entity.data != data {
         entity.data = data;
     }
@@ -1427,8 +1429,11 @@ pub(in crate::game) fn screen_click(block: &str, at: [f32; 2], right: bool, butt
 }
 
 pub(in crate::game) fn screen_tooltip(block: &str, data: &[i32], at: [f32; 2], lines: &mut Vec<String>) {
-    let get = |i: usize| data.get(i).copied().unwrap_or(0);
-    let energy = || format_energy(data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1)));
+    let Some(machine) = machine_of(block) else {
+        return;
+    };
+    let read = rules::ScreenData::read(machine.screen.data, data);
+    let energy = || format_energy(read.energy);
     if electric_machine(block).is_some() {
         if inside(ELECTRIC_ENERGY_BAR, at) {
             lines.push(energy());
@@ -1437,46 +1442,104 @@ pub(in crate::game) fn screen_tooltip(block: &str, data: &[i32], at: [f32; 2], l
         if inside(ENERGY_BAR, at) {
             lines.push(energy());
         } else if inside(INFUSION_BAR, at) {
-            lines.push(format!("{} / {} mB", get(DATA_INFUSION), rules::TANK_CAPACITY));
+            lines.push(format!("{} / {} mB", read.chemical_amount, rules::TANK_CAPACITY));
         }
     }
 }
 
+/// `GuiWarningTab.updateTooltip`: com o cursor sobre a aba, o tooltip de `MekanismLang.ISSUES` e dos avisos. O `native_screen_tooltip`
+/// só entrega texto com os códigos `§` do vanilla e o posiciona sobre o cursor, e o amarelo de `EnumColor.YELLOW` é `0xFFDD4F` e
+/// o tooltip de um widget fica por cima ou por baixo dele, então o da aba sai daqui, pela injeção em `draw_native_screen_tooltip`. Devolve se desenhou. `at` é o cursor relativo ao canto da tela, e `cursor`
+/// o mesmo em pixels de GUI da janela.
+pub(in crate::game) fn warning_tab_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    block: &str,
+    data: &[i32],
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    let Some(machine) = machine_of(block) else {
+        return false;
+    };
+    if !gui::contains(gui::WARNING_TAB_LEFT, at) {
+        return false;
+    }
+    let view = machine.screen.view(data);
+    // Sem aviso a aba some (`updateVisibility`), e não há o que mostrar.
+    if !view.tab() {
+        return false;
+    }
+    let lines = rules::tab_tooltip(&view.issues, &|key: &str| lang::get(key), &|text: &str| game.native_text_width(text));
+    let lines: Vec<(String, Option<u32>)> = lines.into_iter().map(|line| (line.text, line.color)).collect();
+    // O retângulo da aba na janela: o canto da tela é o cursor menos a posição relativa dele.
+    let [x, y, w, h] = gui::WARNING_TAB_LEFT;
+    let widget = [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h];
+    basis::menu_tooltip(game, batch, &lines, cursor, widget);
+    true
+}
+
+/// `GuiSlot.draw`: a textura do slot, ou a do aviso quando a verificação dele diz que sim. O slot de energia segue o dele.
 fn draw_slots(
     game: &Game<'_>,
     batch: &mut HudBatch,
     origin: [f32; 2],
     positions: &[[f32; 2]],
     energy_slot: usize,
+    warned: impl Fn(usize) -> bool,
 ) {
     let [x, y] = origin;
     for (i, [slot_x, slot_y]) in positions.iter().copied().enumerate() {
-        let sprite = if i == energy_slot { ENERGY_SLOT_FRAME } else { SLOT };
+        let sprite = if i == energy_slot {
+            ENERGY_SLOT_FRAME
+        } else if warned(i) {
+            SLOT_WARNING
+        } else {
+            SLOT
+        };
         let dst = [x + slot_x - 1.0, y + slot_y - 1.0, SLOT_SIZE, SLOT_SIZE];
         game.native_sprite(batch, sprite, [0.0, 0.0, SLOT_SIZE, SLOT_SIZE], dst);
     }
 }
 
-fn draw_infuser(game: &Game<'_>, data: &[i32], batch: &mut HudBatch, origin: [f32; 2]) {
+/// Quais slots de item estão em aviso: o de entrada e o de saída registram o deles, com a verificação do erro de cada um.
+fn slot_warned(machine: &Machine, view: &rules::WarningView, index: usize) -> bool {
+    (index == machine.slots.input && view.element(rules::ScreenElement::InputSlot))
+        || (index == machine.slots.output && view.element(rules::ScreenElement::OutputSlot))
+}
+
+fn draw_infuser(game: &Game<'_>, machine: &Machine, data: &[i32], batch: &mut HudBatch, origin: [f32; 2]) {
     let [x, y] = origin;
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
-    let get = |i: usize| data.get(i).copied().unwrap_or(0);
+    let read = rules::ScreenData::read(machine.screen.data, data);
+    let view = machine.screen.view(data);
+    let warning = |element| view.element(element).then_some(&WARNING_SPRITES);
 
     let title = lang::get("container.mekanism.metallurgic_infuser");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
-    draw_slots(game, batch, origin, &SLOT_POSITIONS, rules::ENERGY_SLOT);
-    let infusion = get(DATA_INFUSION) as f32 / rules::TANK_CAPACITY as f32;
-    let color = OPAQUE | data_slots::join(get(DATA_COLOR), get(DATA_COLOR + 1));
-    basis::gauge(game, batch, at(INFUSION_BAR), infusion, color);
-    let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let capacity = data_slots::join(get(DATA_CAPACITY), get(DATA_CAPACITY + 1));
+    draw_slots(game, batch, origin, &SLOT_POSITIONS, rules::ENERGY_SLOT, |i| slot_warned(machine, &view, i));
+    let infusion = read.chemical_amount as f32 / rules::TANK_CAPACITY as f32;
+    let color = OPAQUE | read.chemical_color;
+    basis::warned_gauge(game, batch, at(INFUSION_BAR), infusion, color, warning(rules::ScreenElement::ChemicalBar));
     // Antes do primeiro tick o cliente ainda não recebeu a capacidade: vale a do bloco sem upgrades.
-    let capacity = if capacity == 0 { rules::energy_capacity(rules::INFUSER_USAGE) as u32 } else { capacity };
-    let fill = energy as f32 / capacity as f32;
-    basis::gauge(game, batch, at(ENERGY_BAR), fill, ENERGY_COLOR);
-    let progress = get(DATA_PROGRESS) as f32 / rules::TICKS_REQUIRED as f32;
-    basis::progress_bar(game, batch, PROGRESS_EMPTY, PROGRESS_FULL, at(PROGRESS_BAR), progress);
+    let capacity = if read.capacity == 0 { rules::energy_capacity(rules::INFUSER_USAGE) as u32 } else { read.capacity };
+    let fill = read.energy as f32 / capacity as f32;
+    basis::warned_gauge(game, batch, at(ENERGY_BAR), fill, ENERGY_COLOR, warning(rules::ScreenElement::EnergyBar));
+    let progress = read.progress as f32 / rules::TICKS_REQUIRED as f32;
+    basis::progress_bar(
+        game,
+        batch,
+        &PROGRESS_RIGHT,
+        at(INFUSER_PROGRESS),
+        progress,
+        PROGRESS_RIGHT_FRAME,
+        view.element(rules::ScreenElement::Progress),
+    );
     sprite_rect(game, batch, DUMP_SPRITE, at(DUMP_RECT));
+    // `GuiMekanism.init` a põe por último, depois de todos os elementos.
+    if view.tab() {
+        basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
+    }
 }
 
 fn draw_electric(
@@ -1488,19 +1551,32 @@ fn draw_electric(
 ) {
     let [x, y] = origin;
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
-    let get = |i: usize| data.get(i).copied().unwrap_or(0);
+    let read = rules::ScreenData::read(electric.screen.data, data);
+    let view = electric.screen.view(data);
 
     let title = lang::get(electric.title);
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
-    draw_slots(game, batch, origin, &ELECTRIC_SLOT_POSITIONS, rules::ELECTRIC_ENERGY_SLOT);
+    draw_slots(game, batch, origin, &ELECTRIC_SLOT_POSITIONS, rules::ELECTRIC_ENERGY_SLOT, |i| {
+        slot_warned(electric, &view, i)
+    });
     sprite_rect(game, batch, UP_ARROW, at(ELECTRIC_ARROW));
-    let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let capacity = data_slots::join(get(ELECTRIC_DATA_CAPACITY), get(ELECTRIC_DATA_CAPACITY + 1));
     // Antes do primeiro tick o cliente ainda não recebeu a capacidade: vale a do bloco sem upgrades.
-    let capacity = if capacity == 0 { rules::energy_capacity(electric.energy_per_tick) as u32 } else { capacity };
-    basis::gauge(game, batch, at(ELECTRIC_ENERGY_BAR), energy as f32 / capacity as f32, ENERGY_COLOR);
-    let progress = get(ELECTRIC_DATA_PROGRESS) as f32 / rules::TICKS_REQUIRED as f32;
-    basis::progress_bar(game, batch, BAR_EMPTY, BAR_FULL, at(ELECTRIC_PROGRESS_BAR), progress);
+    let capacity = if read.capacity == 0 { rules::energy_capacity(electric.energy_per_tick) as u32 } else { read.capacity };
+    let warning = view.element(rules::ScreenElement::EnergyBar).then_some(&WARNING_SPRITES);
+    basis::warned_gauge(game, batch, at(ELECTRIC_ENERGY_BAR), read.energy as f32 / capacity as f32, ENERGY_COLOR, warning);
+    let progress = read.progress as f32 / rules::TICKS_REQUIRED as f32;
+    basis::progress_bar(
+        game,
+        batch,
+        &PROGRESS_BAR_TYPE,
+        at(ELECTRIC_PROGRESS_BAR),
+        progress,
+        PROGRESS_BAR_FRAME,
+        view.element(rules::ScreenElement::Progress),
+    );
+    if view.tab() {
+        basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
+    }
 }
 
 pub(in crate::game) fn screen_draw(
@@ -1510,9 +1586,11 @@ pub(in crate::game) fn screen_draw(
     batch: &mut HudBatch,
     origin: [f32; 2],
 ) {
-    if is_infuser(block) {
-        draw_infuser(game, data, batch, origin);
-    } else if let Some(electric) = electric_machine(block) {
-        draw_electric(game, electric, data, batch, origin);
+    if let Some(machine) = machine_of(block) {
+        if is_infuser(block) {
+            draw_infuser(game, machine, data, batch, origin);
+        } else {
+            draw_electric(game, machine, data, batch, origin);
+        }
     }
 }

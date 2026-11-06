@@ -1,6 +1,6 @@
 //! Os avisos da tela: o `WarningType` do Mekanism, os pares de cada máquina portada e o corte de `getWarnings`, sem jogo.
 use machinery_basis_core::operation_tracker::RecipeError;
-use machinery_basis_core::tile::RedstoneControl;
+use machinery_basis_core::tile::{RedstoneControl, RedstoneSync};
 use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
     ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, INFUSER_TRACKED_ERRORS, INFUSER_WARNINGS,
@@ -177,7 +177,7 @@ fn the_reduced_rate_of_the_separator_trace_is_cut_as_the_original_cuts_it() {
 
 #[test]
 fn the_electric_machines_never_track_the_reduced_rate() {
-    for (kind, _) in ELECTRIC_WARNINGS.iter().chain(&INFUSER_WARNINGS) {
+    for (_, kind, _) in ELECTRIC_WARNINGS.iter().chain(&INFUSER_WARNINGS) {
         assert_ne!(*kind, WarningType::NotEnoughEnergyReducedRate);
     }
     // Nem o erro que o separador usa está entre os que elas guardam: o bit nunca existiria.
@@ -298,8 +298,12 @@ fn the_client_warnings_from_the_mask_match_the_server_ones() {
         let client = SyncedMachine {
             tracked: &INFUSER_TRACKED_ERRORS,
             errors: ErrorMask::from_slot(ErrorMask::from_flags(&flags).to_slot()),
-            control_type: server.control,
-            redstone_activated: server.activated,
+            redstone: RedstoneSync {
+                control_type: server.control,
+                // HIGH: ativada é a máquina ter sinal.
+                powered: server.activated,
+                was_powered: server.activated,
+            },
         };
         assert_eq!(
             machine_warnings(&client, &INFUSER_WARNINGS).warnings(),

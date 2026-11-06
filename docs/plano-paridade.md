@@ -120,9 +120,10 @@ comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui
 `pausedForErrors`, `recheckAllErrors`, erros e avisos da tela, e `usedSoFar` para `per_tick_usage`.
 
 Estado em 2026-11-05: Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser rodam na base nova em jogo, e a fase segue
-aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`, `recipe_handlers`,
-`two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector`, `warning` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e
-`infuser_trace.rs` repetem tick a tick os rastros de `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
+aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`,
+`recipe_handlers`, `two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector`, `warning`, `gui`,
+`tooltip` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e `infuser_trace.rs` repetem tick a tick os rastros de
+`dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
 Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
 estados até o primeiro evento e, dali em diante, as transições, porque os comandos não caem no tick exato do rastro. Ejetor, redstone e salvar
@@ -143,9 +144,18 @@ Falta na Fase 1:
   nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
   `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.
 - Upgrade sem tipo aparece vazio, e o original mostra o modelo de item ausente.
-- `MekanismContainer`: a lógica dos avisos já está em `machinery_basis/core/src/warning.rs` e em `mods/mekanism/native/runtime.rs`,
-  comparada com os rastros. Falta desenhar os avisos, gravar a máscara de erros nos data slots, a lista de trackers do
-  `MekanismContainer`, som, nome, experiência e `xpContainmentChanged`.
+- `MekanismContainer`: os avisos da tela estão nas quatro máquinas, comparados lado a lado com o oficial em 17 cenas, e a
+  máscara de erros e o redstone vão nos data slots. Falta a lista de trackers do `MekanismContainer`, som, nome, experiência e
+  `xpContainmentChanged`.
+- Tela, ainda diferente do original:
+  - rótulo "Inventory";
+  - abas laterais: duas à esquerda e três à direita, energia embaixo à esquerda, redstone embaixo à direita e o aviso dela,
+    que pede o blend `DST_COLOR` que `native_sprite` não tem;
+  - moldura colorida dos slots por `findDataType` e o ícone de raio do slot de energia;
+  - `bar/base` e `bar/vertical_power` e o tanque do Infuser;
+  - a seta de progresso divide por `TICKS_REQUIRED` fixo, e o original usa `ticksRequired` com speed.
+- `NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT` não acenderam em nenhum dos dois jogos, e o overlay de nível >= 0,98 e
+  PULSE só têm teste de unidade.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
 - Sem rastro ainda: `setRecipeUsed`. `recheckAllErrors` com jogador olhando e `NOT_ENOUGH_ENERGY_REDUCED_RATE` agora têm rastro.
@@ -153,6 +163,9 @@ Falta na Fase 1:
 - `players_using` vem do hook `mod_container_viewers`, que não conta espectador. O `PacketTileButtonPress` do Java abre a tela sem
   checar espectador, então esse caminho diverge. O caso de `born` com a tela já aberta não foi exercitado em jogo.
 - `sim` ainda não tem chunks.
+
+Nota: `dev/referencia/rastros/upgrade_table.jsonl` tem 324 combinações medidas no Java, e `mods/mekanism/tests/upgrade_table.rs`
+confere o port. O upgrade de energia reduz a capacidade, porque as quatro máquinas aceitam speed.
 
 **Desenho da base (usuário, 2026-11-05).** Duas opções foram implementadas e medidas em jogo, com critérios fixados antes, e ficou a que
 se saiu melhor. B é a cópia literal do Java: closures, contêineres compartilhados e transação que registra sozinha quem mudou. C mantinha
