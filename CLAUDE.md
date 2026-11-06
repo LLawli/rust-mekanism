@@ -23,6 +23,18 @@ O máximo possível roda sem entrar no jogo e sem ninguém interagir. Prefira um
 estados, com as regras em código puro e um mundo simulado por trás. A referência dos valores é o Java do original. Teste
 manual em mundo fica para o que só o jogo mostra, como visual e som.
 
+## Builds e jogo
+
+Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
+
+- No máximo 1 build por vez no notebook e 1 no desktop. Jogo só no desktop, e 1 por vez.
+- Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
+  roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
+- Desktop: até 4 núcleos e 8 GB. Use `~/.cache/rust-mekanism/lim-build <comando>`, que faz fila e põe `CARGO_BUILD_JOBS=4`, com
+  `--max-workers=4` no gradle. O container `horizon` nasce com 6 CPUs e 12 GB: antes do `native-build`, rode
+  `docker update --cpus 4 --memory 8g --memory-swap 8g horizon`.
+- Se um dos dois scripts sumir, recrie antes de compilar: o conteúdo está em `_rules/um-build-e-um-jogo-por-vez.md`, no ai-memory.
+
 ## Onde o código fica
 
 Uma mecânica vai para a lib `machinery_basis` quando outros mods puderem reaproveitá-la ou quando vários blocos diferentes
