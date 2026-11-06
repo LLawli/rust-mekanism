@@ -17,6 +17,7 @@ pub mod recipe_monitor;
 pub mod resource;
 pub mod sides;
 pub mod sim;
+pub mod slot_view;
 pub mod tank;
 pub mod tile;
 pub mod tooltip;

@@ -12,7 +12,7 @@ use horizon_world::level::Ticks;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::fluid_logged;
-use machinery_basis_core::gui;
+use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
@@ -70,15 +70,13 @@ const INVENTORY_TOP: f32 = 83.0;
 const HOTBAR_GAP: f32 = 4.0;
 const INVENTORY_COLUMNS: usize = 9;
 const INVENTORY_ROWS: usize = 3;
-const SLOT_SIZE: f32 = 18.0;
-const TITLE_TOP: f32 = 6.0;
-const LABEL_COLOR: u32 = 0x40_40_40;
 
 /// Os sprites que dão a cara de um mod às telas dele.
 pub(in crate::game) struct PanelStyle {
+    /// O painel de fundo (`GuiMekanism.BASE_BACKGROUND_SLICE`) e o `gui.scaling` do `.mcmeta` dele.
     pub base: &'static str,
-    pub base_size: f32,
-    pub base_border: f32,
+    pub base_slice: NineSlice,
+    /// A moldura dos slots do inventário do jogador (`SlotType.NORMAL`).
     pub slot: &'static str,
 }
 
@@ -870,31 +868,45 @@ pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> f6
     biome.map_or(heat::AMBIENT_TEMP, |temperature| heat::ambient(f64::from(temperature)))
 }
 
-/// Um painel de nove partes: cantos fixos e bordas e miolo esticados, de um sprite `size` x `size`.
+/// O `ARGB` de uma cor do Java na ordem dos vértices do HUD (`hud::rgba`).
+fn hud_color(argb: u32) -> u32 {
+    let [a, r, g, b] = argb.to_be_bytes();
+    horizon_client::hud::rgba(r, g, b, a)
+}
+
+/// Parte `src` do sprite `name` (em pixels dele) desenhada em `dst` multiplicada por `argb`, como `native_sprite` mas com a cor
+/// (`GuiGraphics.blitSprite(..., color)`). Falso se o sprite não existe.
+pub(in crate::game) fn sprite_tinted(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    name: &str,
+    src: [f32; 4],
+    dst: [f32; 4],
+    argb: u32,
+) -> bool {
+    let Some(mut r) = game.gui.atlas.sprites.get(name).copied() else {
+        return false;
+    };
+    let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
+    r.u0 += src[0] * du;
+    r.v0 += src[1] * dv;
+    r.u1 = r.u0 + src[2] * du;
+    r.v1 = r.v0 + src[3] * dv;
+    batch.rect_uv(dst[0], dst[1], dst[2], dst[3], r, hud_color(argb));
+    true
+}
+
+/// Um sprite de nove partes sobre `rect` (`GuiGraphicsExtractor.blitNineSlicedSprite`): os cantos no tamanho do sprite, as bordas
+/// e o miolo repetidos, não esticados, a menos que o `.mcmeta` peça. O Horizon só lê o `gui.scaling` dos sprites do vanilla.
 pub(in crate::game) fn nine_slice(
     game: &Game<'_>,
     batch: &mut HudBatch,
     sprite: &str,
-    size: f32,
-    border: f32,
+    slice: NineSlice,
     rect: [f32; 4],
 ) {
-    let [x, y, w, h] = rect;
-    let inner = size - 2.0 * border;
-    let columns = [
-        (0.0, border, x, border),
-        (border, inner, x + border, w - 2.0 * border),
-        (size - border, border, x + w - border, border),
-    ];
-    let rows = [
-        (0.0, border, y, border),
-        (border, inner, y + border, h - 2.0 * border),
-        (size - border, border, y + h - border, border),
-    ];
-    for (src_y, src_h, dst_y, dst_h) in rows {
-        for (src_x, src_w, dst_x, dst_w) in columns {
-            game.native_sprite(batch, sprite, [src_x, src_y, src_w, src_h], [dst_x, dst_y, dst_w, dst_h]);
-        }
+    for cell in gui::nine_slice_cells(slice, rect) {
+        game.native_sprite(batch, sprite, cell.src, cell.dst);
     }
 }
 
@@ -920,41 +932,114 @@ pub(in crate::game) fn tiled_sprite(
     }
 }
 
-/// Um medidor que enche de baixo para cima, sobre um fundo escuro.
-pub(in crate::game) fn gauge(
-    game: &Game<'_>,
-    batch: &mut HudBatch,
-    rect: [f32; 4],
-    fraction: f32,
-    argb: u32,
-) {
-    warned_gauge(game, batch, rect, fraction, argb, None);
+/// O que `GuiBar` desenha em volta do conteúdo: a moldura (`bar/base`, nove partes) e o `gui.scaling` dela.
+pub(in crate::game) struct BarStyle {
+    pub frame: &'static str,
+    pub frame_slice: NineSlice,
 }
 
-/// [`gauge`] com o aviso de `GuiBar.drawBackground`: o fundo do aviso dentro da moldura, antes do conteúdo, e, com a barra quase
-/// cheia, o aviso de novo por cima, só na metade de trás.
-pub(in crate::game) fn warned_gauge(
+/// `GuiBar.drawBackground` de uma barra vertical: a moldura sobre todo o elemento, o fundo do aviso dentro dela, o conteúdo que
+/// `contents` desenha (recebe o retângulo de baixo para cima que `level` pede, só se há nível) e, com a barra quase cheia, o aviso
+/// de novo por cima, só na metade de trás. `rect` é o elemento inteiro, com a moldura.
+pub(in crate::game) fn vertical_bar(
     game: &Game<'_>,
     batch: &mut HudBatch,
+    style: &BarStyle,
     rect: [f32; 4],
-    fraction: f32,
-    argb: u32,
+    level: f64,
     warning: Option<&WarningSprites>,
+    contents: &dyn Fn(&Game<'_>, &mut HudBatch, [f32; 4]),
 ) {
-    const BACKGROUND: u32 = 0xFF_08_08_08;
-    let [x, y, w, h] = rect;
-    let level = fraction.clamp(0.0, 1.0);
-    let warned = warning.map(|sprites| (sprites, gui::bar_warning(rect, f64::from(level), false)));
-    game.native_fill(batch, rect, BACKGROUND);
+    nine_slice(game, batch, style.frame, style.frame_slice, rect);
+    let warned = warning.map(|sprites| (sprites, gui::bar_warning(rect, level, false)));
     if let Some((sprites, bar)) = &warned {
         tiled_sprite(game, batch, sprites.background, sprites.tile, bar.background, None);
     }
-    let filled = h * level;
-    game.native_fill(batch, [x, y + h - filled, w, filled], argb);
+    let Some(dst) = gui::bar_contents(rect, level) else {
+        return;
+    };
+    contents(game, batch, dst);
     if let Some((sprites, bar)) = &warned
         && let Some(overlay) = bar.overlay
     {
         tiled_sprite(game, batch, sprites.overlay, sprites.tile, overlay.dst, Some(overlay.clip));
+    }
+}
+
+/// `GuiVerticalPowerBar.renderBarContents`: o sprite em mosaico (`tile`, o `gui.scaling` do `.mcmeta`) sobre `dst`, a partir do canto
+/// de cima e da esquerda.
+pub(in crate::game) fn power_bar_contents(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    sprite: &str,
+    tile: [f32; 2],
+    dst: [f32; 4],
+) {
+    tiled_sprite(game, batch, sprite, tile, dst, None);
+}
+
+/// `GuiTankBar.renderBarContentsDirect` com o sprite de um químico: de cima para baixo e da esquerda para a direita
+/// (`TilingDirection.DOWN_RIGHT`), cortado em `dst`, multiplicado pelo `tint` (`ARGB`). `tile` é o tamanho do quadro do sprite. O
+/// sprite é o do atlas de blocos, que o HUD do Horizon anima como o jogo.
+pub(in crate::game) fn tank_bar_contents(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    sprite: &str,
+    tile: [f32; 2],
+    dst: [f32; 4],
+    tint: u32,
+) {
+    for cell in gui::tiled_fill(dst, tile, TilingDirection::DownRight) {
+        sprite_tinted(game, batch, sprite, cell.src, cell.dst, tint);
+    }
+}
+
+/// `GuiGauge`: o medidor com moldura de nove partes e um overlay do tamanho do miolo.
+pub(in crate::game) struct GaugeStyle {
+    pub frame: &'static str,
+    pub frame_slice: NineSlice,
+    pub overlay: &'static str,
+}
+
+/// `GuiGauge.drawBackground` e `renderContents`: a moldura, o conteúdo de `scaled` pixels (`GuiTankGauge.getScaledLevel`) em
+/// mosaico a partir da base (`TilingDirection.UP_RIGHT`) multiplicado por `tint`, e o overlay por cima de tudo. `fill` é o sprite do
+/// que o tanque guarda e o tamanho do quadro dele. `rect` é o elemento inteiro, com a moldura.
+pub(in crate::game) fn gauge(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    style: &GaugeStyle,
+    rect: [f32; 4],
+    scaled: i32,
+    fill: Option<(&str, [f32; 2], u32)>,
+) {
+    let [x, y, w, h] = rect;
+    nine_slice(game, batch, style.frame, style.frame_slice, rect);
+    if let Some((sprite, tile, tint)) = fill
+        && scaled > 0
+    {
+        let scaled = scaled as f32;
+        let dst = [x + 1.0, y + 1.0 + (h - 2.0) - scaled, w - 2.0, scaled];
+        for cell in gui::tiled_fill(dst, tile, TilingDirection::UpRight) {
+            sprite_tinted(game, batch, sprite, cell.src, cell.dst, tint);
+        }
+    }
+    game.native_sprite(batch, style.overlay, [0.0, 0.0, w - 2.0, h - 2.0], [x + 1.0, y + 1.0, w - 2.0, h - 2.0]);
+}
+
+/// `GuiSlot.draw`: a moldura do slot de item em `item` (a posição do item, a moldura começa um pixel antes) e o desenho por cima dela.
+/// Quem chama escolhe `frame`: a do tipo do slot, ou a do aviso quando a verificação dele diz que sim. `None` num slot sem moldura.
+pub(in crate::game) fn slot(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    origin: [f32; 2],
+    item: [f32; 2],
+    frame: Option<&str>,
+    overlay: Option<&str>,
+) {
+    let [x, y, w, h] = gui::slot_frame(item);
+    let dst = [origin[0] + x, origin[1] + y, w, h];
+    for sprite in frame.into_iter().chain(overlay) {
+        game.native_sprite(batch, sprite, [0.0, 0.0, w, h], dst);
     }
 }
 
@@ -1021,11 +1106,17 @@ pub(in crate::game) fn menu_tooltip(
         [w as i32, h as i32],
         widget.map(|edge| edge.round() as i32),
     );
-    game.tooltip_box(batch, None, x as f32, y as f32, w, h);
+    // O 26.x desenha o tooltip com os sprites `tooltip/background` e `tooltip/frame` em nove partes (`TooltipRenderUtil`), de 12 pixels
+    // além do texto. `tooltip_box` do Horizon é o desenho de retângulos de versões antigas, de cantos quadrados.
+    for sprite in ["gui/sprites/tooltip/background", "gui/sprites/tooltip/frame"] {
+        horizon_client::ui::nine_slice(batch, atlas, sprite, x as f32 - 12.0, y as f32 - 12.0, w + 24.0, h + 24.0, u32::MAX);
+    }
     Game::tooltip_text(batch, atlas, &lines, x as f32, y as f32);
 }
 
-/// O fundo de uma tela de máquina: o painel, o título e os slots do inventário do jogador.
+/// O fundo de uma tela de máquina: o painel (`GuiMekanism.extractBackground`), os slots do inventário do jogador
+/// (`GuiMekanism.addSlots`, um `GuiSlot` normal para cada slot que não é do tile) e os dois rótulos (`renderTitleText` e
+/// `renderInventoryText`), o título centrado e "Inventory" à esquerda, os dois em `SpecialColors.TEXT_TITLE` e sem sombra.
 pub(in crate::game) fn machine_panel(
     game: &Game<'_>,
     batch: &mut HudBatch,
@@ -1033,19 +1124,22 @@ pub(in crate::game) fn machine_panel(
     rect: [f32; 4],
     title: &str,
 ) {
-    let [x, y, width, _] = rect;
-    nine_slice(game, batch, style.base, style.base_size, style.base_border, rect);
+    let [x, y, width, height] = rect;
+    nine_slice(game, batch, style.base, style.base_slice, rect);
     for row in 0..=INVENTORY_ROWS {
         let gap = if row == INVENTORY_ROWS { HOTBAR_GAP } else { 0.0 };
-        let slot_y = y + INVENTORY_TOP + row as f32 * SLOT_SIZE + gap;
+        let slot_y = y + INVENTORY_TOP + row as f32 * gui::SLOT_SIZE + gap;
         for column in 0..INVENTORY_COLUMNS {
-            let slot_x = x + INVENTORY_LEFT + column as f32 * SLOT_SIZE;
-            let dst = [slot_x, slot_y, SLOT_SIZE, SLOT_SIZE];
-            game.native_sprite(batch, style.slot, [0.0, 0.0, SLOT_SIZE, SLOT_SIZE], dst);
+            let slot_x = x + INVENTORY_LEFT + column as f32 * gui::SLOT_SIZE;
+            let dst = [slot_x, slot_y, gui::SLOT_SIZE, gui::SLOT_SIZE];
+            game.native_sprite(batch, style.slot, [0.0, 0.0, gui::SLOT_SIZE, gui::SLOT_SIZE], dst);
         }
     }
-    let title_x = x + (width - game.native_text_width(title)) / 2.0;
-    game.native_text(batch, title, [title_x, y + TITLE_TOP], LABEL_COLOR, false);
+    let title_x = x + gui::title_x(width, game.native_text_width(title));
+    game.native_text(batch, title, [title_x, y + gui::TITLE_LABEL_Y], gui::TITLE_TEXT_COLOR, false);
+    let inventory = horizon_client::lang::get("container.inventory");
+    let label = [x + gui::INVENTORY_LABEL_X, y + gui::inventory_label_y(height)];
+    game.native_text(batch, &inventory, label, gui::TITLE_TEXT_COLOR, false);
 }
 
 /// Liga a instrumentação de medida da comparação das opções B e C: `MEKTRACE` a cada tick de uma máquina e `MEKBENCH` a

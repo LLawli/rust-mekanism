@@ -23,7 +23,14 @@ pub struct Resource {
     pub kind: String,
     /// Cor `0xRRGGBB`, para medidores e tubos.
     pub color: u32,
+    /// O sprite que a tela desenha dentro de um tanque dele, e a cor `0xAARRGGBB` que o multiplica (`Chemical.icon` e `tint`).
+    /// Sem `icon`, quem desenha usa a cor lisa.
+    pub icon: Option<String>,
+    pub tint: u32,
 }
+
+/// `tint` sem valor: o sprite sai como é.
+pub const NO_TINT: u32 = 0xFF_FF_FF_FF;
 
 /// Por que um arquivo de recurso foi recusado.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,10 +77,21 @@ impl Resource {
             .and_then(Value::as_str)
             .and_then(parse_color)
             .ok_or(ResourceError::BadColor)?;
+        let icon = json.get("icon").and_then(Value::as_str).map(str::to_owned);
+        let tint = match json.get("tint") {
+            None => NO_TINT,
+            Some(tint) => tint
+                .as_str()
+                .and_then(parse_color)
+                .map(|rgb| 0xFF_00_00_00 | rgb)
+                .ok_or(ResourceError::BadColor)?,
+        };
         Ok(Self {
             id: id.to_owned(),
             kind: kind.to_owned(),
             color,
+            icon,
+            tint,
         })
     }
 }
@@ -222,7 +240,27 @@ mod tests {
                 id: "mekanism:hydrogen".into(),
                 kind: "gas".into(),
                 color: 0xFF_FFFF,
+                icon: None,
+                tint: NO_TINT,
             })
+        );
+    }
+
+    #[test]
+    fn reads_the_icon_and_the_tint_when_there_are_any() {
+        let parsed = Resource::parse(
+            "a:carbon",
+            &json!({"kind": "infusion", "color": "2c2c2c", "icon": "a:infuse/base", "tint": "2c2c2c"}),
+        )
+        .unwrap();
+        assert_eq!(parsed.icon.as_deref(), Some("a:infuse/base"));
+        assert_eq!(parsed.tint, 0xFF_2C_2C_2C);
+        assert_eq!(
+            Resource::parse(
+                "a:b",
+                &json!({"kind": "gas", "color": "ffffff", "tint": "xyz"})
+            ),
+            Err(ResourceError::BadColor)
         );
     }
 
@@ -296,6 +334,8 @@ mod tests {
                 id: id.into(),
                 kind: "gas".into(),
                 color: 0,
+                icon: None,
+                tint: NO_TINT,
             }])
         };
         set_source("fonte_a", one("a:um"));
