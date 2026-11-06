@@ -1,4 +1,6 @@
 //! Repete, tick a tick, os rastros gravados da Enrichment Chamber original em `dev/referencia/rastros`.
+mod common;
+
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::item_handler::{
@@ -8,7 +10,10 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
-use mekanism_rules::{CRUSHER_USAGE, ENRICHMENT_USAGE, SMELTER_USAGE, electric_config, trace_line};
+use mekanism_rules::{
+    CRUSHER_USAGE, ENERGY_UPGRADE, ENRICHMENT_USAGE, SMELTER_USAGE, SPEED_UPGRADE, electric_config,
+    trace_line,
+};
 use serde_json::Value;
 use std::path::Path;
 use std::rc::Rc;
@@ -87,6 +92,7 @@ fn machine(energy_per_tick: i32, recipes: Vec<Rc<ItemToItemRecipe>>) -> SimWorld
         energy_per_tick,
         recipes,
         0,
+        common::upgrade_data(),
     ))))
 }
 
@@ -116,30 +122,53 @@ fn fill_chest(chest: &VanillaContainer, id: &str, count: u32) {
     }
 }
 
+/// `addUpgrades` até o total que a marca diz, como o cenário em Java faz com a diferença.
+fn install(machine: &ProgressMachine, upgrade: &str, total: i32) {
+    let upgrades = machine.upgrades();
+    upgrades.add_upgrades(upgrade, total - upgrades.get_upgrades(upgrade));
+}
+
+/// `setUpgradeSlot`: o slot de entrada recebe `count` upgrades do tipo, sem passar pelo tick.
+fn set_upgrade_slot(machine: &ProgressMachine, upgrade: &str, count: u32) {
+    let upgrades = machine.upgrades();
+    let resource = upgrades.data().resource_of(&format!("mekanism:{upgrade}"));
+    upgrades
+        .upgrade_slot()
+        .set_contents(Some(resource), count, None);
+}
+
 /// Uma parte de uma marca do rastro: é o que o cenário em Java fez depois daquele tick.
-fn apply(scene: &mut Scene, upgrades: &mut (i32, i32), scenario: &str, action: &str) {
+fn apply(scene: &mut Scene, scenario: &str, action: &str) {
     let parts: Vec<&str> = action.split_whitespace().collect();
     let world = &mut scene.world;
     let machine = &mut world.block_entity.0;
     match parts.as_slice() {
         ["speed", amount] => {
-            upgrades.0 = amount.parse().unwrap();
-            machine.set_upgrades(upgrades.0, upgrades.1);
+            install(machine, SPEED_UPGRADE, amount.parse().unwrap());
             machine
                 .energy()
                 .set_energy(machine.energy().capacity(), None);
         }
         ["energy", amount] if scenario == "chamber_upgrades" => {
-            upgrades.1 = amount.parse().unwrap();
-            machine.set_upgrades(upgrades.0, upgrades.1);
+            install(machine, ENERGY_UPGRADE, amount.parse().unwrap());
             machine
                 .energy()
                 .set_energy(machine.energy().capacity(), None);
         }
-        ["upgrade", "energy", amount] => {
-            upgrades.1 = amount.parse().unwrap();
-            machine.set_upgrades(upgrades.0, upgrades.1);
+        ["upgrade", "energy", amount] => install(machine, ENERGY_UPGRADE, amount.parse().unwrap()),
+        ["upgrade", "slot", "clear"] => machine
+            .upgrades()
+            .upgrade_slot()
+            .set_contents(None, 0, None),
+        ["upgrade", "slot", upgrade, count] => {
+            set_upgrade_slot(machine, upgrade, count.parse().unwrap());
         }
+        ["remove", upgrade @ ("speed" | "energy")] => machine
+            .upgrades()
+            .remove_upgrade(&format!("mekanism:{upgrade}"), false),
+        ["remove", upgrade @ ("speed" | "energy"), "all"] => machine
+            .upgrades()
+            .remove_upgrade(&format!("mekanism:{upgrade}"), true),
         ["energy", amount] => machine.energy().set_energy(amount.parse().unwrap(), None),
         ["insert", id, amount] | [id @ ("clay" | "hdpe_pellet"), amount] => {
             machine
@@ -190,6 +219,17 @@ fn slot(slot: &InventorySlot) -> Value {
         .resource()
         .map_or(String::new(), |resource| resource.id.to_string());
     serde_json::json!([id, slot.amount()])
+}
+
+/// Um slot de upgrade como o rastro o grava: o tipo sem o namespace e a quantidade.
+fn upgrade_slot(slot: &InventorySlot) -> Value {
+    let kind = slot
+        .resource()
+        .and_then(|resource| resource.variant)
+        .map_or(String::new(), |variant| {
+            variant.trim_start_matches("mekanism:").to_owned()
+        });
+    serde_json::json!([kind, slot.amount()])
 }
 
 fn errors(machine: &ProgressMachine) -> Value {
@@ -243,12 +283,11 @@ fn replay(scenario: &str) {
         )),
         _ => scene(),
     };
-    let mut upgrades = (0, 0);
     for expected in &lines {
         scene.world.tick();
         for mark in expected["marks"].as_array().unwrap() {
             for action in mark.as_str().unwrap().split(", ") {
-                apply(&mut scene, &mut upgrades, scenario, action);
+                apply(&mut scene, scenario, action);
             }
         }
         let machine = &scene.world.block_entity.0;
@@ -272,6 +311,18 @@ fn replay(scenario: &str) {
         if expected.get("chest").is_some() {
             actual["chest"] = chest(&scene.chest, scene.first_slot);
         }
+        // Só o cenário dos slots de upgrade grava os upgrades.
+        let with_upgrades = expected.get("speed").is_some();
+        if with_upgrades {
+            let upgrades = machine.upgrades();
+            actual["speed"] = upgrades.get_upgrades(SPEED_UPGRADE).into();
+            actual["energy_upgrades"] = upgrades.get_upgrades(ENERGY_UPGRADE).into();
+            // O Java grava o `float` pelo texto mais curto que o lê de volta, que o `{:?}` do `f32` também dá.
+            actual["upgrade_progress"] =
+                serde_json::from_str(&format!("{:?}", upgrades.scaled_upgrade_progress())).unwrap();
+            actual["upgrade_in"] = upgrade_slot(upgrades.upgrade_slot());
+            actual["upgrade_out"] = upgrade_slot(upgrades.upgrade_output_slot());
+        }
         // O `MEKTRACE` do jogo tem os mesmos campos dos rastros, com as marcas vazias.
         let stacks: Vec<(usize, String, u32)> = scene
             .chest
@@ -282,7 +333,12 @@ fn replay(scenario: &str) {
             })
             .collect();
         let with_chest = expected.get("chest").is_some().then_some(stacks.as_slice());
-        let line = trace_line(expected["t"].as_i64().unwrap(), machine, with_chest);
+        let line = trace_line(
+            expected["t"].as_i64().unwrap(),
+            machine,
+            with_chest,
+            with_upgrades,
+        );
         let mut traced: Value = serde_json::from_str(&line).unwrap();
         traced["marks"] = expected["marks"].clone();
         assert_eq!(
@@ -332,6 +388,13 @@ fn a_paused_recipe_ignores_what_does_not_notify_it() {
 #[test]
 fn upgrades() {
     replay("chamber_upgrades");
+}
+
+/// Instalar leva 20 ticks; com 10 no slot instala só até o máximo e sobram 5; esvaziar o slot no meio zera o avanço; tirar um e
+/// todos devolve ao slot de saída; e o slot de saída com outro tipo não aceita o que sai.
+#[test]
+fn the_upgrade_slots_install_and_remove() {
+    replay("chamber_upgrade_slot");
 }
 
 #[test]
@@ -437,4 +500,53 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
     reborn.block_entity.0.restore(&saved, true);
     assert_eq!(reborn.block_entity.0.saved_state(), saved);
     assert!(reborn.block_entity.0.tile().block_active());
+}
+
+/// Salvar e reabrir com upgrades instalados e nos dois slots: o objeto novo nasce do que o Java grava, recalcula tempo, consumo e
+/// capacidade, e o que estava no slot de entrada segue a instalação de onde a máquina parou.
+#[test]
+fn the_installed_upgrades_and_both_slots_survive_a_reopen() {
+    let before = chamber();
+    {
+        let machine = &before.block_entity.0;
+        install(machine, SPEED_UPGRADE, 5);
+        install(machine, ENERGY_UPGRADE, 2);
+        machine.upgrades().remove_upgrade(ENERGY_UPGRADE, false);
+        set_upgrade_slot(machine, "speed", 7);
+    }
+    let machine = &before.block_entity.0;
+    let saved = machine.saved_state();
+    assert_eq!(saved.upgrades.upgrades.get(SPEED_UPGRADE), Some(&5));
+    assert_eq!(saved.upgrades.upgrades.get(ENERGY_UPGRADE), Some(&1));
+    assert_eq!(saved.upgrades.input.amount, 7);
+    assert_eq!(saved.upgrades.output.amount, 1);
+    let (required, per_tick, capacity) = (
+        machine.ticks_required(),
+        machine.energy().energy_per_tick(),
+        machine.energy().capacity(),
+    );
+    // 200 * 10^(-5/8) = 47,4 e 5 * 10^(2 * 5/8 - 1/8) = 66,7: `getTicks` trunca e `getEnergyPerTick` arredonda para cima.
+    assert_eq!((required, per_tick), (47, 67));
+
+    let mut reborn = chamber();
+    reborn.block_entity.0.restore(&saved, false);
+    let machine = &reborn.block_entity.0;
+    assert_eq!(machine.saved_state(), saved);
+    assert_eq!(
+        (
+            machine.ticks_required(),
+            machine.energy().energy_per_tick(),
+            machine.energy().capacity()
+        ),
+        (required, per_tick, capacity),
+        "o consumo e a capacidade seguem o que está instalado"
+    );
+    // O slot de entrada tem 7 de velocidade e a máquina já tem 5: 20 ticks depois entram os 3 que faltam, e sobram 4.
+    for _ in 0..21 {
+        reborn.tick();
+    }
+    let machine = &reborn.block_entity.0;
+    assert_eq!(machine.upgrades().get_upgrades(SPEED_UPGRADE), 8);
+    assert_eq!(machine.upgrades().upgrade_slot().amount(), 4);
+    assert_eq!(machine.ticks_required(), 20);
 }

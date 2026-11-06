@@ -21,6 +21,8 @@ pub enum Access {
     NotExternal,
     /// `internalOnly`.
     InternalOnly,
+    /// `manualOnly`.
+    ManualOnly,
 }
 
 impl Access {
@@ -29,6 +31,7 @@ impl Access {
             Self::Any => true,
             Self::NotExternal => automation != AutomationType::External,
             Self::InternalOnly => automation == AutomationType::Internal,
+            Self::ManualOnly => automation == AutomationType::Manual,
         }
     }
 }
@@ -211,6 +214,9 @@ impl EnergyContainer {
 pub struct ItemResource {
     pub id: Rc<str>,
     pub max_stack_size: u32,
+    /// O que distingue itens do mesmo id, como o `DataComponentPatch` do `ItemResource` do NeoForge: quem usa diz o que cada
+    /// valor quer dizer. Sem ele, dois itens iguais com componentes diferentes seriam o mesmo recurso.
+    pub variant: Option<Rc<str>>,
 }
 
 impl ItemResource {
@@ -218,9 +224,21 @@ impl ItemResource {
         Self {
             id: Rc::from(id),
             max_stack_size,
+            variant: None,
+        }
+    }
+
+    /// O mesmo item com um componente que o distingue dos outros de mesmo id.
+    pub fn with_variant(id: &str, max_stack_size: u32, variant: &str) -> Self {
+        Self {
+            variant: Some(Rc::from(variant)),
+            ..Self::new(id, max_stack_size)
         }
     }
 }
+
+/// O `Predicate<ItemResource>` e o `BiPredicate<ItemResource, AutomationType>` de um slot, já sem o tipo de automação.
+pub type ItemTest = Rc<dyn Fn(&ItemResource) -> bool>;
 
 /// `Item.ABSOLUTE_MAX_STACK_SIZE`: a capacidade do slot, antes do limite da pilha do item.
 const ABSOLUTE_MAX_STACK_SIZE: u32 = 99;
@@ -245,20 +263,40 @@ impl SlotContents {
     }
 }
 
+/// O que um slot recusa além do `AutomationType`: o `validator` (`isValid`, que também zera a capacidade) e o item que o
+/// `canInsert` aceita.
+#[derive(Clone, Default)]
+pub struct SlotChecks {
+    pub validator: Option<ItemTest>,
+    pub can_insert: Option<ItemTest>,
+}
+
 struct SlotState {
     contents: SlotContents,
     can_extract: Access,
     can_insert: Access,
+    checks: SlotChecks,
     listener: Option<Callback>,
     /// `OutputInventorySlot.onDecrease`.
     on_decrease: Option<Callback>,
 }
 
 impl SlotState {
-    fn capacity_for(resource: Option<&ItemResource>) -> u32 {
-        resource.map_or(ABSOLUTE_MAX_STACK_SIZE, |resource| {
+    /// `BasicInventorySlot.capacityAsLong`: um item que o `isValid` recusa tem capacidade zero.
+    fn capacity_for(&self, resource: Option<&ItemResource>) -> u32 {
+        let Some(resource) = resource else {
+            return ABSOLUTE_MAX_STACK_SIZE;
+        };
+        let valid = self
+            .checks
+            .validator
+            .as_ref()
+            .is_none_or(|validator| validator(resource));
+        if valid {
             ABSOLUTE_MAX_STACK_SIZE.min(resource.max_stack_size)
-        })
+        } else {
+            0
+        }
     }
 
     /// `onContentsChanged(originalState)`, do slot e do slot de saída: primeiro o aviso, depois o `onDecrease`.
@@ -319,11 +357,29 @@ impl InventorySlot {
         listener: Option<Callback>,
         on_decrease: Option<Callback>,
     ) -> Self {
+        Self::with_checks(
+            can_extract,
+            can_insert,
+            SlotChecks::default(),
+            listener,
+            on_decrease,
+        )
+    }
+
+    /// `BasicInventorySlot.at(canExtract, canInsert, validator, ..)` com o item no `canInsert` e no `validator`.
+    pub fn with_checks(
+        can_extract: Access,
+        can_insert: Access,
+        checks: SlotChecks,
+        listener: Option<Callback>,
+        on_decrease: Option<Callback>,
+    ) -> Self {
         Self {
             cell: JournalCell::new(SlotState {
                 contents: SlotContents::default(),
                 can_extract,
                 can_insert,
+                checks,
                 listener,
                 on_decrease,
             }),
@@ -352,12 +408,23 @@ impl InventorySlot {
 
     /// Um slot vazio tem capacidade, e é por isso que ele entra na média do comparador.
     pub fn capacity(&self) -> u32 {
-        SlotState::capacity_for(self.cell.borrow().contents.resource.as_ref())
+        let state = self.cell.borrow();
+        state.capacity_for(state.contents.resource.as_ref())
     }
 
     pub fn is_full(&self) -> bool {
         let state = self.cell.borrow();
-        state.contents.amount >= SlotState::capacity_for(state.contents.resource.as_ref())
+        state.contents.amount >= state.capacity_for(state.contents.resource.as_ref())
+    }
+
+    /// `isValid`.
+    pub fn is_valid(&self, resource: &ItemResource) -> bool {
+        self.cell
+            .borrow()
+            .checks
+            .validator
+            .as_ref()
+            .is_none_or(|validator| validator(resource))
     }
 
     /// `setContents`: sem transação, o aviso dispara na hora, e só se o conteúdo mudou.
@@ -410,8 +477,14 @@ impl InventorySlot {
                 return 0;
             }
             let stored = state.contents.amount;
-            let needed = SlotState::capacity_for(Some(resource)).saturating_sub(stored);
-            if needed == 0 || !state.can_insert.allows(automation) {
+            let needed = state.capacity_for(Some(resource)).saturating_sub(stored);
+            // O `canInsert` é checado direto, e não pela capacidade, que já zera o que o `isValid` recusa.
+            let item_accepted = state
+                .checks
+                .can_insert
+                .as_ref()
+                .is_none_or(|accepts| accepts(resource));
+            if needed == 0 || !state.can_insert.allows(automation) || !item_accepted {
                 return 0;
             }
             (stored, amount.min(needed))

@@ -131,3 +131,16 @@ hook_version = 1
 kind = "HEAD"
 helper = "server_data_loaded.rs"
 bindings = []
+
+# A capacidade de energia de uma máquina muda com os upgrades, e o `ModEnergyBuffer` do bloco é um só. Quem anda diz a capacidade
+# da instância, e a injeção responde com ela no lugar da do bloco, no mesmo ponto que o spike validou para as faces por instância.
+[[injection]]
+id = "energy_capacity"
+target = "horizon_client::game::machines::native_energy::Game<'_>::native_energy_at"
+kind = "HEAD"
+cancellable = true
+helper = "energy_capacity.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]

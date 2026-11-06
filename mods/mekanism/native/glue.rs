@@ -2,7 +2,8 @@
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, GameLevel, machinery_basis as basis};
-use horizon_client::containers::{ModBlockEntity, ModContainer, ModEnergyBuffer};
+use horizon_assets::item_model::StackView;
+use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::Ingredient;
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
@@ -12,13 +13,14 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents};
-use machinery_basis_core::containers::{InventorySlot, ItemResource};
+use machinery_basis_core::containers::{InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
 use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::units::format_energy;
 use basis::RecipeSource::{Cooking, Custom};
 use std::cell::{Cell, RefCell};
@@ -29,6 +31,8 @@ use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DUMP_BUTTON: i32 = 0;
+/// `GameType.CREATIVE` como o Horizon o numera.
+const CREATIVE: i32 = 1;
 const INFUSING: basis::RecipeSource = Custom(rules::INFUSING, rules::INFUSING_FIELDS);
 
 /// Onde cada slot fica no `ModContainer`, na ordem de `getInitialInventory` de cada máquina.
@@ -109,9 +113,12 @@ const DATA_ENERGY: usize = 0;
 const DATA_INFUSION: usize = 2;
 const DATA_COLOR: usize = 3;
 const DATA_PROGRESS: usize = 5;
-const DATA_SLOTS: usize = 6;
+/// A capacidade de energia da máquina, em dois slots: ela muda com os upgrades, e a tela não a sabe de cabeça.
+const DATA_CAPACITY: usize = 6;
+const DATA_SLOTS: usize = 8;
 const ELECTRIC_DATA_PROGRESS: usize = 2;
-const ELECTRIC_DATA_SLOTS: usize = 3;
+const ELECTRIC_DATA_CAPACITY: usize = 3;
+const ELECTRIC_DATA_SLOTS: usize = 5;
 
 // As telas, nas posições de GuiMetallurgicInfuser e GuiElectricMachine. Um slot guarda a posição do
 // item, e a moldura fica um pixel antes.
@@ -287,6 +294,14 @@ const CONTAINER: &str = "container";
 const STORED: &str = "stored";
 const TYPE: &str = "type";
 const AMOUNT: &str = "amount";
+/// `SerializationConstants.COMPONENT_UPGRADE`: o `TileComponentUpgrade` grava num filho com este nome.
+const COMPONENT_UPGRADE: &str = "component_upgrade";
+/// `SerializationConstants.UPGRADES` e `ITEMS`: o mapa de upgrades instalados e a lista dos dois slots.
+const UPGRADES: &str = "upgrades";
+const ITEMS: &str = "items";
+/// O `ItemResource.CODEC`: o id do item e os componentes que o distinguem.
+const ITEM_ID: &str = "id";
+const COMPONENTS: &str = "components";
 /// De quanto em quanto tempo a tabela é varrida, e quanto sem andar um objeto vive.
 const SWEEP_TICKS: i64 = 200;
 const STALE_TICKS: i64 = 100;
@@ -309,6 +324,13 @@ struct Live {
     lit: Option<bool>,
     /// A face de saída do ejetor, a direita da frente.
     eject_side: Option<Face>,
+    /// Os tipos e as tags de upgrade de onde os dados da máquina saíram: uma carga nova de dados os troca.
+    upgrade_types: Arc<UpgradeTypes>,
+    upgrade_tags: Arc<UpgradeTags>,
+    /// Quando os upgrades e os slots mudam, o NBT é escrito de novo.
+    upgrades_version: Option<u32>,
+    /// A capacidade que o Horizon já sabe desta máquina.
+    energy_capacity: Option<i32>,
 }
 
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
@@ -431,8 +453,8 @@ fn nbt_string(entity: &ModBlockEntity, key: &str) -> Option<String> {
     }
 }
 
-/// `loadAdditional` do `TileEntityMekanism` e do monitor, do que a `ModBlockEntity` guarda.
-fn read_saved(entity: &ModBlockEntity) -> SavedState {
+/// `loadAdditional` do `TileEntityMekanism`, do monitor e do componente de upgrades, do que a `ModBlockEntity` guarda.
+fn read_saved(game: &Game<'_>, entity: &ModBlockEntity) -> SavedState {
     let mut recipes_used = BTreeMap::new();
     if let Some(Tag::Compound(used)) = entity.nbt.get(&JavaString::from(RECIPES_USED)) {
         for (id, amount) in used {
@@ -455,7 +477,127 @@ fn read_saved(entity: &ModBlockEntity) -> SavedState {
         last_recipe_used: nbt_string(entity, LAST_RECIPE_USED),
         last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
         ejecting: nbt_bool(entity, EJECT_ITEM),
+        upgrades: read_upgrades(game, entity),
     }
+}
+
+/// `LargeResourceStack.codec` de um `ItemResource`: `type` (`id` e `components`) e `amount`. O único componente que a máquina lê é o
+/// tipo do upgrade. Um slot que se lê mal vale vazio, como o `readOrEmpty`.
+fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
+    let Some(Tag::Compound(kind)) = stored.get(&JavaString::from(TYPE)) else {
+        return SlotContents::default();
+    };
+    let Some(Tag::String(id)) = kind.get(&JavaString::from(ITEM_ID)) else {
+        return SlotContents::default();
+    };
+    let id = id.to_string_lossy();
+    let variant = match kind.get(&JavaString::from(COMPONENTS)) {
+        Some(Tag::Compound(components)) => {
+            match components.get(&JavaString::from(rules::UPGRADE_TYPE_COMPONENT)) {
+                Some(Tag::String(variant)) => Some(Rc::from(variant.to_string_lossy().as_str())),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let amount = match stored.get(&JavaString::from(AMOUNT)) {
+        Some(Tag::Long(amount)) => u32::try_from(*amount).ok(),
+        Some(Tag::Int(amount)) => u32::try_from(*amount).ok(),
+        _ => None,
+    };
+    let max_stack_size = game.native_max_stack_size(&id).unwrap_or(UNKNOWN_STACK);
+    let resource = ItemResource {
+        id: Rc::from(id.as_str()),
+        max_stack_size,
+        variant,
+    };
+    SlotContents::new(Some(resource), amount.unwrap_or(0))
+}
+
+/// `TileComponentUpgrade.deserialize`: `upgrades` (o mapa de tipo para total) e os dois slots, na lista `items`.
+fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -> UpgradeSaved {
+    let mut saved = UpgradeSaved::default();
+    let Some(Tag::Compound(component)) = entity.nbt.get(&JavaString::from(COMPONENT_UPGRADE)) else {
+        return saved;
+    };
+    if let Some(Tag::Compound(upgrades)) = component.get(&JavaString::from(UPGRADES)) {
+        for (id, total) in upgrades {
+            if let Tag::Int(total) = total {
+                saved.upgrades.insert(id.to_string_lossy(), *total);
+            }
+        }
+    }
+    if let Some(Tag::List(items)) = component.get(&JavaString::from(ITEMS)) {
+        for entry in items {
+            let Tag::Compound(entry) = entry else {
+                continue;
+            };
+            let slot = match entry.get(&JavaString::from(CONTAINER)) {
+                Some(Tag::Byte(slot)) => *slot,
+                _ => -1,
+            };
+            let contents = match entry.get(&JavaString::from(STORED)) {
+                Some(Tag::Compound(stored)) => upgrade_slot_contents(game, stored),
+                _ => SlotContents::default(),
+            };
+            match slot {
+                0 => saved.input = contents,
+                1 => saved.output = contents,
+                _ => {}
+            }
+        }
+    }
+    saved
+}
+
+/// `TileComponentUpgrade.serialize`, escrito pelo `write` do componente: o filho some quando não tem nada.
+fn write_upgrades(entity: &mut ModBlockEntity, saved: &UpgradeSaved) {
+    let mut component = Compound::default();
+    if !saved.upgrades.is_empty() {
+        let mut upgrades = Compound::default();
+        for (id, total) in &saved.upgrades {
+            upgrades.insert(JavaString::from(id.as_str()), Tag::Int(*total));
+        }
+        component.insert(JavaString::from(UPGRADES), Tag::Compound(upgrades));
+    }
+    let mut items = Vec::new();
+    for (index, contents) in [&saved.input, &saved.output].into_iter().enumerate() {
+        let Some(resource) = &contents.resource else {
+            continue;
+        };
+        let mut kind = Compound::default();
+        kind.insert(JavaString::from(ITEM_ID), Tag::String(JavaString::from(&*resource.id)));
+        if let Some(variant) = &resource.variant {
+            let mut components = Compound::default();
+            components.insert(
+                JavaString::from(rules::UPGRADE_TYPE_COMPONENT),
+                Tag::String(JavaString::from(&**variant)),
+            );
+            kind.insert(JavaString::from(COMPONENTS), Tag::Compound(components));
+        }
+        let mut stored = Compound::default();
+        stored.insert(JavaString::from(TYPE), Tag::Compound(kind));
+        stored.insert(JavaString::from(AMOUNT), Tag::Long(i64::from(contents.amount)));
+        let mut entry = Compound::default();
+        entry.insert(JavaString::from(CONTAINER), Tag::Byte(index as i8));
+        entry.insert(JavaString::from(STORED), Tag::Compound(stored));
+        items.push(Tag::Compound(entry));
+    }
+    if !items.is_empty() {
+        component.insert(JavaString::from(ITEMS), Tag::List(items));
+    }
+    let key = JavaString::from(COMPONENT_UPGRADE);
+    if component.is_empty() {
+        entity.nbt.remove(&key);
+    } else {
+        entity.nbt.insert(key, Tag::Compound(component));
+    }
+}
+
+/// Os dados de upgrade desta carga: os tipos, as tags e o limite de pilha do item.
+fn upgrade_data(game: &Game<'_>, types: &UpgradeTypes, tags: &UpgradeTags) -> Rc<upgrade::UpgradeData> {
+    let stack = game.native_max_stack_size(rules::UPGRADE_ITEM).unwrap_or(UNKNOWN_STACK);
+    rules::upgrade_data(types, tags, stack)
 }
 
 fn put(entity: &mut ModBlockEntity, key: &str, tag: Tag) {
@@ -596,21 +738,25 @@ fn born(
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| u64::from(since.subsec_nanos()));
     let check_offset = nanos % RECIPE_CHECK_FREQUENCY;
+    let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
+    let upgrades = upgrade_data(game, &upgrade_types, &upgrade_tags);
     let mut progress = match conversions {
         None => ProgressMachine::electric(rules::electric_config(
             machine.energy_per_tick,
             core_recipes(game, recipes),
             check_offset,
+            upgrades,
         )),
         Some(conversions) => ProgressMachine::chemical(rules::infuser_config(
             machine.energy_per_tick,
             core_chemical_recipes(game, recipes),
             core_conversions(conversions),
             check_offset,
+            upgrades,
         )),
     };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
-    progress.restore(&read_saved(entity), block_active);
+    progress.restore(&read_saved(game, entity), block_active);
     Live {
         machine: progress,
         recipes: recipes.clone(),
@@ -621,6 +767,10 @@ fn born(
         reported_level: None,
         lit: None,
         eject_side: None,
+        upgrade_types,
+        upgrade_tags,
+        upgrades_version: None,
+        energy_capacity: None,
     }
 }
 
@@ -844,6 +994,12 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.recipes = recipes.clone();
         live.conversions = conversions.clone();
     }
+    let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
+    if !Arc::ptr_eq(&live.upgrade_types, &upgrade_types) || !Arc::ptr_eq(&live.upgrade_tags, &upgrade_tags) {
+        live.machine.upgrades().set_data(upgrade_data(game, &upgrade_types, &upgrade_tags));
+        live.upgrade_types = upgrade_types;
+        live.upgrade_tags = upgrade_tags;
+    }
     let machine = &live.machine;
     slot_from_entity(game, machine.input(), entity.items[slots.input].as_ref());
     slot_from_entity(game, machine.output(), entity.items[slots.output].as_ref());
@@ -908,9 +1064,15 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             write_tank(entity, &contents);
         }
     }
-    let energy = machine.energy().amount_as_int();
+    let energy = basis::energy_as_int(machine.energy().amount(), "a energia guardada");
     if basis::stored_energy(entity) != energy {
         basis::set_stored_energy(entity, energy);
+    }
+    // A capacidade segue os upgrades instalados, e o Horizon só a sabe por instância se dissermos.
+    let capacity = basis::energy_as_int(machine.energy().capacity(), "a capacidade de energia");
+    if live.energy_capacity != Some(capacity) {
+        basis::set_energy_capacity(dimension, pos, &entity.id, capacity);
+        live.energy_capacity = Some(capacity);
     }
     let scalars = machine.saved_scalars();
     if live.saved.as_ref() != Some(&scalars) {
@@ -922,6 +1084,11 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         write_used(entity, &machine.saved_state());
         live.used_version = Some(version);
     }
+    let upgrades_version = machine.upgrades_version();
+    if live.upgrades_version != Some(upgrades_version) {
+        write_upgrades(entity, &machine.upgrades().saved());
+        live.upgrades_version = Some(upgrades_version);
+    }
     deliver(game, entity, &recipes, slots.output, ejected);
     let progress = machine.recipe_progress();
     if let Some(started) = started {
@@ -930,7 +1097,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             .ejector()
             .is_ejecting()
             .then(|| chest_of(game, dimension, pos, right));
-        basis::trace(&rules::trace_line(now, machine, chest.as_deref()));
+        basis::trace(&rules::trace_line(now, machine, chest.as_deref(), true));
     }
 
     let lit = machine.tile().block_active();
@@ -939,8 +1106,15 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.lit = Some(lit);
     }
     let split = data_slots::split(energy as u32);
+    let capacity_split = data_slots::split(capacity as u32);
     let data = match machine.chemical_side() {
-        None => vec![split[0], split[1], progress],
+        None => vec![
+            split[0],
+            split[1],
+            progress,
+            capacity_split[0],
+            capacity_split[1],
+        ],
         Some(side) => {
             let held = side.tank.resource();
             let color = held.and_then(|held| resource::current().get(&held.id).map(|infusion| infusion.color));
@@ -952,6 +1126,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             data[DATA_COLOR] = color[0];
             data[DATA_COLOR + 1] = color[1];
             data[DATA_PROGRESS] = progress;
+            data[DATA_CAPACITY] = capacity_split[0];
+            data[DATA_CAPACITY + 1] = capacity_split[1];
             data
         }
     };
@@ -989,6 +1165,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             LAST_SWEEP.set(now);
             machines.retain(|_, live| now - live.last_seen <= STALE_TICKS);
             COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.retain(|key, _| machines.contains_key(key)));
+            basis::retain_energy_capacities(|dimension, pos| machines.contains_key(&(dimension, pos)));
         }
     });
 }
@@ -1001,6 +1178,98 @@ fn report_comparator(live: &mut Live, key: (&'static str, [i32; 3])) {
         live.reported_level = Some(level);
         COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert(key, level));
         COMPARATOR_QUEUE.with_borrow_mut(|queue| queue.push(key));
+    }
+}
+
+/// `NativeComponentTypes`: o componente que guarda o tipo do upgrade no item (`MekanismDataComponents.UPGRADE_TYPE`).
+pub(in crate::game) fn component_types(types: &mut Vec<String>) {
+    types.push(rules::UPGRADE_TYPE_COMPONENT.to_owned());
+}
+
+/// O lugar do `ComponentItemModel`: o original escolhe a textura do upgrade pelo componente do item, e o Horizon só deixa o mod
+/// responder a uma propriedade de condição própria. O modelo de cada tipo, em `assets/mekanism/items/upgrade.json`, pergunta
+/// `mekanism:upgrade_type/<tipo>`, e a resposta é se o item carrega esse tipo.
+pub(in crate::game) fn item_model_property(property: &str, stack: &StackView, value: &mut bool) {
+    let Some(kind) = property.strip_prefix(rules::UPGRADE_MODEL_PROPERTY) else {
+        return;
+    };
+    let wanted = format!("mekanism:{kind}");
+    let held = stack.patch.get(rules::UPGRADE_TYPE_COMPONENT);
+    *value = stack.item == rules::UPGRADE_ITEM
+        && matches!(held, Some(Some(serde_json::Value::String(held))) if *held == wanted);
+}
+
+/// `ItemUpgrade.useOn`: com shift, o upgrade na mão entra na máquina que o aceita, e o que entrou sai da pilha. Um clique em máquina
+/// que não aceita o tipo segue o caminho normal (`PASS`). Só as máquinas deste mod, que são as que têm o componente.
+pub(in crate::game) fn use_item_on(
+    game: &mut Game<'_>,
+    stack: &ItemStack,
+    pos: [i32; 3],
+    claimed: &mut bool,
+) {
+    if *claimed || *stack.item != *rules::UPGRADE_ITEM || !game.has_shift_down() {
+        return;
+    }
+    let block = game.native_block(pos);
+    let Some(spec) = machine_of(&block) else {
+        return;
+    };
+    let upgrade = match game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
+        Ok(Some(Tag::String(upgrade))) => upgrade.to_string_lossy(),
+        _ => return,
+    };
+    let (types, tags) = (upgrade::current_types(), upgrade::current_tags());
+    if !upgrade_data(game, &types, &tags).supports(&upgrade) {
+        return;
+    }
+    // `InteractionResult.SUCCESS_SERVER`: o clique é do upgrade, tenha entrado algum ou não.
+    *claimed = true;
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    let at = (pos[0], pos[1], pos[2]);
+    let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
+    let was_alive = alive.is_some();
+    let mut live = match alive {
+        Some(live) => live,
+        None => {
+            // Uma máquina que ainda não andou nasce do NBT só para receber o upgrade, e o primeiro tick dela a refaz de lá.
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+                return;
+            };
+            let recipes = basis::machine_recipes(game, &spec.recipes);
+            let conversions = spec
+                .slots
+                .infusion
+                .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
+            born(game, pos, entity, spec, &recipes, conversions.as_ref())
+        }
+    };
+    let available = i32::try_from(stack.count).unwrap_or(i32::MAX);
+    let added = live.machine.upgrades().add_upgrades(&upgrade, available);
+    if added > 0 {
+        // O NBT já guarda o que entrou: salvar o mundo antes do próximo tick da máquina não perde o upgrade nem o item.
+        if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
+            write_upgrades(entity, &live.machine.upgrades().saved());
+        }
+        live.upgrades_version = Some(live.machine.upgrades_version());
+        game.world.modified.insert((at.0 >> 4, at.2 >> 4));
+        // `stack.consume(added, player)`: quem está no criativo não gasta.
+        let creative = game
+            .native_acting_player()
+            .is_some_and(|player| player.game_mode == CREATIVE);
+        if !creative {
+            let held = game.held_mut();
+            let emptied = held.as_mut().is_some_and(|in_hand| {
+                in_hand.count = in_hand.count.saturating_sub(added.unsigned_abs());
+                in_hand.count == 0
+            });
+            if emptied {
+                *held = None;
+            }
+        }
+    }
+    if was_alive {
+        LIVE_MACHINES.with_borrow_mut(|machines| machines.insert(key, live));
     }
 }
 
@@ -1130,7 +1399,10 @@ fn draw_infuser(game: &Game<'_>, data: &[i32], batch: &mut HudBatch, origin: [f3
     let color = OPAQUE | data_slots::join(get(DATA_COLOR), get(DATA_COLOR + 1));
     basis::gauge(game, batch, at(INFUSION_BAR), infusion, color);
     let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let fill = energy as f32 / rules::energy_capacity(rules::INFUSER_USAGE) as f32;
+    let capacity = data_slots::join(get(DATA_CAPACITY), get(DATA_CAPACITY + 1));
+    // Antes do primeiro tick o cliente ainda não recebeu a capacidade: vale a do bloco sem upgrades.
+    let capacity = if capacity == 0 { rules::energy_capacity(rules::INFUSER_USAGE) as u32 } else { capacity };
+    let fill = energy as f32 / capacity as f32;
     basis::gauge(game, batch, at(ENERGY_BAR), fill, ENERGY_COLOR);
     let progress = get(DATA_PROGRESS) as f32 / rules::TICKS_REQUIRED as f32;
     basis::progress_bar(game, batch, PROGRESS_EMPTY, PROGRESS_FULL, at(PROGRESS_BAR), progress);
@@ -1153,7 +1425,9 @@ fn draw_electric(
     draw_slots(game, batch, origin, &ELECTRIC_SLOT_POSITIONS, rules::ELECTRIC_ENERGY_SLOT);
     sprite_rect(game, batch, UP_ARROW, at(ELECTRIC_ARROW));
     let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let capacity = rules::energy_capacity(electric.energy_per_tick);
+    let capacity = data_slots::join(get(ELECTRIC_DATA_CAPACITY), get(ELECTRIC_DATA_CAPACITY + 1));
+    // Antes do primeiro tick o cliente ainda não recebeu a capacidade: vale a do bloco sem upgrades.
+    let capacity = if capacity == 0 { rules::energy_capacity(electric.energy_per_tick) as u32 } else { capacity };
     basis::gauge(game, batch, at(ELECTRIC_ENERGY_BAR), energy as f32 / capacity as f32, ENERGY_COLOR);
     let progress = get(ELECTRIC_DATA_PROGRESS) as f32 / rules::TICKS_REQUIRED as f32;
     basis::progress_bar(game, batch, BAR_EMPTY, BAR_FULL, at(ELECTRIC_PROGRESS_BAR), progress);

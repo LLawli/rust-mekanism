@@ -21,6 +21,7 @@ use machinery_basis_core::recipe::{
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{FORMAT, Tank};
+use machinery_basis_core::upgrade::{self, UpgradeTags, UpgradeTypes};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -28,6 +29,8 @@ use std::sync::{Arc, LazyLock, Mutex};
 const LISTENER: &str = "machinery_basis:resources";
 const TAGS_LISTENER: &str = "machinery_basis:resource_tags";
 const ENERGY_LISTENER: &str = "machinery_basis:energy";
+const UPGRADES_LISTENER: &str = "machinery_basis:upgrades";
+const UPGRADE_TAGS_LISTENER: &str = "machinery_basis:upgrade_tags";
 const HOPPER: &str = "minecraft:hopper";
 const SAVED: &str = "machinery_basis";
 const ENERGY: &str = "energy";
@@ -259,6 +262,8 @@ pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener
     listeners.push(NativeReloadListener::json(LISTENER, resource::DATA_FOLDER));
     listeners.push(NativeReloadListener::json(TAGS_LISTENER, resource::TAGS_FOLDER));
     listeners.push(NativeReloadListener::json(ENERGY_LISTENER, network::ENERGY_FOLDER));
+    listeners.push(NativeReloadListener::json(UPGRADES_LISTENER, upgrade::TYPES_FOLDER));
+    listeners.push(NativeReloadListener::json(UPGRADE_TAGS_LISTENER, upgrade::TAGS_FOLDER));
 }
 
 pub(in crate::game) fn reload_apply(
@@ -271,6 +276,19 @@ pub(in crate::game) fn reload_apply(
     }
     if listener.id == ENERGY_LISTENER {
         network::set_current(EnergyBlocks::load(files));
+        return;
+    }
+    if listener.id == UPGRADE_TAGS_LISTENER {
+        upgrade::set_current_tags(UpgradeTags::load(files));
+        return;
+    }
+    if listener.id == UPGRADES_LISTENER {
+        let (types, errors) = UpgradeTypes::load(files);
+        for (id, error) in errors {
+            eprintln!("machinery_basis: upgrade {id} recusado: {error}");
+        }
+        eprintln!("machinery_basis: {} upgrades", types.len());
+        upgrade::set_current_types(types);
         return;
     }
     if listener.id != LISTENER {
@@ -425,6 +443,76 @@ pub(in crate::game) fn stored_energy(entity: &ModBlockEntity) -> i32 {
 
 pub(in crate::game) fn set_stored_energy(entity: &mut ModBlockEntity, stored: i32) {
     entity.nbt.insert(JavaString::from(ENERGY), Tag::Int(stored));
+}
+
+/// A capacidade de energia de cada máquina em jogo, por instância: o `ModEnergyBuffer` do bloco é um só para todos, e a
+/// capacidade de uma máquina muda com os upgrades (`MachineEnergyContainer.setMaxEnergy`). O valor guarda o id do bloco, para
+/// uma capacidade velha não valer para outro bloco que tome o lugar.
+static ENERGY_CAPACITIES: Mutex<BTreeMap<(&'static str, [i32; 3]), (String, i32)>> =
+    Mutex::new(BTreeMap::new());
+
+/// Uma capacidade em `i64` como o `ModEnergyBuffer` a guarda, em `i32`. O que passa de `i32::MAX` fica em `i32::MAX`, e isso é
+/// dito no log: o tipo do Horizon é o limite, e nada o corta sem aviso.
+pub(in crate::game) fn energy_as_int(value: i64, what: &str) -> i32 {
+    match i32::try_from(value) {
+        Ok(value) => value,
+        Err(_) => {
+            eprintln!("machinery_basis: {what} {value} passa do `i32` do Horizon e fica em {}", i32::MAX);
+            i32::MAX
+        }
+    }
+}
+
+/// Dá à máquina em `pos` a capacidade que ela tem agora. Quem faz a máquina andar chama quando ela muda.
+pub(in crate::game) fn set_energy_capacity(
+    dimension: &'static str,
+    pos: [i32; 3],
+    block: &str,
+    capacity: i32,
+) {
+    let mut capacities = ENERGY_CAPACITIES.lock().unwrap_or_else(|e| e.into_inner());
+    capacities.insert((dimension, pos), (block.to_owned(), capacity));
+}
+
+/// Esquece as capacidades das máquinas que já não andam: a tabela não cresce com os blocos quebrados.
+pub(in crate::game) fn retain_energy_capacities(keep: impl Fn(&'static str, [i32; 3]) -> bool) {
+    let mut capacities = ENERGY_CAPACITIES.lock().unwrap_or_else(|e| e.into_inner());
+    capacities.retain(|(dimension, pos), _| keep(*dimension, *pos));
+}
+
+/// Capacidade por instância: a máquina com uma capacidade guardada responde com ela no lugar da do bloco. Sem uma, ou com outro
+/// bloco no lugar, segue o caminho normal do Horizon.
+pub(in crate::game) fn energy_capacity(
+    game: &Game<'_>,
+    pos: [i32; 3],
+) -> std::ops::ControlFlow<Option<(Arc<horizon_client::containers::ModEnergyBuffer>, i32)>> {
+    use horizon_client::containers::{BlockEntity, ModEnergyBuffer};
+    use std::ops::ControlFlow::{Break, Continue};
+    let key = (pos[0], pos[1], pos[2]);
+    let Some((block, capacity)) = ENERGY_CAPACITIES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&(game.native_dimension(), pos))
+        .cloned()
+    else {
+        return Continue(());
+    };
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let Some(buffer) = game.world.block_entities.mod_energy(state.0) else {
+        return Continue(());
+    };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&key) else {
+        return Continue(());
+    };
+    if entity.id.is_empty() || entity.id != block {
+        return Continue(());
+    }
+    let resized = ModEnergyBuffer {
+        capacity,
+        max_insert: capacity,
+        ..**buffer
+    };
+    Break(Some((Arc::new(resized), stored_energy(entity))))
 }
 
 pub(in crate::game) fn direction(face: Face) -> Direction {

@@ -14,6 +14,7 @@ import mekanism.api.chemical.ChemicalResource;
 import mekanism.api.chemical.IChemicalTank;
 import mekanism.api.inventory.IInventorySlot;
 import mekanism.api.recipes.cache.CachedRecipe.OperationTracker.RecipeError;
+import mekanism.api.upgrade.IUpgradeHelper;
 import mekanism.api.upgrade.Upgrade;
 import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.block.attribute.Attribute;
@@ -501,6 +502,52 @@ public class MachineTraceTest {
         );
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the upgrade slots: installing over 20 ticks, past the maximum, removing one and removing all.")
+    public static void chamberUpgradeSlot(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_upgrade_slot");
+        trace.recordUpgrades = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("upgrade slot speed 3");
+                  trace.setUpgradeSlot(UpgradeIds.SPEED, 3);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("upgrade slot speed 10");
+                  trace.setUpgradeSlot(UpgradeIds.SPEED, 10);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("upgrade slot energy 2");
+                  trace.setUpgradeSlot(UpgradeIds.ENERGY, 2);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("upgrade slot clear");
+                  trace.clearUpgradeSlot();
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("upgrade slot energy 1");
+                  trace.setUpgradeSlot(UpgradeIds.ENERGY, 1);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("remove speed");
+                  trace.removeUpgrade(UpgradeIds.SPEED, false);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("remove speed all");
+                  trace.removeUpgrade(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("remove energy all");
+                  trace.removeUpgrade(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
@@ -513,6 +560,7 @@ public class MachineTraceTest {
         private MekGameTestHelper helper;
         private int tick;
         boolean recordChest;
+        boolean recordUpgrades;
         int inputSlot = INPUT;
         int outputSlot = OUTPUT;
 
@@ -567,6 +615,28 @@ public class MachineTraceTest {
                 }
             }
             info.setEjecting(true);
+        }
+
+        Holder<Upgrade> upgrade(net.minecraft.resources.ResourceKey<Upgrade> key) {
+            return helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).getOrThrow(key);
+        }
+
+        void setUpgradeSlot(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            machine().getComponent().getUpgradeSlot().setContents(IUpgradeHelper.INSTANCE.asResource(upgrade(key)), count, null);
+        }
+
+        void clearUpgradeSlot() {
+            machine().getComponent().getUpgradeSlot().setContents(ItemResource.EMPTY, 0, null);
+        }
+
+        void removeUpgrade(net.minecraft.resources.ResourceKey<Upgrade> key, boolean all) {
+            machine().getComponent().removeUpgrade(helper.getLevel().registryAccess(), upgrade(key), all);
+        }
+
+        private void upgradeSlot(StringBuilder line, IInventorySlot slot) {
+            ItemStack stack = slot.asItemStack();
+            Holder<Upgrade> type = stack.isEmpty() ? null : stack.get(IUpgradeHelper.INSTANCE.dataComponent());
+            line.append('"').append(type == null ? "" : type.getRegisteredName().substring("mekanism:".length())).append("\",").append(stack.getCount());
         }
 
         void setSlot(int slot, Item item, int count) {
@@ -629,6 +699,16 @@ public class MachineTraceTest {
                 line.append(",\"tank\":").append(infuser.infusionTank.amountAsLong());
                 line.append(",\"infusion\":[");
                 slot(line, chamber.getInventorySlots().get(0));
+                line.append(']');
+            }
+            if (recordUpgrades) {
+                line.append(",\"speed\":").append(chamber.getComponent().getUpgrades(upgrade(UpgradeIds.SPEED)))
+                      .append(",\"energy_upgrades\":").append(chamber.getComponent().getUpgrades(upgrade(UpgradeIds.ENERGY)))
+                      .append(",\"upgrade_progress\":").append(chamber.getComponent().getScaledUpgradeProgress())
+                      .append(",\"upgrade_in\":[");
+                upgradeSlot(line, chamber.getComponent().getUpgradeSlot());
+                line.append("],\"upgrade_out\":[");
+                upgradeSlot(line, chamber.getComponent().getUpgradeOutputSlot());
                 line.append(']');
             }
             if (recordChest) {

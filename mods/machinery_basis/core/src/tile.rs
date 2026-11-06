@@ -14,6 +14,7 @@ use crate::transaction::Callback;
 use crate::two_input_recipe::{
     ItemChemicalRecipes, ItemChemicalToItemRecipe, TwoInputItemChemicalRecipe,
 };
+use crate::upgrade::{UpgradeComponent, UpgradeData, UpgradeSaved};
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -80,6 +81,8 @@ pub struct SavedState {
     pub last_recipe_amount: i32,
     /// `ConfigInfo.isEjecting` dos itens.
     pub ejecting: bool,
+    /// `TileComponentUpgrade.serialize`: os upgrades instalados e os dois slots.
+    pub upgrades: UpgradeSaved,
 }
 
 /// O que todo tile faz a cada tick, além da máquina em si.
@@ -253,13 +256,23 @@ impl UpgradeRules {
     }
 }
 
+/// O que a máquina precisa dos upgrades: a configuração (`maxUpgradeMultiplier`), quais tipos mexem no tempo e no consumo
+/// (`UpgradeIds.SPEED` e `UpgradeIds.ENERGY`, que o mod diz) e os dados dos tipos e do que a máquina aceita.
+#[derive(Clone, Debug)]
+pub struct UpgradeConfig {
+    pub max_upgrade_multiplier: f64,
+    pub speed: Rc<str>,
+    pub energy: Rc<str>,
+    pub data: Rc<UpgradeData>,
+}
+
 /// O que define uma máquina de progresso, qualquer que seja a receita. Os valores vêm do mod.
 #[derive(Clone, Debug)]
 pub struct MachineConfig {
     pub energy_per_tick: i32,
     pub base_ticks_required: i32,
     pub deactivation_delay: i32,
-    pub upgrades: UpgradeRules,
+    pub upgrades: UpgradeConfig,
     /// `TRACKED_ERROR_TYPES`, na ordem da tela.
     pub tracked_errors: Vec<RecipeError>,
     /// O sorteio de `shouldRecheckAllErrors`, de 0 a [`RECIPE_CHECK_FREQUENCY`].
@@ -286,7 +299,7 @@ pub struct ChemicalMachineConfig {
 /// O que o tile guarda e as closures das receitas e dos contêineres alcançam.
 struct Shared {
     tile: RefCell<TileBase>,
-    upgrades: UpgradeRules,
+    upgrade_config: UpgradeConfig,
     base_ticks_required: i32,
     tracked_error_kinds: Vec<RecipeError>,
     check_offset: u64,
@@ -299,8 +312,6 @@ struct Shared {
     /// `usedSoFar`: só uma receita de uso por tick o muda, e as do Infuser não são.
     used_so_far: Cell<i32>,
     tracked_errors: RefCell<Vec<bool>>,
-    speed_upgrades: Cell<i32>,
-    energy_upgrades: Cell<i32>,
     players_using: Cell<u32>,
     game_time: Cell<u64>,
 }
@@ -509,13 +520,14 @@ struct Parts {
     energy: EnergyContainer,
     output: InventorySlot,
     energy_slot: InventorySlot,
+    upgrades: UpgradeComponent,
 }
 
 impl Parts {
     fn new(config: &MachineConfig) -> Self {
         let shared = Rc::new(Shared {
             tile: RefCell::new(TileBase::new(config.deactivation_delay)),
-            upgrades: config.upgrades,
+            upgrade_config: config.upgrades.clone(),
             base_ticks_required: config.base_ticks_required,
             check_offset: config.check_offset,
             cache_invalid: Cell::new(false),
@@ -525,8 +537,6 @@ impl Parts {
             used_so_far: Cell::new(0),
             tracked_errors: RefCell::new(vec![false; config.tracked_errors.len()]),
             tracked_error_kinds: config.tracked_errors.clone(),
-            speed_upgrades: Cell::new(0),
-            energy_upgrades: Cell::new(0),
             players_using: Cell::new(0),
             game_time: Cell::new(0),
         });
@@ -565,6 +575,20 @@ impl Parts {
         );
         let output = InventorySlot::output(Some(output_listener), Some(decreased));
         let energy_slot = InventorySlot::new(Some(tile_changed.clone()));
+        // `new TileComponentUpgrade(this)`: os slots avisam o tile, e o tile recalcula o que depende de cada tipo.
+        let recalculate = {
+            let (shared, energy) = (shared.clone(), energy.clone());
+            Box::new(
+                move |upgrades: &UpgradeComponent, upgrade: &str, total: i32| {
+                    recalculate_upgrades(&shared, &energy, upgrades, upgrade, total);
+                },
+            )
+        };
+        let upgrades = UpgradeComponent::new(
+            config.upgrades.data.clone(),
+            tile_changed.clone(),
+            recalculate,
+        );
         Self {
             shared,
             tile_changed,
@@ -573,6 +597,7 @@ impl Parts {
             energy,
             output,
             energy_slot,
+            upgrades,
         }
     }
 }
@@ -590,6 +615,7 @@ pub struct ProgressMachine {
     monitor: Box<dyn MonitorOps>,
     recipes: Recipes,
     ejector: ItemEjector,
+    upgrades: UpgradeComponent,
 }
 
 impl ProgressMachine {
@@ -704,6 +730,7 @@ impl ProgressMachine {
             monitor,
             recipes,
             ejector,
+            upgrades: parts.upgrades,
         }
     }
 
@@ -765,11 +792,12 @@ impl ProgressMachine {
             saved.last_recipe_used,
             saved.last_recipe_amount,
         ) = self.monitor.used_snapshot();
+        saved.upgrades = self.upgrades.saved();
         saved
     }
 
-    /// `saved_state` sem as receitas usadas, que são um mapa: quem salva a cada tick compara só isto e olha
-    /// `used_version` para saber se o mapa mudou.
+    /// `saved_state` sem as receitas usadas e sem os upgrades, que são mapas: quem salva a cada tick compara só isto e olha
+    /// `used_version` e `upgrades_version` para saber se eles mudaram.
     pub fn saved_scalars(&self) -> SavedState {
         let tile = self.shared.tile.borrow();
         SavedState {
@@ -784,6 +812,7 @@ impl ProgressMachine {
             last_recipe_used: None,
             last_recipe_amount: 0,
             ejecting: self.ejector.is_ejecting(),
+            upgrades: UpgradeSaved::default(),
         }
     }
 
@@ -792,8 +821,20 @@ impl ProgressMachine {
         self.monitor.used_version()
     }
 
+    /// Muda quando os upgrades instalados ou os dois slots mudam.
+    pub fn upgrades_version(&self) -> u32 {
+        self.upgrades.version()
+    }
+
+    /// `TileEntityMekanism.getComponent`: o componente de upgrades.
+    pub fn upgrades(&self) -> &UpgradeComponent {
+        &self.upgrades
+    }
+
     /// `loadAdditional`: o que `saved_state` devolveu volta ao objeto novo. Chame antes do primeiro tick.
     pub fn restore(&mut self, saved: &SavedState, block_active: bool) {
+        // Os componentes leem antes do resto, e os upgrades recalculam o consumo e a capacidade antes de a energia voltar.
+        self.upgrades.restore(&saved.upgrades);
         self.shared.tile.borrow_mut().restore(saved, block_active);
         self.shared.operating_ticks.set(saved.progress);
         self.shared.used_so_far.set(saved.used_so_far);
@@ -857,33 +898,11 @@ impl ProgressMachine {
         redstone_level_of(&self.inventory_slots)
     }
 
-    pub fn set_upgrades(&self, speed: i32, energy: i32) {
-        self.shared.speed_upgrades.set(speed);
-        self.shared.energy_upgrades.set(energy);
-        self.recalculate_upgrades();
-    }
-
-    /// `recalculateUpgrades` de velocidade e energia, na ordem do Java: tempo, consumo, capacidade.
-    fn recalculate_upgrades(&self) {
-        let shared = &self.shared;
-        let rules = shared.upgrades;
-        let (speed, energy) = (shared.speed_upgrades.get(), shared.energy_upgrades.get());
-        let ticks_required = rules.ticks(shared.base_ticks_required, speed);
-        shared.ticks_required.set(ticks_required);
-        shared.operations_per_tick.set(rules.operations_per_tick(
-            shared.base_ticks_required,
-            1,
-            speed,
-        ));
-        let per_tick = rules.energy_per_tick(self.energy.base_energy_per_tick(), speed, energy);
-        self.energy.set_energy_per_tick(per_tick);
-        let buffer = STORAGE_MULTIPLIER.max(i64::from(ticks_required));
-        self.energy.set_max_energy(i64::from(per_tick) * buffer);
-    }
-
     /// `tickServer`. Devolve se o comparador precisa avisar os vizinhos.
     pub fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) -> bool {
         self.shared.game_time.set(game_time);
+        // Na ordem de `TileEntityMekanism.tickServer`: o componente de upgrades vem antes do atraso do estado ativo.
+        self.upgrades.tick_server();
         self.shared.tile.borrow_mut().tick_delay();
         // `onUpdateServer`: o ejetor, do `TileEntityConfigurableMachine`, o slot que enche o tanque e depois a receita.
         self.ejector.tick_server(neighbours);
@@ -897,6 +916,92 @@ impl ProgressMachine {
             .tile
             .borrow_mut()
             .finish_tick(|| redstone_level_of(slots))
+    }
+}
+
+/// `recalculateUpgrades` de `TileEntityProgressMachine` e depois de `TileEntityMekanism`, para o tipo que mudou: o de velocidade
+/// refaz o tempo e as operações por tick, e os dois (velocidade e energia) refazem o consumo e a capacidade do contêiner.
+fn recalculate_upgrades(
+    shared: &Shared,
+    energy: &EnergyContainer,
+    upgrades: &UpgradeComponent,
+    upgrade: &str,
+    total: i32,
+) {
+    let config = &shared.upgrade_config;
+    let data = upgrades.data();
+    let (speed, energy_upgrade) = (&*config.speed, &*config.energy);
+    let rules = |max_speed: i32, max_energy: i32| UpgradeRules {
+        max_upgrade_multiplier: config.max_upgrade_multiplier,
+        max_speed,
+        max_energy,
+    };
+    if upgrade == speed
+        && let Some(max_speed) = data.max(speed)
+    {
+        let rules = rules(max_speed, 1);
+        shared
+            .ticks_required
+            .set(rules.ticks(shared.base_ticks_required, total));
+        shared.operations_per_tick.set(rules.operations_per_tick(
+            shared.base_ticks_required,
+            1,
+            total,
+        ));
+    }
+    if upgrade != speed && upgrade != energy_upgrade {
+        return;
+    }
+    update_energy_per_tick(shared, energy, upgrades, &data);
+    update_max_energy(shared, energy, upgrades, &data);
+}
+
+/// `MachineEnergyContainer.updateEnergyPerTick`.
+fn update_energy_per_tick(
+    shared: &Shared,
+    energy: &EnergyContainer,
+    upgrades: &UpgradeComponent,
+    data: &UpgradeData,
+) {
+    let config = &shared.upgrade_config;
+    let (speed, energy_upgrade) = (&*config.speed, &*config.energy);
+    let (Some(max_speed), Some(max_energy)) = (data.max(speed), data.max(energy_upgrade)) else {
+        energy.set_energy_per_tick(energy.base_energy_per_tick());
+        return;
+    };
+    if data.supports(energy_upgrade) || data.supports(speed) {
+        let rules = UpgradeRules {
+            max_upgrade_multiplier: config.max_upgrade_multiplier,
+            max_speed,
+            max_energy,
+        };
+        energy.set_energy_per_tick(rules.energy_per_tick(
+            energy.base_energy_per_tick(),
+            upgrades.get_upgrades(speed),
+            upgrades.get_upgrades(energy_upgrade),
+        ));
+    }
+}
+
+/// `MachineEnergyContainer.updateMaxEnergy`.
+fn update_max_energy(
+    shared: &Shared,
+    energy: &EnergyContainer,
+    upgrades: &UpgradeComponent,
+    data: &UpgradeData,
+) {
+    let config = &shared.upgrade_config;
+    let (speed, energy_upgrade) = (&*config.speed, &*config.energy);
+    if data.max(speed).is_some() && data.supports(speed) {
+        let buffer = STORAGE_MULTIPLIER.max(i64::from(shared.ticks_required.get()));
+        energy.set_max_energy(i64::from(energy.energy_per_tick()) * buffer);
+    } else if let Some(max_energy) = data.max(energy_upgrade)
+        && data.supports(energy_upgrade)
+    {
+        // `UpgradeUtils.getMaxEnergy`: `clampToLong` do `double`, que em Rust é a conversão que satura.
+        let fraction = f64::from(upgrades.get_upgrades(energy_upgrade)) / f64::from(max_energy);
+        let max = energy.base_max_energy() as f64 * config.max_upgrade_multiplier.powf(fraction);
+        energy.set_max_energy(max as i64);
     }
 }
 

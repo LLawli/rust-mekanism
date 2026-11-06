@@ -191,3 +191,42 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "dimension", ty = "&str", value = "dimension" },
 ]
+
+# O componente que guarda o tipo do upgrade no item.
+[[injection]]
+id = "component_types"
+hook = "component_types"
+hook_version = 1
+kind = "HEAD"
+helper = "component_types.rs"
+bindings = [
+  { name = "types", ty = "&mut Vec<String>", value = "&mut *types" },
+]
+
+# O modelo do upgrade escolhido pelo componente: o original usa um modelo de item próprio (`mekanism:component_item`), e aqui
+# a propriedade de condição `mekanism:upgrade_type/<tipo>` faz o mesmo papel.
+[[injection]]
+id = "item_model_property"
+hook = "item_model_property"
+hook_version = 1
+kind = "HEAD"
+helper = "item_model_property.rs"
+bindings = [
+  { name = "property", ty = "&str", value = "property" },
+  { name = "stack", ty = "&StackView", value = "stack" },
+  { name = "value", ty = "&mut bool", value = "&mut *value" },
+]
+
+# Shift e clique direito com o upgrade na mão (`ItemUpgrade.useOn`).
+[[injection]]
+id = "use_item_on"
+hook = "use_item_on"
+hook_version = 1
+kind = "HEAD"
+helper = "use_item_on.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
+]

@@ -7,9 +7,10 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tile::{
-    ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, UpgradeRules,
+    ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, UpgradeConfig,
 };
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use std::rc::Rc;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
@@ -55,9 +56,37 @@ pub const SMELTER_USAGE: i32 = 5;
 
 /// `blockDeactivationDelay`, o padrão de `GeneralConfig`: quantos ticks o bloco espera para apagar.
 pub const BLOCK_DEACTIVATION_DELAY: i32 = 60;
-/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`) e o máximo de cada um.
+/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`). O máximo de cada tipo vem dos dados.
 pub const UPGRADE_MULTIPLIER: f64 = 10.0;
-pub const MAX_UPGRADES: i32 = 8;
+
+/// `MekanismItems.UPGRADE` e o componente `MekanismDataComponents.UPGRADE_TYPE`, que guarda o tipo no item.
+pub const UPGRADE_ITEM: &str = "mekanism:upgrade";
+pub const UPGRADE_TYPE_COMPONENT: &str = "mekanism:upgrade_type";
+/// `UpgradeIds.SPEED` e `UpgradeIds.ENERGY`.
+pub const SPEED_UPGRADE: &str = "mekanism:speed";
+pub const ENERGY_UPGRADE: &str = "mekanism:energy";
+/// `MekanismTags.Upgrades.DEFAULT_MACHINE_UPGRADES`: o que `AttributeUpgradeSupport.DEFAULT_MACHINE_UPGRADES` aceita, e que as
+/// quatro máquinas portadas usam.
+pub const DEFAULT_MACHINE_UPGRADES: &str = "mekanism:upgrade_support/default_machine";
+/// O prefixo da propriedade de modelo que diz o tipo do upgrade na mão: `mekanism:upgrade_type/<nome>`. É o lugar do
+/// `ComponentItemModel` do original, que escolhe a textura pelo componente.
+pub const UPGRADE_MODEL_PROPERTY: &str = "mekanism:upgrade_type/";
+
+/// Os dados de upgrade que as quatro máquinas portadas usam: os tipos, o que a tag `default_machine` aceita, e o item que os
+/// carrega, com o limite de pilha dele.
+pub fn upgrade_data(
+    types: &UpgradeTypes,
+    tags: &UpgradeTags,
+    item_max_stack_size: u32,
+) -> Rc<UpgradeData> {
+    Rc::new(UpgradeData::new(
+        UPGRADE_ITEM,
+        item_max_stack_size,
+        types,
+        tags,
+        DEFAULT_MACHINE_UPGRADES,
+    ))
+}
 
 /// `TileEntityEnrichmentChamber.TRACKED_ERROR_TYPES`, na ordem da tela.
 pub const ELECTRIC_TRACKED_ERRORS: [RecipeError; 4] = [
@@ -81,15 +110,17 @@ fn machine_config(
     energy_per_tick: i32,
     tracked_errors: &[RecipeError],
     check_offset: u64,
+    upgrades: Rc<UpgradeData>,
 ) -> MachineConfig {
     MachineConfig {
         energy_per_tick,
         base_ticks_required: TICKS_REQUIRED as i32,
         deactivation_delay: BLOCK_DEACTIVATION_DELAY,
-        upgrades: UpgradeRules {
+        upgrades: UpgradeConfig {
             max_upgrade_multiplier: UPGRADE_MULTIPLIER,
-            max_speed: MAX_UPGRADES,
-            max_energy: MAX_UPGRADES,
+            speed: Rc::from(SPEED_UPGRADE),
+            energy: Rc::from(ENERGY_UPGRADE),
+            data: upgrades,
         },
         tracked_errors: tracked_errors.to_vec(),
         check_offset,
@@ -102,9 +133,15 @@ pub fn electric_config(
     energy_per_tick: i32,
     recipes: Vec<Rc<ItemToItemRecipe>>,
     check_offset: u64,
+    upgrades: Rc<UpgradeData>,
 ) -> ElectricMachineConfig {
     ElectricMachineConfig {
-        machine: machine_config(energy_per_tick, &ELECTRIC_TRACKED_ERRORS, check_offset),
+        machine: machine_config(
+            energy_per_tick,
+            &ELECTRIC_TRACKED_ERRORS,
+            check_offset,
+            upgrades,
+        ),
         recipes,
     }
 }
@@ -115,9 +152,15 @@ pub fn infuser_config(
     recipes: Vec<Rc<ItemChemicalToItemRecipe>>,
     conversions: Vec<ChemicalConversion>,
     check_offset: u64,
+    upgrades: Rc<UpgradeData>,
 ) -> ChemicalMachineConfig {
     ChemicalMachineConfig {
-        machine: machine_config(energy_per_tick, &INFUSER_TRACKED_ERRORS, check_offset),
+        machine: machine_config(
+            energy_per_tick,
+            &INFUSER_TRACKED_ERRORS,
+            check_offset,
+            upgrades,
+        ),
         recipes,
         conversions,
         tank_capacity: TANK_CAPACITY,
@@ -125,11 +168,13 @@ pub fn infuser_config(
 }
 
 /// O `MEKTRACE` de um tick: os campos dos rastros de `dev/referencia/rastros`, na mesma ordem. O Metallurgic Infuser acrescenta
-/// `tank` e `infusion` depois dos erros.
+/// `tank` e `infusion` depois dos erros. Com `upgrades`, vêm no fim `speed`, `energy_upgrades`, `upgrade_progress`, `upgrade_in` e
+/// `upgrade_out`, que só o rastro dos slots de upgrade grava.
 pub fn trace_line(
     now: i64,
     machine: &ProgressMachine,
     chest: Option<&[(usize, String, u32)]>,
+    upgrades: bool,
 ) -> String {
     let path = |id: &str| {
         id.split_once(':')
@@ -169,8 +214,29 @@ pub fn trace_line(
             .collect();
         format!(",\"chest\":[{}]", stacks.join(","))
     });
+    // `upgradeSlot` do `MachineTraceTest`: o tipo sem o namespace e a quantidade, ou vazio.
+    let upgrade_slot = |slot: &InventorySlot| {
+        let kind = slot
+            .resource()
+            .and_then(|resource| resource.variant)
+            .map_or(String::new(), |variant| path(&variant));
+        format!("[\"{kind}\",{}]", slot.amount())
+    };
+    let upgrades = if upgrades {
+        let component = machine.upgrades();
+        format!(
+            ",\"speed\":{},\"energy_upgrades\":{},\"upgrade_progress\":{:?},\"upgrade_in\":{},\"upgrade_out\":{}",
+            component.get_upgrades(SPEED_UPGRADE),
+            component.get_upgrades(ENERGY_UPGRADE),
+            component.scaled_upgrade_progress(),
+            upgrade_slot(component.upgrade_slot()),
+            upgrade_slot(component.upgrade_output_slot())
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]{}{}}}",
+        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]{}{}{}}}",
         machine.recipe_progress(),
         machine.ticks_required(),
         machine.energy().amount(),
@@ -184,7 +250,8 @@ pub fn trace_line(
         slot(machine.output()),
         errors.join(","),
         chemical,
-        chest
+        chest,
+        upgrades
     )
 }
 

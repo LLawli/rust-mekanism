@@ -165,10 +165,43 @@ receitas de infusão têm `per_tick_usage: false`; o glue deixa de fora, com um 
 `ChemicalAttributeValidator` não existe, porque nenhum químico dos tanques portados tem atributo. A regra de inserção do
 slot de entrada (`containsRecipeAB`) segue no glue, na regra do hopper, e o tanque tem a dele.
 
+### Upgrades
+
+`upgrade.rs` porta o `TileComponentUpgrade`, os dois `UpgradeInventorySlot` e o que o `Upgrade` e o `IUpgradeHelper` dão à máquina,
+sem conhecer upgrade nenhum. O mod entrega, como dados, os tipos com o máximo de cada um (`data/<ns>/machinery_basis/upgrade/<nome>.json`,
+o mesmo arquivo do `Upgrade.DIRECT_CODEC`), as tags de suporte (`data/<ns>/tags/machinery_basis/upgrade/...`, com `#` para tag dentro
+de tag) e o item que os carrega. O item é um `ItemResource` com `variant`, o valor que distingue itens do mesmo id, como o
+`DataComponentPatch` do `ItemResource` do NeoForge: no Mekanism, o valor do componente `mekanism:upgrade_type`. Os ids de velocidade e de
+energia, que mexem no tempo e no consumo, entram em `tile::UpgradeConfig` junto do `maxUpgradeMultiplier`.
+
+| Peça da lib | Java |
+|---|---|
+| `UpgradeComponent::tick_server` | `TileComponentUpgrade.tickServer`: 20 ticks contados, a instalação no 21º, `canCheckUpgrades` |
+| `add_upgrades`, `remove_upgrade`, `get_upgrades`, `scaled_upgrade_progress` | os métodos de mesmo nome |
+| `UpgradeComponent::saved` e `restore` | `serialize` e `deserialize`, que recalcula cada tipo da tag antes de carregar os slots |
+| slot de entrada | `UpgradeInventorySlot.input`: `notExternal` para tirar, o tipo suportado para pôr, `isValid` pelo componente |
+| slot de saída | `UpgradeInventorySlot.output`: só `manualOnly` tira, só `internalOnly` põe |
+| `tile::recalculate_upgrades` | `recalculateUpgrades` do `TileEntityProgressMachine` e do `TileEntityMekanism`, com `updateEnergyPerTick` e `updateMaxEnergy` |
+
+O `tick_server` da `ProgressMachine` chama o componente primeiro, antes do atraso do estado ativo, como o `TileEntityMekanism.tickServer`.
+O `InventorySlot` ganhou `SlotChecks` (o `validator` e o item no `canInsert`), `Access::ManualOnly` e a capacidade zero para o item que o
+`isValid` recusa.
+
+No jogo, o componente vive no NBT como o Java o grava: o filho `component_upgrade`, com `upgrades` (tipo para total) e `items` (os dois
+slots, `{container, stored: {type, amount}}`). O glue nunca escreve o componente se nada mudou, e a mudança chega ao NBT na hora quando é um
+clique. A capacidade de energia de uma máquina muda com os upgrades, mas o `ModEnergyBuffer` do Horizon é um só por bloco e em `i32`:
+`energy_capacity.rs` é uma injeção cancelável em `native_energy_at` que responde com a capacidade da instância, guardada numa tabela por
+posição e por id de bloco. O que passa de `i32::MAX` fica em `i32::MAX` e vai para o log.
+
+A tela dos upgrades vai usar estes slots assim: dois slots a mais no `ModContainer`, depois dos da máquina, ligados aos slots do componente
+como o glue já liga a entrada e a saída (`slot_from_entity` antes do tick, `slot_to_entity` depois), e a aba lê o progresso e os totais por
+data slots. Por enquanto os slots só existem no NBT.
+
 ## Fora da lib
 
 Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora
-upgrades específicos, configurador, segurança por dono, QIO e radiação, até dois mods precisarem deles.
+configurador, segurança por dono, QIO e radiação, até dois mods precisarem deles. Do upgrade, a lib tem o componente e os slots; os
+efeitos de cada tipo (velocidade e energia na `ProgressMachine`, abafamento, anchor, filtro) ficam em quem os usa.
 
 ## Arquitetura
 

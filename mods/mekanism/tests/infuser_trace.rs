@@ -1,5 +1,7 @@
 //! Repete, tick a tick, o rastro gravado do Metallurgic Infuser original em `dev/referencia/rastros/infuser_run.jsonl`: o tanque
 //! que falta, o que esvazia no meio, o item sem receita e o item de infusão convertido a cada tick.
+mod common;
+
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
@@ -78,7 +80,13 @@ fn infuser() -> SimWorld<Infuser> {
         conversion("redstone_block", "redstone", 90),
         conversion("mushroom", "fungi", 10),
     ];
-    let config = infuser_config(INFUSER_USAGE, recipes, conversions, 0);
+    let config = infuser_config(
+        INFUSER_USAGE,
+        recipes,
+        conversions,
+        0,
+        common::upgrade_data(),
+    );
     SimWorld::new(Infuser(ProgressMachine::chemical(config)))
 }
 
@@ -181,7 +189,7 @@ fn the_infuser_follows_the_recorded_run_tick_by_tick() {
         let machine = &world.block_entity.0;
         let actual = state(&expected["t"], &expected["marks"], machine);
         // O `MEKTRACE` do jogo tem os mesmos campos dos rastros, com as marcas vazias.
-        let line = trace_line(expected["t"].as_i64().unwrap(), machine, None);
+        let line = trace_line(expected["t"].as_i64().unwrap(), machine, None, false);
         let mut traced: Value = serde_json::from_str(&line).unwrap();
         traced["marks"] = expected["marks"].clone();
         assert_eq!(traced, actual, "tick {}: MEKTRACE", expected["t"]);
