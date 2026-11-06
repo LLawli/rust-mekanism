@@ -874,6 +874,12 @@ fn hud_color(argb: u32) -> u32 {
     horizon_client::hud::rgba(r, g, b, a)
 }
 
+/// Avisa o renderer do Horizon de que uma tela de mod desenha este sprite, para o `animate_sprites` dele misturar os quadros
+/// interpolados como o original (injeção `sprite_ties`).
+fn register_animated(game: &Game<'_>, rect: &horizon_client::hud::Rect) {
+    horizon_client::hud::machinery_sprite_ties::register(game.gui.atlas.revision, rect);
+}
+
 /// Parte `src` do sprite `name` (em pixels dele) desenhada em `dst` multiplicada por `argb`, como `native_sprite` mas com a cor
 /// (`GuiGraphics.blitSprite(..., color)`). Falso se o sprite não existe.
 pub(in crate::game) fn sprite_tinted(
@@ -887,6 +893,7 @@ pub(in crate::game) fn sprite_tinted(
     let Some(mut r) = game.gui.atlas.sprites.get(name).copied() else {
         return false;
     };
+    register_animated(game, &r);
     let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
     r.u0 += src[0] * du;
     r.v0 += src[1] * dv;
@@ -927,6 +934,9 @@ pub(in crate::game) fn tiled_sprite(
     dst: [f32; 4],
     clip: Option<[f32; 4]>,
 ) {
+    if let Some(rect) = game.gui.atlas.sprites.get(sprite) {
+        register_animated(game, rect);
+    }
     for cell in gui::tile_cells(dst, tile, clip) {
         game.native_sprite(batch, sprite, cell.src, cell.dst);
     }

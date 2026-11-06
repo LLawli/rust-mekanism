@@ -290,3 +290,24 @@ bindings = [
   { name = "x", ty = "f32", value = "x" },
   { name = "y", ty = "f32", value = "y" },
 ]
+
+# Os sprites animados e interpolados que uma tela de mod desenha ganham a mistura do original. O módulo guarda os retângulos do atlas
+# que `sprite_tinted` e `tiled_sprite` registram, e o HEAD de `animate_sprites` mistura esses sprites antes do laço do Horizon. Alvo cru.
+[[module]]
+id = "sprite-ties"
+file = "crates/horizon-client-render/src/hud.rs"
+name = "machinery_sprite_ties"
+source = "sprite_ties.rs"
+visibility = "pub"
+
+[[injection]]
+id = "sprite_ties"
+target = "horizon_client_render::hud::HudRenderer::animate_sprites"
+kind = "HEAD"
+helper = "sprite_ties_head.rs"
+bindings = [
+  { name = "hud", ty = "&mut HudRenderer", value = "&mut *self" },
+  { name = "uploads", ty = "&mut crate::gfx::upload::Uploads", value = "&mut *uploads" },
+  { name = "encoder", ty = "&mut wgpu::CommandEncoder", value = "&mut *encoder" },
+  { name = "tick", ty = "u64", value = "tick" },
+]
