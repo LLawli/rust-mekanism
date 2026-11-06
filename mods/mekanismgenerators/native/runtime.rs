@@ -3,6 +3,7 @@
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::slot_view::{ContainerSlotType, SlotOverlay, SlotSpec};
+use machinery_basis_core::tile::TileBase;
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
@@ -26,6 +27,9 @@ pub const ENERGY_CAPACITY: i32 = 240;
 /// As seis faces mais a lava dentro do bloco, o Nether e a queima.
 pub const MAX_PRODUCTION: i32 = 7 * 7 + 10 + 100;
 pub const BUCKET_VOLUME: u64 = 1_000;
+/// `blockDeactivationDelay`, o padrão de `GeneralConfig` do Mekanism: quantos ticks o bloco aceso espera para apagar depois que o
+/// gerador para (`TileEntityMekanism.setActive`). O Heat Generator não troca o `delaySupplier`.
+pub const BLOCK_DEACTIVATION_DELAY: i32 = 60;
 
 /// Os slots de `TileEntityHeatGenerator.getInitialInventory`, na ordem dos índices: o do combustível (`FluidInventorySlot`, `EXTRA` no
 /// contêiner) e o de energia (`EnergyInventorySlot`, com o raio por cima). A posição é a do item. O gerador não tem configuração de
@@ -102,7 +106,11 @@ pub struct Surroundings {
     /// Lados com lava, fonte ou corrente. A lava dentro do bloco conta como mais um.
     pub lava_faces: u32,
     pub in_nether: bool,
+    /// O ar do bloco, que o `simulate` do gerador usa para a eficiência de Carnot.
     pub ambient: f64,
+    /// O ar de cada face, na ordem das direções do jogo (baixo, cima, norte, sul, oeste, leste): a perda para o ambiente usa o do bloco
+    /// vizinho (`getAmbientTemperature(side)`).
+    pub face_ambient: [f64; 6],
 }
 
 /// O que aconteceu no tick.
@@ -143,11 +151,107 @@ pub fn tick(heat: &mut Capacitor, around: &Surroundings, lava: u64, energy_full:
     let heat_lost = THERMAL_EFFICIENCY * (temperature - around.ambient);
     heat.handle(-heat_lost);
     let energy = ((heat_lost.abs() * carnot) as i32).min(MAX_PRODUCTION);
-    heat.lose_to_environment(around.ambient, INSULATION_BY_FACE);
+    heat.lose_to_faces(around.face_ambient, INSULATION_BY_FACE);
     Produced {
         active,
         lava_used: if active { FLUID_RATE } else { 0 },
         energy,
+    }
+}
+
+/// O que o Heat Generator guarda e muda a cada tick: o calor, a lava do tanque e a energia do buffer, mais o que todo tile do Mekanism
+/// guarda (`currentActive`, `updateDelay` e o estado `lit` do bloco).
+#[derive(Clone, Debug)]
+pub struct State {
+    pub heat: Capacitor,
+    pub lava: u64,
+    pub energy: i32,
+    pub tile: TileBase,
+}
+
+impl State {
+    pub fn new(ambient: f64) -> Self {
+        Self {
+            heat: new_capacitor(ambient),
+            lava: 0,
+            energy: 0,
+            tile: TileBase::new(BLOCK_DEACTIVATION_DELAY),
+        }
+    }
+}
+
+/// Um tick do tile (`tickServer` e `onUpdateServer`, depois do slot de combustível): conta o atraso do bloco aceso, queima a lava,
+/// guarda a energia no buffer, liga ou desliga o tile (`setActive`) e devolve o que entrou no buffer (`producingEnergy`: a diferença
+/// da energia antes e depois, que o limite do buffer corta).
+pub fn step(state: &mut State, around: &Surroundings) -> Produced {
+    state.tile.tick_delay();
+    let full = state.energy >= ENERGY_CAPACITY;
+    let mut produced = tick(&mut state.heat, around, state.lava, full);
+    state.lava -= produced.lava_used;
+    let filled = state
+        .energy
+        .saturating_add(produced.energy)
+        .min(ENERGY_CAPACITY);
+    produced.energy = filled - state.energy;
+    state.energy = filled;
+    state.tile.set_active(produced.active);
+    produced
+}
+
+/// O `MEKTRACE` de um tick: os campos de `dev/referencia/rastros/heat_generator_*` que a regra calcula, com os mesmos nomes. `now` é o
+/// tempo do jogo, `fuel` o item do slot de combustível (caminho e quantidade) e `state` o que o tick deixou.
+pub fn trace_line(
+    now: i64,
+    state: &State,
+    around: &Surroundings,
+    produced: &Produced,
+    fuel: (&str, u64),
+) -> String {
+    let faces: Vec<String> = around.face_ambient.iter().map(f64::to_string).collect();
+    format!(
+        "{{\"t\":{now},\"heat\":{},\"temperature\":{},\"ambient\":{},\"ambient_faces\":[{}],\"lava_faces\":{},\"energy\":{},\"capacity\":{ENERGY_CAPACITY},\"lava\":{},\"produced\":{},\"active\":{},\"block_active\":{},\"update_delay\":{},\"fuel\":[\"{}\",{}]}}",
+        state.heat.heat,
+        state.heat.temperature(),
+        around.ambient,
+        faces.join(","),
+        around.lava_faces,
+        state.energy,
+        state.lava,
+        produced.energy,
+        state.tile.active(),
+        state.tile.block_active(),
+        state.tile.update_delay(),
+        fuel.0,
+        fuel.1,
+    )
+}
+
+/// O que há no slot de combustível.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FuelItem {
+    /// Um balde de lava, que o slot esvazia no tanque.
+    LavaBucket,
+    /// Um item que queima por `burn_time` ticks, convertido em lava em proporção ao balde de lava.
+    Solid {
+        burn_time: i32,
+        lava_bucket_burn_time: i32,
+    },
+}
+
+/// `FluidFuelInventorySlot.fillOrBurn`: quanta lava o item põe no tanque, que tem `room` livre. `None` deixa o item no slot.
+pub fn fuel_to_tank(item: FuelItem, room: u64) -> Option<u64> {
+    if room == 0 {
+        return None;
+    }
+    match item {
+        FuelItem::LavaBucket => (room >= BUCKET_VOLUME).then_some(BUCKET_VOLUME),
+        FuelItem::Solid {
+            burn_time,
+            lava_bucket_burn_time,
+        } => {
+            let fuel = lava_from_fuel(burn_time, lava_bucket_burn_time);
+            (fuel > 0 && fuel <= room).then_some(fuel)
+        }
     }
 }
 
@@ -168,6 +272,7 @@ mod tests {
         lava_faces: 0,
         in_nether: false,
         ambient: AMBIENT_TEMP,
+        face_ambient: [AMBIENT_TEMP; 6],
     };
 
     fn run(ticks: u32, around: &Surroundings, lava: u64) -> (Capacitor, Produced) {
@@ -252,5 +357,34 @@ mod tests {
         assert_eq!(lava_from_fuel(1_600, 20_000), 80);
         assert_eq!(lava_from_fuel(20_000, 20_000), 1_000);
         assert_eq!(lava_from_fuel(0, 20_000), 0);
+    }
+
+    #[test]
+    fn the_block_stays_lit_for_the_deactivation_delay() {
+        let mut state = State::new(AMBIENT_TEMP);
+        state.lava = FLUID_RATE;
+        step(&mut state, &PLAINS);
+        assert!(
+            state.tile.active() && state.tile.block_active(),
+            "liga na hora"
+        );
+        // Sem atraso armado, o primeiro desligamento apaga o bloco na hora e arma o atraso.
+        step(&mut state, &PLAINS);
+        assert!(!state.tile.active() && !state.tile.block_active());
+        assert_eq!(state.tile.update_delay(), BLOCK_DEACTIVATION_DELAY);
+        // Ligar de novo é instantâneo, e o atraso armado segura o desligamento seguinte.
+        state.lava = FLUID_RATE;
+        step(&mut state, &PLAINS);
+        assert!(state.tile.block_active());
+        step(&mut state, &PLAINS);
+        assert!(!state.tile.active());
+        assert_eq!(state.tile.update_delay(), BLOCK_DEACTIVATION_DELAY);
+        for _ in 1..BLOCK_DEACTIVATION_DELAY {
+            assert!(state.tile.block_active());
+            step(&mut state, &PLAINS);
+        }
+        assert!(state.tile.block_active());
+        step(&mut state, &PLAINS);
+        assert!(!state.tile.block_active());
     }
 }

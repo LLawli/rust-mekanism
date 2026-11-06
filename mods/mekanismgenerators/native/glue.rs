@@ -15,6 +15,7 @@ use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
+use machinery_basis_core::tile::{SavedState, TileBase};
 
 const FUEL_SLOT: usize = 0;
 const SLOTS: usize = rules::SLOTS_SPEC.len();
@@ -23,6 +24,10 @@ const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
 const NETHER: &str = "minecraft:the_nether";
 const LAVA_BLOCK: &str = "minecraft:lava";
 const HEAT_KEY: &str = "heat";
+/// `SerializationConstants.ACTIVE_STATE` e `UPDATE_DELAY`: o `currentActive` e o `updateDelay` que `TileEntityMekanism` salva.
+const ACTIVE_STATE: &str = "active_state";
+const UPDATE_DELAY: &str = "update_delay";
+const LIT: &str = "lit";
 
 // Os data slots da tela.
 const DATA_ENERGY: usize = 0;
@@ -145,22 +150,21 @@ fn fill_or_burn(game: &Game<'_>, entity: &mut ModBlockEntity, tank: &mut Tank) {
     let Some(stack) = entity.items[FUEL_SLOT].clone() else {
         return;
     };
-    let needed = tank.room();
-    if needed == 0 {
-        return;
-    }
     if &*stack.item == LAVA_BUCKET {
-        if needed >= rules::BUCKET_VOLUME {
-            tank.insert(rules::LAVA, rules::BUCKET_VOLUME, Action::Execute);
+        if let Some(lava) = rules::fuel_to_tank(rules::FuelItem::LavaBucket, tank.room()) {
+            tank.insert(rules::LAVA, lava, Action::Execute);
             let mut empty = stack;
             empty.item = EMPTY_BUCKET.into();
             entity.items[FUEL_SLOT] = Some(empty);
         }
         return;
     }
-    let fuel = rules::lava_from_fuel(burn_time(game, &stack), lava_bucket_burn_time(game));
-    if fuel > 0 && fuel <= needed {
-        tank.insert(rules::LAVA, fuel, Action::Execute);
+    let solid = rules::FuelItem::Solid {
+        burn_time: burn_time(game, &stack),
+        lava_bucket_burn_time: lava_bucket_burn_time(game),
+    };
+    if let Some(lava) = rules::fuel_to_tank(solid, tank.room()) {
+        tank.insert(rules::LAVA, lava, Action::Execute);
         let mut left = stack;
         left.count -= 1;
         entity.items[FUEL_SLOT] = (left.count > 0).then_some(left);
@@ -203,6 +207,29 @@ fn load_heat(entity: &ModBlockEntity, ambient: f64) -> Capacitor {
     capacitor
 }
 
+/// O que `TileEntityMekanism.loadAdditional` lê (`currentActive` e `updateDelay`), com o estado `lit` que o bloco tem no mundo.
+fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
+    let active = matches!(entity.nbt.get(&JavaString::from(ACTIVE_STATE)), Some(Tag::Byte(value)) if *value != 0);
+    let update_delay = match entity.nbt.get(&JavaString::from(UPDATE_DELAY)) {
+        Some(Tag::Int(value)) => *value,
+        _ => 0,
+    };
+    let mut tile = TileBase::new(rules::BLOCK_DEACTIVATION_DELAY);
+    let saved = SavedState {
+        active,
+        update_delay,
+        ..Default::default()
+    };
+    tile.restore(&saved, block_active);
+    tile
+}
+
+/// `saveAdditional` do `TileEntityMekanism`: `currentActive` e `updateDelay`.
+fn save_tile(entity: &mut ModBlockEntity, tile: &TileBase) {
+    entity.nbt.insert(JavaString::from(ACTIVE_STATE), Tag::Byte(i8::from(tile.active())));
+    entity.nbt.insert(JavaString::from(UPDATE_DELAY), Tag::Int(tile.update_delay()));
+}
+
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if !is_generator(&entity.id) {
         return;
@@ -216,15 +243,31 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         lava_faces: lava_faces(game, pos) + u32::from(basis::has_logged_lava(game, pos)),
         in_nether: game.native_dimension() == NETHER,
         ambient,
+        // `CachedAmbientTemperature.getTemperature(side)`: o ar do bloco vizinho, face por face.
+        face_ambient: Face::ALL.map(|face| {
+            let [x, y, z] = face.offset();
+            basis::ambient_temperature(game, [pos[0] + x, pos[1] + y, pos[2] + z])
+        }),
     };
-    let mut heat = load_heat(entity, ambient);
-    let stored = basis::stored_energy(entity);
-    let full = stored >= rules::ENERGY_CAPACITY;
-    let produced = rules::tick(&mut heat, &around, tank.amount(), full);
+    let block_active = game.native_block_property(pos, LIT).as_deref() == Some("true");
+    let mut state = rules::State {
+        heat: load_heat(entity, ambient),
+        lava: tank.amount(),
+        energy: basis::stored_energy(entity),
+        tile: load_tile(entity, block_active),
+    };
+    let produced = rules::step(&mut state, &around);
+    if basis::MEDIR {
+        let fuel = entity.items[FUEL_SLOT].as_ref().map_or(("", 0), |stack| {
+            (stack.item.split_once(':').map_or(&*stack.item, |(_, path)| path), stack.count.max(0) as u64)
+        });
+        basis::trace(&rules::trace_line(game.world.game_time, &state, &around, &produced, fuel));
+    }
     tank.extract(produced.lava_used, Action::Execute);
-    let filled = (stored + produced.energy).min(rules::ENERGY_CAPACITY);
-    basis::set_stored_energy(entity, filled);
+    basis::set_stored_energy(entity, state.energy);
+    let heat = state.heat;
     entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(heat.heat.to_bits()));
+    save_tile(entity, &state.tile);
 
     let front = basis::front(game, pos);
     let sides = sides(front);
@@ -239,8 +282,11 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     };
     let accepts = |game: &Game<'_>, _: usize, stack: &ItemStack| is_fuel(game, stack);
     basis::tick_hoppers(game, pos, entity, &sides, &|_| slots, &accepts);
-    let lit = if produced.active { "true" } else { "false" };
-    game.native_set_block_property(pos, "lit", lit);
+    // O bloco só muda quando o tile manda: o atraso de `blockDeactivationDelay` o segura aceso depois que o gerador para.
+    let lit = state.tile.block_active();
+    if lit != block_active {
+        game.native_set_block_property(pos, LIT, if lit { "true" } else { "false" });
+    }
 
     let mut data = vec![0; DATA_SLOTS];
     let energy = data_slots::split(basis::stored_energy(entity) as u32);
@@ -250,7 +296,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let temperature = data_slots::split(heat.temperature() as u32);
     data[DATA_TEMPERATURE] = temperature[0];
     data[DATA_TEMPERATURE + 1] = temperature[1];
-    data[DATA_PRODUCTION] = filled - stored;
+    data[DATA_PRODUCTION] = produced.energy;
     entity.data = data;
     basis::save_tanks(entity, &tanks);
 }

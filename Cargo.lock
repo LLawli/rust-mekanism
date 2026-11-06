@@ -28,6 +28,7 @@ name = "mekanismgenerators-rules"
 version = "0.1.0"
 dependencies = [
  "machinery-basis-core",
+ "serde_json",
 ]
 
 [[package]]

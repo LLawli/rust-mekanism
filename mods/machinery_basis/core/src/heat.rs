@@ -8,8 +8,9 @@ pub const AIR_INVERSE_COEFFICIENT: f64 = 10_000.0;
 const PLAINS_BIOME_TEMP: f64 = 0.8;
 const KELVIN_PER_BIOME_DEGREE: f64 = 25.0;
 const BIOME_TEMP_LIMIT: f64 = 5.0;
-/// Abaixo disto uma troca de calor é ignorada (`HeatAPI.EPSILON`).
-const EPSILON: f64 = 0.000_01;
+/// Abaixo disto uma troca de calor é ignorada (`HeatAPI.EPSILON`, que é `com.mojang.math.Constants.EPSILON`: um `float` de 1e-6
+/// ampliado para `double`).
+pub const EPSILON: f64 = 1.0e-6_f32 as f64;
 
 /// A temperatura do ar, em kelvin, num bioma de temperatura `biome`.
 pub fn ambient(biome: f64) -> f64 {
@@ -54,10 +55,17 @@ impl Capacitor {
 
     /// Perde calor para o ar por cada face, com a isolação daquela face. Devolve a perda.
     pub fn lose_to_environment(&mut self, ambient: f64, insulation: [f64; 6]) -> f64 {
+        self.lose_to_faces([ambient; 6], insulation)
+    }
+
+    /// Como `lose_to_environment`, com o ar de cada face na própria temperatura: `ITileHeatHandler.simulateEnvironment` pergunta
+    /// `getAmbientTemperature(side)`, que é a do bioma do bloco vizinho. A ordem é a das direções do jogo, cada face já vê o calor
+    /// que a anterior tirou.
+    pub fn lose_to_faces(&mut self, ambient: [f64; 6], insulation: [f64; 6]) -> f64 {
         let mut lost = 0.0;
-        for face_insulation in insulation {
+        for (face_ambient, face_insulation) in ambient.into_iter().zip(insulation) {
             let inverse = AIR_INVERSE_COEFFICIENT + face_insulation + self.inverse_conduction;
-            let transfer = (self.temperature() - ambient) / inverse;
+            let transfer = (self.temperature() - face_ambient) / inverse;
             self.handle(-transfer * self.capacity);
             if transfer > 0.0 {
                 lost += transfer;
@@ -98,8 +106,17 @@ mod tests {
     #[test]
     fn tiny_transfers_are_ignored() {
         let mut capacitor = Capacitor::new(10.0, 5.0, 100.0, 300.0);
-        capacitor.handle(0.000_001);
+        capacitor.handle(0.000_000_5);
         assert_eq!(capacitor.heat, 3_000.0);
+        capacitor.handle(EPSILON);
+        assert_eq!(capacitor.heat, 3_000.0);
+    }
+
+    #[test]
+    fn a_transfer_just_over_epsilon_counts() {
+        let mut capacitor = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        capacitor.handle(0.000_005);
+        assert_eq!(capacitor.heat, 3_000.000_005);
     }
 
     #[test]
@@ -107,6 +124,24 @@ mod tests {
         let mut capacitor = Capacitor::new(10.0, 5.0, 100.0, 300.0);
         assert_eq!(capacitor.lose_to_environment(300.0, [100.0; 6]), 0.0);
         assert_eq!(capacitor.temperature(), 300.0);
+    }
+
+    #[test]
+    fn each_face_loses_heat_to_its_own_air() {
+        let mut warm = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        let mut cold = warm;
+        warm.handle(1_000.0);
+        cold.handle(1_000.0);
+        let mut faces = [300.0; 6];
+        faces[1] = 280.0;
+        let uniform = warm.lose_to_environment(300.0, [100.0; 6]);
+        let uneven = cold.lose_to_faces(faces, [100.0; 6]);
+        assert!(uneven > uniform);
+        assert!(cold.temperature() < warm.temperature());
+        let mut same = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        same.handle(1_000.0);
+        assert_eq!(same.lose_to_faces([300.0; 6], [100.0; 6]), uniform);
+        assert_eq!(same, warm);
     }
 
     #[test]
