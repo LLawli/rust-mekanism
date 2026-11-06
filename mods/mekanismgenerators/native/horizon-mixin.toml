@@ -115,3 +115,15 @@ bindings = [
   { name = "entity", ty = "&horizon_client::containers::ModBlockEntity", value = "entity" },
   { name = "tag", ty = "&mut Option<horizon_world::nbt::Compound>", value = "&mut *tag" },
 ]
+
+# Os tooltips da barra de energia e do medidor de lava ficam por cima ou por baixo do widget, e não sobre o cursor.
+[[injection]]
+id = "widget_tooltip"
+target = "horizon_client::game::native_hooks::Game<'_>::draw_native_screen_tooltip"
+kind = "HEAD"
+cancellable = true
+helper = "widget_tooltip.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]

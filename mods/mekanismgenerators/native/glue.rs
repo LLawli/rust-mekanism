@@ -9,14 +9,15 @@ use horizon_client::lang;
 use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::data_slots;
+use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
-use machinery_basis_core::units::format_energy;
 
 const FUEL_SLOT: usize = 0;
-const SLOTS: usize = 2;
+const SLOTS: usize = rules::SLOTS_SPEC.len();
 const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
 const NETHER: &str = "minecraft:the_nether";
@@ -30,28 +31,44 @@ const DATA_TEMPERATURE: usize = 3;
 const DATA_PRODUCTION: usize = 5;
 const DATA_SLOTS: usize = 6;
 
-// A tela, nas posições de GuiHeatGenerator.
+// A tela, nas posições de GuiHeatGenerator. O Mekanism Generators usa os sprites do Mekanism, como o original.
 const WIDTH: f32 = 176.0;
 const HEIGHT: f32 = 166.0;
 const SLOT: &str = "mekanism:gui/sprites/slot/normal";
 const PANEL: basis::PanelStyle = basis::PanelStyle {
     base: "mekanism:gui/sprites/base",
-    base_size: 16.0,
-    base_border: 4.0,
+    base_slice: rules::PANEL_SLICE,
     slot: SLOT,
 };
-const SLOT_SIZE: f32 = 18.0;
-const SLOT_POSITIONS: [[f32; 2]; SLOTS] = [[17.0, 35.0], [143.0, 35.0]];
-const FUEL_BAR: [f32; 4] = [6.0, 15.0, 6.0, 54.0];
+const BAR_STYLE: basis::BarStyle = basis::BarStyle {
+    frame: "mekanism:gui/sprites/bar/base",
+    frame_slice: rules::BAR_FRAME_SLICE,
+};
+const POWER_BAR_SPRITE: &str = "mekanism:gui/sprites/bar/vertical_power";
+/// `GaugeType.WIDE` com `GaugeInfo.STANDARD`: a moldura `gauge/normal` e o overlay `gauge/overlay/wide`.
+const GAUGE_STYLE: basis::GaugeStyle = basis::GaugeStyle {
+    frame: "mekanism:gui/sprites/gauge/normal",
+    frame_slice: rules::GAUGE_FRAME_SLICE,
+    overlay: "mekanism:gui/sprites/gauge/overlay/wide",
+};
+/// Os elementos do tamanho do `GuiElement`: o medidor largo é 64 por 48 mais a moldura, e a barra soma dois ao que o Java passa.
+const LAVA_GAUGE: [f32; 4] = [55.0, 18.0, 66.0, 50.0];
 const ENERGY_BAR: [f32; 4] = [164.0, 15.0, 6.0, 54.0];
-const INFO_PANEL: [f32; 4] = [48.0, 23.0, 80.0, 40.0];
-const INFO_LINE_HEIGHT: f32 = 9.0;
-const INFO_PADDING: f32 = 3.0;
-const ENERGY_SLOT_FRAME: &str = "mekanism:gui/sprites/slot/power";
-const INFO_BACKGROUND: u32 = 0xFF_00_00_00;
-const INFO_TEXT: u32 = 0x3C_FE_5A;
-const FUEL_COLOR: u32 = 0xFF_C8_8A_1E;
-const ENERGY_COLOR: u32 = 0xFF_1E_B4_32;
+/// `MekanismRenderer.color(lava)`: a lava não tem cor de fluido, e o sprite sai como é.
+const LAVA_TINT: u32 = 0xFF_FF_FF_FF;
+
+/// O sprite da moldura de um slot (`SlotType.texture`). Só os tipos que esta tela usa têm arquivo.
+fn slot_sprite(slot: SlotType) -> &'static str {
+    match slot {
+        SlotType::Power => "mekanism:gui/sprites/slot/power",
+        _ => SLOT,
+    }
+}
+
+/// O sprite que vai por cima da moldura (`SlotOverlay.texture`). Só o do slot de energia tem arquivo.
+fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
+    (overlay == SlotOverlay::Power).then_some("mekanism:gui/sprites/slot/overlay/power")
+}
 
 fn is_generator(block: &str) -> bool {
     block == rules::HEAT_GENERATOR
@@ -96,7 +113,7 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         *screen = Some(NativeScreen {
             width: WIDTH,
             height: HEIGHT,
-            slots: SLOT_POSITIONS.iter().map(|&[x, y]| Some([x + 1.0, y + 1.0])).collect(),
+            slots: rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect(),
             inventory_y: 84.0,
             inventory_x: 8.0,
             own_labels: true,
@@ -254,27 +271,51 @@ pub(in crate::game) fn screen_draw(
 
     let title = lang::get("container.mekanismgenerators.heat_generator");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
-    for (i, [slot_x, slot_y]) in SLOT_POSITIONS.into_iter().enumerate() {
-        let sprite = if i == FUEL_SLOT { SLOT } else { ENERGY_SLOT_FRAME };
-        let dst = [x + slot_x, y + slot_y, SLOT_SIZE, SLOT_SIZE];
-        game.native_sprite(batch, sprite, [0.0, 0.0, SLOT_SIZE, SLOT_SIZE], dst);
+    for (index, spec) in rules::SLOTS_SPEC.iter().enumerate() {
+        let frame = slot_type(None, index, spec.container).map(slot_sprite);
+        basis::slot(game, batch, origin, spec.item, frame, spec.overlay.and_then(overlay_sprite));
     }
-    let lava = get(DATA_LAVA);
-    let fuel = lava as f32 / rules::TANK_CAPACITY as f32;
-    basis::gauge(game, batch, at(FUEL_BAR), fuel, FUEL_COLOR);
+    // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
+    let lava = get(DATA_LAVA).max(0) as u64;
+    let scaled = gui::gauge_level(lava, rules::TANK_CAPACITY, LAVA_GAUGE[3] as i32);
+    let fill = (lava > 0).then_some((rules::LAVA_SPRITE, rules::LAVA_FRAME, LAVA_TINT));
+    basis::gauge(game, batch, &GAUGE_STYLE, at(LAVA_GAUGE), scaled, fill);
     let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let fill = energy as f32 / rules::ENERGY_CAPACITY as f32;
-    basis::gauge(game, batch, at(ENERGY_BAR), fill, ENERGY_COLOR);
-    game.native_fill(batch, at(INFO_PANEL), INFO_BACKGROUND);
-    let lines = [
-        format_energy(energy),
-        format!("Fuel: {lava} mB"),
-        format!("Out: {}/t", format_energy(get(DATA_PRODUCTION) as u32)),
-        format!("{} K", data_slots::join(get(DATA_TEMPERATURE), get(DATA_TEMPERATURE + 1))),
-    ];
-    let [panel_x, panel_y, _, _] = at(INFO_PANEL);
-    for (i, line) in lines.iter().enumerate() {
-        let line_y = panel_y + INFO_PADDING + i as f32 * INFO_LINE_HEIGHT;
-        game.native_text(batch, line, [panel_x + INFO_PADDING, line_y], INFO_TEXT, false);
+    let level = gui::divide_to_level(f64::from(energy), f64::from(rules::ENERGY_CAPACITY));
+    basis::vertical_bar(game, batch, &BAR_STYLE, at(ENERGY_BAR), level, None, &|game, batch, dst| {
+        basis::power_bar_contents(game, batch, POWER_BAR_SPRITE, rules::POWER_BAR_TILE, dst);
+    });
+}
+
+/// Os tooltips dos widgets da tela (`GuiElement.renderToolTip`): a barra de energia (`GuiVerticalPowerBar`) e o medidor de lava
+/// (`GuiFluidGauge`). Um tooltip de widget fica por cima ou por baixo dele, não sobre o cursor como o de `native_screen_tooltip`, então
+/// sai daqui, pela injeção em `draw_native_screen_tooltip`. Devolve se desenhou. `at` é o cursor relativo ao canto da tela, e `cursor`
+/// o mesmo em pixels de GUI da janela.
+pub(in crate::game) fn widget_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    block: &str,
+    data: &[i32],
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    if !is_generator(block) {
+        return false;
     }
+    let get = |i: usize| data.get(i).copied().unwrap_or(0);
+    let translate = |key: &str| lang::get(key);
+    let (widget, text) = if gui::contains(ENERGY_BAR, at) {
+        let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
+        let capacity = rules::ENERGY_CAPACITY as u64;
+        (ENERGY_BAR, rules::energy_tooltip(u64::from(energy), capacity, &translate))
+    } else if gui::contains(LAVA_GAUGE, at) {
+        (LAVA_GAUGE, rules::lava_tooltip(get(DATA_LAVA).max(0) as u64, &translate))
+    } else {
+        return false;
+    };
+    // O retângulo do widget na janela: o canto da tela é o cursor menos a posição relativa dele.
+    let [x, y, w, h] = widget;
+    let rect = [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h];
+    basis::menu_tooltip(game, batch, &[(text, None)], cursor, rect);
+    true
 }
