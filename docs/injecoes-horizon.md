@@ -38,7 +38,8 @@ As provadas em spike não contam `native_energy_at`, que já está em uso. As pr
 ### Hook proposto contra injeções que ele elimina
 
 Todos os nomes são propostas: nenhum existe no pin. "v2" é uma nova versão de um hook do catálogo, porque o contrato antigo nunca
-muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos).
+muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H24 em
+[Correções pedidas ao renderer do Horizon](#correções-pedidas-ao-renderer-do-horizon).
 
 | Proposta | Tipo | Elimina | Estado |
 |---|---|---|---|
@@ -63,6 +64,9 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H19 `looping_sound` | helpers | módulo de som | prevista |
 | H20 `menu_slot_rules` v2 | hook | alvo ainda sem nome | prevista |
 | H21 `screen_slot_highlight` | hook | `slot_highlight` (mekanism) | em uso (1) |
+| H22 escurecimento do mundo atrás de telas | correção | nenhuma (diferença de pixel) | pedido |
+| H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
+| H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -695,6 +699,34 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Nota:** o original desenha a frente do realce com o sprite de trás (`VirtualSlotContainerScreen.java:70-75`). O hook deixa
   cada mod escolher o desenho de cada camada, e hoje a injeção crua `slot_highlight` faz esse papel. Não é um pedido de correção
   do Horizon: o padrão do Horizon, sem mod, está certo para o vanilla.
+
+## Correções pedidas ao renderer do Horizon
+
+Estas não são injeções. São diferenças de pixel que vêm do próprio renderer do Horizon, então afetam o jogo inteiro, não só o
+Mekanism. Por decisão do usuário, não são corrigidas por injeção: entram na issue do Horizon.
+
+Os valores são em `guiScale` 2, medidos com `dev/referencia/comparar_tela.py`. Em escala 3 os números são outros, e aparecem
+entre parênteses.
+
+### H22 escurecimento do mundo atrás de telas (correção, sem hook)
+
+- **O que acontece:** os cantos transparentes do painel dão 72 px de diferença por estado (162 em escala 3). O mundo sai 2 a 3
+  níveis mais escuro: 10 no Horizon, contra 13 no original, depois do escurecimento.
+- **Mesma causa:** o tooltip de barra dá 12 px, e o rótulo "Inventory" sob um tooltip dá 4 px.
+- **Pedido:** que o renderer escureça o mundo atrás de telas como o original, sem o vazamento pelos cantos transparentes do painel.
+
+### H23 caixa do tooltip de item (correção, sem hook)
+
+- **O que acontece:** o Horizon desenha a caixa antiga, com cantos quadrados. A diferença é de 42 px (123 em escala 3).
+- **Original:** usa os sprites `tooltip/background` e `tooltip/frame`, em nove partes.
+- **Pedido:** desenhar a caixa do tooltip de item com esses sprites, em nove partes, como o original.
+
+### H24 ícone de item de bloco (correção, sem hook)
+
+- **O que acontece:** o lado esquerdo sombreado do ícone difere em 224 px.
+- **Efeito na medição:** a cena de comparação usa itens planos para desviar disso. Por isso, o "0 pixels" em slot com item
+  vale só para item plano.
+- **Pedido:** que o renderer desenhe o ícone de item de bloco com o sombreado do original.
 
 ## Como manter o documento
 
