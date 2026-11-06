@@ -55,6 +55,32 @@ import mekanism.common.tile.machine.TileEntityMetallurgicInfuser;
 import mekanism.common.tile.prefab.TileEntityElectricMachine;
 import mekanism.common.tile.prefab.TileEntityProgressMachine;
 import mekanism.common.tile.prefab.TileEntityRecipeMachine;
+import mekanism.api.chemical.ChemicalStack;
+import mekanism.api.recipes.ItemStackChemicalToItemStackRecipe;
+import mekanism.api.recipes.ItemStackToItemStackRecipe;
+import mekanism.api.recipes.MekanismRecipe;
+import mekanism.api.recipes.basic.BasicEnrichingRecipe;
+import mekanism.api.recipes.basic.BasicMetallurgicInfuserRecipe;
+import mekanism.api.recipes.book.EnrichingBookCategory;
+import mekanism.api.recipes.book.EnrichingBookCategory.EnrichingBookInfo;
+import mekanism.api.recipes.book.MetallurgicInfusingBookCategory;
+import mekanism.api.recipes.book.MetallurgicInfusingBookCategory.MetallurgicInfusingBookInfo;
+import mekanism.api.recipes.ingredients.ChemicalStackIngredient;
+import mekanism.api.recipes.ingredients.ItemStackIngredient;
+import mekanism.api.recipes.ingredients.creator.IngredientCreatorAccess;
+import mekanism.common.recipe.MekanismRecipeType;
+import mekanism.common.recipe.lookup.cache.InputRecipeCache;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStackTemplate;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.neoforged.neoforge.common.crafting.CompoundIngredient;
+import net.neoforged.neoforge.common.crafting.DataComponentIngredient;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -1338,6 +1364,292 @@ public class MachineTraceTest {
     public static void infuserContainerTracking(final DynamicTest test) {
         template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
         containerTracking(test, "infuser_container_tracking", MekanismContainerTypes.METALLURGIC_INFUSER);
+    }
+
+    /// Grava o que os caches de receitas respondem (`InputRecipeCache`), para o teste em Rust comparar. Cada linha é um cenário:
+    /// as receitas na ordem da lista e as perguntas com a resposta. O cache é montado com `initCache` sobre a lista, como o
+    /// `initCacheIfNeeded` faz com `recipeType.getRecipes`.
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records which recipe the input caches find, where the list order and the per item map disagree.")
+    public static void recipeCacheOrder(final DynamicTest test) {
+        template(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> RecipeCacheTrace.run(helper))
+              .thenSucceed()
+        );
+    }
+
+    private static class RecipeCacheTrace {
+
+        private static final String SINGLE = "single";
+        private static final String DOUBLE = "double";
+
+        /// Um ingrediente de item: `simple` (vanilla), `exact` (componentes exatos), `partial` (componentes parciais, complexo) ou `compound`.
+        private record Spec(String kind, List<String> items, Integer repairCost, List<Spec> children) {
+
+            static Spec simple(String... items) {
+                return new Spec("simple", List.of(items), null, List.of());
+            }
+
+            static Spec exact(String item, Integer repairCost) {
+                return new Spec("exact", List.of(item), repairCost, List.of());
+            }
+
+            static Spec partial(String item, int repairCost) {
+                return new Spec("partial", List.of(item), repairCost, List.of());
+            }
+
+            static Spec compound(Spec... children) {
+                return new Spec("compound", List.of(), null, List.of(children));
+            }
+
+            Item item(String name) {
+                return BuiltInRegistries.ITEM.getValue(Identifier.withDefaultNamespace(name));
+            }
+
+            Ingredient ingredient() {
+                return switch (kind) {
+                    case "simple" -> Ingredient.of(items.stream().map(this::item).toArray(Item[]::new));
+                    case "exact" -> {
+                        ItemStack stack = new ItemStack(item(items.get(0)));
+                        if (repairCost != null) {
+                            stack.set(DataComponents.REPAIR_COST, repairCost);
+                        }
+                        yield DataComponentIngredient.of(true, stack);
+                    }
+                    case "partial" -> DataComponentIngredient.of(false, DataComponentPatch.builder().set(DataComponents.REPAIR_COST, repairCost).build(),
+                          items.stream().map(this::item).toArray(Item[]::new));
+                    default -> CompoundIngredient.of(children.stream().map(Spec::ingredient).toArray(Ingredient[]::new));
+                };
+            }
+
+            String json() {
+                StringBuilder out = new StringBuilder("{\"kind\":\"").append(kind).append("\",\"items\":[");
+                for (int i = 0; i < items.size(); i++) {
+                    out.append(i == 0 ? "" : ",").append('"').append(items.get(i)).append('"');
+                }
+                out.append("],\"rc\":").append(repairCost == null ? "null" : repairCost).append(",\"children\":[");
+                for (int i = 0; i < children.size(); i++) {
+                    out.append(i == 0 ? "" : ",").append(children.get(i).json());
+                }
+                return out.append("]}").toString();
+            }
+        }
+
+        /// Uma entrada: item (`""` é vazio), componente `repair_cost` e quantidade; ou o químico.
+        private record Stack(String id, Integer repairCost, int amount) {
+
+            ItemStack item() {
+                if (id.isEmpty()) {
+                    return ItemStack.EMPTY;
+                }
+                ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.getValue(Identifier.withDefaultNamespace(id)), amount);
+                if (repairCost != null) {
+                    stack.set(DataComponents.REPAIR_COST, repairCost);
+                }
+                return stack;
+            }
+
+            String json() {
+                return "{\"id\":\"" + id + "\",\"rc\":" + (repairCost == null ? "null" : repairCost) + ",\"amount\":" + amount + "}";
+            }
+        }
+
+        private static Stack item(String id, Integer repairCost, int amount) {
+            return new Stack(id, repairCost, amount);
+        }
+
+        private static Stack chemical(String id, int amount) {
+            return new Stack(id, null, amount);
+        }
+
+        private static final Stack NONE = new Stack("", null, 0);
+
+        private static String quote(String text) {
+            return text == null ? "null" : "\"" + text + "\"";
+        }
+
+        private record SingleRecipe(String id, Spec input, int count) {
+        }
+
+        private record DoubleRecipe(String id, Spec item, int count, String chemical, int amount) {
+        }
+
+        private static final List<String> lines = new ArrayList<>();
+
+        static void run(MekGameTestHelper helper) {
+            lines.clear();
+            registry = helper.getLevel().registryAccess();
+            single("complex_before_simple", List.of(
+                        new SingleRecipe("c0", Spec.partial("coal", 5), 1),
+                        new SingleRecipe("s1", Spec.simple("coal"), 1)),
+                  List.of(item("coal", 5, 1), item("coal", null, 1), item("coal", 6, 1), item("diamond", null, 1), NONE));
+            single("exact_before_simple", List.of(
+                        new SingleRecipe("s0", Spec.simple("sand"), 3),
+                        new SingleRecipe("e1", Spec.exact("sand", 5), 1),
+                        new SingleRecipe("s2", Spec.simple("sand"), 1)),
+                  List.of(item("sand", 5, 5), item("sand", 5, 1), item("sand", null, 5), item("sand", null, 1), item("sand", 6, 5), item("sand", 6, 1)));
+            single("exact_plain_components", List.of(
+                        new SingleRecipe("s0", Spec.simple("sand"), 1),
+                        new SingleRecipe("e1", Spec.exact("sand", null), 1)),
+                  List.of(item("sand", null, 1), item("sand", 5, 1)));
+            single("complex_only", List.of(new SingleRecipe("p0", Spec.partial("diamond", 5), 1)),
+                  List.of(item("diamond", 5, 1), item("diamond", null, 1), item("coal", null, 1)));
+            single("compound_complex_before_simple", List.of(
+                        new SingleRecipe("m0", Spec.compound(Spec.partial("diamond", 5), Spec.simple("charcoal")), 1),
+                        new SingleRecipe("s1", Spec.simple("diamond"), 1)),
+                  List.of(item("diamond", 5, 1), item("diamond", null, 1), item("charcoal", null, 1), item("charcoal", 5, 1)));
+            single("several_items_and_counts", List.of(
+                        new SingleRecipe("r0", Spec.simple("coal", "charcoal"), 2),
+                        new SingleRecipe("r1", Spec.simple("coal"), 1)),
+                  List.of(item("charcoal", null, 1), item("charcoal", null, 2), item("coal", null, 1), item("coal", null, 2)));
+            Spec rc5 = Spec.partial("coal", 5);
+            Spec coal = Spec.simple("coal");
+            Spec sand = Spec.simple("sand");
+            doubles("complex_item_before_simple", List.of(
+                        new DoubleRecipe("d0", rc5, 1, "redstone", 10),
+                        new DoubleRecipe("d1", coal, 1, "redstone", 10)),
+                  List.of(item("coal", 5, 1), item("coal", null, 1), item("coal", 6, 1)),
+                  List.of(chemical("redstone", 10), chemical("redstone", 9), chemical("carbon", 10), NONE));
+            doubles("simple_pairs", List.of(
+                        new DoubleRecipe("d0", coal, 1, "redstone", 10),
+                        new DoubleRecipe("d1", sand, 1, "carbon", 10)),
+                  List.of(item("coal", null, 1), item("sand", null, 1), item("diamond", null, 1), NONE),
+                  List.of(chemical("redstone", 10), chemical("carbon", 10), chemical("diamond", 10), NONE));
+            doubles("complex_item_pairs", List.of(new DoubleRecipe("d0", rc5, 1, "redstone", 10)),
+                  List.of(item("coal", 5, 1), item("coal", null, 1), NONE),
+                  List.of(chemical("redstone", 10), chemical("carbon", 10), NONE));
+            doubles("exact_item_first", List.of(
+                        new DoubleRecipe("d0", sand, 3, "redstone", 10),
+                        new DoubleRecipe("d1", Spec.exact("sand", 5), 1, "redstone", 10),
+                        new DoubleRecipe("d2", sand, 1, "redstone", 10)),
+                  List.of(item("sand", 5, 5), item("sand", null, 1), item("sand", 6, 5)),
+                  List.of(chemical("redstone", 10), chemical("redstone", 20)));
+            try {
+                Path file = Path.of("trace", "recipe_cache.jsonl");
+                Files.createDirectories(file.getParent());
+                Files.write(file, lines);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private static Recipe.CommonInfo common() {
+            return new Recipe.CommonInfo(true);
+        }
+
+        private static String join(List<String> parts) {
+            return "[" + String.join(",", parts) + "]";
+        }
+
+        private static void single(String name, List<SingleRecipe> recipes, List<Stack> stacks) {
+            List<RecipeHolder<ItemStackToItemStackRecipe<EnrichingBookCategory, EnrichingBookInfo>>> holders = new ArrayList<>();
+            List<String> recipeJson = new ArrayList<>();
+            for (SingleRecipe recipe : recipes) {
+                ItemStackIngredient ingredient = IngredientCreatorAccess.item().from(recipe.input.ingredient(), recipe.count);
+                holders.add(new RecipeHolder<>(ResourceKey.create(Registries.RECIPE, Identifier.fromNamespaceAndPath("trace", recipe.id)),
+                      new BasicEnrichingRecipe(common(), new EnrichingBookInfo(EnrichingBookCategory.MISC, ""), ingredient, 0F, new ItemStackTemplate(Items.STONE))));
+                recipeJson.add("{\"id\":\"" + recipe.id + "\",\"input\":" + recipe.input.json() + ",\"count\":" + recipe.count + "}");
+            }
+            InputRecipeCache.SingleItem<ItemStackToItemStackRecipe<EnrichingBookCategory, EnrichingBookInfo>> cache = new InputRecipeCache.SingleItem<>(
+                  MekanismRecipeType.ENRICHING.get(), ItemStackToItemStackRecipe::getInput) {
+                {
+                    initCache(holders);
+                    initialized = true;
+                }
+            };
+            List<String> queries = new ArrayList<>();
+            for (Stack stack : stacks) {
+                ItemStack itemStack = stack.item();
+                ItemResource resource = ItemResource.of(itemStack);
+                String head = "{\"stack\":" + stack.json();
+                queries.add(head + ",\"op\":\"find_first\",\"result\":" + quote(idOf(holders, cache.findFirstRecipe(null, itemStack))) + "}");
+                if (!itemStack.isEmpty()) {
+                    queries.add(head + ",\"op\":\"contains\",\"result\":" + cache.containsInput(null, resource) + "}");
+                    queries.add(head + ",\"op\":\"type_based\",\"result\":" + quote(idOf(holders, cache.findTypeBasedRecipeHolder(null, resource))) + "}");
+                    // O `ItemStack` também é `TypedInstance`: os componentes dele comparam como `PatchedDataComponentMap`, os do `ItemResource` sem patch não.
+                    queries.add(head + ",\"op\":\"contains_stack\",\"result\":" + cache.containsInput(null, itemStack) + "}");
+                    queries.add(head + ",\"op\":\"type_based_stack\",\"result\":" + quote(idOf(holders, cache.findTypeBasedRecipeHolder(null, itemStack))) + "}");
+                }
+            }
+            lines.add("{\"case\":\"" + name + "\",\"kind\":\"" + SINGLE + "\",\"recipes\":" + join(recipeJson) + ",\"queries\":" + join(queries) + "}");
+        }
+
+        private static <R extends MekanismRecipe<?, ?, ?>> String idOf(List<RecipeHolder<R>> holders, RecipeHolder<R> found) {
+            if (found == null) {
+                return null;
+            }
+            for (int i = 0; i < holders.size(); i++) {
+                if (holders.get(i) == found) {
+                    return holders.get(i).id().identifier().getPath();
+                }
+            }
+            throw new IllegalStateException("a receita achada não está na lista");
+        }
+
+        private static void doubles(String name, List<DoubleRecipe> recipes, List<Stack> items, List<Stack> chemicals) {
+            List<RecipeHolder<ItemStackChemicalToItemStackRecipe<MetallurgicInfusingBookCategory, MetallurgicInfusingBookInfo>>> holders = new ArrayList<>();
+            List<String> recipeJson = new ArrayList<>();
+            for (DoubleRecipe recipe : recipes) {
+                ItemStackIngredient item = IngredientCreatorAccess.item().from(recipe.item.ingredient(), recipe.count);
+                ChemicalStackIngredient chemical = IngredientCreatorAccess.chemicalStack().fromHolder(chemicalHolder(recipe.chemical), recipe.amount);
+                holders.add(new RecipeHolder<>(ResourceKey.create(Registries.RECIPE, Identifier.fromNamespaceAndPath("trace", recipe.id)),
+                      new BasicMetallurgicInfuserRecipe(common(), new MetallurgicInfusingBookInfo(MetallurgicInfusingBookCategory.MISC, ""), item, chemical, false, 0F,
+                            new ItemStackTemplate(Items.STONE))));
+                recipeJson.add("{\"id\":\"" + recipe.id + "\",\"item\":" + recipe.item.json() + ",\"count\":" + recipe.count + ",\"chemical\":\"" + recipe.chemical
+                      + "\",\"amount\":" + recipe.amount + "}");
+            }
+            InputRecipeCache.ItemChemical<ItemStackChemicalToItemStackRecipe<MetallurgicInfusingBookCategory, MetallurgicInfusingBookInfo>> cache = new InputRecipeCache.ItemChemical<>(
+                  MekanismRecipeType.METALLURGIC_INFUSING.get(), ItemStackChemicalToItemStackRecipe::getItemInput, ItemStackChemicalToItemStackRecipe::getChemicalInput) {
+                {
+                    initCache(holders);
+                    initialized = true;
+                }
+            };
+            List<String> queries = new ArrayList<>();
+            for (Stack item : items) {
+                ItemStack itemStack = item.item();
+                ItemResource itemResource = ItemResource.of(itemStack);
+                if (!itemStack.isEmpty()) {
+                    queries.add("{\"op\":\"contains_a\",\"a\":" + item.json() + ",\"result\":" + cache.containsInputA(null, itemResource) + "}");
+                    queries.add("{\"op\":\"contains_a_stack\",\"a\":" + item.json() + ",\"result\":" + cache.containsInputA(null, itemStack) + "}");
+                }
+                for (Stack chemical : chemicals) {
+                    ChemicalStack chemicalStack = chemical.id.isEmpty() ? ChemicalStack.EMPTY : new ChemicalStack(chemicalHolder(chemical.id), chemical.amount);
+                    ChemicalResource chemicalResource = chemicalStack.isEmpty() ? ChemicalResource.EMPTY : ChemicalResource.of(chemicalStack.typeHolder());
+                    String head = "{\"a\":" + item.json() + ",\"b\":" + chemical.json();
+                    queries.add(head + ",\"op\":\"contains_ab\",\"result\":" + cache.containsInputAB(null, itemResource, chemicalResource) + "}");
+                    queries.add(head + ",\"op\":\"contains_ba\",\"result\":" + cache.containsInputBA(null, itemResource, chemicalResource) + "}");
+                    queries.add(head + ",\"op\":\"contains_ab_stack\",\"result\":" + cache.containsInputAB(null, itemStack, chemicalStack) + "}");
+                    queries.add(head + ",\"op\":\"contains_ba_stack\",\"result\":" + cache.containsInputBA(null, itemStack, chemicalStack) + "}");
+                    queries.add(head + ",\"op\":\"type_based_stack\",\"result\":" + quote(idOf(holders, cache.findTypeBasedRecipeHolder(null, itemStack, chemicalStack, 0,
+                          (recipe, a, b, data) -> true))) + "}");
+                    queries.add(head + ",\"op\":\"find_first\",\"result\":" + quote(idOf(holders, cache.findFirstRecipe(null, itemStack, chemicalStack))) + "}");
+                    queries.add(head + ",\"op\":\"find_first_b\",\"result\":" + quote(idOf(holders, cache.findFirstRecipe(null, itemStack, chemicalStack, false))) + "}");
+                    queries.add(head + ",\"op\":\"type_based\",\"result\":" + quote(idOf(holders, cache.findTypeBasedRecipeHolder(null, itemResource, chemicalResource, 0,
+                          (recipe, a, b, data) -> true))) + "}");
+                }
+            }
+            for (Stack chemical : chemicals) {
+                if (!chemical.id.isEmpty()) {
+                    ChemicalResource chemicalResource = ChemicalResource.of(chemicalHolder(chemical.id));
+                    queries.add("{\"op\":\"contains_b\",\"b\":" + chemical.json() + ",\"result\":" + cache.containsInputB(null, chemicalResource) + "}");
+                }
+            }
+            lines.add("{\"case\":\"" + name + "\",\"kind\":\"" + DOUBLE + "\",\"recipes\":" + join(recipeJson) + ",\"queries\":" + join(queries) + "}");
+        }
+
+        private static RegistryAccess registry;
+
+        private static Holder<Chemical> chemicalHolder(String path) {
+            ResourceKey<Chemical> key = switch (path) {
+                case "redstone" -> ChemicalIds.REDSTONE;
+                case "carbon" -> ChemicalIds.CARBON;
+                case "diamond" -> ChemicalIds.DIAMOND;
+                default -> throw new IllegalArgumentException(path);
+            };
+            return registry.getOrThrow(key);
+        }
     }
 
     private static class Trace {

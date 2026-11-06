@@ -12,6 +12,7 @@ pub mod item_handler;
 pub mod network;
 pub mod operation_tracker;
 pub mod recipe;
+pub mod recipe_cache;
 pub mod recipe_handlers;
 pub mod recipe_monitor;
 pub mod resource;

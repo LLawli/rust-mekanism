@@ -141,8 +141,12 @@ Falta na Fase 1:
 - `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda, e os handlers de fluido. As 19 receitas do Infuser têm
   `per_tick_usage: false`: quem precisa disso são as máquinas que usam químico por tick, e receita assim fica de fora com um aviso no log.
 - `fillTankFromSlot`, de item com capability de químico, e `ChemicalAttributeValidator`: nada portado usa ainda.
-- Regras de inserção dos slots (`containsRecipe`, `containsRecipeAB`) na lib, em vez de no glue, e limites de taxa.
-- `findFirstRecipe` segue a ordem da lista de receitas, não o mapa por item do Java.
+- Ligar o índice de receitas. A lib tem `recipe_cache`, porte de `InputRecipeCache` (`Single` e `Double`, com `containsInput*`,
+  `findFirstRecipe` e `findTypeBasedRecipe`), conferido contra o Java em `dev/referencia/rastros/recipe_cache.jsonl`, mas
+  `ElectricLookup`, `ChemicalLookup` e `ItemChemicalRecipes` ainda procuram na ordem da lista (e `ElectricLookup` olha só o tipo,
+  sem a quantidade que `findFirstRecipe` confere), e as regras de inserção dos slots seguem no glue. Falta o glue entregar a
+  `IngredientShape` de cada ingrediente (o `Ingredient` do Horizon só tem `test`), a receita guardar o `ShapedIngredient`, e o
+  `clear()` na recarga de dados. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa.
 - Upgrades: faltam a aba da tela, o tooltip do item, os efeitos de `muffling` e `xp_containment`, a receita do `muffling` e os tipos que
   nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
   `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.

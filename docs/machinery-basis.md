@@ -170,6 +170,7 @@ de energia só marcam para salvar, a saída despausa).
 | `chemical::fill_tank_or_convert` | `ChemicalInventorySlot.fillTankOrConvert` |
 | `recipe_handlers` | `InputResourceHandler` e o `OutputHelper` de slot |
 | `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |
+| `recipe_cache` | `InputRecipeCache` (`SingleInputRecipeCache`, `DoubleInputRecipeCache`) e os `IInputCache` por tipo, componentes e químico |
 
 A lib não conhece id nenhum: o ingrediente de item e o de químico são predicados, e as conversões e as receitas chegam como
 dados. O tanque do Infuser só aceita um químico que alguma receita usa (`containsRecipeB`) e, com item na entrada, que combine
