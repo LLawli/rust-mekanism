@@ -4,6 +4,8 @@ use crate::containers::{
     AutomationType, EnergyContainer, InventorySlot, ItemResource, SlotContents,
 };
 use crate::operation_tracker::{OperationTracker, RecipeError, RecipeErrors};
+use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler, RecipeStack};
+use crate::recipe_monitor::RecipeId;
 use crate::transaction::Transaction;
 use std::fmt;
 use std::rc::Rc;
@@ -339,40 +341,28 @@ impl ItemToItemRecipe {
     }
 }
 
+impl RecipeId for ItemToItemRecipe {
+    fn recipe_id(&self) -> &str {
+        &self.id
+    }
+}
+
 /// `OneInputCachedRecipe` com o `ItemInputHandler` e o handler de saída de slot.
 pub struct OneInputItemRecipe {
     recipe: Rc<ItemToItemRecipe>,
-    input: InventorySlot,
-    output: InventorySlot,
+    input: ItemInputHandler,
+    output: ItemOutputHandler,
+    /// O que `calculateOperationsThisTick` guardou para o `finishProcessing`.
+    recipe_input: Option<RecipeStack<ItemResource>>,
 }
 
 impl OneInputItemRecipe {
     pub fn new(recipe: Rc<ItemToItemRecipe>, input: InventorySlot, output: InventorySlot) -> Self {
         Self {
             recipe,
-            input,
-            output,
-        }
-    }
-
-    /// `OutputHelper.calculateOperationsCanSupport`.
-    fn output_operations(&self, tracker: &mut OperationTracker, transaction: &Transaction) {
-        let output = &self.recipe.output;
-        let simulation = Transaction::open(Some(transaction));
-        let amount_used = self.output.insert(
-            &output.resource,
-            output.resource.max_stack_size,
-            &simulation,
-            AutomationType::Internal,
-        );
-        let operations = (amount_used / output.count) as i32;
-        tracker.update_operations(operations);
-        if operations == 0 {
-            if amount_used == 0 && !self.output.is_full() {
-                tracker.add_error(RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT);
-            } else {
-                tracker.add_error(RecipeError::NOT_ENOUGH_OUTPUT_SPACE);
-            }
+            input: ItemInputHandler::new(input, RecipeError::NOT_ENOUGH_INPUT),
+            output: ItemOutputHandler::new(output, RecipeError::NOT_ENOUGH_OUTPUT_SPACE),
+            recipe_input: None,
         }
     }
 }
@@ -386,59 +376,31 @@ impl RecipeLogic for OneInputItemRecipe {
         if !tracker.should_continue_checking() {
             return;
         }
-        let contents = self.input.contents();
-        let Some(resource) = contents
-            .resource
-            .clone()
-            .filter(|_| self.recipe.test(&contents))
+        let Some(input) = self
+            .input
+            .recipe_input(&self.recipe.input, self.recipe.input_count)
         else {
             tracker.mismatched_recipe();
             return;
         };
-        let available = {
-            let simulation = Transaction::open(Some(transaction));
-            self.input.extract(
-                &resource,
-                contents.amount,
-                &simulation,
-                AutomationType::Internal,
-            )
-        };
-        let operations = (available / self.recipe.input_count) as i32;
-        if operations > 0 {
-            tracker.update_operations(operations);
-        } else {
-            tracker.reset_progress(RecipeError::NOT_ENOUGH_INPUT);
-        }
+        self.input
+            .calculate_operations_can_support(tracker, transaction, &input, false, 1);
+        self.recipe_input = Some(input);
         if tracker.should_continue_checking() {
-            self.output_operations(tracker, transaction);
+            self.output
+                .calculate_operations_can_support(tracker, transaction, &self.recipe.output);
         }
     }
 
     fn is_input_valid(&self) -> bool {
-        self.recipe.test(&self.input.contents())
+        self.recipe.test(&self.input.input())
     }
 
     fn finish_processing(&mut self, operations: i32, transaction: &Transaction) -> bool {
-        let operations = operations as u32;
-        let Some(resource) = self.input.resource() else {
-            return false;
-        };
-        let amount = self.recipe.input_count * operations;
-        if self
-            .input
-            .extract(&resource, amount, transaction, AutomationType::Internal)
-            != amount
-        {
-            return false;
-        }
-        let output = &self.recipe.output;
-        let amount = output.count * operations;
-        self.output.insert(
-            &output.resource,
-            amount,
-            transaction,
-            AutomationType::Internal,
-        ) == amount
+        self.input
+            .use_input(self.recipe_input.as_ref(), operations, transaction)
+            && self
+                .output
+                .handle_output(&self.recipe.output, operations, transaction)
     }
 }

@@ -240,7 +240,7 @@ impl SlotContents {
         Self { resource, amount }
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.resource.is_none()
     }
 }

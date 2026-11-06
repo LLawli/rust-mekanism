@@ -1,7 +1,7 @@
 //! Porte de `RecipeCacheLookupMonitor` e `getUpdatedCache`. O monitor é também o `IContentsListener` dos slots, e por isso
 //! o que os listeners tocam fica em [`MonitorFlags`], compartilhado: um aviso no commit da raiz nunca pede emprestado o
 //! monitor que está processando.
-use crate::cached_recipe::{CachedRecipe, ItemToItemRecipe};
+use crate::cached_recipe::CachedRecipe;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -38,12 +38,17 @@ impl MonitorFlags {
     }
 }
 
-/// Quem acha e cria as receitas do monitor: o `IRecipeLookupHandler` do tile.
-pub trait RecipeLookupHandler {
+/// O que o monitor precisa saber de uma receita: o id que ele conta em `recipesUsed`. O resto é do tile.
+pub trait RecipeId {
+    fn recipe_id(&self) -> &str;
+}
+
+/// Quem acha e cria as receitas do monitor: o `IRecipeLookupHandler` do tile, para as receitas `R` dele.
+pub trait RecipeLookupHandler<R> {
     /// `getRecipe`: ignora o que está em cache.
-    fn get_recipe(&self) -> Option<Rc<ItemToItemRecipe>>;
+    fn get_recipe(&self) -> Option<Rc<R>>;
     /// `createNewCachedRecipe`.
-    fn create_new_cached_recipe(&self, recipe: Rc<ItemToItemRecipe>) -> CachedRecipe;
+    fn create_new_cached_recipe(&self, recipe: Rc<R>) -> CachedRecipe;
     fn saved_operating_ticks(&self) -> i32 {
         0
     }
@@ -97,17 +102,17 @@ impl UsedRecipes {
     }
 }
 
-pub struct RecipeCacheLookupMonitor {
-    handler: Rc<dyn RecipeLookupHandler>,
+pub struct RecipeCacheLookupMonitor<R> {
+    handler: Rc<dyn RecipeLookupHandler<R>>,
     flags: Rc<MonitorFlags>,
     used: Rc<RefCell<UsedRecipes>>,
     has_item_output: bool,
     cached_recipe: Option<CachedRecipe>,
 }
 
-impl RecipeCacheLookupMonitor {
+impl<R: RecipeId + 'static> RecipeCacheLookupMonitor<R> {
     pub fn new(
-        handler: Rc<dyn RecipeLookupHandler>,
+        handler: Rc<dyn RecipeLookupHandler<R>>,
         flags: Rc<MonitorFlags>,
         has_item_output: bool,
     ) -> Self {
@@ -184,7 +189,7 @@ impl RecipeCacheLookupMonitor {
             self.flags.has_no_recipe.set(true);
             return changed;
         };
-        let id = recipe.id.clone();
+        let id = recipe.recipe_id().to_owned();
         let handler = self.handler.clone();
         let used = self.used.clone();
         let flags = self.flags.clone();

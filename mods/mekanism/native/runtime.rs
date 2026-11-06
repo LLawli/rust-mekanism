@@ -1,11 +1,15 @@
 // Regras das máquinas, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o módulo
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
 use machinery_basis_core::cached_recipe::ItemToItemRecipe;
+use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::containers::InventorySlot;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
-use machinery_basis_core::tile::{ElectricMachine, ElectricMachineConfig, UpgradeRules};
+use machinery_basis_core::tile::{
+    ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, UpgradeRules,
+};
+use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use std::rc::Rc;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
@@ -63,14 +67,22 @@ pub const ELECTRIC_TRACKED_ERRORS: [RecipeError; 4] = [
     RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
 ];
 
-/// Uma máquina elétrica como a lib a recebe: valores do mod, receitas de quem as leu do jogo. O teste dos rastros usa esta
-/// mesma configuração.
-pub fn electric_config(
+/// `TileEntityMetallurgicInfuser.TRACKED_ERROR_TYPES`, na ordem da tela.
+pub const INFUSER_TRACKED_ERRORS: [RecipeError; 5] = [
+    RecipeError::NOT_ENOUGH_ENERGY,
+    RecipeError::NOT_ENOUGH_INPUT,
+    RecipeError::NOT_ENOUGH_SECONDARY_INPUT,
+    RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
+    RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
+];
+
+/// O que as máquinas de progresso do Mekanism partilham: os valores de `UsageConfig`, `GeneralConfig` e `UpgradeUtils`.
+fn machine_config(
     energy_per_tick: i32,
-    recipes: Vec<Rc<ItemToItemRecipe>>,
+    tracked_errors: &[RecipeError],
     check_offset: u64,
-) -> ElectricMachineConfig {
-    ElectricMachineConfig {
+) -> MachineConfig {
+    MachineConfig {
         energy_per_tick,
         base_ticks_required: TICKS_REQUIRED as i32,
         deactivation_delay: BLOCK_DEACTIVATION_DELAY,
@@ -79,16 +91,44 @@ pub fn electric_config(
             max_speed: MAX_UPGRADES,
             max_energy: MAX_UPGRADES,
         },
-        recipes,
-        tracked_errors: ELECTRIC_TRACKED_ERRORS.to_vec(),
+        tracked_errors: tracked_errors.to_vec(),
         check_offset,
     }
 }
 
-/// O `MEKTRACE` de um tick: os campos dos rastros de `dev/referencia/rastros`, na mesma ordem.
+/// Uma máquina elétrica como a lib a recebe: valores do mod, receitas de quem as leu do jogo. O teste dos rastros usa esta
+/// mesma configuração.
+pub fn electric_config(
+    energy_per_tick: i32,
+    recipes: Vec<Rc<ItemToItemRecipe>>,
+    check_offset: u64,
+) -> ElectricMachineConfig {
+    ElectricMachineConfig {
+        machine: machine_config(energy_per_tick, &ELECTRIC_TRACKED_ERRORS, check_offset),
+        recipes,
+    }
+}
+
+/// O Metallurgic Infuser como a lib o recebe, também usado pelo teste dos rastros.
+pub fn infuser_config(
+    energy_per_tick: i32,
+    recipes: Vec<Rc<ItemChemicalToItemRecipe>>,
+    conversions: Vec<ChemicalConversion>,
+    check_offset: u64,
+) -> ChemicalMachineConfig {
+    ChemicalMachineConfig {
+        machine: machine_config(energy_per_tick, &INFUSER_TRACKED_ERRORS, check_offset),
+        recipes,
+        conversions,
+        tank_capacity: TANK_CAPACITY,
+    }
+}
+
+/// O `MEKTRACE` de um tick: os campos dos rastros de `dev/referencia/rastros`, na mesma ordem. O Metallurgic Infuser acrescenta
+/// `tank` e `infusion` depois dos erros.
 pub fn trace_line(
     now: i64,
-    machine: &ElectricMachine,
+    machine: &ProgressMachine,
     chest: Option<&[(usize, String, u32)]>,
 ) -> String {
     let path = |id: &str| {
@@ -106,6 +146,7 @@ pub fn trace_line(
         (RecipeError::NOT_ENOUGH_INPUT, "input"),
         (RecipeError::NOT_ENOUGH_OUTPUT_SPACE, "output_space"),
         (RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT, "wrong_output"),
+        (RecipeError::NOT_ENOUGH_SECONDARY_INPUT, "secondary"),
     ];
     let errors: Vec<String> = names
         .iter()
@@ -113,6 +154,13 @@ pub fn trace_line(
         .map(|(_, name)| format!("\"{name}\""))
         .collect();
     let tile = machine.tile();
+    let chemical = machine.chemical_side().map_or(String::new(), |side| {
+        format!(
+            ",\"tank\":{},\"infusion\":{}",
+            side.tank.amount(),
+            slot(&side.slot)
+        )
+    });
     // Com o ejetor ligado o rastro grava o baú: `[slot, id, quantidade]` dos slots com algo.
     let chest = chest.map_or(String::new(), |stacks| {
         let stacks: Vec<String> = stacks
@@ -122,7 +170,7 @@ pub fn trace_line(
         format!(",\"chest\":[{}]", stacks.join(","))
     });
     format!(
-        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]{}}}",
+        "{{\"t\":{now},\"marks\":[],\"progress\":{},\"required\":{},\"energy\":{},\"capacity\":{},\"per_tick\":{},\"active\":{},\"block_active\":{},\"powered\":{},\"comparator\":{},\"input\":{},\"output\":{},\"errors\":[{}]{}{}}}",
         machine.recipe_progress(),
         machine.ticks_required(),
         machine.energy().amount(),
@@ -135,6 +183,7 @@ pub fn trace_line(
         slot(machine.input()),
         slot(machine.output()),
         errors.join(","),
+        chemical,
         chest
     )
 }

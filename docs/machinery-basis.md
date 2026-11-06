@@ -138,6 +138,33 @@ No Horizon o objeto de uma máquina é um cache da `ModBlockEntity`. Mora numa t
 `ModBlockEntity` guarda; todo tick lê dela o que mudou fora (tela, hopper, cabo) e escreve o que mudou; é varrido depois de
 100 ticks sem andar. Salvar e reabrir o mundo funciona porque a `ModBlockEntity` é a verdade.
 
+### Máquina com tanque
+
+A `ProgressMachine` (`tile.rs`) é a base das quatro máquinas de progresso: a Enrichment Chamber, o Crusher e o Energized Smelter
+(`ProgressMachine::electric`) e o Metallurgic Infuser (`ProgressMachine::chemical`). As duas compartilham o tile, a energia, o
+slot de saída, o slot de energia, o ejetor, o monitor de receita e o `CachedRecipe`; a segunda acrescenta o `ChemicalTank`, o slot
+que o enche e a receita de duas entradas. Cada máquina escolhe só o que o `TileEntity` dela escolhe: os erros de cada handler
+(no Infuser o item usa `NOT_ENOUGH_SECONDARY_INPUT` e o químico `NOT_ENOUGH_INPUT`), o `setBaselineMaxOperations` com
+`getOperationsPerTick` e quem escuta cada contêiner (o tanque e a entrada usam o `recipeCacheListener`, o slot de infusão e o
+de energia só marcam para salvar, a saída despausa).
+
+| Peça da lib | Java |
+|---|---|
+| `chemical::ChemicalTank` | `BasicChemicalTank` sobre `BasicResourceContainer`, com diário, `canInsert`, `canExtract` e validador |
+| `chemical::fill_tank_or_convert` | `ChemicalInventorySlot.fillTankOrConvert` |
+| `recipe_handlers` | `InputResourceHandler` e o `OutputHelper` de slot |
+| `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |
+
+A lib não conhece id nenhum: o ingrediente de item e o de químico são predicados, e as conversões e as receitas chegam como
+dados. O tanque do Infuser só aceita um químico que alguma receita usa (`containsRecipeB`) e, com item na entrada, que combine
+com ele (`containsRecipeBA`).
+
+Limites conhecidos: `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda não foram portados, porque as 19
+receitas de infusão têm `per_tick_usage: false`; o glue deixa de fora, com um aviso, uma receita que tenha `true`. O
+`fillTankFromSlot` do Java (item com a capability de químico) não existe, porque nenhum item do jogo a tem. O
+`ChemicalAttributeValidator` não existe, porque nenhum químico dos tanques portados tem atributo. A regra de inserção do
+slot de entrada (`containsRecipeAB`) segue no glue, na regra do hopper, e o tanque tem a dele.
+
 ## Fora da lib
 
 Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora
@@ -162,7 +189,7 @@ Quando elas chegarem, boa parte do `glue.rs` deve encolher, por isso a lib mant�
 
 ## Ordem
 
-1. **`core`:** recursos, tanque, lados, progresso de máquina, codec de data slots e índice de receitas.
+1. **`core`:** recursos, tanque, lados, a base de máquina de progresso, codec de data slots e índice de receitas.
 2. **`glue.rs`:** salvar tanques no NBT, distribuir energia e ejetar.
 3. **Telas:** barra, medidor e seta, com a primeira tela real.
 4. **Rede:** cabo de energia, depois tubo de fluido e de químico.
@@ -181,7 +208,8 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 3. **Tags de recursos:** ficam em `data/<ns>/tags/machinery_basis/resource/<nome>.json`, o caminho de uma tag de registro,
    com a lista em `values`. Uma receita aponta para `#<ns>:<nome>` ou para o id do recurso.
 4. **Formato dos tanques:** versionado desde o início, com `v: 1` no NBT, em `machinery_basis.tanks`. É o contrato entre
-   mods. Uma versão desconhecida carrega vazia.
+   mods. Uma versão desconhecida carrega vazia. Vale para o `Tank` simples, que o Heat Generator usa. O tanque de químico da
+   base de máquina (`ChemicalTank`) segue o NBT do Java, em `chemical_tanks`, porque o objeto vivo o lê e grava a cada tick.
 
 ## Verificado
 
@@ -195,8 +223,8 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Tanque depois de fechar e reabrir | Preservado, com 100 de hidrogênio |
 | Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
 | Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
-| Máquina de progresso em mundo, com o Metallurgic Infuser | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
-| Máquina só de itens em mundo, com receitas de tipo próprio e de fornalha | Enrichment Chamber, Crusher e Energized Smelter usam a mesma `run_machine`, sem tanque |
+| Máquina de progresso em mundo, com o Metallurgic Infuser (código anterior, já substituído pela base nova) | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
+| Máquina só de itens em mundo, com receitas de tipo próprio e de fornalha (código anterior, já substituído pela base nova) | Enrichment Chamber, Crusher e Energized Smelter usavam a mesma `run_machine`, sem tanque |
 | Rede de energia em mundo | Um gerador alimenta três máquinas; a divisão escassa fica igual; cortar pausa, religar volta em menos de um segundo |
 | Recursos, tags e conversões em mundo | 8 recursos lidos; carvão vira 10 mB de carbono a 1 item por tick; a redstone não converte com ferro na entrada, porque nenhuma receita junta os dois |
 | Hoppers por face em mundo | Topo, esquerda e frente entregam na entrada; pedra, sem receita, fica no hopper; hopper na direita não entrega |

@@ -7,7 +7,7 @@ use machinery_basis_core::item_handler::{
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
-use machinery_basis_core::tile::{ElectricMachine, RedstoneControl};
+use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
 use mekanism_rules::{CRUSHER_USAGE, ENRICHMENT_USAGE, SMELTER_USAGE, electric_config, trace_line};
 use serde_json::Value;
 use std::path::Path;
@@ -20,7 +20,7 @@ const CHEST_SLOTS: usize = 27;
 /// `AbstractFurnaceBlockEntity.SLOT_FUEL`.
 const FURNACE_FUEL_SLOT: usize = 1;
 
-struct Chamber(ElectricMachine);
+struct Chamber(ProgressMachine);
 
 impl SimBlockEntity for Chamber {
     fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) {
@@ -83,7 +83,7 @@ fn furnace_scene() -> Scene {
 }
 
 fn machine(energy_per_tick: i32, recipes: Vec<Rc<ItemToItemRecipe>>) -> SimWorld<Chamber> {
-    SimWorld::new(Chamber(ElectricMachine::new(electric_config(
+    SimWorld::new(Chamber(ProgressMachine::electric(electric_config(
         energy_per_tick,
         recipes,
         0,
@@ -192,7 +192,7 @@ fn slot(slot: &InventorySlot) -> Value {
     serde_json::json!([id, slot.amount()])
 }
 
-fn errors(machine: &ElectricMachine) -> Value {
+fn errors(machine: &ProgressMachine) -> Value {
     let names = [
         (RecipeError::NOT_ENOUGH_ENERGY, "energy"),
         (RecipeError::NOT_ENOUGH_INPUT, "input"),

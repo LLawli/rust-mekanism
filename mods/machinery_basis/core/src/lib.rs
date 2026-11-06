@@ -1,5 +1,6 @@
 //! Regras puras da machinery_basis: nada aqui conhece tipos do jogo, então tudo testa sem ele.
 pub mod cached_recipe;
+pub mod chemical;
 pub mod containers;
 pub mod data_slots;
 pub mod ejector;
@@ -7,10 +8,10 @@ pub mod fluid_logged;
 pub mod heat;
 pub mod hopper;
 pub mod item_handler;
-pub mod machine;
 pub mod network;
 pub mod operation_tracker;
 pub mod recipe;
+pub mod recipe_handlers;
 pub mod recipe_monitor;
 pub mod resource;
 pub mod sides;
@@ -19,4 +20,5 @@ pub mod tank;
 pub mod tile;
 pub mod transaction;
 pub mod transit;
+pub mod two_input_recipe;
 pub mod units;

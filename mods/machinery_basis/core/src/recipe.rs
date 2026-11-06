@@ -8,6 +8,7 @@ const ITEM_INGREDIENT: &str = "ingredient";
 const RESOURCE_AMOUNT: &str = "amount";
 const RESOURCE_ID: &str = "id";
 const OR_INGREDIENT: &str = "neoforge:or";
+const PER_TICK_USAGE: &str = "per_tick_usage";
 
 /// Um item de entrada: o ingrediente como o arquivo o escreve, e quantos.
 #[derive(Clone, Debug, PartialEq)]
@@ -46,6 +47,8 @@ pub struct MachineRecipeData {
     pub item: ItemInput,
     pub resource: Option<ResourceInput>,
     pub output: Value,
+    /// `per_tick_usage`: a receita gasta o recurso a cada tick, e não de uma vez no fim. Sem o campo, não gasta.
+    pub per_tick_usage: bool,
 }
 
 /// Onde ficam as partes de uma receita que converte um item em recurso.
@@ -102,6 +105,10 @@ impl MachineRecipeData {
             item: item_input(json.get(fields.item)?)?,
             resource,
             output: json.get(fields.output)?.clone(),
+            per_tick_usage: json
+                .get(PER_TICK_USAGE)
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         })
     }
 }
@@ -146,6 +153,28 @@ mod tests {
         assert_eq!(parsed.item.ingredient, "#c:ingots/iron");
         assert_eq!(parsed.resource.unwrap().amount, 10);
         assert_eq!(parsed.output, json!({"id": "a:steel"}));
+    }
+
+    #[test]
+    fn a_recipe_says_whether_it_spends_the_resource_per_tick() {
+        let mut json = recipe();
+        assert!(
+            !MachineRecipeData::parse(&json, &FIELDS)
+                .unwrap()
+                .per_tick_usage
+        );
+        json["per_tick_usage"] = json!(true);
+        assert!(
+            MachineRecipeData::parse(&json, &FIELDS)
+                .unwrap()
+                .per_tick_usage
+        );
+        json["per_tick_usage"] = json!(false);
+        assert!(
+            !MachineRecipeData::parse(&json, &FIELDS)
+                .unwrap()
+                .per_tick_usage
+        );
     }
 
     #[test]

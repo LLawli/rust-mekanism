@@ -3,19 +3,21 @@
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, machinery_basis as basis};
 use horizon_client::containers::{ModBlockEntity, ModContainer, ModEnergyBuffer};
+use horizon_client::crafting::Ingredient;
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
+use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
-use machinery_basis_core::tank::Action;
-use machinery_basis_core::tile::{ElectricMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
+use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
+use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::units::format_energy;
 use basis::RecipeSource::{Cooking, Custom};
 use std::cell::{Cell, RefCell};
@@ -25,44 +27,50 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const TANKS: [u64; 1] = [rules::TANK_CAPACITY];
 const DUMP_BUTTON: i32 = 0;
 const INFUSING: basis::RecipeSource = Custom(rules::INFUSING, rules::INFUSING_FIELDS);
-const INFUSER: basis::RecipeMachine = basis::RecipeMachine {
-    recipes: INFUSING,
-    ticks: rules::TICKS_REQUIRED,
-    energy_per_tick: rules::INFUSER_USAGE,
-    input: rules::INPUT_SLOT,
-    output: rules::OUTPUT_SLOT,
-};
 
-/// Uma máquina elétrica: as três só mudam no id, nas receitas e no consumo.
-struct Electric {
+/// Onde cada slot fica no `ModContainer`, na ordem de `getInitialInventory` de cada máquina.
+struct Slots {
+    input: usize,
+    output: usize,
+    energy: usize,
+    /// O slot que enche o tanque de químico, nas máquinas que têm tanque.
+    infusion: Option<usize>,
+}
+
+/// Uma máquina de progresso: as quatro só mudam no id, nas receitas, no consumo e nos slots.
+struct Machine {
     block: &'static str,
     title: &'static str,
-    machine: basis::RecipeMachine,
+    recipes: basis::RecipeSource,
+    energy_per_tick: i32,
+    slots: Slots,
 }
+
+const ELECTRIC_SLOT_LAYOUT: Slots = Slots {
+    input: rules::ELECTRIC_INPUT_SLOT,
+    output: rules::ELECTRIC_OUTPUT_SLOT,
+    energy: rules::ELECTRIC_ENERGY_SLOT,
+    infusion: None,
+};
 
 const fn electric(
     block: &'static str,
     title: &'static str,
     recipes: basis::RecipeSource,
     energy_per_tick: i32,
-) -> Electric {
-    Electric {
+) -> Machine {
+    Machine {
         block,
         title,
-        machine: basis::RecipeMachine {
-            recipes,
-            ticks: rules::TICKS_REQUIRED,
-            energy_per_tick,
-            input: rules::ELECTRIC_INPUT_SLOT,
-            output: rules::ELECTRIC_OUTPUT_SLOT,
-        },
+        recipes,
+        energy_per_tick,
+        slots: ELECTRIC_SLOT_LAYOUT,
     }
 }
 
-static ELECTRIC_MACHINES: [Electric; 3] = [
+static MACHINES: [Machine; 4] = [
     electric(
         rules::ENRICHMENT_CHAMBER,
         "container.mekanism.enrichment_chamber",
@@ -81,6 +89,18 @@ static ELECTRIC_MACHINES: [Electric; 3] = [
         Cooking(rules::SMELTING),
         rules::SMELTER_USAGE,
     ),
+    Machine {
+        block: rules::INFUSER,
+        title: "container.mekanism.metallurgic_infuser",
+        recipes: INFUSING,
+        energy_per_tick: rules::INFUSER_USAGE,
+        slots: Slots {
+            input: rules::INPUT_SLOT,
+            output: rules::OUTPUT_SLOT,
+            energy: rules::ENERGY_SLOT,
+            infusion: Some(rules::INFUSION_SLOT),
+        },
+    },
 ];
 
 // Os data slots das telas.
@@ -127,12 +147,17 @@ fn is_infuser(block: &str) -> bool {
     block == rules::INFUSER
 }
 
-fn electric_machine(block: &str) -> Option<&'static Electric> {
-    ELECTRIC_MACHINES.iter().find(|machine| machine.block == block)
+fn machine_of(block: &str) -> Option<&'static Machine> {
+    MACHINES.iter().find(|machine| machine.block == block)
+}
+
+/// As máquinas de um item só, com a tela de `GuiElectricMachine`.
+fn electric_machine(block: &str) -> Option<&'static Machine> {
+    machine_of(block).filter(|machine| machine.slots.infusion.is_none())
 }
 
 fn is_machine(block: &str) -> bool {
-    is_infuser(block) || electric_machine(block).is_some()
+    machine_of(block).is_some()
 }
 
 fn is_cable(block: &str) -> bool {
@@ -171,11 +196,10 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
         });
         return;
     }
-    let usage = match electric_machine(block) {
-        Some(electric) => electric.machine.energy_per_tick,
-        None if is_infuser(block) => rules::INFUSER_USAGE,
-        None => return,
+    let Some(machine) = machine_of(block) else {
+        return;
     };
+    let usage = machine.energy_per_tick;
     // `LightConfigInfo.INPUT_ONLY`: energia entra por todas as faces.
     *energy = Some(ModEnergyBuffer {
         capacity: rules::energy_capacity(usage),
@@ -186,9 +210,9 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 }
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
-    let slots = match electric_machine(block) {
+    let slots = match machine_of(block) {
+        Some(machine) if machine.slots.infusion.is_some() => rules::SLOTS,
         Some(_) => rules::ELECTRIC_SLOTS,
-        None if is_infuser(block) => rules::SLOTS,
         None => return,
     };
     // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
@@ -219,45 +243,7 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     }
 }
 
-fn tick_infuser(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
-    let recipes = basis::machine_recipes(game, &INFUSING);
-    let conversions = basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS);
-    let mut tanks = basis::load_tanks(entity, &TANKS);
-    let tank = &mut tanks[0];
-
-    let input = entity.items[rules::INPUT_SLOT].clone();
-    let usable = |infusion: &str| basis::is_recipe_resource(&recipes, infusion, input.as_ref());
-    basis::convert_into_tank(entity, rules::INFUSION_SLOT, tank, &conversions, &usable);
-    let (step, progress) = basis::run_machine(game, entity, Some(&mut *tank), &INFUSER);
-
-    let front = basis::front(game, pos);
-    let held = tank.resource().map(str::to_owned);
-    let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| match slot {
-        rules::INPUT_SLOT => basis::is_recipe_input(&recipes, stack, held.as_deref()),
-        rules::INFUSION_SLOT => conversions.iter().any(|conversion| conversion.item.test(stack)),
-        _ => false,
-    };
-    let slots = |face| rules::item_slots(front, face);
-    let sides = rules::sides(front, rules::item_slots);
-    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
-    let lit = if step.active { "true" } else { "false" };
-    game.native_set_block_property(pos, "lit", lit);
-
-    let color = held.and_then(|id| resource::current().get(&id).map(|infusion| infusion.color));
-    let mut data = vec![0; DATA_SLOTS];
-    let energy = data_slots::split(basis::stored_energy(entity) as u32);
-    data[DATA_ENERGY] = energy[0];
-    data[DATA_ENERGY + 1] = energy[1];
-    data[DATA_INFUSION] = tank.amount() as i32;
-    let color = data_slots::split(color.unwrap_or(0));
-    data[DATA_COLOR] = color[0];
-    data[DATA_COLOR + 1] = color[1];
-    data[DATA_PROGRESS] = progress as i32;
-    entity.data = data;
-    basis::save_tanks(entity, &tanks);
-}
-
-// Os objetos vivos das máquinas elétricas (o desenho do Java, com contêineres e receita em cache como objetos).
+// Os objetos vivos das máquinas de progresso (o desenho do Java, com contêineres e receita em cache como objetos).
 //
 // Moram aqui, numa tabela por thread, uma por block entity, na chave (dimensão, posição). O Horizon entrega a block entity
 // por `&mut` só durante o tick, e `ModBlockEntity` guarda `Items`, `nbt` e `data`, sem lugar para um objeto vivo: então o
@@ -283,6 +269,7 @@ const ACTIVE_STATE: &str = "active_state";
 const UPDATE_DELAY: &str = "update_delay";
 const CURRENT_REDSTONE: &str = "current_redstone";
 const PROGRESS: &str = "progress";
+const USED_SO_FAR: &str = "used_so_far";
 const RECIPES_USED: &str = "recipes_used";
 const LAST_RECIPE_USED: &str = "last_recipe_used";
 const LAST_RECIPE_AMOUNT: &str = "last_recipe_amount";
@@ -290,6 +277,13 @@ const LAST_RECIPE_AMOUNT: &str = "last_recipe_amount";
 const EJECT_ITEM: &str = "eject3";
 /// A chave que liga o ejetor por comando: `/data merge block x y z {mekanism_eject:1}`.
 const EJECT_SWITCH: &str = "mekanism_eject";
+/// `ChemicalContainerType.getTag()` e o que `IListContainerType.saveTo` e `LargeResourceStack.codec` gravam: uma lista de
+/// `{container: byte, stored: {type, amount}}`, sem o item da lista quando o tanque está vazio, e sem a lista inteira.
+const CHEMICAL_TANKS: &str = "chemical_tanks";
+const CONTAINER: &str = "container";
+const STORED: &str = "stored";
+const TYPE: &str = "type";
+const AMOUNT: &str = "amount";
 /// De quanto em quanto tempo a tabela é varrida, e quanto sem andar um objeto vive.
 const SWEEP_TICKS: i64 = 200;
 const STALE_TICKS: i64 = 100;
@@ -297,9 +291,11 @@ const STALE_TICKS: i64 = 100;
 const UNKNOWN_STACK: u32 = 64;
 
 struct Live {
-    machine: ElectricMachine,
+    machine: ProgressMachine,
     /// As receitas de onde as da máquina saíram: uma carga nova de dados as troca.
     recipes: Arc<Vec<basis::MachineRecipe>>,
+    /// As conversões de item em químico, de onde as da máquina saíram, nas máquinas com tanque.
+    conversions: Option<Arc<Vec<basis::ItemConversion>>>,
     last_seen: i64,
     /// O que já está no NBT, para só escrever quando muda.
     saved: Option<SavedState>,
@@ -315,38 +311,95 @@ fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
     ItemResource::new(&stack.item, limit)
 }
 
-/// `ItemToItemRecipe` das receitas do jogo. O ingrediente do Horizon (item ou tag) vira o predicado da lib, e guarda a
-/// última resposta, porque a receita em cache pergunta todo tick pelo mesmo item.
+fn recipe_ingredient(recipe: &basis::MachineRecipe) -> &Ingredient {
+    &recipe.item
+}
+
+fn conversion_ingredient(conversion: &basis::ItemConversion) -> &Ingredient {
+    &conversion.item
+}
+
+/// O ingrediente do Horizon (item ou tag) vira o predicado da lib, e guarda a última resposta, porque a receita em cache
+/// pergunta todo tick pelo mesmo item. `source` e `index` dizem de qual entrada da lista ele sai.
+fn item_ingredient<T: 'static>(source: &Arc<Vec<T>>, index: usize, ingredient: fn(&T) -> &Ingredient) -> ItemIngredient {
+    let source = source.clone();
+    let last: RefCell<Option<(Rc<str>, bool)>> = RefCell::new(None);
+    ItemIngredient::matching(move |resource| {
+        if let Some((id, answer)) = &*last.borrow()
+            && *id == resource.id
+        {
+            return *answer;
+        }
+        let stack = ItemStack {
+            item: Arc::from(&*resource.id),
+            count: 1,
+            damage: 0,
+            extra: None,
+        };
+        let answer = ingredient(&source[index]).test(&stack);
+        *last.borrow_mut() = Some((resource.id.clone(), answer));
+        answer
+    })
+}
+
+/// `ItemToItemRecipe` das receitas do jogo.
 fn core_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Vec<Rc<ItemToItemRecipe>> {
     let mut converted = Vec::with_capacity(recipes.len());
     for (index, recipe) in recipes.iter().enumerate() {
-        let source = recipes.clone();
-        let last: RefCell<Option<(Rc<str>, bool)>> = RefCell::new(None);
-        let input = ItemIngredient::matching(move |resource| {
-            if let Some((id, answer)) = &*last.borrow()
-                && *id == resource.id
-            {
-                return *answer;
-            }
-            let stack = ItemStack {
-                item: Arc::from(&*resource.id),
-                count: 1,
-                damage: 0,
-                extra: None,
-            };
-            let answer = source[index].item.test(&stack);
-            *last.borrow_mut() = Some((resource.id.clone(), answer));
-            answer
-        });
         converted.push(Rc::new(ItemToItemRecipe {
             id: recipe.id.clone(),
-            input,
+            input: item_ingredient(recipes, index, recipe_ingredient),
             input_count: recipe.count,
             output: ItemOutput {
                 resource: resource_of(game, &recipe.output),
                 count: recipe.output.count,
             },
         }));
+    }
+    converted
+}
+
+/// `ItemChemicalToItemRecipe` das receitas do jogo. O químico de uma receita é um id ou uma tag, e a tag vale como estava na
+/// carga de dados em que a receita foi lida: uma carga nova refaz as receitas. A receita que gasta o químico a cada tick
+/// (`per_tick_usage`) fica de fora, porque pede `ItemStackConstantChemicalToObjectCachedRecipe`, que a lib não porta.
+fn core_chemical_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Vec<Rc<ItemChemicalToItemRecipe>> {
+    let tags = resource::current_tags();
+    let mut converted = Vec::with_capacity(recipes.len());
+    for (index, recipe) in recipes.iter().enumerate() {
+        let Some(chemical) = recipe.resource.clone() else {
+            continue;
+        };
+        if recipe.per_tick_usage {
+            eprintln!("mekanism: {} gasta o químico a cada tick, o que o Metallurgic Infuser ainda não porta", recipe.id);
+            continue;
+        }
+        let amount = u32::try_from(chemical.amount).unwrap_or(u32::MAX);
+        let tags = tags.clone();
+        converted.push(Rc::new(ItemChemicalToItemRecipe {
+            id: recipe.id.clone(),
+            item_input: item_ingredient(recipes, index, recipe_ingredient),
+            item_count: recipe.count,
+            chemical_input: ChemicalIngredient::matching(move |resource| chemical.accepts(&resource.id, &tags)),
+            chemical_amount: amount,
+            output: ItemOutput {
+                resource: resource_of(game, &recipe.output),
+                count: recipe.output.count,
+            },
+        }));
+    }
+    converted
+}
+
+/// `ChemicalConversion` das conversões de item em químico do jogo.
+fn core_conversions(conversions: &Arc<Vec<basis::ItemConversion>>) -> Vec<ChemicalConversion> {
+    let mut converted = Vec::with_capacity(conversions.len());
+    for (index, conversion) in conversions.iter().enumerate() {
+        converted.push(ChemicalConversion {
+            input: item_ingredient(conversions, index, conversion_ingredient),
+            input_count: conversion.count,
+            output: ChemicalResource::new(&conversion.resource),
+            amount: i32::try_from(conversion.amount).unwrap_or(i32::MAX),
+        });
     }
     converted
 }
@@ -392,6 +445,7 @@ fn read_saved(entity: &ModBlockEntity) -> SavedState {
         update_delay: nbt_int(entity, UPDATE_DELAY),
         current_redstone: nbt_int(entity, CURRENT_REDSTONE),
         progress: nbt_int(entity, PROGRESS),
+        used_so_far: nbt_int(entity, USED_SO_FAR),
         recipes_used,
         last_recipe_used: nbt_string(entity, LAST_RECIPE_USED),
         last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
@@ -403,8 +457,8 @@ fn put(entity: &mut ModBlockEntity, key: &str, tag: Tag) {
     entity.nbt.insert(JavaString::from(key), tag);
 }
 
-/// `saveAdditional` do que muda a cada tick, só dos campos que mudaram desde `old`.
-fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &SavedState) {
+/// `saveAdditional` do que muda a cada tick, só dos campos que mudaram desde `old`. `used_so_far` só o Metallurgic Infuser grava.
+fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &SavedState, with_used_so_far: bool) {
     let changed = |same: fn(&SavedState, &SavedState) -> bool| old.is_none_or(|old| !same(old, new));
     if changed(|a, b| a.redstone == b.redstone) {
         put(entity, REDSTONE, Tag::Byte(i8::from(new.redstone)));
@@ -425,9 +479,81 @@ fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &Sa
     if changed(|a, b| a.progress == b.progress) {
         put(entity, PROGRESS, Tag::Int(new.progress));
     }
+    if with_used_so_far && changed(|a, b| a.used_so_far == b.used_so_far) {
+        put(entity, USED_SO_FAR, Tag::Int(new.used_so_far));
+    }
     if changed(|a, b| a.ejecting == b.ejecting) {
         put(entity, EJECT_ITEM, Tag::Byte(i8::from(new.ejecting)));
     }
+}
+
+/// `readFrom` do `IListContainerType` para o tanque 0: as entradas com `container` 0, sem checar a capacidade (o Java lê o
+/// tanque "sem checar", para um conteúdo que deixou de ser válido não derrubar o carregamento). Uma entrada que não se lê vale vazio.
+fn read_tank(entity: &ModBlockEntity) -> TankContents {
+    let Some(Tag::List(list)) = entity.nbt.get(&JavaString::from(CHEMICAL_TANKS)) else {
+        return TankContents::default();
+    };
+    let mut contents = TankContents::default();
+    for entry in list {
+        let Tag::Compound(entry) = entry else {
+            continue;
+        };
+        if !matches!(entry.get(&JavaString::from(CONTAINER)), Some(Tag::Byte(0))) {
+            continue;
+        }
+        contents = match entry.get(&JavaString::from(STORED)) {
+            Some(Tag::Compound(stored)) => stored_contents(stored),
+            _ => TankContents::default(),
+        };
+    }
+    contents
+}
+
+/// `LargeResourceStack.codec`: `type` (o id do químico) e `amount` (um `long` que não é negativo).
+fn stored_contents(stored: &Compound) -> TankContents {
+    let id = match stored.get(&JavaString::from(TYPE)) {
+        Some(Tag::String(id)) => id.to_string_lossy(),
+        _ => return TankContents::default(),
+    };
+    let amount = match stored.get(&JavaString::from(AMOUNT)) {
+        Some(Tag::Long(amount)) => u64::try_from(*amount).ok(),
+        Some(Tag::Int(amount)) => u64::try_from(*amount).ok(),
+        _ => None,
+    };
+    match amount {
+        Some(amount) => TankContents::new(Some(ChemicalResource::new(&id)), amount),
+        None => TankContents::default(),
+    }
+}
+
+/// `saveTo` do `IListContainerType` para o tanque 0, que só grava o que não está vazio.
+fn write_tank(entity: &mut ModBlockEntity, contents: &TankContents) {
+    let key = JavaString::from(CHEMICAL_TANKS);
+    let Some(resource) = &contents.resource else {
+        entity.nbt.remove(&key);
+        return;
+    };
+    let mut stored = Compound::default();
+    stored.insert(JavaString::from(TYPE), Tag::String(JavaString::from(&*resource.id)));
+    stored.insert(JavaString::from(AMOUNT), Tag::Long(i64::try_from(contents.amount).unwrap_or(i64::MAX)));
+    let mut entry = Compound::default();
+    entry.insert(JavaString::from(CONTAINER), Tag::Byte(0));
+    entry.insert(JavaString::from(STORED), Tag::Compound(stored));
+    entity.nbt.insert(key, Tag::List(vec![Tag::Compound(entry)]));
+}
+
+/// O tanque da versão anterior ficava em `machinery_basis.tanks`. Num bloco que ainda só tem esse, leva o conteúdo para o
+/// formato do Java, e tira o antigo, para um tanque esvaziado não voltar a encher.
+fn migrate_old_tank(entity: &mut ModBlockEntity) {
+    if entity.nbt.contains_key(&JavaString::from(CHEMICAL_TANKS)) {
+        return;
+    }
+    let old = basis::load_tanks(entity, &[rules::TANK_CAPACITY]);
+    if let Some(resource) = old[0].resource() {
+        let contents = TankContents::new(Some(ChemicalResource::new(resource)), old[0].amount());
+        write_tank(entity, &contents);
+    }
+    basis::discard_tanks(entity);
 }
 
 /// `saveAdditional` do monitor: as receitas usadas, a última e quanto dela saiu. Como no Java, a quantidade só vai se
@@ -451,26 +577,39 @@ fn write_used(entity: &mut ModBlockEntity, new: &SavedState) {
     }
 }
 
-/// `ElectricMachine` nova, do que a `ModBlockEntity` guarda.
+/// `ProgressMachine` nova, do que a `ModBlockEntity` guarda. Com `conversions` é o Metallurgic Infuser.
 fn born(
     game: &Game<'_>,
     pos: [i32; 3],
     entity: &ModBlockEntity,
+    machine: &Machine,
     recipes: &Arc<Vec<basis::MachineRecipe>>,
-    energy_per_tick: i32,
+    conversions: Option<&Arc<Vec<basis::ItemConversion>>>,
 ) -> Live {
     // `ThreadLocalRandom.nextInt(RECIPE_CHECK_FREQUENCY)`: o sorteio de `shouldRecheckAllErrors`.
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| u64::from(since.subsec_nanos()));
     let check_offset = nanos % RECIPE_CHECK_FREQUENCY;
-    let config = rules::electric_config(energy_per_tick, core_recipes(game, recipes), check_offset);
-    let mut machine = ElectricMachine::new(config);
+    let mut progress = match conversions {
+        None => ProgressMachine::electric(rules::electric_config(
+            machine.energy_per_tick,
+            core_recipes(game, recipes),
+            check_offset,
+        )),
+        Some(conversions) => ProgressMachine::chemical(rules::infuser_config(
+            machine.energy_per_tick,
+            core_chemical_recipes(game, recipes),
+            core_conversions(conversions),
+            check_offset,
+        )),
+    };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
-    machine.restore(&read_saved(entity), block_active);
+    progress.restore(&read_saved(entity), block_active);
     Live {
-        machine,
+        machine: progress,
         recipes: recipes.clone(),
+        conversions: conversions.cloned(),
         last_seen: i64::MIN,
         saved: None,
         used_version: None,
@@ -628,14 +767,14 @@ fn stack_of(recipes: &[basis::MachineRecipe], id: &str) -> ItemStack {
 
 /// Entrega ao vizinho de verdade o que o diário mandou. A regra de cada slot já foi perguntada e nada mudou no vizinho desde
 /// então, então ele aceita tudo. O resto, se houver, volta ao slot de saída da `ModBlockEntity`.
-fn deliver(game: &mut Game<'_>, entity: &mut ModBlockEntity, recipes: &[basis::MachineRecipe], ejected: Vec<Ejected>) {
+fn deliver(game: &mut Game<'_>, entity: &mut ModBlockEntity, recipes: &[basis::MachineRecipe], output_slot: usize, ejected: Vec<Ejected>) {
     for sent in ejected {
         let mut stack = stack_of(recipes, &sent.id);
         stack.count = sent.count;
         let Some(rest) = game.native_insert_item(sent.at, sent.reached, stack) else {
             continue;
         };
-        let slot = &mut entity.items[rules::ELECTRIC_OUTPUT_SLOT];
+        let slot = &mut entity.items[output_slot];
         match slot.as_mut() {
             None => *slot = Some(rest),
             Some(held) if held.item == rest.item => held.count += rest.count,
@@ -663,27 +802,54 @@ fn chest_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], face: Face)
         .collect()
 }
 
-/// Um tick de uma máquina elétrica sobre o objeto vivo.
-fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, electric: &Electric) {
+/// Um tick de uma máquina de progresso sobre o objeto vivo.
+fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, spec: &Machine) {
     let now = game.world.game_time;
     let dimension = game.native_dimension();
     let key = (dimension, pos);
-    let recipes = basis::machine_recipes(game, &electric.machine.recipes);
+    let slots = &spec.slots;
+    let recipes = basis::machine_recipes(game, &spec.recipes);
+    let conversions = slots
+        .infusion
+        .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
 
     let started = basis::MEDIR.then(Instant::now);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     let mut live = match alive {
         Some(live) if live.last_seen + 1 == now && has_saved(entity) => live,
-        _ => born(game, pos, entity, &recipes, electric.machine.energy_per_tick),
+        _ => {
+            if slots.infusion.is_some() {
+                migrate_old_tank(entity);
+            }
+            born(game, pos, entity, spec, &recipes, conversions.as_ref())
+        }
     };
-    if !Arc::ptr_eq(&live.recipes, &recipes) {
-        live.machine.set_recipes(core_recipes(game, &recipes));
+    let conversions_changed = match (&live.conversions, &conversions) {
+        (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
+        _ => false,
+    };
+    if !Arc::ptr_eq(&live.recipes, &recipes) || conversions_changed {
+        match &conversions {
+            None => live.machine.set_recipes(core_recipes(game, &recipes)),
+            Some(conversions) => live
+                .machine
+                .set_chemical_recipes(core_chemical_recipes(game, &recipes), core_conversions(conversions)),
+        }
         live.recipes = recipes.clone();
+        live.conversions = conversions.clone();
     }
     let machine = &live.machine;
-    slot_from_entity(game, machine.input(), entity.items[rules::ELECTRIC_INPUT_SLOT].as_ref());
-    slot_from_entity(game, machine.output(), entity.items[rules::ELECTRIC_OUTPUT_SLOT].as_ref());
-    slot_from_entity(game, machine.energy_slot(), entity.items[rules::ELECTRIC_ENERGY_SLOT].as_ref());
+    slot_from_entity(game, machine.input(), entity.items[slots.input].as_ref());
+    slot_from_entity(game, machine.output(), entity.items[slots.output].as_ref());
+    slot_from_entity(game, machine.energy_slot(), entity.items[slots.energy].as_ref());
+    if let (Some(side), Some(index)) = (machine.chemical_side(), slots.infusion) {
+        slot_from_entity(game, &side.slot, entity.items[index].as_ref());
+        // O tanque também muda fora do tick: o botão de esvaziar e o que a tela faz.
+        let contents = read_tank(entity);
+        if side.tank.contents() != contents {
+            side.tank.set_contents(contents.resource, contents.amount, None);
+        }
+    }
     let stored = i64::from(basis::stored_energy(entity));
     if machine.energy().amount() != stored {
         machine.energy().set_energy(stored, None);
@@ -726,16 +892,23 @@ fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
     let ejected = neighbours.ejected();
 
     let machine = &live.machine;
-    slot_to_entity(entity, rules::ELECTRIC_INPUT_SLOT, machine.input(), &recipes);
-    slot_to_entity(entity, rules::ELECTRIC_OUTPUT_SLOT, machine.output(), &recipes);
-    slot_to_entity(entity, rules::ELECTRIC_ENERGY_SLOT, machine.energy_slot(), &recipes);
+    slot_to_entity(entity, slots.input, machine.input(), &recipes);
+    slot_to_entity(entity, slots.output, machine.output(), &recipes);
+    slot_to_entity(entity, slots.energy, machine.energy_slot(), &recipes);
+    if let (Some(side), Some(index)) = (machine.chemical_side(), slots.infusion) {
+        slot_to_entity(entity, index, &side.slot, &recipes);
+        let contents = side.tank.contents();
+        if read_tank(entity) != contents {
+            write_tank(entity, &contents);
+        }
+    }
     let energy = machine.energy().amount_as_int();
     if basis::stored_energy(entity) != energy {
         basis::set_stored_energy(entity, energy);
     }
     let scalars = machine.saved_scalars();
     if live.saved.as_ref() != Some(&scalars) {
-        write_scalars(entity, live.saved.as_ref(), &scalars);
+        write_scalars(entity, live.saved.as_ref(), &scalars, slots.infusion.is_some());
         live.saved = Some(scalars);
     }
     let version = machine.used_version();
@@ -743,7 +916,7 @@ fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
         write_used(entity, &machine.saved_state());
         live.used_version = Some(version);
     }
-    deliver(game, entity, &recipes, ejected);
+    deliver(game, entity, &recipes, slots.output, ejected);
     if comparator_changed {
         game.native_update_output_neighbors(dimension, pos);
     }
@@ -763,15 +936,47 @@ fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
         live.lit = Some(lit);
     }
     let split = data_slots::split(energy as u32);
-    let data = [split[0], split[1], progress];
+    let data = match machine.chemical_side() {
+        None => vec![split[0], split[1], progress],
+        Some(side) => {
+            let held = side.tank.resource();
+            let color = held.and_then(|held| resource::current().get(&held.id).map(|infusion| infusion.color));
+            let color = data_slots::split(color.unwrap_or(0));
+            let mut data = vec![0; DATA_SLOTS];
+            data[DATA_ENERGY] = split[0];
+            data[DATA_ENERGY + 1] = split[1];
+            data[DATA_INFUSION] = side.tank.amount() as i32;
+            data[DATA_COLOR] = color[0];
+            data[DATA_COLOR + 1] = color[1];
+            data[DATA_PROGRESS] = progress;
+            data
+        }
+    };
     if entity.data != data {
-        entity.data = data.to_vec();
+        entity.data = data;
     }
 
-    let accepts = |_: &Game<'_>, _: usize, stack: &ItemStack| basis::is_recipe_input(&recipes, stack, None);
-    let slots = |face| rules::electric_item_slots(front, face);
-    let sides = rules::sides(front, rules::electric_item_slots);
-    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
+    match live.machine.chemical_side() {
+        None => {
+            let accepts = |_: &Game<'_>, _: usize, stack: &ItemStack| basis::is_recipe_input(&recipes, stack, None);
+            let slots = |face| rules::electric_item_slots(front, face);
+            let sides = rules::sides(front, rules::electric_item_slots);
+            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
+        }
+        Some(side) => {
+            let held = side.tank.resource().map(|resource| resource.id.to_string());
+            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| match slot {
+                rules::INPUT_SLOT => basis::is_recipe_input(&recipes, stack, held.as_deref()),
+                rules::INFUSION_SLOT => conversions
+                    .as_ref()
+                    .is_some_and(|conversions| conversions.iter().any(|conversion| conversion.item.test(stack))),
+                _ => false,
+            };
+            let slots = |face| rules::item_slots(front, face);
+            let sides = rules::sides(front, rules::item_slots);
+            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
+        }
+    }
 
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
@@ -786,10 +991,8 @@ fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if is_cable(&entity.id) {
         basis::transmit_energy(game, pos, entity);
-    } else if is_infuser(&entity.id) {
-        tick_infuser(game, pos, entity);
-    } else if let Some(electric) = electric_machine(&entity.id) {
-        tick_electric(game, pos, entity, electric);
+    } else if let Some(machine) = machine_of(&entity.id) {
+        tick_machine(game, pos, entity, machine);
     }
 }
 
@@ -806,7 +1009,7 @@ pub(in crate::game) fn quick_move(
         return;
     }
     if let Some(electric) = electric_machine(&entity.id) {
-        let recipes = basis::machine_recipes(game, &electric.machine.recipes);
+        let recipes = basis::machine_recipes(game, &electric.recipes);
         if basis::is_recipe_input(&recipes, stack, None) {
             basis::move_into_slot(game, entity, rules::ELECTRIC_INPUT_SLOT, stack);
         }
@@ -818,8 +1021,8 @@ pub(in crate::game) fn quick_move(
     }
     let recipes = basis::machine_recipes(game, &INFUSING);
     let conversions = basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS);
-    let tanks = basis::load_tanks(entity, &TANKS);
-    if basis::is_recipe_input(&recipes, stack, tanks[0].resource()) {
+    let held = read_tank(entity).resource.map(|resource| resource.id.to_string());
+    if basis::is_recipe_input(&recipes, stack, held.as_deref()) {
         basis::move_into_slot(game, entity, rules::INPUT_SLOT, stack);
     } else if conversions.iter().any(|conversion| conversion.item.test(stack)) {
         basis::move_into_slot(game, entity, rules::INFUSION_SLOT, stack);
@@ -831,10 +1034,11 @@ pub(in crate::game) fn menu_button(entity: &mut ModBlockEntity, id: i32) {
     if !is_infuser(&entity.id) || id != DUMP_BUTTON {
         return;
     }
-    let mut tanks = basis::load_tanks(entity, &TANKS);
-    let amount = tanks[0].amount();
-    tanks[0].extract(amount, Action::Execute);
-    basis::save_tanks(entity, &tanks);
+    // `dump()`: `dumpOrClearContents` no tanque de infusão, que fora a radiação (que não existe aqui) só o esvazia. O objeto
+    // vivo o relê no tick seguinte, como um `setContents` de fora.
+    if !read_tank(entity).is_empty() {
+        write_tank(entity, &TankContents::default());
+    }
 }
 
 pub(in crate::game) fn screen_click(block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
@@ -895,7 +1099,7 @@ fn draw_infuser(game: &Game<'_>, data: &[i32], batch: &mut HudBatch, origin: [f3
 
 fn draw_electric(
     game: &Game<'_>,
-    electric: &Electric,
+    electric: &Machine,
     data: &[i32],
     batch: &mut HudBatch,
     origin: [f32; 2],
@@ -909,7 +1113,7 @@ fn draw_electric(
     draw_slots(game, batch, origin, &ELECTRIC_SLOT_POSITIONS, rules::ELECTRIC_ENERGY_SLOT);
     sprite_rect(game, batch, UP_ARROW, at(ELECTRIC_ARROW));
     let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let capacity = rules::energy_capacity(electric.machine.energy_per_tick);
+    let capacity = rules::energy_capacity(electric.energy_per_tick);
     basis::gauge(game, batch, at(ELECTRIC_ENERGY_BAR), energy as f32 / capacity as f32, ENERGY_COLOR);
     let progress = get(ELECTRIC_DATA_PROGRESS) as f32 / rules::TICKS_REQUIRED as f32;
     basis::progress_bar(game, batch, BAR_EMPTY, BAR_FULL, at(ELECTRIC_PROGRESS_BAR), progress);

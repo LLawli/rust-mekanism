@@ -14,14 +14,13 @@ use horizon_world::registry::BlockStateId;
 use machinery_basis_core::fluid_logged;
 use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
-use machinery_basis_core::machine::{self, Step, Supply};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
 use machinery_basis_core::recipe::{
     Conversion, ConversionFields, MachineRecipeData, RecipeFields, ResourceInput,
 };
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
-use machinery_basis_core::tank::{Action, FORMAT, Tank};
+use machinery_basis_core::tank::{FORMAT, Tank};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -32,8 +31,6 @@ const ENERGY_LISTENER: &str = "machinery_basis:energy";
 const HOPPER: &str = "minecraft:hopper";
 const SAVED: &str = "machinery_basis";
 const ENERGY: &str = "energy";
-const PROGRESS: &str = "progress";
-const RECIPE: &str = "recipe";
 const DEFAULT_STACK: u32 = 64;
 // Um contador por face, mais um para o ejetor.
 const COOLDOWNS: usize = 7;
@@ -87,6 +84,8 @@ pub(in crate::game) struct MachineRecipe {
     pub count: u32,
     pub resource: Option<ResourceInput>,
     pub output: ItemStack,
+    /// `per_tick_usage`: a receita gasta o recurso a cada tick, e não de uma vez no fim.
+    pub per_tick_usage: bool,
 }
 
 /// Um item que vira recurso, com o que o jogo resolveu.
@@ -112,15 +111,6 @@ impl RecipeSource {
             Self::Custom(recipe_type, _) | Self::Cooking(recipe_type) => recipe_type,
         }
     }
-}
-
-/// O que define uma máquina de progresso.
-pub(in crate::game) struct RecipeMachine {
-    pub recipes: RecipeSource,
-    pub ticks: u32,
-    pub energy_per_tick: i32,
-    pub input: usize,
-    pub output: usize,
 }
 
 /// Se o bloco em `pos` guarda lava no estado `fluid_logged`.
@@ -310,6 +300,7 @@ fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> 
             count: parsed.item.count,
             resource: parsed.resource,
             output: game.native_recipe_result(&parsed.output)?,
+            per_tick_usage: parsed.per_tick_usage,
         })
     });
     recipes.collect()
@@ -325,6 +316,7 @@ fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
             count: 1,
             resource: None,
             output: recipe.result.clone(),
+            per_tick_usage: false,
         })
         .collect()
 }
@@ -372,25 +364,6 @@ pub(in crate::game) fn conversions(
     conversions
 }
 
-/// A primeira receita que as entradas pagam por inteiro.
-fn matching_recipe<'a>(
-    recipes: &'a [MachineRecipe],
-    stack: Option<&ItemStack>,
-    tank: Option<&Tank>,
-    tags: &Tags,
-) -> Option<&'a MachineRecipe> {
-    let stack = stack?;
-    recipes.iter().find(|recipe| {
-        let paid = recipe.resource.as_ref().is_none_or(|input| {
-            tank.is_some_and(|tank| {
-                tank.resource().is_some_and(|held| input.accepts(held, tags))
-                    && tank.amount() >= input.amount
-            })
-        });
-        recipe.item.test(stack) && stack.count >= recipe.count && paid
-    })
-}
-
 /// Se o item entra em alguma receita, junto do recurso que o tanque guarda, quando guarda.
 pub(in crate::game) fn is_recipe_input(
     recipes: &[MachineRecipe],
@@ -407,116 +380,8 @@ pub(in crate::game) fn is_recipe_input(
     })
 }
 
-/// Se o recurso entra em alguma receita, junto do item que está na entrada, quando há um.
-pub(in crate::game) fn is_recipe_resource(
-    recipes: &[MachineRecipe],
-    resource: &str,
-    stack: Option<&ItemStack>,
-) -> bool {
-    let tags = resource::current_tags();
-    recipes.iter().any(|recipe| {
-        let accepted = recipe.resource.as_ref().is_some_and(|input| input.accepts(resource, &tags));
-        accepted && stack.is_none_or(|stack| recipe.item.test(stack))
-    })
-}
-
 fn same_item(a: &ItemStack, b: &ItemStack) -> bool {
     a.item == b.item && a.extra == b.extra
-}
-
-fn output_fits(game: &Game<'_>, slot: Option<&ItemStack>, output: &ItemStack) -> bool {
-    let limit = game.native_max_stack_size(&output.item).unwrap_or(DEFAULT_STACK);
-    slot.is_none_or(|held| same_item(held, output) && held.count + output.count <= limit)
-}
-
-fn take_from_slot(entity: &mut ModBlockEntity, slot: usize, count: u32) {
-    if let Some(stack) = &mut entity.items[slot] {
-        stack.count = stack.count.saturating_sub(count);
-        if stack.count == 0 {
-            entity.items[slot] = None;
-        }
-    }
-}
-
-fn saved_progress(entity: &ModBlockEntity, recipe: &str) -> u32 {
-    let saved = saved(entity);
-    let same = matches!(
-        saved.and_then(|compound| compound.get(&JavaString::from(RECIPE))),
-        Some(Tag::String(id)) if id.to_string_lossy() == recipe
-    );
-    match saved.and_then(|compound| compound.get(&JavaString::from(PROGRESS))) {
-        Some(Tag::Int(progress)) if same => u32::try_from(*progress).unwrap_or(0),
-        _ => 0,
-    }
-}
-
-fn save_progress(entity: &mut ModBlockEntity, recipe: &str, progress: u32) {
-    let mut compound = saved(entity).cloned().unwrap_or_default();
-    compound.insert(JavaString::from(RECIPE), Tag::String(JavaString::from(recipe)));
-    compound.insert(JavaString::from(PROGRESS), Tag::Int(progress as i32));
-    entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
-}
-
-/// Um tick de uma máquina de progresso. Diz o que houve e em que tick a operação está.
-pub(in crate::game) fn run_machine(
-    game: &Game<'_>,
-    entity: &mut ModBlockEntity,
-    mut tank: Option<&mut Tank>,
-    spec: &RecipeMachine,
-) -> (Step, u32) {
-    let recipes = machine_recipes(game, &spec.recipes);
-    let tags = resource::current_tags();
-    let stack = entity.items[spec.input].as_ref();
-    let found = matching_recipe(&recipes, stack, tank.as_deref(), &tags);
-    let id = found.map_or("", |recipe| recipe.id.as_str());
-    // Outra receita recomeça do zero, como um CachedRecipe novo.
-    let mut progress = saved_progress(entity, id);
-    let supply = match found {
-        None => Supply::Missing,
-        Some(recipe) if output_fits(game, entity.items[spec.output].as_ref(), &recipe.output) => {
-            Supply::Ready
-        }
-        Some(_) => Supply::OutputFull,
-    };
-    let stored = stored_energy(entity);
-    let step = machine::step(&mut progress, spec.ticks, supply, stored, spec.energy_per_tick);
-    set_stored_energy(entity, stored - step.energy_used);
-    if let Some(recipe) = found.filter(|_| step.finished) {
-        take_from_slot(entity, spec.input, recipe.count);
-        if let (Some(input), Some(tank)) = (&recipe.resource, tank.as_deref_mut()) {
-            tank.extract(input.amount, Action::Execute);
-        }
-        match &mut entity.items[spec.output] {
-            Some(held) => held.count += recipe.output.count,
-            empty => *empty = Some(recipe.output.clone()),
-        }
-    }
-    save_progress(entity, id, progress);
-    (step, progress)
-}
-
-/// `ChemicalInventorySlot.fillTankOrConvert`: um item do slot vira recurso, se todo ele couber.
-pub(in crate::game) fn convert_into_tank(
-    entity: &mut ModBlockEntity,
-    slot: usize,
-    tank: &mut Tank,
-    conversions: &[ItemConversion],
-    accepts: &dyn Fn(&str) -> bool,
-) {
-    let Some(stack) = &entity.items[slot] else {
-        return;
-    };
-    let found = conversions
-        .iter()
-        .find(|conversion| conversion.item.test(stack) && stack.count >= conversion.count);
-    let Some(conversion) = found else {
-        return;
-    };
-    let room = tank.insert(&conversion.resource, conversion.amount, Action::Simulate);
-    if room == conversion.amount && accepts(&conversion.resource) {
-        tank.insert(&conversion.resource, conversion.amount, Action::Execute);
-        take_from_slot(entity, slot, conversion.count);
-    }
 }
 
 /// Leva o que couber de `stack` para o slot da máquina: o resto fica em `stack`.
@@ -637,6 +502,21 @@ pub(in crate::game) fn save_tanks(entity: &mut ModBlockEntity, tanks: &[Tank]) {
     let mut compound = saved(entity).cloned().unwrap_or_default();
     compound.insert(JavaString::from("v"), Tag::Int(FORMAT));
     compound.insert(JavaString::from("tanks"), Tag::List(list));
+    entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
+}
+
+/// Tira os tanques salvos da block entity, para um mod que guarda os seus em outro formato. Os outros dados da lib no mesmo
+/// compound (os cooldowns dos hoppers) ficam.
+pub(in crate::game) fn discard_tanks(entity: &mut ModBlockEntity) {
+    let has_tanks = saved(entity).is_some_and(|compound| {
+        compound.contains_key(&JavaString::from("v")) || compound.contains_key(&JavaString::from("tanks"))
+    });
+    if !has_tanks {
+        return;
+    }
+    let mut compound = saved(entity).cloned().unwrap_or_default();
+    compound.remove(&JavaString::from("v"));
+    compound.remove(&JavaString::from("tanks"));
     entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
 }
 
