@@ -119,14 +119,14 @@ Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo
 comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui `CachedRecipe` completo, com `OperationTracker`,
 `pausedForErrors`, `recheckAllErrors`, erros e avisos da tela, e `usedSoFar` para `per_tick_usage`.
 
-Estado em 2026-11-05: a Enrichment Chamber roda na base nova em jogo, e a fase segue aberta. As outras máquinas continuam em `machine.rs`
-e `recipe.rs`. Em `machinery_basis/core` estão `transaction`, `containers`, `operation_tracker`, `cached_recipe`, `recipe_monitor`,
-`tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` repete tick a tick os 10 rastros de
-`dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`. Duas rodadas dos 6 primeiros cenários deram
-arquivos idênticos.
+Estado em 2026-11-05: Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser rodam na base nova em jogo, e a fase segue
+aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`, `recipe_handlers`,
+`two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e
+`infuser_trace.rs` repetem tick a tick os 13 rastros de `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
-Em jogo só o cenário `chamber_energy` foi comparado estado a estado, com 342 estados iguais ao original. Ejetor, redstone e salvar e
-reabrir foram conferidos em jogo, mas sem comparar cada tick com um rastro.
+Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
+estados até o primeiro evento e, dali em diante, as transições, porque os comandos não caem no tick exato do rastro. Ejetor, redstone e salvar
+e reabrir foram conferidos em jogo sem comparar cada tick. Um mundo antigo migrou o tanque para `chemical_tanks`.
 
 O Horizon não simula inserção, então o ejetor transaciona numa cópia do vizinho, e `slot_accepts.rs`, injetado em
 `game/machines/native_items.rs`, dá a regra real de cada slot, que é privada ali: é o `isValid` do `ResourceHandler`. O rastro
@@ -134,9 +134,11 @@ O Horizon não simula inserção, então o ejetor transaciona numa cópia do viz
 
 Falta na Fase 1:
 
-- Ligar Crusher, Energized Smelter e Metallurgic Infuser à base nova.
-- `TwoInputCachedRecipe`, `ItemStackConstantChemicalToObjectCachedRecipe` com `usedSoFar`, e os handlers de fluido e químico.
-- Regras de inserção dos slots (`containsRecipe`) e limites de taxa.
+- `ItemStackConstantChemicalToObjectCachedRecipe` e o `usedSoFar` que ela muda, e os handlers de fluido. As 19 receitas do Infuser têm
+  `per_tick_usage: false`: quem precisa disso são as máquinas que usam químico por tick, e receita assim fica de fora com um aviso no log.
+- `fillTankFromSlot`, de item com capability de químico, e `ChemicalAttributeValidator`: nada portado usa ainda.
+- Regras de inserção dos slots (`containsRecipe`, `containsRecipeAB`) na lib, em vez de no glue, e limites de taxa.
+- `findFirstRecipe` segue a ordem da lista de receitas, não o mapa por item do Java.
 - Slot de upgrade de `TileComponentUpgrade`, com os 20 ticks de instalação e a remoção. Hoje os upgrades entram direto, e em jogo ficam em 0.
 - `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
 - Comparador em jogo: falta o hook `analog_output`, sem ele nenhum comparador lê o nível. A notificação roda dentro do tick, e a Fase 0 pede
@@ -192,8 +194,8 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 **Máquinas (infuser e elétricas)**
 
-- Faces fixas, sem tela de lados, sem ejetor e sem automação da saída.
-- `CachedRecipe` simplificado: sem `pausedForErrors`, erros, avisos e `recheckAllErrors`. `per_tick_usage` ausente.
+- Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
+- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` ausente.
 - Clique põe qualquer item na entrada. Slot de energia sem função.
 - Sem upgrades, controle de redstone, comparador, som, partículas, abas, nome do químico no tooltip.
 - Luz 13 em vez de 8. Conteúdo solto ao quebrar, em vez de guardado no item.
