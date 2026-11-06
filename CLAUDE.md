@@ -11,6 +11,8 @@ Este projeto é um port do Mekanism e do Mekanism Generators: o comportamento te
   escolher outro caminho.
 - Se o Horizon não permitir algo, tente primeiro uma injeção no jogo. Se nem isso der, pare e pergunte ao usuário. Nunca
   troque por uma aproximação sem autorização, e nunca diga que algo é igual ao original sem ter comparado com o código dele.
+- Toda injeção crua nova (`target = ...`, `[[module]]`, ou hook que dependa de estrutura privada) entra em
+  [docs/injecoes-horizon.md](docs/injecoes-horizon.md), com o hook que a substituiria, no mesmo change.
 - O plano e o inventário do que ainda diverge estão em [docs/plano-paridade.md](docs/plano-paridade.md).
 
 ## Testes

@@ -12,7 +12,8 @@ ponto de partida, não entrega. Cada fase refaz sua parte a partir do Java.
 3. **Nomes e estrutura espelham o original** onde der: `Transmitter`, `DynamicNetwork`, `ConfigInfo`, `DataType`. Assim a
    comparação é linha a linha.
 4. **Otimizações do original são portadas**, não trocadas por outras. Nada de cache por tempo.
-5. **Bloqueio do Horizon:** tente injeção no jogo; se não der, registre na tabela abaixo e pergunte ao usuário.
+5. **Bloqueio do Horizon:** tente injeção no jogo; se não der, registre na tabela abaixo e pergunte ao usuário. Cada injeção crua
+   fica em [injecoes-horizon.md](injecoes-horizon.md), com o hook oficial que a eliminaria.
 6. **"Igual ao original" só se diz depois de comparar.** Modelo, textura e som: o mesmo arquivo, carregado do mesmo jeito.
 7. **Testes sem o jogo primeiro:** a lógica roda num mundo simulado, tick a tick, comparando estados, sem ninguém interagir.
    Cenários como rede com cabos quebrados, chunks saindo, fusão de redes e receitas pausando devem caber aí.
