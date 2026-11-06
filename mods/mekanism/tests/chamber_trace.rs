@@ -10,9 +10,10 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
+use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
-    CRUSHER_USAGE, ENERGY_UPGRADE, ENRICHMENT_USAGE, SMELTER_USAGE, SPEED_UPGRADE, electric_config,
-    trace_line,
+    CRUSHER_USAGE, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENERGY_UPGRADE, ENRICHMENT_USAGE,
+    SMELTER_USAGE, SPEED_UPGRADE, SyncedMachine, electric_config, machine_warnings, trace_line,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -25,11 +26,13 @@ const CHEST_SLOTS: usize = 27;
 /// `AbstractFurnaceBlockEntity.SLOT_FUEL`.
 const FURNACE_FUEL_SLOT: usize = 1;
 
-struct Chamber(ProgressMachine);
+/// A máquina e o `game_time` do mundo em que o rastro foi gravado: o `SimWorld` conta de zero, e o recheck de erros depende de
+/// `game_time % 100`, então o relógio do jogo (o do primeiro tick do rastro) entra somado ao do mundo simulado.
+struct Chamber(ProgressMachine, u64);
 
 impl SimBlockEntity for Chamber {
     fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) {
-        self.0.tick_server(game_time, neighbours);
+        self.0.tick_server(game_time + self.1, neighbours);
     }
 
     fn neighbor_changed(&mut self, powered: bool) {
@@ -59,6 +62,23 @@ struct Scene {
     chest: Rc<VanillaContainer>,
     /// O número do primeiro slot que o lado alcança: o `1` do combustível, no forno.
     first_slot: usize,
+    /// O `refillTicks` e o `refillFraction` do `Trace` em Java: depois de cada tick gravado, a energia volta a tantos ticks de
+    /// consumo, ou a uma fração de um tick. Zero nos dois deixa a energia como está.
+    refill_ticks: i32,
+    refill_fraction: i32,
+}
+
+impl Scene {
+    /// `Trace.refill`.
+    fn refill(&self) {
+        let energy = self.world.block_entity.0.energy();
+        let per_tick = energy.energy_per_tick();
+        if self.refill_ticks > 0 {
+            energy.set_energy(i64::from(self.refill_ticks) * i64::from(per_tick), None);
+        } else if self.refill_fraction > 0 {
+            energy.set_energy(i64::from(per_tick / self.refill_fraction), None);
+        }
+    }
 }
 
 fn scene() -> Scene {
@@ -69,6 +89,8 @@ fn scene() -> Scene {
         world,
         chest,
         first_slot: 0,
+        refill_ticks: 0,
+        refill_fraction: 0,
     }
 }
 
@@ -84,25 +106,53 @@ fn furnace_scene() -> Scene {
         world,
         chest: fuel,
         first_slot: FURNACE_FUEL_SLOT,
+        refill_ticks: 0,
+        refill_fraction: 0,
     }
 }
 
 fn machine(energy_per_tick: i32, recipes: Vec<Rc<ItemToItemRecipe>>) -> SimWorld<Chamber> {
-    SimWorld::new(Chamber(ProgressMachine::electric(electric_config(
-        energy_per_tick,
-        recipes,
-        0,
-        common::upgrade_data(),
-    ))))
+    machine_at(energy_per_tick, recipes, 0, 0)
 }
 
-fn chamber() -> SimWorld<Chamber> {
-    let recipes = vec![
+/// `check_offset` é o sorteio de `shouldRecheckAllErrors`, e `game_time` o relógio do jogo no primeiro tick.
+fn machine_at(
+    energy_per_tick: i32,
+    recipes: Vec<Rc<ItemToItemRecipe>>,
+    check_offset: u64,
+    game_time: u64,
+) -> SimWorld<Chamber> {
+    SimWorld::new(Chamber(
+        ProgressMachine::electric(electric_config(
+            energy_per_tick,
+            recipes,
+            check_offset,
+            common::upgrade_data(),
+        )),
+        game_time,
+    ))
+}
+
+fn enrichment_recipes() -> Vec<Rc<ItemToItemRecipe>> {
+    vec![
         recipe("clay", 1, "clay_ball", 4),
         recipe("stone", 1, "cracked_stone_bricks", 1),
         recipe("hdpe_pellet", 3, "hdpe_sheet", 1),
-    ];
-    machine(ENRICHMENT_USAGE, recipes)
+    ]
+}
+
+fn chamber() -> SimWorld<Chamber> {
+    machine(ENRICHMENT_USAGE, enrichment_recipes())
+}
+
+/// A câmara com o sorteio e o relógio que o rastro gravou.
+fn rechecking_scene(check_offset: u64, game_time: u64) -> Scene {
+    alone(machine_at(
+        ENRICHMENT_USAGE,
+        enrichment_recipes(),
+        check_offset,
+        game_time,
+    ))
 }
 
 /// Só a máquina: Crusher e Energized Smelter são a mesma `TileEntityElectricMachine` da câmara, com outro consumo e outras
@@ -112,6 +162,8 @@ fn alone(world: SimWorld<Chamber>) -> Scene {
         world,
         chest: VanillaContainer::new(0, Rc::new(|| {})),
         first_slot: 0,
+        refill_ticks: 0,
+        refill_fraction: 0,
     }
 }
 
@@ -143,6 +195,10 @@ fn apply(scene: &mut Scene, scenario: &str, action: &str) {
     let world = &mut scene.world;
     let machine = &mut world.block_entity.0;
     match parts.as_slice() {
+        // `chamber_reduced_rate` instala a velocidade sem encher a energia: o rastro começa com ela vazia.
+        ["speed", amount] if scenario == "chamber_reduced_rate" => {
+            install(machine, SPEED_UPGRADE, amount.parse().unwrap());
+        }
         ["speed", amount] => {
             install(machine, SPEED_UPGRADE, amount.parse().unwrap());
             machine
@@ -170,6 +226,36 @@ fn apply(scene: &mut Scene, scenario: &str, action: &str) {
             .upgrades()
             .remove_upgrade(&format!("mekanism:{upgrade}"), true),
         ["energy", amount] => machine.energy().set_energy(amount.parse().unwrap(), None),
+        // `refillTicks` e `refillFraction` do `Trace`: a energia que volta depois de cada tick gravado.
+        [
+            "energy",
+            "topped",
+            "up",
+            "to",
+            ticks,
+            "ticks",
+            "every",
+            "tick",
+        ] => {
+            scene.refill_ticks = ticks.parse().unwrap();
+        }
+        [
+            "energy",
+            "topped",
+            "up",
+            "to",
+            "a",
+            "third",
+            "of",
+            "a",
+            "tick",
+            "every",
+            "tick",
+        ] => {
+            scene.refill_ticks = 0;
+            scene.refill_fraction = 3;
+        }
+        ["no", "more", "top", "ups"] => scene.refill_fraction = 0,
         ["insert", id, amount] | [id @ ("clay" | "hdpe_pellet"), amount] => {
             machine
                 .input()
@@ -189,11 +275,14 @@ fn apply(scene: &mut Scene, scenario: &str, action: &str) {
         ["clear", "output"] => machine.output().set_contents(None, 0, None),
         ["swap", "to", "stone"] => machine.input().set_contents(Some(item("stone")), 1, None),
         ["mode", mode] => machine.tile_mut().set_control_type(match *mode {
+            "disabled" => RedstoneControl::Disabled,
             "high" => RedstoneControl::High,
             "low" => RedstoneControl::Low,
             "pulse" => RedstoneControl::Pulse,
             other => panic!("modo desconhecido: {other}"),
         }),
+        // Só descrevem o cenário: o jogador entra pelo campo `players` do rastro, e o sinal já estava desligado.
+        ["player", "opens" | "closes"] | ["no", "signal"] | ["with", ..] => {}
         ["signal", "on"] => world.set_signal(true),
         ["signal", "off"] => world.set_signal(false),
         // `ejectEast`: a saída vai para o lado do baú, e o ejetor liga.
@@ -271,7 +360,19 @@ fn replay(scenario: &str) {
         "rastro curto demais: {}",
         lines.len()
     );
+    // Os cenários do recheck gravam o sorteio e o relógio do jogo: entram na máquina e no mundo simulado.
+    let clock = lines[0].get("recheck_offset").map(|offset| {
+        let game_time = lines[0]["game_time"].as_u64().unwrap();
+        (
+            offset.as_u64().unwrap(),
+            game_time - lines[0]["t"].as_u64().unwrap(),
+        )
+    });
     let mut scene = match scenario {
+        _ if clock.is_some() => {
+            let (offset, base) = clock.unwrap();
+            rechecking_scene(offset, base)
+        }
         "chamber_eject_furnace" => furnace_scene(),
         "crusher_run" => alone(machine(
             CRUSHER_USAGE,
@@ -283,7 +384,15 @@ fn replay(scenario: &str) {
         )),
         _ => scene(),
     };
+    let mut players = 0;
     for expected in &lines {
+        // O que o `warnings`, o `warnings_shown` e o `recheck` do rastro dizem sai do objeto: o resto é comparado inteiro.
+        let mut expected = expected.clone();
+        let recorded: Vec<(&str, Value)> = RECHECK_FIELDS
+            .iter()
+            .filter_map(|key| Some((*key, expected.as_object_mut()?.remove(*key)?)))
+            .collect();
+        let expected = &expected;
         scene.world.tick();
         for mark in expected["marks"].as_array().unwrap() {
             for action in mark.as_str().unwrap().split(", ") {
@@ -291,6 +400,23 @@ fn replay(scenario: &str) {
             }
         }
         let machine = &scene.world.block_entity.0;
+        let field = |name: &str| {
+            recorded
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, v)| v)
+        };
+        // `open` e `close` do core nos ticks em que o número de jogadores do rastro muda.
+        if let Some(wanted) = field("players").and_then(Value::as_u64) {
+            while players < wanted {
+                machine.open();
+                players += 1;
+            }
+            while players > wanted {
+                machine.close();
+                players -= 1;
+            }
+        }
         let mut actual = serde_json::json!({
             "t": expected["t"],
             "marks": expected["marks"],
@@ -347,7 +473,113 @@ fn replay(scenario: &str) {
             expected["t"]
         );
         assert_eq!(&actual, expected, "{scenario}, tick {}", expected["t"]);
+        if let Some((_, base)) = clock {
+            let game_time = field("game_time").and_then(Value::as_u64).unwrap();
+            assert_eq!(
+                game_time,
+                base + expected["t"].as_u64().unwrap(),
+                "{scenario}: o relógio do rastro anda um por tick"
+            );
+            // O flag que a máquina leu no tick, com o sorteio, o relógio e os jogadores que ela recebeu.
+            assert_eq!(
+                Some(&Value::from(machine.recheck_all_errors())),
+                field("recheck"),
+                "{scenario}, tick {}: recheck",
+                expected["t"]
+            );
+            assert_eq!(
+                Some(&Value::from(
+                    format!("{:?}", machine.tile().control_type()).to_lowercase()
+                )),
+                field("mode"),
+                "{scenario}, tick {}: modo de redstone",
+                expected["t"]
+            );
+            assert_warnings(scenario, expected["t"].as_u64().unwrap(), machine, &field);
+        }
+        // Depois de gravar o tick, como o `Trace` em Java: a máquina vê a energia devolvida no tick seguinte.
+        scene.refill();
     }
+}
+
+/// Os avisos da tela: `warnings` são os tipos ativos e `warnings_shown` o que `getWarnings` lista, depois da ordem do enum e do
+/// corte. A segunda conta é a do cliente, que só tem a máscara de erros num data slot e o modo de redstone.
+fn assert_warnings<'a>(
+    scenario: &str,
+    tick: u64,
+    machine: &ProgressMachine,
+    field: &impl Fn(&str) -> Option<&'a Value>,
+) {
+    let synced = SyncedMachine::of(machine, &ELECTRIC_TRACKED_ERRORS);
+    // O que passa pelo data slot (16 bits com sinal) é o que chega ao cliente.
+    let client = SyncedMachine {
+        errors: ErrorMask::from_slot(synced.errors.to_slot()),
+        ..synced
+    };
+    for (side, tracker) in [
+        ("servidor", machine_warnings(machine, &ELECTRIC_WARNINGS)),
+        ("cliente", machine_warnings(&client, &ELECTRIC_WARNINGS)),
+    ] {
+        let names = |kinds: Vec<mekanism_rules::WarningType>| -> Value {
+            kinds
+                .into_iter()
+                .map(|kind| Value::from(kind.name()))
+                .collect()
+        };
+        let triggered = tracker.triggered();
+        assert_eq!(
+            Some(&names(triggered.clone())),
+            field("warnings"),
+            "{scenario}, tick {tick}: warnings ({side})"
+        );
+        assert_eq!(
+            Some(&names(tracker.warnings())),
+            field("warnings_shown"),
+            "{scenario}, tick {tick}: warnings_shown ({side})"
+        );
+        // `hasWarning` é a aba aparecer: há aviso ativo se e só se algum tipo está ativo.
+        assert_eq!(
+            tracker.has_warning(),
+            !triggered.is_empty(),
+            "{scenario}, tick {tick}: hasWarning ({side})"
+        );
+    }
+}
+
+/// O que os rastros do recheck gravam além dos campos de sempre: saem do objeto antes da comparação inteira, e cada um é conferido
+/// à parte (o recheck e os avisos, contra a máquina; o relógio e os jogadores, contra o que o teste entrega a ela).
+const RECHECK_FIELDS: [&str; 7] = [
+    "game_time",
+    "players",
+    "recheck",
+    "recheck_offset",
+    "mode",
+    "warnings",
+    "warnings_shown",
+];
+
+/// O primeiro tick em que o rastro tem o erro, e se o recheck estava ligado nele.
+fn first_tick_with(scenario: &str, error: &str) -> Option<(u64, bool)> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros")
+        .join(format!("{scenario}.jsonl"));
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|line| {
+            line["errors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e == error)
+        })
+        .map(|line| {
+            (
+                line["t"].as_u64().unwrap(),
+                line["recheck"].as_bool().unwrap(),
+            )
+        })
 }
 
 #[test]
@@ -415,6 +647,57 @@ fn the_output_only_enters_a_furnace_side_as_fuel() {
 #[test]
 fn the_output_ejects_into_a_chest_with_room_for_all_part_and_none() {
     replay("chamber_eject");
+}
+
+/// Com jogador na tela o recheck volta a cada 100 ticks, no sorteio da máquina; a câmara está parada por erros e o conjunto de erros
+/// não muda, então só o booleano e o relógio andam.
+#[test]
+fn a_player_looking_turns_the_full_recheck_on_once_every_hundred_ticks() {
+    replay("chamber_recheck_looking");
+}
+
+#[test]
+fn nobody_looking_never_runs_the_full_recheck() {
+    replay("chamber_recheck_alone");
+}
+
+#[test]
+fn the_recheck_stops_when_the_player_closes_and_comes_back_when_it_reopens() {
+    replay("chamber_recheck_open_close");
+}
+
+/// Os modos de redstone com jogador na tela: PULSE cai em DISABLED, e o erro de energia pausa a receita por trás do modo.
+#[test]
+fn the_redstone_modes_with_a_player_looking() {
+    replay("chamber_warnings_redstone");
+}
+
+/// A receita acordada só conhece o erro de energia: o erro de saída cheia só aparece no tick do recheck.
+#[test]
+fn the_full_recheck_finds_the_error_a_woken_recipe_did_not_know() {
+    // O rastro tem de ter o efeito: o erro novo nasce no tick em que o recheck está ligado.
+    assert_eq!(
+        first_tick_with("chamber_recheck_changes_errors", "output_space")
+            .map(|(_, recheck)| recheck),
+        Some(true)
+    );
+    replay("chamber_recheck_changes_errors");
+}
+
+#[test]
+fn without_a_player_the_woken_recipe_never_finds_the_other_error() {
+    assert_eq!(
+        first_tick_with("chamber_recheck_changes_errors_alone", "output_space"),
+        None
+    );
+    replay("chamber_recheck_changes_errors_alone");
+}
+
+/// A câmara não registra `NOT_ENOUGH_ENERGY_REDUCED_RATE`: com velocidade 8 e energia para 3 ticks, para um terço de tick e para nada,
+/// os avisos são só os de energia, e o separador, que registra o tipo, fica de fora porque ainda não está portado.
+#[test]
+fn the_chamber_never_reports_the_reduced_rate() {
+    replay("chamber_reduced_rate");
 }
 
 /// O baú de `ItemHandler` serve também de alvo: confere que o `Rc` dele vira o handler que o mundo entrega.

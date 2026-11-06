@@ -23,3 +23,4 @@ pub mod transit;
 pub mod two_input_recipe;
 pub mod units;
 pub mod upgrade;
+pub mod warning;

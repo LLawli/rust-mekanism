@@ -15,6 +15,7 @@ use crate::two_input_recipe::{
     ItemChemicalRecipes, ItemChemicalToItemRecipe, TwoInputItemChemicalRecipe,
 };
 use crate::upgrade::{UpgradeComponent, UpgradeData, UpgradeSaved};
+use crate::warning::ErrorMask;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -859,6 +860,18 @@ impl ProgressMachine {
             .iter()
             .position(|tracked| *tracked == error);
         position.is_some_and(|index| self.shared.tracked_errors.borrow()[index])
+    }
+
+    /// `trackedErrors` como bits para um data slot, na ordem de `TRACKED_ERROR_TYPES`. O cliente refaz o `getWarningCheck` com
+    /// [`ErrorMask::has`] e a mesma lista.
+    pub fn tracked_errors_mask(&self) -> ErrorMask {
+        ErrorMask::from_flags(&self.shared.tracked_errors.borrow())
+    }
+
+    /// `shouldRecheckAllErrors`: com jogador na tela, uma vez a cada `RECIPE_CHECK_FREQUENCY` ticks, no sorteio da máquina. Lê o
+    /// relógio do último `tick_server`.
+    pub fn recheck_all_errors(&self) -> bool {
+        self.shared.recheck_all_errors()
     }
 
     /// Troca as receitas de um item, quando os dados recarregam: o cache se refaz no próximo tick.

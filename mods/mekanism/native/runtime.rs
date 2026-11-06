@@ -8,10 +8,12 @@ use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tile::{
-    ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, UpgradeConfig,
+    ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
+    UpgradeConfig,
 };
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
+use machinery_basis_core::warning::{ErrorMask, WarningTracker};
 use serde_json::Value;
 use std::rc::Rc;
 
@@ -103,6 +105,184 @@ pub const INFUSER_TRACKED_ERRORS: [RecipeError; 5] = [
     RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
     RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
 ];
+
+/// `WarningTracker.WarningType`. A ordem das variantes é a do `enum` do Java: ela decide a ordem dos avisos na tela, por causa do
+/// `EnumMap`, e o corte de `getWarnings` depende dela. Não reordene. `expectedWarnings` (a capacidade inicial da lista) não muda
+/// o comportamento e não entra.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WarningType {
+    InputDoesntProduceOutput,
+    NoMatchingRecipe,
+    NoSpaceInOutput,
+    NoSpaceInOutputOverflow,
+    NotEnoughEnergy,
+    NotEnoughEnergyReducedRate,
+    InvalidOredictionificatorFilter,
+    FilterHasBlacklistedElement,
+    RedstoneSignalAbsent,
+    RedstoneSignalPresent,
+    RedstonePulseRequired,
+}
+
+impl WarningType {
+    /// O nome do `enum` em minúsculas, como os rastros o gravam.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::InputDoesntProduceOutput => "input_doesnt_produce_output",
+            Self::NoMatchingRecipe => "no_matching_recipe",
+            Self::NoSpaceInOutput => "no_space_in_output",
+            Self::NoSpaceInOutputOverflow => "no_space_in_output_overflow",
+            Self::NotEnoughEnergy => "not_enough_energy",
+            Self::NotEnoughEnergyReducedRate => "not_enough_energy_reduced_rate",
+            Self::InvalidOredictionificatorFilter => "invalid_oredictionificator_filter",
+            Self::FilterHasBlacklistedElement => "filter_has_blacklisted_element",
+            Self::RedstoneSignalAbsent => "redstone_signal_absent",
+            Self::RedstoneSignalPresent => "redstone_signal_present",
+            Self::RedstonePulseRequired => "redstone_pulse_required",
+        }
+    }
+
+    /// `langEntry`: o `MekanismLang.ISSUE_*` do tipo, que `getWarnings` traduz.
+    pub const fn lang_key(self) -> &'static str {
+        match self {
+            Self::InputDoesntProduceOutput => "gui.mekanism.issues.input_doesnt_produce_output",
+            Self::NoMatchingRecipe => "gui.mekanism.issues.no_recipe",
+            Self::NoSpaceInOutput => "gui.mekanism.issues.no_space",
+            Self::NoSpaceInOutputOverflow => "gui.mekanism.issues.no_space.overflow",
+            Self::NotEnoughEnergy => "gui.mekanism.issues.no_energy",
+            Self::NotEnoughEnergyReducedRate => "gui.mekanism.issues.no_energy.reduced_rate",
+            Self::InvalidOredictionificatorFilter => {
+                "gui.mekanism.issues.invalid_oredictionificator_filter"
+            }
+            Self::FilterHasBlacklistedElement => {
+                "gui.mekanism.issues.filter_has_blacklisted_element"
+            }
+            Self::RedstoneSignalAbsent => "gui.mekanism.issues.redstone_signal_absent",
+            Self::RedstoneSignalPresent => "gui.mekanism.issues.redstone_signal_present",
+            Self::RedstonePulseRequired => "gui.mekanism.issues.redstone_pulse_required",
+        }
+    }
+}
+
+/// O tipo em que `WarningTracker.getWarnings` para: depois da mensagem de `NOT_ENOUGH_ENERGY` não lista mais nada. No Java o
+/// comentário fala só da taxa reduzida, mas o corte também esconde os avisos de redstone, que vêm depois dela no `enum`.
+pub const WARNINGS_STOP_AFTER: WarningType = WarningType::NotEnoughEnergy;
+
+/// Os pares (tipo, erro) que a tela de uma `TileEntityElectricMachine` registra: `GuiElectricMachine` (a barra de energia e a
+/// seta de progresso) e os slots de `TileEntityElectricMachine.getInitialInventory` (entrada e saída).
+pub const ELECTRIC_WARNINGS: [(WarningType, RecipeError); 4] = [
+    (WarningType::NotEnoughEnergy, RecipeError::NOT_ENOUGH_ENERGY),
+    (
+        WarningType::InputDoesntProduceOutput,
+        RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
+    ),
+    (WarningType::NoMatchingRecipe, RecipeError::NOT_ENOUGH_INPUT),
+    (
+        WarningType::NoSpaceInOutput,
+        RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
+    ),
+];
+
+/// O mesmo do Metallurgic Infuser: `GuiMetallurgicInfuser` e `TileEntityMetallurgicInfuser.getInitialInventory`. A barra do
+/// químico e o slot de entrada dão os dois `NO_MATCHING_RECIPE`, e a falta de saída vem do slot de saída.
+pub const INFUSER_WARNINGS: [(WarningType, RecipeError); 5] = [
+    (WarningType::NotEnoughEnergy, RecipeError::NOT_ENOUGH_ENERGY),
+    (
+        WarningType::InputDoesntProduceOutput,
+        RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
+    ),
+    (
+        WarningType::NoMatchingRecipe,
+        RecipeError::NOT_ENOUGH_SECONDARY_INPUT,
+    ),
+    (WarningType::NoMatchingRecipe, RecipeError::NOT_ENOUGH_INPUT),
+    (
+        WarningType::NoSpaceInOutput,
+        RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
+    ),
+];
+
+/// O que as verificações de aviso leem de uma máquina: no servidor, o objeto vivo; no cliente, o que os data slots trouxeram.
+pub trait WarningSource {
+    /// `getWarningCheck(error)`.
+    fn has_error(&self, error: RecipeError) -> bool;
+    /// `getControlType`.
+    fn control_type(&self) -> RedstoneControl;
+    /// `isRedstoneActivated`.
+    fn is_redstone_activated(&self) -> bool;
+}
+
+impl WarningSource for ProgressMachine {
+    fn has_error(&self, error: RecipeError) -> bool {
+        ProgressMachine::has_error(self, error)
+    }
+
+    fn control_type(&self) -> RedstoneControl {
+        self.tile().control_type()
+    }
+
+    fn is_redstone_activated(&self) -> bool {
+        self.tile().is_redstone_activated()
+    }
+}
+
+/// O que o cliente tem da máquina: a máscara de erros rastreados de um data slot, a lista rastreada que o mod conhece (a mesma da
+/// máquina) e o modo de redstone com o estado dele.
+#[derive(Clone, Copy, Debug)]
+pub struct SyncedMachine {
+    pub tracked: &'static [RecipeError],
+    pub errors: ErrorMask,
+    pub control_type: RedstoneControl,
+    pub redstone_activated: bool,
+}
+
+impl SyncedMachine {
+    /// O que o servidor manda de uma máquina: a máscara e o modo de redstone. Os mesmos valores que o cliente lê dos data slots.
+    pub fn of(machine: &ProgressMachine, tracked: &'static [RecipeError]) -> Self {
+        Self {
+            tracked,
+            errors: machine.tracked_errors_mask(),
+            control_type: machine.tile().control_type(),
+            redstone_activated: machine.tile().is_redstone_activated(),
+        }
+    }
+}
+
+impl WarningSource for SyncedMachine {
+    fn has_error(&self, error: RecipeError) -> bool {
+        self.errors.has(self.tracked, error)
+    }
+
+    fn control_type(&self) -> RedstoneControl {
+        self.control_type
+    }
+
+    fn is_redstone_activated(&self) -> bool {
+        self.redstone_activated
+    }
+}
+
+/// O `WarningTracker` de uma tela de máquina: os pares da máquina, e os três de redstone de `GuiMekanismTile.addGenericTabs`, que
+/// toda máquina com controle de redstone registra.
+pub fn machine_warnings<'a>(
+    source: &'a dyn WarningSource,
+    pairs: &[(WarningType, RecipeError)],
+) -> WarningTracker<'a, WarningType> {
+    let mut tracker = WarningTracker::new(Some(WARNINGS_STOP_AFTER));
+    for &(kind, error) in pairs {
+        tracker.track(kind, move || source.has_error(error));
+    }
+    for (kind, control) in [
+        (WarningType::RedstoneSignalAbsent, RedstoneControl::High),
+        (WarningType::RedstoneSignalPresent, RedstoneControl::Low),
+        (WarningType::RedstonePulseRequired, RedstoneControl::Pulse),
+    ] {
+        tracker.track(kind, move || {
+            source.control_type() == control && !source.is_redstone_activated()
+        });
+    }
+    tracker
+}
 
 /// O que as máquinas de progresso do Mekanism partilham: os valores de `UsageConfig`, `GeneralConfig` e `UpgradeUtils`.
 fn machine_config(

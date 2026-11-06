@@ -121,7 +121,7 @@ comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui
 
 Estado em 2026-11-05: Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser rodam na base nova em jogo, e a fase segue
 aberta. Em `machinery_basis/core` estão `transaction`, `containers`, `chemical`, `operation_tracker`, `cached_recipe`, `recipe_handlers`,
-`two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e
+`two_input_recipe`, `recipe_monitor`, `tile`, `item_handler`, `transit`, `ejector`, `warning` e `sim`. `mods/mekanism/tests/chamber_trace.rs` e
 `infuser_trace.rs` repetem tick a tick os rastros de `dev/referencia/rastros/`, gravados por `dev/referencia/testes/MachineTraceTest.java`.
 
 Em jogo foram comparados estado a estado `chamber_energy` (342 estados), `crusher_run` (377) e `smelter_run` (342). Em `infuser_run`, os 201
@@ -140,13 +140,18 @@ Falta na Fase 1:
 - Regras de inserção dos slots (`containsRecipe`, `containsRecipeAB`) na lib, em vez de no glue, e limites de taxa.
 - `findFirstRecipe` segue a ordem da lista de receitas, não o mapa por item do Java.
 - Upgrades: faltam a aba da tela, o tooltip do item, os efeitos de `muffling` e `xp_containment`, a receita do `muffling` e os tipos que
-  nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique e reabrir. A instalação de 20 ticks só foi comparada sem
-  o jogo, e a capacidade por instância em `native_energy_at` só compilou.
+  nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
+  `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.
 - Upgrade sem tipo aparece vazio, e o original mostra o modelo de item ausente.
-- `MekanismContainer`, erros e avisos da tela, som, nome, experiência e `xpContainmentChanged`.
+- `MekanismContainer`: a lógica dos avisos já está em `machinery_basis/core/src/warning.rs` e em `mods/mekanism/native/runtime.rs`,
+  comparada com os rastros. Falta desenhar os avisos, gravar a máscara de erros nos data slots, a lista de trackers do
+  `MekanismContainer`, som, nome, experiência e `xpContainmentChanged`.
 - Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
 - Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
-- Sem rastro ainda: `recheckAllErrors` com jogador olhando, `NOT_ENOUGH_ENERGY_REDUCED_RATE` e `setRecipeUsed`.
+- Sem rastro ainda: `setRecipeUsed`. `recheckAllErrors` com jogador olhando e `NOT_ENOUGH_ENERGY_REDUCED_RATE` agora têm rastro.
+  Este último só existe no Electrolytic Separator, que não está portado: `separator_reduced_rate` é usado só pelo tracker de avisos.
+- `players_using` vem do hook `mod_container_viewers`, que não conta espectador. O `PacketTileButtonPress` do Java abre a tela sem
+  checar espectador, então esse caminho diverge. O caso de `born` com a tela já aberta não foi exercitado em jogo.
 - `sim` ainda não tem chunks.
 
 **Desenho da base (usuário, 2026-11-05).** Duas opções foram implementadas e medidas em jogo, com critérios fixados antes, e ficou a que
