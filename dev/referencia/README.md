@@ -50,6 +50,6 @@ e o arquivo para `runs/client/`, tire o `cena-cabo` de lá, e rode `runGameTestC
 (`tick freeze`), monta o estado, avança com `tick step`, abre a tela e tira o print; as abas que o port não tem ficam invisíveis no original, e o
 mundo atrás é uma caixa de concreto preto. `cena_telas.py port DESTINO ESCALA...` faz o mesmo no Horizon, pelo `horizon-ctl`, e
 `comparar_lote.py PASTA_ORIGINAL PASTA_PORT SAIDA ESCALA...` compara tudo e grava `tela_<caso>.png` (original, port e diferença) e um JSON.
-Os cantos transparentes do painel mostram o mundo e contam à parte (`canto_*`). Os casos `ciclo` tiram 40 prints, um por passo, e cada print
+Os cantos transparentes do painel mostram o mundo e contam à parte (`canto_*`). Os casos `ciclo` tiram 40 prints no original e `ciclo_port` no port (o ciclo inteiro da animação), um por passo, e cada print
 do original tem de ser igual a algum do port.
 

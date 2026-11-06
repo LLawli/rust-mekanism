@@ -265,6 +265,19 @@ class Lote(unittest.TestCase):
             if "hover" in c["args"]:
                 self.assertEqual(len(c["args"]["hover"]), 2)
 
+    def test_o_ciclo_do_port_cobre_o_da_animacao(self):
+        # Quadros vezes `frametime` de cada tira: `base` 10 de 4, `bio` 8 de 30, `fungi` 4 de 40, `lava_still` 38 de 2.
+        ciclo = {"infuser_tanque_carbono": 40, "infuser_tanque_bio_ciclo": 240, "infuser_tanque_fungi_ciclo": 160, "generator_lava_ciclo": 76}
+        por_nome = {c["nome"]: c for c in cena_telas.casos()}
+        for nome, esperado in ciclo.items():
+            self.assertGreaterEqual(cena_telas.ciclos(por_nome[nome], "port"), esperado, nome)
+            self.assertEqual(cena_telas.ciclos(por_nome[nome], "oficial"), 40, nome)
+
+    def test_a_lava_do_ciclo_nao_queima(self):
+        # Com energia abaixo da capacidade o gerador gasta a lava a cada passo e o medidor muda de nível em vez de animar.
+        por_nome = {c["nome"]: c for c in cena_telas.casos()}
+        self.assertEqual(por_nome["generator_lava_ciclo"]["args"]["energia"], "cap")
+
 
 if __name__ == "__main__":
     unittest.main()

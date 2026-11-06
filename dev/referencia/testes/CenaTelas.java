@@ -232,6 +232,7 @@ public class CenaTelas {
             String[] parts = caso.args().get("quimico").split(":");
             var key = switch (parts[0]) {
                 case "bio" -> ChemicalIds.BIO;
+                case "fungi" -> ChemicalIds.FUNGI;
                 case "carbon" -> ChemicalIds.CARBON;
                 case "redstone" -> ChemicalIds.REDSTONE;
                 case "gold" -> ChemicalIds.GOLD;

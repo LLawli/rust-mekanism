@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Os estados de tela que o original e o port mostram lado a lado, e o roteiro do port. A tabela está aqui. Duas saídas:
 
-    cena_telas.py oficial ARQUIVO ESCALA... escreve o arquivo `cena-telas` que `testes/CenaTelas.java` lê (um por escala)
+    cena_telas.py oficial ARQUIVO ESCALA... [--so NOME,NOME] escreve o arquivo `cena-telas` que `testes/CenaTelas.java` lê (um por escala)
     cena_telas.py port DESTINO ESCALA... [--so NOME,NOME]
                                       monta cada estado no Horizon pelo `horizon-ctl` e grava `port_<caso>_e<escala>.png` em DESTINO
 
@@ -87,7 +87,12 @@ def casos():
         caso("infuser_aviso_energia", "infuser", energia="0", entrada="clay_ball:2", quimico="bio:500", passos="5"),
         caso("infuser_aviso_infusao", "infuser", energia="cap", entrada="clay_ball:2", passos="5"),
         caso("infuser_tanque_bio", "infuser", energia="0", quimico="bio:500"),
-        caso("infuser_tanque_carbono", "infuser", energia="0", quimico="carbon:500", ciclo="40"),
+        # `ciclo` prints no original, e `ciclo_port` no port: o ciclo inteiro da animação (quadros vezes `frametime`), porque o original
+        # anda um passo de animação a cada dois passos do servidor e o port um a cada passo, e o print do original tem de achar o seu
+        # estado entre os do port. `base`: 10 quadros de 4 ticks; `bio`: 8 de 30; `fungi`: 4 de 40.
+        caso("infuser_tanque_carbono", "infuser", energia="0", quimico="carbon:500", ciclo="40", ciclo_port="40"),
+        caso("infuser_tanque_bio_ciclo", "infuser", energia="0", quimico="bio:500", ciclo="40", ciclo_port="240"),
+        caso("infuser_tanque_fungi_ciclo", "infuser", energia="0", quimico="fungi:500", ciclo="40", ciclo_port="160"),
         caso("infuser_hover_barra_energia", "infuser", energia="500", hover=HOVER["infuser"]["barra_energia"]),
         caso("infuser_hover_barra_quimico", "infuser", energia="0", quimico="carbon:500",
              hover=HOVER["infuser"]["barra_quimico"]),
@@ -99,7 +104,9 @@ def casos():
         caso("generator_vazia", "generator", energia="0"),
         caso("generator_lava_meio", "generator", energia="120", lava="500"),
         caso("generator_lava_cheia", "generator", energia="120", lava="1000"),
-        caso("generator_lava_ciclo", "generator", energia="120", lava="500", ciclo="40"),
+        # Com a energia cheia o gerador não queima a lava: com 120 ela baixava a cada passo e o medidor mudava de nível em vez de animar.
+        # O `lava_still` tem 38 quadros de 2 ticks, sem interpolação.
+        caso("generator_lava_ciclo", "generator", energia="cap", lava="500", ciclo="40", ciclo_port="76"),
         caso("generator_hover_barra", "generator", energia="120", lava="500", hover=HOVER["generator"]["barra_energia"]),
         caso("generator_hover_medidor", "generator", energia="120", lava="500", hover=HOVER["generator"]["medidor_lava"]),
         caso("generator_hover_medidor_vazio", "generator", energia="0", hover=HOVER["generator"]["medidor_lava"]),
@@ -108,11 +115,21 @@ def casos():
     return out
 
 
-def escreve_oficial(escalas, saida):
+def ciclos(c, lado):
+    """Quantos prints de ciclo o `lado` (`oficial` ou `port`) tira em `c`: `ciclo`, ou `ciclo_port` no port quando o caso o pede."""
+    ciclo = int(c["args"].get("ciclo", "0"))
+    if lado == "port":
+        return int(c["args"].get("ciclo_port", ciclo))
+    return ciclo
+
+
+def escreve_oficial(escalas, saida, so=None):
     linhas = []
     for escala in escalas:
         linhas.append(f"escala {escala}")
         for c in casos():
+            if so and c["nome"] not in so:
+                continue
             args = dict(c["args"])
             if "hover" in args:
                 args["hover"] = "%d,%d" % tuple(args["hover"])
@@ -206,7 +223,7 @@ def tira_port(c, x, escala, destino):
     else:
         ctl("scroll-at", "2", "2", "0")
     ctl("wait", "10")
-    ciclo = int(c["args"].get("ciclo", "0"))
+    ciclo = ciclos(c, "port")
     capturas = ciclo or int(c["args"].get("capturas", "1"))
     for k in range(capturas):
         sufixo = f"_{k}" if capturas > 1 else ""
@@ -239,7 +256,13 @@ def roda_port(destino, escalas, so=None):
 if __name__ == "__main__":
     modo = sys.argv[1]
     if modo == "oficial":
-        escreve_oficial([int(e) for e in sys.argv[3:]], sys.argv[2])
+        args = sys.argv[2:]
+        so = None
+        if "--so" in args:
+            i = args.index("--so")
+            so = args[i + 1].split(",")
+            del args[i : i + 2]
+        escreve_oficial([int(e) for e in args[1:]], args[0], so)
     elif modo == "port":
         args = sys.argv[2:]
         so = None

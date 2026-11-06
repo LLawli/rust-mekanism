@@ -73,17 +73,18 @@ def casar_fases(c, escala, original, port):
     animação do seu jeito (o original desde o carregamento das texturas, e anda um quadro a cada dois passos), então as fases não
     coincidem print a print. O port, em `N` passos, passa por todos os estados do ciclo; cada print do original deve ser igual a algum
     deles. Devolve, para cada print do original, o print do port com menos pixels diferentes no elemento animado."""
-    n = int(c["args"]["ciclo"])
+    n = cena_telas.ciclos(c, "oficial")
+    m = cena_telas.ciclos(c, "port")
     tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
     rect = ct.elementos_da_tela(tela)["barra_quimico" if tela == "infuser" else "medidor_lava"]
-    arquivos = lambda lado, prefixo: [os.path.join(lado, f"{prefixo}_{c['nome']}_e{escala}_{k}.png") for k in range(n)]
-    ori = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(original, "oficial")]
-    prt = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(port, "port")]
+    arquivos = lambda lado, prefixo, total: [os.path.join(lado, f"{prefixo}_{c['nome']}_e{escala}_{k}.png") for k in range(total)]
+    ori = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(original, "oficial", n)]
+    prt = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(port, "port", m)]
     pares_ = []
     for k in range(n):
-        custo, j = min((diferentes(ori[k], prt[j]), j) for j in range(n))
+        custo, j = min((diferentes(ori[k], prt[j]), j) for j in range(m))
         pares_.append((custo, j))
-    return pares_, arquivos(original, "oficial"), arquivos(port, "port")
+    return pares_, arquivos(original, "oficial", n), arquivos(port, "port", m)
 
 
 def regioes_do_caso(c, a, b, escala):
@@ -117,7 +118,7 @@ def principal(argv):
                 print(f"FALTA {c['nome']}_e{escala} (ciclo)")
                 falhas += 1
                 continue
-            n = int(c["args"]["ciclo"])
+            n = cena_telas.ciclos(c, "oficial")
             distintos = len({tuple(x) for x in casados})
             sem_par = sum(1 for custo, _ in casados if custo)
             print(f"ciclo {c['nome']}_e{escala}: {len(casados) - sem_par} de {len(casados)} prints do original têm um estado idêntico no port; {sem_par} sem par (pior {max(custo for custo, _ in casados)} px)")
