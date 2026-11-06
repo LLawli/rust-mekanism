@@ -56,21 +56,22 @@ pub const UPGRADE_MULTIPLIER: f64 = 10.0;
 pub const MAX_UPGRADES: i32 = 8;
 
 /// `TileEntityEnrichmentChamber.TRACKED_ERROR_TYPES`, na ordem da tela.
-pub const CHAMBER_TRACKED_ERRORS: [RecipeError; 4] = [
+pub const ELECTRIC_TRACKED_ERRORS: [RecipeError; 4] = [
     RecipeError::NOT_ENOUGH_ENERGY,
     RecipeError::NOT_ENOUGH_INPUT,
     RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
     RecipeError::INPUT_DOESNT_PRODUCE_OUTPUT,
 ];
 
-/// A Enrichment Chamber como a lib a recebe: valores do mod, receitas de quem as leu do jogo. O teste dos rastros usa
-/// esta mesma configuração.
-pub fn chamber_config(
+/// Uma máquina elétrica como a lib a recebe: valores do mod, receitas de quem as leu do jogo. O teste dos rastros usa esta
+/// mesma configuração.
+pub fn electric_config(
+    energy_per_tick: i32,
     recipes: Vec<Rc<ItemToItemRecipe>>,
     check_offset: u64,
 ) -> ElectricMachineConfig {
     ElectricMachineConfig {
-        energy_per_tick: ENRICHMENT_USAGE,
+        energy_per_tick,
         base_ticks_required: TICKS_REQUIRED as i32,
         deactivation_delay: BLOCK_DEACTIVATION_DELAY,
         upgrades: UpgradeRules {
@@ -79,7 +80,7 @@ pub fn chamber_config(
             max_energy: MAX_UPGRADES,
         },
         recipes,
-        tracked_errors: CHAMBER_TRACKED_ERRORS.to_vec(),
+        tracked_errors: ELECTRIC_TRACKED_ERRORS.to_vec(),
         check_offset,
     }
 }

@@ -5,13 +5,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import mekanism.api.MekanismRegistries;
 import mekanism.api.RelativeSide;
+import mekanism.api.chemical.Chemical;
+import mekanism.api.chemical.ChemicalIds;
+import mekanism.api.chemical.ChemicalResource;
+import mekanism.api.chemical.IChemicalTank;
 import mekanism.api.inventory.IInventorySlot;
 import mekanism.api.recipes.cache.CachedRecipe.OperationTracker.RecipeError;
 import mekanism.api.upgrade.Upgrade;
 import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.block.attribute.Attribute;
+import mekanism.common.capabilities.energy.MachineEnergyContainer;
 import mekanism.common.lib.transmitter.TransmissionType;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismItems;
@@ -19,7 +25,9 @@ import mekanism.common.tests.helpers.MekGameTestHelper;
 import mekanism.common.tile.component.config.ConfigInfo;
 import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
-import mekanism.common.tile.machine.TileEntityEnrichmentChamber;
+import mekanism.common.tile.machine.TileEntityMetallurgicInfuser;
+import mekanism.common.tile.prefab.TileEntityElectricMachine;
+import mekanism.common.tile.prefab.TileEntityProgressMachine;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -29,6 +37,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -239,17 +248,17 @@ public class MachineTraceTest {
               .thenExecuteAfter(5, () -> {
                   trace.mark("speed 1");
                   trace.addUpgrades(UpgradeIds.SPEED, 1);
-                  trace.setEnergy(trace.chamber().energyContainer().getCapacityAsLong());
+                  trace.setEnergy(trace.energy().getCapacityAsLong());
               })
               .thenExecuteAfter(20, () -> {
                   trace.mark("speed 8");
                   trace.addUpgrades(UpgradeIds.SPEED, 7);
-                  trace.setEnergy(trace.chamber().energyContainer().getCapacityAsLong());
+                  trace.setEnergy(trace.energy().getCapacityAsLong());
               })
               .thenExecuteAfter(20, () -> {
                   trace.mark("energy 8");
                   trace.addUpgrades(UpgradeIds.ENERGY, 8);
-                  trace.setEnergy(trace.chamber().energyContainer().getCapacityAsLong());
+                  trace.setEnergy(trace.energy().getCapacityAsLong());
               })
               .thenExecuteAfter(40, trace::write)
               .thenSucceed()
@@ -398,11 +407,105 @@ public class MachineTraceTest {
         );
     }
 
+    private static void template(DynamicTest test, Supplier<BlockState> state) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(2, 1, 1).fill(1, 0, 0, 1, 0, 0, state.get()));
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Crusher, an electric machine with another usage and its own recipes.")
+    public static void crusherRun(final DynamicTest test) {
+        template(test, MekanismBlocks.CRUSHER::defaultState);
+        Trace trace = new Trace("crusher_run");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("item cobblestone 2, energy 2000");
+                  trace.setSlot(INPUT, Items.COBBLESTONE, 2);
+                  trace.setEnergy(2_000);
+              })
+              .thenExecuteAfter(270, () -> {
+                  trace.mark("energy 1000");
+                  trace.setEnergy(1_000);
+              })
+              .thenExecuteAfter(150, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Energized Smelter on the game's cooking recipes.")
+    public static void smelterRun(final DynamicTest test) {
+        template(test, MekanismBlocks.ENERGIZED_SMELTER::defaultState);
+        Trace trace = new Trace("smelter_run");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("item raw_iron 2, energy 1200");
+                  trace.setSlot(INPUT, Items.RAW_IRON, 2);
+                  trace.setEnergy(1_200);
+              })
+              .thenExecuteAfter(260, () -> {
+                  trace.mark("energy 500");
+                  trace.setEnergy(500);
+              })
+              .thenExecuteAfter(120, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Metallurgic Infuser: two inputs, a tank that runs short, an item with no recipe and items converted into the tank.")
+    public static void infuserRun(final DynamicTest test) {
+        template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
+        Trace trace = new Trace("infuser_run");
+        trace.inputSlot = 1;
+        trace.outputSlot = 2;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("item copper_ingot 2, tank redstone 15, energy 3000");
+                  trace.setSlot(1, Items.COPPER_INGOT, 2);
+                  trace.setTank(15);
+                  trace.setEnergy(3_000);
+              })
+              .thenExecuteAfter(230, () -> {
+                  trace.mark("tank redstone 30");
+                  trace.setTank(30);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("tank redstone 0");
+                  trace.setTank(0);
+              })
+              .thenExecuteAfter(20, () -> {
+                  trace.mark("tank redstone 30");
+                  trace.setTank(30);
+              })
+              .thenExecuteAfter(20, () -> {
+                  trace.mark("item iron_ingot 1");
+                  trace.setSlot(1, Items.IRON_INGOT, 1);
+              })
+              .thenExecuteAfter(20, () -> {
+                  trace.mark("item copper_ingot 1, tank redstone 0");
+                  trace.setSlot(1, Items.COPPER_INGOT, 1);
+                  trace.setTank(0);
+              })
+              .thenExecuteAfter(20, () -> {
+                  trace.mark("infusion redstone 3");
+                  trace.setSlot(0, Items.REDSTONE, 3);
+              })
+              .thenExecuteAfter(240, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
-              RecipeError.NOT_ENOUGH_OUTPUT_SPACE, RecipeError.INPUT_DOESNT_PRODUCE_OUTPUT);
-        private static final List<String> ERROR_NAMES = List.of("energy", "input", "output_space", "wrong_output");
+              RecipeError.NOT_ENOUGH_OUTPUT_SPACE, RecipeError.INPUT_DOESNT_PRODUCE_OUTPUT, RecipeError.NOT_ENOUGH_SECONDARY_INPUT);
+        private static final List<String> ERROR_NAMES = List.of("energy", "input", "output_space", "wrong_output", "secondary");
 
         private final String name;
         private final List<String> lines = new ArrayList<>();
@@ -410,6 +513,8 @@ public class MachineTraceTest {
         private MekGameTestHelper helper;
         private int tick;
         boolean recordChest;
+        int inputSlot = INPUT;
+        int outputSlot = OUTPUT;
 
         Trace(String name) {
             this.name = name;
@@ -423,9 +528,23 @@ public class MachineTraceTest {
             marks.add(mark);
         }
 
-        TileEntityEnrichmentChamber chamber() {
+        TileEntityProgressMachine<?> machine() {
             BlockEntity tile = helper.getLevel().getBlockEntity(helper.absolutePos(CHAMBER));
-            return tile instanceof TileEntityEnrichmentChamber chamber ? chamber : null;
+            return tile instanceof TileEntityProgressMachine<?> machine ? machine : null;
+        }
+
+        TileEntityElectricMachine<?, ?> chamber() {
+            return machine() instanceof TileEntityElectricMachine<?, ?> chamber ? chamber : null;
+        }
+
+        MachineEnergyContainer<?> energy() {
+            return (MachineEnergyContainer<?>) machine().getEnergyContainer();
+        }
+
+        void setTank(long amount) {
+            IChemicalTank tank = ((TileEntityMetallurgicInfuser) machine()).infusionTank;
+            Holder<Chemical> redstone = helper.getLevel().registryAccess().getOrThrow(ChemicalIds.REDSTONE);
+            tank.setContents(amount == 0 ? ChemicalResource.EMPTY : ChemicalResource.of(redstone), amount, null);
         }
 
         Container chest() {
@@ -451,15 +570,15 @@ public class MachineTraceTest {
         }
 
         void setSlot(int slot, Item item, int count) {
-            chamber().getInventorySlots().get(slot).setContents(ItemResource.of(item), count, null);
+            machine().getInventorySlots().get(slot).setContents(ItemResource.of(item), count, null);
         }
 
         void clearSlot(int slot) {
-            chamber().getInventorySlots().get(slot).setContents(ItemResource.EMPTY, 0, null);
+            machine().getInventorySlots().get(slot).setContents(ItemResource.EMPTY, 0, null);
         }
 
         void setEnergy(long energy) {
-            chamber().energyContainer().setEnergy(energy, null);
+            energy().setEnergy(energy, null);
         }
 
         void addUpgrades(net.minecraft.resources.ResourceKey<Upgrade> key, int amount) {
@@ -477,7 +596,8 @@ public class MachineTraceTest {
             if (helper == null) {
                 return;
             }
-            TileEntityEnrichmentChamber chamber = chamber();
+            TileEntityProgressMachine<?> chamber = machine();
+            MachineEnergyContainer<?> energy = energy();
             StringBuilder line = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":[");
             for (int i = 0; i < marks.size(); i++) {
                 line.append(i == 0 ? "" : ",").append('"').append(marks.get(i)).append('"');
@@ -485,17 +605,17 @@ public class MachineTraceTest {
             marks.clear();
             line.append("],\"progress\":").append(chamber.getRecipeProgress())
                   .append(",\"required\":").append(chamber.getTicksRequired())
-                  .append(",\"energy\":").append(chamber.energyContainer().getAmountAsLong())
-                  .append(",\"capacity\":").append(chamber.energyContainer().getCapacityAsLong())
-                  .append(",\"per_tick\":").append(chamber.energyContainer().getEnergyPerTick())
+                  .append(",\"energy\":").append(energy.getAmountAsLong())
+                  .append(",\"capacity\":").append(energy.getCapacityAsLong())
+                  .append(",\"per_tick\":").append(energy.getEnergyPerTick())
                   .append(",\"active\":").append(chamber.getActive())
                   .append(",\"block_active\":").append(Attribute.isActive(chamber.getBlockState()))
                   .append(",\"powered\":").append(chamber.isPowered())
                   .append(",\"comparator\":").append(chamber.getCurrentRedstoneLevel())
                   .append(",\"input\":[");
-            slot(line, chamber.getInventorySlots().get(INPUT));
+            slot(line, chamber.getInventorySlots().get(inputSlot));
             line.append("],\"output\":[");
-            slot(line, chamber.getInventorySlots().get(OUTPUT));
+            slot(line, chamber.getInventorySlots().get(outputSlot));
             line.append("],\"errors\":[");
             boolean first = true;
             for (int i = 0; i < ERRORS.size(); i++) {
@@ -505,6 +625,12 @@ public class MachineTraceTest {
                 }
             }
             line.append(']');
+            if (chamber instanceof TileEntityMetallurgicInfuser infuser) {
+                line.append(",\"tank\":").append(infuser.infusionTank.amountAsLong());
+                line.append(",\"infusion\":[");
+                slot(line, chamber.getInventorySlots().get(0));
+                line.append(']');
+            }
             if (recordChest) {
                 line.append(",\"chest\":[");
                 boolean firstSlot = true;

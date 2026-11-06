@@ -8,7 +8,7 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ElectricMachine, RedstoneControl};
-use mekanism_rules::{chamber_config, trace_line};
+use mekanism_rules::{CRUSHER_USAGE, ENRICHMENT_USAGE, SMELTER_USAGE, electric_config, trace_line};
 use serde_json::Value;
 use std::path::Path;
 use std::rc::Rc;
@@ -82,13 +82,31 @@ fn furnace_scene() -> Scene {
     }
 }
 
+fn machine(energy_per_tick: i32, recipes: Vec<Rc<ItemToItemRecipe>>) -> SimWorld<Chamber> {
+    SimWorld::new(Chamber(ElectricMachine::new(electric_config(
+        energy_per_tick,
+        recipes,
+        0,
+    ))))
+}
+
 fn chamber() -> SimWorld<Chamber> {
     let recipes = vec![
         recipe("clay", 1, "clay_ball", 4),
         recipe("stone", 1, "cracked_stone_bricks", 1),
         recipe("hdpe_pellet", 3, "hdpe_sheet", 1),
     ];
-    SimWorld::new(Chamber(ElectricMachine::new(chamber_config(recipes, 0))))
+    machine(ENRICHMENT_USAGE, recipes)
+}
+
+/// Só a máquina: Crusher e Energized Smelter são a mesma `TileEntityElectricMachine` da câmara, com outro consumo e outras
+/// receitas.
+fn alone(world: SimWorld<Chamber>) -> Scene {
+    Scene {
+        world,
+        chest: VanillaContainer::new(0, Rc::new(|| {})),
+        first_slot: 0,
+    }
 }
 
 /// Enche o baú como o cenário em Java: `fillChest`.
@@ -132,6 +150,11 @@ fn apply(scene: &mut Scene, upgrades: &mut (i32, i32), scenario: &str, action: &
             machine
                 .output()
                 .set_contents(Some(item(id)), amount.parse().unwrap(), None)
+        }
+        ["item", id, amount] => {
+            machine
+                .input()
+                .set_contents(Some(item(id)), amount.parse().unwrap(), None);
         }
         ["remove", "input"] => machine.input().set_contents(None, 0, None),
         ["clear", "output"] => machine.output().set_contents(None, 0, None),
@@ -208,10 +231,17 @@ fn replay(scenario: &str) {
         "rastro curto demais: {}",
         lines.len()
     );
-    let mut scene = if scenario == "chamber_eject_furnace" {
-        furnace_scene()
-    } else {
-        scene()
+    let mut scene = match scenario {
+        "chamber_eject_furnace" => furnace_scene(),
+        "crusher_run" => alone(machine(
+            CRUSHER_USAGE,
+            vec![recipe("cobblestone", 1, "gravel", 1)],
+        )),
+        "smelter_run" => alone(machine(
+            SMELTER_USAGE,
+            vec![recipe("raw_iron", 1, "iron_ingot", 1)],
+        )),
+        _ => scene(),
     };
     let mut upgrades = (0, 0);
     for expected in &lines {
@@ -302,6 +332,16 @@ fn a_paused_recipe_ignores_what_does_not_notify_it() {
 #[test]
 fn upgrades() {
     replay("chamber_upgrades");
+}
+
+#[test]
+fn the_crusher_uses_its_own_energy_and_recipes() {
+    replay("crusher_run");
+}
+
+#[test]
+fn the_smelter_uses_its_own_energy_and_recipes() {
+    replay("smelter_run");
 }
 
 #[test]

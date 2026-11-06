@@ -257,7 +257,7 @@ fn tick_infuser(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity)
     basis::save_tanks(entity, &tanks);
 }
 
-// Os objetos vivos da Enrichment Chamber (o desenho do Java, com contêineres e receita em cache como objetos).
+// Os objetos vivos das máquinas elétricas (o desenho do Java, com contêineres e receita em cache como objetos).
 //
 // Moram aqui, numa tabela por thread, uma por block entity, na chave (dimensão, posição). O Horizon entrega a block entity
 // por `&mut` só durante o tick, e `ModBlockEntity` guarda `Items`, `nbt` e `data`, sem lugar para um objeto vivo: então o
@@ -271,7 +271,7 @@ fn tick_infuser(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity)
 // - Morre pela varredura: sem andar por `STALE_TICKS`, o que acontece com bloco quebrado ou chunk descarregado, o objeto sai
 //   da tabela. Um bloco novo na mesma posição não herda nada: sem a chave `redstone` na `ModBlockEntity` (o Java a grava sempre), nasce outro.
 thread_local! {
-    static CHAMBERS: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
+    static LIVE_MACHINES: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
 }
 
@@ -457,12 +457,14 @@ fn born(
     pos: [i32; 3],
     entity: &ModBlockEntity,
     recipes: &Arc<Vec<basis::MachineRecipe>>,
+    energy_per_tick: i32,
 ) -> Live {
     // `ThreadLocalRandom.nextInt(RECIPE_CHECK_FREQUENCY)`: o sorteio de `shouldRecheckAllErrors`.
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| u64::from(since.subsec_nanos()));
-    let config = rules::chamber_config(core_recipes(game, recipes), nanos % RECIPE_CHECK_FREQUENCY);
+    let check_offset = nanos % RECIPE_CHECK_FREQUENCY;
+    let config = rules::electric_config(energy_per_tick, core_recipes(game, recipes), check_offset);
     let mut machine = ElectricMachine::new(config);
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
     machine.restore(&read_saved(entity), block_active);
@@ -661,18 +663,18 @@ fn chest_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], face: Face)
         .collect()
 }
 
-/// Um tick da Enrichment Chamber sobre o objeto vivo: a base nova, no lugar de `run_machine`.
-fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, electric: &Electric) {
+/// Um tick de uma máquina elétrica sobre o objeto vivo.
+fn tick_electric(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, electric: &Electric) {
     let now = game.world.game_time;
     let dimension = game.native_dimension();
     let key = (dimension, pos);
     let recipes = basis::machine_recipes(game, &electric.machine.recipes);
 
     let started = basis::MEDIR.then(Instant::now);
-    let alive = CHAMBERS.with_borrow_mut(|chambers| chambers.remove(&key));
+    let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     let mut live = match alive {
         Some(live) if live.last_seen + 1 == now && has_saved(entity) => live,
-        _ => born(game, pos, entity, &recipes),
+        _ => born(game, pos, entity, &recipes, electric.machine.energy_per_tick),
     };
     if !Arc::ptr_eq(&live.recipes, &recipes) {
         live.machine.set_recipes(core_recipes(game, &recipes));
@@ -772,37 +774,13 @@ fn tick_chamber(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
 
     live.last_seen = now;
-    CHAMBERS.with_borrow_mut(|chambers| {
-        chambers.insert(key, live);
+    LIVE_MACHINES.with_borrow_mut(|machines| {
+        machines.insert(key, live);
         if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
             LAST_SWEEP.set(now);
-            chambers.retain(|_, live| now - live.last_seen <= STALE_TICKS);
+            machines.retain(|_, live| now - live.last_seen <= STALE_TICKS);
         }
     });
-}
-
-fn tick_electric(
-    game: &mut Game<'_>,
-    pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-    electric: &Electric,
-) {
-    let (step, progress) = basis::run_machine(game, entity, None, &electric.machine);
-    let recipes = basis::machine_recipes(game, &electric.machine.recipes);
-    let front = basis::front(game, pos);
-    let accepts = |_: &Game<'_>, _: usize, stack: &ItemStack| basis::is_recipe_input(&recipes, stack, None);
-    let slots = |face| rules::electric_item_slots(front, face);
-    let sides = rules::sides(front, rules::electric_item_slots);
-    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
-    let lit = if step.active { "true" } else { "false" };
-    game.native_set_block_property(pos, "lit", lit);
-
-    let mut data = vec![0; ELECTRIC_DATA_SLOTS];
-    let energy = data_slots::split(basis::stored_energy(entity) as u32);
-    data[DATA_ENERGY] = energy[0];
-    data[DATA_ENERGY + 1] = energy[1];
-    data[ELECTRIC_DATA_PROGRESS] = progress as i32;
-    entity.data = data;
 }
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
@@ -811,11 +789,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     } else if is_infuser(&entity.id) {
         tick_infuser(game, pos, entity);
     } else if let Some(electric) = electric_machine(&entity.id) {
-        if electric.block == rules::ENRICHMENT_CHAMBER {
-            tick_chamber(game, pos, entity, electric);
-        } else {
-            tick_electric(game, pos, entity, electric);
-        }
+        tick_electric(game, pos, entity, electric);
     }
 }
 
