@@ -4,7 +4,16 @@ fn mekanism_component_item_model(
     kind: &str,
     m: &Map<String, Value>,
 ) -> core::ops::ControlFlow<ItemModelNode> {
-    const UPGRADE_TYPES: [&str; 4] = ["speed", "energy", "muffling", "xp_containment"];
+    const UPGRADE_TYPES: [&str; 8] = [
+        "anchor",
+        "chemical",
+        "energy",
+        "filter",
+        "muffling",
+        "speed",
+        "stone_generator",
+        "xp_containment",
+    ];
     if kind != "mekanism:component_item" || m.get("mek_data").and_then(Value::as_str) != Some("mekanism:upgrade") {
         return core::ops::ControlFlow::Continue(());
     }

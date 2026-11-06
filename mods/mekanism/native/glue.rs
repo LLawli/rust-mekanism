@@ -19,7 +19,10 @@ use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHan
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
 use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
+use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
+use machinery_basis_core::window::SelectedWindow;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType};
 use basis::RecipeSource::{Cooking, Custom};
@@ -42,6 +45,9 @@ struct Slots {
     energy: usize,
     /// O slot que enche o tanque de químico, nas máquinas que têm tanque.
     infusion: Option<usize>,
+    /// Os dois slots virtuais da janela de upgrades (`TileComponentUpgrade`): entrada e saída.
+    upgrade: usize,
+    upgrade_output: usize,
 }
 
 /// Uma máquina de progresso: as quatro só mudam no id, nas receitas, no consumo e nos slots.
@@ -60,6 +66,8 @@ const ELECTRIC_SLOT_LAYOUT: Slots = Slots {
     output: rules::ELECTRIC_OUTPUT_SLOT,
     energy: rules::ELECTRIC_ENERGY_SLOT,
     infusion: None,
+    upgrade: rules::ELECTRIC_UPGRADE_SLOT,
+    upgrade_output: rules::ELECTRIC_UPGRADE_OUTPUT_SLOT,
 };
 
 const fn electric(
@@ -107,6 +115,8 @@ static MACHINES: [Machine; 4] = [
             output: rules::OUTPUT_SLOT,
             energy: rules::ENERGY_SLOT,
             infusion: Some(rules::INFUSION_SLOT),
+            upgrade: rules::UPGRADE_SLOT,
+            upgrade_output: rules::UPGRADE_OUTPUT_SLOT,
         },
         screen: &rules::INFUSER_SCREEN,
     },
@@ -249,8 +259,8 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     let slots = match machine_of(block) {
-        Some(machine) if machine.slots.infusion.is_some() => rules::SLOTS,
-        Some(_) => rules::ELECTRIC_SLOTS,
+        Some(machine) if machine.slots.infusion.is_some() => rules::MENU_SLOTS,
+        Some(_) => rules::ELECTRIC_MENU_SLOTS,
         None => return,
     };
     // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
@@ -262,10 +272,13 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
 }
 
 fn native_screen(machine: &Machine) -> NativeScreen {
+    // Os slots virtuais da janela de upgrades vêm depois dos da máquina e ficam escondidos até a janela abrir.
+    let mut slots: Vec<Option<[f32; 2]>> = machine.screen.slots.iter().map(|slot| Some(slot.item)).collect();
+    slots.extend([None, None]);
     NativeScreen {
         width: WIDTH,
         height: HEIGHT,
-        slots: machine.screen.slots.iter().map(|slot| Some(slot.item)).collect(),
+        slots,
         inventory_y: 84.0,
         inventory_x: 8.0,
         own_labels: true,
@@ -276,7 +289,98 @@ fn native_screen(machine: &Machine) -> NativeScreen {
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if let Some(machine) = machine_of(block) {
         *screen = Some(native_screen(machine));
+        if let Some(spec) = window_spec(block) {
+            Game::mb_window_register(spec, remove_upgrade);
+        }
     }
+}
+
+// A janela de upgrades de cada máquina: só dados. A mecânica (aba, janela, slots virtuais) é da machinery_basis.
+const fn window_spec_of(block: &'static str, slots: &Slots, tracked_base: usize, layout: &rules::DataLayout) -> UpgradeWindowSpec {
+    UpgradeWindowSpec {
+        block,
+        virtual_slots: [slots.upgrade, slots.upgrade_output],
+        tracked_base,
+        tracking_key: rules::UPGRADE_TRACKING_KEY,
+        tracked_items: rules::UPGRADE_TRACKED_ITEMS,
+        sync_offset: layout.upgrade,
+        sync_len: rules::UPGRADE_SYNC_LEN,
+        ns: "mekanism",
+        window_type: rules::UPGRADE_WINDOW,
+        window_types: &rules::WINDOW_TYPES,
+        base_slice: rules::PANEL_SLICE,
+        max_multiplier: rules::UPGRADE_MULTIPLIER as i32,
+        data: window_upgrade_data,
+        color: rules::enum_color,
+        item: rules::UPGRADE_ITEM,
+        item_component: rules::UPGRADE_TYPE_COMPONENT,
+    }
+}
+
+fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
+    rules::upgrade_data(&upgrade::current_types(), &upgrade::current_tags(), UNKNOWN_STACK)
+}
+
+static WINDOW_SPECS: [UpgradeWindowSpec; 4] = [
+    window_spec_of(rules::ENRICHMENT_CHAMBER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
+    window_spec_of(rules::CRUSHER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
+    window_spec_of(rules::ENERGIZED_SMELTER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
+    window_spec_of(
+        rules::INFUSER,
+        &Slots {
+            input: rules::INPUT_SLOT,
+            output: rules::OUTPUT_SLOT,
+            energy: rules::ENERGY_SLOT,
+            infusion: Some(rules::INFUSION_SLOT),
+            upgrade: rules::UPGRADE_SLOT,
+            upgrade_output: rules::UPGRADE_OUTPUT_SLOT,
+        },
+        rules::INFUSER_TRACKED_BASE,
+        &rules::INFUSER_DATA,
+    ),
+];
+
+fn window_spec(block: &str) -> Option<&'static UpgradeWindowSpec> {
+    WINDOW_SPECS.iter().find(|spec| spec.block == block)
+}
+
+/// `PacketRemoveUpgrade.handle`: o servidor tira um ou todos os upgrades do tipo da máquina em `pos`.
+fn remove_upgrade(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, all: bool) {
+    let key = (game.native_dimension(), pos);
+    let Some(mut live) = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key)) else {
+        return;
+    };
+    live.machine.upgrades().remove_upgrade(upgrade, all);
+    let version = live.machine.upgrades_version();
+    if live.upgrades_version != Some(version) {
+        // O que saiu vai também para os slots do menu: o próximo tick lê o menu primeiro, e um slot de saída velho apagaria o que entrou.
+        let at = (pos[0], pos[1], pos[2]);
+        let id = match game.world.block_entities.get(&at) {
+            Some(BlockEntity::Mod(entity)) => entity.id.clone(),
+            _ => String::new(),
+        };
+        let stacks = machine_of(&id).map(|machine| {
+            let upgrades = live.machine.upgrades();
+            (
+                machine.slots.upgrade,
+                upgrade_slot_stack(game, upgrades.upgrade_slot()),
+                machine.slots.upgrade_output,
+                upgrade_slot_stack(game, upgrades.upgrade_output_slot()),
+            )
+        });
+        if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
+            write_upgrades(entity, &live.machine.upgrades().saved());
+            if let Some((input, input_stack, output, output_stack)) = stacks
+                && entity.items.len() > output.max(input)
+            {
+                entity.items[input] = input_stack;
+                entity.items[output] = output_stack;
+            }
+        }
+        live.upgrades_version = Some(version);
+        game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+    }
+    LIVE_MACHINES.with_borrow_mut(|machines| machines.insert(key, live));
 }
 
 // Os objetos vivos das máquinas de progresso (o desenho do Java, com contêineres e receita em cache como objetos).
@@ -353,6 +457,10 @@ struct Live {
     /// O nível que os comparadores já viram.
     reported_level: Option<i32>,
     lit: Option<bool>,
+    /// O que a janela de upgrades viu no tick anterior. O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na
+    /// batida seguinte da tela: o cliente do original mostra o valor de um tick atrás (medido: passos 10 do original igual a
+    /// passos 9 do port).
+    upgrade_sync_seen: Option<UpgradeSync>,
     /// A face de saída do ejetor, a direita da frente.
     eject_side: Option<Face>,
     /// Os tipos e as tags de upgrade de onde os dados da máquina saíram: uma carga nova de dados os troca.
@@ -803,6 +911,7 @@ fn born(
         used_version: None,
         reported_level: None,
         lit: None,
+        upgrade_sync_seen: None,
         eject_side: None,
         upgrade_types,
         upgrade_tags,
@@ -857,6 +966,53 @@ fn slot_to_entity(entity: &mut ModBlockEntity, index: usize, slot: &InventorySlo
         stack
     });
     entity.items[index] = new;
+}
+
+/// O recurso de um item de upgrade: o item e o tipo que o componente dele guarda.
+fn upgrade_resource(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
+    let limit = game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK);
+    match game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
+        Ok(Some(Tag::String(kind))) => ItemResource::with_variant(&stack.item, limit, &kind.to_string_lossy()),
+        _ => ItemResource::new(&stack.item, limit),
+    }
+}
+
+/// Os slots de upgrade (os virtuais do menu) lidos do que a tela mudou, como `slot_from_entity`, com o tipo do upgrade.
+fn upgrade_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
+    match stack {
+        None => slot.set_contents(None, 0, None),
+        Some(stack) => {
+            let resource = upgrade_resource(game, stack);
+            if slot.resource().as_ref() != Some(&resource) || slot.amount() != stack.count {
+                slot.set_contents(Some(resource), stack.count, None);
+            }
+        }
+    }
+}
+
+/// O item que um slot de upgrade guarda, com o tipo no componente.
+fn upgrade_slot_stack(game: &Game<'_>, slot: &InventorySlot) -> Option<ItemStack> {
+    let contents = slot.contents();
+    contents.resource.map(|resource| {
+        let mut stack = ItemStack::new(&resource.id, contents.amount);
+        if let Some(kind) = &resource.variant {
+            let _ = game.native_set_component(&mut stack, rules::UPGRADE_TYPE_COMPONENT, Tag::String(JavaString::from(&**kind)));
+        }
+        stack
+    })
+}
+
+/// O que o tick mudou nos slots de upgrade (instalar tira da entrada, remover enche a saída) volta para o menu.
+fn upgrade_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, slot: &InventorySlot) {
+    let contents = slot.contents();
+    let same = match (&contents.resource, entity.items[index].as_ref()) {
+        (None, None) => true,
+        (Some(resource), Some(stack)) => upgrade_resource(game, stack) == *resource && contents.amount == stack.count,
+        _ => false,
+    };
+    if !same {
+        entity.items[index] = upgrade_slot_stack(game, slot);
+    }
 }
 
 /// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo, com a regra real de cada slot para o item que
@@ -1007,13 +1163,20 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
 
     let started = basis::MEDIR.then(Instant::now);
+    // Um mundo antigo tem menos slots salvos que o menu de agora (os dois virtuais vêm depois dos da máquina).
+    let menu_slots = if slots.infusion.is_some() { rules::MENU_SLOTS } else { rules::ELECTRIC_MENU_SLOTS };
+    if entity.items.len() < menu_slots {
+        entity.items.resize(menu_slots, None);
+    }
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
+    let mut fresh = false;
     let mut live = match alive {
         Some(live) if live.last_seen + 1 == now && has_saved(entity) => live,
         _ => {
             if slots.infusion.is_some() {
                 migrate_old_tank(entity);
             }
+            fresh = true;
             born(game, pos, entity, spec, &recipes, conversions.as_ref())
         }
     };
@@ -1041,6 +1204,11 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     slot_from_entity(game, machine.input(), entity.items[slots.input].as_ref());
     slot_from_entity(game, machine.output(), entity.items[slots.output].as_ref());
     slot_from_entity(game, machine.energy_slot(), entity.items[slots.energy].as_ref());
+    // O conteúdo dos slots de upgrade é o do NBT do componente, que o objeto novo acabou de ler: o menu só o copia nesse tick.
+    if !fresh {
+        upgrade_from_entity(game, machine.upgrades().upgrade_slot(), entity.items[slots.upgrade].as_ref());
+        upgrade_from_entity(game, machine.upgrades().upgrade_output_slot(), entity.items[slots.upgrade_output].as_ref());
+    }
     if let (Some(side), Some(index)) = (machine.chemical_side(), slots.infusion) {
         slot_from_entity(game, &side.slot, entity.items[index].as_ref());
         // O tanque também muda fora do tick: o botão de esvaziar e o que a tela faz.
@@ -1094,6 +1262,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     slot_to_entity(entity, slots.input, machine.input(), &recipes);
     slot_to_entity(entity, slots.output, machine.output(), &recipes);
     slot_to_entity(entity, slots.energy, machine.energy_slot(), &recipes);
+    upgrade_to_entity(game, entity, slots.upgrade, machine.upgrades().upgrade_slot());
+    upgrade_to_entity(game, entity, slots.upgrade_output, machine.upgrades().upgrade_output_slot());
     if let (Some(side), Some(index)) = (machine.chemical_side(), slots.infusion) {
         slot_to_entity(entity, index, &side.slot, &recipes);
         let contents = side.tank.contents();
@@ -1161,7 +1331,14 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         screen.chemical_icon = rules::chemical_icon_slot(infusion.and_then(|infusion| infusion.icon.as_deref()));
         screen.chemical_id = data_slots::pack_text(&id);
     }
-    let data = screen.write(spec.screen.data);
+    let mut data = screen.write(spec.screen.data);
+    // O Java só sincroniza `upgradeTicks` e o mapa com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só
+    // levam o valor enquanto alguém acompanha, e ficam em zero (sem tráfego) no resto do tempo.
+    let upgrade_sync = UpgradeSync::of(machine.upgrades());
+    let shown = live.upgrade_sync_seen.replace(upgrade_sync.clone()).unwrap_or(upgrade_sync);
+    if Game::mb_window_tracking(pos) {
+        rules::write_upgrade_sync(&mut data, spec.screen.data, &shown);
+    }
     if entity.data != data {
         entity.data = data;
     }
@@ -1378,6 +1555,8 @@ pub(in crate::game) fn viewers_changed(
     if dim != dimension {
         return;
     }
+    // Quem saiu sem fechar o menu (conexão perdida, longe demais) deixa a janela escolhida para trás: larga o que não tem mais menu.
+    game.mb_window_prune(pos, viewers);
     let key = (dim, pos);
     VIEWERS.with_borrow_mut(|counts| {
         if viewers == 0 {
@@ -1398,37 +1577,211 @@ pub(in crate::game) fn viewers_changed(
     });
 }
 
-/// Shift-click do inventário: vai para o slot que aceita o item, e o que nenhum aceita não sai.
+/// O menu de uma máquina visto pelo `quickMoveStack` do Mekanism: os slots do bloco (`entity.items`, os virtuais da janela no fim)
+/// e o inventário do jogador. Um slot do bloco tem o índice dele; o do jogador, `items.len() + índice no inventário` (a barra de
+/// atalhos é 0 a 8, o inventário 9 a 35).
+struct MachineMenu<'a, 'g> {
+    game: &'a Game<'g>,
+    entity: &'a mut ModBlockEntity,
+    inventory: &'a mut [Option<ItemStack>],
+    machine: &'a Machine,
+    window: Option<SelectedWindow>,
+    recipes: Arc<Vec<basis::MachineRecipe>>,
+    conversions: Option<Arc<Vec<basis::ItemConversion>>>,
+    held: Option<String>,
+    upgrades: Rc<upgrade::UpgradeData>,
+    selected: SelectedWindow,
+}
+
+impl MachineMenu<'_, '_> {
+    fn first_player(&self) -> usize {
+        self.entity.items.len()
+    }
+
+    fn limit(&self, stack: &ItemStack) -> u32 {
+        self.game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK)
+    }
+
+    /// Se o slot do bloco `slot` aceita o item (`RecipeInputInventorySlot`, `InfusionInventorySlot`, `UpgradeInventorySlot.input`).
+    /// A saída, a energia e a saída de upgrades não aceitam nada de quem clica.
+    fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
+        let slots = &self.machine.slots;
+        if slot == slots.input {
+            return basis::is_recipe_input(&self.recipes, stack, self.held.as_deref());
+        }
+        if Some(slot) == slots.infusion {
+            return self
+                .conversions
+                .as_ref()
+                .is_some_and(|conversions| conversions.iter().any(|conversion| conversion.item.test(stack)));
+        }
+        if slot == slots.upgrade {
+            return *stack.item == *rules::UPGRADE_ITEM
+                && self.upgrade_type(stack).is_some_and(|kind| self.upgrades.supports(&kind));
+        }
+        false
+    }
+
+    fn upgrade_type(&self, stack: &ItemStack) -> Option<String> {
+        match self.game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
+            Ok(Some(Tag::String(kind))) => Some(kind.to_string_lossy()),
+            _ => None,
+        }
+    }
+
+    fn cell(&mut self, slot: usize) -> &mut Option<ItemStack> {
+        let first = self.first_player();
+        if slot < first {
+            &mut self.entity.items[slot]
+        } else {
+            &mut self.inventory[slot - first]
+        }
+    }
+}
+
+impl QuickMenu for MachineMenu<'_, '_> {
+    type Item = ItemStack;
+
+    fn slots_of(&self, region: Region) -> Vec<usize> {
+        let first = self.first_player();
+        let slots = &self.machine.slots;
+        match region {
+            // A ordem do Java: os dois virtuais primeiro, depois os da máquina em `getInitialInventory`.
+            Region::Container => {
+                let mut order = vec![slots.upgrade, slots.upgrade_output];
+                order.extend(slots.infusion);
+                order.extend([slots.input, slots.output, slots.energy]);
+                order
+            }
+            Region::Hotbar => (first..first + 9).collect(),
+            Region::Main => (first + 9..first + 36).collect(),
+            Region::Armor | Region::Offhand => Vec::new(),
+        }
+    }
+
+    fn region(&self, slot: usize) -> Region {
+        let first = self.first_player();
+        if slot < first {
+            Region::Container
+        } else if slot - first < 9 {
+            Region::Hotbar
+        } else {
+            Region::Main
+        }
+    }
+
+    fn exists(&self, slot: usize) -> bool {
+        let slots = &self.machine.slots;
+        if slot == slots.upgrade || slot == slots.upgrade_output {
+            return SelectedWindow::exists(self.selected, self.window);
+        }
+        true
+    }
+
+    fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
+        let first = self.first_player();
+        let held = if slot < first { self.entity.items[slot].as_ref() } else { self.inventory[slot - first].as_ref() };
+        held.filter(|stack| stack.count > 0).map(|stack| (stack.clone(), stack.count))
+    }
+
+    fn insert(&mut self, slot: usize, item: &ItemStack, amount: u32) -> u32 {
+        if slot < self.first_player() && !self.accepts(slot, item) {
+            return 0;
+        }
+        let limit = self.limit(item);
+        match self.cell(slot) {
+            Some(held) if held.same_item_same_components(item) => {
+                let moved = limit.saturating_sub(held.count).min(amount);
+                held.count += moved;
+                moved
+            }
+            Some(_) => 0,
+            empty => {
+                let moved = amount.min(limit);
+                let mut placed = item.clone();
+                placed.count = moved;
+                *empty = Some(placed);
+                moved
+            }
+        }
+    }
+
+    fn remove(&mut self, slot: usize, amount: u32) {
+        let cell = self.cell(slot);
+        let emptied = match &mut *cell {
+            Some(held) => {
+                held.count = held.count.saturating_sub(amount);
+                held.count == 0
+            }
+            None => false,
+        };
+        if emptied {
+            *cell = None;
+        }
+    }
+}
+
+/// Shift-click do menu da máquina: `MekanismContainer.quickMoveStack`. Do inventário vai para o slot da máquina que aceita o item
+/// (a entrada, a infusão, e o de upgrades quando a janela do jogador que clica está aberta) e, não cabendo, para a outra região do
+/// inventário; da máquina vai para a barra de atalhos e depois o inventário.
 pub(in crate::game) fn quick_move(
-    game: &Game<'_>,
+    game: &mut Game<'_>,
+    pos: [i32; 3],
     entity: &mut ModBlockEntity,
     container_slots: usize,
     slot: usize,
     stack: &mut ItemStack,
     handled: &mut bool,
 ) {
-    if slot < container_slots {
+    let Some(machine) = machine_of(&entity.id) else {
         return;
-    }
-    if let Some(electric) = electric_machine(&entity.id) {
-        let recipes = basis::machine_recipes(game, &electric.recipes);
-        if basis::is_recipe_input(&recipes, stack, None) {
-            basis::move_into_slot(game, entity, rules::ELECTRIC_INPUT_SLOT, stack);
+    };
+    let recipes = basis::machine_recipes(game, &machine.recipes);
+    let conversions = machine
+        .slots
+        .infusion
+        .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
+    let held = machine
+        .slots
+        .infusion
+        .and_then(|_| read_tank(entity).resource.map(|resource| resource.id.to_string()));
+    let window = game.mb_window_selected(pos);
+    let upgrades = window_upgrade_data();
+    let first = entity.items.len();
+    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8).
+    let from = if slot < container_slots {
+        slot
+    } else {
+        let n = slot - container_slots;
+        first + if n < 27 { 9 + n } else { n - 27 }
+    };
+    let mut inventory = std::mem::take(&mut game.inventory);
+    let (moved, left) = {
+        let mut menu = MachineMenu {
+            game: &*game,
+            entity,
+            inventory: &mut inventory,
+            machine,
+            window,
+            recipes,
+            conversions,
+            held,
+            upgrades,
+            selected: SelectedWindow::new(rules::UPGRADE_WINDOW, 0),
+        };
+        let moved = quick_move::quick_move(&mut menu, from);
+        (moved, menu.stack(from))
+    };
+    game.inventory = inventory;
+    // O slot clicado guarda o que sobrou; `handled` impede o roteamento do jogo, que levaria o item a outros slots.
+    match left {
+        Some((remaining, count)) => {
+            *stack = remaining;
+            stack.count = count;
         }
-        *handled = true;
-        return;
+        None => stack.count = 0,
     }
-    if !is_infuser(&entity.id) {
-        return;
-    }
-    let recipes = basis::machine_recipes(game, &INFUSING);
-    let conversions = basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS);
-    let held = read_tank(entity).resource.map(|resource| resource.id.to_string());
-    if basis::is_recipe_input(&recipes, stack, held.as_deref()) {
-        basis::move_into_slot(game, entity, rules::INPUT_SLOT, stack);
-    } else if conversions.iter().any(|conversion| conversion.item.test(stack)) {
-        basis::move_into_slot(game, entity, rules::INFUSION_SLOT, stack);
-    }
+    let _ = moved;
     *handled = true;
 }
 
@@ -1486,6 +1839,10 @@ pub(in crate::game) fn widget_tooltip(
     let Some(machine) = machine_of(block) else {
         return false;
     };
+    // A janela de upgrades, quando aberta, e a aba ficam por cima do resto da tela.
+    if game.mb_window_tooltip(batch, block, at, cursor) {
+        return true;
+    }
     let read = rules::ScreenData::read(machine.screen.data, data);
     let translate = |key: &str| lang::get(key);
     let (widget, lines): ([f32; 4], Vec<(String, Option<u32>)>) = if gui::contains(gui::WARNING_TAB_LEFT, at) {
@@ -1573,6 +1930,7 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, data: &[i32], batch: &mut Hu
     draw_chemical_bar(game, batch, &read, at(INFUSION_BAR), warning(rules::ScreenElement::ChemicalBar));
     sprite_rect(game, batch, DUMP_SPRITE, at(DUMP_RECT));
     // `GuiMekanism.init` a põe por último, depois de todos os elementos.
+    game.mb_window_draw_tab(batch, machine.block, origin);
     if view.tab() {
         basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
     }
@@ -1623,6 +1981,7 @@ fn draw_electric(
         PROGRESS_BAR_FRAME,
         view.element(rules::ScreenElement::Progress),
     );
+    game.mb_window_draw_tab(batch, electric.block, origin);
     if view.tab() {
         basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
     }

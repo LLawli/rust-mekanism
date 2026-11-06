@@ -20,7 +20,9 @@ use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
+use machinery_basis_core::upgrade_window::UpgradeSync;
 use machinery_basis_core::warning::{ErrorMask, WarningTracker};
+use machinery_basis_core::window::WindowType;
 use serde_json::Value;
 use std::rc::Rc;
 
@@ -362,9 +364,18 @@ pub struct DataLayout {
     pub redstone: usize,
     /// `ticksRequired`: com upgrades de velocidade a seta de progresso se enche por ele, não pelo de base.
     pub ticks_required: usize,
+    /// Onde começam os data slots dos upgrades (`UPGRADE_SYNC_LEN` deles): `upgradeTicks` e uma contagem por tipo.
+    pub upgrade: usize,
     /// Quantos data slots o menu declara: o `data_slots` do arquivo de menu.
     pub len: usize,
 }
+
+/// Quantos tipos de upgrade o mod declara em `data/mekanism/mekanism/upgrade`: cada um tem a contagem dele num data slot.
+pub const UPGRADE_TYPES: usize = 8;
+
+/// Os data slots dos upgrades: `upgradeTicks` e uma contagem por tipo, na ordem do registro. O Java os sincroniza só com a janela
+/// aberta, por jogador, e aqui eles são do bloco (veja `docs/mekanism-no-horizon.md`).
+pub const UPGRADE_SYNC_LEN: usize = 1 + UPGRADE_TYPES;
 
 /// Os data slots do tanque de químico: a quantidade (um slot), o `tint` ARGB do que ele guarda (dois), o sprite (um, o índice em
 /// [`CHEMICAL_ICONS`] mais um, e zero sem sprite) e o id (`CHEMICAL_ID_SLOTS` slots, dois bytes em cada), de onde sai o nome do
@@ -388,7 +399,8 @@ pub const ELECTRIC_DATA: DataLayout = DataLayout {
     errors: 5,
     redstone: 6,
     ticks_required: 7,
-    len: 8,
+    upgrade: 8,
+    len: 8 + UPGRADE_SYNC_LEN,
 };
 
 pub const INFUSER_DATA: DataLayout = DataLayout {
@@ -404,8 +416,25 @@ pub const INFUSER_DATA: DataLayout = DataLayout {
     errors: 8,
     redstone: 9,
     ticks_required: 10,
-    len: 12 + CHEMICAL_ID_SLOTS,
+    upgrade: 12 + CHEMICAL_ID_SLOTS,
+    len: 12 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
 };
+
+/// Escreve o `upgradeTicks` e o mapa de upgrades nos data slots. Fora de `ScreenData` porque o mapa não é `Copy`.
+pub fn write_upgrade_sync(data: &mut [i32], layout: &DataLayout, sync: &UpgradeSync) {
+    for (slot, value) in data
+        .iter_mut()
+        .skip(layout.upgrade)
+        .zip(sync.write(UPGRADE_SYNC_LEN))
+    {
+        *slot = value;
+    }
+}
+
+/// O que o cliente lê dos data slots dos upgrades.
+pub fn read_upgrade_sync(layout: &DataLayout, data: &[i32]) -> UpgradeSync {
+    UpgradeSync::read(data.get(layout.upgrade..).unwrap_or_default())
+}
 
 /// O que o servidor escreve nos data slots de uma máquina e o cliente lê.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -864,12 +893,75 @@ pub const INPUT_SLOT: usize = 1;
 pub const OUTPUT_SLOT: usize = 2;
 pub const ENERGY_SLOT: usize = 3;
 pub const SLOTS: usize = 4;
+/// Os dois slots virtuais da janela de upgrades vêm depois dos da máquina (`TileComponentUpgrade`: entrada e saída).
+pub const UPGRADE_SLOT: usize = SLOTS;
+pub const UPGRADE_OUTPUT_SLOT: usize = SLOTS + 1;
+/// Quantos slots o contêiner do Metallurgic Infuser declara, os virtuais inclusos.
+pub const MENU_SLOTS: usize = SLOTS + 2;
 
 // Na ordem de TileEntityElectricMachine.getInitialInventory.
 pub const ELECTRIC_INPUT_SLOT: usize = 0;
 pub const ELECTRIC_OUTPUT_SLOT: usize = 1;
 pub const ELECTRIC_ENERGY_SLOT: usize = 2;
 pub const ELECTRIC_SLOTS: usize = 3;
+pub const ELECTRIC_UPGRADE_SLOT: usize = ELECTRIC_SLOTS;
+pub const ELECTRIC_UPGRADE_OUTPUT_SLOT: usize = ELECTRIC_SLOTS + 1;
+/// Quantos slots o contêiner das máquinas elétricas declara, os virtuais inclusos.
+pub const ELECTRIC_MENU_SLOTS: usize = ELECTRIC_SLOTS + 2;
+
+/// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela de upgrades.
+pub const UPGRADE_TRACKING_KEY: u8 = 2;
+/// Quantos dados a janela acrescenta ao contêiner (`getSpecificSyncableData`: `upgradeTicks` e o mapa).
+pub const UPGRADE_TRACKED_ITEMS: usize = 2;
+/// Quantos dados o contêiner já sincroniza ao nascer (`addContainerTrackers`), medidos nos rastros `*_container_tracking`.
+pub const ELECTRIC_TRACKED_BASE: usize = 16;
+pub const INFUSER_TRACKED_BASE: usize = 18;
+
+/// `EnumColor.getColor` pelo nome que o arquivo do tipo de upgrade usa (`color`), a cor primária (`colormap/primary.png`) em ARGB. Só as
+/// que os tipos declarados usam; um nome que não é daqui vale branco, o que o `Upgrade.argb()` de uma cor sem tinta dá.
+pub fn enum_color(name: &str) -> u32 {
+    match name {
+        "green" => 0xFF_59_C1_5F,
+        "yellow" => 0xFF_FF_DD_4F,
+        "lime" => 0xFF_75_FF_89,
+        "cyan" => 0xFF_00_F3_D0,
+        "light_blue" => 0xFF_55_9E_FF,
+        "red" => 0xFF_FF_38_3C,
+        "orange" => 0xFF_FF_A1_60,
+        _ => 0xFF_FF_FF_FF,
+    }
+}
+
+/// `WindowType`, na ordem do enum do Java. `CRAFTING` aceita `MAX_CRAFTING_WINDOWS` (3) janelas.
+pub const WINDOW_TYPES: [WindowType; 11] = [
+    window_type(0, Some("color"), false, 1),
+    window_type(1, Some("confirmation"), false, 1),
+    window_type(2, Some("crafting"), true, 3),
+    window_type(3, Some("mekasuit_helmet"), false, 1),
+    window_type(4, Some("recipe_book"), false, 1),
+    window_type(5, Some("rename"), false, 1),
+    window_type(6, Some("skin_select"), false, 1),
+    window_type(7, Some("side_config"), true, 1),
+    window_type(8, Some("transporter_config"), true, 1),
+    window_type(9, Some("upgrade"), true, 1),
+    window_type(10, None, false, 1),
+];
+/// `WindowType.UPGRADE`.
+pub const UPGRADE_WINDOW: WindowType = WINDOW_TYPES[9];
+
+const fn window_type(
+    ordinal: u8,
+    save_name: Option<&'static str>,
+    can_pin: bool,
+    max_data: u8,
+) -> WindowType {
+    WindowType {
+        ordinal,
+        save_name,
+        can_pin,
+        max_data,
+    }
+}
 
 const INPUT_SLOTS: &[usize] = &[INPUT_SLOT];
 const INFUSION_SLOTS: &[usize] = &[INFUSION_SLOT];

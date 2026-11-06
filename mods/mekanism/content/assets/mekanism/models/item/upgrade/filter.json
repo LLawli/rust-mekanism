@@ -1,0 +1,6 @@
+{
+ "parent": "mekanism:item/upgrade",
+ "textures": {
+  "upgrade": "mekanism:item/upgrade/filter"
+ }
+}

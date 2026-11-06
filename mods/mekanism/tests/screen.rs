@@ -117,6 +117,8 @@ fn assert_layout_is_disjoint(layout: &DataLayout) {
     used.push(layout.errors);
     used.push(layout.redstone);
     used.push(layout.ticks_required);
+    // `upgradeTicks` e uma contagem por tipo de upgrade, ao fim do layout.
+    used.extend(layout.upgrade..layout.upgrade + mekanism_rules::UPGRADE_SYNC_LEN);
     if let Some(chemical) = layout.chemical {
         used.extend([
             chemical.amount,
