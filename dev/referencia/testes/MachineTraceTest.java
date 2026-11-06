@@ -22,13 +22,16 @@ import mekanism.api.upgrade.IUpgradeHelper;
 import mekanism.api.upgrade.Upgrade;
 import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.block.attribute.Attribute;
+import mekanism.common.block.attribute.AttributeEnergy;
 import mekanism.common.capabilities.energy.MachineEnergyContainer;
+import mekanism.common.config.MekanismConfig;
 import mekanism.common.inventory.warning.WarningTracker;
 import mekanism.common.inventory.warning.WarningTracker.WarningType;
 import mekanism.common.lib.transmitter.TransmissionType;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismItems;
 import mekanism.common.tests.helpers.MekGameTestHelper;
+import mekanism.common.tile.component.TileComponentUpgrade;
 import mekanism.common.tile.component.config.ConfigInfo;
 import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
@@ -42,6 +45,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Player;
@@ -855,6 +859,203 @@ public class MachineTraceTest {
               .thenExecuteAfter(10, trace::write)
               .thenSucceed()
         );
+    }
+
+    /// Tabela de upgrades: quatro máquinas lado a lado, cada uma com a mesma sequência de mudanças. Para cada energia de 0 a 8,
+    /// a velocidade sobe de 0 a 8 um por um. Depois de cada mudança a máquina processa alguns ticks e o estado é lido dos getters.
+    /// Depois, a Enrichment Chamber roda com energia cheia e grava o quanto o estoque cai por tick.
+    private static final List<String> UPGRADE_MACHINES = List.of("enrichment_chamber", "crusher", "energized_smelter", "metallurgic_infuser");
+    private static final List<BlockPos> UPGRADE_POSITIONS = List.of(new BlockPos(1, 0, 0), new BlockPos(3, 0, 0), new BlockPos(5, 0, 0), new BlockPos(7, 0, 0));
+    private static final List<Item> UPGRADE_INPUTS = List.of(Items.CLAY, Items.COBBLESTONE, Items.RAW_IRON, Items.COPPER_INGOT);
+    /// A Metallurgic Infuser tem o slot de infusão antes da entrada, por isso a entrada e a saída dela são 1 e 2.
+    private static final int[] UPGRADE_INPUT_SLOTS = {0, 0, 0, 1};
+    private static final int[] UPGRADE_OUTPUT_SLOTS = {1, 1, 1, 2};
+    private static final int UPGRADE_SETTLE_TICKS = 3;
+    private static final int CONSUMPTION_TICKS = 12;
+    private static final int UPGRADE_TIMEOUT = 60 * SharedConstants.TICKS_PER_SECOND;
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = UPGRADE_TIMEOUT, batch = "trace_upgrade_table")
+    @TestHolder(description = "Records ticks required, energy per tick, capacity and stored energy of four machines for each pair of energy and speed upgrades, and the energy the chamber spends per tick.")
+    public static void upgradeTable(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(8, 1, 1)
+              .fill(1, 0, 0, 1, 0, 0, MekanismBlocks.ENRICHMENT_CHAMBER.defaultState())
+              .fill(3, 0, 0, 3, 0, 0, MekanismBlocks.CRUSHER.defaultState())
+              .fill(5, 0, 0, 5, 0, 0, MekanismBlocks.ENERGIZED_SMELTER.defaultState())
+              .fill(7, 0, 0, 7, 0, 0, MekanismBlocks.METALLURGIC_INFUSER.defaultState()));
+        UpgradeTable table = new UpgradeTable();
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> table.sample());
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            var seq = helper.startSequence().thenExecute(() -> table.start(helper));
+            for (int energy = 0; energy <= 8; energy++) {
+                int e = energy;
+                seq = seq.thenExecuteAfter(2, () -> table.reset(e))
+                      .thenExecuteAfter(UPGRADE_SETTLE_TICKS, () -> table.record(e, 0));
+                for (int speed = 1; speed <= 8; speed++) {
+                    int s = speed;
+                    seq = seq.thenExecuteAfter(1, table::speedUp)
+                          .thenExecuteAfter(UPGRADE_SETTLE_TICKS, () -> table.record(e, s));
+                }
+            }
+            for (int energy : List.of(0, 4, 8)) {
+                int e = energy;
+                seq = seq.thenExecuteAfter(2, () -> table.reset(e))
+                      .thenExecuteAfter(1, table::startCapture)
+                      .thenExecuteAfter(CONSUMPTION_TICKS, () -> table.endCapture(e));
+            }
+            seq.thenExecuteAfter(2, table::write).thenSucceed();
+        });
+    }
+
+    /// Estado da tabela de upgrades. Lê as máquinas pelo teste e acumula as linhas de `upgrade_table.jsonl`.
+    private static class UpgradeTable {
+
+        private final List<String> lines = new ArrayList<>();
+        private final List<String> samples = new ArrayList<>();
+        private MekGameTestHelper helper;
+        private boolean capturing;
+        private long capturedCapacity;
+
+        void start(MekGameTestHelper helper) {
+            this.helper = helper;
+            lines.add("{\"meta\":\"upgrade_max\",\"energy\":" + upgrade(UpgradeIds.ENERGY).value().max()
+                  + ",\"speed\":" + upgrade(UpgradeIds.SPEED).value().max() + "}");
+            lines.add("{\"meta\":\"config\",\"max_upgrade_multiplier\":" + MekanismConfig.general.maxUpgradeMultiplier.get()
+                  + ",\"usage\":{\"enrichment_chamber\":" + MekanismConfig.usage.enrichmentChamber.get()
+                  + ",\"crusher\":" + MekanismConfig.usage.crusher.get()
+                  + ",\"energized_smelter\":" + MekanismConfig.usage.energizedSmelter.get()
+                  + ",\"metallurgic_infuser\":" + MekanismConfig.usage.metallurgicInfuser.get() + "}}");
+            for (int i = 0; i < UPGRADE_MACHINES.size(); i++) {
+                AttributeEnergy attribute = Attribute.getOrThrow(tile(i).getBlockHolder(), AttributeEnergy.class);
+                MachineEnergyContainer<?> energy = energy(i);
+                lines.add("{\"meta\":\"storage\",\"machine\":\"" + UPGRADE_MACHINES.get(i) + "\",\"usage\":" + attribute.getUsage()
+                      + ",\"config_storage\":" + attribute.getConfigStorage() + ",\"storage\":" + attribute.getStorage()
+                      + ",\"base_max_energy\":" + energy.getBaseMaxEnergy() + ",\"base_energy_per_tick\":" + energy.getBaseEnergyPerTick()
+                      + ",\"base_ticks_required\":" + progress(i).getTicksRequired() + "}");
+            }
+        }
+
+        private Holder<Upgrade> upgrade(ResourceKey<Upgrade> key) {
+            return helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).getOrThrow(key);
+        }
+
+        private TileEntityRecipeMachine<?, ?> tile(int i) {
+            BlockEntity tile = helper.getLevel().getBlockEntity(helper.absolutePos(UPGRADE_POSITIONS.get(i)));
+            return (TileEntityRecipeMachine<?, ?>) tile;
+        }
+
+        private TileEntityProgressMachine<?> progress(int i) {
+            return (TileEntityProgressMachine<?>) tile(i);
+        }
+
+        private MachineEnergyContainer<?> energy(int i) {
+            return (MachineEnergyContainer<?>) tile(i).getEnergyContainer();
+        }
+
+        /// Lê por reflexão o `currentMaxEnergy` do container: a capacidade que a máquina usa. O getter `getCapacityAsLong` devolve
+        /// o maior entre ela e o que está guardado, então um estoque acima da capacidade nova apareceria como capacidade.
+        private static long currentMaxEnergy(MachineEnergyContainer<?> energy) {
+            try {
+                Field field = MachineEnergyContainer.class.getDeclaredField("currentMaxEnergy");
+                field.setAccessible(true);
+                return field.getLong(energy);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        /// Enche o container com a capacidade atual (zera antes, para não herdar um estoque antigo acima da capacidade nova).
+        private void fill(int i) {
+            MachineEnergyContainer<?> energy = energy(i);
+            energy.setEnergy(0, null);
+            energy.setEnergy(currentMaxEnergy(energy), null);
+        }
+
+        /// Tira todos os upgrades (pelo caminho real de remoção, que manda a saída para o slot de saída), limpa a saída e
+        /// repõe entrada, tanque e energia. Depois instala a energia pedida de uma vez.
+        void reset(int energy) {
+            for (int i = 0; i < UPGRADE_MACHINES.size(); i++) {
+                TileEntityRecipeMachine<?, ?> tile = tile(i);
+                TileComponentUpgrade component = tile.getComponent();
+                component.removeUpgrade(helper.getLevel().registryAccess(), upgrade(UpgradeIds.ENERGY), true);
+                component.getUpgradeOutputSlot().setContents(ItemResource.EMPTY, 0, null);
+                component.removeUpgrade(helper.getLevel().registryAccess(), upgrade(UpgradeIds.SPEED), true);
+                component.getUpgradeOutputSlot().setContents(ItemResource.EMPTY, 0, null);
+                if (component.getUpgrades(upgrade(UpgradeIds.ENERGY)) != 0 || component.getUpgrades(upgrade(UpgradeIds.SPEED)) != 0) {
+                    throw new IllegalStateException("Upgrades were not removed from " + UPGRADE_MACHINES.get(i));
+                }
+                //A remoção só recalcula quando havia upgrade. Com zero instalado, recalcula como o carregamento do tile faz (deserialize),
+                // para que a base seja a da máquina pronta (capacidade de speed 0), e não a do construtor.
+                tile.recalculateUpgrades(tile.getUpgradeLookup(helper.getLevel().registryAccess()), upgrade(UpgradeIds.ENERGY), 0);
+                tile.recalculateUpgrades(tile.getUpgradeLookup(helper.getLevel().registryAccess()), upgrade(UpgradeIds.SPEED), 0);
+                TileEntityProgressMachine<?> machine = progress(i);
+                machine.getInventorySlots().get(UPGRADE_OUTPUT_SLOTS[i]).setContents(ItemResource.EMPTY, 0, null);
+                machine.getInventorySlots().get(UPGRADE_INPUT_SLOTS[i]).setContents(ItemResource.of(UPGRADE_INPUTS.get(i)), 64, null);
+                if (tile instanceof TileEntityMetallurgicInfuser infuser) {
+                    Holder<Chemical> redstone = helper.getLevel().registryAccess().getOrThrow(ChemicalIds.REDSTONE);
+                    infuser.infusionTank.setContents(ChemicalResource.of(redstone), 30, null);
+                }
+                if (energy > 0) {
+                    component.addUpgrades(helper.getLevel().registryAccess(), upgrade(UpgradeIds.ENERGY), energy);
+                }
+                fill(i);
+            }
+        }
+
+        /// Sobe a velocidade em 1 em cada máquina e enche o container com a capacidade nova.
+        void speedUp() {
+            for (int i = 0; i < UPGRADE_MACHINES.size(); i++) {
+                tile(i).getComponent().addUpgrades(helper.getLevel().registryAccess(), upgrade(UpgradeIds.SPEED), 1);
+                fill(i);
+            }
+        }
+
+        /// Lê o estado de cada máquina. Confere antes que os upgrades do componente são os esperados.
+        void record(int energyLevel, int speedLevel) {
+            for (int i = 0; i < UPGRADE_MACHINES.size(); i++) {
+                TileEntityProgressMachine<?> machine = progress(i);
+                MachineEnergyContainer<?> energy = energy(i);
+                int energyUpgrades = machine.getComponent().getUpgrades(upgrade(UpgradeIds.ENERGY));
+                int speedUpgrades = machine.getComponent().getUpgrades(upgrade(UpgradeIds.SPEED));
+                if (energyUpgrades != energyLevel || speedUpgrades != speedLevel) {
+                    throw new IllegalStateException("Expected energy " + energyLevel + " and speed " + speedLevel + " in "
+                          + UPGRADE_MACHINES.get(i) + ", found " + energyUpgrades + " and " + speedUpgrades);
+                }
+                lines.add("{\"machine\":\"" + UPGRADE_MACHINES.get(i) + "\",\"energy_upgrades\":" + energyUpgrades
+                      + ",\"speed_upgrades\":" + speedUpgrades + ",\"max_energy\":" + currentMaxEnergy(energy)
+                      + ",\"energy_per_tick\":" + energy.getEnergyPerTick() + ",\"ticks_required\":" + machine.getTicksRequired()
+                      + ",\"stored\":" + energy.getAmountAsLong() + ",\"capacity_getter\":" + energy.getCapacityAsLong() + "}");
+            }
+        }
+
+        void startCapture() {
+            samples.clear();
+            capturedCapacity = currentMaxEnergy(energy(0));
+            capturing = true;
+        }
+
+        /// Chamada a cada tick do servidor, depois do tick das máquinas: grava [energia, progresso] da Enrichment Chamber.
+        void sample() {
+            if (capturing) {
+                samples.add("[" + energy(0).getAmountAsLong() + "," + progress(0).getRecipeProgress() + "]");
+            }
+        }
+
+        void endCapture(int energyLevel) {
+            capturing = false;
+            lines.add("{\"meta\":\"consumption\",\"machine\":\"enrichment_chamber\",\"energy_upgrades\":" + energyLevel
+                  + ",\"speed_upgrades\":0,\"energy_per_tick\":" + energy(0).getEnergyPerTick() + ",\"capacity\":" + capturedCapacity
+                  + ",\"samples\":[" + String.join(",", samples) + "]}");
+        }
+
+        void write() {
+            try {
+                Path file = Path.of("trace", "upgrade_table.jsonl");
+                Files.createDirectories(file.getParent());
+                Files.write(file, lines);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 
     private static class Trace {
