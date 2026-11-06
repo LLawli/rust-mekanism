@@ -192,6 +192,22 @@ bindings = [
   { name = "dimension", ty = "&str", value = "dimension" },
 ]
 
+# Quantos jogadores têm a tela do bloco aberta mudou (`ContainerOpenersCounter`: convidados que não são espectadores e o
+# anfitrião). É a contagem que o `playersUsing` do Java tem, e a checagem de erros da receita depende dela.
+[[injection]]
+id = "mod_container_viewers"
+hook = "mod_container_viewers"
+hook_version = 1
+kind = "HEAD"
+helper = "mod_container_viewers.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "viewers", ty = "u32", value = "viewers" },
+  { name = "previous", ty = "u32", value = "previous" },
+]
+
 # O componente que guarda o tipo do upgrade no item.
 [[injection]]
 id = "component_types"

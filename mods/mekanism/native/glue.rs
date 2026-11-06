@@ -267,6 +267,9 @@ thread_local! {
     static LIVE_MACHINES: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
     static COMPARATOR_LEVELS: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
     static COMPARATOR_QUEUE: RefCell<Vec<(&'static str, [i32; 3])>> = const { RefCell::new(Vec::new()) };
+    // Quantos jogadores têm a tela aberta, por bloco, como o `mod_container_viewers` disse por último. Existe mesmo sem objeto
+    // vivo: a abertura que chega antes do primeiro tick, ou depois de a varredura tirar o objeto, é contada quando ele nasce.
+    static VIEWERS: RefCell<HashMap<(&'static str, [i32; 3]), u32>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
 }
 
@@ -756,6 +759,12 @@ fn born(
     };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
     progress.restore(&read_saved(game, entity), block_active);
+    // Quem já tinha a tela aberta antes de o objeto existir: a contagem guardada é aplicada uma vez, aqui, num objeto novo.
+    let viewers =
+        VIEWERS.with_borrow(|counts| counts.get(&(game.native_dimension(), pos)).copied());
+    for _ in 0..viewers.unwrap_or(0) {
+        progress.open();
+    }
     Live {
         machine: progress,
         recipes: recipes.clone(),
@@ -1329,6 +1338,41 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     } else if let Some(machine) = machine_of(&entity.id) {
         tick_machine(game, pos, entity, machine);
     }
+}
+
+/// `native_mod_container_viewers`: a contagem de jogadores com a tela do bloco em `pos` foi de `previous` para `viewers`.
+/// Guarda a contagem atual, e se a máquina tem objeto vivo, aplica só a diferença, com `open()` e `close()`. Chega para
+/// qualquer mod container: uma posição que não é máquina nossa não tem objeto, então só fica guardada até a contagem zerar.
+pub(in crate::game) fn viewers_changed(
+    game: &Game<'_>,
+    dimension: &str,
+    pos: [i32; 3],
+    viewers: u32,
+    previous: u32,
+) {
+    // A chave usa a dimensão do jogo, com o mesmo valor (`self.dim.id()`) que o hook recebe. Outra dimensão não é deste nível.
+    let dim = game.native_dimension();
+    if dim != dimension {
+        return;
+    }
+    let key = (dim, pos);
+    VIEWERS.with_borrow_mut(|counts| {
+        if viewers == 0 {
+            counts.remove(&key);
+        } else {
+            counts.insert(key, viewers);
+        }
+    });
+    LIVE_MACHINES.with_borrow(|machines| {
+        if let Some(live) = machines.get(&key) {
+            for _ in previous..viewers {
+                live.machine.open();
+            }
+            for _ in viewers..previous {
+                live.machine.close();
+            }
+        }
+    });
 }
 
 /// Shift-click do inventário: vai para o slot que aceita o item, e o que nenhum aceita não sai.
