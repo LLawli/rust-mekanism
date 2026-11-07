@@ -3,7 +3,9 @@ package mekanism.common.tests.network;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -374,6 +376,12 @@ public class CenaTelas {
     /// também fica visível desde 2026-11-07, quando o port o desenhou: antes ficava oculto, e o comparador só via os slots.
     private static void hideUnimplementedTabs(Minecraft minecraft, Caso caso) {
         if (minecraft.gui.screen() instanceof mekanism.client.gui.GuiMekanism<?> screen) {
+            // `fora=1`: o que `GuiMekanism.hasClickedOutside` responde numa grade ao redor da tela, antes de esconder qualquer aba (`completo`), com as abas que o
+            // port não tem escondidas (`oculto`) e, além delas, sem a aba de upgrades, que a janela de upgrades da lib responde (`sem_upgrades`).
+            boolean outside = caso.args().containsKey("fora");
+            if (outside) {
+                recordOutside(screen, caso, "completo");
+            }
             //Tudo o que o original desenha fora do retângulo da tela (176 por 166), para saber o que o comparador não vê
             for (var child : screen.children()) {
                 if (child instanceof mekanism.client.gui.element.GuiElement element) {
@@ -401,6 +409,69 @@ public class CenaTelas {
                     element.visible = false;
                 }
             }
+            if (outside) {
+                recordOutside(screen, caso, "oculto");
+                for (var child : screen.children()) {
+                    if (child instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab tab) {
+                        tab.visible = false;
+                    }
+                }
+                recordOutside(screen, caso, "sem_upgrades");
+            }
+        }
+    }
+
+    private static final int X0 = -32;
+    private static final int X1 = 240;
+    private static final int Y0 = -6;
+    private static final int Y1 = 176;
+
+    /// A grade de `hasClickedOutside(x, y, left, top)` em pixels de GUI inteiros relativos ao canto da tela, de `X0` a `X1` e de `Y0` a `Y1` (sem o fim). Cada linha
+    /// da grade é a lista de intervalos `[a, b)` de x em que a resposta é falsa, ou seja, em que o clique NÃO é "fora" (o que está dentro da imagem e o que está
+    /// sobre um elemento ativo e visível). Vai em `fora_rastro.jsonl` na pasta do jogo, com os elementos que o original tem fora da imagem.
+    private static void recordOutside(mekanism.client.gui.GuiMekanism<?> screen, Caso caso, String mode) {
+        try {
+            Method method = mekanism.client.gui.GuiMekanism.class.getDeclaredMethod("hasClickedOutside", double.class, double.class, int.class, int.class);
+            method.setAccessible(true);
+            int left = screen.getLeftPos();
+            int top = screen.getTopPos();
+            StringBuilder out = new StringBuilder();
+            out.append("{\"case\":\"").append(caso.name()).append("\",\"mode\":\"").append(mode).append("\",\"x0\":").append(X0).append(",\"y0\":").append(Y0)
+                  .append(",\"x1\":").append(X1).append(",\"y1\":").append(Y1).append(",\"elements\":[");
+            boolean first = true;
+            for (var child : screen.children()) {
+                if (child instanceof mekanism.client.gui.element.GuiElement element) {
+                    int x = element.getX() - left;
+                    int y = element.getY() - top;
+                    if (x < 0 || y < 0 || x + element.getWidth() > 176 || y + element.getHeight() > 166) {
+                        out.append(first ? "" : ",").append("{\"class\":\"").append(element.getClass().getSimpleName()).append("\",\"x\":").append(x).append(",\"y\":")
+                              .append(y).append(",\"w\":").append(element.getWidth()).append(",\"h\":").append(element.getHeight()).append(",\"visible\":")
+                              .append(element.visible).append(",\"active\":").append(element.active).append("}");
+                        first = false;
+                    }
+                }
+            }
+            out.append("],\"rows\":[");
+            for (int y = Y0; y < Y1; y++) {
+                out.append(y == Y0 ? "[" : ",[");
+                int start = Integer.MIN_VALUE;
+                boolean firstRun = true;
+                for (int x = X0; x <= X1; x++) {
+                    boolean over = x < X1 && !(boolean) method.invoke(screen, (double) (left + x), (double) (top + y), left, top);
+                    if (over && start == Integer.MIN_VALUE) {
+                        start = x;
+                    } else if (!over && start != Integer.MIN_VALUE) {
+                        out.append(firstRun ? "" : ",").append("[").append(start).append(",").append(x).append("]");
+                        firstRun = false;
+                        start = Integer.MIN_VALUE;
+                    }
+                }
+                out.append("]");
+            }
+            out.append("]}\n");
+            Files.writeString(Path.of("fora_rastro.jsonl"), out.toString(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (ReflectiveOperationException | IOException e) {
+            Mekanism.logger.error("cena: sem rastro de fora", e);
         }
     }
 

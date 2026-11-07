@@ -103,6 +103,15 @@ Os cantos transparentes do painel mostram o mundo e contam à parte (`canto_*`).
 do original tem de ser igual a algum do port.
 
 
+### O clique sobre as abas (`hasClickedOutside`)
+
+`CenaTelas` com `fora=1` chama `GuiMekanism.hasClickedOutside(x, y, left, top)` por reflexão numa grade de pixels de GUI inteiros (x de -32 a 239, y de -6 a 175, relativos ao
+canto da tela) e grava `fora_rastro.jsonl`: por estado e por modo (`completo`: o que o original tem; `oculto`: sem as abas que o port não desenha; `sem_upgrades`: e sem a aba de
+upgrades, que a janela de upgrades da lib responde), os elementos que o original tem fora da imagem (classe, retângulo, `visible`, `active`) e, por linha, os intervalos de x em que o clique NÃO é
+"fora". `cena_telas.py oficial ARQUIVO 2 --so <casos de casos_fora()>` escreve a lista (as quatro máquinas sem e com o upgrade de xp e sem e com aviso, e o Heat Generator), e `oficial_fora.sh`
+roda tudo no desktop e devolve a árvore. `rastros/fora.jsonl` é esse arquivo; `mods/mekanism/tests/screen_elements.rs` e `mods/mekanismgenerators/tests/screen_elements.rs` o repetem ponto a ponto.
+Em jogo, `horizon2/h2_abas.py` (com `H_NAME=horizon`) clica com terra no cursor em cada aba, nos mesmos estados, e confere que o item fica onde o rastro diz que há elemento e solta onde não há.
+
 ### Som e efeitos
 
 `testes/MachineTraceTest.java` grava, além dos rastros de tick, os de efeitos: `chamber_muffling` (`getVolumeFactor` e `isFullyMuffled`),

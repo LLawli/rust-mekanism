@@ -291,6 +291,30 @@ def casos_controle():
     return controles
 
 
+def casos_fora():
+    """Os estados do rastro de `GuiMekanism.hasClickedOutside` (`fora=1`, `rastros/fora.jsonl`): as quatro máquinas sem e com o upgrade de xp, sem e com a aba de
+    avisos, e o Heat Generator parado e com lava. Só o cliente oficial os roda (`--so`): não são casos de pixel e ficam fora do lote do comparador."""
+    out = []
+    avisos = {
+        "chamber": dict(energia="0", entrada="coal:2", passos="5"),
+        "crusher": dict(energia="0", entrada="blaze_rod:2", passos="5"),
+        "smelter": dict(energia="0", entrada="raw_iron:2", passos="5"),
+        "infuser": dict(energia="0", entrada="clay_ball:2", quimico="bio:500", passos="5"),
+    }
+    for m, aviso in avisos.items():
+        out += [
+            caso(f"{m}_fora_base", m, energia="0", fora="1"),
+            caso(f"{m}_fora_xp", m, energia="0", upgrades=XP, fora="1"),
+            caso(f"{m}_fora_aviso", m, fora="1", **aviso),
+            caso(f"{m}_fora_xp_aviso", m, fora="1", upgrades=XP, **aviso),
+        ]
+    out += [
+        caso("generator_fora_base", "generator", energia="0", fora="1"),
+        caso("generator_fora_lava", "generator", energia="0", lava="500", passos="100", fora="1"),
+    ]
+    return out
+
+
 def todos_os_casos():
     return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador()
 
@@ -298,7 +322,7 @@ def todos_os_casos():
 def casos_do_roteiro(so=None):
     """Os casos que os dois jogos rodam: a tabela (`todos_os_casos`) e, só se `so` os pede pelo nome, os controles da luz (`casos_controle`), que não
     entram no lote porque comparam o mundo sem tela e a luz, não a tela."""
-    tudo = todos_os_casos() + (casos_controle() if so else [])
+    tudo = todos_os_casos() + (casos_controle() + casos_fora() if so else [])
     return [c for c in tudo if not so or c["nome"] in so]
 
 
