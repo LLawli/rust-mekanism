@@ -44,10 +44,11 @@ manual em mundo fica para o que só o jogo mostra, como visual e som.
 
 Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
 
-- No máximo 1 build por vez no notebook e 2 no desktop. Jogo só no desktop, com até 2 containers de teste (`horizon` e `horizon2`).
+- No máximo 1 build por vez no notebook e 1 no desktop. Jogo só no desktop, num container de teste só, o `horizon`: não suba o `horizon2`, e
+  um cliente de jogo por vez. (O usuário voltou a usar o desktop em 2026-11-07; os limites só sobem quando ele disser.)
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
-- Desktop: até 4 núcleos e 6 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 2 vagas e põe `CARGO_BUILD_JOBS=4`, com
+- Desktop: até 4 núcleos e 6 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 1 vaga e põe `CARGO_BUILD_JOBS=4`, com
   `--max-workers=4` no gradle. O container nasce com 6 CPUs e 12 GB: antes do `native-build`, rode
   `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
