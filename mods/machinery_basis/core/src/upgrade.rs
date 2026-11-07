@@ -399,6 +399,7 @@ fn input_slot(data: &SharedData, listener: Callback) -> InventorySlot {
         SlotChecks {
             validator: Some(has_upgrade(data)),
             can_insert: Some(accepts),
+            ..SlotChecks::default()
         },
         Some(listener),
         None,
@@ -413,6 +414,7 @@ fn output_slot(data: &SharedData, listener: Callback) -> InventorySlot {
         SlotChecks {
             validator: Some(has_upgrade(data)),
             can_insert: None,
+            ..SlotChecks::default()
         },
         Some(listener),
         None,

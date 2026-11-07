@@ -116,6 +116,16 @@ impl EnergyContainer {
         self.cell.borrow().stored
     }
 
+    /// `isValidForInsertion(AutomationType)`.
+    pub fn is_valid_for_insertion(&self, automation: AutomationType) -> bool {
+        self.cell.borrow().can_insert.allows(automation)
+    }
+
+    /// `isValidForExtraction(AutomationType)`.
+    pub fn is_valid_for_extraction(&self, automation: AutomationType) -> bool {
+        self.cell.borrow().can_extract.allows(automation)
+    }
+
     /// Satura como `getAmountAsInt`.
     pub fn amount_as_int(&self) -> i32 {
         saturated_cast(self.amount())
@@ -240,6 +250,9 @@ impl ItemResource {
 /// O `Predicate<ItemResource>` e o `BiPredicate<ItemResource, AutomationType>` de um slot, já sem o tipo de automação.
 pub type ItemTest = Rc<dyn Fn(&ItemResource) -> bool>;
 
+/// O `BiPredicate<ItemResource, AutomationType>` de um slot que decide pelo item e por quem mexe, como o `fillOrConvert`.
+pub type AutomationItemTest = Rc<dyn Fn(&ItemResource, AutomationType) -> bool>;
+
 /// `Item.ABSOLUTE_MAX_STACK_SIZE`: a capacidade do slot, antes do limite da pilha do item.
 const ABSOLUTE_MAX_STACK_SIZE: u32 = 99;
 
@@ -269,6 +282,27 @@ impl SlotContents {
 pub struct SlotChecks {
     pub validator: Option<ItemTest>,
     pub can_insert: Option<ItemTest>,
+    /// O `canExtract` que olha o item junto com o tipo de automação (`ChemicalInventorySlot.fillOrConvert`).
+    pub extract_by: Option<AutomationItemTest>,
+    /// O `canInsert` que olha o item junto com o tipo de automação.
+    pub insert_by: Option<AutomationItemTest>,
+}
+
+impl SlotChecks {
+    /// `ChemicalInventorySlot.fillOrConvert` e `EnergyInventorySlot.fillOrConvert`: quem está de fora só tira o que o slot não
+    /// consegue encher ou converter (`!external || !canFillOrConvert`), e só põe o que ele consegue (`internal || canFillOrConvert`).
+    pub fn fill_or_convert(can_fill_or_convert: ItemTest) -> Self {
+        let extract = can_fill_or_convert.clone();
+        Self {
+            extract_by: Some(Rc::new(move |item, automation| {
+                automation != AutomationType::External || !extract(item)
+            })),
+            insert_by: Some(Rc::new(move |item, automation| {
+                automation == AutomationType::Internal || can_fill_or_convert(item)
+            })),
+            ..Self::default()
+        }
+    }
 }
 
 struct SlotState {
@@ -451,8 +485,28 @@ impl InventorySlot {
             .checks
             .can_insert
             .as_ref()
-            .is_none_or(|accepts| accepts(resource));
+            .is_none_or(|accepts| accepts(resource))
+            && state
+                .checks
+                .insert_by
+                .as_ref()
+                .is_none_or(|accepts| accepts(resource, automation));
         valid && accepted && state.can_insert.allows(automation)
+    }
+
+    /// `isCurrentValidForExtraction` para o item que o slot guarda: o `canExtract` do slot, com o tipo de automação de quem tira.
+    pub fn is_valid_for_extraction(
+        &self,
+        resource: &ItemResource,
+        automation: AutomationType,
+    ) -> bool {
+        let state = self.cell.borrow();
+        state.can_extract.allows(automation)
+            && state
+                .checks
+                .extract_by
+                .as_ref()
+                .is_none_or(|rule| rule(resource, automation))
     }
 
     /// `setContents`: sem transação, o aviso dispara na hora, e só se o conteúdo mudou.
@@ -511,7 +565,12 @@ impl InventorySlot {
                 .checks
                 .can_insert
                 .as_ref()
-                .is_none_or(|accepts| accepts(resource));
+                .is_none_or(|accepts| accepts(resource))
+                && state
+                    .checks
+                    .insert_by
+                    .as_ref()
+                    .is_none_or(|accepts| accepts(resource, automation));
             if needed == 0 || !state.can_insert.allows(automation) || !item_accepted {
                 return 0;
             }
@@ -533,6 +592,11 @@ impl InventorySlot {
             if amount == 0
                 || state.contents.resource.as_ref() != Some(resource)
                 || !state.can_extract.allows(automation)
+                || !state
+                    .checks
+                    .extract_by
+                    .as_ref()
+                    .is_none_or(|rule| rule(resource, automation))
             {
                 return 0;
             }

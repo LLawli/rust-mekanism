@@ -5,10 +5,12 @@ use crate::cached_recipe::{
     CachedRecipe, ItemToItemCache, ItemToItemRecipe, OneInputItemRecipe, RecipeLogic,
 };
 use crate::chemical::{
-    ChemicalInputHandler, ChemicalResource, ChemicalTank, ConversionCache, fill_tank_or_convert,
+    ChemicalInputHandler, ChemicalResource, ChemicalTank, ConversionCache, can_fill_or_convert,
+    fill_tank_or_convert,
 };
 use crate::containers::{
-    Access, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks, redstone_signal,
+    Access, AutomationType, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks,
+    redstone_signal,
 };
 use crate::ejector::{EjectGroup, ItemEjector};
 use crate::item_chemical_constant_recipe::{
@@ -357,6 +359,9 @@ pub struct MachineConfig {
 pub struct ElectricMachineConfig {
     pub machine: MachineConfig,
     pub recipes: Rc<ItemToItemCache>,
+    /// Se o `getInputCache` de `ENERGY_CONVERSION` tem uma receita para o tipo do item (`findTypeBasedRecipeHolder`), que é o que
+    /// `EnergyInventorySlot.canFillOrConvert` pergunta.
+    pub energy_conversion: ItemTest,
 }
 
 /// Uma máquina de progresso com um item, um tanque de químico e o slot que o enche (`TileEntityMetallurgicInfuser`). `recipes` e
@@ -368,6 +373,8 @@ pub struct ChemicalMachineConfig {
     pub conversions: Rc<ConversionCache>,
     /// `MAX_INFUSE`.
     pub tank_capacity: u64,
+    /// Como em [`ElectricMachineConfig::energy_conversion`].
+    pub energy_conversion: ItemTest,
 }
 
 /// O que o tile guarda e as closures das receitas e dos contêineres alcançam.
@@ -592,6 +599,21 @@ impl<R: RecipeId + 'static> MonitorOps for RecipeCacheLookupMonitor<R> {
     }
 }
 
+/// `EnergyInventorySlot.canFillOrConvert`. `fills` diz se o item tem um handler de energia de onde sai algum (`canFill`: nenhum
+/// item portado tem) e `converts` se há receita de `ENERGY_CONVERSION` para o tipo dele. A conversão ainda pede que o contêiner
+/// aceite inserção manual.
+pub fn energy_can_fill_or_convert(
+    container: &EnergyContainer,
+    fills: &dyn Fn(&ItemResource) -> bool,
+    converts: &dyn Fn(&ItemResource) -> bool,
+    item: &ItemResource,
+) -> bool {
+    if fills(item) && container.is_valid_for_extraction(AutomationType::Internal) {
+        return true;
+    }
+    converts(item) && container.is_valid_for_insertion(AutomationType::Manual)
+}
+
 /// O tanque de químico de uma máquina e o slot que o enche (`ChemicalInventorySlot.fillOrConvert`).
 pub struct ChemicalSide {
     pub tank: ChemicalTank,
@@ -616,7 +638,7 @@ struct Parts {
 }
 
 impl Parts {
-    fn new(config: &MachineConfig) -> Self {
+    fn new(config: &MachineConfig, energy_conversion: ItemTest) -> Self {
         let shared = Rc::new(Shared {
             tile: RefCell::new(TileBase::new(config.deactivation_delay)),
             upgrade_config: config.upgrades.clone(),
@@ -666,7 +688,19 @@ impl Parts {
             Some(unpause_save_only),
         );
         let output = InventorySlot::output(Some(output_listener), Some(decreased));
-        let energy_slot = InventorySlot::new(Some(tile_changed.clone()));
+        // `EnergyInventorySlot.fillOrConvert(energyContainer, .., listener, ..)`: o listener é o tile.
+        let energy_slot = InventorySlot::with_checks(
+            Access::Any,
+            Access::Any,
+            SlotChecks::fill_or_convert({
+                let energy = energy.clone();
+                Rc::new(move |item: &ItemResource| {
+                    energy_can_fill_or_convert(&energy, &|_| false, &*energy_conversion, item)
+                })
+            }),
+            Some(tile_changed.clone()),
+            None,
+        );
         // `new TileComponentUpgrade(this)`: os slots avisam o tile, e o tile recalcula o que depende de cada tipo.
         let recalculate = {
             let (shared, energy) = (shared.clone(), energy.clone());
@@ -712,7 +746,7 @@ pub struct ProgressMachine {
 impl ProgressMachine {
     /// `TileEntityElectricMachine`.
     pub fn electric(config: ElectricMachineConfig) -> Self {
-        let parts = Parts::new(&config.machine);
+        let parts = Parts::new(&config.machine, config.energy_conversion.clone());
         // `InputInventorySlot.at(this::containsRecipe, recipeCacheListener, ..)`: o item só entra se alguma receita o usa.
         let recipes = config.recipes;
         let validator: ItemTest = {
@@ -726,6 +760,7 @@ impl ProgressMachine {
             SlotChecks {
                 validator: Some(validator),
                 can_insert: None,
+                ..SlotChecks::default()
             },
             Some(parts.cache_listener.clone()),
             None,
@@ -749,7 +784,7 @@ impl ProgressMachine {
 
     /// `TileEntityMetallurgicInfuser`.
     pub fn chemical(config: ChemicalMachineConfig) -> Self {
-        let parts = Parts::new(&config.machine);
+        let parts = Parts::new(&config.machine, config.energy_conversion.clone());
         let recipes = config.recipes;
         // O slot de entrada pergunta pelo tanque e o tanque pelo slot: o tanque entra aqui quando existir.
         let tank_cell: Rc<RefCell<Option<ChemicalTank>>> = Rc::new(RefCell::new(None));
@@ -773,6 +808,7 @@ impl ProgressMachine {
             SlotChecks {
                 validator: Some(validator),
                 can_insert: Some(can_insert),
+                ..SlotChecks::default()
             },
             Some(parts.cache_listener.clone()),
             None,
@@ -802,7 +838,16 @@ impl ProgressMachine {
         };
         *tank_cell.borrow_mut() = Some(tank.clone());
         // `ChemicalInventorySlot.fillOrConvert(infusionTank, .., listener, ..)`: o listener é o tile.
-        let infusion_slot = InventorySlot::new(Some(parts.tile_changed.clone()));
+        let infusion_slot = InventorySlot::with_checks(
+            Access::Any,
+            Access::Any,
+            SlotChecks::fill_or_convert({
+                let (tank, conversions) = (tank.clone(), config.conversions.clone());
+                Rc::new(move |item: &ItemResource| can_fill_or_convert(&tank, &conversions, item))
+            }),
+            Some(parts.tile_changed.clone()),
+            None,
+        );
         let lookup = ChemicalLookup {
             shared: parts.shared.clone(),
             energy: parts.energy.clone(),

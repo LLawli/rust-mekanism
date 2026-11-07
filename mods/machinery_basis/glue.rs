@@ -661,11 +661,16 @@ fn give_one(
     hopper_pos: [i32; 3],
     entity: &mut ModBlockEntity,
     outputs: &[usize],
+    can_give: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
 ) -> bool {
     for &slot in outputs {
         let Some(stack) = entity.items[slot].clone() else {
             continue;
         };
+        // O `canExtract` do slot, com quem está de fora (`AutomationType.EXTERNAL`): o slot que recusa o item não o entrega.
+        if !can_give(game, slot, &stack) {
+            continue;
+        }
         let mut one = stack.clone();
         one.count = 1;
         if game.native_insert_item(hopper_pos, Direction::Up, one).is_some() {
@@ -736,6 +741,7 @@ pub(in crate::game) fn tick_hoppers(
     sides: &Sides,
     slots: &dyn Fn(Face) -> FaceSlots,
     accepts: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
+    can_give: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
 ) {
     let mut values = cooldowns(entity);
     for face in Face::ALL {
@@ -747,7 +753,9 @@ pub(in crate::game) fn tick_hoppers(
             if let Some(neighbour) = hopper_at(game, hopper_pos) {
                 let slots = slots(face);
                 let moved = match hopper::transfer(face, neighbour, sides) {
-                    Some(Transfer::Give) => give_one(game, hopper_pos, entity, slots.outputs),
+                    Some(Transfer::Give) => {
+                        give_one(game, hopper_pos, entity, slots.outputs, can_give)
+                    }
                     Some(Transfer::Take) => {
                         take_one(game, hopper_pos, face, entity, slots.inputs, accepts)
                     }
