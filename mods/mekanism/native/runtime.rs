@@ -2,8 +2,9 @@
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::ConversionCache;
-use machinery_basis_core::containers::{InventorySlot, ItemTest};
+use machinery_basis_core::containers::InventorySlot;
 use machinery_basis_core::data_slots;
+use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
@@ -48,6 +49,7 @@ pub const GAUGE_FRAME_SLICE: NineSlice = NineSlice {
 pub const POWER_BAR_TILE: [f32; 2] = [2.0, 2.0];
 pub const INFUSING: &str = "mekanism:metallurgic_infusing";
 pub const CHEMICAL_CONVERSION: &str = "mekanism:chemical_conversion";
+pub const ENERGY_CONVERSION: &str = "mekanism:energy_conversion";
 pub const INFUSING_FIELDS: RecipeFields = RecipeFields {
     item: "item_input",
     resource: Some("chemical_input"),
@@ -798,11 +800,10 @@ pub fn electric_config(
     }
 }
 
-/// `MekanismRecipeType.ENERGY_CONVERSION.getInputCache().findTypeBasedRecipeHolder(..)` do port: as receitas `energy_conversion` do
-/// original (`redstone` e `redstone_block`) ainda não estão no conteúdo, então nenhum item converte em energia, e o slot de energia
-/// recusa tudo de quem está de fora.
-pub fn no_energy_conversion() -> ItemTest {
-    Rc::new(|_| false)
+/// Um `MekanismRecipeType.ENERGY_CONVERSION.getInputCache()` sem receita: o que as máquinas têm antes de quem as monta dar o índice
+/// do jogo (`glue.rs` o põe em `energy_conversion`), e o que os testes sem conversão usam.
+pub fn no_energy_conversion() -> Rc<EnergyConversionCache> {
+    EnergyConversion::cache_of(Vec::new())
 }
 
 /// O `getInputCache` de `MekanismRecipeType.METALLURGIC_INFUSING` (`InputRecipeCache.ItemChemical`): o índice do químico não guarda
@@ -1012,6 +1013,8 @@ const fn window_type(
 const INPUT_SLOTS: &[usize] = &[INPUT_SLOT];
 const INFUSION_SLOTS: &[usize] = &[INFUSION_SLOT];
 const ELECTRIC_INPUT_SLOTS: &[usize] = &[ELECTRIC_INPUT_SLOT];
+const ENERGY_SLOTS: &[usize] = &[ENERGY_SLOT];
+const ELECTRIC_ENERGY_SLOTS: &[usize] = &[ELECTRIC_ENERGY_SLOT];
 
 /// Quanto o cabo guarda, se o bloco for um cabo.
 pub fn cable_capacity(block: &str) -> Option<i32> {
@@ -1020,11 +1023,17 @@ pub fn cable_capacity(block: &str) -> Option<i32> {
 }
 
 /// `LightConfigInfo.EXTRA_MACHINE`: a direita é saída, a base é o slot extra, as costas são o slot
-/// de energia e o resto é entrada. O slot de energia ainda não aceita nada. A base é `DataType.EXTRA`
+/// de energia e o resto é entrada. As costas são `DataType.ENERGY` (`InventorySlotInfo(true, true, ..)`): põem e tiram pela regra
+/// do slot de energia (`EnergyInventorySlot.fillOrConvert`). A base é `DataType.EXTRA`
 /// (`InventorySlotInfo(true, true, ..)`), então quem a alcança pode também tirar o que a regra do
 /// slot de infusão deixa tirar (`ChemicalInventorySlot.fillOrConvert`: o que ele não converte).
 pub fn item_slots(front: Face, face: Face) -> FaceSlots {
-    if face == front.right_of() || face == front.opposite() {
+    if face == front.opposite() {
+        FaceSlots {
+            inputs: ENERGY_SLOTS,
+            outputs: ENERGY_SLOTS,
+        }
+    } else if face == front.right_of() {
         FaceSlots::default()
     } else if face == Face::Down {
         FaceSlots {
@@ -1040,9 +1049,15 @@ pub fn item_slots(front: Face, face: Face) -> FaceSlots {
 }
 
 /// `LightConfigInfo.MACHINE`: a direita é saída, as costas são o slot de energia, e o resto entrada.
-/// Todas as faces de entrada são `DataType.INPUT`, `InventorySlotInfo(true, false, ..)`: quem está de fora põe e não tira.
+/// Todas as faces de entrada são `DataType.INPUT`, `InventorySlotInfo(true, false, ..)`: quem está de fora põe e não tira. As costas
+/// são `DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`, e decidem pela regra do slot de energia.
 pub fn electric_item_slots(front: Face, face: Face) -> FaceSlots {
-    if face == front.right_of() || face == front.opposite() {
+    if face == front.opposite() {
+        FaceSlots {
+            inputs: ELECTRIC_ENERGY_SLOTS,
+            outputs: ELECTRIC_ENERGY_SLOTS,
+        }
+    } else if face == front.right_of() {
         FaceSlots::default()
     } else {
         FaceSlots {
@@ -1181,26 +1196,33 @@ mod tests {
     }
 
     #[test]
-    fn the_right_and_the_back_take_nothing() {
+    fn the_right_takes_nothing_and_the_back_only_the_energy_slot() {
         for front in [Face::North, Face::South, Face::East, Face::West] {
-            let sides = sides(front, item_slots);
-            assert!(!sides.accepts_input(front.right_of()));
-            assert!(!sides.accepts_input(front.opposite()));
-            assert!(sides.accepts_input(front));
+            assert!(item_slots(front, front.right_of()).inputs.is_empty());
+            assert!(item_slots(front, front.right_of()).outputs.is_empty());
+            assert_eq!(item_slots(front, front.opposite()).inputs, [ENERGY_SLOT]);
+            assert_eq!(item_slots(front, front.opposite()).outputs, [ENERGY_SLOT]);
+            assert!(sides(front, item_slots).accepts_input(front));
         }
     }
 
     #[test]
-    fn only_the_base_of_the_infuser_gives_to_a_hopper() {
-        let mut expected = [false; 6];
-        expected[Face::Down as usize] = true;
-        assert_eq!(sides(Face::North, item_slots).output, expected);
+    fn a_hopper_below_the_infuser_gets_the_infusion_slot_and_no_other_face_can_be_below() {
+        let sides = sides(Face::North, item_slots);
+        assert!(sides.gives_output(Face::Down));
         assert_eq!(item_slots(Face::North, Face::Down).outputs, [INFUSION_SLOT]);
+        // O back (`ENERGY`) também entrega, mas um hopper só puxa do bloco de cima: ele não está embaixo de nenhuma face lateral.
+        assert!(sides.gives_output(Face::South));
+        assert!(!sides.gives_output(Face::North));
+        assert!(!sides.gives_output(Face::East));
+        assert!(!sides.gives_output(Face::Up));
     }
 
     #[test]
-    fn no_face_of_an_electric_machine_gives_to_a_hopper() {
-        assert_eq!(sides(Face::North, electric_item_slots).output, [false; 6]);
+    fn a_hopper_below_an_electric_machine_gets_nothing() {
+        let sides = sides(Face::North, electric_item_slots);
+        assert!(!sides.gives_output(Face::Down));
+        assert!(sides.gives_output(Face::South));
     }
 
     #[test]
@@ -1215,10 +1237,9 @@ mod tests {
                 .inputs
                 .is_empty()
         );
-        assert!(
-            electric_item_slots(front, front.opposite())
-                .inputs
-                .is_empty()
+        assert_eq!(
+            electric_item_slots(front, front.opposite()).inputs,
+            [ELECTRIC_ENERGY_SLOT]
         );
     }
 

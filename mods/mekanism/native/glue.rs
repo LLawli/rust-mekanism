@@ -20,7 +20,10 @@ use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
-use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
+use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
+use machinery_basis_core::tile::{
+    ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState, machine_energy_slot_accepts,
+};
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
@@ -486,6 +489,10 @@ fn conversion_ingredient(conversion: &basis::ItemConversion) -> &Ingredient {
     &conversion.item
 }
 
+fn energy_conversion_ingredient(conversion: &basis::ItemEnergyConversion) -> &Ingredient {
+    &conversion.item
+}
+
 /// Se o ingrediente do Horizon não guarda nada além dos itens: nem um tipo de ingrediente de mod, nem um filho que guarde
 /// (`Ingredient.isCustom() && !isSimple()`).
 fn is_plain(ingredient: &Ingredient) -> bool {
@@ -596,6 +603,19 @@ fn core_conversions(conversions: &Arc<Vec<basis::ItemConversion>>) -> Vec<Rc<Che
     converted
 }
 
+/// `EnergyConversion` das conversões de item em energia do jogo.
+fn core_energy_conversions(conversions: &Arc<Vec<basis::ItemEnergyConversion>>) -> Vec<Rc<EnergyConversion>> {
+    let mut converted = Vec::with_capacity(conversions.len());
+    for (index, conversion) in conversions.iter().enumerate() {
+        converted.push(Rc::new(EnergyConversion {
+            input: item_ingredient(conversions, index, energy_conversion_ingredient),
+            input_count: conversion.count,
+            output: conversion.amount,
+        }));
+    }
+    converted
+}
+
 /// O `getInputCache` de um tipo de receita (`MekanismRecipeType`), com a lista que o `getRecipes(world)` dele devolve. O índice lê
 /// a lista na primeira pergunta depois de um `clear`, e `loaded` é a carga de dados (`basis::data_generation`) de onde ela saiu:
 /// outra carga (`MekanismRecipeType.clearCache`) limpa o índice e troca a lista.
@@ -635,6 +655,7 @@ struct Books {
     electric: HashMap<&'static str, Book<ItemToItemCache, ItemToItemRecipe>>,
     infusing: Option<Book<ItemChemicalCache, ItemChemicalToItemRecipe>>,
     conversions: Option<Book<ConversionCache, ChemicalConversion>>,
+    energy: Option<Book<EnergyConversionCache, EnergyConversion>>,
 }
 
 thread_local! {
@@ -644,24 +665,49 @@ thread_local! {
 /// Os índices que uma máquina usa.
 #[derive(Clone)]
 enum Indexes {
-    Electric(Rc<ItemToItemCache>),
+    Electric {
+        recipes: Rc<ItemToItemCache>,
+        energy: Rc<EnergyConversionCache>,
+    },
     Infuser {
         recipes: Rc<ItemChemicalCache>,
         conversions: Rc<ConversionCache>,
+        energy: Rc<EnergyConversionCache>,
     },
 }
 
+impl Indexes {
+    /// `MekanismRecipeType.ENERGY_CONVERSION.getInputCache()`, que as quatro máquinas partilham.
+    fn energy(&self) -> &Rc<EnergyConversionCache> {
+        match self {
+            Self::Electric { energy, .. } | Self::Infuser { energy, .. } => energy,
+        }
+    }
+}
+
 fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
-    BOOKS.with_borrow_mut(|books| match machine.slots.infusion {
+    BOOKS.with_borrow_mut(|books| {
+        let energy = books
+            .energy
+            .get_or_insert_with(|| Book::new(|source| EnergyConversion::cache(source)))
+            .current(
+                |cache| cache.clear(),
+                || {
+                    let loaded = basis::energy_conversions(game, rules::ENERGY_CONVERSION, &rules::CONVERSION_FIELDS);
+                    core_energy_conversions(&loaded)
+                },
+            );
+        match machine.slots.infusion {
         None => {
             let book = books
                 .electric
                 .entry(machine.recipes.key())
                 .or_insert_with(|| Book::new(|source| ItemToItemRecipe::cache(source)));
-            Indexes::Electric(book.current(
+            let recipes = book.current(
                 |cache| cache.clear(),
                 || core_recipes(game, &basis::machine_recipes(game, &machine.recipes)),
-            ))
+            );
+            Indexes::Electric { recipes, energy }
         }
         Some(_) => {
             let infusing = books.infusing.get_or_insert_with(|| Book::new(|source| rules::infusing_cache(source)));
@@ -679,7 +725,8 @@ fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
                     core_conversions(&loaded)
                 },
             );
-            Indexes::Infuser { recipes, conversions }
+            Indexes::Infuser { recipes, conversions, energy }
+        }
         }
     })
 }
@@ -696,12 +743,15 @@ fn typed_item(stack: &ItemStack) -> ItemResource {
 }
 
 /// Se o slot `slot` da máquina aceita o item: o slot de entrada (`InputInventorySlot`, com `containsRecipe` na Chamber e
-/// `containsRecipeAB` mais `containsRecipeA` no Infuser) e o de infusão (`ChemicalInventorySlot.canFillOrConvert`). A regra do
-/// hopper vizinho e a do menu são as mesmas.
+/// `containsRecipeAB` mais `containsRecipeA` no Infuser), o de infusão (`ChemicalInventorySlot.canFillOrConvert`) e o de energia
+/// (`EnergyInventorySlot.canFillOrConvert`). A regra do hopper vizinho e a do menu são as mesmas.
 fn slot_accepts(indexes: &Indexes, slots: &Slots, slot: usize, item: &ItemResource, held: &Held) -> bool {
+    if slot == slots.energy {
+        return machine_energy_slot_accepts(indexes.energy(), item);
+    }
     match indexes {
-        Indexes::Electric(recipes) => recipes.contains_input(item),
-        Indexes::Infuser { recipes, conversions } => {
+        Indexes::Electric { recipes, .. } => slot == slots.input && recipes.contains_input(item),
+        Indexes::Infuser { recipes, conversions, .. } => {
             if slot == slots.input {
                 recipes.contains_input_a(item) && recipes.contains_input_ab(item, &held.chemical)
             } else if Some(slot) == slots.infusion {
@@ -1020,19 +1070,22 @@ fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machi
     let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
     let upgrades = upgrade_data(game, &upgrade_types, &upgrade_tags);
     let mut progress = match indexes {
-        Indexes::Electric(recipes) => ProgressMachine::electric(rules::electric_config(
-            machine.energy_per_tick,
-            recipes.clone(),
-            check_offset,
-            upgrades,
-        )),
-        Indexes::Infuser { recipes, conversions } => ProgressMachine::chemical(rules::infuser_config(
-            machine.energy_per_tick,
-            recipes.clone(),
-            conversions.clone(),
-            check_offset,
-            upgrades,
-        )),
+        Indexes::Electric { recipes, energy } => {
+            let mut config = rules::electric_config(machine.energy_per_tick, recipes.clone(), check_offset, upgrades);
+            config.energy_conversion = energy.clone();
+            ProgressMachine::electric(config)
+        }
+        Indexes::Infuser { recipes, conversions, energy } => {
+            let mut config = rules::infuser_config(
+                machine.energy_per_tick,
+                recipes.clone(),
+                conversions.clone(),
+                check_offset,
+                upgrades,
+            );
+            config.energy_conversion = energy.clone();
+            ProgressMachine::chemical(config)
+        }
     };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
     progress.restore(&read_saved(game, entity), block_active);
@@ -1481,8 +1534,14 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             };
             let slots = |face| rules::electric_item_slots(front, face);
             let sides = rules::sides(front, rules::electric_item_slots);
-            // `DataType.INPUT` não deixa tirar: nenhuma face entrega, então a regra de saída não é consultada.
-            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &|_, _, _| false);
+            // `DataType.INPUT` não deixa tirar: a base não entrega, e as costas (`DataType.ENERGY`) entregam só o que o slot de
+            // energia deixa tirar de quem está de fora (`!external || !canFillOrConvert`).
+            let energy_slot = spec.slots.energy;
+            let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
+                slot == energy_slot
+                    && machine.energy_slot().is_valid_for_extraction(&typed_item(stack), AutomationType::External)
+            };
+            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
         }
         Some(side) => {
             let held = Held { chemical: side.tank.resource(), input: machine.input().resource() };
@@ -1493,8 +1552,16 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             let sides = rules::sides(front, rules::item_slots);
             // `ChemicalInventorySlot.fillOrConvert`, `canExtract`: um hopper (`EXTERNAL`) só tira do slot de infusão o que o
             // tanque não aceita nem converte.
-            let can_give = |_: &Game<'_>, _: usize, stack: &ItemStack| {
-                side.slot.is_valid_for_extraction(&typed_item(stack), AutomationType::External)
+            let (infusion_slot, energy_slot) = (spec.slots.infusion, spec.slots.energy);
+            let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
+                let held = if Some(slot) == infusion_slot {
+                    &side.slot
+                } else if slot == energy_slot {
+                    machine.energy_slot()
+                } else {
+                    return false;
+                };
+                held.is_valid_for_extraction(&typed_item(stack), AutomationType::External)
             };
             basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
         }
@@ -1731,11 +1798,12 @@ impl MachineMenu<'_, '_> {
         self.game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK)
     }
 
-    /// Se o slot do bloco `slot` aceita o item (`RecipeInputInventorySlot`, `InfusionInventorySlot`, `UpgradeInventorySlot.input`).
-    /// A saída, a energia e a saída de upgrades não aceitam nada de quem clica.
+    /// Se o slot do bloco `slot` aceita o item (`RecipeInputInventorySlot`, `InfusionInventorySlot`, `EnergyInventorySlot` e
+    /// `UpgradeInventorySlot.input`): o `isValidForInsertion(.., MANUAL)` de cada um. A saída e a saída de upgrades não aceitam
+    /// nada de quem clica.
     fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
         let slots = &self.machine.slots;
-        if slot == slots.input || Some(slot) == slots.infusion {
+        if slot == slots.input || Some(slot) == slots.infusion || slot == slots.energy {
             return slot_accepts(&self.indexes, slots, slot, &resource_of(self.game, stack), &self.held);
         }
         if slot == slots.upgrade {
