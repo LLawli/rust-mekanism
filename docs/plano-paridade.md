@@ -641,6 +641,16 @@ abas, luz e o comparador) o que pareceu estranho no original foi conferido e o p
   O port faz o mesmo (`armor_bar::over_element`, `mekanismgenerators/tests/armor_bar.rs`, e em jogo `h2_armor.py tabs`). Um slot da barra sob o mouse nunca é "fora" (NeoForge, `if (slot != null) clickedOutside = false`).
 - O shift-clique de uma peça com maldição do vínculo em sobrevivência não chega ao `quickMoveStack`: `AbstractContainerMenu.doClick` volta antes por `Slot.mayPickup`. O port confere o `mayPickup` antes de chamar o mod
   (`bar-quick-move`) e o clique, que passa pelo motor, recusa do mesmo jeito; em criativo sai.
+- Chamado direto, sem passar pelo clique, o `quickMoveStack` não confere `mayPickup`: uma peça com maldição do vínculo em sobrevivência sai da armadura para a barra
+  (`MekanismContainer.java:276-330`; `transferSuccess`, `:382-387`, chama `currentSlot.remove` sem `mayPickup`, e o próprio Java anota o risco num TODO). Só o clique do jogo a segura, porque
+  `doClick` confere antes. O port reproduz os dois caminhos (rastro `heat_generator_armor_binding.jsonl`, casos `direct`; `armor_slots_menu.rs`).
+- O slot da mão secundária (`OffhandSlot.java:9-24`) não sobrescreve `mayPlace` nem `getMaxStackSize`: aceita qualquer item (terra, capacete, balde de lava), com o teto de 99 do `Slot`, limitado
+  pelo item (64 para terra, 1 para capacete). O port faz o mesmo (`armor_slots::may_place` e `max_stack_size`, rastro `heat_generator_armor_layout.jsonl`).
+- O shift-clique de um combustível vai para o slot de combustível do Heat Generator mesmo com o tanque de lava cheio, e mesmo saindo da mão secundária: o `canInsert` de
+  `FluidFuelInventorySlot.forFuel` (`FluidFuelInventorySlot.java:56-60`) aceita todo item com `COOKING_FUEL` (`TileEntityHeatGenerator.java:110-113`) sem olhar o tanque. Vale para balde de lava,
+  carvão e graveto (rastro `heat_generator_armor_quick_move.jsonl`, casos `_lava_full` e `direct_offhand_*`/`shift_offhand_*`).
+- Tirar uma peça da armadura emite o evento de jogo `minecraft:unequip`, e tirar ou pôr algo na mão secundária não emite nenhum (nem `equip` com o escudo, que ainda toca `equip_generic`):
+  é o `onEquipItem` do vanilla, que só emite evento para os slots de armadura do jogador. O port segue o motor (rastro `heat_generator_armor_clicks.jsonl`, casos `take_*` e os da mão secundária).
 
 Quando uma frente achar outro, entra aqui, com a linha do Java e o teste que o prova.
 
