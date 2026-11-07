@@ -13,7 +13,13 @@
 //!    visíveis e completa as cargas pendentes (evento de carga); em seguida `ChunkMap.processUnloads` descarrega o que está
 //!    em `toDrop` (evento de descarga).
 //! 2. `Level.tickBlockEntities` (`Level.java:490`): `onLoad` dos block entities novos e o tick dos tickers.
-//! 3. `ServerTickEvent.Post`, depois de todos os níveis: nele roda `TransmitterNetworkRegistry.onTick`.
+//! 3. O passo de um `gameTest` (descarregar um chunk, trocar um bloco, mudar o nível de um holder): `tick_level` termina, o
+//!    passo roda e só então vem o `ServerTickEvent.Post`. Os eventos do passo ficam entre os tickers e o `Post`.
+//! 4. `ServerTickEvent.Post`, depois de todos os níveis: nele roda `TransmitterNetworkRegistry.onTick`.
+//!
+//! A ordem foi conferida contra o jogo: `dev/referencia/testes/ChunkTraceTest.java` grava os eventos reais de
+//! `reloadIntermediary` e `inaccessibleNotUnloaded` (`dev/referencia/rastros/chunk_*.jsonl`), e `tests/sim_chunks.rs` repete os
+//! passos com as posições do rastro e compara evento a evento.
 //!
 //! # O que o jogo faz e o simulador reproduz
 //!
@@ -27,20 +33,28 @@
 //! - `hasChunk` lê o mapa visível, que só é promovido no começo do tick: um chunk recém-pedido não responde no mesmo tick.
 //! - A descarga grava o chunk, avisa `ChunkEvent.Unload` com os block entities ainda lá, e só então chama `onChunkUnloaded`
 //!   e `setRemoved` em cada um, na ordem do mapa do chunk (`ChunkMap.java:512`, `LevelChunk.clearAllBlockEntities`, `:684`).
-//! - A carga recria os block entities do que foi gravado, na ordem em que foi gravado, sem tickers; depois `setLoaded`,
-//!   o registro dos tickers na ordem do mapa (`registerAllBlockEntitiesAfterLevelLoad`, `:692`) e `ChunkEvent.Load`
-//!   (`ChunkStatusTasks.java:203` a `:213`).
-//! - A ordem do mapa do chunk e a do `toDrop` são as do fastutil (`open_hash`), não a da inserção.
+//!   Todos recebem `onChunkUnloaded` antes de qualquer `setRemoved`.
+//! - A gravação segue `ChunkAccess.getBlockEntitiesPos`, um `HashSet` do JDK (`java_hash`), e não a ordem do mapa do chunk. A
+//!   carga recria os block entities nessa ordem gravada, sem tickers; depois `setLoaded`, o registro dos tickers na ordem do
+//!   mapa novo (`registerAllBlockEntitiesAfterLevelLoad`, `:692`) e `ChunkEvent.Load` (`ChunkStatusTasks.java:203` a `:213`).
+//! - A ordem do mapa do chunk e a do `toDrop` são as do fastutil (`open_hash`), não a da inserção. As duas dependem das
+//!   posições absolutas, e as de um `gameTest` mudam a cada rodada.
+//! - `ChunkTicketLevelUpdatedEvent` só sai quando o nível muda (`EventHooks.fireChunkTicketLevelUpdated`).
+//! - Um nível posto à mão com `set_chunk_load_level` dura até o `DistanceManager` recalcular o chunk pelos tickets
+//!   (`update_ticket_level`, `LoadingChunkTracker.setLevel`): no rastro, 2 ticks.
 //!
 //! # O que não é reproduzido
 //!
-//! - As cargas de chunk são imediatas no tick seguinte ao pedido; o jogo leva alguns ticks (a thread principal e o
-//!   `ChunkHolder` encadeiam futuros). Os testes esperam o evento, como o `thenWaitUntil` do Mekanism.
+//! - O tempo de uma carga. O jogo leva alguns ticks entre o pedido e o `ChunkEvent.Load` (5 num rastro, 6 em outro; a thread
+//!   principal e o `ChunkHolder` encadeiam futuros), e o simulador não tem como saber quantos: são `set_load_delay` ticks,
+//!   0 por padrão. Os testes esperam o evento, como o `thenWaitUntil` do Mekanism.
+//! - Quando um ticket vizinho faz o `DistanceManager` recalcular um chunk (`update_ticket_level`): o teste diz quando.
 //! - `areEntitiesLoaded`, o limite do mundo na altura e as entidades.
 //! - O `Set` de `chunksToUpdateFutures` do jogo é de identidade, sem ordem definida: aqui é a ordem do pedido.
 //! - Notificações de vizinhança (`onNeighborBlockChange`) são da Fase 3.
 //! - Durante um gancho que recebe o block entity, ele está fora do mapa (o Horizon faz o mesmo em
 //!   `native_block_entity_tick`, `native_hooks.rs:3198`); no Java ele continua no mapa.
+use super::java_hash::{hash_set_order, initial_capacity_for};
 use super::open_hash::{OpenHashMap, OpenKey, mix_int, mix_long};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -446,8 +460,10 @@ pub struct SimLevel<H: ChunkHooks> {
     saved: HashMap<ChunkPos, Vec<(BlockPos, H::Saved)>>,
     /// Os chunks que já foram gravados alguma vez: carregá-los de novo não é `isNewChunk`.
     persisted: HashSet<ChunkPos>,
-    /// `DistanceManager.chunksToUpdateFutures`: os holders a completar no próximo tick.
-    futures: Vec<ChunkPos>,
+    /// `DistanceManager.chunksToUpdateFutures`: os holders a completar, com os ticks que faltam para a carga terminar.
+    futures: Vec<(ChunkPos, u32)>,
+    /// Quantos ticks a carga de um chunk leva depois do pedido (`set_load_delay`).
+    load_delay: u32,
     /// `ChunkMap.toDrop`, um `LongOpenHashSet`.
     to_drop: OpenHashMap<ChunkPos, ()>,
     /// `Level.blockEntityTickers`.
@@ -466,6 +482,7 @@ impl<H: ChunkHooks> SimLevel<H> {
             saved: HashMap::new(),
             persisted: HashSet::new(),
             futures: Vec::new(),
+            load_delay: 0,
             to_drop: OpenHashMap::new(),
             tickers: Vec::new(),
             fresh: Vec::new(),
@@ -498,8 +515,46 @@ impl<H: ChunkHooks> SimLevel<H> {
             self.view.simulation.remove(&chunk);
         }
         self.set_chunk_load_level(chunk, level);
-        if is_loaded_level(level) && !self.futures.contains(&chunk) {
-            self.futures.push(chunk);
+        if is_loaded_level(level) {
+            self.schedule_load(chunk);
+        }
+    }
+
+    /// Quantos ticks a carga de um chunk leva depois de o `DistanceManager` pegar o pedido, o que ele faz no começo do tick
+    /// seguinte ao pedido do teste (ou no mesmo tick, em `update_ticket_level`). O jogo não tem um número: os futuros do
+    /// `ChunkHolder` passam pela thread principal e pelo pipeline de status, e os rastros de `reloadIntermediary` deram de 5 a
+    /// 9 ticks entre o pedido e o `ChunkEvent.Load`. Com `0`, a carga acontece no tick em que o pedido é pego. Vale para os
+    /// pedidos feitos depois da chamada.
+    pub fn set_load_delay(&mut self, ticks: u32) {
+        self.load_delay = ticks;
+    }
+
+    /// `chunksToUpdateFutures.add(holder)`: um holder só entra uma vez.
+    fn schedule_load(&mut self, chunk: ChunkPos) {
+        if !self.futures.iter().any(|(queued, _)| *queued == chunk) {
+            self.futures.push((chunk, self.load_delay));
+        }
+    }
+
+    /// `LoadingChunkTracker.update` e `setLevel` (`LoadingChunkTracker.java:34`): quando um ticket muda perto do chunk, o
+    /// `DistanceManager` recalcula o nível dele pelos tickets e compara com o do holder. Se o teste do Mekanism pôs o holder em
+    /// outro nível (`set_chunk_load_level`), o jogo o devolve ao dos tickets assim que o rastreador passa pelo chunk, e avisa o
+    /// `ChunkTicketLevelUpdatedEvent`. O rastro de `inaccessibleNotUnloaded` mostra isso 2 ticks depois do pedido, porque os
+    /// testes vizinhos mexem em tickets. O simulador não sabe quando; o teste diz.
+    pub fn update_ticket_level(&mut self, chunk: ChunkPos) {
+        let target = self
+            .view
+            .simulation
+            .get(&chunk)
+            .copied()
+            .unwrap_or(UNLOAD_LEVEL);
+        let old = self.view.ticket_level(chunk).unwrap_or(UNLOAD_LEVEL);
+        if old == target {
+            return;
+        }
+        self.set_chunk_load_level(chunk, target);
+        if self.view.holders.contains_key(&chunk) {
+            self.schedule_load(chunk);
         }
     }
 
@@ -530,9 +585,12 @@ impl<H: ChunkHooks> SimLevel<H> {
             );
             self.view.modified = true;
         }
-        self.events
-            .push(SimEvent::TicketLevelUpdated { chunk, old, new });
-        self.hooks.ticket_level_updated(&self.view, chunk, old, new);
+        // `EventHooks.fireChunkTicketLevelUpdated`: só avisa se o nível mudou.
+        if old != new {
+            self.events
+                .push(SimEvent::TicketLevelUpdated { chunk, old, new });
+            self.hooks.ticket_level_updated(&self.view, chunk, old, new);
+        }
         old
     }
 
@@ -540,8 +598,8 @@ impl<H: ChunkHooks> SimLevel<H> {
     /// `level` e entra em `chunksToUpdateFutures`, para carregar no próximo tick.
     pub fn load_chunk(&mut self, chunk: ChunkPos, level: i32) {
         self.set_chunk_load_level(chunk, level);
-        if self.view.holders.contains_key(&chunk) && !self.futures.contains(&chunk) {
-            self.futures.push(chunk);
+        if self.view.holders.contains_key(&chunk) {
+            self.schedule_load(chunk);
         }
     }
 
@@ -593,10 +651,15 @@ impl<H: ChunkHooks> SimLevel<H> {
         self.view.modified = true;
     }
 
-    /// `ChunkMap.save` e `SerializableChunkData.copyOf`: grava os block entities do chunk, na ordem do mapa.
+    /// `ChunkMap.save` e `SerializableChunkData.copyOf`: grava os block entities do chunk na ordem de
+    /// `ChunkAccess.getBlockEntitiesPos`, um `HashSet` do JDK (`Sets.newHashSet(pendentes)` e `addAll` das chaves do mapa, que
+    /// entram na ordem do mapa). Não é a ordem do mapa, e é a que o chunk recarregado usa para recriá-los.
     fn save_chunk(&mut self, chunk: ChunkPos) {
         let mut saved = Vec::new();
-        for pos in self.view.block_entity_positions(chunk) {
+        let in_map_order = self.view.block_entity_positions(chunk);
+        let in_save_order =
+            hash_set_order(in_map_order, BlockPos::hash_code, initial_capacity_for(0));
+        for pos in in_save_order {
             if let Some(data) =
                 self.with_entity(pos, |hooks, _, entity| hooks.save_block_entity(pos, entity))
             {
@@ -768,11 +831,23 @@ impl<H: ChunkHooks> SimLevel<H> {
         }
     }
 
-    /// Um tick do nível, na ordem do `ServerLevel.tick`.
+    /// Um tick inteiro: o do nível e o fim do tick do servidor.
     pub fn tick(&mut self) {
+        self.tick_level();
+        self.finish_tick();
+    }
+
+    /// `ServerLevel.tick`: cargas, descargas e os block entities. O que um `gameTest` faz num passo (descarregar um chunk,
+    /// trocar um bloco, mudar o nível de um holder) vem depois disso e antes de `finish_tick`: o rastro do `ChunkTraceTest`
+    /// mostra os eventos do passo entre os tickers do nível e o `ServerTickEvent.Post`.
+    pub fn tick_level(&mut self) {
         self.run_distance_manager_updates();
         self.process_unloads();
         self.tick_block_entities();
+    }
+
+    /// `ServerTickEvent.Post` (onde roda o `TransmitterNetworkRegistry.onTick`) e o relógio.
+    pub fn finish_tick(&mut self) {
         self.events.push(SimEvent::ServerTickPost {
             game_time: self.view.game_time,
         });
@@ -795,7 +870,11 @@ impl<H: ChunkHooks> SimLevel<H> {
                 holder.visible = true;
             }
         }
-        for chunk in futures {
+        for (chunk, remaining) in futures {
+            if remaining > 0 {
+                self.futures.push((chunk, remaining - 1));
+                continue;
+            }
             let needs_load =
                 self.view.holders.get(&chunk).is_some_and(|holder| {
                     holder.level <= FULL_CHUNK_LEVEL && holder.chunk.is_none()
