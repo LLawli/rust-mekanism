@@ -1,7 +1,12 @@
 //! Como as telas escrevem as unidades: `UnitDisplayUtils.getDisplayBase` e `TextUtils.format`.
 
-/// `UnitDisplayUtils.MeasurementUnit` de `1` para cima: o símbolo e a partir de quanto vale.
-const MEASUREMENTS: [(&str, f64); 9] = [
+/// `UnitDisplayUtils.MeasurementUnit`, do `FEMTO` ao `YOTTA`: o símbolo e a partir de quanto vale (`value`), na ordem do enum.
+const MEASUREMENTS: [(&str, f64); 14] = [
+    ("f", 0.000_000_000_000_001),
+    ("p", 0.000_000_000_001),
+    ("n", 0.000_000_001),
+    ("\u{b5}", 0.000_001),
+    ("m", 0.001),
     ("", 1.0),
     ("k", 1_000.0),
     ("M", 1_000_000.0),
@@ -14,27 +19,78 @@ const MEASUREMENTS: [(&str, f64); 9] = [
 ];
 
 /// `UnitDisplayUtils.roundDecimals`: trunca, não arredonda (`(long) (d * 10^n) / 10^n`).
-fn round_decimals(value: f64, places: i32) -> f64 {
+pub fn round_decimals(value: f64, places: i32) -> f64 {
     let multiplier = 10f64.powi(places);
     ((value * multiplier) as i64) as f64 / multiplier
 }
 
-/// `UnitDisplayUtils.getDisplayBase` com o espaço antes do símbolo, o `compactEnergyDisplay`: `500 FE`, `1.5 kFE`, `0 FE`. O valor
-/// passa para a maior medida que ele alcança, com duas casas truncadas e sem o `.0` de um inteiro.
-pub fn compact_display(value: u64, unit: &str) -> String {
-    if value == 0 {
-        return format!("0 {unit}");
+/// `Double.toString` do Java: a forma mais curta que volta ao mesmo `double`, em decimal de `10^-3` (inclusive) a `10^7` (exclusive)
+/// e em notação científica (`1.0E-5`, `1.2345E7`) fora disso, sempre com ao menos um dígito depois do ponto.
+pub fn java_double_to_string(value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".to_owned();
     }
-    let value = value as f64;
-    let (symbol, scale) = MEASUREMENTS
-        .iter()
-        .rev()
-        .find(|(_, scale)| value >= *scale)
-        .copied()
-        .unwrap_or(MEASUREMENTS[0]);
-    let rounded = round_decimals(value / scale, 2);
-    // `Double.toString` e o `{}` do Rust dão a mesma forma mais curta, e o `.0` de um inteiro sai nos dois.
-    format!("{rounded} {symbol}{unit}")
+    if value.is_infinite() {
+        return if value < 0.0 { "-Infinity" } else { "Infinity" }.to_owned();
+    }
+    let magnitude = value.abs();
+    if magnitude == 0.0 || (1.0e-3..1.0e7).contains(&magnitude) {
+        // `{:?}` escreve sempre o `.0` de um inteiro, e nesta faixa nunca usa expoente.
+        return format!("{value:?}");
+    }
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let mantissa = if mantissa.contains('.') {
+        mantissa.to_owned()
+    } else {
+        format!("{mantissa}.0")
+    };
+    format!("{mantissa}E{exponent}")
+}
+
+/// `UnitDisplayUtils.getDisplayBase`: o valor na maior medida que ele alcança (de `f` a `Y`), com `decimals` casas truncadas e sem o
+/// `.0` de um inteiro, seguido do símbolo da unidade. `space` põe um espaço entre o número e a medida (`1.5 kFE`). Zero
+/// vale `0` mais o símbolo, e um valor negativo mantém o sinal.
+pub fn display_base(value: f64, symbol: Option<&str>, decimals: i32, space: bool) -> String {
+    let symbol = symbol.unwrap_or_default();
+    if value == 0.0 {
+        return if space {
+            format!("0 {symbol}")
+        } else {
+            format!("0{symbol}")
+        };
+    }
+    let negative = value < 0.0;
+    let value = value.abs();
+    let size = MEASUREMENTS.len();
+    let mut chosen = MEASUREMENTS[size - 1];
+    for (index, lower) in MEASUREMENTS.iter().enumerate() {
+        // O primeiro e abaixo dele (nenhuma abreviação antes), o último (nenhuma depois), ou entre este e o próximo.
+        if (index == 0 && value < lower.1)
+            || index + 1 >= size
+            || (value >= lower.1 && value < MEASUREMENTS[index + 1].1)
+        {
+            chosen = *lower;
+            break;
+        }
+    }
+    let processed = value / chosen.1;
+    let rounded = round_decimals(if negative { -processed } else { processed }, decimals);
+    let text = java_double_to_string(rounded);
+    let text = text.strip_suffix(".0").unwrap_or(&text);
+    // O espaço vem antes da medida (`name = " " + name`), então `1.5 kFE` e não `1.5k FE`.
+    let measure = chosen.0;
+    if space {
+        format!("{text} {measure}{symbol}")
+    } else {
+        format!("{text}{measure}{symbol}")
+    }
+}
+
+/// `UnitDisplayUtils.getEnergyDisplay` com `compactEnergyDisplay` ligado, o padrão (`getDisplayBase(value, FORGE_ENERGY, 2, true)`):
+/// `500 FE`, `1.5 kFE`, `0 FE`.
+pub fn compact_display(value: u64, unit: &str) -> String {
+    display_base(value as f64, Some(unit), 2, true)
 }
 
 /// `TextUtils.format`: o inteiro com o separador de milhar do idioma, aqui o do inglês (`1,000`).
@@ -123,6 +179,72 @@ mod tests {
         assert_eq!(compact_display(160_000, "FE"), "160 kFE");
         assert_eq!(compact_display(256_000_000, "FE"), "256 MFE");
         assert_eq!(compact_display(8_000_000_000, "FE"), "8 GFE");
+    }
+
+    #[test]
+    fn the_display_goes_down_to_femto_and_up_to_yotta() {
+        let shown = |value: f64| display_base(value, Some("K"), 2, false);
+        assert_eq!(shown(0.0), "0K");
+        assert_eq!(shown(1.0), "1K");
+        assert_eq!(shown(0.5), "500mK");
+        assert_eq!(shown(0.001), "1mK");
+        assert_eq!(shown(0.000_5), "500\u{b5}K");
+        assert_eq!(shown(2.5e-9), "2.5nK");
+        assert_eq!(shown(3.0e-12), "3pK");
+        // 1,5e-15 não é exato em binário e fica um pouco abaixo: o truncamento dá 1,49, como no Java.
+        assert_eq!(shown(1.5e-15), "1.49fK");
+        // Abaixo do femto o número continua em femto, truncado a duas casas: `0.0` perde o `.0`.
+        assert_eq!(shown(1.0e-20), "0fK");
+        assert_eq!(shown(999.999), "999.99K");
+        assert_eq!(shown(1_000.0), "1kK");
+        assert_eq!(shown(2.0e24), "2YK");
+        // Acima do yotta o número cresce, em notação científica a partir de 10^7.
+        assert_eq!(shown(5.0e27), "5000YK");
+        assert_eq!(shown(5.0e31), "5.0E7YK");
+        assert_eq!(shown(-250.0), "-250K");
+        assert_eq!(shown(-0.5), "-500mK");
+    }
+
+    #[test]
+    fn a_space_goes_before_the_measure_and_zero_keeps_the_symbol() {
+        assert_eq!(display_base(1_500.0, Some("FE"), 2, true), "1.5 kFE");
+        assert_eq!(display_base(0.0, Some("FE"), 2, true), "0 FE");
+        assert_eq!(display_base(7.0, None, 2, false), "7");
+        assert_eq!(display_base(0.0, None, 2, false), "0");
+        assert_eq!(display_base(12_345.678, None, 1, false), "12.3k");
+    }
+
+    #[test]
+    fn rounding_truncates_toward_zero() {
+        assert_eq!(round_decimals(1.239, 2), 1.23);
+        assert_eq!(round_decimals(-1.239, 2), -1.23);
+        assert_eq!(round_decimals(2.999, 2), 2.99);
+        assert_eq!(round_decimals(5.0, 2), 5.0);
+    }
+
+    /// Saídas conhecidas de `Double.toString`.
+    #[test]
+    fn doubles_print_like_java() {
+        for (value, text) in [
+            (0.0, "0.0"),
+            (-0.0, "-0.0"),
+            (1.0, "1.0"),
+            (300.0, "300.0"),
+            (0.001, "0.001"),
+            (0.000_999, "9.99E-4"),
+            (1.0e-5, "1.0E-5"),
+            (9_999_999.0, "9999999.0"),
+            (1.0e7, "1.0E7"),
+            (1.2345e7, "1.2345E7"),
+            (1.0e10, "1.0E10"),
+            (-2.5e-7, "-2.5E-7"),
+            (123_456.789, "123456.789"),
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "Infinity"),
+            (f64::NEG_INFINITY, "-Infinity"),
+        ] {
+            assert_eq!(java_double_to_string(value), text, "{value:e}");
+        }
     }
 
     #[test]

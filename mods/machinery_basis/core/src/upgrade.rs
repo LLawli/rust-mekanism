@@ -701,6 +701,65 @@ impl UpgradeComponent {
     }
 }
 
+/// O que o componente guarda só na memória, fora do NBT: `upgradeTicks` e `canCheckUpgrades`. Um tile com objeto vivo os tem no
+/// próprio componente; um tile que se refaz do NBT a cada tick (o Heat Generator) os leva de um tick ao seguinte, e o que o Java faz ao
+/// carregar o mundo (`upgradeTicks = 0` e `canCheckUpgrades = true`) é o [`Default`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UpgradeTransient {
+    pub ticks: i32,
+    pub can_check: bool,
+}
+
+impl Default for UpgradeTransient {
+    fn default() -> Self {
+        Self {
+            ticks: 0,
+            can_check: true,
+        }
+    }
+}
+
+impl UpgradeComponent {
+    /// O `upgradeTicks` e o `canCheckUpgrades` de agora.
+    pub fn transient(&self) -> UpgradeTransient {
+        UpgradeTransient {
+            ticks: self.0.upgrade_ticks.get(),
+            can_check: self.0.can_check.get(),
+        }
+    }
+
+    /// Devolve ao componente o que ele guardava só na memória.
+    pub fn set_transient(&self, transient: UpgradeTransient) {
+        self.0.upgrade_ticks.set(transient.ticks);
+        self.0.can_check.set(transient.can_check);
+    }
+}
+
+/// O `TileComponentUpgrade` de um tile sem objeto vivo, refeito do que o tile guarda: o NBT (`deserialize`), o que a memória levava
+/// (`transient`) e, quando o menu pode ter mudado os dois slots virtuais desde o último tick, o que o menu tem
+/// (`menu`: a entrada e a saída). O menu manda sobre o NBT, como o `setContents` de um clique manda sobre o slot de um objeto vivo; sem
+/// menu (o tile acabou de nascer) o NBT manda. Um slot de entrada que o menu mudou volta a checar (`canCheckUpgrades`), como o
+/// `UpgradeInventorySlot.input` faz pelo ouvinte dele.
+pub fn rebuild(
+    data: Rc<UpgradeData>,
+    nbt: &UpgradeSaved,
+    menu: Option<&[SlotContents; 2]>,
+    transient: UpgradeTransient,
+) -> UpgradeComponent {
+    let component = UpgradeComponent::new(data, Rc::new(|| {}), Box::new(|_, _, _| {}));
+    component.restore(nbt);
+    component.set_transient(transient);
+    if let Some([input, output]) = menu {
+        component
+            .upgrade_slot()
+            .set_contents(input.resource.clone(), input.amount, None);
+        component
+            .upgrade_output_slot()
+            .set_contents(output.resource.clone(), output.amount, None);
+    }
+    component
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1054,5 +1113,120 @@ mod tests {
         assert!(data.supports(SPEED) && data.supports(OTHER));
         assert!(!data.supports(ENERGY));
         assert_eq!(data.max(SPEED), Some(8));
+    }
+    /// O que um tile vivo e um tile refeito do NBT a cada tick guardam, tick a tick: os upgrades, os dois slots, o progresso e o
+    /// que a memória leva. `menu_edit` mexe no que o menu mostra antes do tick `at` (um clique), e `act` age nos dois componentes
+    /// (um pacote de remoção).
+    fn run_both(
+        ticks: i32,
+        menu_edit: &dyn Fn(i32, &mut [SlotContents; 2]),
+        act: &dyn Fn(i32, &UpgradeComponent),
+    ) {
+        let (live, _) = fresh();
+        let mut nbt = UpgradeSaved::default();
+        let mut transient = UpgradeTransient::default();
+        // O que o menu do jogo mostra: os dois slots virtuais.
+        let mut menu = [SlotContents::default(), SlotContents::default()];
+        for at in 0..ticks {
+            menu_edit(at, &mut menu);
+            // O tile vivo vê o menu pelo `setContents`; o refeito, pelo `menu` de `rebuild`.
+            live.upgrade_slot()
+                .set_contents(menu[0].resource.clone(), menu[0].amount, None);
+            live.upgrade_output_slot()
+                .set_contents(menu[1].resource.clone(), menu[1].amount, None);
+            let rebuilt = rebuild(data(), &nbt, Some(&menu), transient);
+            act(at, &live);
+            act(at, &rebuilt);
+            live.tick_server();
+            rebuilt.tick_server();
+            assert_eq!(rebuilt.saved(), live.saved(), "tick {at}: o que se salva");
+            assert_eq!(
+                rebuilt.transient(),
+                live.transient(),
+                "tick {at}: a memória"
+            );
+            nbt = rebuilt.saved();
+            transient = rebuilt.transient();
+            menu = [nbt.input.clone(), nbt.output.clone()];
+        }
+    }
+
+    #[test]
+    fn a_tile_rebuilt_every_tick_installs_like_a_live_one() {
+        // Entrada com 3 de velocidade: 20 ticks contando e o 21º instala; depois um tipo que o tile não aceita; depois a remoção.
+        run_both(
+            90,
+            &|at, menu| match at {
+                3 => menu[0] = SlotContents::new(Some(upgrade(SPEED)), 3),
+                40 => menu[0] = SlotContents::new(Some(upgrade(OTHER)), 2),
+                55 => menu[0] = SlotContents::default(),
+                _ => {}
+            },
+            &|at, component| {
+                if at == 60 {
+                    component.remove_upgrade(SPEED, false);
+                }
+            },
+        );
+    }
+
+    #[test]
+    fn a_rebuilt_tile_finishes_the_install_only_because_the_memory_is_carried() {
+        let mut nbt = UpgradeSaved::default();
+        let mut transient = UpgradeTransient::default();
+        let mut menu = [
+            SlotContents::new(Some(upgrade(SPEED)), 3),
+            SlotContents::default(),
+        ];
+        for tick in 0..20 {
+            let rebuilt = rebuild(data(), &nbt, Some(&menu), transient);
+            rebuilt.tick_server();
+            assert_eq!(rebuilt.get_upgrades(SPEED), 0, "tick {tick}");
+            nbt = rebuilt.saved();
+            transient = rebuilt.transient();
+            menu = [nbt.input.clone(), nbt.output.clone()];
+        }
+        assert_eq!(transient.ticks, 20);
+        let rebuilt = rebuild(data(), &nbt, Some(&menu), transient);
+        rebuilt.tick_server();
+        assert_eq!(rebuilt.get_upgrades(SPEED), 3);
+        assert_eq!(
+            rebuilt.transient(),
+            UpgradeTransient {
+                ticks: 0,
+                can_check: false
+            }
+        );
+        // Sem levar a memória, cada tick recomeça e nada instala.
+        let forgetful = rebuild(data(), &nbt, Some(&menu), UpgradeTransient::default());
+        forgetful.tick_server();
+        assert_eq!(forgetful.upgrade_ticks(), 1);
+    }
+
+    #[test]
+    fn the_menu_wins_over_the_nbt_and_a_new_tile_takes_the_nbt() {
+        let nbt = UpgradeSaved {
+            input: SlotContents::new(Some(upgrade(SPEED)), 5),
+            ..UpgradeSaved::default()
+        };
+        // Sem menu (o tile acabou de nascer), o slot é o do NBT.
+        let born = rebuild(data(), &nbt, None, UpgradeTransient::default());
+        assert_eq!(born.upgrade_slot().amount(), 5);
+        // Com menu, o que o jogador deixou no slot manda, e um slot de entrada que mudou volta a checar.
+        let menu = [
+            SlotContents::new(Some(upgrade(ENERGY)), 2),
+            SlotContents::default(),
+        ];
+        let still = UpgradeTransient {
+            ticks: 0,
+            can_check: false,
+        };
+        let edited = rebuild(data(), &nbt, Some(&menu), still);
+        assert_eq!(edited.upgrade_slot().resource(), Some(upgrade(ENERGY)));
+        assert!(edited.transient().can_check);
+        // O menu igual ao NBT não mexe na memória.
+        let same = [nbt.input.clone(), nbt.output.clone()];
+        let quiet = rebuild(data(), &nbt, Some(&same), still);
+        assert_eq!(quiet.transient(), still);
     }
 }

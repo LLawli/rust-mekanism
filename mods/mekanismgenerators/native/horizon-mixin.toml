@@ -182,6 +182,21 @@ bindings = [
   { name = "tag", ty = "&mut Option<horizon_world::nbt::Compound>", value = "&mut *tag" },
 ]
 
+# O clique na aba de calor (`GuiHeatTab.onClick`): troca a unidade de temperatura do cliente e toma o clique. `screen_click` não serve, porque
+# o clique que ele toma vira um `ContainerButtonClick` para o servidor e o som do botão, e a aba de calor não tem nenhum dos dois.
+[[injection]]
+id = "heat_tab_press"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "heat_tab_press.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "screen", ty = "&horizon_client::mod_api::NativeScreenView<'_>", value = "screen" },
+  { name = "button", ty = "i32", value = "button" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
 # Os tooltips da barra de energia e do medidor de lava ficam por cima ou por baixo do widget, e não sobre o cursor.
 [[injection]]
 id = "widget_tooltip"

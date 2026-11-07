@@ -255,6 +255,21 @@ bindings = [
   { name = "data", ty = "&[u8]", value = "data" },
 ]
 
+# Quem sai de uma tela sem fechá-la (conexão perdida, longe demais) deixa a janela de upgrades escolhida e o acompanhamento para trás.
+# Chega a qualquer mod container: a janela é de todo bloco com a spec registrada, do Mekanism ou do Generators.
+[[injection]]
+id = "window_viewers"
+hook = "mod_container_viewers"
+hook_version = 1
+kind = "HEAD"
+helper = "window_viewers.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "viewers", ty = "u32", value = "viewers" },
+]
+
 # O registro de upgrades vai do servidor ao cliente que não leu os dados: na entrada do jogador e a cada carga de dados.
 [[injection]]
 id = "window_player_in"
@@ -291,6 +306,42 @@ bindings = [
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
   { name = "ox", ty = "f32", value = "ox" },
   { name = "oy", ty = "f32", value = "oy" },
+]
+
+# O fundo escurecido de uma tela de máquina. O Horizon pinta a janela toda de uma tela de contêiner com um retângulo fixo `rgba(16, 16, 16, 160)`
+# (`draw_inventory`), e o original desenha `fillGradient(0, 0, width, height, 0xC0101010, 0xD0101010)` (`Screen.extractTransparentBackground`, porque
+# `AbstractContainerScreen.isInGameUi` é verdadeiro). O HEAD de `HudBatch::fill` troca esse retângulo, e só ele (a janela toda, com essa cor), pelo degradê do
+# vanilla quando a tela aberta é de uma máquina nossa; o `HudBatch` não conhece o `Game`, então o módulo guarda o estado e o HEAD de `draw_inventory` o escreve
+# (o `frame` o limpa quando a tela fecha). O baú e a fornalha do vanilla ficam com o retângulo do Horizon. Alvos crus: dependem de `HudBatch::fill`, de
+# `draw_inventory` e da cor do retângulo.
+[[module]]
+id = "container-dim"
+file = "crates/horizon-client-render/src/hud.rs"
+name = "machinery_container_dim"
+source = "container_dim_state.rs"
+visibility = "pub"
+
+[[injection]]
+id = "container_dim_flag"
+target = "horizon_client::game::Game<'_>::draw_inventory"
+kind = "HEAD"
+helper = "container_dim_flag.rs"
+bindings = [{ name = "game", ty = "&crate::game::Game<'_>", value = "&*self" }]
+
+[[injection]]
+id = "container_dim"
+target = "horizon_client_render::hud::HudBatch::fill"
+kind = "HEAD"
+cancellable = true
+helper = "container_dim.rs"
+bindings = [
+  { name = "batch", ty = "&mut HudBatch", value = "&mut *self" },
+  { name = "atlas", ty = "&HudAtlas", value = "atlas" },
+  { name = "x", ty = "f32", value = "x" },
+  { name = "y", ty = "f32", value = "y" },
+  { name = "w", ty = "f32", value = "w" },
+  { name = "h", ty = "f32", value = "h" },
+  { name = "color", ty = "u32", value = "color" },
 ]
 
 # O alvo do mouse: um slot coberto pela janela não pode ser alvo, e o virtual dela sim. Alvo cru.

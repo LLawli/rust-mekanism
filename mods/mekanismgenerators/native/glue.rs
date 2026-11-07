@@ -6,7 +6,7 @@ use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModE
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
-use horizon_client::mod_api::NativeScreen;
+use horizon_client::mod_api::{NativeScreen, NativeScreenView};
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
@@ -18,10 +18,15 @@ use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
 use machinery_basis_core::tile::{ItemEnergy, SavedState, TileBase, energy_can_drain};
+use machinery_basis_core::upgrade::{self, UpgradeComponent, UpgradeTransient};
+use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
+use machinery_basis_core::window::SelectedWindow;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::Rc;
 
-const FUEL_SLOT: usize = 0;
-const ENERGY_SLOT: usize = 1;
-const SLOTS: usize = rules::SLOTS_SPEC.len();
+const FUEL_SLOT: usize = rules::FUEL_SLOT;
+const ENERGY_SLOT: usize = rules::ENERGY_SLOT;
 const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
 const NETHER: &str = "minecraft:the_nether";
@@ -32,12 +37,18 @@ const ACTIVE_STATE: &str = "active_state";
 const UPDATE_DELAY: &str = "update_delay";
 const LIT: &str = "lit";
 
-// Os data slots da tela.
+// Os data slots da tela. Os 3 e 4 ficaram livres: eram a temperatura inteira, que a aba de calor lê agora como o calor exato (`DATA_HEAT`).
+// Um `double` ocupa quatro slots de 16 bits.
 const DATA_ENERGY: usize = 0;
 const DATA_LAVA: usize = 2;
-const DATA_TEMPERATURE: usize = 3;
 const DATA_PRODUCTION: usize = 5;
-const DATA_SLOTS: usize = 6;
+/// `SyncableDouble` de `lastTransferLoss` e de `lastEnvironmentLoss`, nesta ordem (`addContainerTrackers`).
+const DATA_TRANSFER_LOSS: usize = 6;
+const DATA_ENVIRONMENT_LOSS: usize = 10;
+/// O calor do capacitor (`BasicHeatCapacitor.getHeat`, que `TileEntityMekanism.addContainerTrackers` sincroniza): a aba mostra o calor
+/// sobre a capacidade, a temperatura do tile.
+const DATA_HEAT: usize = rules::DATA_HEAT;
+const DATA_SLOTS: usize = rules::DATA_SLOTS;
 
 // A tela, nas posições de GuiHeatGenerator. O Mekanism Generators usa os sprites do Mekanism, como o original.
 const WIDTH: f32 = 176.0;
@@ -134,7 +145,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
     if is_generator(block) {
         // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
         *container = Some(ModContainer {
-            slots: SLOTS,
+            slots: rules::MENU_SLOTS,
             menu: Some(rules::MENU.to_owned()),
             ..Default::default()
         });
@@ -143,10 +154,14 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
 
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if is_generator(block) {
+        // Os slots virtuais da janela de upgrades vêm depois dos do gerador e ficam escondidos até a janela abrir.
+        let mut slots: Vec<Option<[f32; 2]>> = rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect();
+        slots.extend([None, None]);
+        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades);
         *screen = Some(NativeScreen {
             width: WIDTH,
             height: HEIGHT,
-            slots: rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect(),
+            slots,
             inventory_y: 84.0,
             inventory_x: 8.0,
             own_labels: true,
@@ -258,11 +273,200 @@ fn save_tile(entity: &mut ModBlockEntity, tile: &TileBase) {
     entity.nbt.insert(JavaString::from(UPDATE_DELAY), Tag::Int(tile.update_delay()));
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os upgrades (`TileComponentUpgrade`). O gerador não tem objeto vivo: o componente é refeito do NBT (`component_upgrade`) e dos dois
+// slots virtuais do menu a cada tick, avança, e volta para os dois. O que o Java guarda só na memória (`upgradeTicks` e
+// `canCheckUpgrades`) fica numa tabela por thread, uma entrada por gerador.
+
+/// Quando o item não é conhecido, a pilha dele.
+const UNKNOWN_STACK: u32 = 64;
+/// De quanto em quanto tempo a tabela é varrida, e quanto sem andar uma entrada vive.
+const SWEEP_TICKS: i64 = 200;
+const STALE_TICKS: i64 = 100;
+
+/// A janela de upgrades do gerador: só dados. A mecânica (aba, janela, slots virtuais, o item de upgrade na mão) é da machinery_basis.
+static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
+    block: rules::HEAT_GENERATOR,
+    virtual_slots: [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT],
+    tracked_base: rules::HEAT_TRACKED_BASE,
+    tracking_key: rules::UPGRADE_TRACKING_KEY,
+    tracked_items: rules::UPGRADE_TRACKED_ITEMS,
+    sync_offset: rules::UPGRADE_DATA,
+    sync_len: rules::UPGRADE_SYNC_LEN,
+    ns: "mekanism",
+    window_type: rules::UPGRADE_WINDOW,
+    window_types: &rules::WINDOW_TYPES,
+    base_slice: rules::PANEL_SLICE,
+    max_multiplier: rules::UPGRADE_MULTIPLIER as i32,
+    data: window_upgrade_data,
+    color: rules::enum_color,
+    item: rules::UPGRADE_ITEM,
+    item_component: rules::UPGRADE_TYPE_COMPONENT,
+};
+
+fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
+    rules::upgrade_data(&upgrade::current_types(), &upgrade::current_tags(), UNKNOWN_STACK)
+}
+
+/// Os dados de upgrade desta carga: os tipos, as tags e o limite de pilha do item.
+fn upgrade_data(game: &Game<'_>) -> Rc<upgrade::UpgradeData> {
+    let stack = game.native_max_stack_size(rules::UPGRADE_ITEM).unwrap_or(UNKNOWN_STACK);
+    rules::upgrade_data(&upgrade::current_types(), &upgrade::current_tags(), stack)
+}
+
+/// O que o gerador guarda do componente só na memória.
+struct UpgradeMemory {
+    transient: UpgradeTransient,
+    /// O último tick em que o gerador andou: um tick que não é o seguinte é um objeto novo no Java (o chunk saiu, o mundo foi reaberto).
+    last_seen: i64,
+    /// O que a janela de upgrades viu no tick anterior. O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na batida
+    /// seguinte da tela: o cliente mostra o valor de um tick atrás.
+    sync_seen: Option<UpgradeSync>,
+    /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
+    muffling_sent: i32,
+}
+
+impl UpgradeMemory {
+    fn new() -> Self {
+        Self {
+            transient: UpgradeTransient::default(),
+            last_seen: i64::MIN,
+            sync_seen: None,
+            // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
+            muffling_sent: -1,
+        }
+    }
+}
+
+thread_local! {
+    static UPGRADES: RefCell<HashMap<(&'static str, [i32; 3]), UpgradeMemory>> = RefCell::new(HashMap::new());
+    static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
+}
+
+/// Um mundo antigo tem menos slots salvos que o menu de agora (os dois virtuais vêm depois dos do gerador).
+fn ensure_slots(entity: &mut ModBlockEntity) {
+    if entity.items.len() < rules::MENU_SLOTS {
+        entity.items.resize(rules::MENU_SLOTS, None);
+    }
+}
+
+/// Os dois slots virtuais como o menu os tem, a entrada e a saída.
+fn menu_contents(game: &Game<'_>, entity: &ModBlockEntity) -> [machinery_basis_core::containers::SlotContents; 2] {
+    [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT].map(|index| basis::slot_contents(game, entity.items.get(index).and_then(Option::as_ref)))
+}
+
+/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há.
+fn sync_muffling(game: &mut Game<'_>, dimension: &str, pos: [i32; 3], memory: &mut UpgradeMemory, component: &UpgradeComponent) {
+    let count = component.get_upgrades(rules::MUFFLING_UPGRADE);
+    if count != memory.muffling_sent {
+        memory.muffling_sent = count;
+        game.mb_muffling_changed(dimension, pos, count);
+    }
+}
+
+/// O primeiro passo do tick do tile (`TileEntityMekanism.tickServer`: o componente anda antes de tudo). Devolve o que a janela de upgrades
+/// mostra neste tick.
+fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) -> UpgradeSync {
+    ensure_slots(entity);
+    let now = game.world.game_time;
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    // Um bloco novo na mesma posição não herda nada: sem a chave `active_state` (o Java a grava sempre), nasce outra entrada.
+    let saved_before = entity.nbt.contains_key(&JavaString::from(ACTIVE_STATE));
+    let remembered = UPGRADES
+        .with_borrow_mut(|tiles| tiles.remove(&key))
+        .filter(|memory| memory.last_seen + 1 == now && saved_before);
+    // No tick em que o objeto nasce o NBT do componente manda; depois, o que o menu tem nos dois slots virtuais.
+    let fresh = remembered.is_none();
+    let mut memory = remembered.unwrap_or_else(UpgradeMemory::new);
+    let nbt = basis::read_upgrades(game, entity);
+    let menu = (!fresh).then(|| menu_contents(game, entity));
+    let component = upgrade::rebuild(upgrade_data(game), &nbt, menu.as_ref(), memory.transient);
+    component.tick_server();
+    let saved = component.saved();
+    if saved != nbt {
+        basis::write_upgrades(entity, &saved);
+    }
+    basis::upgrade_to_cell(game, rules::UPGRADE_TYPE_COMPONENT, &mut entity.items[rules::UPGRADE_SLOT], &saved.input);
+    basis::upgrade_to_cell(game, rules::UPGRADE_TYPE_COMPONENT, &mut entity.items[rules::UPGRADE_OUTPUT_SLOT], &saved.output);
+    memory.transient = component.transient();
+    sync_muffling(game, dimension, pos, &mut memory, &component);
+    let sync = UpgradeSync::of(&component);
+    let shown = memory.sync_seen.replace(sync.clone()).unwrap_or(sync);
+    memory.last_seen = now;
+    UPGRADES.with_borrow_mut(|tiles| {
+        tiles.insert(key, memory);
+        if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
+            LAST_SWEEP.set(now);
+            tiles.retain(|_, memory| now - memory.last_seen <= STALE_TICKS);
+        }
+    });
+    shown
+}
+
+/// Faz `act` no componente de upgrades do gerador em `pos` fora do tick (o pacote de remoção, o upgrade na mão), e guarda o que ele
+/// deixou no NBT, nos dois slots do menu e na memória. O menu manda sobre o NBT: o tick seguinte o lê primeiro.
+fn act_upgrades<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&UpgradeComponent) -> R) -> Option<R> {
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    let at = (pos[0], pos[1], pos[2]);
+    let (nbt, menu) = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) if is_generator(&entity.id) => (basis::read_upgrades(game, entity), menu_contents(game, entity)),
+        _ => return None,
+    };
+    let mut memory = UPGRADES.with_borrow_mut(|tiles| tiles.remove(&key));
+    let transient = memory.as_ref().map_or_else(UpgradeTransient::default, |memory| memory.transient);
+    let component = upgrade::rebuild(upgrade_data(game), &nbt, Some(&menu), transient);
+    let result = act(&component);
+    let saved = component.saved();
+    // As células novas dos dois slots, calculadas com o jogo ainda emprestado só para leitura.
+    let cells = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) => [(rules::UPGRADE_SLOT, &saved.input), (rules::UPGRADE_OUTPUT_SLOT, &saved.output)].map(|(index, contents)| {
+            let cell = entity.items.get(index).and_then(Option::as_ref);
+            basis::upgrade_cell_after(game, rules::UPGRADE_TYPE_COMPONENT, cell, contents)
+        }),
+        _ => [None, None],
+    };
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
+        ensure_slots(entity);
+        if saved != nbt {
+            basis::write_upgrades(entity, &saved);
+        }
+        for (index, cell) in [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT].into_iter().zip(cells) {
+            if let Some(cell) = cell {
+                entity.items[index] = cell;
+            }
+        }
+    }
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+    if let Some(memory) = memory.as_mut() {
+        memory.transient = component.transient();
+        sync_muffling(game, dimension, pos, memory, &component);
+    }
+    if let Some(memory) = memory {
+        UPGRADES.with_borrow_mut(|tiles| tiles.insert(key, memory));
+    }
+    Some(result)
+}
+
+/// `PacketRemoveUpgrade.handle`: o servidor tira um ou todos os upgrades do tipo do gerador em `pos`.
+fn remove_upgrade(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, all: bool) {
+    act_upgrades(game, pos, |component| component.remove_upgrade(upgrade, all));
+}
+
+/// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:
+/// quantos upgrades do tipo entraram no gerador em `pos`, de até `available`.
+fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i32) -> i32 {
+    act_upgrades(game, pos, |component| component.add_upgrades(upgrade, available)).unwrap_or(0)
+}
+
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if !is_generator(&entity.id) {
         return;
     }
     basis::name_apply_pending(entity, pos);
+    // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
+    let upgrade_sync = tick_upgrades(game, pos, entity);
     let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
     let tank = &mut tanks[0];
     fill_or_burn(game, entity, tank);
@@ -322,10 +526,15 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     data[DATA_ENERGY] = energy[0];
     data[DATA_ENERGY + 1] = energy[1];
     data[DATA_LAVA] = tank.amount() as i32;
-    let temperature = data_slots::split(heat.temperature() as u32);
-    data[DATA_TEMPERATURE] = temperature[0];
-    data[DATA_TEMPERATURE + 1] = temperature[1];
     data[DATA_PRODUCTION] = produced.energy;
+    data[DATA_TRANSFER_LOSS..DATA_TRANSFER_LOSS + 4].copy_from_slice(&data_slots::split_f64(produced.transfer_loss));
+    data[DATA_ENVIRONMENT_LOSS..DATA_ENVIRONMENT_LOSS + 4].copy_from_slice(&data_slots::split_f64(produced.environment_loss));
+    data[DATA_HEAT..DATA_HEAT + 4].copy_from_slice(&data_slots::split_f64(heat.heat));
+    // O Java só sincroniza `upgradeTicks` e o mapa com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só levam o
+    // valor enquanto alguém acompanha, e ficam em zero (sem tráfego) no resto do tempo.
+    if Game::mb_window_tracking(pos) {
+        rules::write_upgrade_sync(&mut data, &upgrade_sync);
+    }
     entity.data = data;
     basis::save_tanks(entity, &tanks);
 }
@@ -350,6 +559,8 @@ pub(in crate::game) fn screen_draw(
         let frame = slot_type(None, index, spec.container).map(slot_sprite);
         basis::slot(game, batch, origin, spec.item, frame, spec.overlay.and_then(overlay_sprite));
     }
+    // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
+    game.mb_window_draw_tab(batch, block, origin);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = get(DATA_LAVA).max(0) as u64;
     let scaled = gui::gauge_level(lava, rules::TANK_CAPACITY, LAVA_GAUGE[3] as i32);
@@ -363,6 +574,35 @@ pub(in crate::game) fn screen_draw(
     // `GuiEnergyTab`, antes do medidor e da barra na ordem do Java; não se sobrepõe a nada, então a ordem não aparece.
     let [tab_x, tab_y, tab_w, tab_h] = rules::ENERGY_TAB.rect;
     game.native_sprite(batch, rules::ENERGY_TAB_SPRITE, [0.0, 0.0, tab_w, tab_h], [x + tab_x, y + tab_y, tab_w, tab_h]);
+    // `GuiHeatTab`, o último `addRenderableWidget`: o sprite muda com a unidade de temperatura do cliente (`getResource`).
+    let sprite = rules::heat_tab_sprite(basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE));
+    let [tab_x, tab_y, tab_w, tab_h] = rules::HEAT_TAB.rect;
+    game.native_sprite(batch, &sprite, [0.0, 0.0, tab_w, tab_h], [x + tab_x, y + tab_y, tab_w, tab_h]);
+}
+
+/// O clique na aba de calor (`GuiHeatTab.onClick`), antes de a tela fazer qualquer coisa com ele (hook
+/// `screen_mouse_button_pressed_pre`): o esquerdo avança a unidade de temperatura do cliente e o direito volta. A aba toma o clique
+/// (`canceled`): não vai ao slot, ao item no cursor nem ao botão, e não toca som nem manda nada ao servidor, porque `GuiHeatTab` não
+/// tem `clickSound` (só `GuiInsetElement` tem) e a unidade é do cliente. Uma janela por cima do ponto fica com o clique.
+pub(in crate::game) fn heat_tab_press(game: &Game<'_>, screen: &NativeScreenView<'_>, button: i32, canceled: &mut bool) {
+    if screen.menu != Some(rules::MENU) {
+        return;
+    }
+    let at = [screen.mouse[0] - screen.rect[0], screen.mouse[1] - screen.rect[1]];
+    let unit = basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE);
+    if let Some(updated) = rules::heat_tab_click(unit, at, button, game.mb_window_covers(at)) {
+        basis::set_temperature_unit(rules::LOCAL_CONFIG_NAMESPACE, updated);
+        *canceled = true;
+    }
+}
+
+/// `Tooltip.create` de uma lista de linhas: cada uma quebrada em 170 pixels, sem cor própria.
+fn wrapped(game: &Game<'_>, lines: &[String]) -> Vec<(String, Option<u32>)> {
+    lines
+        .iter()
+        .flat_map(|line| machinery_basis_core::upgrade_window::wrap_lines(line, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)))
+        .map(|line| (line, None))
+        .collect()
 }
 
 /// Os tooltips dos widgets da tela (`GuiElement.renderToolTip`): a barra de energia (`GuiVerticalPowerBar`) e o medidor de lava
@@ -380,17 +620,34 @@ pub(in crate::game) fn widget_tooltip(
     if !is_generator(block) {
         return false;
     }
+    // A janela de upgrades, quando aberta, e a aba ficam por cima do resto da tela.
+    if game.mb_window_tooltip(batch, block, at, cursor) {
+        return true;
+    }
     let get = |i: usize| data.get(i).copied().unwrap_or(0);
     let translate = |key: &str| lang::get(key);
     // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
     if rules::ENERGY_TAB.is_mouse_over(at, false) {
         let production = get(DATA_PRODUCTION).max(0) as u64;
-        let lines: Vec<(String, Option<u32>)> = rules::energy_tab_tooltip(production, &translate)
-            .iter()
-            .flat_map(|line| machinery_basis_core::upgrade_window::wrap_lines(line, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)))
-            .map(|line| (line, None))
-            .collect();
+        let lines = wrapped(game, &rules::energy_tab_tooltip(production, &translate));
         let [x, y, w, h] = rules::ENERGY_TAB.rect;
+        basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+        return true;
+    }
+    // `GuiHeatTab.updateTooltip`: as três linhas do `GuiHeatGenerator` na unidade do cliente, e a da unidade, quebradas do mesmo jeito.
+    // Uma janela por cima do ponto esconde a aba (`isMouseOverCheckWindows`).
+    if rules::HEAT_TAB.is_mouse_over(at, game.mb_window_covers(at)) {
+        let slice = |first: usize| data.get(first..first + 4).unwrap_or(&[]);
+        let unit = basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE);
+        let info = rules::heat_tab_tooltip(
+            data_slots::join_f64(slice(DATA_HEAT)),
+            data_slots::join_f64(slice(DATA_TRANSFER_LOSS)),
+            data_slots::join_f64(slice(DATA_ENVIRONMENT_LOSS)),
+            unit,
+            &translate,
+        );
+        let lines = wrapped(game, &info);
+        let [x, y, w, h] = rules::HEAT_TAB.rect;
         basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
         return true;
     }
@@ -453,13 +710,16 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
     );
 }
 
-/// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os dois slots do bloco (`entity.items`: combustível e energia,
-/// na ordem do Java, depois dos dois slots virtuais da janela de upgrades que o gerador não tem) e o inventário do jogador. Um slot do
-/// bloco tem o índice dele; o do jogador, `items.len() + índice no inventário` (a barra é 0 a 8, o inventário 9 a 35).
+/// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os slots do bloco (`entity.items`: combustível e energia, na ordem
+/// do Java, e os dois slots virtuais da janela de upgrades no fim) e o inventário do jogador. Um slot do bloco tem o índice dele; o do
+/// jogador, `items.len() + índice no inventário` (a barra é 0 a 8, o inventário 9 a 35).
 struct GeneratorMenu<'a, 'g> {
     game: &'a Game<'g>,
     entity: &'a mut ModBlockEntity,
     inventory: &'a mut [Option<ItemStack>],
+    /// A janela que o jogador que clica tem escolhida (`getSelectedWindow(player)`).
+    window: Option<SelectedWindow>,
+    upgrades: Rc<upgrade::UpgradeData>,
 }
 
 impl GeneratorMenu<'_, '_> {
@@ -468,13 +728,22 @@ impl GeneratorMenu<'_, '_> {
     }
 
     /// `isValidForInsertion(.., MANUAL)` do slot: o de combustível (`FluidFuelInventorySlot.forFuel`) aceita o que queima ou o que enche
-    /// o tanque de lava (o balde, que também queima), e o de energia (`EnergyInventorySlot.drain`) o que `canDrain`: nenhum item portado
-    /// tem handler de energia, então nada.
+    /// o tanque de lava (o balde, que também queima), o de energia (`EnergyInventorySlot.drain`) o que `canDrain`: nenhum item portado
+    /// tem handler de energia, então nada; e o virtual de entrada de upgrades (`UpgradeInventorySlot.input`) o upgrade da tag do gerador.
+    /// A saída de upgrades não aceita nada de quem clica.
     fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
         match slot {
             FUEL_SLOT => is_fuel(self.game, stack),
             ENERGY_SLOT => energy_can_drain(stored_energy(self.entity), true, item_energy(stack)),
+            rules::UPGRADE_SLOT => rules::accepts_upgrade(&self.upgrades, &stack.item, self.upgrade_type(stack).as_deref()),
             _ => false,
+        }
+    }
+
+    fn upgrade_type(&self, stack: &ItemStack) -> Option<String> {
+        match self.game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
+            Ok(Some(Tag::String(kind))) => Some(kind.to_string_lossy()),
+            _ => None,
         }
     }
 
@@ -503,7 +772,8 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
     fn slots_of(&self, region: Region) -> Vec<usize> {
         let first = self.first_player();
         match region {
-            Region::Container => (0..first).collect(),
+            // A ordem do Java: os dois virtuais primeiro, depois os do gerador em `getInitialInventory`.
+            Region::Container => rules::CONTAINER_ORDER.to_vec(),
             Region::Hotbar => (first..first + 9).collect(),
             Region::Main => (first + 9..first + 36).collect(),
             Region::Armor | Region::Offhand => Vec::new(),
@@ -521,8 +791,9 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
         }
     }
 
-    fn exists(&self, _slot: usize) -> bool {
-        true
+    /// `ITransactionalSlot.exists(selectedWindow)`: um slot virtual só existe com a janela dele escolhida por quem clica.
+    fn exists(&self, slot: usize) -> bool {
+        rules::slot_exists(slot, self.window)
     }
 
     fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
@@ -544,11 +815,11 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
 }
 
 /// Shift-click do menu do Heat Generator: `MekanismContainer.quickMoveStack`, como nas quatro máquinas. Do inventário vai para o slot do
-/// gerador que aceita o item (o combustível) e, não cabendo, para a outra região do inventário; do gerador vai para a barra de atalhos
-/// e depois o inventário.
+/// gerador que aceita o item (o combustível, e o de upgrades quando a janela do jogador que clica está aberta) e, não cabendo, para a
+/// outra região do inventário; do gerador vai para a barra de atalhos e depois o inventário.
 pub(in crate::game) fn quick_move(
     game: &mut Game<'_>,
-    _pos: [i32; 3],
+    pos: [i32; 3],
     entity: &mut ModBlockEntity,
     container_slots: usize,
     slot: usize,
@@ -558,6 +829,9 @@ pub(in crate::game) fn quick_move(
     if !is_generator(&entity.id) {
         return;
     }
+    ensure_slots(entity);
+    let window = game.mb_window_selected(pos);
+    let upgrades = window_upgrade_data();
     let first = entity.items.len();
     // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8).
     let from = if slot < container_slots {
@@ -568,7 +842,7 @@ pub(in crate::game) fn quick_move(
     };
     let mut inventory = std::mem::take(&mut game.inventory);
     let left = {
-        let mut menu = GeneratorMenu { game: &*game, entity, inventory: &mut inventory };
+        let mut menu = GeneratorMenu { game: &*game, entity, inventory: &mut inventory, window, upgrades };
         quick_move::quick_move(&mut menu, from);
         menu.stack(from)
     };

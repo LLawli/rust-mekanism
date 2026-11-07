@@ -3,6 +3,7 @@
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::slot_view::{ContainerSlotType, SlotOverlay, SlotSpec};
+use machinery_basis_core::temperature::{self, TemperatureUnit};
 use machinery_basis_core::tile::TileBase;
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 
@@ -103,6 +104,76 @@ pub fn energy_tab_tooltip(production: u64, translate: &dyn Fn(&str) -> String) -
     )
 }
 
+/// `GuiHeatTab`: o elemento de textura em (-26, 109), 26 por 26. O sprite muda com a unidade de temperatura da configuração local.
+pub const HEAT_TAB: machinery_basis_core::side_tab::InfoTab =
+    machinery_basis_core::side_tab::InfoTab {
+        rect: [-26.0, 109.0, 26.0, 26.0],
+    };
+/// `GuiHeatTab.getResource`: `Mekanism.rl("tab/heat_info_" + type.getTabName())`, no atlas de sprites da tela.
+pub fn heat_tab_sprite(unit: TemperatureUnit) -> String {
+    format!("mekanism:gui/sprites/tab/heat_info_{}", unit.tab_name())
+}
+/// O arquivo da configuração local do Mekanism (`MekanismConfig.local`, `Mekanism/local.toml`), na pasta do namespace dele.
+pub const LOCAL_CONFIG_NAMESPACE: &str = "mekanism";
+/// `MekanismLang.TEMPERATURE`, `TRANSFERRED_RATE` e `DISSIPATED_RATE`: os modelos das três linhas da aba de calor.
+pub const TEMPERATURE_LANG: &str = "temperature.mekanism.short";
+pub const TRANSFERRED_RATE_LANG: &str = "gui.mekanism.transferred_rate";
+pub const DISSIPATED_RATE_LANG: &str = "gui.mekanism.dissipated";
+/// `TemperatureUnit.getTranslationKey`: o nome curto que `MekanismLang.UNIT` escreve (`K`, `C`, `R`, `F`, `STP`).
+pub fn unit_lang(unit: TemperatureUnit) -> &'static str {
+    match unit {
+        TemperatureUnit::Kelvin => "temperature.mekanism.kelvin.short",
+        TemperatureUnit::Celsius => "temperature.mekanism.celsius.short",
+        TemperatureUnit::Rankine => "temperature.mekanism.rankine.short",
+        TemperatureUnit::Fahrenheit => "temperature.mekanism.fahrenheit.short",
+        TemperatureUnit::Ambient => "temperature.mekanism.ambient.short",
+    }
+}
+
+/// O que `GuiHeatGenerator` põe no `infoHandler` de `GuiHeatTab`: a temperatura do tile (`getTemperature`, o calor sobre a capacidade) e
+/// as duas perdas do último tick, em kelvin, escritas na unidade da configuração local (`MekanismUtils.getTemperatureDisplay` com
+/// `TemperatureUnit.KELVIN`): a temperatura desloca o zero da escala (`shift`), as perdas são diferenças e não.
+pub fn heat_tab_tooltip(
+    heat: f64,
+    transfer_loss: f64,
+    environment_loss: f64,
+    local: TemperatureUnit,
+    translate: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let show = |value: f64, shift: bool| {
+        temperature::local_display(value, TemperatureUnit::Kelvin, local, shift)
+    };
+    let (temperature_template, transferred_template, dissipated_template) = (
+        translate(TEMPERATURE_LANG),
+        translate(TRANSFERRED_RATE_LANG),
+        translate(DISSIPATED_RATE_LANG),
+    );
+    temperature::heat_info_lines(
+        &[
+            (&temperature_template, show(heat / HEAT_CAPACITY, true)),
+            (&transferred_template, show(transfer_loss, false)),
+            (&dissipated_template, show(environment_loss, false)),
+        ],
+        &translate(unit_lang(local)),
+        &translate(UNIT_LANG),
+    )
+}
+
+/// O clique na aba (`GuiHeatTab.onClick`): sobre o retângulo dela, e fora de uma janela por cima (`blocked`, a janela de upgrades
+/// aberta sobre o ponto), o botão esquerdo avança a unidade da configuração local e o direito volta. Devolve a unidade nova quando a
+/// aba tomou o clique, e `None` quando ele segue para o resto da tela.
+pub fn heat_tab_click(
+    unit: TemperatureUnit,
+    at: [f32; 2],
+    button: i32,
+    blocked: bool,
+) -> Option<TemperatureUnit> {
+    if !HEAT_TAB.is_mouse_over(at, blocked) {
+        return None;
+    }
+    temperature::rotate(unit, button)
+}
+
 /// O tooltip de `GuiFluidGauge` (`GuiTankGauge.getContentsTooltips`): `Empty`, ou `Lava: <mB> mB`.
 pub fn lava_tooltip(amount: u64, translate: &dyn Fn(&str) -> String) -> String {
     if amount == 0 {
@@ -133,11 +204,16 @@ pub struct Surroundings {
 }
 
 /// O que aconteceu no tick.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Produced {
     pub active: bool,
     pub lava_used: u64,
     pub energy: i32,
+    /// `lastTransferLoss`, o `adjacentTransfer` de `simulate`: a temperatura que passou para o vizinho de baixo. Fica em zero porque
+    /// nenhum bloco portado tem calor para receber (a capacidade `HEAT` do original só existe nas máquinas que a declaram).
+    pub transfer_loss: f64,
+    /// `lastEnvironmentLoss`, o `environmentTransfer` de `simulate`: a temperatura que o ar levou, só das faces mais quentes que ele.
+    pub environment_loss: f64,
 }
 
 pub fn new_capacitor(ambient: f64) -> Capacitor {
@@ -170,11 +246,13 @@ pub fn tick(heat: &mut Capacitor, around: &Surroundings, lava: u64, energy_full:
     let heat_lost = THERMAL_EFFICIENCY * (temperature - around.ambient);
     heat.handle(-heat_lost);
     let energy = ((heat_lost.abs() * carnot) as i32).min(MAX_PRODUCTION);
-    heat.lose_to_faces(around.face_ambient, INSULATION_BY_FACE);
+    let environment_loss = heat.lose_to_faces(around.face_ambient, INSULATION_BY_FACE);
     Produced {
         active,
         lava_used: if active { FLUID_RATE } else { 0 },
         energy,
+        transfer_loss: 0.0,
+        environment_loss,
     }
 }
 
@@ -228,7 +306,7 @@ pub fn trace_line(
 ) -> String {
     let faces: Vec<String> = around.face_ambient.iter().map(f64::to_string).collect();
     format!(
-        "{{\"t\":{now},\"heat\":{},\"temperature\":{},\"ambient\":{},\"ambient_faces\":[{}],\"lava_faces\":{},\"energy\":{},\"capacity\":{ENERGY_CAPACITY},\"lava\":{},\"produced\":{},\"active\":{},\"block_active\":{},\"update_delay\":{},\"fuel\":[\"{}\",{}]}}",
+        "{{\"t\":{now},\"heat\":{},\"temperature\":{},\"ambient\":{},\"ambient_faces\":[{}],\"lava_faces\":{},\"energy\":{},\"capacity\":{ENERGY_CAPACITY},\"lava\":{},\"produced\":{},\"transfer_loss\":{:?},\"environment_loss\":{:?},\"active\":{},\"block_active\":{},\"update_delay\":{},\"fuel\":[\"{}\",{}]}}",
         state.heat.heat,
         state.heat.temperature(),
         around.ambient,
@@ -237,6 +315,8 @@ pub fn trace_line(
         state.energy,
         state.lava,
         produced.energy,
+        produced.transfer_loss,
+        produced.environment_loss,
         state.tile.active(),
         state.tile.block_active(),
         state.tile.update_delay(),
@@ -280,6 +360,154 @@ pub fn lava_from_fuel(burn_time: i32, lava_bucket_burn_time: i32) -> u64 {
         return 0;
     }
     BUCKET_VOLUME * burn_time as u64 / lava_bucket_burn_time as u64
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Upgrades (`TileComponentUpgrade`) e a janela deles. O gerador só aceita o de silêncio (`AttributeUpgradeSupport.MUFFLING_ONLY`). O
+// item, o componente que guarda o tipo, os tipos e as tags são do Mekanism (o Generators usa os dados dele, como os sprites e o idioma),
+// então os ids ficam aqui e não na `machinery_basis`.
+use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
+use machinery_basis_core::upgrade_window::UpgradeSync;
+use machinery_basis_core::window::{SelectedWindow, WindowType};
+use std::rc::Rc;
+
+/// `MekanismItems.UPGRADE` e o componente `MekanismDataComponents.UPGRADE_TYPE`, que guarda o tipo no item.
+pub const UPGRADE_ITEM: &str = "mekanism:upgrade";
+pub const UPGRADE_TYPE_COMPONENT: &str = "mekanism:upgrade_type";
+/// `UpgradeIds.MUFFLING`, o único tipo que o gerador aceita.
+pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
+/// `MekanismTags.Upgrades.MUFFLING_ONLY`: o que `AttributeUpgradeSupport.MUFFLING_ONLY` aceita.
+pub const MUFFLING_ONLY: &str = "mekanism:upgrade_support/muffling_only";
+/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`).
+pub const UPGRADE_MULTIPLIER: f64 = 10.0;
+
+/// Os dados de upgrade do gerador: os tipos, o que a tag `muffling_only` aceita, e o item que os carrega, com o limite de pilha dele.
+pub fn upgrade_data(
+    types: &UpgradeTypes,
+    tags: &UpgradeTags,
+    item_max_stack_size: u32,
+) -> Rc<UpgradeData> {
+    Rc::new(UpgradeData::new(
+        UPGRADE_ITEM,
+        UPGRADE_TYPE_COMPONENT,
+        item_max_stack_size,
+        types,
+        tags,
+        MUFFLING_ONLY,
+    ))
+}
+
+/// Os dois slots virtuais da janela de upgrades vêm depois dos do gerador (`TileComponentUpgrade`: entrada e saída).
+pub const UPGRADE_SLOT: usize = SLOTS_SPEC.len();
+pub const UPGRADE_OUTPUT_SLOT: usize = UPGRADE_SLOT + 1;
+/// Quantos slots o contêiner do gerador declara, os virtuais inclusos.
+pub const MENU_SLOTS: usize = UPGRADE_SLOT + 2;
+
+/// Os slots do gerador no menu: o de combustível e o de energia, na ordem de `getInitialInventory`.
+pub const FUEL_SLOT: usize = 0;
+pub const ENERGY_SLOT: usize = 1;
+
+/// Os slots do contêiner do menu, na ordem em que o Java os adiciona (`inventoryContainerSlots`): os dois virtuais da janela de upgrades
+/// vêm ANTES dos do gerador (`MekanismTileContainer.addSlots`: "add them before the main inventory to make sure they take priority in
+/// targeting"), e a prioridade do shift-clique vem daí. No Horizon eles ficam no fim, para não deslocar o NBT de mundos antigos.
+pub const CONTAINER_ORDER: [usize; 4] = [UPGRADE_SLOT, UPGRADE_OUTPUT_SLOT, FUEL_SLOT, ENERGY_SLOT];
+
+/// `ITransactionalSlot.exists(selectedWindow)`: um slot virtual só existe com a janela dele escolhida por quem clica.
+pub fn slot_exists(slot: usize, selected: Option<SelectedWindow>) -> bool {
+    if slot == UPGRADE_SLOT || slot == UPGRADE_OUTPUT_SLOT {
+        return SelectedWindow::exists(SelectedWindow::new(UPGRADE_WINDOW, 0), selected);
+    }
+    true
+}
+
+/// `isValidForInsertion(.., MANUAL)` do slot virtual de entrada (`UpgradeInventorySlot.input`): o item de upgrade com um tipo da tag
+/// do gerador. `kind` é o tipo que o item carrega no componente. A saída de upgrades não aceita nada de quem clica.
+pub fn accepts_upgrade(data: &UpgradeData, item: &str, kind: Option<&str>) -> bool {
+    item == UPGRADE_ITEM && kind.is_some_and(|kind| data.supports(kind))
+}
+
+/// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela de upgrades.
+pub const UPGRADE_TRACKING_KEY: u8 = 2;
+/// Quantos dados a janela acrescenta ao contêiner (`getSpecificSyncableData`: `upgradeTicks` e o mapa).
+pub const UPGRADE_TRACKED_ITEMS: usize = 2;
+/// Quantos dados o contêiner do Heat Generator já sincroniza ao nascer (`addContainerTrackers`), medidos no rastro
+/// `heat_generator_container_tracking`.
+pub const HEAT_TRACKED_BASE: usize = 13;
+
+/// Quantos tipos de upgrade o Mekanism declara em `data/mekanism/mekanism/upgrade`: cada um tem a contagem dele num data slot.
+pub const UPGRADE_TYPES: usize = 8;
+/// Os data slots dos upgrades: `upgradeTicks` e uma contagem por tipo, na ordem do registro. O Java os sincroniza só com a janela aberta,
+/// por jogador, e aqui eles são do bloco.
+pub const UPGRADE_SYNC_LEN: usize = 1 + UPGRADE_TYPES;
+/// Onde eles começam. Os índices de 6 a 13 são da aba de calor (quatro perdas de transferência e quatro do ambiente).
+pub const UPGRADE_DATA: usize = 14;
+/// O calor exato do capacitor (um `double`, quatro slots de 16 bits), depois dos upgrades: a aba de calor mostra o calor sobre a capacidade.
+pub const DATA_HEAT: usize = UPGRADE_DATA + UPGRADE_SYNC_LEN;
+/// Quantos data slots o menu do gerador declara: o `data_slots` do arquivo de menu.
+pub const DATA_SLOTS: usize = DATA_HEAT + 4;
+
+/// Escreve o `upgradeTicks` e o mapa de upgrades nos data slots.
+pub fn write_upgrade_sync(data: &mut [i32], sync: &UpgradeSync) {
+    for (slot, value) in data
+        .iter_mut()
+        .skip(UPGRADE_DATA)
+        .zip(sync.write(UPGRADE_SYNC_LEN))
+    {
+        *slot = value;
+    }
+}
+
+/// O que o cliente lê dos data slots dos upgrades.
+pub fn read_upgrade_sync(data: &[i32]) -> UpgradeSync {
+    let slots = data.get(UPGRADE_DATA..).unwrap_or_default();
+    UpgradeSync::read(&slots[..slots.len().min(UPGRADE_SYNC_LEN)])
+}
+
+/// `WindowType`, na ordem do enum do Java. `CRAFTING` aceita `MAX_CRAFTING_WINDOWS` (3) janelas. É a tabela do Mekanism: o gerador abre a
+/// mesma janela.
+pub const WINDOW_TYPES: [WindowType; 11] = [
+    window_type(0, Some("color"), false, 1),
+    window_type(1, Some("confirmation"), false, 1),
+    window_type(2, Some("crafting"), true, 3),
+    window_type(3, Some("mekasuit_helmet"), false, 1),
+    window_type(4, Some("recipe_book"), false, 1),
+    window_type(5, Some("rename"), false, 1),
+    window_type(6, Some("skin_select"), false, 1),
+    window_type(7, Some("side_config"), true, 1),
+    window_type(8, Some("transporter_config"), true, 1),
+    window_type(9, Some("upgrade"), true, 1),
+    window_type(10, None, false, 1),
+];
+/// `WindowType.UPGRADE`.
+pub const UPGRADE_WINDOW: WindowType = WINDOW_TYPES[9];
+
+const fn window_type(
+    ordinal: u8,
+    save_name: Option<&'static str>,
+    can_pin: bool,
+    max_data: u8,
+) -> WindowType {
+    WindowType {
+        ordinal,
+        save_name,
+        can_pin,
+        max_data,
+    }
+}
+
+/// `EnumColor.getColor` pelo nome que o arquivo do tipo de upgrade usa (`color`), a cor primária (`colormap/primary.png`) em ARGB. Só as
+/// que os tipos declarados usam; um nome que não é daqui vale branco, o que o `Upgrade.argb()` de uma cor sem tinta dá.
+pub fn enum_color(name: &str) -> u32 {
+    match name {
+        "green" => 0xFF_59_C1_5F,
+        "yellow" => 0xFF_FF_DD_4F,
+        "lime" => 0xFF_75_FF_89,
+        "cyan" => 0xFF_00_F3_D0,
+        "light_blue" => 0xFF_55_9E_FF,
+        "red" => 0xFF_FF_38_3C,
+        "orange" => 0xFF_FF_A1_60,
+        _ => 0xFF_FF_FF_FF,
+    }
 }
 
 #[cfg(test)]

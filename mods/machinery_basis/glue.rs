@@ -26,10 +26,12 @@ use machinery_basis_core::recipe::{
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{FORMAT, Tank};
-use machinery_basis_core::upgrade::{self, UpgradeTags, UpgradeTypes};
+use machinery_basis_core::temperature;
+use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+use std::time::Instant;
 
 const LISTENER: &str = "machinery_basis:resources";
 const TAGS_LISTENER: &str = "machinery_basis:resource_tags";
@@ -153,14 +155,16 @@ fn set_logged_lava(game: &mut Game<'_>, pos: [i32; 3], logged: bool) {
     }
 }
 
-/// Um balde coloca ou tira a lava de um bloco com `fluid_logged`, como água numa escada. Um bloco
-/// com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.
+/// Um balde coloca ou tira a lava de um bloco com `fluid_logged`, como água numa escada, e o item de upgrade com shift entra num bloco
+/// com janela de upgrades. Um bloco com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.
 pub(in crate::game) fn use_item_on(
     game: &mut Game<'_>,
     stack: &ItemStack,
     pos: [i32; 3],
     claimed: &mut bool,
 ) {
+    // `ItemUpgrade.useOn`: o upgrade na mão, com shift, entra no bloco que o aceita. Os itens não se cruzam com o balde.
+    game.mb_window_use_item_on(stack, pos, claimed);
     if *claimed || game.native_block_property(pos, fluid_logged::PROPERTY).is_none() {
         return;
     }
@@ -176,6 +180,14 @@ pub(in crate::game) fn use_item_on(
         game.native_give_items(swap.give, 1);
     }
     *claimed = true;
+}
+
+/// `native_mod_container_viewers`: a contagem de jogadores com a tela do bloco em `pos` mudou. Quem saiu sem fechar o menu (conexão
+/// perdida, longe demais) deixa a janela escolhida para trás: larga o que não tem mais menu no bloco. Outra dimensão não é deste nível.
+pub(in crate::game) fn viewers_changed(game: &Game<'_>, dimension: &str, pos: [i32; 3], viewers: u32) {
+    if game.native_dimension() == dimension {
+        game.mb_window_prune(pos, viewers);
+    }
 }
 
 /// O mesmo clique ainda chega como uso do item, já com o balde cheio na mão: sem isto, ele despeja
@@ -524,6 +536,186 @@ pub(in crate::game) fn resource_from_tag(game: &Game<'_>, id: &str, components: 
         extra,
     };
     item_resource(game, &stack)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O componente de upgrades (`TileComponentUpgrade`) no NBT do tile e nos slots do menu. Vale para quem tem o objeto vivo (as máquinas do
+// Mekanism) e para quem se refaz do NBT a cada tick (o Heat Generator).
+
+/// `SerializationConstants.COMPONENT_UPGRADE`: o `TileComponentUpgrade` grava num filho com este nome.
+const COMPONENT_UPGRADE: &str = "component_upgrade";
+/// `SerializationConstants.UPGRADES` e `ITEMS`: o mapa de upgrades instalados e a lista dos dois slots.
+const UPGRADES_KEY: &str = "upgrades";
+const ITEMS_KEY: &str = "items";
+/// `ContainerType.ITEM.saveTo` e `LargeResourceStack.codec`: `{container: byte, stored: {type: {id, components}, amount}}`.
+const CONTAINER_KEY: &str = "container";
+const STORED_KEY: &str = "stored";
+const TYPE_KEY: &str = "type";
+const AMOUNT_KEY: &str = "amount";
+/// O `ItemResource.CODEC`: o id do item e os componentes que o distinguem.
+const ITEM_ID_KEY: &str = "id";
+const COMPONENTS_KEY: &str = "components";
+
+/// `LargeResourceStack.codec` de um `ItemResource`: `type` (`id` e `components`) e `amount`. Os componentes são o `DataComponentPatch`
+/// inteiro (o dano e cada componente, o tipo do upgrade entre eles). Um slot que se lê mal vale vazio, como o `readOrEmpty`.
+fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
+    let Some(Tag::Compound(kind)) = stored.get(&JavaString::from(TYPE_KEY)) else {
+        return SlotContents::default();
+    };
+    let Some(Tag::String(id)) = kind.get(&JavaString::from(ITEM_ID_KEY)) else {
+        return SlotContents::default();
+    };
+    let id = id.to_string_lossy();
+    let amount = match stored.get(&JavaString::from(AMOUNT_KEY)) {
+        Some(Tag::Long(amount)) => u32::try_from(*amount).ok(),
+        Some(Tag::Int(amount)) => u32::try_from(*amount).ok(),
+        _ => None,
+    };
+    let resource = resource_from_tag(game, &id, kind.get(&JavaString::from(COMPONENTS_KEY)));
+    SlotContents::new(Some(resource), amount.unwrap_or(0))
+}
+
+/// `TileComponentUpgrade.deserialize`: `upgrades` (o mapa de tipo para total) e os dois slots, na lista `items`.
+pub(in crate::game) fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -> UpgradeSaved {
+    let mut saved = UpgradeSaved::default();
+    let Some(Tag::Compound(component)) = entity.nbt.get(&JavaString::from(COMPONENT_UPGRADE)) else {
+        return saved;
+    };
+    if let Some(Tag::Compound(upgrades)) = component.get(&JavaString::from(UPGRADES_KEY)) {
+        for (id, total) in upgrades {
+            if let Tag::Int(total) = total {
+                saved.upgrades.insert(id.to_string_lossy(), *total);
+            }
+        }
+    }
+    if let Some(Tag::List(items)) = component.get(&JavaString::from(ITEMS_KEY)) {
+        for entry in items {
+            let Tag::Compound(entry) = entry else {
+                continue;
+            };
+            let slot = match entry.get(&JavaString::from(CONTAINER_KEY)) {
+                Some(Tag::Byte(slot)) => *slot,
+                _ => -1,
+            };
+            let contents = match entry.get(&JavaString::from(STORED_KEY)) {
+                Some(Tag::Compound(stored)) => upgrade_slot_contents(game, stored),
+                _ => SlotContents::default(),
+            };
+            match slot {
+                0 => saved.input = contents,
+                1 => saved.output = contents,
+                _ => {}
+            }
+        }
+    }
+    saved
+}
+
+/// O `components` do `ItemResource.CODEC` de um recurso, ou nada sem componentes. Um recurso que veio de uma pilha do jogo tem o
+/// patch inteiro. O que a lib faz sozinha (`UpgradeData.resource_of`, o item com o tipo e mais nada) nunca passou por uma pilha:
+/// o tipo é o único componente e é um texto.
+fn resource_components(resource: &ItemResource) -> Option<Tag> {
+    if resource.components.is_empty() {
+        return None;
+    }
+    if let Some(components) = components_tag(resource) {
+        return Some(components);
+    }
+    let mut components = Compound::default();
+    for (id, value) in resource.components.iter() {
+        let Some(text) = Components::parse_text_value(value) else {
+            eprintln!("machinery_basis: o componente {id} do upgrade não é um texto e não se grava");
+            continue;
+        };
+        components.insert(JavaString::from(id), Tag::String(JavaString::from(text.as_str())));
+    }
+    Some(Tag::Compound(components))
+}
+
+/// `TileComponentUpgrade.serialize`: o filho some quando não tem nada.
+pub(in crate::game) fn write_upgrades(entity: &mut ModBlockEntity, saved: &UpgradeSaved) {
+    let mut component = Compound::default();
+    if !saved.upgrades.is_empty() {
+        let mut upgrades = Compound::default();
+        for (id, total) in &saved.upgrades {
+            upgrades.insert(JavaString::from(id.as_str()), Tag::Int(*total));
+        }
+        component.insert(JavaString::from(UPGRADES_KEY), Tag::Compound(upgrades));
+    }
+    let mut items = Vec::new();
+    for (index, contents) in [&saved.input, &saved.output].into_iter().enumerate() {
+        let Some(resource) = &contents.resource else {
+            continue;
+        };
+        let mut kind = Compound::default();
+        kind.insert(JavaString::from(ITEM_ID_KEY), Tag::String(JavaString::from(&*resource.id)));
+        if let Some(components) = resource_components(resource) {
+            kind.insert(JavaString::from(COMPONENTS_KEY), components);
+        }
+        let mut stored = Compound::default();
+        stored.insert(JavaString::from(TYPE_KEY), Tag::Compound(kind));
+        stored.insert(JavaString::from(AMOUNT_KEY), Tag::Long(i64::from(contents.amount)));
+        let mut entry = Compound::default();
+        entry.insert(JavaString::from(CONTAINER_KEY), Tag::Byte(index as i8));
+        entry.insert(JavaString::from(STORED_KEY), Tag::Compound(stored));
+        items.push(Tag::Compound(entry));
+    }
+    if !items.is_empty() {
+        component.insert(JavaString::from(ITEMS_KEY), Tag::List(items));
+    }
+    let key = JavaString::from(COMPONENT_UPGRADE);
+    if component.is_empty() {
+        entity.nbt.remove(&key);
+    } else {
+        entity.nbt.insert(key, Tag::Compound(component));
+    }
+}
+
+/// A pilha de um recurso de upgrade. O que a lib faz (`UpgradeData.resource_of`, ao remover um upgrade) é o item com o tipo no
+/// componente `component` e mais nada, e nunca passou por uma pilha do jogo: monta-se aqui, e a pilha registrada é a do recurso a
+/// partir de então.
+pub(in crate::game) fn upgrade_stack(game: &Game<'_>, component: &str, resource: &ItemResource, count: u32) -> ItemStack {
+    if let Some(stack) = stack_of_resource(resource, count) {
+        return stack;
+    }
+    let mut stack = ItemStack::new(&resource.id, count);
+    if let Some(kind) = resource.components.get(component).and_then(Components::parse_text_value) {
+        let _ = game.native_set_component(&mut stack, component, Tag::String(JavaString::from(kind.as_str())));
+    }
+    let registered = item_resource(game, &stack);
+    if registered != *resource {
+        eprintln!("machinery_basis: o upgrade {:?} saiu com outros componentes ({:?})", resource.components.key(), registered.components.key());
+    }
+    stack
+}
+
+/// O item que um slot de upgrade guarda, com o tipo no componente `component`.
+pub(in crate::game) fn upgrade_slot_stack(game: &Game<'_>, component: &str, contents: &SlotContents) -> Option<ItemStack> {
+    let resource = contents.resource.as_ref()?;
+    Some(upgrade_stack(game, component, resource, contents.amount))
+}
+
+/// O que o componente deixou num slot de upgrade (instalar tira da entrada, remover enche a saída), se a célula do menu não é mais
+/// isso: a célula nova (`None` por dentro quando o slot ficou vazio). `None` por fora é a célula igual, que não se mexe.
+pub(in crate::game) fn upgrade_cell_after(
+    game: &Game<'_>,
+    component: &str,
+    cell: Option<&ItemStack>,
+    contents: &SlotContents,
+) -> Option<Option<ItemStack>> {
+    let same = match (&contents.resource, cell) {
+        (None, None) => true,
+        (Some(resource), Some(stack)) => item_resource(game, stack) == *resource && contents.amount == stack.count,
+        _ => false,
+    };
+    (!same).then(|| upgrade_slot_stack(game, component, contents))
+}
+
+/// Leva para a célula do menu o que o componente deixou no slot de upgrade, só quando mudou.
+pub(in crate::game) fn upgrade_to_cell(game: &Game<'_>, component: &str, cell: &mut Option<ItemStack>, contents: &SlotContents) {
+    if let Some(new) = upgrade_cell_after(game, component, cell.as_ref(), contents) {
+        *cell = new;
+    }
 }
 
 /// Insere até `amount` de `item` numa célula de item do jogo (um slot do bloco ou do inventário): só junta o mesmo recurso, o item e os
@@ -1031,6 +1223,32 @@ pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> f6
         world_biomes!(game).list[chunk.biome(x, y, z) as usize].temperature
     });
     biome.map_or(heat::AMBIENT_TEMP, |temperature| heat::ambient(f64::from(temperature)))
+}
+
+/// As configurações locais do cliente (`MekanismConfig.local`), uma por namespace: a unidade de temperatura que as abas de calor
+/// mostram. É estado do cliente e vive num `static`, porque o desenho e o clique só têm `&Game`.
+static LOCAL_UNITS: Mutex<Vec<(&'static str, temperature::LocalUnit)>> = Mutex::new(Vec::new());
+
+/// Roda `f` com a unidade local do namespace `ns` (`config/<ns>/local.toml`), criando-a na primeira vez. `None` se o jogo não dá a
+/// pasta de configuração.
+fn with_local_unit<T>(ns: &'static str, f: impl FnOnce(&mut temperature::LocalUnit) -> T) -> Option<T> {
+    let mut units = LOCAL_UNITS.lock().unwrap_or_else(|e| e.into_inner());
+    if !units.iter().any(|(known, _)| *known == ns) {
+        let path = Game::native_config_dir().ok()?.join(ns).join(temperature::LOCAL_CONFIG_FILE);
+        units.push((ns, temperature::LocalUnit::new(path)));
+    }
+    units.iter_mut().find(|(known, _)| *known == ns).map(|(_, local)| f(local))
+}
+
+/// `MekanismConfig.local.tempUnit.get()`: a unidade de temperatura do cliente, relida do arquivo quando ele muda. O desenho e o
+/// tooltip da aba de calor a leem a cada quadro.
+pub(in crate::game) fn temperature_unit(ns: &'static str) -> temperature::TemperatureUnit {
+    with_local_unit(ns, |local| local.get(Instant::now())).unwrap_or_default()
+}
+
+/// `tempUnit.set(unit)` seguido de `save()`: vale no próximo quadro e fica no arquivo.
+pub(in crate::game) fn set_temperature_unit(ns: &'static str, unit: temperature::TemperatureUnit) {
+    with_local_unit(ns, |local| local.set(unit, Instant::now()));
 }
 
 /// O `ARGB` de uma cor do Java na ordem dos vértices do HUD (`hud::rgba`).

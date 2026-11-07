@@ -13,9 +13,8 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemCache, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents};
-use machinery_basis_core::components::Components;
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
-use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, SlotContents};
+use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
@@ -44,8 +43,6 @@ const DUMP_BUTTON: i32 = 0;
 const TOOLTIP_WRAP: i32 = 170;
 /// `GuiInteraction.COLLECT_XP`: o botão da aba de xp.
 const XP_BUTTON: i32 = 1;
-/// `GameType.CREATIVE` como o Horizon o numera.
-const CREATIVE: i32 = 1;
 const INFUSING: basis::RecipeSource = Custom(rules::INFUSING, rules::INFUSING_FIELDS);
 
 /// Onde cada slot fica no `ModContainer`, na ordem de `getInitialInventory` de cada máquina.
@@ -315,7 +312,7 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if let Some(machine) = machine_of(block) {
         *screen = Some(native_screen(machine));
         if let Some(spec) = window_spec(block) {
-            Game::mb_window_register(spec, remove_upgrade);
+            Game::mb_window_register(spec, remove_upgrade, add_upgrades);
         }
     }
 }
@@ -398,7 +395,7 @@ fn remove_upgrade(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, all: bool) 
             )
         });
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
-            write_upgrades(entity, &live.machine.upgrades().saved());
+            basis::write_upgrades(entity, &live.machine.upgrades().saved());
             if let Some((input, input_stack, output, output_stack)) = stacks
                 && entity.items.len() > output.max(input)
             {
@@ -493,14 +490,6 @@ const CONTAINER: &str = "container";
 const STORED: &str = "stored";
 const TYPE: &str = "type";
 const AMOUNT: &str = "amount";
-/// `SerializationConstants.COMPONENT_UPGRADE`: o `TileComponentUpgrade` grava num filho com este nome.
-const COMPONENT_UPGRADE: &str = "component_upgrade";
-/// `SerializationConstants.UPGRADES` e `ITEMS`: o mapa de upgrades instalados e a lista dos dois slots.
-const UPGRADES: &str = "upgrades";
-const ITEMS: &str = "items";
-/// O `ItemResource.CODEC`: o id do item e os componentes que o distinguem.
-const ITEM_ID: &str = "id";
-const COMPONENTS: &str = "components";
 /// De quanto em quanto tempo a tabela é varrida, e quanto sem andar um objeto vive.
 const SWEEP_TICKS: i64 = 200;
 const STALE_TICKS: i64 = 100;
@@ -849,122 +838,7 @@ fn read_saved(game: &Game<'_>, entity: &ModBlockEntity) -> SavedState {
         last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
         had_containment: nbt_bool(entity, HAS_CONTAINMENT),
         ejecting: nbt_bool(entity, EJECT_ITEM),
-        upgrades: read_upgrades(game, entity),
-    }
-}
-
-/// `LargeResourceStack.codec` de um `ItemResource`: `type` (`id` e `components`) e `amount`. Os componentes são o `DataComponentPatch`
-/// inteiro (o dano e cada componente, o tipo do upgrade entre eles). Um slot que se lê mal vale vazio, como o `readOrEmpty`.
-fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
-    let Some(Tag::Compound(kind)) = stored.get(&JavaString::from(TYPE)) else {
-        return SlotContents::default();
-    };
-    let Some(Tag::String(id)) = kind.get(&JavaString::from(ITEM_ID)) else {
-        return SlotContents::default();
-    };
-    let id = id.to_string_lossy();
-    let amount = match stored.get(&JavaString::from(AMOUNT)) {
-        Some(Tag::Long(amount)) => u32::try_from(*amount).ok(),
-        Some(Tag::Int(amount)) => u32::try_from(*amount).ok(),
-        _ => None,
-    };
-    let resource = basis::resource_from_tag(game, &id, kind.get(&JavaString::from(COMPONENTS)));
-    SlotContents::new(Some(resource), amount.unwrap_or(0))
-}
-
-/// `TileComponentUpgrade.deserialize`: `upgrades` (o mapa de tipo para total) e os dois slots, na lista `items`.
-fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -> UpgradeSaved {
-    let mut saved = UpgradeSaved::default();
-    let Some(Tag::Compound(component)) = entity.nbt.get(&JavaString::from(COMPONENT_UPGRADE)) else {
-        return saved;
-    };
-    if let Some(Tag::Compound(upgrades)) = component.get(&JavaString::from(UPGRADES)) {
-        for (id, total) in upgrades {
-            if let Tag::Int(total) = total {
-                saved.upgrades.insert(id.to_string_lossy(), *total);
-            }
-        }
-    }
-    if let Some(Tag::List(items)) = component.get(&JavaString::from(ITEMS)) {
-        for entry in items {
-            let Tag::Compound(entry) = entry else {
-                continue;
-            };
-            let slot = match entry.get(&JavaString::from(CONTAINER)) {
-                Some(Tag::Byte(slot)) => *slot,
-                _ => -1,
-            };
-            let contents = match entry.get(&JavaString::from(STORED)) {
-                Some(Tag::Compound(stored)) => upgrade_slot_contents(game, stored),
-                _ => SlotContents::default(),
-            };
-            match slot {
-                0 => saved.input = contents,
-                1 => saved.output = contents,
-                _ => {}
-            }
-        }
-    }
-    saved
-}
-
-/// O `components` do `ItemResource.CODEC` de um recurso, ou nada sem componentes. Um recurso que veio de uma pilha do jogo tem o
-/// patch inteiro. O que a lib faz sozinha (`UpgradeData.resource_of`, o item com o tipo e mais nada) nunca passou por uma pilha:
-/// o tipo é o único componente e é um texto.
-fn resource_components(resource: &ItemResource) -> Option<Tag> {
-    if resource.components.is_empty() {
-        return None;
-    }
-    if let Some(components) = basis::components_tag(resource) {
-        return Some(components);
-    }
-    let mut components = Compound::default();
-    for (id, value) in resource.components.iter() {
-        let Some(text) = Components::parse_text_value(value) else {
-            eprintln!("mekanism: o componente {id} do upgrade não é um texto e não se grava");
-            continue;
-        };
-        components.insert(JavaString::from(id), Tag::String(JavaString::from(text.as_str())));
-    }
-    Some(Tag::Compound(components))
-}
-
-/// `TileComponentUpgrade.serialize`, escrito pelo `write` do componente: o filho some quando não tem nada.
-fn write_upgrades(entity: &mut ModBlockEntity, saved: &UpgradeSaved) {
-    let mut component = Compound::default();
-    if !saved.upgrades.is_empty() {
-        let mut upgrades = Compound::default();
-        for (id, total) in &saved.upgrades {
-            upgrades.insert(JavaString::from(id.as_str()), Tag::Int(*total));
-        }
-        component.insert(JavaString::from(UPGRADES), Tag::Compound(upgrades));
-    }
-    let mut items = Vec::new();
-    for (index, contents) in [&saved.input, &saved.output].into_iter().enumerate() {
-        let Some(resource) = &contents.resource else {
-            continue;
-        };
-        let mut kind = Compound::default();
-        kind.insert(JavaString::from(ITEM_ID), Tag::String(JavaString::from(&*resource.id)));
-        if let Some(components) = resource_components(resource) {
-            kind.insert(JavaString::from(COMPONENTS), components);
-        }
-        let mut stored = Compound::default();
-        stored.insert(JavaString::from(TYPE), Tag::Compound(kind));
-        stored.insert(JavaString::from(AMOUNT), Tag::Long(i64::from(contents.amount)));
-        let mut entry = Compound::default();
-        entry.insert(JavaString::from(CONTAINER), Tag::Byte(index as i8));
-        entry.insert(JavaString::from(STORED), Tag::Compound(stored));
-        items.push(Tag::Compound(entry));
-    }
-    if !items.is_empty() {
-        component.insert(JavaString::from(ITEMS), Tag::List(items));
-    }
-    let key = JavaString::from(COMPONENT_UPGRADE);
-    if component.is_empty() {
-        entity.nbt.remove(&key);
-    } else {
-        entity.nbt.insert(key, Tag::Compound(component));
+        upgrades: basis::read_upgrades(game, entity),
     }
 }
 
@@ -1221,41 +1095,14 @@ fn upgrade_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&Ite
     slot_from_entity(game, slot, stack);
 }
 
-/// A pilha de um recurso de upgrade. O que a lib faz (`UpgradeData.resource_of`, ao remover um upgrade) é o item com o tipo no
-/// componente e mais nada, e nunca passou por uma pilha do jogo: monta-se aqui, e a pilha registrada é a do recurso a partir de
-/// então.
-fn upgrade_stack(game: &Game<'_>, resource: &ItemResource, count: u32) -> ItemStack {
-    if let Some(stack) = basis::stack_of_resource(resource, count) {
-        return stack;
-    }
-    let mut stack = ItemStack::new(&resource.id, count);
-    if let Some(kind) = rules::upgrade_type_of(resource) {
-        let _ = game.native_set_component(&mut stack, rules::UPGRADE_TYPE_COMPONENT, Tag::String(JavaString::from(kind.as_str())));
-    }
-    let registered = resource_of(game, &stack);
-    if registered != *resource {
-        eprintln!("mekanism: o upgrade {:?} saiu com outros componentes ({:?})", resource.components.key(), registered.components.key());
-    }
-    stack
-}
-
 /// O item que um slot de upgrade guarda, com o tipo no componente.
 fn upgrade_slot_stack(game: &Game<'_>, slot: &InventorySlot) -> Option<ItemStack> {
-    let contents = slot.contents();
-    contents.resource.map(|resource| upgrade_stack(game, &resource, contents.amount))
+    basis::upgrade_slot_stack(game, rules::UPGRADE_TYPE_COMPONENT, &slot.contents())
 }
 
 /// O que o tick mudou nos slots de upgrade (instalar tira da entrada, remover enche a saída) volta para o menu.
 fn upgrade_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, slot: &InventorySlot) {
-    let contents = slot.contents();
-    let same = match (&contents.resource, entity.items[index].as_ref()) {
-        (None, None) => true,
-        (Some(resource), Some(stack)) => resource_of(game, stack) == *resource && contents.amount == stack.count,
-        _ => false,
-    };
-    if !same {
-        entity.items[index] = upgrade_slot_stack(game, slot);
-    }
+    basis::upgrade_to_cell(game, rules::UPGRADE_TYPE_COMPONENT, &mut entity.items[index], &slot.contents());
 }
 
 /// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo, com a regra real de cada slot para o item que
@@ -1649,7 +1496,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     }
     let upgrades_version = machine.upgrades_version();
     if live.upgrades_version != Some(upgrades_version) {
-        write_upgrades(entity, &machine.upgrades().saved());
+        basis::write_upgrades(entity, &machine.upgrades().saved());
         live.upgrades_version = Some(upgrades_version);
     }
     deliver(game, entity, slots.output, ejected, raised);
@@ -1779,31 +1626,13 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::UPGRADE_TYPE_COMPONENT.to_owned());
 }
 
-/// `ItemUpgrade.useOn`: com shift, o upgrade na mão entra na máquina que o aceita, e o que entrou sai da pilha. Um clique em máquina
-/// que não aceita o tipo segue o caminho normal (`PASS`). Só as máquinas deste mod, que são as que têm o componente.
-pub(in crate::game) fn use_item_on(
-    game: &mut Game<'_>,
-    stack: &ItemStack,
-    pos: [i32; 3],
-    claimed: &mut bool,
-) {
-    if *claimed || *stack.item != *rules::UPGRADE_ITEM || !game.native_sneaking() {
-        return;
-    }
+/// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:
+/// quantos upgrades do tipo entraram na máquina em `pos`, de até `available`.
+fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i32) -> i32 {
     let block = game.native_block(pos);
     let Some(spec) = machine_of(&block) else {
-        return;
+        return 0;
     };
-    let upgrade = match game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
-        Ok(Some(Tag::String(upgrade))) => upgrade.to_string_lossy(),
-        _ => return,
-    };
-    let (types, tags) = (upgrade::current_types(), upgrade::current_tags());
-    if !upgrade_data(game, &types, &tags).supports(&upgrade) {
-        return;
-    }
-    // `InteractionResult.SUCCESS_SERVER`: o clique é do upgrade, tenha entrado algum ou não.
-    *claimed = true;
     let dimension = game.native_dimension();
     let key = (dimension, pos);
     let at = (pos[0], pos[1], pos[2]);
@@ -1814,39 +1643,25 @@ pub(in crate::game) fn use_item_on(
         None => {
             // Uma máquina que ainda não andou nasce do NBT só para receber o upgrade, e o primeiro tick dela a refaz de lá.
             let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
-                return;
+                return 0;
             };
             let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
             born(game, pos, entity, spec, &indexes_of(game, spec), origin)
         }
     };
-    let available = i32::try_from(stack.count).unwrap_or(i32::MAX);
-    let added = live.machine.upgrades().add_upgrades(&upgrade, available);
+    let added = live.machine.upgrades().add_upgrades(upgrade, available);
     if added > 0 {
         // O NBT já guarda o que entrou: salvar o mundo antes do próximo tick da máquina não perde o upgrade nem o item.
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
-            write_upgrades(entity, &live.machine.upgrades().saved());
+            basis::write_upgrades(entity, &live.machine.upgrades().saved());
         }
         live.upgrades_version = Some(live.machine.upgrades_version());
         game.world.modified.insert((at.0 >> 4, at.2 >> 4));
-        // `stack.consume(added, player)`: quem está no criativo não gasta.
-        let creative = game
-            .native_acting_player()
-            .is_some_and(|player| player.game_mode == CREATIVE);
-        if !creative {
-            let held = game.held_mut();
-            let emptied = held.as_mut().is_some_and(|in_hand| {
-                in_hand.count = in_hand.count.saturating_sub(added.unsigned_abs());
-                in_hand.count == 0
-            });
-            if emptied {
-                *held = None;
-            }
-        }
     }
     if was_alive {
         LIVE_MACHINES.with_borrow_mut(|machines| machines.insert(key, live));
     }
+    added
 }
 
 /// `hasAnalogOutputSignal`: toda máquina do mod tem `AttributeComparator`.
@@ -2239,8 +2054,6 @@ pub(in crate::game) fn viewers_changed(
     if dim != dimension {
         return;
     }
-    // Quem saiu sem fechar o menu (conexão perdida, longe demais) deixa a janela escolhida para trás: larga o que não tem mais menu.
-    game.mb_window_prune(pos, viewers);
     let key = (dim, pos);
     VIEWERS.with_borrow_mut(|counts| {
         if viewers == 0 {

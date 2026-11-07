@@ -329,20 +329,6 @@ bindings = [
 
 # O modelo do upgrade escolhido pelo componente: o original usa um modelo de item próprio (`mekanism:component_item`), e aqui
 # a propriedade de condição `mekanism:upgrade_type/<tipo>` faz o mesmo papel.
-# Shift e clique direito com o upgrade na mão (`ItemUpgrade.useOn`).
-[[injection]]
-id = "use_item_on"
-hook = "use_item_on"
-hook_version = 1
-kind = "HEAD"
-helper = "use_item_on.rs"
-bindings = [
-  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
-  { name = "pos", ty = "[i32; 3]", value = "pos" },
-  { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
-]
-
 # `mekanism:component_item` não existe no Horizon: o arquivo do item fica igual ao do original, e o tipo é decodificado aqui.
 [[injection]]
 id = "component_item_model"
@@ -398,4 +384,17 @@ bindings = [
   { name = "front", ty = "bool", value = "front" },
   { name = "x", ty = "f32", value = "x" },
   { name = "y", ty = "f32", value = "y" },
+]
+
+# A luz do bloco aceso. As quatro máquinas são `Machine` (`Machine.java:26`), com `Attributes.ACTIVE_LIGHT`: luz 8 só no estado ativo
+# (`AttributeStateActive`, `Attributes.java:27`). O gabarito `minecraft:furnace` dá 13 ao estado `lit`, e `properties.light` vale para todos
+# os estados (o desligado ficaria aceso). O HEAD de `override_gameplay` troca a emissão dos estados acesos dessas máquinas. Alvo cru.
+[[injection]]
+id = "active_light"
+target = "horizon_client_lib::mod_content::Plan<'_>::override_gameplay"
+kind = "HEAD"
+helper = "active_light.rs"
+bindings = [
+  { name = "block", ty = "&NewBlock<'_>", value = "b" },
+  { name = "row", ty = "&mut J", value = "&mut *row" },
 ]

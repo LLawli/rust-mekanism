@@ -33,6 +33,7 @@ pub mod slot_rules;
 pub mod slot_view;
 pub mod sound;
 pub mod tank;
+pub mod temperature;
 pub mod tile;
 pub mod tooltip;
 pub mod transaction;

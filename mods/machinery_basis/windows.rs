@@ -25,6 +25,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// `Tooltip.MAX_WIDTH`: a largura em que o jogo quebra o texto de um tooltip de widget.
 const TOOLTIP_WRAP: i32 = 170;
+/// `GameType.CREATIVE` como o Horizon o numera.
+const CREATIVE: i32 = 1;
 
 /// O canal das mensagens entre cliente e servidor: o primeiro byte diz qual (`OP_*`), o resto é o corpo.
 const CHANNEL: &str = "machinery_basis:window";
@@ -38,27 +40,45 @@ const TYPES_CHANNEL: &str = "machinery_basis:upgrade_types";
 /// A fonte dos tipos que vieram do servidor, ao lado das que a carga de dados local põe.
 const SYNC_SOURCE: &str = "sync";
 
+/// `PacketRemoveUpgrade.handle`: o servidor tira um ou todos os upgrades de um tipo do bloco em `pos`.
 type RemoveFn = fn(&mut Game<'_>, [i32; 3], &str, bool);
+/// `TileComponentUpgrade.addUpgrades`: põe até `max_available` do tipo no bloco em `pos` e devolve quantos entraram.
+type AddFn = fn(&mut Game<'_>, [i32; 3], &str, i32) -> i32;
 
-static SPECS: Mutex<Vec<(&'static UpgradeWindowSpec, RemoveFn)>> = Mutex::new(Vec::new());
+static SPECS: Mutex<Vec<(&'static UpgradeWindowSpec, RemoveFn, AddFn)>> = Mutex::new(Vec::new());
 
-/// O mod diz que blocos têm a janela e como o servidor remove um upgrade (`PacketRemoveUpgrade`). Pode repetir: a mesma spec entra
-/// uma vez.
-fn register(spec: &'static UpgradeWindowSpec, remove: RemoveFn) {
+/// O mod diz que blocos têm a janela, como o servidor remove um upgrade (`PacketRemoveUpgrade`) e como o item de upgrade entra no bloco
+/// (`ItemUpgrade.useOn`). Pode repetir: a mesma spec entra uma vez.
+fn register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn) {
     let mut specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    if !specs.iter().any(|(known, _)| known.block == spec.block) {
-        specs.push((spec, remove));
+    if !specs.iter().any(|(known, ..)| known.block == spec.block) {
+        specs.push((spec, remove, add));
     }
 }
 
 fn spec_of(block: &str) -> Option<&'static UpgradeWindowSpec> {
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    specs.iter().find(|(spec, _)| spec.block == block).map(|(spec, _)| *spec)
+    specs.iter().find(|(spec, ..)| spec.block == block).map(|(spec, ..)| *spec)
 }
 
 fn remover_of(block: &str) -> Option<RemoveFn> {
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    specs.iter().find(|(spec, _)| spec.block == block).map(|(_, remove)| *remove)
+    specs.iter().find(|(spec, ..)| spec.block == block).map(|(_, remove, _)| *remove)
+}
+
+/// A spec do bloco `block` e como o upgrade entra nele, se o `item` é o item de upgrade de algum bloco registrado.
+fn adder_of(block: &str, item: &str) -> Option<(&'static UpgradeWindowSpec, AddFn)> {
+    let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
+    specs
+        .iter()
+        .find(|(spec, ..)| spec.block == block && spec.item == item)
+        .map(|(spec, _, add)| (*spec, *add))
+}
+
+/// Se `item` é o item de upgrade de algum bloco registrado: a pergunta barata, antes de olhar o bloco.
+fn is_upgrade_item(item: &str) -> bool {
+    let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
+    specs.iter().any(|(spec, ..)| spec.item == item)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1043,7 +1063,12 @@ pub(in crate::game) fn tooltip(
                 && let Some(index) = installed.get(open.list.first_visible(installed.len()) + row as usize)
                 && let Some(id) = order.get(*index)
             {
-                lines.push((type_description(id), None));
+                // `GuiUpgradeScrollList.updateTooltip`: `TooltipUtils.create(upgrade.description())`, que é `Tooltip.create` e quebra em 170 pixels.
+                for line in uw::wrap_lines(&type_description(id), TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)) {
+                    lines.push((line, None));
+                }
+                // As linhas de um `Tooltip.create` têm o mesmo espaçamento (sem a folga do título de um tooltip de item): 10 pixels por linha, 26 de caixa com duas.
+                flat = true;
                 rect = win([LIST[0] + 1, LIST[1] + 1 + 12 * row, 100, 12]);
             } else {
                 let layout = SupportedLayout::new(game.native_text_width(&lang::get("gui.mekanism.upgrades.supported")) as i32);
@@ -1070,6 +1095,42 @@ pub(in crate::game) fn tooltip(
         basis::menu_tooltip(game, batch, &lines, cursor, rect);
     }
     true
+}
+
+/// `ItemUpgrade.useOn`: com shift, o upgrade na mão entra no bloco que o aceita (`IUpgradeTile.supportsUpgrade`), e o que entrou sai da
+/// pilha (`stack.consume(added, player)`, que o criativo não gasta). O clique é do upgrade, tenha entrado algum ou não
+/// (`InteractionResult.SUCCESS_SERVER`); em bloco que não aceita o tipo segue o caminho normal (`PASS`).
+pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], claimed: &mut bool) {
+    if *claimed || !is_upgrade_item(&stack.item) || !game.native_sneaking() {
+        return;
+    }
+    let block = game.native_block(pos);
+    let Some((spec, add)) = adder_of(&block, &stack.item) else {
+        return;
+    };
+    let upgrade = match game.native_component(stack, spec.item_component) {
+        Ok(Some(Tag::String(upgrade))) => upgrade.to_string_lossy(),
+        _ => return,
+    };
+    if !(spec.data)().supports(&upgrade) {
+        return;
+    }
+    *claimed = true;
+    let available = i32::try_from(stack.count).unwrap_or(i32::MAX);
+    let added = add(game, pos, &upgrade, available);
+    if added > 0 {
+        let creative = game.native_acting_player().is_some_and(|player| player.game_mode == CREATIVE);
+        if !creative {
+            let held = game.held_mut();
+            let emptied = held.as_mut().is_some_and(|in_hand| {
+                in_hand.count = in_hand.count.saturating_sub(added.unsigned_abs());
+                in_hand.count == 0
+            });
+            if emptied {
+                *held = None;
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1245,12 +1306,24 @@ pub(in crate::game) fn prune(game: &Game<'_>, pos: [i32; 3], viewers: u32) {
 
 impl Game<'_> {
     /// O mod registra a janela de um bloco.
-    pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn) {
-        register(spec, remove);
+    pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn) {
+        register(spec, remove, add);
+    }
+
+    /// `ItemUpgrade.useOn`.
+    pub(in crate::game) fn mb_window_use_item_on(&mut self, stack: &ItemStack, pos: [i32; 3], claimed: &mut bool) {
+        use_item_on(self, stack, pos, claimed);
     }
 
     pub(in crate::game) fn mb_window_frame(&mut self) {
         frame(self);
+        // A tela de máquina fechada limpa o estado do fundo (`container_dim`).
+        horizon_client::hud::machinery_container_dim::set(self.mb_screen_owns_dim());
+    }
+
+    /// Se a tela de contêiner aberta é de uma máquina nossa, que o original desenha com o degradê do vanilla no fundo (injeção `container_dim`).
+    pub(in crate::game) fn mb_screen_owns_dim(&self) -> bool {
+        open_spec(self).is_some()
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {
