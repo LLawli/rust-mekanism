@@ -273,8 +273,32 @@ Falta na Fase 1:
 - `players_using` vem do hook `mod_container_viewers`, que não conta espectador. O `PacketTileButtonPress` do Java abre a tela sem
   checar espectador, então esse caminho diverge. O caso de `born` com a tela já aberta não foi exercitado em jogo.
 - `sim::chunks` (carga, descarga, blocos, block entities e a ordem dos eventos) existe e é testado, mas ainda não cobre as notificações
-  de vizinhança do `setBlock` (`onNeighborBlockChange`), os testes de rede em si são da Fase 3, e a ordem dos eventos veio de ler o
-  NeoForge 26.3.0.100, não de um rastro: falta gravar `reloadIntermediary` e `inaccessibleNotUnloaded` no `gameTestServer` e comparar.
+  de vizinhança do `setBlock` (`onNeighborBlockChange`), e os testes de rede em si são da Fase 3.
+- Ordem dos eventos de chunk, conferida no jogo (2026-11-07): `dev/referencia/testes/ChunkTraceTest.java` roda `reloadIntermediary` e
+  `inaccessibleNotUnloaded` no `gameTestServer` com um cabo que grava cada chamada (ticket, carga, descarga, `onLoad`, `setRemoved`,
+  `onChunkUnloaded`, `saveAdditional`, tickers), e `mods/machinery_basis/core/tests/sim_chunks.rs` repete os rastros em
+  `dev/referencia/rastros/chunk_*.jsonl` evento a evento, com as posições absolutas deles (12 rastros de rodadas diferentes repetem, 6 ficam guardados).
+  O que a leitura do NeoForge já dava se confirmou: ticket antes de gravar, gravar antes de `ChunkEvent.Unload`, todos os
+  `onChunkUnloaded` antes de qualquer `setRemoved`, `onLoad` de todos antes do primeiro ticker, tickers antigos antes dos
+  recarregados, ticker novo no fim, mapa do chunk na ordem do fastutil. Quatro divergências, corrigidas em `chunks.rs`: (1) a
+  gravação não sai na ordem do mapa, e sim na do `HashSet` de `getBlockEntitiesPos` (`sim/java_hash.rs`, conferido contra o JDK 21),
+  e o chunk recarregado recria os cabos nessa ordem; (2) `ChunkTicketLevelUpdatedEvent` só sai quando o nível muda; (3) o passo de
+  um `gameTest` roda entre os tickers do nível e o `ServerTickEvent.Post` (`tick_level` e `finish_tick`); (4) a carga leva de 5 a
+  11 ticks entre o pedido e o `ChunkEvent.Load`, e não 1 (`set_load_delay`; o simulador não prevê quantos).
+- Os dois cenários do Mekanism são mais fracos do que o nome diz. O nível posto à mão em `inaccessibleNotUnloaded` (33) volta ao
+  dos tickets (31) 2 ticks depois em 2 de 6 rodadas, quando o `LoadingChunkTracker` recalcula o chunk por causa de um ticket
+  vizinho (`update_ticket_level`; o simulador não sabe quando o jogo faz). Em `reloadIntermediary` o próprio jogo pode recarregar o
+  chunk descarregado 2 ticks depois (`chunk_reload_intermediary_game_reloads.jsonl`), e o pedido do teste vira um `skipped`. E o
+  chunk `(1, 0)` do Mekanism é o que contém o meio da estrutura mais 8 em `z`: com `z` dentro do chunk em 8 ou mais (metade
+  das rodadas) ele é da fileira vizinha e não tem cabo nenhum (`chunk_*_empty_chunk.jsonl`), e o teste passa sem exercitar a rede.
+  Mesmo na fileira certa, a estrutura cruza quatro chunks (3, 16, 16 e 13 cabos, por exemplo), não três de 16, e as coordenadas
+  mudam a cada rodada, e com elas a ordem dos mapas.
+- `reloadIntermediary` do Mekanism é instável no jogo: 1 falha ("Chunk has not been marked as unloaded yet", timeout no tick
+  402) em 16 rodadas completas do `runGameTestServer`, e nenhuma em 71 cópias dele (64 num arquivo temporário, 7 no `ChunkTraceTest`).
+  A mensagem só sai se o `ChunkEvent.Unload` do chunk `(1, 0)` nunca chega: o `updateChunkLoading` do teste não faz nada
+  quando `isChunkLoaded` já é falso, e o chunk da fileira vizinha (sem cabos, só o ticket da estrutura o segura) pode não estar
+  carregado quando o cenário começa. Não reproduzido em rodada controlada, então é a hipótese que a leitura do código sustenta,
+  não um fato medido.
 
 Nota: `dev/referencia/rastros/upgrade_table.jsonl` tem 324 combinações medidas no Java, e `mods/mekanism/tests/upgrade_table.rs`
 confere o port. O upgrade de energia reduz a capacidade, porque as quatro máquinas aceitam speed.
