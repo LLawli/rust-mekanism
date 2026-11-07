@@ -19,6 +19,11 @@ mundo em `src/runs/client/saves/GameTestWorld`, do arquivo `src/runs/client/cena
 `onboardAccessibility:false` no `options.txt`, e do `runGameTestClient` dentro de um `gamescope`. Os prints saem em
 `src/runs/client/screenshots/`. Coordenada inteira no `tp` é centralizada: escreva `-2.0`.
 
+`testes/SlotsTraceTest.java` grava os hoppers em volta das quatro máquinas (posta com o item, como um jogador, com a configuração de lados
+padrão), as regras dos slots de infusão e de energia para quem está de fora, e a receita que o Crusher escolhe para `melon_slice`
+(`slots_<máquina>.jsonl` e `crusher_melon.jsonl`). Copie o arquivo para `src/gameTest/java/mekanism/common/tests/network/` só na hora de
+rodar o `runGameTestServer` e apague-o depois. `mods/mekanism/tests/slot_rules.rs` e `c_tags.rs` os repetem.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

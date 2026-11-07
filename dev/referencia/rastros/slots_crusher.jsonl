@@ -1,0 +1,14 @@
+{"machine":"crusher","front":"west"}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"stick","insert":{"EXTERNAL":0,"INTERNAL":1,"MANUAL":0},"extract":{"EXTERNAL":3,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"redstone","insert":{"EXTERNAL":1,"INTERNAL":1,"MANUAL":1},"extract":{"EXTERNAL":0,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"redstone_block","insert":{"EXTERNAL":1,"INTERNAL":1,"MANUAL":1},"extract":{"EXTERNAL":0,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"coal","insert":{"EXTERNAL":0,"INTERNAL":1,"MANUAL":0},"extract":{"EXTERNAL":3,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"diamond","insert":{"EXTERNAL":0,"INTERNAL":1,"MANUAL":0},"extract":{"EXTERNAL":3,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"mekanism:bio_fuel","insert":{"EXTERNAL":0,"INTERNAL":1,"MANUAL":0},"extract":{"EXTERNAL":3,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","probe":"energy","tank":"-","input":"-","item":"red_mushroom","insert":{"EXTERNAL":0,"INTERNAL":1,"MANUAL":0},"extract":{"EXTERNAL":3,"INTERNAL":3,"MANUAL":3}}
+{"machine":"crusher","phase":"give_parked","hoppers":{"down":[]},"slots":[["cobblestone",5],["gravel",5],["stick",2]]}
+{"machine":"crusher","phase":"take_up","hoppers":{"up":[["stick",1],["redstone",1],["bio_fuel",1],["coal",1]]},"slots":[["cobblestone",1],["",0],["",0]]}
+{"machine":"crusher","phase":"take_north","hoppers":{"north":[["stick",1],["redstone",1],["bio_fuel",1],["coal",1]]},"slots":[["cobblestone",1],["",0],["",0]]}
+{"machine":"crusher","phase":"take_south","hoppers":{"south":[["stick",1],["cobblestone",1],["redstone",1],["bio_fuel",1],["coal",1]]},"slots":[["",0],["",0],["",0]]}
+{"machine":"crusher","phase":"take_west","hoppers":{"west":[["stick",1],["redstone",1],["bio_fuel",1],["coal",1]]},"slots":[["cobblestone",1],["",0],["",0]]}
+{"machine":"crusher","phase":"take_east","hoppers":{"east":[["stick",1],["cobblestone",1],["bio_fuel",1],["coal",1]]},"slots":[["",0],["",0],["redstone",1]]}
