@@ -50,6 +50,13 @@ fn load(folder: &str) -> Vec<(String, Value)> {
     files
 }
 
+/// Os tipos de upgrade que o mod entrega, lidos dos mesmos arquivos que o jogo lê.
+pub fn upgrade_types() -> UpgradeTypes {
+    let (types, errors) = UpgradeTypes::load(&load(mekanism_rules::UPGRADE_FOLDER));
+    assert!(errors.is_empty(), "tipos recusados: {errors:?}");
+    types
+}
+
 /// Os dados de upgrade das máquinas portadas: os tipos e as tags que o mod entrega, e nada escrito à mão.
 pub fn upgrade_data() -> Rc<UpgradeData> {
     let (types, errors) = UpgradeTypes::load(&load(mekanism_rules::UPGRADE_FOLDER));

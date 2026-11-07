@@ -69,3 +69,16 @@ mundo atrás é uma caixa de concreto preto. `cena_telas.py port DESTINO ESCALA.
 Os cantos transparentes do painel mostram o mundo e contam à parte (`canto_*`). Os casos `ciclo` tiram 40 prints no original e `ciclo_port` no port (o ciclo inteiro da animação), um por passo, e cada print
 do original tem de ser igual a algum do port.
 
+
+### Som e efeitos
+
+`testes/MachineTraceTest.java` grava, além dos rastros de tick, os de efeitos: `chamber_muffling` (`getVolumeFactor` e `isFullyMuffled`),
+`chamber_xp_containment`, `chamber_xp_vanilla` e `chamber_xp_broken` (`recipesUsed`, `hadContainment`, o que cai de experiência), `chamber_name`
+(`getName`, `getDisplayName`, `CustomName`) e `upgrade_tooltip` (as linhas do tooltip do item, em JSON de componente). Os testes
+`effects_trace.rs` e `tooltip_trace.rs` do Mekanism os repetem. A experiência só entra em remessas inteiras (2 operações de 0,5): a parte
+fracionária usa `Math.random`. O jogo mantém bolas de experiência perto da máquina, e o jogador falso colhe as bolas aos poucos, então
+`orb_points` sobe no tick da remessa e cai depois.
+
+`testes/CenaSom.java` roda no cliente (`runGameTestClient`) com o arquivo `cena-som` (`maquina chamber|crusher` e `muffling N`): monta a
+máquina, liga com carvão, corta a energia e tira um print a cada 3 ticks, com o instante real em `cena-som-tempos.txt`. O áudio é gravado
+de fora, pelo PipeWire (sink nulo e `pw-link`), porque o container só reproduz. Silencie a música da cena antes de medir níveis.

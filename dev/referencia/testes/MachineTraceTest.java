@@ -33,6 +33,13 @@ import mekanism.common.inventory.container.MekanismContainer;
 import mekanism.common.inventory.container.SelectedWindowData;
 import mekanism.common.inventory.container.SelectedWindowData.WindowType;
 import mekanism.common.inventory.container.sync.ISyncableData;
+import mekanism.common.inventory.container.slot.InventoryContainerResultSlot;
+import mekanism.common.recipe.lookup.monitor.RecipeCacheLookupMonitor;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.item.TooltipFlag;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.network.chat.ComponentSerialization;
 import mekanism.common.inventory.container.tile.MekanismTileContainer;
 import mekanism.common.inventory.warning.WarningTracker;
 import mekanism.common.inventory.warning.WarningTracker.WarningType;
@@ -791,6 +798,216 @@ public class MachineTraceTest {
                   trace.setEnergy(500);
               })
               .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the xp containment upgrade: recipesUsed, xpContainmentChanged, taking the output, the xp tab and removing the upgrade.")
+    public static void chamberXpContainment(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_xp_containment");
+        trace.recordEffects = true;
+        trace.refillTicks = 3;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("speed 8, coal 2, no containment");
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("install xp_containment 1 with 2 operations done");
+                  trace.mark("before " + trace.orbs().replace("\"", ""));
+                  trace.addUpgrades(UpgradeIds.XP_CONTAINMENT, 1);
+                  trace.mark("after " + trace.orbs().replace("\"", ""));
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("coal 2 again");
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("open the menu and take the output with a click");
+                  trace.openMenu(MekanismContainerTypes.ENRICHMENT_CHAMBER);
+                  trace.takeOutput();
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("coal 2 again");
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("collect with the xp tab");
+                  trace.collectXp();
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("coal 2 again, then remove xp_containment");
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("remove xp_containment with 2 operations stored");
+                  trace.removePacket(UpgradeIds.XP_CONTAINMENT, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("install xp_containment 1 again, coal 2");
+                  trace.addUpgrades(UpgradeIds.XP_CONTAINMENT, 1);
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  //Another recipe: 2 operations of 0.1 would pop a random orb (Math.random() < 0.2), so it only counts and is not collected
+                  trace.mark("another recipe, clay 2");
+                  trace.setSlot(INPUT, Items.CLAY, 2);
+              })
+              .thenExecuteAfter(40, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records taking the output with no xp containment (the last recipe gives its xp, as a furnace does) and the xp tab doing nothing.")
+    public static void chamberXpVanilla(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_xp_vanilla");
+        trace.recordEffects = true;
+        trace.refillTicks = 3;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("speed 8, coal 2, no containment");
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("open the menu and take the output with a click");
+                  trace.openMenu(MekanismContainerTypes.ENRICHMENT_CHAMBER);
+                  trace.takeOutput();
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("coal 2 again");
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("collect with the xp tab, without containment");
+                  trace.collectXp();
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("take the output again");
+                  trace.takeOutput();
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the xp stored in a chamber being dropped when the block is broken, with and without the upgrade.")
+    public static void chamberXpBroken(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_xp_broken");
+        trace.recordEffects = true;
+        trace.refillTicks = 3;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("speed 8, xp_containment 1, coal 2");
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.addUpgrades(UpgradeIds.XP_CONTAINMENT, 1);
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("break the block");
+                  trace.breakBlock();
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("place another, speed 8, coal 2, no containment");
+                  trace.place();
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("break the block without containment");
+                  trace.breakBlock();
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the muffling upgrade: getVolumeFactor and isFullyMuffled with 0 and the maximum installed.")
+    public static void chamberMuffling(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_muffling");
+        trace.recordEffects = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("install muffling 5, only the maximum fits");
+                  trace.addUpgrades(UpgradeIds.MUFFLING, 5);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("remove muffling all");
+                  trace.removePacket(UpgradeIds.MUFFLING, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("an energy upgrade does not change the volume");
+                  trace.addUpgrades(UpgradeIds.ENERGY, 3);
+              })
+              .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the name of a chamber placed from a named item and from a plain one.")
+    public static void chamberName(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 2, 1)
+              .fill(1, 0, 0, 1, 0, 0, Blocks.STONE.defaultBlockState())
+              .fill(2, 0, 0, 2, 0, 0, Blocks.STONE.defaultBlockState()));
+        Trace trace = new Trace("chamber_name");
+        trace.pos = new BlockPos(1, 1, 0);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  Player player = helper.makeMockPlayerLookingAt(1, 0, 0, Direction.UP);
+                  ItemStack named = new ItemStack(MekanismBlocks.ENRICHMENT_CHAMBER.asItem());
+                  named.set(DataComponents.CUSTOM_NAME, Component.literal("Minha Camara"));
+                  helper.useOn(new BlockPos(1, 0, 0), named, player, Direction.UP);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("placed from a named item");
+                  trace.nameLine();
+                  trace.pos = new BlockPos(2, 1, 0);
+                  Player player = helper.makeMockPlayerLookingAt(2, 0, 0, Direction.UP);
+                  helper.useOn(new BlockPos(2, 0, 0), new ItemStack(MekanismBlocks.ENRICHMENT_CHAMBER.asItem()), player, Direction.UP);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("placed from a plain item");
+                  trace.nameLine();
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the tooltip lines of the upgrade item for each type and for an item with no type.")
+    public static void upgradeTooltip(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("upgrade_tooltip");
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  trace.tooltipLines("no type", new ItemStack(MekanismItems.UPGRADE.asItem()));
+                  for (var key : List.of(UpgradeIds.SPEED, UpgradeIds.ENERGY, UpgradeIds.MUFFLING, UpgradeIds.XP_CONTAINMENT, UpgradeIds.ANCHOR,
+                        UpgradeIds.CHEMICAL, UpgradeIds.FILTER, UpgradeIds.STONE_GENERATOR)) {
+                      trace.tooltipLines(key.identifier().getPath(), trace.upgradeStack(key, 1));
+                  }
+              })
+              .thenExecuteAfter(2, trace::write)
               .thenSucceed()
         );
     }
@@ -2048,6 +2265,7 @@ public class MachineTraceTest {
         boolean separator;
         boolean recordRecheck;
         boolean recordWarnings;
+        boolean recordEffects;
         /// A cada tick, depois de gravar, devolve ao container energia para esta quantidade de ticks da máquina (ou de operações, no separador).
         int refillTicks;
         /// Se maior que zero, devolve 1/refillFraction do consumo de um tick.
@@ -2397,6 +2615,117 @@ public class MachineTraceTest {
             energy().setMaxEnergy(maxEnergy);
         }
 
+        void place() {
+            helper.getLevel().setBlockAndUpdate(helper.absolutePos(pos), MekanismBlocks.ENRICHMENT_CHAMBER.defaultState());
+        }
+
+        void breakBlock() {
+            helper.getLevel().destroyBlock(helper.absolutePos(pos), false);
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"broken\":true," + orbs() + "}");
+        }
+
+        /// Clica no slot de resultado como o jogador, o caminho que chama `awardUsedRecipesAndPopExperience`.
+        void takeOutput() {
+            for (Slot slot : menu.slots) {
+                if (slot instanceof InventoryContainerResultSlot) {
+                    menu.clicked(slot.index, 0, ContainerInput.PICKUP, player());
+                    menu.setCarried(ItemStack.EMPTY);
+                    return;
+                }
+            }
+            throw new IllegalStateException("no result slot");
+        }
+
+        /// `PacketGuiInteract(COLLECT_XP)`, o botão da aba de xp.
+        void collectXp() {
+            new PacketGuiInteract(GuiInteraction.COLLECT_XP, helper.absolutePos(pos)).handle(context());
+        }
+
+        private Object monitorField(String name) {
+            try {
+                Field monitorField = TileEntityRecipeMachine.class.getDeclaredField("recipeCacheLookupMonitor");
+                monitorField.setAccessible(true);
+                Object monitor = monitorField.get(tile());
+                if (name == null) {
+                    return monitor;
+                }
+                Field field = RecipeCacheLookupMonitor.class.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(monitor);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private boolean fullyMuffled() {
+            try {
+                java.lang.reflect.Method method = TileEntityMekanism.class.getDeclaredMethod("isFullyMuffled");
+                method.setAccessible(true);
+                return (boolean) method.invoke(tile());
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        /// As bolas de experiência ao redor da máquina: quantas e quantos pontos dão (`value` vezes `count`).
+        private String orbs() {
+            List<ExperienceOrb> found = helper.getLevel().getEntitiesOfClass(ExperienceOrb.class, new AABB(helper.absolutePos(pos)).inflate(2));
+            long points = 0;
+            for (ExperienceOrb orb : found) {
+                int count = 1;
+                try {
+                    Field field = ExperienceOrb.class.getDeclaredField("count");
+                    field.setAccessible(true);
+                    count = field.getInt(orb);
+                } catch (ReflectiveOperationException e) {
+                    throw new IllegalStateException(e);
+                }
+                points += (long) orb.getValue() * count;
+            }
+            return "\"orbs\":" + found.size() + ",\"orb_points\":" + points;
+        }
+
+        @SuppressWarnings("unchecked")
+        private void appendEffects(StringBuilder line) {
+            RecipeCacheLookupMonitor<?> monitor = (RecipeCacheLookupMonitor<?>) monitorField(null);
+            java.util.TreeMap<String, Integer> used = new java.util.TreeMap<>();
+            for (ResourceKey<Recipe<?>> key : monitor.getRecipesUsed().keySet()) {
+                used.put(key.identifier().toString(), monitor.getRecipesUsed().getInt(key));
+            }
+            StringBuilder map = new StringBuilder();
+            for (Map.Entry<String, Integer> entry : used.entrySet()) {
+                map.append(map.isEmpty() ? "" : ",").append('"').append(entry.getKey()).append("\":").append(entry.getValue());
+            }
+            Object last = monitorField("lastRecipeUsed");
+            line.append(",\"volume_factor\":").append(tile().getVolumeFactor())
+                  .append(",\"fully_muffled\":").append(fullyMuffled())
+                  .append(",\"xp_containment\":").append(tile().hasXpContainment())
+                  .append(",\"had_containment\":").append(monitorField("hadContainment"))
+                  .append(",\"recipes_used\":{").append(map).append('}')
+                  .append(",\"last_recipe\":").append(last == null ? "null" : "\"" + ((ResourceKey<?>) last).identifier() + "\"")
+                  .append(",\"last_amount\":").append(monitorField("lastRecipeCraftedAmount"))
+                  .append(",\"reset_last\":").append(monitorField("resetLastRecipe"))
+                  .append(',').append(orbs());
+        }
+
+        /// O nome do tile no que o jogo mostra: `getName`, `getDisplayName`, o nome guardado e se o tile aceita nome.
+        void nameLine() {
+            TileEntityMekanism tile = tile();
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"name\":\"" + tile.getName().getString() + "\",\"display_name\":\""
+                  + tile.getDisplayName().getString() + "\",\"custom_name\":"
+                  + (tile.getCustomName() == null ? "null" : "\"" + tile.getCustomName().getString() + "\"") + ",\"nameable\":" + tile.isNameable()
+                  + ",\"saved_name\":" + (tile.saveWithoutMetadata(helper.getLevel().registryAccess()).contains("CustomName")) + "}");
+        }
+
+        /// As linhas de tooltip de um item, em JSON de componente: tradução, argumentos e cor.
+        void tooltipLines(String label, ItemStack stack) {
+            StringBuilder out = new StringBuilder();
+            for (Component component : stack.getTooltipLines(Item.TooltipContext.of(helper.getLevel()), null, TooltipFlag.NORMAL)) {
+                out.append(out.isEmpty() ? "" : ",").append(ComponentSerialization.CODEC.encodeStart(JsonOps.INSTANCE, component).getOrThrow());
+            }
+            lines.add("{\"t\":" + tick++ + ",\"marks\":[\"" + label + "\"],\"lines\":[" + out + "]}");
+        }
+
         void addUpgrades(net.minecraft.resources.ResourceKey<Upgrade> key, int amount) {
             Holder<Upgrade> upgrade = helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).getOrThrow(key);
             tile().getComponent().addUpgrades(helper.getLevel().registryAccess(), upgrade, amount);
@@ -2496,6 +2825,9 @@ public class MachineTraceTest {
             if (recordWarnings) {
                 appendWarnings(line);
             }
+            if (recordEffects) {
+                appendEffects(line);
+            }
             if (recordUpgradeWindow) {
                 TileComponentUpgrade component = tile().getComponent();
                 List<String> installed = new ArrayList<>();
@@ -2562,6 +2894,10 @@ public class MachineTraceTest {
             }
             if (separator) {
                 recordSeparator();
+                return;
+            }
+            if (recordEffects && tile() == null) {
+                //O bloco foi quebrado: `breakBlock` já gravou a linha.
                 return;
             }
             TileEntityProgressMachine<?> chamber = machine();
