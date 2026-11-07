@@ -264,13 +264,26 @@ textos de idioma; o clique que troca a unidade usa `screen_mouse_button_pressed_
 ### Barra de armadura e mão
 
 `armor_slots.rs` porta `MekanismContainer.addArmorSlots`, `ArmorSlot` e `OffhandSlot` (a coluna de quatro slots com a mão logo abaixo, `mayPlace`, tamanho, `mayPickup` e o `insert`),
-e `armor_bar.rs` guarda, por tipo de menu, o que o mod declarou de `ContainerBuilder.armorSideBar(x, y, offhandOffset)` mais os retângulos dos elementos da tela que ficam fora da imagem
-(as abas laterais). A declaração é uma só por processo, porque o servidor (que monta o menu com os cinco slots depois dos 36 do inventário) e o cliente (que os põe na tela, nos ids 500 a 504 que o
+e `armor_bar.rs` guarda, por tipo de menu, o que o mod declarou de `ContainerBuilder.armorSideBar(x, y, offhandOffset)`. A declaração é uma só por processo, porque o servidor (que monta o menu com os cinco slots depois dos 36 do inventário) e o cliente (que os põe na tela, nos ids 500 a 504 que o
 jogo já usa para a armadura e a mão) rodam em threads diferentes. Os slots são reais, do jogador, e o motor de menus do Horizon os trata (`Role::Armor`: só a peça do slot, uma por vez, a maldição do
-vínculo, o `onEquipItem` do clique). A lib faz o que o motor não faz: a lista de slots e a posição na tela do mod, o mapa dos índices, o "clicar fora" que respeita as abas
-(`GuiMekanism.hasClickedOutside`), o shift-clique que parte da armadura ou da mão (com o `mayPickup`) e o envio da armadura e da mão com a resposta do clique. Tudo isso é injeção crua, e está em
+vínculo, o `onEquipItem` do clique). A lib faz o que o motor não faz: a lista de slots e a posição na tela do mod, o mapa dos índices, o "clicar fora" que respeita os slots da barra (`armor_bar::over_slot`) e as abas
+(`screen_elements`, abaixo; `GuiMekanism.hasClickedOutside`), o shift-clique que parte da armadura ou da mão (com o `mayPickup`) e o envio da armadura e da mão com a resposta do clique. Tudo isso é injeção crua, e está em
 [injecoes-horizon.md](injecoes-horizon.md#a-barra-de-armadura-e-mão-machinery_basis-9-injeções). O mod declara a barra, desenha o suporte e os quadros, e liga o shift-clique dele
 (`GeneratorMenu`). A lib não conhece id de menu: ele chega por parâmetro.
+
+### Elementos de tela fora da imagem
+
+`screen_elements.rs` guarda, por tipo de menu, os elementos da tela que recebem o mouse fora dos 176 por 166 da imagem (as abas laterais), que é o que `GuiMekanism.findElementOver` acha e o que impede
+`hasClickedOutside` de soltar o item do cursor (`GuiElement.isMouseOver` exige `active && visible`). A lib não conhece nenhum id: o mod declara, uma vez por tipo de menu, uma lista de `Element`.
+
+- `Element::always(rect)`: um retângulo (relativo ao canto da tela) sempre ativo e visível (`GuiEnergyTab`, `GuiHeatTab`).
+- `Element::when(rect, |state: &[i32]| -> bool)`: o mesmo com uma condição que lê os data slots que o servidor sincroniza para a tela (a aba de xp só com o upgrade, a de avisos só com algum aviso). A condição
+  roda fora da trava do registro.
+- `declare(menu, elements)`, `declare_once(menu, || elements)`, `declared(menu)` e `over_element(menu, at, state)`. O registro é um só por processo.
+
+O que é do elemento e o que não é: o retângulo de uma aba inset (`GuiInsetElement`) é o botão de dentro (18 por 18), não o suporte de 26 por 26 (`side_tab::InsetTab::button`); os `GuiSlot` e o `GuiSideHolder`
+são inativos e não contam. A aba de upgrades e a janela dela são da `window` (`mb_window_over`), e os slots da barra de armadura são de `armor_bar::over_slot`; a injeção `bar_clicked_outside` junta os três
+(`mb_bar_over_element`) com os data slots da tela aberta (`mb_screen_data`).
 
 ## Fora da lib
 

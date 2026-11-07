@@ -369,8 +369,8 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
   índices 39 a 36 do jogador) e um `OffhandSlot` (índice 40): os slots 40 a 44 do menu. Decisão de desenho (2026-11-07): são slots reais do jogador no
   menu do servidor, que o motor verificado do Horizon já tem (`Role::Armor`: `mayPlace` por `canEquip`, tamanho 1, `mayPickup` com a maldição do
   vínculo, `onEquipItem` no clique), com os ids de cliente 500 a 504 que o jogo usa para `Game::armor` e `Game::offhand`. A lib guarda a declaração por
-  tipo de menu (`machinery_basis_core::armor_bar`: posição e elementos de tela), o mod só a declara (o Heat Generator: `armorSideBar(-20, 11, 0)`, as abas
-  de calor e de energia) e desenha o `GuiSideHolder` e os quadros.
+  tipo de menu (`machinery_basis_core::armor_bar`: a posição; `screen_elements`: as abas fora da imagem), o mod só a declara (o Heat Generator: `armorSideBar(-20, 11, 0)`, as abas
+  de calor e de energia; as quatro máquinas, as de energia, de avisos e de xp) e desenha o `GuiSideHolder` e os quadros.
 - **O que cada injeção faz:**
   - `bar_slot_position` (RETURN de `Game::slot_position`), `bar_slots` (RETURN de `Game::slots`) e `bar_slot_count` (RETURN de `Game::slot_count`): na tela de
     mod aberta com barra, a posição declarada para 500 a 504 e a lista (e a contagem, que o hook de `screen_render_post` confere) com esses cinco.
@@ -393,9 +393,11 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
     `super.hasClickedOutside(..) && findElementOver(..) == null`, e o NeoForge acrescenta `if (slot != null) clickedOutside = false`
     (`AbstractContainerScreen.mouseClicked`). O Horizon dá a vez a "fora" sobre um slot (`container_screen::Target::of`, a regra do vanilla), e o retângulo da
     imagem tem 176 de largura: um clique sobre um slot da barra (x -21 a -3) ou sobre uma aba lateral com um item no cursor soltava o item. O HEAD responde falso
-    sobre um elemento ativo da tela: os quadros dos slots da barra, os elementos que o mod declarou (`GuiHeatTab`, `GuiEnergyTab`), e a aba de upgrades e a janela
-    dela, que a lib sabe. O suporte (`GuiSideHolder`) e o `GuiSlot` têm `active = false` (`GuiSideHolder.java`, `GuiSlot.java:91`), então a margem deles continua "fora".
-    Cursor com 5 de terra e um clique em cada aba, no jogo (`horizon`, 2026-11-07): antes soltava o item, depois fica.
+    sobre um elemento ativo da tela: os quadros dos slots da barra (`armor_bar::over_slot`), os elementos que o mod declarou em `screen_elements` e que estão ativos com os
+    data slots de agora (`GuiHeatTab` e `GuiEnergyTab` do gerador; `GuiEnergyTab`, `GuiWarningTab` e o botão da `GuiXpContainmentTab` das quatro máquinas, as duas últimas condicionais), e a
+    aba de upgrades e a janela dela, que a lib sabe. O helper lê os data slots de `mod_screen.data`, privado de `native_hooks.rs`, por um método do módulo `windows` (`mb_screen_data`), que é
+    filho dele: nenhuma injeção nova, e a contagem não muda. O suporte (`GuiSideHolder`) e o `GuiSlot` têm `active = false` (`GuiSideHolder.java`, `GuiSlot.java:91`), então a margem deles continua "fora".
+    Cursor com 5 de terra e um clique em cada aba, no jogo (`horizon`, 2026-11-07): antes soltava o item, depois fica (o gerador, e as quatro máquinas em 16 estados, com o botão direito também).
 - **Java:** `MekanismContainer.java:231,278-330` (`addArmorSlots`, `quickMoveStack`), `ArmorSlot.java`, `OffhandSlot.java`,
   `GuiHeatGenerator.java:35` (`GuiSideHolder.create(this, -26, 6, 98, true, true, TAB_ARMOR_SLOTS)`), `GuiMekanism.java:397-399` e `:715-775` (`GuiSlot` para cada slot).
 - **Hook mais próximo:** nenhum. `native_screen` só descreve os slots do contêiner (300 e acima) e o inventário (0 a 35), `Menu::new` não conhece slots de
@@ -995,7 +997,8 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 ### H32 elementos da tela fora da imagem
 
 - **Lado:** cliente. **Tipo:** dado, em `NativeScreen`: `elements: Vec<[f32; 4]>`.
-- **O que faz:** os retângulos (relativos ao canto da tela) que recebem o mouse fora da imagem de 176 por 166 (abas laterais, a janela de upgrades). `clicked_outside` e
+- **O que faz:** os retângulos (relativos ao canto da tela) que recebem o mouse fora da imagem de 176 por 166 (abas laterais, a janela de upgrades), cada um com uma condição de ativo e visível agora que o mod lê dos data slots da tela
+  (a aba de xp só com o upgrade; a de avisos só com algum aviso, que depende da máscara de erros e do redstone, então uma função sobre os data slots serve melhor que o índice de um slot). `clicked_outside` e
   o clique de contêiner os tratam como `GuiMekanism.findElementOver`: o clique neles não é "fora" (não solta o item do cursor). O vanilla não tem esse caso (o
   `AbstractContainerScreen.hasClickedOutside` só olha a imagem), e o NeoForge ainda impede que um slot sob o mouse seja "fora".
 - **Exemplo:** `NativeScreen { elements: vec![[-26.0, 109.0, 26.0, 26.0], [-26.0, 137.0, 26.0, 26.0]], .. }` para as abas de calor e de energia.

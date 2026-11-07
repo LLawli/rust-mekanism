@@ -164,8 +164,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 - Clicar numa aba lateral da tela de uma máquina (a de calor e a de energia do Heat Generator, a de upgrades e a janela dela) ou num slot fora da imagem com um item no
   cursor não solta mais o item: `GuiMekanism.hasClickedOutside` só chama de "fora" o que não está sobre um elemento ativo da tela, e o NeoForge nunca deixa um slot sob
-  o mouse ser "fora". O Horizon olhava só o retângulo da imagem de 176 por 166 e soltava a pilha. As abas de energia, de experiência e de avisos das quatro máquinas
-  do Mekanism ainda não entram nessa conta.
+  o mouse ser "fora". O Horizon olhava só o retângulo da imagem de 176 por 166 e soltava a pilha. As abas de energia, de avisos e de experiência das quatro máquinas
+  do Mekanism entram nessa conta também (2026-11-07): a de avisos só com algum aviso e o botão de 18 por 18 da de xp só com o upgrade instalado, como no original; o
+  clique direito sobre uma aba também não solta, e a borda do suporte da aba de xp (fora do botão) solta, como lá. Conferido ponto a ponto contra o cliente oficial
+  (`dev/referencia/rastros/fora.jsonl`) e em jogo. O registro dos elementos de tela saiu da barra de armadura para `machinery_basis_core::screen_elements`, com condição por
+  data slots (veja `docs/machinery-basis.md`). Segurança, redstone, livro de receitas e configuração ainda não existem no port, então o clique nelas segue soltando o item.
 - O roteiro de comparação de telas do port virava o jogador para a máquina (`interact` põe inclinação 20 e giro -9), e o mundo atrás da tela era outra vista
   que a do original (a máquina ficava atrás do painel): o roteiro volta a `look 0 0` depois de abrir a tela, e aplica as entradas da luz do original
   (`time set 6000`, `weather clear`).

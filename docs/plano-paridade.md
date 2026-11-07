@@ -616,12 +616,26 @@ couro para o slot dele) não mostram nenhuma (0 pixel mudado na região das lege
 (`heat_generator_armor_clicks.jsonl`: `sounds` com `equip_leather`, `equip_iron`, `equip_elytra` e `equip_generic` só nesses cliques, vazio em tirar, na mão com capacete e em todo `quick_move`). Sem injeção nova.
 **Falta:** a sincronização das cinco peças quando elas mudam por fora com o menu aberto (um comando, outro jogador) segue a do menu do inventário, um tick depois, como antes; as barras dos outros geradores
 e das máquinas que o Mekanism ainda vai portar entram só declarando (`armorSideBar(x, y, offhand)` por tipo de menu).
-- Clique sobre os elementos laterais da tela (`GuiMekanism.hasClickedOutside`, `GuiMekanism.java:397-399`; feito para o Heat Generator e para a aba de upgrades das cinco telas, 2026-11-07). O original só chama
+- Clique sobre os elementos laterais da tela (`GuiMekanism.hasClickedOutside`, `GuiMekanism.java:397-399`; feito para o Heat Generator e para a aba de upgrades das cinco telas, e para as abas de energia, avisos e xp das quatro máquinas, 2026-11-07). O original só chama
   de "fora" o que está fora da imagem e não está sobre um elemento ativo (`findElementOver`), e o NeoForge nunca chama de "fora" um ponto sobre um slot (`AbstractContainerScreen.mouseClicked`:
   `if (slot != null) clickedOutside = false`). O Horizon olhava só o retângulo de 176 por 166 e dava a vez a "fora" sobre um slot: com um item no cursor, o clique numa aba lateral soltava o item. Em
   jogo, no Heat Generator com 5 de terra no cursor: antes (build `native-f319701-e353b34123f7`) o clique na aba de energia soltou a pilha no chão; depois (`h2_armor.py tabs`) o cursor continua nas abas de energia,
-  de calor e de upgrades, e nos slots da cabeça (peça errada), e o clique na margem do suporte (sem slot nem elemento: `GuiSideHolder` e `GuiSlot` têm `active = false`) solta, como no original. **Falta:** as abas de energia,
-  de experiência e de avisos das quatro máquinas do Mekanism (o clique nelas com item no cursor ainda solta; cada tela precisa declarar os retângulos, o da aba de XP só com o upgrade instalado).
+  de calor e de upgrades, e nos slots da cabeça (peça errada), e o clique na margem do suporte (sem slot nem elemento: `GuiSideHolder` e `GuiSlot` têm `active = false`) solta, como no original. **Feito para as quatro máquinas (2026-11-07):** os elementos de tela que ficam fora da imagem e recebem o mouse são agora um registro próprio da lib,
+  `machinery_basis_core::screen_elements` (o retângulo de cada elemento e, opcional, uma condição que lê os data slots da tela: ativo e visível agora), separado da barra de armadura (`armor_bar` só guarda os slots,
+  e `over_slot` é o "slot sob o mouse" do NeoForge). O Mekanism declara por máquina (`mekanism_rules::screen_elements(ScreenSpec)`, só dados): a aba de energia (`GuiEnergyTab`, -26, 137, 26 por 26, sempre), a de avisos
+  (`GuiWarningTab`, -26, 109, 26 por 26, só com algum aviso: `ScreenSpec::view(data).tab()`) e o botão da aba de xp (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18 em (179, 94), não o suporte de 26 por 26; só com
+  o upgrade instalado: o data slot de `hasXpContainment`). O Heat Generator declara a de calor e a de energia pelo mesmo registro, sem mudar de comportamento. A injeção `bar_clicked_outside` é a mesma (sem injeção nova): o
+  helper dela agora lê também os data slots da tela aberta (`mb_screen_data`, no módulo `windows`, onde `mod_screen` é visível). **Contra o original:** rastro `fora.jsonl` (o cliente oficial, `CenaTelas` com `fora=1`:
+  `hasClickedOutside` em 272 por 182 pontos inteiros ao redor da tela, 18 estados em 3 modos: as quatro máquinas sem e com o upgrade de xp e sem e com aviso, e o Heat Generator parado e com lava), repetido ponto a ponto por
+  `mekanism/tests/screen_elements.rs` e `mekanismgenerators/tests/screen_elements.rs` (0 diferenças; o teste falha de verdade: trocar a condição da aba de xp por "sempre" ou deslocar a aba de avisos 1 pixel quebra, medido).
+  Em jogo (desktop, container `horizon`, `horizon2/h2_abas.py`, 16 estados, terra no cursor): o clique esquerdo e o direito (que o original também não solta: o elemento está sob o mouse, só `isValidClickButton` falha)
+  nas abas de energia, de avisos e de xp mantêm a pilha, e o clique onde a aba não existe naquele estado (avisos sem aviso, xp sem o upgrade), nas bordas do suporte da aba de xp (3 e 5 pixels) e na margem solta, como o rastro.
+  Antes (build `native-f319701-4815b98243f2`, Enrichment Chamber e Infuser): o clique nas abas de energia e de avisos soltava a pilha, e o direito na de xp também; o esquerdo na de xp já mantinha, porque `screen_click`
+  a trata antes de `clicked_outside`. Prints de antes e depois em `~/.cache/rust-mekanism/wa/abas/`. **Falta:** os elementos que o original tem fora da imagem e o port ainda não desenha (o rastro modo `completo` os mostra,
+  todos com botão de 18 por 18): a configuração de itens (-21, 10) e a de transporte (-21, 38) à esquerda, e a segurança (179, 38), o livro de receitas (179, 66) e a redstone (179, 141) à direita. Com um item no cursor, o
+  clique neles ainda solta (no original não solta); cada um entra no registro quando a aba for portada. O Heat Generator tem a mesma coisa nas abas de segurança e de redstone, e a de avisos à direita (`GuiHeatGenerator.addWarningTab`,
+  invisível nos estados do rastro: o gerador não tem aviso a mostrar). **Observado, não investigado:** o Metallurgic Infuser com item de entrada, sem químico e sem energia não mostra a aba de avisos no port (nenhum erro rastreado chega à tela);
+  com 500 de bio ele a mostra. Os rastros `infuser_trace` batem com o Java, então o mais provável é que o original faça o mesmo; confirme antes de tratar como divergência.
 
 ## Comportamento do original que parece bug e fica
 
@@ -636,9 +650,13 @@ abas, luz e o comparador) o que pareceu estranho no original foi conferido e o p
   com um tipo (casos `_um_`). A sincronização do mapa (`SyncableStreamCodec.upgradeMap`) o troca por um `Object2IntOpenHashMap` novo no cliente, de ordem de hash, e o `CenaTelas`
   refaz a ordem (`orderClientUpgrades`) antes de cada clique e de cada quadro só para a imagem ser repetível.
 
+- `GuiInsetElement.isMouseOver` (`GuiInsetElement.java:43-48`) só considera o botão de dentro (18 por 18), não o suporte de 26 por 26 (`GuiSideHolder`, `active = false`, `GuiSideHolder.java:36`). Com um item no cursor, o clique na borda do
+  suporte de uma aba inset (3 pixels à esquerda e 5 à direita do botão de xp, e a faixa de 4 em cima e embaixo) é "fora" e solta o item, mesmo parecendo parte da aba. As abas de textura (`GuiEnergyTab`, `GuiWarningTab`,
+  `GuiHeatTab`) têm o retângulo inteiro. O port reproduz (`mekanism_rules::screen_elements` declara o botão da aba de xp, `xp_tab().tab.button()`), conferido ponto a ponto no rastro `fora.jsonl`.
+- O clique direito sobre uma aba ativa não solta o item: `GuiElement` é um `AbstractWidget`, `isValidClickButton` recusa o botão, mas `hasClickedOutside` olha só `isMouseOver`. O port mantém o item e não manda o `COLLECT_XP`.
 - O suporte da barra de armadura (`GuiSideHolder.java`: `active = false`) e os `GuiSlot` (`GuiSlot.java:91,101`: `active = false`) não são "elemento sob o mouse" (`GuiElement.isMouseOver` exige `active`):
   um clique com item no cursor na margem do suporte (os 5 pixels à esquerda e os 3 à direita dos quadros, o topo e o fim), fora de qualquer slot e de qualquer aba, é "fora" e solta o item.
-  O port faz o mesmo (`armor_bar::over_element`, `mekanismgenerators/tests/armor_bar.rs`, e em jogo `h2_armor.py tabs`). Um slot da barra sob o mouse nunca é "fora" (NeoForge, `if (slot != null) clickedOutside = false`).
+  O port faz o mesmo (`armor_bar::over_slot` e `screen_elements::over_element`, `mekanismgenerators/tests/armor_bar.rs`, e em jogo `h2_armor.py tabs`). Um slot da barra sob o mouse nunca é "fora" (NeoForge, `if (slot != null) clickedOutside = false`).
 - O shift-clique de uma peça com maldição do vínculo em sobrevivência não chega ao `quickMoveStack`: `AbstractContainerMenu.doClick` volta antes por `Slot.mayPickup`. O port confere o `mayPickup` antes de chamar o mod
   (`bar-quick-move`) e o clique, que passa pelo motor, recusa do mesmo jeito; em criativo sai.
 - Chamado direto, sem passar pelo clique, o `quickMoveStack` não confere `mayPickup`: uma peça com maldição do vínculo em sobrevivência sai da armadura para a barra
