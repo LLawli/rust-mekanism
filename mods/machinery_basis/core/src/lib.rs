@@ -4,6 +4,7 @@ pub mod chemical;
 pub mod containers;
 pub mod data_slots;
 pub mod ejector;
+pub mod energy_conversion;
 pub mod fluid;
 pub mod fluid_logged;
 pub mod gui;

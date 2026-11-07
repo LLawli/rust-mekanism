@@ -18,7 +18,7 @@ use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
 use machinery_basis_core::recipe::{
-    Conversion, ConversionFields, MachineRecipeData, RecipeFields, ResourceInput,
+    Conversion, ConversionFields, EnergyConversionData, MachineRecipeData, RecipeFields, ResourceInput,
 };
 use machinery_basis_core::resource::{self, Registry, Tags};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
@@ -57,6 +57,7 @@ static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
 // Os índices de receitas por tipo. Só valem até a próxima carga de dados.
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
+static ENERGY_CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemEnergyConversion>>>> = Mutex::new(BTreeMap::new());
 /// Sobe a cada carga de dados (`data_loaded`). Os índices de receitas de cada thread (`MekanismRecipeType.getInputCache`) guardam a
 /// carga de onde saíram e se limpam (`clear`) quando ela muda.
 static DATA_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -100,6 +101,13 @@ pub(in crate::game) struct ItemConversion {
     pub count: u32,
     pub resource: String,
     pub amount: u64,
+}
+
+/// Um item que vira energia, com o que o jogo resolveu.
+pub(in crate::game) struct ItemEnergyConversion {
+    pub item: Ingredient,
+    pub count: u32,
+    pub amount: i32,
 }
 
 /// De onde vêm as receitas de uma máquina.
@@ -319,6 +327,7 @@ pub(in crate::game) fn data_loaded() {
     DATA_GENERATION.fetch_add(1, Ordering::AcqRel);
     MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner()).clear();
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    ENERGY_CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
@@ -387,6 +396,31 @@ pub(in crate::game) fn conversions(
             item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
             count: parsed.item.count,
             resource: parsed.resource,
+            amount: parsed.amount,
+        })
+    });
+    let conversions = Arc::new(conversions.collect::<Vec<_>>());
+    index.insert(recipe_type.to_owned(), conversions.clone());
+    conversions
+}
+
+/// As conversões de item em energia de um tipo (`energy_conversion`), na ordem em que o jogo as entrega. Fica de fora a que cita
+/// um item ou uma tag que o jogo não conhece (`native_recipe_ingredient` devolve `None`), e a que não tem uma energia inteira e
+/// positiva.
+pub(in crate::game) fn energy_conversions(
+    game: &Game<'_>,
+    recipe_type: &str,
+    fields: &ConversionFields,
+) -> Arc<Vec<ItemEnergyConversion>> {
+    let mut index = ENERGY_CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(conversions) = index.get(recipe_type) {
+        return conversions.clone();
+    }
+    let conversions = game.native_recipes_of_type(recipe_type).iter().filter_map(|recipe| {
+        let parsed = EnergyConversionData::parse(&recipe.json, fields)?;
+        Some(ItemEnergyConversion {
+            item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
+            count: parsed.item.count,
             amount: parsed.amount,
         })
     });

@@ -88,6 +88,13 @@ pub struct Conversion {
     pub amount: u64,
 }
 
+/// Um item que vira energia (`ItemStackToEnergyRecipe`): o campo de saída é um inteiro, `ExtraCodecs.POSITIVE_INT`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnergyConversionData {
+    pub item: ItemInput,
+    pub amount: i32,
+}
+
 /// O `neoforge:or` é só uma lista, a forma que o jogo aceita de um mod. Um `or` dentro de outro `or` (ou de uma lista) é a
 /// mesma união: o jogo só lê as cadeias de uma lista e descartaria o resto, então a lista sai achatada, na ordem dos filhos
 /// (`CompoundIngredient.items()`).
@@ -160,6 +167,19 @@ impl Conversion {
             item: item_input(json.get(fields.item)?)?,
             resource: output.get(RESOURCE_ID)?.as_str()?.to_owned(),
             amount: amount(output)?,
+        })
+    }
+}
+
+impl EnergyConversionData {
+    /// `fields.item` e `fields.output` dizem onde ficam o item e a energia. Uma energia que não é um inteiro positivo não é
+    /// receita (o codec do original recusa o arquivo).
+    pub fn parse(json: &Value, fields: &ConversionFields) -> Option<Self> {
+        Some(Self {
+            item: item_input(json.get(fields.item)?)?,
+            amount: i32::try_from(json.get(fields.output)?.as_i64()?)
+                .ok()
+                .filter(|&amount| amount > 0)?,
         })
     }
 }
@@ -358,6 +378,38 @@ mod tests {
         assert_eq!(
             by_id.shaped(tags).shape(),
             &IngredientShape::types(&["a:carbon"])
+        );
+    }
+
+    #[test]
+    fn an_energy_conversion_has_an_integer_output() {
+        let json =
+            json!({"input": {"count": 1, "ingredient": "#c:dusts/redstone"}, "output": 10000});
+        let parsed = EnergyConversionData::parse(&json, &CONVERSION).unwrap();
+        assert_eq!(parsed.amount, 10_000);
+        assert_eq!(parsed.item.ingredient, "#c:dusts/redstone");
+    }
+
+    #[test]
+    fn an_energy_conversion_needs_a_positive_integer_output() {
+        for bad in [
+            json!(0),
+            json!(-5),
+            json!("10"),
+            json!({"amount": 5}),
+            json!(3.5),
+            json!(3_000_000_000_i64),
+        ] {
+            let json = json!({"input": {"ingredient": "a:b"}, "output": bad});
+            assert_eq!(
+                EnergyConversionData::parse(&json, &CONVERSION),
+                None,
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            EnergyConversionData::parse(&json!({"output": 5}), &CONVERSION),
+            None
         );
     }
 }

@@ -13,6 +13,7 @@ use crate::containers::{
     redstone_signal,
 };
 use crate::ejector::{EjectGroup, ItemEjector};
+use crate::energy_conversion::{EnergyConversionCache, fill_container_or_convert};
 use crate::item_chemical_constant_recipe::{
     ChemicalUsageMultiplier, ItemChemicalConstantUsageRecipe,
 };
@@ -359,9 +360,9 @@ pub struct MachineConfig {
 pub struct ElectricMachineConfig {
     pub machine: MachineConfig,
     pub recipes: Rc<ItemToItemCache>,
-    /// Se o `getInputCache` de `ENERGY_CONVERSION` tem uma receita para o tipo do item (`findTypeBasedRecipeHolder`), que é o que
-    /// `EnergyInventorySlot.canFillOrConvert` pergunta.
-    pub energy_conversion: ItemTest,
+    /// O `getInputCache` de `ENERGY_CONVERSION`, que o slot de energia consulta (`canFillOrConvert`) e converte
+    /// (`fillContainerOrConvert`).
+    pub energy_conversion: Rc<EnergyConversionCache>,
 }
 
 /// Uma máquina de progresso com um item, um tanque de químico e o slot que o enche (`TileEntityMetallurgicInfuser`). `recipes` e
@@ -374,7 +375,7 @@ pub struct ChemicalMachineConfig {
     /// `MAX_INFUSE`.
     pub tank_capacity: u64,
     /// Como em [`ElectricMachineConfig::energy_conversion`].
-    pub energy_conversion: ItemTest,
+    pub energy_conversion: Rc<EnergyConversionCache>,
 }
 
 /// O que o tile guarda e as closures das receitas e dos contêineres alcançam.
@@ -614,6 +615,22 @@ pub fn energy_can_fill_or_convert(
     converts(item) && container.is_valid_for_insertion(AutomationType::Manual)
 }
 
+/// `EnergyInventorySlot.canFillOrConvert` de uma máquina cujo contêiner é o `MachineEnergyContainer.input` (o das quatro portadas),
+/// para quem pergunta sem ter a máquina na mão: o menu e as regras de inserção do jogo. O contêiner é o mesmo que `Parts::new`
+/// cria, então a pergunta pela inserção manual dele é a verdadeira.
+pub fn machine_energy_slot_accepts(
+    conversions: &EnergyConversionCache,
+    item: &ItemResource,
+) -> bool {
+    let container = EnergyContainer::input(0, 0, None);
+    energy_can_fill_or_convert(
+        &container,
+        &|_| false,
+        &|item| conversions.find_type_based_recipe(item).is_some(),
+        item,
+    )
+}
+
 /// O tanque de químico de uma máquina e o slot que o enche (`ChemicalInventorySlot.fillOrConvert`).
 pub struct ChemicalSide {
     pub tank: ChemicalTank,
@@ -634,11 +651,12 @@ struct Parts {
     energy: EnergyContainer,
     output: InventorySlot,
     energy_slot: InventorySlot,
+    energy_conversion: Rc<EnergyConversionCache>,
     upgrades: UpgradeComponent,
 }
 
 impl Parts {
-    fn new(config: &MachineConfig, energy_conversion: ItemTest) -> Self {
+    fn new(config: &MachineConfig, energy_conversion: Rc<EnergyConversionCache>) -> Self {
         let shared = Rc::new(Shared {
             tile: RefCell::new(TileBase::new(config.deactivation_delay)),
             upgrade_config: config.upgrades.clone(),
@@ -693,9 +711,14 @@ impl Parts {
             Access::Any,
             Access::Any,
             SlotChecks::fill_or_convert({
-                let energy = energy.clone();
+                let (energy, conversions) = (energy.clone(), energy_conversion.clone());
                 Rc::new(move |item: &ItemResource| {
-                    energy_can_fill_or_convert(&energy, &|_| false, &*energy_conversion, item)
+                    energy_can_fill_or_convert(
+                        &energy,
+                        &|_| false,
+                        &|item| conversions.find_type_based_recipe(item).is_some(),
+                        item,
+                    )
                 })
             }),
             Some(tile_changed.clone()),
@@ -723,6 +746,7 @@ impl Parts {
             energy,
             output,
             energy_slot,
+            energy_conversion,
             upgrades,
         }
     }
@@ -735,6 +759,7 @@ pub struct ProgressMachine {
     input: InventorySlot,
     output: InventorySlot,
     energy_slot: InventorySlot,
+    energy_conversion: Rc<EnergyConversionCache>,
     chemical: Option<ChemicalSide>,
     /// `getInventorySlots`, na ordem do Java: é a média deles que dá o nível do comparador.
     inventory_slots: Vec<InventorySlot>,
@@ -890,6 +915,7 @@ impl ProgressMachine {
             input,
             output: parts.output,
             energy_slot: parts.energy_slot,
+            energy_conversion: parts.energy_conversion,
             chemical,
             inventory_slots,
             monitor,
@@ -1065,8 +1091,14 @@ impl ProgressMachine {
         // Na ordem de `TileEntityMekanism.tickServer`: o componente de upgrades vem antes do atraso do estado ativo.
         self.upgrades.tick_server();
         self.shared.tile.borrow_mut().tick_delay();
-        // `onUpdateServer`: o ejetor, do `TileEntityConfigurableMachine`, o slot que enche o tanque e depois a receita.
+        // `onUpdateServer`: o ejetor, do `TileEntityConfigurableMachine`, o slot de energia, o que enche o tanque e depois a receita.
         self.ejector.tick_server(neighbours);
+        fill_container_or_convert(
+            &self.energy_slot,
+            &self.energy,
+            &self.energy_conversion,
+            None,
+        );
         if let Some(side) = &self.chemical {
             fill_tank_or_convert(&side.slot, &side.tank, &side.conversions, None);
         }
@@ -1173,6 +1205,56 @@ fn redstone_level_of(slots: &[InventorySlot]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::energy_conversion::EnergyConversion;
+
+    fn conversions() -> Rc<EnergyConversionCache> {
+        EnergyConversion::cache_of(vec![EnergyConversion {
+            input: crate::cached_recipe::ItemIngredient::item("redstone"),
+            input_count: 1,
+            output: 10_000,
+        }])
+    }
+
+    #[test]
+    fn the_energy_slot_of_a_machine_takes_what_converts_and_nothing_else() {
+        let cache = conversions();
+        assert!(machine_energy_slot_accepts(
+            &cache,
+            &ItemResource::new("redstone", 64)
+        ));
+        assert!(!machine_energy_slot_accepts(
+            &cache,
+            &ItemResource::new("stick", 64)
+        ));
+    }
+
+    #[test]
+    fn a_container_that_refuses_manual_insertion_makes_the_conversion_unacceptable() {
+        let cache = conversions();
+        let redstone = ItemResource::new("redstone", 64);
+        let converts = |item: &ItemResource| cache.find_type_based_recipe(item).is_some();
+        let open = EnergyContainer::input(20, 5, None);
+        assert!(energy_can_fill_or_convert(
+            &open,
+            &|_| false,
+            &converts,
+            &redstone
+        ));
+        let shut = EnergyContainer::new(20, 5, Access::Any, Access::InternalOnly, None);
+        assert!(!energy_can_fill_or_convert(
+            &shut,
+            &|_| false,
+            &converts,
+            &redstone
+        ));
+        // Um item que enche o contêiner entra pelo outro caminho, se o contêiner deixa tirar de dentro.
+        assert!(energy_can_fill_or_convert(
+            &open,
+            &|_| true,
+            &|_| false,
+            &ItemResource::new("battery", 1)
+        ));
+    }
 
     const RULES: UpgradeRules = UpgradeRules {
         max_upgrade_multiplier: 10.0,
