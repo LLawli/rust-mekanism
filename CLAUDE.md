@@ -33,6 +33,10 @@ Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repet
 - Desktop: até 4 núcleos e 6 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 2 vagas e põe `CARGO_BUILD_JOBS=4`, com
   `--max-workers=4` no gradle. O container nasce com 6 CPUs e 12 GB: antes do `native-build`, rode
   `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
+- Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
+  compartilham `native/target` e `cargo` por bind mount. Nunca crie outro `target` nem copie esses diretórios.
+- Build de debug é apagado quando deixa de ser usado: ao integrar um workspace, remova o workspace e sua pasta de rascunho; a cada `native-build`,
+  apague o build de teste anterior, mantendo só o atual e o `native-f319701-76be8ef43ab8`. Ao fim do teste, apague também backups e mundos de teste.
 - Se um dos dois scripts sumir, recrie antes de compilar: o conteúdo está em `_rules/um-build-e-um-jogo-por-vez.md`, no ai-memory.
 
 ## Onde o código fica
