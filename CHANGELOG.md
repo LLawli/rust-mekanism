@@ -51,6 +51,29 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   recusa vai para a barra de atalhos e não para o slot de energia, e o combustível só junta com o do mesmo item e componentes. Rastro
   `identity_heat_generator.jsonl` do Java (`quick_*`), repetido pelos testes e em jogo. Uma injeção nova, `menu_quick_move` de
   `mekanismgenerators`; o slot de energia (`EnergyInventorySlot.drain`) não aceita nada porque nenhum item portado tem energia.
+- Aba de XP (`GuiXpContainmentTab`) nas quatro máquinas: aparece com o upgrade `xp_containment` instalado, na lateral direita (176, 90), com o
+  suporte tingido de `0xFF80FF20`, o botão de 18 por 18, o ícone `tab/xp_containment`, o foco do botão e o tooltip "Collect all stored
+  experience.". O clique esquerdo coleta a experiência guardada (`COLLECT_XP`: as bolas nascem no jogador, as receitas guardadas zeram),
+  e só com o upgrade. A janela de upgrades por cima do botão o esconde do mouse. O servidor manda `hasXpContainment` por um data slot a
+  mais. A mecânica genérica (uma aba inset: geometria, fundo do botão, clique, foco) está em `machinery_basis_core::side_tab` e o desenho
+  em `machinery_basis::inset_tab`, sem id do Mekanism. Rastro `xp_tab` do cliente oficial, repetido por `xp_tab.rs`, e pixel contra o
+  oficial em 21 estados (veja `dev/referencia/README.md`).
+- O nome da máquina (`CustomName`) guarda o componente inteiro: cor, negrito, itálico e filhos passam do item ao tile, ao NBT salvo, ao
+  título da tela (desenhado com o estilo e centrado pela largura dele) e ao item solto. `TileName<C>` não lê o componente. Rastro
+  `chamber_name_styled`, repetido por `name_trace.rs`.
+- O Heat Generator tem nome, como o original (`nameable`): o item o dá ao tile, o título da tela o desenha com o estilo e o item solto o leva.
+  A lógica foi para a `machinery_basis` (`name_placed`, `name_loot`, `name_container_opened`, `name_destroying`, `screen_title`) e serve
+  aos dois mods; o Generators ganhou os hooks `place_block`, `loot_drops`, `container_opened` e `destroy_block`. Rastro
+  `heat_generator_name_styled`.
+- Aba de energia (`GuiEnergyTab`) nas quatro máquinas e no Heat Generator, em (-26, 137), com o tooltip `Using: N/t`, `Needed: N` e `Unit: FE`
+  (nas máquinas) ou `Producing: N/t` e `Unit: FE` (no gerador). O consumo por tick vai ao cliente em dois data slots novos. A mecânica está em
+  `machinery_basis_core` (`side_tab::InfoTab`, `units::energy_info_lines`), sem id do Mekanism.
+- A experiência guardada também sai quando uma explosão leva a máquina (`preRemoveSideEffects` roda em toda remoção), pelo hook
+  `explosion_detonate`. Rastro `chamber_explosion`, repetido por `effects_trace.rs`.
+- Coletar a experiência (a aba de XP) e tirar o resultado desbloqueiam as receitas usadas no livro do jogador que agiu e andam o critério
+  `recipe_crafted` (`ServerPlayer.awardRecipes` e `triggerRecipeCrafted`), como o `awardUsedRecipesAndPopExperience` do original.
+- O comparador de telas conta como elementos do mod a aba de energia, a de calor, os slots de armadura e a aba de upgrades do Heat Generator,
+  que antes ficavam escondidos no mundo atrás da tela, e dá tolerância de 16 níveis por canal só ao tooltip.
 
 ### Changed
 
@@ -76,6 +99,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O item solto de uma máquina quebrada pelo jogador leva o nome dela: o Horizon tira o tile do mundo antes de rolar a tabela de loot, e o
+  nome é guardado em `destroy_block`, antes disso. Medido em jogo: sem isso o `copy_name` não achava o tile e o item saía sem nome.
 - O hopper levava para a entrada da máquina o item do mesmo id mesmo com componentes diferentes (somava `clay` de nome B à pilha de
   `clay` de nome A), e o slot da lib e o shift-clique tratavam o mesmo id como o mesmo item. Agora comparam o item e os componentes.
 - O hopper pelas costas de uma máquina (`DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`) põe no slot de energia o que tem
