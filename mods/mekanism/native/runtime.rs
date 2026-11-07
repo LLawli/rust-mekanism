@@ -175,6 +175,60 @@ pub const CHRISTMAS_SOUNDS: [(&str, &str); 4] = [
 /// `Holiday.Christmas`: 25 de dezembro.
 pub const CHRISTMAS: (u32, u32) = (12, 25);
 pub const XP_CONTAINMENT_UPGRADE: &str = "mekanism:xp_containment";
+
+/// `GuiMekanismTile.addGenericTabs`: `new GuiXpContainmentTab(this, recipeLookupHandler, false, 90)`, na lateral direita (`imageWidth`) a
+/// 90. As quatro máquinas são `IRecipeLookupHandler` e têm o livro de receitas (`!Mekanism.hooks.isRecipeBookDisabled()`), então a aba
+/// fica onde o Java a põe, sem o deslocamento de 28.
+pub const XP_TAB_Y: i32 = 90;
+/// `AbstractContainerScreen.imageWidth`.
+pub const SCREEN_IMAGE_WIDTH: i32 = 176;
+/// `SpecialColors.TAB_XP_CONTAINMENT`: o tom do suporte da aba.
+pub const XP_TAB_TINT: u32 = 0xFF_80_FF_20;
+/// `GuiXpContainmentTab.ICON` (`tab/xp_containment`), 18 por 18 sobre o botão.
+pub const XP_TAB_ICON: &str = "mekanism:gui/sprites/tab/xp_containment";
+/// `MekanismLang.XP_CONTAINMENT_TAB`, o tooltip da aba.
+pub const XP_TAB_TOOLTIP: &str = "tab.mekanism.xp_containment";
+
+/// `GuiEnergyTab`: `super(Mekanism.rl("tab/energy_info"), gui, -26, 137, 26, 26)`, um elemento de textura na lateral esquerda, sem clique.
+pub const ENERGY_TAB: machinery_basis_core::side_tab::InfoTab =
+    machinery_basis_core::side_tab::InfoTab {
+        rect: [-26.0, 137.0, 26.0, 26.0],
+    };
+pub const ENERGY_TAB_SPRITE: &str = "mekanism:gui/sprites/tab/energy_info";
+/// `MekanismLang.USING`, `NEEDED` e `UNIT`.
+pub const USING_LANG: &str = "gui.mekanism.using";
+pub const NEEDED_LANG: &str = "gui.mekanism.needed";
+pub const UNIT_LANG: &str = "gui.mekanism.unit";
+
+/// O tooltip de `GuiEnergyTab(gui, energyContainer, isActive)` das máquinas: o que usa por tick (`getEnergyPerTick` com a máquina ativa, senão
+/// zero), o que falta para encher (`getNeededAsLong`: `max(0, capacidade - energia)`) e a unidade.
+pub fn energy_tab_tooltip(
+    active: bool,
+    energy_per_tick: u32,
+    energy: u64,
+    capacity: u64,
+    translate: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let using = if active {
+        u64::from(energy_per_tick)
+    } else {
+        0
+    };
+    let needed = capacity.saturating_sub(energy);
+    machinery_basis_core::units::energy_info_lines(
+        &[
+            (&translate(USING_LANG), using),
+            (&translate(NEEDED_LANG), needed),
+        ],
+        &translate(ENERGY_UNIT_LANG),
+        &translate(UNIT_LANG),
+    )
+}
+
+/// A aba de xp das telas das máquinas.
+pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
+    machinery_basis_core::side_tab::XpTab::new(SCREEN_IMAGE_WIDTH, XP_TAB_Y, true)
+}
 pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
 /// `MekanismTags.Upgrades.DEFAULT_MACHINE_UPGRADES`: o que `AttributeUpgradeSupport.DEFAULT_MACHINE_UPGRADES` aceita, e que as
 /// quatro máquinas portadas usam.
@@ -451,6 +505,12 @@ pub struct DataLayout {
     pub ticks_required: usize,
     /// Onde começam os data slots dos upgrades (`UPGRADE_SYNC_LEN` deles): `upgradeTicks` e uma contagem por tipo.
     pub upgrade: usize,
+    /// `hasXpContainment`, o `SyncableBoolean` que `TileEntityRecipeMachine.addContainerTrackers` registra: a aba de xp só aparece com ele.
+    /// Fica depois dos upgrades, para os índices dos outros valores não mudarem.
+    pub xp_containment: usize,
+    /// `getEnergyPerTick` (`SyncableInt` de `addContainerTrackers`, dois slots): o `Using: N/t` da aba de energia. A aba pede o que o
+    /// contêiner do cliente tem, e ele só sabe depois do primeiro valor do servidor.
+    pub energy_per_tick: usize,
     /// Quantos data slots o menu declara: o `data_slots` do arquivo de menu.
     pub len: usize,
 }
@@ -485,7 +545,9 @@ pub const ELECTRIC_DATA: DataLayout = DataLayout {
     redstone: 6,
     ticks_required: 7,
     upgrade: 8,
-    len: 8 + UPGRADE_SYNC_LEN,
+    xp_containment: 8 + UPGRADE_SYNC_LEN,
+    energy_per_tick: 9 + UPGRADE_SYNC_LEN,
+    len: 11 + UPGRADE_SYNC_LEN,
 };
 
 pub const INFUSER_DATA: DataLayout = DataLayout {
@@ -502,7 +564,9 @@ pub const INFUSER_DATA: DataLayout = DataLayout {
     redstone: 9,
     ticks_required: 10,
     upgrade: 12 + CHEMICAL_ID_SLOTS,
-    len: 12 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
+    xp_containment: 12 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
+    energy_per_tick: 13 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
+    len: 15 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
 };
 
 /// Escreve o `upgradeTicks` e o mapa de upgrades nos data slots. Fora de `ScreenData` porque o mapa não é `Copy`.
@@ -542,7 +606,9 @@ pub fn clear_chemical_screen(layout: &DataLayout, data: &mut [i32]) {
 
 /// O que o cliente lê dos data slots dos upgrades.
 pub fn read_upgrade_sync(layout: &DataLayout, data: &[i32]) -> UpgradeSync {
-    UpgradeSync::read(data.get(layout.upgrade..).unwrap_or_default())
+    // Só os `UPGRADE_SYNC_LEN` do mapa: o data slot da aba de xp vem logo depois.
+    let slots = data.get(layout.upgrade..).unwrap_or_default();
+    UpgradeSync::read(&slots[..slots.len().min(UPGRADE_SYNC_LEN)])
 }
 
 /// O que o servidor escreve nos data slots de uma máquina e o cliente lê.
@@ -561,6 +627,10 @@ pub struct ScreenData {
     pub chemical_id: [u16; CHEMICAL_ID_SLOTS],
     pub errors: ErrorMask,
     pub redstone: RedstoneSync,
+    /// `hasXpContainment()` no servidor: o upgrade de xp está instalado (ou o tipo saiu do registro).
+    pub xp_containment: bool,
+    /// `getEnergyPerTick()` no servidor, zero antes de o servidor mandar.
+    pub energy_per_tick: u32,
 }
 
 impl ScreenData {
@@ -586,6 +656,10 @@ impl ScreenData {
         data[layout.errors] = self.errors.to_slot();
         data[layout.redstone] = self.redstone.to_slot();
         data[layout.ticks_required] = self.ticks_required;
+        data[layout.xp_containment] = i32::from(self.xp_containment);
+        let [low, high] = data_slots::split(self.energy_per_tick);
+        data[layout.energy_per_tick] = low;
+        data[layout.energy_per_tick + 1] = high;
         data
     }
 
@@ -617,6 +691,11 @@ impl ScreenData {
             chemical_id,
             errors: ErrorMask::from_slot(get(layout.errors)),
             redstone: RedstoneSync::from_slot(get(layout.redstone)),
+            xp_containment: get(layout.xp_containment) != 0,
+            energy_per_tick: data_slots::join(
+                get(layout.energy_per_tick),
+                get(layout.energy_per_tick + 1),
+            ),
         }
     }
 }

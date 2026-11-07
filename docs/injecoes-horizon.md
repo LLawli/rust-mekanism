@@ -18,18 +18,18 @@ Contagem em 2026-11-07, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 61 | |
-| Hook do catálogo, usado só com o contrato dele | 27 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 23 | sim |
+| `[[injection]]` no total | 66 | |
+| Hook do catálogo, usado só com o contrato dele | 26 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 29 | sim |
 | Injeção crua (`target = ...`) | 11 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 10 | sim |
 
-27 + 23 + 11 = 61. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-34 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 29 + 11 = 66. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+40 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 11 | 10 | 23 |
+| Em uso | 11 | 10 | 29 |
 | Provada em spike | 6 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -94,15 +94,15 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 6 |
-| `mods/mekanism/native/horizon-mixin.toml` | 29 | 24 | 5 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 10 | 9 | 1 | 2 |
-| Total | 61 | 50 | 11 | 10 |
+| `mods/mekanism/native/horizon-mixin.toml` | 30 | 25 | 5 | 2 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 14 | 13 | 1 | 2 |
+| Total | 66 | 55 | 11 | 10 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das onze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties` e `result_take_before`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
 `impl Hooks for Mod {}`. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 50 hooks, 23 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. Os 23 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`) os 3 do nome (`place_block`, `loot_drops` e `container_opened`) e o `menu_quick_move` do Heat Generator.
+Dos 55 hooks, 29 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 29 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) e os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`).
 
 ## Injeções cruas em uso (11)
 
@@ -163,7 +163,9 @@ e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. 
 - **Helper:** `mods/mekanism/native/widget_tooltip.rs`. Lê `game.carried`, `game.cursor` e `game.native_screen_at()`, todos
   privados. A glue (`mods/mekanism/native/glue.rs`, `widget_tooltip`) chama `machinery_basis::menu_tooltip`, que usa
   `game.gui.atlas`, `Game::tooltip_geometry`, `game.tooltip_box` e `Game::tooltip_text`.
-- **Por que é necessária:** cobre três widgets: a aba de avisos, a barra de energia e a barra de químico. `GuiWarningTab.updateTooltip`
+- **Por que é necessária:** cobre quatro widgets: a aba de avisos, a de xp, a barra de energia e a barra de químico. A aba de xp
+  (`GuiXpContainmentTab`, `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, `GuiXpContainmentTab.java:33`) é um `Tooltip.create` ao lado do
+  botão, escondido pela janela de upgrades quando ela cobre o ponto (`isMouseOverCheckWindows`). `GuiWarningTab.updateTooltip`
   (`GuiWarningTab.java:45-61`) põe o cabeçalho em `EnumColor.YELLOW` (0xFFDD4F). A barra de energia e a de químico seguem
   `GuiBar.updateTooltip` (`GuiBar.java:96`), e a de químico é um `GuiTankBar` (`GuiChemicalBar.java:26`). Nos três, o tooltip fica
   por cima ou por baixo do widget, e não sobre o cursor.
@@ -274,7 +276,7 @@ e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. 
 
 ## Hooks do catálogo com estrutura privada
 
-Os 22 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 29 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -283,7 +285,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `state_for_placement` (basis) | `state_for_placement` | `level.world.block(x, y, z)` (o vizinho) | H8: `block_state_at(dimension, pos)` só leitura, no `GameLevel` |
 | `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game` |
 | `use_item` (basis) | `use_item` | `game.world.game_time` | `level_game_time`, que já existe |
-| `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, e o método do módulo `slot-accepts` no ejetor | `level_game_time` e H7 |
+| `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, o método do módulo `slot-accepts` no ejetor, e, para premiar as receitas ao jogador que tirou o resultado (o tick não tem jogador agindo), `game.lan.take()` e `game.as_guest` com o estado dele no lugar do anfitrião | `level_game_time`, H7 e H27 entregando o jogador |
 | `menu_quick_move` (mekanismgenerators) | `menu_quick_move` | `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Heat Generator enche) | o mesmo helper de escrita no inventário de quem age |
 | `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`), `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Mekanism enche) | H8: `cooking_recipes(kind)`; falta um helper de escrita no inventário de quem age |
 | `use_item_on` (mekanism) | `use_item_on` | `game.world.block_entities.get/get_mut`, `game.world.modified.insert`, `game.held_mut()`, `game.recipes()` | H8: `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
@@ -298,10 +300,13 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
 | `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a câmera | H19 e H8 |
 | `place_block` (mekanism) | `place_block` | `game.world.block_entities.get_mut`, `game.world.modified` | H8: `mod_block_entity`, `change_mod_block_entity` |
-| `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou) | H8: `mod_block_entity` |
+| `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou: o Horizon já o tirou do mundo quando rola a tabela de um jogador, então o nome vem do que `destroy_block` guardou) | H8: `mod_block_entity`; `NativeLootDrops` sem o block entity é o buraco: `block_entity: Option<&Tag>` resolve |
 | `container_opened` (mekanism) | `container_opened` | `game.world.block_entities.get` | H8: `mod_block_entity` |
-| `destroy_block` (mekanism) | `destroy_block` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`) | H8: `award_experience(at, points)` |
+| `destroy_block` (mekanism) | `destroy_block` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), e `game.world.block_entities.get` (o nome do tile, guardado antes de o Horizon o tirar do mundo, para `loot_drops`) | H8: `award_experience(at, points)`, `mod_block_entity` e `block_entity` em `NativeLootDrops` |
 | `window_net_server` (basis) | `net_from_server` | o módulo `machinery_basis_windows`, que guarda os tipos de upgrade nos estáticos da lib | H12 |
+| `explosion_detonate` (mekanism) | `explosion_detonate` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`) | H8: `award_experience(at, points)` |
+| `place_block`, `loot_drops`, `container_opened` e `destroy_block` (mekanismgenerators) | os mesmos | os da linha de `place_block` etc. do `mekanism`: `game.world.block_entities` e `game.world.modified`, pelas funções `name_*` da `machinery_basis` | H8: `mod_block_entity`, `change_mod_block_entity` e `block_entity` em `NativeLootDrops` |
+| `menu_button` (mekanism) | `menu_button` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), para a aba de xp (`COLLECT_XP`) dar a experiência ao jogador que clicou; e, para `ServerPlayer.awardRecipes` + `triggerRecipeCrafted`, `game.level.recipe_book.add_recipes`, `game.recipe_unlocked`, `game.trigger_recipe_crafted` e a macro `world_stations!` (o livro de receitas e os critérios de `advancements.rs`) | H8: `award_experience(at, points)` e `award_recipes(player, recipes, items)` |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
 os dois primeiros; `ItemUpgrade.useOn` (`ItemUpgrade.java:28-45`) para o `use_item_on` do Mekanism; `MekanismRecipeType.java:334` e
@@ -344,6 +349,13 @@ usar antes de ter número de API:
 | hook `container_accepts` | `container_accepts.json` | previsto (Fase 2); hoje `hook =` dá `E_HOOK_UNKNOWN` |
 
 Pedido: carimbar esses fragmentos (`python3 tools/stamp_native_hooks.py`) e listar os quatro helpers documentados em `helpers`.
+
+O título da tela (`machine_panel`) desenha o componente de nome inteiro (cor, negrito, filhos) com `HudBatch::text_styled` e mede com
+`game.gui.atlas.font.width_text`, os mesmos de `menu_tooltip`, porque `native_text` e `native_text_width` só aceitam `&str` sem estilo
+(`Text::literal`). Pedido: `native_text_styled(batch, &Text, at, rgb, shadow)` e `native_text_width_styled(&Text)`. O componente
+chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `machinery_basis:name`) porque `native_screen_title`
+devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
+guarda só o texto do nome (`World::block_names` é `String`).
 
 ## Módulos (10)
 
@@ -909,8 +921,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=61 hook=50 target=11 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 23 tem de somar `hook`.
+   Hoje: `injection=66 hook=55 target=11 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 29 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

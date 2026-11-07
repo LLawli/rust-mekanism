@@ -1,4 +1,5 @@
 {
   "block.mekanismgenerators.heat_generator": "Heat Generator",
-  "container.mekanismgenerators.heat_generator": "Heat Generator"
+  "container.mekanismgenerators.heat_generator": "Heat Generator",
+  "gui.mekanismgenerators.producing.amount": "Producing: %1$s/t"
 }

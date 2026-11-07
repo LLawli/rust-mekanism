@@ -60,6 +60,8 @@ const GAUGE_STYLE: basis::GaugeStyle = basis::GaugeStyle {
 };
 /// Os elementos do tamanho do `GuiElement`: o medidor largo é 64 por 48 mais a moldura, e a barra soma dois ao que o Java passa.
 const LAVA_GAUGE: [f32; 4] = [55.0, 18.0, 66.0, 50.0];
+/// `Tooltip.MAX_WIDTH`: onde `Tooltip.create` quebra o texto.
+const TOOLTIP_WRAP: i32 = 170;
 const ENERGY_BAR: [f32; 4] = [164.0, 15.0, 6.0, 54.0];
 /// `MekanismRenderer.color(lava)`: a lava não tem cor de fluido, e o sprite sai como é.
 const LAVA_TINT: u32 = 0xFF_FF_FF_FF;
@@ -79,6 +81,29 @@ fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
 
 fn is_generator(block: &str) -> bool {
     block == rules::HEAT_GENERATOR
+}
+
+/// O nome do tile é o da `machinery_basis` (`basis::name_*`): o componente inteiro, só para o bloco daqui.
+fn is_generator_id(id: &str) -> bool {
+    is_generator(id)
+}
+
+pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
+    basis::name_placed(game, stack, pos, &is_generator_id);
+}
+
+pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
+    basis::name_loot(game, context, drops, &is_generator_id);
+}
+
+pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
+    basis::name_container_opened(game, player, pos, &is_generator_id);
+}
+
+pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
+    if !canceled && is_generator(&game.native_block(pos)) {
+        basis::name_destroying(game, pos, &is_generator_id);
+    }
 }
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
@@ -236,6 +261,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     if !is_generator(&entity.id) {
         return;
     }
+    basis::name_apply_pending(entity, pos);
     let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
     let tank = &mut tanks[0];
     fill_or_burn(game, entity, tank);
@@ -317,7 +343,7 @@ pub(in crate::game) fn screen_draw(
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
     let get = |i: usize| data.get(i).copied().unwrap_or(0);
 
-    let title = lang::get("container.mekanismgenerators.heat_generator");
+    let title = basis::screen_title(game, "container.mekanismgenerators.heat_generator");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
     for (index, spec) in rules::SLOTS_SPEC.iter().enumerate() {
         let frame = slot_type(None, index, spec.container).map(slot_sprite);
@@ -333,6 +359,9 @@ pub(in crate::game) fn screen_draw(
     basis::vertical_bar(game, batch, &BAR_STYLE, at(ENERGY_BAR), level, None, &|game, batch, dst| {
         basis::power_bar_contents(game, batch, POWER_BAR_SPRITE, rules::POWER_BAR_TILE, dst);
     });
+    // `GuiEnergyTab`, antes do medidor e da barra na ordem do Java; não se sobrepõe a nada, então a ordem não aparece.
+    let [tab_x, tab_y, tab_w, tab_h] = rules::ENERGY_TAB.rect;
+    game.native_sprite(batch, rules::ENERGY_TAB_SPRITE, [0.0, 0.0, tab_w, tab_h], [x + tab_x, y + tab_y, tab_w, tab_h]);
 }
 
 /// Os tooltips dos widgets da tela (`GuiElement.renderToolTip`): a barra de energia (`GuiVerticalPowerBar`) e o medidor de lava
@@ -352,6 +381,18 @@ pub(in crate::game) fn widget_tooltip(
     }
     let get = |i: usize| data.get(i).copied().unwrap_or(0);
     let translate = |key: &str| lang::get(key);
+    // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
+    if rules::ENERGY_TAB.is_mouse_over(at, false) {
+        let production = get(DATA_PRODUCTION).max(0) as u64;
+        let lines: Vec<(String, Option<u32>)> = rules::energy_tab_tooltip(production, &translate)
+            .iter()
+            .flat_map(|line| machinery_basis_core::upgrade_window::wrap_lines(line, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)))
+            .map(|line| (line, None))
+            .collect();
+        let [x, y, w, h] = rules::ENERGY_TAB.rect;
+        basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+        return true;
+    }
     let (widget, text) = if gui::contains(ENERGY_BAR, at) {
         let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
         let capacity = rules::ENERGY_CAPACITY as u64;

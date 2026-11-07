@@ -80,6 +80,56 @@ bindings = [
   { name = "entity", ty = "&mut horizon_client::containers::ModBlockEntity", value = "&mut *entity" },
 ]
 
+# O nome do tile (`TileEntityMekanism.customName`), o componente inteiro: o item que o coloca, o item solto, o título da tela e o nome que o
+# Horizon tira do mundo antes de rolar a tabela de loot (`destroy_block` o guarda). A lógica é da `machinery_basis`.
+[[injection]]
+id = "place_block"
+hook = "place_block"
+hook_version = 1
+kind = "HEAD"
+helper = "place_block.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
+[[injection]]
+id = "loot_drops"
+hook = "loot_drops"
+hook_version = 1
+kind = "HEAD"
+helper = "loot_drops.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "context", ty = "&horizon_client::mod_api::NativeLootDrops<'_>", value = "context" },
+  { name = "drops", ty = "&mut Vec<horizon_client::items::ItemStack>", value = "&mut *drops" },
+]
+
+[[injection]]
+id = "container_opened"
+hook = "container_opened"
+hook_version = 1
+kind = "HEAD"
+helper = "container_opened.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+  { name = "pos", ty = "Option<[i32; 3]>", value = "pos" },
+]
+
+[[injection]]
+id = "destroy_block"
+hook = "destroy_block"
+hook_version = 1
+kind = "HEAD"
+helper = "destroy_block.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
 [[injection]]
 id = "screen"
 hook = "screen"

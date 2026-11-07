@@ -42,6 +42,10 @@ use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DUMP_BUTTON: i32 = 0;
+/// `Tooltip.MAX_WIDTH`: onde `Tooltip.create` quebra o texto.
+const TOOLTIP_WRAP: i32 = 170;
+/// `GuiInteraction.COLLECT_XP`: o botão da aba de xp.
+const XP_BUTTON: i32 = 1;
 /// `GameType.CREATIVE` como o Horizon o numera.
 const CREATIVE: i32 = 1;
 const INFUSING: basis::RecipeSource = Custom(rules::INFUSING, rules::INFUSING_FIELDS);
@@ -1499,8 +1503,9 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if entity.items.len() < menu_slots {
         entity.items.resize(menu_slots, None);
     }
+    flush_deferred_awards(game);
     result_take_after(game, pos, entity, spec);
-    apply_pending_name(entity, pos);
+    basis::name_apply_pending(entity, pos);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     let mut fresh = false;
     let mut live = match alive {
@@ -1656,6 +1661,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         ticks_required: machine.ticks_required(),
         errors: machine.tracked_errors_mask(),
         redstone: machine.tile().redstone_sync(),
+        xp_containment: machine.has_xp_containment(),
+        energy_per_tick: machine.energy().energy_per_tick().max(0) as u32,
         ..Default::default()
     };
     if let Some(side) = machine.chemical_side() {
@@ -1894,10 +1901,26 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     if canceled || machine_of(&game.native_block(pos)).is_none() {
         return;
     }
+    basis::name_destroying(game, pos, &is_machine_id);
     let key = (game.native_dimension(), pos);
     let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
     if let Some(drops) = drops {
         pop_experience(game, center_of(pos), &drops);
+    }
+}
+
+/// `TileEntityRecipeMachine.preRemoveSideEffects` numa explosão: os blocos que ela vai quebrar levam a experiência guardada (se tiverem o
+/// upgrade), no centro de cada um. O tile ainda existe, e o nome do item solto sai dele (`loot_drops`).
+pub(in crate::game) fn explosion_detonate(game: &mut Game<'_>, blocks: &[[i32; 3]]) {
+    let dimension = game.native_dimension();
+    for &pos in blocks {
+        if machine_of(&game.native_block(pos)).is_none() {
+            continue;
+        }
+        let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&(dimension, pos)).map(|live| live.machine.recipes_to_award_on_removal().drops));
+        if let Some(drops) = drops {
+            pop_experience(game, center_of(pos), &drops);
+        }
     }
 }
 
@@ -1906,6 +1929,8 @@ struct PendingTake {
     pos: [i32; 3],
     before: ItemStack,
     player: [f64; 3],
+    /// A conexão do jogador que clicou: as receitas desbloqueiam no livro dele.
+    conn: u32,
 }
 
 thread_local! {
@@ -1924,7 +1949,7 @@ pub(in crate::game) fn result_take_before(game: &mut Game<'_>, host: &crate::gam
             _ => None,
         };
         if let Some(now) = now {
-            settle_take(game, pending, now);
+            settle_take(game, pending, now, None);
         }
     }
     let Some(guest) = host.hub.guests.iter().find(|guest| guest.conn == conn) else {
@@ -1940,7 +1965,7 @@ pub(in crate::game) fn result_take_before(game: &mut Game<'_>, host: &crate::gam
                 .get(machine.slots.output)
                 .cloned()
                 .flatten()
-                .map(|before| PendingTake { pos: [x, y, z], before, player: guest.position })
+                .map(|before| PendingTake { pos: [x, y, z], before, player: guest.position, conn: guest.conn })
         }),
         _ => None,
     };
@@ -1955,12 +1980,12 @@ fn result_take_after(game: &mut Game<'_>, pos: [i32; 3], entity: &ModBlockEntity
     });
     if let Some(pending) = pending {
         let now = entity.items.get(spec.slots.output).cloned().flatten();
-        settle_take(game, pending, now);
+        settle_take(game, pending, now, Some(entity));
     }
 }
 
 /// Se a saída diminuiu, o jogador a tirou (`InventoryContainerResultSlot.onTake`): a experiência sai dele.
-fn settle_take(game: &mut Game<'_>, pending: PendingTake, now: Option<ItemStack>) {
+fn settle_take(game: &mut Game<'_>, pending: PendingTake, now: Option<ItemStack>, ticking: Option<&ModBlockEntity>) {
     let taken = match &now {
         None => true,
         Some(now) => now.count < pending.before.count || now.item != pending.before.item,
@@ -1978,96 +2003,83 @@ fn settle_take(game: &mut Game<'_>, pending: PendingTake, now: Option<ItemStack>
     });
     if let Some(awarded) = awarded {
         pop_experience(game, pending.player, &awarded.drops);
+        let inputs = ticking.map_or_else(|| input_stacks(game, pending.pos), input_stacks_of);
+        award_recipes_to(game, pending.conn, awarded.recipes, inputs);
     }
 }
 
-/// `NBT` `CustomName` de um tile (`SerializationConstants.CUSTOM_NAME`).
-const CUSTOM_NAME: &str = "CustomName";
-
-/// O texto de um componente de nome: o texto puro (`"Camara"`) ou o campo `text` de um componente com estilo.
-fn name_of_tag(tag: &Tag) -> Option<String> {
-    match tag {
-        Tag::String(text) => Some(text.to_string_lossy()),
-        Tag::Compound(compound) => match compound.get(&JavaString::from("text")) {
-            Some(Tag::String(text)) => Some(text.to_string_lossy()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// O `CustomName` que o tile em `pos` guarda.
-fn saved_name(game: &Game<'_>, pos: [i32; 3]) -> Option<String> {
+/// Os slots de entrada da máquina em `pos` (`getRecipeContainers(cacheIndex).inputs()`, só os `IInventorySlot`), para o gatilho de receita.
+fn input_stacks(game: &Game<'_>, pos: [i32; 3]) -> Vec<Option<ItemStack>> {
     match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() => nbt_string(entity, CUSTOM_NAME),
-        _ => None,
+        Some(BlockEntity::Mod(entity)) => machine_of(&entity.id)
+            .map(|machine| vec![entity.items.get(machine.slots.input).cloned().flatten()])
+            .unwrap_or_default(),
+        _ => Vec::new(),
     }
 }
 
-/// `getDisplayName` na tela: o nome que o servidor mandou ao abrir, ou a descrição do contêiner.
-fn screen_title(game: &Game<'_>, container_description: &str) -> String {
-    let name = game.mb_open_screen_pos().and_then(|pos| crate::game::machinery_tile_sound::tile_name(game.native_dimension(), pos));
-    let tile = {
-        let mut tile = machinery_basis_core::name::TileName::new(true);
-        tile.load(name);
-        tile
-    };
-    let description = lang::get(container_description);
-    tile.display_name(&description, &description).to_owned()
+/// `ServerPlayer.awardRecipes(recipes)` e depois `triggerRecipeCrafted(recipe, items)` de cada uma (`awardUsedRecipesAndPopExperience`): as
+/// receitas entram no livro do jogador que age, com o aviso de desbloqueio, e o critério `recipe_crafted` anda. Com `items` como o Java
+/// os junta: os slots de entrada, vazios inclusive.
+fn award_recipes(game: &mut Game<'_>, recipes: &[String], items: &[Option<ItemStack>]) {
+    if recipes.is_empty() {
+        return;
+    }
+    let index = &world_stations!(game).recipe_index;
+    let (_, unlocked) = game.level.recipe_book.add_recipes(index, recipes);
+    game.recipe_unlocked(&unlocked);
+    for recipe in recipes {
+        game.trigger_recipe_crafted(recipe, items);
+    }
 }
 
 thread_local! {
-    /// O nome do item que acabou de ser colocado, para o tile que ainda não nasceu: o Horizon cria o tile no primeiro tick.
-    static PENDING_NAMES: RefCell<HashMap<[i32; 3], String>> = RefCell::new(HashMap::new());
+    /// As receitas de um jogador que ainda não deu para premiar (o jogo não tinha o servidor da conexão à mão), para o próximo tick.
+    static DEFERRED_AWARDS: RefCell<Vec<(u32, Vec<String>, Vec<Option<ItemStack>>)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// `applyImplicitComponents`: o item colocado tinha `custom_name`, e o tile o guarda (`saveAdditional`).
+/// Premia as receitas ao jogador da conexão `conn`: se é o que está agindo, na hora; senão com o estado dele no lugar do anfitrião
+/// (`as_guest`), ou no próximo tick se o servidor não está à mão.
+fn award_recipes_to(game: &mut Game<'_>, conn: u32, recipes: Vec<String>, items: Vec<Option<ItemStack>>) {
+    if game.lan_acting == Some(conn) {
+        award_recipes(game, &recipes, &items);
+        return;
+    }
+    let Some(mut host) = game.lan.take() else {
+        DEFERRED_AWARDS.with_borrow_mut(|list| list.push((conn, recipes, items)));
+        return;
+    };
+    game.as_guest(&mut host, conn, |game| award_recipes(game, &recipes, &items));
+    game.lan = Some(host);
+}
+
+/// O que ficou para depois, no começo do tick de uma máquina.
+fn flush_deferred_awards(game: &mut Game<'_>) {
+    let list = DEFERRED_AWARDS.with_borrow_mut(std::mem::take);
+    for (conn, recipes, items) in list {
+        award_recipes_to(game, conn, recipes, items);
+    }
+}
+
+/// O nome do tile é o da `machinery_basis` (`basis::name_*`): o componente inteiro, só para os blocos das máquinas daqui.
+fn is_machine_id(id: &str) -> bool {
+    machine_of(id).is_some()
+}
+
+fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client::text::Text {
+    basis::screen_title(game, container_description)
+}
+
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
-    if machine_of(&game.native_block(pos)).is_none() {
-        return;
-    }
-    // `minecraft:custom_name` não é um componente de mod: o texto está nos dados da pilha.
-    let item_name = stack.extra.as_ref().and_then(|data| data.custom_name_plain());
-    let mut tile = machinery_basis_core::name::TileName::new(true);
-    tile.apply_implicit_components(item_name);
-    if let Some(name) = tile.saved() {
-        PENDING_NAMES.with_borrow_mut(|names| names.insert(pos, name.to_owned()));
-    } else {
-        PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos));
-    }
+    basis::name_placed(game, stack, pos, &is_machine_id);
 }
 
-/// O tile nasceu: o nome do item que o colocou entra no NBT dele.
-fn apply_pending_name(entity: &mut ModBlockEntity, pos: [i32; 3]) {
-    if let Some(name) = PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos)) {
-        put(entity, CUSTOM_NAME, Tag::String(JavaString::from(name.as_str())));
-    }
-}
-
-/// `copy_name` da tabela de loot: o item solto leva o nome do tile.
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
-    let Some((pos, _)) = context.block else {
-        return;
-    };
-    let Some(name) = saved_name(game, pos) else {
-        return;
-    };
-    for stack in drops.iter_mut().filter(|stack| machine_of(&stack.item).is_some()) {
-        stack.extra.get_or_insert_with(Default::default).custom_name = Some(Tag::String(JavaString::from(name.as_str())));
-    }
+    basis::name_loot(game, context, drops, &is_machine_id);
 }
 
-/// O jogador abriu o contêiner de uma máquina: o nome vai com ele (`getDisplayName` no pacote de abertura).
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
-    let Some(pos) = pos else {
-        return;
-    };
-    if machine_of(&game.native_block(pos)).is_none() {
-        return;
-    }
-    let name = saved_name(game, pos);
-    let dimension = game.native_dimension();
-    game.mb_name_open(player, dimension, pos, name.as_deref());
+    basis::name_container_opened(game, player, pos, &is_machine_id);
 }
 
 /// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
@@ -2363,7 +2375,11 @@ pub(in crate::game) fn quick_move(
     *handled = true;
 }
 
-pub(in crate::game) fn menu_button(entity: &mut ModBlockEntity, id: i32) {
+pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) {
+    if id == XP_BUTTON {
+        collect_xp(game, pos, entity);
+        return;
+    }
     if !is_infuser(&entity.id) || id != DUMP_BUTTON {
         return;
     }
@@ -2378,10 +2394,42 @@ pub(in crate::game) fn menu_button(entity: &mut ModBlockEntity, id: i32) {
     }
 }
 
+/// `PacketGuiInteract.COLLECT_XP`: `SupportsXpContainment.popExperience(player)`, que só age com `hasXpContainment()`. As bolas nascem no
+/// jogador que clicou (`awardUsedRecipesAndPopExperience` usa `player.position()`) e as receitas guardadas zeram.
+fn collect_xp(game: &mut Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    if machine_of(&entity.id).is_none() {
+        return;
+    }
+    let Some(player) = game.native_acting_player() else {
+        return;
+    };
+    let key = (game.native_dimension(), pos);
+    let awarded = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.collect_xp()));
+    if let Some(awarded) = awarded {
+        pop_experience(game, player.position, &awarded.drops);
+        // O clique chega com o jogador que o fez no lugar do anfitrião: o livro é o dele.
+        let inputs = input_stacks_of(entity);
+        award_recipes(game, &awarded.recipes, &inputs);
+    }
+}
+
+/// O slot de entrada do tile que o menu entregou (o tile está fora do mundo durante o clique).
+fn input_stacks_of(entity: &ModBlockEntity) -> Vec<Option<ItemStack>> {
+    machine_of(&entity.id).map(|machine| vec![entity.items.get(machine.slots.input).cloned().flatten()]).unwrap_or_default()
+}
+
 /// `GuiDumpButton` é um `MekanismImageButton` com a mesma ação nos dois botões do mouse: o clique direito também esvazia o tanque.
-pub(in crate::game) fn screen_click(block: &str, at: [f32; 2], _right: bool, button: &mut Option<i32>) {
+pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, data: &[i32], at: [f32; 2], right: bool, button: &mut Option<i32>) {
     if is_infuser(block) && inside(DUMP_RECT, at) {
         *button = Some(DUMP_BUTTON);
+        return;
+    }
+    // `GuiXpContainmentTab.onClick`: só o botão esquerdo, com a aba visível e fora de uma janela por cima dela.
+    if let Some(machine) = machine_of(block) {
+        let read = rules::ScreenData::read(machine.screen.data, data);
+        if rules::xp_tab().click(read.xp_containment, at, right, game.mb_window_covers(at)) {
+            *button = Some(XP_BUTTON);
+        }
     }
 }
 
@@ -2427,6 +2475,35 @@ pub(in crate::game) fn widget_tooltip(
     }
     let read = rules::ScreenData::read(machine.screen.data, data);
     let translate = |key: &str| lang::get(key);
+    // `GuiXpContainmentTab`: `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, que `Tooltip.create` quebra em 170 pixels. A janela de upgrades
+    // por cima do botão o esconde (`isMouseOverCheckWindows`).
+    let xp_tab = rules::xp_tab();
+    if xp_tab.hovered(read.xp_containment, at, game.mb_window_covers(at)) {
+        let lines: Vec<(String, Option<u32>)> = machinery_basis_core::upgrade_window::wrap_lines(&translate(rules::XP_TAB_TOOLTIP), TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece))
+            .into_iter()
+            .map(|line| (line, None))
+            .collect();
+        let [bx, by, bw, bh] = xp_tab.tab.button();
+        basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + bx, cursor.1 - at[1] + by, bw, bh]);
+        return true;
+    }
+    // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
+    if rules::ENERGY_TAB.is_mouse_over(at, false) {
+        // `tile.getActive()` no cliente é o estado `lit` do bloco.
+        let active = game.mb_open_screen_pos().is_some_and(|pos| game.native_block_property(pos, "lit").as_deref() == Some("true"));
+        // Antes do primeiro valor do servidor o contêiner do cliente tem o consumo de base.
+        let per_tick = if read.energy_per_tick == 0 { machine.energy_per_tick as u32 } else { read.energy_per_tick };
+        let capacity = u64::from(screen_capacity(machine, &read));
+        let lines: Vec<(String, Option<u32>)> =
+            rules::energy_tab_tooltip(active, per_tick, u64::from(read.energy), capacity, &translate)
+                .iter()
+                .flat_map(|line| machinery_basis_core::upgrade_window::wrap_lines(line, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)))
+                .map(|line| (line, None))
+                .collect();
+        let [x, y, w, h] = rules::ENERGY_TAB.rect;
+        basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+        return true;
+    }
     let (widget, lines): ([f32; 4], Vec<(String, Option<u32>)>) = if gui::contains(gui::WARNING_TAB_LEFT, at) {
         let view = machine.screen.view(data);
         // Sem aviso a aba some (`updateVisibility`), e não há o que mostrar.
@@ -2513,9 +2590,31 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, data: &[i32], batch: &mut Hu
     sprite_rect(game, batch, DUMP_SPRITE, at(DUMP_RECT));
     // `GuiMekanism.init` a põe por último, depois de todos os elementos.
     game.mb_window_draw_tab(batch, machine.block, origin);
+    draw_xp_tab(game, batch, origin, &read);
+    draw_energy_tab(game, batch, origin);
     if view.tab() {
         basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
     }
+}
+
+/// `GuiEnergyTab`: o sprite `tab/energy_info` em (-26, 137), sem clique. O tooltip está em `widget_tooltip`.
+fn draw_energy_tab(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2]) {
+    let [x, y, w, h] = rules::ENERGY_TAB.rect;
+    sprite_rect(game, batch, rules::ENERGY_TAB_SPRITE, [origin[0] + x, origin[1] + y, w, h]);
+}
+
+/// `GuiXpContainmentTab`, depois da aba de upgrades (`GuiMekanismTile.addGenericTabs`): só com o upgrade instalado (`tick`: `visible =
+/// hasXpContainment()`), com o fundo do botão em foco quando o mouse está sobre ele e nenhuma janela por cima.
+fn draw_xp_tab(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], read: &rules::ScreenData) {
+    use machinery_basis_core::side_tab::{ButtonLook, XpTab};
+    if !XpTab::visible(read.xp_containment) {
+        return;
+    }
+    let tab = rules::xp_tab();
+    let cursor = game.native_cursor();
+    let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
+    let hovered = tab.hovered(read.xp_containment, at, game.mb_window_covers(at));
+    basis::inset_tab(game, batch, "mekanism", tab.tab, origin, rules::XP_TAB_TINT, rules::XP_TAB_ICON, ButtonLook::of(true, hovered));
 }
 
 /// `GuiChemicalBar`: o nível é `capacityAsLong`, e o conteúdo o sprite do químico, animado, em mosaico e multiplicado pelo `tint`.
@@ -2564,6 +2663,8 @@ fn draw_electric(
         view.element(rules::ScreenElement::Progress),
     );
     game.mb_window_draw_tab(batch, electric.block, origin);
+    draw_xp_tab(game, batch, origin, &read);
+    draw_energy_tab(game, batch, origin);
     if view.tab() {
         basis::warning_tab(game, batch, WARNING_TAB_SPRITE, origin);
     }

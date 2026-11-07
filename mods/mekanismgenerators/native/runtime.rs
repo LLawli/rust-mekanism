@@ -84,6 +84,25 @@ pub fn energy_tooltip(energy: u64, capacity: u64, translate: &dyn Fn(&str) -> St
     )
 }
 
+/// `GuiEnergyTab`: o elemento de textura em (-26, 137), 26 por 26, sem clique, e o sprite que o Mekanism guarda.
+pub const ENERGY_TAB: machinery_basis_core::side_tab::InfoTab =
+    machinery_basis_core::side_tab::InfoTab {
+        rect: [-26.0, 137.0, 26.0, 26.0],
+    };
+pub const ENERGY_TAB_SPRITE: &str = "mekanism:gui/sprites/tab/energy_info";
+/// `GeneratorsLang.PRODUCING_AMOUNT` e `MekanismLang.UNIT`.
+pub const PRODUCING_LANG: &str = "gui.mekanismgenerators.producing.amount";
+pub const UNIT_LANG: &str = "gui.mekanism.unit";
+
+/// O tooltip de `GuiEnergyTab` do Heat Generator (`tile.getProductionRate()`): o que produz por tick e a unidade.
+pub fn energy_tab_tooltip(production: u64, translate: &dyn Fn(&str) -> String) -> Vec<String> {
+    machinery_basis_core::units::energy_info_lines(
+        &[(&translate(PRODUCING_LANG), production)],
+        &translate(ENERGY_UNIT_LANG),
+        &translate(UNIT_LANG),
+    )
+}
+
 /// O tooltip de `GuiFluidGauge` (`GuiTankGauge.getContentsTooltips`): `Empty`, ou `Lava: <mB> mB`.
 pub fn lava_tooltip(amount: u64, translate: &dyn Fn(&str) -> String) -> String {
     if amount == 0 {

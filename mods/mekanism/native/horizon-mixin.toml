@@ -112,7 +112,9 @@ hook_version = 1
 kind = "HEAD"
 helper = "screen_click.rs"
 bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "block", ty = "&str", value = "block" },
+  { name = "data", ty = "&[i32]", value = "data" },
   { name = "at", ty = "[f32; 2]", value = "at" },
   { name = "right", ty = "bool", value = "right" },
   { name = "button", ty = "&mut Option<i32>", value = "&mut *button" },
@@ -138,6 +140,8 @@ hook_version = 1
 kind = "HEAD"
 helper = "menu_button.rs"
 bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "entity", ty = "&mut horizon_client::containers::ModBlockEntity", value = "&mut *entity" },
   { name = "id", ty = "i32", value = "id" },
 ]
@@ -259,6 +263,19 @@ bindings = [
 ]
 
 # A máquina quebrada solta a experiência guardada (`preRemoveSideEffects`).
+# Uma explosão leva a máquina como o jogador: `preRemoveSideEffects` solta a experiência guardada na remoção, venha ela de onde vier. O hook
+# `explosion_detonate` dá os blocos que vão quebrar, com o tile ainda no mundo.
+[[injection]]
+id = "explosion_detonate"
+hook = "explosion_detonate"
+hook_version = 1
+kind = "HEAD"
+helper = "explosion_detonate.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "blocks", ty = "&Vec<[i32; 3]>", value = "&*blocks" },
+]
+
 [[injection]]
 id = "destroy_block"
 hook = "destroy_block"
