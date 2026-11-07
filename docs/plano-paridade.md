@@ -253,6 +253,24 @@ Falta na Fase 1:
   posta por `setMaxEnergy`; o port os repete tick a tick. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
   complexas do Java itera em ordem de hash, e aqui na da lista, o que só difere com mais de uma receita complexa casando a mesma
   entrada.
+- Chegada dos itens no Infuser (feito, 2026-11-07). Relato: com `dirt` na entrada e `bio_fuel` no slot de infusão ao mesmo tempo, com o
+  tanque vazio, "nada converte nem processa"; com a conversão antes da entrada funciona. **Não é defeito do port.** Rastro do Java
+  `infuser_arrival.jsonl` (`ArrivalTraceTest`): tanque vazio, o item da receita e o item que vira o químico dela chegam por `insert` com
+  `MANUAL` em três ordens (entrada primeiro, conversão primeiro, os dois no mesmo tick), 13 pares (bio com terra, areia e argila; fungi com terra e
+  nylium; redstone, diamond, gold e refined_obsidian, cada um com o pó e o `enriched`/bloco), 981 ticks. No original o slot de infusão
+  aceita o item com a terra na entrada (a conversão sai 1 tick depois: tanque 5 e infusão 1, depois tanque 10 e progresso 1), nas três
+  ordens e nos 13 pares. `infuser_arrival_trace.rs` repete tudo tick a tick (estado, `MEKTRACE` e quanto cada slot aceitou) com as receitas e as
+  conversões lidas dos arquivos do port, e **em jogo** (`horizon2`, `h2_infuser_arrival.py`, shift-clique com o servidor parado) as 39 fases
+  deram o mesmo estado a cada tick. **A causa** é como o cenário foi montado: `container X Y Z dirt` põe no primeiro slot livre, que no Infuser
+  é o de infusão (slot 0), e o `bio_fuel` seguinte vai para a entrada (slot 1), e ali nada converte, no original também; e um
+  `data merge ... Items:[terra no slot 1, bio_fuel no slot 0]` perde o `bio_fuel`, porque `decode_mod_block_entity` do Horizon só
+  decodifica a lista que reescreve igual (slots em ordem). Com a conversão primeiro o `bio_fuel` ocupa o slot 0 e funciona. Mutações
+  que o rastro mata: o tanque recusar o químico com item na entrada (`containsRecipeBA` com item), a conversão depois da receita no tick, e
+  a quantidade convertida; o slot de infusão aceitar químico diferente do que o tanque guarda não passa por este rastro (ele começa com o tanque
+  vazio) e é morto por `slot_rules.rs`. **Fora:** carbon e tin: o original tem 31 receitas `metallurgic_infusing` e o port 19 (faltam
+  `processing/iron/enriched`, `processing/iron/enriched_dust`, `processing/steel/enriched_iron_to_dust`, `processing/bronze/*`,
+  `processing/netherite/scrap_to_dust`, `processing/refined_obsidian/dust/from_obsidian_dust`, os quatro `control_circuit/*` e o
+  `mekanismgenerators:hohlraum`), então nenhuma receita usa carbono nem estanho, o tanque os recusa e o `coal` não entra no slot de infusão (no original entra).
 - Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Estão portados e conferidos contra rastros do original (2026-11-06): o tooltip do item (`upgrade_tooltip`, os 8 tipos, linha a linha), a receita e a tag `muffling_center` do `muffling` e o efeito dele no som (`chamber_muffling`), e o `xp_containment` (`chamber_xp_containment`, `chamber_xp_vanilla`, `chamber_xp_broken`, repetidos por `effects_trace.rs`). A aba de XP (`GuiXpContainmentTab`) está portada, veja o item dela abaixo. Faltam os tipos que
   nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
   `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.
@@ -346,8 +364,12 @@ Falta na Fase 1:
   não para a barra de atalhos. Agora o `menu_quick_move` dele (uma injeção, `menu_quick_move` de `mekanismgenerators`) roda o mesmo
   `quick_move` da lib com os dois slots do bloco: combustível (o que queima, ou o balde de lava) e energia (`EnergyInventorySlot.drain`,
   `energy_can_drain`, que nenhum item portado satisfaz, porque nenhum tem handler de energia). Rastro `identity_heat_generator.jsonl`
-  (as oito cenas das máquinas, graveto sobre o combustível ocupado e sobre o vazio, carvão e balde de lava sobre o combustível vazio e o
-  tablet de energia, que não se repete porque o item não é portado), repetido por `identity_trace.rs` e em jogo.
+  (as oito cenas das máquinas, graveto sobre o combustível ocupado e sobre o vazio, carvão, balde de lava e argila sobre o combustível vazio e o
+  tablet de energia, que não se repete porque o item não é portado), repetido por `identity_trace.rs` e em jogo. A cena da argila
+  (`clay_ball_player_fuel_empty`, 2026-11-07) existe porque a mutação "o combustível aceita tudo" sobrevivia: nenhuma cena punha um item que
+  não queima num slot de combustível vazio. Com a cena, a mutação (`burns` sempre verdadeiro) falha (`os slots`: a argila vai para o
+  combustível, no original fica no inventário); o rastro inteiro foi regravado (as outras cinco máquinas e a composteira saíram byte a byte iguais), e `h2_heat.py`
+  confere as 13 cenas em jogo.
   Fora: o `energy_tablet` (e qualquer item com handler de energia) e o `drainContainerIntoSlot`, que o gerador não porta; os dois
   slots virtuais da janela de upgrades que o Heat Generator tem no original (índices 0 e 1 do menu) não existem no port, e a ordem de
   `slots_of` já os põe fora.
@@ -434,7 +456,8 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 - Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
 - `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só no Infuser, sem receita dos arquivos que o use.
-- Clique põe qualquer item na entrada. Slot de energia sem função.
+- Clique do cursor (e arrastar) põe qualquer item em qualquer slot da máquina: o original usa `InventoryContainerSlot.mayPlace`, que é
+  `isValidForInsertion(item, MANUAL)` do slot. Medido em 2026-11-07: terra com o cursor no slot de infusão do Infuser entra (o shift-clique e o hopper já passam pelas regras; o comando `container` não). O Horizon tem o hook `menu_slot_rules` (H20) para isso; nenhum mod o usa ainda.
 - Sem upgrades, controle de redstone, comparador, som, partículas, abas, nome do químico no tooltip.
 - Luz 13 em vez de 8. Conteúdo solto ao quebrar, em vez de guardado no item.
 - Barras desenhadas com retângulo, não com os sprites do Mekanism.

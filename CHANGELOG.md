@@ -6,6 +6,16 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- Rastro do Java para a chegada dos itens no Metallurgic Infuser (`infuser_arrival.jsonl`, `ArrivalTraceTest`): com o tanque vazio, o item de entrada de uma
+  receita e o item que vira o químico dela chegam como um jogador os põe, em três ordens (a entrada primeiro, a conversão primeiro,
+  os dois no mesmo tick), em 13 pares (bio, fungi, redstone, diamond, gold e refined_obsidian). `infuser_arrival_trace.rs` o repete
+  tick a tick com as receitas e as conversões lidas dos arquivos do port e confere quanto cada slot aceitou; `h2_infuser_arrival.py`
+  o repete no jogo. O port segue o original nas três ordens: o slot de infusão aceita o item de conversão com a terra na entrada e o
+  tanque vazio, converte no tick seguinte e a receita anda. O que parecia um defeito (terra na entrada e `bio_fuel` na infusão
+  "ao mesmo tempo" não converte) vinha de como o cenário foi montado: `container X Y Z item n` põe no primeiro slot livre, que no
+  Infuser é o de infusão, e `data merge ... Items` fora da ordem dos slots perde itens.
+- A cena da argila no rastro `identity_heat_generator` (`clay_ball_player_fuel_empty`): um item que não queima, com o slot de
+  combustível vazio, fica no inventário. Sem ela o combustível que aceita tudo passava no teste.
 - O slot de energia converte `redstone` (10.000) e `redstone_block` (90.000) em energia, como `EnergyInventorySlot.fillContainerOrConvert`
   do original: um item por tick, antes da receita, e só se o contêiner aceita tudo o que a receita dá. As duas receitas
   `energy_conversion` são as da datagen, copiadas byte a byte. A mecânica está na `machinery_basis` (`energy_conversion`:
