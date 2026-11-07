@@ -1,6 +1,7 @@
 // As máquinas do Mekanism no jogo. As regras ficam em mekanism_rules, e o que é genérico em
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
+use crate::game::mekanism_rules::{Held, Indexes};
 use crate::game::{Game, GameLevel, NativeReloadListener, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::{Ingredient, Shape};
@@ -11,9 +12,7 @@ use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemCache, ItemToItemRecipe};
-use machinery_basis_core::chemical::{
-    ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents, can_fill_or_convert_with,
-};
+use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents};
 use machinery_basis_core::components::Components;
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, SlotContents};
@@ -21,11 +20,10 @@ use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
+use machinery_basis_core::slot_rules;
 use machinery_basis_core::resource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
-use machinery_basis_core::tile::{
-    ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState, machine_energy_slot_accepts,
-};
+use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
@@ -38,7 +36,7 @@ use std::cell::{Cell, RefCell};
 use horizon_core::geometry::Direction;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DUMP_BUTTON: i32 = 0;
@@ -60,6 +58,13 @@ struct Slots {
     /// Os dois slots virtuais da janela de upgrades (`TileComponentUpgrade`): entrada e saída.
     upgrade: usize,
     upgrade_output: usize,
+}
+
+impl Slots {
+    /// Os slots que as regras de inserção conhecem.
+    fn rule_slots(&self) -> rules::SlotIndexes {
+        rules::SlotIndexes { input: self.input, energy: self.energy, infusion: self.infusion }
+    }
 }
 
 /// Uma máquina de progresso: as quatro só mudam no id, nas receitas, no consumo e nos slots.
@@ -428,6 +433,34 @@ thread_local! {
     // vivo: a abertura que chega antes do primeiro tick, ou depois de a varredura tirar o objeto, é contada quando ele nasce.
     static VIEWERS: RefCell<HashMap<(&'static str, [i32; 3]), u32>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
+    // Se o objeto vivo que a varredura tirou já tinha recalculado a capacidade (`capacity_recalculated`). O tile do Java continua o
+    // mesmo quando o port larga o objeto de uma máquina que ficou sem andar; o objeto novo recebe isto de volta.
+    static SWEPT: RefCell<BTreeMap<(&'static str, [i32; 3]), bool>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Quantos ticks do jogo uma máquina posta por um item espera o primeiro tick antes de a marca se perder.
+const PLACED_TICKS: i64 = 200;
+
+/// As máquinas que um item acabou de pôr e ainda não tiveram o primeiro tick: `TileEntityMekanism.applyImplicitComponents` roda
+/// na colocação, e só nela (um `setBlock` de comando ou de estrutura, e um tile lido do NBT, não passam por ali). A marca vale para
+/// o processo todo, e não só para a thread: quem põe o bloco e quem anda a máquina são threads diferentes no jogo de um jogador só.
+static PLACED: Mutex<BTreeMap<(&'static str, [i32; 3]), i64>> = Mutex::new(BTreeMap::new());
+
+fn note_placed(game: &Game<'_>, pos: [i32; 3]) {
+    let now = game.world.game_time;
+    let mut placed = PLACED.lock().unwrap_or_else(|e| e.into_inner());
+    placed.retain(|_, at| now.saturating_sub(*at) <= PLACED_TICKS);
+    placed.insert((game.native_dimension(), pos), now);
+}
+
+/// Se o objeto vivo que nasce em `pos` vem de um item que acabou de pôr a máquina. `consume` apaga a marca: o primeiro tick da
+/// máquina a consome, e quem só quer um objeto provisório (o upgrade posto antes desse tick) a deixa para ele.
+fn placed_here(game: &Game<'_>, pos: [i32; 3], consume: bool) -> bool {
+    let now = game.world.game_time;
+    let mut placed = PLACED.lock().unwrap_or_else(|e| e.into_inner());
+    let key = (game.native_dimension(), pos);
+    let at = if consume { placed.remove(&key) } else { placed.get(&key).copied() };
+    at.is_some_and(|at| now.saturating_sub(at) <= PLACED_TICKS)
 }
 
 /// Os nomes de `SerializationConstants` que o Java grava, em tags simples no NBT da `ModBlockEntity`. `REDSTONE` é a
@@ -712,29 +745,6 @@ thread_local! {
     static BOOKS: RefCell<Books> = RefCell::new(Books::default());
 }
 
-/// Os índices que uma máquina usa.
-#[derive(Clone)]
-enum Indexes {
-    Electric {
-        recipes: Rc<ItemToItemCache>,
-        energy: Rc<EnergyConversionCache>,
-    },
-    Infuser {
-        recipes: Rc<ItemChemicalCache>,
-        conversions: Rc<ConversionCache>,
-        energy: Rc<EnergyConversionCache>,
-    },
-}
-
-impl Indexes {
-    /// `MekanismRecipeType.ENERGY_CONVERSION.getInputCache()`, que as quatro máquinas partilham.
-    fn energy(&self) -> &Rc<EnergyConversionCache> {
-        match self {
-            Self::Electric { energy, .. } | Self::Infuser { energy, .. } => energy,
-        }
-    }
-}
-
 fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
     BOOKS.with_borrow_mut(|books| {
         let energy = books
@@ -781,40 +791,15 @@ fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
     })
 }
 
-/// O que o tanque e o slot de entrada guardam, para as regras de inserção que olham um pelo outro.
-struct Held {
-    chemical: Option<ChemicalResource>,
-    input: Option<ItemResource>,
-}
-
 /// O item como o `TypedInstance` que o índice pergunta (`ItemResource`): só o id conta para o tipo.
 fn typed_item(stack: &ItemStack) -> ItemResource {
     ItemResource::new(&stack.item, UNKNOWN_STACK)
 }
 
-/// Se o slot `slot` da máquina aceita o item: o slot de entrada (`InputInventorySlot`, com `containsRecipe` na Chamber e
-/// `containsRecipeAB` mais `containsRecipeA` no Infuser), o de infusão (`ChemicalInventorySlot.canFillOrConvert`) e o de energia
-/// (`EnergyInventorySlot.canFillOrConvert`). A regra do hopper vizinho e a do menu são as mesmas.
+/// Se o slot `slot` da máquina aceita o item (veja `rules::slot_accepts`): a regra do hopper vizinho, a do shift-click e a do clique
+/// do cursor são a mesma.
 fn slot_accepts(indexes: &Indexes, slots: &Slots, slot: usize, item: &ItemResource, held: &Held) -> bool {
-    if slot == slots.energy {
-        return machine_energy_slot_accepts(indexes.energy(), item);
-    }
-    match indexes {
-        Indexes::Electric { recipes, .. } => slot == slots.input && recipes.contains_input(item),
-        Indexes::Infuser { recipes, conversions, .. } => {
-            if slot == slots.input {
-                recipes.contains_input_a(item) && recipes.contains_input_ab(item, &held.chemical)
-            } else if Some(slot) == slots.infusion {
-                // `simulateCanInsert(tank, conversion, MANUAL)`: o `isValidForInsertion` do tanque do Infuser é o `containsRecipeB`
-                // e o `containsRecipeBA` com o item que está na entrada.
-                can_fill_or_convert_with(conversions, item, held.chemical.as_ref(), |chemical| {
-                    recipes.contains_input_b(chemical) && recipes.contains_input_ba(&held.input, chemical)
-                })
-            } else {
-                false
-            }
-        }
-    }
+    rules::slot_accepts(indexes, &slots.rule_slots(), slot, item, held)
 }
 
 fn has_saved(entity: &ModBlockEntity) -> bool {
@@ -1114,8 +1099,24 @@ fn write_used(entity: &mut ModBlockEntity, new: &SavedState) {
     }
 }
 
+/// De onde vem o tile que o objeto vivo novo representa.
+struct Origin {
+    /// Um item acabou de pôr a máquina e ela ainda não andou.
+    placed: bool,
+    /// O tile é o mesmo de antes (o Horizon ainda tem os data slots que o objeto velho escreveu) e o objeto velho já tinha recalculado
+    /// a capacidade.
+    recalculated_before: bool,
+}
+
 /// `ProgressMachine` nova, do que a `ModBlockEntity` guarda. Com o índice do Infuser é o Metallurgic Infuser.
-fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machine, indexes: &Indexes) -> Live {
+fn born(
+    game: &Game<'_>,
+    pos: [i32; 3],
+    entity: &ModBlockEntity,
+    machine: &Machine,
+    indexes: &Indexes,
+    origin: Origin,
+) -> Live {
     // `ThreadLocalRandom.nextInt(RECIPE_CHECK_FREQUENCY)`: o sorteio de `shouldRecheckAllErrors`.
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1142,7 +1143,12 @@ fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machi
         }
     };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
+    // `loadAdditional` só com o que o mundo guardou. Um tile novo não lê nada, e o de um item recalcula os upgrades
+    // (`applyImplicitComponents`): uma máquina de `setBlock` fica com a capacidade do construtor, quatro ticks de consumo.
     progress.restore(&read_saved(game, entity), block_active);
+    if (origin.placed && !has_saved(entity)) || (origin.recalculated_before && !progress.capacity_recalculated()) {
+        progress.apply_item_components(&UpgradeSaved::default());
+    }
     progress.set_experience_lookup(experience_of(&basis::machine_recipes(game, &machine.recipes)));
     // Quem já tinha a tela aberta antes de o objeto existir: a contagem guardada é aplicada uma vez, aqui, num objeto novo.
     let viewers =
@@ -1507,6 +1513,13 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     result_take_after(game, pos, entity, spec);
     basis::name_apply_pending(entity, pos);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
+    // O tile é o mesmo se o Horizon ainda guarda os data slots que o objeto anterior escreveu (um tile lido do disco nasce sem eles).
+    let continuing = (!entity.data.is_empty())
+        .then(|| match &alive {
+            Some(live) => Some(live.machine.capacity_recalculated()),
+            None => SWEPT.with_borrow_mut(|swept| swept.remove(&key)),
+        })
+        .flatten();
     let mut fresh = false;
     let mut live = match alive {
         Some(live) if live.last_seen + 1 == now && has_saved(entity) => live,
@@ -1515,7 +1528,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
                 migrate_old_tank(entity);
             }
             fresh = true;
-            born(game, pos, entity, spec, &indexes)
+            let origin = Origin { placed: placed_here(game, pos, true), recalculated_before: continuing == Some(true) };
+            born(game, pos, entity, spec, &indexes, origin)
         }
     };
     // Uma carga nova de dados limpou os índices (`MekanismRecipeType.clearCache`) e o monitor larga a receita que tinha
@@ -1734,7 +1748,15 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         machines.insert(key, live);
         if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
             LAST_SWEEP.set(now);
-            machines.retain(|_, live| now - live.last_seen <= STALE_TICKS);
+            let stale: Vec<_> = machines
+                .iter()
+                .filter(|(_, live)| now - live.last_seen > STALE_TICKS)
+                .map(|(key, live)| (*key, live.machine.capacity_recalculated()))
+                .collect();
+            for (key, recalculated) in stale {
+                machines.remove(&key);
+                SWEPT.with_borrow_mut(|swept| swept.insert(key, recalculated));
+            }
             COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.retain(|key, _| machines.contains_key(key)));
             basis::retain_energy_capacities(|dimension, pos| machines.contains_key(&(dimension, pos)));
         }
@@ -1794,7 +1816,8 @@ pub(in crate::game) fn use_item_on(
             let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
                 return;
             };
-            born(game, pos, entity, spec, &indexes_of(game, spec))
+            let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
+            born(game, pos, entity, spec, &indexes_of(game, spec), origin)
         }
     };
     let available = i32::try_from(stack.count).unwrap_or(i32::MAX);
@@ -1952,12 +1975,14 @@ pub(in crate::game) fn result_take_before(game: &mut Game<'_>, host: &crate::gam
             settle_take(game, pending, now, None);
         }
     }
+    slot_rules::clear(RULES_OWNER);
     let Some(guest) = host.hub.guests.iter().find(|guest| guest.conn == conn) else {
         return;
     };
     let Some(horizon_client::lan::menu::Slots::Block((x, y, z))) = guest.menu.as_ref().map(|menu| menu.slots) else {
         return;
     };
+    publish_slot_rules(game, [x, y, z]);
     let pending = match game.world.block_entities.get(&(x, y, z)) {
         Some(BlockEntity::Mod(entity)) => machine_of(&entity.id).and_then(|machine| {
             entity
@@ -1970,6 +1995,32 @@ pub(in crate::game) fn result_take_before(game: &mut Game<'_>, host: &crate::gam
         _ => None,
     };
     OUTPUT_BEFORE.with_borrow_mut(|slot| *slot = pending);
+}
+
+/// O dono das regras de slot que este mod deixa na `slot_rules` do núcleo.
+const RULES_OWNER: &str = "mekanism";
+
+/// `InventoryContainerSlot.mayPlace` do clique que vai rodar: o `isValidForInsertion(item, MANUAL)` do slot da máquina aberta, com o
+/// que o tanque e a entrada guardam agora. O hook do Horizon (`menu_slot_rules`) roda dentro do menu, sem o jogo, e consulta isto.
+/// Vale o mesmo para o clique esquerdo e o direito, a tecla numérica, o arrasto e o shift-click: o menu pergunta o mesmo.
+fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let Some(machine) = machine_of(&entity.id) else {
+        return;
+    };
+    let indexes = indexes_of(game, machine);
+    let held = Held {
+        chemical: machine.slots.infusion.and_then(|_| read_tank(entity).resource),
+        input: entity.items.get(machine.slots.input).and_then(Option::as_ref).map(|stack| resource_of(game, stack)),
+    };
+    let rule_slots = machine.slots.rule_slots();
+    slot_rules::set(
+        RULES_OWNER,
+        machine.block,
+        Rc::new(move |slot, item| rules::slot_accepts(&indexes, &rule_slots, slot, &ItemResource::new(item, UNKNOWN_STACK), &held)),
+    );
 }
 
 /// No começo do tick da máquina, antes de o espelho ver o slot: o clique tirou o resultado?
@@ -2072,6 +2123,9 @@ fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client:
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_machine_id);
+    if is_machine_id(&game.native_block(pos)) {
+        note_placed(game, pos);
+    }
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {

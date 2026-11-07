@@ -378,6 +378,13 @@ pub struct UpgradeSaved {
     pub output: SlotContents,
 }
 
+impl UpgradeSaved {
+    /// Se o `serialize` do Java não escreveria nada: sem upgrade e sem item nos dois slots, o `write` do componente apaga o filho.
+    pub fn is_empty(&self) -> bool {
+        self.upgrades.is_empty() && self.input.is_empty() && self.output.is_empty()
+    }
+}
+
 /// `tile.recalculateUpgrades(lookup, upgrade, totalInstalled)`: o tile se ajusta ao que o componente tem agora.
 pub type Recalculate = Box<dyn Fn(&UpgradeComponent, &str, i32)>;
 

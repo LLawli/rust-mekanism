@@ -1,7 +1,7 @@
 // Regras das máquinas, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o módulo
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
 use machinery_basis_core::cached_recipe::ItemToItemCache;
-use machinery_basis_core::chemical::ConversionCache;
+use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
 use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
@@ -16,7 +16,7 @@ use machinery_basis_core::slot_view::{
 };
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
-    RedstoneSync, UpgradeConfig,
+    RedstoneSync, UpgradeConfig, machine_energy_slot_accepts,
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
@@ -1091,6 +1091,80 @@ pub fn trace_line(
         chest,
         upgrades
     )
+}
+
+/// Os índices de receita que as regras de slot de uma máquina consultam.
+#[derive(Clone)]
+pub enum Indexes {
+    Electric {
+        recipes: Rc<ItemToItemCache>,
+        energy: Rc<EnergyConversionCache>,
+    },
+    Infuser {
+        recipes: Rc<ItemChemicalCache>,
+        conversions: Rc<ConversionCache>,
+        energy: Rc<EnergyConversionCache>,
+    },
+}
+
+impl Indexes {
+    /// `MekanismRecipeType.ENERGY_CONVERSION.getInputCache()`, que as quatro máquinas partilham.
+    pub fn energy(&self) -> &Rc<EnergyConversionCache> {
+        match self {
+            Self::Electric { energy, .. } | Self::Infuser { energy, .. } => energy,
+        }
+    }
+}
+
+/// O que o tanque e o slot de entrada guardam, para as regras de inserção que olham um pelo outro.
+pub struct Held {
+    pub chemical: Option<ChemicalResource>,
+    pub input: Option<ItemResource>,
+}
+
+/// Onde ficam os slots que aceitam item de fora, na lista de itens da máquina.
+pub struct SlotIndexes {
+    pub input: usize,
+    pub energy: usize,
+    /// O slot que enche o tanque de químico, nas máquinas que têm tanque.
+    pub infusion: Option<usize>,
+}
+
+/// Se o slot `slot` da máquina aceita o item: o slot de entrada (`InputInventorySlot`, com `containsRecipe` na Chamber e
+/// `containsRecipeAB` mais `containsRecipeA` no Infuser), o de infusão (`ChemicalInventorySlot.canFillOrConvert`) e o de energia
+/// (`EnergyInventorySlot.canFillOrConvert`). A saída não aceita nada de fora. É o `isValidForInsertion(item, MANUAL)` que o clique do
+/// cursor (`InventoryContainerSlot.mayPlace`) pergunta, e o que o shift-click e o hopper vizinho perguntam também.
+pub fn slot_accepts(
+    indexes: &Indexes,
+    slots: &SlotIndexes,
+    slot: usize,
+    item: &ItemResource,
+    held: &Held,
+) -> bool {
+    if slot == slots.energy {
+        return machine_energy_slot_accepts(indexes.energy(), item);
+    }
+    match indexes {
+        Indexes::Electric { recipes, .. } => slot == slots.input && recipes.contains_input(item),
+        Indexes::Infuser {
+            recipes,
+            conversions,
+            ..
+        } => {
+            if slot == slots.input {
+                recipes.contains_input_a(item) && recipes.contains_input_ab(item, &held.chemical)
+            } else if Some(slot) == slots.infusion {
+                // `simulateCanInsert(tank, conversion, MANUAL)`: o `isValidForInsertion` do tanque do Infuser é o `containsRecipeB`
+                // e o `containsRecipeBA` com o item que está na entrada.
+                can_fill_or_convert_with(conversions, item, held.chemical.as_ref(), |chemical| {
+                    recipes.contains_input_b(chemical)
+                        && recipes.contains_input_ba(&held.input, chemical)
+                })
+            } else {
+                false
+            }
+        }
+    }
 }
 
 /// `AttributeEnergy.STORAGE_MULTIPLIER`: o buffer guarda quatro ticks de uso.

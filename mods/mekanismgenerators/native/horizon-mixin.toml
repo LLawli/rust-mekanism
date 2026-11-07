@@ -193,3 +193,17 @@ bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
 ]
+
+# Antes de cada clique do jogador no menu de uma máquina (`lan_machine_click`, que o servidor roda para o anfitrião e para os convidados):
+# deixa a regra de `InventoryContainerSlot.mayPlace` do gerador aberto onde o hook `menu_slot_rules` a lê. Esse hook roda dentro do menu,
+# sem o jogo, e a regra do combustível precisa do tempo de queima. Alvo cru, o mesmo da injeção `result_take_before` do Mekanism.
+[[injection]]
+id = "menu_click_before"
+target = "horizon_client::game::lan_crafting::Game<'_>::lan_machine_click"
+kind = "HEAD"
+helper = "menu_click_before.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "host", ty = "&crate::game::lan::LanHost", value = "&*host" },
+  { name = "conn", ty = "u32", value = "conn" },
+]

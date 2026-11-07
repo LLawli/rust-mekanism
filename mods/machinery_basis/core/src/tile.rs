@@ -395,6 +395,9 @@ struct Shared {
     /// `invalidateCache`: lido uma vez por quem o recarregou.
     cache_invalid: Cell<bool>,
     ticks_required: Cell<i32>,
+    /// `updateMaxEnergy` já rodou neste objeto: a capacidade é a dos ticks da receita (ou a dos upgrades de energia), e não a do
+    /// construtor. O Java não guarda isso em lugar nenhum, é o estado do `currentMaxEnergy` do contêiner.
+    capacity_recalculated: Cell<bool>,
     /// `operationsPerTick`, que sobe com os upgrades de velocidade.
     operations_per_tick: Cell<i32>,
     operating_ticks: Cell<i32>,
@@ -714,6 +717,7 @@ impl Parts {
             check_offset: config.check_offset,
             cache_invalid: Cell::new(false),
             ticks_required: Cell::new(config.base_ticks_required),
+            capacity_recalculated: Cell::new(false),
             operations_per_tick: Cell::new(1),
             operating_ticks: Cell::new(0),
             used_so_far: Cell::new(0),
@@ -1087,8 +1091,13 @@ impl ProgressMachine {
 
     /// `loadAdditional`: o que `saved_state` devolveu volta ao objeto novo. Chame antes do primeiro tick.
     pub fn restore(&mut self, saved: &SavedState, block_active: bool) {
-        // Os componentes leem antes do resto, e os upgrades recalculam o consumo e a capacidade antes de a energia voltar.
-        self.upgrades.restore(&saved.upgrades);
+        // Os componentes leem antes do resto, e os upgrades recalculam o consumo e a capacidade antes de a energia voltar. Só se
+        // o filho `component_upgrade` está no NBT: `ITileComponent.read` é `input.readChild(key, this)`, que não chama `deserialize`
+        // sem o filho, e o `write` apaga o filho quando o componente não tem upgrade nem item. Uma máquina gravada sem nada
+        // volta com a capacidade do construtor (4 ticks de consumo), não com a de um `recalculateUpgrades`.
+        if !saved.upgrades.is_empty() {
+            self.upgrades.restore(&saved.upgrades);
+        }
         self.shared.tile.borrow_mut().restore(saved, block_active);
         self.shared.operating_ticks.set(saved.progress);
         self.shared.used_so_far.set(saved.used_so_far);
@@ -1099,6 +1108,20 @@ impl ProgressMachine {
         );
         self.shared.used.set_had_containment(saved.had_containment);
         self.ejector.set_ejecting(saved.ejecting);
+    }
+
+    /// `TileEntityMekanism.applyImplicitComponents`, com o `UPGRADES` do item (o padrão do item de bloco é `UpgradeAware.EMPTY`):
+    /// quem põe a máquina de um item, um jogador ou um dispenser, recalcula cada tipo de upgrade que ela aceita,
+    /// e a capacidade passa de 4 ticks de consumo para a dos ticks da receita (`MachineEnergyContainer.updateMaxEnergy`). O `setBlock`
+    /// de um comando ou de uma estrutura não passa por aqui.
+    pub fn apply_item_components(&mut self, item: &UpgradeSaved) {
+        self.upgrades.restore(item);
+    }
+
+    /// Se `updateMaxEnergy` já rodou neste objeto. Quem refaz o objeto sem refazer o tile (o mod guarda os objetos vivos num cache, e o
+    /// tile do Java continua o mesmo) leva isso do objeto velho para o novo.
+    pub fn capacity_recalculated(&self) -> bool {
+        self.shared.capacity_recalculated.get()
     }
 
     /// `resetLastRecipe`: o resultado foi tirado e a próxima receita recomeça a contagem.
@@ -1288,6 +1311,7 @@ fn recalculate_upgrades(
     if upgrade != speed && upgrade != energy_upgrade {
         return;
     }
+    shared.capacity_recalculated.set(true);
     update_energy_per_tick(shared, energy, upgrades, &data);
     update_max_energy(shared, energy, upgrades, &data);
 }

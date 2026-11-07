@@ -2,7 +2,7 @@
 // machinery_basis.
 use crate::game::mekanismgenerators_rules as rules;
 use crate::game::{Game, machinery_basis as basis};
-use horizon_client::containers::{ModBlockEntity, ModContainer, ModEnergyBuffer};
+use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
@@ -13,6 +13,7 @@ use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
+use machinery_basis_core::slot_rules;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
@@ -407,6 +408,49 @@ pub(in crate::game) fn widget_tooltip(
     let rect = [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h];
     basis::menu_tooltip(game, batch, &[(text, None)], cursor, rect);
     true
+}
+
+/// O dono das regras de slot que este mod deixa na `slot_rules` do núcleo.
+const RULES_OWNER: &str = "mekanismgenerators";
+
+/// Antes de um clique do jogador no menu de uma máquina (`lan_machine_click`, que o servidor roda para o anfitrião e para os
+/// convidados): deixa a regra de `InventoryContainerSlot.mayPlace` do Heat Generator aberto, que o hook `menu_slot_rules` do Horizon
+/// consulta dentro do menu, onde não há o jogo. A regra do slot de combustível pergunta o tempo de queima, que só o jogo sabe: ela
+/// responde para cada item que o clique pode perguntar, que são os que o menu tem (o inventário de quem clica, o cursor e os slots do
+/// bloco).
+pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::lan::LanHost, conn: u32) {
+    slot_rules::clear(RULES_OWNER);
+    let Some(guest) = host.hub.guests.iter().find(|guest| guest.conn == conn) else {
+        return;
+    };
+    let Some(horizon_client::lan::menu::Slots::Block((x, y, z))) = guest.menu.as_ref().map(|menu| menu.slots) else {
+        return;
+    };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(x, y, z)) else {
+        return;
+    };
+    if entity.id != rules::HEAT_GENERATOR {
+        return;
+    }
+    let stored = stored_energy(entity);
+    let mut answers: std::collections::HashMap<String, (bool, bool)> = std::collections::HashMap::new();
+    let stacks = guest.inventory.iter().flatten().chain(guest.carried.as_ref()).chain(entity.items.iter().flatten());
+    for stack in stacks {
+        answers
+            .entry(stack.item.to_string())
+            .or_insert_with(|| (is_fuel(game, stack), energy_can_drain(stored, true, item_energy(stack))));
+    }
+    slot_rules::set(
+        RULES_OWNER,
+        rules::HEAT_GENERATOR,
+        std::rc::Rc::new(move |slot, item| {
+            answers.get(item).is_some_and(|&(fuel, drain)| match slot {
+                FUEL_SLOT => fuel,
+                ENERGY_SLOT => drain,
+                _ => false,
+            })
+        }),
+    );
 }
 
 /// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os dois slots do bloco (`entity.items`: combustível e energia,

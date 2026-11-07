@@ -29,6 +29,7 @@ pub mod scroll_list;
 pub mod side_tab;
 pub mod sides;
 pub mod sim;
+pub mod slot_rules;
 pub mod slot_view;
 pub mod sound;
 pub mod tank;
