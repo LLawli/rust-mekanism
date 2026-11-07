@@ -97,12 +97,9 @@ pub fn quick_move<M: QuickMenu>(menu: &mut M, slot: usize) -> Option<u32> {
             if inserted == 0 {
                 match region {
                     Region::Armor | Region::Offhand => {
-                        let order: Vec<usize> = menu
-                            .slots_of(Region::Main)
-                            .into_iter()
-                            .chain(menu.slots_of(Region::Hotbar))
-                            .chain(menu.slots_of(Region::Armor))
-                            .collect();
+                        // `insertItem(playerSlots, ...)` (`MekanismContainer.java:306`), com `playerSlots = concat(hotBarSlots,
+                        // mainInventorySlots)` (`:93`): a barra e depois o inventário principal, nunca a armadura.
+                        let order: Vec<usize> = hotbar.iter().chain(&main).copied().collect();
                         inserted = insert_all(menu, &order, &item, amount);
                     }
                     Region::Main | Region::Hotbar => {
@@ -256,6 +253,69 @@ mod tests {
         assert_eq!(quick_move(&mut menu, 0), Some(20));
         assert_eq!(menu.contents[0], None);
         assert_eq!(menu.contents[7], Some(("clay", 20)));
+    }
+
+    /// Um contêiner, uma armadura, uma mão, dois do inventário principal e dois da barra, nessa ordem de índice.
+    fn menu_with_armor() -> Menu {
+        let regions = vec![
+            Region::Container,
+            Region::Armor,
+            Region::Offhand,
+            Region::Main,
+            Region::Main,
+            Region::Hotbar,
+            Region::Hotbar,
+        ];
+        Menu {
+            regions,
+            contents: vec![None; 7],
+            accepts: vec![Some("clay"), None, None, None, None, None, None],
+            hidden: Vec::new(),
+            container_order: vec![0],
+        }
+    }
+
+    #[test]
+    fn an_armor_or_offhand_slot_empties_into_the_hotbar_then_the_main_inventory() {
+        // `insertItem(playerSlots, ...)` com `playerSlots = concat(hotBarSlots, mainInventorySlots)` (`MekanismContainer.java:93,306`).
+        for source in [1, 2] {
+            let mut menu = menu_with_armor();
+            menu.contents[source] = Some(("helmet", 1));
+            assert_eq!(quick_move(&mut menu, source), Some(1));
+            assert_eq!(menu.contents[source], None);
+            assert_eq!(menu.contents[5], Some(("helmet", 1)), "a barra primeiro");
+            assert_eq!(menu.contents[3], None);
+        }
+    }
+
+    #[test]
+    fn an_armor_slot_stacks_in_the_hotbar_and_main_before_any_empty_slot() {
+        // As duas passadas correm a barra e depois o principal: o que já tem item vem antes de qualquer vazio, em qualquer um dos dois.
+        let mut menu = menu_with_armor();
+        menu.contents[2] = Some(("stone", 10));
+        menu.contents[4] = Some(("stone", 60));
+        assert_eq!(quick_move(&mut menu, 2), Some(10));
+        assert_eq!(menu.contents[4], Some(("stone", 64)));
+        assert_eq!(
+            menu.contents[5],
+            Some(("stone", 6)),
+            "o resto na barra vazia"
+        );
+    }
+
+    #[test]
+    fn an_armor_or_offhand_slot_never_goes_into_another_armor_slot() {
+        let mut menu = menu_with_armor();
+        menu.contents[1] = Some(("helmet", 1));
+        menu.contents[3] = Some(("x", 1));
+        menu.contents[4] = Some(("x", 1));
+        menu.contents[5] = Some(("x", 1));
+        menu.contents[6] = Some(("x", 1));
+        // Tudo cheio: a mão, vazia, não é destino da armadura, e a armadura não é da mão.
+        assert_eq!(quick_move(&mut menu, 1), None);
+        menu.contents[2] = Some(("stone", 1));
+        menu.contents[1] = None;
+        assert_eq!(quick_move(&mut menu, 2), None);
     }
 
     #[test]
