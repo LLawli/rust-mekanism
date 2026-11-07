@@ -24,6 +24,17 @@ padrão), as regras dos slots de infusão e de energia para quem está de fora, 
 (`slots_<máquina>.jsonl` e `crusher_melon.jsonl`). Copie o arquivo para `src/gameTest/java/mekanism/common/tests/network/` só na hora de
 rodar o `runGameTestServer` e apague-o depois. `mods/mekanism/tests/slot_rules.rs` e `c_tags.rs` os repetem.
 
+`SlotsTraceTest.recipeOrder` grava `recipe_order.jsonl`: uma linha por tipo (`enriching`, `crushing`, `smelting`, `metallurgic_infusing`,
+`chemical_conversion`, `energy_conversion`, e o `smelting` e o `blasting` do vanilla) com os ids na ordem de `getRecipes(level)`, e todo
+item que mais de uma receita do tipo casa, com a que o índice escolhe. `mods/mekanism/tests/recipe_registration_order.rs` o repete.
+
+`MachineTraceTest` também grava a conversão de energia do slot de energia (`chamber_energy_conversion`,
+`chamber_energy_conversion_running`, `infuser_energy_conversion`): o `Trace` ganhou `recordEnergySlot` (o campo `energy_slot`) e
+`setMaxEnergy`, porque o contêiner das máquinas portadas nunca tem espaço para os 10.000 de um `redstone`. `chamber_trace.rs` e
+`infuser_trace.rs` os repetem. Para rodar só os seus, copie `MachineTraceTest.java` e `SlotsTraceTest.java` para
+`src/src/gameTest/java/mekanism/common/tests/network/` no desktop (o repositório do Mekanism de referência fica em `src/`, e o código
+de teste em `src/src/gameTest`), confira antes que o `mekanism-ref` está ocioso, e devolva a árvore como estava.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

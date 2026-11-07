@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 import mekanism.api.AutomationType;
@@ -28,6 +29,8 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.item.crafting.RecipeMap;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HopperBlock;
@@ -118,6 +121,66 @@ public class SlotsTraceTest {
               })
               .thenSucceed()
         );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_slots")
+    @TestHolder(description = "Records the order of the recipes of each type the port uses, as MekanismRecipeType.getRecipes returns them (the RecipeMap order), the vanilla smelting recipes in the order of the map, and every item that more than one recipe of a type matches, with the one the input cache picks.")
+    public static void recipeOrder(final DynamicTest test) {
+        template(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  List<String> lines = new ArrayList<>();
+                  var level = helper.getLevel();
+                  order(lines, "enriching", MekanismRecipeType.ENRICHING.getRecipes(level),
+                        stack -> MekanismRecipeType.ENRICHING.getInputCache().findTypeBasedRecipeHolder(level, stack));
+                  order(lines, "crushing", MekanismRecipeType.CRUSHING.getRecipes(level),
+                        stack -> MekanismRecipeType.CRUSHING.getInputCache().findTypeBasedRecipeHolder(level, stack));
+                  order(lines, "smelting", MekanismRecipeType.SMELTING.getRecipes(level),
+                        stack -> MekanismRecipeType.SMELTING.getInputCache().findTypeBasedRecipeHolder(level, stack));
+                  order(lines, "chemical_conversion", MekanismRecipeType.CHEMICAL_CONVERSION.getRecipes(level),
+                        stack -> MekanismRecipeType.CHEMICAL_CONVERSION.getInputCache().findTypeBasedRecipeHolder(level, stack));
+                  order(lines, "energy_conversion", MekanismRecipeType.ENERGY_CONVERSION.getRecipes(level),
+                        stack -> MekanismRecipeType.ENERGY_CONVERSION.getInputCache().findTypeBasedRecipeHolder(level, stack));
+                  order(lines, "metallurgic_infusing", MekanismRecipeType.METALLURGIC_INFUSING.getRecipes(level), null);
+                  RecipeMap map = level.recipeAccess().recipeMap();
+                  order(lines, "vanilla_smelting", map.byType(RecipeType.SMELTING), null);
+                  order(lines, "vanilla_blasting", map.byType(RecipeType.BLASTING), null);
+                  write("recipe_order", lines);
+              })
+              .thenSucceed()
+        );
+    }
+
+    /// Uma linha por tipo: os ids na ordem da lista, e, se `first` vem, cada item que mais de uma receita do tipo casa (`testType`), com
+    /// os ids na ordem da lista e o que o índice escolhe por tipo (`findTypeBasedRecipeHolder`).
+    private static void order(List<String> lines, String type, Collection<? extends RecipeHolder<?>> holders,
+          java.util.function.Function<ItemStack, RecipeHolder<?>> first) {
+        StringBuilder ids = new StringBuilder();
+        for (RecipeHolder<?> holder : holders) {
+            ids.append(ids.length() == 0 ? "" : ",").append('"').append(holder.id().identifier()).append('"');
+        }
+        StringBuilder conflicts = new StringBuilder();
+        if (first != null) {
+            for (Item item : BuiltInRegistries.ITEM) {
+                ItemStack stack = new ItemStack(item);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+                List<String> matching = new ArrayList<>();
+                for (RecipeHolder<?> holder : holders) {
+                    if (holder.value() instanceof mekanism.api.recipes.SingleInputRecipe.ItemInputRecipe<?, ?, ?> recipe && recipe.getInput().testType(stack)) {
+                        matching.add("\"" + holder.id().identifier() + "\"");
+                    }
+                }
+                if (matching.size() > 1) {
+                    RecipeHolder<?> picked = first.apply(stack);
+                    conflicts.append(conflicts.length() == 0 ? "" : ",").append("{\"item\":\"").append(BuiltInRegistries.ITEM.getKey(item))
+                          .append("\",\"ids\":[").append(String.join(",", matching)).append("],\"first\":")
+                          .append(picked == null ? "null" : "\"" + picked.id().identifier() + "\"").append('}');
+                }
+            }
+        }
+        lines.add("{\"type\":\"" + type + "\",\"count\":" + holders.size() + ",\"ids\":[" + ids + "],\"conflicts\":[" + conflicts + "]}");
     }
 
     private static boolean matchesMelon(RecipeHolder<?> holder, ItemStack melon) {

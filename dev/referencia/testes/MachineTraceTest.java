@@ -571,6 +571,110 @@ public class MachineTraceTest {
     }
 
     @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the energy slot converting redstone into energy: refused while the container has no room for all of it, one item per tick when it has, exactly the room there is, a block of redstone, an item with no recipe.")
+    public static void chamberEnergyConversion(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_energy_conversion");
+        trace.recordEnergySlot = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("energy slot redstone 3");
+                  trace.setSlot(2, Items.REDSTONE, 3);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("max energy 25000");
+                  trace.setMaxEnergy(25_000);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy 12000");
+                  trace.setEnergy(12_000);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("max energy 100000, energy 0, energy slot redstone_block 2");
+                  trace.setMaxEnergy(100_000);
+                  trace.setEnergy(0);
+                  trace.setSlot(2, Items.REDSTONE_BLOCK, 2);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy slot stick 1");
+                  trace.setSlot(2, Items.STICK, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("max energy 25000, energy 15000, energy slot redstone 1");
+                  trace.setMaxEnergy(25_000);
+                  trace.setEnergy(15_000);
+                  trace.setSlot(2, Items.REDSTONE, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy 15001, energy slot redstone 1");
+                  trace.setEnergy(15_001);
+                  trace.setSlot(2, Items.REDSTONE, 1);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the energy slot converting redstone in the same tick the recipe starts: the order of the energy slot and the recipe inside the tick, and what the recipe leaves in the container.")
+    public static void chamberEnergyConversionRunning(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_energy_conversion_running");
+        trace.recordEnergySlot = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("max energy 25000, energy slot redstone 5, insert clay 3");
+                  trace.setMaxEnergy(25_000);
+                  trace.setSlot(2, Items.REDSTONE, 5);
+                  trace.setSlot(INPUT, Items.CLAY, 3);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("energy 2000");
+                  trace.setEnergy(2_000);
+              })
+              .thenExecuteAfter(30, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Metallurgic Infuser converting redstone into energy and into infusion in the same tick, with the container too small for the energy and then with room for it.")
+    public static void infuserEnergyConversion(final DynamicTest test) {
+        template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
+        Trace trace = new Trace("infuser_energy_conversion");
+        trace.inputSlot = 1;
+        trace.outputSlot = 2;
+        trace.energySlot = 3;
+        trace.recordEnergySlot = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("energy slot redstone 3, infusion redstone 3");
+                  trace.setSlot(3, Items.REDSTONE, 3);
+                  trace.setSlot(0, Items.REDSTONE, 3);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("max energy 25000");
+                  trace.setMaxEnergy(25_000);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("item copper_ingot 2, energy 0, infusion redstone 3, energy slot redstone 3");
+                  trace.setSlot(1, Items.COPPER_INGOT, 2);
+                  trace.setEnergy(0);
+                  trace.setSlot(0, Items.REDSTONE, 3);
+                  trace.setSlot(3, Items.REDSTONE, 3);
+              })
+              .thenExecuteAfter(30, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
     @TestHolder(description = "Records the Osmium Compressor, whose recipe spends the osmium every tick: a tank that runs dry and pauses the recipe, a speed upgrade that makes the spending catch up, and the energy running out.")
     public static void compressorRun(final DynamicTest test) {
         template(test, MekanismBlocks.OSMIUM_COMPRESSOR::defaultState);
@@ -1935,6 +2039,9 @@ public class MachineTraceTest {
         private int tick;
         boolean recordChest;
         boolean recordUpgrades;
+        /// Grava o conteúdo do slot de energia (`EnergyInventorySlot`), no índice `energySlot`.
+        boolean recordEnergySlot;
+        int energySlot = 2;
         BlockPos pos = CHAMBER;
         int inputSlot = INPUT;
         int outputSlot = OUTPUT;
@@ -2285,6 +2392,11 @@ public class MachineTraceTest {
             energy().setEnergy(energy, null);
         }
 
+        /// `MachineEnergyContainer.setMaxEnergy`, o que as ações de upgrade de energia chamam.
+        void setMaxEnergy(long maxEnergy) {
+            energy().setMaxEnergy(maxEnergy);
+        }
+
         void addUpgrades(net.minecraft.resources.ResourceKey<Upgrade> key, int amount) {
             Holder<Upgrade> upgrade = helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).getOrThrow(key);
             tile().getComponent().addUpgrades(helper.getLevel().registryAccess(), upgrade, amount);
@@ -2502,6 +2614,11 @@ public class MachineTraceTest {
                 upgradeSlot(line, chamber.getComponent().getUpgradeSlot());
                 line.append("],\"upgrade_out\":[");
                 upgradeSlot(line, chamber.getComponent().getUpgradeOutputSlot());
+                line.append(']');
+            }
+            if (recordEnergySlot) {
+                line.append(",\"energy_slot\":[");
+                slot(line, chamber.getInventorySlots().get(energySlot));
                 line.append(']');
             }
             if (recordChest) {

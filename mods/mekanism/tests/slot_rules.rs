@@ -5,8 +5,8 @@
 //!
 //! O slot de infusão fica com o tanque e o slot de entrada em cada um dos estados do rastro. As conversões e as receitas são as
 //! dos arquivos do original que o port já tem, uma por químico: o que a pergunta usa é só se o item converte e se o tanque aceita o
-//! químico que ele dá. As conversões de energia são as duas do original (`redstone` e `redstone_block`), que o conteúdo ainda não
-//! tem: o teste as põe na configuração, porque o que ele confere é a regra do slot.
+//! químico que ele dá. As conversões de energia são as duas receitas `energy_conversion` do original (`redstone` e `redstone_block`),
+//! lidas dos arquivos que o port entrega.
 //!
 //! O mesmo rastro grava os hoppers, com a máquina posta como um jogador a põe (a configuração de lados do item,
 //! `AttachedSideConfig`): um hopper de baixo, sozinho, com o slot de infusão em cada estado, e depois um hopper em cada face
@@ -16,14 +16,14 @@ mod common;
 
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
-use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, ItemTest};
+use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use mekanism_rules::{
-    ENRICHMENT_USAGE, INFUSER_USAGE, electric_config, electric_item_slots, infuser_config,
-    infusing_cache_of, item_slots, sides,
+    ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, ENRICHMENT_USAGE, INFUSER_USAGE, electric_config,
+    electric_item_slots, infuser_config, infusing_cache_of, item_slots, sides,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -47,11 +47,6 @@ fn read_trace(machine: &str) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
-}
-
-/// `MekanismRecipeType.ENERGY_CONVERSION` do original: `redstone.json` e `redstone_block.json`.
-fn energy_conversion() -> ItemTest {
-    Rc::new(|item: &ItemResource| matches!(&*item.id, "redstone" | "redstone_block"))
 }
 
 fn recipe(input: &str, chemical: &str, output: &str) -> Rc<ItemChemicalToItemRecipe> {
@@ -95,7 +90,7 @@ fn chamber(valid: &str) -> ProgressMachine {
         0,
         common::upgrade_data(),
     );
-    config.energy_conversion = energy_conversion();
+    config.energy_conversion = common::energy_conversions();
     ProgressMachine::electric(config)
 }
 
@@ -126,7 +121,7 @@ fn infuser() -> ProgressMachine {
         0,
         common::upgrade_data(),
     );
-    config.energy_conversion = energy_conversion();
+    config.energy_conversion = common::energy_conversions();
     ProgressMachine::chemical(config)
 }
 
@@ -255,6 +250,15 @@ const MACHINES: [&str; 4] = [
     "metallurgic_infuser",
 ];
 
+/// O índice do slot de energia em `getInventorySlots()` de cada máquina.
+fn energy_slot_index(name: &str) -> usize {
+    if name == "metallurgic_infuser" {
+        ENERGY_SLOT
+    } else {
+        ELECTRIC_ENERGY_SLOT
+    }
+}
+
 fn face(name: &str) -> Face {
     Face::from_property(name).unwrap()
 }
@@ -293,7 +297,9 @@ fn left_in_the_hopper(name: &str, machine: &ProgressMachine, front: Face, at: Fa
         .filter(|id| {
             let resource = item(id);
             !slots.inputs.iter().any(|&slot| {
-                let target = if name == "metallurgic_infuser" && slot == 0 {
+                let target = if slot == energy_slot_index(name) {
+                    machine.energy_slot()
+                } else if name == "metallurgic_infuser" && slot == 0 {
                     &machine.chemical_side().unwrap().slot
                 } else {
                     machine.input()
@@ -325,17 +331,7 @@ fn a_hopper_pointed_at_each_face_puts_in_what_the_original_puts_in() {
                 .iter()
                 .map(|stack| stack[0].as_str().unwrap().to_owned())
                 .collect();
-            let mut port = left_in_the_hopper(name, &machine, front, at);
-            // Diverge, e a conversão de energia é que falta: o original põe a `redstone` no slot de energia pelas costas, e o port
-            // ainda não tem as receitas `energy_conversion` nem o `fillContainerOrConvert` do slot.
-            let pending: &[&str] = if at == front.opposite() {
-                &["redstone"]
-            } else {
-                &[]
-            };
-            port.retain(|id| !pending.contains(&id.as_str()));
-            let mut original = original;
-            original.retain(|id| !pending.contains(&id.as_str()));
+            let port = left_in_the_hopper(name, &machine, front, at);
             assert_eq!(port, original, "{name} {side}: {phase}");
             seen += 1;
         }

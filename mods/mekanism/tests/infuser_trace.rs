@@ -81,13 +81,15 @@ fn infuser() -> SimWorld<Infuser> {
         conversion("redstone_block", "redstone", 90),
         conversion("mushroom", "fungi", 10),
     ];
-    let config = infuser_config(
+    let mut config = infuser_config(
         INFUSER_USAGE,
         infusing_cache_of(recipes),
         ChemicalConversion::cache_of(conversions),
         0,
         common::upgrade_data(),
     );
+    // As receitas `energy_conversion` que o port entrega, como o jogo as dá a toda máquina.
+    config.energy_conversion = common::energy_conversions();
     SimWorld::new(Infuser(ProgressMachine::chemical(config)))
 }
 
@@ -111,6 +113,12 @@ fn apply(machine: &ProgressMachine, action: &str) {
                 .set_contents(Some(item(id)), amount.parse().unwrap(), None)
         }
         ["energy", amount] => machine.energy().set_energy(amount.parse().unwrap(), None),
+        ["max", "energy", amount] => machine.energy().set_max_energy(amount.parse().unwrap()),
+        ["energy", "slot", id, amount] => {
+            machine
+                .energy_slot()
+                .set_contents(Some(item(id)), amount.parse().unwrap(), None);
+        }
         other => panic!("marca desconhecida: {other:?}"),
     }
 }
@@ -197,6 +205,39 @@ fn the_infuser_follows_the_recorded_run_tick_by_tick() {
         assert_eq!(&actual, expected, "tick {}", expected["t"]);
     }
     assert_eq!(seen_marks, 7, "as marcas do cenário");
+}
+
+/// O slot de energia do Infuser converte `redstone` a cada tick, antes do slot de infusão, e cada um tem o seu contêiner: o
+/// tanque recebe 10 de redstone por item e a energia 10.000, quando cabe.
+#[test]
+fn the_infuser_converts_redstone_into_energy_and_into_infusion_in_the_same_tick() {
+    let lines = read_trace("infuser_energy_conversion");
+    assert!(lines.len() >= 50, "rastro curto demais: {}", lines.len());
+    let mut world = infuser();
+    let (mut jumps, mut before) = (0, 0);
+    for expected in &lines {
+        world.tick();
+        for mark in expected["marks"].as_array().unwrap() {
+            for action in mark.as_str().unwrap().split(", ") {
+                apply(&world.block_entity.0, action);
+            }
+        }
+        let machine = &world.block_entity.0;
+        let mut actual = state(&expected["t"], &expected["marks"], machine);
+        actual["energy_slot"] = slot(machine.energy_slot());
+        assert_eq!(&actual, expected, "tick {}", expected["t"]);
+        // O `MEKTRACE` do jogo tem os mesmos campos do rastro, sem o slot de energia nem as marcas.
+        let line = trace_line(expected["t"].as_i64().unwrap(), machine, None, false);
+        let mut traced: Value = serde_json::from_str(&line).unwrap();
+        traced["marks"] = expected["marks"].clone();
+        traced["energy_slot"] = actual["energy_slot"].clone();
+        assert_eq!(traced, actual, "tick {}: MEKTRACE", expected["t"]);
+        // O rastro tem de ter o efeito: a energia sobe 10.000 de uma vez, em mais de um tick.
+        let energy = expected["energy"].as_i64().unwrap();
+        jumps += i32::from(energy - before >= 9_000);
+        before = energy;
+    }
+    assert!(jumps >= 3, "o rastro só converte {jumps} vezes");
 }
 
 /// As 19 receitas de infusão do Mekanism gastam o químico de uma vez, no fim: nenhuma tem `per_tick_usage`, e é por isso

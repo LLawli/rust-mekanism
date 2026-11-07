@@ -122,15 +122,15 @@ fn machine_at(
     check_offset: u64,
     game_time: u64,
 ) -> SimWorld<Chamber> {
-    SimWorld::new(Chamber(
-        ProgressMachine::electric(electric_config(
-            energy_per_tick,
-            ItemToItemRecipe::cache_of(recipes),
-            check_offset,
-            common::upgrade_data(),
-        )),
-        game_time,
-    ))
+    let mut config = electric_config(
+        energy_per_tick,
+        ItemToItemRecipe::cache_of(recipes),
+        check_offset,
+        common::upgrade_data(),
+    );
+    // As receitas `energy_conversion` que o port entrega, como o jogo as dá a toda máquina.
+    config.energy_conversion = common::energy_conversions();
+    SimWorld::new(Chamber(ProgressMachine::electric(config), game_time))
 }
 
 fn enrichment_recipes() -> Vec<Rc<ItemToItemRecipe>> {
@@ -226,6 +226,13 @@ fn apply(scene: &mut Scene, scenario: &str, action: &str) {
             .upgrades()
             .remove_upgrade(&format!("mekanism:{upgrade}"), true),
         ["energy", amount] => machine.energy().set_energy(amount.parse().unwrap(), None),
+        // `MachineEnergyContainer.setMaxEnergy`.
+        ["max", "energy", amount] => machine.energy().set_max_energy(amount.parse().unwrap()),
+        ["energy", "slot", id, amount] => {
+            machine
+                .energy_slot()
+                .set_contents(Some(item(id)), amount.parse().unwrap(), None);
+        }
         // `refillTicks` e `refillFraction` do `Trace`: a energia que volta depois de cada tick gravado.
         [
             "energy",
@@ -433,6 +440,10 @@ fn replay(scenario: &str) {
             "output": slot(machine.output()),
             "errors": errors(machine),
         });
+        // Só os cenários de conversão de energia gravam o slot de energia.
+        if expected.get("energy_slot").is_some() {
+            actual["energy_slot"] = slot(machine.energy_slot());
+        }
         // Só o cenário de ejeção grava o baú.
         if expected.get("chest").is_some() {
             actual["chest"] = chest(&scene.chest, scene.first_slot);
@@ -467,6 +478,10 @@ fn replay(scenario: &str) {
         );
         let mut traced: Value = serde_json::from_str(&line).unwrap();
         traced["marks"] = expected["marks"].clone();
+        // O `MEKTRACE` não leva o slot de energia: só o rastro dos cenários de conversão o grava.
+        if let Some(energy_slot) = actual.get("energy_slot") {
+            traced["energy_slot"] = energy_slot.clone();
+        }
         assert_eq!(
             traced, actual,
             "{scenario}, tick {}: MEKTRACE",
@@ -627,6 +642,19 @@ fn upgrades() {
 #[test]
 fn the_upgrade_slots_install_and_remove() {
     replay("chamber_upgrade_slot");
+}
+
+/// O slot de energia converte `redstone` e `redstone_block` em energia, um item por tick, só se o contêiner aceita tudo o que a
+/// receita dá: com 20 de capacidade a `redstone` fica no slot, com espaço para 10.000 ela vira energia, e com 9.999 de sobra não.
+#[test]
+fn the_energy_slot_converts_redstone_only_when_the_container_takes_all_of_it() {
+    replay("chamber_energy_conversion");
+}
+
+/// A conversão acontece antes da receita no mesmo tick: com a energia vazia a receita já começa no tick da conversão.
+#[test]
+fn the_energy_slot_converts_before_the_recipe_runs() {
+    replay("chamber_energy_conversion_running");
 }
 
 #[test]
