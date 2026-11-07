@@ -241,9 +241,25 @@ clique. A capacidade de energia de uma máquina muda com os upgrades, mas o `Mod
 `energy_capacity.rs` é uma injeção cancelável em `native_energy_at` que responde com a capacidade da instância, guardada numa tabela por
 posição e por id de bloco. O que passa de `i32::MAX` fica em `i32::MAX` e vai para o log.
 
-A tela dos upgrades vai usar estes slots assim: dois slots a mais no `ModContainer`, depois dos da máquina, ligados aos slots do componente
-como o glue já liga a entrada e a saída (`slot_from_entity` antes do tick, `slot_to_entity` depois), e a aba lê o progresso e os totais por
-data slots. Por enquanto os slots só existem no NBT.
+A tela dos upgrades usa estes slots assim: dois slots a mais no `ModContainer`, depois dos da máquina, ligados aos slots do componente
+como o glue liga a entrada e a saída (`slot_from_entity` antes do tick, `slot_to_entity` depois), e a aba lê o progresso e os totais por
+data slots (`UpgradeWindowSpec`: só dados, e `Game::mb_window_register` com as duas funções que o mod dá, tirar um upgrade e pôr da mão).
+O `ItemUpgrade.useOn` e a limpeza da seleção de quem sai do menu são da lib e valem para todo bloco registrado.
+
+Um tile sem objeto vivo (o Heat Generator, que lê e grava tudo no NBT a cada tick) refaz o componente a cada tick com `upgrade::rebuild`: o
+NBT (`deserialize`), o que a memória levava (`UpgradeTransient`: `upgradeTicks` e `canCheckUpgrades`, que o Java não salva) e os dois slots
+do menu, que mandam sobre o NBT. O glue lê e grava o NBT com `read_upgrades` e `write_upgrades`, e a memória fica numa tabela por thread.
+
+### Unidade de temperatura
+
+`temperature.rs` porta o `UnitDisplayUtils.TemperatureUnit` (K, C, R, F e STP, nessa ordem, com `convertFromK`, `convertToK`, `getNext` e
+`getPrevious`), o `getDisplayBase` que escreve o número com a medida (de `f` a `Y`, em `units.rs`) e o `MekanismUtils.getTemperatureDisplay`.
+A unidade que o cliente escolhe é o `MekanismConfig.local.tempUnit`: `LocalUnit` a guarda em `config/<ns>/local.toml` (a chave
+`temperatureUnit`, o nome do enum), relê o arquivo quando a data dele muda (no máximo uma olhada por segundo, porque o desenho pergunta
+a cada quadro) e grava o clique sem tocar nas outras chaves. O mod escolhe o namespace, os sprites (`tab/heat_info_<getTabName>`) e os
+textos de idioma; o clique que troca a unidade usa `screen_mouse_button_pressed_pre`, que toma o clique sem o som nem o pacote do
+`screen_click`. Um `double` que a tela precisa (o calor e as duas perdas do Heat Generator) viaja em quatro data slots
+(`data_slots::split_f64` e `join_f64`).
 
 ## Fora da lib
 

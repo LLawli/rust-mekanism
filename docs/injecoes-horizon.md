@@ -18,27 +18,27 @@ Contagem em 2026-11-07, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 67 | |
-| Hook do catálogo, usado só com o contrato dele | 26 | não |
+| `[[injection]]` no total | 71 | |
+| Hook do catálogo, usado só com o contrato dele | 27 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 29 | sim |
-| Injeção crua (`target = ...`) | 12 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 10 | sim |
+| Injeção crua (`target = ...`) | 15 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 11 | sim |
 
-26 + 29 + 12 = 67. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-41 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+27 + 29 + 15 = 71. Os 11 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+44 injeções e 11 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 12 | 10 | 29 |
-| Provada em spike | 6 | 0 | 1 |
+| Em uso | 15 | 11 | 29 |
+| Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
-As provadas em spike não contam `native_energy_at`, que já está em uso. As previstas vêm do plano e não foram compiladas.
+As provadas em spike não contam `native_energy_at` nem `override_gameplay`, que já estão em uso. As previstas vêm do plano e não foram compiladas.
 
 ### Hook proposto contra injeções que ele elimina
 
 Todos os nomes são propostas: nenhum existe no pin. "v2" é uma nova versão de um hook do catálogo, porque o contrato antigo nunca
-muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H26 em
+muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedidos-propostos), e as correções H22 a H26 e H30 em
 [Correções pedidas ao renderer do Horizon](#correções-pedidas-ao-renderer-do-horizon).
 
 | Proposta | Tipo | Elimina | Estado |
@@ -50,7 +50,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H5 `component_types` v2 | hook | `command_components` | em uso |
 | H6 `item_model_node` | hook | `component_item_model` | em uso |
 | H7 `item_container_accepts` | helper | módulo `slot-accepts` | em uso |
-| H8 helpers de leitura e escrita | helpers | 8 hooks com estrutura privada, os módulos `glue` | em uso (8) |
+| H8 helpers de leitura e escrita | helpers | 7 hooks com estrutura privada, os módulos `glue` | em uso (7) |
 | H9 `screen_layout` | hook | módulo `windows` em `native_hooks.rs`, escrita em `mod_screen` | em uso (módulo) |
 | H10 `screen_slot_at` | hook | `slot_at` (RETURN) | em uso |
 | H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | em uso |
@@ -60,12 +60,13 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H15 `visuals` v2 | hook | `native_frame_visuals` | spike |
 | H16 leitura do `Kd` do `.mtl` | correção | `obj_quad` (RETURN) | spike |
 | H17 ordenação da camada translúcida | correção | `outline_fill` | spike |
-| H18 `properties.light` condicional | dado | `override_gameplay` | spike |
+| H18 `properties.light` condicional | dado | `active_light` (mekanism) | em uso |
 | H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
 | H27 `menu_result_taken` | hook | `result_take_before` (cru) | em uso |
 | H20 `menu_slot_rules` v2 | hook | o contexto de clique de `result_take_before` e `menu_click_before` | prevista |
 | H21 `screen_slot_highlight` | hook | `slot_highlight` (mekanism) | em uso (1) |
-| H22 escurecimento do mundo atrás de telas | correção | nenhuma (diferença de pixel) | pedido |
+| H22 fundo escurecido da tela de contêiner (degradê do vanilla) | correção | `container_dim` (HEAD de `HudBatch::fill`) | em uso (1) |
+| H30 iluminação do mundo, mais clara no original | correção | nenhuma (diferença de pixel, causa no renderer) | pedido |
 | H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
 | H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
 | H25 item desenhado em escala (`renderItem(..., 0.75)`) | correção | nenhuma (diferença de pixel) | pedido |
@@ -112,18 +113,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 6 |
-| `mods/mekanism/native/horizon-mixin.toml` | 30 | 25 | 5 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 15 | 13 | 2 | 2 |
-| Total | 67 | 55 | 12 | 10 |
+| `mods/machinery_basis/horizon-mixin.toml` | 25 | 18 | 7 | 7 |
+| `mods/mekanism/native/horizon-mixin.toml` | 30 | 24 | 6 | 2 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 16 | 14 | 2 | 2 |
+| Total | 71 | 56 | 15 | 11 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das doze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Oito das quinze cruas são `cancellable = true` (a oitava é `container_dim`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before`, `menu_click_before` e `active_light`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 55 hooks, 29 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 29 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) e os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`).
+Dos 56 hooks, 29 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 29 com estrutura privada são os 7 de antes, os 10 da janela de upgrades (`window_*`, com o `window_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) e os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`).
 
-## Injeções cruas em uso (12)
+## Injeções cruas em uso (15)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -142,6 +143,31 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
   máquina coberto não é, esteja ele antes ou depois do virtual na ordem dos slots. Vale para hover, tooltip, clique, as teclas 1 a 9,
   F e Q e a divisão por arrasto, que `screen_mouse_button_pressed_pre` cancelando não alcança.
 - **Risco:** mudar o retorno de `slot_at` ou quem o chama.
+
+### `container_dim` e `container_dim_flag` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-07. **Alvos:** `horizon_client_render::hud::HudBatch::fill` (`hud.rs`, método público), HEAD cancelável (`container_dim`);
+  `horizon_client::game::Game::draw_inventory` (`game.rs:9486`), HEAD (`container_dim_flag`); mais o módulo `container-dim` em `hud.rs` (ver Módulos).
+  **Proposta:** H22.
+- **Para quê:** o fundo escurecido de uma tela de máquina. O original desenha `fillGradient(0, 0, width, height, 0xC0101010, 0xD0101010)`
+  (`Screen.extractTransparentBackground`), porque `AbstractContainerScreen.isInGameUi()` é verdadeiro (nem blur, nem `inworld_menu_background`). O Horizon pinta
+  a janela toda com um retângulo fixo `rgba(16, 16, 16, 160)` em `draw_inventory` (`game.rs:9494`) e em outras telas de contêiner (`beacon.rs`, `trading.rs`,
+  `stations.rs`, o Creative, o livro e a placa). O HEAD de `draw_inventory` escreve no módulo se a tela aberta é de uma máquina nossa (`Game::mb_screen_owns_dim`:
+  o `open_spec`, a spec de janela do bloco aberto, registrada por quem usa a `machinery_basis`; o `frame` também o escreve, para limpar o estado quando a tela
+  fecha). O HEAD de `HudBatch::fill` lê o estado e, só com ele ligado e com o retângulo de sempre (a janela toda, `rgba(16, 16, 16, 160)`), desenha no lugar o
+  degradê do vanilla (`HudBatch::fill_gradient`, `rgba(16, 16, 16, 0xC0)` a `0xD0`) e cancela o `fill`. Qualquer outro `fill` segue. O baú e a fornalha do vanilla
+  ficam com o retângulo do Horizon (conferido: `dev/referencia/conferir_fundo.py`).
+- **Por que não é um hook do catálogo nem um `MODIFY_ARG`:** o retângulo é uma chamada no meio de `draw_inventory`, e a função tem um closure
+  (`let part = |batch, name, ...|`): o planejador recusa as injeções de chamada dentro dela (`E_UNSUPPORTED_CONTROL_FLOW`, medido). Não há flag em
+  `NativeScreen` (`mod_api.rs:288`: `own_labels`, `own_background`) nem hook que cancele o fundo. Um HEAD em `draw_inventory` não pula só o retângulo. O `HudBatch`
+  não conhece o `Game`, por isso o estado vai por um módulo no `hud.rs`.
+- **Escopo:** sem id do Mekanism; vale para toda tela que a `machinery_basis` abre (decisão do usuário: só as do mod, não as de contêiner do vanilla).
+- **Hook mais próximo:** nenhum.
+- **Hook proposto:** H22 (o renderer desenhar o degradê do vanilla no fundo de toda tela de contêiner, no lugar do retângulo fixo, e uma flag em `NativeScreen` para
+  o mod pedir o mesmo).
+- **Risco:** depende de `HudBatch::fill` e da cor do retângulo, de `draw_inventory` e do campo `mod_screen`/`open_spec`. Mudar a cor, o alfa ou o método, e o fundo volta ao
+  do Horizon, sem erro. O custo é uma leitura de `AtomicBool` e cinco comparações por `fill`.
+- **Conferido em jogo** (2026-11-07, `horizon`, contra o original, mesmo mundo): ver H22.
 
 ### `energy_capacity` (machinery_basis)
 
@@ -256,6 +282,25 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
   sai no `if !front`. Mudar a assinatura de `draw_slot_highlight` ou a ordem das camadas quebra o build, ou faz o realce sair certo
   só numa das camadas, sem erro.
 
+### `active_light` (mekanism)
+
+- **Estado:** em uso desde 2026-11-07. **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD
+  (`mod_content.rs:1319`, método privado do plano de conteúdo, que recebe o `NewBlock` e a linha `J` da tabela de jogo de cada estado).
+- **Helper:** `mods/mekanism/native/active_light.rs`. Só age no Crusher, na Enrichment Chamber, no Energized Smelter e no Metallurgic
+  Infuser, e só nos estados em que a linha já emite luz (o `lit=true` do gabarito `minecraft:furnace`, 13): troca por 8.
+- **Por que é necessária:** as quatro são `Machine` (`Machine.java:26`), com `Attributes.ACTIVE_LIGHT`, `AttributeStateActive(8)`
+  (`Attributes.java:27`): luz 8 quando ativas e 0 quando não (`AttributeStateActive.java:49-51`, que soma ao 0 do bloco pela
+  `BlockStateHelper.applyLightLevelAdjustments`, `BlockStateHelper.java:83-94`). O gabarito dá 13 ao estado aceso, e
+  `properties.light` é um inteiro só, aplicado a todos os estados (`mod_content.rs:1345`): com `light: 8`, a máquina desligada
+  também ficaria acesa. O Heat Generator usa `ACTIVE_MELT_LIGHT`, 13 (`GeneratorsBlockTypes.java:68`), o mesmo do gabarito, e não
+  passa por aqui.
+- **Hook mais próximo:** nenhum. `random_ticks` já aceita condição por estado, `light` não.
+- **Hook proposto:** H18 (dado, sem hook).
+- **Risco:** depende de `NewBlock` (`decl.id`) e do formato de linha (`J`, chave `emission`), privados de `mod_content.rs`. Renomear
+  o método ou a chave quebra o build, ou deixa a máquina com a luz do gabarito, sem erro.
+- **Conferido em jogo** (2026-11-07, `horizon`, `horizon-ctl light` no bloco e no vizinho): as quatro máquinas acesas dão 8 e 7, a
+  Enrichment Chamber apagada 0 e 0, o Heat Generator aceso 13 e 12, e o `minecraft:furnace` aceso 13 e 12.
+
 ### `result_take_before` (mekanism)
 
 - **Estado:** em uso. **Alvo:** `horizon_client::game::lan_crafting::Game<'_>::lan_machine_click`, HEAD, não cancelável
@@ -321,12 +366,11 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 |---|---|---|---|
 | `update_shape` (basis) | `update_shape` | `level.registry.state(state).properties` (lê `fluid_logged`) | H8: `state_property(state, key)` no `GameLevel` |
 | `state_for_placement` (basis) | `state_for_placement` | `level.world.block(x, y, z)` (o vizinho) | H8: `block_state_at(dimension, pos)` só leitura, no `GameLevel` |
-| `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game` |
+| `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido, e, para o `ItemUpgrade.useOn` (que o Mekanism e o Heat Generator usam por aqui), `game.held_mut()` e, nas funções de cada mod, `game.world.block_entities.get/get_mut` e `game.world.modified.insert` | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game`, `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `use_item` (basis) | `use_item` | `game.world.game_time` | `level_game_time`, que já existe |
 | `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, o método do módulo `slot-accepts` no ejetor, e, para premiar as receitas ao jogador que tirou o resultado (o tick não tem jogador agindo), `game.lan.take()` e `game.as_guest` com o estado dele no lugar do anfitrião | `level_game_time`, H7 e H27 entregando o jogador |
 | `menu_quick_move` (mekanismgenerators) | `menu_quick_move` | `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Heat Generator enche) | o mesmo helper de escrita no inventário de quem age |
 | `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`), `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Mekanism enche) | H8: `cooking_recipes(kind)`; falta um helper de escrita no inventário de quem age |
-| `use_item_on` (mekanism) | `use_item_on` | `game.world.block_entities.get/get_mut`, `game.world.modified.insert`, `game.held_mut()`, `game.recipes()` | H8: `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `block_entity_tick` (generators) | `block_entity_tick` | `game.res.providers().burn_time(world_items!)`, `game.world.chunks` e `world_biomes!` | H8: `burn_time(stack)`, `biome_temperature(dimension, pos)` |
 | `window_frame` (basis) | `frame` | `game.mod_screen` (escreve `screen.slots`), `game.renderer`, `game.remote`, `game.world.block_entities` | H9 |
 | `window_key` (basis) | `screen_key_pressed_pre` | `game.mod_screen` (o bloco da tela aberta) | H9 |
@@ -336,6 +380,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `window_scroll` (basis) | `screen_mouse_scrolled_pre` | `game.mod_screen`, `game.renderer` | H9 |
 | `window_net` (basis) | `net_from_client` | `game.lan.hub.guests`, `hide_menu_slots` e `play.crafting.machine` do menu de LAN, `game.container`, `game.world.block_entities` | H12 |
 | `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
+| `window_viewers` (basis) | `mod_container_viewers` | `game.container` e `game.lan.hub.guests`, pelo `prune` do módulo `machinery_basis_windows`: larga a janela escolhida de quem saiu do menu sem fechá-lo | H12 |
 | `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a câmera | H19 e H8 |
 | `place_block` (mekanism) | `place_block` | `game.world.block_entities.get_mut`, `game.world.modified` | H8: `mod_block_entity`, `change_mod_block_entity` |
 | `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou: o Horizon já o tirou do mundo quando rola a tabela de um jogador, então o nome vem do que `destroy_block` guardou) | H8: `mod_block_entity`; `NativeLootDrops` sem o block entity é o buraco: `block_entity: Option<&Tag>` resolve |
@@ -347,7 +392,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `menu_button` (mekanism) | `menu_button` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), para a aba de xp (`COLLECT_XP`) dar a experiência ao jogador que clicou; e, para `ServerPlayer.awardRecipes` + `triggerRecipeCrafted`, `game.level.recipe_book.add_recipes`, `game.recipe_unlocked`, `game.trigger_recipe_crafted` e a macro `world_stations!` (o livro de receitas e os critérios de `advancements.rs`) | H8: `award_experience(at, points)` e `award_recipes(player, recipes, items)` |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
-os dois primeiros; `ItemUpgrade.useOn` (`ItemUpgrade.java:28-45`) para o `use_item_on` do Mekanism; `MekanismRecipeType.java:334` e
+os dois primeiros; `ItemUpgrade.useOn` (`ItemUpgrade.java:28-45`) para o `use_item_on` da `machinery_basis` (o Mekanism e o Heat Generator); `MekanismRecipeType.java:334` e
 `TileEntityEnergizedSmelter.java:26` para a receita de cozimento que vem do `RecipeType.SMELTING` do jogo;
 `TileEntityHeatGenerator.java:111`, `MekanismUtils.getBurnTime` (`MekanismUtils.java:469-478`) e `HeatAPI.getAmbientTemp`
 (`HeatAPI.java:42-46`, que chama `Biome.getTemperature(pos, seaLevel)`) para o gerador.
@@ -381,7 +426,7 @@ usar antes de ter número de API:
 
 | Helper | Fragmento | Quem usa |
 |---|---|---|
-| `native_sneaking`, `native_component` | `host_bridge.json` | `use_item_on` do Mekanism |
+| `native_sneaking`, `native_component` | `host_bridge.json` | `use_item_on` da `machinery_basis` (`ItemUpgrade.useOn`) |
 | `native_draw_model` | `host_bridge.json` | spike do cabo, Fase 4 |
 | `native_text_width` | `client_services.json` | `machine_panel`, `menu_tooltip` |
 | hook `container_accepts` | `container_accepts.json` | previsto (Fase 2); hoje `hook =` dá `E_HOOK_UNKNOWN` |
@@ -395,7 +440,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (10)
+## Módulos (11)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -408,6 +453,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
 | `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e a câmera, privados | H19 |
 | `composter-wrapper` (machinery_basis) | `game/composter.rs` | o sorteio das camadas de um item e a subida de um nível da composteira, como o `ComposterWrapper` do NeoForge faz | H29 |
+| `container-dim` (machinery_basis) | `horizon-client-render/src/hud.rs` | o estado "a tela aberta é de uma máquina nossa" (`machinery_container_dim`), que o HEAD de `HudBatch::fill` lê e o `Game` escreve | H22 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
@@ -445,7 +491,7 @@ referência: a versão real age só nos blocos do Mekanism. Em cada linha, o alv
 | `spike_energy_at` | `native_energy_at`, HEAD cancelável | faces por instância: Crusher com a chave ficou em 0, sem ela recebeu 32 | Fase 2, `TileComponentConfig` | H1 (a mesma de `energy_capacity`) |
 | `spike_save_level` | `Game::save_level`, HEAD | carimbou 19 cabos antes do `modified.drain` | `TileEntityTransmitter.java:136`, `DynamicBufferedNetwork.java:156-159` (`saveAdditional`, `updateSaveShares`) | H13 |
 | `spike_remove_entity` | `GameLevel::remove_entity` (`spill.rs:490`), HEAD | lê a block entity antes de ela sair | `TileEntityTransmitter.setRemoved`, `:165` | H14 |
-| `spike_override_gameplay` | `Plan::override_gameplay` (`mod_content.rs:1319`), HEAD | luz 8 só no Crusher, 13 nos demais | `BlockStateHelper.java:83-94`, `Attributes.java:147-157` | H18 |
+| `spike_override_gameplay` | `Plan::override_gameplay` (`mod_content.rs:1319`), HEAD | luz 8 só no Crusher, 13 nos demais (em uso desde 2026-11-07 como `active_light`) | `BlockStateHelper.java:83-94`, `Attributes.java:147-157` | H18 |
 | `spike_frame_visuals` | `native_visuals::native_frame_visuals`, HEAD | linhas de várias caixas, só no nosso bloco com a ferramenta | `BlockTransmitter.java:103`, `TileEntityTransmitter.java:234`, `MultipartUtils.java:39` | H15 |
 | `spike_obj_kd` | `horizon_assets::bake::obj_quad`, RETURN | cor do quad vezes o `Kd` do `.mtl` (0,8): sem isso tudo sai 20% mais claro | NeoForge `ObjGeometry.makeQuad` | H16 |
 | `spike_sort_translucent` | `pvp::Game::outline_fill`, HEAD | ordena os quads de `TRANSLUCENT_ITEM_OVERLAY` do fundo para a frente: manchas sumiram | `MekanismRenderType.java:20,61,69` (`sortOnUpload`) | H17 |
@@ -461,7 +507,7 @@ Riscos: `spike_energy_at`, `spike_save_level` e `spike_remove_entity` quebram em
 
 ### Aba de upgrades (em uso desde 2026-11-06)
 
-A aba e a janela saíram do spike e estão em uso: os 9 itens `window_*` e o módulo `windows` acima, mais o `menu_quick_move` do
+A aba e a janela saíram do spike e estão em uso: os 10 itens `window_*` e o módulo `windows` acima, mais o `menu_quick_move` do
 Mekanism, que passou a ter `&mut Game`. O que o spike provou em jogo (diff `~/.cache/rust-mekanism/spike-upgrade/spike-upgrade-A-fim.diff`
 e a página `gotchas/spike-aba-de-upgrades-viabilidade.md` do ai-memory) continua valendo; a etapa 1 desta versão não rodou em jogo.
 
@@ -480,6 +526,12 @@ Decisões que o código tem e o spike não tinha:
 - **Posição.** Fica no cliente, em `config/<ns>/client.toml`, tabela `[window.upgrade]` com `x`, `y` e `pinned`, gravada em `close()`
   e lida na primeira janela: persiste entre sessões como o `lastWindowPositions` do `ClientConfig` (`ClientConfig.java:59,145-158`),
   que o NeoForge grava em `config/mekanism/client.toml`.
+
+- **Heat Generator (2026-11-07).** O gerador usa a mesma janela sem injeção nova: a spec dele (`UpgradeWindowSpec`) e as duas funções que o
+  mod dá (tirar um upgrade e pôr da mão) entram em `Game::mb_window_register`, e as injeções `window_*` já valem para qualquer bloco
+  registrado. Para isso o `ItemUpgrade.useOn` (antes o `use_item_on` do Mekanism) passou a rodar no `use_item_on` da `machinery_basis`, e a
+  limpeza da seleção de quem sai do menu sem fechá-lo (`prune`, antes dentro do `mod_container_viewers` do Mekanism) ganhou a injeção
+  `window_viewers`, também da `machinery_basis`. O Mekanism perdeu uma injeção (`use_item_on`) e a basis ganhou uma: o total fica em 66.
 
 Riscos: `slot_at` e `draw_inventory_slots` são o núcleo do desenho de inventário e mudam sempre que o Horizon mexe na tela. O módulo
 em `native_hooks.rs` depende de um arquivo de 11 mil linhas. `hide_menu_slots` e `play.crafting.machine` são o protocolo de menu de LAN:
@@ -806,7 +858,7 @@ quads translúcidos das block entities por distância (`VertexSorting.DISTANCE_T
 
 O Horizon já aceita condição por estado em `random_ticks` (`ticks.applies(combo)`), mas `properties.light` é um inteiro por bloco
 (`mod_content.rs:1345`). O Java dá luz por estado (`BlockStateHelper.applyLightLevelAdjustments`, `BlockStateHelper.java:83-94`).
-O pedido é aceitar em `light` a mesma condição de `random_ticks`.
+O pedido é aceitar em `light` a mesma condição de `random_ticks`. Elimina `active_light` (mekanism).
 
 ### H19 `looping_sound`
 
@@ -912,12 +964,53 @@ das linhas da lista (0,5) com `guiGraphics.item` sob uma matriz escalada; o Hori
 2 (448 acima de 3 níveis, máximo 199) e 665 em 3 nos 8 ícones de "Supported:", e 65 pixels em 3 no ícone da linha da lista. O pedido ao Horizon é
 um desenho de item em escala que amostre como o `GuiRenderer` do 26.x. Sem ele não há como zerar esses pixels pelo mod.
 
-### H22 escurecimento do mundo atrás de telas (correção, sem hook)
+### H22 fundo escurecido da tela de contêiner (correção)
 
-- **O que acontece:** os cantos transparentes do painel dão 72 px de diferença por estado (162 em escala 3). O mundo sai 2 a 3
-  níveis mais escuro: 10 a 11 no Horizon, contra 13 a 14 no original, depois do escurecimento.
-- **Mesma causa:** o tooltip de barra dá 12 px, e o rótulo "Inventory" sob um tooltip dá 4 px.
-- **Pedido:** que o renderer escureça o mundo atrás de telas como o original, sem o vazamento pelos cantos transparentes do painel.
+- **Original (provado no código):** `AbstractContainerScreen.isInGameUi()` é `true` (26.3, `AbstractContainerScreen.java:1225` do jar de fontes do
+  `minecraft-patched`), então `Screen.extractBackground` chama só `extractTransparentBackground`: `fillGradient(0, 0, width, height, 0xC0101010,
+  0xD0101010)`, um degradê de cima para baixo. Não há blur (`extractBlurredBackground` fica para tela que não é `isInGameUi`) nem
+  `inworld_menu_background`. Em pixel, o original com tela é uma função exata do mesmo mundo sem tela (sem espalhamento: um blur o espalharia), e o
+  preto do mundo sai 12 no topo e 13 embaixo (16 vezes a opacidade, 0,753 a 0,816).
+- **Horizon:** um retângulo fixo `rgba(16, 16, 16, 160)` (`Game::draw_inventory` e as outras telas de contêiner): o preto sai 10 e o mundo passa na proporção 0,373
+  (medido: `p = 0,376 w + 10,05`), contra 0,247 a 0,184 do original. Isso dava 72 pixels de diferença nos cantos transparentes do painel por estado (162 em
+  escala 3), 3 níveis por canal nos cantos e 4, 4, 8 e 12 no mundo dos controles de luz 4, 8, 12 e 15.
+- **Correção no mod:** as injeções `container_dim` e `container_dim_flag` (ficha acima) trocam esse retângulo pelo degradê do vanilla, só nas telas da `machinery_basis`. Antes dela, uma camada composta por cima
+  do retângulo (opacidade 86 a 129, `(1 - 160/255)(1 - a/255) = 1 - vanilla`) chegou a 1 nível, mas com o degrau do degradê em outra linha (no preto o
+  original passa de 12 para 13 na linha 244 do print e a camada na 509); foi descartada.
+- **Medido contra o original** (`controle_luz_*`, mesma vista, opções iguais): o degrau do degradê no preto cai na linha 253 (original 244); o mundo dos
+  controles de luz 4, 8, 12 e 15 dá 1 por canal; e, nos pixels em que o mundo sem tela é igual nos dois jogos (661.862 canais), o escurecimento dá
+  0 de diferença em 94,5 % deles e 1 nível nos outros 5,5 %. O 1 nível que sobra é o arredondamento do caminho de cor do Horizon (a mistura do `fill_gradient`
+  não cai no mesmo byte que a do original); não há o que o mod faça além do `fill_gradient` do próprio Horizon.
+- **Pedido:** que o renderer desenhe, no fundo de **toda** tela de contêiner (o inventário, o baú, a fornalha, o Creative, o livro, a placa, o beacon e as dos mods: no
+  original todas são `isInGameUi`), o degradê `0xC0101010` a `0xD0101010` com a mistura do original em vez do retângulo fixo `rgba(16, 16, 16, 160)` (ou que `NativeScreen`
+  tenha um campo que o suprima). Com isso o `container_dim` sai. Hoje o baú e a fornalha do vanilla ficam com o retângulo fixo (10 no preto, igual de cima a baixo).
+- **Causa do resto (hipótese, não provada):** o 1 nível que sobra em 5,5 % dos canais e o degrau na linha 253 contra a 244 vêm do caminho de cor do Horizon (o `fill_gradient`
+  mistura em outro arredondamento). Não foi localizado no código.
+- **Mesma causa:** o tooltip de barra dava 12 px, e o rótulo "Inventory" sob um tooltip dava 4 px.
+
+### H30 iluminação do mundo, mais clara no original (diferença sem causa provada)
+
+- **O que acontece:** com o mesmo mundo (uma caixa de `black_concrete` sem céu), a mesma vista (`tp x -60 0 0 0`, `look 0 0`) e o mesmo nível de luz, o original
+  sai mais claro, **sem tela aberta**. Brilho médio por canal (0 a 255) do print inteiro menos a mira, o hotbar e a mão, original contra port
+  (`controle_*_semtela`, guiScale 2): luz 0 (máquina parada) 2,25 contra 0,95 (maior diferença por pixel 17), luz 8 (fonte vanilla `minecraft:light`) 3,02 contra
+  1,65 (32), luz 15 5,31 contra 3,75 (109) e a máquina acesa (luz 8) 3,63 contra 2,26 (87). Na face da frente da máquina, que é clara, a diferença é de
+  2 % (luz 15: 27,26 contra 26,71); no chão escuro, de 1 a 1,5 nível: a diferença parece aditiva (um nível), não multiplicativa.
+- **Entradas conferidas nos dois jogos, iguais:** o mundo (`fill ... black_concrete hollow`, a caixa fechada, `sky` 0 em toda a caixa), a vista, o
+  `time set 6000` e `weather clear` (o roteiro do port os aplica como o `CenaTelas`; sem eles o port estava em 23576: o brilho não mudou, 0,97), a dimensão
+  (`overworld`), o `ambientLight` do `dimension_type` (0,0) e o `minecraft:visual/ambient_light_color` (`#0a0a0a` no `overworld.json` do jar do cliente
+  e no `data/minecraft/dimension_type/overworld.json` do Horizon), o `blockFactor` (1,4 mais o tremor, `LightmapRenderStateExtractor.java:56`, e
+  `1.4 + flicker` em `Gfx::update_lightmap`), o gamma (0,5, conferido em execução) e o `darknessEffectScale` (1,0), sem visão noturna nem chefe. As opções
+  gráficas (`cena_telas.OPCOES_DO_ORIGINAL`: preset `fancy`, `ao`, vinheta, filtragem de textura, distância, partículas) também são iguais.
+- **A fórmula do mapa de luz também:** `lightmap.fsh` do vanilla (`get_brightness`, `notGamma`, `parabolicMixFactor`) e `Gfx::update_lightmap` do Horizon
+  calculam o mesmo, a menos de o Horizon truncar o texel (`as u8`) onde a GPU arredonda.
+- **Não é a luz do port:** o `horizon-ctl light` dá 8, 7, 6, 5 ao longo do eixo da máquina, como a propagação do Java, e os controles usam uma fonte vanilla
+  (`minecraft:light` de nível 4, 8, 12 e 15) nos dois jogos, sem nenhum bloco do Mekanism emitindo, com a mesma diferença.
+- **Causa não localizada.** Sobram o shader do terreno e o caminho de cor do Horizon até o byte final, que não li até o fim. A hipótese que cabe nos
+  números (uma diferença de cerca de um nível no preto, mais alta no chão que na face clara) é de arredondamento ou truncamento na saída, mas é só
+  hipótese. Por isso o comparador não trata a diferença como ok: o relatório do lote a marca `NE` (não explicada), com o quanto ela chega.
+- **Efeito na comparação:** com tela, o fundo (H22) deixa passar só 0,2 do mundo, e o mundo atrás da tela dá 1 por canal nos controles de luz 4, 8, 12 e 15
+  (e 4, 4, 8 e 12 antes da correção do H22). A tabela `LIMITE_MUNDO_POR_LUZ` do comparador guarda o que se mediu, para a diferença não crescer sem ninguém ver.
+- **Pedido:** que a luz de bloco e de céu de uma caixa fechada saia do renderer com o mesmo brilho do vanilla, no byte, quando se achar onde ele perde o nível.
 
 ### H23 caixa do tooltip de item (correção, sem hook)
 
@@ -962,8 +1055,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=67 hook=55 target=12 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 29 tem de somar `hook`.
+   Hoje: `injection=71 hook=56 target=15 module=11 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 29 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 
@@ -973,9 +1066,6 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
   proíbe dependência de crate por caminho. Não testei um `[[crate]]` dependendo do de outro mod. Se for possível, os dois saem.
 - **`view_hit` e `camera` no lugar de `game.pick()` e `game.aim()`.** Existem no catálogo, mas não comparei o raio com o do
   spike do cabo.
-- **`properties.light` condicional.** Li `override_gameplay` e vi um inteiro, mas não rodei um bloco com `light` por estado no pin.
-  O plano registra injeção em `override_gameplay`: não achei no plano por que o campo comum não bastava, só que "em
-  `set_state_properties` não".
 - **O hook `item_model_property`** consta no catálogo do pin, mas a documentação ainda o chama de "pending hook". Usei o que o
   catálogo diz.
 - **Assinaturas e estruturas propostas** (`NativeScreenTooltip`, `NativeBlockFluid`, `NativeOutlineBox`, `SoundHandle`) são o que

@@ -6,6 +6,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O Heat Generator tem a aba de calor (`GuiHeatTab`, em (-26, 109)): o tooltip mostra `Temp`, `Transferred` e `Dissipated` (`lastTransferLoss` e
+  `lastEnvironmentLoss`, que `TileEntityHeatGenerator.simulate` guarda e o contêiner sincroniza como dois `SyncableDouble`, aqui oito data slots) e a
+  unidade; o clique esquerdo avança e o direito volta a unidade de temperatura do cliente (`MekanismConfig.local.tempUnit`: K, C, R, F e STP, nessa ordem,
+  gravada em `config/mekanism/local.toml`), e o sprite da aba segue a unidade (`tab/heat_info_<k|c|r|f|stp>`, os cinco PNG que faltavam). As conversões
+  (`UnitDisplayUtils.TemperatureUnit`, `MekanismUtils.getTemperatureDisplay`, `getDisplayBase` de femto a yotta) estão na `machinery_basis`
+  (`temperature`, `units`, `data_slots::split_f64`), conferidas contra o rastro do Java `temperature_units.jsonl` (230 combinações de display e 25 listas
+  de tooltip, repetidas por `heat_tab.rs`) e `heat_generator_*` (as duas perdas, tick a tick, bit a bit). O clique é o hook `screen_mouse_button_pressed_pre`
+  (sem som e sem pacote, como o `GuiHeatTab`). `lastTransferLoss` vale zero: o port não tem bloco com a capability de calor para a troca pela base.
+- O Heat Generator tem a aba e a janela de upgrades (o gerador aceita só o de silêncio, `AttributeUpgradeSupport.MUFFLING_ONLY`): dois slots virtuais no
+  menu (entrada e saída, com a regra do `UpgradeInventorySlot`), o `TileComponentUpgrade` refeito do NBT a cada tick (`upgrade::rebuild`,
+  `UpgradeTransient` para o `upgradeTicks` e o `canCheckUpgrades`, que o Java não salva), a remoção por pacote, o shift-clique e o
+  `ItemUpgrade.useOn`. Tudo o que não é do gerador foi para a `machinery_basis` (leitura e escrita do `component_upgrade`, os slots virtuais, o `useOn`, o
+  hook `window_viewers`), e as máquinas do Mekanism usam o mesmo código. Seis rastros do Java (`heat_generator_upgrades`, `_upgrade_slot`,
+  `_upgrade_slot_quick_move`, `_upgrade_window_install`, `_upgrade_remove_by_packet`, `_container_tracking`), repetidos por `upgrade_window.rs`.
+  O som do gerador não existe no port, então o silêncio só conta a contagem; os upgrades instalados não vão no item solto ao quebrar (como nas máquinas).
 - O clique do cursor, a tecla numérica e o arrasto num menu de máquina respeitam as regras do slot, como o `InventoryContainerSlot.mayPlace`
   do original (`isValidForInsertion(item, MANUAL)`): terra não entra mais no slot de infusão do Infuser, nem o item que não é receita na entrada,
   nem nada na saída, e o combustível do Heat Generator é o que queima. A regra olha o tanque e a entrada, então o mod a deixa pronta antes de cada
@@ -93,8 +108,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   `recipe_crafted` (`ServerPlayer.awardRecipes` e `triggerRecipeCrafted`), como o `awardUsedRecipesAndPopExperience` do original.
 - O comparador de telas conta como elementos do mod a aba de energia, a de calor, os slots de armadura e a aba de upgrades do Heat Generator,
   que antes ficavam escondidos no mundo atrás da tela, e dá tolerância de 16 níveis por canal só ao tooltip.
+- O comparador de telas ganhou tetos medidos, e não tem mais limite fixo para o mundo: a barra de químico e o medidor de lava valem só até o que o lote mediu
+  (um nível por canal e os pixels do pior ciclo), sem o "pior custo do próprio ciclo"; o ícone da lista de upgrades em guiScale 3 só vale se o mesmo estado deu o
+  ícone idêntico em guiScale 2; o mundo atrás da tela tem o limite do nível de luz do bloco (0, 8 ou 13) e, dentro dele, sai no relatório como `NE` (não
+  explicado, H30), não como `ok`; as partículas da máquina acesa saem como diferença conhecida e contada (`Machine.java:23`), com a causa. Os controles da luz
+  (`minecraft:light` de nível 4, 8, 12 e 15, com e sem tela) e as opções gráficas do original aplicadas ao Horizon (`OPCOES_DO_ORIGINAL`, conferidas com
+  `options-get`) fazem parte do roteiro. O medidor de lava dos casos de tela se explica pelo ciclo do mesmo nível, com o cursor ou sem ele (`generator_lava_ciclo`,
+  `generator_fase_lava_1000`, `generator_fase_lava_hover`): 0 pixel e 0 níveis, e esses casos têm a energia cheia, para a lava não baixar (a lava queimando segue no caso
+  `generator_queima` e no rastro `heat_generator_lava_run`). Os slots de armadura do Heat Generator seguem `DIF`, com a causa "não portado" no relatório. As partículas do
+  caso anterior de um caso aceso também são diferença conhecida. 58 mutações do comparador, todas pegas por testes (`telas-tools/mut_py6.py`).
+- Injeção crua `container_dim` (`machinery_basis`): o fundo escurecido das telas de contêiner é o degradê do original (`0xC0101010` a `0xD0101010`), no
+  lugar do retângulo fixo do Horizon (H22 em `docs/injecoes-horizon.md`).
 
 ### Changed
+
+- O bloco aceso das quatro máquinas emite luz 8, como `Attributes.ACTIVE_LIGHT` (`Machine.java:26`), e não 13 do gabarito `minecraft:furnace`; o Heat Generator
+  segue em 13 (`ACTIVE_MELT_LIGHT`) e apagado emite 0. Injeção crua `active_light` (`properties.light` é um inteiro por bloco, H18).
 
 - A capacidade de energia de uma máquina depende de como ela chegou ao mundo, como no original: 1.000 (1.600 no Crusher) se um jogador a põe
   (`applyImplicitComponents` recalcula os upgrades), 20 (32) se vem de `setblock` ou de uma estrutura, e 20 de novo se o tile é lido do disco sem upgrade
@@ -124,6 +153,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O roteiro de comparação de telas do port virava o jogador para a máquina (`interact` põe inclinação 20 e giro -9), e o mundo atrás da tela era outra vista
+  que a do original (a máquina ficava atrás do painel): o roteiro volta a `look 0 0` depois de abrir a tela, e aplica as entradas da luz do original
+  (`time set 6000`, `weather clear`).
+- O tooltip de uma linha da lista da janela de upgrades quebra a descrição em 170 pixels e usa o espaçamento de um `Tooltip.create`, como o original
+  (`GuiUpgradeScrollList.updateTooltip`): antes saía numa linha só, mais larga que a caixa do original, e com a folga de título de um tooltip de item.
 - O item solto de uma máquina quebrada pelo jogador leva o nome dela: o Horizon tira o tile do mundo antes de rolar a tabela de loot, e o
   nome é guardado em `destroy_block`, antes disso. Medido em jogo: sem isso o `copy_name` não achava o tile e o item saía sem nome.
 - O hopper levava para a entrada da máquina o item do mesmo id mesmo com componentes diferentes (somava `clay` de nome B à pilha de

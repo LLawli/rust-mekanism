@@ -115,7 +115,9 @@ do Mekanism servem de ponto de partida.
 
 Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo.
 
-**Fase 1, base de tile.** Porte de `TileEntityMekanism`, `TileEntityConfigurableMachine`, `TileEntityRecipeMachine`,
+**Fase 1, base de tile.** *Estado (2026-11-07): em andamento. Feitos nas quatro máquinas e no Heat Generator: a base de tile, o `CachedRecipe` com erros e avisos na tela, upgrades,
+redstone, comparador, nome, som, luz, experiência, o clique do cursor, a capacidade de energia, o hopper e o ejetor (este só por comando). Falta o que está em "Falta na Fase 1" abaixo.*
+Porte de `TileEntityMekanism`, `TileEntityConfigurableMachine`, `TileEntityRecipeMachine`,
 `TileEntityProgressMachine` e `CapabilityTileEntity`: ordem do tick, `setActive` com seu atraso, controle de redstone, nome,
 comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui `CachedRecipe` completo, com `OperationTracker`,
 `pausedForErrors`, `recheckAllErrors`, erros e avisos da tela, e `usedSoFar` para `per_tick_usage`.
@@ -448,27 +450,61 @@ tick, e a diferença parecia ser de 19 vezes.
 contém `NOT_ENOUGH_ENERGY_REDUCED_RATE`. Com a máquina sem sinal no modo HIGH, ligar o sinal depois disso não a faz andar: só um
 listener despausa (`chamber_paused`, tick 35). PULSE também não existe na Enrichment Chamber: `supportsMode` recusa e cai em DISABLED.
 
-**Fase 2, lados coloridos.** Porte de `TileComponentConfig`, `ConfigInfo`, `DataType`, `ISlotInfo`, `TransmissionType` e
+**Fase 2, lados coloridos.** *Estado (2026-11-07): aberta. Adiantado: a regra por slot (`slot_accepts`, o `isValid` do `ResourceHandler`) e o ejetor sobre ela; falta o resto.*
+Porte de `TileComponentConfig`, `ConfigInfo`, `DataType`, `ISlotInfo`, `TransmissionType` e
 `TileComponentEjector`: por instância, por tipo de transmissão, com as cores, salvo no NBT, `AttachedSideConfig` como padrão.
 Tela de lados, Configurator e os slots por `DataType` (`INPUT_1`, `INPUT_2`, `EXTRA`). Substitui `Sides`, `FaceSlots` e o
 `machinery_basis/energy` atual.
 
-**Fase 3, rede de transmissores.** Porte de `TransmitterNetworkRegistry`, `OrphanPathFinder`, `DynamicNetwork`,
+**Fase 3, rede de transmissores.** *Estado (2026-11-07): aberta. Adiantado: um cabo de energia simplificado (buffer só nos cabos de entrada, ver o inventário); falta o resto.*
+Porte de `TransmitterNetworkRegistry`, `OrphanPathFinder`, `DynamicNetwork`,
 `DynamicBufferedNetwork`, `Transmitter`, `BufferedTransmitter`, `AcceptorCache`, `NetworkAcceptorCache`, `EnergyNetwork`,
 `UniversalCable`, `Target` e `SplitInfo`: buffer somado, save shares, fusão e divisão de rede, chunks, `ConnectionType`, pull,
 redstone reativo, upgrade de tier no lugar, `currentScale` e `PacketNetworkScale`. Substitui `network.rs`, `transmit_energy` e o
 cache de 20 ticks. A base genérica já precisa servir fluido, químico, item e calor.
 
-**Fase 4, visual do cabo.** Modelo original com todas as partes, textura com recorte (não a `opaque/`), `hideContiguousJoin`,
+**Fase 4, visual do cabo.** *Estado (2026-11-07): aberta. Adiantado: um modelo de cabo em JSON aproximado; falta o resto.*
+Modelo original com todas as partes, textura com recorte (não a `opaque/`), `hideContiguousJoin`,
 conteúdo `mek_liquid/energy` animado com alfa pela escala, opção `opaqueTransmitters`, forma de seleção e colisão por lado
 (`BlockSmallTransmitter`: `SIDES`, `CENTER`, flanges).
 
-**Fase 5, refazer os blocos prontos sobre a base.** Heat Generator, Metallurgic Infuser, Enrichment Chamber, Crusher,
+**Fase 5, refazer os blocos prontos sobre a base.** *Estado (2026-11-07): em andamento (as frentes de tela, upgrades e abas). Já saiu: as telas das quatro máquinas e do Heat Generator
+com os sprites e widgets do original, comparadas em pixel contra o original (`dev/referencia/comparar_lote.py`, 129 estados em guiScale 2 e 3; ver "Tetos dos resíduos"); upgrades (aba
+e janela, nas cinco); aba de XP, de energia e de avisos nas máquinas e de energia, de calor e de upgrades no gerador; som das quatro máquinas; luz do bloco aceso (8 e 13); nome com estilo;
+o fundo escurecido das telas (injeção `container_dim`); o tooltip da lista de upgrades. Falta: as partículas das máquinas e do gerador; os slots de armadura e de mão do gerador; as abas de
+configuração, segurança, redstone e livro de receitas; o slot de energia funcional e a transferência de calor do gerador; o som do gerador; o conteúdo guardado no item; a remoção
+da bateria `mek_teste`; o Steel Casing não foi revisado nesta frente.* Heat Generator, Metallurgic Infuser, Enrichment Chamber, Crusher,
 Energized Smelter e Steel Casing, um a um, conferindo o inventário. Telas com os sprites e widgets originais, energia em slot,
 upgrades, conteúdo guardado no item, som, partículas e luz. Sai a bateria de teste `mek_teste` do build.
 
-**Fase 6, seguir a cadeia com paridade.** Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
+**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
 fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
+
+### Tetos dos resíduos do comparador de telas (2026-11-07)
+
+`dev/referencia/comparar_lote.py` compara, em guiScale 2 e 3, os 129 estados de `cena_telas.py` entre o original (`CenaTelas.java`, no `mekanism-ref`) e o port
+(`horizon`), pixel a pixel, sem tolerância fora do tooltip. O que o Horizon desenha diferente de verdade (H22 a H26, H30) é resíduo, mas **só até o teto medido**:
+passar dele é diferença de verdade. Cada teto tem teste (`test_comparar_tela.py`) e mutação (`telas-tools/mut_py6.py`).
+
+| Resíduo | Teto (guiScale 2 / 3) | De onde vem |
+|---|---|---|
+| Barra de químico do Infuser (`barra_quimico_fase`, H26) | 192 px e 1 nível / 342 px e 1 nível | O pior print de cada ciclo do original contra o quadro mais próximo do port: carbono 0 / 0, fungi 60 / 99, bio 104 / 162, bio 800 108 / 270, bio 1000 192 / 342. Os casos sem ciclo (tanque parado) deram de 0 a 54 px e 1 nível (`infuser_operacao_10` 0 / 90, `aba_energia_hover_ativa` 28 / 27, `aba_energia_hover_velocidade` 16 / 0). Sem o "pior custo do próprio ciclo" que antes alargava o teto: um nível ou uma cor errados passam de 1 nível |
+| Medidor de lava (`medidor_lava_fase`) | 0 px e 0 níveis / 0 e 0 | Os ciclos a 500 e a 1000 mB e com o cursor no medidor (`generator_lava_ciclo`, `_fase_lava_1000`, `_fase_lava_hover`): 40 de 40 prints do original idênticos a um quadro do port, nas duas escalas; e os casos de medidor parado (`generator_lava_meio`, `_lava_cheia`, `_hover_barra`, `_hover_medidor`) idênticos ao ciclo do mesmo nível |
+| Ícone de cada linha da lista de upgrades (`janela_lista_icone_*`, H25) | 0 px / 107 px e 206 níveis | Em guiScale 2 todos os estados com a janela dão 0. Em guiScale 3 o pior é 107 de 576 pixels, e só vale se o mesmo estado deu 0 em guiScale 2: sem isso, um ícone trocado aparece |
+| Cantos do tooltip de item (`tooltip_canto_*`, H23) | 6 px e 72 níveis / 21 px e 72 níveis | `chamber_hover_slot_item` |
+| Mundo atrás da tela (`mundo_atras`, os cantos transparentes e a sombra da janela) | 1 nível por canal, por nível de luz do bloco: 0, 8 e 13 | Depois da injeção `container_dim` (H22): os controles com fonte vanilla `minecraft:light` de nível 4, 8, 12 e 15 deram 1 por canal (antes 4, 4, 8 e 12), e o lote inteiro dá no máximo 1. **Sem causa provada** (H30, e o resto do escurecimento, H22): o relatório marca o estado `NE` (não explicado), nunca `ok` |
+
+Fora dos tetos, o relatório separa o que sobra: **diferença conhecida** (`particulas_da_maquina`: a fumaça e a poeira de redstone de `Machine.java:23`, que o port não solta,
+na caixa onde caem, no estado aceso e no caso logo depois de um aceso, porque o original roda os casos em sequência no mesmo lugar e as partículas ainda estão no ar) e
+**não portado** (`slots_armadura`, ver o inventário abaixo), que seguem `DIF` com a causa na linha. O mundo atrás da janela de upgrades do gerador, onde a coluna de armadura
+passa por baixo da sombra, conta como `slots_armadura`.
+
+Provas das diferenças que o lote achou (2026-11-07): o `tooltip` de `chamber_aba_hover_lista` (9602 px em guiScale 2, 21603 em 3) era do port: `GuiUpgradeScrollList` usa
+`TooltipUtils.create`, que é `Tooltip.create` (quebra em 170 pixels, sem a folga do título), e o port desenhava a descrição numa linha com o espaçamento de tooltip de item
+(corrigido em `windows.rs`, 0 pixel depois); `alem_janela_fundo` (1164 e 2619) é a coluna de armadura sob a sombra da janela (a contagem dos pixels diferentes na interseção dá
+exatamente esses números); `alem_mundo_atras` em `crusher_aba_energia` (713), `smelter_aba_energia` (226) e `generator_aba_energia` (180) são partículas da máquina do caso anterior
+(os três casos têm energia 0 e vêm logo depois de um caso aceso). O nível da lava queimando continua coberto: o caso de tela `generator_queima` (lava a 500, energia 0, 100 passos)
+dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_run` do Java tick a tick (300 ticks).
 
 ## Inventário do que diverge hoje
 
@@ -493,8 +529,22 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
   **Como:** `menu_slot_rules` v1 (o hook do Horizon, H20) não tem o `Game` nem a posição, e as regras do Infuser olham o tanque e a entrada, então a regra do
   bloco aberto é deixada em `slot_rules` (núcleo) antes de cada clique, e o crate `[api]` da `machinery_basis` responde ao hook com ela. Regra de
   inserção: `rules::slot_accepts` (`runtime.rs`), a mesma do hopper e do shift-click. Em jogo (`horizon2`, `h2_cursor.py`, o menu e os cliques de verdade): 311 casos, 0 diferenças contra as linhas do Java (slot, cursor, barra e slot do arrasto): Enrichment Chamber 56, Crusher 56, Energized Smelter 21 (os cliques do jogador com o slot vazio), Metallurgic Infuser 114 (tanque vazio, bio e fungi, com e sem terra na entrada: a terra deixa de entrar no slot de infusão, e o `bio_fuel` e a `redstone` entram só onde o Java os aceita) e Heat Generator 64 (combustível e energia, com o tanque vazio e cheio de lava, servidor parado). Clique esquerdo, direito, tecla numérica (o cursor sobre o slot e `key 1`) e arrasto para o primeiro slot do inventário, com o slot vazio, com outro item e com o mesmo. O que ficou de fora: baldes empilhados (o Java pôs 3 numa pilha de 1), o clique duplo (`PICKUP_ALL`), o Q e o clique do meio, que o rastro não cobre, e o convidado de LAN (o clique segue o mesmo `lan_machine_click`).
-- Sem upgrades, controle de redstone, comparador, som, partículas, abas, nome do químico no tooltip.
-- Luz 13 em vez de 8. Conteúdo solto ao quebrar, em vez de guardado no item.
+- Feito (2026-11-05 a 2026-11-07): upgrades (aba e janela, 2026-11-06), a aba de XP, a de energia e a de avisos, o controle de redstone e o comparador do tile, o som, o nome com
+  estilo, a luz e o tooltip da barra de químico com o nome do químico (`infuser_hover_barra_quimico`, 0 pixel contra o original). **Falta**: as partículas (abaixo); a aba de
+  configuração de itens e a de transporte (à esquerda, Fase 2), a de segurança, a de redstone e o livro de receitas (à direita): a cena do original as oculta e o port não as tem.
+- Conteúdo solto ao quebrar, em vez de guardado no item.
+- Luz do bloco aceso (feito, 2026-11-07): `Attributes.ACTIVE_LIGHT` é 8 nas quatro máquinas (`Machine.java:26`, `AttributeStateActive.java:49-51`) e 0 apagadas; o port herdava 13 do
+  gabarito `minecraft:furnace` aceso, porque `properties.light` do Horizon é um inteiro por bloco. A injeção `active_light` troca a emissão dos estados acesos dessas quatro por 8; o
+  Heat Generator segue em 13 (`ACTIVE_MELT_LIGHT`). Em jogo, `horizon-ctl light`: máquina acesa 8, vizinhos 7, 6, 5 (a propagação do Java), apagada 0. O mundo atrás da tela com a máquina
+  acesa deixou de precisar de um limite à parte (era 16): vale o limite do nível de luz (`LIMITE_MUNDO_POR_LUZ`).
+- **Partículas da máquina acesa (aberta, não portada).** `Machine.java:23` registra um `AttributeParticleFX` com duas partículas, `ParticleTypes.SMOKE`
+  e `DustParticleOptions.REDSTONE`, ambas em `(rand * 0,6 - 0,3, rand * 6/16, 0,52)` relativo ao centro do bloco (a face da frente, girada pelo `facing`:
+  `yRot(PI)` para norte). `BlockTile.animateTick` (`BlockTile.java:80-103`) as solta com `world.addParticle(type, x, y, z, 0, 0, 0)` a cada chamada de
+  `animateTick` (o cliente sorteia posições em volta do jogador a cada tick), só com `Attribute.isActive(state)` e `machineEffects` ligado
+  (`MekanismConfig.client.machineEffects`). Valem as quatro máquinas, e o Heat Generator tem as dele (`GeneratorsBlockTypes.java:69`: `SMOKE` e `FLAME`, em `z = -0,52`). Nenhuma está no port. O catálogo de hooks do Horizon (pin) não tem `animateTick`; só o helper
+  `send_particles` (`native_level_send_particles`, `host_bridge`), que pede a partícula pelo servidor. Um caminho seria o tick do bloco chamar esse helper, o que muda
+  quem sorteia (o servidor, não o cliente, e sem `machineEffects`); não decidido. No comparador elas aparecem como `particulas_da_maquina`, diferença conhecida contada à parte
+  (`comparar_lote.DIFERENCAS_CONHECIDAS`, `CAIXA_DAS_PARTICULAS`), nunca como resíduo do Horizon.
 - Barras desenhadas com retângulo, não com os sprites do Mekanism.
 - `bio_fuel` sem tempo de queima. Tags `c:` escritas à mão: conferir com o NeoForge da versão.
 
@@ -509,13 +559,48 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
   bioma de cada vizinho (262,5, 280 e 330 K com `fillbiome` em baixo, sul e leste); `lava_faces` conta as faces com lava.
 - A barra de energia: o "58→66 contra 60" não se reproduz. Com a mesma cena nos dois jogos (`generator_queima`, energia 0, lava 500, 100
   passos) o servidor do original e o `MEKTRACE` do port dão energia 20, lava 0 e temperatura 300,3102685960236, e em `generator_lava_meio`,
-  `generator_lava_cheia` e `generator_hover_barra` (energia 120) a barra tem 0 pixel de diferença em escala 2 e 3. Os números antigos vinham
+  `generator_lava_cheia` e `generator_hover_barra` a barra tem 0 pixel de diferença em escala 2 e 3. Os números antigos vinham
   de uma cena em que o gerador queimava lava durante o print, com a energia subindo 1 a 3 por tick, então o que mudava era quantos
-  ticks passavam entre montar o estado e o print, não a regra. Sobra o medidor de lava (fase da animação em prints únicos).
+  ticks passavam entre montar o estado e o print, não a regra. O medidor de lava fecha (2026-11-07): 0 pixel e 0 níveis contra o ciclo do mesmo nível (`CICLO_DA_LAVA`), em
+  guiScale 2 e 3. Esses quatro casos agora têm a energia cheia (com 120 a lava baixava e o nível do print deixava de ser o do ciclo); o gerador queimando segue em
+  `generator_queima` (0 pixel no medidor) e no rastro `heat_generator_lava_run`.
 - Lava dentro do bloco desenhada pela block entity; entidade ali dentro não conta como dentro de lava.
-- Sem slot de energia funcional, transferência de calor pela base, som, partículas e abas (energia, calor e a que guarda os slots de
-  armadura). A tela tem o medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java.
+- Feito (2026-11-07): as abas de energia, de calor (com a unidade de temperatura e as conversões) e de upgrades, o nome com estilo, o som de queima não (abaixo). A tela tem o
+  medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java. **Falta**: o slot de energia funcional (o item não converte), a
+  transferência de calor pela base (`lastTransferLoss` vale 0), o som (`GeneratorsSounds.HEAT_GENERATOR` não existe no port), as partículas (`SMOKE` e `FLAME`, abaixo) e os
+  slots de armadura (abaixo).
 - Tanque de lava não recebe de cano.
+- **Slots de armadura e de mão do Heat Generator (aberta, não portada; base da próxima frente).** O comparador os mostra como `slots_armadura`, diferença de verdade
+  (`DIF`, com a causa "não portado" no relatório, sem regra que a esconda: 3772 pixels em guiScale 2 com a janela de upgrades aberta (a sombra dela cobre parte da coluna) e 6480 sem ela). **Java** (lido,
+  sem rastro ainda): `GeneratorsContainerTypes.java:29` registra o gerador com `.armorSideBar(-20, 11, 0)` (o mesmo nos geradores bio, a gás, solar e eólico), que chama
+  `MekanismContainer.addArmorSlots(inv, -20, 11, 0)` (`MekanismContainer.java:231`): quatro `ArmorSlot` em `(-20, 11 + 18 i)` com `EquipmentSlot.VALUES.get(2 + 4 - i - 1)`
+  (cabeça em cima, pés embaixo) sobre os índices 36 a 39 do inventário do jogador, e um `OffhandSlot` em `(-20, 11 + 72 + 0)` (índice `SLOT_OFFHAND`). `ArmorSlot.java`:
+  `mayPlace` é `stack.canEquip(slotType, player)`, `getMaxStackSize` 1, `mayPickup` recusa o que tem `PREVENT_ARMOR_CHANGE` fora do criativo, `setByPlayer` chama
+  `player.onEquipItem`, e o fundo vazio é `InventoryMenu.EMPTY_ARMOR_SLOT_{BOOTS,LEGGINGS,CHESTPLATE,HELMET}` (o do mão, `EMPTY_ARMOR_SLOT_SHIELD`). `OffhandSlot` aceita
+  qualquer item. `GuiHeatGenerator.java:35` ainda põe o suporte `GuiSideHolder.create(this, -26, 6, 98, true, true, TAB_ARMOR_SLOTS)`, que a cena do original oculta.
+  `quickMoveStack` (`MekanismContainer.java:278-330`): do slot do tile, tenta armadura, barra de atalhos e inventário principal (armadura só nos que já têm item, depois nos
+  vazios); do inventário ou da barra, tenta o tile (empilhar, depois vazio), e então a armadura (só vazios) e o outro grupo; de um slot de armadura ou de mão, o tile e depois
+  todo o inventário. **No Horizon**: `slot_position` (`game.rs:9270`) fixa 500 a 503 (armadura) em `(8, 8 + 18 i)` e 504 (escudo) em `(77, 62)`, e a lista de slots ativos
+  de uma tela de mod só traz os do contêiner (300 e acima) e o inventário (0 a 35); `native_screen` só descreve os do contêiner. Opções: (a) injeção em `slot_position` (RETURN)
+  e na lista de slots ativos de `draw_inventory_slots`/`slot_at` para 500 a 504 na tela de máquina, e o clique e o shift-clique do menu de mod tratarem esses índices; (b) slots
+  virtuais pelo caminho da janela de upgrades (`window_slot_at`, `window_draw_slots`), apoiados no `armor` e na mão do `Game`, com a regra na `machinery_basis`
+  (`quick_move::Region::Armor` e `Offhand` já existem no modelo, e o glue devolve `Vec::new()`). Falta o rastro do Java (colocar um capacete no slot de botas tem de recusar; o shift-clique
+  de uma armadura do inventário vai para o slot certo; a mão aceita qualquer item) e o mesmo repetido em Rust.
+
+## Comportamento do original que parece bug e fica
+
+1:1 inclui os bugs: o que o original faz e parece erro é portado igual, com teste de referência contra o Java, e registrado aqui com a linha do Java. Nesta frente (telas, upgrades,
+abas, luz e o comparador) o que pareceu estranho no original foi conferido e o port o reproduz, nada foi "corrigido":
+
+- O blur do menu (`Screen.extractBlurredBackground`) existe mas não roda numa tela de contêiner: `AbstractContainerScreen.isInGameUi()` é `true` (jar de fontes do 26.3,
+  `AbstractContainerScreen.java:1225`), então o fundo é só o degradê `0xC0101010` a `0xD0101010` (`Screen.java:435-437`). O port faz o mesmo (`container_dim`), sem blur.
+- O tooltip de uma linha da lista de upgrades (`GuiUpgradeScrollList.java:80`) guarda o `Tooltip` por upgrade em `tooltips.computeIfAbsent`, quebrado em 170 pixels uma vez; o port
+  quebra no mesmo ponto, e a caixa tem as duas linhas a 10 pixels, sem a folga de título.
+- A lista de upgrades com mais de um tipo instalado é ordenada por hash de identidade no original (a ordem muda de uma execução para outra); o comparador só compara a lista
+  com um tipo (casos `_um_`). A sincronização do mapa (`SyncableStreamCodec.upgradeMap`) o troca por um `Object2IntOpenHashMap` novo no cliente, de ordem de hash, e o `CenaTelas`
+  refaz a ordem (`orderClientUpgrades`) antes de cada clique e de cada quadro só para a imagem ser repetível.
+
+Quando uma frente achar outro, entra aqui, com a linha do Java e o teste que o prova.
 
 ## Pronto significa
 

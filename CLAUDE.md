@@ -9,6 +9,10 @@ Este projeto é um port do Mekanism e do Mekanism Generators: o comportamento te
   otimizações, que são parte do comportamento.
 - Não existe versão simplificada nem diferença aceitável por conveniência. Medir serve para confirmar paridade, não para
   escolher outro caminho.
+- 1:1 inclui os bugs. Um comportamento do original que parece erro (uma pausa que não volta, um modo que cai em outro, um
+  arredondamento torto, uma ordem estranha no tick) é portado igual, com teste de referência contra o Java, e não corrigido.
+  Registre-o em "Comportamento do original que parece bug e fica", em [docs/plano-paridade.md](docs/plano-paridade.md), com a
+  linha do Java, para ninguém "consertar" depois.
 - Se o Horizon não permitir algo, tente primeiro uma injeção no jogo. Se nem isso der, pare e pergunte ao usuário. Nunca
   troque por uma aproximação sem autorização, e nunca diga que algo é igual ao original sem ter comparado com o código dele.
 - Toda injeção crua (`target = ...`, `[[module]]`, ou hook que dependa de estrutura privada) criada, alterada ou removida atualiza
@@ -16,6 +20,19 @@ Este projeto é um port do Mekanism e do Mekanism Generators: o comportamento te
   que será aberta no Horizon só ao final do port: ele tem de estar sempre em dia, e a contagem dele tem de bater com os
   `horizon-mixin.toml`.
 - O plano e o inventário do que ainda diverge estão em [docs/plano-paridade.md](docs/plano-paridade.md).
+
+## Plano em dia
+
+[docs/plano-paridade.md](docs/plano-paridade.md) reflete sempre o estado real, e é atualizado no mesmo change que o altera.
+
+- O change que porta, corrige ou descobre algo atualiza o inventário: tira, ou marca como feito com a data, o que deixou de divergir;
+  acrescenta a divergência nova com a causa; e corrige a linha que ficou velha. Uma linha que diz "sem X" quando X já existe é um erro do plano.
+- O trabalho não segue a ordem das fases: parte de uma fase posterior pode sair antes, junto de outra frente (upgrades, abas, luz, som, telas).
+  Quando isso acontecer, registre na fase a que a parte pertence o que já está feito e o que falta dela, para a fase não ser refeita nem dada como
+  intocada.
+- O estado de cada fase (aberta, em andamento, fechada, com a data) fica no começo dela. Uma fase só fecha quando tudo dela cumpre "Pronto significa".
+- Decisões do usuário sobre o plano entram em "Decisões", com a data e o motivo.
+- Antes de integrar uma frente, releia as linhas do inventário que ela toca e confira cada uma contra o código.
 
 ## Testes
 
