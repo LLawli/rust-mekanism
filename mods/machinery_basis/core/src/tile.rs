@@ -14,6 +14,7 @@ use crate::containers::{
 };
 use crate::ejector::{EjectGroup, ItemEjector};
 use crate::energy_conversion::{EnergyConversionCache, fill_container_or_convert};
+use crate::experience::ExperienceDrop;
 use crate::item_chemical_constant_recipe::{
     ChemicalUsageMultiplier, ItemChemicalConstantUsageRecipe,
 };
@@ -21,7 +22,7 @@ use crate::item_handler::ItemCapabilities;
 use crate::operation_tracker::{RecipeError, RecipeErrors};
 use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler};
 use crate::recipe_monitor::{
-    MonitorFlags, RecipeCacheLookupMonitor, RecipeId, RecipeLookupHandler,
+    Awarded, MonitorFlags, RecipeCacheLookupMonitor, RecipeId, RecipeLookupHandler, UsedHandle,
 };
 use crate::transaction::Callback;
 use crate::two_input_recipe::{
@@ -150,6 +151,8 @@ pub struct SavedState {
     pub recipes_used: std::collections::BTreeMap<String, i32>,
     pub last_recipe_used: Option<String>,
     pub last_recipe_amount: i32,
+    /// `RecipeCacheLookupMonitor.hadContainment` (`HAS_CONTAINMENT`).
+    pub had_containment: bool,
     /// `ConfigInfo.isEjecting` dos itens.
     pub ejecting: bool,
     /// `TileComponentUpgrade.serialize`: os upgrades instalados e os dois slots.
@@ -338,6 +341,10 @@ pub struct UpgradeConfig {
     pub max_upgrade_multiplier: f64,
     pub speed: Rc<str>,
     pub energy: Rc<str>,
+    /// `UpgradeIds.XP_CONTAINMENT`.
+    pub xp_containment: Rc<str>,
+    /// `UpgradeIds.MUFFLING`.
+    pub muffling: Rc<str>,
     pub data: Rc<UpgradeData>,
 }
 
@@ -396,9 +403,25 @@ struct Shared {
     tracked_errors: RefCell<Vec<bool>>,
     players_using: Cell<u32>,
     game_time: Cell<u64>,
+    flags: Rc<MonitorFlags>,
+    /// `recipesUsed`, a última receita e `hadContainment`, que o `recalculateUpgrades` mexe por fora do monitor.
+    used: UsedHandle,
+    /// `RecipeHolder.value().experience()` de cada receita, por id; `None` se a receita sumiu. Quem entrega as receitas põe.
+    experience: RefCell<ExperienceLookup>,
+    /// A experiência que o tile soltou fora de um tick (um upgrade tirado), à espera de o jogo criar as bolas.
+    pending_drops: RefCell<Vec<ExperienceDrop>>,
 }
 
+/// O que o tile sabe da experiência de cada receita.
+pub type ExperienceLookup = Rc<dyn Fn(&str) -> Option<f32>>;
+
 impl Shared {
+    /// `hasXpContainment` no servidor: sem o tipo no registro vale sempre, senão é ter ao menos um instalado.
+    fn has_xp_containment(&self, upgrades: &UpgradeComponent) -> bool {
+        let xp = &*self.upgrade_config.xp_containment;
+        upgrades.data().max(xp).is_none() || upgrades.get_upgrades(xp) > 0
+    }
+
     /// `shouldRecheckAllErrors`.
     fn recheck_all_errors(&self) -> bool {
         self.players_using.get() > 0
@@ -657,6 +680,7 @@ struct Parts {
 
 impl Parts {
     fn new(config: &MachineConfig, energy_conversion: Rc<EnergyConversionCache>) -> Self {
+        let flags = MonitorFlags::new();
         let shared = Rc::new(Shared {
             tile: RefCell::new(TileBase::new(config.deactivation_delay)),
             upgrade_config: config.upgrades.clone(),
@@ -671,8 +695,11 @@ impl Parts {
             tracked_error_kinds: config.tracked_errors.clone(),
             players_using: Cell::new(0),
             game_time: Cell::new(0),
+            flags: flags.clone(),
+            used: UsedHandle::default(),
+            experience: RefCell::new(Rc::new(|_: &str| None)),
+            pending_drops: RefCell::new(Vec::new()),
         });
-        let flags = MonitorFlags::new();
         // Os listeners do `TileEntityRecipeMachine`: o do monitor, o de salvar, e os que despausam.
         let tile_changed: Callback = {
             let shared = shared.clone();
@@ -797,7 +824,12 @@ impl ProgressMachine {
             output: parts.output.clone(),
             recipes,
         });
-        let monitor = RecipeCacheLookupMonitor::new(lookup.clone(), parts.flags.clone(), true);
+        let monitor = RecipeCacheLookupMonitor::sharing(
+            lookup.clone(),
+            parts.flags.clone(),
+            parts.shared.used.clone(),
+            true,
+        );
         // `getInitialInventory`: entrada, saída e energia.
         let inventory_slots = vec![
             input.clone(),
@@ -881,7 +913,12 @@ impl ProgressMachine {
             tank: tank.clone(),
             recipes,
         };
-        let monitor = RecipeCacheLookupMonitor::new(Rc::new(lookup), parts.flags.clone(), true);
+        let monitor = RecipeCacheLookupMonitor::sharing(
+            Rc::new(lookup),
+            parts.flags.clone(),
+            parts.shared.used.clone(),
+            true,
+        );
         // `getInitialInventory`: infusão, entrada, saída e energia.
         let inventory_slots = vec![
             infusion_slot.clone(),
@@ -1001,6 +1038,7 @@ impl ProgressMachine {
             recipes_used: Default::default(),
             last_recipe_used: None,
             last_recipe_amount: 0,
+            had_containment: self.shared.used.had_containment(),
             ejecting: self.ejector.is_ejecting(),
             upgrades: UpgradeSaved::default(),
         }
@@ -1033,7 +1071,76 @@ impl ProgressMachine {
             saved.last_recipe_used.clone(),
             saved.last_recipe_amount,
         );
+        self.shared.used.set_had_containment(saved.had_containment);
         self.ejector.set_ejecting(saved.ejecting);
+    }
+
+    /// `resetLastRecipe`: o resultado foi tirado e a próxima receita recomeça a contagem.
+    pub fn reset_last_recipe(&self) -> bool {
+        self.shared.flags.reset_last_recipe()
+    }
+
+    /// `hasXpContainment()` no servidor.
+    pub fn has_xp_containment(&self) -> bool {
+        self.shared.has_xp_containment(&self.upgrades)
+    }
+
+    /// Quem entrega as receitas diz quanta experiência cada uma dá (`MekanismRecipe.experience`, ou a do `SmeltingRecipe`).
+    pub fn set_experience_lookup(&self, lookup: ExperienceLookup) {
+        *self.shared.experience.borrow_mut() = lookup;
+    }
+
+    /// `getVolumeFactor`: 1 menos a parte dos upgrades de silêncio instalados. Sem o tipo, 1.
+    pub fn volume_factor(&self) -> f32 {
+        crate::sound::volume_factor(self.muffling())
+    }
+
+    /// `isFullyMuffled`.
+    pub fn is_fully_muffled(&self) -> bool {
+        crate::sound::fully_muffled(self.muffling())
+    }
+
+    /// Os upgrades de silêncio instalados e o máximo, se a máquina os aceita (`supportsUpgrade(mufflingUpgrade)`).
+    fn muffling(&self) -> Option<(i32, i32)> {
+        let muffling = &*self.shared.upgrade_config.muffling;
+        let data = self.upgrades.data();
+        if !data.supports(muffling) {
+            return None;
+        }
+        Some((self.upgrades.get_upgrades(muffling), data.max(muffling)?))
+    }
+
+    /// A experiência que o tile soltou depois de um upgrade mudar. O jogo cria as bolas.
+    pub fn take_experience_drops(&self) -> Vec<ExperienceDrop> {
+        std::mem::take(&mut *self.shared.pending_drops.borrow_mut())
+    }
+
+    /// `awardUsedRecipesAndPopExperience(player)`: o jogador tirou o resultado, ou apertou a aba de xp.
+    pub fn award_used_recipes(&self) -> Awarded {
+        let experience = self.shared.experience.borrow().clone();
+        self.shared.used.award_used_recipes_and_pop(
+            &self.shared.flags,
+            true,
+            self.has_xp_containment(),
+            &*experience,
+        )
+    }
+
+    /// `PacketGuiInteract.COLLECT_XP`: a aba de xp só age com o upgrade instalado.
+    pub fn collect_xp(&self) -> Awarded {
+        if self.has_xp_containment() {
+            self.award_used_recipes()
+        } else {
+            Awarded::default()
+        }
+    }
+
+    /// `getRecipesToAwardAndPopExperience(level, position)`: o tile foi quebrado.
+    pub fn recipes_to_award_on_removal(&self) -> Awarded {
+        let experience = self.shared.experience.borrow().clone();
+        self.shared
+            .used
+            .recipes_to_award_and_pop(self.has_xp_containment(), &*experience)
     }
 
     /// Carrega o progresso salvo: a receita em cache o lê quando nasce (`getSavedOperatingTicks`).
@@ -1140,6 +1247,17 @@ fn recalculate_upgrades(
             1,
             total,
         ));
+    }
+    if upgrade == &*config.xp_containment {
+        // `TileEntityRecipeMachine.recalculateUpgrades`: o upgrade de contenção de xp mudou.
+        let experience = shared.experience.borrow().clone();
+        let awarded = shared.used.xp_containment_changed(
+            &shared.flags,
+            total > 0,
+            shared.has_xp_containment(upgrades),
+            &*experience,
+        );
+        shared.pending_drops.borrow_mut().extend(awarded.drops);
     }
     if upgrade != speed && upgrade != energy_upgrade {
         return;

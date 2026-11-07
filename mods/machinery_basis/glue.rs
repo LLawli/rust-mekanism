@@ -93,6 +93,8 @@ pub(in crate::game) struct MachineRecipe {
     pub output: ItemStack,
     /// `per_tick_usage`: a receita gasta o recurso a cada tick, e não de uma vez no fim.
     pub per_tick_usage: bool,
+    /// `MekanismRecipe.experience()` ou `SmeltingRecipe.experience()`: a experiência de cada operação.
+    pub experience: f32,
 }
 
 /// Um item que vira recurso, com o que o jogo resolveu.
@@ -341,6 +343,7 @@ fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> 
             resource: parsed.resource,
             output: game.native_recipe_result(&parsed.output)?,
             per_tick_usage: parsed.per_tick_usage,
+            experience: recipe.json.get("experience").and_then(serde_json::Value::as_f64).unwrap_or(0.0) as f32,
         })
     });
     recipes.collect()
@@ -357,6 +360,7 @@ fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
             resource: None,
             output: recipe.result.clone(),
             per_tick_usage: false,
+            experience: recipe.experience,
         })
         .collect()
 }

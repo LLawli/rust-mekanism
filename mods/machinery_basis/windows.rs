@@ -1187,6 +1187,7 @@ fn send_types(game: &mut Game<'_>, player: u128) {
 /// `native_player_logged_in`: o registro vai para quem entrou.
 pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
     send_types(game, player);
+    game.mb_muffling_player_in(player);
 }
 
 /// `native_server_data_loaded`: os dados mudaram (um `/reload`), então todos os que estão no servidor recebem de novo.
@@ -1199,6 +1200,11 @@ pub(in crate::game) fn data_reloaded(game: &mut Game<'_>) {
 
 /// `native_net_from_server`: o cliente guarda o que o servidor mandou.
 pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
+    if crate::game::machinery_tile_sound::muffling_from_server(channel, data)
+        || crate::game::machinery_tile_sound::name_from_server(channel, data)
+    {
+        return;
+    }
     if channel != TYPES_CHANNEL {
         return;
     }
@@ -1306,6 +1312,11 @@ impl Game<'_> {
     }
 
     /// O contêiner em `pos` mudou de espectadores.
+    /// O bloco da tela de mod aberta.
+    pub(in crate::game) fn mb_open_screen_pos(&self) -> Option<[i32; 3]> {
+        self.mod_screen.as_ref().and_then(|screen| screen.pos())
+    }
+
     pub(in crate::game) fn mb_window_prune(&self, pos: [i32; 3], viewers: u32) {
         prune(self, pos, viewers);
     }
