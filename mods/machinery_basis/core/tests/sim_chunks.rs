@@ -5,8 +5,8 @@
 //! `DimData` do `TransmitterNetworkRegistry`): serve para provar que os eventos do simulador bastam para o cenário. O porte
 //! de verdade é a Fase 3.
 use machinery_basis_core::sim::chunks::{
-    BlockPos, ChunkHooks, ChunkPos, ENTITY_TICKING_LEVEL, INACCESSIBLE_LEVEL, LevelView,
-    MAX_VIEW_DISTANCE, SimEvent, SimLevel, UNLOAD_LEVEL,
+    BLOCK_TICKING_LEVEL, BlockPos, ChunkHooks, ChunkPos, ENTITY_TICKING_LEVEL, INACCESSIBLE_LEVEL,
+    LevelView, MAX_VIEW_DISTANCE, SimEvent, SimLevel, UNLOAD_LEVEL,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,12 +19,6 @@ const STONE: &str = "test:stone";
 /// inseridos em ordem crescente. Saída do `Ref3.java` rodado contra o jar real.
 const CHUNK_ONE_ORDER: [i32; 16] = [
     28, 26, 24, 19, 18, 17, 16, 22, 23, 21, 20, 29, 25, 27, 30, 31,
-];
-
-/// A ordem depois de um descarregar e carregar: os mesmos cabos entram no mapa novo na ordem em que foram gravados, e as
-/// colisões da tabela os acomodam de outro jeito (`Ref4.java`, segunda rodada).
-const RELOADED_ORDER: [i32; 16] = [
-    28, 26, 24, 16, 17, 18, 19, 22, 23, 21, 20, 29, 25, 27, 30, 31,
 ];
 
 fn cable(x: i32) -> BlockPos {
@@ -275,7 +269,13 @@ fn reload_intermediary_segue_a_ordem_do_jogo() {
         new: UNLOAD_LEVEL,
     }];
     // Grava antes de avisar a descarga (`ChunkMap.java:525` e `:527`).
-    expected.extend(order.iter().map(|&pos| SimEvent::BlockEntitySaved { pos }));
+    // Na ordem do `HashSet` de `getBlockEntitiesPos`, que para estas posições (y = 64, z = 0, x seguidos) é a crescente.
+    let saved_order: Vec<BlockPos> = (16..32).map(cable).collect();
+    expected.extend(
+        saved_order
+            .iter()
+            .map(|&pos| SimEvent::BlockEntitySaved { pos }),
+    );
     expected.push(SimEvent::ChunkUnload { chunk: middle });
     // `clearAllBlockEntities`: todos recebem `onChunkUnloaded`, e só então `setRemoved`.
     expected.extend(
@@ -339,14 +339,18 @@ fn reload_intermediary_segue_a_ordem_do_jogo() {
     level.tick();
     let mut expected = Vec::new();
     // `runPostLoad`: recria os block entities na ordem em que foram gravados, ainda sem ticker.
-    expected.extend(order.iter().map(|&pos| SimEvent::BlockEntityAdded { pos }));
+    expected.extend(
+        saved_order
+            .iter()
+            .map(|&pos| SimEvent::BlockEntityAdded { pos }),
+    );
     expected.push(SimEvent::ChunkLoad {
         chunk: middle,
         new: false,
     });
     // `Level.tickBlockEntities`: `onLoad` dos novos, depois os tickers na ordem da lista (os que já estavam, e os novos no fim),
-    // tudo na ordem do mapa novo, que não é a mesma.
-    let reloaded = one_chunk_cables(&RELOADED_ORDER);
+    // tudo na ordem do mapa novo, que recebe as chaves na ordem gravada (crescente) e por isso volta a ser a da primeira vez.
+    let reloaded = one_chunk_cables(&CHUNK_ONE_ORDER);
     expected.extend(
         reloaded
             .iter()
@@ -661,4 +665,476 @@ fn um_block_entity_novo_recebe_o_on_load_no_proximo_tick_e_anda_no_mesmo() {
 fn set_block_num_chunk_descarregado_avisa_em_vez_de_carregar_calado() {
     let mut level = SimLevel::new(Registry::default());
     level.set_block(cable(0), Some(CABLE));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// O rastro do jogo: `dev/referencia/testes/ChunkTraceTest.java`, rodado no `gameTestServer`, grava a ordem real dos eventos de
+// `reloadIntermediary` e `inaccessibleNotUnloaded`. Aqui o simulador repete os mesmos passos, com as posições absolutas do
+// rastro (a ordem dos mapas depende delas), e a ordem tem de sair igual.
+// ---------------------------------------------------------------------------------------------------------------------
+
+mod game_trace {
+    use super::*;
+    use serde_json::Value;
+    use std::collections::VecDeque;
+    use std::path::Path;
+
+    /// Os chunks da linha: a estrutura de 48 cabos começa dentro de um chunk e cruza quatro.
+    const LINE_CHUNKS: i32 = 4;
+    const CABLES: i32 = 48;
+    /// Menos eventos comparados do que isto é um rastro cortado ou um teste que não compara.
+    const MINIMUM_EVENTS: usize = 500;
+
+    /// O dublê do mod: só os cabos, sem rede. O que o jogo chama nos block entities é o que o rastro grava.
+    #[derive(Default)]
+    struct Hooks {
+        /// A ordem em que o `LevelChunk` guarda os block entities em cada `ChunkEvent.Load` e `.Unload`, na ordem dos eventos.
+        load_orders: VecDeque<Vec<BlockPos>>,
+        unload_orders: VecDeque<Vec<BlockPos>>,
+    }
+
+    impl ChunkHooks for Hooks {
+        type BlockEntity = ();
+        type Saved = ();
+
+        fn new_block_entity(&mut self, _: BlockPos, block: &str, _: Option<&()>) -> Option<()> {
+            (block == CABLE).then_some(())
+        }
+
+        fn save_block_entity(&mut self, _: BlockPos, _: &mut ()) {}
+
+        fn block_entity_ticks(&self, block: &str) -> bool {
+            block == CABLE
+        }
+
+        fn chunk_load(&mut self, level: &LevelView<()>, chunk: ChunkPos, _: bool) {
+            self.load_orders
+                .push_back(level.block_entity_positions(chunk));
+        }
+
+        fn chunk_unload(&mut self, level: &LevelView<()>, chunk: ChunkPos) {
+            self.unload_orders
+                .push_back(level.block_entity_positions(chunk));
+        }
+    }
+
+    /// Uma linha do rastro que importa à ordem, ou um passo do teste.
+    enum Item {
+        Event(String),
+        Mark(String),
+        State(Value),
+    }
+
+    fn int(row: &Value, key: &str) -> i64 {
+        row[key]
+            .as_i64()
+            .unwrap_or_else(|| panic!("{key} falta em {row}"))
+    }
+
+    fn xs(row: &Value) -> String {
+        let list: Vec<String> = row["blockEntities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_i64().unwrap().to_string())
+            .collect();
+        list.join(",")
+    }
+
+    /// A linha do rastro como texto, no mesmo formato que `Replay::describe` dá aos eventos do simulador.
+    fn describe_row(row: &Value) -> Option<String> {
+        let chunk = || format!("{},{}", int(row, "cx"), int(row, "cz"));
+        Some(match row["e"].as_str().unwrap() {
+            "ticket" => format!(
+                "ticket {} {}->{}",
+                chunk(),
+                int(row, "old"),
+                int(row, "new")
+            ),
+            "load" => format!(
+                "load {} new={} [{}]",
+                chunk(),
+                row["new"].as_bool().unwrap(),
+                xs(row)
+            ),
+            "unload" => format!("unload {} [{}]", chunk(), xs(row)),
+            "added" | "onLoad" | "tick" | "saved" | "onChunkUnloaded" | "setRemoved" => {
+                format!("{} {}", row["e"].as_str().unwrap(), int(row, "x"))
+            }
+            "post" => "post".to_owned(),
+            // `pre` é só a marca do começo do tick, e `origin` a geometria.
+            _ => return None,
+        })
+    }
+
+    struct Replay {
+        level: SimLevel<Hooks>,
+        origin: BlockPos,
+        origin_chunk: ChunkPos,
+        middle: ChunkPos,
+        /// O nível do chunk do meio antes de o teste mexer: o `ChunkData` devolve o antigo e a volta usa o mesmo.
+        old_level: i32,
+        /// O pedido de `updateChunkLoading` que espera a marca do retorno.
+        pending: Option<Pending>,
+        compared: usize,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Pending {
+        Unload,
+        Load,
+    }
+
+    impl Replay {
+        fn new(origin: &Value) -> Self {
+            let origin_pos = BlockPos::new(
+                int(origin, "x") as i32,
+                int(origin, "y") as i32,
+                int(origin, "z") as i32,
+            );
+            let origin_chunk = origin_pos.chunk();
+            let middle = ChunkPos::new(
+                origin_chunk.x + int(origin, "middleCx") as i32,
+                origin_chunk.z + int(origin, "middleCz") as i32,
+            );
+            let mut level = SimLevel::new(Hooks::default());
+            // A linha de cabos está na fileira `cz = 0`, em 31. Os vizinhos de cima e de baixo ficam em 32 (o ticket da estrutura
+            // vai a 31 só ao redor dela), e o cenário do Mekanism pode cair num deles: `middleCz` do rastro.
+            for cz in -1..=1 {
+                for cx in 0..LINE_CHUNKS {
+                    level.set_ticket_level(
+                        ChunkPos::new(origin_chunk.x + cx, origin_chunk.z + cz),
+                        if cz == 0 {
+                            ENTITY_TICKING_LEVEL
+                        } else {
+                            BLOCK_TICKING_LEVEL
+                        },
+                    );
+                }
+            }
+            level.tick();
+            for i in 0..CABLES {
+                let pos = BlockPos::new(origin_pos.x + i, origin_pos.y, origin_pos.z);
+                assert!(level.set_block(pos, Some(CABLE)));
+            }
+            level.tick_n(3);
+            level.take_events();
+            level.hooks.load_orders.clear();
+            level.hooks.unload_orders.clear();
+            Self {
+                level,
+                origin: origin_pos,
+                origin_chunk,
+                middle,
+                old_level: ENTITY_TICKING_LEVEL,
+                pending: None,
+                compared: 0,
+            }
+        }
+
+        fn cable(&self, x: i32) -> BlockPos {
+            BlockPos::new(self.origin.x + x, self.origin.y, self.origin.z)
+        }
+
+        fn x(&self, pos: BlockPos) -> i32 {
+            pos.x - self.origin.x
+        }
+
+        fn chunk(&self, chunk: ChunkPos) -> String {
+            format!(
+                "{},{}",
+                chunk.x - self.origin_chunk.x,
+                chunk.z - self.origin_chunk.z
+            )
+        }
+
+        fn order(&self, order: &[BlockPos]) -> String {
+            let list: Vec<String> = order.iter().map(|&pos| self.x(pos).to_string()).collect();
+            list.join(",")
+        }
+
+        /// Os eventos do simulador desde a última chamada, no formato do rastro.
+        fn drain(&mut self) -> Vec<String> {
+            let mut lines = Vec::new();
+            for event in self.level.take_events() {
+                let line = match event {
+                    SimEvent::TicketLevelUpdated { chunk, old, new } => {
+                        format!("ticket {} {old}->{new}", self.chunk(chunk))
+                    }
+                    SimEvent::ChunkLoad { chunk, new } => {
+                        let order = self.level.hooks.load_orders.pop_front().unwrap();
+                        format!(
+                            "load {} new={new} [{}]",
+                            self.chunk(chunk),
+                            self.order(&order)
+                        )
+                    }
+                    SimEvent::ChunkUnload { chunk } => {
+                        let order = self.level.hooks.unload_orders.pop_front().unwrap();
+                        format!("unload {} [{}]", self.chunk(chunk), self.order(&order))
+                    }
+                    SimEvent::BlockEntityAdded { pos } => format!("added {}", self.x(pos)),
+                    SimEvent::BlockEntityLoad { pos } => format!("onLoad {}", self.x(pos)),
+                    SimEvent::BlockEntityTick { pos } => format!("tick {}", self.x(pos)),
+                    SimEvent::BlockEntitySaved { pos } => format!("saved {}", self.x(pos)),
+                    SimEvent::BlockEntityChunkUnloaded { pos } => {
+                        format!("onChunkUnloaded {}", self.x(pos))
+                    }
+                    SimEvent::BlockEntityRemoved { pos } => format!("setRemoved {}", self.x(pos)),
+                    SimEvent::ServerTickPost { .. } => "post".to_owned(),
+                    // O rastro grava o `setBlock` como marca do passo, não como evento.
+                    SimEvent::BlockChanged { .. } => continue,
+                };
+                lines.push(line);
+            }
+            lines
+        }
+
+        /// O passo do teste que a marca anuncia. `updateChunkLoading` do Mekanism não faz nada quando o chunk já está no estado
+        /// pedido (ele grava `updateChunkLoading skipped`), então o pedido só vale na marca do retorno, se nenhuma dispensa veio
+        /// antes. As marcas sem efeito no mundo conferem o que o jogo devolveu.
+        fn act(&mut self, mark: &str) {
+            let middle = self.middle;
+            if let Some(level) = mark.strip_prefix("set level returned, old level ") {
+                assert_eq!(self.old_level.to_string(), level, "{mark}");
+            } else if let Some(level) = mark.strip_prefix("set level back ")
+                && level != "returned"
+            {
+                assert_eq!(self.old_level.to_string(), level, "{mark}");
+                self.level.set_chunk_load_level(middle, self.old_level);
+            } else if let Some(level) = mark.strip_prefix("unload returned, level ")
+                && self.pending.take() == Some(Pending::Unload)
+            {
+                self.old_level = self.level.unload_chunk(middle);
+                assert_eq!(self.old_level.to_string(), level, "{mark}");
+            }
+            match mark {
+                "unload requested" => self.pending = Some(Pending::Unload),
+                "load requested" => self.pending = Some(Pending::Load),
+                "load returned" => {
+                    if self.pending.take() == Some(Pending::Load) {
+                        self.level.load_chunk(middle, self.old_level);
+                    }
+                }
+                "set level inaccessible" => {
+                    self.old_level = self.level.set_chunk_load_level(middle, INACCESSIBLE_LEVEL);
+                }
+                "break cable 0" => assert!(self.level.set_block(self.cable(0), None)),
+                "place cable 0" => assert!(self.level.set_block(self.cable(0), Some(CABLE))),
+                _ => {
+                    if mark.starts_with("updateChunkLoading skipped") {
+                        self.pending = None;
+                    }
+                }
+            }
+        }
+
+        /// O estado dos chunks da linha que o rastro grava nos pontos do cenário.
+        fn check_state(&self, state: &Value, after: &str) {
+            for (cx, cz) in (0..LINE_CHUNKS).flat_map(|cx| (-1..=1).map(move |cz| (cx, cz))) {
+                let chunk = ChunkPos::new(self.origin_chunk.x + cx, self.origin_chunk.z + cz);
+                let entry = state["chunks"].as_array().unwrap().iter().find(|entry| {
+                    int(entry, "cx") == i64::from(cx) && int(entry, "cz") == i64::from(cz)
+                });
+                let (has_chunk, level) = match entry {
+                    Some(entry) => (
+                        entry["hasChunk"].as_bool().unwrap(),
+                        entry["level"].as_i64().map(|level| level as i32),
+                    ),
+                    None => (false, None),
+                };
+                assert_eq!(
+                    self.level.view().is_chunk_loaded(chunk),
+                    has_chunk,
+                    "hasChunk do chunk {cx},{cz} depois de «{after}»"
+                );
+                assert_eq!(
+                    self.level.view().ticket_level(chunk),
+                    level,
+                    "nível do chunk {cx},{cz} depois de «{after}»"
+                );
+            }
+        }
+    }
+
+    /// Repete o rastro e devolve quantos eventos comparou.
+    pub fn replay(file: &str) -> usize {
+        let compared = run(file);
+        assert!(
+            compared >= MINIMUM_EVENTS,
+            "{file}: só {compared} eventos comparados"
+        );
+        compared
+    }
+
+    fn run(file: &str) -> usize {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dev/referencia/rastros")
+            .join(file);
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let rows: Vec<Value> = text
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let mut replay = Replay::new(&rows[0]);
+
+        // Os segmentos: tudo até cada `post`. O primeiro é o resto do tick em que o cenário começou, sem tickers.
+        let mut segments: Vec<(Vec<Item>, bool)> = vec![(Vec::new(), false)];
+        for row in &rows[1..] {
+            let kind = row["e"].as_str().unwrap();
+            let current = segments.last_mut().unwrap();
+            match kind {
+                "mark" => current
+                    .0
+                    .push(Item::Mark(row["m"].as_str().unwrap().to_owned())),
+                "state" => current.0.push(Item::State(row.clone())),
+                _ => {
+                    if let Some(line) = describe_row(row) {
+                        current.0.push(Item::Event(line));
+                    }
+                    if kind == "post" {
+                        current.1 = true;
+                        segments.push((Vec::new(), false));
+                    }
+                }
+            }
+        }
+
+        // O jogo leva alguns ticks para completar a carga: os segmentos entre o pedido (o ticket que tira o holder de
+        // `UNLOAD_LEVEL`) e o `ChunkEvent.Load`. O `DistanceManager` pega o pedido no começo de um tick: no seguinte, se o teste
+        // pediu depois do tick do nível, ou no mesmo, se foi ele que recalculou o chunk (o ticket é o primeiro evento do tick).
+        let mut kickoff = None;
+        'delay: for (index, (items, _)) in segments.iter().enumerate() {
+            for (position, item) in items.iter().enumerate() {
+                if let Item::Event(line) = item {
+                    if line.contains(&format!(" {UNLOAD_LEVEL}->")) {
+                        kickoff = Some(if position == 0 { index } else { index + 1 });
+                    } else if line.starts_with("load ") {
+                        if let Some(kickoff) = kickoff {
+                            replay.level.set_load_delay((index - kickoff) as u32);
+                        }
+                        break 'delay;
+                    }
+                }
+            }
+        }
+
+        let last = segments.len() - 1;
+        for (index, (items, closed)) in segments.iter().enumerate() {
+            let mut actual = Vec::new();
+            if index > 0 {
+                // Um `ticket` antes de qualquer outro evento do tick não é passo do teste: o `DistanceManager` recalculou o chunk.
+                if let Some(Item::Event(line)) = items.first()
+                    && line.starts_with("ticket ")
+                {
+                    let (cx, cz) = line["ticket ".len()..]
+                        .split_once(' ')
+                        .unwrap()
+                        .0
+                        .split_once(',')
+                        .unwrap();
+                    let chunk = ChunkPos::new(
+                        replay.origin_chunk.x + cx.parse::<i32>().unwrap(),
+                        replay.origin_chunk.z + cz.parse::<i32>().unwrap(),
+                    );
+                    replay.level.update_ticket_level(chunk);
+                }
+                replay.level.tick_level();
+                actual.extend(replay.drain());
+            }
+            let mut expected = Vec::new();
+            let mut last_mark = "início";
+            for item in items {
+                match item {
+                    Item::Event(line) => expected.push(line.clone()),
+                    Item::Mark(mark) => {
+                        replay.act(mark);
+                        actual.extend(replay.drain());
+                        last_mark = mark;
+                    }
+                    Item::State(state) => replay.check_state(state, last_mark),
+                }
+            }
+            if *closed {
+                replay.level.finish_tick();
+                actual.extend(replay.drain());
+            }
+            if actual != expected {
+                let at = actual
+                    .iter()
+                    .zip(&expected)
+                    .position(|(a, e)| a != e)
+                    .unwrap_or(actual.len().min(expected.len()));
+                panic!(
+                    "{file}, segmento {index} de {last}: o simulador diverge do jogo no evento {at} ({} do simulador, {} do jogo)\n  simulador: {:?}\n  jogo:      {:?}",
+                    actual.len(),
+                    expected.len(),
+                    &actual[at.saturating_sub(2)..(at + 3).min(actual.len())],
+                    &expected[at.saturating_sub(2)..(at + 3).min(expected.len())],
+                );
+            }
+            replay.compared += expected.len();
+        }
+        replay.compared
+    }
+}
+
+/// `reloadIntermediary` no jogo: descarrega o chunk do meio, espera, recarrega, e a rede inteira volta.
+#[test]
+fn reload_intermediary_repete_o_rastro_do_jogo() {
+    game_trace::replay("chunk_reload_intermediary.jsonl");
+}
+
+/// `inaccessibleNotUnloaded` no jogo: o chunk do meio fica acima de 32, um cabo se quebra e volta, e o nível volta ao dos tickets.
+#[test]
+fn inaccessible_not_unloaded_repete_o_rastro_do_jogo() {
+    game_trace::replay("chunk_inaccessible_not_unloaded.jsonl");
+}
+
+/// As mesmas duas cenas numa rodada em que a estrutura caiu com `z` dentro do chunk em 8 ou mais: o chunk `(1, 0)` do Mekanism
+/// (o que contém o meio da estrutura mais 8 em `z`) é o da fileira vizinha, sem nenhum cabo. O teste do Mekanism passa do mesmo
+/// jeito, sem provar nada sobre a rede. O simulador repete esse caminho também (nível 32, sem block entities).
+#[test]
+fn reload_intermediary_numa_rodada_com_o_chunk_do_meio_vazio() {
+    game_trace::replay("chunk_reload_intermediary_empty_chunk.jsonl");
+}
+
+#[test]
+fn inaccessible_not_unloaded_numa_rodada_com_o_chunk_do_meio_vazio() {
+    game_trace::replay("chunk_inaccessible_not_unloaded_empty_chunk.jsonl");
+}
+
+/// `reloadIntermediary` numa rodada em que o jogo recarregou o chunk sozinho: 2 ticks depois da descarga o `DistanceManager`
+/// recalculou o nó e o holder voltou a 31, então quando o teste pede a carga (tick 5) `isChunkLoaded` já é verdadeiro e o
+/// `updateChunkLoading` do Mekanism não faz nada. O `ChunkEvent.Load` chega do mesmo jeito.
+#[test]
+fn reload_intermediary_numa_rodada_em_que_o_jogo_recarrega_sozinho() {
+    game_trace::replay("chunk_reload_intermediary_game_reloads.jsonl");
+}
+
+/// `inaccessibleNotUnloaded` numa rodada em que ninguém mexeu nos tickets vizinhos: o chunk fica em 33 durante os 10 ticks até o
+/// teste devolver o nível, e é a rodada em que o estado "inacessível mas não descarregado" dura o que o nome promete.
+#[test]
+fn inaccessible_not_unloaded_numa_rodada_em_que_o_nivel_dura() {
+    game_trace::replay("chunk_inaccessible_not_unloaded_stays.jsonl");
+}
+
+/// Todo `chunk_*.jsonl` de `dev/referencia/rastros` tem de repetir. Cada rodada do jogo cai em outras coordenadas, e a ordem dos
+/// mapas muda com elas: um rastro novo é outra prova.
+#[test]
+fn todos_os_rastros_de_chunk_repetem() {
+    let dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros");
+    let mut files: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("chunk_") && name.ends_with(".jsonl"))
+        .collect();
+    files.sort();
+    assert!(files.len() >= 6, "só {} rastros de chunk", files.len());
+    for file in files {
+        game_trace::replay(&file);
+    }
 }
