@@ -125,7 +125,7 @@ fn machine_at(
     SimWorld::new(Chamber(
         ProgressMachine::electric(electric_config(
             energy_per_tick,
-            recipes,
+            ItemToItemRecipe::cache_of(recipes),
             check_offset,
             common::upgrade_data(),
         )),

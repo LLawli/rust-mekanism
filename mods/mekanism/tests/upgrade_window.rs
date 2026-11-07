@@ -61,11 +61,11 @@ fn chamber() -> SimWorld<Chamber> {
     };
     SimWorld::new(Chamber(ProgressMachine::electric(electric_config(
         ENRICHMENT_USAGE,
-        vec![
+        ItemToItemRecipe::cache_of(vec![
             recipe("clay", 1, "clay_ball", 4),
             recipe("stone", 1, "cracked_stone_bricks", 1),
             recipe("hdpe_pellet", 3, "hdpe_sheet", 1),
-        ],
+        ]),
         0,
         common::upgrade_data(),
     ))))

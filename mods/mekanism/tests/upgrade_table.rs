@@ -3,11 +3,13 @@
 //! energia e a velocidade da linha instaladas. Compara capacidade, consumo por tick e ticks com o que o Java leu.
 mod common;
 
+use machinery_basis_core::cached_recipe::ItemToItemRecipe;
+use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::upgrade::UpgradeData;
 use mekanism_rules::{
     CRUSHER_USAGE, ENERGY_UPGRADE, ENRICHMENT_USAGE, INFUSER_USAGE, SMELTER_USAGE, SPEED_UPGRADE,
-    electric_config, infuser_config,
+    electric_config, infuser_config, infusing_cache_of,
 };
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -44,20 +46,26 @@ fn machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
     match name {
         "enrichment_chamber" => ProgressMachine::electric(electric_config(
             ENRICHMENT_USAGE,
-            Vec::new(),
+            ItemToItemRecipe::cache_of(Vec::new()),
             0,
             data.clone(),
         )),
-        "crusher" => {
-            ProgressMachine::electric(electric_config(CRUSHER_USAGE, Vec::new(), 0, data.clone()))
-        }
-        "energized_smelter" => {
-            ProgressMachine::electric(electric_config(SMELTER_USAGE, Vec::new(), 0, data.clone()))
-        }
+        "crusher" => ProgressMachine::electric(electric_config(
+            CRUSHER_USAGE,
+            ItemToItemRecipe::cache_of(Vec::new()),
+            0,
+            data.clone(),
+        )),
+        "energized_smelter" => ProgressMachine::electric(electric_config(
+            SMELTER_USAGE,
+            ItemToItemRecipe::cache_of(Vec::new()),
+            0,
+            data.clone(),
+        )),
         "metallurgic_infuser" => ProgressMachine::chemical(infuser_config(
             INFUSER_USAGE,
-            Vec::new(),
-            Vec::new(),
+            infusing_cache_of(Vec::new()),
+            ChemicalConversion::cache_of(Vec::new()),
             0,
             data.clone(),
         )),

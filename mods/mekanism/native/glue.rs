@@ -3,15 +3,17 @@
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, GameLevel, NativeReloadListener, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
-use horizon_client::crafting::Ingredient;
+use horizon_client::crafting::{Ingredient, Shape};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
-use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
-use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents};
+use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemCache, ItemToItemRecipe};
+use machinery_basis_core::chemical::{
+    ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents, can_fill_or_convert_with,
+};
 use machinery_basis_core::containers::{InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
@@ -20,7 +22,8 @@ use machinery_basis_core::sides::Face;
 use machinery_basis_core::resource;
 use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
-use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
+use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
 use machinery_basis_core::window::SelectedWindow;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
@@ -445,10 +448,8 @@ const UNKNOWN_STACK: u32 = 64;
 
 struct Live {
     machine: ProgressMachine,
-    /// As receitas de onde as da máquina saíram: uma carga nova de dados as troca.
-    recipes: Arc<Vec<basis::MachineRecipe>>,
-    /// As conversões de item em químico, de onde as da máquina saíram, nas máquinas com tanque.
-    conversions: Option<Arc<Vec<basis::ItemConversion>>>,
+    /// A carga de dados (`basis::data_generation`) que a receita em cache da máquina viu: outra carga a invalida.
+    generation: u64,
     last_seen: i64,
     /// O que já está no NBT, para só escrever quando muda.
     saved: Option<SavedState>,
@@ -485,27 +486,56 @@ fn conversion_ingredient(conversion: &basis::ItemConversion) -> &Ingredient {
     &conversion.item
 }
 
-/// O ingrediente do Horizon (item ou tag) vira o predicado da lib, e guarda a última resposta, porque a receita em cache
-/// pergunta todo tick pelo mesmo item. `source` e `index` dizem de qual entrada da lista ele sai.
+/// Se o ingrediente do Horizon não guarda nada além dos itens: nem um tipo de ingrediente de mod, nem um filho que guarde
+/// (`Ingredient.isCustom() && !isSimple()`).
+fn is_plain(ingredient: &Ingredient) -> bool {
+    ingredient.custom.is_none()
+        && ingredient
+            .children
+            .as_ref()
+            .is_none_or(|(_, children)| children.iter().all(is_plain))
+}
+
+/// O que `ItemInputCache.mapIngredient` faz com o ingrediente. O Horizon já resolveu as tags: `order` são os itens do
+/// ingrediente na ordem do `HolderSet` (`getValues()`, e `items()` do ingrediente simples), e `children` guarda os filhos do
+/// `CompoundIngredient`. Um ingrediente simples indexa os itens, um composto com filho que não é simples mapeia cada filho, e
+/// qualquer outro é complexo (`Custom`). O Horizon não tem o `DataComponentIngredient` exato (`Exact`).
+fn item_shape(ingredient: &Ingredient) -> IngredientShape {
+    if is_plain(ingredient) {
+        return IngredientShape::Types(ingredient.order.iter().map(|item| Rc::from(item.as_str())).collect());
+    }
+    match &ingredient.children {
+        Some((Shape::Compound, children)) if ingredient.custom.is_none() => {
+            IngredientShape::Compound(children.iter().map(item_shape).collect())
+        }
+        _ => IngredientShape::Custom,
+    }
+}
+
+/// O ingrediente do Horizon (item ou tag) vira o da lib, com a classificação do índice e o teste de tipo (`testType`, sem a
+/// quantidade), e guarda a última resposta, porque a receita em cache pergunta todo tick pelo mesmo item. `source` e `index` dizem
+/// de qual entrada da lista ele sai.
 fn item_ingredient<T: 'static>(source: &Arc<Vec<T>>, index: usize, ingredient: fn(&T) -> &Ingredient) -> ItemIngredient {
+    let shape = item_shape(ingredient(&source[index]));
     let source = source.clone();
     let last: RefCell<Option<(Rc<str>, bool)>> = RefCell::new(None);
-    ItemIngredient::matching(move |resource| {
-        if let Some((id, answer)) = &*last.borrow()
-            && *id == resource.id
+    ItemIngredient::shaped(ShapedIngredient::new(shape, move |input: &dyn TypedInstance| {
+        let id = input.type_id();
+        if let Some((held, answer)) = &*last.borrow()
+            && **held == *id
         {
             return *answer;
         }
         let stack = ItemStack {
-            item: Arc::from(&*resource.id),
+            item: Arc::from(id),
             count: 1,
             damage: 0,
             extra: None,
         };
         let answer = ingredient(&source[index]).test(&stack);
-        *last.borrow_mut() = Some((resource.id.clone(), answer));
+        *last.borrow_mut() = Some((Rc::from(id), answer));
         answer
-    })
+    }))
 }
 
 /// `ItemToItemRecipe` das receitas do jogo.
@@ -527,7 +557,7 @@ fn core_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Ve
 
 /// `ItemChemicalToItemRecipe` das receitas do jogo. O químico de uma receita é um id ou uma tag, e a tag vale como estava na
 /// carga de dados em que a receita foi lida: uma carga nova refaz as receitas. A receita que gasta o químico a cada tick
-/// (`per_tick_usage`) fica de fora, porque pede `ItemStackConstantChemicalToObjectCachedRecipe`, que a lib não porta.
+/// (`per_tick_usage`) segue com o campo, e a máquina escolhe `ItemChemicalConstantUsageRecipe` para ela.
 fn core_chemical_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe>>) -> Vec<Rc<ItemChemicalToItemRecipe>> {
     let tags = resource::current_tags();
     let mut converted = Vec::with_capacity(recipes.len());
@@ -535,39 +565,156 @@ fn core_chemical_recipes(game: &Game<'_>, recipes: &Arc<Vec<basis::MachineRecipe
         let Some(chemical) = recipe.resource.clone() else {
             continue;
         };
-        if recipe.per_tick_usage {
-            eprintln!("mekanism: {} gasta o químico a cada tick, o que o Metallurgic Infuser ainda não porta", recipe.id);
-            continue;
-        }
         let amount = u32::try_from(chemical.amount).unwrap_or(u32::MAX);
-        let tags = tags.clone();
         converted.push(Rc::new(ItemChemicalToItemRecipe {
             id: recipe.id.clone(),
             item_input: item_ingredient(recipes, index, recipe_ingredient),
             item_count: recipe.count,
-            chemical_input: ChemicalIngredient::matching(move |resource| chemical.accepts(&resource.id, &tags)),
+            chemical_input: ChemicalIngredient::shaped(chemical.shaped(tags.clone())),
             chemical_amount: amount,
             output: ItemOutput {
                 resource: resource_of(game, &recipe.output),
                 count: recipe.output.count,
             },
+            per_tick_usage: recipe.per_tick_usage,
         }));
     }
     converted
 }
 
 /// `ChemicalConversion` das conversões de item em químico do jogo.
-fn core_conversions(conversions: &Arc<Vec<basis::ItemConversion>>) -> Vec<ChemicalConversion> {
+fn core_conversions(conversions: &Arc<Vec<basis::ItemConversion>>) -> Vec<Rc<ChemicalConversion>> {
     let mut converted = Vec::with_capacity(conversions.len());
     for (index, conversion) in conversions.iter().enumerate() {
-        converted.push(ChemicalConversion {
+        converted.push(Rc::new(ChemicalConversion {
             input: item_ingredient(conversions, index, conversion_ingredient),
             input_count: conversion.count,
             output: ChemicalResource::new(&conversion.resource),
             amount: i32::try_from(conversion.amount).unwrap_or(i32::MAX),
-        });
+        }));
     }
     converted
+}
+
+/// O `getInputCache` de um tipo de receita (`MekanismRecipeType`), com a lista que o `getRecipes(world)` dele devolve. O índice lê
+/// a lista na primeira pergunta depois de um `clear`, e `loaded` é a carga de dados (`basis::data_generation`) de onde ela saiu:
+/// outra carga (`MekanismRecipeType.clearCache`) limpa o índice e troca a lista.
+struct Book<C, R> {
+    cache: Rc<C>,
+    list: Rc<RefCell<Vec<Rc<R>>>>,
+    loaded: Option<u64>,
+}
+
+impl<C, R: 'static> Book<C, R> {
+    fn new(make: impl FnOnce(Box<dyn Fn() -> Vec<Rc<R>>>) -> Rc<C>) -> Self {
+        let list = Rc::new(RefCell::new(Vec::new()));
+        let source = list.clone();
+        Self {
+            cache: make(Box::new(move || source.borrow().clone())),
+            list,
+            loaded: None,
+        }
+    }
+
+    /// O índice com a lista desta carga de dados: `clear` e `load` só quando a carga mudou.
+    fn current(&mut self, clear: impl FnOnce(&C), load: impl FnOnce() -> Vec<Rc<R>>) -> Rc<C> {
+        let generation = basis::data_generation();
+        if self.loaded != Some(generation) {
+            clear(&*self.cache);
+            *self.list.borrow_mut() = load();
+            self.loaded = Some(generation);
+        }
+        self.cache.clone()
+    }
+}
+
+/// Os índices de receitas desta thread: um por tipo de receita, que todas as máquinas do tipo e as regras de inserção dos slots
+/// compartilham.
+#[derive(Default)]
+struct Books {
+    electric: HashMap<&'static str, Book<ItemToItemCache, ItemToItemRecipe>>,
+    infusing: Option<Book<ItemChemicalCache, ItemChemicalToItemRecipe>>,
+    conversions: Option<Book<ConversionCache, ChemicalConversion>>,
+}
+
+thread_local! {
+    static BOOKS: RefCell<Books> = RefCell::new(Books::default());
+}
+
+/// Os índices que uma máquina usa.
+#[derive(Clone)]
+enum Indexes {
+    Electric(Rc<ItemToItemCache>),
+    Infuser {
+        recipes: Rc<ItemChemicalCache>,
+        conversions: Rc<ConversionCache>,
+    },
+}
+
+fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
+    BOOKS.with_borrow_mut(|books| match machine.slots.infusion {
+        None => {
+            let book = books
+                .electric
+                .entry(machine.recipes.key())
+                .or_insert_with(|| Book::new(|source| ItemToItemRecipe::cache(source)));
+            Indexes::Electric(book.current(
+                |cache| cache.clear(),
+                || core_recipes(game, &basis::machine_recipes(game, &machine.recipes)),
+            ))
+        }
+        Some(_) => {
+            let infusing = books.infusing.get_or_insert_with(|| Book::new(|source| rules::infusing_cache(source)));
+            let recipes = infusing.current(
+                |cache| cache.clear(),
+                || core_chemical_recipes(game, &basis::machine_recipes(game, &INFUSING)),
+            );
+            let conversions = books
+                .conversions
+                .get_or_insert_with(|| Book::new(|source| ChemicalConversion::cache(source)));
+            let conversions = conversions.current(
+                |cache| cache.clear(),
+                || {
+                    let loaded = basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS);
+                    core_conversions(&loaded)
+                },
+            );
+            Indexes::Infuser { recipes, conversions }
+        }
+    })
+}
+
+/// O que o tanque e o slot de entrada guardam, para as regras de inserção que olham um pelo outro.
+struct Held {
+    chemical: Option<ChemicalResource>,
+    input: Option<ItemResource>,
+}
+
+/// O item como o `TypedInstance` que o índice pergunta (`ItemResource`): só o id conta para o tipo.
+fn typed_item(stack: &ItemStack) -> ItemResource {
+    ItemResource::new(&stack.item, UNKNOWN_STACK)
+}
+
+/// Se o slot `slot` da máquina aceita o item: o slot de entrada (`InputInventorySlot`, com `containsRecipe` na Chamber e
+/// `containsRecipeAB` mais `containsRecipeA` no Infuser) e o de infusão (`ChemicalInventorySlot.canFillOrConvert`). A regra do
+/// hopper vizinho e a do menu são as mesmas.
+fn slot_accepts(indexes: &Indexes, slots: &Slots, slot: usize, item: &ItemResource, held: &Held) -> bool {
+    match indexes {
+        Indexes::Electric(recipes) => recipes.contains_input(item),
+        Indexes::Infuser { recipes, conversions } => {
+            if slot == slots.input {
+                recipes.contains_input_a(item) && recipes.contains_input_ab(item, &held.chemical)
+            } else if Some(slot) == slots.infusion {
+                // `simulateCanInsert(tank, conversion, MANUAL)`: o `isValidForInsertion` do tanque do Infuser é o `containsRecipeB`
+                // e o `containsRecipeBA` com o item que está na entrada.
+                can_fill_or_convert_with(conversions, item, held.chemical.as_ref(), |chemical| {
+                    recipes.contains_input_b(chemical) && recipes.contains_input_ba(&held.input, chemical)
+                })
+            } else {
+                false
+            }
+        }
+    }
 }
 
 fn has_saved(entity: &ModBlockEntity) -> bool {
@@ -863,15 +1010,8 @@ fn write_used(entity: &mut ModBlockEntity, new: &SavedState) {
     }
 }
 
-/// `ProgressMachine` nova, do que a `ModBlockEntity` guarda. Com `conversions` é o Metallurgic Infuser.
-fn born(
-    game: &Game<'_>,
-    pos: [i32; 3],
-    entity: &ModBlockEntity,
-    machine: &Machine,
-    recipes: &Arc<Vec<basis::MachineRecipe>>,
-    conversions: Option<&Arc<Vec<basis::ItemConversion>>>,
-) -> Live {
+/// `ProgressMachine` nova, do que a `ModBlockEntity` guarda. Com o índice do Infuser é o Metallurgic Infuser.
+fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machine, indexes: &Indexes) -> Live {
     // `ThreadLocalRandom.nextInt(RECIPE_CHECK_FREQUENCY)`: o sorteio de `shouldRecheckAllErrors`.
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -879,17 +1019,17 @@ fn born(
     let check_offset = nanos % RECIPE_CHECK_FREQUENCY;
     let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
     let upgrades = upgrade_data(game, &upgrade_types, &upgrade_tags);
-    let mut progress = match conversions {
-        None => ProgressMachine::electric(rules::electric_config(
+    let mut progress = match indexes {
+        Indexes::Electric(recipes) => ProgressMachine::electric(rules::electric_config(
             machine.energy_per_tick,
-            core_recipes(game, recipes),
+            recipes.clone(),
             check_offset,
             upgrades,
         )),
-        Some(conversions) => ProgressMachine::chemical(rules::infuser_config(
+        Indexes::Infuser { recipes, conversions } => ProgressMachine::chemical(rules::infuser_config(
             machine.energy_per_tick,
-            core_chemical_recipes(game, recipes),
-            core_conversions(conversions),
+            recipes.clone(),
+            conversions.clone(),
             check_offset,
             upgrades,
         )),
@@ -904,8 +1044,7 @@ fn born(
     }
     Live {
         machine: progress,
-        recipes: recipes.clone(),
-        conversions: conversions.cloned(),
+        generation: basis::data_generation(),
         last_seen: i64::MIN,
         saved: None,
         used_version: None,
@@ -1158,9 +1297,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     let key = (dimension, pos);
     let slots = &spec.slots;
     let recipes = basis::machine_recipes(game, &spec.recipes);
-    let conversions = slots
-        .infusion
-        .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
+    let indexes = indexes_of(game, spec);
 
     let started = basis::MEDIR.then(Instant::now);
     // Um mundo antigo tem menos slots salvos que o menu de agora (os dois virtuais vêm depois dos da máquina).
@@ -1177,22 +1314,15 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
                 migrate_old_tank(entity);
             }
             fresh = true;
-            born(game, pos, entity, spec, &recipes, conversions.as_ref())
+            born(game, pos, entity, spec, &indexes)
         }
     };
-    let conversions_changed = match (&live.conversions, &conversions) {
-        (Some(old), Some(new)) => !Arc::ptr_eq(old, new),
-        _ => false,
-    };
-    if !Arc::ptr_eq(&live.recipes, &recipes) || conversions_changed {
-        match &conversions {
-            None => live.machine.set_recipes(core_recipes(game, &recipes)),
-            Some(conversions) => live
-                .machine
-                .set_chemical_recipes(core_chemical_recipes(game, &recipes), core_conversions(conversions)),
-        }
-        live.recipes = recipes.clone();
-        live.conversions = conversions.clone();
+    // Uma carga nova de dados limpou os índices (`MekanismRecipeType.clearCache`) e o monitor larga a receita que tinha
+    // (`invalidateCache`).
+    let generation = basis::data_generation();
+    if live.generation != generation {
+        live.machine.invalidate_recipe_cache();
+        live.generation = generation;
     }
     let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
     if !Arc::ptr_eq(&live.upgrade_types, &upgrade_types) || !Arc::ptr_eq(&live.upgrade_tags, &upgrade_tags) {
@@ -1345,19 +1475,18 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
 
     match live.machine.chemical_side() {
         None => {
-            let accepts = |_: &Game<'_>, _: usize, stack: &ItemStack| basis::is_recipe_input(&recipes, stack, None);
+            let held = Held { chemical: None, input: None };
+            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
+                slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held)
+            };
             let slots = |face| rules::electric_item_slots(front, face);
             let sides = rules::sides(front, rules::electric_item_slots);
             basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
         }
         Some(side) => {
-            let held = side.tank.resource().map(|resource| resource.id.to_string());
-            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| match slot {
-                rules::INPUT_SLOT => basis::is_recipe_input(&recipes, stack, held.as_deref()),
-                rules::INFUSION_SLOT => conversions
-                    .as_ref()
-                    .is_some_and(|conversions| conversions.iter().any(|conversion| conversion.item.test(stack))),
-                _ => false,
+            let held = Held { chemical: side.tank.resource(), input: machine.input().resource() };
+            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
+                slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held)
             };
             let slots = |face| rules::item_slots(front, face);
             let sides = rules::sides(front, rules::item_slots);
@@ -1431,12 +1560,7 @@ pub(in crate::game) fn use_item_on(
             let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
                 return;
             };
-            let recipes = basis::machine_recipes(game, &spec.recipes);
-            let conversions = spec
-                .slots
-                .infusion
-                .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
-            born(game, pos, entity, spec, &recipes, conversions.as_ref())
+            born(game, pos, entity, spec, &indexes_of(game, spec))
         }
     };
     let available = i32::try_from(stack.count).unwrap_or(i32::MAX);
@@ -1586,9 +1710,8 @@ struct MachineMenu<'a, 'g> {
     inventory: &'a mut [Option<ItemStack>],
     machine: &'a Machine,
     window: Option<SelectedWindow>,
-    recipes: Arc<Vec<basis::MachineRecipe>>,
-    conversions: Option<Arc<Vec<basis::ItemConversion>>>,
-    held: Option<String>,
+    indexes: Indexes,
+    held: Held,
     upgrades: Rc<upgrade::UpgradeData>,
     selected: SelectedWindow,
 }
@@ -1606,14 +1729,8 @@ impl MachineMenu<'_, '_> {
     /// A saída, a energia e a saída de upgrades não aceitam nada de quem clica.
     fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
         let slots = &self.machine.slots;
-        if slot == slots.input {
-            return basis::is_recipe_input(&self.recipes, stack, self.held.as_deref());
-        }
-        if Some(slot) == slots.infusion {
-            return self
-                .conversions
-                .as_ref()
-                .is_some_and(|conversions| conversions.iter().any(|conversion| conversion.item.test(stack)));
+        if slot == slots.input || Some(slot) == slots.infusion {
+            return slot_accepts(&self.indexes, slots, slot, &resource_of(self.game, stack), &self.held);
         }
         if slot == slots.upgrade {
             return *stack.item == *rules::UPGRADE_ITEM
@@ -1736,15 +1853,11 @@ pub(in crate::game) fn quick_move(
     let Some(machine) = machine_of(&entity.id) else {
         return;
     };
-    let recipes = basis::machine_recipes(game, &machine.recipes);
-    let conversions = machine
-        .slots
-        .infusion
-        .map(|_| basis::conversions(game, rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS));
-    let held = machine
-        .slots
-        .infusion
-        .and_then(|_| read_tank(entity).resource.map(|resource| resource.id.to_string()));
+    let indexes = indexes_of(game, machine);
+    let held = Held {
+        chemical: machine.slots.infusion.and_then(|_| read_tank(entity).resource),
+        input: entity.items.get(machine.slots.input).and_then(Option::as_ref).map(|stack| resource_of(game, stack)),
+    };
     let window = game.mb_window_selected(pos);
     let upgrades = window_upgrade_data();
     let first = entity.items.len();
@@ -1763,8 +1876,7 @@ pub(in crate::game) fn quick_move(
             inventory: &mut inventory,
             machine,
             window,
-            recipes,
-            conversions,
+            indexes,
             held,
             upgrades,
             selected: SelectedWindow::new(rules::UPGRADE_WINDOW, 0),

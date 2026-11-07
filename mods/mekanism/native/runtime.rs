@@ -1,7 +1,7 @@
 // Regras das máquinas, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o módulo
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
-use machinery_basis_core::cached_recipe::ItemToItemRecipe;
-use machinery_basis_core::chemical::ChemicalConversion;
+use machinery_basis_core::cached_recipe::ItemToItemCache;
+use machinery_basis_core::chemical::ConversionCache;
 use machinery_basis_core::containers::InventorySlot;
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui::NineSlice;
@@ -17,7 +17,7 @@ use machinery_basis_core::tile::{
     RedstoneSync, UpgradeConfig,
 };
 use machinery_basis_core::tooltip;
-use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
+use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::upgrade_window::UpgradeSync;
@@ -782,7 +782,7 @@ fn machine_config(
 /// mesma configuração.
 pub fn electric_config(
     energy_per_tick: i32,
-    recipes: Vec<Rc<ItemToItemRecipe>>,
+    recipes: Rc<ItemToItemCache>,
     check_offset: u64,
     upgrades: Rc<UpgradeData>,
 ) -> ElectricMachineConfig {
@@ -797,11 +797,24 @@ pub fn electric_config(
     }
 }
 
+/// O `getInputCache` de `MekanismRecipeType.METALLURGIC_INFUSING` (`InputRecipeCache.ItemChemical`): o índice do químico não guarda
+/// `ChemicalIds.EMPTY`. `source` é o `getRecipes(world)`, lido na primeira pergunta depois de um `clear`.
+pub fn infusing_cache(
+    source: impl Fn() -> Vec<Rc<ItemChemicalToItemRecipe>> + 'static,
+) -> Rc<ItemChemicalCache> {
+    ItemChemicalToItemRecipe::cache(source, EMPTY_CHEMICAL)
+}
+
+/// O mesmo índice sobre uma lista que não muda.
+pub fn infusing_cache_of(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Rc<ItemChemicalCache> {
+    ItemChemicalToItemRecipe::cache_of(recipes, EMPTY_CHEMICAL)
+}
+
 /// O Metallurgic Infuser como a lib o recebe, também usado pelo teste dos rastros.
 pub fn infuser_config(
     energy_per_tick: i32,
-    recipes: Vec<Rc<ItemChemicalToItemRecipe>>,
-    conversions: Vec<ChemicalConversion>,
+    recipes: Rc<ItemChemicalCache>,
+    conversions: Rc<ConversionCache>,
     check_offset: u64,
     upgrades: Rc<UpgradeData>,
 ) -> ChemicalMachineConfig {

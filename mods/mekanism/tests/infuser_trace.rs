@@ -10,7 +10,7 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
-use mekanism_rules::{INFUSER_USAGE, TANK_CAPACITY, infuser_config, trace_line};
+use mekanism_rules::{INFUSER_USAGE, TANK_CAPACITY, infuser_config, infusing_cache_of, trace_line};
 use serde_json::Value;
 use std::path::Path;
 use std::rc::Rc;
@@ -56,6 +56,7 @@ fn recipe(
             resource: item(output),
             count,
         },
+        per_tick_usage: false,
     })
 }
 
@@ -82,8 +83,8 @@ fn infuser() -> SimWorld<Infuser> {
     ];
     let config = infuser_config(
         INFUSER_USAGE,
-        recipes,
-        conversions,
+        infusing_cache_of(recipes),
+        ChemicalConversion::cache_of(conversions),
         0,
         common::upgrade_data(),
     );

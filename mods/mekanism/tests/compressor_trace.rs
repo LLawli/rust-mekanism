@@ -8,7 +8,7 @@
 use machinery_basis_core::cached_recipe::{CachedRecipe, ItemIngredient, ItemOutput};
 use machinery_basis_core::chemical::{
     ChemicalConversion, ChemicalIngredient, ChemicalInputHandler, ChemicalResource, ChemicalTank,
-    fill_tank_or_convert,
+    ConversionCache, fill_tank_or_convert,
 };
 use machinery_basis_core::containers::{
     AutomationType, EnergyContainer, InventorySlot, ItemResource,
@@ -23,7 +23,7 @@ use machinery_basis_core::recipe_monitor::{
 };
 use machinery_basis_core::tile::{STORAGE_MULTIPLIER, UpgradeRules};
 use machinery_basis_core::transaction::Callback;
-use machinery_basis_core::two_input_recipe::{ItemChemicalRecipes, ItemChemicalToItemRecipe};
+use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use serde_json::{Value, json};
 use std::cell::Cell;
 use std::path::Path;
@@ -69,14 +69,14 @@ struct Lookup {
     input: InventorySlot,
     output: InventorySlot,
     tank: ChemicalTank,
-    recipes: Rc<ItemChemicalRecipes>,
+    recipes: Rc<ItemChemicalCache>,
 }
 
 impl RecipeLookupHandler<ItemChemicalToItemRecipe> for Lookup {
     /// `getRecipe`: `findFirstRecipe(itemInputHandler, chemicalInputHandler)`.
     fn get_recipe(&self) -> Option<Rc<ItemChemicalToItemRecipe>> {
         self.recipes
-            .find_first(&self.input.contents(), &self.tank.contents())
+            .find_first_recipe(&self.input.contents(), &self.tank.contents())
     }
 
     /// `createNewCachedRecipe` com `recipe.perTickUsage()` verdadeiro.
@@ -144,7 +144,7 @@ struct Compressor {
     secondary: InventorySlot,
     output: InventorySlot,
     tank: ChemicalTank,
-    conversions: Vec<ChemicalConversion>,
+    conversions: Rc<ConversionCache>,
     monitor: RecipeCacheLookupMonitor<ItemChemicalToItemRecipe>,
     refill_ticks: i32,
 }
@@ -160,6 +160,7 @@ fn recipe(input: &str, chemical: &str, output: &str, count: u32) -> Rc<ItemChemi
             resource: item(output),
             count,
         },
+        per_tick_usage: true,
     })
 }
 
@@ -174,7 +175,7 @@ fn compressor(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Compressor {
         operating_ticks: Cell::new(0),
         errors: Cell::new(RecipeErrors::EMPTY),
     });
-    let recipes = ItemChemicalRecipes::new(recipes);
+    let recipes = ItemChemicalToItemRecipe::cache_of(recipes, "empty");
     let flags = MonitorFlags::new();
     let cache_listener: Callback = {
         let flags = flags.clone();
@@ -202,12 +203,12 @@ fn compressor(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Compressor {
     let tank = {
         let validator = {
             let recipes = recipes.clone();
-            Rc::new(move |chemical: &ChemicalResource| recipes.contains_chemical(chemical))
+            Rc::new(move |chemical: &ChemicalResource| recipes.contains_input_b(chemical))
         };
         let can_insert = {
             let (recipes, input) = (recipes.clone(), input.clone());
             Rc::new(move |chemical: &ChemicalResource, _: AutomationType| {
-                recipes.contains_pairing_ba(input.resource().as_ref(), chemical)
+                recipes.contains_input_ba(&input.resource(), chemical)
             })
         };
         ChemicalTank::create(
@@ -234,12 +235,12 @@ fn compressor(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Compressor {
         secondary,
         output,
         tank,
-        conversions: vec![ChemicalConversion {
+        conversions: ChemicalConversion::cache_of(vec![ChemicalConversion {
             input: ItemIngredient::item("ingot_osmium"),
             input_count: 1,
             output: osmium(),
             amount: 200,
-        }],
+        }]),
         monitor,
         refill_ticks: 0,
     }
