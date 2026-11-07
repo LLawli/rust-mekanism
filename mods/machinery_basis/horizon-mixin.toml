@@ -377,3 +377,144 @@ bindings = [
   { name = "encoder", ty = "&mut wgpu::CommandEncoder", value = "&mut *encoder" },
   { name = "tick", ty = "u64", value = "tick" },
 ]
+
+# ---- barra de armadura e mão de uma tela de contêiner (`ContainerBuilder.armorSideBar`) ----
+# O servidor monta o menu com cinco slots a mais depois dos 36 do inventário, o cliente os põe na tela nos ids 500 a 504 que o jogo já usa
+# para a armadura e a mão, e "clicar fora" passa a respeitar os elementos da tela fora da imagem. Alvos crus: o Horizon não tem hook para
+# nenhum destes pontos. Os módulos entram onde enxergam o que é privado.
+[[module]]
+id = "armor-bar"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_armor_bar"
+source = "armor_bar.rs"
+
+[[module]]
+id = "bar-menu"
+file = "crates/horizon-client/src/menu.rs"
+name = "machinery_bar_menu"
+source = "bar_menu.rs"
+visibility = "pub"
+
+[[module]]
+id = "bar-machine"
+file = "crates/horizon-client/src/game/lan_crafting.rs"
+name = "machinery_bar_machine"
+source = "bar_machine.rs"
+
+[[module]]
+id = "bar-hub"
+file = "crates/horizon-client/src/lan/containers.rs"
+name = "machinery_bar_hub"
+source = "bar_hub.rs"
+
+[[module]]
+id = "bar-quick-move"
+file = "crates/horizon-client/src/game/native_quick_move.rs"
+name = "machinery_bar_quick_move"
+source = "bar_quick_move.rs"
+
+# Onde a tela do bloco põe os slots da barra no lugar da posição do inventário do jogo.
+[[injection]]
+id = "bar_slot_position"
+target = "horizon_client::game::Game<'_>::slot_position"
+kind = "RETURN"
+helper = "bar_slot_position.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "i", ty = "usize", value = "i" },
+  { name = "value", ty = "(f32, f32)", value = "$value" },
+]
+
+# A lista de slots que o jogo desenha e deixa clicar, e a mesma contada sem alocar (o gancho de `screen_render_post` confere as duas).
+[[injection]]
+id = "bar_slots"
+target = "horizon_client::game::Game<'_>::slots"
+kind = "RETURN"
+helper = "bar_slots.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "slots", ty = "Vec<usize>", value = "$value" },
+]
+
+[[injection]]
+id = "bar_slot_count"
+target = "horizon_client::game::Game<'_>::slot_count"
+kind = "RETURN"
+helper = "bar_slot_count.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "count", ty = "usize", value = "$value" },
+]
+
+# O índice do menu do servidor depois dos 36 do inventário para o id de cliente da barra. HEAD cancelável, não RETURN: o corpo tem `?`.
+[[injection]]
+id = "bar_menu_slot"
+target = "horizon_client::game::remote::Game<'_>::menu_slot"
+kind = "HEAD"
+cancellable = true
+helper = "bar_menu_slot.rs"
+bindings = [
+  { name = "menu", ty = "&str", value = "menu" },
+  { name = "slot", ty = "i32", value = "slot" },
+]
+
+# `GuiMekanism.hasClickedOutside`: o ponto sobre um slot da barra, uma aba ou a janela de upgrades não é "fora". HEAD cancelável, não RETURN: o
+# corpo tem um `use` aninhado. Responde falso nesse caso e deixa o resto do corpo (a conta do retângulo da imagem e do livro de receitas) como está.
+[[injection]]
+id = "bar_clicked_outside"
+target = "horizon_client::game::Game<'_>::clicked_outside"
+kind = "HEAD"
+cancellable = true
+helper = "bar_clicked_outside.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&HudBatch", value = "batch" },
+]
+
+# O menu do servidor de um tipo com barra ganha os cinco slots. `Menu::new` devolve `Self` e não aceita injeção (nem HEAD cancelável nem RETURN), então o
+# clique que o usa (`lan_machine_click`, o mesmo alvo de `result_take_before` e `menu_click_before`) encontra o menu da conexão já pronto.
+[[injection]]
+id = "bar_machine_menu"
+target = "horizon_client::game::lan_crafting::Game<'_>::lan_machine_click"
+kind = "HEAD"
+helper = "bar_machine_menu.rs"
+bindings = [
+  { name = "host", ty = "&mut crate::game::lan::LanHost", value = "&mut *host" },
+  { name = "conn", ty = "u32", value = "conn" },
+  { name = "p", ty = "&horizon_protocol::packets::play::ContainerClick", value = "p" },
+]
+
+# O shift-clique que parte de um slot da barra vai ao mod, como o do inventário.
+[[injection]]
+id = "bar_quick_move"
+target = "horizon_client::game::native_quick_move::Game<'_>::lan_mod_quick_move"
+kind = "HEAD"
+cancellable = true
+helper = "bar_quick_move_head.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "host", ty = "&mut crate::game::lan::LanHost", value = "&mut *host" },
+  { name = "conn", ty = "u32", value = "conn" },
+  { name = "p", ty = "&horizon_protocol::packets::play::ContainerClick", value = "p" },
+]
+
+# A armadura e a mão que um clique mudou chegam ao cliente com a resposta do clique, não um tick depois.
+[[injection]]
+id = "bar_answer_click"
+target = "horizon_client_lib::lan::containers::Hub::answer_click"
+kind = "HEAD"
+helper = "bar_answer_click.rs"
+bindings = [
+  { name = "hub", ty = "&mut Hub", value = "&mut *self" },
+  { name = "i", ty = "usize", value = "i" },
+]
+
+[[injection]]
+id = "bar_resend_menu"
+target = "horizon_client_lib::lan::containers::Hub::resend_menu"
+kind = "HEAD"
+helper = "bar_resend_menu.rs"
+bindings = [
+  { name = "hub", ty = "&mut Hub", value = "&mut *self" },
+  { name = "conn", ty = "u32", value = "conn" },
+]

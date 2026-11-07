@@ -261,6 +261,17 @@ textos de idioma; o clique que troca a unidade usa `screen_mouse_button_pressed_
 `screen_click`. Um `double` que a tela precisa (o calor e as duas perdas do Heat Generator) viaja em quatro data slots
 (`data_slots::split_f64` e `join_f64`).
 
+### Barra de armadura e mão
+
+`armor_slots.rs` porta `MekanismContainer.addArmorSlots`, `ArmorSlot` e `OffhandSlot` (a coluna de quatro slots com a mão logo abaixo, `mayPlace`, tamanho, `mayPickup` e o `insert`),
+e `armor_bar.rs` guarda, por tipo de menu, o que o mod declarou de `ContainerBuilder.armorSideBar(x, y, offhandOffset)` mais os retângulos dos elementos da tela que ficam fora da imagem
+(as abas laterais). A declaração é uma só por processo, porque o servidor (que monta o menu com os cinco slots depois dos 36 do inventário) e o cliente (que os põe na tela, nos ids 500 a 504 que o
+jogo já usa para a armadura e a mão) rodam em threads diferentes. Os slots são reais, do jogador, e o motor de menus do Horizon os trata (`Role::Armor`: só a peça do slot, uma por vez, a maldição do
+vínculo, o `onEquipItem` do clique). A lib faz o que o motor não faz: a lista de slots e a posição na tela do mod, o mapa dos índices, o "clicar fora" que respeita as abas
+(`GuiMekanism.hasClickedOutside`), o shift-clique que parte da armadura ou da mão (com o `mayPickup`) e o envio da armadura e da mão com a resposta do clique. Tudo isso é injeção crua, e está em
+[injecoes-horizon.md](injecoes-horizon.md#a-barra-de-armadura-e-mão-machinery_basis-9-injeções). O mod declara a barra, desenha o suporte e os quadros, e liga o shift-clique dele
+(`GeneratorMenu`). A lib não conhece id de menu: ele chega por parâmetro.
+
 ## Fora da lib
 
 Fica no mod que usa: ids de químicos, receitas, tiers, fábricas, texturas e o layout de cada tela. Também ficam de fora

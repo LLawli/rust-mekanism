@@ -618,11 +618,28 @@ pub(in crate::game) fn draw_slots(game: &mut Game<'_>, batch: &mut HudBatch, ox:
             continue;
         }
         let (sx, sy) = game.slot_position(i);
+        // Os fundos dos slots vazios da armadura e da mão (`ArmorSlot.getNoItemIcon`, `InventoryMenu.EMPTY_ARMOR_SLOT_SHIELD`), como o laço do Horizon.
+        if i == 504 && game.offhand.is_none() {
+            batch.sprite(&game.gui.atlas, "gui/sprites/container/slot/shield", ox + sx, oy + sy);
+        }
+        if (500..504).contains(&i) && game.armor[i - 500].is_none() {
+            let icon = ["helmet", "chestplate", "leggings", "boots"][i - 500];
+            batch.sprite(&game.gui.atlas, &format!("gui/sprites/container/slot/{icon}"), ox + sx, oy + sy);
+        }
         let stack = game.slot_view(i);
         game.draw_slot_item(batch, drag.as_ref(), i, &stack, ox + sx, oy + sy);
     }
     draw_window(game, spec, batch, ox, oy, &virtual_ids);
     true
+}
+
+/// `GuiMekanism.findElementOver` para o que a lib desenha: a janela de upgrades aberta, ou o botão da aba dela quando não há janela
+/// (`GuiWindow` é ativo, e a aba fica inativa com a janela aberta). O ponto `at` é relativo ao canto da tela.
+pub(in crate::game) fn over_element(game: &Game<'_>, at: [f32; 2]) -> bool {
+    if open_spec(game).is_none() {
+        return false;
+    }
+    covers(at) || (client().window.is_none() && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1380,6 +1397,11 @@ impl Game<'_> {
     /// A aba, a desenhar junto do resto da tela do bloco.
     pub(in crate::game) fn mb_window_draw_tab(&self, batch: &mut HudBatch, block: &str, origin: [f32; 2]) {
         draw_tab(self, batch, block, origin);
+    }
+
+    /// Se o ponto `at` (relativo ao canto da tela) está sobre a janela de upgrades ou a aba dela: um elemento ativo da tela.
+    pub(in crate::game) fn mb_window_over(&self, at: [f32; 2]) -> bool {
+        over_element(self, at)
     }
 
     /// Se a janela de upgrades aberta cobre o ponto `at` (relativo ao canto da tela).

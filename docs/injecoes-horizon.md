@@ -18,18 +18,18 @@ Contagem em 2026-11-07, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 71 | |
+| `[[injection]]` no total | 80 | |
 | Hook do catálogo, usado só com o contrato dele | 27 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 29 | sim |
-| Injeção crua (`target = ...`) | 15 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 11 | sim |
+| Injeção crua (`target = ...`) | 24 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 16 | sim |
 
-27 + 29 + 15 = 71. Os 11 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-44 injeções e 11 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+27 + 29 + 24 = 80. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+53 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 15 | 11 | 29 |
+| Em uso | 24 | 16 | 29 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -73,6 +73,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H28 modelo ausente no ícone de slot | correção | nenhuma (diferença de pixel) | pedido |
 | H29 `composter_item_handler` | helper | módulo `composter-wrapper` | em uso |
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
+| H31 barra de armadura e mão no tipo de menu (`armorSideBar`) | dado + hook | `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_menu_slot`, `bar_machine_menu`, `bar_quick_move`, `bar_answer_click`, `bar_resend_menu` e os módulos `armor-bar`, `bar-menu`, `bar-machine`, `bar-hub`, `bar-quick-move` | em uso (8 injeções, 5 módulos) |
+| H32 elementos da tela fora da imagem (`hasClickedOutside`) | dado | `bar_clicked_outside` | em uso (1) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -113,18 +115,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 25 | 18 | 7 | 7 |
+| `mods/machinery_basis/horizon-mixin.toml` | 34 | 18 | 16 | 12 |
 | `mods/mekanism/native/horizon-mixin.toml` | 30 | 24 | 6 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 16 | 14 | 2 | 2 |
-| Total | 71 | 56 | 15 | 11 |
+| Total | 80 | 56 | 24 | 16 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Oito das quinze cruas são `cancellable = true` (a oitava é `container_dim`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before`, `menu_click_before` e `active_light`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 24 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
 Dos 56 hooks, 29 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 29 com estrutura privada são os 7 de antes, os 10 da janela de upgrades (`window_*`, com o `window_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) e os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`).
 
-## Injeções cruas em uso (15)
+## Injeções cruas em uso (24)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -357,6 +359,52 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
 - **Risco:** mudar a assinatura de `animate_sprites`, o tipo de `sprite_animations` (`(Rect, SpriteAnimation, (usize, usize, u32))`) ou
   `SpriteAnimation::{blend, resized_pixels}`. O módulo exige que `hud.rs` não tenha `use ...::*` de topo (o planejador recusa).
 
+### A barra de armadura e mão (machinery_basis, 9 injeções)
+
+- **Estado:** em uso desde 2026-11-07. Nove injeções (`bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_menu_slot`, `bar_clicked_outside`,
+  `bar_machine_menu`, `bar_quick_move`, `bar_answer_click`, `bar_resend_menu`) e cinco módulos (`armor-bar`, `bar-menu`, `bar-machine`, `bar-hub`,
+  `bar-quick-move`). **Proposta:** H31 (as oito primeiras, menos `bar_clicked_outside`) e H32 (`bar_clicked_outside`).
+- **Para quê:** `GeneratorsContainerTypes.java:29` registra o Heat Generator com `.armorSideBar(-20, 11, 0)` (`ContainerTypeDeferredRegister.java:145`),
+  e `MekanismContainer.addArmorSlots` (`MekanismContainer.java:231`) põe, depois dos 36 do inventário, quatro `ArmorSlot` (a cabeça em cima, sobre os
+  índices 39 a 36 do jogador) e um `OffhandSlot` (índice 40): os slots 40 a 44 do menu. Decisão de desenho (2026-11-07): são slots reais do jogador no
+  menu do servidor, que o motor verificado do Horizon já tem (`Role::Armor`: `mayPlace` por `canEquip`, tamanho 1, `mayPickup` com a maldição do
+  vínculo, `onEquipItem` no clique), com os ids de cliente 500 a 504 que o jogo usa para `Game::armor` e `Game::offhand`. A lib guarda a declaração por
+  tipo de menu (`machinery_basis_core::armor_bar`: posição e elementos de tela), o mod só a declara (o Heat Generator: `armorSideBar(-20, 11, 0)`, as abas
+  de calor e de energia) e desenha o `GuiSideHolder` e os quadros.
+- **O que cada injeção faz:**
+  - `bar_slot_position` (RETURN de `Game::slot_position`), `bar_slots` (RETURN de `Game::slots`) e `bar_slot_count` (RETURN de `Game::slot_count`): na tela de
+    mod aberta com barra, a posição declarada para 500 a 504 e a lista (e a contagem, que o hook de `screen_render_post` confere) com esses cinco.
+  - `bar_menu_slot` (HEAD cancelável de `Game::menu_slot`, `remote.rs`): o índice `slots + 36 + k` do menu do servidor é 500 + k. É HEAD cancelável, não
+    RETURN, porque o corpo tem `?`. `menu_slot_index` percorre os índices até o primeiro `None`, então os cinco têm de vir logo depois do inventário.
+  - `bar_machine_menu` (HEAD de `lan_machine_click`, o mesmo alvo de `result_take_before` e `menu_click_before`) e o módulo `bar-machine`: `Menu::new` devolve
+    `Self`, e o mixin recusa HEAD cancelável e RETURN nesse caso (`E_UNSUPPORTED_SIGNATURE`, medido). O menu que o servidor roda para a conexão nasce de
+    `Menu::new(Kind::Mod(t))`, então o HEAD o deixa pronto em `crafting.machine`, com os cinco slots a mais (`machinery_bar_menu::extend`, módulo em
+    `menu.rs`), e o clique o reaproveita (`take().filter(janela e tipo iguais)`).
+  - `bar_quick_move` (HEAD cancelável de `lan_mod_quick_move`) e o módulo `bar-quick-move`: `quick_move_slot` dá `None` para o que passa de `size + 36`, então
+    o shift-clique que parte da armadura ou da mão cairia no `ChestMenu.quickMoveStack` do motor. O módulo repete as guardas de `lan_mod_quick_move`, confere
+    `Slot.mayPickup` (a maldição do vínculo recusa em sobrevivência, e o `doClick` volta antes do `quickMoveStack`) e chama o `native_menu_quick_move` do mod, com
+    a pilha da peça; o que sobra volta ao slot de origem. Nenhum efeito de equipar: `quickMoveStack` move por `insert` e `remove`, sem `setByPlayer`.
+  - `bar_answer_click` (HEAD de `Hub::answer_click`) e `bar_resend_menu` (HEAD de `Hub::resend_menu`) e o módulo `bar-hub`: o hub sincroniza `size + 36` slots, e
+    a armadura chegaria ao cliente um tick depois, pela sincronização do menu do inventário (um quadro com o item em lugar nenhum: o cursor já vazio e o slot
+    ainda vazio). `Hub::machinery_sync_bar` manda na hora os cinco slots (janela 0, slots 5 a 8 e 45) que o clique mudou. O quadro sem o item em lugar nenhum é de leitura do código
+    (`Hub::sync_player_state` (`hub.rs`, o `broadcastChanges` do menu do inventário, no tick do hub) contra `answer_click`): o `ctl` não o mede, porque o intervalo é de um tick (50 ms) e uma troca de `item replace` com o servidor parado
+    também chega ao cliente, então o caso `frozen` de `h2_armor.py` só confere que o capacete está no slot depois do clique.
+  - `bar_clicked_outside` (HEAD cancelável de `Game::clicked_outside`): o original (`GuiMekanism.java:397-399`) é
+    `super.hasClickedOutside(..) && findElementOver(..) == null`, e o NeoForge acrescenta `if (slot != null) clickedOutside = false`
+    (`AbstractContainerScreen.mouseClicked`). O Horizon dá a vez a "fora" sobre um slot (`container_screen::Target::of`, a regra do vanilla), e o retângulo da
+    imagem tem 176 de largura: um clique sobre um slot da barra (x -21 a -3) ou sobre uma aba lateral com um item no cursor soltava o item. O HEAD responde falso
+    sobre um elemento ativo da tela: os quadros dos slots da barra, os elementos que o mod declarou (`GuiHeatTab`, `GuiEnergyTab`), e a aba de upgrades e a janela
+    dela, que a lib sabe. O suporte (`GuiSideHolder`) e o `GuiSlot` têm `active = false` (`GuiSideHolder.java`, `GuiSlot.java:91`), então a margem deles continua "fora".
+    Cursor com 5 de terra e um clique em cada aba, no jogo (`horizon`, 2026-11-07): antes soltava o item, depois fica.
+- **Java:** `MekanismContainer.java:231,278-330` (`addArmorSlots`, `quickMoveStack`), `ArmorSlot.java`, `OffhandSlot.java`,
+  `GuiHeatGenerator.java:35` (`GuiSideHolder.create(this, -26, 6, 98, true, true, TAB_ARMOR_SLOTS)`), `GuiMekanism.java:397-399` e `:715-775` (`GuiSlot` para cada slot).
+- **Hook mais próximo:** nenhum. `native_screen` só descreve os slots do contêiner (300 e acima) e o inventário (0 a 35), `Menu::new` não conhece slots de
+  armadura fora de `Kind::Inventory`, e o hub sincroniza `size + 36`.
+- **Hook proposto:** H31 e H32.
+- **Risco:** `slot_position`, `slots`, `slot_count` e `clicked_outside` são o núcleo da tela de inventário; `menu_slot` e `answer_click` são o protocolo do menu. Renomear
+  um deles quebra o build; mudar a ordem dos slots do menu (os cinco depois dos 36) ou o que `lan_machine_click` faz com `crafting.machine` quebra a barra sem erro. O
+  registro tem uma cópia por crate (`armor_bar` no cliente, `machinery_bar_menu` no crate de baixo, que o servidor usa), e o mod declara nos dois pela mesma chamada.
+
 ## Hooks do catálogo com estrutura privada
 
 Os 29 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
@@ -369,7 +417,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido, e, para o `ItemUpgrade.useOn` (que o Mekanism e o Heat Generator usam por aqui), `game.held_mut()` e, nas funções de cada mod, `game.world.block_entities.get/get_mut` e `game.world.modified.insert` | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game`, `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `use_item` (basis) | `use_item` | `game.world.game_time` | `level_game_time`, que já existe |
 | `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, o método do módulo `slot-accepts` no ejetor, e, para premiar as receitas ao jogador que tirou o resultado (o tick não tem jogador agindo), `game.lan.take()` e `game.as_guest` com o estado dele no lugar do anfitrião | `level_game_time`, H7 e H27 entregando o jogador |
-| `menu_quick_move` (mekanismgenerators) | `menu_quick_move` | `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Heat Generator enche) | o mesmo helper de escrita no inventário de quem age |
+| `menu_quick_move` (mekanismgenerators) | `menu_quick_move` | `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Heat Generator enche), `game.armor` e `game.offhand` (a barra de armadura que ele também enche e esvazia), e `game.items()` (em que slot cada peça se veste, `canEquip`) | o mesmo helper de escrita no inventário de quem age, e um de leitura de `equip_slot` |
 | `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`), `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Mekanism enche) | H8: `cooking_recipes(kind)`; falta um helper de escrita no inventário de quem age |
 | `block_entity_tick` (generators) | `block_entity_tick` | `game.res.providers().burn_time(world_items!)`, `game.world.chunks` e `world_biomes!` | H8: `burn_time(stack)`, `biome_temperature(dimension, pos)` |
 | `window_frame` (basis) | `frame` | `game.mod_screen` (escreve `screen.slots`), `game.renderer`, `game.remote`, `game.world.block_entities` | H9 |
@@ -440,7 +488,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (11)
+## Módulos (16)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -455,6 +503,11 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `composter-wrapper` (machinery_basis) | `game/composter.rs` | o sorteio das camadas de um item e a subida de um nível da composteira, como o `ComposterWrapper` do NeoForge faz | H29 |
 | `container-dim` (machinery_basis) | `horizon-client-render/src/hud.rs` | o estado "a tela aberta é de uma máquina nossa" (`machinery_container_dim`), que o HEAD de `HudBatch::fill` lê e o `Game` escreve | H22 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
+| `armor-bar` (machinery_basis) | `game.rs` | a barra de armadura do lado do cliente: a lista de slots, a posição, o "fora" da tela e o mapa dos índices do menu | H31, H32 |
+| `bar-menu` (machinery_basis) | `menu.rs` (crate `horizon_client_lib`, `pub`) | os cinco slots no fim do menu de um tipo com barra, e o registro dele, que o crate de baixo enxerga (a `machinery-basis-core` só liga ao `horizon-client`) | H31 |
+| `bar-machine` (machinery_basis) | `game/lan_crafting.rs` | deixa pronto o menu da conexão com os cinco slots antes do clique (`Menu::new` devolve `Self`) | H31 |
+| `bar-hub` (machinery_basis) | `lan/containers.rs` | `Hub::machinery_sync_bar`: a armadura e a mão que o clique mudou vão ao cliente com a resposta dele | H31 |
+| `bar-quick-move` (machinery_basis) | `game/native_quick_move.rs` | o shift-clique que parte de um slot da barra, com as guardas de `lan_mod_quick_move` e o `mayPickup` | H31 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 
@@ -472,6 +525,9 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
   `composter.rs`) e `machinery_composter_raise` (`composter_insert` com uma camada: nível, evento de jogo, tick agendado ao chegar
   a 7 e evento de nível 1500). A decisão é da lib (`machinery_basis_core::composter`, conferida contra o rastro do original). Risco:
   renomear `compostable`, `provider_int`, `ComputeContext`, `with_level` ou `composter_insert`.
+- **`armor-bar`, `bar-menu`, `bar-machine`, `bar-hub` e `bar-quick-move`:** a barra de armadura e mão (ver [A barra de armadura e mão](#a-barra-de-armadura-e-mão-machinery_basis-9-injeções)).
+  `bar-menu` mora em `menu.rs`, que é do crate `horizon_client_lib`, e não enxerga a `machinery-basis-core` (o Cargo a liga só ao `horizon-client`, que depende dele), então
+  guarda o próprio registro dos slots (`declare`, `declared`, `extend`), que `armor-bar` preenche junto do da lib. `bar-hub` mora em `lan/containers.rs`, também de lá.
 - **`glue`:** existe porque um `[[crate]]` não depende de `horizon-client` (Cargo proíbe o ciclo) e o crate `[api]` só vê o
   `dyn Host`. Os três `glue` somem quando o `Host` cobrir H1 a H8 e o código passar a viver no crate `[api]` como trait. Hoje os
   três `[api]` estão vazios. O Horizon cita um crate de API estável para crates de mod (`#3897`), que resolveria o resto.
@@ -648,7 +704,7 @@ fn block_fluid(&self, _host: &dyn Host, event: &mut BlockFluidEvent<'_>) {
 - **Quando dispara:** no mesmo lugar do v1, em `draw_native_screen_tooltip`, com a mesma condição (sem item no cursor e sem slot
   sob ele). Se v1 e v2 existirem, v2 roda depois.
 - **Quem precisa:** hoje duas injeções cruas fazem este trabalho, as duas com o nome `widget_tooltip` (uma em `mekanism_native`,
-  outra em `mekanismgenerators_native`, ver [Injeções cruas em uso](#injeções-cruas-em-uso-7)). O tooltip da aba de avisos, da
+  outra em `mekanismgenerators_native`, ver [Injeções cruas em uso](#injeções-cruas-em-uso-24)). O tooltip da aba de avisos, da
   barra de energia, da barra de químico e do medidor de lava fica por cima ou por baixo do widget, e o da aba de avisos sai com o
   cabeçalho amarelo. Com o v2, as duas injeções saem.
 - **Assinatura:**
@@ -926,6 +982,24 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
   cada mod escolher o desenho de cada camada, e hoje a injeção crua `slot_highlight` faz esse papel. Não é um pedido de correção
   do Horizon: o padrão do Horizon, sem mod, está certo para o vanilla.
 
+### H31 barra de armadura e mão no tipo de menu
+
+- **Lado:** servidor e cliente. **Tipo:** dado, no JSON do tipo de menu (`data/<id>/horizon/menu/`), mais o que o motor já tem.
+- **O que faz:** `{ "slots": 4, "data_slots": 27, "armor_bar": { "x": -20, "y": 11, "offhand_offset": 0 } }`. O `Menu::new(Kind::Mod)` põe, depois dos 36 do inventário,
+  quatro `Role::Armor` (a cabeça primeiro, sobre os índices 39 a 36 do jogador) e a mão (índice 40), como o `Kind::Inventory` já faz; a tela de mod põe os ids 500 a
+  504 nessas posições, o `menu_slot` os mapeia, o hub os sincroniza com a resposta do clique e o `native_menu_quick_move` os recebe como origem, com `mayPickup` conferido antes.
+  `offset` ausente ou -1 deixa a mão fora (`armorSideBar(x, y)`).
+- **Exemplo:** o Heat Generator e os outros geradores do Mekanism declaram `armorSideBar(-20, 11, 0)`, o Energy Cube `(180, 41, 0)` e a Induction Matrix `(-20, 41, 0)`.
+- **Alternativa menos útil:** slots virtuais por hook (`screen_layout`): cada mod reimplementa as regras de `ArmorSlot` e o equipar com som e evento que o motor já faz.
+
+### H32 elementos da tela fora da imagem
+
+- **Lado:** cliente. **Tipo:** dado, em `NativeScreen`: `elements: Vec<[f32; 4]>`.
+- **O que faz:** os retângulos (relativos ao canto da tela) que recebem o mouse fora da imagem de 176 por 166 (abas laterais, a janela de upgrades). `clicked_outside` e
+  o clique de contêiner os tratam como `GuiMekanism.findElementOver`: o clique neles não é "fora" (não solta o item do cursor). O vanilla não tem esse caso (o
+  `AbstractContainerScreen.hasClickedOutside` só olha a imagem), e o NeoForge ainda impede que um slot sob o mouse seja "fora".
+- **Exemplo:** `NativeScreen { elements: vec![[-26.0, 109.0, 26.0, 26.0], [-26.0, 137.0, 26.0, 26.0]], .. }` para as abas de calor e de energia.
+
 ## Correções pedidas ao renderer do Horizon
 
 Estas não são injeções. São diferenças de pixel que vêm do próprio renderer do Horizon, então afetam o jogo inteiro, não só o
@@ -1055,7 +1129,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=71 hook=56 target=15 module=11 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=80 hook=56 target=24 module=16 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 29 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.

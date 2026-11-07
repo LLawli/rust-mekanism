@@ -109,6 +109,28 @@ pub const HEAT_TAB: machinery_basis_core::side_tab::InfoTab =
     machinery_basis_core::side_tab::InfoTab {
         rect: [-26.0, 109.0, 26.0, 26.0],
     };
+/// `GeneratorsContainerTypes.java:29`: o Heat Generator registra `.armorSideBar(-20, 11, 0)` (o `x`, o `y` e o `offhandOffset` de
+/// `ContainerBuilder.armorSideBar`), e `MekanismContainer.addArmorSlots` põe os quatro slots de armadura e o da mão a partir dali.
+pub const ARMOR_BAR_X: i32 = -20;
+pub const ARMOR_BAR_Y: i32 = 11;
+pub const ARMOR_BAR_OFFHAND_OFFSET: i32 = 0;
+/// `GuiHeatGenerator.java:35`: `GuiSideHolder.create(this, -26, 6, 98, true, true, SpecialColors.TAB_ARMOR_SLOTS)`, o suporte de 26 por 98 atrás
+/// dos cinco slots, à esquerda (`holder_left`). A cor é o pixel 21 de `colormap/gui_objects.png` (o 22º `register()` de `SpecialColors`), branco.
+pub const ARMOR_HOLDER: machinery_basis_core::gui::Rect = [-26.0, 6.0, 26.0, 98.0];
+pub const ARMOR_HOLDER_SPRITE: &str = "mekanism:gui/sprites/holder_left";
+pub const ARMOR_HOLDER_TINT: u32 = 0xFF_FF_FF_FF;
+
+/// O que a tela do gerador declara à `machinery_basis` do tipo de menu: a barra de armadura e os elementos que ficam fora da imagem de
+/// 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor e a de energia. A aba de upgrades é da lib.
+pub fn armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
+    machinery_basis_core::armor_bar::Declaration {
+        x: ARMOR_BAR_X,
+        y: ARMOR_BAR_Y,
+        offhand_offset: ARMOR_BAR_OFFHAND_OFFSET,
+        elements: vec![HEAT_TAB.rect, ENERGY_TAB.rect],
+    }
+}
+
 /// `GuiHeatTab.getResource`: `Mekanism.rl("tab/heat_info_" + type.getTabName())`, no atlas de sprites da tela.
 pub fn heat_tab_sprite(unit: TemperatureUnit) -> String {
     format!("mekanism:gui/sprites/tab/heat_info_{}", unit.tab_name())

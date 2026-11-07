@@ -6,6 +6,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O Heat Generator tem os slots de armadura e de mão secundária (`armorSideBar(-20, 11, 0)`, `GeneratorsContainerTypes.java:29`): quatro `ArmorSlot` em
+  (-20, 11 + 18 i), a cabeça em cima, e o `OffhandSlot` em (-20, 83), sobre o suporte `GuiSideHolder.create(this, -26, 6, 98, true, true, TAB_ARMOR_SLOTS)`
+  (`holder_left`). São os slots 40 a 44 do menu do servidor, que o motor verificado do Horizon já sabe tratar: o capacete entra no slot da cabeça e é recusado no das
+  botas, uma pilha de 2 capacetes entra 1, a mão aceita qualquer item, a peça com maldição do vínculo não sai em sobrevivência (clique nem shift-clique), e o clique
+  com o cursor equipa pelo `onEquipItem` do motor (o evento de jogo, medido com um sensor de sculk, e o som, que sai da mesma chamada) e o shift-clique não. O shift-clique segue o `MekanismContainer.quickMoveStack`: do inventário vai ao gerador
+  (combustível primeiro, mesmo da mão), depois à armadura (só slots vazios) e ao outro grupo; da armadura ou da mão vai à barra de atalhos e ao inventário. A regra
+  está na `machinery_basis` (`armor_slots` e `armor_bar`: o registro por tipo de menu, a geometria, o mapa dos índices e os retângulos de elementos da tela) e o
+  Generators só declara a barra e as duas abas e desenha o suporte. Nove injeções cruas e cinco módulos novos na `machinery_basis` (veja
+  `docs/injecoes-horizon.md`, "A barra de armadura e mão").
 - O Heat Generator tem a aba de calor (`GuiHeatTab`, em (-26, 109)): o tooltip mostra `Temp`, `Transferred` e `Dissipated` (`lastTransferLoss` e
   `lastEnvironmentLoss`, que `TileEntityHeatGenerator.simulate` guarda e o contêiner sincroniza como dois `SyncableDouble`, aqui oito data slots) e a
   unidade; o clique esquerdo avança e o direito volta a unidade de temperatura do cliente (`MekanismConfig.local.tempUnit`: K, C, R, F e STP, nessa ordem,
@@ -153,6 +162,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- Clicar numa aba lateral da tela de uma máquina (a de calor e a de energia do Heat Generator, a de upgrades e a janela dela) ou num slot fora da imagem com um item no
+  cursor não solta mais o item: `GuiMekanism.hasClickedOutside` só chama de "fora" o que não está sobre um elemento ativo da tela, e o NeoForge nunca deixa um slot sob
+  o mouse ser "fora". O Horizon olhava só o retângulo da imagem de 176 por 166 e soltava a pilha. As abas de energia, de experiência e de avisos das quatro máquinas
+  do Mekanism ainda não entram nessa conta.
 - O roteiro de comparação de telas do port virava o jogador para a máquina (`interact` põe inclinação 20 e giro -9), e o mundo atrás da tela era outra vista
   que a do original (a máquina ficava atrás do painel): o roteiro volta a `look 0 0` depois de abrir a tela, e aplica as entradas da luz do original
   (`time set 6000`, `weather clear`).

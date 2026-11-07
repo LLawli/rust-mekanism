@@ -2,10 +2,12 @@
 //! (`GuiSideHolder`). Só a geometria e as regras de quem a recebe; o desenho (fundo do botão, suporte tingido, ícone) é do glue.
 //! Os retângulos são `[x, y, largura, altura]` em pixels de GUI, relativos ao canto da tela, como no Java.
 
-use crate::gui::{Rect, contains};
+use crate::gui::{NineSlice, Rect, contains};
 
 /// `GuiSideHolder`: a largura do suporte.
 pub const HOLDER_WIDTH: i32 = 26;
+/// O `gui.scaling` de `holder_left` e `holder_right` (os dois `.png.mcmeta` do Mekanism são iguais): nove partes de 26 por 9, borda 4.
+pub const HOLDER_SLICE: NineSlice = crate::upgrade_window::HOLDER_SLICE;
 /// O lado do botão de dentro (`innerSize`) das abas de 26 por 18.
 pub const BUTTON_SIZE: i32 = 18;
 

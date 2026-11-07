@@ -1,6 +1,7 @@
 // O Heat Generator no jogo. As regras ficam em mekanismgenerators_rules, e o que é genérico em
 // machinery_basis.
 use crate::game::mekanismgenerators_rules as rules;
+use crate::game::machinery_armor_bar::declare as declare_armor_bar;
 use crate::game::{Game, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::hud::HudBatch;
@@ -8,12 +9,15 @@ use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::{NativeScreen, NativeScreenView};
 use horizon_world::nbt::{Compound, JavaString, Tag};
+use machinery_basis_core::armor_bar;
+use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::slot_rules;
+use machinery_basis_core::side_tab;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
@@ -143,6 +147,8 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     if is_generator(block) {
+        // Todo caminho que abre o menu (o servidor que monta o menu com os cinco slots a mais, o cliente que os põe na tela) passa por aqui antes.
+        declare_armor_bar(rules::MENU, rules::armor_bar_declaration);
         // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
         *container = Some(ModContainer {
             slots: rules::MENU_SLOTS,
@@ -154,6 +160,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
 
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if is_generator(block) {
+        declare_armor_bar(rules::MENU, rules::armor_bar_declaration);
         // Os slots virtuais da janela de upgrades vêm depois dos do gerador e ficam escondidos até a janela abrir.
         let mut slots: Vec<Option<[f32; 2]>> = rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect();
         slots.extend([None, None]);
@@ -555,6 +562,7 @@ pub(in crate::game) fn screen_draw(
 
     let title = basis::screen_title(game, "container.mekanismgenerators.heat_generator");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
+    draw_armor_bar(game, batch, origin);
     for (index, spec) in rules::SLOTS_SPEC.iter().enumerate() {
         let frame = slot_type(None, index, spec.container).map(slot_sprite);
         basis::slot(game, batch, origin, spec.item, frame, spec.overlay.and_then(overlay_sprite));
@@ -578,6 +586,19 @@ pub(in crate::game) fn screen_draw(
     let sprite = rules::heat_tab_sprite(basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE));
     let [tab_x, tab_y, tab_w, tab_h] = rules::HEAT_TAB.rect;
     game.native_sprite(batch, &sprite, [0.0, 0.0, tab_w, tab_h], [x + tab_x, y + tab_y, tab_w, tab_h]);
+}
+
+/// `GuiHeatGenerator.addGuiElements`: o suporte (`GuiSideHolder`) vem antes de `super.addGuiElements()`, que põe os `GuiSlot` de todos os slots do
+/// menu, os cinco da armadura e da mão entre eles (`SlotType.NORMAL`, um pixel antes do item). Os itens e os fundos vazios o jogo desenha depois.
+fn draw_armor_bar(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2]) {
+    let [x, y] = origin;
+    let [holder_x, holder_y, width, height] = rules::ARMOR_HOLDER;
+    for cell in gui::nine_slice_cells(side_tab::HOLDER_SLICE, [x + holder_x, y + holder_y, width, height]) {
+        basis::sprite_tinted(game, batch, rules::ARMOR_HOLDER_SPRITE, cell.src, cell.dst, rules::ARMOR_HOLDER_TINT);
+    }
+    for slot in armor_bar::slots(rules::MENU) {
+        basis::slot(game, batch, origin, [slot.x as f32, slot.y as f32], Some(SLOT), None);
+    }
 }
 
 /// O clique na aba de calor (`GuiHeatTab.onClick`), antes de a tela fazer qualquer coisa com ele (hook
@@ -711,20 +732,51 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
 }
 
 /// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os slots do bloco (`entity.items`: combustível e energia, na ordem
-/// do Java, e os dois slots virtuais da janela de upgrades no fim) e o inventário do jogador. Um slot do bloco tem o índice dele; o do
-/// jogador, `items.len() + índice no inventário` (a barra é 0 a 8, o inventário 9 a 35).
+/// do Java, e os dois slots virtuais da janela de upgrades no fim), o inventário do jogador e a barra de armadura. Um slot do bloco tem o
+/// índice dele; o do jogador, `items.len() + índice no inventário` (a barra de atalhos é 0 a 8, o inventário 9 a 35); e os da barra
+/// `items.len() + 36 + k` (a armadura da cabeça aos pés e a mão), a ordem do menu do Java e dos índices que o cliente manda.
 struct GeneratorMenu<'a, 'g> {
     game: &'a Game<'g>,
     entity: &'a mut ModBlockEntity,
     inventory: &'a mut [Option<ItemStack>],
+    /// `Inventory.armor`, da cabeça aos pés, e `Inventory.offhand`: os slots 40 a 44 do menu de quem clica.
+    armor: &'a mut [Option<ItemStack>; 4],
+    offhand: &'a mut Option<ItemStack>,
+    /// Os slots da barra que o tipo de menu declarou, na ordem do menu.
+    bar: Vec<armor_slots::PlacedSlot>,
     /// A janela que o jogador que clica tem escolhida (`getSelectedWindow(player)`).
     window: Option<SelectedWindow>,
     upgrades: Rc<upgrade::UpgradeData>,
 }
 
+/// `EquipmentSlot.getName()`, como o catálogo de itens do jogo o escreve em `equip_slot`.
+fn equipment_name(slot: EquipmentSlot) -> &'static str {
+    match slot {
+        EquipmentSlot::Feet => "feet",
+        EquipmentSlot::Legs => "legs",
+        EquipmentSlot::Chest => "chest",
+        EquipmentSlot::Head => "head",
+    }
+}
+
+/// `ItemStack.canEquip(slot, player)`: o item se veste nesse slot e o jogador está entre os que o `equippable` dele permite. É a conta
+/// que o motor de menus do Horizon faz para o `ArmorSlot` (`Menu::may_place`).
+fn can_equip(game: &Game<'_>, stack: &ItemStack, slot: EquipmentSlot) -> bool {
+    game.items().get(&stack.item).is_some_and(|info| {
+        info.equip_slot.as_deref() == Some(equipment_name(slot))
+            && info.equip_allowed.as_ref().is_none_or(|allowed| allowed.contains("minecraft:player"))
+    })
+}
+
 impl GeneratorMenu<'_, '_> {
     fn first_player(&self) -> usize {
         self.entity.items.len()
+    }
+
+    /// O slot da barra (`0` a `bar.len() - 1`) que um índice do menu é.
+    fn bar_index(&self, slot: usize) -> Option<usize> {
+        let k = slot.checked_sub(self.first_player() + armor_bar::PLAYER_SLOTS)?;
+        (k < self.bar.len()).then_some(k)
     }
 
     /// `isValidForInsertion(.., MANUAL)` do slot: o de combustível (`FluidFuelInventorySlot.forFuel`) aceita o que queima ou o que enche
@@ -751,9 +803,39 @@ impl GeneratorMenu<'_, '_> {
         let first = self.first_player();
         if slot < first {
             &mut self.entity.items[slot]
+        } else if let Some(k) = self.bar_index(slot) {
+            if k < self.armor.len() { &mut self.armor[k] } else { &mut *self.offhand }
         } else {
             &mut self.inventory[slot - first]
         }
+    }
+
+    /// `TransactionalSlot.insert` do `ArmorSlot` e do `OffhandSlot` da barra: a regra é de `armor_slots::insert`, o jogo só diz o que sabe
+    /// do item (em que slot se veste, o tamanho da pilha).
+    fn insert_into_bar(&mut self, k: usize, item: &ItemStack, amount: u32) -> u32 {
+        let kind = self.bar[k].kind;
+        let item_max = basis::stack_limit(self.game, item);
+        let game = self.game;
+        let cell = self.cell_of_bar(k);
+        let held = cell.as_ref().map_or(0, |held| held.count);
+        let same = cell.as_ref().is_some_and(|held| held.same_item_same_components(item));
+        let moved = armor_slots::insert(kind, held, same, amount, item_max, |slot| can_equip(game, item, slot));
+        if moved == 0 {
+            return 0;
+        }
+        match cell {
+            Some(held) => held.count += moved,
+            empty => {
+                let mut placed = item.clone();
+                placed.count = moved;
+                *empty = Some(placed);
+            }
+        }
+        moved
+    }
+
+    fn cell_of_bar(&mut self, k: usize) -> &mut Option<ItemStack> {
+        if k < self.armor.len() { &mut self.armor[k] } else { &mut *self.offhand }
     }
 }
 
@@ -771,12 +853,17 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
 
     fn slots_of(&self, region: Region) -> Vec<usize> {
         let first = self.first_player();
+        let bar = |wanted: fn(SlotKind) -> bool| -> Vec<usize> {
+            let base = first + armor_bar::PLAYER_SLOTS;
+            self.bar.iter().enumerate().filter(|(_, slot)| wanted(slot.kind)).map(|(k, _)| base + k).collect()
+        };
         match region {
             // A ordem do Java: os dois virtuais primeiro, depois os do gerador em `getInitialInventory`.
             Region::Container => rules::CONTAINER_ORDER.to_vec(),
             Region::Hotbar => (first..first + 9).collect(),
             Region::Main => (first + 9..first + 36).collect(),
-            Region::Armor | Region::Offhand => Vec::new(),
+            Region::Armor => bar(|kind| matches!(kind, SlotKind::Armor(_))),
+            Region::Offhand => bar(|kind| kind == SlotKind::Offhand),
         }
     }
 
@@ -784,6 +871,11 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
         let first = self.first_player();
         if slot < first {
             Region::Container
+        } else if let Some(k) = self.bar_index(slot) {
+            match self.bar[k].kind {
+                SlotKind::Armor(_) => Region::Armor,
+                SlotKind::Offhand => Region::Offhand,
+            }
         } else if slot - first < 9 {
             Region::Hotbar
         } else {
@@ -798,11 +890,20 @@ impl QuickMenu for GeneratorMenu<'_, '_> {
 
     fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
         let first = self.first_player();
-        let held = if slot < first { self.entity.items[slot].as_ref() } else { self.inventory[slot - first].as_ref() };
+        let held = if slot < first {
+            self.entity.items[slot].as_ref()
+        } else if let Some(k) = self.bar_index(slot) {
+            if k < self.armor.len() { self.armor[k].as_ref() } else { self.offhand.as_ref() }
+        } else {
+            self.inventory[slot - first].as_ref()
+        };
         held.filter(|stack| stack.count > 0).map(|stack| (stack.clone(), stack.count))
     }
 
     fn insert(&mut self, slot: usize, item: &ItemStack, amount: u32) -> u32 {
+        if let Some(k) = self.bar_index(slot) {
+            return self.insert_into_bar(k, item, amount);
+        }
         if slot < self.first_player() && !self.accepts(slot, item) {
             return 0;
         }
@@ -833,20 +934,39 @@ pub(in crate::game) fn quick_move(
     let window = game.mb_window_selected(pos);
     let upgrades = window_upgrade_data();
     let first = entity.items.len();
-    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8).
+    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8), e então a
+    // barra de armadura (a armadura da cabeça aos pés e a mão).
     let from = if slot < container_slots {
         slot
     } else {
         let n = slot - container_slots;
-        first + if n < 27 { 9 + n } else { n - 27 }
+        first + match n {
+            0..27 => 9 + n,
+            27..36 => n - 27,
+            _ => n,
+        }
     };
     let mut inventory = std::mem::take(&mut game.inventory);
+    let mut armor = std::mem::take(&mut game.armor);
+    let mut offhand = game.offhand.take();
     let left = {
-        let mut menu = GeneratorMenu { game: &*game, entity, inventory: &mut inventory, window, upgrades };
+        let bar = armor_bar::slots(rules::MENU);
+        let mut menu = GeneratorMenu {
+            game: &*game,
+            entity,
+            inventory: &mut inventory,
+            armor: &mut armor,
+            offhand: &mut offhand,
+            bar,
+            window,
+            upgrades,
+        };
         quick_move::quick_move(&mut menu, from);
         menu.stack(from)
     };
     game.inventory = inventory;
+    game.armor = armor;
+    game.offhand = offhand;
     // O slot clicado guarda o que sobrou; `handled` impede o roteamento do jogo, que levaria o item a outros slots.
     match left {
         Some((remaining, count)) => {
