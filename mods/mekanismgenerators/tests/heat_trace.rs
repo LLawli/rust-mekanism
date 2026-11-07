@@ -1,7 +1,8 @@
 //! Repete, tick a tick, os rastros do Heat Generator original em `dev/referencia/rastros`: `heat_generator_lava_run` (a lava que
 //! acaba, o calor guardado que segue gerando, o resto de lava menor que uma queima e o buffer cheio) e `heat_generator_fuel_run`
 //! (o slot que converte item em lava, o balde de lava e o item que não cabe). Cada linha do rastro é um tick, gravado depois do
-//! tick do tile e das marcas do cenário, como os rastros das máquinas. `active` é o `currentActive` do tile e `block_active` o estado
+//! tick do tile e das marcas do cenário, como os rastros das máquinas. `transfer_loss` e `environment_loss` são o `lastTransferLoss` e o
+//! `lastEnvironmentLoss` que a aba de calor mostra. `active` é o `currentActive` do tile e `block_active` o estado
 //! `lit` do bloco, que o atraso de `blockDeactivationDelay` segura aceso depois que o gerador para.
 use mekanismgenerators_rules::{
     ENERGY_CAPACITY, FuelItem, Produced, State, Surroundings, fuel_to_tank, step, trace_line,
@@ -128,7 +129,12 @@ fn replay(scenario: &str, minimum_lines: usize) {
         };
         // O primeiro tick gravado já aconteceu quando o cenário começa: o estado dele é o semeado, e a regra roda a partir do seguinte.
         let produced: Produced = if t == 0 {
-            Produced::default()
+            // As perdas do tick que já aconteceu vêm do rastro, como o calor.
+            Produced {
+                transfer_loss: expected["transfer_loss"].as_f64().unwrap(),
+                environment_loss: expected["environment_loss"].as_f64().unwrap(),
+                ..Produced::default()
+            }
         } else {
             fill_or_burn(&mut state, &mut slot);
             step(&mut state, &around)
@@ -146,6 +152,8 @@ fn replay(scenario: &str, minimum_lines: usize) {
             "capacity": ENERGY_CAPACITY,
             "lava": state.lava,
             "produced": produced.energy,
+            "transfer_loss": produced.transfer_loss,
+            "environment_loss": produced.environment_loss,
             "active": state.tile.active(),
             "block_active": state.tile.block_active(),
             "fuel": [slot.item, slot.count],

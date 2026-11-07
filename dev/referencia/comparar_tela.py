@@ -100,6 +100,12 @@ JANELA = {
     "janela_fechar": (-5, 21, 8, 8),
     "janela_fixar": (5, 21, 16, 8),
     "janela_titulo": (23, 20, 160, 12),
+    # O ícone de cada linha da lista (`renderItem(..., relativeX + 3, relativeY + 3 + i * 12, 0.5F)`, 8 por 8): o Horizon escala o item depois
+    # de montá-lo e o original sob uma matriz (H25), então este retângulo é um resíduo à parte, e o resto da lista conta sem desculpa.
+    "janela_lista_icone_0": (-2, 36, 8, 8),
+    "janela_lista_icone_1": (-2, 48, 8, 8),
+    "janela_lista_icone_2": (-2, 60, 8, 8),
+    "janela_lista_icone_3": (-2, 72, 8, 8),
     "janela_lista": (-5, 33, 108, 50),
     "janela_aceitos": (-5, 83, 167, 14),
     "janela_tela_interna": (103, 33, 59, 50),
@@ -123,10 +129,15 @@ HOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/me
 BORDA_SUPORTE = 4
 
 
+CALOR_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/tab/heat_info_k.png")
 ENERGIA_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/tab/energy_info.png")
 # O fundo do tooltip é `0xF0100010` (94% opaco): o mundo atrás, que muda de um jogo para o outro (H22), aparece com até 6% de 255 em cada canal.
 # Um texto que difere muda um canal em dezenas de níveis, então a região do tooltip tem esta tolerância e as outras nenhuma.
 TOLERANCIA_TOOLTIP = 16
+# O que o mundo atrás da tela mostra (o fundo fora do painel, os cantos transparentes, a sombra da janela) sai 2 a 3 níveis mais escuro no Horizon (H22).
+# Essas áreas só valem como resíduo até este limite por canal: um pixel além dele (uma aba que só um dos jogos desenha, um texto do chat) é
+# diferença de verdade e conta em `alem_<área>`.
+CLASSES_DO_MUNDO = ("mundo_atras", "janela_fundo")
 
 
 def cantos_do_sprite(rect, caminho):
@@ -306,8 +317,12 @@ def mascara_das_abas(tela):
     return [COLUNA_ESQUERDA, COLUNA_DIREITA], liberado
 
 
+def do_mundo(nome):
+    return nome in CLASSES_DO_MUNDO or nome.startswith("canto")
+
+
 def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), tolerancia=0, regioes=None, mascarar_abas=True,
-             prioridade=None, ausentes=()):
+             prioridade=None, ausentes=(), limite_mundo=None, particulas=None):
     """Compara os dois prints (cada um `(largura, altura, rgba)`).
 
     Devolve (resultado, imagem), com `resultado` um dicionário com os totais e os elementos, e `imagem` o `(largura, altura, rgba)`
@@ -346,10 +361,15 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     recorte_largura, recorte_altura = direita - esquerda, base - topo
     saida = bytearray(recorte_largura * recorte_altura * 4)
     cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP),
-              "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG)}
+              "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG), "canto_aba_calor": cantos_do_sprite(ABA_CALOR, CALOR_PNG)}
     contagem = {nome: [0, 0] for nome in list(regioes) + list(elementos) + list(cantos)}  # [pixels comparados, pixels diferentes]
     contagem["fundo"] = [0, 0]
     contagem["mundo_atras"] = [0, 0]
+    maior_do_elemento = {}  # a maior diferença por canal entre os pixels diferentes de cada elemento
+    alem_amostra = []  # os primeiros pixels que passaram do limite do mundo: (área, x, y de GUI, cor no original, cor no port)
+    maior_do_mundo = 0  # a maior diferença por canal que ficou dentro do limite do mundo: a medida do limite
+    # `particulas`: o retângulo do print (x, y, largura, altura, em pixels da imagem) onde as partículas da máquina acesa caem; o que passa do `limite_mundo`
+    # ali conta em `particulas_da_maquina`, à parte, e fora dali em `alem_*`.
     mascarados = 0
     ignorados = 0
     classe = {}  # o que cada pixel de GUI é: None se fica fora da conta, senão o nome do elemento
@@ -361,7 +381,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                 classe[chave] = None
             else:
                 nome = next((nome for nome, rect in prioridade.items() if dentro(rect, gx, gy)), None)
-                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA)):
+                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR)):
                     if nome is None and aba[len("canto_"):] in elementos and (gx, gy) in cantos[aba]:
                         nome = aba
                 nome = nome or next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)
@@ -395,7 +415,21 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
             contagem[nome][0] += 1
             limite = max(tolerancia, TOLERANCIA_TOOLTIP) if nome == "tooltip" else tolerancia
             if any(abs(a[indice + canal] - b[indice + canal]) > limite for canal in range(3)):
-                contagem[nome][1] += 1
+                conta = nome
+                if limite_mundo is not None and do_mundo(nome):
+                    maior = max(abs(a[indice + canal] - b[indice + canal]) for canal in range(3))
+                    if maior > limite_mundo:
+                        x_img, y_img = esquerda + px, topo + py
+                        nas_particulas = particulas is not None and (
+                            particulas[0] <= x_img < particulas[0] + particulas[2] and particulas[1] <= y_img < particulas[1] + particulas[3])
+                        conta = "particulas_da_maquina" if nas_particulas else "alem_" + nome
+                        contagem.setdefault(conta, [0, 0])[0] += 1
+                        if not nas_particulas and len(alem_amostra) < 12:
+                            alem_amostra.append((nome, gx, gy, tuple(a[indice : indice + 3]), tuple(b[indice : indice + 3])))
+                    else:
+                        maior_do_mundo = max(maior_do_mundo, maior)
+                contagem[conta][1] += 1
+                maior_do_elemento[conta] = max(maior_do_elemento.get(conta, 0), max(abs(a[indice + canal] - b[indice + canal]) for canal in range(3)))
                 saida[destino : destino + 4] = b"\xff\x00\x00\xff"
             else:
                 # O pixel igual sai apagado, para as diferenças aparecerem sobre o desenho da tela.
@@ -411,8 +445,10 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
         "mascarados": mascarados,
         "ignorados": ignorados,
         "diferentes": total,
+        "maior_do_mundo": maior_do_mundo,
+        "alem_amostra": alem_amostra,
         "elementos": {
-            nome: {"rect": list(regioes.get(nome) or elementos.get(nome, ())), "comparados": c, "diferentes": d}
+            nome: {"rect": list(regioes.get(nome) or elementos.get(nome, ())), "comparados": c, "diferentes": d, "maior": maior_do_elemento.get(nome, 0)}
             for nome, (c, d) in contagem.items()
             if c or d
         },

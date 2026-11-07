@@ -93,6 +93,10 @@ def casos():
         caso("infuser_tanque_carbono", "infuser", energia="0", quimico="carbon:500", ciclo="40", ciclo_port="40"),
         caso("infuser_tanque_bio_ciclo", "infuser", energia="0", quimico="bio:500", ciclo="40", ciclo_port="240"),
         caso("infuser_tanque_fungi_ciclo", "infuser", energia="0", quimico="fungi:500", ciclo="40", ciclo_port="160"),
+        # Os ciclos de referência dos tanques que os outros casos mostram parados (`comparar_lote.fase_do_quimico`): o mesmo químico e a mesma
+        # quantidade, porque a barra com o tanque pela metade não é um recorte da barra cheia (o sprite se repete a partir do topo do líquido).
+        caso("infuser_fase_bio_800", "infuser", energia="0", quimico="bio:800", ciclo="40", ciclo_port="240"),
+        caso("infuser_fase_bio_1000", "infuser", energia="0", quimico="bio:1000", ciclo="40", ciclo_port="240"),
         caso("infuser_hover_barra_energia", "infuser", energia="500", hover=HOVER["infuser"]["barra_energia"]),
         caso("infuser_hover_barra_quimico", "infuser", energia="0", quimico="carbon:500",
              hover=HOVER["infuser"]["barra_quimico"]),
@@ -102,13 +106,19 @@ def casos():
     ]
     out += [
         caso("generator_vazia", "generator", energia="0"),
-        caso("generator_lava_meio", "generator", energia="120", lava="500"),
-        caso("generator_lava_cheia", "generator", energia="120", lava="1000"),
+        # Com a energia cheia o gerador não queima a lava, e o medidor fica no nível do caso: com 120 ela baixava a cada passo, e o nível do print deixava de ser
+        # o do ciclo de referência (`comparar_lote.CICLO_DA_LAVA`), então a fase da animação não se provava. O `generator_queima` cobre o gerador queimando.
+        caso("generator_lava_meio", "generator", energia="cap", lava="500"),
+        caso("generator_lava_cheia", "generator", energia="cap", lava="1000"),
         # Com a energia cheia o gerador não queima a lava: com 120 ela baixava a cada passo e o medidor mudava de nível em vez de animar.
         # O `lava_still` tem 38 quadros de 2 ticks, sem interpolação.
         caso("generator_lava_ciclo", "generator", energia="cap", lava="500", ciclo="40", ciclo_port="76"),
-        caso("generator_hover_barra", "generator", energia="120", lava="500", hover=HOVER["generator"]["barra_energia"]),
-        caso("generator_hover_medidor", "generator", energia="120", lava="500", hover=HOVER["generator"]["medidor_lava"]),
+        # O medidor cheio, parado: o ciclo de referência dos casos com a lava a 1000 (`comparar_lote.CICLO_DA_LAVA`).
+        caso("generator_fase_lava_1000", "generator", energia="cap", lava="1000", ciclo="40", ciclo_port="76"),
+        # O medidor com o cursor em cima (o realce e o tooltip), parado: o ciclo de referência de `generator_hover_medidor`.
+        caso("generator_fase_lava_hover", "generator", energia="cap", lava="500", hover=HOVER["generator"]["medidor_lava"], ciclo="40", ciclo_port="76"),
+        caso("generator_hover_barra", "generator", energia="cap", lava="500", hover=HOVER["generator"]["barra_energia"]),
+        caso("generator_hover_medidor", "generator", energia="cap", lava="500", hover=HOVER["generator"]["medidor_lava"]),
         caso("generator_hover_medidor_vazio", "generator", energia="0", hover=HOVER["generator"]["medidor_lava"]),
         caso("generator_hover_slot", "generator", energia="0", hover=HOVER["generator"]["slot_combustivel"]),
         # Queima a lava com a energia subindo: a barra e o `MEKTRACE` do port, contra o servidor do original, passo a passo.
@@ -242,8 +252,78 @@ def casos_energia():
     return out
 
 
+# A aba de calor do Heat Generator (`GuiHeatTab`, -26 por 109, 26 por 26) e a de upgrades dele (a mesma do `ABA`, à direita). O clique troca a unidade de
+# temperatura do cliente (K, C, R, F, STP, e volta ao K na quinta), que fica guardada entre os casos: `desfazer` completa a volta no fim do caso.
+CALOR = (-13, 122)
+
+
+def casos_gerador():
+    todos = "muffling:1"
+    cliques = lambda n: ";".join([f"{CALOR[0]},{CALOR[1]}"] * n)
+    out = [
+        caso("generator_aba_calor_hover", "generator", energia="0", hover=CALOR),
+        caso("generator_aba_calor_hover_produzindo", "generator", energia="0", lava="500", passos="100", hover=CALOR),
+    ]
+    for nome, n in (("c", 1), ("r", 2), ("f", 3), ("stp", 4)):
+        out.append(caso(f"generator_aba_calor_unidade_{nome}", "generator", energia="0", lava="500", passos="100", clicar=cliques(n),
+                        desfazer=cliques(5 - n), hover=CALOR))
+    out += [
+        caso("generator_aba_fechada", "generator", energia="0"),
+        caso("generator_aba_vazia", "generator", energia="0", clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("generator_aba_upgrades", "generator", energia="0", upgrades=todos, clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("generator_aba_selecionado", "generator", energia="0", upgrades=todos, clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}"),
+        caso("generator_aba_botao_hover", "generator", energia="0", upgrades=todos, clicar=f"{ABA[0]},{ABA[1]};{LINHA[0]},{LINHA[1]}", hover=UNINSTALL),
+        caso("generator_aba_instalando", "generator", energia="0", upgradeentrada=todos, passos="10", clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("generator_aba_instalado", "generator", energia="0", upgradeentrada=todos, passos="30", clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("generator_aba_hover_aceitos", "generator", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=(-2, 95)),
+    ]
+    return out
+
+
+def casos_controle():
+    """O controle da luz do mundo atrás da tela: uma fonte vanilla (`minecraft:light`) de nível 4, 8, 12 e 15 ao lado de uma máquina parada, nos dois
+    jogos. Sem nenhum bloco do Mekanism emitindo, a diferença do mundo que sobra é de como o jogo desenha a luz, não da luz do port."""
+    controles = [caso(f"controle_luz_{n}", "smelter", energia="0", luz=str(n)) for n in (8, 4, 12, 15)]
+    # O mesmo mundo sem tela aberta (`semtela`): com ele, a luz e o gamma de cada jogo aparecem sem o escurecimento da tela por cima.
+    controles += [caso(f"controle_luz_{n}_semtela", "smelter", energia="0", luz=str(n), semtela="1") for n in (8, 15)]
+    controles += [caso("controle_ativa_semtela", "smelter", energia="cap", entrada="raw_iron:2", passos="100", semtela="1"),
+                  caso("controle_vazia_semtela", "smelter", energia="0", semtela="1")]
+    return controles
+
+
 def todos_os_casos():
-    return casos() + casos_aba() + casos_xp() + casos_energia()
+    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador()
+
+
+def casos_do_roteiro(so=None):
+    """Os casos que os dois jogos rodam: a tabela (`todos_os_casos`) e, só se `so` os pede pelo nome, os controles da luz (`casos_controle`), que não
+    entram no lote porque comparam o mundo sem tela e a luz, não a tela."""
+    tudo = todos_os_casos() + (casos_controle() if so else [])
+    return [c for c in tudo if not so or c["nome"] in so]
+
+
+def maquina_ativa(c):
+    """Se o bloco do caso está aceso (`lit`) quando o print sai: a máquina operando (entrada com receita, energia e saída com lugar) ou o gerador queimando lava
+    (energia que ainda cabe). O bloco aceso ilumina o mundo atrás da tela: ver `luz_do_caso`."""
+    a = c["args"]
+    if int(a.get("passos", "2")) < 2:
+        return False
+    if c["maquina"] == "generator":
+        return "lava" in a and a.get("energia") != "cap"
+    return "entrada" in a and "saida" not in a and a.get("energia", "0") != "0"
+
+
+# O nível de luz do bloco aceso: `Attributes.ACTIVE_LIGHT` (8) nas quatro máquinas (`Machine.java:26`) e `ACTIVE_MELT_LIGHT` (13) no Heat Generator
+# (`MekanismBlockTypes.java:474`); o bloco apagado emite 0. É o que o mundo atrás da tela mostra de diferente (`comparar_lote.LIMITE_MUNDO_POR_LUZ`).
+LUZ_DA_MAQUINA_ACESA = 8
+LUZ_DO_GERADOR_ACESO = 13
+
+
+def luz_do_caso(c):
+    """O nível de luz que o bloco emite no estado de `c`: 0 apagado, o da máquina ou o do gerador aceso."""
+    if not maquina_ativa(c):
+        return 0
+    return LUZ_DO_GERADOR_ACESO if c["maquina"] == "generator" else LUZ_DA_MAQUINA_ACESA
 
 
 def xp_visivel(c):
@@ -265,9 +345,7 @@ def escreve_oficial(escalas, saida, so=None):
     linhas = []
     for escala in escalas:
         linhas.append(f"escala {escala}")
-        for c in todos_os_casos():
-            if so and c["nome"] not in so:
-                continue
+        for c in casos_do_roteiro(so):
             args = dict(c["args"])
             if "hover" in args:
                 args["hover"] = "%d,%d" % tuple(args["hover"])
@@ -330,6 +408,18 @@ def componente_upgrade(c):
     return "{" + ",".join(partes) + "}" if partes else None
 
 
+def abre_a_janela(c):
+    """Se o caso clica na aba da janela de upgrades."""
+    return "%d,%d" % ABA in c["args"].get("clicar", "").split(";")
+
+
+def passos_do_port(c):
+    """Os passos que o port dá antes de abrir a tela. A janela de upgrades só recebe os dados no tick seguinte à abertura (ver `tira_port`): esse tick
+    sai da conta, e o servidor chega aos mesmos `passos` que o do original quando o print sai."""
+    passos = int(c["args"].get("passos", "2"))
+    return passos - 1 if abre_a_janela(c) else passos
+
+
 def monta_port(c, x, escala):
     m = c["maquina"]
     spec = MAQUINAS[m]
@@ -338,12 +428,34 @@ def monta_port(c, x, escala):
     # O mundo atrás da tela, igual ao do `CenaTelas`: uma caixa oca de concreto preto.
     comando(f"fill {x - 6} -61 -6 {x + 6} -50 10 minecraft:air")
     comando(f"fill {x - 6} -61 -6 {x + 6} -50 10 minecraft:black_concrete hollow")
+    # O bioma decide a temperatura do ar (`CachedAmbientTemperature`), que a aba de calor mostra: planície nos dois jogos.
+    comando(f"fillbiome {x - 6} -61 -6 {x + 6} -50 10 minecraft:plains")
+    if "luz" in c["args"]:
+        # O controle da luz: a fonte vanilla de nível `luz` ao lado da máquina, como no `CenaTelas`.
+        comando(f"setblock {x + 2} -60 3 minecraft:light[level={c['args']['luz']}]")
     comando(f"setblock {pos} minecraft:air")
-    comando(f"setblock {pos} {spec['block']}")
-    # Os upgrades entram antes do primeiro tick: o objeto vivo os lê do NBT ao nascer, como o `deserialize`.
     comp = componente_upgrade(c)
+    marca = comp is not None and m != "generator"
+    if marca:
+        # Um passo sem a máquina: o objeto vivo do caso anterior no mesmo lugar (o mundo parado só anda nos passos da cena) deixa de ser
+        # do tick seguinte, e a máquina nova nasce do NBT em vez de continuar o objeto velho (ver a marca `redstone` abaixo).
+        comando("tick step 1")
+        ctl("wait", "4")
+    # Como um jogador coloca a máquina (o `CenaTelas` chama `applyComponents`, que recalcula os upgrades e com eles a capacidade de energia): um
+    # `setblock` deixaria a capacidade do construtor, quatro ticks de consumo, que é o que o original também faz para um bloco que não foi posto.
+    ctl("tp", f"{x}.0", "-60.0", "0.0")
+    comando("clear @s")
+    ctl("give", spec["block"], "1")
+    saida = ctl("place", str(x), "-60", "3", "--item", spec["block"])
+    if '"error"' in saida:
+        raise RuntimeError(f"place {spec['block']}: {saida}")
+    comando("clear @s")
+    # Os upgrades entram antes do primeiro tick: o objeto vivo os lê do NBT ao nascer, como o `deserialize`. O `CenaTelas` aplica os componentes
+    # vazios e só depois instala (`addUpgrades` e os dois slots). No port, a máquina posta por um item aplica os componentes do item ao nascer
+    # (`apply_item_components`), o que apagaria o que entrou aqui; com a marca de tile já gravado (`redstone`, que o Java escreve sempre) ela nasce
+    # do NBT, e o `deserialize` recalcula cada upgrade suportado: o mesmo estado do original. O Heat Generator não tem objeto vivo e lê o NBT a cada tick.
     if comp:
-        comando(f"data merge block {pos} {{component_upgrade:{comp}}}")
+        comando(f"data merge block {pos} {{component_upgrade:{comp}{',redstone:0b' if marca else ''}}}")
     # Um tick para o bloco nascer e a capacidade valer, como no `CenaTelas`.
     comando("tick step 1")
     ctl("wait", "4")
@@ -366,7 +478,7 @@ def monta_port(c, x, escala):
         comando(f"data merge block {pos} {{{','.join(nbt)}}}")
 
     ctl("tp", f"{x}.0", "-60.0", "0.0")
-    passos = int(c["args"].get("passos", "2"))
+    passos = passos_do_port(c)
     comando(f"tick step {passos}")
     ctl("wait", str(passos + 4))
     return x
@@ -390,8 +502,16 @@ def espera_estado_estavel(alvo, destino, tentativas=12):
 
 def tira_port(c, x, escala, destino):
     ctl("look", "0", "0")
+    if "semtela" in c["args"]:
+        # Sem tela: o print do mundo, na mesma vista.
+        ctl("wait", "20")
+        ctl("screenshot", f"{destino}/port_{c['nome']}_e{escala}.png")
+        return
     ctl("interact", str(x), "-60", "3")
     ctl("wait", "60")
+    # O `interact` vira o jogador para o bloco (inclinação 20, giro -9 no teste), e o `CenaTelas` fica de frente (`tp ... 0 0`): sem isto o
+    # mundo atrás da tela é outra vista (a máquina some atrás do painel) e a comparação do mundo não vale.
+    ctl("look", "0", "0")
     # `centered_origin`: a janela em pixels de GUI arredondada para cima, e a tela truncada no centro.
     gui_l = -(-1920 // escala)
     gui_a = -(-1080 // escala)
@@ -428,23 +548,55 @@ def tira_port(c, x, escala, destino):
             ctl("screenshot", alvo)
         if capturas > 1 and not ciclo:
             ctl("wait", "3")
+    for clique in filter(None, c["args"].get("desfazer", "").split(";")):
+        cx, cy = (int(v) for v in clique.split(","))
+        ctl("click-at", str(esquerda + cx), str(topo + cy))
+        ctl("wait", "3")
     ctl("close")
+
+
+# As opções do cliente do original (`options.txt` da run do `mekanism-ref`) que mexem na luz, na cor e no que se vê do mundo. O Horizon nasce com
+# outras (partículas decrescidas, distância 12, predefinição personalizada, sem vinheta, sem filtragem de textura): a predefinição `fancy` vai primeiro,
+# porque ela reescreve as outras, e cada opção gráfica que o Horizon expõe separada vai depois, com o valor do original.
+OPCOES_DO_ORIGINAL = (
+    ("graphicsPreset", "fancy"), ("gamma", "0.5"), ("ao", "true"), ("biomeBlendRadius", "2"), ("darknessEffectScale", "1.0"), ("particles", "0"),
+    ("renderDistance", "16"), ("entityShadows", "true"), ("cutoutLeaves", "true"), ("renderClouds", "true"), ("cloudRange", "64"),
+    ("improvedTransparency", "false"), ("mipmapLevels", "4"), ("weatherRadius", "10"), ("vignette", "true"), ("textureFiltering", "1"),
+    ("maxAnisotropyBit", "1"), ("prioritizeChunkUpdates", "1"), ("maxFps", "120"), ("menuBackgroundBlurriness", "5"), ("fov", "70"),
+)
+
+
+def iguala_as_opcoes():
+    """Põe o cliente do Horizon nas opções do original e confere, com `options-get`, que cada uma está aplicada (e que nada ficou em `custom`)."""
+    for chave, valor in OPCOES_DO_ORIGINAL:
+        ctl("options-set", chave, valor)
+    lidas = json.loads(ctl("options-get", *(chave for chave, _ in OPCOES_DO_ORIGINAL)))["options"]
+    for chave, valor in OPCOES_DO_ORIGINAL:
+        lido = str(lidas[chave]["value"]).lower()
+        if lido != valor and not (chave in ("gamma", "darknessEffectScale") and float(lido) == float(valor)):
+            raise RuntimeError(f"a opção {chave} ficou {lido}, e o original usa {valor}")
 
 
 def roda_port(destino, escalas, so=None):
     # O mesmo inventário vazio do `CenaTelas`.
     comando("clear @s")
-    ctl("options-set", "gamma", "0.5")
+    iguala_as_opcoes()
+    # O que o `CenaTelas` faz antes do primeiro caso (`difficulty peaceful`, `time set 6000`, `weather clear`): as mesmas entradas do mapa de luz nos dois jogos.
+    comando("difficulty peaceful")
+    comando("time set 6000")
+    comando("weather clear")
+    # O chat escondido, como o do `CenaTelas`, que não tem chat: as respostas dos comandos da montagem ficam na tela por 10 segundos, e a
+    # guiScale 3 as põe dentro da margem das abas, onde contariam como o mundo atrás da tela.
+    ctl("options-set", "chatVisibility", "2")
     for escala in escalas:
         ctl("options-set", "guiScale", str(escala))
         x = 3
-        for c in todos_os_casos():
-            if so and c["nome"] not in so:
-                continue
+        for c in casos_do_roteiro(so):
             monta_port(c, x, escala)
             tira_port(c, x, escala, destino)
             print(c["nome"], escala, flush=True)
     comando("tick unfreeze")
+    ctl("options-set", "chatVisibility", "0")
 
 
 if __name__ == "__main__":

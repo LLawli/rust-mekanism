@@ -3147,4 +3147,792 @@ public class MachineTraceTest {
             }
         }
     }
+
+    // ============================================================================================================================
+    // telas-calor: a aba de calor do Heat Generator (GuiHeatTab). Grava `temperature_units.jsonl`: a configuração local, a tabela de
+    // TemperatureUnit, getTemperatureDisplay para várias temperaturas, e as linhas do tooltip da aba para cada unidade.
+    // ===================================================================================================================================
+
+    private static String heatJson(String text) {
+        return new com.google.gson.JsonPrimitive(text).toString();
+    }
+
+    /// Uma linha do tooltip como tradução e argumentos: o argumento literal vira o texto inteiro, e o traduzível só a chave.
+    private static String heatLine(net.minecraft.network.chat.Component component) {
+        if (component.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents translatable) {
+            StringBuilder args = new StringBuilder();
+            for (Object arg : translatable.getArgs()) {
+                String value;
+                if (arg instanceof net.minecraft.network.chat.Component argument) {
+                    value = argument.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents inner
+                          ? "{\"translate\":" + heatJson(inner.getKey()) + "}" : heatJson(argument.getString());
+                } else {
+                    value = heatJson(String.valueOf(arg));
+                }
+                args.append(args.isEmpty() ? "" : ",").append(value);
+            }
+            return "{\"translate\":" + heatJson(translatable.getKey()) + ",\"args\":[" + args + "]}";
+        }
+        return "{\"text\":" + heatJson(component.getString()) + "}";
+    }
+
+    /// O `en_us.json` do Mekanism que o jogo carrega, só com as chaves pedidas.
+    private static String heatLang(List<String> keys) {
+        StringBuilder out = new StringBuilder();
+        try (java.io.InputStream stream = mekanism.common.Mekanism.class.getResourceAsStream("/assets/mekanism/lang/en_us.json")) {
+            com.google.gson.JsonObject lang = com.google.gson.JsonParser.parseReader(
+                  new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+            for (String key : keys) {
+                out.append(out.isEmpty() ? "" : ",").append(heatJson(key)).append(':').append(lang.get(key));
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+        return "{" + out + "}";
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records TemperatureUnit, the temperature displays and the lines of the heat tab tooltip for every unit.")
+    public static void temperatureUnits(final DynamicTest test) {
+        template(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  java.util.List<mekanism.common.util.UnitDisplayUtils.TemperatureUnit> units = mekanism.common.util.UnitDisplayUtils.TemperatureUnit.VALUES;
+                  List<String> lines = new ArrayList<>();
+                  try {
+                      Field internal = mekanism.common.config.value.CachedValue.class.getDeclaredField("internal");
+                      internal.setAccessible(true);
+                      net.neoforged.neoforge.common.ModConfigSpec.ConfigValue<?> value =
+                            (net.neoforged.neoforge.common.ModConfigSpec.ConfigValue<?>) internal.get(MekanismConfig.local.tempUnit);
+                      lines.add("{\"kind\":\"config\",\"file\":" + heatJson(MekanismConfig.local.getFileName()) + ",\"type\":"
+                            + heatJson(String.valueOf(MekanismConfig.local.getConfigType())) + ",\"path\":" + heatJson(String.join(".", value.getPath()))
+                            + ",\"default\":" + heatJson(String.valueOf(value.getDefault())) + "}");
+                  } catch (ReflectiveOperationException e) {
+                      throw new IllegalStateException(e);
+                  }
+                  for (var unit : units) {
+                      lines.add("{\"kind\":\"unit\",\"name\":\"" + unit.name() + "\",\"ordinal\":" + unit.ordinal() + ",\"symbol\":"
+                            + heatJson(unit.getSymbol(false)) + ",\"tab_name\":\"" + unit.getTabName() + "\",\"zero_offset\":" + unit.zeroOffset
+                            + ",\"interval_size\":" + unit.intervalSize + ",\"next\":\"" + unit.getNext().name() + "\",\"previous\":\""
+                            + unit.getPrevious().name() + "\",\"short_key\":\"" + unit.getTranslationKey() + "\"}");
+                  }
+                  double[] temps = {0, 1.0E-20, 1.5E-15, 2.2135616899864854E-5, 0.000_5, 0.0123, 0.5, 1, 26.85, 80.33, 273.15, 300, 328.37429445,
+                        487.7657, 999.999, 1_000, 1_500.25, 12_345.6789, 2.0E24, 5.0E31, -0.5, -5, -300};
+                  for (var unit : units) {
+                      for (double temp : temps) {
+                          for (boolean shift : new boolean[]{true, false}) {
+                              lines.add("{\"kind\":\"display\",\"unit\":\"" + unit.name() + "\",\"temp\":" + temp + ",\"shift\":" + shift
+                                    + ",\"text\":" + heatJson(mekanism.common.util.UnitDisplayUtils.getTemperatureDisplay(temp, unit, shift, 2).getString())
+                                    + "}");
+                          }
+                      }
+                  }
+                  // `MekanismUtils.getTemperatureDisplay` lê a unidade da configuração local: sem ela carregada, o valor padrão (KELVIN) é o
+                  // que ela devolve, e a conta é a mesma com a unidade posta à mão.
+                  List<String> langKeys = new ArrayList<>(List.of("gui.mekanism.unit", "gui.mekanism.transferred_rate", "gui.mekanism.dissipated",
+                        "temperature.mekanism.short"));
+                  boolean viaConfig = true;
+                  double[][] heats = {{3_283.7429445, 0, 2.2135616899864854E-5}, {4_877.657, 0, 0.0123}, {0, 0, 0}, {12_345.6789, 0.5, 15.5},
+                        {3_000, 0.000_003, 1.0E-20}};
+                  for (var unit : units) {
+                      try {
+                          MekanismConfig.local.tempUnit.set(unit);
+                      } catch (RuntimeException e) {
+                          viaConfig = false;
+                      }
+                      for (double[] row : heats) {
+                          double temperature = row[0] / TileEntityHeatGenerator.HEAT_CAPACITY;
+                          net.minecraft.network.chat.Component shown;
+                          net.minecraft.network.chat.Component transfer;
+                          net.minecraft.network.chat.Component environment;
+                          if (viaConfig) {
+                              shown = mekanism.common.util.MekanismUtils.getTemperatureDisplay(temperature,
+                                    mekanism.common.util.UnitDisplayUtils.TemperatureUnit.KELVIN, true);
+                              transfer = mekanism.common.util.MekanismUtils.getTemperatureDisplay(row[1],
+                                    mekanism.common.util.UnitDisplayUtils.TemperatureUnit.KELVIN, false);
+                              environment = mekanism.common.util.MekanismUtils.getTemperatureDisplay(row[2],
+                                    mekanism.common.util.UnitDisplayUtils.TemperatureUnit.KELVIN, false);
+                          } else {
+                              shown = mekanism.common.util.UnitDisplayUtils.getTemperatureDisplay(temperature, unit, true, 2);
+                              transfer = mekanism.common.util.UnitDisplayUtils.getTemperatureDisplay(row[1], unit, false, 2);
+                              environment = mekanism.common.util.UnitDisplayUtils.getTemperatureDisplay(row[2], unit, false, 2);
+                          }
+                          List<net.minecraft.network.chat.Component> info = List.of(
+                                mekanism.common.MekanismLang.TEMPERATURE.translate(shown),
+                                mekanism.common.MekanismLang.TRANSFERRED_RATE.translate(transfer),
+                                mekanism.common.MekanismLang.DISSIPATED_RATE.translate(environment),
+                                mekanism.common.MekanismLang.UNIT.translate(unit));
+                          StringBuilder rows = new StringBuilder();
+                          for (var line : info) {
+                              rows.append(rows.isEmpty() ? "" : ",").append(heatLine(line));
+                          }
+                          lines.add("{\"kind\":\"tooltip\",\"unit\":\"" + unit.name() + "\",\"via_config\":" + viaConfig + ",\"heat\":" + row[0]
+                                + ",\"transfer_loss\":" + row[1] + ",\"environment_loss\":" + row[2] + ",\"lines\":[" + rows + "]}");
+                      }
+                      langKeys.add(unit.getTranslationKey());
+                  }
+                  lines.add("{\"kind\":\"lang\",\"lang\":" + heatLang(langKeys) + "}");
+                  try {
+                      Path file = Path.of("trace", "temperature_units.jsonl");
+                      Files.createDirectories(file.getParent());
+                      Files.write(file, lines);
+                  } catch (IOException e) {
+                      throw new IllegalStateException(e);
+                  }
+              })
+              .thenSucceed()
+        );
+    }
+    // ===== fim de telas-calor =====
+=======
+    // ===========================================================================================================================
+    // Heat Generator, janela de upgrades (workspace telas-upg). Rastros heat_generator_upgrades, heat_generator_upgrade_slot,
+    // heat_generator_upgrade_window_install, heat_generator_upgrade_remove_by_packet, heat_generator_upgrade_slot_quick_move e
+    // heat_generator_container_tracking. O gerador só aceita o upgrade de silêncio (AttributeUpgradeSupport.MUFFLING_ONLY).
+    // ===========================================================================================================================
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator upgrade component driven directly: the type it supports, a second one past the maximum, one it does not support, and removing them.")
+    public static void heatGeneratorUpgrades(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_upgrades");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("muffling 1");
+                  trace.addUpgrades(UpgradeIds.MUFFLING, 1);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("muffling 1 more, past the maximum");
+                  trace.addUpgrades(UpgradeIds.MUFFLING, 1);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("speed 3, which the generator does not support");
+                  trace.addUpgrades(UpgradeIds.SPEED, 3);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("remove muffling all");
+                  trace.removeUpgrade(UpgradeIds.MUFFLING, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("remove speed all");
+                  trace.removeUpgrade(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator upgrade slots: installing over 20 ticks, a type it does not support, a slot with the maximum installed, removing one and removing all.")
+    public static void heatGeneratorUpgradeSlot(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_upgrade_slot");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("upgrade slot muffling 3");
+                  trace.setUpgradeSlot(UpgradeIds.MUFFLING, 3);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("upgrade slot speed 10");
+                  trace.setUpgradeSlot(UpgradeIds.SPEED, 10);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("upgrade slot clear");
+                  trace.clearUpgradeSlot();
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("upgrade slot muffling 1");
+                  trace.setUpgradeSlot(UpgradeIds.MUFFLING, 1);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("remove muffling");
+                  trace.removeUpgrade(UpgradeIds.MUFFLING, false);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("remove muffling all");
+                  trace.removeUpgrade(UpgradeIds.MUFFLING, true);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("remove speed all");
+                  trace.removeUpgrade(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator upgrade window as a player uses it: window selected and tracked by the real packets, upgrades installed by clicking the virtual slot.")
+    public static void heatGeneratorUpgradeWindowInstall(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_upgrade_window_install");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("open container");
+                  trace.openMenu(mekanism.generators.common.registries.GeneratorsContainerTypes.HEAT_GENERATOR);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("select upgrade window, track upgrades");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("click upgrade slot with muffling 3");
+                  trace.clickUpgradeSlot(UpgradeIds.MUFFLING, 3);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("click upgrade slot with speed 10");
+                  trace.clickUpgradeSlot(UpgradeIds.SPEED, 10);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("drop what is carried");
+                  trace.dropCarried();
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("click upgrade slot with muffling 2");
+                  trace.clickUpgradeSlot(UpgradeIds.MUFFLING, 2);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("drop what is carried");
+                  trace.dropCarried();
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("stop tracking, deselect window");
+                  trace.interact(GuiInteraction.CONTAINER_STOP_TRACKING);
+                  trace.selectWindow(null);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("click upgrade slot with muffling 1, no window");
+                  trace.clickUpgradeSlot(UpgradeIds.MUFFLING, 1);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("close container");
+                  trace.closeMenu();
+              })
+              .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the real remove upgrade packet on the Heat Generator, one and all, with an empty output slot, a full one, one with another type and one with room for part.")
+    public static void heatGeneratorUpgradeRemoveByPacket(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_upgrade_remove_by_packet");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("install muffling 1, speed 5, energy 4");
+                  trace.addUpgrades(UpgradeIds.MUFFLING, 1);
+                  trace.addUpgrades(UpgradeIds.SPEED, 5);
+                  trace.addUpgrades(UpgradeIds.ENERGY, 4);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove muffling one, output empty");
+                  trace.removePacket(UpgradeIds.MUFFLING, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed one, output holds muffling 1");
+                  trace.removePacket(UpgradeIds.SPEED, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove speed all, output holds another type");
+                  trace.removePacket(UpgradeIds.SPEED, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  int full = trace.upgradeStack(UpgradeIds.ENERGY, 1).getMaxStackSize();
+                  trace.mark("output energy " + full + ", full");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, full);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy one, output full");
+                  trace.removePacket(UpgradeIds.ENERGY, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy all, output full");
+                  trace.removePacket(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  int room = trace.upgradeStack(UpgradeIds.ENERGY, 1).getMaxStackSize() - 2;
+                  trace.mark("output energy " + room + " with room for 2");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, room);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy all, installed 4 and room for 2");
+                  trace.removePacket(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove energy one, output now full");
+                  trace.removePacket(UpgradeIds.ENERGY, false);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("output cleared, packet remove energy all");
+                  trace.setUpgradeOutput(UpgradeIds.ENERGY, 0);
+                  trace.removePacket(UpgradeIds.ENERGY, true);
+              })
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("packet remove xp_containment, not installed");
+                  trace.removePacket(UpgradeIds.XP_CONTAINMENT, false);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records quickMoveStack on the Heat Generator upgrade slots with the upgrade window selected and without it, going in and coming out.")
+    public static void heatGeneratorUpgradeSlotQuickMove(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_upgrade_slot_quick_move");
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  // O gerador parado, com o tanque e o buffer cheios: sem isso ele queimaria o carvão do slot de combustível a cada tick.
+                  trace.setLava(1_000);
+                  trace.setEnergy(240);
+                  trace.openMenu(mekanism.generators.common.registries.GeneratorsContainerTypes.HEAT_GENERATOR);
+                  trace.layout();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: upgrade muffling 1 from main slot 9");
+                  trace.quickMoveFromPlayer(9, trace.upgradeStack(UpgradeIds.MUFFLING, 1));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: coal 10 from main slot 10");
+                  trace.quickMoveFromPlayer(10, new ItemStack(Items.COAL, 10));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("select upgrade window");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade muffling 1 from main slot 11");
+                  trace.quickMoveFromPlayer(11, trace.upgradeStack(UpgradeIds.MUFFLING, 1));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade muffling 2 from main slot 12, input slot already has muffling");
+                  trace.quickMoveFromPlayer(12, trace.upgradeStack(UpgradeIds.MUFFLING, 2));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade the generator does not support from main slot 13");
+                  trace.quickMoveFromPlayer(13, trace.unsupportedUpgradeStack());
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: coal 10 from main slot 14");
+                  trace.quickMoveFromPlayer(14, new ItemStack(Items.COAL, 10));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: upgrade muffling 1 from hotbar slot 0");
+                  trace.quickMoveFromPlayer(0, trace.upgradeStack(UpgradeIds.MUFFLING, 1));
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: from the virtual input slot back to the inventory");
+                  trace.quickMoveFromMenu(0);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("window: output slot holds muffling 1, quick move it out");
+                  trace.setUpgradeOutput(UpgradeIds.MUFFLING, 1);
+                  trace.quickMoveFromMenu(1);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("deselect window, input slot holds muffling 2");
+                  trace.selectWindow(null);
+                  trace.setUpgradeSlot(UpgradeIds.MUFFLING, 2);
+                  trace.snapshot();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: quick move the virtual input slot");
+                  trace.quickMoveFromMenu(0);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("no window: output slot holds muffling 1, quick move it");
+                  trace.setUpgradeOutput(UpgradeIds.MUFFLING, 1);
+                  trace.quickMoveFromMenu(1);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("machine slots: quick move the coal in the fuel slot out");
+                  trace.quickMoveFromMenu(2);
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the order and class of the data the Heat Generator container tracks, and what the upgrade window adds and removes.")
+    public static void heatGeneratorContainerTracking(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatUpgradeTrace trace = new HeatUpgradeTrace("heat_generator_container_tracking");
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  trace.mark("container created");
+                  trace.openMenu(mekanism.generators.common.registries.GeneratorsContainerTypes.HEAT_GENERATOR);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketWindowSelect upgrade");
+                  trace.selectWindow(new SelectedWindowData(WindowType.UPGRADE));
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_STOP_TRACKING");
+                  trace.interact(GuiInteraction.CONTAINER_STOP_TRACKING);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES again");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketGuiInteract CONTAINER_TRACK_UPGRADES a second time, without stopping");
+                  trace.interact(GuiInteraction.CONTAINER_TRACK_UPGRADES);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("PacketWindowSelect none");
+                  trace.selectWindow(null);
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("container closed");
+                  trace.closeMenu();
+                  trace.trackingLine();
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    /// Grava o Heat Generator com a janela de upgrades: o componente (`TileComponentUpgrade`) a cada tick, e o contêiner quando há um.
+    private static class HeatUpgradeTrace {
+
+        private final String name;
+        private final List<String> lines = new ArrayList<>();
+        private final List<String> marks = new ArrayList<>();
+        private MekGameTestHelper helper;
+        private int tick;
+        private Player player;
+        MekanismTileContainer<TileEntityMekanism> menu;
+        private List<ISyncableData> previousTracked = List.of();
+
+        HeatUpgradeTrace(String name) {
+            this.name = name;
+        }
+
+        void start(MekGameTestHelper helper) {
+            this.helper = helper;
+        }
+
+        void mark(String mark) {
+            marks.add(mark);
+        }
+
+        TileEntityHeatGenerator tile() {
+            return (TileEntityHeatGenerator) helper.getLevel().getBlockEntity(helper.absolutePos(GENERATOR));
+        }
+
+        TileComponentUpgrade component() {
+            return tile().getComponent();
+        }
+
+        Player player() {
+            if (player == null) {
+                player = helper.makeMockPlayerLookingAt(GENERATOR, Direction.NORTH);
+            }
+            return player;
+        }
+
+        /// O contexto de um pacote: só o jogador, que é tudo o que os `handle` do Mekanism pedem.
+        IPayloadContext context() {
+            Player who = player();
+            return (IPayloadContext) Proxy.newProxyInstance(IPayloadContext.class.getClassLoader(), new Class<?>[]{IPayloadContext.class},
+                  (proxy, method, args) -> {
+                      if (method.getName().equals("player")) {
+                          return who;
+                      }
+                      throw new UnsupportedOperationException(method.getName());
+                  });
+        }
+
+        void setLava(long amount) {
+            tile().lavaTank.setContents(amount == 0 ? FluidResource.EMPTY : FluidResource.of(Fluids.LAVA), amount, null);
+        }
+
+        void setEnergy(long energy) {
+            tile().energyContainer().setEnergy(energy, null);
+        }
+
+        void openMenu(ContainerTypeRegistryObject<?> type) {
+            Player who = player();
+            menu = new MekanismTileContainer<>(type, 100, who.getInventory(), (TileEntityMekanism) tile());
+            who.containerMenu = menu;
+        }
+
+        void closeMenu() {
+            menu.removed(player);
+            player.containerMenu = player.inventoryMenu;
+        }
+
+        /// `PacketWindowSelect.handle`, o real.
+        void selectWindow(SelectedWindowData window) {
+            new PacketWindowSelect(window).handle(context());
+        }
+
+        /// `PacketGuiInteract.handle`, o real.
+        void interact(GuiInteraction interaction) {
+            new PacketGuiInteract(interaction, helper.absolutePos(GENERATOR), MekanismContainer.UPGRADE_WINDOW).handle(context());
+        }
+
+        /// `PacketRemoveUpgrade.handle`, o real.
+        void removePacket(net.minecraft.resources.ResourceKey<Upgrade> key, boolean all) {
+            new PacketRemoveUpgrade(helper.absolutePos(GENERATOR), upgrade(key), all).handle(context());
+        }
+
+        Holder<Upgrade> upgrade(net.minecraft.resources.ResourceKey<Upgrade> key) {
+            return helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).getOrThrow(key);
+        }
+
+        ItemStack upgradeStack(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            return IUpgradeHelper.INSTANCE.asResource(upgrade(key)).toStack(count);
+        }
+
+        /// O primeiro upgrade do registro que o gerador não aceita.
+        ItemStack unsupportedUpgradeStack() {
+            TileComponentUpgrade component = component();
+            Holder<Upgrade> holder = helper.getLevel().registryAccess().lookupOrThrow(MekanismRegistries.Keys.UPGRADES).listElements()
+                  .filter(upgrade -> !component.supports(upgrade)).map(upgrade -> (Holder<Upgrade>) upgrade).findFirst().orElseThrow();
+            mark("unsupported upgrade is " + holder.getRegisteredName());
+            return IUpgradeHelper.INSTANCE.asResource(holder).toStack(1);
+        }
+
+        /// `addUpgrades` do componente: a API não confere o suporte, só o máximo.
+        void addUpgrades(net.minecraft.resources.ResourceKey<Upgrade> key, int amount) {
+            component().addUpgrades(helper.getLevel().registryAccess(), upgrade(key), amount);
+        }
+
+        void removeUpgrade(net.minecraft.resources.ResourceKey<Upgrade> key, boolean all) {
+            component().removeUpgrade(helper.getLevel().registryAccess(), upgrade(key), all);
+        }
+
+        void setUpgradeSlot(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            component().getUpgradeSlot().setContents(IUpgradeHelper.INSTANCE.asResource(upgrade(key)), count, null);
+        }
+
+        void clearUpgradeSlot() {
+            component().getUpgradeSlot().setContents(ItemResource.EMPTY, 0, null);
+        }
+
+        void setUpgradeOutput(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            ItemResource resource = count == 0 ? ItemResource.EMPTY : IUpgradeHelper.INSTANCE.asResource(upgrade(key));
+            component().getUpgradeOutputSlot().setContents(resource, count, null);
+        }
+
+        /// O jogador com o upgrade na mão clica no slot virtual: o caminho do `AbstractContainerMenu.clicked`.
+        void clickUpgradeSlot(net.minecraft.resources.ResourceKey<Upgrade> key, int count) {
+            menu.setCarried(upgradeStack(key, count));
+            menu.clicked(menu.getUpgradeSlot().index, 0, ContainerInput.PICKUP, player);
+        }
+
+        void dropCarried() {
+            menu.setCarried(ItemStack.EMPTY);
+        }
+
+        int playerSlotIndex(int inventorySlot) {
+            for (Slot slot : menu.slots) {
+                if (slot.container == player.getInventory() && slot.getContainerSlot() == inventorySlot) {
+                    return slot.index;
+                }
+            }
+            throw new IllegalStateException("no container slot for inventory slot " + inventorySlot);
+        }
+
+        private String window() {
+            SelectedWindowData window = menu.getSelectedWindow(player.getUUID());
+            return window == null ? "none" : window.type().name().toLowerCase();
+        }
+
+        private static String itemJson(ItemStack stack) {
+            return "[\"" + (stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath() + (stack.has(IUpgradeHelper.INSTANCE.dataComponent())
+                  ? ":" + stack.get(IUpgradeHelper.INSTANCE.dataComponent()).getRegisteredName().substring("mekanism:".length()) : "")) + "\"," + stack.getCount() + "]";
+        }
+
+        private String slotsJson() {
+            StringBuilder out = new StringBuilder("[");
+            for (Slot slot : menu.slots) {
+                if (slot.hasItem()) {
+                    out.append(out.length() == 1 ? "" : ",").append('[').append(slot.index).append(",\"").append(slot.getClass().getSimpleName()).append("\",")
+                          .append(itemJson(slot.getItem()).substring(1));
+                }
+            }
+            return out.append(']').toString();
+        }
+
+        private String marksJson() {
+            StringBuilder out = new StringBuilder("[");
+            for (int i = 0; i < marks.size(); i++) {
+                out.append(i == 0 ? "" : ",").append('"').append(marks.get(i)).append('"');
+            }
+            marks.clear();
+            return out.append(']').toString();
+        }
+
+        /// Todos os slots do contêiner, na ordem, com a classe: onde cada coisa pode ir.
+        void layout() {
+            StringBuilder out = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":").append(marksJson()).append(",\"layout\":[");
+            for (Slot slot : menu.slots) {
+                out.append(slot.index == 0 ? "" : ",").append('[').append(slot.index).append(",\"").append(slot.getClass().getSimpleName()).append("\"]");
+            }
+            lines.add(out.append("],\"slots\":").append(slotsJson()).append('}').toString());
+        }
+
+        void snapshot() {
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"window\":\"" + window() + "\",\"slots\":" + slotsJson()
+                  + ",\"upgrade_ticks\":" + upgradeTicks(component()) + "}");
+        }
+
+        /// `quickMoveStack` a partir de um slot do inventário do jogador, que antes recebe o item.
+        void quickMoveFromPlayer(int inventorySlot, ItemStack stack) {
+            player.getInventory().setItem(inventorySlot, stack);
+            quickMove(playerSlotIndex(inventorySlot));
+        }
+
+        void quickMoveFromMenu(int index) {
+            quickMove(index);
+        }
+
+        private void quickMove(int index) {
+            ItemStack returned = menu.quickMoveStack(player, index);
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"from\":" + index + ",\"window\":\"" + window() + "\",\"returned\":"
+                  + itemJson(returned) + ",\"slots\":" + slotsJson() + "}");
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<ISyncableData> trackedData() {
+            try {
+                Field field = MekanismContainer.class.getDeclaredField("trackedData");
+                field.setAccessible(true);
+                return (List<ISyncableData>) field.get(menu);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private static int upgradeTicks(TileComponentUpgrade component) {
+            try {
+                Field field = TileComponentUpgrade.class.getDeclaredField("upgradeTicks");
+                field.setAccessible(true);
+                return field.getInt(component);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        private static String className(Object data) {
+            return data.getClass().getName().substring(data.getClass().getName().lastIndexOf('.') + 1);
+        }
+
+        private boolean fullyMuffled() {
+            try {
+                java.lang.reflect.Method method = TileEntityMekanism.class.getDeclaredMethod("isFullyMuffled");
+                method.setAccessible(true);
+                return (boolean) method.invoke(tile());
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        /// A ordem de `trackedData` com a classe de cada um, e o que entrou e saiu desde a linha anterior.
+        void trackingLine() {
+            List<ISyncableData> tracked = trackedData();
+            StringBuilder out = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":").append(marksJson())
+                  .append(",\"window\":\"").append(window()).append("\",\"players\":").append(tile().playersUsing.size())
+                  .append(",\"count\":").append(tracked.size()).append(",\"added\":[");
+            boolean first = true;
+            for (int i = 0; i < tracked.size(); i++) {
+                ISyncableData data = tracked.get(i);
+                if (previousTracked.stream().noneMatch(old -> old == data)) {
+                    out.append(first ? "" : ",").append('[').append(i).append(",\"").append(className(data)).append("\"]");
+                    first = false;
+                }
+            }
+            out.append("],\"removed\":[");
+            first = true;
+            for (int i = 0; i < previousTracked.size(); i++) {
+                ISyncableData old = previousTracked.get(i);
+                if (tracked.stream().noneMatch(data -> data == old)) {
+                    out.append(first ? "" : ",").append('[').append(i).append(",\"").append(className(old)).append("\"]");
+                    first = false;
+                }
+            }
+            out.append("],\"tracked\":[");
+            for (int i = 0; i < tracked.size(); i++) {
+                out.append(i == 0 ? "" : ",").append('"').append(className(tracked.get(i))).append('"');
+            }
+            lines.add(out.append("]}").toString());
+            previousTracked = new ArrayList<>(tracked);
+        }
+
+        private void upgradeSlot(StringBuilder line, IInventorySlot slot) {
+            ItemStack stack = slot.asItemStack();
+            Holder<Upgrade> type = stack.isEmpty() ? null : stack.get(IUpgradeHelper.INSTANCE.dataComponent());
+            line.append('"').append(type == null ? "" : type.getRegisteredName().substring("mekanism:".length())).append("\",").append(stack.getCount());
+        }
+
+        /// Uma linha por tick: a energia do gerador, o componente de upgrades (o mapa, o progresso, os dois slots), o som que o silêncio muda
+        /// e, com um contêiner aberto, a janela, os dados acompanhados, o cursor e quantos jogadores o usam.
+        void record() {
+            if (helper == null) {
+                return;
+            }
+            TileEntityHeatGenerator tile = tile();
+            TileComponentUpgrade component = tile.getComponent();
+            StringBuilder line = new StringBuilder("{\"t\":").append(tick++).append(",\"marks\":").append(marksJson())
+                  .append(",\"energy\":").append(tile.energyContainer().getAmountAsLong())
+                  .append(",\"capacity\":").append(tile.energyContainer().getCapacityAsLong())
+                  .append(",\"active\":").append(tile.getActive())
+                  .append(",\"block_active\":").append(Attribute.isActive(tile.getBlockState()))
+                  .append(",\"muffling\":").append(component.getUpgrades(upgrade(UpgradeIds.MUFFLING)))
+                  .append(",\"upgrade_progress\":").append(component.getScaledUpgradeProgress())
+                  .append(",\"upgrade_in\":[");
+            upgradeSlot(line, component.getUpgradeSlot());
+            line.append("],\"upgrade_out\":[");
+            upgradeSlot(line, component.getUpgradeOutputSlot());
+            line.append("],\"volume_factor\":").append(tile.getVolumeFactor())
+                  .append(",\"fully_muffled\":").append(fullyMuffled());
+            List<String> installed = new ArrayList<>();
+            component.getInstalledTypes().stream().sorted(Comparator.comparing(Holder::getRegisteredName))
+                  .forEach(type -> installed.add("\"" + type.getRegisteredName().substring("mekanism:".length()) + "\":" + component.getUpgrades(type)));
+            line.append(",\"upgrade_ticks\":").append(upgradeTicks(component)).append(",\"upgrade_map\":{").append(String.join(",", installed)).append('}');
+            if (menu != null) {
+                line.append(",\"window\":\"").append(window()).append("\",\"tracked\":").append(trackedData().size())
+                      .append(",\"carried\":").append(itemJson(menu.getCarried())).append(",\"players\":").append(tile.playersUsing.size());
+            }
+            lines.add(line.append('}').toString());
+        }
+
+        void write() {
+            helper = null;
+            try {
+                Path file = Path.of("trace", name + ".jsonl");
+                Files.createDirectories(file.getParent());
+                Files.write(file, lines);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
 }

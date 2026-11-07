@@ -57,6 +57,7 @@ public class CenaTelas {
     private static final int Y = -60;
     private static final int Z = 3;
     private static final int OPEN_WAIT = 60;
+    private static final int CLICK_GAP = 8;
 
     private record Caso(String name, int scale, String machine, Map<String, String> args, int x) {
     }
@@ -121,6 +122,8 @@ public class CenaTelas {
                 server.execute(() -> run(server, "time set 6000"));
                 server.execute(() -> run(server, "weather clear"));
                 server.execute(() -> run(server, "clear @a"));
+                // O Horizon não mostra o retorno dos comandos no chat; o original mostraria `[Server: ...]` no canto do print.
+                minecraft.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
             }
             return;
         }
@@ -155,26 +158,42 @@ public class CenaTelas {
         }
         // O `tick step` roda a 20 ticks por segundo, o mesmo ritmo do cliente: espera os passos e uma folga.
         int base = 25 + steps + 20;
+        if (caseTick >= base) {
+            orderClientUpgrades(minecraft);
+        }
+        // Um clique por vez, `CLICK_GAP` ticks entre eles: a janela de upgrades e a lista dela só recebem os dados do servidor depois do primeiro clique,
+        // e dois cliques no mesmo tick pegavam a lista antes da ordem refeita (e, às vezes, vazia).
+        int clickCount = caso.args().containsKey("clicar") ? caso.args().get("clicar").split(";").length : 0;
+        int first = base + OPEN_WAIT;
+        int last = first + CLICK_GAP * Math.max(0, clickCount - 1);
         if (caseTick == base) {
             report(minecraft, caso, "ao abrir");
             open(minecraft, caso);
-        } else if (caseTick == base + OPEN_WAIT) {
-            hideUnimplementedTabs(minecraft, caso);
-            clicks(minecraft, caso);
-            report(minecraft, caso, "depois dos cliques");
-            hover(minecraft, caso);
-            shotsTaken = 0;
-        } else if (cycle > 0 && caseTick > base + OPEN_WAIT + 10 && shotsTaken < captures && (caseTick - base) % 6 == 0) {
+        } else if (caseTick >= first && caseTick <= last && (caseTick - first) % CLICK_GAP == 0) {
+            if (caseTick == first) {
+                hideUnimplementedTabs(minecraft, caso);
+            }
+            click(minecraft, caso, "clicar", (caseTick - first) / CLICK_GAP);
+            if (caseTick == last) {
+                report(minecraft, caso, "depois dos cliques");
+                hover(minecraft, caso);
+                shotsTaken = 0;
+            }
+        } else if (cycle > 0 && caseTick > last + 10 && shotsTaken < captures && (caseTick - base) % 6 == 0) {
             // Um passo do servidor por quadro: as animações do atlas só andam com o jogo rodando, e a fase de cada print é conhecida.
             server.execute(() -> run(server, "tick step 1"));
-        } else if (cycle > 0 && caseTick > base + OPEN_WAIT + 10 && shotsTaken < captures && (caseTick - base) % 6 == 3) {
+        } else if (cycle > 0 && caseTick > last + 10 && shotsTaken < captures && (caseTick - base) % 6 == 3) {
             shot(minecraft, "oficial_" + caso.name() + "_e" + caso.scale() + "_" + shotsTaken);
             shotsTaken++;
-        } else if (cycle == 0 && caseTick > base + OPEN_WAIT + 10 && shotsTaken < captures && (caseTick - base) % 2 == 0) {
+        } else if (cycle == 0 && caseTick > last + 10 && shotsTaken < captures && (caseTick - base) % 2 == 0) {
             String suffix = captures > 1 ? "_" + shotsTaken : "";
             shot(minecraft, "oficial_" + caso.name() + "_e" + caso.scale() + suffix);
             shotsTaken++;
-        } else if (caseTick == base + OPEN_WAIT + 14 + captures * (cycle > 0 ? 6 : 2)) {
+        } else if (caseTick == last + 14 + captures * (cycle > 0 ? 6 : 2)) {
+            int undo = caso.args().containsKey("desfazer") ? caso.args().get("desfazer").split(";").length : 0;
+            for (int i = 0; i < undo; i++) {
+                click(minecraft, caso, "desfazer", i);
+            }
             minecraft.player.closeContainer();
             caseIndex++;
             caseTick = 0;
@@ -196,10 +215,17 @@ public class CenaTelas {
         int x = caso.x();
         run(server, "fill " + (x - 6) + " -61 -6 " + (x + 6) + " -50 10 minecraft:air");
         run(server, "fill " + (x - 6) + " -61 -6 " + (x + 6) + " -50 10 minecraft:black_concrete hollow");
+        //O bioma decide a temperatura do ar que a aba de calor mostra: planície nos dois jogos
+        run(server, "fillbiome " + (x - 6) + " -61 -6 " + (x + 6) + " -50 10 minecraft:plains");
     }
 
     private static void build(MinecraftServer server, Caso caso) {
         box(server, caso);
+        // O controle da luz (`luz=N`): uma fonte vanilla de nível N ao lado da máquina, sem nenhum bloco do Mekanism emitindo, para medir como cada jogo
+        // desenha o mundo iluminado atrás da tela.
+        if (caso.args().containsKey("luz")) {
+            run(server, "setblock " + (caso.x() + 2) + " " + Y + " " + Z + " minecraft:light[level=" + caso.args().get("luz") + "]");
+        }
         ServerLevel level = server.overworld();
         level.setBlockAndUpdate(new BlockPos(caso.x(), Y, Z), Blocks.AIR.defaultBlockState());
         level.setBlockAndUpdate(new BlockPos(caso.x(), Y, Z), block(caso.machine()));
@@ -283,6 +309,7 @@ public class CenaTelas {
                 component.addUpgrades(server.overworld().registryAccess(), upgrade(server, parts[0]), Integer.parseInt(parts[1]));
             }
         }
+        orderUpgrades(server.overworld().registryAccess(), component);
         if (caso.args().containsKey("upgradeentrada")) {
             var stack = upgradeItem(server, caso.args().get("upgradeentrada"));
             component.getUpgradeSlot().setContents(ItemResource.of(stack), stack.count(), null);
@@ -293,20 +320,52 @@ public class CenaTelas {
         }
     }
 
-    /// `clicar=x,y;x,y`: cliques do botão esquerdo, em pixels de GUI relativos ao canto da tela, pelo `mouseClicked` da tela como o mouse faria.
-    private static void clicks(Minecraft minecraft, Caso caso) {
-        if (!caso.args().containsKey("clicar") || !(minecraft.gui.screen() instanceof mekanism.client.gui.IGuiWrapper wrapper)) {
+    /// A lista da janela de upgrades vem de `getInstalledTypes()`, as chaves de um `Object2IntOpenHashMap<Holder<Upgrade>>`. O `hashCode` de um
+    /// `Holder.Reference` é o de identidade, que muda com o que o JVM já sorteou antes (medido: a mesma cena, sozinha ou depois de outros
+    /// casos, dá ordens diferentes), então o original não tem ordem a copiar. O mapa vira um de ordem de inserção na ordem do registro, a
+    /// mesma em que a janela lista os tipos suportados e o port lista os instalados, para os prints se compararem linha a linha.
+    private static void orderUpgrades(net.minecraft.core.RegistryAccess registries, mekanism.common.tile.component.TileComponentUpgrade component) {
+        try {
+            Field field = mekanism.common.tile.component.TileComponentUpgrade.class.getDeclaredField("upgrades");
+            field.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            var current = (it.unimi.dsi.fastutil.objects.Object2IntMap<Holder<mekanism.api.upgrade.Upgrade>>) field.get(component);
+            var ordered = new it.unimi.dsi.fastutil.objects.Object2IntLinkedOpenHashMap<Holder<mekanism.api.upgrade.Upgrade>>();
+            registries.lookupOrThrow(mekanism.api.MekanismRegistries.Keys.UPGRADES).listElements().forEach(holder -> {
+                if (current.containsKey(holder)) {
+                    ordered.put(holder, current.getInt(holder));
+                }
+            });
+            if (!new ArrayList<>(current.keySet()).equals(new ArrayList<>(ordered.keySet()))) {
+                field.set(component, ordered);
+            }
+        } catch (ReflectiveOperationException e) {
+            Mekanism.logger.error("cena: sem ordem dos upgrades", e);
+        }
+    }
+
+    /// O cliente tem a sua própria cópia do tile, e a sincronização do mapa (`SyncableStreamCodec.upgradeMap`) o troca por um
+    /// `Object2IntOpenHashMap` novo: a ordem se refaz antes de cada clique e de cada quadro.
+    private static void orderClientUpgrades(Minecraft minecraft) {
+        if (minecraft.level != null && minecraft.gui.screen() instanceof mekanism.client.gui.GuiMekanismTile<?, ?> screen
+              && screen.getMenu().getTileEntity().getComponent() != null) {
+            orderUpgrades(minecraft.level.registryAccess(), screen.getMenu().getTileEntity().getComponent());
+        }
+    }
+
+    /// `clicar=x,y;x,y` (e `desfazer=...`, o que se clica ao fim do caso para devolver o estado de cliente que os cliques mudaram): cliques do botão esquerdo, em pixels de GUI relativos ao canto da tela, pelo `mouseClicked` da tela como o mouse faria.
+    private static void click(Minecraft minecraft, Caso caso, String key, int index) {
+        if (!caso.args().containsKey(key) || !(minecraft.gui.screen() instanceof mekanism.client.gui.IGuiWrapper wrapper)) {
             return;
         }
         var screen = minecraft.gui.screen();
-        for (String point : caso.args().get("clicar").split(";")) {
-            String[] xy = point.split(",");
-            double x = wrapper.getLeftPos() + Double.parseDouble(xy[0]) + 0.5;
-            double y = wrapper.getTopPos() + Double.parseDouble(xy[1]) + 0.5;
-            var info = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
-            screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
-            screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
-        }
+        String[] xy = caso.args().get(key).split(";")[index].split(",");
+        double x = wrapper.getLeftPos() + Double.parseDouble(xy[0]) + 0.5;
+        double y = wrapper.getTopPos() + Double.parseDouble(xy[1]) + 0.5;
+        orderClientUpgrades(minecraft);
+        var info = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
+        screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
+        screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
     }
 
     /// O port ainda não tem as abas de configuração, transporte, cadeado, livro, energia, redstone e upgrades, nem a que guarda os
@@ -363,6 +422,10 @@ public class CenaTelas {
     }
 
     private static void open(Minecraft minecraft, Caso caso) {
+        // `semtela`: o print do mundo sem tela aberta, para separar o que o jogo desenha no mundo do que a tela por cima faz com ele.
+        if (caso.args().containsKey("semtela")) {
+            return;
+        }
         BlockPos pos = new BlockPos(caso.x(), Y, Z);
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), Direction.NORTH, pos, false);
         minecraft.gameMode.useItemOn(minecraft.player, InteractionHand.MAIN_HAND, hit);
