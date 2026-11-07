@@ -229,6 +229,27 @@ pub fn energy_tab_tooltip(
 pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
     machinery_basis_core::side_tab::XpTab::new(SCREEN_IMAGE_WIDTH, XP_TAB_Y, true)
 }
+
+/// Os elementos que a tela de uma máquina tem fora da imagem de 176 por 166 e que `GuiMekanism.findElementOver` acha (os que a tela do port
+/// desenha; a segurança, a redstone, a configuração de itens e de transporte e o livro de receitas do original ainda não existem aqui):
+/// - `GuiEnergyTab` (`addGuiElements` de `GuiElectricMachine` e de `GuiMetallurgicInfuser`): -26, 137, 26 por 26, sempre ativa e visível.
+/// - `GuiWarningTab` (`GuiMekanism.addWarningTab`, à esquerda): -26, 109, 26 por 26, visível só com algum aviso (`updateVisibility`).
+/// - `GuiXpContainmentTab`: o botão de dentro (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18, não o suporte de 26), visível só
+///   com o upgrade de xp instalado (`hasXpContainment`).
+///
+/// A aba de upgrades é da janela de upgrades da lib.
+pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_elements::Element> {
+    use machinery_basis_core::screen_elements::Element;
+    vec![
+        Element::when(machinery_basis_core::gui::WARNING_TAB_LEFT, move |data| {
+            screen.view(data).tab()
+        }),
+        Element::when(xp_tab().tab.button(), move |data| {
+            ScreenData::read(screen.data, data).xp_containment
+        }),
+        Element::always(ENERGY_TAB.rect),
+    ]
+}
 pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
 /// `MekanismTags.Upgrades.DEFAULT_MACHINE_UPGRADES`: o que `AttributeUpgradeSupport.DEFAULT_MACHINE_UPGRADES` aceita, e que as
 /// quatro máquinas portadas usam.

@@ -311,6 +311,8 @@ fn native_screen(machine: &Machine) -> NativeScreen {
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if let Some(machine) = machine_of(block) {
         *screen = Some(native_screen(machine));
+        // O cliente pergunta a cada clique se ele cai sobre uma aba (`GuiMekanism.hasClickedOutside`), com os data slots de agora.
+        machinery_basis_core::screen_elements::declare_once(block, || rules::screen_elements(*machine.screen));
         if let Some(spec) = window_spec(block) {
             Game::mb_window_register(spec, remove_upgrade, add_upgrades);
         }
