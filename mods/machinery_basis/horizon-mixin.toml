@@ -27,6 +27,13 @@ file = "crates/horizon-client/src/game/native_hooks.rs"
 name = "machinery_basis_windows"
 source = "windows.rs"
 
+# O som contínuo de um tile (H19): o motor de som é privado de `Game` (`audio`), e `Ticking::Native` só o dono do módulo atualiza. Alvo cru.
+[[module]]
+id = "tile-sound"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_tile_sound"
+source = "tile_sound.rs"
+
 [[module]]
 id = "slot-accepts"
 file = "crates/horizon-client/src/game/machines/native_items.rs"

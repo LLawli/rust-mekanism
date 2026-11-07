@@ -65,6 +65,8 @@ struct Machine {
     slots: Slots,
     /// Os data slots da tela e os avisos dela.
     screen: &'static rules::ScreenSpec,
+    /// `AttributeSound`: o evento do som da máquina.
+    sound: &'static str,
 }
 
 const ELECTRIC_SLOT_LAYOUT: Slots = Slots {
@@ -81,6 +83,7 @@ const fn electric(
     title: &'static str,
     recipes: basis::RecipeSource,
     energy_per_tick: i32,
+    sound: &'static str,
 ) -> Machine {
     Machine {
         block,
@@ -89,6 +92,7 @@ const fn electric(
         energy_per_tick,
         slots: ELECTRIC_SLOT_LAYOUT,
         screen: &rules::ELECTRIC_SCREEN,
+        sound,
     }
 }
 
@@ -98,18 +102,21 @@ static MACHINES: [Machine; 4] = [
         "container.mekanism.enrichment_chamber",
         Custom(rules::ENRICHING, rules::ELECTRIC_FIELDS),
         rules::ENRICHMENT_USAGE,
+        rules::ENRICHMENT_SOUND,
     ),
     electric(
         rules::CRUSHER,
         "container.mekanism.crusher",
         Custom(rules::CRUSHING, rules::ELECTRIC_FIELDS),
         rules::CRUSHER_USAGE,
+        rules::CRUSHER_SOUND,
     ),
     electric(
         rules::ENERGIZED_SMELTER,
         "container.mekanism.energized_smelter",
         Cooking(rules::SMELTING),
         rules::SMELTER_USAGE,
+        rules::SMELTER_SOUND,
     ),
     Machine {
         block: rules::INFUSER,
@@ -125,6 +132,7 @@ static MACHINES: [Machine; 4] = [
             upgrade_output: rules::UPGRADE_OUTPUT_SLOT,
         },
         screen: &rules::INFUSER_SCREEN,
+        sound: rules::INFUSER_SOUND,
     },
 ];
 
@@ -357,6 +365,10 @@ fn remove_upgrade(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, all: bool) 
         return;
     };
     live.machine.upgrades().remove_upgrade(upgrade, all);
+    // `recalculateUpgrades` → `xpContainmentChanged`: a experiência guardada cai ao tirar o upgrade (se ainda tiver contenção).
+    let drops = live.machine.take_experience_drops();
+    pop_experience(game, center_of(pos), &drops);
+    sync_muffling(game, key.0, pos, &mut live);
     let version = live.machine.upgrades_version();
     if live.upgrades_version != Some(version) {
         // O que saiu vai também para os slots do menu: o próximo tick lê o menu primeiro, e um slot de saída velho apagaria o que entrou.
@@ -424,6 +436,8 @@ const USED_SO_FAR: &str = "used_so_far";
 const RECIPES_USED: &str = "recipes_used";
 const LAST_RECIPE_USED: &str = "last_recipe_used";
 const LAST_RECIPE_AMOUNT: &str = "last_recipe_amount";
+/// `SerializationConstants.HAS_CONTAINMENT`: se o upgrade de contenção de xp estava instalado.
+const HAS_CONTAINMENT: &str = "has_containment";
 /// `SerializationConstants.EJECT + TransmissionType.ITEM.ordinal()`: ENERGY, FLUID, CHEMICAL, ITEM.
 const EJECT_ITEM: &str = "eject3";
 /// A chave que liga o ejetor por comando: `/data merge block x y z {mekanism_eject:1}`.
@@ -474,6 +488,31 @@ struct Live {
     upgrades_version: Option<u32>,
     /// A capacidade que o Horizon já sabe desta máquina.
     energy_capacity: Option<i32>,
+    /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
+    muffling_sent: i32,
+}
+
+/// A experiência de cada receita da máquina, por id.
+fn experience_of(recipes: &Arc<Vec<basis::MachineRecipe>>) -> machinery_basis_core::tile::ExperienceLookup {
+    let recipes = recipes.clone();
+    Rc::new(move |id: &str| recipes.iter().find(|recipe| recipe.id == id).map(|recipe| recipe.experience))
+}
+
+/// `AbstractFurnaceBlockEntity.createExperience` + `ExperienceOrb.award`: as bolas de experiência de uma remessa de receitas, em
+/// `at`. O sorteio da parte fracionária é o `Math.random()` do Java: não há semente a reproduzir.
+fn pop_experience(game: &mut Game<'_>, at: [f64; 3], drops: &[machinery_basis_core::experience::ExperienceDrop]) {
+    for drop in drops {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| u64::from(since.subsec_nanos()));
+        let points = drop.points((nanos % 1_000_000) as f64 / 1_000_000.0);
+        if points > 0 {
+            game.spawn_orbs(at, points as u32);
+        }
+    }
+}
+
+/// `Vec3.atCenterOf(pos)`.
+fn center_of(pos: [i32; 3]) -> [f64; 3] {
+    [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5]
 }
 
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
@@ -812,6 +851,7 @@ fn read_saved(game: &Game<'_>, entity: &ModBlockEntity) -> SavedState {
         recipes_used,
         last_recipe_used: nbt_string(entity, LAST_RECIPE_USED),
         last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
+        had_containment: nbt_bool(entity, HAS_CONTAINMENT),
         ejecting: nbt_bool(entity, EJECT_ITEM),
         upgrades: read_upgrades(game, entity),
     }
@@ -1047,6 +1087,7 @@ fn write_used(entity: &mut ModBlockEntity, new: &SavedState) {
         used.insert(JavaString::from(id.as_str()), Tag::Int(*amount));
     }
     put(entity, RECIPES_USED, Tag::Compound(used));
+    put(entity, HAS_CONTAINMENT, Tag::Byte(i8::from(new.had_containment)));
     match &new.last_recipe_used {
         Some(id) => put(entity, LAST_RECIPE_USED, Tag::String(JavaString::from(id.as_str()))),
         None => {
@@ -1089,6 +1130,7 @@ fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machi
     };
     let block_active = game.native_block_property(pos, "lit").as_deref() == Some("true");
     progress.restore(&read_saved(game, entity), block_active);
+    progress.set_experience_lookup(experience_of(&basis::machine_recipes(game, &machine.recipes)));
     // Quem já tinha a tela aberta antes de o objeto existir: a contagem guardada é aplicada uma vez, aqui, num objeto novo.
     let viewers =
         VIEWERS.with_borrow(|counts| counts.get(&(game.native_dimension(), pos)).copied());
@@ -1109,6 +1151,8 @@ fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machi
         upgrade_tags,
         upgrades_version: None,
         energy_capacity: None,
+        // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
+        muffling_sent: -1,
     }
 }
 
@@ -1358,6 +1402,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if entity.items.len() < menu_slots {
         entity.items.resize(menu_slots, None);
     }
+    result_take_after(game, pos, entity, spec);
+    apply_pending_name(entity, pos);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     let mut fresh = false;
     let mut live = match alive {
@@ -1375,6 +1421,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     let generation = basis::data_generation();
     if live.generation != generation {
         live.machine.invalidate_recipe_cache();
+        live.machine.set_experience_lookup(experience_of(&recipes));
         live.generation = generation;
     }
     let (upgrade_types, upgrade_tags) = (upgrade::current_types(), upgrade::current_tags());
@@ -1440,6 +1487,12 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     };
     live.machine.tick_server(now as u64, &neighbours);
     let ejected = neighbours.ejected();
+    // Um upgrade de contenção de xp instalado neste tick (`recalculateUpgrades`) pode ter soltado a experiência guardada.
+    let drops = live.machine.take_experience_drops();
+    if !drops.is_empty() {
+        pop_experience(game, center_of(pos), &drops);
+    }
+    sync_muffling(game, dimension, pos, &mut live);
 
     let machine = &live.machine;
     slot_to_entity(entity, slots.input, machine.input(), &recipes);
@@ -1686,6 +1739,273 @@ pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) 
         if at == dimension {
             game.native_update_output_neighbors(dimension, pos);
         }
+    }
+}
+
+/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há.
+fn sync_muffling(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], live: &mut Live) {
+    let count = live.machine.upgrades().get_upgrades(rules::MUFFLING_UPGRADE);
+    if count != live.muffling_sent {
+        live.muffling_sent = count;
+        game.mb_muffling_changed(dimension, pos, count);
+    }
+}
+
+/// `TileEntityMekanism.tickClient` → `updateSound` de cada máquina que o cliente vê: o som em laço de quem está ligado. O cliente
+/// não tem o objeto vivo: vê o bloco (`lit`), os tipos de upgrade que o servidor mandou e quantos de silêncio o tile tem.
+pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
+    if !game.native_window() {
+        return;
+    }
+    let dimension = game.native_dimension();
+    let (types, tags) = (upgrade::current_types(), upgrade::current_tags());
+    let muffling_max = types.get(rules::MUFFLING_UPGRADE).map(|kind| kind.max);
+    let supports = upgrade_data(game, &types, &tags).supports(rules::MUFFLING_UPGRADE);
+    let christmas = rules::CHRISTMAS_SOUNDS;
+    let today = crate::game::machinery_tile_sound::today();
+    let tiles: Vec<crate::game::machinery_tile_sound::SoundTile> = game
+        .world
+        .block_entities
+        .iter()
+        .filter_map(|(&(x, y, z), entity)| {
+            let BlockEntity::Mod(entity) = entity else {
+                return None;
+            };
+            let machine = machine_of(&entity.id)?;
+            let pos = [x, y, z];
+            let muffling = muffling_max.filter(|_| supports).map(|max| (crate::game::machinery_tile_sound::muffling_count(dimension, pos), max));
+            // `HolidayManager.filterSound`: `MekanismConfig.local.holidays` vale `true` por padrão.
+            let sound = machinery_basis_core::sound::holiday_sound(machine.sound, true, today, rules::CHRISTMAS, &christmas);
+            Some(crate::game::machinery_tile_sound::SoundTile {
+                key: (dimension, pos),
+                lit: game.native_block_property(pos, "lit").as_deref() == Some("true"),
+                fully_muffled: machinery_basis_core::sound::fully_muffled(muffling),
+                volume_factor: machinery_basis_core::sound::volume_factor(muffling),
+                sound: sound.to_owned(),
+            })
+        })
+        .collect();
+    game.mb_tile_sounds(dimension, &tiles);
+}
+
+/// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.
+pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
+    if canceled || machine_of(&game.native_block(pos)).is_none() {
+        return;
+    }
+    let key = (game.native_dimension(), pos);
+    let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
+    if let Some(drops) = drops {
+        pop_experience(game, center_of(pos), &drops);
+    }
+}
+
+/// O slot de saída da máquina aberta antes do clique do jogador, e onde o jogador estava: o `onTakeCheck` do Java roda no clique.
+struct PendingTake {
+    pos: [i32; 3],
+    before: ItemStack,
+    player: [f64; 3],
+}
+
+thread_local! {
+    static OUTPUT_BEFORE: RefCell<Option<PendingTake>> = const { RefCell::new(None) };
+}
+
+/// Antes de um clique do jogador no menu de uma máquina (`lan_machine_click`, que o servidor roda para o anfitrião e para os
+/// convidados): confere o clique anterior e guarda a saída da máquina aberta. O Horizon não avisa quando um jogador tira de um slot
+/// de resultado de contêiner de mod, e o único ponto depois do clique a que se chega sem reescrever o clique é o próximo tick da
+/// máquina, que lê o slot antes de tudo.
+pub(in crate::game) fn result_take_before(game: &mut Game<'_>, host: &crate::game::lan::LanHost, conn: u32) {
+    if let Some(pending) = OUTPUT_BEFORE.with_borrow_mut(Option::take) {
+        let at = pending.pos;
+        let now = match game.world.block_entities.get(&(at[0], at[1], at[2])) {
+            Some(BlockEntity::Mod(entity)) => machine_of(&entity.id).map(|machine| entity.items.get(machine.slots.output).cloned().flatten()),
+            _ => None,
+        };
+        if let Some(now) = now {
+            settle_take(game, pending, now);
+        }
+    }
+    let Some(guest) = host.hub.guests.iter().find(|guest| guest.conn == conn) else {
+        return;
+    };
+    let Some(horizon_client::lan::menu::Slots::Block((x, y, z))) = guest.menu.as_ref().map(|menu| menu.slots) else {
+        return;
+    };
+    let pending = match game.world.block_entities.get(&(x, y, z)) {
+        Some(BlockEntity::Mod(entity)) => machine_of(&entity.id).and_then(|machine| {
+            entity
+                .items
+                .get(machine.slots.output)
+                .cloned()
+                .flatten()
+                .map(|before| PendingTake { pos: [x, y, z], before, player: guest.position })
+        }),
+        _ => None,
+    };
+    OUTPUT_BEFORE.with_borrow_mut(|slot| *slot = pending);
+}
+
+/// No começo do tick da máquina, antes de o espelho ver o slot: o clique tirou o resultado?
+fn result_take_after(game: &mut Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, spec: &Machine) {
+    let pending = OUTPUT_BEFORE.with_borrow_mut(|slot| match slot {
+        Some(pending) if pending.pos == pos => slot.take(),
+        _ => None,
+    });
+    if let Some(pending) = pending {
+        let now = entity.items.get(spec.slots.output).cloned().flatten();
+        settle_take(game, pending, now);
+    }
+}
+
+/// Se a saída diminuiu, o jogador a tirou (`InventoryContainerResultSlot.onTake`): a experiência sai dele.
+fn settle_take(game: &mut Game<'_>, pending: PendingTake, now: Option<ItemStack>) {
+    let taken = match &now {
+        None => true,
+        Some(now) => now.count < pending.before.count || now.item != pending.before.item,
+    };
+    if !taken {
+        return;
+    }
+    let key = (game.native_dimension(), pending.pos);
+    let awarded = LIVE_MACHINES.with_borrow(|machines| {
+        machines.get(&key).map(|live| {
+            // O resultado já saiu do slot (`outputDecreased`) quando o `onTakeCheck` roda: o espelho ainda não viu.
+            slot_from_entity(game, live.machine.output(), now.as_ref());
+            live.machine.award_used_recipes()
+        })
+    });
+    if let Some(awarded) = awarded {
+        pop_experience(game, pending.player, &awarded.drops);
+    }
+}
+
+/// `NBT` `CustomName` de um tile (`SerializationConstants.CUSTOM_NAME`).
+const CUSTOM_NAME: &str = "CustomName";
+
+/// O texto de um componente de nome: o texto puro (`"Camara"`) ou o campo `text` de um componente com estilo.
+fn name_of_tag(tag: &Tag) -> Option<String> {
+    match tag {
+        Tag::String(text) => Some(text.to_string_lossy()),
+        Tag::Compound(compound) => match compound.get(&JavaString::from("text")) {
+            Some(Tag::String(text)) => Some(text.to_string_lossy()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// O `CustomName` que o tile em `pos` guarda.
+fn saved_name(game: &Game<'_>, pos: [i32; 3]) -> Option<String> {
+    match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() => nbt_string(entity, CUSTOM_NAME),
+        _ => None,
+    }
+}
+
+/// `getDisplayName` na tela: o nome que o servidor mandou ao abrir, ou a descrição do contêiner.
+fn screen_title(game: &Game<'_>, container_description: &str) -> String {
+    let name = game.mb_open_screen_pos().and_then(|pos| crate::game::machinery_tile_sound::tile_name(game.native_dimension(), pos));
+    let tile = {
+        let mut tile = machinery_basis_core::name::TileName::new(true);
+        tile.load(name);
+        tile
+    };
+    let description = lang::get(container_description);
+    tile.display_name(&description, &description).to_owned()
+}
+
+thread_local! {
+    /// O nome do item que acabou de ser colocado, para o tile que ainda não nasceu: o Horizon cria o tile no primeiro tick.
+    static PENDING_NAMES: RefCell<HashMap<[i32; 3], String>> = RefCell::new(HashMap::new());
+}
+
+/// `applyImplicitComponents`: o item colocado tinha `custom_name`, e o tile o guarda (`saveAdditional`).
+pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
+    if machine_of(&game.native_block(pos)).is_none() {
+        return;
+    }
+    // `minecraft:custom_name` não é um componente de mod: o texto está nos dados da pilha.
+    let item_name = stack.extra.as_ref().and_then(|data| data.custom_name_plain());
+    let mut tile = machinery_basis_core::name::TileName::new(true);
+    tile.apply_implicit_components(item_name);
+    if let Some(name) = tile.saved() {
+        PENDING_NAMES.with_borrow_mut(|names| names.insert(pos, name.to_owned()));
+    } else {
+        PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos));
+    }
+}
+
+/// O tile nasceu: o nome do item que o colocou entra no NBT dele.
+fn apply_pending_name(entity: &mut ModBlockEntity, pos: [i32; 3]) {
+    if let Some(name) = PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos)) {
+        put(entity, CUSTOM_NAME, Tag::String(JavaString::from(name.as_str())));
+    }
+}
+
+/// `copy_name` da tabela de loot: o item solto leva o nome do tile.
+pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    let Some(name) = saved_name(game, pos) else {
+        return;
+    };
+    for stack in drops.iter_mut().filter(|stack| machine_of(&stack.item).is_some()) {
+        stack.extra.get_or_insert_with(Default::default).custom_name = Some(Tag::String(JavaString::from(name.as_str())));
+    }
+}
+
+/// O jogador abriu o contêiner de uma máquina: o nome vai com ele (`getDisplayName` no pacote de abertura).
+pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
+    let Some(pos) = pos else {
+        return;
+    };
+    if machine_of(&game.native_block(pos)).is_none() {
+        return;
+    }
+    let name = saved_name(game, pos);
+    let dimension = game.native_dimension();
+    game.mb_name_open(player, dimension, pos, name.as_deref());
+}
+
+/// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
+pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
+    use horizon_client::mod_api::Text;
+    if &*stack.item != rules::UPGRADE_ITEM {
+        return;
+    }
+    let Ok(Some(Tag::String(kind))) = game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) else {
+        return;
+    };
+    let id = kind.to_string_lossy();
+    let types = upgrade::current_types();
+    let Some(upgrade_type) = types.get(&id) else {
+        return;
+    };
+    // `u32::MAX` mantém a cor do próprio texto; a cor de `rgba` vem com o alfa embaixo.
+    let rgba = |rgb: u32| (rgb << 8) | 0xFF;
+    for line in rules::upgrade_tooltip(&id, upgrade_type) {
+        let args: Vec<Text> = line
+            .args
+            .iter()
+            .map(|arg| match arg {
+                rules::TooltipArg::Translate { key, color } => {
+                    let mut text = Text::translate(key, &[]);
+                    paint(&mut text, *color);
+                    text
+                }
+                rules::TooltipArg::Number { value, color } => Text::colored(value.to_string(), *color),
+            })
+            .collect();
+        lines.push((Text::translate(&line.translate, &args), line.color.map_or(u32::MAX, rgba)));
+    }
+}
+
+/// A cor `rgb` em todos os pedaços do texto.
+fn paint(text: &mut horizon_client::mod_api::Text, rgb: u32) {
+    for span in &mut text.spans {
+        span.style.color = Some(rgb);
     }
 }
 
@@ -2103,7 +2423,7 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, data: &[i32], batch: &mut Hu
     let view = machine.screen.view(data);
     let warning = |element| view.element(element).then_some(&WARNING_SPRITES);
 
-    let title = lang::get("container.mekanism.metallurgic_infuser");
+    let title = screen_title(game, "container.mekanism.metallurgic_infuser");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
     draw_slots(game, batch, origin, machine, &view);
     draw_energy_bar(game, batch, machine, &read, at(ENERGY_BAR), warning(rules::ScreenElement::EnergyBar));
@@ -2155,7 +2475,7 @@ fn draw_electric(
     let read = rules::ScreenData::read(electric.screen.data, data);
     let view = electric.screen.view(data);
 
-    let title = lang::get(electric.title);
+    let title = screen_title(game, electric.title);
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
     draw_slots(game, batch, origin, electric, &view);
     sprite_rect(game, batch, UP_ARROW, at(ELECTRIC_ARROW));

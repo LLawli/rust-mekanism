@@ -18,20 +18,20 @@ Contagem em 2026-11-06, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 53 | |
-| Hook do catálogo, usado só com o contrato dele | 26 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 17 | sim |
-| Injeção crua (`target = ...`) | 10 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 8 | sim |
+| `[[injection]]` no total | 60 | |
+| Hook do catálogo, usado só com o contrato dele | 27 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 22 | sim |
+| Injeção crua (`target = ...`) | 11 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 9 | sim |
 
-26 + 17 + 10 = 53. Os 8 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-27 injeções e 8 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+27 + 22 + 11 = 60. Os 9 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+33 injeções e 9 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 10 | 8 | 17 |
+| Em uso | 11 | 9 | 22 |
 | Provada em spike | 6 | 0 | 1 |
-| Prevista | 5 | 1 | 0 |
+| Prevista | 5 | 0 | 0 |
 
 As provadas em spike não contam `native_energy_at`, que já está em uso. As previstas vêm do plano e não foram compiladas.
 
@@ -61,13 +61,15 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H16 leitura do `Kd` do `.mtl` | correção | `obj_quad` (RETURN) | spike |
 | H17 ordenação da camada translúcida | correção | `outline_fill` | spike |
 | H18 `properties.light` condicional | dado | `override_gameplay` | spike |
-| H19 `looping_sound` | helpers | módulo de som | prevista |
+| H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
+| H27 `menu_result_taken` | hook | `result_take_before` (cru) | em uso |
 | H20 `menu_slot_rules` v2 | hook | alvo ainda sem nome | prevista |
 | H21 `screen_slot_highlight` | hook | `slot_highlight` (mekanism) | em uso (1) |
 | H22 escurecimento do mundo atrás de telas | correção | nenhuma (diferença de pixel) | pedido |
 | H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
 | H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
 | H25 item desenhado em escala (`renderItem(..., 0.75)`) | correção | nenhuma (diferença de pixel) | pedido |
+| H28 modelo ausente no ícone de slot | correção | nenhuma (diferença de pixel) | pedido |
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
@@ -90,18 +92,18 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 4 |
-| `mods/mekanism/native/horizon-mixin.toml` | 22 | 18 | 4 | 2 |
+| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 5 |
+| `mods/mekanism/native/horizon-mixin.toml` | 29 | 24 | 5 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 9 | 8 | 1 | 2 |
-| Total | 53 | 43 | 10 | 8 |
+| Total | 60 | 49 | 11 | 9 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das dez cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at` e `sprite_ties`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
-`impl Hooks for Mod {}`. Os 26 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das onze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties` e `result_take_before`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
+`impl Hooks for Mod {}`. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 43 hooks, 17 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 17 com estrutura privada são os 8 de antes e os 9 da janela de upgrades (`window_*`).
+Dos 49 hooks, 22 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. Os 22 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`) e os 3 do nome (`place_block`, `loot_drops` e `container_opened`).
 
-## Injeções cruas em uso (10)
+## Injeções cruas em uso (11)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -232,6 +234,25 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
   sai no `if !front`. Mudar a assinatura de `draw_slot_highlight` ou a ordem das camadas quebra o build, ou faz o realce sair certo
   só numa das camadas, sem erro.
 
+### `result_take_before` (mekanism)
+
+- **Estado:** em uso. **Alvo:** `horizon_client::game::lan_crafting::Game<'_>::lan_machine_click`, HEAD, não cancelável
+  (`lan_crafting.rs:248`, método de `impl Game`). **Proposta:** H27.
+- **Helper:** `mods/mekanism/native/result_take_before.rs`. Guarda o slot de saída da máquina aberta e onde o jogador estava, e o
+  próximo tick da máquina confere se o slot diminuiu (`result_take_after`, no começo de `tick_machine`).
+- **Por que é necessária:** `InventoryContainerResultSlot.onTake` chama `onTakeCheck`, que é `awardUsedRecipesAndPopExperience`: tirar o
+  resultado de uma máquina com `xp_containment` solta a experiência, e sem o upgrade solta a da última receita, como o forno. O Horizon
+  não avisa quando um jogador tira de um slot de resultado (`results`) de um menu de mod: `menu_clicked` é só dos menus que o mod abre,
+  `menu_quick_move` só do shift-clique e `native_furnace_extract` só do forno. O clique do jogador, no anfitrião e nos convidados, passa por
+  `lan_machine_click`, no servidor.
+- **Java:** `InventoryContainerResultSlot.java:30-48` (`checkTakeAchievements`), `OutputInventorySlot.java:33-35` (`setOnTakeCheck`),
+  `RecipeCacheLookupMonitor.awardUsedRecipesAndPopExperience` (`RecipeCacheLookupMonitor.java:273-304`).
+- **Hook mais próximo:** nenhum. Um RETURN em `lan_machine_click` não serve: a função tem itens aninhados (`E_UNSUPPORTED_CONTROL_FLOW`), e
+  `menu_ops`, no cliente, só vê o que o cliente prevê.
+- **Hook proposto:** H27.
+- **Risco:** mudar a assinatura de `lan_machine_click`, o nome do módulo de `lan_crafting` ou `Slots::Block`. Dois cliques no mesmo
+  tick, antes de a máquina andar, são resolvidos na ordem: o segundo clique confere o primeiro antes de guardar o seu.
+
 ### `sprite_ties` (machinery_basis)
 
 - **Estado:** em uso. **Alvo:** `horizon_client_render::hud::HudRenderer::animate_sprites`, HEAD, não cancelável (`hud.rs:2631`, método
@@ -252,7 +273,7 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
 
 ## Hooks do catálogo com estrutura privada
 
-Os 17 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 22 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -273,6 +294,11 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `window_scroll` (basis) | `screen_mouse_scrolled_pre` | `game.mod_screen`, `game.renderer` | H9 |
 | `window_net` (basis) | `net_from_client` | `game.lan.hub.guests`, `hide_menu_slots` e `play.crafting.machine` do menu de LAN, `game.container`, `game.world.block_entities` | H12 |
 | `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
+| `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a câmera | H19 e H8 |
+| `place_block` (mekanism) | `place_block` | `game.world.block_entities.get_mut`, `game.world.modified` | H8: `mod_block_entity`, `change_mod_block_entity` |
+| `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou) | H8: `mod_block_entity` |
+| `container_opened` (mekanism) | `container_opened` | `game.world.block_entities.get` | H8: `mod_block_entity` |
+| `destroy_block` (mekanism) | `destroy_block` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`) | H8: `award_experience(at, points)` |
 | `window_net_server` (basis) | `net_from_server` | o módulo `machinery_basis_windows`, que guarda os tipos de upgrade nos estáticos da lib | H12 |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
@@ -317,7 +343,7 @@ usar antes de ter número de API:
 
 Pedido: carimbar esses fragmentos (`python3 tools/stamp_native_hooks.py`) e listar os quatro helpers documentados em `helpers`.
 
-## Módulos (8)
+## Módulos (9)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -328,6 +354,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 280 linhas | idem |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
+| `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e a câmera, privados | H19 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
@@ -403,7 +430,6 @@ Do plano, sem compilar. O Java está nas fases correspondentes.
 | Prevista | Fase | Alvo (do plano) | Proposta |
 |---|---|---|---|
 | Faces e contêiner por instância | 2, 3 | HEAD cancelável em `native_fluid_at`, `Containers::view`, `can_take` e `native_container_accepts` | H2 |
-| Som contínuo da máquina | 5 | `[[module]]` em `crate::game` com `SoundInstance`, `Ticking::Native` e `stop_and_release`; `Ticking::Native` só aparece em teste | H19 |
 | Regra de slot que vê o outro slot | decisão 3 aberta | ainda sem alvo. `menu_slot_rules` não tem `Game` e não vê outro slot | H20 |
 | Seleção do Configurator com `context_outline` (não conta: o spike já cobriu) | decisão 1 | o spike resolveu por `block_highlight` mais `native_frame_visuals`: `context_outline` devolve uma caixa só | H15 |
 | `native_screen_slot` (não conta: o spike já cobriu) | 1 | HEAD, "não testado": o spike da aba cobriu o caso por H9 | H9 |
@@ -704,6 +730,11 @@ O pedido é aceitar em `light` a mesma condição de `random_ticks`.
 
 ### H19 `looping_sound`
 
+- **Estado:** em uso, pelo módulo `tile-sound` (machinery_basis, `tile_sound.rs`), conferido em jogo em 2026-11-06: o som da Enrichment
+  Chamber toca ao ligar, para ao parar e fica mudo com o upgrade de silêncio no máximo (`MEKSOUND` no stderr e vídeo com áudio).
+  O módulo guarda o `InstanceId` por tile e chama `Audio::play_instance` (com `Ticking::Native`), `stop_and_release` e
+  `engine().instance_mut` a cada tick do cliente, e a regra (cooldown de 20 ticks, `isFullyMuffled`, alcance, verificação a cada 20 a 39
+  ticks) vem de `machinery_basis_core::sound`, repetida do Java. A câmera do último quadro faz as vezes da posição do jogador.
 - **Lado:** cliente. **Tipo:** helpers do `Host`.
 - **O que faz:** toca um som em laço preso a um ponto e o para, e o som cessa sozinho se o chunk descarrega. Hoje só há
   `native_play_local_sound` (uma vez, com atraso).
@@ -715,6 +746,16 @@ fn stop_sound(&mut self, handle: SoundHandle)
 ```
 
 - **Exemplo:** a máquina ativa chama `looping_sound` ao ligar e `stop_sound` ao parar (`TileEntityMekanism` e `SoundHandler`).
+- **O que falta no helper proposto:** mudar o volume de um som em laço já tocando (`set_sound_volume(handle, volume)`), perguntar se ele
+  ainda toca (`is_sound_active`) e dar a posição do jogador local no tick do cliente (`native_camera` só existe depois de um quadro).
+
+### H27 `menu_result_taken`
+
+- **Lado:** servidor. **Contrato:** `listen`.
+- **Quando dispara:** depois de um jogador tirar itens de um slot de resultado (`results`) de um menu de contêiner de mod, no clique, no
+  shift-clique e no arrasto, para o anfitrião e para os convidados.
+- **Assinatura:** `native_menu_result_taken(dimension, pos, slot, taken: &ItemStack)`, com o jogador que age lido pelos helpers.
+- **Exemplo:** a máquina solta a experiência guardada (`InventoryContainerResultSlot.onTake`, `RecipeCacheLookupMonitor.awardUsedRecipesAndPopExperience`).
 
 ### H20 `menu_slot_rules` v2
 
@@ -808,6 +849,15 @@ um desenho de item em escala que amostre como o `GuiRenderer` do 26.x. Sem ele n
   vale só para item plano.
 - **Pedido:** que o renderer desenhe o ícone de item de bloco com o sombreado do original.
 
+### H28 modelo ausente no ícone de slot (correção, sem hook)
+
+- **O que o original faz:** `ComponentItemModel.update` usa o `missingItemModel` quando o componente falta (`ComponentItemModel.java`, `update`),
+  e o item aparece como o cubo magenta e preto.
+- **O que o Horizon faz:** `ItemModelNode::Select` sem caso nem `fallback` empurra `LayerContent::Missing` (`item_model.rs:1209`), mas o
+  ícone do slot e da barra de atalhos sai vazio, com ou sem um `Model` explícito de `minecraft:builtin/missing`. Visto em 2026-11-06 com
+  `/give @s mekanism:upgrade` (sem `upgrade_type`).
+- **Pedido:** que o renderer desenhe a camada `Missing` (o cubo de `missing_model()`) no ícone de item, como o do mundo.
+
 ## Como manter o documento
 
 1. **Toda injeção crua nova entra aqui no mesmo change que a cria**, com a ficha completa: alvo exato e tipo, arquivo do helper, o
@@ -829,7 +879,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=53 hook=43 target=10 module=8 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=60 hook=49 target=11 module=9 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 17 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.

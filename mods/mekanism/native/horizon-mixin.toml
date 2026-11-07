@@ -209,6 +209,96 @@ bindings = [
   { name = "previous", ty = "u32", value = "previous" },
 ]
 
+# O som em laço das máquinas, no tick do cliente (`TileEntityMekanism.tickClient`). O `tick` roda no cliente e no servidor; o som é do cliente.
+[[injection]]
+id = "client_tick"
+hook = "tick"
+hook_version = 1
+kind = "HEAD"
+helper = "client_tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+# O nome da máquina (`TileEntityMekanism.customName`): o item colocado o dá ao tile, o tile o dá ao item solto, e o servidor o manda a
+# quem abre o contêiner.
+[[injection]]
+id = "place_block"
+hook = "place_block"
+hook_version = 1
+kind = "HEAD"
+helper = "place_block.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
+[[injection]]
+id = "loot_drops"
+hook = "loot_drops"
+hook_version = 1
+kind = "HEAD"
+helper = "loot_drops.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "context", ty = "&horizon_client::mod_api::NativeLootDrops<'_>", value = "context" },
+  { name = "drops", ty = "&mut Vec<horizon_client::items::ItemStack>", value = "&mut *drops" },
+]
+
+[[injection]]
+id = "container_opened"
+hook = "container_opened"
+hook_version = 1
+kind = "HEAD"
+helper = "container_opened.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+  { name = "pos", ty = "Option<[i32; 3]>", value = "pos" },
+]
+
+# A máquina quebrada solta a experiência guardada (`preRemoveSideEffects`).
+[[injection]]
+id = "destroy_block"
+hook = "destroy_block"
+hook_version = 1
+kind = "HEAD"
+helper = "destroy_block.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+# O jogador tira o resultado da máquina (`InventoryContainerResultSlot.onTake`): o Horizon não avisa quando um jogador tira de um
+# slot de resultado de contêiner de mod. O HEAD de `lan_machine_click` (o clique no servidor, do anfitrião e dos convidados) guarda a
+# saída antes do clique, e o próximo tick da máquina confere. Alvo cru. Um RETURN não serve: a função tem itens aninhados
+# (`E_UNSUPPORTED_CONTROL_FLOW`).
+[[injection]]
+id = "result_take_before"
+target = "horizon_client::game::lan_crafting::Game<'_>::lan_machine_click"
+kind = "HEAD"
+helper = "result_take_before.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "host", ty = "&crate::game::lan::LanHost", value = "&*host" },
+  { name = "conn", ty = "u32", value = "conn" },
+]
+
+# As linhas do tooltip do item de upgrade (`MekanismDataComponents.UPGRADE_TYPE`).
+[[injection]]
+id = "tooltip"
+hook = "tooltip"
+hook_version = 1
+kind = "HEAD"
+helper = "tooltip.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "lines", ty = "&mut Vec<(horizon_client::mod_api::Text, u32)>", value = "&mut *lines" },
+]
+
 # O componente que guarda o tipo do upgrade no item.
 [[injection]]
 id = "component_types"

@@ -102,5 +102,9 @@
   "chemical.mekanism.gold": "Gold",
   "chemical.mekanism.redstone": "Redstone",
   "chemical.mekanism.refined_obsidian": "Refined Obsidian",
-  "chemical.mekanism.tin": "Tin"
+  "chemical.mekanism.tin": "Tin",
+  "sound_event.mekanism.tile.machine.crusher": "Crusher clangs",
+  "sound_event.mekanism.tile.machine.energized_smelter": "Smelter whines",
+  "sound_event.mekanism.tile.machine.enrichment_chamber": "Enricher hums",
+  "sound_event.mekanism.tile.machine.metallurgic_infuser": "Metallurgic infuser hums"
 }

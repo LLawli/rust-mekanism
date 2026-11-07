@@ -96,9 +96,85 @@ pub const UPGRADE_MULTIPLIER: f64 = 10.0;
 /// `MekanismItems.UPGRADE` e o componente `MekanismDataComponents.UPGRADE_TYPE`, que guarda o tipo no item.
 pub const UPGRADE_ITEM: &str = "mekanism:upgrade";
 pub const UPGRADE_TYPE_COMPONENT: &str = "mekanism:upgrade_type";
+
+/// Um pedaço do texto de uma linha de tooltip: o que o `Component` de tradução recebe como argumento.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TooltipArg {
+    /// `{"translate": chave, "color": cor}`.
+    Translate { key: String, color: u32 },
+    /// `{"text": "8", "color": cor}`.
+    Number { value: i32, color: u32 },
+}
+
+/// Uma linha de tooltip: `MekanismLang.X.translateColored(cor, args...)`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ItemTooltipLine {
+    pub translate: String,
+    pub args: Vec<TooltipArg>,
+    /// `None`: a linha usa a cor de texto padrão.
+    pub color: Option<u32>,
+}
+
+/// `EnumColor.PURPLE`, `GRAY` e `AQUA`, a cor primária (RGB).
+pub const PURPLE: u32 = 0xA4_60_D9;
+pub const GRAY: u32 = 0xCF_CF_CF;
+pub const AQUA: u32 = 0x30_FF_F9;
+
+/// `Upgrade` → `Util.makeDescriptionId("upgrade", id)`: o nome e a descrição do tipo.
+pub fn upgrade_name_key(upgrade: &str) -> String {
+    let (namespace, path) = upgrade.split_once(':').unwrap_or(("minecraft", upgrade));
+    format!("upgrade.{namespace}.{}", path.replace('/', "."))
+}
+
+/// O appender de `MekanismDataComponents.UPGRADE_TYPE`: o tipo (na cor dele), o máximo instalado e a descrição.
+pub fn upgrade_tooltip(
+    upgrade: &str,
+    kind: &machinery_basis_core::upgrade::UpgradeType,
+) -> Vec<ItemTooltipLine> {
+    let name = upgrade_name_key(upgrade);
+    vec![
+        ItemTooltipLine {
+            translate: "tooltip.mekanism.upgrade.type".to_owned(),
+            args: vec![TooltipArg::Translate {
+                key: name.clone(),
+                color: enum_color(&kind.color) & 0xFF_FF_FF,
+            }],
+            color: Some(PURPLE),
+        },
+        ItemTooltipLine {
+            translate: "tooltip.mekanism.upgrade.max_installed".to_owned(),
+            args: vec![TooltipArg::Number {
+                value: kind.max,
+                color: AQUA,
+            }],
+            color: Some(GRAY),
+        },
+        ItemTooltipLine {
+            translate: format!("{name}.description"),
+            args: Vec::new(),
+            color: None,
+        },
+    ]
+}
 /// `UpgradeIds.SPEED` e `UpgradeIds.ENERGY`.
 pub const SPEED_UPGRADE: &str = "mekanism:speed";
 pub const ENERGY_UPGRADE: &str = "mekanism:energy";
+/// `MekanismSounds.ENRICHMENT_CHAMBER`, `CRUSHER`, `ENERGIZED_SMELTER` e `METALLURGIC_INFUSER`.
+pub const ENRICHMENT_SOUND: &str = "mekanism:tile.machine.enrichment_chamber";
+pub const CRUSHER_SOUND: &str = "mekanism:tile.machine.crusher";
+pub const SMELTER_SOUND: &str = "mekanism:tile.machine.energized_smelter";
+pub const INFUSER_SOUND: &str = "mekanism:tile.machine.metallurgic_infuser";
+/// `Holiday.XMAS_FILTERABLE_SOUNDS`, dos que estão portados (`PURIFICATION_CHAMBER` / `CHRISTMAS3` não).
+pub const CHRISTMAS_SOUNDS: [(&str, &str); 4] = [
+    (ENRICHMENT_SOUND, "mekanism:tile.christmas.1"),
+    (INFUSER_SOUND, "mekanism:tile.christmas.2"),
+    (SMELTER_SOUND, "mekanism:tile.christmas.4"),
+    (CRUSHER_SOUND, "mekanism:tile.christmas.5"),
+];
+/// `Holiday.Christmas`: 25 de dezembro.
+pub const CHRISTMAS: (u32, u32) = (12, 25);
+pub const XP_CONTAINMENT_UPGRADE: &str = "mekanism:xp_containment";
+pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
 /// `MekanismTags.Upgrades.DEFAULT_MACHINE_UPGRADES`: o que `AttributeUpgradeSupport.DEFAULT_MACHINE_UPGRADES` aceita, e que as
 /// quatro máquinas portadas usam.
 pub const DEFAULT_MACHINE_UPGRADES: &str = "mekanism:upgrade_support/default_machine";
@@ -773,6 +849,8 @@ fn machine_config(
             max_upgrade_multiplier: UPGRADE_MULTIPLIER,
             speed: Rc::from(SPEED_UPGRADE),
             energy: Rc::from(ENERGY_UPGRADE),
+            xp_containment: Rc::from(XP_CONTAINMENT_UPGRADE),
+            muffling: Rc::from(MUFFLING_UPGRADE),
             data: upgrades,
         },
         tracked_errors: tracked_errors.to_vec(),

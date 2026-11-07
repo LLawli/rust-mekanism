@@ -1,0 +1,50 @@
+{
+  "tile.machine.crusher": {
+    "sounds": [
+      "mekanism:tile/crusher"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.crusher"
+  },
+  "tile.machine.energized_smelter": {
+    "sounds": [
+      "mekanism:tile/energized_smelter"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.energized_smelter"
+  },
+  "tile.machine.enrichment_chamber": {
+    "sounds": [
+      "mekanism:tile/enrichment_chamber"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.enrichment_chamber"
+  },
+  "tile.machine.metallurgic_infuser": {
+    "sounds": [
+      "mekanism:tile/metallurgic_infuser"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.metallurgic_infuser"
+  },
+  "tile.christmas.1": {
+    "sounds": [
+      "mekanism:holiday/nutcracker1"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.enrichment_chamber"
+  },
+  "tile.christmas.2": {
+    "sounds": [
+      "mekanism:holiday/nutcracker2"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.metallurgic_infuser"
+  },
+  "tile.christmas.4": {
+    "sounds": [
+      "mekanism:holiday/nutcracker4"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.energized_smelter"
+  },
+  "tile.christmas.5": {
+    "sounds": [
+      "mekanism:holiday/nutcracker5"
+    ],
+    "subtitle": "sound_event.mekanism.tile.machine.crusher"
+  }
+}
