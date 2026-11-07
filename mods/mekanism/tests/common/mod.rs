@@ -1,12 +1,19 @@
 //! O que os testes de rastro partilham: os dados de upgrade e as receitas de energia lidos dos mesmos arquivos que o jogo lê. Cada teste
 //! usa uma parte.
 #![allow(dead_code)]
-use machinery_basis_core::cached_recipe::ItemIngredient;
+use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
+use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
+use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::recipe::{ConversionFields, EnergyConversionData};
 use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
+use machinery_basis_core::tile::ProgressMachine;
+use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use mekanism_rules::upgrade_data as build_upgrade_data;
+use mekanism_rules::{
+    ENRICHMENT_USAGE, INFUSER_USAGE, electric_config, infuser_config, infusing_cache_of,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -154,4 +161,106 @@ pub fn energy_conversions() -> Rc<EnergyConversionCache> {
         })
         .collect();
     EnergyConversion::cache_of(conversions)
+}
+
+/// A pilha de um item de máquina nos rastros, que não tem limite próprio.
+const STACK: u32 = 64;
+
+pub fn item(id: &str) -> ItemResource {
+    ItemResource::new(id.trim_start_matches("mekanism:"), STACK)
+}
+
+pub fn recipe(input: &str, chemical: &str, output: &str) -> Rc<ItemChemicalToItemRecipe> {
+    Rc::new(ItemChemicalToItemRecipe {
+        id: format!("mekanism:metallurgic_infusing/{output}"),
+        item_input: ItemIngredient::item(input),
+        item_count: 1,
+        chemical_input: ChemicalIngredient::chemical(chemical),
+        chemical_amount: 10,
+        output: ItemOutput {
+            resource: item(output),
+            count: 1,
+        },
+        per_tick_usage: false,
+    })
+}
+
+pub fn conversion(input: &str, chemical: &str) -> ChemicalConversion {
+    ChemicalConversion {
+        input: ItemIngredient::item(input),
+        input_count: 1,
+        output: ChemicalResource::new(chemical),
+        amount: 10,
+    }
+}
+
+/// Uma máquina elétrica com uma receita que usa `valid`.
+pub fn chamber(valid: &str) -> ProgressMachine {
+    let recipe = Rc::new(ItemToItemRecipe {
+        id: valid.to_owned(),
+        input: ItemIngredient::item(valid),
+        input_count: 1,
+        output: ItemOutput {
+            resource: item("clay_ball"),
+            count: 1,
+        },
+    });
+    let mut config = electric_config(
+        ENRICHMENT_USAGE,
+        ItemToItemRecipe::cache_of(vec![recipe]),
+        0,
+        upgrade_data(),
+    );
+    config.energy_conversion = energy_conversions();
+    ProgressMachine::electric(config)
+}
+
+/// O Infuser com uma receita por químico que o original usa (`bio`, `fungi`, `carbon`, `redstone`, `diamond`, `gold`, `tin` e
+/// `refined_obsidian`), e as conversões de item em químico do original para os itens do rastro.
+pub fn infuser() -> ProgressMachine {
+    let recipes = vec![
+        recipe("dirt", "bio", "podzol"),
+        recipe("dirt", "fungi", "mycelium"),
+        recipe("iron_ingot", "carbon", "steel_ingot"),
+        recipe("copper_ingot", "redstone", "alloy_infused"),
+        recipe("alloy_infused", "diamond", "alloy_reinforced"),
+        recipe("blackstone", "gold", "gilded_blackstone"),
+        recipe("dust_iron", "tin", "dust_bronze"),
+        recipe("alloy_reinforced", "refined_obsidian", "alloy_atomic"),
+    ];
+    let conversions = vec![
+        conversion("bio_fuel", "bio"),
+        conversion("coal", "carbon"),
+        conversion("redstone", "redstone"),
+        conversion("redstone_block", "redstone"),
+        conversion("red_mushroom", "fungi"),
+    ];
+    let mut config = infuser_config(
+        INFUSER_USAGE,
+        infusing_cache_of(recipes),
+        ChemicalConversion::cache_of(conversions),
+        0,
+        upgrade_data(),
+    );
+    config.energy_conversion = energy_conversions();
+    ProgressMachine::chemical(config)
+}
+
+/// O item que a receita de cada máquina usa, o mesmo do cenário em Java.
+pub fn valid_input(name: &str) -> &'static str {
+    match name {
+        "enrichment_chamber" => "clay",
+        "crusher" => "cobblestone",
+        "energized_smelter" => "sand",
+        "metallurgic_infuser" => "dirt",
+        other => panic!("{other}"),
+    }
+}
+
+pub fn machine(name: &str) -> ProgressMachine {
+    if name == "metallurgic_infuser" {
+        infuser()
+    } else {
+        chamber(valid_input(name))
+    }
 }

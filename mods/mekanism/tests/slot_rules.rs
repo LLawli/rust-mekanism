@@ -14,29 +14,19 @@
 //! dos slots têm de dar o mesmo.
 mod common;
 
-use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
-use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
+use common::{item, machine, valid_input};
+use machinery_basis_core::chemical::ChemicalResource;
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
-use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
-use mekanism_rules::{
-    ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, ENRICHMENT_USAGE, INFUSER_USAGE, electric_config,
-    electric_item_slots, infuser_config, infusing_cache_of, item_slots, sides,
-};
+use mekanism_rules::{ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, electric_item_slots, item_slots, sides};
 use serde_json::Value;
 use std::path::Path;
-use std::rc::Rc;
 
-const STACK: u32 = 64;
 /// Cada máquina grava 7 itens no slot de energia, e o Infuser mais 4 tanques por 2 entradas por 7 itens no de infusão.
 const ENERGY_PROBES: usize = 7;
 const INFUSION_PROBES: usize = 4 * 2 * 7;
-
-fn item(id: &str) -> ItemResource {
-    ItemResource::new(id.trim_start_matches("mekanism:"), STACK)
-}
 
 fn read_trace(machine: &str) -> Vec<Value> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -47,101 +37,6 @@ fn read_trace(machine: &str) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
-}
-
-fn recipe(input: &str, chemical: &str, output: &str) -> Rc<ItemChemicalToItemRecipe> {
-    Rc::new(ItemChemicalToItemRecipe {
-        id: format!("mekanism:metallurgic_infusing/{output}"),
-        item_input: ItemIngredient::item(input),
-        item_count: 1,
-        chemical_input: ChemicalIngredient::chemical(chemical),
-        chemical_amount: 10,
-        output: ItemOutput {
-            resource: item(output),
-            count: 1,
-        },
-        per_tick_usage: false,
-    })
-}
-
-fn conversion(input: &str, chemical: &str) -> ChemicalConversion {
-    ChemicalConversion {
-        input: ItemIngredient::item(input),
-        input_count: 1,
-        output: ChemicalResource::new(chemical),
-        amount: 10,
-    }
-}
-
-/// Uma máquina elétrica com uma receita que usa `valid`.
-fn chamber(valid: &str) -> ProgressMachine {
-    let recipe = Rc::new(ItemToItemRecipe {
-        id: valid.to_owned(),
-        input: ItemIngredient::item(valid),
-        input_count: 1,
-        output: ItemOutput {
-            resource: item("clay_ball"),
-            count: 1,
-        },
-    });
-    let mut config = electric_config(
-        ENRICHMENT_USAGE,
-        ItemToItemRecipe::cache_of(vec![recipe]),
-        0,
-        common::upgrade_data(),
-    );
-    config.energy_conversion = common::energy_conversions();
-    ProgressMachine::electric(config)
-}
-
-/// O Infuser com uma receita por químico que o original usa (`bio`, `fungi`, `carbon`, `redstone`, `diamond`, `gold`, `tin` e
-/// `refined_obsidian`), e as conversões de item em químico do original para os itens do rastro.
-fn infuser() -> ProgressMachine {
-    let recipes = vec![
-        recipe("dirt", "bio", "podzol"),
-        recipe("dirt", "fungi", "mycelium"),
-        recipe("iron_ingot", "carbon", "steel_ingot"),
-        recipe("copper_ingot", "redstone", "alloy_infused"),
-        recipe("alloy_infused", "diamond", "alloy_reinforced"),
-        recipe("blackstone", "gold", "gilded_blackstone"),
-        recipe("dust_iron", "tin", "dust_bronze"),
-        recipe("alloy_reinforced", "refined_obsidian", "alloy_atomic"),
-    ];
-    let conversions = vec![
-        conversion("bio_fuel", "bio"),
-        conversion("coal", "carbon"),
-        conversion("redstone", "redstone"),
-        conversion("redstone_block", "redstone"),
-        conversion("red_mushroom", "fungi"),
-    ];
-    let mut config = infuser_config(
-        INFUSER_USAGE,
-        infusing_cache_of(recipes),
-        ChemicalConversion::cache_of(conversions),
-        0,
-        common::upgrade_data(),
-    );
-    config.energy_conversion = common::energy_conversions();
-    ProgressMachine::chemical(config)
-}
-
-/// O item que a receita de cada máquina usa, o mesmo do cenário em Java.
-fn valid_input(name: &str) -> &'static str {
-    match name {
-        "enrichment_chamber" => "clay",
-        "crusher" => "cobblestone",
-        "energized_smelter" => "sand",
-        "metallurgic_infuser" => "dirt",
-        other => panic!("{other}"),
-    }
-}
-
-fn machine(name: &str) -> ProgressMachine {
-    if name == "metallurgic_infuser" {
-        infuser()
-    } else {
-        chamber(valid_input(name))
-    }
 }
 
 fn automation(name: &str) -> AutomationType {

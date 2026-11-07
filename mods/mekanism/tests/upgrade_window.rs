@@ -19,7 +19,7 @@ use machinery_basis_core::window_session::Sessions;
 use mekanism_rules::{
     ELECTRIC_TRACKED_BASE, ENERGY_UPGRADE, ENRICHMENT_USAGE, INFUSER_TRACKED_BASE, SPEED_UPGRADE,
     UPGRADE_TRACKED_ITEMS, UPGRADE_TRACKING_KEY, UPGRADE_TYPES, UPGRADE_WINDOW, WINDOW_TYPES,
-    electric_config,
+    electric_config, upgrade_type_of,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -116,9 +116,9 @@ fn slot_json(slot: &InventorySlot) -> Value {
 fn upgrade_slot_json(slot: &InventorySlot) -> Value {
     let kind = slot
         .resource()
-        .and_then(|resource| resource.variant)
-        .map_or(String::new(), |variant| {
-            variant.trim_start_matches("mekanism:").to_owned()
+        .and_then(|resource| upgrade_type_of(&resource))
+        .map_or(String::new(), |kind| {
+            kind.trim_start_matches("mekanism:").to_owned()
         });
     json!([kind, slot.amount()])
 }
@@ -270,10 +270,8 @@ fn carried_json(carried: &Option<(ItemResource, u32)>) -> Value {
     match carried {
         None => json!(["", 0]),
         Some((resource, amount)) => {
-            let kind = resource
-                .variant
-                .as_deref()
-                .map(|variant| variant.trim_start_matches("mekanism:").to_owned());
+            let kind = upgrade_type_of(resource)
+                .map(|kind| kind.trim_start_matches("mekanism:").to_owned());
             let id = match kind {
                 Some(kind) => format!("{}:{kind}", resource.id.trim_start_matches("mekanism:")),
                 None => resource.id.to_string(),
@@ -601,11 +599,11 @@ impl QuickMenu for ChamberMenu {
 /// O rastro grava só os slots com algo: `[índice, classe, tipo, quantidade]`, com o tipo `upgrade:speed` para um upgrade.
 fn menu_slots_json(menu: &ChamberMenu) -> Value {
     let class = menu_slot_class;
-    let name = |resource: &ItemResource| match resource.variant.as_deref() {
-        Some(variant) => format!(
+    let name = |resource: &ItemResource| match upgrade_type_of(resource) {
+        Some(kind) => format!(
             "{}:{}",
             resource.id.trim_start_matches("mekanism:"),
-            variant.trim_start_matches("mekanism:")
+            kind.trim_start_matches("mekanism:")
         ),
         None => resource.id.to_string(),
     };

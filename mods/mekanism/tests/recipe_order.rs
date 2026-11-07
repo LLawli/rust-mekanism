@@ -12,6 +12,7 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::{
     ChemicalConversion, ChemicalIngredient, ChemicalResource, TankContents, can_fill_or_convert,
 };
+use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::{AutomationType, ItemResource, SlotContents};
 use machinery_basis_core::item_handler::NoNeighbours;
 use machinery_basis_core::recipe_cache::{
@@ -39,6 +40,11 @@ fn components(repair_cost: &Value) -> Option<String> {
         .map(|cost| format!("repair_cost={cost}"))
 }
 
+/// A chave de componentes do item de `repair_cost`: a que o `ItemResource` dá ao patch que `with_variant` monta.
+fn patch_key(repair_cost: &Value) -> Option<String> {
+    components(repair_cost).map(|variant| Components::variant(&variant).key().to_owned())
+}
+
 fn names(json: &Value) -> Vec<String> {
     json["items"]
         .as_array()
@@ -54,7 +60,7 @@ fn shape(spec: &Value) -> IngredientShape {
     let items: Vec<&str> = items.iter().map(String::as_str).collect();
     match spec["kind"].as_str().unwrap() {
         "simple" => IngredientShape::types(&items),
-        "exact" => IngredientShape::exact(&items, components(&spec["rc"]).as_deref()),
+        "exact" => IngredientShape::exact(&items, patch_key(&spec["rc"]).as_deref()),
         "partial" => IngredientShape::Custom,
         "compound" => IngredientShape::Compound(
             spec["children"]
@@ -71,7 +77,7 @@ fn shape(spec: &Value) -> IngredientShape {
 /// `ItemStackIngredient.testType`: o ingrediente testado com o item e os componentes, sem a quantidade.
 fn accepts(spec: &Value, input: &dyn TypedInstance) -> bool {
     let listed = names(spec).iter().any(|item| item == input.type_id());
-    let patch = components(&spec["rc"]);
+    let patch = patch_key(&spec["rc"]);
     let has_patch = match input.components_key() {
         ComponentsKey::Patch(found) => Some(found) == patch.as_deref(),
         ComponentsKey::Default | ComponentsKey::Unmatchable => patch.is_none(),

@@ -307,6 +307,7 @@ fn a_registry_without_the_xp_type_always_contains_experience() {
     use machinery_basis_core::upgrade::UpgradeData;
     let data = Rc::new(UpgradeData::from_parts(
         "mekanism:upgrade",
+        "mekanism:upgrade_type",
         64,
         &[(SPEED_UPGRADE, 8), ("mekanism:energy", 8)],
         &[SPEED_UPGRADE, "mekanism:energy"],

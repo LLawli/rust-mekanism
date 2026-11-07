@@ -14,6 +14,7 @@ use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
     CRUSHER_USAGE, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENERGY_UPGRADE, ENRICHMENT_USAGE,
     SMELTER_USAGE, SPEED_UPGRADE, SyncedMachine, electric_config, machine_warnings, trace_line,
+    upgrade_type_of,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -321,9 +322,9 @@ fn slot(slot: &InventorySlot) -> Value {
 fn upgrade_slot(slot: &InventorySlot) -> Value {
     let kind = slot
         .resource()
-        .and_then(|resource| resource.variant)
-        .map_or(String::new(), |variant| {
-            variant.trim_start_matches("mekanism:").to_owned()
+        .and_then(|resource| upgrade_type_of(&resource))
+        .map_or(String::new(), |kind| {
+            kind.trim_start_matches("mekanism:").to_owned()
         });
     serde_json::json!([kind, slot.amount()])
 }

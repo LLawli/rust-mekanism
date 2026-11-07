@@ -35,6 +35,16 @@ item que mais de uma receita do tipo casa, com a que o índice escolhe. `mods/me
 `src/src/gameTest/java/mekanism/common/tests/network/` no desktop (o repositório do Mekanism de referência fica em `src/`, e o código
 de teste em `src/src/gameTest`), confira antes que o `mekanism-ref` está ocioso, e devolva a árvore como estava.
 
+`testes/IdentityTraceTest.java` grava (`identity_<máquina>.jsonl`, uma por máquina e uma para o Heat Generator) o que o `ItemResource` faz com dois
+itens do mesmo id e componentes diferentes (`custom_name` e `custom_data`): o hopper de cima tick a tick (cinco fases de 40 ticks) e o
+`quickMoveStack` do menu, do jogador para a entrada e da entrada para a barra. `chamberComposter` grava `composter_enrichment_chamber.jsonl`:
+a Enrichment Chamber ejetando para uma composteira (`ComposterWrapper`) embaixo, em cima e ao lado, em oito fases de até 60 ticks (a
+duração de cada uma está em `composter_trace.rs`). Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de
+rodar o `runGameTestServer` e apague-o depois. `mods/mekanism/tests/identity_trace.rs` e `composter_trace.rs` os repetem. Em jogo, no
+`horizon2`, `horizon2/h2_identity.py`, `h2_heat.py` (hopper e shift-clique do Heat Generator) e `h2_composter.py`, mais `h2_smoke.py` (as quatro máquinas processando com um Heat Generator encostado, e o som) (rodam no notebook e falam com o container pelo `ctl.sh`, que usa o `horizon-ctl` do
+`horizon2`) repetem as mesmas fases pelo `horizon-ctl` e comparam com os rastros; o da composteira usa `tick freeze` e `tick step 1` e confere os
+360 ticks.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
