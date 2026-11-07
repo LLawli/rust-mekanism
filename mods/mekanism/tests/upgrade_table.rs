@@ -3,14 +3,9 @@
 //! energia e a velocidade da linha instaladas. Compara capacidade, consumo por tick e ticks com o que o Java leu.
 mod common;
 
-use machinery_basis_core::cached_recipe::ItemToItemRecipe;
-use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::tile::ProgressMachine;
-use machinery_basis_core::upgrade::UpgradeData;
-use mekanism_rules::{
-    CRUSHER_USAGE, ENERGY_UPGRADE, ENRICHMENT_USAGE, INFUSER_USAGE, SMELTER_USAGE, SPEED_UPGRADE,
-    electric_config, infuser_config, infusing_cache_of,
-};
+use machinery_basis_core::upgrade::{UpgradeData, UpgradeSaved};
+use mekanism_rules::{ENERGY_UPGRADE, SPEED_UPGRADE};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -41,44 +36,15 @@ fn field(row: &Value, key: &str) -> i64 {
         .unwrap_or_else(|| panic!("campo {key} ausente ou não inteiro em {row}"))
 }
 
-/// A máquina nova da lib, com os valores do mod: o uso de energia e a receita vazia (o upgrade não depende dela).
 fn machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
-    match name {
-        "enrichment_chamber" => ProgressMachine::electric(electric_config(
-            ENRICHMENT_USAGE,
-            ItemToItemRecipe::cache_of(Vec::new()),
-            0,
-            data.clone(),
-        )),
-        "crusher" => ProgressMachine::electric(electric_config(
-            CRUSHER_USAGE,
-            ItemToItemRecipe::cache_of(Vec::new()),
-            0,
-            data.clone(),
-        )),
-        "energized_smelter" => ProgressMachine::electric(electric_config(
-            SMELTER_USAGE,
-            ItemToItemRecipe::cache_of(Vec::new()),
-            0,
-            data.clone(),
-        )),
-        "metallurgic_infuser" => ProgressMachine::chemical(infuser_config(
-            INFUSER_USAGE,
-            infusing_cache_of(Vec::new()),
-            ChemicalConversion::cache_of(Vec::new()),
-            0,
-            data.clone(),
-        )),
-        other => panic!("máquina fora da tabela: {other}"),
-    }
+    common::bare_machine(name, data)
 }
 
-/// Carrega a máquina como o tile faz ao ser colocado ou aberto: `restore` recalcula todos os tipos de upgrade com o total que
-/// há, zero incluído, como o `deserialize` do Java. Sem isso a base seria a do construtor (4 vezes o uso), não a da máquina pronta.
+/// A máquina como um jogador a põe: `applyImplicitComponents` recalcula todos os tipos de upgrade com o total que há, zero incluído.
+/// Sem isso a base seria a do construtor (4 vezes o uso), não a da máquina pronta (`placed_capacity.rs` mede os dois).
 fn loaded(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
     let mut machine = machine(name, data);
-    let saved = machine.saved_state();
-    machine.restore(&saved, false);
+    machine.apply_item_components(&UpgradeSaved::default());
     machine
 }
 

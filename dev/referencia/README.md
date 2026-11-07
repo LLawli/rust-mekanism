@@ -128,3 +128,20 @@ configuração, transporte, segurança, livro e redstone a cena oculta; o Heat G
 `_aba_energia` (`casos_energia`) põem o cursor na aba de energia com a máquina parada, cheia, ativa e com upgrades de velocidade e de energia
 (`energia=300`, porque a capacidade muda com eles), e `infuser_operacao_10` é o controle da barra de químico. O roteiro do port tira o print até
 dois seguidos serem iguais quando o caso clica, e dá um tick depois de abrir a janela de upgrades, que só recebe os dados no tick seguinte.
+
+### Capacidade de energia posta por um jogador, e o clique do cursor
+
+`testes/PlacedTraceTest.java` grava (`placed_<máquina>.jsonl`, quatro máquinas e o Heat Generator) a capacidade de energia (`currentMaxEnergy`), o consumo por tick e os
+ticks por operação de uma máquina posta de três jeitos: `setBlock` do gabarito (`template`), `useOn` do item como um jogador (`use_on`, também com 9 pares de upgrade de
+velocidade e de energia no componente `UPGRADES` do item) e lida do NBT que o tile gravou (`BlockEntity.loadStatic`, `*_loaded`, com as chaves salvas e o filho `component_upgrade`).
+`placed_run_<máquina>_<plain|speed2>.jsonl` é uma máquina posta por um jogador (com velocidade 2 no item, ou sem upgrade) a que se dá uma só carga de energia, a
+que ela aceita, e que depois anda 230 ticks. `mods/mekanism/tests/placed_capacity.rs` (inclui o par de upgrades em que a `redstone` converte), `placed_run.rs` e
+`mods/mekanismgenerators/tests/placed_capacity.rs` os repetem.
+
+`testes/SlotClickTraceTest.java` grava (`slot_click_<máquina>.jsonl`) o clique do cursor no menu de verdade (`MekanismTileContainer.clicked`): `mayPlace` e o que o clique
+esquerdo, o direito, a tecla numérica e o arrasto (para o primeiro slot do inventário) deixam no slot, no cursor, na barra e no slot do arrasto, com 15 itens, o slot vazio, com
+outro item e com o mesmo, e o Metallurgic Infuser em seis estados de tanque e entrada. `mods/mekanism/tests/slot_click.rs` repete o `mayPlace` com `rules::slot_accepts`.
+Em jogo, no `horizon2`, `horizon2/h2_cursor.py MAQUINA` repete uma amostra das linhas (cada tipo de slot, ação, conteúdo e resposta; com o servidor parado no
+Infuser e no Heat Generator, porque o slot de infusão converte e o gerador queima no tick seguinte) e compara slot, cursor, barra e arrasto; `h2_placed.py` mede a
+capacidade pela energia que um Heat Generator encostado deixa na máquina, e uma operação de 200 ticks com o servidor parado. Copie os dois `.java` para
+`src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar, como os outros, e apague-os depois.

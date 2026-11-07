@@ -12,7 +12,8 @@ use machinery_basis_core::two_input_recipe::ItemChemicalToItemRecipe;
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use mekanism_rules::upgrade_data as build_upgrade_data;
 use mekanism_rules::{
-    ENRICHMENT_USAGE, INFUSER_USAGE, electric_config, infuser_config, infusing_cache_of,
+    CRUSHER_USAGE, ENRICHMENT_USAGE, INFUSER_USAGE, SMELTER_USAGE, electric_config, infuser_config,
+    infusing_cache_of,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -119,6 +120,13 @@ fn ingredient_items(ingredient: &str, out: &mut Vec<String>) {
         return;
     };
     let (namespace, path) = tag.split_once(':').unwrap();
+    // As tags do vanilla (`minecraft:`) não estão no conteúdo: o jogo as dá. As que as receitas de que os testes de slot dependem usam.
+    if namespace == "minecraft" {
+        if let Some(members) = vanilla_tag(path) {
+            out.extend(members.iter().map(|id| (*id).to_owned()));
+        }
+        return;
+    }
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("content/data")
         .join(namespace)
@@ -134,6 +142,14 @@ fn ingredient_items(ingredient: &str, out: &mut Vec<String>) {
     let json: Value = serde_json::from_str(&text).unwrap();
     for entry in json["values"].as_array().unwrap() {
         ingredient_items(entry.as_str().unwrap(), out);
+    }
+}
+
+/// Os itens de uma tag de item do vanilla (`#minecraft:<path>`), onde o conteúdo não a traz.
+fn vanilla_tag(path: &str) -> Option<&'static [&'static str]> {
+    match path {
+        "coals" => Some(&["coal", "charcoal"]),
+        _ => None,
     }
 }
 
@@ -291,7 +307,55 @@ fn chemical_ingredient(ingredient: &str) -> ChemicalIngredient {
 /// O Infuser com as receitas `metallurgic_infusing` e as conversões `chemical_conversion` que o port entrega, lidas dos mesmos
 /// arquivos que o jogo lê (com as tags do conteúdo), na ordem de pasta. Nada escrito à mão.
 pub fn infuser_from_content() -> ProgressMachine {
-    let recipes: Vec<Rc<ItemChemicalToItemRecipe>> = load("recipe/metallurgic_infusing")
+    let (recipes, conversions) = infuser_recipes_from_content();
+    let mut config = infuser_config(
+        INFUSER_USAGE,
+        infusing_cache_of(recipes),
+        ChemicalConversion::cache_of(conversions),
+        0,
+        upgrade_data(),
+    );
+    config.energy_conversion = energy_conversions();
+    ProgressMachine::chemical(config)
+}
+
+/// As receitas `metallurgic_infusing` e as conversões `chemical_conversion` do conteúdo, na ordem de pasta.
+pub fn infuser_recipes_from_content() -> (Vec<Rc<ItemChemicalToItemRecipe>>, Vec<ChemicalConversion>)
+{
+    infuser_recipes(
+        load("recipe/metallurgic_infusing"),
+        load("recipe/chemical_conversion"),
+        19,
+        17,
+    )
+}
+
+/// O mesmo com todos os arquivos de `recipe/` cujo `type` é o da máquina, em qualquer pasta (o jogo lê o `type`, e o conteúdo guarda
+/// receitas de infusão em `control_circuit/` e `processing/`).
+pub fn infuser_recipes_by_type() -> (Vec<Rc<ItemChemicalToItemRecipe>>, Vec<ChemicalConversion>) {
+    infuser_recipes(
+        load_of_type("mekanism:metallurgic_infusing"),
+        load_of_type("mekanism:chemical_conversion"),
+        30,
+        19,
+    )
+}
+
+/// Os arquivos de `recipe/` (todas as pastas) cujo `type` é `kind`, na ordem de pasta.
+pub fn load_of_type(kind: &str) -> Vec<(String, Value)> {
+    load("recipe")
+        .into_iter()
+        .filter(|(_, json)| json["type"] == kind)
+        .collect()
+}
+
+fn infuser_recipes(
+    infusing: Vec<(String, Value)>,
+    converting: Vec<(String, Value)>,
+    minimum_recipes: usize,
+    minimum_conversions: usize,
+) -> (Vec<Rc<ItemChemicalToItemRecipe>>, Vec<ChemicalConversion>) {
+    let recipes: Vec<Rc<ItemChemicalToItemRecipe>> = infusing
         .iter()
         .map(|(id, json)| {
             let item = &json["item_input"];
@@ -312,11 +376,11 @@ pub fn infuser_from_content() -> ProgressMachine {
         })
         .collect();
     assert!(
-        recipes.len() >= 19,
+        recipes.len() >= minimum_recipes,
         "receitas de infusão: {}",
         recipes.len()
     );
-    let conversions: Vec<ChemicalConversion> = load("recipe/chemical_conversion")
+    let conversions: Vec<ChemicalConversion> = converting
         .iter()
         .map(|(id, json)| {
             let output = &json["output"];
@@ -334,16 +398,34 @@ pub fn infuser_from_content() -> ProgressMachine {
             }
         })
         .collect();
-    assert!(conversions.len() >= 17, "conversões: {}", conversions.len());
-    let mut config = infuser_config(
-        INFUSER_USAGE,
-        infusing_cache_of(recipes),
-        ChemicalConversion::cache_of(conversions),
-        0,
-        upgrade_data(),
+    assert!(
+        conversions.len() >= minimum_conversions,
+        "conversões: {}",
+        conversions.len()
     );
-    config.energy_conversion = energy_conversions();
-    ProgressMachine::chemical(config)
+    (recipes, conversions)
+}
+
+/// As receitas de um tipo (`mekanism:enriching`, `mekanism:crushing`), de qualquer pasta, como o jogo as lê: entrada, quantidade e saída, na ordem de pasta. O que as
+/// regras de slot perguntam é só se um item entra em alguma.
+pub fn item_recipes_of_type(kind: &str) -> Vec<Rc<ItemToItemRecipe>> {
+    let recipes: Vec<Rc<ItemToItemRecipe>> = load_of_type(kind)
+        .iter()
+        .map(|(id, json)| {
+            let input = &json["input"];
+            Rc::new(ItemToItemRecipe {
+                id: id.clone(),
+                input: item_ingredient(&input["ingredient"]),
+                input_count: input["count"].as_u64().unwrap_or(1) as u32,
+                output: ItemOutput {
+                    resource: item_of(json["output"]["id"].as_str().unwrap()),
+                    count: json["output"]["count"].as_u64().unwrap_or(1) as u32,
+                },
+            })
+        })
+        .collect();
+    assert!(recipes.len() >= 10, "{kind}: {} receitas", recipes.len());
+    recipes
 }
 
 /// Um item de saída de receita pelo id, sem o namespace.
@@ -367,5 +449,37 @@ pub fn machine(name: &str) -> ProgressMachine {
         infuser()
     } else {
         chamber(valid_input(name))
+    }
+}
+
+/// A máquina nova da lib, como o construtor a deixa (capacidade de quatro ticks de consumo), com o uso de energia da máquina e a
+/// receita vazia: o que os testes de capacidade e de upgrade medem não depende da receita.
+pub fn bare_machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
+    let electric = |usage| {
+        let mut config = electric_config(
+            usage,
+            ItemToItemRecipe::cache_of(Vec::new()),
+            0,
+            data.clone(),
+        );
+        config.energy_conversion = energy_conversions();
+        ProgressMachine::electric(config)
+    };
+    match name {
+        "enrichment_chamber" => electric(ENRICHMENT_USAGE),
+        "crusher" => electric(CRUSHER_USAGE),
+        "energized_smelter" => electric(SMELTER_USAGE),
+        "metallurgic_infuser" => {
+            let mut config = infuser_config(
+                INFUSER_USAGE,
+                infusing_cache_of(Vec::new()),
+                ChemicalConversion::cache_of(Vec::new()),
+                0,
+                data.clone(),
+            );
+            config.energy_conversion = energy_conversions();
+            ProgressMachine::chemical(config)
+        }
+        other => panic!("máquina fora da lista: {other}"),
     }
 }

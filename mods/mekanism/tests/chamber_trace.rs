@@ -10,6 +10,7 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
+use machinery_basis_core::upgrade::UpgradeSaved;
 use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
     CRUSHER_USAGE, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENERGY_UPGRADE, ENRICHMENT_USAGE,
@@ -817,7 +818,8 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
 /// Salvar e reabrir com upgrades instalados e nos dois slots: o objeto novo nasce do que o Java grava, recalcula tempo, consumo e
 /// capacidade, e o que estava no slot de entrada segue a instalação de onde a máquina parou.
 /// `chamber_placed`: colocada do item, como um jogador, a máquina recalcula os upgrades. O `setBlock` dos outros rastros não passa
-/// por aí, e a capacidade deles começa em 4 ticks de consumo, não nos ticks da receita.
+/// por aí, e a capacidade deles começa em 4 ticks de consumo, não nos ticks da receita (`placed_capacity.rs` mede os dois jeitos nas
+/// quatro máquinas, e a máquina lida do disco).
 #[test]
 fn a_machine_placed_or_loaded_recalculates_its_capacity() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -825,8 +827,10 @@ fn a_machine_placed_or_loaded_recalculates_its_capacity() {
     let text = std::fs::read_to_string(path).unwrap();
     let first: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
     let mut world = chamber();
-    let saved = chamber().block_entity.0.saved_state();
-    world.block_entity.0.restore(&saved, false);
+    world
+        .block_entity
+        .0
+        .apply_item_components(&UpgradeSaved::default());
     let machine = &world.block_entity.0;
     assert_eq!(
         serde_json::json!(machine.energy().capacity()),

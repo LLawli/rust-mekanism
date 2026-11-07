@@ -1,0 +1,6 @@
+{"machine":"heat_generator","how":"template","speed":0,"energy":0,"max_energy":240,"capacity_getter":240}
+{"machine":"heat_generator","how":"template_loaded","speed":0,"energy":0,"max_energy":240,"capacity_getter":240,"saved_keys":["active_state", "components", "control_type", "current_redstone", "heat_capacitor", "id", "redstone", "update_delay", "x", "y", "z"],"component_upgrade":""}
+{"machine":"heat_generator","how":"use_on","speed":0,"energy":0,"max_energy":240,"capacity_getter":240}
+{"machine":"heat_generator","how":"use_on_loaded","speed":0,"energy":0,"max_energy":240,"capacity_getter":240,"saved_keys":["active_state", "component_frequency", "component_security", "components", "control_type", "current_redstone", "heat_capacitor", "id", "redstone", "update_delay", "x", "y", "z"],"component_upgrade":""}
+{"machine":"heat_generator","how":"use_on_muffling","speed":0,"energy":0,"max_energy":240,"capacity_getter":240}
+{"machine":"heat_generator","how":"use_on_muffling_loaded","speed":0,"energy":0,"max_energy":240,"capacity_getter":240,"saved_keys":["active_state", "component_frequency", "component_security", "component_upgrade", "components", "control_type", "current_redstone", "heat_capacitor", "id", "redstone", "update_delay", "x", "y", "z"],"component_upgrade":"{upgrades:{\"mekanism:muffling\":1}}"}
