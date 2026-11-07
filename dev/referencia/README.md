@@ -56,6 +56,14 @@ receitas, o port 19), então o tanque os recusa. Não monte uma chegada com `con
 Infuser é o de infusão) nem com `data merge ... Items` fora da ordem dos slots (medido: `[terra no slot 1, bio_fuel no slot 0]` deixou só a terra no tile; o Horizon
 só decodifica a lista que reescreve igual, `decode_mod_block_entity`).
 
+`testes/HeatArmorTraceTest.java` grava (`heat_generator_armor_{layout,may_place,clicks,binding,quick_move}.jsonl`) os cinco slots que o
+`.armorSideBar(-20, 11, 0)` acrescenta ao menu do Heat Generator (quatro `ArmorSlot` e um `OffhandSlot`): o menu é aberto pela fábrica registrada
+(`MekanismContainerType.create`, 45 slots; os outros testes de slot usam `new MekanismTileContainer<>` e saem com 40, sem armadura). O layout, o `mayPlace`
+de cada peça em cada slot, os cliques com o cursor (esquerdo, direito, tecla numérica, arrasto, clique duplo), o `PREVENT_ARMOR_CHANGE` em sobrevivência e
+no criativo (dois jogadores falsos), e o `quickMoveStack` chamado direto e pelo shift-clique (`clicked(QUICK_MOVE)`), cada linha com o estado de todos os
+slots, o cursor, o equipamento do jogador, o som e os eventos de jogo. O `quickMove` roda em lote próprio (`trace_armor_ticks`) porque o som dos ticks seguintes
+não tem dono no evento. Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
