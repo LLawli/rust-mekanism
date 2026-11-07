@@ -44,6 +44,8 @@ fn full() -> ScreenData {
             powered: true,
             was_powered: true,
         },
+        xp_containment: true,
+        energy_per_tick: 70_000,
     }
 }
 
@@ -117,6 +119,8 @@ fn assert_layout_is_disjoint(layout: &DataLayout) {
     used.push(layout.errors);
     used.push(layout.redstone);
     used.push(layout.ticks_required);
+    used.push(layout.xp_containment);
+    used.extend([layout.energy_per_tick, layout.energy_per_tick + 1]);
     // `upgradeTicks` e uma contagem por tipo de upgrade, ao fim do layout.
     used.extend(layout.upgrade..layout.upgrade + mekanism_rules::UPGRADE_SYNC_LEN);
     if let Some(chemical) = layout.chemical {
@@ -137,6 +141,30 @@ fn assert_layout_is_disjoint(layout: &DataLayout) {
         layout.len,
         "sobra ou falta slot: {used:?}"
     );
+}
+
+/// A aba de xp lê o `hasXpContainment` do servidor: um valor só, no slot dele, que sobe e desce sem mexer nos outros.
+#[test]
+fn the_xp_containment_flag_travels_in_its_own_slot() {
+    for layout in [&ELECTRIC_DATA, &INFUSER_DATA] {
+        let off = ScreenData {
+            xp_containment: false,
+            ..full()
+        };
+        let on = ScreenData {
+            xp_containment: true,
+            ..full()
+        };
+        let (off_data, on_data) = (off.write(layout), on.write(layout));
+        let differing: Vec<usize> = (0..layout.len)
+            .filter(|&i| off_data[i] != on_data[i])
+            .collect();
+        assert_eq!(differing, vec![layout.xp_containment]);
+        assert!(!ScreenData::read(layout, &over_the_wire(&off_data)).xp_containment);
+        assert!(ScreenData::read(layout, &over_the_wire(&on_data)).xp_containment);
+    }
+    // Antes de o servidor mandar o primeiro valor os data slots estão vazios: sem upgrade, sem aba.
+    assert!(!ScreenData::read(&ELECTRIC_DATA, &[]).xp_containment);
 }
 
 #[test]

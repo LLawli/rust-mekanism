@@ -936,6 +936,33 @@ public class MachineTraceTest {
     }
 
     @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records a chamber with stored xp and a styled name blown up: the xp that pops and the name the dropped item carries.")
+    public static void chamberExplosion(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_explosion");
+        trace.recordEffects = true;
+        trace.refillTicks = 3;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("speed 8, xp_containment 1, coal 2, styled name");
+                  trace.addUpgrades(UpgradeIds.SPEED, 8);
+                  trace.addUpgrades(UpgradeIds.XP_CONTAINMENT, 1);
+                  trace.tile().setCustomName(styledName(false));
+                  trace.setSlot(INPUT, Items.COAL, 2);
+              })
+              .thenExecuteAfter(60, () -> {
+                  trace.mark("explosion of radius 1 with no block resistance, at the chamber");
+                  trace.explode();
+              })
+              .thenExecuteAfter(5, () -> trace.explosionLine())
+              .thenExecuteAfter(5, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
     @TestHolder(description = "Records the muffling upgrade: getVolumeFactor and isFullyMuffled with 0 and the maximum installed.")
     public static void chamberMuffling(final DynamicTest test) {
         template(test);
@@ -993,6 +1020,84 @@ public class MachineTraceTest {
         );
     }
 
+    /// Um nome com estilo: vermelho e negrito, e um com filho de outra cor (`extra`). `Component.literal("x").withStyle(...)` é o que
+    /// `/give ... custom_name={"text":"x","color":"red","bold":true}` produz depois do codec.
+    private static net.minecraft.network.chat.Component styledName(boolean withChild) {
+        net.minecraft.network.chat.MutableComponent name = net.minecraft.network.chat.Component.literal("Camara Colorida")
+              .withStyle(net.minecraft.network.chat.Style.EMPTY.withColor(net.minecraft.ChatFormatting.RED).withBold(true));
+        if (withChild) {
+            name.append(net.minecraft.network.chat.Component.literal(" Azul")
+                  .withStyle(net.minecraft.network.chat.Style.EMPTY.withColor(0x3355FF).withItalic(true)));
+        }
+        return name;
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the full component of the name of a chamber placed from an item with a styled name: the tile, the title, the saved tag and the dropped item.")
+    public static void chamberNameStyled(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 2, 1)
+              .fill(1, 0, 0, 1, 0, 0, Blocks.STONE.defaultBlockState())
+              .fill(2, 0, 0, 2, 0, 0, Blocks.STONE.defaultBlockState()));
+        Trace trace = new Trace("chamber_name_styled");
+        trace.pos = new BlockPos(1, 1, 0);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  Player player = helper.makeMockPlayerLookingAt(1, 0, 0, Direction.UP);
+                  ItemStack named = new ItemStack(MekanismBlocks.ENRICHMENT_CHAMBER.asItem());
+                  named.set(DataComponents.CUSTOM_NAME, styledName(false));
+                  helper.useOn(new BlockPos(1, 0, 0), named, player, Direction.UP);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("placed from an item with a red bold name");
+                  trace.styledNameLine();
+                  trace.pos = new BlockPos(2, 1, 0);
+                  Player player = helper.makeMockPlayerLookingAt(2, 0, 0, Direction.UP);
+                  ItemStack named = new ItemStack(MekanismBlocks.ENRICHMENT_CHAMBER.asItem());
+                  named.set(DataComponents.CUSTOM_NAME, styledName(true));
+                  helper.useOn(new BlockPos(2, 0, 0), named, player, Direction.UP);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("placed from an item with a red bold name and a blue italic child");
+                  trace.styledNameLine();
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the full component of the name of a heat generator (nameable: it has a gui and no custom gui name) placed from a styled item and from a plain one.")
+    public static void heatGeneratorNameStyled(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 2, 1)
+              .fill(1, 0, 0, 1, 0, 0, Blocks.STONE.defaultBlockState())
+              .fill(2, 0, 0, 2, 0, 0, Blocks.STONE.defaultBlockState()));
+        Trace trace = new Trace("heat_generator_name_styled");
+        trace.pos = new BlockPos(1, 1, 0);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  trace.start(helper);
+                  //Placed as a player does it: the block, then `applyComponents` with the item's components (`applyImplicitComponents`)
+                  helper.getLevel().setBlockAndUpdate(helper.absolutePos(trace.pos), GeneratorsBlocks.HEAT_GENERATOR.defaultState());
+                  trace.mekTile().applyComponents(net.minecraft.core.component.DataComponentMap.builder().set(DataComponents.CUSTOM_NAME, styledName(true)).build(),
+                        DataComponentPatch.EMPTY);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("heat generator placed with an item with a styled name");
+                  trace.styledNameLine();
+                  trace.pos = new BlockPos(2, 1, 0);
+                  helper.getLevel().setBlockAndUpdate(helper.absolutePos(trace.pos), GeneratorsBlocks.HEAT_GENERATOR.defaultState());
+                  trace.mekTile().applyComponents(net.minecraft.core.component.DataComponentMap.EMPTY, DataComponentPatch.EMPTY);
+              })
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("heat generator placed with a plain item");
+                  trace.styledNameLine();
+              })
+              .thenExecuteAfter(2, trace::write)
+              .thenSucceed()
+        );
+    }
+
     @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
     @TestHolder(description = "Records the tooltip lines of the upgrade item for each type and for an item with no type.")
     public static void upgradeTooltip(final DynamicTest test) {
@@ -1007,7 +1112,7 @@ public class MachineTraceTest {
                       trace.tooltipLines(key.identifier().getPath(), trace.upgradeStack(key, 1));
                   }
               })
-              .thenExecuteAfter(2, trace::write)
+              .thenExecuteAfter(6, trace::write)
               .thenSucceed()
         );
     }
@@ -2715,6 +2820,62 @@ public class MachineTraceTest {
                   + tile.getDisplayName().getString() + "\",\"custom_name\":"
                   + (tile.getCustomName() == null ? "null" : "\"" + tile.getCustomName().getString() + "\"") + ",\"nameable\":" + tile.isNameable()
                   + ",\"saved_name\":" + (tile.saveWithoutMetadata(helper.getLevel().registryAccess()).contains("CustomName")) + "}");
+        }
+
+        /// O nome do tile com o componente inteiro: em JSON (`ComponentSerialization.CODEC`) o que `getName`, `getDisplayName` e `getCustomName` devolvem,
+        /// o `CustomName` que o tile grava (o tag, em SNBT) e o `custom_name` do item que o bloco solta (`copy_name` da tabela de loot).
+        /// Qualquer tile do Mekanism na posição (`tile()` só devolve máquinas de receita).
+        TileEntityMekanism mekTile() {
+            return (TileEntityMekanism) helper.getLevel().getBlockEntity(helper.absolutePos(pos));
+        }
+
+        void styledNameLine() {
+            TileEntityMekanism tile = mekTile();
+            if (tile == null) {
+                throw new IllegalStateException("no tile at " + helper.absolutePos(pos) + ": " + helper.getLevel().getBlockState(helper.absolutePos(pos)));
+            }
+            net.minecraft.core.HolderLookup.Provider registries = helper.getLevel().registryAccess();
+            net.minecraft.nbt.CompoundTag saved = tile.saveWithoutMetadata(registries);
+            String savedName = saved.get("CustomName") == null ? "null" : new com.google.gson.JsonPrimitive(saved.get("CustomName").toString()).toString();
+            StringBuilder drops = new StringBuilder();
+            for (ItemStack drop : net.minecraft.world.level.block.Block.getDrops(tile.getBlockState(), helper.getLevel(), tile.getBlockPos(), tile)) {
+                net.minecraft.network.chat.Component dropName = drop.get(DataComponents.CUSTOM_NAME);
+                drops.append(drops.isEmpty() ? "" : ",").append(dropName == null ? "null" : json(dropName));
+            }
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"name\":" + json(tile.getName()) + ",\"display_name\":" + json(tile.getDisplayName())
+                  + ",\"custom_name\":" + (tile.getCustomName() == null ? "null" : json(tile.getCustomName())) + ",\"saved_name\":" + savedName
+                  + ",\"name_string\":\"" + tile.getDisplayName().getString() + "\",\"drops\":[" + drops + "]}");
+        }
+
+        private static String json(net.minecraft.network.chat.Component component) {
+            return ComponentSerialization.CODEC.encodeStart(JsonOps.INSTANCE, component).getOrThrow().toString();
+        }
+
+        /// Uma explosão de raio 1 sem resistência de bloco no centro da máquina: `ServerExplosion` com `DESTROY_WITH_DECAY`, que com raio 1 não perde item.
+        void explode() {
+            net.minecraft.world.phys.Vec3 center = net.minecraft.world.phys.Vec3.atCenterOf(helper.absolutePos(pos));
+            net.minecraft.world.level.ExplosionDamageCalculator calculator = new net.minecraft.world.level.ExplosionDamageCalculator() {
+                @Override
+                public java.util.Optional<Float> getBlockExplosionResistance(net.minecraft.world.level.Explosion explosion, net.minecraft.world.level.BlockGetter level,
+                      BlockPos blockPos, net.minecraft.world.level.block.state.BlockState state, net.minecraft.world.level.material.FluidState fluid) {
+                    return java.util.Optional.of(0F);
+                }
+            };
+            new net.minecraft.world.level.ServerExplosion(helper.getLevel(), null, null, calculator, center, 1.0F, false,
+                  net.minecraft.world.level.Explosion.BlockInteraction.DESTROY_WITH_DECAY).explode();
+        }
+
+        /// O que a explosão deixou: se o bloco saiu, as bolas de experiência e o `custom_name` de cada item solto.
+        void explosionLine() {
+            StringBuilder drops = new StringBuilder();
+            for (net.minecraft.world.entity.item.ItemEntity item : helper.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                  new AABB(helper.absolutePos(pos)).inflate(3))) {
+                net.minecraft.network.chat.Component name = item.getItem().get(DataComponents.CUSTOM_NAME);
+                drops.append(drops.isEmpty() ? "" : ",").append("{\"item\":\"").append(BuiltInRegistries.ITEM.getKey(item.getItem().getItem())).append("\",\"custom_name\":")
+                      .append(name == null ? "null" : json(name)).append('}');
+            }
+            lines.add("{\"t\":" + tick++ + ",\"marks\":" + marksJson() + ",\"broken\":" + helper.getLevel().getBlockState(helper.absolutePos(pos)).isAir() + ","
+                  + orbs() + ",\"drops\":[" + drops + "]}");
         }
 
         /// As linhas de tooltip de um item, em JSON de componente: tradução, argumentos e cor.

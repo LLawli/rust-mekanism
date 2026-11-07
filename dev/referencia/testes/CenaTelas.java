@@ -159,7 +159,7 @@ public class CenaTelas {
             report(minecraft, caso, "ao abrir");
             open(minecraft, caso);
         } else if (caseTick == base + OPEN_WAIT) {
-            hideUnimplementedTabs(minecraft);
+            hideUnimplementedTabs(minecraft, caso);
             clicks(minecraft, caso);
             report(minecraft, caso, "depois dos cliques");
             hover(minecraft, caso);
@@ -248,6 +248,11 @@ public class CenaTelas {
             generator.lavaTank.setContents(FluidResource.of(Fluids.LAVA), Long.parseLong(caso.args().get("lava")), null);
         }
         upgrades(server, tile, caso);
+        if (caso.args().containsKey("nome")) {
+            // `nome=` é um componente em JSON, sem espaços: o texto, a cor e o negrito que o título da tela mostra.
+            tile.setCustomName(net.minecraft.network.chat.ComponentSerialization.CODEC
+                  .parse(com.mojang.serialization.JsonOps.INSTANCE, com.google.gson.JsonParser.parseString(caso.args().get("nome"))).getOrThrow());
+        }
         if (caso.args().containsKey("energia")) {
             BasicEnergyContainer container = (BasicEnergyContainer) tile.getEnergyContainer();
             String value = caso.args().get("energia");
@@ -305,13 +310,32 @@ public class CenaTelas {
     }
 
     /// O port ainda não tem as abas de configuração, transporte, cadeado, livro, energia, redstone e upgrades, nem a que guarda os
-    /// slots de armadura: no original da cena elas ficam invisíveis, para a imagem mostrar o que o port tem. A aba de avisos fica.
-    private static void hideUnimplementedTabs(Minecraft minecraft) {
+    /// slots de armadura: no original da cena elas ficam invisíveis, para a imagem mostrar o que o port tem. A aba de avisos, a de
+    /// upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a posição e a visibilidade que o original dá.
+    private static void hideUnimplementedTabs(Minecraft minecraft, Caso caso) {
         if (minecraft.gui.screen() instanceof mekanism.client.gui.GuiMekanism<?> screen) {
+            //Tudo o que o original desenha fora do retângulo da tela (176 por 166), para saber o que o comparador não vê
+            for (var child : screen.children()) {
+                if (child instanceof mekanism.client.gui.element.GuiElement element) {
+                    int x = element.getX() - screen.getLeftPos();
+                    int y = element.getY() - screen.getTopPos();
+                    if (x < 0 || y < 0 || x + element.getWidth() > 176 || y + element.getHeight() > 166) {
+                        Mekanism.logger.info("cena: {} fora {} x {} y {} largura {} altura {} visivel {}", caso.name(), element.getClass().getSimpleName(), x, y,
+                              element.getWidth(), element.getHeight(), element.visible);
+                    }
+                }
+            }
+            for (var child : screen.children()) {
+                if (child instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab tab) {
+                    Mekanism.logger.info("cena: {} xp_tab visible {} x {} y {} largura {} altura {}", caso.name(), tab.visible,
+                          tab.getX() - screen.getLeftPos(), tab.getY() - screen.getTopPos(), tab.getWidth(), tab.getHeight());
+                }
+            }
             for (var child : screen.children()) {
                 if (child instanceof mekanism.client.gui.element.GuiElement element
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
                       && element instanceof mekanism.client.gui.element.GuiSideHolder) {
                     element.visible = false;
                 }

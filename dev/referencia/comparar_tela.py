@@ -12,6 +12,7 @@ Só biblioteca padrão do Python: lê e grava PNG sozinho (8 bits, sem entrelaç
 """
 import argparse
 import json
+import os
 import struct
 import sys
 import zlib
@@ -81,6 +82,18 @@ ABA_AVISOS = {
 # A aba de upgrades (`GuiUpgradeWindowTab`: 26 por 26 em `imageWidth`, 6), que as máquinas elétricas e o Infuser têm.
 ABA_UPGRADES = (LARGURA, 6, 26, 26)
 
+# A aba de energia (`GuiEnergyTab`, -26 por 137, 26 por 26), que as quatro máquinas e o Heat Generator têm, e a de calor (`GuiHeatTab`, -26 por
+# 109) do Heat Generator. São elementos de textura do original, não suportes: ficam visíveis na cena, e o que falta no port aparece como diferença.
+ABA_ENERGIA = (-26, 137, 26, 26)
+ABA_CALOR = (-26, 109, 26, 26)
+# Os cinco slots de armadura e mão secundária que o Heat Generator desenha à esquerda (`GuiSideHolder.armorHolder` oculta na cena, e cinco `GuiSlot`
+# de 18 por 18 em x = -21, y = 10, 28, 46, 64 e 82, que continuam visíveis).
+SLOTS_ARMADURA = (-21, 10, 18, 90)
+
+# A aba de xp (`GuiXpContainmentTab`: 26 por 26 em `imageWidth`, 90), que as máquinas de receita têm com o upgrade `xp_containment`. O botão de
+# dentro, 18 por 18, começa em (179, 94).
+ABA_XP = (LARGURA, 90, 26, 26)
+
 # A janela de upgrades aberta no lugar padrão (`GuiUpgradeWindow` em (-11, 15), 198 por 94): cada filho no lugar dele, e a sombra em volta.
 # Valem antes dos elementos da tela, porque a janela cobre os dois. Em pixels de GUI relativos ao canto da tela.
 JANELA = {
@@ -100,9 +113,49 @@ JANELA = {
 }
 
 # As colunas onde as abas ficam, de cada lado da tela. O port ainda não tem as de configuração, transporte, cadeado, livro, energia,
-# redstone e upgrades; a aba de avisos, que tem, sai da máscara.
+# redstone e upgrades; as abas de avisos, de upgrades e de xp, que tem, saem da máscara.
 COLUNA_ESQUERDA = (-26, -1, 26, ALTURA + 2)
 COLUNA_DIREITA = (LARGURA, -1, 26, ALTURA + 2)
+
+# O suporte de uma aba (`holder_right`, 26 por 9 em nove partes de borda 4) tem cantos transparentes, e o que se vê neles é o mundo atrás da
+# tela, que cada jogo desenha do seu jeito (H22). Esses pixels contam à parte (`canto_aba_*`), como os do painel.
+HOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/holder_right.png")
+BORDA_SUPORTE = 4
+
+
+ENERGIA_PNG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/tab/energy_info.png")
+# O fundo do tooltip é `0xF0100010` (94% opaco): o mundo atrás, que muda de um jogo para o outro (H22), aparece com até 6% de 255 em cada canal.
+# Um texto que difere muda um canal em dezenas de níveis, então a região do tooltip tem esta tolerância e as outras nenhuma.
+TOLERANCIA_TOOLTIP = 16
+
+
+def cantos_do_sprite(rect, caminho):
+    """Os pixels de GUI (relativos à tela) de `rect` em que o sprite `caminho`, do tamanho do retângulo e sem nove partes, é transparente."""
+    try:
+        largura, altura, rgba = ler_png(caminho)
+    except OSError:
+        return set()
+    x, y, w, h = rect
+    return {(x + dx, y + dy) for dy in range(min(h, altura)) for dx in range(min(w, largura)) if rgba[(dy * largura + dx) * 4 + 3] == 0}
+
+
+def cantos_do_suporte(rect):
+    """Os pixels de GUI (relativos à tela) do suporte `rect` (26 por 26) em que o sprite `holder_right` é transparente."""
+    try:
+        largura, altura, rgba = ler_png(HOLDER)
+    except OSError:
+        return set()
+    x, y, w, h = rect
+    transparentes = set()
+    for dy in range(h):
+        for dx in range(w):
+            sx = dx if dx < BORDA_SUPORTE else (largura - (w - dx) if dx >= w - BORDA_SUPORTE else None)
+            sy = dy if dy < BORDA_SUPORTE else (altura - (h - dy) if dy >= h - BORDA_SUPORTE else None)
+            if sx is None or sy is None:
+                continue
+            if rgba[(sy * largura + sx) * 4 + 3] == 0:
+                transparentes.add((x + dx, y + dy))
+    return transparentes
 
 
 def ler_png(caminho):
@@ -133,10 +186,12 @@ def ler_png(caminho):
     if cabecalho is None:
         raise ValueError(f"{caminho}: sem cabeçalho")
     largura, altura, profundidade, cor, _, _, entrelacado = cabecalho
-    if entrelacado != 0 or profundidade != 8 or cor not in (0, 2, 3, 4, 6):
+    paleta_curta = cor == 3 and profundidade in (1, 2, 4)
+    if entrelacado != 0 or (profundidade != 8 and not paleta_curta) or cor not in (0, 2, 3, 4, 6):
         raise ValueError(f"{caminho}: só PNG de 8 bits sem entrelaçamento (profundidade {profundidade}, cor {cor})")
     canais = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[cor]
-    passo = largura * canais
+    # Uma paleta de 1, 2 ou 4 bits guarda vários pixels por byte; o filtro ainda anda de byte em byte.
+    passo = (largura * profundidade + 7) // 8 if paleta_curta else largura * canais
     bruto = zlib.decompress(bytes(idat))
     linhas = []
     anterior = bytearray(passo)
@@ -181,7 +236,11 @@ def ler_png(caminho):
             elif cor == 4:
                 pixel = bytes((linha[x * 2],) * 3) + bytes((linha[x * 2 + 1],))
             else:
-                indice = linha[x]
+                if paleta_curta:
+                    por_byte = 8 // profundidade
+                    indice = (linha[x // por_byte] >> (8 - profundidade * (x % por_byte + 1))) & ((1 << profundidade) - 1)
+                else:
+                    indice = linha[x]
                 alfa = transparencia[indice] if transparencia and indice < len(transparencia) else 255
                 pixel = bytes(paleta[indice * 3 : indice * 3 + 3]) + bytes((alfa,))
             rgba[base + x * 4 : base + x * 4 + 4] = pixel
@@ -221,8 +280,15 @@ def elementos_da_tela(tela):
         raise ValueError(f"tela desconhecida: {tela} (use {', '.join(sorted(TELAS))})")
     elementos = dict(TELAS[tela])
     elementos["aba_avisos"] = ABA_AVISOS[tela]
+    elementos["aba_energia"] = ABA_ENERGIA
+    if tela == "generator":
+        elementos["aba_calor"] = ABA_CALOR
+        elementos["slots_armadura"] = SLOTS_ARMADURA
+        # O Heat Generator aceita o upgrade de silêncio: a aba de upgrades fica à direita, como nas máquinas.
+        elementos["aba_upgrades"] = ABA_UPGRADES
     if tela != "generator":
         elementos["aba_upgrades"] = ABA_UPGRADES
+        elementos["aba_xp"] = ABA_XP
     elementos.update(COMUNS)
     elementos.update(CANTOS)
     return elementos
@@ -235,11 +301,13 @@ def dentro(rect, x, y):
 
 def mascara_das_abas(tela):
     """O que sai da conta: as colunas das abas que o port não tem, menos a aba de avisos, que ele tem."""
-    return [COLUNA_ESQUERDA, COLUNA_DIREITA], [ABA_AVISOS[tela], ABA_UPGRADES]
+    liberado = [ABA_AVISOS[tela], ABA_UPGRADES, ABA_ENERGIA]
+    liberado += [ABA_XP] if tela != "generator" else [ABA_CALOR, SLOTS_ARMADURA]
+    return [COLUNA_ESQUERDA, COLUNA_DIREITA], liberado
 
 
 def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), tolerancia=0, regioes=None, mascarar_abas=True,
-             prioridade=None):
+             prioridade=None, ausentes=()):
     """Compara os dois prints (cada um `(largura, altura, rgba)`).
 
     Devolve (resultado, imagem), com `resultado` um dicionário com os totais e os elementos, e `imagem` o `(largura, altura, rgba)`
@@ -254,6 +322,9 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
         origem = origem_da_tela(largura, altura, escala)
     ox, oy = origem
     elementos = elementos_da_tela(tela)
+    # Os elementos que o estado do caso não desenha (a aba de xp sem o upgrade): o que sobra no lugar deles é o mundo atrás da tela.
+    for nome in ausentes:
+        elementos.pop(nome, None)
     regioes = dict(regioes or {})
     prioridade = dict(prioridade or {})
     # O que tem prioridade conta antes dos elementos da tela e estende o recorte, para a janela caber inteira.
@@ -274,8 +345,11 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
         )
     recorte_largura, recorte_altura = direita - esquerda, base - topo
     saida = bytearray(recorte_largura * recorte_altura * 4)
-    contagem = {nome: [0, 0] for nome in list(regioes) + list(elementos)}  # [pixels comparados, pixels diferentes]
+    cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP),
+              "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG)}
+    contagem = {nome: [0, 0] for nome in list(regioes) + list(elementos) + list(cantos)}  # [pixels comparados, pixels diferentes]
     contagem["fundo"] = [0, 0]
+    contagem["mundo_atras"] = [0, 0]
     mascarados = 0
     ignorados = 0
     classe = {}  # o que cada pixel de GUI é: None se fica fora da conta, senão o nome do elemento
@@ -287,6 +361,9 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                 classe[chave] = None
             else:
                 nome = next((nome for nome, rect in prioridade.items() if dentro(rect, gx, gy)), None)
+                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA)):
+                    if nome is None and aba[len("canto_"):] in elementos and (gx, gy) in cantos[aba]:
+                        nome = aba
                 nome = nome or next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)
                 if nome is None:
                     # A região só vale fora da tela: dentro dela cada pixel é de um elemento ou do fundo.
@@ -296,7 +373,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                     else:
                         nome = next((nome for nome, rect in regioes.items() if dentro(rect, gx, gy)), None)
                         if nome is None:
-                            nome = "fundo" if dentro(caixa, gx, gy) else "fora"
+                            nome = "mundo_atras" if dentro(caixa, gx, gy) else "fora"
                 classe[chave] = nome
         return classe[chave]
 
@@ -316,7 +393,8 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                 saida[destino : destino + 4] = bytes((cinza, cinza, cinza + 20, 255))
                 continue
             contagem[nome][0] += 1
-            if any(abs(a[indice + canal] - b[indice + canal]) > tolerancia for canal in range(3)):
+            limite = max(tolerancia, TOLERANCIA_TOOLTIP) if nome == "tooltip" else tolerancia
+            if any(abs(a[indice + canal] - b[indice + canal]) > limite for canal in range(3)):
                 contagem[nome][1] += 1
                 saida[destino : destino + 4] = b"\xff\x00\x00\xff"
             else:

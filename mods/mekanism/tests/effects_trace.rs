@@ -133,7 +133,8 @@ impl Scene {
                 install(machine, "speed", 8);
                 machine.input().set_contents(Some(item("coal")), 2, None);
             }
-            "speed 8, xp_containment 1, coal 2" => {
+            "speed 8, xp_containment 1, coal 2"
+            | "speed 8, xp_containment 1, coal 2, styled name" => {
                 install(machine, "speed", 8);
                 install(machine, "xp_containment", 1);
                 machine.input().set_contents(Some(item("coal")), 2, None);
@@ -169,7 +170,10 @@ impl Scene {
                 machine.input().set_contents(Some(item("coal")), 2, None);
             }
             "another recipe, clay 2" => machine.input().set_contents(Some(item("clay")), 2, None),
-            "break the block" | "break the block without containment" => {
+            // `preRemoveSideEffects` roda na remoção, venha ela de um jogador ou de uma explosão (`explosion_detonate` no port).
+            "break the block"
+            | "break the block without containment"
+            | "explosion of radius 1 with no block resistance, at the chamber" => {
                 let awarded = machine.recipes_to_award_on_removal();
                 self.popped += points(&awarded);
             }
@@ -274,6 +278,9 @@ fn replay(scenario: &str, minimum: usize, refill: bool) {
     if scenario == "chamber_xp_broken" {
         assert_eq!(broken_ticks, 2);
     }
+    if scenario == "chamber_explosion" {
+        assert_eq!(broken_ticks, 1);
+    }
 }
 
 #[test]
@@ -294,6 +301,41 @@ fn without_the_upgrade_the_last_recipe_gives_its_experience_when_the_output_is_t
 #[test]
 fn a_broken_machine_drops_the_stored_experience_only_with_the_upgrade() {
     replay("chamber_xp_broken", 80, true);
+}
+
+/// A explosão leva o tile como o jogador: a experiência guardada sai (1 ponto do rastro `chamber_explosion`, 2 operações de 0,5).
+#[test]
+fn an_exploded_machine_drops_the_stored_experience_like_a_broken_one() {
+    replay("chamber_explosion", 60, true);
+}
+
+/// Corre a câmara por `ticks` com a energia sempre cheia, como o `refillTicks` do rastro.
+fn run(scene: &mut Scene, ticks: usize) {
+    for _ in 0..ticks {
+        scene.world.tick();
+        let energy = scene.machine().energy();
+        energy.set_energy(REFILL_TICKS * i64::from(energy.energy_per_tick()), None);
+    }
+}
+
+/// `awardUsedRecipesAndPopExperience` entrega as receitas que o jogador desbloqueia (`player.awardRecipes`), as que ainda existem: a aba de xp
+/// as dá só com o upgrade (`COLLECT_XP`), tirar o resultado as dá sempre (o `recipesToAward` não depende de `dropXp`).
+#[test]
+fn what_the_player_collects_names_the_recipes_to_unlock() {
+    let mut scene = Scene::new(true);
+    scene.apply("speed 8, xp_containment 1, coal 2");
+    run(&mut scene, 60);
+    assert_eq!(scene.machine().collect_xp().recipes, [COAL_RECIPE]);
+    // O Java zera `recipesUsed`: coletar de novo não dá nada.
+    assert!(scene.machine().collect_xp().recipes.is_empty());
+
+    let mut plain = Scene::new(true);
+    plain.apply("speed 8, coal 2, no containment");
+    run(&mut plain, 60);
+    assert!(plain.machine().collect_xp().recipes.is_empty());
+    let taken = plain.machine().award_used_recipes();
+    assert_eq!(taken.recipes, [COAL_RECIPE]);
+    assert_eq!(points(&taken), 1);
 }
 
 #[test]

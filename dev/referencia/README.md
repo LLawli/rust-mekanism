@@ -92,3 +92,28 @@ fracionária usa `Math.random`. O jogo mantém bolas de experiência perto da m�
 `testes/CenaSom.java` roda no cliente (`runGameTestClient`) com o arquivo `cena-som` (`maquina chamber|crusher` e `muffling N`): monta a
 máquina, liga com carvão, corta a energia e tira um print a cada 3 ticks, com o instante real em `cena-som-tempos.txt`. O áudio é gravado
 de fora, pelo PipeWire (sink nulo e `pw-link`), porque o container só reproduz. Silencie a música da cena antes de medir níveis.
+
+### A aba de xp e o nome com estilo
+
+`CenaTelas` agora deixa visível a aba de xp (`GuiXpContainmentTab`) e escreve no log, para cada caso, `cena: <caso> xp_tab visible <v> x <x> y
+<y> largura <w> altura <h>`: `rastros/xp_tab.jsonl` é esse log, um caso por linha, e `mods/mekanism/tests/xp_tab.rs` o repete. Os casos
+`*_xp_*` de `cena_telas.py` (`casos_xp`) montam a aba com e sem o upgrade (as quatro máquinas, dois `guiScale`), o cursor sobre o botão e
+na borda do suporte, a janela de upgrades aberta por cima (cursor atrás dela e fora dela), o upgrade ainda instalando e já instalado, e o
+clique. O comparador tem o retângulo da aba (`aba_xp`), conta à parte os cantos transparentes do suporte (`canto_aba_*`, onde se vê o
+mundo atrás da tela, H22) e aceita `ausentes=["aba_xp"]` para o estado sem a aba (o que sobra no lugar é o mundo). Os casos `*_nome_*`
+põem um `CustomName` com cor, negrito e um filho de outra cor (`nome=` na tabela, JSON sem espaços) e comparam o título.
+
+`MachineTraceTest.chamberNameStyled` grava `chamber_name_styled`: para um item com nome vermelho e negrito, e para outro com um filho azul em
+itálico, o componente em JSON (`ComponentSerialization.CODEC`) que `getName`, `getDisplayName` e `getCustomName` devolvem, o `CustomName`
+que o tile grava (em SNBT, que o jogo lê de volta com `data get block`) e o `custom_name` do item que o bloco solta (`copy_name`).
+`name_trace.rs` o repete.
+
+`MachineTraceTest` também grava `heat_generator_name_styled` (o Heat Generator é nomeável) e `chamber_explosion` (`ServerExplosion` de raio 1 sem
+resistência de bloco no centro da câmara com nome e 2 operações guardadas: se o bloco saiu, as bolas e o `custom_name` de cada item solto).
+
+`CenaTelas` agora escreve também `cena: <caso> fora <classe> x y largura altura visivel`, para tudo que o original desenha fora dos 176 por 166
+da tela: é a lista do que o comparador não vê sem margem (a de energia e a de calor são elementos de textura visíveis; os suportes de
+configuração, transporte, segurança, livro e redstone a cena oculta; o Heat Generator ainda mostra cinco slots de armadura em x = -21). Os casos
+`_aba_energia` (`casos_energia`) põem o cursor na aba de energia com a máquina parada, cheia, ativa e com upgrades de velocidade e de energia
+(`energia=300`, porque a capacidade muda com eles), e `infuser_operacao_10` é o controle da barra de químico. O roteiro do port tira o print até
+dois seguidos serem iguais quando o caso clica, e dá um tick depois de abrir a janela de upgrades, que só recebe os dados no tick seguinte.

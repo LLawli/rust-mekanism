@@ -56,6 +56,89 @@ class CompararTela(unittest.TestCase):
         resultado, _ = ct.comparar(a, b, "infuser", ESCALA, margem=28, mascarar_abas=False)
         self.assertEqual(resultado["elementos"]["aba_upgrades"]["diferentes"], 1)
 
+    def test_a_aba_de_xp_tem_o_retangulo_dela_e_conta(self):
+        a = imagem()
+        b = copia(a)
+        # O botão de dentro (179, 94) a (197, 112), e a borda do suporte: tudo dentro de (176, 90, 26, 26).
+        for gx, gy in ((188, 100), (177, 91), (199, 115)):
+            c = copia(a)
+            pintar(c, *na_tela(gx, gy))
+            for tela in ("electric", "infuser"):
+                resultado, _ = ct.comparar(a, c, tela, ESCALA, margem=28)
+                self.assertEqual(resultado["elementos"]["aba_xp"]["diferentes"], 1, f"{tela} {gx},{gy}")
+        # O canto transparente do suporte mostra o mundo atrás da tela: conta à parte, não como a aba.
+        c = copia(a)
+        pintar(c, *na_tela(201, 115))
+        resultado, _ = ct.comparar(a, c, "electric", ESCALA, margem=28)
+        self.assertEqual(resultado["elementos"]["canto_aba_xp"]["diferentes"], 1)
+        self.assertEqual(resultado["elementos"]["aba_xp"]["diferentes"], 0)
+        # Fora do suporte a mesma coluna é de uma aba que o port não tem.
+        c = copia(a)
+        pintar(c, *na_tela(188, 130))
+        resultado, _ = ct.comparar(a, c, "electric", ESCALA, margem=28)
+        self.assertEqual(resultado["diferentes"], 0)
+        # O gerador não tem a aba.
+        resultado, _ = ct.comparar(a, a, "generator", ESCALA, margem=28)
+        self.assertNotIn("aba_xp", resultado["elementos"])
+
+    def test_a_aba_de_energia_e_a_de_calor_contam_como_elementos_do_mod(self):
+        a = imagem()
+        for tela in ("electric", "infuser", "generator"):
+            b = copia(a)
+            pintar(b, *na_tela(-10, 150))
+            resultado, _ = ct.comparar(a, b, tela, ESCALA, margem=30)
+            self.assertEqual(resultado["elementos"]["aba_energia"]["diferentes"], 1, tela)
+        b = copia(a)
+        pintar(b, *na_tela(-10, 120))
+        resultado, _ = ct.comparar(a, b, "generator", ESCALA, margem=30)
+        self.assertEqual(resultado["elementos"]["aba_calor"]["diferentes"], 1)
+        # O gerador ainda tem os slots de armadura e a aba de upgrades à direita: elementos dele que o port tem de ganhar.
+        for nome, ponto in (("slots_armadura", (-12, 50)), ("aba_upgrades", (190, 20))):
+            c = copia(a)
+            pintar(c, *na_tela(*ponto))
+            resultado, _ = ct.comparar(a, c, "generator", ESCALA, margem=30)
+            self.assertEqual(resultado["elementos"][nome]["diferentes"], 1, nome)
+        # Nas máquinas a mesma região é a aba de avisos, que tem o lugar dela.
+        resultado, _ = ct.comparar(a, b, "electric", ESCALA, margem=30)
+        self.assertEqual(resultado["elementos"]["aba_avisos"]["diferentes"], 1)
+        # Sem a máscara das abas, o que falta nelas não some.
+        resultado, _ = ct.comparar(a, copia(a), "electric", ESCALA, margem=30)
+        self.assertEqual(resultado["diferentes"], 0)
+
+    def test_o_canto_transparente_da_aba_de_energia_conta_a_parte(self):
+        a = imagem()
+        cantos = ct.cantos_do_sprite(ct.ABA_ENERGIA, ct.ENERGIA_PNG)
+        self.assertGreater(len(cantos), 0)
+        gx, gy = sorted(cantos)[0]
+        b = copia(a)
+        pintar(b, *na_tela(gx, gy))
+        resultado, _ = ct.comparar(a, b, "electric", ESCALA, margem=30)
+        self.assertEqual(resultado["elementos"]["canto_aba_energia"]["diferentes"], 1)
+        self.assertEqual(resultado["elementos"]["aba_energia"]["diferentes"], 0)
+
+    def test_so_o_tooltip_tem_tolerancia_e_um_texto_diferente_passa_dela(self):
+        a = imagem()
+        regioes = {"tooltip": (200, 100, 20, 10)}
+        leve = copia(a)
+        pintar(leve, *na_tela(205, 105), cor=(130, 140, 150))  # 10 níveis: o mundo atrás por baixo do fundo
+        resultado, _ = ct.comparar(a, leve, "electric", ESCALA, margem=30, regioes=regioes)
+        self.assertEqual(resultado["elementos"]["tooltip"]["diferentes"], 0)
+        texto = copia(a)
+        pintar(texto, *na_tela(205, 105), cor=(255, 255, 255))  # um pixel de texto
+        resultado, _ = ct.comparar(a, texto, "electric", ESCALA, margem=30, regioes=regioes)
+        self.assertEqual(resultado["elementos"]["tooltip"]["diferentes"], 1)
+        # Fora do tooltip, nenhuma tolerância.
+        fora = copia(a)
+        pintar(fora, *na_tela(80, 40), cor=(130, 140, 150))
+        resultado, _ = ct.comparar(a, fora, "electric", ESCALA)
+        self.assertEqual(resultado["diferentes"], 1)
+
+    def test_os_casos_da_aba_de_energia_hover_caem_dentro_dela(self):
+        for c in cena_telas.casos_energia():
+            if "hover" in c["args"]:
+                x, y = c["args"]["hover"]
+                self.assertTrue(-26 <= x < 0 and 137 <= y < 163, c["nome"])
+
     def test_a_tela_fica_no_centro_da_janela(self):
         # 640 por 480 com escala 2 é 320 por 240 de GUI: (320 - 176) / 2 e (240 - 166) / 2, em pixels.
         self.assertEqual(ct.origem_da_tela(640, 480, 2), (144, 74))
@@ -284,6 +367,42 @@ class Lote(unittest.TestCase):
             self.assertIn(cena_telas.MAQUINAS[c["maquina"]]["tela"], ct.TELAS)
             if "hover" in c["args"]:
                 self.assertEqual(len(c["args"]["hover"]), 2)
+
+    def test_um_elemento_ausente_vira_mundo_atras(self):
+        a = imagem()
+        b = copia(a)
+        pintar(b, *na_tela(188, 100))
+        com, _ = ct.comparar(a, b, "electric", ESCALA, margem=28)
+        self.assertEqual(com["elementos"]["aba_xp"]["diferentes"], 1)
+        sem, _ = ct.comparar(a, b, "electric", ESCALA, margem=28, ausentes=["aba_xp"])
+        self.assertNotIn("aba_xp", sem["elementos"])
+        self.assertEqual(sem["elementos"]["mundo_atras"]["diferentes"], 1)
+
+    def test_a_aba_de_xp_aparece_com_o_upgrade_instalado(self):
+        por_nome = {c["nome"]: c for c in cena_telas.casos_xp()}
+        visiveis = {n for n, c in por_nome.items() if cena_telas.xp_visivel(c)}
+        self.assertIn("chamber_xp_com", visiveis)
+        self.assertIn("chamber_xp_instalado", visiveis)
+        for ausente in ("chamber_xp_sem", "chamber_xp_instalando", "chamber_xp_hover_sem", "chamber_nome_cor"):
+            self.assertNotIn(ausente, visiveis)
+
+    def test_os_casos_da_aba_de_xp_tem_nomes_unicos_e_cursor_no_lugar_certo(self):
+        todos = cena_telas.todos_os_casos()
+        nomes = [c["nome"] for c in todos]
+        self.assertEqual(len(nomes), len(set(nomes)))
+        por_nome = {c["nome"]: c for c in cena_telas.casos_xp()}
+        # O botão é (179, 94, 18, 18) e o suporte (176, 90, 26, 26): o cursor do botão cai no botão, o da borda só no suporte.
+        botao, suporte = (179, 94, 18, 18), (176, 90, 26, 26)
+        dentro = lambda r, p: r[0] <= p[0] < r[0] + r[2] and r[1] <= p[1] < r[1] + r[3]
+        self.assertTrue(dentro(botao, por_nome["chamber_xp_hover"]["args"]["hover"]))
+        self.assertTrue(dentro(suporte, por_nome["chamber_xp_hover_borda"]["args"]["hover"]))
+        self.assertFalse(dentro(botao, por_nome["chamber_xp_hover_borda"]["args"]["hover"]))
+        # Atrás da janela de upgrades (-11, 15, 198, 94): dentro do botão e dentro da janela. Fora: dentro do botão e fora da janela.
+        janela = (-11, 15, 198, 94)
+        atras = por_nome["chamber_xp_janela_atras"]["args"]["hover"]
+        fora = por_nome["chamber_xp_janela_fora"]["args"]["hover"]
+        self.assertTrue(dentro(botao, atras) and dentro(janela, atras))
+        self.assertTrue(dentro(botao, fora) and not dentro(janela, fora))
 
     def test_o_ciclo_do_port_cobre_o_da_animacao(self):
         # Quadros vezes `frametime` de cada tira: `base` 10 de 4, `bio` 8 de 30, `fungi` 4 de 40, `lava_still` 38 de 2.

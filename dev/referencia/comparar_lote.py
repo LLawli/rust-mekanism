@@ -96,6 +96,23 @@ def regioes_do_caso(c, a, b, escala):
     return {"tooltip": caixa} if caixa else {}
 
 
+# O que o Horizon desenha diferente do original e já está pedido a ele (docs/injecoes-horizon.md): o mundo atrás da tela (H22), os cantos
+# transparentes do painel e das abas, a sombra da janela sobre esse mundo e os ícones de item em escala (H25).
+RESIDUOS_DO_HORIZON = ("mundo_atras", "janela_fundo", "janela_aceitos")
+
+
+def ausentes_do_caso(c):
+    """Os elementos que o estado do caso não desenha: a aba de xp sem o upgrade, e (nos casos de xp, que não têm erro nenhum) a de avisos."""
+    ausentes = [] if cena_telas.xp_visivel(c) else ["aba_xp"]
+    if "_xp_" in c["nome"] or "_nome_" in c["nome"] or "_aba_energia" in c["nome"]:
+        ausentes.append("aba_avisos")
+    return ausentes
+
+
+def residuo(nome):
+    return nome.startswith("canto") or nome in RESIDUOS_DO_HORIZON
+
+
 def principal(argv):
     so = None
     if "--so" in argv:
@@ -105,7 +122,7 @@ def principal(argv):
     original, port, saida = argv[:3]
     escalas = [int(e) for e in argv[3:]]
     os.makedirs(saida, exist_ok=True)
-    casos = [c for c in cena_telas.casos() + cena_telas.casos_aba() if not so or c["nome"] in so]
+    casos = [c for c in cena_telas.todos_os_casos() if not so or c["nome"] in so]
     resultados = []
     falhas = 0
     for escala in escalas:
@@ -143,10 +160,11 @@ def principal(argv):
             tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
             a, b = ct.ler_png(caminho_a), ct.ler_png(caminho_b)
             # Com a janela aberta, os filhos dela têm prioridade e o recorte inclui a janela e a aba.
-            janela = ct.JANELA if "clicar" in c["args"] else None
+            janela = ct.JANELA if "clicar" in c["args"] and "%d,%d" % cena_telas.ABA in c["args"]["clicar"].split(";") else None
             resultado, diferenca = ct.comparar(
                 a, b, tela, escala, regioes=regioes_do_caso(c, a, b, escala), mascarar_abas=False,
-                margem=28 if "_aba_" in c["nome"] else 0, prioridade=janela,
+                margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] else 0, prioridade=janela,
+                ausentes=ausentes_do_caso(c),
             )
             resultado["caso"] = nome
             resultados.append(resultado)
@@ -157,7 +175,8 @@ def principal(argv):
             destino = os.path.join(saida, f"tela_{c['nome']}{extra}{sufixo}.png")
             ct.gravar_png(destino, *ct.lado_a_lado(a, b, diferenca, resultado["recorte"]))
             por_elemento = {n: d["diferentes"] for n, d in resultado["elementos"].items() if d["diferentes"]}
-            print(f"{'DIF' if ruim else 'ok '} {nome:<44} {resultado['diferentes']:>6} {por_elemento if por_elemento else ''}", flush=True)
+            reais = {n: d for n, d in por_elemento.items() if not residuo(n)}
+            print(f"{'DIF' if ruim else 'ok '} {nome:<44} {resultado['diferentes']:>6} fora dos resíduos do Horizon: {reais if reais else 0}", flush=True)
     with open(os.path.join(saida, "resultado.json"), "w") as arquivo:
         json.dump(resultados, arquivo, indent=1, ensure_ascii=False)
     total = sum(r["diferentes"] for r in resultados)

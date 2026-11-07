@@ -55,8 +55,8 @@ MAQUINAS = {
 SAIDA_CHEIA = {"chamber": "clay_ball", "crusher": "gravel", "smelter": "glass", "infuser": "dirt"}
 
 
-def caso(nome, maquina, **args):
-    return dict(nome=nome, maquina=maquina, args=args)
+def caso(identificador, maquina, /, **args):
+    return dict(nome=identificador, maquina=maquina, args=args)
 
 
 def casos():
@@ -168,6 +168,91 @@ def casos_aba():
     return out
 
 
+# A aba de xp (`GuiXpContainmentTab`: 26 por 26 em `imageWidth`, 90; o botão de dentro, 18 por 18 em (179, 94)). Aparece com o upgrade
+# `xp_containment` instalado. Os pontos de cursor: dentro do botão, na borda da aba (fora do botão), e dentro do botão mas atrás da janela.
+XP_BOTAO = (188, 103)
+XP_BORDA = (200, 115)
+XP_ATRAS_DA_JANELA = (183, 100)
+XP_FORA_DA_JANELA = (192, 110)
+XP = "xp_containment:1"
+NOME_COR = '{"text":"Camara","color":"red","bold":true}'
+NOME_FILHO = '{"text":"Camara","color":"red","bold":true,"extra":[{"text":"Azul","color":"#3355FF","italic":true}]}'
+
+
+def casos_xp():
+    out = []
+    for m in ("chamber", "crusher", "smelter", "infuser"):
+        out += [
+            caso(f"{m}_xp_sem", m, energia="0"),
+            caso(f"{m}_xp_com", m, energia="0", upgrades=XP),
+        ]
+    out += [
+        caso("chamber_xp_hover", "chamber", energia="0", upgrades=XP, hover=XP_BOTAO),
+        caso("chamber_xp_hover_borda", "chamber", energia="0", upgrades=XP, hover=XP_BORDA),
+        caso("infuser_xp_hover", "infuser", energia="0", upgrades=XP, hover=XP_BOTAO),
+        # Sem o upgrade a aba não existe: o cursor no mesmo lugar não mostra nada.
+        caso("chamber_xp_hover_sem", "chamber", energia="0", hover=XP_BOTAO),
+        # A janela de upgrades aberta cobre parte da aba: atrás dela o botão não tem foco nem tooltip (`isMouseOverCheckWindows`).
+        caso("chamber_xp_janela", "chamber", energia="0", upgrades=XP, clicar=f"{ABA[0]},{ABA[1]}"),
+        caso("chamber_xp_janela_atras", "chamber", energia="0", upgrades=XP, clicar=f"{ABA[0]},{ABA[1]}", hover=XP_ATRAS_DA_JANELA),
+        caso("chamber_xp_janela_fora", "chamber", energia="0", upgrades=XP, clicar=f"{ABA[0]},{ABA[1]}", hover=XP_FORA_DA_JANELA),
+        # O upgrade instalando (20 ticks por upgrade): antes de acabar a aba não aparece, depois aparece.
+        caso("chamber_xp_instalando", "chamber", energia="0", upgradeentrada=XP, passos="10"),
+        caso("chamber_xp_instalado", "chamber", energia="0", upgradeentrada=XP, passos="30"),
+        # Um clique na aba (sem xp guardado nada acontece) deixa a tela como estava.
+        caso("chamber_xp_clique", "chamber", energia="0", upgrades=XP, clicar=f"{XP_BOTAO[0]},{XP_BOTAO[1]}"),
+        # O título com o componente inteiro do nome: cor, negrito, e um filho de outra cor em itálico.
+        caso("chamber_nome_cor", "chamber", energia="0", nome=NOME_COR),
+        caso("chamber_nome_filho", "chamber", energia="0", nome=NOME_FILHO),
+        caso("infuser_nome_cor", "infuser", energia="0", nome=NOME_COR),
+        # O Heat Generator também aceita nome (`nameable = hasGui() && !AttributeGui.hasCustomName()`).
+        caso("generator_nome_cor", "generator", energia="0", nome=NOME_COR),
+        caso("generator_nome_filho", "generator", energia="0", nome=NOME_FILHO),
+    ]
+    return out
+
+
+# A aba de energia (`GuiEnergyTab`, -26 por 137, 26 por 26): o cursor dentro dela. Os casos `_aba_energia` têm a aba parada, com o cursor nela, e
+# nos estados que mudam o texto: máquina ativa, upgrades de velocidade (o consumo por tick), energia cheia, o gerador produzindo.
+ENERGIA_CURSOR = (-13, 150)
+
+
+def casos_energia():
+    out = []
+    for m in ("chamber", "crusher", "smelter", "infuser"):
+        spec = MAQUINAS[m]
+        entrada = f"{spec['entrada']}:2"
+        extra = dict(quimico="bio:800") if m == "infuser" else {}
+        out += [
+            caso(f"{m}_aba_energia", m, energia="0"),
+            caso(f"{m}_aba_energia_hover", m, energia="0", hover=ENERGIA_CURSOR),
+            caso(f"{m}_aba_energia_hover_cheia", m, energia="cap", hover=ENERGIA_CURSOR),
+            caso(f"{m}_aba_energia_hover_ativa", m, energia="cap", entrada=entrada, passos="10", hover=ENERGIA_CURSOR, **extra),
+            # A capacidade muda com os upgrades (`cap` valeria a de uma máquina sem eles): um valor que cabe em qualquer uma.
+            caso(f"{m}_aba_energia_hover_velocidade", m, energia="300", entrada=entrada, passos="10", upgrades="speed:3,energy:2",
+                 hover=ENERGIA_CURSOR, **extra),
+        ]
+    # A máquina operando por 10 passos, sem a aba: o controle da barra de químico do Infuser nos casos `ativa`.
+    out.append(caso("infuser_operacao_10", "infuser", energia="cap", entrada="clay_ball:2", quimico="bio:800", passos="10"))
+    out += [
+        caso("generator_aba_energia", "generator", energia="0"),
+        caso("generator_aba_energia_hover", "generator", energia="0", hover=ENERGIA_CURSOR),
+        caso("generator_aba_energia_hover_produzindo", "generator", energia="0", lava="500", passos="100", hover=ENERGIA_CURSOR),
+    ]
+    return out
+
+
+def todos_os_casos():
+    return casos() + casos_aba() + casos_xp() + casos_energia()
+
+
+def xp_visivel(c):
+    """Se a aba de xp aparece no estado de `c`: o upgrade instalado (`upgrades`) ou o item no slot de upgrades com os 20 ticks de instalação
+    já passados (`upgradeentrada` com `passos` de 20 ou mais)."""
+    a = c["args"]
+    return "xp_containment" in a.get("upgrades", "") or ("xp_containment" in a.get("upgradeentrada", "") and int(a.get("passos", "2")) >= 20)
+
+
 def ciclos(c, lado):
     """Quantos prints de ciclo o `lado` (`oficial` ou `port`) tira em `c`: `ciclo`, ou `ciclo_port` no port quando o caso o pede."""
     ciclo = int(c["args"].get("ciclo", "0"))
@@ -180,7 +265,7 @@ def escreve_oficial(escalas, saida, so=None):
     linhas = []
     for escala in escalas:
         linhas.append(f"escala {escala}")
-        for c in casos() + casos_aba():
+        for c in todos_os_casos():
             if so and c["nome"] not in so:
                 continue
             args = dict(c["args"])
@@ -274,6 +359,9 @@ def monta_port(c, x, escala):
         nbt.append(f'chemical_tanks:[{{container:0b,stored:{{type:"mekanism:{tipo}",amount:{n}L}}}}]')
     if "lava" in c["args"]:
         nbt.append(f'machinery_basis:{{v:1,tanks:[{{resource:"minecraft:lava",amount:{c["args"]["lava"]}L}}]}}')
+    if "nome" in c["args"]:
+        # O `CustomName` do tile é o componente em NBT (`ComponentSerialization`): o JSON sem espaços é também SNBT.
+        nbt.append("CustomName:" + c["args"]["nome"])
     if nbt:
         comando(f"data merge block {pos} {{{','.join(nbt)}}}")
 
@@ -282,6 +370,22 @@ def monta_port(c, x, escala):
     comando(f"tick step {passos}")
     ctl("wait", str(passos + 4))
     return x
+
+
+def espera_estado_estavel(alvo, destino, tentativas=12):
+    """Tira o print até dois seguidos serem idênticos: a janela de upgrades recebe os dados do servidor alguns quadros depois de abrir
+    (o servidor só os escreve com a janela acompanhada), e um print na frente disso mostra a lista vazia. Em vez de repetir o caso até
+    passar, espera o estado parar de mudar e grava o último print. O arquivo é lido no desktop, por `md5sum`."""
+    anterior = f"{destino}/.estavel.png"
+    for _ in range(tentativas):
+        ctl("screenshot", anterior)
+        ctl("wait", "3")
+        ctl("screenshot", alvo)
+        soma = subprocess.run(["ssh", "desktop", f"md5sum {shlex.quote(anterior)} {shlex.quote(alvo)}"], capture_output=True, text=True).stdout.split()
+        if len(soma) == 4 and soma[0] == soma[2]:
+            return
+        ctl("wait", "5")
+    raise RuntimeError(f"o estado de {alvo} não parou de mudar em {tentativas} prints")
 
 
 def tira_port(c, x, escala, destino):
@@ -297,6 +401,11 @@ def tira_port(c, x, escala, destino):
         cx, cy = (int(v) for v in clique.split(","))
         ctl("click-at", str(esquerda + cx), str(topo + cy))
         ctl("wait", "6")
+        if (cx, cy) == ABA:
+            # A janela de upgrades só recebe os dados do servidor no tick seguinte à abertura (o servidor os escreve com a janela
+            # acompanhada): com o servidor parado, a primeira janela de uma rodada abria com a lista vazia. Um tick, como o do original.
+            comando("tick step 1")
+            ctl("wait", "4")
     if "hover" in c["args"]:
         # O Horizon dá o cursor em pixels de GUI da janela: o canto da tela mais o ponto dentro dela.
         hx, hy = c["args"]["hover"]
@@ -312,7 +421,11 @@ def tira_port(c, x, escala, destino):
             # Um passo do servidor por quadro, como o `CenaTelas`: a fase de cada print é conhecida.
             comando("tick step 1")
             ctl("wait", "2")
-        ctl("screenshot", f"{destino}/port_{c['nome']}_e{escala}{sufixo}.png")
+        alvo = f"{destino}/port_{c['nome']}_e{escala}{sufixo}.png"
+        if c["args"].get("clicar"):
+            espera_estado_estavel(alvo, destino)
+        else:
+            ctl("screenshot", alvo)
         if capturas > 1 and not ciclo:
             ctl("wait", "3")
     ctl("close")
@@ -325,7 +438,7 @@ def roda_port(destino, escalas, so=None):
     for escala in escalas:
         ctl("options-set", "guiScale", str(escala))
         x = 3
-        for c in casos() + casos_aba():
+        for c in todos_os_casos():
             if so and c["nome"] not in so:
                 continue
             monta_port(c, x, escala)
