@@ -6,17 +6,20 @@ use crate::chemical::{
 };
 use crate::containers::{InventorySlot, ItemResource, SlotContents};
 use crate::operation_tracker::{OperationTracker, RecipeError};
+use crate::recipe_cache::{
+    ChemicalInputCache, ComponentSensitiveInputCache, DoubleInputRecipe, DoubleInputRecipeCache,
+    InputIngredient,
+};
 use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler, RecipeStack};
 use crate::recipe_monitor::RecipeId;
 use crate::transaction::Transaction;
-use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Uma receita de um item e um químico para um item. Os valores e os ids vêm do mod.
 ///
-/// `per_tick_usage` não existe aqui: a receita que gasta o químico a cada tick usa
-/// [`crate::item_chemical_constant_recipe::ItemChemicalConstantUsageRecipe`], e quem monta o tile escolhe uma ou outra como
-/// o `createNewCachedRecipe` do Java (`recipe.perTickUsage()`).
+/// `per_tick_usage` escolhe a receita em cache, como o `createNewCachedRecipe` do Java: falso é `TwoInputCachedRecipe`
+/// ([`TwoInputItemChemicalRecipe`]), verdadeiro gasta o químico a cada tick
+/// ([`crate::item_chemical_constant_recipe::ItemChemicalConstantUsageRecipe`]).
 #[derive(Clone, Debug)]
 pub struct ItemChemicalToItemRecipe {
     pub id: String,
@@ -25,92 +28,64 @@ pub struct ItemChemicalToItemRecipe {
     pub chemical_input: ChemicalIngredient,
     pub chemical_amount: u32,
     pub output: ItemOutput,
+    /// `perTickUsage()`.
+    pub per_tick_usage: bool,
 }
 
 impl ItemChemicalToItemRecipe {
     /// `TwoInputMekRecipe.test`: o item e o químico casam, com a quantidade que a receita pede de cada um.
     pub fn test(&self, item: &SlotContents, chemical: &TankContents) -> bool {
-        item.resource
-            .as_ref()
-            .is_some_and(|resource| self.item_input.matches(resource))
+        item.resource.is_some()
+            && self.item_input.test_type(item)
             && item.amount >= self.item_count
-            && chemical
-                .resource
-                .as_ref()
-                .is_some_and(|resource| self.chemical_input.matches(resource))
+            && chemical.resource.is_some()
+            && self.chemical_input.test_type(chemical)
             && chemical.amount >= u64::from(self.chemical_amount)
     }
+
+    /// O índice de `MekanismRecipeType.getInputCache` (`InputRecipeCache.ItemChemical`) das receitas que `source` devolve, lido
+    /// na primeira pergunta depois de um `clear`. `empty_chemical` é o `ChemicalIds.EMPTY`, que o índice do químico não guarda.
+    pub fn cache(
+        source: impl Fn() -> Vec<Rc<Self>> + 'static,
+        empty_chemical: &str,
+    ) -> Rc<ItemChemicalCache> {
+        Rc::new(DoubleInputRecipeCache::new(
+            source,
+            |recipe: &Self| &recipe.item_input,
+            ComponentSensitiveInputCache::new(),
+            |recipe: &Self| &recipe.chemical_input,
+            ChemicalInputCache::new(Some(empty_chemical)),
+        ))
+    }
 }
+
+impl ItemChemicalToItemRecipe {
+    /// O índice de uma lista que não muda.
+    pub fn cache_of(recipes: Vec<Rc<Self>>, empty_chemical: &str) -> Rc<ItemChemicalCache> {
+        Self::cache(move || recipes.clone(), empty_chemical)
+    }
+}
+
+impl DoubleInputRecipe<SlotContents, TankContents> for ItemChemicalToItemRecipe {
+    fn test(&self, item: &SlotContents, chemical: &TankContents) -> bool {
+        Self::test(self, item, chemical)
+    }
+}
+
+/// O índice das receitas de um item e um químico.
+pub type ItemChemicalCache = DoubleInputRecipeCache<
+    ItemChemicalToItemRecipe,
+    ItemIngredient,
+    SlotContents,
+    ComponentSensitiveInputCache,
+    ChemicalIngredient,
+    TankContents,
+    ChemicalInputCache,
+>;
 
 impl RecipeId for ItemChemicalToItemRecipe {
     fn recipe_id(&self) -> &str {
         &self.id
-    }
-}
-
-/// As receitas de um tile, com as perguntas de `DoubleInputRecipeCache`. Compartilhado: o tile troca a lista quando os dados
-/// recarregam, e quem pergunta (o tanque, a receita em cache) vê a nova.
-pub struct ItemChemicalRecipes {
-    recipes: RefCell<Rc<Vec<Rc<ItemChemicalToItemRecipe>>>>,
-}
-
-impl ItemChemicalRecipes {
-    pub fn new(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Rc<Self> {
-        Rc::new(Self {
-            recipes: RefCell::new(Rc::new(recipes)),
-        })
-    }
-
-    pub fn set(&self, recipes: Vec<Rc<ItemChemicalToItemRecipe>>) {
-        *self.recipes.borrow_mut() = Rc::new(recipes);
-    }
-
-    fn all(&self) -> Rc<Vec<Rc<ItemChemicalToItemRecipe>>> {
-        self.recipes.borrow().clone()
-    }
-
-    /// `containsInputA`: o tipo do item entra em alguma receita.
-    pub fn contains_item(&self, item: &ItemResource) -> bool {
-        self.all()
-            .iter()
-            .any(|recipe| recipe.item_input.matches(item))
-    }
-
-    /// `containsInputB`: o tipo do químico entra em alguma receita.
-    pub fn contains_chemical(&self, chemical: &ChemicalResource) -> bool {
-        self.all()
-            .iter()
-            .any(|recipe| recipe.chemical_input.matches(chemical))
-    }
-
-    /// `containsInputBA`, o que o tanque pergunta para inserir `chemical` com `item` no slot de entrada: sem item, vale
-    /// qualquer químico que alguma receita use (a validação do tanque já olhou isso); com item, o par tem de existir.
-    pub fn contains_pairing_ba(
-        &self,
-        item: Option<&ItemResource>,
-        chemical: &ChemicalResource,
-    ) -> bool {
-        let Some(item) = item else {
-            return true;
-        };
-        self.all().iter().any(|recipe| {
-            recipe.chemical_input.matches(chemical) && recipe.item_input.matches(item)
-        })
-    }
-
-    /// `findFirstRecipe(inputA, inputB)`: a primeira receita que as duas entradas pagam por inteiro.
-    pub fn find_first(
-        &self,
-        item: &SlotContents,
-        chemical: &TankContents,
-    ) -> Option<Rc<ItemChemicalToItemRecipe>> {
-        if item.is_empty() || chemical.is_empty() {
-            return None;
-        }
-        self.all()
-            .iter()
-            .find(|recipe| recipe.test(item, chemical))
-            .cloned()
     }
 }
 
@@ -233,14 +208,13 @@ mod tests {
                 resource: ItemResource::new("out", 64),
                 count: 1,
             },
+            per_tick_usage: false,
         })
     }
 
-    fn book() -> Rc<ItemChemicalRecipes> {
-        ItemChemicalRecipes::new(vec![
-            recipe("copper", "redstone", 10),
-            recipe("sand", "bio", 10),
-        ])
+    fn book() -> Rc<ItemChemicalCache> {
+        let recipes = vec![recipe("copper", "redstone", 10), recipe("sand", "bio", 10)];
+        ItemChemicalToItemRecipe::cache(move || recipes.clone(), "empty")
     }
 
     fn item(id: &str, amount: u32) -> SlotContents {
@@ -254,39 +228,26 @@ mod tests {
     #[test]
     fn the_recipe_needs_both_inputs_in_full() {
         let book = book();
-        assert!(
-            book.find_first(&item("copper", 1), &chemical("redstone", 10))
-                .is_some()
-        );
-        assert!(
-            book.find_first(&item("copper", 1), &chemical("redstone", 9))
-                .is_none()
-        );
-        assert!(
-            book.find_first(&item("copper", 1), &chemical("bio", 10))
-                .is_none()
-        );
-        assert!(
-            book.find_first(&item("copper", 1), &TankContents::default())
-                .is_none()
-        );
-        assert!(
-            book.find_first(&SlotContents::default(), &chemical("redstone", 10))
-                .is_none()
-        );
+        let find =
+            |item: &SlotContents, chemical: &TankContents| book.find_first_recipe(item, chemical);
+        assert!(find(&item("copper", 1), &chemical("redstone", 10)).is_some());
+        assert!(find(&item("copper", 1), &chemical("redstone", 9)).is_none());
+        assert!(find(&item("copper", 1), &chemical("bio", 10)).is_none());
+        assert!(find(&item("copper", 1), &TankContents::default()).is_none());
+        assert!(find(&SlotContents::default(), &chemical("redstone", 10)).is_none());
     }
 
     #[test]
     fn the_tank_asks_only_about_the_pairing_with_the_input_slot() {
         let book = book();
-        let copper = ItemResource::new("copper", 64);
-        let redstone = ChemicalResource::new("redstone");
-        let bio = ChemicalResource::new("bio");
-        assert!(book.contains_pairing_ba(Some(&copper), &redstone));
-        assert!(!book.contains_pairing_ba(Some(&copper), &bio));
-        assert!(book.contains_pairing_ba(None, &bio));
-        assert!(book.contains_chemical(&bio));
-        assert!(!book.contains_chemical(&ChemicalResource::new("tin")));
-        assert!(book.contains_item(&copper));
+        let copper = Some(ItemResource::new("copper", 64));
+        let redstone = Some(ChemicalResource::new("redstone"));
+        let bio = Some(ChemicalResource::new("bio"));
+        assert!(book.contains_input_ba(&copper, &redstone));
+        assert!(!book.contains_input_ba(&copper, &bio));
+        assert!(book.contains_input_ba(&None::<ItemResource>, &bio));
+        assert!(book.contains_input_b(&bio));
+        assert!(!book.contains_input_b(&Some(ChemicalResource::new("tin"))));
+        assert!(book.contains_input_a(&copper));
     }
 }

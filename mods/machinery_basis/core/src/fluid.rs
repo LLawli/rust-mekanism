@@ -4,6 +4,7 @@
 //! A lib não conhece nenhum fluido: quem usa dá o id e as regras como dados. O `FluidResource` do NeoForge também carrega
 //! `DataComponentPatch`; aqui ele é só o id, como o `ChemicalResource`.
 use crate::containers::Access;
+use crate::recipe_cache::{ShapedIngredient, TypedInstance};
 use crate::recipe_handlers::{ResourceOutput, TankInputHandler, TankOutputHandler};
 use crate::resource_tank::{Ingredient, ResourceTank, Rule, StackContents, Validator};
 use std::rc::Rc;
@@ -37,11 +38,20 @@ pub fn fluid_access_rule(access: Access) -> FluidRule {
 /// Um fluido que casa com o ingrediente de uma receita.
 pub type FluidIngredient = Ingredient<FluidResource>;
 
+impl TypedInstance for FluidResource {
+    fn type_id(&self) -> &str {
+        &self.id
+    }
+
+    fn is_empty(&self) -> bool {
+        false
+    }
+}
+
 impl FluidIngredient {
     /// Um fluido só, pelo id.
     pub fn fluid(id: &str) -> Self {
-        let id: Rc<str> = Rc::from(id);
-        Self::matching(move |resource: &FluidResource| resource.id == id)
+        Self::shaped(ShapedIngredient::of_type(id))
     }
 }
 

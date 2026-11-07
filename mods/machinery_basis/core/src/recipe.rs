@@ -1,7 +1,10 @@
 //! Receitas de tipo próprio, lidas do JSON. A lib não conhece os campos de nenhum mod: quem usa diz
 //! onde cada parte fica. Os ingredientes de item seguem como JSON, porque quem os resolve é o jogo.
+use crate::recipe_cache::{IngredientShape, ShapedIngredient};
 use crate::resource::{TAG_PREFIX, Tags};
-use serde_json::{Value, json};
+use serde_json::Value;
+use std::rc::Rc;
+use std::sync::Arc;
 
 const ITEM_COUNT: &str = "count";
 const ITEM_INGREDIENT: &str = "ingredient";
@@ -30,6 +33,25 @@ impl ResourceInput {
             Some(tag) => tags.contains(tag, resource),
             None => self.ingredient == resource,
         }
+    }
+
+    /// Os químicos que a entrada aceita, para o índice de receitas (`ChemicalStackIngredient.chemicals()`): o id, ou os membros
+    /// da tag como estavam na carga de dados.
+    pub fn chemicals(&self, tags: &Tags) -> Vec<Rc<str>> {
+        match self.ingredient.strip_prefix(TAG_PREFIX) {
+            Some(tag) => tags.members(tag).map(Rc::from).collect(),
+            None => vec![Rc::from(self.ingredient.as_str())],
+        }
+    }
+
+    /// O ingrediente do índice de receitas: a lista de [`ResourceInput::chemicals`] e o teste de tipo que
+    /// [`ResourceInput::accepts`] faz, com as tags desta carga de dados.
+    pub fn shaped(&self, tags: Arc<Tags>) -> ShapedIngredient {
+        let shape = IngredientShape::Types(self.chemicals(&tags));
+        let input = self.clone();
+        ShapedIngredient::new(shape, move |chemical| {
+            input.accepts(chemical.type_id(), &tags)
+        })
     }
 }
 
@@ -66,12 +88,30 @@ pub struct Conversion {
     pub amount: u64,
 }
 
-/// O `neoforge:or` é só uma lista, a forma que o jogo aceita de um mod.
+/// O `neoforge:or` é só uma lista, a forma que o jogo aceita de um mod. Um `or` dentro de outro `or` (ou de uma lista) é a
+/// mesma união: o jogo só lê as cadeias de uma lista e descartaria o resto, então a lista sai achatada, na ordem dos filhos
+/// (`CompoundIngredient.items()`).
 fn plain_ingredient(json: &Value) -> Value {
     if json.get("type").and_then(Value::as_str) == Some(OR_INGREDIENT) {
-        return json.get("values").cloned().unwrap_or_else(|| json!([]));
+        let mut flat = Vec::new();
+        flatten_or(json, &mut flat);
+        return Value::Array(flat);
     }
     json.clone()
+}
+
+fn flatten_or(json: &Value, flat: &mut Vec<Value>) {
+    match json {
+        Value::Array(list) => list.iter().for_each(|child| flatten_or(child, flat)),
+        Value::Object(object)
+            if json.get("type").and_then(Value::as_str) == Some(OR_INGREDIENT) =>
+        {
+            if let Some(values) = object.get("values") {
+                flatten_or(values, flat);
+            }
+        }
+        other => flat.push(other.clone()),
+    }
 }
 
 fn item_input(json: &Value) -> Option<ItemInput> {
@@ -127,6 +167,7 @@ impl Conversion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     const FIELDS: RecipeFields = RecipeFields {
         item: "item_input",
@@ -239,6 +280,28 @@ mod tests {
         );
     }
 
+    /// `chemical_conversion/fungi/from_mushrooms.json` do Mekanism: um `or` de `or`s, um deles com uma lista dentro. O jogo só
+    /// lê as cadeias de uma lista, então o que ficasse aninhado sumia e a receita inteira com ele.
+    #[test]
+    fn nested_or_ingredients_become_one_flat_list() {
+        let json = json!({
+            "input": {"ingredient": {"type": "neoforge:or", "values": [
+                {"type": "neoforge:or", "values": ["#c:mushrooms"]},
+                {"type": "neoforge:or", "values": [["minecraft:crimson_fungus", "minecraft:warped_fungus"]]},
+            ]}},
+            "output": {"amount": 10, "id": "a:fungi"},
+        });
+        let parsed = Conversion::parse(&json, &CONVERSION).unwrap();
+        assert_eq!(
+            parsed.item.ingredient,
+            json!([
+                "#c:mushrooms",
+                "minecraft:crimson_fungus",
+                "minecraft:warped_fungus"
+            ])
+        );
+    }
+
     #[test]
     fn a_resource_input_takes_an_id_or_a_tag() {
         let tags = Tags::load(&[("a:infuse".to_owned(), json!({"values": ["a:carbon"]}))]);
@@ -254,5 +317,47 @@ mod tests {
         };
         assert!(by_id.accepts("a:carbon", &tags));
         assert!(!by_id.accepts("a:redstone", &tags));
+    }
+
+    #[test]
+    fn a_tag_input_lists_its_members_for_the_recipe_index() {
+        use crate::chemical::ChemicalResource;
+        use crate::recipe_cache::InputIngredient;
+        let tags = Arc::new(Tags::load(&[
+            (
+                "a:infuse".to_owned(),
+                json!({"values": ["a:carbon", "a:gold"]}),
+            ),
+            ("a:other".to_owned(), json!({"values": ["a:tin"]})),
+        ]));
+        let by_tag = ResourceInput {
+            ingredient: "#a:infuse".into(),
+            amount: 1,
+        };
+        let ingredient = by_tag.shaped(tags.clone());
+        // Os membros que `accepts` aceita, e só eles.
+        assert_eq!(
+            ingredient.shape(),
+            &IngredientShape::types(&["a:carbon", "a:gold"])
+        );
+        assert!(ingredient.test_type(&ChemicalResource::new("a:gold")));
+        assert!(!ingredient.test_type(&ChemicalResource::new("a:tin")));
+        // Uma tag que não existe não tem membro, e um id é só ele.
+        let missing = ResourceInput {
+            ingredient: "#a:missing".into(),
+            amount: 1,
+        };
+        assert_eq!(
+            missing.shaped(tags.clone()).shape(),
+            &IngredientShape::types(&[])
+        );
+        let by_id = ResourceInput {
+            ingredient: "a:carbon".into(),
+            amount: 1,
+        };
+        assert_eq!(
+            by_id.shaped(tags).shape(),
+            &IngredientShape::types(&["a:carbon"])
+        );
     }
 }

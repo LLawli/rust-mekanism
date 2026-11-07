@@ -4,16 +4,18 @@
 //!
 //! A lib não conhece nenhum recurso: o tipo `R` diz qual é (químico, fluido), e quem usa dá as regras como dados.
 use crate::containers::{AutomationType, InventorySlot};
+use crate::recipe_cache::{IngredientShape, InputIngredient, ShapedIngredient, TypedInstance};
 use crate::transaction::{Callback, JournalCell, Journaled, Transaction, fire};
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 /// O que um recurso precisa ter para um contêiner guardá-lo: o `Resource` do NeoForge, comparável e copiável.
-pub trait Resource: Clone + PartialEq + fmt::Debug + 'static {}
+pub trait Resource: Clone + PartialEq + fmt::Debug + TypedInstance + 'static {}
 
-impl<T: Clone + PartialEq + fmt::Debug + 'static> Resource for T {}
+impl<T: Clone + PartialEq + fmt::Debug + TypedInstance + 'static> Resource for T {}
 
 /// `LargeResourceStack<R>`: o que um contêiner guarda. Vazio é sem recurso e com zero.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -318,29 +320,49 @@ impl<R: Resource> ResourceTank<R> {
     }
 }
 
-/// Um recurso que casa com o ingrediente de uma receita (`InputIngredient`). A lib não conhece ids: quem usa diz o que casa.
+/// Um recurso que casa com o ingrediente de uma receita (`InputIngredient`). A lib não conhece ids: quem usa diz o que casa, e
+/// como o `IInputCache` indexa o ingrediente (a [`IngredientShape`]).
 pub struct Ingredient<R> {
-    test: Rc<dyn Fn(&R) -> bool>,
+    shaped: ShapedIngredient,
+    resource: PhantomData<fn(&R)>,
 }
 
 impl<R> Clone for Ingredient<R> {
     fn clone(&self) -> Self {
         Self {
-            test: self.test.clone(),
+            shaped: self.shaped.clone(),
+            resource: PhantomData,
         }
     }
 }
 
 impl<R> Ingredient<R> {
-    /// Qualquer recurso que o predicado aceite, como uma tag.
-    pub fn matching(test: impl Fn(&R) -> bool + 'static) -> Self {
+    /// Um ingrediente com a classificação que o cache de receitas lê e o teste de tipo do jogo.
+    pub fn shaped(shaped: ShapedIngredient) -> Self {
         Self {
-            test: Rc::new(test),
+            shaped,
+            resource: PhantomData,
         }
     }
 
+    pub fn as_shaped(&self) -> &ShapedIngredient {
+        &self.shaped
+    }
+}
+
+impl<R: Resource> Ingredient<R> {
     pub fn matches(&self, resource: &R) -> bool {
-        (self.test)(resource)
+        self.shaped.test_type(resource)
+    }
+}
+
+impl<R> InputIngredient for Ingredient<R> {
+    fn test_type(&self, input: &dyn TypedInstance) -> bool {
+        self.shaped.test_type(input)
+    }
+
+    fn shape(&self) -> &IngredientShape {
+        self.shaped.shape()
     }
 }
 
@@ -477,6 +499,16 @@ mod tests {
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     struct Kind(&'static str);
+
+    impl TypedInstance for Kind {
+        fn type_id(&self) -> &str {
+            self.0
+        }
+
+        fn is_empty(&self) -> bool {
+            false
+        }
+    }
 
     fn counting() -> (Callback, Rc<Cell<u32>>) {
         let count = Rc::new(Cell::new(0));

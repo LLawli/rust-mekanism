@@ -367,6 +367,7 @@ mod tests {
                 resource: item("ingot"),
                 count: 1,
             },
+            per_tick_usage: true,
         });
         let input = InventorySlot::new(None);
         let output = InventorySlot::output(None, None);

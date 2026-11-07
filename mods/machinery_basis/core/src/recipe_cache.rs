@@ -187,6 +187,16 @@ impl ShapedIngredient {
     }
 }
 
+impl ShapedIngredient {
+    /// Um tipo só, pelo id: o ingrediente vanilla de um item ou de um químico, sem componentes.
+    pub fn of_type(id: &str) -> Self {
+        let wanted: Rc<str> = Rc::from(id);
+        Self::new(IngredientShape::types(&[id]), move |input| {
+            input.type_id() == &*wanted
+        })
+    }
+}
+
 impl InputIngredient for ShapedIngredient {
     fn test_type(&self, input: &dyn TypedInstance) -> bool {
         (self.test_type)(input)

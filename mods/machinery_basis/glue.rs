@@ -57,6 +57,9 @@ static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
 // Os índices de receitas por tipo. Só valem até a próxima carga de dados.
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
+/// Sobe a cada carga de dados (`data_loaded`). Os índices de receitas de cada thread (`MekanismRecipeType.getInputCache`) guardam a
+/// carga de onde saíram e se limpam (`clear`) quando ela muda.
+static DATA_GENERATION: AtomicU64 = AtomicU64::new(0);
 // A travessia de uma rede custa 1 ms a cada mil transmissores. Guardada por um segundo, uma mudança
 // demora até isso para valer, e nada se perde: a energia só espera no transmissor.
 const NETWORK_REFRESH_TICKS: i64 = 20;
@@ -109,7 +112,8 @@ pub(in crate::game) enum RecipeSource {
 }
 
 impl RecipeSource {
-    fn key(&self) -> &'static str {
+    /// O tipo de receita de onde as da máquina saem: um índice de receitas por tipo.
+    pub(in crate::game) fn key(&self) -> &'static str {
         match self {
             Self::Custom(recipe_type, _) | Self::Cooking(recipe_type) => recipe_type,
         }
@@ -305,8 +309,14 @@ pub(in crate::game) fn reload_apply(
     resource::set_source(BASIS_SOURCE, registry);
 }
 
-/// Os dados mudaram: os índices de receitas se refazem no próximo uso.
+/// A carga de dados em uso: muda a cada `data_loaded`.
+pub(in crate::game) fn data_generation() -> u64 {
+    DATA_GENERATION.load(Ordering::Acquire)
+}
+
+/// Os dados mudaram (`MekanismRecipeType.clearCache`): os índices de receitas se limpam e se refazem no próximo uso.
 pub(in crate::game) fn data_loaded() {
+    DATA_GENERATION.fetch_add(1, Ordering::AcqRel);
     MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner()).clear();
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
@@ -383,22 +393,6 @@ pub(in crate::game) fn conversions(
     let conversions = Arc::new(conversions.collect::<Vec<_>>());
     index.insert(recipe_type.to_owned(), conversions.clone());
     conversions
-}
-
-/// Se o item entra em alguma receita, junto do recurso que o tanque guarda, quando guarda.
-pub(in crate::game) fn is_recipe_input(
-    recipes: &[MachineRecipe],
-    stack: &ItemStack,
-    held: Option<&str>,
-) -> bool {
-    let tags = resource::current_tags();
-    recipes.iter().any(|recipe| {
-        let usable = match (&recipe.resource, held) {
-            (Some(input), Some(held)) => input.accepts(held, &tags),
-            _ => true,
-        };
-        recipe.item.test(stack) && usable
-    })
 }
 
 fn same_item(a: &ItemStack, b: &ItemStack) -> bool {

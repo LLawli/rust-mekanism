@@ -5,7 +5,11 @@
 //!
 //! A lib não conhece nenhum químico: quem usa dá o id, as regras de inserção, os atributos e as conversões como dados.
 use crate::cached_recipe::ItemIngredient;
-use crate::containers::{Access, AutomationType, InventorySlot};
+use crate::containers::{Access, AutomationType, InventorySlot, ItemResource, SlotContents};
+use crate::recipe_cache::{
+    ComponentSensitiveInputCache, InputIngredient, ShapedIngredient, SingleInputRecipe,
+    SingleInputRecipeCache,
+};
 use crate::recipe_handlers::{ResourceOutput, TankInputHandler, TankOutputHandler};
 use crate::resource_tank::{
     Ingredient, ResourceHandler, ResourceTank, Rule, StackContents, Validator,
@@ -171,8 +175,7 @@ pub type ChemicalIngredient = Ingredient<ChemicalResource>;
 impl ChemicalIngredient {
     /// Um químico só, pelo id.
     pub fn chemical(id: &str) -> Self {
-        let id: Rc<str> = Rc::from(id);
-        Self::matching(move |resource: &ChemicalResource| resource.id == id)
+        Self::shaped(ShapedIngredient::of_type(id))
     }
 }
 
@@ -226,11 +229,75 @@ pub struct ChemicalConversion {
     pub amount: i32,
 }
 
+impl SingleInputRecipe<SlotContents> for ChemicalConversion {
+    /// `ItemStackToChemicalRecipe.test(ItemStack)`: o ingrediente casa e a pilha tem o que ele pede.
+    fn test(&self, input: &SlotContents) -> bool {
+        input.resource.is_some() && self.input.test_type(input) && input.amount >= self.input_count
+    }
+}
+
+/// O índice de `MekanismRecipeType.CHEMICAL_CONVERSION` (`InputRecipeCache.SingleItem`).
+pub type ConversionCache = SingleInputRecipeCache<
+    ChemicalConversion,
+    ItemIngredient,
+    SlotContents,
+    ComponentSensitiveInputCache,
+>;
+
+impl ChemicalConversion {
+    /// O índice das conversões que `source` devolve, como o `getRecipes(world)` do tipo: lido na primeira pergunta depois de um
+    /// `clear`.
+    pub fn cache(source: impl Fn() -> Vec<Rc<Self>> + 'static) -> Rc<ConversionCache> {
+        Rc::new(SingleInputRecipeCache::new(
+            source,
+            |conversion: &Self| &conversion.input,
+            ComponentSensitiveInputCache::new(),
+        ))
+    }
+}
+
+impl ChemicalConversion {
+    /// O índice de uma lista que não muda.
+    pub fn cache_of(conversions: Vec<Self>) -> Rc<ConversionCache> {
+        let conversions: Vec<Rc<Self>> = conversions.into_iter().map(Rc::new).collect();
+        Self::cache(move || conversions.clone())
+    }
+}
+
+/// `ChemicalInventorySlot.canFillOrConvert` para quem não tem item com capability de químico: o item entra se a primeira
+/// conversão do tipo dele (`findTypeBasedRecipe`, sem a quantidade) dá um químico que o tanque aceita e que combina com o que
+/// ele guarda.
+pub fn can_fill_or_convert(
+    tank: &ChemicalTank,
+    conversions: &ConversionCache,
+    item: &ItemResource,
+) -> bool {
+    can_fill_or_convert_with(conversions, item, tank.resource().as_ref(), |chemical| {
+        tank.is_valid_for_insertion(chemical, AutomationType::Manual)
+    })
+}
+
+/// O mesmo para quem não tem o tanque na mão (o menu): `held` é o que o tanque guarda e `valid_for_insertion` o
+/// `isValidForInsertion(.., MANUAL)` dele. `Manual` passa por cima do limite de taxa de quem insere.
+pub fn can_fill_or_convert_with(
+    conversions: &ConversionCache,
+    item: &ItemResource,
+    held: Option<&ChemicalResource>,
+    valid_for_insertion: impl Fn(&ChemicalResource) -> bool,
+) -> bool {
+    let Some(conversion) = conversions.find_type_based_recipe(item) else {
+        // Sem receita, não entra.
+        return false;
+    };
+    // `simulateCanInsert`: o químico é válido para o tanque, e o tanque está vazio ou já guarda esse.
+    valid_for_insertion(&conversion.output) && held.is_none_or(|held| *held == conversion.output)
+}
+
 /// `ChemicalInventorySlot.fillTankOrConvert` para quem não tem item com capability de químico: vai direto à conversão.
 pub fn fill_tank_or_convert(
     slot: &InventorySlot,
     tank: &ChemicalTank,
-    conversions: &[ChemicalConversion],
+    conversions: &ConversionCache,
     transaction: Option<&Transaction>,
 ) {
     fill_tank_or_convert_with(slot, tank, conversions, &NoChemicalItems, transaction);
@@ -241,7 +308,7 @@ pub fn fill_tank_or_convert(
 pub fn fill_tank_or_convert_with(
     slot: &InventorySlot,
     tank: &ChemicalTank,
-    conversions: &[ChemicalConversion],
+    conversions: &ConversionCache,
     items: &dyn ChemicalItems,
     transaction: Option<&Transaction>,
 ) {
@@ -249,14 +316,12 @@ pub fn fill_tank_or_convert_with(
         return;
     }
     let contents = slot.contents();
-    let Some(resource) = contents.resource else {
+    let Some(resource) = contents.resource.clone() else {
         return;
     };
-    // `findFirstRecipe`: a primeira conversão que paga o que o slot tem, quantidade incluída. O `getMatchingInstance` que
-    // vem depois só devolve vazio onde o `test` já teria falhado.
-    let Some(conversion) = conversions.iter().find(|conversion| {
-        conversion.input.matches(&resource) && contents.amount >= conversion.input_count
-    }) else {
+    // `findFirstRecipe`: a primeira conversão que o índice acha para o que o slot tem, quantidade incluída. O
+    // `getMatchingInstance` que vem depois só devolve vazio onde o `test` já teria falhado.
+    let Some(conversion) = conversions.find_first_recipe(&contents) else {
         return;
     };
     let sub_transaction = Transaction::open(transaction);
@@ -396,13 +461,19 @@ mod tests {
         assert!(tank.is_empty());
     }
 
-    fn dust_to_redstone() -> ChemicalConversion {
-        ChemicalConversion {
+    fn conversions(conversions: Vec<ChemicalConversion>) -> Rc<ConversionCache> {
+        let conversions: Vec<Rc<ChemicalConversion>> =
+            conversions.into_iter().map(Rc::new).collect();
+        ChemicalConversion::cache(move || conversions.clone())
+    }
+
+    fn dust_to_redstone() -> Rc<ConversionCache> {
+        conversions(vec![ChemicalConversion {
             input: ItemIngredient::item("redstone"),
             input_count: 1,
             output: redstone(),
             amount: 10,
-        }
+        }])
     }
 
     fn dust_slot(amount: u32) -> InventorySlot {
@@ -415,9 +486,9 @@ mod tests {
     fn an_item_becomes_the_chemical_one_at_a_time() {
         let slot = dust_slot(3);
         let tank = ChemicalTank::open(1_000, None);
-        fill_tank_or_convert(&slot, &tank, &[dust_to_redstone()], None);
+        fill_tank_or_convert(&slot, &tank, &dust_to_redstone(), None);
         assert_eq!((slot.amount(), tank.amount()), (2, 10));
-        fill_tank_or_convert(&slot, &tank, &[dust_to_redstone()], None);
+        fill_tank_or_convert(&slot, &tank, &dust_to_redstone(), None);
         assert_eq!((slot.amount(), tank.amount()), (1, 20));
     }
 
@@ -426,7 +497,7 @@ mod tests {
         let slot = dust_slot(3);
         let tank = ChemicalTank::open(15, None);
         tank.set_contents(Some(redstone()), 10, None);
-        fill_tank_or_convert(&slot, &tank, &[dust_to_redstone()], None);
+        fill_tank_or_convert(&slot, &tank, &dust_to_redstone(), None);
         assert_eq!((slot.amount(), tank.amount()), (3, 10));
     }
 
@@ -440,7 +511,7 @@ mod tests {
             Rc::new(|_| true),
             None,
         );
-        fill_tank_or_convert(&slot, &tank, &[dust_to_redstone()], None);
+        fill_tank_or_convert(&slot, &tank, &dust_to_redstone(), None);
         assert_eq!((slot.amount(), tank.amount()), (3, 0));
     }
 
@@ -677,13 +748,8 @@ mod tests {
             output: redstone(),
             amount: 500,
         };
-        fill_tank_or_convert_with(
-            &slot,
-            &tank,
-            std::slice::from_ref(&conversion),
-            &items,
-            None,
-        );
+        let cache = conversions(vec![conversion]);
+        fill_tank_or_convert_with(&slot, &tank, &cache, &items, None);
         assert_eq!(
             (tank.resource(), tank.amount(), slot.amount()),
             (Some(redstone()), 30, 1)
@@ -692,7 +758,7 @@ mod tests {
         fill_tank_or_convert_with(
             &slot,
             &ChemicalTank::open(1_000, None),
-            &[conversion],
+            &cache,
             &NoChemicalItems,
             None,
         );

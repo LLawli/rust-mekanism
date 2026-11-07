@@ -4,6 +4,10 @@ use crate::containers::{
     AutomationType, EnergyContainer, InventorySlot, ItemResource, SlotContents,
 };
 use crate::operation_tracker::{OperationTracker, RecipeError, RecipeErrors};
+use crate::recipe_cache::{
+    ComponentSensitiveInputCache, IngredientShape, InputIngredient, ShapedIngredient,
+    SingleInputRecipe, SingleInputRecipeCache, TypedInstance,
+};
 use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler, RecipeStack};
 use crate::recipe_monitor::RecipeId;
 use crate::transaction::Transaction;
@@ -290,28 +294,37 @@ impl CachedRecipe {
     }
 }
 
-/// Um item que uma receita aceita. A lib não conhece ids: quem usa diz o que casa.
+/// Um item que uma receita aceita (`ItemStackIngredient`). A lib não conhece ids: quem usa diz o que casa, e como o índice de
+/// receitas classifica o ingrediente (a [`IngredientShape`]).
 #[derive(Clone)]
 pub struct ItemIngredient {
-    test: Rc<dyn Fn(&ItemResource) -> bool>,
+    shaped: ShapedIngredient,
 }
 
 impl ItemIngredient {
     /// Um item só, pelo id.
     pub fn item(id: &str) -> Self {
-        let id: Rc<str> = Rc::from(id);
-        Self::matching(move |resource| resource.id == id)
+        Self::shaped(ShapedIngredient::of_type(id))
     }
 
-    /// Qualquer item que o predicado aceite, como uma tag.
-    pub fn matching(test: impl Fn(&ItemResource) -> bool + 'static) -> Self {
-        Self {
-            test: Rc::new(test),
-        }
+    /// Um ingrediente com a classificação e o teste de tipo do jogo, como uma tag ou uma lista.
+    pub fn shaped(shaped: ShapedIngredient) -> Self {
+        Self { shaped }
     }
 
+    /// `testType` do item, sem a quantidade.
     pub fn matches(&self, resource: &ItemResource) -> bool {
-        (self.test)(resource)
+        self.shaped.test_type(resource)
+    }
+}
+
+impl InputIngredient for ItemIngredient {
+    fn test_type(&self, input: &dyn TypedInstance) -> bool {
+        self.shaped.test_type(input)
+    }
+
+    fn shape(&self) -> &IngredientShape {
+        self.shaped.shape()
     }
 }
 
@@ -340,13 +353,42 @@ pub struct ItemToItemRecipe {
 impl ItemToItemRecipe {
     /// `getMatchingInstance`: item diferente, ou menos do que a receita pede, não casa.
     pub fn test(&self, contents: &SlotContents) -> bool {
-        contents
-            .resource
-            .as_ref()
-            .is_some_and(|resource| self.input.matches(resource))
+        contents.resource.is_some()
+            && self.input.test_type(contents)
             && contents.amount >= self.input_count
     }
+
+    /// O índice de `MekanismRecipeType.getInputCache` (`InputRecipeCache.SingleItem`) das receitas que `source` devolve, lido na
+    /// primeira pergunta depois de um `clear`.
+    pub fn cache(source: impl Fn() -> Vec<Rc<Self>> + 'static) -> Rc<ItemToItemCache> {
+        Rc::new(SingleInputRecipeCache::new(
+            source,
+            |recipe: &Self| &recipe.input,
+            ComponentSensitiveInputCache::new(),
+        ))
+    }
 }
+
+impl ItemToItemRecipe {
+    /// O índice de uma lista que não muda.
+    pub fn cache_of(recipes: Vec<Rc<Self>>) -> Rc<ItemToItemCache> {
+        Self::cache(move || recipes.clone())
+    }
+}
+
+impl SingleInputRecipe<SlotContents> for ItemToItemRecipe {
+    fn test(&self, input: &SlotContents) -> bool {
+        Self::test(self, input)
+    }
+}
+
+/// O índice das receitas de um item para um item.
+pub type ItemToItemCache = SingleInputRecipeCache<
+    ItemToItemRecipe,
+    ItemIngredient,
+    SlotContents,
+    ComponentSensitiveInputCache,
+>;
 
 impl RecipeId for ItemToItemRecipe {
     fn recipe_id(&self) -> &str {

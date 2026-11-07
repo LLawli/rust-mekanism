@@ -170,6 +170,15 @@ impl Tags {
     pub fn contains(&self, tag: &str, resource: &str) -> bool {
         self.tags.get(tag).is_some_and(|tag| tag.contains(resource))
     }
+
+    /// Os membros de uma tag, os mesmos que [`Tags::contains`] aceita (`HolderSet` de uma tag): uma tag que não existe não tem
+    /// nenhum.
+    pub fn members(&self, tag: &str) -> impl Iterator<Item = &str> {
+        self.tags
+            .get(tag)
+            .into_iter()
+            .flat_map(|members| members.iter().map(String::as_str))
+    }
 }
 
 static CURRENT: RwLock<Option<Arc<Registry>>> = RwLock::new(None);
@@ -344,5 +353,18 @@ mod tests {
         set_source("fonte_a", one("a:tres"));
         assert!(current().get("a:um").is_none());
         assert!(current().get("a:tres").is_some() && current().get("b:dois").is_some());
+    }
+
+    #[test]
+    fn the_members_of_a_tag_are_the_ones_it_contains() {
+        let tags = Tags::load(&[file("a:infuse", json!({"values": ["a:gold", "a:carbon"]}))]);
+        let members: Vec<&str> = tags.members("a:infuse").collect();
+        assert_eq!(members, ["a:carbon", "a:gold"]);
+        assert!(
+            members
+                .iter()
+                .all(|member| tags.contains("a:infuse", member))
+        );
+        assert_eq!(tags.members("a:missing").count(), 0);
     }
 }

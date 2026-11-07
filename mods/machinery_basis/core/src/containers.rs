@@ -390,6 +390,14 @@ impl InventorySlot {
         Rc::ptr_eq(&self.cell, &other.cell)
     }
 
+    /// Uma referência que não segura o slot, para o contêiner que pergunta por ele e que o slot também alcança (o tanque e o
+    /// slot de entrada do Infuser): sem ela os dois se seguram para sempre.
+    pub fn downgrade(&self) -> WeakInventorySlot {
+        WeakInventorySlot {
+            cell: Rc::downgrade(&self.cell),
+        }
+    }
+
     pub fn resource(&self) -> Option<ItemResource> {
         self.cell.borrow().contents.resource.clone()
     }
@@ -425,6 +433,26 @@ impl InventorySlot {
             .validator
             .as_ref()
             .is_none_or(|validator| validator(resource))
+    }
+
+    /// `isValidForInsertion`: o `isValid` do slot e o `canInsert` dele, com o tipo de automação de quem insere.
+    pub fn is_valid_for_insertion(
+        &self,
+        resource: &ItemResource,
+        automation: AutomationType,
+    ) -> bool {
+        let state = self.cell.borrow();
+        let valid = state
+            .checks
+            .validator
+            .as_ref()
+            .is_none_or(|validator| validator(resource));
+        let accepted = state
+            .checks
+            .can_insert
+            .as_ref()
+            .is_none_or(|accepts| accepts(resource));
+        valid && accepted && state.can_insert.allows(automation)
     }
 
     /// `setContents`: sem transação, o aviso dispara na hora, e só se o conteúdo mudou.
@@ -519,6 +547,18 @@ impl InventorySlot {
             );
         }
         to_remove
+    }
+}
+
+/// [`InventorySlot::downgrade`].
+#[derive(Clone)]
+pub struct WeakInventorySlot {
+    cell: std::rc::Weak<JournalCell<SlotState>>,
+}
+
+impl WeakInventorySlot {
+    pub fn upgrade(&self) -> Option<InventorySlot> {
+        self.cell.upgrade().map(|cell| InventorySlot { cell })
     }
 }
 
