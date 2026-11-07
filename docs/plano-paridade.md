@@ -145,21 +145,61 @@ O Horizon não simula inserção, então o ejetor transaciona numa cópia do viz
 
 Falta na Fase 1:
 
-- Ligar a receita de uso constante às máquinas. `ItemChemicalConstantUsageRecipe` (`ItemStackConstantChemicalToObjectCachedRecipe`), o
+- Receita de uso constante nas máquinas. `ItemChemicalConstantUsageRecipe` (`ItemStackConstantChemicalToObjectCachedRecipe`), o
   `ChemicalUsageMultiplier`, o `usedSoFar` e os handlers de fluido e de saída de químico estão na lib, conferidos tick a tick com o
-  Osmium Compressor original (`compressor_run`). Falta o `ProgressMachine` e o glue escolherem por `per_tick_usage`, como o
-  `createNewCachedRecipe` do Java: hoje uma receita assim segue fora, com um aviso no log, e as máquinas que a usam (Osmium
-  Compressor, Purification Chamber, Chemical Injection Chamber) não estão portadas.
+  Osmium Compressor original (`compressor_run`). O Metallurgic Infuser já escolhe por `per_tick_usage` no `createNewCachedRecipe`,
+  como o Java (`ConstantUsageRecipeLookupHandler`, com o `usedSoFar` do tile): nenhuma receita dos arquivos do original usa a opção
+  nele, então o caminho só é exercitado por um teste sintético (`recipe_order.rs`), sem rastro do original para o Infuser. A
+  Enrichment Chamber, o Crusher e o Energized Smelter não leem o campo (o original também não: a receita deles não o tem). Seguem
+  sem máquina portada o Osmium Compressor, a Purification Chamber e a Chemical Injection Chamber, que o usam.
 - `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, mas nada os alimenta: nenhum item portado tem a capability
   de químico (`ChemicalItems`), e nenhum mapa de dados de atributos (`chemical_attribute_*`) é lido para o `ChemicalAttributes`. O
   `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer`
   o lê e nenhum slot portado o chama.
-- Ligar o índice de receitas. A lib tem `recipe_cache`, porte de `InputRecipeCache` (`Single` e `Double`, com `containsInput*`,
-  `findFirstRecipe` e `findTypeBasedRecipe`), conferido contra o Java em `dev/referencia/rastros/recipe_cache.jsonl`, mas
-  `ElectricLookup`, `ChemicalLookup` e `ItemChemicalRecipes` ainda procuram na ordem da lista (e `ElectricLookup` olha só o tipo,
-  sem a quantidade que `findFirstRecipe` confere), e as regras de inserção dos slots seguem no glue. Falta o glue entregar a
-  `IngredientShape` de cada ingrediente (o `Ingredient` do Horizon só tem `test`), a receita guardar o `ShapedIngredient`, e o
-  `clear()` na recarga de dados. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa.
+- Índice de receitas ligado. `ElectricLookup` e `ChemicalLookup` perguntam ao `SingleInputRecipeCache` e ao `DoubleInputRecipeCache`
+  (`findFirstRecipe`, com a quantidade que o `SizedIngredient.test` confere), a conversão de item em químico do slot de infusão usa
+  o `SingleInputRecipeCache` do `chemical_conversion` (`findFirstRecipe` ao converter, `findTypeBasedRecipe` na regra do slot,
+  `ChemicalInventorySlot.canFillOrConvert`), e as regras de inserção são as do Java: slot da Chamber com `containsRecipe`, slot de
+  entrada do Infuser com `containsRecipeAB` mais `containsRecipeA`, tanque com `containsRecipeBA` e `containsRecipeB`. O hopper e o
+  shift-clique do glue usam o mesmo índice. O índice é um por tipo de receita e por thread (`MekanismRecipeType.getInputCache`), e
+  `data_loaded` o limpa (`clear`, via `basis::data_generation`) e manda o monitor largar a receita em cache (`invalidateCache`).
+  Os ingredientes saem do Horizon assim: `Ingredient.order` (já com as tags de item resolvidas, na ordem do `HolderSet`) vira
+  `IngredientShape::Types`; um filho de `CompoundIngredient` que não é simples vira `Compound`, e um ingrediente de tipo de mod, ou
+  interseção e diferença com um filho assim, vira `Custom` (complexo). As tags de químico vêm de `Tags::members`. Não precisou de
+  injeção. Conferido em `mods/mekanism/tests/recipe_order.rs`: as máquinas de verdade respondem como o Java nas perguntas de
+  `recipe_cache.jsonl` (7 execuções de `findFirstRecipe` e 4 perguntas por tipo em que a ordem da lista erra). Não coberto sem o jogo: o
+  `DataComponentIngredient` exato, que o Horizon não representa (os arquivos das quatro máquinas não o usam).
+  Em jogo (desktop, 2026-11-06, `horizon2`, mundo `spike` em x=300, build `dev` de 2 min, sem erro nem aviso do compilador),
+  nas quatro máquinas, com energia de um Heat Generator encostado: o hopper de cima põe no slot de entrada o item que alguma receita
+  usa e deixa no hopper o que nenhuma usa (graveto) e o que o slot ocupado por outro item não aceita; o shift-clique faz o mesmo e o
+  que a máquina recusa vai para o inventário; a receita certa sai na saída (Chamber: barro vira 4 bolas de barro e teia vira 9 fios;
+  Crusher: pedregulho vira cascalho; Smelter: areia vira vidro e ferro bruto vira lingote; Infuser: terra com `bio` vira podzol,
+  com `fungi` vira micélio, areia com `bio` vira terra, netherrack com `fungi` vira nylium carmesim). Com `bio` no tanque o slot de
+  entrada recusa netherrack e aceita areia (`containsRecipeAB`); com o tanque vazio aceita o que alguma receita usa
+  (`containsRecipeA`). O slot de infusão converte `bio_fuel`, cogumelo, carvão e redstone quando o tanque os aceita e deixa o carvão
+  parado quando a terra está na entrada e nenhuma receita junta terra com carbono (`canFillOrConvert`). O `/reload` (um data pack do
+  mundo ligado e desligado por `/datapack`) refaz o índice: o graveto passa a ser aceito e esmagado em 6 pós de osso, e depois de
+  desligado a máquina para (a receita em cache cai) e o funil volta a recusar o graveto. Salvar e sair, reabrir: itens, progresso,
+  energia e tanque idênticos nas quatro. Dois defeitos achados e corrigidos: a tag `c:fuels/bio` não existia no conteúdo
+  (`bio_fuel` não virava `bio`; arquivo copiado da datagen do original), e o `neoforge:or` aninhado do `fungi/from_mushrooms`
+  (um `or` dentro de um `or`, com lista dentro) perdia os filhos no `plain_ingredient`, então cogumelo e fungo não viravam `fungi`;
+  agora a lista sai achatada, na ordem dos filhos (teste e mutação em `recipe.rs`). Não testado em jogo: o Crusher com
+  `minecraft:melon_slice` (duas receitas casam, `melon` pela tag e `melon_slice`; a escolha do Java depende da ordem de carga), e o
+  hopper de baixo, que não puxou nada da saída nem da entrada em nenhuma das quatro (a configuração de lados do original não foi
+  comparada). Faltam também tags `c:` que a datagen do Mekanism gera e o conteúdo não tem (`c:alloys`, `c:circuits`, `c:dusts/bronze`,
+  `c:dusts/lead`, os `c:buckets/*`, entre outras): comparar a lista inteira e copiar o que cada receita portada usa.
+- Slots de entrada. `InputInventorySlot` passa `ConstantPredicates.notExternal()` como `canExtract` (`InputInventorySlot.java`, o
+  construtor protegido chama `super(capacity, notExternal(), insertPredicate, ..)`), e `BasicResourceContainer
+  .isCurrentValidForExtraction` aplica o predicado com o `AutomationType` de quem pede: o hopper e o cano (`External`) não tiram a
+  entrada, o jogador (`Manual`) e a máquina (`Internal`) tiram. A lib usava `Access::Any` nos slots de entrada da Chamber, do
+  Crusher, do Smelter e do Infuser; agora usa `Access::NotExternal`. Teste em `mods/mekanism/tests/input_slot_access.rs`; trocar
+  `NotExternal` por `Any` em qualquer dos dois slots o faz falhar (mutação feita, uma de cada vez). Sem rastro do Java: o
+  `mekanism-ref` estava fora de uso por regra, então a prova é a leitura do código. Diverge ainda, e não foi corrigido: o slot de
+  infusão (`ChemicalInventorySlot.fillOrConvert`) e o slot de energia (`EnergyInventorySlot.fillOrConvert`) extraem com
+  `!external || !canFillOrConvert(item)` e inserem com `internal || canFillOrConvert(item)`, e a lib usa `Access::Any` nos dois.
+  Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
+  complexas do Java itera em ordem de hash, e aqui na da lista, o que só difere com mais de uma receita complexa casando a mesma
+  entrada.
 - Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Faltam o tooltip do item, os efeitos de `muffling` e `xp_containment` (a aba de XP do original aparece com o upgrade de xp_containment e o port não a tem), a receita do `muffling` e os tipos que
   nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
   `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.
@@ -255,7 +295,7 @@ fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 **Máquinas (infuser e elétricas)**
 
 - Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
-- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só na lib, sem máquina que o use.
+- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só no Infuser, sem receita dos arquivos que o use.
 - Clique põe qualquer item na entrada. Slot de energia sem função.
 - Sem upgrades, controle de redstone, comparador, som, partículas, abas, nome do químico no tooltip.
 - Luz 13 em vez de 8. Conteúdo solto ao quebrar, em vez de guardado no item.

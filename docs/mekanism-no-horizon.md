@@ -104,7 +104,7 @@ Ainda difere do original em:
   couber, o que nunca acontece num buffer de 20 J;
 - a luz da máquina ligada é 13, do template da fornalha, e não 8;
 - quebrar o bloco solta o conteúdo, em vez de guardar no item;
-- `per_tick_usage` não é lido: nenhuma receita de infusão usa, mas a Chemical Injection Chamber vai precisar.
+- `per_tick_usage` é lido e o Infuser escolhe `ItemChemicalConstantUsageRecipe` quando é verdadeiro, mas nenhuma receita de infusão dos arquivos usa; a Chemical Injection Chamber vai precisar.
 
 ## Máquinas elétricas: estado atual
 

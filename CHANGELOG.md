@@ -41,7 +41,17 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   baixo, como o `animate_sprite_interpolate.fsh` na GPU: injeção `sprite_ties` em `HudRenderer::animate_sprites`. Medido contra o
   original, prints do ciclo com um estado idêntico no port, antes e depois: `base` 18 e 40 de 40, `bio` 10 e 16, `fungi` 6 e 21, lava 40 e 40
   (ver `docs/injecoes-horizon.md`, H26).
-
+- A receita que cada máquina escolhe segue o índice de receitas do Mekanism (`InputRecipeCache`), não a ordem da lista: com mais de
+  uma receita para o mesmo item, vale a que o mapa por item devolve, e as de ingrediente complexo vêm depois. A Enrichment Chamber, o
+  Crusher e o Energized Smelter só pegam uma receita quando a pilha tem a quantidade que ela pede (antes olhavam só o tipo). O slot
+  de entrada e o tanque do Infuser, e o hopper vizinho, usam as regras do original (`containsRecipe`, `containsRecipeAB`/`A`,
+  `containsRecipeBA`/`B`). O slot de infusão só aceita o item cuja conversão o tanque aceita (`canFillOrConvert`), e a conversão
+  escolhida é a do índice. O Infuser usa a receita de uso constante quando a receita tem `per_tick_usage`; antes a receita era
+  descartada com um aviso. Os arquivos do original não a usam, então o jogo normal não muda.
+- O slot de entrada da Enrichment Chamber, do Crusher, do Energized Smelter e do Metallurgic Infuser não deixa mais o hopper ou o
+  cano tirar o item (`InputInventorySlot` extrai com `notExternal()`); o jogador e a máquina continuam tirando.
+- Cogumelos e fungos viram `fungi` no slot de infusão do Infuser: o `neoforge:or` dentro de outro `neoforge:or` perdia os filhos e a
+  receita `fungi/from_mushrooms` sumia. E `bio_fuel` vira `bio`: faltava a tag `c:fuels/bio`.
 - O convidado de LAN ou de servidor dedicado vê a janela de upgrades completa: os tipos e as tags de upgrade vão do servidor ao cliente
   por `native_net_send_to_player` quando o jogador entra e a cada `/reload`. Antes a janela aparecia vazia, sem lista nem "Supported:".
 - O progresso de instalação da janela de upgrades mostra o valor de um tick atrás, como o cliente do original.

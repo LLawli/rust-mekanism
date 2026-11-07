@@ -176,17 +176,24 @@ de energia só marcam para salvar, a saída despausa).
 | `recipe_cache` | `InputRecipeCache` (`SingleInputRecipeCache`, `DoubleInputRecipeCache`) e os `IInputCache` por tipo, componentes e químico |
 | `item_chemical_constant_recipe` | `ItemStackConstantChemicalToObjectCachedRecipe` e `ChemicalUsageMultiplier`, com o `usedSoFar` |
 
-A lib não conhece id nenhum: o ingrediente de item e o de químico são predicados, e as conversões e as receitas chegam como
-dados. O tanque do Infuser só aceita um químico que alguma receita usa (`containsRecipeB`) e, com item na entrada, que combine
+A lib não conhece id nenhum: o ingrediente de item e o de químico são predicados com a forma que o índice lê, e as conversões e as
+receitas chegam como dados. O tanque do Infuser só aceita um químico que alguma receita usa (`containsRecipeB`) e, com item na entrada, que combine
 com ele (`containsRecipeBA`).
 
-Limites conhecidos: a receita de uso constante (`per_tick_usage`) existe na lib e está conferida com o Osmium Compressor original, mas
-o `ProgressMachine` e o glue ainda não a escolhem: o glue deixa de fora, com um aviso, uma receita que tenha `true`. O `usedSoFar`
-chega à receita nova pelo monitor (`RecipeLookupHandler::saved_used_so_far`, o `ConstantUsageRecipeLookupHandler`). O
+O índice de receitas (`recipe_cache`) é o `getInputCache` do tipo de receita: um por tipo, que todas as máquinas do tipo e as regras de
+inserção compartilham, montado na primeira pergunta depois de um `clear` (`ItemToItemRecipe::cache`, `ItemChemicalToItemRecipe::cache`,
+`ChemicalConversion::cache`). A receita guarda um `ItemIngredient` ou `ChemicalIngredient`, que embrulham o `ShapedIngredient`: o teste
+de tipo do jogo e a `IngredientShape` que o índice lê (o que o `mapIngredient` do Java faz com o ingrediente). O mod entrega a forma:
+`ResourceInput::shaped` faz a do químico, com os membros da tag (`Tags::members`) como estavam na carga de dados. A máquina procura a
+receita no índice (`findFirstRecipe`, quantidade incluída), o slot de entrada da Chamber tem `containsRecipe` como validador, o do
+Infuser `containsRecipeA` e `containsRecipeAB`, e o tanque `containsRecipeB` e `containsRecipeBA`. O slot e o tanque se perguntam um
+pelo outro; o tanque segura o slot por `WeakInventorySlot`, para os dois não se segurarem.
+
+Limites conhecidos: a receita de uso constante (`per_tick_usage`) é a que o Infuser cria quando a receita a pede, com o `usedSoFar` do
+tile (`getSavedUsedSoFar`). Os arquivos de infusão do original não a usam, e o rastro dela é o do Osmium Compressor. O
 `fillTankFromSlot` e o `ChemicalAttributeValidator` existem, mas nenhum item portado tem a capability de químico (o tile entrega
 `ChemicalItems`) e nenhum mapa de atributos é lido (o mod entrega `ChemicalAttributes`); sem eles o comportamento é o de antes.
-O `FluidResource` é só o id, sem o `DataComponentPatch` do NeoForge. A regra de inserção do slot de entrada (`containsRecipeAB`)
-segue no glue, na regra do hopper, e o tanque tem a dele.
+O `FluidResource` é só o id, sem o `DataComponentPatch` do NeoForge.
 
 ### Upgrades
 
