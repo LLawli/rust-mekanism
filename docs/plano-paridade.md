@@ -183,21 +183,52 @@ Falta na Fase 1:
   energia e tanque idênticos nas quatro. Dois defeitos achados e corrigidos: a tag `c:fuels/bio` não existia no conteúdo
   (`bio_fuel` não virava `bio`; arquivo copiado da datagen do original), e o `neoforge:or` aninhado do `fungi/from_mushrooms`
   (um `or` dentro de um `or`, com lista dentro) perdia os filhos no `plain_ingredient`, então cogumelo e fungo não viravam `fungi`;
-  agora a lista sai achatada, na ordem dos filhos (teste e mutação em `recipe.rs`). Não testado em jogo: o Crusher com
-  `minecraft:melon_slice` (duas receitas casam, `melon` pela tag e `melon_slice`; a escolha do Java depende da ordem de carga), e o
-  hopper de baixo, que não puxou nada da saída nem da entrada em nenhuma das quatro (a configuração de lados do original não foi
-  comparada). Faltam também tags `c:` que a datagen do Mekanism gera e o conteúdo não tem (`c:alloys`, `c:circuits`, `c:dusts/bronze`,
-  `c:dusts/lead`, os `c:buckets/*`, entre outras): comparar a lista inteira e copiar o que cada receita portada usa.
+  agora a lista sai achatada, na ordem dos filhos (teste e mutação em `recipe.rs`). Em jogo, depois: o glue combinado (heat, receitas, slots) compilou em `horizon2` sem aviso, e as quatro máquinas
+  processam, o Dump esvazia o tanque na hora, a janela de upgrades abre, o Heat Generator gera e o sprite do químico aparece no tanque
+  (2026-11-06, build `dev` incremental de 1 min 21 s).
+  **Crusher com `melon_slice`** (resolvido): o original acha uma só receita (`crushing/biofuel/melon_slice`, índice 32 de 255 na lista
+  carregada, `crusher_melon.jsonl`), porque `c:crops/melon` do NeoForge lista só `minecraft:melon`. A tag escrita à mão no port listava a
+  fatia, e as duas receitas casavam: o port dava 6 de bio fuel. A tag foi corrigida (`melon`), em jogo agora sai 1, e `c_tags.rs` confere
+  a tag e o conjunto de receitas que casam contra o rastro. Conferidas as outras 61 tags `c:` escritas à mão contra o jar do NeoForge
+  26.3.0.100 (`data/c/tags`): só as listas achatadas diferem (o port expande `#minecraft:*_ores`, `#c:sands/*` e `#c:seeds/*` em itens),
+  com o mesmo conteúdo. A escolha entre duas receitas que casem a mesma entrada continua dependendo da ordem da lista: o original
+  a tira do `RecipeMap` do 26.3 (mapa de hash, não a ordem dos arquivos) e o Horizon entrega os arquivos em ordem de pasta
+  (`native_recipes_of_type`: "in file order"). Sem duas receitas casando a mesma entrada nas quatro máquinas, a diferença não aparece.
+  **Hopper embaixo** (resolvido, ver "Slots de entrada"). Tags `c:` da datagen: das 173 de `mekanism` e `mekanismgenerators`, 6 foram
+  copiadas (`c:alloys`, `c:circuits` e as três de `circuits/*`, e `c:ores/osmium` de bloco); as 143 que faltam citam item, bloco ou
+  fluido que o port não tem (pós, lingotes, pepitas e blocos de bronze, chumbo, estanho, urânio e fluorita; baldes; pellets; baús e barris
+  pessoais; ferramentas Meka; `#mekanism:transmitters/buffered`), e não se edita uma tag do original para listar menos. Fluid e
+  entity_type não foram copiados: não se confirmou que o Horizon os leia. Falta ainda comparar o que o Horizon descarta em silêncio
+  (entrada ou `#tag` desconhecida) com cada receita portada quando esses itens chegarem.
 - Slots de entrada. `InputInventorySlot` passa `ConstantPredicates.notExternal()` como `canExtract` (`InputInventorySlot.java`, o
   construtor protegido chama `super(capacity, notExternal(), insertPredicate, ..)`), e `BasicResourceContainer
   .isCurrentValidForExtraction` aplica o predicado com o `AutomationType` de quem pede: o hopper e o cano (`External`) não tiram a
   entrada, o jogador (`Manual`) e a máquina (`Internal`) tiram. A lib usava `Access::Any` nos slots de entrada da Chamber, do
   Crusher, do Smelter e do Infuser; agora usa `Access::NotExternal`. Teste em `mods/mekanism/tests/input_slot_access.rs`; trocar
   `NotExternal` por `Any` em qualquer dos dois slots o faz falhar (mutação feita, uma de cada vez). Sem rastro do Java: o
-  `mekanism-ref` estava fora de uso por regra, então a prova é a leitura do código. Diverge ainda, e não foi corrigido: o slot de
-  infusão (`ChemicalInventorySlot.fillOrConvert`) e o slot de energia (`EnergyInventorySlot.fillOrConvert`) extraem com
-  `!external || !canFillOrConvert(item)` e inserem com `internal || canFillOrConvert(item)`, e a lib usa `Access::Any` nos dois.
-  Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
+  `mekanism-ref` estava fora de uso por regra, então a prova é a leitura do código. Os slots de infusão e de energia agora seguem `fillOrConvert` (`ChemicalInventorySlot`
+  e `EnergyInventorySlot`): tiram com `!external || !canFillOrConvert(item)` e inserem com `internal || canFillOrConvert(item)`, na
+  lib (`SlotChecks::fill_or_convert`, com `extract_by` e `insert_by`). `slot_rules.rs` repete as 56 perguntas do slot de infusão
+  (4 tanques, 2 estados da entrada, 7 itens, as três automações, inserir e tirar) e as 7 do de energia, por máquina, gravadas do
+  original por `SlotsTraceTest.java` (`slots_*.jsonl`); trocar a regra de tirar, a de inserir, a conversão de energia ou o slot de
+  infusão por `Any` o faz falhar (mutação feita, uma de cada vez).
+  **Hopper embaixo** (`TileComponentConfig.setupItemIOConfig`, `setupItemIOExtraConfig` e `AttachedSideConfig`,
+  `LightConfigInfo.MACHINE` e `EXTRA_MACHINE`): a máquina posta pelo item tem todas as faces em `INPUT`, a direita em `OUTPUT` e as
+  costas em `ENERGY`; no Infuser a base é `EXTRA` (o slot de infusão). O hopper só puxa do bloco acima dele, então só a base
+  conta. `INPUT` é `InventorySlotInfo(true, false, ..)`: não deixa tirar. Por isso no original o hopper de baixo não leva nada da
+  Chamber, do Crusher nem do Smelter (a saída é pela direita), e o port já fazia o mesmo. No Infuser a base é
+  `InventorySlotInfo(true, true, infusão)`, e o hopper de baixo tira do slot de infusão o que `fillOrConvert` deixa um `EXTERNAL`
+  tirar (graveto; bio fuel com o tanque cheio de bio ou com fungi), e o port não tirava: `item_slots` dava `outputs: &[]`. Corrigido
+  (`item_slots`, `sides` e o `can_give` do `tick_hoppers`). Rastro do Java com o hopper embaixo, e um em cada face apontando para a
+  máquina com um item de cada tipo, nas quatro máquinas, posta como um jogador a poria; `slot_rules.rs` repete as seis faces e as
+  fases de baixo. Em jogo (`horizon2`): o hopper embaixo do Infuser leva o graveto, não leva o cogumelo que o tanque converte, leva o
+  bio fuel quando o tanque tem fungi, e embaixo da Chamber não leva nada. Fica para a Fase 2: uma máquina posta por `setblock` ficaria
+  com todos os lados em `NONE` no original (`ConfigInfo` nasce em `NONE` e só `applyImplicitComponents` aplica o padrão do item;
+  lido no código, não gravado), e o port trata toda máquina como se viesse do item; e a configuração por instância (a tela de lados, o Configurator). Fica para o slot de energia: o original põe
+  `redstone` no slot de energia por um hopper pelas costas (`ENERGY` é `InventorySlotInfo(true, true, ..)` e a regra aceita o que
+  tem receita `energy_conversion`), e o port não, porque as receitas `energy_conversion` (`redstone`, `redstone_block`) e o
+  `fillContainerOrConvert` do slot ainda não estão portados: `no_energy_conversion` na configuração faz o slot recusar tudo; o teste
+  ignora a `redstone` pelas costas e diz por quê. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
   complexas do Java itera em ordem de hash, e aqui na da lista, o que só difere com mais de uma receita complexa casando a mesma
   entrada.
 - Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Faltam o tooltip do item, os efeitos de `muffling` e `xp_containment` (a aba de XP do original aparece com o upgrade de xp_containment e o port não a tem), a receita do `muffling` e os tipos que

@@ -4,6 +4,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Tags `c:` da datagen do original que o conteúdo já pode usar, copiadas byte a byte: `c:alloys`, `c:circuits` e
+  `c:circuits/{advanced,elite,ultimate}` (item) e `c:ores/osmium` (bloco). As outras 143 esperam os itens, blocos e fluidos que
+  citam. `c_tags.rs` confere as cópias e que nenhuma tag `c:` cita o que o Horizon descartaria.
+
 ### Changed
 
 - As telas das quatro máquinas e do Heat Generator seguem os elementos do Java, em vez de aproximações: a barra de energia é `bar/base`
@@ -27,6 +33,19 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   (`VirtualSlotContainerScreen.extractSlotHighlightFront` chama o `Back`). Uma injeção em `draw_slot_highlight`.
 
 ### Fixed
+
+- Um hopper embaixo do Metallurgic Infuser tira do slot de infusão o que o tanque não aceita nem converte (`DataType.EXTRA` da base,
+  `InventorySlotInfo(true, true, ..)`, e o `canExtract` de `ChemicalInventorySlot.fillOrConvert`: `!external || !canFillOrConvert`):
+  um graveto, ou o bio fuel com o tanque cheio de outro químico. O que o tanque converte fica. Nas outras três máquinas a base é
+  `DataType.INPUT`, que não deixa tirar, então o hopper de baixo não leva nada (nem a entrada nem a saída, que fica à direita), como
+  no original. Rastro do Java (`slots_*.jsonl`, `SlotsTraceTest.java`) e `slot_rules.rs` conferem as seis faces das quatro máquinas.
+- Os slots de infusão e de energia recusam, para quem está de fora (`AutomationType.EXTERNAL`) ou à mão (`MANUAL`), o item que não
+  convertem, e entregam a quem está de fora só o que não convertem (`fillOrConvert` de `ChemicalInventorySlot` e de
+  `EnergyInventorySlot`: tiram com `!external || !canFillOrConvert(item)` e inserem com `internal || canFillOrConvert(item)`). A lib usava
+  `Any`. As 56 perguntas do slot de infusão e as 7 do de energia, por máquina, batem com o original.
+- A tag `c:crops/melon` lista `minecraft:melon`, como a do NeoForge, e não a fatia: com a fatia, o Crusher achava duas receitas para
+  `melon_slice` (`crushing/biofuel/melon` e `crushing/biofuel/melon_slice`) e dava 6 de bio fuel em vez de 1. O original acha só a da
+  fatia (`crusher_melon.jsonl`), e em jogo o port agora dá 1.
 
 - O Heat Generator perde calor para o ar de cada face com a temperatura do bloco vizinho, como `simulateEnvironment` (antes usava a do
   próprio bloco nas seis), e a troca de calor menor que `HeatAPI.EPSILON` é ignorada com o valor do original (`1e-6`, antes `1e-5`).
