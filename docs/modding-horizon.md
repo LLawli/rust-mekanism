@@ -335,7 +335,10 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
 - Energia é `i32`, gravada no NBT como o int `energy`.
 - Fluidos de mod existem em tanques, mas ainda não como blocos no mundo nem em baldes.
 - O tick de block entity só roda no servidor. A tela lê data slots, o update tag ou `native_screen_extra_data`.
-- `native_menu_slot_rules` roda no crate da biblioteca, sem `Game`, e não alcança os módulos do mod.
+- `native_menu_slot_rules` roda no crate da biblioteca (`horizon-client-lib`), sem `Game`, e não alcança os módulos do mod nem o crate `[[crate]]`
+  (que é dependência do `horizon-client`, não da biblioteca): a injeção por `hook =` não compila (`unlinked crate`). O que alcança é o crate `[api]`:
+  `Hooks::menu_slot_rules(&self, event)`, com `event.menu`, `event.slot`, `event.stack`, `event.may_place` e `event.max_stack`, e ele pode usar o
+  `[[crate]]` do mod (a mesma cópia, no mesmo processo). A regra que precisa do estado do bloco vem pronta de quem viu o jogo (`machinery_basis_core::slot_rules`).
 - `native.py check` usa `-D warnings`: código usado só em testes precisa de `#[cfg(test)]`.
 - Dedicated server exige export próprio (`--server-output`), e mods nativos ainda não entram na checagem de mods ao
   conectar.
@@ -353,7 +356,8 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
   `registry-v1.bin`: o cache não sabe que o código do mod mudou.
 - `native_draw_cube` usa unidades de modelo, de 0 a 16.
 - O cliente só tem a block entity se o servidor mandar uma cópia, por `block_entity_update_tag`.
-- `native_menu_slot_rules` roda em `horizon_client::menu`, fora de `crate::game`: o helper não alcança um `[[module]]` do mod.
+- `native_menu_slot_rules` roda em `horizon_client::menu`, fora de `crate::game`: o helper não alcança um `[[module]]` do mod. Use o `[api]`.
+- Um `[[crate]]` tem `dependent`: o padrão é o `horizon-client`, e a biblioteca (`horizon-client-lib`) não o vê.
 - `horizon-ctl open` separa os argumentos por espaço: um mundo com espaço no nome se abre pela tela, com `click <id da linha>`.
 - Um mod de conteúdo só pode ter arquivos no próprio namespace, em `data/minecraft/tags/` e em `data/c/tags/`. Um arquivo fora
   disso recusa o mod inteiro, sem erro na tela: os blocos dele viram ar no mundo, e o motivo só aparece em `logs/latest.log`

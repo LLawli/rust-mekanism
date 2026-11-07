@@ -142,6 +142,15 @@ aninhada, e uma ligação só pode ser parâmetro ou `self` inteiro.
 `machinery_slot_accepts`, a parte de `move_in_item` que decide se o item entra, sem escrever nem mexer no cooldown do hopper. Módulo de
 mixin não aceita `//!` no topo, que conta como atributo de arquivo.
 
+## Regra de slot do clique
+
+`slot_rules` (núcleo) é a ponte entre quem vê o jogo e o hook `menu_slot_rules` do Horizon, que roda dentro do menu sem o `Game` nem a posição do
+bloco: o mod deixa ali, antes de cada clique de menu de máquina, a regra do bloco aberto (`set(dono, menu, regra)`, com a regra
+`Fn(slot, id do item) -> bool`, já com o estado do bloco), e o crate `[api]` da `machinery_basis` (`api/src/lib.rs`, `Hooks::menu_slot_rules`) a consulta
+(`ask`), só para tirar (`may_place &= regra`; o slot de resultado que o tipo de menu já recusa continua recusando). Uma regra por dono, para o Mekanism e o
+Generators não se apagarem, e nenhum id do Mekanism: o menu e o item chegam como texto. A cópia do núcleo é uma só no processo, porque o `[api]` o declara
+por caminho (`native-crates/machinery_basis/core`), o mesmo `[[crate]]` dos módulos de glue; um `thread_local` vale porque o hook responde na thread do clique.
+
 ## Objetos vivos das máquinas
 
 A base de máquina é uma cópia literal do Java: `Transaction` com gerenciador por thread, contêineres (`EnergyContainer`,
@@ -153,6 +162,12 @@ No Horizon o objeto de uma máquina é um cache da `ModBlockEntity`. Mora numa t
 `mods/mekanism/native/glue.rs`. Nasce no primeiro tick depois de uma lacuna, refeito dos itens, da energia e do progresso que a
 `ModBlockEntity` guarda; todo tick lê dela o que mudou fora (tela, hopper, cabo) e escreve o que mudou; é varrido depois de
 100 ticks sem andar. Salvar e reabrir o mundo funciona porque a `ModBlockEntity` é a verdade.
+
+A capacidade de energia de uma máquina de progresso é a única coisa do contêiner que o Java não grava (`currentMaxEnergy`): o construtor dá 4 ticks de
+consumo, `recalculateUpgrades` dá os ticks da receita, e o tile lido do disco só recalcula se o filho `component_upgrade` está no NBT. Por isso a
+`ProgressMachine` tem três portas, e o glue escolhe a certa: `restore` (o `loadAdditional`, recalcula só com o filho), `apply_item_components` (o item que
+pôs a máquina, recalcula sempre) e nenhuma (o `setBlock`); e `capacity_recalculated` leva a diferença de um objeto vivo para o seguinte quando o glue refaz o objeto sem o
+tile ter mudado.
 
 ### Máquina com tanque
 

@@ -6,6 +6,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O clique do cursor, a tecla numérica e o arrasto num menu de máquina respeitam as regras do slot, como o `InventoryContainerSlot.mayPlace`
+  do original (`isValidForInsertion(item, MANUAL)`): terra não entra mais no slot de infusão do Infuser, nem o item que não é receita na entrada,
+  nem nada na saída, e o combustível do Heat Generator é o que queima. A regra olha o tanque e a entrada, então o mod a deixa pronta antes de cada
+  clique (`machinery_basis_core::slot_rules`, uma regra por dono) e o crate `[api]` da `machinery_basis` responde ao hook `menu_slot_rules` do
+  Horizon com ela. `rules::slot_accepts` é a regra que o hopper, o shift-click e o cursor partilham. Rastro do Java `slot_click_<máquina>.jsonl`
+  (`SlotClickTraceTest`, as quatro máquinas e o Heat Generator, 15 itens, quatro cliques, seis estados no Infuser), repetido por `slot_click.rs`
+  e, em jogo, por `h2_cursor.py`. Uma injeção crua nova, `menu_click_before`, no Generators (veja `docs/injecoes-horizon.md`).
+- Rastros do Java da capacidade de energia, do consumo e do tempo de operação de uma máquina posta por um jogador, pelo gabarito e lida do disco
+  (`placed_<máquina>.jsonl`, `placed_run_*`; `PlacedTraceTest`), repetidos por `placed_capacity.rs` e `placed_run.rs`.
 - Rastro do Java para a chegada dos itens no Metallurgic Infuser (`infuser_arrival.jsonl`, `ArrivalTraceTest`): com o tanque vazio, o item de entrada de uma
   receita e o item que vira o químico dela chegam como um jogador os põe, em três ordens (a entrada primeiro, a conversão primeiro,
   os dois no mesmo tick), em 13 pares (bio, fungi, redstone, diamond, gold e refined_obsidian). `infuser_arrival_trace.rs` o repete
@@ -87,6 +96,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Changed
 
+- A capacidade de energia de uma máquina depende de como ela chegou ao mundo, como no original: 1.000 (1.600 no Crusher) se um jogador a põe
+  (`applyImplicitComponents` recalcula os upgrades), 20 (32) se vem de `setblock` ou de uma estrutura, e 20 de novo se o tile é lido do disco sem upgrade
+  nem item no slot de upgrade (o `component_upgrade` não existe no NBT, e `ITileComponent.read` só chama `deserialize` com o filho). Com upgrades a
+  capacidade volta do disco. Antes toda máquina nascia com 1.000. Uma máquina que o port deixa de andar por 5 segundos e volta mantém a capacidade que tinha (o tile do Java continua o mesmo; só conferido pelo código).
+  A `redstone` do slot de energia converte onde a capacidade chega a 10.000 (velocidade 8 na Chamber, no Smelter e no Infuser; 7 e 8 no Crusher), e o
+  `redstone_block` nunca; o texto antigo dizia que nunca convertia e que a capacidade ia a 1.000.
 - As telas das quatro máquinas e do Heat Generator seguem os elementos do Java, em vez de aproximações: a barra de energia é `bar/base`
   (nove partes, repetidas) com `bar/vertical_power` em mosaico e `calculateSize` (pelo menos um pixel); a barra de químico do
   Infuser desenha o sprite animado do químico, multiplicado pelo `tint` do arquivo e não pela cor de representação; os slots têm a

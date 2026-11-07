@@ -95,13 +95,11 @@ químicos de infusão, carbono, redstone e fungi já têm item de origem.
 
 Ainda difere do original em:
 
-- um clique do jogador põe qualquer item nos slots de entrada: `native_menu_slot_rules` roda fora de `crate::game` e não
-  alcança as receitas. Hoppers e shift-click respeitam a regra, e a saída recusa item;
 - as faces são as padrão, sem configuração. A saída fica à direita e um hopper só puxa de cima, então ela sai à mão. Hopper
   não aponta para cima, então o slot de químico da base só entra pela tela;
 - sem upgrades, controle de redstone, ejetor, tubo de químico, som, abas e o nome do químico no tooltip;
 - o slot de energia aceita `redstone` e `redstone_block` e converte como o original (`fillContainerOrConvert`), mas a conversão só
-  vale se tudo couber: `energy_conversion` dá 10.000 e 90.000, e o buffer das máquinas tem 20 (no máximo 1.000 com upgrades), então o
+  vale se tudo couber: `energy_conversion` dá 10.000 e 90.000, e o buffer da máquina de um jogador sem upgrade tem 1.000 (1.600 no Crusher; 20 na do `setblock` ou lida do disco sem upgrade, e até 10.000 com 8 de velocidade, 16.000 no Crusher), então a `redstone` só converte com velocidade 8 (7 ou 8 no Crusher) e o contêiner vazio: nas outras o
   item entra, fica no slot e a energia não sobe, nos dois;
 - a luz da máquina ligada é 13, do template da fornalha, e não 8;
 - quebrar o bloco solta o conteúdo, em vez de guardar no item;

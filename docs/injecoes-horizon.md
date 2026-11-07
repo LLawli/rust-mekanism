@@ -18,18 +18,18 @@ Contagem em 2026-11-07, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 66 | |
+| `[[injection]]` no total | 67 | |
 | Hook do catálogo, usado só com o contrato dele | 26 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 29 | sim |
-| Injeção crua (`target = ...`) | 11 | sim |
+| Injeção crua (`target = ...`) | 12 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 10 | sim |
 
-26 + 29 + 11 = 66. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-40 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 29 + 12 = 67. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+41 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 11 | 10 | 29 |
+| Em uso | 12 | 10 | 29 |
 | Provada em spike | 6 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -63,7 +63,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H18 `properties.light` condicional | dado | `override_gameplay` | spike |
 | H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
 | H27 `menu_result_taken` | hook | `result_take_before` (cru) | em uso |
-| H20 `menu_slot_rules` v2 | hook | alvo ainda sem nome | prevista |
+| H20 `menu_slot_rules` v2 | hook | o contexto de clique de `result_take_before` e `menu_click_before` | prevista |
 | H21 `screen_slot_highlight` | hook | `slot_highlight` (mekanism) | em uso (1) |
 | H22 escurecimento do mundo atrás de telas | correção | nenhuma (diferença de pixel) | pedido |
 | H23 caixa do tooltip de item | correção | nenhuma (diferença de pixel) | pedido |
@@ -74,6 +74,25 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
+
+## A regra de slot do clique
+
+O clique do cursor, a tecla numérica e o arrasto num menu de máquina perguntam `Slot.mayPlace`, que no Mekanism é
+`InventoryContainerSlot.mayPlace`: `isValidForInsertion(item, MANUAL)` do slot da máquina (`InputInventorySlot`, `ChemicalInventorySlot`,
+`EnergyInventorySlot`, `FluidFuelInventorySlot`; a saída recusa, porque só aceita `INTERNAL`). O Horizon tem o hook `menu_slot_rules` v1
+(`listen`, `native_menu_slot_rules(menu, slot, stack, may_place, max_stack)`, em `horizon_client::menu`) para isso, mas ele roda dentro do menu,
+no crate `horizon-client-lib`: sem o `Game`, sem a posição do bloco e sem o outro slot. As regras do Mekanism olham o estado do bloco
+(a entrada do Infuser pergunta pelo químico do tanque, e o slot de infusão pelo item da entrada), então a resposta não sai só de menu, slot e item.
+
+Como está feito, sem hook novo: o crate `[api]` da `machinery_basis` implementa `Hooks::menu_slot_rules` e consulta
+`machinery_basis_core::slot_rules`, uma regra por dono (`mekanism`, `mekanismgenerators`) guardada numa `thread_local` do núcleo. O núcleo é um
+`[[crate]]`, uma cópia só no processo, que o `[api]` e os módulos de glue compartilham. Antes de cada clique de menu de máquina
+(`lan_machine_click`, que o servidor roda para o anfitrião e para os convidados), os dois mods deixam a regra do bloco aberto: `result_take_before`
+(Mekanism) e `menu_click_before` (Generators) leem o bloco no mundo e guardam o `isValidForInsertion` dos slots. A regra só tira
+(`may_place &= regra`), e o clique de quem não tem menu nosso aberto apaga a do dono. É uma regra por clique e por thread: o clique
+roda na thread do servidor, a mesma onde o hook responde.
+
+O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique. Com `pos` e `Game` no hook, o mod responderia pelo bloco direto.
 
 ## Termos e estados
 
@@ -95,16 +114,16 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 6 |
 | `mods/mekanism/native/horizon-mixin.toml` | 30 | 25 | 5 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 14 | 13 | 1 | 2 |
-| Total | 66 | 55 | 11 | 10 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 15 | 13 | 2 | 2 |
+| Total | 67 | 55 | 12 | 10 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das onze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties` e `result_take_before`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
-`impl Hooks for Mod {}`. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das doze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
 Dos 55 hooks, 29 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. Os 29 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) e os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`).
 
-## Injeções cruas em uso (11)
+## Injeções cruas em uso (12)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -242,7 +261,10 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
 - **Estado:** em uso. **Alvo:** `horizon_client::game::lan_crafting::Game<'_>::lan_machine_click`, HEAD, não cancelável
   (`lan_crafting.rs:248`, método de `impl Game`). **Proposta:** H27.
 - **Helper:** `mods/mekanism/native/result_take_before.rs`. Guarda o slot de saída da máquina aberta e onde o jogador estava, e o
-  próximo tick da máquina confere se o slot diminuiu (`result_take_after`, no começo de `tick_machine`).
+  próximo tick da máquina confere se o slot diminuiu (`result_take_after`, no começo de `tick_machine`). **Também deixa a regra de slot
+  do clique** (2026-11-07): antes de cada clique do menu de uma máquina, `publish_slot_rules` guarda em `slot_rules` (núcleo) o
+  `isValidForInsertion(item, MANUAL)` de cada slot, com o que o tanque e a entrada guardam agora, e o `menu_slot_rules` do Horizon
+  (v1, no crate `[api]` da `machinery_basis`) o consulta dentro do menu. Veja [A regra de slot do clique](#a-regra-de-slot-do-clique).
 - **Por que é necessária:** `InventoryContainerResultSlot.onTake` chama `onTakeCheck`, que é `awardUsedRecipesAndPopExperience`: tirar o
   resultado de uma máquina com `xp_containment` solta a experiência, e sem o upgrade solta a da última receita, como o forno. O Horizon
   não avisa quando um jogador tira de um slot de resultado (`results`) de um menu de mod: `menu_clicked` é só dos menus que o mod abre,
@@ -252,9 +274,25 @@ e 26 não: 4 em `machinery_basis`, 15 em `mekanism`, 7 em `mekanismgenerators`. 
   `RecipeCacheLookupMonitor.awardUsedRecipesAndPopExperience` (`RecipeCacheLookupMonitor.java:273-304`).
 - **Hook mais próximo:** nenhum. Um RETURN em `lan_machine_click` não serve: a função tem itens aninhados (`E_UNSUPPORTED_CONTROL_FLOW`), e
   `menu_ops`, no cliente, só vê o que o cliente prevê.
-- **Hook proposto:** H27.
+- **Hook proposto:** H27 para a retirada do resultado, H20 v2 para a regra de slot.
 - **Risco:** mudar a assinatura de `lan_machine_click`, o nome do módulo de `lan_crafting` ou `Slots::Block`. Dois cliques no mesmo
-  tick, antes de a máquina andar, são resolvidos na ordem: o segundo clique confere o primeiro antes de guardar o seu.
+  tick, antes de a máquina andar, são resolvidos na ordem: o segundo clique confere o primeiro antes de guardar o seu. A regra de slot
+  vale para um clique: o seguinte a troca antes de qualquer pergunta, e o clique de quem não está num menu nosso a apaga.
+
+### `menu_click_before` (mekanismgenerators)
+
+- **Estado:** em uso. **Alvo:** o mesmo de `result_take_before`, `horizon_client::game::lan_crafting::Game<'_>::lan_machine_click`, HEAD,
+  não cancelável. **Proposta:** H20 v2.
+- **Helper:** `mods/mekanismgenerators/native/menu_click_before.rs`. Deixa em `slot_rules` (núcleo) a regra de `mayPlace` do Heat Generator
+  aberto: o slot de combustível aceita o que queima (`FluidFuelInventorySlot.forFuel`, que também aceita o que enche o tanque de lava, e o
+  balde de lava queima) e o de energia nada (`EnergyInventorySlot.drain`, e nenhum item portado tem handler de energia).
+- **Por que é necessária:** o tempo de queima é do jogo (`game.res.providers().burn_time`), e o `menu_slot_rules` do Horizon roda dentro do menu, sem
+  o `Game`. A regra responde para cada item que o clique pode perguntar, que são os que o menu tem: o inventário de quem clica, o cursor e
+  os slots do bloco.
+- **Java:** `InventoryContainerSlot.java:68-79` (`mayPlace`), `FluidFuelInventorySlot.java:39-58` (`forFuel`), `EnergyInventorySlot.java:49-54` (`drain`).
+- **Hook mais próximo:** `menu_slot_rules` v1, sem `Game`.
+- **Hook proposto:** H20 v2, com o `Game` em leitura.
+- **Risco:** o mesmo de `result_take_before`: as duas injeções são HEAD do mesmo método.
 
 ### `sprite_ties` (machinery_basis)
 
@@ -454,7 +492,7 @@ Do plano, sem compilar. O Java está nas fases correspondentes.
 | Prevista | Fase | Alvo (do plano) | Proposta |
 |---|---|---|---|
 | Faces e contêiner por instância | 2, 3 | HEAD cancelável em `native_fluid_at`, `Containers::view`, `can_take` e `native_container_accepts` | H2 |
-| Regra de slot que vê o outro slot | decisão 3 aberta | ainda sem alvo. `menu_slot_rules` não tem `Game` e não vê outro slot | H20 |
+| Regra de slot que vê o outro slot | feita por contexto de clique (2026-11-07), sem H20 | `menu_slot_rules` v1 não tem `Game`, nem a posição, nem o outro slot; ver [A regra de slot do clique](#a-regra-de-slot-do-clique) | H20 |
 | Seleção do Configurator com `context_outline` (não conta: o spike já cobriu) | decisão 1 | o spike resolveu por `block_highlight` mais `native_frame_visuals`: `context_outline` devolve uma caixa só | H15 |
 | `native_screen_slot` (não conta: o spike já cobriu) | 1 | HEAD, "não testado": o spike da aba cobriu o caso por H9 | H9 |
 
@@ -802,10 +840,13 @@ fn stop_sound(&mut self, handle: SoundHandle)
 ### H20 `menu_slot_rules` v2
 
 - **Lado:** servidor. **Contrato:** `listen`, com o menu inteiro em vista.
-- **Quando dispara:** no mesmo lugar do v1, mas com uma visão dos outros slots do menu e do `Game` em leitura.
-- **Assinatura:** `native_menu_slot_rules_v2(menu, slot, stack, may_place, max_stack, slots: &[Option<ItemStack>])`.
+- **Quando dispara:** no mesmo lugar do v1, mas com uma visão dos outros slots do menu, da posição do bloco que o menu mostra e do `Game` em leitura.
+- **Assinatura:** `native_menu_slot_rules_v2(menu, pos, slot, stack, may_place, max_stack, slots: &[Option<ItemStack>])`.
 - **Exemplo:** o Combiner aceita no segundo slot só o item que forma receita com o que está no primeiro
-  (`TileEntityCombiner.java:114-117`).
+  (`TileEntityCombiner.java:114-117`), e o Metallurgic Infuser aceita no slot de infusão o item que vira o químico que o tanque aceita e que forma receita
+  com o item da entrada (`TileEntityMetallurgicInfuser.java:135-136,150`).
+- **Em uso hoje:** a v1 (`menu_slot_rules`, `listen`) é a que o crate `[api]` da `machinery_basis` implementa. Com a v2, `result_take_before` e
+  `menu_click_before` deixam de montar o contexto do clique.
 
 ### H21 `screen_slot_highlight`
 
@@ -921,7 +962,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=66 hook=55 target=11 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=67 hook=55 target=12 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 29 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
