@@ -980,6 +980,15 @@ pub(in crate::game) fn draw_tab(game: &Game<'_>, batch: &mut HudBatch, block: &s
     plain(game, batch, spec, "button/upgrade", [18.0, 18.0], button);
 }
 
+/// `GuiElement.isMouseOverCheckWindows`: o ponto `at` (relativo ao canto da tela) está sobre a janela aberta, e então o elemento de baixo
+/// não o recebe.
+pub(in crate::game) fn covers(at: [f32; 2]) -> bool {
+    client().window.as_ref().is_some_and(|open| {
+        let rel = [at[0] - open.window.relative_x as f32, at[1] - open.window.relative_y as f32];
+        rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < open.window.width as f32 && rel[1] < open.window.height as f32
+    })
+}
+
 /// Os tooltips da aba e da janela, no mesmo estilo do `WidgetTooltipHolder`. `at` é o mouse relativo ao canto da tela.
 pub(in crate::game) fn tooltip(
     game: &Game<'_>,
@@ -1298,6 +1307,11 @@ impl Game<'_> {
     /// A aba, a desenhar junto do resto da tela do bloco.
     pub(in crate::game) fn mb_window_draw_tab(&self, batch: &mut HudBatch, block: &str, origin: [f32; 2]) {
         draw_tab(self, batch, block, origin);
+    }
+
+    /// Se a janela de upgrades aberta cobre o ponto `at` (relativo ao canto da tela).
+    pub(in crate::game) fn mb_window_covers(&self, at: [f32; 2]) -> bool {
+        covers(at)
     }
 
     /// Os tooltips da aba e da janela; devolve se mostrou algum.

@@ -89,6 +89,17 @@ pub fn energy_fraction(energy: u64, capacity: u64, unit: &str, fraction: &str) -
     format_lang(fraction, &[&stored, &compact_display(capacity, unit)])
 }
 
+/// As linhas do tooltip de `GuiEnergyTab` (`updateTooltip`): cada `(modelo, valor)` com o valor como `EnergyDisplay.of(valor)` (compacto, na
+/// unidade `unit`), e por último `MekanismLang.UNIT` com a unidade. Os modelos são textos de idioma com `%1$s`.
+pub fn energy_info_lines(rows: &[(&str, u64)], unit: &str, unit_template: &str) -> Vec<String> {
+    let mut lines: Vec<String> = rows
+        .iter()
+        .map(|(template, value)| format_lang(template, &[&compact_display(*value, unit)]))
+        .collect();
+    lines.push(format_lang(unit_template, &[unit]));
+    lines
+}
+
 /// `GENERIC_STORED_MB`: o nome do que o tanque guarda e a quantidade em mB, com o separador de milhar.
 pub fn stored_mb(template: &str, name: &str, amount: u64) -> String {
     format_lang(template, &[name, &grouped(amount)])
@@ -112,6 +123,21 @@ mod tests {
         assert_eq!(compact_display(160_000, "FE"), "160 kFE");
         assert_eq!(compact_display(256_000_000, "FE"), "256 MFE");
         assert_eq!(compact_display(8_000_000_000, "FE"), "8 GFE");
+    }
+
+    #[test]
+    fn the_energy_tab_lists_each_value_compact_and_ends_with_the_unit() {
+        let lines = energy_info_lines(
+            &[("Using: %1$s/t", 50), ("Needed: %1$s", 1_500)],
+            "FE",
+            "Unit: %1$s",
+        );
+        assert_eq!(lines, ["Using: 50 FE/t", "Needed: 1.5 kFE", "Unit: FE"]);
+        assert_eq!(energy_info_lines(&[], "FE", "Unit: %1$s"), ["Unit: FE"]);
+        assert_eq!(
+            energy_info_lines(&[("Needed: %1$s", 0)], "FE", "Unit: %1$s")[0],
+            "Needed: 0 FE"
+        );
     }
 
     #[test]

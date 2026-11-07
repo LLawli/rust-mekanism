@@ -1251,6 +1251,156 @@ pub(in crate::game) fn warning_tab(game: &Game<'_>, batch: &mut HudBatch, sprite
     game.native_sprite(batch, sprite, [0.0, 0.0, w, h], [origin[0] + x, origin[1] + y, w, h]);
 }
 
+/// `GuiInsetElement.drawBackground`, a cada quadro: o fundo do botão, o suporte (`holder_left` ou `holder_right`) tingido por `tint` por cima
+/// dele, o fundo outra vez e o ícone de 18 por 18 sobre o botão (`GuiSideHolder.drawBackground` e depois a própria). Os sprites do fundo e do
+/// suporte são `<ns>:gui/sprites/button`, `button_focus`, `button_inactive` e `holder_*`; `icon` é o nome inteiro do sprite do ícone.
+/// `origin` é o canto da tela.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn inset_tab(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    ns: &str,
+    tab: machinery_basis_core::side_tab::InsetTab,
+    origin: [f32; 2],
+    tint: u32,
+    icon: &str,
+    look: machinery_basis_core::side_tab::ButtonLook,
+) {
+    let shift = |rect: gui::Rect| [origin[0] + rect[0], origin[1] + rect[1], rect[2], rect[3]];
+    let button = shift(tab.button());
+    let holder = shift(tab.holder());
+    let background = format!("{ns}:gui/sprites/{}", look.sprite());
+    let holder_sprite = format!("{ns}:gui/sprites/holder_{}", if tab.left { "left" } else { "right" });
+    let nine = |batch: &mut HudBatch, sprite: &str, slice: NineSlice, rect: gui::Rect, argb: u32| {
+        for cell in gui::nine_slice_cells(slice, rect) {
+            sprite_tinted(game, batch, sprite, cell.src, cell.dst, argb);
+        }
+    };
+    use machinery_basis_core::upgrade_window::{BUTTON_SLICE, HOLDER_SLICE};
+    nine(batch, &background, BUTTON_SLICE, button, 0xFF_FF_FF_FF);
+    nine(batch, &holder_sprite, HOLDER_SLICE, holder, tint);
+    nine(batch, &background, BUTTON_SLICE, button, 0xFF_FF_FF_FF);
+    let [_, _, w, h] = button;
+    sprite_tinted(game, batch, icon, [0.0, 0.0, w, h], button, 0xFF_FF_FF_FF);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O nome de um tile (`TileEntityMekanism.customName`): o componente inteiro, do item ao tile, ao NBT, ao título da tela e ao item solto.
+
+/// `SerializationConstants.CUSTOM_NAME`: o NBT do tile.
+const CUSTOM_NAME: &str = "CustomName";
+
+thread_local! {
+    /// O nome do item que acabou de ser colocado, para o tile que ainda não nasceu: o Horizon cria o tile no primeiro tick.
+    static PENDING_NAMES: std::cell::RefCell<HashMap<[i32; 3], Tag>> = std::cell::RefCell::new(HashMap::new());
+    /// O nome do tile que o jogador está quebrando, guardado por [`name_destroying`] antes de o Horizon tirá-lo do mundo.
+    static BROKEN_NAME: std::cell::RefCell<Option<([i32; 3], Option<Tag>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// O componente de nome que um tag guarda (`ComponentSerialization`): o texto puro (`"Camara"`), um componente com estilo (compound) ou uma
+/// lista. O tag é o componente inteiro e passa sem ser lido, com cor, negrito e filhos.
+pub(in crate::game) fn name_of_tag(tag: Option<&Tag>) -> Option<Tag> {
+    match tag? {
+        tag @ Tag::String(_) => Some(tag.clone()),
+        tag @ Tag::Compound(compound) if !compound.is_empty() => Some(tag.clone()),
+        tag @ Tag::List(list) if !list.is_empty() => Some(tag.clone()),
+        _ => None,
+    }
+}
+
+/// O `CustomName` que o tile em `pos` guarda, se o bloco ali é de `block_ids` (`is_ours`): o componente inteiro.
+pub(in crate::game) fn saved_name(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> Option<Tag> {
+    use horizon_client::containers::BlockEntity;
+    match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => name_of_tag(entity.nbt.get(&JavaString::from(CUSTOM_NAME))),
+        _ => None,
+    }
+}
+
+/// `getDisplayName` na tela: o nome que o servidor mandou ao abrir, ou a descrição do contêiner (`container_description` é a chave de
+/// tradução). O componente chega com o estilo.
+pub(in crate::game) fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client::text::Text {
+    use horizon_client::text::Text;
+    let name = game.mb_open_screen_pos().and_then(|pos| crate::game::machinery_tile_sound::tile_name(game.native_dimension(), pos));
+    let tile = {
+        let mut tile = machinery_basis_core::name::TileName::<Text>::new(true);
+        tile.load(name.as_ref().map(horizon_client::component::name_text));
+        tile
+    };
+    let description = Text::literal(horizon_client::lang::get(container_description));
+    tile.display_name(&description, &description).clone()
+}
+
+/// `applyImplicitComponents`: o item colocado tinha `custom_name`, e o tile o guarda (`saveAdditional`), o componente inteiro.
+pub(in crate::game) fn name_placed(game: &Game<'_>, stack: &ItemStack, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
+    if !is_ours(&game.native_block(pos)) {
+        return;
+    }
+    // `minecraft:custom_name` não é um componente de mod: o componente está nos dados da pilha.
+    let item_name = stack.extra.as_ref().and_then(|data| name_of_tag(data.custom_name.as_ref()));
+    let mut tile = machinery_basis_core::name::TileName::<Tag>::new(true);
+    tile.apply_implicit_components(item_name);
+    if let Some(name) = tile.saved() {
+        PENDING_NAMES.with_borrow_mut(|names| names.insert(pos, name.clone()));
+    } else {
+        PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos));
+    }
+}
+
+/// O tile nasceu: o nome do item que o colocou entra no NBT dele.
+pub(in crate::game) fn name_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3]) {
+    if let Some(name) = PENDING_NAMES.with_borrow_mut(|names| names.remove(&pos)) {
+        entity.nbt.insert(JavaString::from(CUSTOM_NAME), name);
+    }
+}
+
+/// O jogador (ou uma explosão que passa pelo hook) vai quebrar o tile em `pos`: o Horizon o tira do mundo antes de rolar a tabela de loot, e
+/// o nome que o item solto leva (`copy_name`) é guardado aqui, enquanto o tile ainda existe.
+pub(in crate::game) fn name_destroying(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
+    let name = saved_name(game, pos, is_ours);
+    BROKEN_NAME.with_borrow_mut(|slot| *slot = Some((pos, name)));
+}
+
+/// `copy_name` da tabela de loot: o item solto leva o componente de nome do tile, inteiro. Um tile que ainda está no mundo dá o nome dele;
+/// o que foi quebrado, o que [`name_destroying`] guardou.
+pub(in crate::game) fn name_loot(
+    game: &Game<'_>,
+    context: &horizon_client::mod_api::NativeLootDrops<'_>,
+    drops: &mut [ItemStack],
+    is_ours: &dyn Fn(&str) -> bool,
+) {
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    // Cada mod com nome chama isto: o nome guardado só sai para quem tem o item entre os que caíram (os outros mods o veem depois).
+    if !drops.iter().any(|stack| is_ours(&stack.item)) {
+        return;
+    }
+    let kept = BROKEN_NAME.with_borrow_mut(|slot| match slot {
+        Some((at, _)) if *at == pos => slot.take().and_then(|(_, name)| name),
+        _ => None,
+    });
+    let Some(name) = saved_name(game, pos, is_ours).or(kept) else {
+        return;
+    };
+    for stack in drops.iter_mut().filter(|stack| is_ours(&stack.item)) {
+        stack.extra.get_or_insert_with(Default::default).custom_name = Some(name.clone());
+    }
+}
+
+/// O jogador abriu o contêiner de um tile: o nome vai com ele (`getDisplayName` no pacote de abertura).
+pub(in crate::game) fn name_container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>, is_ours: &dyn Fn(&str) -> bool) {
+    let Some(pos) = pos else {
+        return;
+    };
+    if !is_ours(&game.native_block(pos)) {
+        return;
+    }
+    let name = saved_name(game, pos, is_ours);
+    let dimension = game.native_dimension();
+    game.mb_name_open(player, dimension, pos, name.as_ref());
+}
+
 /// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor
 /// mas por cima ou por baixo do `widget` (`MenuTooltipPositioner`), em vez de sobre o cursor como o tooltip de um item. O hook
 /// `native_screen_tooltip` só entrega texto com os códigos `§` do vanilla, que não têm as cores de `EnumColor`, e posiciona sempre
@@ -1329,13 +1479,14 @@ fn menu_tooltip_with(
 
 /// O fundo de uma tela de máquina: o painel (`GuiMekanism.extractBackground`), os slots do inventário do jogador
 /// (`GuiMekanism.addSlots`, um `GuiSlot` normal para cada slot que não é do tile) e os dois rótulos (`renderTitleText` e
-/// `renderInventoryText`), o título centrado e "Inventory" à esquerda, os dois em `SpecialColors.TEXT_TITLE` e sem sombra.
+/// `renderInventoryText`), o título centrado e "Inventory" à esquerda, os dois em `SpecialColors.TEXT_TITLE` e sem sombra (o título, se
+/// tem estilo, com o dele).
 pub(in crate::game) fn machine_panel(
     game: &Game<'_>,
     batch: &mut HudBatch,
     style: &PanelStyle,
     rect: [f32; 4],
-    title: &str,
+    title: &horizon_client::text::Text,
 ) {
     let [x, y, width, height] = rect;
     nine_slice(game, batch, style.base, style.base_slice, rect);
@@ -1348,8 +1499,11 @@ pub(in crate::game) fn machine_panel(
             game.native_sprite(batch, style.slot, [0.0, 0.0, gui::SLOT_SIZE, gui::SLOT_SIZE], dst);
         }
     }
-    let title_x = x + gui::title_x(width, game.native_text_width(title));
-    game.native_text(batch, title, [title_x, y + gui::TITLE_LABEL_Y], gui::TITLE_TEXT_COLOR, false);
+    // O título é o componente inteiro (`drawScrollingString` com `text.getVisualOrderText()`): a cor e o negrito do próprio texto valem
+    // sobre `TEXT_TITLE`, e a largura que o centra é a do texto com o estilo.
+    let atlas = &game.gui.atlas;
+    let title_x = x + gui::title_x(width, atlas.font.width_text(title));
+    batch.text_styled(atlas, title, title_x, y + gui::TITLE_LABEL_Y, hud_color(0xFF_00_00_00 | gui::TITLE_TEXT_COLOR), false);
     let inventory = horizon_client::lang::get("container.inventory");
     let label = [x + gui::INVENTORY_LABEL_X, y + gui::inventory_label_y(height)];
     game.native_text(batch, &inventory, label, gui::TITLE_TEXT_COLOR, false);

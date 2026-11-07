@@ -1,6 +1,7 @@
 // O som contínuo de um tile (H19): `TileEntityMekanism.updateSound` e `SoundHandler.TileTickableSound`. As regras estão em
 // `machinery_basis_core::sound`; aqui só o que toca no jogo: o motor de som, a posição do jogador e o relógio.
 use super::Game;
+use horizon_world::nbt::{Limits, Tag, read_network, write_network};
 use horizon_client::sound_engine::{Attenuation, InstanceId, SoundEngine, SoundInstance, Sounds, Ticking};
 use machinery_basis_core::sound::{
     DEFAULT_ATTENUATION_DISTANCE, SoundConfig, TileSound, TileSoundEngine, TileTickableSound, TileView, player_in_range,
@@ -89,25 +90,26 @@ pub(in crate::game) fn muffling_from_server(channel: &str, data: &[u8]) -> bool 
 
 
 /// Os nomes que o cliente conhece de cada tile (`customName` do `Nameable`): o servidor os manda ao abrir a tela, como o título do
-/// menu. No anfitrião os dois lados dividem esta tabela.
-static NAMES: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), String>>> = std::sync::Mutex::new(None);
+/// menu. O nome é o componente inteiro em NBT (texto, cor, negrito, filhos), não o texto: o título da tela o desenha com o estilo.
+/// No anfitrião os dois lados dividem esta tabela.
+static NAMES: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), Tag>>> = std::sync::Mutex::new(None);
 
 const NAME_CHANNEL: &str = "machinery_basis:name";
 
-fn name_table<R>(f: impl FnOnce(&mut HashMap<(String, [i32; 3]), String>) -> R) -> R {
+fn name_table<R>(f: impl FnOnce(&mut HashMap<(String, [i32; 3]), Tag>) -> R) -> R {
     let mut guard = NAMES.lock().unwrap_or_else(|error| error.into_inner());
     f(guard.get_or_insert_with(HashMap::new))
 }
 
 /// O nome que o cliente sabe que o tile tem.
-pub(in crate::game) fn tile_name(dimension: &str, pos: [i32; 3]) -> Option<String> {
+pub(in crate::game) fn tile_name(dimension: &str, pos: [i32; 3]) -> Option<Tag> {
     name_table(|table| table.get(&(dimension.to_owned(), pos)).cloned())
 }
 
-fn set_name(dimension: &str, pos: [i32; 3], name: Option<&str>) {
+fn set_name(dimension: &str, pos: [i32; 3], name: Option<&Tag>) {
     name_table(|table| match name {
         Some(name) => {
-            table.insert((dimension.to_owned(), pos), name.to_owned());
+            table.insert((dimension.to_owned(), pos), name.clone());
         }
         None => {
             table.remove(&(dimension.to_owned(), pos));
@@ -115,24 +117,28 @@ fn set_name(dimension: &str, pos: [i32; 3], name: Option<&str>) {
     });
 }
 
-fn encode_name(dimension: &str, pos: [i32; 3], name: Option<&str>) -> Vec<u8> {
+fn encode_name(dimension: &str, pos: [i32; 3], name: Option<&Tag>) -> Vec<u8> {
     let mut bytes = vec![dimension.len() as u8];
     bytes.extend_from_slice(dimension.as_bytes());
     for value in pos {
         bytes.extend_from_slice(&value.to_be_bytes());
     }
-    bytes.extend_from_slice(name.unwrap_or_default().as_bytes());
+    if let Some(name) = name
+        && let Ok(encoded) = write_network(name, Limits::default())
+    {
+        bytes.extend_from_slice(&encoded);
+    }
     bytes
 }
 
-fn decode_name(bytes: &[u8]) -> Option<(String, [i32; 3], Option<String>)> {
+fn decode_name(bytes: &[u8]) -> Option<(String, [i32; 3], Option<Tag>)> {
     let (&length, rest) = bytes.split_first()?;
     let (dimension, rest) = rest.split_at_checked(usize::from(length))?;
     let (coordinates, name) = rest.split_at_checked(12)?;
     let mut values = coordinates.chunks_exact(4).map(|chunk| i32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     let pos = [values.next()?, values.next()?, values.next()?];
-    let name = std::str::from_utf8(name).ok()?;
-    Some((std::str::from_utf8(dimension).ok()?.to_owned(), pos, (!name.is_empty()).then(|| name.to_owned())))
+    let name = if name.is_empty() { None } else { read_network(name, Limits::default()).ok().map(|(tag, _)| tag) };
+    Some((std::str::from_utf8(dimension).ok()?.to_owned(), pos, name))
 }
 
 /// `NativeNetFromServer`: o cliente guarda o nome que o servidor mandou.
@@ -141,7 +147,7 @@ pub(in crate::game) fn name_from_server(channel: &str, data: &[u8]) -> bool {
         return false;
     }
     if let Some((dimension, pos, name)) = decode_name(data) {
-        set_name(&dimension, pos, name.as_deref());
+        set_name(&dimension, pos, name.as_ref());
     }
     true
 }
@@ -239,7 +245,7 @@ impl Game<'_> {
 
     /// O jogador abriu o contêiner do tile: o servidor manda o nome dele, como o `getDisplayName` vai no pacote de abertura. Sem nome,
     /// manda vazio, para o cliente largar um nome velho.
-    pub(in crate::game) fn mb_name_open(&mut self, player: u128, dimension: &str, pos: [i32; 3], name: Option<&str>) {
+    pub(in crate::game) fn mb_name_open(&mut self, player: u128, dimension: &str, pos: [i32; 3], name: Option<&Tag>) {
         set_name(dimension, pos, name);
         let _ = self.native_net_send_to_player(player, NAME_CHANNEL, &encode_name(dimension, pos, name));
     }
