@@ -14,7 +14,7 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::{
     ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents, can_fill_or_convert_with,
 };
-use machinery_basis_core::containers::{InventorySlot, ItemResource, SlotContents};
+use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
@@ -1481,7 +1481,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             };
             let slots = |face| rules::electric_item_slots(front, face);
             let sides = rules::sides(front, rules::electric_item_slots);
-            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
+            // `DataType.INPUT` não deixa tirar: nenhuma face entrega, então a regra de saída não é consultada.
+            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &|_, _, _| false);
         }
         Some(side) => {
             let held = Held { chemical: side.tank.resource(), input: machine.input().resource() };
@@ -1490,7 +1491,12 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             };
             let slots = |face| rules::item_slots(front, face);
             let sides = rules::sides(front, rules::item_slots);
-            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts);
+            // `ChemicalInventorySlot.fillOrConvert`, `canExtract`: um hopper (`EXTERNAL`) só tira do slot de infusão o que o
+            // tanque não aceita nem converte.
+            let can_give = |_: &Game<'_>, _: usize, stack: &ItemStack| {
+                side.slot.is_valid_for_extraction(&typed_item(stack), AutomationType::External)
+            };
+            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
         }
     }
 

@@ -281,7 +281,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         outputs: if empty_bucket { FUEL_SLOTS } else { &[] },
     };
     let accepts = |game: &Game<'_>, _: usize, stack: &ItemStack| is_fuel(game, stack);
-    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots, &accepts);
+    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots, &accepts, &|_, _, _| true);
     // O bloco só muda quando o tile manda: o atraso de `blockDeactivationDelay` o segura aceso depois que o gerador para.
     let lit = state.tile.block_active();
     if lit != block_active {
