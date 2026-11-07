@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-06, sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-07, sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 60 | |
+| `[[injection]]` no total | 61 | |
 | Hook do catálogo, usado só com o contrato dele | 27 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 22 | sim |
+| Hook do catálogo, usado com estrutura privada do jogo | 23 | sim |
 | Injeção crua (`target = ...`) | 11 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 9 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 10 | sim |
 
-27 + 22 + 11 = 60. Os 9 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-33 injeções e 9 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+27 + 23 + 11 = 61. Os 10 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+34 injeções e 10 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 11 | 9 | 22 |
+| Em uso | 11 | 10 | 23 |
 | Provada em spike | 6 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -70,6 +70,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H24 ícone de item de bloco | correção | nenhuma (diferença de pixel) | pedido |
 | H25 item desenhado em escala (`renderItem(..., 0.75)`) | correção | nenhuma (diferença de pixel) | pedido |
 | H28 modelo ausente no ícone de slot | correção | nenhuma (diferença de pixel) | pedido |
+| H29 `composter_item_handler` | helper | módulo `composter-wrapper` | em uso |
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
@@ -92,16 +93,16 @@ H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de 
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 5 |
+| `mods/machinery_basis/horizon-mixin.toml` | 22 | 17 | 5 | 6 |
 | `mods/mekanism/native/horizon-mixin.toml` | 29 | 24 | 5 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 9 | 8 | 1 | 2 |
-| Total | 60 | 49 | 11 | 9 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 10 | 9 | 1 | 2 |
+| Total | 61 | 50 | 11 | 10 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at` (`RETURN`). Sete das onze cruas são `cancellable = true`; as que não são: `logged-fluid-row`, `window_slot_at`, `sprite_ties` e `result_take_before`. Nenhuma usa `trait_method`: os três crates `[api]` têm só
 `impl Hooks for Mod {}`. Os 36 nomes distintos de `hook` existem no catálogo do pin, na versão 1.
 
-Dos 49 hooks, 22 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. Os 22 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`) e os 3 do nome (`place_block`, `loot_drops` e `container_opened`).
+Dos 50 hooks, 23 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 27 não: 4 em `machinery_basis`, 16 em `mekanism`, 7 em `mekanismgenerators`. Os 23 com estrutura privada são os 8 de antes, os 9 da janela de upgrades (`window_*`), os 2 do som e da experiência (`client_tick` e `destroy_block`) os 3 do nome (`place_block`, `loot_drops` e `container_opened`) e o `menu_quick_move` do Heat Generator.
 
 ## Injeções cruas em uso (11)
 
@@ -283,6 +284,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game` |
 | `use_item` (basis) | `use_item` | `game.world.game_time` | `level_game_time`, que já existe |
 | `block_entity_tick` (mekanism) | `block_entity_tick` | `game.world.game_time`, e o método do módulo `slot-accepts` no ejetor | `level_game_time` e H7 |
+| `menu_quick_move` (mekanismgenerators) | `menu_quick_move` | `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Heat Generator enche) | o mesmo helper de escrita no inventário de quem age |
 | `menu_quick_move` (mekanism) | `menu_quick_move` | `game.recipes().cooking` (via `machine_recipes`), `game.inventory` (a barra de atalhos e o inventário, que o shift-clique do Mekanism enche) | H8: `cooking_recipes(kind)`; falta um helper de escrita no inventário de quem age |
 | `use_item_on` (mekanism) | `use_item_on` | `game.world.block_entities.get/get_mut`, `game.world.modified.insert`, `game.held_mut()`, `game.recipes()` | H8: `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `block_entity_tick` (generators) | `block_entity_tick` | `game.res.providers().burn_time(world_items!)`, `game.world.chunks` e `world_biomes!` | H8: `burn_time(stack)`, `biome_temperature(dimension, pos)` |
@@ -343,7 +345,7 @@ usar antes de ter número de API:
 
 Pedido: carimbar esses fragmentos (`python3 tools/stamp_native_hooks.py`) e listar os quatro helpers documentados em `helpers`.
 
-## Módulos (9)
+## Módulos (10)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -355,6 +357,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
 | `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e a câmera, privados | H19 |
+| `composter-wrapper` (machinery_basis) | `game/composter.rs` | o sorteio das camadas de um item e a subida de um nível da composteira, como o `ComposterWrapper` do NeoForge faz | H29 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
@@ -364,6 +367,15 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
   `native_insert_item` não tem `simulate`. O método `machinery_slot_accepts` chama `containers.can_place` e
   `mod_container_accepts`, privados de `machines`. Hook mais próximo: `container_accepts`, que é uma resposta do mod ao Horizon,
   não uma consulta (e é fragmento pendente). Risco: renomear `View`, `containers()` ou `can_place`.
+- **`composter-wrapper`:** o ejetor que sai por cima ou por baixo de uma composteira passa pelo `ComposterWrapper`
+  (`neoforge/transfer/item/ComposterWrapper.java`): a face de cima sorteia `Compostable.layers()` uma vez por tentativa
+  (`getComposterValue`), recusa se o sorteio deu 0 sem gastar o item, e sobe o nível em um, não nas camadas sorteadas. O caminho
+  do Horizon para um mod (`native_insert_item`, que cai em `composter_container_insert`) é o do hopper vanilla (`InputContainer`):
+  soma as camadas sorteadas e gasta o item mesmo quando o sorteio dá 0. E `native_container_slots` não mostra a composteira. O
+  módulo expõe `machinery_composter_layers` (o sorteio, com `compostable`, `provider_int` e o contexto do bloco, privados de
+  `composter.rs`) e `machinery_composter_raise` (`composter_insert` com uma camada: nível, evento de jogo, tick agendado ao chegar
+  a 7 e evento de nível 1500). A decisão é da lib (`machinery_basis_core::composter`, conferida contra o rastro do original). Risco:
+  renomear `compostable`, `provider_int`, `ComputeContext`, `with_level` ou `composter_insert`.
 - **`glue`:** existe porque um `[[crate]]` não depende de `horizon-client` (Cargo proíbe o ciclo) e o crate `[api]` só vê o
   `dyn Host`. Os três `glue` somem quando o `Host` cobrir H1 a H8 e o código passar a viver no crate `[api]` como trait. Hoje os
   três `[api]` estão vazios. O Horizon cita um crate de API estável para crates de mod (`#3897`), que resolveria o resto.
@@ -438,7 +450,7 @@ Java: `TileEntityMekanism.java:253,327,1436` e `client/sound/SoundHandler.java` 
 (`containsRecipeAB`, `containsRecipeBA`) para a regra de slot.
 
 Sem injeção conhecida ainda: a energia do Mekanism vive em `i64` no NBT próprio porque o `ModEnergyBuffer` é `i32` (decisão 2 do
-plano), e o ejetor não alcança a composteira, que `native_container_slots` não expõe.
+plano). O ejetor alcança a composteira pelo módulo `composter-wrapper` (H29).
 
 ## Hooks e pedidos propostos
 
@@ -606,6 +618,24 @@ fn item_container_accepts(&self, dimension: &str, pos: [i32; 3], slot: usize, st
   `host.item_container_accepts(dim, at, slot, &stack, face)`.
 - **Alternativa menos útil:** um `simulate` em `native_insert_item`. Responde "quanto cabe" para a pilha inteira, e o ejetor
   precisa da regra de cada slot para a transação.
+
+### H29 `composter_item_handler` (helper do `Host`)
+
+- **Lado:** servidor. **Tipo:** consulta e escrita.
+- **O que faz:** dá a um mod o `ResourceHandler<ItemResource>` que o NeoForge dá à composteira, no lugar do caminho do hopper:
+  `composter_layers(dimension, pos, stack) -> Option<i32>` (`Compostable.layers().get(lootContext, 0)`, com o sorteio do nível,
+  `None` sem o componente) e `composter_raise(dimension, pos)` (o `onRootCommit` do wrapper depois de subir um nível).
+- **Assinatura:**
+
+```rust
+fn composter_layers(&mut self, dimension: &str, pos: [i32; 3], stack: &ItemStack) -> Option<i32>
+fn composter_raise(&mut self, dimension: &str, pos: [i32; 3])
+```
+
+- **Exemplo:** um ejetor de mod com o lado de baixo configurado como saída, sobre uma composteira: pergunta as camadas do item
+  uma vez, e só se der mais de 0 e o nível for menor que 7 sobe um nível e gasta um item.
+- **Alternativa menos útil:** `native_insert_item` com o contrato do wrapper. Resolve a escrita, mas não a transação do ejetor, que
+  pergunta antes de gravar e desfaz se a resposta não vale.
 
 ### H8 helpers de leitura e escrita
 
@@ -879,8 +909,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=60 hook=49 target=11 module=9 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 26 + 17 tem de somar `hook`.
+   Hoje: `injection=61 hook=50 target=11 module=10 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 23 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

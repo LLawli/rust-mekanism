@@ -14,6 +14,8 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::{
     ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents, can_fill_or_convert_with,
 };
+use machinery_basis_core::components::Components;
+use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
@@ -442,6 +444,11 @@ const HAS_CONTAINMENT: &str = "has_containment";
 const EJECT_ITEM: &str = "eject3";
 /// A chave que liga o ejetor por comando: `/data merge block x y z {mekanism_eject:1}`.
 const EJECT_SWITCH: &str = "mekanism_eject";
+/// A face de saída do ejetor, enquanto a configuração de lados (Fase 2) não existe: `/data merge block x y z
+/// {mekanism_eject_face:"down"}` (`up`, `down`, ou o nome de uma face horizontal). Sem a chave sai pela direita, como o item posto.
+const EJECT_FACE: &str = "mekanism_eject_face";
+const COMPOSTER: &str = "minecraft:composter";
+const BONE_MEAL: &str = "minecraft:bone_meal";
 /// `ChemicalContainerType.getTag()` e o que `IListContainerType.saveTo` e `LargeResourceStack.codec` gravam: uma lista de
 /// `{container: byte, stored: {type, amount}}`, sem o item da lista quando o tanque está vazio, e sem a lista inteira.
 const CHEMICAL_TANKS: &str = "chemical_tanks";
@@ -515,9 +522,9 @@ fn center_of(pos: [i32; 3]) -> [f64; 3] {
     [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5]
 }
 
+/// `ItemResource.of(stack)`: o item, a pilha máxima e os componentes que o distinguem (nome, dados, dano...).
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
-    let limit = game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK);
-    ItemResource::new(&stack.item, limit)
+    basis::item_resource(game, stack)
 }
 
 fn recipe_ingredient(recipe: &basis::MachineRecipe) -> &Ingredient {
@@ -857,8 +864,8 @@ fn read_saved(game: &Game<'_>, entity: &ModBlockEntity) -> SavedState {
     }
 }
 
-/// `LargeResourceStack.codec` de um `ItemResource`: `type` (`id` e `components`) e `amount`. O único componente que a máquina lê é o
-/// tipo do upgrade. Um slot que se lê mal vale vazio, como o `readOrEmpty`.
+/// `LargeResourceStack.codec` de um `ItemResource`: `type` (`id` e `components`) e `amount`. Os componentes são o `DataComponentPatch`
+/// inteiro (o dano e cada componente, o tipo do upgrade entre eles). Um slot que se lê mal vale vazio, como o `readOrEmpty`.
 fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
     let Some(Tag::Compound(kind)) = stored.get(&JavaString::from(TYPE)) else {
         return SlotContents::default();
@@ -867,26 +874,12 @@ fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
         return SlotContents::default();
     };
     let id = id.to_string_lossy();
-    let variant = match kind.get(&JavaString::from(COMPONENTS)) {
-        Some(Tag::Compound(components)) => {
-            match components.get(&JavaString::from(rules::UPGRADE_TYPE_COMPONENT)) {
-                Some(Tag::String(variant)) => Some(Rc::from(variant.to_string_lossy().as_str())),
-                _ => None,
-            }
-        }
-        _ => None,
-    };
     let amount = match stored.get(&JavaString::from(AMOUNT)) {
         Some(Tag::Long(amount)) => u32::try_from(*amount).ok(),
         Some(Tag::Int(amount)) => u32::try_from(*amount).ok(),
         _ => None,
     };
-    let max_stack_size = game.native_max_stack_size(&id).unwrap_or(UNKNOWN_STACK);
-    let resource = ItemResource {
-        id: Rc::from(id.as_str()),
-        max_stack_size,
-        variant,
-    };
+    let resource = basis::resource_from_tag(game, &id, kind.get(&JavaString::from(COMPONENTS)));
     SlotContents::new(Some(resource), amount.unwrap_or(0))
 }
 
@@ -926,6 +919,27 @@ fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -> UpgradeSaved {
     saved
 }
 
+/// O `components` do `ItemResource.CODEC` de um recurso, ou nada sem componentes. Um recurso que veio de uma pilha do jogo tem o
+/// patch inteiro. O que a lib faz sozinha (`UpgradeData.resource_of`, o item com o tipo e mais nada) nunca passou por uma pilha:
+/// o tipo é o único componente e é um texto.
+fn resource_components(resource: &ItemResource) -> Option<Tag> {
+    if resource.components.is_empty() {
+        return None;
+    }
+    if let Some(components) = basis::components_tag(resource) {
+        return Some(components);
+    }
+    let mut components = Compound::default();
+    for (id, value) in resource.components.iter() {
+        let Some(text) = Components::parse_text_value(value) else {
+            eprintln!("mekanism: o componente {id} do upgrade não é um texto e não se grava");
+            continue;
+        };
+        components.insert(JavaString::from(id), Tag::String(JavaString::from(text.as_str())));
+    }
+    Some(Tag::Compound(components))
+}
+
 /// `TileComponentUpgrade.serialize`, escrito pelo `write` do componente: o filho some quando não tem nada.
 fn write_upgrades(entity: &mut ModBlockEntity, saved: &UpgradeSaved) {
     let mut component = Compound::default();
@@ -943,13 +957,8 @@ fn write_upgrades(entity: &mut ModBlockEntity, saved: &UpgradeSaved) {
         };
         let mut kind = Compound::default();
         kind.insert(JavaString::from(ITEM_ID), Tag::String(JavaString::from(&*resource.id)));
-        if let Some(variant) = &resource.variant {
-            let mut components = Compound::default();
-            components.insert(
-                JavaString::from(rules::UPGRADE_TYPE_COMPONENT),
-                Tag::String(JavaString::from(&**variant)),
-            );
-            kind.insert(JavaString::from(COMPONENTS), Tag::Compound(components));
+        if let Some(components) = resource_components(resource) {
+            kind.insert(JavaString::from(COMPONENTS), components);
         }
         let mut stored = Compound::default();
         stored.insert(JavaString::from(TYPE), Tag::Compound(kind));
@@ -1156,69 +1165,13 @@ fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, machine: &Machi
     }
 }
 
-/// O que a `ModBlockEntity` mudou fora do tick vira `setContents` no slot, que dispara os listeners como o Java.
+/// O que a `ModBlockEntity` mudou fora do tick vira `setContents` no slot, que dispara os listeners como o Java. O slot guarda um
+/// recurso, o item e os componentes: o mesmo item com outro nome é outro recurso.
 fn slot_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
     match stack {
         None => slot.set_contents(None, 0, None),
         Some(stack) => {
-            let same = slot.resource().is_some_and(|held| *held.id == *stack.item) && slot.amount() == stack.count;
-            if !same {
-                slot.set_contents(Some(resource_of(game, stack)), stack.count, None);
-            }
-        }
-    }
-}
-
-/// O que o tick mudou vai para a `ModBlockEntity`. Uma pilha do mesmo item guarda o que tinha (dano, componentes); um item
-/// novo é o da saída de uma receita.
-fn slot_to_entity(entity: &mut ModBlockEntity, index: usize, slot: &InventorySlot, recipes: &[basis::MachineRecipe]) {
-    let contents = slot.contents();
-    let current = entity.items[index].as_ref();
-    let same = match (&contents.resource, current) {
-        (None, None) => true,
-        (Some(resource), Some(stack)) => *resource.id == *stack.item && contents.amount == stack.count,
-        _ => false,
-    };
-    if same {
-        return;
-    }
-    let new = contents.resource.map(|resource| {
-        let mut stack = match current {
-            Some(old) if *old.item == *resource.id => old.clone(),
-            _ => recipes
-                .iter()
-                .find(|recipe| *recipe.output.item == *resource.id)
-                .map_or_else(
-                    || ItemStack {
-                        item: Arc::from(&*resource.id),
-                        count: 1,
-                        damage: 0,
-                        extra: None,
-                    },
-                    |recipe| recipe.output.clone(),
-                ),
-        };
-        stack.count = contents.amount;
-        stack
-    });
-    entity.items[index] = new;
-}
-
-/// O recurso de um item de upgrade: o item e o tipo que o componente dele guarda.
-fn upgrade_resource(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
-    let limit = game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK);
-    match game.native_component(stack, rules::UPGRADE_TYPE_COMPONENT) {
-        Ok(Some(Tag::String(kind))) => ItemResource::with_variant(&stack.item, limit, &kind.to_string_lossy()),
-        _ => ItemResource::new(&stack.item, limit),
-    }
-}
-
-/// Os slots de upgrade (os virtuais do menu) lidos do que a tela mudou, como `slot_from_entity`, com o tipo do upgrade.
-fn upgrade_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
-    match stack {
-        None => slot.set_contents(None, 0, None),
-        Some(stack) => {
-            let resource = upgrade_resource(game, stack);
+            let resource = resource_of(game, stack);
             if slot.resource().as_ref() != Some(&resource) || slot.amount() != stack.count {
                 slot.set_contents(Some(resource), stack.count, None);
             }
@@ -1226,16 +1179,60 @@ fn upgrade_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&Ite
     }
 }
 
+/// O que o tick mudou vai para a `ModBlockEntity`. Uma pilha do mesmo recurso (o item e os componentes) guarda o que tinha; um
+/// recurso novo é refeito com o dano e os componentes que ele tem, que são os da receita quando é a saída dela.
+fn slot_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, slot: &InventorySlot) {
+    let contents = slot.contents();
+    let current = entity.items[index].as_ref();
+    let same = match (&contents.resource, current) {
+        (None, None) => true,
+        (Some(resource), Some(stack)) => *resource == resource_of(game, stack) && contents.amount == stack.count,
+        _ => false,
+    };
+    if same {
+        return;
+    }
+    let new = contents.resource.map(|resource| {
+        let mut stack = match current {
+            Some(old) if resource_of(game, old) == resource => old.clone(),
+            _ => basis::stack_of_resource(&resource, contents.amount).unwrap_or_else(|| {
+                eprintln!("mekanism: o recurso {} perdeu os componentes ao sair do slot", resource.id);
+                ItemStack::new(&resource.id, contents.amount)
+            }),
+        };
+        stack.count = contents.amount;
+        stack
+    });
+    entity.items[index] = new;
+}
+
+/// Os slots de upgrade (os virtuais do menu) lidos do que a tela mudou, como `slot_from_entity`.
+fn upgrade_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
+    slot_from_entity(game, slot, stack);
+}
+
+/// A pilha de um recurso de upgrade. O que a lib faz (`UpgradeData.resource_of`, ao remover um upgrade) é o item com o tipo no
+/// componente e mais nada, e nunca passou por uma pilha do jogo: monta-se aqui, e a pilha registrada é a do recurso a partir de
+/// então.
+fn upgrade_stack(game: &Game<'_>, resource: &ItemResource, count: u32) -> ItemStack {
+    if let Some(stack) = basis::stack_of_resource(resource, count) {
+        return stack;
+    }
+    let mut stack = ItemStack::new(&resource.id, count);
+    if let Some(kind) = rules::upgrade_type_of(resource) {
+        let _ = game.native_set_component(&mut stack, rules::UPGRADE_TYPE_COMPONENT, Tag::String(JavaString::from(kind.as_str())));
+    }
+    let registered = resource_of(game, &stack);
+    if registered != *resource {
+        eprintln!("mekanism: o upgrade {:?} saiu com outros componentes ({:?})", resource.components.key(), registered.components.key());
+    }
+    stack
+}
+
 /// O item que um slot de upgrade guarda, com o tipo no componente.
 fn upgrade_slot_stack(game: &Game<'_>, slot: &InventorySlot) -> Option<ItemStack> {
     let contents = slot.contents();
-    contents.resource.map(|resource| {
-        let mut stack = ItemStack::new(&resource.id, contents.amount);
-        if let Some(kind) = &resource.variant {
-            let _ = game.native_set_component(&mut stack, rules::UPGRADE_TYPE_COMPONENT, Tag::String(JavaString::from(&**kind)));
-        }
-        stack
-    })
+    contents.resource.map(|resource| upgrade_stack(game, &resource, contents.amount))
 }
 
 /// O que o tick mudou nos slots de upgrade (instalar tira da entrada, remover enche a saída) volta para o menu.
@@ -1243,7 +1240,7 @@ fn upgrade_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize,
     let contents = slot.contents();
     let same = match (&contents.resource, entity.items[index].as_ref()) {
         (None, None) => true,
-        (Some(resource), Some(stack)) => upgrade_resource(game, stack) == *resource && contents.amount == stack.count,
+        (Some(resource), Some(stack)) => resource_of(game, stack) == *resource && contents.amount == stack.count,
         _ => false,
     };
     if !same {
@@ -1254,12 +1251,14 @@ fn upgrade_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize,
 /// Os vizinhos como o ejetor os vê: o inventário do outro lado, copiado do jogo, com a regra real de cada slot para o item que
 /// está saindo. O Horizon não simula inserção, então o diário guarda a cópia, e o que entrou nela vai ao vizinho de verdade, por
 /// `native_insert_item`, depois que a transação commitou. O ejetor roda antes da receita: só o item da saída pode sair no tick.
+/// O jogo vem num `RefCell` porque o sorteio das camadas de uma composteira muda o jogo (o sorteio do nível).
 struct GameNeighbours<'a, 'g> {
-    game: &'a Game<'g>,
+    game: RefCell<&'a mut Game<'g>>,
     dimension: &'static str,
     pos: [i32; 3],
-    offered: Option<(Rc<str>, ItemStack)>,
+    offered: Option<(ItemResource, ItemStack)>,
     created: RefCell<Vec<CopiedContainer>>,
+    composters: RefCell<Vec<CopiedComposter>>,
 }
 
 struct CopiedContainer {
@@ -1269,16 +1268,65 @@ struct CopiedContainer {
     original: Vec<(usize, ItemResource, u32)>,
 }
 
+/// Uma composteira vizinha, vista pelo `ComposterWrapper`: o nível que o jogo tem, o sorteio das camadas do item que sai (feito
+/// quando o ejetor pede a capacidade, e uma vez só: o Java sorteia uma vez por tentativa de inserir) e o nível a que o wrapper
+/// levou o bloco ao commitar. A lib decide tudo; o efeito no mundo só é aplicado depois, por [`GameNeighbours::finish`].
+struct GameComposter {
+    level: Cell<i32>,
+    drawn: Option<(ItemResource, Option<i32>)>,
+    committed: Cell<Option<i32>>,
+}
+
+impl ComposterBlock for GameComposter {
+    fn exists(&self) -> bool {
+        true
+    }
+
+    fn level(&self) -> i32 {
+        self.level.get()
+    }
+
+    fn set_level(&self, level: i32, notify: bool) {
+        self.level.set(level);
+        if notify {
+            self.committed.set(Some(level));
+        }
+    }
+
+    fn layers(&self, resource: &ItemResource) -> Option<i32> {
+        match &self.drawn {
+            Some((offered, layers)) if offered == resource => *layers,
+            _ => None,
+        }
+    }
+
+    // O tick agendado e o evento de nível saem do bloco de verdade, na hora de aplicar (`machinery_composter_raise`).
+    fn schedule_tick(&self, _ticks: u32) {}
+
+    fn level_event(&self, _rose: bool) {}
+}
+
+struct CopiedComposter {
+    at: [i32; 3],
+    before: i32,
+    block: Rc<GameComposter>,
+}
+
 impl ItemCapabilities for GameNeighbours<'_, '_> {
     fn item_handler(&self, face: Face) -> Option<Rc<dyn ItemHandler>> {
         let [x, y, z] = face.offset();
         let at = [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z];
         let reached = basis::direction(face.opposite());
-        let slots = self.game.native_container_slots(self.dimension, at, reached)?;
+        let slots = self.game.borrow().native_container_slots(self.dimension, at, reached);
+        let Some(slots) = slots else {
+            return self.composter_handler(at, face);
+        };
+        let game = self.game.borrow();
+        let game: &Game<'_> = &game;
         let container = VanillaContainer::new(slots.len(), Rc::new(|| {}));
         for (index, slot) in slots.iter().enumerate() {
             if let Some(stack) = &slot.stack {
-                container.set_item(index, Some(resource_of(self.game, stack)), stack.count);
+                container.set_item(index, Some(resource_of(game, stack)), stack.count);
             }
         }
         let original = container.stacks();
@@ -1289,31 +1337,63 @@ impl ItemCapabilities for GameNeighbours<'_, '_> {
             original,
         });
         let (offered, accepted) = match &self.offered {
-            Some((id, stack)) => (
-                Some(id.clone()),
+            Some((resource, stack)) => (
+                Some(resource.clone()),
                 slots
                     .iter()
-                    .map(|slot| self.game.machinery_slot_accepts(at, slot.slot, stack, reached))
+                    .map(|slot| game.machinery_slot_accepts(at, slot.slot, stack, reached))
                     .collect(),
             ),
             None => (None, Vec::new()),
         };
         Some(Rc::new(RuledHandler::new(container, move |index, resource: &ItemResource| {
-            offered.as_ref() == Some(&resource.id) && accepted.get(index).copied().unwrap_or(false)
+            offered.as_ref() == Some(resource) && accepted.get(index).copied().unwrap_or(false)
         })))
     }
 }
 
-/// O que entrou nas cópias durante o tick: por vizinho, quanto de cada item.
+impl GameNeighbours<'_, '_> {
+    /// A composteira do outro lado, se há uma (`Capabilities.Item.BLOCK` dela, `ComposterWrapper.get`): o Horizon não a mostra em
+    /// `native_container_slots`. Só as faces de cima e de baixo dela têm capacidade, e a lib sabe isso. O item que sai é sorteado
+    /// aqui, uma vez, e só quando o wrapper chegaria a sortear: composteira abaixo do nível 7 e item com o componente.
+    fn composter_handler(&self, at: [i32; 3], face: Face) -> Option<Rc<dyn ItemHandler>> {
+        let mut game = self.game.borrow_mut();
+        if game.native_block(at) != COMPOSTER {
+            return None;
+        }
+        let level = game.native_block_property(at, "level")?.parse::<i32>().ok()?;
+        let drawn = match &self.offered {
+            Some((resource, stack)) if face.opposite() == Face::Up && level < composter::MAX_LEVEL => {
+                Some((resource.clone(), game.machinery_composter_layers(at, stack)))
+            }
+            Some((resource, _)) => Some((resource.clone(), None)),
+            None => None,
+        };
+        let block = Rc::new(GameComposter {
+            level: Cell::new(level),
+            drawn,
+            committed: Cell::new(None),
+        });
+        self.composters.borrow_mut().push(CopiedComposter {
+            at,
+            before: level,
+            block: block.clone(),
+        });
+        let bone_meal = basis::item_resource(&game, &ItemStack::new(BONE_MEAL, 1));
+        ComposterWrapper::new(block, bone_meal).handler(face.opposite())
+    }
+}
+
+/// O que entrou nas cópias durante o tick: por vizinho, quanto de cada recurso; e as composteiras a que o wrapper subiu o nível.
 struct Ejected {
     at: [i32; 3],
     reached: Direction,
-    id: Rc<str>,
+    resource: ItemResource,
     count: u32,
 }
 
 impl GameNeighbours<'_, '_> {
-    fn ejected(self) -> Vec<Ejected> {
+    fn finish(self) -> (Vec<Ejected>, Vec<([i32; 3], i32)>) {
         let mut ejected = Vec::new();
         for copied in self.created.into_inner() {
             for (index, resource, amount) in copied.container.stacks() {
@@ -1326,43 +1406,52 @@ impl GameNeighbours<'_, '_> {
                     ejected.push(Ejected {
                         at: copied.at,
                         reached: copied.reached,
-                        id: resource.id.clone(),
+                        resource,
                         count: amount - before,
                     });
                 }
             }
         }
-        ejected
+        let raised = self
+            .composters
+            .into_inner()
+            .into_iter()
+            .filter_map(|copied| {
+                let rose = copied.block.committed.get()? - copied.before;
+                (rose > 0).then_some((copied.at, rose))
+            })
+            .collect();
+        (ejected, raised)
     }
 }
 
-/// A pilha de um item que sai da máquina: a da receita, com dano e componentes, ou a do id.
-fn stack_of(recipes: &[basis::MachineRecipe], id: &str) -> ItemStack {
-    let template = recipes.iter().find(|recipe| *recipe.output.item == *id);
-    template.map_or_else(
-        || ItemStack {
-            item: Arc::from(id),
-            count: 1,
-            damage: 0,
-            extra: None,
-        },
-        |recipe| recipe.output.clone(),
-    )
-}
-
 /// Entrega ao vizinho de verdade o que o diário mandou. A regra de cada slot já foi perguntada e nada mudou no vizinho desde
-/// então, então ele aceita tudo. O resto, se houver, volta ao slot de saída da `ModBlockEntity`.
-fn deliver(game: &mut Game<'_>, entity: &mut ModBlockEntity, recipes: &[basis::MachineRecipe], output_slot: usize, ejected: Vec<Ejected>) {
+/// então, então ele aceita tudo. O resto, se houver, volta ao slot de saída da `ModBlockEntity`. As composteiras sobem o nível
+/// como o commit do wrapper manda: de um em um, com os avisos, o tick agendado e o evento de enchimento.
+fn deliver(
+    game: &mut Game<'_>,
+    entity: &mut ModBlockEntity,
+    output_slot: usize,
+    ejected: Vec<Ejected>,
+    raised: Vec<([i32; 3], i32)>,
+) {
+    for (at, levels) in raised {
+        for _ in 0..levels {
+            game.machinery_composter_raise(at);
+        }
+    }
     for sent in ejected {
-        let mut stack = stack_of(recipes, &sent.id);
-        stack.count = sent.count;
+        let stack = basis::stack_of_resource(&sent.resource, sent.count).unwrap_or_else(|| {
+            eprintln!("mekanism: o recurso {} perdeu os componentes ao sair para o vizinho", sent.resource.id);
+            ItemStack::new(&sent.resource.id, sent.count)
+        });
         let Some(rest) = game.native_insert_item(sent.at, sent.reached, stack) else {
             continue;
         };
         let slot = &mut entity.items[output_slot];
         match slot.as_mut() {
             None => *slot = Some(rest),
-            Some(held) if held.item == rest.item => held.count += rest.count,
+            Some(held) if held.same_item_same_components(&rest) => held.count += rest.count,
             Some(_) => eprintln!(
                 "mekanism: {} x{} recusados pelo vizinho se perderam",
                 rest.item, rest.count
@@ -1385,6 +1474,14 @@ fn chest_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], face: Face)
             Some((slot.slot, path, stack.count))
         })
         .collect()
+}
+
+/// A face por onde o ejetor sai: a direita da frente, ou a que `mekanism_eject_face` manda.
+fn eject_face(entity: &ModBlockEntity, front: Face) -> Face {
+    match entity.nbt.get(&JavaString::from(EJECT_FACE)) {
+        Some(Tag::String(name)) => Face::from_property(&name.to_string_lossy()).unwrap_or(front.right_of()),
+        _ => front.right_of(),
+    }
 }
 
 /// Um tick de uma máquina de progresso sobre o objeto vivo.
@@ -1468,25 +1565,29 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.machine.ejector_mut().set_ejecting(on);
     }
     let front = basis::front(game, pos);
-    let right = front.right_of();
-    if live.machine.ejector().is_ejecting() && live.eject_side != Some(right) {
-        live.machine.ejector_mut().set_sides(0, vec![right]);
-        live.eject_side = Some(right);
+    let side = eject_face(entity, front);
+    if live.machine.ejector().is_ejecting() && live.eject_side != Some(side) {
+        live.machine.ejector_mut().set_sides(0, vec![side]);
+        live.eject_side = Some(side);
     }
 
-    let offered = live.machine.output().resource().map(|resource| {
-        let stack = stack_of(&recipes, &resource.id);
-        (resource.id, stack)
+    let offered = live.machine.output().resource().and_then(|resource| {
+        let stack = basis::stack_of_resource(&resource, 1);
+        if stack.is_none() {
+            eprintln!("mekanism: o recurso {} da saída não tem pilha no jogo, não sai", resource.id);
+        }
+        Some((resource, stack?))
     });
     let neighbours = GameNeighbours {
-        game: &*game,
+        game: RefCell::new(&mut *game),
         dimension,
         pos,
         offered,
         created: RefCell::new(Vec::new()),
+        composters: RefCell::new(Vec::new()),
     };
     live.machine.tick_server(now as u64, &neighbours);
-    let ejected = neighbours.ejected();
+    let (ejected, raised) = neighbours.finish();
     // Um upgrade de contenção de xp instalado neste tick (`recalculateUpgrades`) pode ter soltado a experiência guardada.
     let drops = live.machine.take_experience_drops();
     if !drops.is_empty() {
@@ -1495,13 +1596,13 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     sync_muffling(game, dimension, pos, &mut live);
 
     let machine = &live.machine;
-    slot_to_entity(entity, slots.input, machine.input(), &recipes);
-    slot_to_entity(entity, slots.output, machine.output(), &recipes);
-    slot_to_entity(entity, slots.energy, machine.energy_slot(), &recipes);
+    slot_to_entity(game, entity, slots.input, machine.input());
+    slot_to_entity(game, entity, slots.output, machine.output());
+    slot_to_entity(game, entity, slots.energy, machine.energy_slot());
     upgrade_to_entity(game, entity, slots.upgrade, machine.upgrades().upgrade_slot());
     upgrade_to_entity(game, entity, slots.upgrade_output, machine.upgrades().upgrade_output_slot());
     if let (Some(side), Some(index)) = (machine.chemical_side(), slots.infusion) {
-        slot_to_entity(entity, index, &side.slot, &recipes);
+        slot_to_entity(game, entity, index, &side.slot);
         let contents = side.tank.contents();
         if read_tank(entity) != contents {
             write_tank(entity, &contents);
@@ -1532,14 +1633,14 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         write_upgrades(entity, &machine.upgrades().saved());
         live.upgrades_version = Some(upgrades_version);
     }
-    deliver(game, entity, &recipes, slots.output, ejected);
+    deliver(game, entity, slots.output, ejected, raised);
     let progress = machine.recipe_progress();
     if let Some(started) = started {
         basis::bench_record(now, u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
         let chest = machine
             .ejector()
             .is_ejecting()
-            .then(|| chest_of(game, dimension, pos, right));
+            .then(|| chest_of(game, dimension, pos, side));
         basis::trace(&rules::trace_line(now, machine, chest.as_deref(), true));
     }
 
@@ -2114,10 +2215,6 @@ impl MachineMenu<'_, '_> {
         self.entity.items.len()
     }
 
-    fn limit(&self, stack: &ItemStack) -> u32 {
-        self.game.native_max_stack_size(&stack.item).unwrap_or(UNKNOWN_STACK)
-    }
-
     /// Se o slot do bloco `slot` aceita o item (`RecipeInputInventorySlot`, `InfusionInventorySlot`, `EnergyInventorySlot` e
     /// `UpgradeInventorySlot.input`): o `isValidForInsertion(.., MANUAL)` de cada um. A saída e a saída de upgrades não aceitam
     /// nada de quem clica.
@@ -2199,36 +2296,11 @@ impl QuickMenu for MachineMenu<'_, '_> {
         if slot < self.first_player() && !self.accepts(slot, item) {
             return 0;
         }
-        let limit = self.limit(item);
-        match self.cell(slot) {
-            Some(held) if held.same_item_same_components(item) => {
-                let moved = limit.saturating_sub(held.count).min(amount);
-                held.count += moved;
-                moved
-            }
-            Some(_) => 0,
-            empty => {
-                let moved = amount.min(limit);
-                let mut placed = item.clone();
-                placed.count = moved;
-                *empty = Some(placed);
-                moved
-            }
-        }
+        basis::insert_into_cell(self.game, self.cell(slot), item, amount)
     }
 
     fn remove(&mut self, slot: usize, amount: u32) {
-        let cell = self.cell(slot);
-        let emptied = match &mut *cell {
-            Some(held) => {
-                held.count = held.count.saturating_sub(amount);
-                held.count == 0
-            }
-            None => false,
-        };
-        if emptied {
-            *cell = None;
-        }
+        basis::remove_from_cell(self.cell(slot), amount);
     }
 }
 

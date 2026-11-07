@@ -106,6 +106,22 @@ bindings = [
 ]
 
 [[injection]]
+id = "menu_quick_move"
+hook = "menu_quick_move"
+hook_version = 1
+kind = "HEAD"
+helper = "menu_quick_move.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "entity", ty = "&mut horizon_client::containers::ModBlockEntity", value = "&mut *entity" },
+  { name = "container_slots", ty = "usize", value = "container_slots" },
+  { name = "slot", ty = "usize", value = "slot" },
+  { name = "stack", ty = "&mut horizon_client::items::ItemStack", value = "&mut *stack" },
+  { name = "handled", ty = "&mut bool", value = "&mut *handled" },
+]
+
+[[injection]]
 id = "block_entity_update_tag"
 hook = "block_entity_update_tag"
 hook_version = 1

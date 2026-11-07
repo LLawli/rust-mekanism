@@ -40,6 +40,14 @@ file = "crates/horizon-client/src/game/machines/native_items.rs"
 name = "machinery_slot_accepts"
 source = "slot_accepts.rs"
 
+# O `ComposterWrapper` do NeoForge: o sorteio das camadas de um item e a subida de um nível, que o Horizon só tem pelo caminho do
+# hopper (`composter_container_insert`), e cujas funções são privadas de `composter.rs`.
+[[module]]
+id = "composter-wrapper"
+file = "crates/horizon-client/src/game/composter.rs"
+name = "machinery_composter"
+source = "composter_wrapper.rs"
+
 [[injection]]
 id = "reload-listeners"
 hook = "add_server_reload_listeners"

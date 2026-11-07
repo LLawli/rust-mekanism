@@ -2,7 +2,8 @@
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::ConversionCache;
-use machinery_basis_core::containers::InventorySlot;
+use machinery_basis_core::components::Components;
+use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::gui::NineSlice;
@@ -179,6 +180,11 @@ pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
 /// quatro máquinas portadas usam.
 pub const DEFAULT_MACHINE_UPGRADES: &str = "mekanism:upgrade_support/default_machine";
 
+/// O tipo de upgrade que um item carrega no componente `mekanism:upgrade_type`, se carrega: o valor do componente é um texto.
+pub fn upgrade_type_of(resource: &ItemResource) -> Option<String> {
+    Components::parse_text_value(resource.components.get(UPGRADE_TYPE_COMPONENT)?)
+}
+
 /// Os dados de upgrade que as quatro máquinas portadas usam: os tipos, o que a tag `default_machine` aceita, e o item que os
 /// carrega, com o limite de pilha dele.
 pub fn upgrade_data(
@@ -188,6 +194,7 @@ pub fn upgrade_data(
 ) -> Rc<UpgradeData> {
     Rc::new(UpgradeData::new(
         UPGRADE_ITEM,
+        UPGRADE_TYPE_COMPONENT,
         item_max_stack_size,
         types,
         tags,
@@ -970,8 +977,8 @@ pub fn trace_line(
     let upgrade_slot = |slot: &InventorySlot| {
         let kind = slot
             .resource()
-            .and_then(|resource| resource.variant)
-            .map_or(String::new(), |variant| path(&variant));
+            .and_then(|resource| upgrade_type_of(&resource))
+            .map_or(String::new(), |kind| path(&kind));
         format!("[\"{kind}\",{}]", slot.amount())
     };
     let upgrades = if upgrades {

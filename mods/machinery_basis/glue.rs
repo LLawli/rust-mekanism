@@ -11,6 +11,9 @@ use horizon_core::position::BlockPos;
 use horizon_world::level::Ticks;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
+use horizon_client::item_data::{StackData, canon_tag, decode_components, encode_components};
+use machinery_basis_core::components::Components;
+use machinery_basis_core::containers::{ItemResource, SlotContents, room_for};
 use machinery_basis_core::fluid_logged;
 use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
@@ -433,33 +436,158 @@ pub(in crate::game) fn energy_conversions(
     conversions
 }
 
-fn same_item(a: &ItemStack, b: &ItemStack) -> bool {
-    a.item == b.item && a.extra == b.extra
+/// `Item.getMaxStackSize` de uma pilha: o componente `minecraft:max_stack_size` dela, se tem, e senão o do item
+/// (`ItemResource.getMaxStackSize` lê os componentes do recurso).
+pub(in crate::game) fn stack_limit(game: &Game<'_>, stack: &ItemStack) -> u32 {
+    let patched = stack
+        .data()
+        .and_then(|data| data.other(MAX_STACK_SIZE_COMPONENT))
+        .and_then(|tag| match tag {
+            Tag::Int(limit) => u32::try_from(*limit).ok(),
+            _ => None,
+        });
+    patched.unwrap_or_else(|| game.native_max_stack_size(&stack.item).unwrap_or(DEFAULT_STACK))
 }
 
-/// Leva o que couber de `stack` para o slot da máquina: o resto fica em `stack`.
+/// O que um `ItemStack` do jogo tem além do id e da quantidade, guardado por chave de componentes: o dano e os componentes que o
+/// distinguem. A lib compara o `ItemResource` por esses componentes em texto canônico, e o jogo precisa do que o texto veio para
+/// refazer a pilha quando o item sai de um slot da lib. Cresce com os conjuntos de componentes distintos que já passaram por uma
+/// máquina.
+type Extras = (u32, Option<Box<StackData>>);
+static EXTRAS: Mutex<BTreeMap<String, Extras>> = Mutex::new(BTreeMap::new());
+const MAX_STACK_SIZE_COMPONENT: &str = "minecraft:max_stack_size";
+
+/// O `DataComponentPatch` de uma pilha como a lib o compara: cada componente com o valor em texto canônico, o dano entre eles
+/// (`minecraft:damage`). Registra o que a pilha tem para refazê-la.
+fn item_components(stack: &ItemStack) -> Components {
+    let Some(Tag::Compound(entries)) = encode_components(stack) else {
+        return Components::none();
+    };
+    let texts: Vec<(String, String)> = entries
+        .iter()
+        .map(|(id, value)| (id.to_string_lossy(), canon_tag(value)))
+        .collect();
+    let components = Components::new(texts.iter().map(|(id, value)| (id.as_str(), value.as_str())));
+    let mut extras = EXTRAS.lock().unwrap_or_else(|e| e.into_inner());
+    extras
+        .entry(components.key().to_owned())
+        .or_insert_with(|| (stack.damage, stack.extra.clone()));
+    components
+}
+
+/// `ItemResource.of(stack)`: o item, a pilha máxima dele e os componentes que o distinguem.
+pub(in crate::game) fn item_resource(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
+    ItemResource::with_components(&stack.item, stack_limit(game, stack), item_components(stack))
+}
+
+/// O que um slot da lib guarda, de uma pilha do jogo.
+pub(in crate::game) fn slot_contents(game: &Game<'_>, stack: Option<&ItemStack>) -> SlotContents {
+    match stack {
+        Some(stack) => SlotContents::new(Some(item_resource(game, stack)), stack.count),
+        None => SlotContents::default(),
+    }
+}
+
+/// `ItemResource.toStack(amount)`: a pilha de um recurso, com o dano e os componentes que ele tem. `None` quando o recurso tem
+/// componentes que nunca passaram por uma pilha do jogo (quem o fez na lib os monta à mão).
+pub(in crate::game) fn stack_of_resource(resource: &ItemResource, count: u32) -> Option<ItemStack> {
+    let (damage, extra) = if resource.components.is_empty() {
+        (0, None)
+    } else {
+        EXTRAS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(resource.components.key())
+            .cloned()?
+    };
+    Some(ItemStack {
+        item: Arc::from(&*resource.id),
+        count,
+        damage,
+        extra,
+    })
+}
+
+/// Os componentes de um recurso como o `components` do `ItemResource.CODEC` os grava, para o NBT: o dano e cada componente na forma
+/// que a pilha tem. `None` sem componentes ou quando o recurso não veio de uma pilha do jogo.
+pub(in crate::game) fn components_tag(resource: &ItemResource) -> Option<Tag> {
+    encode_components(&stack_of_resource(resource, 1)?)
+}
+
+/// O recurso do `ItemResource.CODEC` lido do NBT: o id e o `components` (dano e componentes), com a pilha máxima do item.
+pub(in crate::game) fn resource_from_tag(game: &Game<'_>, id: &str, components: Option<&Tag>) -> ItemResource {
+    let (damage, extra) = decode_components(components);
+    let stack = ItemStack {
+        item: Arc::from(id),
+        count: 1,
+        damage,
+        extra,
+    };
+    item_resource(game, &stack)
+}
+
+/// Insere até `amount` de `item` numa célula de item do jogo (um slot do bloco ou do inventário): só junta o mesmo recurso, o item e os
+/// componentes, até a capacidade (`BasicResourceContainer.insert`), e uma célula vazia recebe o item. Quantos entraram. A regra de
+/// aceitar é de quem chama.
+pub(in crate::game) fn insert_into_cell(
+    game: &Game<'_>,
+    cell: &mut Option<ItemStack>,
+    item: &ItemStack,
+    amount: u32,
+) -> u32 {
+    let resource = item_resource(game, item);
+    let held = slot_contents(game, cell.as_ref());
+    let moved = amount.min(room_for(&held, &resource, resource.slot_capacity()));
+    if moved == 0 {
+        return 0;
+    }
+    match cell {
+        Some(held) => held.count += moved,
+        empty => {
+            let mut placed = item.clone();
+            placed.count = moved;
+            *empty = Some(placed);
+        }
+    }
+    moved
+}
+
+/// Tira `amount` de uma célula de item (`Slot.remove`): ela fica vazia ao chegar a zero.
+pub(in crate::game) fn remove_from_cell(cell: &mut Option<ItemStack>, amount: u32) {
+    let emptied = match cell {
+        Some(held) => {
+            held.count = held.count.saturating_sub(amount);
+            held.count == 0
+        }
+        None => false,
+    };
+    if emptied {
+        *cell = None;
+    }
+}
+
+/// Leva o que couber de `stack` para o slot da máquina: o resto fica em `stack`. O slot só junta o que é o mesmo recurso, o item e
+/// os componentes (`ItemStack.isSameItemSameComponents`).
 pub(in crate::game) fn move_into_slot(
     game: &Game<'_>,
     entity: &mut ModBlockEntity,
     slot: usize,
     stack: &mut ItemStack,
 ) {
-    let limit = game.native_max_stack_size(&stack.item).unwrap_or(DEFAULT_STACK);
+    let resource = item_resource(game, stack);
+    let held = slot_contents(game, entity.items[slot].as_ref());
+    let moved = stack.count.min(room_for(&held, &resource, resource.slot_capacity()));
     match &mut entity.items[slot] {
-        Some(held) if same_item(held, stack) => {
-            let moved = limit.saturating_sub(held.count).min(stack.count);
-            held.count += moved;
-            stack.count -= moved;
-        }
-        Some(_) => {}
+        Some(held) => held.count += moved,
         empty => {
-            let moved = stack.count.min(limit);
             let mut placed = stack.clone();
             placed.count = moved;
-            *empty = Some(placed);
-            stack.count -= moved;
+            if moved > 0 {
+                *empty = Some(placed);
+            }
         }
     }
+    stack.count -= moved;
 }
 
 /// A face da frente de uma máquina, pela propriedade `facing`.
@@ -722,23 +850,6 @@ fn give_one(
     false
 }
 
-fn room_in(
-    game: &Game<'_>,
-    entity: &ModBlockEntity,
-    inputs: &[usize],
-    stack: &ItemStack,
-    accepts: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
-) -> Option<usize> {
-    let limit = game.native_max_stack_size(&stack.item).unwrap_or(DEFAULT_STACK);
-    inputs.iter().copied().find(|&slot| {
-        accepts(game, slot, stack)
-            && match &entity.items[slot] {
-                None => true,
-                Some(held) => held.item == stack.item && held.count < limit,
-            }
-    })
-}
-
 fn take_one(
     game: &mut Game<'_>,
     hopper_pos: [i32; 3],
@@ -752,15 +863,29 @@ fn take_one(
     let Some(slots) = game.native_container_slots(dimension, hopper_pos, reached) else {
         return false;
     };
-    // Como o hopper: o primeiro item que o destino aceita, na ordem dos slots.
-    let found = slots.iter().find_map(|s| {
-        let stack = s.stack.as_ref().filter(|_| s.can_take)?;
-        Some((s.slot, room_in(game, entity, inputs, stack, accepts)?))
-    });
-    let Some((from, into)) = found else {
+    // Como o hopper: o primeiro item que o destino aceita, na ordem dos slots, para o primeiro slot de entrada que o aceita e tem
+    // lugar (vazio, ou o mesmo recurso abaixo da capacidade).
+    let offers: Vec<hopper::Offer<ItemStack>> = slots
+        .iter()
+        .filter_map(|s| {
+            let stack = s.stack.as_ref().filter(|_| s.can_take)?;
+            Some(hopper::Offer {
+                slot: s.slot,
+                resource: item_resource(game, stack),
+                payload: stack.clone(),
+            })
+        })
+        .collect();
+    let held: Vec<(usize, SlotContents)> = inputs
+        .iter()
+        .map(|&slot| (slot, slot_contents(game, entity.items[slot].as_ref())))
+        .collect();
+    let Some((offer, into)) =
+        hopper::first_taker(&offers, &held, |slot, offer| accepts(game, slot, &offer.payload))
+    else {
         return false;
     };
-    let Some(one) = game.native_extract_item(dimension, hopper_pos, reached, from, 1) else {
+    let Some(one) = game.native_extract_item(dimension, hopper_pos, reached, offers[offer].slot, 1) else {
         return false;
     };
     match &mut entity.items[into] {

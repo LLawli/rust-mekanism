@@ -12,12 +12,14 @@ use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
+use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
-use machinery_basis_core::tile::{SavedState, TileBase};
+use machinery_basis_core::tile::{ItemEnergy, SavedState, TileBase, energy_can_drain};
 
 const FUEL_SLOT: usize = 0;
+const ENERGY_SLOT: usize = 1;
 const SLOTS: usize = rules::SLOTS_SPEC.len();
 const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
@@ -364,4 +366,135 @@ pub(in crate::game) fn widget_tooltip(
     let rect = [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h];
     basis::menu_tooltip(game, batch, &[(text, None)], cursor, rect);
     true
+}
+
+/// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os dois slots do bloco (`entity.items`: combustível e energia,
+/// na ordem do Java, depois dos dois slots virtuais da janela de upgrades que o gerador não tem) e o inventário do jogador. Um slot do
+/// bloco tem o índice dele; o do jogador, `items.len() + índice no inventário` (a barra é 0 a 8, o inventário 9 a 35).
+struct GeneratorMenu<'a, 'g> {
+    game: &'a Game<'g>,
+    entity: &'a mut ModBlockEntity,
+    inventory: &'a mut [Option<ItemStack>],
+}
+
+impl GeneratorMenu<'_, '_> {
+    fn first_player(&self) -> usize {
+        self.entity.items.len()
+    }
+
+    /// `isValidForInsertion(.., MANUAL)` do slot: o de combustível (`FluidFuelInventorySlot.forFuel`) aceita o que queima ou o que enche
+    /// o tanque de lava (o balde, que também queima), e o de energia (`EnergyInventorySlot.drain`) o que `canDrain`: nenhum item portado
+    /// tem handler de energia, então nada.
+    fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
+        match slot {
+            FUEL_SLOT => is_fuel(self.game, stack),
+            ENERGY_SLOT => energy_can_drain(stored_energy(self.entity), true, item_energy(stack)),
+            _ => false,
+        }
+    }
+
+    fn cell(&mut self, slot: usize) -> &mut Option<ItemStack> {
+        let first = self.first_player();
+        if slot < first {
+            &mut self.entity.items[slot]
+        } else {
+            &mut self.inventory[slot - first]
+        }
+    }
+}
+
+/// O handler de energia de um item: nenhum item portado tem um (`energy_tablet` e os outros ainda não existem).
+fn item_energy(_stack: &ItemStack) -> Option<ItemEnergy> {
+    None
+}
+
+fn stored_energy(entity: &ModBlockEntity) -> i64 {
+    i64::from(basis::stored_energy(entity))
+}
+
+impl QuickMenu for GeneratorMenu<'_, '_> {
+    type Item = ItemStack;
+
+    fn slots_of(&self, region: Region) -> Vec<usize> {
+        let first = self.first_player();
+        match region {
+            Region::Container => (0..first).collect(),
+            Region::Hotbar => (first..first + 9).collect(),
+            Region::Main => (first + 9..first + 36).collect(),
+            Region::Armor | Region::Offhand => Vec::new(),
+        }
+    }
+
+    fn region(&self, slot: usize) -> Region {
+        let first = self.first_player();
+        if slot < first {
+            Region::Container
+        } else if slot - first < 9 {
+            Region::Hotbar
+        } else {
+            Region::Main
+        }
+    }
+
+    fn exists(&self, _slot: usize) -> bool {
+        true
+    }
+
+    fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
+        let first = self.first_player();
+        let held = if slot < first { self.entity.items[slot].as_ref() } else { self.inventory[slot - first].as_ref() };
+        held.filter(|stack| stack.count > 0).map(|stack| (stack.clone(), stack.count))
+    }
+
+    fn insert(&mut self, slot: usize, item: &ItemStack, amount: u32) -> u32 {
+        if slot < self.first_player() && !self.accepts(slot, item) {
+            return 0;
+        }
+        basis::insert_into_cell(self.game, self.cell(slot), item, amount)
+    }
+
+    fn remove(&mut self, slot: usize, amount: u32) {
+        basis::remove_from_cell(self.cell(slot), amount);
+    }
+}
+
+/// Shift-click do menu do Heat Generator: `MekanismContainer.quickMoveStack`, como nas quatro máquinas. Do inventário vai para o slot do
+/// gerador que aceita o item (o combustível) e, não cabendo, para a outra região do inventário; do gerador vai para a barra de atalhos
+/// e depois o inventário.
+pub(in crate::game) fn quick_move(
+    game: &mut Game<'_>,
+    _pos: [i32; 3],
+    entity: &mut ModBlockEntity,
+    container_slots: usize,
+    slot: usize,
+    stack: &mut ItemStack,
+    handled: &mut bool,
+) {
+    if !is_generator(&entity.id) {
+        return;
+    }
+    let first = entity.items.len();
+    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8).
+    let from = if slot < container_slots {
+        slot
+    } else {
+        let n = slot - container_slots;
+        first + if n < 27 { 9 + n } else { n - 27 }
+    };
+    let mut inventory = std::mem::take(&mut game.inventory);
+    let left = {
+        let mut menu = GeneratorMenu { game: &*game, entity, inventory: &mut inventory };
+        quick_move::quick_move(&mut menu, from);
+        menu.stack(from)
+    };
+    game.inventory = inventory;
+    // O slot clicado guarda o que sobrou; `handled` impede o roteamento do jogo, que levaria o item a outros slots.
+    match left {
+        Some((remaining, count)) => {
+            *stack = remaining;
+            stack.count = count;
+        }
+        None => stack.count = 0,
+    }
+    *handled = true;
 }
