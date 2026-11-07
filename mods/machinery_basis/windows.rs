@@ -1399,6 +1399,11 @@ impl Game<'_> {
         draw_tab(self, batch, block, origin);
     }
 
+    /// Os data slots que o servidor sincroniza para a tela de mod aberta (vazios sem tela): o estado que as condições de `screen_elements` leem.
+    pub(in crate::game) fn mb_screen_data(&self) -> Vec<i32> {
+        self.mod_screen.as_ref().map(|screen| screen.data.clone()).unwrap_or_default()
+    }
+
     /// Se o ponto `at` (relativo ao canto da tela) está sobre a janela de upgrades ou a aba dela: um elemento ativo da tela.
     pub(in crate::game) fn mb_window_over(&self, at: [f32; 2]) -> bool {
         over_element(self, at)

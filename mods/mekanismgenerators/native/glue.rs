@@ -149,6 +149,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
     if is_generator(block) {
         // Todo caminho que abre o menu (o servidor que monta o menu com os cinco slots a mais, o cliente que os põe na tela) passa por aqui antes.
         declare_armor_bar(rules::MENU, rules::armor_bar_declaration);
+        machinery_basis_core::screen_elements::declare_once(rules::MENU, rules::screen_elements);
         // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
         *container = Some(ModContainer {
             slots: rules::MENU_SLOTS,
@@ -161,6 +162,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
     if is_generator(block) {
         declare_armor_bar(rules::MENU, rules::armor_bar_declaration);
+        machinery_basis_core::screen_elements::declare_once(rules::MENU, rules::screen_elements);
         // Os slots virtuais da janela de upgrades vêm depois dos do gerador e ficam escondidos até a janela abrir.
         let mut slots: Vec<Option<[f32; 2]>> = rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect();
         slots.extend([None, None]);

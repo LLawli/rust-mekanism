@@ -1,7 +1,7 @@
-//! A barra de armadura de um tipo de menu (`ContainerBuilder.armorSideBar`) e os elementos de tela que ficam fora da imagem dele.
+//! A barra de armadura de um tipo de menu (`ContainerBuilder.armorSideBar`).
 //!
-//! O mod declara por tipo de menu, uma vez, onde a coluna de armadura fica e quais retângulos de elementos laterais a tela tem (as
-//! abas). O registro é um só no processo, porque o servidor (que monta o menu com os slots a mais) e o cliente (que os põe na tela e
+//! O mod declara por tipo de menu, uma vez, onde a coluna de armadura fica. Os elementos de tela fora da imagem (as abas) são de
+//! `screen_elements`. O registro é um só no processo, porque o servidor (que monta o menu com os slots a mais) e o cliente (que os põe na tela e
 //! os mapeia para os ids do jogo) rodam em threads diferentes e precisam da mesma resposta. A lib não conhece id de menu do Mekanism:
 //! ele chega por parâmetro.
 //!
@@ -26,9 +26,6 @@ pub struct Declaration {
     pub x: i32,
     pub y: i32,
     pub offhand_offset: i32,
-    /// Os elementos da tela que recebem o mouse fora da imagem (as abas laterais): clicar neles não é clicar fora
-    /// (`GuiMekanism.hasClickedOutside`). Retângulos relativos ao canto da tela.
-    pub elements: Vec<Rect>,
 }
 
 static REGISTRY: Mutex<Vec<(String, Declaration)>> = Mutex::new(Vec::new());
@@ -126,24 +123,11 @@ pub fn frame(slot: &PlacedSlot) -> Rect {
     [(slot.x - 1) as f32, (slot.y - 1) as f32, FRAME, FRAME]
 }
 
-/// `GuiMekanism.hasClickedOutside`: o ponto (relativo ao canto da tela) está sobre algo que impede o clique de ser "fora". Os
-/// slots da barra contam, porque o NeoForge não deixa um slot sob o mouse ser clicado como fora
-/// (`AbstractContainerScreen.mouseClicked`: `if (slot != null) clickedOutside = false`), e os elementos declarados.
-pub fn over_element(menu: &str, at: [f32; 2]) -> bool {
-    let (slots, elements) = with(|registry| {
-        registry
-            .iter()
-            .find(|(name, _)| name == menu)
-            .map(|(_, d)| {
-                (
-                    armor_slots::armor_side_bar(d.x, d.y, d.offhand_offset),
-                    d.elements.clone(),
-                )
-            })
-            .unwrap_or_default()
-    });
-    slots.iter().any(|slot| contains(frame(slot), at))
-        || elements.into_iter().any(|rect| contains(rect, at))
+/// O ponto (relativo ao canto da tela) está sobre um slot da barra. Os slots impedem o clique de ser "fora" porque o NeoForge não deixa
+/// um slot sob o mouse ser clicado como fora (`AbstractContainerScreen.mouseClicked`: `if (slot != null) clickedOutside = false`); os
+/// elementos de tela (as abas) são de `screen_elements`.
+pub fn over_slot(menu: &str, at: [f32; 2]) -> bool {
+    slots(menu).iter().any(|slot| contains(frame(slot), at))
 }
 
 #[cfg(test)]
@@ -159,7 +143,6 @@ mod tests {
                 x: -20,
                 y: 11,
                 offhand_offset: 0,
-                elements: vec![[-26.0, 109.0, 26.0, 26.0], [-26.0, 137.0, 26.0, 26.0]],
             },
         );
     }
@@ -172,7 +155,7 @@ mod tests {
         assert_eq!(client_of_menu_index("test:none", 4, 40), None);
         assert_eq!(menu_index_of_client("test:none", 4, 500), None);
         assert_eq!(slot_position("test:none", 500), None);
-        assert!(!over_element("test:none", [-15.0, 15.0]));
+        assert!(!over_slot("test:none", [-15.0, 15.0]));
     }
 
     #[test]
@@ -201,7 +184,6 @@ mod tests {
                 x: -20,
                 y: 67,
                 offhand_offset: armor_slots::NO_OFFHAND,
-                elements: Vec::new(),
             },
         );
         assert_eq!(extra_count("test:no_offhand"), 4);
@@ -210,24 +192,22 @@ mod tests {
     }
 
     #[test]
-    fn a_declaration_without_a_side_bar_only_declares_elements() {
-        // `armorSlotsX` ou `armorSlotsY` em -1: o contêiner não chama `addArmorSlots`, mas a tela ainda pode ter abas fora da imagem.
+    fn a_declaration_without_a_side_bar_has_no_slots() {
+        // `armorSlotsX` ou `armorSlotsY` em -1: o contêiner não chama `addArmorSlots`.
         declare(
-            "test:only_tabs",
+            "test:no_bar",
             Declaration {
                 x: armor_slots::NO_SIDE_BAR,
                 y: armor_slots::NO_SIDE_BAR,
                 offhand_offset: armor_slots::NO_OFFHAND,
-                elements: vec![[-26.0, 137.0, 26.0, 26.0]],
             },
         );
-        assert!(declared("test:only_tabs"));
-        assert_eq!(extra_count("test:only_tabs"), 0);
-        assert!(slots("test:only_tabs").is_empty());
-        assert_eq!(client_of_menu_index("test:only_tabs", 4, 40), None);
-        assert_eq!(slot_position("test:only_tabs", 500), None);
-        assert!(over_element("test:only_tabs", [-10.0, 150.0]));
-        assert!(!over_element("test:only_tabs", [-15.0, 15.0]));
+        assert!(declared("test:no_bar"));
+        assert_eq!(extra_count("test:no_bar"), 0);
+        assert!(slots("test:no_bar").is_empty());
+        assert_eq!(client_of_menu_index("test:no_bar", 4, 40), None);
+        assert_eq!(slot_position("test:no_bar", 500), None);
+        assert!(!over_slot("test:no_bar", [-10.0, 150.0]));
     }
 
     #[test]
@@ -288,25 +268,22 @@ mod tests {
     }
 
     #[test]
-    fn the_mouse_over_a_bar_slot_or_a_declared_tab_is_not_outside() {
+    fn the_mouse_over_a_bar_slot_is_not_outside() {
         generator("test:generator_e");
-        let over = |x: f32, y: f32| over_element("test:generator_e", [x, y]);
+        let over = |x: f32, y: f32| over_slot("test:generator_e", [x, y]);
         // Os cinco quadros, inclusive o pixel entre dois (cada quadro tem 18 e o passo é 18).
         for y in [10.0, 27.9, 28.0, 45.0, 63.0, 81.0, 99.9] {
             assert!(over(-21.0, y), "y {y}");
             assert!(over(-4.1, y), "y {y}");
         }
-        // As abas de energia e de calor.
-        assert!(over(-26.0, 109.0));
-        assert!(over(-1.0, 162.9));
         // O suporte em volta dos slots (`GuiSideHolder` não está ativo): a folga de 5 pixels à esquerda e a de 3 à direita, o alto e o baixo.
         assert!(!over(-22.0, 50.0));
         assert!(!over(-3.0, 50.0));
         assert!(!over(-15.0, 9.9));
         assert!(!over(-15.0, 100.0));
-        // O resto de fora da imagem.
+        // O resto de fora da imagem, as abas inclusive: elas são de `screen_elements`.
         assert!(!over(-40.0, 50.0));
-        assert!(!over(-15.0, 108.9));
+        assert!(!over(-15.0, 120.0));
     }
 
     #[test]
@@ -319,16 +296,14 @@ mod tests {
                 x: 180,
                 y: 41,
                 offhand_offset: 0,
-                elements: Vec::new(),
             },
         );
         assert_eq!(slot_position("test:generator_f", 500), Some((180.0, 41.0)));
-        assert!(!over_element("test:generator_f", [-15.0, 15.0]));
+        assert!(!over_slot("test:generator_f", [-15.0, 15.0]));
         declare_once("test:generator_g", || Declaration {
             x: 1,
             y: 2,
             offhand_offset: 0,
-            elements: Vec::new(),
         });
         assert_eq!(slot_position("test:generator_g", 500), Some((1.0, 2.0)));
     }

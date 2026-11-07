@@ -120,15 +120,21 @@ pub const ARMOR_HOLDER: machinery_basis_core::gui::Rect = [-26.0, 6.0, 26.0, 98.
 pub const ARMOR_HOLDER_SPRITE: &str = "mekanism:gui/sprites/holder_left";
 pub const ARMOR_HOLDER_TINT: u32 = 0xFF_FF_FF_FF;
 
-/// O que a tela do gerador declara à `machinery_basis` do tipo de menu: a barra de armadura e os elementos que ficam fora da imagem de
-/// 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor e a de energia. A aba de upgrades é da lib.
+/// O que a tela do gerador declara à `machinery_basis` do tipo de menu: a barra de armadura. A aba de upgrades é da lib.
 pub fn armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
     machinery_basis_core::armor_bar::Declaration {
         x: ARMOR_BAR_X,
         y: ARMOR_BAR_Y,
         offhand_offset: ARMOR_BAR_OFFHAND_OFFSET,
-        elements: vec![HEAT_TAB.rect, ENERGY_TAB.rect],
     }
+}
+
+/// Os elementos da tela que ficam fora da imagem de 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor e a de
+/// energia, ambas sempre ativas e visíveis.
+pub fn screen_elements() -> Vec<machinery_basis_core::screen_elements::Element> {
+    [HEAT_TAB.rect, ENERGY_TAB.rect]
+        .map(machinery_basis_core::screen_elements::Element::always)
+        .to_vec()
 }
 
 /// `GuiHeatTab.getResource`: `Mekanism.rl("tab/heat_info_" + type.getTabName())`, no atlas de sprites da tela.

@@ -27,6 +27,7 @@ pub mod recipe_handlers;
 pub mod recipe_monitor;
 pub mod resource;
 pub mod resource_tank;
+pub mod screen_elements;
 pub mod scroll_list;
 pub mod side_tab;
 pub mod sides;

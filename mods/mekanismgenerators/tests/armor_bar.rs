@@ -7,6 +7,7 @@ use machinery_basis_core::armor_bar;
 use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::quick_move::{QuickMenu, Region, quick_move};
+use machinery_basis_core::screen_elements;
 use machinery_basis_core::side_tab;
 use mekanismgenerators_rules as rules;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,7 @@ fn content() -> PathBuf {
 
 fn declare() {
     armor_bar::declare_once(rules::MENU, rules::armor_bar_declaration);
+    screen_elements::declare_once(rules::MENU, rules::screen_elements);
 }
 
 #[test]
@@ -75,7 +77,11 @@ fn the_menu_has_the_bar_at_indices_40_to_44_as_in_the_original() {
 #[test]
 fn the_screen_keeps_the_tabs_outside_the_image_but_not_the_holder_margin() {
     declare();
-    let over = |x: f32, y: f32| armor_bar::over_element(rules::MENU, [x, y]);
+    // O que o jogo responde (`GuiMekanism.hasClickedOutside` mais o slot do NeoForge): os quadros da barra e os elementos declarados.
+    let over = |x: f32, y: f32| {
+        armor_bar::over_slot(rules::MENU, [x, y])
+            || screen_elements::over_element(rules::MENU, [x, y], &[])
+    };
     // A aba de calor (-26, 109) e a de energia (-26, 137), de 26 por 26, e os cinco quadros dos slots.
     assert!(over(-26.0, 109.0) && over(-1.0, 134.9));
     assert!(over(-26.0, 137.0) && over(-1.0, 162.9));
@@ -85,10 +91,8 @@ fn the_screen_keeps_the_tabs_outside_the_image_but_not_the_holder_margin() {
     assert!(!over(-15.0, 135.5));
     assert!(!over(-15.0, 163.0));
     // `GuiHeatTab` e `GuiEnergyTab` são as mesmas constantes que o desenho e o tooltip usam.
-    assert_eq!(
-        rules::armor_bar_declaration().elements,
-        [rules::HEAT_TAB.rect, rules::ENERGY_TAB.rect]
-    );
+    let rects: Vec<_> = rules::screen_elements().iter().map(|e| e.rect()).collect();
+    assert_eq!(rects, [rules::HEAT_TAB.rect, rules::ENERGY_TAB.rect]);
 }
 
 #[test]
