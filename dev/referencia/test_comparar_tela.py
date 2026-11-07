@@ -95,7 +95,7 @@ class CompararTela(unittest.TestCase):
         resultado, _ = ct.comparar(a, b, "generator", ESCALA, margem=30)
         self.assertEqual(resultado["elementos"]["aba_calor"]["diferentes"], 1)
         # O gerador ainda tem os slots de armadura e a aba de upgrades à direita: elementos dele que o port tem de ganhar.
-        for nome, ponto in (("slots_armadura", (-12, 50)), ("aba_upgrades", (190, 20))):
+        for nome, ponto in (("slots_armadura", (-21, 50)), ("aba_upgrades", (190, 20))):
             c = copia(a)
             pintar(c, *na_tela(*ponto))
             resultado, _ = ct.comparar(a, c, "generator", ESCALA, margem=30)
@@ -895,48 +895,106 @@ class Lote(unittest.TestCase):
         largo esconderia diferença (docs/plano-paridade.md, "Tetos dos resíduos")."""
         self.assertEqual(cl.LIMITE_MUNDO_POR_LUZ, {0: 1, 8: 1, 13: 1})
 
-    def test_os_slots_de_armadura_sob_a_sombra_da_janela_contam_como_slots_e_nao_como_mundo(self):
-        """Na janela de upgrades do Heat Generator a coluna de armadura (x -21 a -4) passa por baixo da sombra da janela (x a partir de -14): a diferença que
-        o original desenha ali são os slots, e sai em `slots_armadura`, não em `alem_janela_fundo`."""
+    def test_a_barra_de_armadura_sob_a_sombra_da_janela_conta_como_barra_e_nao_como_mundo(self):
+        """Na janela de upgrades do Heat Generator a barra de armadura (x -26 a -4) passa por baixo da sombra da janela (x a partir de -14): a diferença que
+        o original desenha ali é dela, e sai em `fundo_armadura_*`, `slots_armadura` e `suporte_armadura`, não em `alem_janela_fundo`."""
         gerador = cena_telas.caso("g_aba_x", "generator", energia="0")
         prioridade = cl.prioridade_do_caso(gerador, {}, ct.JANELA)
         chaves = list(prioridade)
-        self.assertLess(chaves.index("slots_armadura"), chaves.index("janela_fundo"))
-        self.assertGreater(chaves.index("slots_armadura"), chaves.index("janela_titulo"), "as filhas da janela vêm antes")
+        for nome in (*ct.FUNDOS_ARMADURA, "slots_armadura", "suporte_armadura"):
+            self.assertLess(chaves.index(nome), chaves.index("janela_fundo"), nome)
+            self.assertGreater(chaves.index(nome), chaves.index("janela_titulo"), "as filhas da janela vêm antes")
+        for nome, ponto in (("fundo_armadura_0", (-10, 20)), ("slots_armadura", (-10, 27)), ("suporte_armadura", (-2, 13))):
+            a, b = imagem(), imagem()
+            pintar(b, *na_tela(*ponto), cor=(250, 250, 250))  # na barra e na sombra da janela
+            r, _ = ct.comparar(a, b, "generator", ESCALA, margem=28, prioridade=prioridade, mascarar_abas=False, limite_mundo=2)
+            self.assertEqual(r["elementos"][nome]["diferentes"], 1, nome)
+            self.assertNotIn("alem_janela_fundo", r["elementos"], nome)
+        # O canto transparente do suporte, mesmo vindo da prioridade, mostra o mundo atrás e não o suporte.
         a, b = imagem(), imagem()
-        pintar(b, *na_tela(-10, 20), cor=(250, 250, 250))  # na coluna de armadura e na sombra da janela
+        pintar(b, *na_tela(-26, 6), cor=(250, 250, 250))
         r, _ = ct.comparar(a, b, "generator", ESCALA, margem=28, prioridade=prioridade, mascarar_abas=False, limite_mundo=2)
-        self.assertEqual(r["elementos"]["slots_armadura"]["diferentes"], 1)
-        self.assertNotIn("alem_janela_fundo", r["elementos"])
-        # O Infuser e as máquinas elétricas não têm a coluna: a janela segue como era.
+        self.assertEqual(r["elementos"]["alem_canto_suporte_armadura"]["diferentes"], 1)
+        self.assertEqual(r["elementos"]["suporte_armadura"]["diferentes"], 0)
+        # O Infuser e as máquinas elétricas não têm a barra: a janela segue como era.
         eletrica = cl.prioridade_do_caso(cena_telas.caso("c_aba_x", "chamber", energia="0"), {}, ct.JANELA)
-        self.assertNotIn("slots_armadura", eletrica)
+        for nome in (*ct.FUNDOS_ARMADURA, "slots_armadura", "suporte_armadura"):
+            self.assertNotIn(nome, eletrica)
         self.assertEqual(list(eletrica), list(ct.JANELA))
 
-    def test_o_que_nao_esta_portado_segue_dif_e_o_relatorio_diz_a_causa(self):
-        """Os slots de armadura do Heat Generator: diferença de verdade, sem resíduo que a esconda, e o relatório diz que não estão portados."""
-        self.assertFalse(cl.residuo("slots_armadura"))
-        self.assertEqual(cl.marca_do_estado({"slots_armadura": 2608}, {}), "DIF")
-        texto = cl.texto_dos_nao_portados({"slots_armadura": 2608, "medidor_lava": 5})
-        self.assertIn("NÃO PORTADO: slots_armadura", texto)
-        self.assertIn("armorSideBar(-20, 11, 0)", texto)
-        self.assertNotIn("medidor_lava", texto)
-        self.assertEqual(cl.texto_dos_nao_portados({"medidor_lava": 5}), "")
-        # No lote, o estado sai `DIF` com a causa na linha, e o código de saída é 1.
+    def test_a_barra_de_armadura_conta_como_elemento_do_mod_e_o_recorte_a_inclui_sem_margem(self):
+        """A barra (portada em 2026-11-07) deixou de ser "não portada": cada parte dela (o fundo vazio de cada peça, o quadro do slot e o suporte) é um elemento do
+        mod, a diferença em qualquer uma é `DIF` e faz o lote falhar, e um caso sem margem (sem aba) também a compara."""
+        a = imagem()
+        pontos = {"fundo_armadura_0": (-12, 18), "fundo_armadura_4": (-12, 90), "slots_armadura": (-21, 50), "suporte_armadura": (-24, 50)}
+        for nome, ponto in pontos.items():
+            b = copia(a)
+            pintar(b, *na_tela(*ponto))
+            r, _ = ct.comparar(a, b, "generator", ESCALA, mascarar_abas=False)
+            self.assertEqual(r["elementos"][nome]["diferentes"], 1, nome)
+            self.assertEqual(r["diferentes"], 1, nome)
+        # Os cinco fundos são de 16 por 16 em (-20, 11 + 18 i), dentro dos cinco quadros de 18 por 18 em (-21, 10 + 18 i); o suporte tem 26 por 98 em (-26, 6).
+        self.assertEqual(list(ct.FUNDOS_ARMADURA.values()), [(-20, 11 + 18 * i, 16, 16) for i in range(5)])
+        self.assertEqual(ct.SLOTS_ARMADURA, (-21, 10, 18, 90))
+        self.assertEqual(ct.SUPORTE_ARMADURA, (-26, 6, 26, 98))
+        # A ordem é a que decide quem leva o pixel: o fundo, depois o quadro, depois o suporte, todos antes dos elementos da tela.
+        nomes = list(ct.elementos_da_tela("generator"))
+        self.assertEqual(nomes.index("fundo_armadura_4") + 1, nomes.index("slots_armadura"))
+        self.assertEqual(nomes.index("slots_armadura") + 1, nomes.index("suporte_armadura"))
+        # Só o Heat Generator tem a barra.
+        for tela in ("electric", "infuser"):
+            self.assertNotIn("suporte_armadura", ct.elementos_da_tela(tela))
+        # Com a máscara das abas (o modo de linha de comando), a barra inteira continua na conta.
+        b = copia(a)
+        pintar(b, *na_tela(-24, 50))
+        r, _ = ct.comparar(a, b, "generator", ESCALA)
+        self.assertEqual(r["elementos"]["suporte_armadura"]["diferentes"], 1)
+
+    def test_os_cantos_transparentes_do_suporte_de_armadura_sao_o_mundo_atras(self):
+        """`holder_left` (26 por 9, nove partes de borda 4) tem 6 pixels transparentes no canto esquerdo, que mostram o mundo atrás: contam à parte, com o limite do
+        mundo, e o resto do suporte não."""
+        cantos = ct.cantos_do_suporte(ct.SUPORTE_ARMADURA, ct.HOLDER_ESQUERDA)
+        x, y, w, h = ct.SUPORTE_ARMADURA
+        self.assertEqual(cantos, {(x, y), (x + 1, y), (x, y + 1), (x, y + h - 2), (x, y + h - 1), (x + 1, y + h - 1)})
         a, b = imagem(), imagem()
+        pintar(b, *na_tela(x, y), cor=(121, 131, 141))  # um nível: o limite do mundo o aceita
+        pintar(b, *na_tela(x + 1, y + 1), cor=(121, 131, 141))  # o suporte de verdade não tem folga
+        r, _ = ct.comparar(a, b, "generator", ESCALA, mascarar_abas=False, limite_mundo=1)
+        self.assertEqual(r["elementos"]["canto_suporte_armadura"]["diferentes"], 1)
+        self.assertEqual(r["elementos"]["suporte_armadura"]["diferentes"], 1)
+        self.assertNotIn("alem_canto_suporte_armadura", r["elementos"])
+        self.assertTrue(cl.residuo("canto_suporte_armadura"))
+        self.assertFalse(cl.residuo("suporte_armadura"))
+        self.assertFalse(cl.residuo("slots_armadura"))
+        self.assertFalse(cl.residuo("fundo_armadura_0"))
+
+    def test_a_diferenca_na_barra_de_armadura_e_dif_e_o_lote_falha(self):
+        """No lote, a diferença na barra sai `DIF` (sem "NÃO PORTADO": ela está portada) e o código de saída é 1."""
+        self.assertEqual(cl.marca_do_estado({"slots_armadura": 2608}, {}), "DIF")
+        self.assertEqual(cl.marca_do_estado({"suporte_armadura": 3}, {"mundo_atras": 5}), "DIF")
+        self.assertFalse(hasattr(cl, "NAO_PORTADOS"))
         gerador = cena_telas.caso("g_aba_energia_x", "generator", energia="0")
-        x, y = na_tela(-21 + 8, 10 + 8)  # dentro do primeiro slot de armadura
-        pintar(b, x, y, cor=(250, 250, 250))
+        for ponto in ((-21 + 8, 10 + 8), (-24, 50), (-12, 18)):  # o slot, o suporte e o fundo vazio da cabeça
+            a, b = imagem(), imagem()
+            pintar(b, *na_tela(*ponto), cor=(250, 250, 250))
+            with tempfile.TemporaryDirectory() as pasta:
+                for lado, prefixo, img in (("o", "oficial_", a), ("p", "port_", b)):
+                    os.makedirs(os.path.join(pasta, lado), exist_ok=True)
+                    ct.gravar_png(os.path.join(pasta, lado, f"{prefixo}{gerador['nome']}_e2.png"), *img)
+                with mock.patch.object(cena_telas, "todos_os_casos", return_value=[gerador]), contextlib.redirect_stdout(io.StringIO()) as texto:
+                    codigo = cl.principal([os.path.join(pasta, "o"), os.path.join(pasta, "p"), os.path.join(pasta, "s"), "2"])
+            linha = next(l for l in texto.getvalue().splitlines() if "g_aba_energia_x_e2" in l)
+            self.assertTrue(linha.startswith("DIF"), linha)
+            self.assertNotIn("NÃO PORTADO", linha)
+            self.assertEqual(codigo, 1, ponto)
+        # Sem diferença nenhuma o mesmo caso sai ok e o código é 0.
+        a = imagem()
         with tempfile.TemporaryDirectory() as pasta:
-            for lado, prefixo, img in (("o", "oficial_", a), ("p", "port_", b)):
+            for lado, prefixo in (("o", "oficial_"), ("p", "port_")):
                 os.makedirs(os.path.join(pasta, lado), exist_ok=True)
-                ct.gravar_png(os.path.join(pasta, lado, f"{prefixo}{gerador['nome']}_e2.png"), *img)
-            with mock.patch.object(cena_telas, "todos_os_casos", return_value=[gerador]), contextlib.redirect_stdout(io.StringIO()) as texto:
-                codigo = cl.principal([os.path.join(pasta, "o"), os.path.join(pasta, "p"), os.path.join(pasta, "s"), "2"])
-        linha = next(l for l in texto.getvalue().splitlines() if "g_aba_energia_x_e2" in l)
-        self.assertTrue(linha.startswith("DIF"), linha)
-        self.assertIn("NÃO PORTADO: slots_armadura", linha)
-        self.assertEqual(codigo, 1)
+                ct.gravar_png(os.path.join(pasta, lado, f"{prefixo}{gerador['nome']}_e2.png"), *a)
+            with mock.patch.object(cena_telas, "todos_os_casos", return_value=[gerador]), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cl.principal([os.path.join(pasta, "o"), os.path.join(pasta, "p"), os.path.join(pasta, "s"), "2"]), 0)
 
     def test_o_mundo_atras_da_tela_sem_causa_provada_e_ne_e_nao_ok(self):
         self.assertEqual(cl.marca_do_estado({}, {}), "ok ")

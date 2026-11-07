@@ -171,9 +171,10 @@ def prioridade_do_caso(c, regioes, janela):
     tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
     for nome, rect in (janela or {}).items():
         if nome == "janela_fundo" and tela == "generator":
-            # A coluna dos slots de armadura do Heat Generator passa por baixo da sombra da janela: o que o original desenha ali (os slots) é dela, não do mundo
-            # atrás da janela. As filhas da janela, e o painel dela, vêm antes.
-            prioridade["slots_armadura"] = ct.elementos_da_tela("generator")["slots_armadura"]
+            # A barra de armadura do Heat Generator (os fundos vazios, os cinco quadros e o suporte) passa por baixo da sombra da janela: o que o original desenha ali é
+            # dela, não do mundo atrás da janela. As filhas da janela, e o painel dela, vêm antes.
+            barra = ct.elementos_da_tela("generator")
+            prioridade.update({n: barra[n] for n in (*ct.FUNDOS_ARMADURA, "slots_armadura", "suporte_armadura")})
         prioridade[nome] = rect
     return prioridade
 
@@ -240,19 +241,6 @@ def texto_das_nao_explicadas(nao_explicadas, resultado):
     if not nao_explicadas:
         return ""
     return (f" | NÃO EXPLICADA (mundo atrás da tela, H30 e H22): {nao_explicadas}, até {resultado['maior_do_mundo']} por canal; sem causa provada, não é ok")
-
-
-# O que o original desenha e o port ainda não tem, e que segue como diferença de VERDADE (`DIF`): o relatório só diz a causa. Nenhuma regra o esconde.
-NAO_PORTADOS = {
-    "slots_armadura": "os 4 `ArmorSlot` e o `OffhandSlot` de `armorSideBar(-20, 11, 0)` do Heat Generator: o menu de mod do Horizon só tem os slots do contêiner "
-                      "(ver docs/plano-paridade.md, \"Slots de armadura\")",
-}
-
-
-def texto_dos_nao_portados(reais):
-    """A causa de cada diferença de verdade que é algo não portado, para o relatório. Não muda a contagem: ela segue `DIF`."""
-    achados = [n for n in reais if n in NAO_PORTADOS]
-    return "".join(f" | NÃO PORTADO: {n} ({NAO_PORTADOS[n]})" for n in achados)
 
 
 def conhecidas_de(dados):
@@ -395,7 +383,7 @@ def principal(argv):
                 com_nao_explicadas += bool(nao_explicadas) and not reais
                 if reais or conhecidas or k == 0:
                     print(f"  {marca_do_estado(reais, nao_explicadas)} {resultado['caso']:<44} {resultado['diferentes']:>6} fora dos resíduos do Horizon: {reais if reais else 0}"
-                          + (f" | resíduos: {residuos}" if residuos else "") + texto_dos_nao_portados(reais) + texto_das_conhecidas(conhecidas)
+                          + (f" | resíduos: {residuos}" if residuos else "") + texto_das_conhecidas(conhecidas)
                           + texto_das_nao_explicadas(nao_explicadas, resultado), flush=True)
         for c, k, nome, caminho_a, caminho_b in pares([x for x in casos if "ciclo" not in x["args"]], escala, original, port):
             if not (os.path.exists(caminho_a) and os.path.exists(caminho_b)):
@@ -443,7 +431,7 @@ def principal(argv):
             nao_explicadas = nao_explicadas_de(residuos)
             com_nao_explicadas += bool(nao_explicadas) and not reais
             print(f"{marca_do_estado(reais, nao_explicadas)} {nome:<44} {resultado['diferentes']:>6} fora dos resíduos do Horizon: {reais if reais else 0}"
-                  + (f" | resíduos: {residuos}" if residuos else "") + texto_dos_nao_portados(reais) + texto_das_conhecidas(conhecidas)
+                  + (f" | resíduos: {residuos}" if residuos else "") + texto_das_conhecidas(conhecidas)
                           + texto_das_nao_explicadas(nao_explicadas, resultado), flush=True)
             if reais:
                 realmente += 1

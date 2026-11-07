@@ -86,9 +86,15 @@ ABA_UPGRADES = (LARGURA, 6, 26, 26)
 # 109) do Heat Generator. São elementos de textura do original, não suportes: ficam visíveis na cena, e o que falta no port aparece como diferença.
 ABA_ENERGIA = (-26, 137, 26, 26)
 ABA_CALOR = (-26, 109, 26, 26)
-# Os cinco slots de armadura e mão secundária que o Heat Generator desenha à esquerda (`GuiSideHolder.armorHolder` oculta na cena, e cinco `GuiSlot`
-# de 18 por 18 em x = -21, y = 10, 28, 46, 64 e 82, que continuam visíveis).
+# A barra de armadura do Heat Generator (`armorSideBar(-20, 11, 0)` no menu e `GuiSideHolder.create(-26, 6, 98, true, true, TAB_ARMOR_SLOTS)` na tela, portados em
+# 2026-11-07): o suporte (`holder_left`, 26 por 98 em nove partes de borda 4, tingido), cinco `GuiSlot` de 18 por 18 em x = -21, y = 10, 28, 46, 64 e 82, e dentro de cada um
+# o fundo vazio da peça (16 por 16, `InventoryMenu.EMPTY_ARMOR_SLOT_*`, em (-20, 11 + 18 i)). Valem nesta ordem (o primeiro que contém o pixel leva a contagem): o fundo
+# vazio, o quadro do slot e o suporte. O `CenaTelas` deixa o suporte visível desde essa data (antes o ocultava com os outros).
+SUPORTE_ARMADURA = (-26, 6, 26, 98)
 SLOTS_ARMADURA = (-21, 10, 18, 90)
+FUNDOS_ARMADURA = {f"fundo_armadura_{i}": (-20, 11 + 18 * i, 16, 16) for i in range(5)}
+# O que o gerador desenha fora dos 176 por 166 e o recorte tem de incluir sempre, mesmo sem margem: sem isto um caso sem aba não vê a coluna.
+FORA_DA_TELA = ("suporte_armadura",)
 
 # A aba de xp (`GuiXpContainmentTab`: 26 por 26 em `imageWidth`, 90), que as máquinas de receita têm com o upgrade `xp_containment`. O botão de
 # dentro, 18 por 18, começa em (179, 94).
@@ -126,6 +132,7 @@ COLUNA_DIREITA = (LARGURA, -1, 26, ALTURA + 2)
 # O suporte de uma aba (`holder_right`, 26 por 9 em nove partes de borda 4) tem cantos transparentes, e o que se vê neles é o mundo atrás da
 # tela, que cada jogo desenha do seu jeito (H22). Esses pixels contam à parte (`canto_aba_*`), como os do painel.
 HOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/holder_right.png")
+HOLDER_ESQUERDA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../mods/mekanism/content/assets/mekanism/textures/gui/sprites/holder_left.png")
 BORDA_SUPORTE = 4
 
 
@@ -150,10 +157,11 @@ def cantos_do_sprite(rect, caminho):
     return {(x + dx, y + dy) for dy in range(min(h, altura)) for dx in range(min(w, largura)) if rgba[(dy * largura + dx) * 4 + 3] == 0}
 
 
-def cantos_do_suporte(rect):
-    """Os pixels de GUI (relativos à tela) do suporte `rect` (26 por 26) em que o sprite `holder_right` é transparente."""
+def cantos_do_suporte(rect, caminho=HOLDER):
+    """Os pixels de GUI (relativos à tela) do suporte `rect` (26 de largura) em que o sprite de nove partes `caminho` (`holder_right`, ou `holder_left` na barra de
+    armadura) é transparente."""
     try:
-        largura, altura, rgba = ler_png(HOLDER)
+        largura, altura, rgba = ler_png(caminho)
     except OSError:
         return set()
     x, y, w, h = rect
@@ -294,7 +302,9 @@ def elementos_da_tela(tela):
     elementos["aba_energia"] = ABA_ENERGIA
     if tela == "generator":
         elementos["aba_calor"] = ABA_CALOR
+        elementos.update(FUNDOS_ARMADURA)
         elementos["slots_armadura"] = SLOTS_ARMADURA
+        elementos["suporte_armadura"] = SUPORTE_ARMADURA
         # O Heat Generator aceita o upgrade de silêncio: a aba de upgrades fica à direita, como nas máquinas.
         elementos["aba_upgrades"] = ABA_UPGRADES
     if tela != "generator":
@@ -313,7 +323,7 @@ def dentro(rect, x, y):
 def mascara_das_abas(tela):
     """O que sai da conta: as colunas das abas que o port não tem, menos a aba de avisos, que ele tem."""
     liberado = [ABA_AVISOS[tela], ABA_UPGRADES, ABA_ENERGIA]
-    liberado += [ABA_XP] if tela != "generator" else [ABA_CALOR, SLOTS_ARMADURA]
+    liberado += [ABA_XP] if tela != "generator" else [ABA_CALOR, SUPORTE_ARMADURA]
     return [COLUNA_ESQUERDA, COLUNA_DIREITA], liberado
 
 
@@ -349,7 +359,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     caixa = (-margem, -margem, LARGURA + 2 * margem, ALTURA + 2 * margem)
     gui_esquerda, gui_topo = caixa[0], caixa[1]
     gui_direita, gui_base = caixa[0] + caixa[2], caixa[1] + caixa[3]
-    for rx, ry, rw, rh in regioes.values():
+    for rx, ry, rw, rh in list(regioes.values()) + [elementos[nome] for nome in FORA_DA_TELA if nome in elementos]:
         gui_esquerda, gui_topo = min(gui_esquerda, rx), min(gui_topo, ry)
         gui_direita, gui_base = max(gui_direita, rx + rw), max(gui_base, ry + rh)
     esquerda, topo = ox + gui_esquerda * escala, oy + gui_topo * escala
@@ -361,7 +371,8 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     recorte_largura, recorte_altura = direita - esquerda, base - topo
     saida = bytearray(recorte_largura * recorte_altura * 4)
     cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP),
-              "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG), "canto_aba_calor": cantos_do_sprite(ABA_CALOR, CALOR_PNG)}
+              "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG), "canto_aba_calor": cantos_do_sprite(ABA_CALOR, CALOR_PNG),
+              "canto_suporte_armadura": cantos_do_suporte(SUPORTE_ARMADURA, HOLDER_ESQUERDA)}
     contagem = {nome: [0, 0] for nome in list(regioes) + list(elementos) + list(cantos)}  # [pixels comparados, pixels diferentes]
     contagem["fundo"] = [0, 0]
     contagem["mundo_atras"] = [0, 0]
@@ -381,7 +392,11 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                 classe[chave] = None
             else:
                 nome = next((nome for nome, rect in prioridade.items() if dentro(rect, gx, gy)), None)
-                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR)):
+                if nome == "suporte_armadura" and (gx, gy) in cantos["canto_suporte_armadura"]:
+                    # O suporte vindo da prioridade (sob a janela de upgrades) também tem os cantos transparentes, que mostram o mundo atrás.
+                    nome = "canto_suporte_armadura"
+                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR),
+                                  ("canto_suporte_armadura", SUPORTE_ARMADURA)):
                     if nome is None and aba[len("canto_"):] in elementos and (gx, gy) in cantos[aba]:
                         nome = aba
                 nome = nome or next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)

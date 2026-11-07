@@ -368,9 +368,10 @@ public class CenaTelas {
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
     }
 
-    /// O port ainda não tem as abas de configuração, transporte, cadeado, livro, energia, redstone e upgrades, nem a que guarda os
-    /// slots de armadura: no original da cena elas ficam invisíveis, para a imagem mostrar o que o port tem. A aba de avisos, a de
-    /// upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a posição e a visibilidade que o original dá.
+    /// O port ainda não tem as abas de configuração, transporte, cadeado, livro e redstone: no original da cena elas ficam invisíveis, para a
+    /// imagem mostrar o que o port tem. A aba de avisos, a de upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a
+    /// posição e a visibilidade que o original dá. O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(-26, 6, 98)`, `isArmorHolder`)
+    /// também fica visível desde 2026-11-07, quando o port o desenhou: antes ficava oculto, e o comparador só via os slots.
     private static void hideUnimplementedTabs(Minecraft minecraft, Caso caso) {
         if (minecraft.gui.screen() instanceof mekanism.client.gui.GuiMekanism<?> screen) {
             //Tudo o que o original desenha fora do retângulo da tela (176 por 166), para saber o que o comparador não vê
@@ -395,11 +396,19 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
+                      && !isArmorHolder(screen, element)
                       && element instanceof mekanism.client.gui.element.GuiSideHolder) {
                     element.visible = false;
                 }
             }
         }
+    }
+
+    /// O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(this, -26, 6, 98, ...)`): o único suporte que o port desenha nessa tela. Os da
+    /// segurança e da redstone (também `GuiSideHolder`, à direita) seguem ocultos: o port não tem essas abas.
+    private static boolean isArmorHolder(mekanism.client.gui.GuiMekanism<?> screen, mekanism.client.gui.element.GuiElement element) {
+        return screen instanceof mekanism.generators.client.gui.GuiHeatGenerator && element.getX() - screen.getLeftPos() == -26
+              && element.getY() - screen.getTopPos() == 6;
     }
 
     /// O que o servidor tem do gerador (energia, lava, calor, produção) e do tanque do Infuser, no `cena:` do log, para comparar com o

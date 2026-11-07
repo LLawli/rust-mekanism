@@ -64,6 +64,10 @@ no criativo (dois jogadores falsos), e o `quickMoveStack` chamado direto e pelo 
 slots, o cursor, o equipamento do jogador, o som e os eventos de jogo. O `quickMove` roda em lote próprio (`trace_armor_ticks`) porque o som dos ticks seguintes
 não tem dono no evento. Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois.
 
+`horizon2/h2_armor.py` (também com `H_NAME=horizon`) repete no jogo os casos do rastro da barra de armadura; `horizon2/h2_armor_sound.py` mede o som de equipar pelas legendas do jogo
+(`showSubtitles`, o servidor parado e o `screenshot` de antes e de depois de cada clique: legenda é som, e o texto diz qual `equip_*`), e `horizon2/h2_armor_video.py capturar` e `montar` fazem o vídeo do ciclo completo
+(um print por passo, com a legenda do jogo ligada, e o `ffmpeg` junta com a legenda de cada passo). Os três supõem a janela de 1920 por 1080 em guiScale 3 (o canto da tela em (232, 97)).
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
@@ -132,7 +136,7 @@ resistência de bloco no centro da câmara com nome e 2 operações guardadas: s
 
 `CenaTelas` agora escreve também `cena: <caso> fora <classe> x y largura altura visivel`, para tudo que o original desenha fora dos 176 por 166
 da tela: é a lista do que o comparador não vê sem margem (a de energia e a de calor são elementos de textura visíveis; os suportes de
-configuração, transporte, segurança, livro e redstone a cena oculta; o Heat Generator ainda mostra cinco slots de armadura em x = -21). Os casos
+configuração, transporte, segurança, livro e redstone a cena oculta; o Heat Generator mostra cinco slots de armadura em x = -21 e, desde 2026-11-07, o suporte deles em (-26, 6), `isArmorHolder`; os suportes da segurança e da redstone, à direita, seguem ocultos). Os casos
 `_aba_energia` (`casos_energia`) põem o cursor na aba de energia com a máquina parada, cheia, ativa e com upgrades de velocidade e de energia
 (`energia=300`, porque a capacidade muda com eles), e `infuser_operacao_10` é o controle da barra de químico. O roteiro do port tira o print até
 dois seguidos serem iguais quando o caso clica, e dá um tick depois de abrir a janela de upgrades, que só recebe os dados no tick seguinte.
