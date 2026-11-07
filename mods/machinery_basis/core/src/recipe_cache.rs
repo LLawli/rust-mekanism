@@ -74,9 +74,10 @@ impl TypedInstance for ItemResource {
     }
 
     fn components_key(&self) -> ComponentsKey<'_> {
-        match self.variant.as_deref() {
-            Some(patch) => ComponentsKey::Patch(patch),
-            None => ComponentsKey::Unmatchable,
+        if self.components.is_empty() {
+            ComponentsKey::Unmatchable
+        } else {
+            ComponentsKey::Patch(self.components.key())
         }
     }
 
@@ -94,9 +95,9 @@ impl TypedInstance for SlotContents {
         match self
             .resource
             .as_ref()
-            .and_then(|resource| resource.variant.as_deref())
+            .filter(|resource| !resource.components.is_empty())
         {
-            Some(patch) => ComponentsKey::Patch(patch),
+            Some(resource) => ComponentsKey::Patch(resource.components.key()),
             None => ComponentsKey::Default,
         }
     }
@@ -912,6 +913,13 @@ mod tests {
         ItemResource::new(id, 64)
     }
 
+    /// A chave de componentes de um item que só tem o componente `variant`.
+    fn patch_key(variant: &str) -> String {
+        crate::components::Components::variant(variant)
+            .key()
+            .to_owned()
+    }
+
     fn variant(id: &str, components: &str) -> ItemResource {
         ItemResource::with_variant(id, 64, components)
     }
@@ -937,10 +945,11 @@ mod tests {
         components: &'static str,
         name: &'static str,
     ) -> Rc<Single> {
+        let key = patch_key(components);
         Rc::new(Single {
             id: name,
             input: ShapedIngredient::new(shape, move |input| {
-                input.type_id() == id && input.components_key() == ComponentsKey::Patch(components)
+                input.type_id() == id && input.components_key() == ComponentsKey::Patch(&key)
             }),
             count: 1,
         })
@@ -953,7 +962,7 @@ mod tests {
 
     fn exact(id: &'static str, components: &'static str, name: &'static str) -> Rc<Single> {
         with_components(
-            IngredientShape::exact(&[id], Some(components)),
+            IngredientShape::exact(&[id], Some(&patch_key(components))),
             id,
             components,
             name,
@@ -1018,7 +1027,7 @@ mod tests {
                 },
                 |input| {
                     input.type_id() == "sand"
-                        && input.components_key() != ComponentsKey::Patch("rc5")
+                        && input.components_key() != ComponentsKey::Patch(&patch_key("rc5"))
                 },
             ),
             count: 1,

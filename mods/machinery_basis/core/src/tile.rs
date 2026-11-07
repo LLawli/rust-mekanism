@@ -654,6 +654,32 @@ pub fn machine_energy_slot_accepts(
     )
 }
 
+/// O handler de energia de um item: quanto guarda, quanto cabe, e se aceita energia se o contêiner lhe der tudo o que tem
+/// (`energyHandler.insert(storage.getCapacityAsInt(), simulation) > 0`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemEnergy {
+    pub amount: i64,
+    pub capacity: i64,
+    pub accepts_energy: bool,
+}
+
+/// `EnergyInventorySlot.canDrain(storage, energyHandler)`, o que o slot de energia de um gerador (`EnergyInventorySlot.drain`) pede para
+/// aceitar o item: com o contêiner vazio, o item não estar cheio; com energia nele, o contêiner poder dar (`isValidForExtraction`
+/// interno) e o item aceitar algo. Sem handler de energia (`None`, o caso de todo item portado) o slot não aceita nada.
+pub fn energy_can_drain(
+    container_amount: i64,
+    container_extractable: bool,
+    item: Option<ItemEnergy>,
+) -> bool {
+    let Some(item) = item else {
+        return false;
+    };
+    if container_amount == 0 {
+        return item.amount < item.capacity;
+    }
+    container_extractable && item.accepts_energy
+}
+
 /// O tanque de químico de uma máquina e o slot que o enche (`ChemicalInventorySlot.fillOrConvert`).
 pub struct ChemicalSide {
     pub tank: ChemicalTank,
@@ -1453,5 +1479,27 @@ mod tests {
         let mut tile = TileBase::new(0);
         tile.set_control_type(RedstoneControl::Pulse);
         assert_eq!(tile.control_type(), RedstoneControl::Disabled);
+    }
+
+    #[test]
+    fn the_drain_slot_takes_what_can_still_receive_energy() {
+        let tablet = |amount, accepts_energy| {
+            Some(ItemEnergy {
+                amount,
+                capacity: 1_000,
+                accepts_energy,
+            })
+        };
+        // Sem energia no contêiner: o item que não está cheio, mesmo que não aceite nada agora.
+        assert!(energy_can_drain(0, true, tablet(0, false)));
+        assert!(energy_can_drain(0, false, tablet(999, false)));
+        assert!(!energy_can_drain(0, true, tablet(1_000, true)));
+        // Com energia: o contêiner tem de poder dar e o item aceitar.
+        assert!(energy_can_drain(50, true, tablet(1_000, true)));
+        assert!(!energy_can_drain(50, false, tablet(0, true)));
+        assert!(!energy_can_drain(50, true, tablet(0, false)));
+        // Item sem handler de energia (stick, coal, balde): nunca.
+        assert!(!energy_can_drain(0, true, None));
+        assert!(!energy_can_drain(50, true, None));
     }
 }

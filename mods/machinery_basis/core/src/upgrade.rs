@@ -1,6 +1,7 @@
 //! Porte de `TileComponentUpgrade`, `UpgradeInventorySlot`, `Upgrade` e `IUpgradeHelper`. A lib não conhece nenhum upgrade: os
 //! tipos e os máximos chegam como dados (`data/<ns>/machinery_basis/upgrade/<nome>.json`), as tags de suporte também
 //! (`data/<ns>/tags/machinery_basis/upgrade/...`), e quem usa diz qual item os carrega.
+use crate::components::Components;
 use crate::containers::{
     Access, AutomationType, InventorySlot, ItemResource, ItemTest, SlotChecks, SlotContents,
 };
@@ -268,6 +269,8 @@ pub fn decode_sync(bytes: &[u8]) -> Option<(UpgradeTypes, UpgradeTags)> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UpgradeData {
     item: Rc<str>,
+    /// O componente do item que guarda o tipo (`IUpgradeHelper.dataComponent`).
+    component: Rc<str>,
     item_max_stack_size: u32,
     types: BTreeMap<Rc<str>, i32>,
     supported: BTreeSet<Rc<str>>,
@@ -277,6 +280,7 @@ impl UpgradeData {
     /// Da carga de dados: os membros da tag que não são um tipo declarado ficam de fora.
     pub fn new(
         item: &str,
+        component: &str,
         item_max_stack_size: u32,
         types: &UpgradeTypes,
         tags: &UpgradeTags,
@@ -289,12 +293,13 @@ impl UpgradeData {
             .collect();
         let members = tags.members(supported_tag);
         let supported: Vec<&str> = members.iter().map(String::as_str).collect();
-        Self::from_parts(item, item_max_stack_size, &declared, &supported)
+        Self::from_parts(item, component, item_max_stack_size, &declared, &supported)
     }
 
     /// Dos pedaços já resolvidos, como os testes montam.
     pub fn from_parts(
         item: &str,
+        component: &str,
         item_max_stack_size: u32,
         types: &[(&str, i32)],
         supported: &[&str],
@@ -310,6 +315,7 @@ impl UpgradeData {
             .collect();
         Self {
             item: Rc::from(item),
+            component: Rc::from(component),
             item_max_stack_size,
             types,
             supported,
@@ -336,18 +342,31 @@ impl UpgradeData {
         self.supported.iter()
     }
 
-    /// `itemType.get(IUpgradeHelper.INSTANCE.dataComponent())`: o tipo que o item carrega, se carrega um que existe.
+    /// `itemType.get(IUpgradeHelper.INSTANCE.dataComponent())`: o tipo que o item carrega, se carrega um que existe. Os outros
+    /// componentes do item não contam: a pergunta é só pelo tipo.
     pub fn upgrade_of(&self, resource: &ItemResource) -> Option<Rc<str>> {
         if resource.id != self.item {
             return None;
         }
-        let variant = resource.variant.as_ref()?;
-        self.types.contains_key(variant).then(|| variant.clone())
+        let kind = Components::parse_text_value(resource.components.get(&self.component)?)?;
+        self.types
+            .get_key_value(kind.as_str())
+            .map(|(id, _)| id.clone())
     }
 
-    /// `IUpgradeHelper.asResource`.
+    /// `IUpgradeHelper.asResource`: o item com o tipo no componente, e mais nada.
     pub fn resource_of(&self, upgrade: &str) -> ItemResource {
-        ItemResource::with_variant(&self.item, self.item_max_stack_size, upgrade)
+        ItemResource::with_component(
+            &self.item,
+            self.item_max_stack_size,
+            &self.component,
+            &Components::text_value(upgrade),
+        )
+    }
+
+    /// O id do componente que guarda o tipo.
+    pub fn component(&self) -> &str {
+        &self.component
     }
 }
 
@@ -681,6 +700,7 @@ mod tests {
     use serde_json::json;
 
     const ITEM: &str = "mod:upgrade";
+    const COMPONENT: &str = "mod:upgrade_type";
     const SPEED: &str = "mod:speed";
     const ENERGY: &str = "mod:energy";
     const OTHER: &str = "mod:other";
@@ -688,6 +708,7 @@ mod tests {
     fn data() -> Rc<UpgradeData> {
         Rc::new(UpgradeData::from_parts(
             ITEM,
+            COMPONENT,
             64,
             &[(SPEED, 8), (ENERGY, 8), (OTHER, 1)],
             &[SPEED, ENERGY],
@@ -696,6 +717,38 @@ mod tests {
 
     fn upgrade(id: &str) -> ItemResource {
         data().resource_of(id)
+    }
+
+    #[test]
+    fn the_type_comes_from_the_component_and_other_components_do_not_matter() {
+        let data = data();
+        let named = ItemResource::with_components(
+            ITEM,
+            64,
+            Components::new([
+                (COMPONENT, Components::text_value(SPEED).as_str()),
+                ("minecraft:custom_name", "\"x\""),
+            ]),
+        );
+        assert_eq!(data.upgrade_of(&named).as_deref(), Some(SPEED));
+        // O recurso que a lib monta é o item com o tipo e mais nada, e é outro recurso que o item com nome.
+        assert_eq!(data.upgrade_of(&upgrade(SPEED)).as_deref(), Some(SPEED));
+        assert_ne!(named, upgrade(SPEED));
+        // Sem o componente, com um tipo que não existe ou em outro item, não é upgrade.
+        assert_eq!(data.upgrade_of(&ItemResource::new(ITEM, 64)), None);
+        let unknown =
+            ItemResource::with_component(ITEM, 64, COMPONENT, &Components::text_value("mod:nope"));
+        assert_eq!(data.upgrade_of(&unknown), None);
+        let other = ItemResource::with_component(
+            "mod:other_item",
+            64,
+            COMPONENT,
+            &Components::text_value(SPEED),
+        );
+        assert_eq!(data.upgrade_of(&other), None);
+        // O valor que não é um texto também não.
+        let number = ItemResource::with_component(ITEM, 64, COMPONENT, "5");
+        assert_eq!(data.upgrade_of(&number), None);
     }
 
     #[test]
@@ -990,7 +1043,7 @@ mod tests {
                 json!({"values": ["#mod:simple", OTHER, "#mod:default"]}),
             ),
         ]);
-        let data = UpgradeData::new(ITEM, 64, &types, &tags, "mod:default");
+        let data = UpgradeData::new(ITEM, COMPONENT, 64, &types, &tags, "mod:default");
         assert!(data.supports(SPEED) && data.supports(OTHER));
         assert!(!data.supports(ENERGY));
         assert_eq!(data.max(SPEED), Some(8));

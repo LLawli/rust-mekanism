@@ -1,5 +1,6 @@
 //! Porte de `MachineEnergyContainer` e `BasicInventorySlot` (com `OutputInventorySlot`): objetos compartilhados, que se
 //! registram sozinhos na transação que os muda e avisam quem escuta no commit da raiz.
+use crate::components::Components;
 use crate::transaction::{Callback, JournalCell, Journaled, Transaction, fire};
 use std::fmt;
 use std::rc::Rc;
@@ -219,14 +220,14 @@ impl EnergyContainer {
     }
 }
 
-/// Um item, com o limite da pilha dele. A lib não conhece ids: quem usa diz qual é.
+/// Um item, com o limite da pilha dele e os componentes que o distinguem (`ItemResource`): dois recursos são o mesmo só se o item e
+/// os componentes são iguais. A lib não conhece ids nem componentes: quem usa diz quais são.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ItemResource {
     pub id: Rc<str>,
     pub max_stack_size: u32,
-    /// O que distingue itens do mesmo id, como o `DataComponentPatch` do `ItemResource` do NeoForge: quem usa diz o que cada
-    /// valor quer dizer. Sem ele, dois itens iguais com componentes diferentes seriam o mesmo recurso.
-    pub variant: Option<Rc<str>>,
+    /// O `DataComponentPatch`. Sem ele, dois itens do mesmo id com componentes diferentes seriam o mesmo recurso.
+    pub components: Components,
 }
 
 impl ItemResource {
@@ -234,16 +235,27 @@ impl ItemResource {
         Self {
             id: Rc::from(id),
             max_stack_size,
-            variant: None,
+            components: Components::none(),
         }
     }
 
-    /// O mesmo item com um componente que o distingue dos outros de mesmo id.
-    pub fn with_variant(id: &str, max_stack_size: u32, variant: &str) -> Self {
+    /// O item com os componentes dados.
+    pub fn with_components(id: &str, max_stack_size: u32, components: Components) -> Self {
         Self {
-            variant: Some(Rc::from(variant)),
+            components,
             ..Self::new(id, max_stack_size)
         }
+    }
+
+    /// O item com um componente só, de id `component` e valor `value`.
+    pub fn with_component(id: &str, max_stack_size: u32, component: &str, value: &str) -> Self {
+        Self::with_components(id, max_stack_size, Components::new([(component, value)]))
+    }
+
+    /// O item com um componente que o distingue dos outros de mesmo id, sem importar qual: para quem só precisa de dois itens
+    /// diferentes.
+    pub fn with_variant(id: &str, max_stack_size: u32, variant: &str) -> Self {
+        Self::with_components(id, max_stack_size, Components::variant(variant))
     }
 }
 
@@ -255,6 +267,28 @@ pub type AutomationItemTest = Rc<dyn Fn(&ItemResource, AutomationType) -> bool>;
 
 /// `Item.ABSOLUTE_MAX_STACK_SIZE`: a capacidade do slot, antes do limite da pilha do item.
 const ABSOLUTE_MAX_STACK_SIZE: u32 = 99;
+
+impl ItemResource {
+    /// A capacidade que um slot sem regra de aceitar dá a este recurso: `min(ABSOLUTE_MAX_STACK_SIZE, getMaxStackSize())`.
+    pub fn slot_capacity(&self) -> u32 {
+        ABSOLUTE_MAX_STACK_SIZE.min(self.max_stack_size)
+    }
+}
+
+/// Quanto cabe de `incoming` num slot que guarda `held`, com a capacidade `capacity` que o slot dá a ele
+/// (`BasicResourceContainer.insert`): nada se o slot guarda outro recurso, que para um item é outro id ou outros componentes, e
+/// senão o que falta para a capacidade. É a conta do `InventorySlot::insert`, para quem mexe nos itens sem passar por um slot
+/// (o hopper e o shift-clique do jogo).
+pub fn room_for(held: &SlotContents, incoming: &ItemResource, capacity: u32) -> u32 {
+    if held
+        .resource
+        .as_ref()
+        .is_some_and(|resource| resource != incoming)
+    {
+        return 0;
+    }
+    capacity.saturating_sub(held.amount)
+}
 
 /// `LargeResourceStack`: o que um slot guarda. Vazio é sem recurso e com zero.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -326,11 +360,7 @@ impl SlotState {
             .validator
             .as_ref()
             .is_none_or(|validator| validator(resource));
-        if valid {
-            ABSOLUTE_MAX_STACK_SIZE.min(resource.max_stack_size)
-        } else {
-            0
-        }
+        if valid { resource.slot_capacity() } else { 0 }
     }
 
     /// `onContentsChanged(originalState)`, do slot e do slot de saída: primeiro o aviso, depois o `onDecrease`.
@@ -550,16 +580,12 @@ impl InventorySlot {
             if amount == 0 {
                 return 0;
             }
-            if state
-                .contents
-                .resource
-                .as_ref()
-                .is_some_and(|held| held != resource)
-            {
-                return 0;
-            }
             let stored = state.contents.amount;
-            let needed = state.capacity_for(Some(resource)).saturating_sub(stored);
+            let needed = room_for(
+                &state.contents,
+                resource,
+                state.capacity_for(Some(resource)),
+            );
             // O `canInsert` é checado direto, e não pela capacidade, que já zera o que o `isValid` recusa.
             let item_accepted = state
                 .checks
@@ -655,6 +681,61 @@ mod tests {
 
     fn clay() -> ItemResource {
         ItemResource::new("clay", 64)
+    }
+
+    fn named(name: &str) -> ItemResource {
+        ItemResource::with_component(
+            "clay",
+            64,
+            "minecraft:custom_name",
+            &Components::text_value(name),
+        )
+    }
+
+    #[test]
+    fn a_resource_is_the_item_and_its_components() {
+        assert_eq!(named("A"), named("A"));
+        assert_ne!(named("A"), named("B"));
+        assert_ne!(named("A"), clay());
+        let damaged = ItemResource::with_component("clay", 64, "minecraft:damage", "5");
+        assert_ne!(damaged, clay());
+        assert_ne!(
+            damaged,
+            ItemResource::with_component("clay", 64, "minecraft:damage", "6")
+        );
+    }
+
+    #[test]
+    fn a_slot_only_stacks_and_gives_the_same_item_and_components() {
+        let slot = InventorySlot::new(None);
+        slot.set_contents(Some(named("A")), 3, None);
+        let root = Transaction::open_root();
+        for other in [named("B"), clay()] {
+            assert_eq!(slot.insert(&other, 1, &root, AutomationType::Manual), 0);
+            assert_eq!(slot.extract(&other, 1, &root, AutomationType::Manual), 0);
+        }
+        assert_eq!(
+            slot.insert(&named("A"), 2, &root, AutomationType::Manual),
+            2
+        );
+        assert_eq!(
+            slot.extract(&named("A"), 4, &root, AutomationType::Manual),
+            4
+        );
+        root.commit();
+        assert_eq!(slot.contents(), SlotContents::new(Some(named("A")), 1));
+    }
+
+    #[test]
+    fn room_for_is_nothing_for_another_resource_and_the_rest_for_the_same() {
+        let held = SlotContents::new(Some(named("A")), 60);
+        assert_eq!(room_for(&held, &named("B"), 64), 0);
+        assert_eq!(room_for(&held, &clay(), 64), 0);
+        assert_eq!(room_for(&held, &named("A"), 64), 4);
+        assert_eq!(room_for(&held, &named("A"), 60), 0);
+        assert_eq!(room_for(&SlotContents::default(), &named("B"), 64), 64);
+        assert_eq!(named("A").slot_capacity(), 64);
+        assert_eq!(ItemResource::new("x", 200).slot_capacity(), 99);
     }
 
     fn counting() -> (Callback, Rc<Cell<u32>>) {

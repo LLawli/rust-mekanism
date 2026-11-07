@@ -3,6 +3,7 @@
 //! A máquina declara `inputs` e `outputs` vazios, então o hopper não a enxerga. Quem age é ela:
 //! entrega ao hopper logo abaixo, porque um hopper só puxa do bloco acima, e recebe de um hopper
 //! que aponta para ela. As faces configuradas valem nos dois casos, e o ritmo é o do hopper.
+use crate::containers::{ItemResource, SlotContents, room_for};
 use crate::sides::{Face, Sides};
 
 /// Ticks entre duas transferências de um hopper (`HopperBlockEntity.MOVE_ITEM_SPEED`).
@@ -41,6 +42,32 @@ pub fn transfer(face: Face, hopper: Hopper, sides: &Sides) -> Option<Transfer> {
         return Some(Transfer::Take);
     }
     None
+}
+
+/// Um item do vizinho que a máquina pode puxar: o número do slot dele, o recurso, e o que mais quem chama quiser levar junto
+/// (a pilha do jogo, por exemplo).
+pub struct Offer<T> {
+    pub slot: usize,
+    pub resource: ItemResource,
+    pub payload: T,
+}
+
+/// Como o hopper escolhe o que levar de um vizinho para os slots de entrada de uma máquina: o primeiro item do vizinho, na ordem dos
+/// slots dele, que algum slot de entrada aceita (o slot decide `accepts`), e dentre os slots o primeiro, na ordem de `inputs`, que
+/// o aceita e tem lugar para ele: vazio, ou com o mesmo recurso (o item e os componentes) e abaixo da capacidade. Devolve o índice
+/// do item em `offers` e o do slot em `inputs`.
+pub fn first_taker<T>(
+    offers: &[Offer<T>],
+    inputs: &[(usize, SlotContents)],
+    accepts: impl Fn(usize, &Offer<T>) -> bool,
+) -> Option<(usize, usize)> {
+    offers.iter().enumerate().find_map(|(index, offer)| {
+        let slot = inputs.iter().find(|(slot, held)| {
+            accepts(*slot, offer)
+                && room_for(held, &offer.resource, offer.resource.slot_capacity()) > 0
+        })?;
+        Some((index, slot.0))
+    })
 }
 
 /// O intervalo de um elo entre máquina e hopper. Como no hopper, só um sucesso espera.
@@ -89,6 +116,41 @@ mod tests {
             input: [true; 6],
             output: [true; 6],
         }
+    }
+
+    fn offer(slot: usize, id: &str, amount: u32) -> Offer<u32> {
+        Offer {
+            slot,
+            resource: ItemResource::new(id, 64),
+            payload: amount,
+        }
+    }
+
+    #[test]
+    fn the_hopper_takes_the_first_item_a_slot_accepts_and_has_room_for() {
+        let held = |id: &str, amount| SlotContents::new(Some(ItemResource::new(id, 64)), amount);
+        let offers = [
+            offer(0, "stick", 2),
+            offer(1, "clay", 2),
+            offer(2, "dirt", 2),
+        ];
+        let accepts = |_: usize, offer: &Offer<u32>| &*offer.resource.id != "stick";
+        // O primeiro item que o slot aceita, na ordem do vizinho.
+        let empty = [(7, SlotContents::default())];
+        assert_eq!(first_taker(&offers, &empty, accepts), Some((1, 7)));
+        // Um slot cheio com outro item não serve, e o seguinte da fila é que recebe.
+        let inputs = [(7, held("dirt", 3)), (8, SlotContents::default())];
+        assert_eq!(first_taker(&offers, &inputs, accepts), Some((1, 8)));
+        // Um slot cheio do mesmo item não tem lugar: cai para o item seguinte.
+        let full = [(7, held("clay", 64))];
+        assert_eq!(first_taker(&offers, &full, accepts), None);
+        let full_clay = [(7, held("clay", 64)), (8, held("dirt", 5))];
+        assert_eq!(first_taker(&offers, &full_clay, accepts), Some((2, 8)));
+        // Com dois slots que servem, o primeiro da fila.
+        let two = [(7, SlotContents::default()), (8, SlotContents::default())];
+        assert_eq!(first_taker(&offers, &two, accepts), Some((1, 7)));
+        // Um item só vai a um slot com o mesmo item, e o que o slot não aceita fica.
+        assert_eq!(first_taker(&offers[..1], &empty, accepts), None);
     }
 
     fn hopper(facing: Face) -> Hopper {

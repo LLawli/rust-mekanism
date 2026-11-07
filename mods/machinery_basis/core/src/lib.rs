@@ -1,6 +1,8 @@
 //! Regras puras da machinery_basis: nada aqui conhece tipos do jogo, então tudo testa sem ele.
 pub mod cached_recipe;
 pub mod chemical;
+pub mod components;
+pub mod composter;
 pub mod containers;
 pub mod data_slots;
 pub mod ejector;
