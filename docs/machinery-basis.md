@@ -170,6 +170,7 @@ de energia só marcam para salvar, a saída despausa).
 | `chemical::ChemicalTank`, `fluid::FluidTank` | `BasicChemicalTank` e `BasicFluidTank`: o mesmo contêiner, para químico e para fluido |
 | `chemical::ChemicalAttributeValidator` | `ChemicalAttributeValidator` (`DEFAULT`, `ALWAYS_ALLOW`, `create`, `createStrict` e o `process` sobrescrito) |
 | `chemical::fill_tank_or_convert`, `fill_tank_from_slot` | `ChemicalInventorySlot.fillTankOrConvert` e `fillTankFromSlot` |
+| `energy_conversion::EnergyConversion`, `fill_container_or_convert` | `ItemStackToEnergyRecipe` (o índice `SingleItem` do tipo `energy_conversion`) e `EnergyInventorySlot.fillContainerOrConvert`, sem a parte de item com capability de energia, que nenhum item portado tem |
 | `resource_tank::fill_container_from_slot` | `ResourceHandlerSlot.fillContainerFromSlot`, sobre a capability de recurso do item |
 | `recipe_handlers` | `InputResourceHandler`, `IOutputHandler` e o `OutputHelper` de slot, de tanque de químico e de tanque de fluido |
 | `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |

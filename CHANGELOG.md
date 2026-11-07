@@ -6,6 +6,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O slot de energia converte `redstone` (10.000) e `redstone_block` (90.000) em energia, como `EnergyInventorySlot.fillContainerOrConvert`
+  do original: um item por tick, antes da receita, e só se o contêiner aceita tudo o que a receita dá. As duas receitas
+  `energy_conversion` são as da datagen, copiadas byte a byte. A mecânica está na `machinery_basis` (`energy_conversion`:
+  `EnergyConversion`, o índice do tipo e `fill_container_or_convert`), sem nenhum id do Mekanism. Nas quatro máquinas portadas o
+  buffer tem 20 (no máximo 1.000 com upgrades), então a energia não sobe, igual ao original: o item entra e fica. Rastros
+  `chamber_energy_conversion`, `chamber_energy_conversion_running` e `infuser_energy_conversion` do Java, repetidos tick a tick.
+- A ordem das receitas de cada tipo foi medida no original (`recipe_order.jsonl`) e é a do `RecipeMap`: caminho do arquivo e depois
+  namespace, e não ordem de hash. O Horizon já a entrega assim; `recipe_registration_order.rs` confere as oito listas, o conteúdo do
+  port e a receita escolhida para o único item que o original casa com duas receitas (`pitcher_pod`).
 - Tags `c:` da datagen do original que o conteúdo já pode usar, copiadas byte a byte: `c:alloys`, `c:circuits` e
   `c:circuits/{advanced,elite,ultimate}` (item) e `c:ores/osmium` (bloco). As outras 143 esperam os itens, blocos e fluidos que
   citam. `c_tags.rs` confere as cópias e que nenhuma tag `c:` cita o que o Horizon descartaria.
@@ -34,6 +43,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O hopper pelas costas de uma máquina (`DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`) põe no slot de energia o que tem
+  receita `energy_conversion` (a `redstone`), como o original; antes as costas não alcançavam slot nenhum. O shift-click de um
+  `redstone` ou `redstone_block` com o menu aberto também o aceita no slot de energia, pela mesma regra
+  (`InventoryContainerSlot.mayPlace` chama `isValidForInsertion(.., MANUAL)`).
 - Um hopper embaixo do Metallurgic Infuser tira do slot de infusão o que o tanque não aceita nem converte (`DataType.EXTRA` da base,
   `InventorySlotInfo(true, true, ..)`, e o `canExtract` de `ChemicalInventorySlot.fillOrConvert`: `!external || !canFillOrConvert`):
   um graveto, ou o bio fuel com o tanque cheio de outro químico. O que o tanque converte fica. Nas outras três máquinas a base é

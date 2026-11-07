@@ -100,8 +100,9 @@ Ainda difere do original em:
 - as faces são as padrão, sem configuração. A saída fica à direita e um hopper só puxa de cima, então ela sai à mão. Hopper
   não aponta para cima, então o slot de químico da base só entra pela tela;
 - sem upgrades, controle de redstone, ejetor, tubo de químico, som, abas e o nome do químico no tooltip;
-- sem slot de energia funcional. Redstone não serviria: `energy_conversion` dá 10.000 J, e o original só aceita se tudo
-  couber, o que nunca acontece num buffer de 20 J;
+- o slot de energia aceita `redstone` e `redstone_block` e converte como o original (`fillContainerOrConvert`), mas a conversão só
+  vale se tudo couber: `energy_conversion` dá 10.000 e 90.000, e o buffer das máquinas tem 20 (no máximo 1.000 com upgrades), então o
+  item entra, fica no slot e a energia não sobe, nos dois;
 - a luz da máquina ligada é 13, do template da fornalha, e não 8;
 - quebrar o bloco solta o conteúdo, em vez de guardar no item;
 - `per_tick_usage` é lido e o Infuser escolhe `ItemChemicalConstantUsageRecipe` quando é verdadeiro, mas nenhuma receita de infusão dos arquivos usa; a Chemical Injection Chamber vai precisar.

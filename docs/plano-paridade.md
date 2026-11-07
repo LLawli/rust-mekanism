@@ -191,9 +191,19 @@ Falta na Fase 1:
   fatia, e as duas receitas casavam: o port dava 6 de bio fuel. A tag foi corrigida (`melon`), em jogo agora sai 1, e `c_tags.rs` confere
   a tag e o conjunto de receitas que casam contra o rastro. Conferidas as outras 61 tags `c:` escritas à mão contra o jar do NeoForge
   26.3.0.100 (`data/c/tags`): só as listas achatadas diferem (o port expande `#minecraft:*_ores`, `#c:sands/*` e `#c:seeds/*` em itens),
-  com o mesmo conteúdo. A escolha entre duas receitas que casem a mesma entrada continua dependendo da ordem da lista: o original
-  a tira do `RecipeMap` do 26.3 (mapa de hash, não a ordem dos arquivos) e o Horizon entrega os arquivos em ordem de pasta
-  (`native_recipes_of_type`: "in file order"). Sem duas receitas casando a mesma entrada nas quatro máquinas, a diferença não aparece.
+  com o mesmo conteúdo. A escolha entre duas receitas que casem a mesma entrada depende da ordem da lista, e essa ordem foi medida (2026-11-07):
+  `SlotsTraceTest.recipeOrder` grava, no `runGameTestServer`, o que `MekanismRecipeType.getRecipes` devolve para cada tipo
+  (`recipe_order.jsonl`: `enriching` 223, `crushing` 255, `smelting` 105, `metallurgic_infusing` 31, `chemical_conversion` 24,
+  `energy_conversion` 2, mais o `smelting` e o `blasting` do vanilla). **Não é ordem de mapa de hash**: as oito listas estão na ordem do
+  caminho do arquivo com `.json` e depois o namespace (`ResourceManagerRegistryLoadTask` faz `sorted(Entry.comparingByKey())` e o
+  `RecipeMap` mantém a ordem por tipo), e a chave por namespace primeiro daria outra ordem em três delas. O Horizon já entrega nessa
+  ordem (`registration_key` em `crafting.rs`, no pin `f319701`; o comentário "in file order" de `native_recipes_of_type` está
+  desatualizado), então não houve nada a corrigir e nenhuma injeção. `recipe_registration_order.rs` confere que cada lista está nessa
+  ordem, que o conteúdo do port (sem os 18 `enriching` do Mekanism Additions, que o port não tem) sai na mesma ordem relativa nos cinco
+  tipos, e o único item que o original casa com duas receitas (`pitcher_pod`, em `crushing/biofuel/pitcher_pod` e
+  `crushing/biofuel/seeds`, ambas dando 1 de bio fuel) escolhe a mesma. Em jogo (`horizon2`), um data pack com `aaa:crushing/zzz`
+  (cascalho trocado por pedregulho) e `zzz:crushing/aaa` para o mesmo item: o Crusher usou `zzz:crushing/aaa`, a de caminho menor, que
+  é a ordem do original, e não a do namespace nem a da pasta.
   **Hopper embaixo** (resolvido, ver "Slots de entrada"). Tags `c:` da datagen: das 173 de `mekanism` e `mekanismgenerators`, 6 foram
   copiadas (`c:alloys`, `c:circuits` e as três de `circuits/*`, e `c:ores/osmium` de bloco); as 143 que faltam citam item, bloco ou
   fluido que o port não tem (pós, lingotes, pepitas e blocos de bronze, chumbo, estanho, urânio e fluorita; baldes; pellets; baús e barris
@@ -224,11 +234,23 @@ Falta na Fase 1:
   fases de baixo. Em jogo (`horizon2`): o hopper embaixo do Infuser leva o graveto, não leva o cogumelo que o tanque converte, leva o
   bio fuel quando o tanque tem fungi, e embaixo da Chamber não leva nada. Fica para a Fase 2: uma máquina posta por `setblock` ficaria
   com todos os lados em `NONE` no original (`ConfigInfo` nasce em `NONE` e só `applyImplicitComponents` aplica o padrão do item;
-  lido no código, não gravado), e o port trata toda máquina como se viesse do item; e a configuração por instância (a tela de lados, o Configurator). Fica para o slot de energia: o original põe
-  `redstone` no slot de energia por um hopper pelas costas (`ENERGY` é `InventorySlotInfo(true, true, ..)` e a regra aceita o que
-  tem receita `energy_conversion`), e o port não, porque as receitas `energy_conversion` (`redstone`, `redstone_block`) e o
-  `fillContainerOrConvert` do slot ainda não estão portados: `no_energy_conversion` na configuração faz o slot recusar tudo; o teste
-  ignora a `redstone` pelas costas e diz por quê. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
+  lido no código, não gravado), e o port trata toda máquina como se viesse do item; e a configuração por instância (a tela de lados, o Configurator).
+  **Slot de energia** (feito, 2026-11-07): `energy_conversion` e `EnergyInventorySlot.fillContainerOrConvert`. A lib tem
+  `energy_conversion` (`EnergyConversion`, o `getInputCache` `SingleItem` do tipo, e `fill_container_or_convert`), chamada no tick
+  da máquina antes da receita, como `onUpdateServer`; as receitas `redstone` (10.000) e `redstone_block` (90.000) são as duas da datagen,
+  copiadas byte a byte (nenhuma ficou de fora: as tags `c:dusts/redstone` e `c:storage_blocks/redstone` existem no port). As costas
+  (`DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`) agora alcançam o slot de energia, e o hopper pelas costas e o shift-click do
+  menu seguem `canFillOrConvert`. **O original só converte se o contêiner aceita tudo o que a receita dá**
+  (`insert(output, .., MANUAL) == output`), e a capacidade das quatro máquinas é 20 (recém-posta) ou, recalculada pelos upgrades, no máximo 1.000
+  (`upgrade_table.jsonl`, 324 combinações), então a `redstone` entra pelas costas, fica no slot e a energia não sobe, no original (o
+  hopper pelas costas do `SlotsTraceTest` deixa `[redstone, 1]` no slot por 45 ticks) e no port; a conversão só acontece com espaço
+  para 10.000, que nenhuma máquina portada tem. Em jogo (`horizon2`): o hopper pelas costas da Chamber põe os 8 `redstone` no slot de
+  energia e o graveto fica no hopper; um hopper no lado esquerdo põe o `redstone` no slot de entrada (é entrada de enriquecimento, como
+  no original); no Infuser o `redstone_block` entra pelas costas e o segundo item (`redstone`) espera, porque o slot guarda um tipo;
+  o shift-click de 3 `redstone_block` com o menu aberto soma ao slot de energia (2 para 5). A energia ficou sem subir. Rastros do Java: `chamber_energy_conversion` (recusa
+  com 20, um item por tick com espaço, exatamente o espaço que há, o bloco de 90.000, item sem receita), `chamber_energy_conversion_running`
+  (a conversão vem antes da receita no mesmo tick) e `infuser_energy_conversion` (energia e infusão no mesmo tick), com a capacidade
+  posta por `setMaxEnergy`; o port os repete tick a tick. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
   complexas do Java itera em ordem de hash, e aqui na da lista, o que só difere com mais de uma receita complexa casando a mesma
   entrada.
 - Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Faltam o tooltip do item, os efeitos de `muffling` e `xp_containment` (a aba de XP do original aparece com o upgrade de xp_containment e o port não a tem), a receita do `muffling` e os tipos que
