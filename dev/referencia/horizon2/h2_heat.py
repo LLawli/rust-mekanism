@@ -66,8 +66,10 @@ def quick_phases(lines):
         "stick_player_fuel_empty": {"input": None, "player": [(14, ("stick", "", "", 5))]},
         "coal_player_fuel_empty": {"input": None, "player": [(12, ("coal", "", "", 5))]},
         "lava_bucket_player": {"input": None, "player": [(13, ("lava_bucket", "", "", 1))]},
+        # O item que não queima, com o slot de combustível vazio: o slot o recusa e ele fica no inventário.
+        "clay_ball_player_fuel_empty": {"input": None, "player": [(15, ("clay_ball", "", "", 5))]},
     }
-    h.QUICK.update({"stick_player": ("inv", 9), "stick_player_fuel_empty": ("inv", 14), "coal_player_fuel_empty": ("inv", 12), "lava_bucket_player": ("inv", 13)})
+    h.QUICK.update({"stick_player": ("inv", 9), "stick_player_fuel_empty": ("inv", 14), "coal_player_fuel_empty": ("inv", 12), "lava_bucket_player": ("inv", 13), "clay_ball_player_fuel_empty": ("inv", 15)})
     for line in lines:
         phase = line.get("phase", "")
         if not phase.startswith("quick_"):

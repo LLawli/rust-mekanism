@@ -214,3 +214,4 @@
 {"phase":"quick_coal_player_fuel_empty","from":"player","returned":["coal","","",5],"menu":[[2,"InventoryContainerSlot",["coal","","",5]],[3,"InventoryContainerSlot",["energy_tablet","","",1]]]}
 {"phase":"quick_stick_player_fuel_empty","from":"player","returned":["stick","","",5],"menu":[[2,"InventoryContainerSlot",["stick","","",5]],[3,"InventoryContainerSlot",["energy_tablet","","",1]]]}
 {"phase":"quick_lava_bucket_player","from":"player","returned":["lava_bucket","","",1],"menu":[[2,"InventoryContainerSlot",["lava_bucket","","",1]],[3,"InventoryContainerSlot",["energy_tablet","","",1]]]}
+{"phase":"quick_clay_ball_player_fuel_empty","from":"player","returned":["clay_ball","","",5],"menu":[[3,"InventoryContainerSlot",["energy_tablet","","",1]],[31,"HotBarSlot",["clay_ball","","",5]]]}

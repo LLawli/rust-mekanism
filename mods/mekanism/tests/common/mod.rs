@@ -110,7 +110,12 @@ fn item_ingredient_of(items: Vec<String>) -> ItemIngredient {
 
 fn ingredient_items(ingredient: &str, out: &mut Vec<String>) {
     let Some(tag) = ingredient.strip_prefix('#') else {
-        out.push(ingredient.trim_start_matches("minecraft:").to_owned());
+        out.push(
+            ingredient
+                .trim_start_matches("minecraft:")
+                .trim_start_matches("mekanism:")
+                .to_owned(),
+        );
         return;
     };
     let (namespace, path) = tag.split_once(':').unwrap();
@@ -244,6 +249,106 @@ pub fn infuser() -> ProgressMachine {
     );
     config.energy_conversion = energy_conversions();
     ProgressMachine::chemical(config)
+}
+
+/// Os químicos de um ingrediente de receita (`"mekanism:bio"` ou `"#mekanism:bio"`), com as tags de químico do conteúdo resolvidas
+/// e sem o `mekanism:` (os testes dão aos químicos o id sem namespace).
+fn chemical_ids(ingredient: &str, out: &mut Vec<String>) {
+    let Some(tag) = ingredient.strip_prefix('#') else {
+        out.push(ingredient.trim_start_matches("mekanism:").to_owned());
+        return;
+    };
+    let (namespace, path) = tag.split_once(':').unwrap();
+    let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("content/data")
+        .join(namespace)
+        .join("tags")
+        .join(namespace)
+        .join("chemical")
+        .join(format!("{path}.json"));
+    let text = std::fs::read_to_string(&file)
+        .unwrap_or_else(|error| panic!("{}: {error}", file.display()));
+    let json: Value = serde_json::from_str(&text).unwrap();
+    for entry in json["values"].as_array().unwrap() {
+        chemical_ids(entry.as_str().unwrap(), out);
+    }
+}
+
+fn chemical_ingredient(ingredient: &str) -> ChemicalIngredient {
+    let mut ids = Vec::new();
+    chemical_ids(ingredient, &mut ids);
+    assert!(
+        !ids.is_empty(),
+        "{ingredient}: o ingrediente ficou sem químico"
+    );
+    let shape = IngredientShape::Types(ids.iter().map(|id| Rc::from(id.as_str())).collect());
+    ChemicalIngredient::shaped(ShapedIngredient::new(
+        shape,
+        move |input: &dyn TypedInstance| ids.iter().any(|id| id == input.type_id()),
+    ))
+}
+
+/// O Infuser com as receitas `metallurgic_infusing` e as conversões `chemical_conversion` que o port entrega, lidas dos mesmos
+/// arquivos que o jogo lê (com as tags do conteúdo), na ordem de pasta. Nada escrito à mão.
+pub fn infuser_from_content() -> ProgressMachine {
+    let recipes: Vec<Rc<ItemChemicalToItemRecipe>> = load("recipe/metallurgic_infusing")
+        .iter()
+        .map(|(id, json)| {
+            let item = &json["item_input"];
+            let chemical = &json["chemical_input"];
+            let output = &json["output"];
+            Rc::new(ItemChemicalToItemRecipe {
+                id: id.clone(),
+                item_input: item_ingredient(&item["ingredient"]),
+                item_count: item["count"].as_u64().unwrap() as u32,
+                chemical_input: chemical_ingredient(chemical["ingredient"].as_str().unwrap()),
+                chemical_amount: chemical["amount"].as_u64().unwrap() as u32,
+                output: ItemOutput {
+                    resource: item_of(output["id"].as_str().unwrap()),
+                    count: output["count"].as_u64().unwrap_or(1) as u32,
+                },
+                per_tick_usage: json["per_tick_usage"].as_bool().unwrap(),
+            })
+        })
+        .collect();
+    assert!(
+        recipes.len() >= 19,
+        "receitas de infusão: {}",
+        recipes.len()
+    );
+    let conversions: Vec<ChemicalConversion> = load("recipe/chemical_conversion")
+        .iter()
+        .map(|(id, json)| {
+            let output = &json["output"];
+            ChemicalConversion {
+                input: item_ingredient(&json["input"]["ingredient"]),
+                input_count: json["input"]["count"].as_u64().unwrap() as u32,
+                output: ChemicalResource::new(
+                    output["id"]
+                        .as_str()
+                        .unwrap()
+                        .trim_start_matches("mekanism:"),
+                ),
+                amount: i32::try_from(output["amount"].as_i64().unwrap())
+                    .unwrap_or_else(|_| panic!("{id}")),
+            }
+        })
+        .collect();
+    assert!(conversions.len() >= 17, "conversões: {}", conversions.len());
+    let mut config = infuser_config(
+        INFUSER_USAGE,
+        infusing_cache_of(recipes),
+        ChemicalConversion::cache_of(conversions),
+        0,
+        upgrade_data(),
+    );
+    config.energy_conversion = energy_conversions();
+    ProgressMachine::chemical(config)
+}
+
+/// Um item de saída de receita pelo id, sem o namespace.
+fn item_of(id: &str) -> ItemResource {
+    item(id.trim_start_matches("minecraft:"))
 }
 
 /// O item que a receita de cada máquina usa, o mesmo do cenário em Java.

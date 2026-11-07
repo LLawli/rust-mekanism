@@ -224,6 +224,8 @@ public class IdentityTraceTest {
                 sequence.thenExecuteAfter(2, () -> scene.quickMove("coal_player_fuel_empty", null, "", "", 0, 12, stack(spec.valid, "", "", 5)));
                 sequence.thenExecuteAfter(2, () -> scene.quickMove("stick_player_fuel_empty", null, "", "", 0, 14, stack("stick", "", "", 5)));
                 sequence.thenExecuteAfter(2, () -> scene.quickMove("lava_bucket_player", null, "", "", 0, 13, stack("lava_bucket", "", "", 1)));
+                // Um item que não queima, com o slot de combustível vazio: prova que o slot recusa o que não é combustível.
+                sequence.thenExecuteAfter(2, () -> scene.quickMove("clay_ball_player_fuel_empty", null, "", "", 0, 15, stack("clay_ball", "", "", 5)));
             }
             sequence.thenExecuteAfter(2, () -> scene.finish());
             sequence.thenSucceed();

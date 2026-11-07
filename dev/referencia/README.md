@@ -45,6 +45,17 @@ rodar o `runGameTestServer` e apague-o depois. `mods/mekanism/tests/identity_tra
 `horizon2`) repetem as mesmas fases pelo `horizon-ctl` e comparam com os rastros; o da composteira usa `tick freeze` e `tick step 1` e confere os
 360 ticks.
 
+`testes/ArrivalTraceTest.java` grava `infuser_arrival.jsonl`: o Metallurgic Infuser com o tanque vazio, recebendo o item de entrada de uma
+receita e o item que vira o químico dela, em três ordens (a entrada primeiro, a conversão primeiro, os dois no mesmo tick), para 13
+pares (bio com terra, areia e argila; fungi com terra e nylium; redstone, diamond, gold e refined_obsidian, cada um com o pó e o
+`enriched`/bloco). Cada item chega como o jogador o põe (`insert` com `AutomationType.MANUAL`), a marca guarda quanto o slot aceitou, e a
+linha é a de `infuser_run` mais o id do químico do tanque. `mods/mekanism/tests/infuser_arrival_trace.rs` o repete com as receitas e as
+conversões lidas dos arquivos do port (`common::infuser_from_content`); `horizon2/h2_infuser_arrival.py` repete as fases no jogo, por
+shift-clique, com `tick freeze` e `tick step 1`. Carbon e tin não estão: o port não tem nenhuma receita de infusão que os use (o original tem 31
+receitas, o port 19), então o tanque os recusa. Não monte uma chegada com `container X Y Z item n` (põe no primeiro slot livre, que no
+Infuser é o de infusão) nem com `data merge ... Items` fora da ordem dos slots (medido: `[terra no slot 1, bio_fuel no slot 0]` deixou só a terra no tile; o Horizon
+só decodifica a lista que reescreve igual, `decode_mod_block_entity`).
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

@@ -700,7 +700,7 @@ type HeatScene = (
     Option<usize>,
 );
 
-/// O rastro do Heat Generator tem, além das oito cenas das máquinas, o que o gerador recusa e o que o balde faz. As duas cenas do
+/// O rastro do Heat Generator tem, além das oito cenas das máquinas, o que o gerador recusa (a argila, com o slot de combustível vazio) e o que o balde faz. As duas cenas do
 /// `energy_tablet` não se repetem: o item não é portado (e deixa um tablet no slot de energia nas cenas seguintes, que se tira
 /// do que se espera).
 #[test]
@@ -783,6 +783,14 @@ fn a_shift_click_in_the_heat_generator_follows_the_original_trace() {
             vec![(13, item("lava_bucket", "", "", 1))],
             Some(13),
         ),
+        // O item que não queima, com o slot de combustível vazio: o slot o recusa e o item fica onde estava (na outra região do
+        // inventário). É a cena que mata o combustível que aceita tudo.
+        (
+            "clay_ball_player_fuel_empty",
+            None,
+            vec![(15, item("clay_ball", "", "", 5))],
+            Some(15),
+        ),
     ];
     let mut compared = 0;
     for (label, input, player, from) in scenes {
@@ -830,5 +838,5 @@ fn a_shift_click_in_the_heat_generator_follows_the_original_trace() {
         );
         compared += 1;
     }
-    assert_eq!(compared, 12);
+    assert_eq!(compared, 13);
 }
