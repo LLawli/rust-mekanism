@@ -18,6 +18,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Tags `c:` da datagen do original que o conteúdo já pode usar, copiadas byte a byte: `c:alloys`, `c:circuits` e
   `c:circuits/{advanced,elite,ultimate}` (item) e `c:ores/osmium` (bloco). As outras 143 esperam os itens, blocos e fluidos que
   citam. `c_tags.rs` confere as cópias e que nenhuma tag `c:` cita o que o Horizon descartaria.
+- Som das quatro máquinas em operação (`TileEntityMekanism.updateSound` e `SoundHandler.TileTickableSound`): o `sounds.json` e os `.ogg`
+  do original, o laço que liga com a máquina e para com ela (com o atraso de `lit`), o volume vezes o fator do upgrade de silêncio
+  conferido a cada 20 a 39 ticks, a distância (`attenuation_distance` 16, crescendo com o volume acima de 1), o tempo congelado que
+  cala o som, e o som de Natal de 25 de dezembro. A regra está em `machinery_basis_core::sound`, sem id do Mekanism; o jogo entra por
+  um módulo (`tile-sound`, H19) e a contagem de upgrades de silêncio vai ao cliente por pacote, como o `sendUpdatePacket` faz.
+- Upgrade de silêncio (`muffling`): receita (`recipe/upgrade/muffling.json`) e a tag `mekanism:muffling_center`, do original. Com o
+  máximo (1) a máquina não toca; o efeito segue o `getVolumeFactor` e o `isFullyMuffled`, repetidos tick a tick contra o rastro
+  `chamber_muffling`.
+- Upgrade de contenção de experiência (`xp_containment`): `xpContainmentChanged`, `hadContainment` salvo (`has_containment`),
+  `awardUsedRecipesAndPopExperience` ao tirar o resultado, a experiência guardada que cai ao quebrar a máquina ou ao tirar o
+  upgrade (a que o Java perde quando o upgrade já saiu), e a experiência da última receita sem o upgrade, como o forno. Rastros
+  `chamber_xp_containment`, `chamber_xp_vanilla` e `chamber_xp_broken`, repetidos pelo `effects_trace`.
+- Nome da máquina (`TileEntityMekanism.customName`): o item colocado com nome o dá ao tile (`CustomName`, salvo), o item solto leva o nome (`copy_name`), e o servidor manda o nome a quem abre a tela, que o mostra como título. A regra está em `machinery_basis_core::name`, repetida contra o rastro `chamber_name`.
+- Tooltip do item de upgrade (tipo, máximo instalado e descrição, nas cores do original), conferido linha a linha contra o rastro
+  `upgrade_tooltip`.
 
 ### Changed
 
