@@ -261,6 +261,23 @@ Falta na Fase 1:
 - Experiência (`TileEntityRecipeMachine`, `RecipeCacheLookupMonitor`): `recipesUsed`, a última receita, `hadContainment` (`has_containment`) e `setRecipeUsed` têm rastro. `awardUsedRecipesAndPopExperience` roda ao tirar o resultado (injeção H27: o Horizon não avisa a retirada em slot de resultado de mod), com a experiência de cada receita lida do JSON (`experience`) ou do cozimento do jogo. Em jogo, 2 carvões com `xp_containment` e a retirada pelo clique deram 2 pontos ao jogador (4 operações vezes 0,5) e limparam `recipes_used`. Quebrar a máquina solta a experiência guardada (`destroy_block`, só o jogador; explosão, pistão e `/setblock` não passam por ele), e tirar o upgrade a perde, como o original (`hasXpContainment` já é falso dentro do `recalculateUpgrades`). A parte fracionária usa `Math.random` no Java e uma fração de nanossegundos aqui: sem semente a reproduzir.
 - `MekanismContainer`: os avisos da tela estão nas quatro máquinas, comparados lado a lado com o oficial em 17 cenas, e a
   máscara de erros e o redstone vão nos data slots. Falta a lista de trackers do `MekanismContainer` e a aba de XP. O nome (`getName`, `getDisplayName`, `CustomName`) está portado: o item o dá ao tile ao colocar, o tile o dá ao item solto, e o servidor o manda ao cliente ao abrir a tela (`name_trace.rs` contra `chamber_name`); só o texto puro e o campo `text` de um componente com estilo são lidos, sem cor nem negrito.
+  **Lista de trackers (medida em 2026-11-07, não portada: é muito maior que parece).** O original sincroniza
+  16 `ISyncableData` na Enrichment Chamber (`chamber_container_tracking.jsonl`: `SyncableStreamCodec`, `SyncableEnum` x2,
+  `SyncableBoolean$3` x2, `SyncableLong$2` x2, `SyncableInt$2`, `SyncableLong$2`, `SyncableBoolean$1` x4, `SyncableBoolean$3`,
+  `SyncableInt$2` x2, nessa ordem) e 18 no Infuser (`infuser_container_tracking.jsonl`: acrescenta um `SyncableLargeResourceStack` na
+  sexta posição e um `SyncableBoolean$1`); o rastro dá a ordem e a classe, não o campo de cada posição, e o Heat Generator não tem
+  rastro da lista; a janela de upgrades acrescenta 2 por jogador. A lista é por jogador (`broadcastChanges` manda um `PacketUpdateContainer` só
+  com os que sujaram, e `sendAllDataToRemote` manda todos ao abrir). O port não tem essa lista: tem um layout de data slots inventado
+  (`DataLayout`: energia em 2, progresso, capacidade, máscara de erros, redstone, `ticksRequired`, 9 dos upgrades e, no Infuser, 16
+  para o id do químico), que o Horizon manda por diferença a cada tick do menu, e que não corresponde um para um (o tanque do Infuser
+  vai em quantidade, `tint`, sprite e id; o original manda a pilha). Portar a lista de verdade é: (1) ler as `@ContainerSync` de cada
+  classe da hierarquia das cinco máquinas para saber o campo de cada posição (o rastro só dá a classe do tracker); (2) as classes
+  `Syncable*` (seis nas máquinas, mais o `SyncableDouble` do calor no Heat Generator) com `isDirty` e `getPropertyData`; (3) um rastro do Java do que cada `PacketUpdateContainer` leva a cada tick, nos cinco
+  contêineres, abrindo, rodando uma receita e fechando; (4) trocar o transporte por `native_net_send_to_player` com um espelho no
+  cliente que a tela, a aba de avisos, a de redstone e a janela de upgrades leiam no lugar dos data slots, o que mexe em `tile.rs`,
+  `windows.rs`, `screen_draw` das cinco telas e nos testes `screen.rs`, `warnings.rs` e `upgrade_window.rs`; (5) a contagem de jogadores
+  (`players_using`, que hoje não vê o espectador). Não foi começado porque ou se troca o transporte inteiro ou o port fica com duas
+  fontes da verdade.
 - Tela, ainda diferente do original:
   - abas laterais: duas à esquerda e três à direita, energia embaixo à esquerda, redstone embaixo à direita e o aviso dela,
     que pede o blend `DST_COLOR` que `native_sprite` não tem. Ficam fora do retângulo da tela, então não mexem em nenhum pixel dos
@@ -289,8 +306,48 @@ Falta na Fase 1:
     tooltips de widget com 0 pixels diferentes, fora as diferenças de renderer acima.
 - `NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT` não acenderam em nenhum dos dois jogos, e o overlay de nível >= 0,98 e
   PULSE só têm teste de unidade.
-- Ejetor para composteira: `native_container_slots` não expõe composteira, então nada sai para ela. O original sai.
-- Identidade do item: `ItemResource` é id e pilha máxima, então itens iguais com dano ou componentes diferentes se confundem.
+- Ejetor para composteira (feito, 2026-11-07). O caminho do original é `Capabilities.Item.BLOCK` da composteira, o `ComposterWrapper` do
+  NeoForge (lido em `neoforge-26.3.0.100-sources.jar`): só as faces vertical têm capacidade, e **a saída padrão do item é a
+  direita, uma face lateral, então com a configuração padrão o ejetor nunca chega a uma composteira, no original nem no port**
+  (rastro: a Chamber ejetando para uma composteira ao lado, fase `east_cake_level0`, não tira nada). Só chega com a saída configurada em cima ou
+  embaixo, que o original faz pela tela de lados e o port ainda não tem (Fase 2). A lib porta o wrapper
+  (`machinery_basis_core::composter`): a face de cima aceita um item por vez, sorteia as camadas do componente `compostable` uma vez
+  (`getComposterValue`), recusa se o nível já é 7 ou se o sorteio dá 0 (o item não é gasto) e sobe o nível em **um**, não nas
+  camadas sorteadas (o vanilla, que o Horizon porta em `composter_container_insert`, soma as camadas e gasta o item mesmo com 0); a
+  de baixo só entrega o farelo de osso do nível 8; o `onRootCommit` faz o `setBlockAndUpdate` com o evento de jogo, agenda 20 ticks
+  ao chegar a 7 e manda o evento 1500. O Horizon não mostra a composteira em `native_container_slots`, e o sorteio e a subida
+  vivem em funções privadas de `composter.rs`: um módulo (`composter-wrapper`, H27) expõe `machinery_composter_layers` e
+  `machinery_composter_raise`, e o glue sorteia na hora de criar o handler (uma vez por tentativa, só com o nível abaixo de 7 e o
+  item compostável, como o Java) e aplica o nível no `deliver`. Rastro `composter_enrichment_chamber.jsonl` (`IdentityTraceTest`,
+  `chamberComposter`): oito fases (de baixo com `cake` nos níveis 0, 6, 7 e 8, `stick`, `oak_leaves` no nível 0, de cima, ao lado),
+  360 ticks, repetidos tick a tick por `composter_trace.rs` e **em jogo** (`horizon2`, `tick freeze` e `tick step 1`, nível e saída
+  iguais nos 360 ticks). O sorteio que não é determinístico (`low`, `medium`... fora do nível 0) não tem rastro: só o `always_add_one`
+  (`cake`) e o nível 0 de qualquer item. A chave `mekanism_eject_face` escolhe a face do ejetor enquanto a tela de lados não existe.
+- Identidade do item (feito, 2026-11-07). `ItemResource` agora é o item, a pilha máxima e os **componentes** (`Components`, um mapa de
+  id de componente para o valor em texto canônico: a lib não conhece nenhum componente), e o dano é o componente `minecraft:damage`,
+  como no NeoForge (`ItemResource.equals` e `ItemStack.isSameItemSameComponents`). No glue, o texto é o `canon_tag` do
+  `encode_components` do Horizon, e uma tabela por chave guarda o dano e o `StackData` de onde o texto veio, para refazer a pilha
+  quando o recurso sai de um slot da lib (`stack_of_resource`). `room_for` é a conta de quanto cabe num slot (outro recurso, nada) e
+  é a mesma que o `InventorySlot::insert` usa; o hopper escolhe com `hopper::first_taker` e o shift-clique do menu das máquinas
+  insere com `room_for`; o limite de pilha lê o componente `minecraft:max_stack_size`. O tipo do upgrade é um componente comum
+  (`mekanism:upgrade_type`, o valor é um texto), `UpgradeData.upgrade_of` lê dele e ignora os outros componentes, e o NBT dos slots de
+  upgrade grava o `components` inteiro. Rastros do Java (`IdentityTraceTest`): nas quatro máquinas e no Heat Generator, o hopper de cima
+  tick a tick (nome A no slot e B, simples e A no hopper; slot vazio; simples no slot; dados diferentes; quase cheio) e o shift-clique
+  (seis combinações do jogador para o slot, e duas do slot para a barra). Repetidos por `identity_trace.rs` e **em jogo**
+  (`horizon2`, `h2_identity.py` e `h2_heat.py` nas quatro máquinas e no Heat Generator: mesmo estado final em todas as fases do hopper, e nos
+  shift-cliques das quatro máquinas). **Fica de fora:** o dano não tem rastro (nenhuma entrada de receita é um item com durabilidade, então
+  nenhum item com dano chega a um slot de entrada), só o código e a leitura do NeoForge; o `DataComponentIngredient` exato continua
+  sem representação no Horizon, então um ingrediente que exige componentes não é testado com eles (as receitas portadas não têm
+  nenhum); a tabela guarda cada conjunto de componentes que já passou por uma máquina e cresce com eles. **Heat Generator, shift-clique (corrigido,
+  2026-11-07):** o gerador usava o roteamento padrão do Horizon, e o item que o slot de combustível recusava ia para o slot de energia e
+  não para a barra de atalhos. Agora o `menu_quick_move` dele (uma injeção, `menu_quick_move` de `mekanismgenerators`) roda o mesmo
+  `quick_move` da lib com os dois slots do bloco: combustível (o que queima, ou o balde de lava) e energia (`EnergyInventorySlot.drain`,
+  `energy_can_drain`, que nenhum item portado satisfaz, porque nenhum tem handler de energia). Rastro `identity_heat_generator.jsonl`
+  (as oito cenas das máquinas, graveto sobre o combustível ocupado e sobre o vazio, carvão e balde de lava sobre o combustível vazio e o
+  tablet de energia, que não se repete porque o item não é portado), repetido por `identity_trace.rs` e em jogo.
+  Fora: o `energy_tablet` (e qualquer item com handler de energia) e o `drainContainerIntoSlot`, que o gerador não porta; os dois
+  slots virtuais da janela de upgrades que o Heat Generator tem no original (índices 0 e 1 do menu) não existem no port, e a ordem de
+  `slots_of` já os põe fora.
 - `setRecipeUsed` agora tem rastro (`chamber_xp_*`). `recheckAllErrors` com jogador olhando e `NOT_ENOUGH_ENERGY_REDUCED_RATE` agora têm rastro.
   Este último só existe no Electrolytic Separator, que não está portado: `separator_reduced_rate` é usado só pelo tracker de avisos.
 - `players_using` vem do hook `mod_container_viewers`, que não conta espectador. O `PacketTileButtonPress` do Java abre a tela sem

@@ -33,6 +33,24 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Nome da máquina (`TileEntityMekanism.customName`): o item colocado com nome o dá ao tile (`CustomName`, salvo), o item solto leva o nome (`copy_name`), e o servidor manda o nome a quem abre a tela, que o mostra como título. A regra está em `machinery_basis_core::name`, repetida contra o rastro `chamber_name`.
 - Tooltip do item de upgrade (tipo, máximo instalado e descrição, nas cores do original), conferido linha a linha contra o rastro
   `upgrade_tooltip`.
+- Um item é o item e os componentes dele (`ItemResource` do NeoForge, `ItemStack.isSameItemSameComponents`), e não só o id: o slot,
+  o hopper, o shift-clique e o ejetor só juntam pilhas do mesmo recurso. `clay` com nome A não empilha com `clay` com nome B, com
+  `clay` sem nome nem com dados diferentes, e o hopper segue para o item seguinte que o slot aceita. A mecânica está na
+  `machinery_basis` (`Components`, `ItemResource.components`, `room_for`, `hopper::first_taker`), sem nenhum id do Mekanism, e vale
+  nas quatro máquinas e no Heat Generator. O tipo do upgrade passou a ser um componente comum (`mekanism:upgrade_type`) e o NBT dos
+  slots de upgrade grava o `components` inteiro. Rastros `identity_<máquina>.jsonl` do Java (hopper de cima, tick a tick, e
+  shift-clique nos dois sentidos), repetidos pelos testes e em jogo.
+- O ejetor alcança a composteira, como o `ComposterWrapper` do NeoForge: pela face de cima dela (a máquina ejetando para baixo) o item
+  compostável entra de um em um, sorteia as camadas uma vez por tentativa, recusa se o sorteio dá 0 sem gastar o item, e sobe o nível
+  em um, com o tick agendado ao chegar a 7 e o evento de enchimento. Pela face de baixo e pelas laterais nada entra, e a lateral, que é
+  a saída padrão do item, nunca chega a uma composteira. Mecânica em `machinery_basis_core::composter`; o sorteio e a subida de nível
+  vêm do módulo `composter-wrapper` (H29). Rastro `composter_enrichment_chamber.jsonl` do Java, repetido tick a tick nos testes e
+  em jogo. Enquanto a configuração de lados não existe, a chave `mekanism_eject_face` (`/data merge block ... {mekanism_eject_face:"down"}`)
+  escolhe a face de saída do ejetor, como `mekanism_eject` o liga.
+- O shift-clique do Heat Generator segue o `MekanismContainer.quickMoveStack`, como nas quatro máquinas: o item que o slot de combustível
+  recusa vai para a barra de atalhos e não para o slot de energia, e o combustível só junta com o do mesmo item e componentes. Rastro
+  `identity_heat_generator.jsonl` do Java (`quick_*`), repetido pelos testes e em jogo. Uma injeção nova, `menu_quick_move` de
+  `mekanismgenerators`; o slot de energia (`EnergyInventorySlot.drain`) não aceita nada porque nenhum item portado tem energia.
 
 ### Changed
 
@@ -58,6 +76,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O hopper levava para a entrada da máquina o item do mesmo id mesmo com componentes diferentes (somava `clay` de nome B à pilha de
+  `clay` de nome A), e o slot da lib e o shift-clique tratavam o mesmo id como o mesmo item. Agora comparam o item e os componentes.
 - O hopper pelas costas de uma máquina (`DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`) põe no slot de energia o que tem
   receita `energy_conversion` (a `redstone`), como o original; antes as costas não alcançavam slot nenhum. O shift-click de um
   `redstone` ou `redstone_block` com o menu aberto também o aceita no slot de energia, pela mesma regra
