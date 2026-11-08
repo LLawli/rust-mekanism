@@ -182,6 +182,18 @@ fracionária usa `Math.random`. O jogo mantém bolas de experiência perto da m�
 máquina, liga com carvão, corta a energia e tira um print a cada 3 ticks, com o instante real em `cena-som-tempos.txt`. O áudio é gravado
 de fora, pelo PipeWire (sink nulo e `pw-link`), porque o container só reproduz. Silencie a música da cena antes de medir níveis.
 
+### O som medido sem ouvir
+
+`testes/CenaSomMedida.java` roda no cliente oficial (`runGameTestClient`, num `gamescope --backend headless`) uma lista de cenários (`cenas/som_medida.txt`, 27 linhas) e escreve `som-medido.jsonl`: para cada tick do cliente, o `lit`,
+o fator de volume e o `isFullyMuffled` do tile, os pés do jogador, `baseSoundVolume`, `enableMachineSounds`, `runsNormally` do relógio e o `TileTickableSound` do `SoundHandler.soundMap` (ativo, parado, volume, intervalo de
+verificação); e, para cada som de tile que o motor começa (`PlaySoundEvent`), o id, a categoria, o volume, o tom, a atenuação, o laço, o atraso, a posição, `canStartSilent` e a distância de atenuação. Cada cenário
+escolhe a máquina, os upgrades de silêncio, a configuração, onde ficam os PÉS do jogador e eventos por tick (`ev=T:muffling:N`, `base`, `enable`, `jogador`, `tick`, `energia`). `oficial_som.sh` copia a cena e o arquivo para o
+`mekanism-ref`, pega a trava `mekanism-ref.lock`, roda o gradle pelo `lim-build` e devolve a árvore como estava. `som_compactar.py` encurta a saída para o `rastros/som_medido.jsonl` (o jj recusa arquivo novo acima de 1 MiB).
+`mods/mekanism/tests/sound_trace.rs` repete cada tick pela regra do port; `sound_assets.rs` confere os eventos de `sounds.json` e os `.ogg` contra `rastros/mekanism_sounds.json` e `mekanism_sound_files.json`;
+`client_config.rs` confere o texto de `Mekanism/client.toml` contra `rastros/mekanism_client.toml`, o arquivo que o cliente oficial escreveu sozinho. No port, `horizon2/enviar_fontes.sh` monta os fontes com `TRACE = true` em
+`tile_sound.rs` (o repositório fica com `false`), `horizon2/construir_horizon.sh` pega a `horizon.lock` e faz o `native-build`, e `horizon2/h2_som_medida.py` roda os mesmos cenários pelo `horizon-ctl` e recorta as linhas `MEKSOUND`
+do stderr; `som_comparar.py` e `som_grafico.py` põem os dois lado a lado (texto e PNG). `audio_nulo.sh` tira o som de um container das caixas do usuário (sink nulo do PipeWire) e o grava.
+
 ### A aba de xp e o nome com estilo
 
 `CenaTelas` agora deixa visível a aba de xp (`GuiXpContainmentTab`) e escreve no log, para cada caso, `cena: <caso> xp_tab visible <v> x <x> y

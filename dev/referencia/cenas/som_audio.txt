@@ -1,0 +1,5 @@
+# O subconjunto de `som_medida.txt` que se grava em áudio nos dois jogos (`oficial_som_audio.sh` e `horizon2/h2_som_audio.sh`): a máquina padrão, o volume base mais baixo e mais alto, e o silêncio.
+nome=padrao
+nome=base_0_5 base=0.5
+nome=base_2 base=2
+nome=silencio_depois muffling=0 ev=100:muffling:1

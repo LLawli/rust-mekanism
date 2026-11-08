@@ -1,0 +1,31 @@
+# Os cenários do som das máquinas, os mesmos no original (`testes/CenaSomMedida.java`, arquivo `cena-som-medida`) e no port
+# (`horizon2/h2_som_medida.py`). Uma linha por cenário; veja a CenaSomMedida para as chaves. `jogador` são os PÉS, relativos ao centro do bloco.
+# Padrão: a máquina liga no tick 20, para no 200, o cenário acaba no 260; jogador a 3 blocos, de pé.
+nome=padrao
+nome=crusher maquina=crusher
+nome=smelter maquina=smelter
+nome=infuser maquina=infuser
+nome=silencio_1 muffling=1
+nome=silencio_depois muffling=0 ev=100:muffling:1
+nome=silencio_tirado muffling=1 ev=100:muffling:0 fim=300
+nome=silencio_tocando_tirado muffling=0 ev=80:muffling:1 ev=160:muffling:0 desliga=400 fim=460
+nome=base_0 base=0
+nome=base_0_5 base=0.5
+nome=base_2 base=2
+nome=base_10 base=10
+nome=base_depois base=1 ev=100:base:0.25 desliga=400 fim=460
+nome=maquinas_off enable=false
+nome=maquinas_off_depois ev=100:enable:false desliga=250 fim=420
+nome=maquinas_off_ligando ev=100:enable:false ev=120:enable:true desliga=250 fim=420
+nome=pes_perto jogador=0,15.5,0
+nome=pes_longe jogador=0,16.5,0
+nome=horizontal_15 jogador=15,-0.5,0
+nome=horizontal_17 jogador=17,-0.5,0
+nome=base_2_a_25 base=2 jogador=25,-0.5,0
+nome=base_1_a_25 jogador=25,-0.5,0
+nome=base_0_5_a_17 base=0.5 jogador=17,-0.5,0
+nome=afastando ev=60:jogador:30;-0.5;0 desliga=300 fim=320
+nome=afastando_voltando ev=60:jogador:30;-0.5;0 ev=140:jogador:3;-0.5;0 desliga=400 fim=460
+nome=congelado ev=100:tick:freeze ev=140:tick:unfreeze
+# O silêncio tirado com a máquina acesa não chega ao cliente; o próximo `lit` (um pacote do bloco) o leva: apaga em 140 e acende em 170.
+nome=silencio_tirado_religa ev=60:muffling:1 ev=100:muffling:0 ev=140:energia:0 ev=170:energia:1 desliga=600 fim=330
