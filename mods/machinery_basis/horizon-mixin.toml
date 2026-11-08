@@ -255,22 +255,11 @@ bindings = [
   { name = "data", ty = "&[u8]", value = "data" },
 ]
 
-# O `playersUsing` e o menu de cada jogador: quem fechou o menu (ou saiu sem fechar: conexão perdida, longe demais, morreu) deixa a sessão, a
-# janela de upgrades escolhida e o acompanhamento para trás, e o espectador conta (`MekanismTileContainer.openInventory` não olha o modo de
-# jogo). O jogo só avisa a mudança da contagem dos que não são espectadores (`mod_container_viewers`), então a conta é refeita no começo
-# do `tick_mod_container_viewers`, na fase das entidades, antes dos block entities, onde o jogo a refaz. Alvo cru, H36.
-[[injection]]
-id = "container_viewers"
-target = "horizon_client::game::native_hooks::Game<'_>::tick_mod_container_viewers"
-kind = "HEAD"
-helper = "container_viewers.rs"
-bindings = [
-  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-]
-
-# O `MekanismContainer.broadcastChanges` de todos os menus abertos, no começo do tick do servidor (`ServerTickEvent.Pre`): o `ServerPlayer.tick`
-# do original o lê antes dos block entities, com o valor vivo de cada dado, e o cliente recebe o estado do fim do tick anterior (o overlay de
-# 0,98 da barra de energia depende disso). Também a cada passada com o servidor parado, onde o jogador continua andando.
+# O menu de cada jogador, no começo do tick do servidor (`ServerTickEvent.Pre`): quem fechou o menu (ou saiu sem fechar: conexão perdida, longe demais,
+# morreu) deixa a sessão, a janela de upgrades escolhida e o acompanhamento para trás, e o espectador conta (`MekanismTileContainer.openInventory` não olha
+# o modo de jogo; o hook `mod_container_viewers` do jogo só conta quem não é espectador); depois o `MekanismContainer.broadcastChanges` de todos os menus
+# abertos: o `ServerPlayer.tick` do original o lê antes dos block entities, com o valor vivo de cada dado, e o cliente recebe o estado do fim do tick
+# anterior (o overlay de 0,98 da barra de energia depende disso). Também a cada passada com o servidor parado, onde o jogador continua andando.
 [[injection]]
 id = "server_tick"
 hook = "server_tick"

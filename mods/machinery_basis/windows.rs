@@ -1405,7 +1405,7 @@ fn broadcast_container(game: &mut Game<'_>, pos: [i32; 3]) {
 }
 
 /// `MekanismContainer.removed`: quem fechou o menu sai do `playersUsing` e perde a sessão. O Java chama `close(player)` na hora; o jogo só
-/// diz que o menu mudou, então a conta é refeita a cada tick (`tick_mod_container_viewers`), com o menu que cada jogador tem agora.
+/// diz que o menu mudou, então a conta é refeita no começo de cada passada do servidor (`server_tick`), com o menu que cada jogador tem agora.
 pub(in crate::game) fn recount(game: &Game<'_>) {
     let mut guard = sessions();
     let Some(table) = guard.as_mut() else {
