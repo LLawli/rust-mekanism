@@ -44,6 +44,7 @@ serve a outros mods.
 | Distribuir energia | O bloco em tick sai do mundo: `native_energy` responde `None` e `native_move_energy` não esvazia o próprio bloco | `distribuir_energia(game, pos, entity, faces)` |
 | Data slots | Trafegam em 16 bits | Codec que divide `i32` e `i64` em slots |
 | Receitas de tipo próprio | `native_recipes_of_type` entrega JSON cru, sem busca | Índice por tipo, refeito depois de `server_data_loaded`. O mod diz em quais campos cada parte fica |
+| Receitas incompletas | O Horizon só diz que um ingrediente não resolveu nada, e o log só sairia no primeiro uso da máquina | `incomplete_recipes(game, tipos..)` lê já na carga as receitas dos tipos que o mod usa e devolve os ids das que ficaram sem item (tag vazia), com `Incomplete recipe detected` e `Empty tag` no log, para o mod decidir a mensagem (a do Mekanism é `IncompleteRecipeScanner`) |
 | Telas | `native_screen` e `native_sprite` são primitivas, e o Horizon só lê o `gui.scaling` dos sprites do vanilla | Painel e molduras de nove partes pelo `.mcmeta` do mod, mosaico com âncora e corte, barra e medidor de tanque, seta de progresso, slots pelo papel que a configuração de lados dá, rótulos, tooltip de widget |
 | Faces relativas | `faces` são absolutas e por tipo de bloco, e a máquina gira | Conversão de lado relativo para direção, pelo `facing` |
 
