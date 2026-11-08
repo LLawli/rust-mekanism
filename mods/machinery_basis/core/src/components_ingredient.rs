@@ -7,8 +7,10 @@
 //! | [`ComponentsIngredient::test`] | `DataComponentIngredient.test` (sem a parte dos itens, que é do jogo) |
 //! | [`ComponentsIngredient::exact_components`] | `PatchedDataComponentMap.fromPatch(item.components(), patch)`, a chave de `addComponentInputCache` |
 use crate::components::Components;
+use crate::recipe_cache::IngredientShape;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 /// O que o patch diz de um componente: um valor, ou `!tipo` (tirar o componente).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +99,88 @@ impl ComponentsIngredient {
                 .iter()
                 .map(|(kind, value)| (kind.as_str(), value.as_str())),
         )
+    }
+}
+
+/// Um `neoforge:components` com os itens que ele nomeia (as tags já resolvidas) e os componentes padrão de cada um, em texto canônico.
+pub struct Leaf {
+    pub ingredient: ComponentsIngredient,
+    pub items: Vec<String>,
+    pub defaults: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+/// Um ingrediente de item que tem um `neoforge:components` em algum ramo, em árvore: `CompoundIngredient`, `IntersectionIngredient` e
+/// `DifferenceIngredient` em volta. O ramo sem componente em lugar nenhum é a lista de itens dele (`Plain`, na ordem do `HolderSet`).
+pub enum Tree {
+    Plain(Vec<String>),
+    Components(Leaf),
+    /// Um ingrediente de mod que não é de componentes: só quem o conhece sabe testá-lo, pelo item.
+    Opaque(Box<dyn Fn(&str) -> bool + Send + Sync>),
+    Compound(Vec<Tree>),
+    Intersection(Vec<Tree>),
+    Difference(Box<Tree>, Box<Tree>),
+}
+
+impl Tree {
+    /// `ItemInputCache.mapIngredient`: o composto mapeia cada filho; o de componentes exatos (`strict`) indexa a chave de cada item
+    /// (`addComponentInputCache`); o resto é complexo.
+    pub fn shape(&self) -> IngredientShape {
+        match self {
+            Self::Plain(items) => {
+                IngredientShape::Types(items.iter().map(|item| Rc::from(item.as_str())).collect())
+            }
+            Self::Components(leaf) if !leaf.ingredient.is_strict() => IngredientShape::Custom,
+            Self::Components(leaf) => {
+                let none = BTreeMap::new();
+                IngredientShape::Compound(
+                    leaf.items
+                        .iter()
+                        .map(|item| {
+                            let key = leaf
+                                .ingredient
+                                .exact_components(leaf.defaults.get(item).unwrap_or(&none));
+                            IngredientShape::exact(&[item], (!key.is_empty()).then(|| key.key()))
+                        })
+                        .collect(),
+                )
+            }
+            Self::Compound(kids) => {
+                IngredientShape::Compound(kids.iter().map(Self::shape).collect())
+            }
+            Self::Opaque(_) | Self::Intersection(_) | Self::Difference(..) => {
+                IngredientShape::Custom
+            }
+        }
+    }
+
+    /// `Ingredient.test` de um item cujo patch de componentes é `patch` (texto canônico por tipo), por cima dos componentes padrão dele.
+    pub fn accepts(&self, item: &str, patch: &[(String, String)]) -> bool {
+        match self {
+            Self::Plain(items) => items.iter().any(|listed| listed == item),
+            Self::Components(leaf) => {
+                if !leaf.items.iter().any(|listed| listed == item) {
+                    return false;
+                }
+                let mut full = leaf.defaults.get(item).cloned().unwrap_or_default();
+                for (kind, value) in patch {
+                    match kind.strip_prefix('!') {
+                        Some(removed) => {
+                            full.remove(removed);
+                        }
+                        None => {
+                            full.insert(kind.clone(), value.clone());
+                        }
+                    }
+                }
+                leaf.ingredient.test(&full)
+            }
+            Self::Opaque(test) => test(item),
+            Self::Compound(kids) => kids.iter().any(|kid| kid.accepts(item, patch)),
+            Self::Intersection(kids) => kids.iter().all(|kid| kid.accepts(item, patch)),
+            Self::Difference(base, subtracted) => {
+                base.accepts(item, patch) && !subtracted.accepts(item, patch)
+            }
+        }
     }
 }
 

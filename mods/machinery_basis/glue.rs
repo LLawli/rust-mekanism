@@ -3,7 +3,7 @@
 use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
 use crate::game::{Game, GameLevel, NativeReloadListener};
 use horizon_client::containers::ModBlockEntity;
-use horizon_client::crafting::{Cooking, Ingredient};
+use horizon_client::crafting::{Cooking, Ingredient, Shape};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Direction;
@@ -13,7 +13,7 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use horizon_client::item_data::{StackData, canon_tag, decode_components, encode_components};
 use machinery_basis_core::components::Components;
-use machinery_basis_core::components_ingredient::{self, ComponentsIngredient};
+use machinery_basis_core::components_ingredient::{self, ComponentsIngredient, Leaf, Tree};
 use machinery_basis_core::containers::{ItemResource, SlotContents, room_for};
 use machinery_basis_core::biome_temperature;
 use machinery_basis_core::fluid_logged;
@@ -97,7 +97,7 @@ pub(in crate::game) struct MachineRecipe {
     pub id: String,
     pub item: Ingredient,
     /// Os componentes do ingrediente, quando ele é um `neoforge:components`.
-    pub components: Option<Arc<ComponentsInput>>,
+    pub components: Option<Arc<Tree>>,
     pub count: u32,
     pub resource: Option<ResourceInput>,
     pub output: ItemStack,
@@ -111,7 +111,7 @@ pub(in crate::game) struct MachineRecipe {
 pub(in crate::game) struct ItemConversion {
     pub id: String,
     pub item: Ingredient,
-    pub components: Option<Arc<ComponentsInput>>,
+    pub components: Option<Arc<Tree>>,
     pub count: u32,
     pub resource: String,
     pub amount: u64,
@@ -121,7 +121,7 @@ pub(in crate::game) struct ItemConversion {
 pub(in crate::game) struct ItemEnergyConversion {
     pub id: String,
     pub item: Ingredient,
-    pub components: Option<Arc<ComponentsInput>>,
+    pub components: Option<Arc<Tree>>,
     pub count: u32,
     pub amount: i32,
 }
@@ -375,46 +375,63 @@ pub(in crate::game) fn data_loaded() {
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
-/// Um `DataComponentIngredient` (`neoforge:components`) de uma receita de máquina: os itens (já com as tags resolvidas pelo jogo), o patch e
-/// `strict`, mais os componentes padrão de cada item, em texto canônico (`items.json`, com o que os mods mudam).
-pub(in crate::game) struct ComponentsInput {
-    ingredient: ComponentsIngredient,
-    items: Vec<String>,
-    defaults: BTreeMap<String, BTreeMap<String, String>>,
+/// Se a entrada de chave de componentes `patch_key` passa no ingrediente `tree`: o patch dela é o que `PATCHES` guarda para a chave.
+pub(in crate::game) fn tree_accepts(tree: &Tree, item: &str, patch_key: Option<&str>) -> bool {
+    let patch = patch_key
+        .and_then(|key| PATCHES.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned())
+        .unwrap_or_default();
+    tree.accepts(item, &patch)
 }
 
-impl ComponentsInput {
-    /// `ItemInputCache.mapIngredient` para este ingrediente: `strict` indexa a chave de cada item (`componentIngredient.componentsExhaustive()`,
-    /// `addComponentInputCache`), e o resto é complexo.
-    pub(in crate::game) fn shape(&self) -> machinery_basis_core::recipe_cache::IngredientShape {
-        use machinery_basis_core::recipe_cache::IngredientShape;
-        if !self.ingredient.is_strict() {
-            return IngredientShape::Custom;
+/// A árvore de um ingrediente do Horizon, e se há componentes nela.
+fn build_node(ingredient: &Ingredient, defaults: &horizon_world::item_defaults::Defaults) -> Result<(Tree, bool), Problem> {
+    if let Some((kind, data)) = &ingredient.custom {
+        if kind != components_ingredient::KIND {
+            let other = ingredient.clone();
+            let test = move |item: &str| {
+                other.test(&ItemStack { item: Arc::from(item), count: 1, damage: 0, extra: None })
+            };
+            return Ok((Tree::Opaque(Box::new(test)), false));
         }
-        let none = BTreeMap::new();
-        IngredientShape::Compound(
-            self.items
-                .iter()
-                .map(|item| {
-                    let key = self.ingredient.exact_components(self.defaults.get(item).unwrap_or(&none));
-                    IngredientShape::exact(&[item], (!key.is_empty()).then(|| key.key()))
-                })
-                .collect(),
-        )
+        let parsed = ComponentsIngredient::parse(data, |value| canon_tag(&json_tag(value)))
+            .ok_or_else(|| Problem::Parse("`components` ou `strict` inválido".into()))?;
+        let items = ingredient.order.clone();
+        let table = items.iter().map(|item| (item.clone(), default_texts(defaults, item))).collect();
+        return Ok((Tree::Components(Leaf { ingredient: parsed, items, defaults: table }), true));
     }
+    let Some((shape, kids)) = &ingredient.children else {
+        return Ok((Tree::Plain(ingredient.order.clone()), false));
+    };
+    let mut nodes = Vec::with_capacity(kids.len());
+    let mut any = false;
+    for kid in kids {
+        let (node, has) = build_node(kid, defaults)?;
+        any |= has;
+        nodes.push(node);
+    }
+    if !any {
+        return Ok((Tree::Plain(ingredient.order.clone()), false));
+    }
+    let node = match shape {
+        Shape::Compound => Tree::Compound(nodes),
+        Shape::Intersection => Tree::Intersection(nodes),
+        Shape::Difference => {
+            let mut nodes = nodes.into_iter();
+            match (nodes.next(), nodes.next()) {
+                (Some(base), Some(subtracted)) => Tree::Difference(Box::new(base), Box::new(subtracted)),
+                _ => return Err(Problem::Parse("`difference` sem `base` e `subtracted`".into())),
+            }
+        }
+    };
+    Ok((node, true))
+}
 
-    /// `DataComponentIngredient.test` para um item e o patch que a entrada tem (`components_key`): o item está na lista e o patch, por cima dos
-    /// componentes padrão dele, passa no teste.
-    pub(in crate::game) fn accepts(&self, item: &str, patch_key: Option<&str>) -> bool {
-        if !self.items.iter().any(|listed| listed == item) {
-            return false;
-        }
-        let mut full = self.defaults.get(item).cloned().unwrap_or_default();
-        if let Some(patch) = patch_key.and_then(|key| PATCHES.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned()) {
-            full.extend(patch);
-        }
-        self.ingredient.test(&full)
-    }
+/// A árvore de um ingrediente com `neoforge:components` em algum ramo; `None` sem nenhum (o jogo o testa sozinho).
+fn node_of(game: &Game<'_>, ingredient: &Ingredient) -> Result<Option<Arc<Tree>>, Problem> {
+    let defaults = horizon_world::item_defaults::shared(&game.options.resources)
+        .map_err(|error| Problem::Parse(format!("componentes padrão: {error}")))?;
+    let (node, has) = build_node(ingredient, &defaults)?;
+    Ok(has.then(|| Arc::new(node)))
 }
 
 /// O valor JSON de um componente como `Tag`, para o texto canônico ser o mesmo do patch de uma pilha do jogo.
@@ -479,39 +496,18 @@ fn missing_items(json: &serde_json::Value) -> Problem {
     Problem::Parse(format!("item desconhecido em {json}"))
 }
 
-/// O ingrediente de item de uma receita de máquina. Um item, uma tag ou uma lista saem pelo jogo (`native_recipe_ingredient`); um
-/// `neoforge:components` o jogo não entrega (só lê texto e lista), então o arquivo é lido aqui, com os itens resolvidos pelo jogo. Os
-/// outros tipos de ingrediente (`neoforge:compound`, `intersection`, `difference` e os de mod) o jogo não entrega: a receita fica de fora,
-/// com o aviso.
-fn machine_ingredient(
-    game: &Game<'_>,
-    json: &serde_json::Value,
-) -> Result<(Ingredient, Option<Arc<ComponentsInput>>), Problem> {
-    let Some(object) = json.as_object() else {
+/// O ingrediente de item de uma receita de máquina. Um item, uma tag ou uma lista saem pelo jogo (`native_recipe_ingredient`, que também
+/// tira os itens que ele não conhece). Um objeto (`neoforge:components`, `compound`, `intersection`, `difference`) o jogo não entrega à
+/// mod, então o arquivo passa pelo `Ingredient::parse` do Horizon (com a injeção `components-ingredient`, que lê o
+/// `neoforge:components` com as tags resolvidas) e a árvore sai daqui.
+fn machine_ingredient(game: &Game<'_>, json: &serde_json::Value) -> Result<(Ingredient, Option<Arc<Tree>>), Problem> {
+    if !json.is_object() {
         return game.native_recipe_ingredient(json).map(|ingredient| (ingredient, None)).ok_or_else(|| missing_items(json));
-    };
-    let kind = object
-        .get("neoforge:ingredient_type")
-        .or_else(|| object.get("type"))
-        .and_then(serde_json::Value::as_str);
-    if kind != Some(components_ingredient::KIND) {
-        return Err(Problem::Parse(format!(
-            "o tipo de ingrediente {} não chega ao mod pelo Horizon",
-            kind.unwrap_or("sem tipo")
-        )));
     }
-    let items = object.get("items").ok_or_else(|| Problem::Parse("`items` faltando".into()))?;
-    let mut ingredient = game
-        .native_recipe_ingredient(&machinery_basis_core::recipe::plain_ingredient(items))
-        .ok_or_else(|| missing_items(items))?;
-    let parsed = ComponentsIngredient::parse(object, |value| canon_tag(&json_tag(value)))
-        .ok_or_else(|| Problem::Parse("`components` ou `strict` inválido".into()))?;
-    let defaults = horizon_world::item_defaults::shared(&game.options.resources)
-        .map_err(|error| Problem::Parse(format!("componentes padrão: {error}")))?;
-    let items = ingredient.order.clone();
-    let table = items.iter().map(|item| (item.clone(), default_texts(&defaults, item))).collect();
-    ingredient.custom = Some((components_ingredient::KIND.to_owned(), object.clone()));
-    Ok((ingredient, Some(Arc::new(ComponentsInput { ingredient: parsed, items, defaults: table }))))
+    let ingredient = Ingredient::parse(json, game.items())
+        .ok_or_else(|| Problem::Parse(format!("o Horizon não leu o ingrediente {json}")))?;
+    let node = node_of(game, &ingredient)?;
+    Ok((ingredient, node))
 }
 
 fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> Vec<MachineRecipe> {
@@ -546,6 +542,18 @@ fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> 
     recipes
 }
 
+/// A árvore do ingrediente de uma receita de cozimento do jogo, se tem `neoforge:components` nela. Se a árvore não se monta, a receita fica com
+/// o teste do Horizon e o aviso no log.
+fn cooking_node(game: &Game<'_>, recipe: &Cooking) -> Option<Arc<Tree>> {
+    match node_of(game, &recipe.ingredient) {
+        Ok(node) => node,
+        Err(problem) => {
+            report(&recipe.id, &problem);
+            None
+        }
+    }
+}
+
 fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
     let of_kind = |recipe: &&Cooking| recipe.kind.strip_prefix("minecraft:").unwrap_or(&recipe.kind) == kind;
     let cooking = game.recipes().cooking.iter().filter(of_kind);
@@ -553,7 +561,7 @@ fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
         .map(|recipe| MachineRecipe {
             id: recipe.id.clone(),
             item: recipe.ingredient.clone(),
-            components: None,
+            components: cooking_node(game, recipe),
             count: 1,
             resource: None,
             output: recipe.result.clone(),

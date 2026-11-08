@@ -32,6 +32,7 @@ import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import net.neoforged.neoforge.common.crafting.CompoundIngredient;
 import net.neoforged.neoforge.common.crafting.DataComponentIngredient;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.testframework.DynamicTest;
@@ -69,6 +70,10 @@ public class ComponentIngredientTraceTest {
         return "{" + KIND + ",\"items\":" + items + ",\"components\":" + components + (strict ? ",\"strict\":true" : "") + "}";
     }
 
+    private static String nested(String type, String fields) {
+        return "{\"neoforge:ingredient_type\":\"neoforge:" + type + "\"," + fields + "}";
+    }
+
     private static Item item(String id) {
         return BuiltInRegistries.ITEM.getValue(Identifier.parse(id));
     }
@@ -95,6 +100,9 @@ public class ComponentIngredientTraceTest {
     private static String shape(Ingredient ingredient) {
         if (!ingredient.isCustom() || ingredient.isSimple()) {
             return "types";
+        }
+        if (ingredient.getCustomIngredient() instanceof CompoundIngredient) {
+            return "compound";
         }
         if (ingredient.getCustomIngredient() instanceof DataComponentIngredient component && component.componentsExhaustive()) {
             return "exact";
@@ -135,7 +143,12 @@ public class ComponentIngredientTraceTest {
               ingredientJson(sword, "{\"minecraft:damage\":3}", false),
               ingredientJson(sword, "{\"minecraft:damage\":0}", false),
               strictCoal,
-              strictCoalCost);
+              strictCoalCost,
+              // Os ingredientes em volta de um de componentes: o que o cozimento do jogo (Smelter) e as receitas de data pack escrevem.
+              nested("compound", "\"children\":[" + ingredientJson(coal, "{\"minecraft:repair_cost\":5}", false) + ",\"minecraft:bone\"]"),
+              nested("compound", "\"children\":[" + ingredientJson(coal, "{\"minecraft:repair_cost\":5}", true) + ",\"minecraft:bone\"]"),
+              nested("intersection", "\"children\":[[\"minecraft:coal\",\"minecraft:charcoal\"]," + ingredientJson("[\"minecraft:coal\",\"minecraft:charcoal\"]", "{\"minecraft:repair_cost\":5}", false) + "]"),
+              nested("difference", "\"base\":" + ingredientJson("[\"minecraft:coal\",\"minecraft:charcoal\"]", "{}", false) + ",\"subtracted\":" + ingredientJson(coal, "{\"minecraft:repair_cost\":5}", false)));
         List<String> stacks = List.of(
               "{\"id\":\"minecraft:coal\",\"count\":1}",
               "{\"id\":\"minecraft:coal\",\"count\":1,\"components\":{\"minecraft:repair_cost\":5}}",
@@ -150,6 +163,7 @@ public class ComponentIngredientTraceTest {
               "{\"id\":\"minecraft:charcoal\",\"count\":1,\"components\":{\"minecraft:repair_cost\":5}}",
               "{\"id\":\"minecraft:charcoal\",\"count\":1}",
               "{\"id\":\"minecraft:sand\",\"count\":1}",
+              "{\"id\":\"minecraft:bone\",\"count\":1}",
               "{\"id\":\"minecraft:diamond_sword\",\"count\":1}",
               "{\"id\":\"minecraft:diamond_sword\",\"count\":1,\"components\":{\"minecraft:damage\":3}}");
         for (String json : ingredients) {
@@ -180,6 +194,13 @@ public class ComponentIngredientTraceTest {
               new Recipe("b_plain", "\"minecraft:coal\"")), List.of(
               "{\"id\":\"minecraft:coal\",\"count\":1}",
               "{\"id\":\"minecraft:coal\",\"count\":1,\"components\":{\"minecraft:repair_cost\":5}}"));
+        // Um composto com um filho exato e outro simples: o exato vai para o índice de componentes, o simples para o de tipos.
+        cache("compound_strict_child", List.of(
+              new Recipe("c0", nested("compound", "\"children\":[" + ingredientJson(coal, "{\"minecraft:repair_cost\":5}", true) + ",\"minecraft:bone\"]")),
+              new Recipe("p1", "\"minecraft:coal\"")), List.of(
+              "{\"id\":\"minecraft:coal\",\"count\":1}",
+              "{\"id\":\"minecraft:coal\",\"count\":1,\"components\":{\"minecraft:repair_cost\":5}}",
+              "{\"id\":\"minecraft:bone\",\"count\":1}"));
         // Receitas complexas que casam a mesma entrada: o `HashSet` delas itera pela ordem de hash, e o hash da chave do id é o de identidade.
         List<String> pool = List.of("minecraft:coal", "minecraft:charcoal", "minecraft:sand", "minecraft:stick", "minecraft:flint", "minecraft:clay_ball",
               "minecraft:bone", "minecraft:string", "minecraft:feather", "minecraft:gunpowder", "minecraft:apple", "minecraft:brick");

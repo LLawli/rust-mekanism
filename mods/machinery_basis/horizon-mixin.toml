@@ -345,6 +345,37 @@ bindings = [
   { name = "color", ty = "u32", value = "color" },
 ]
 
+# O `neoforge:components` (`DataComponentIngredient`) de uma receita lida pelo Horizon (cozimento, crafting): sem dono no hook `ingredient` o arquivo é
+# descartado, e o hook não dá as tags de item para resolver `items` (um `HolderSet`). O módulo `components-ingredient` mora em `crafting.rs`; o HEAD de
+# `Ingredient::parse_object` (que tem o `Items`) guarda as tags quando o objeto precisa delas, e o hook `ingredient` preenche a lista com elas. Um alvo cru e um hook.
+[[module]]
+id = "components-ingredient"
+file = "crates/horizon-client/src/crafting.rs"
+name = "machinery_components"
+source = "components_ingredient.rs"
+
+[[injection]]
+id = "components-ingredient-stash"
+target = "horizon_client_lib::crafting::Ingredient::parse_object"
+kind = "HEAD"
+helper = "components_stash.rs"
+bindings = [
+  { name = "object", ty = "&serde_json::Map<String, Value>", value = "o" },
+  { name = "items", ty = "&Items", value = "items" },
+]
+
+[[injection]]
+id = "components-ingredient-items"
+hook = "ingredient"
+hook_version = 1
+kind = "HEAD"
+helper = "components_resolve.rs"
+bindings = [
+  { name = "kind", ty = "&str", value = "kind" },
+  { name = "data", ty = "&serde_json::Map<String, Value>", value = "data" },
+  { name = "items", ty = "&mut Vec<String>", value = "&mut *items" },
+]
+
 # O alvo do mouse: um slot coberto pela janela não pode ser alvo, e o virtual dela sim. Alvo cru.
 [[injection]]
 id = "window_slot_at"

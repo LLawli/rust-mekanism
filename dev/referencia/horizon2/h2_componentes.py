@@ -3,7 +3,9 @@
 
 O data pack (em `dev/referencia/testes/dados/mektest`) tem: `named_stick` (graveto com `custom_name` "Foo" dá diamante), `cost_flint` (sílex com `repair_cost` 5
 dá barra de ouro) e `strict_coal` (carvão sem nada a mais, `strict`, dá esmeralda), mais receitas que o mod recusa e o log tem de explicar. Cada caso põe o item
-na entrada da máquina, com a energia posta por `data merge` (o Heat Generator no deserto de pedra dá pouca), e espera uma operação. Uso: h2_componentes.py
+na entrada da máquina, com a energia posta por `data merge` (o Heat Generator no deserto de pedra dá pouca), e espera uma operação. Uso: h2_componentes.py [chamber|smelter]
+
+O Smelter lê o cozimento do jogo: `smelt_named_stick`, `smelt_compound` (um `neoforge:compound` com um filho de componentes e um osso) e `smelt_tag` (`items` com `#minecraft:coals`).
 """
 import re, sys, time
 import h2_identity as h
@@ -21,27 +23,12 @@ def stack(item, components="", count=1):
     return f'{{Slot:0b,id:"minecraft:{item}",count:{count}{comps}}}'
 
 
-def main():
-    h.command("tick unfreeze")
-    x, y, z = BASE
-    for pos in [(x, y, z), (x, y, z + 1)]:
-        h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
+def run_cases(machine, base, cases):
+    x, y, z = base
+    h.command(f"setblock {x} {y} {z} minecraft:air")
     time.sleep(0.5)
-    h.ctl("setblock", str(x), str(y), str(z), "mekanism:enrichment_chamber")
-    h.ctl("setblock", str(x), str(y), str(z + 1), "mekanismgenerators:heat_generator")
-    time.sleep(3)
-    cases = [
-        ("graveto Foo", stack("stick", '"minecraft:custom_name":"Foo"'), "diamond"),
-        ("graveto sem nome", stack("stick"), None),
-        ("graveto Bar", stack("stick", '"minecraft:custom_name":"Bar"'), None),
-        ("sílex repair_cost 5", stack("flint", '"minecraft:repair_cost":5'), "gold_ingot"),
-        ("sílex repair_cost 6", stack("flint", '"minecraft:repair_cost":6'), None),
-        ("sílex sem nada", stack("flint"), None),
-        ("carvão padrão (strict)", stack("coal"), "emerald"),
-        # O `strict` pede o carvão sem nada a mais: o com nome cai na receita simples de carvão (`enriched_carbon`).
-        ("carvão com nome (strict)", stack("coal", '"minecraft:custom_name":"Foo"'), "enriched_carbon"),
-        ("osso (compound recusado)", stack("bone"), None),
-    ]
+    h.ctl("setblock", str(x), str(y), str(z), machine)
+    time.sleep(2)
     ok = True
     for name, item, product in cases:
         put((x, y, z), item)
@@ -52,8 +39,39 @@ def main():
         kept = [it for it in items if it[0] == 0]
         good = bool(made) if product else (not [it for it in items if it[0] == 1] and bool(kept))
         ok &= good
-        print(("OK     " if good else "FALHOU ") + name, "| esperado:", product or "nada", "| máquina:", items)
+        print(("OK     " if good else "FALHOU ") + f"{machine.split(':')[1]}: {name}", "| esperado:", product or "nada", "| máquina:", items)
         h.command(f"data merge block {x} {y} {z} {{Items:[]}}")
+    return ok
+
+
+def main():
+    h.command("tick unfreeze")
+    chamber = [
+        ("graveto Foo", stack("stick", '"minecraft:custom_name":"Foo"'), "diamond"),
+        ("graveto sem nome", stack("stick"), None),
+        ("graveto Bar", stack("stick", '"minecraft:custom_name":"Bar"'), None),
+        ("sílex repair_cost 5", stack("flint", '"minecraft:repair_cost":5'), "gold_ingot"),
+        ("sílex repair_cost 6", stack("flint", '"minecraft:repair_cost":6'), None),
+        ("sílex sem nada", stack("flint"), None),
+        ("carvão padrão (strict)", stack("coal"), "emerald"),
+        # O `strict` pede o carvão sem nada a mais: o com nome cai na receita simples de carvão (`enriched_carbon`).
+        ("carvão com nome (strict)", stack("coal", '"minecraft:custom_name":"Foo"'), "enriched_carbon"),
+        # A receita `compound_bone` (um `neoforge:compound` de um osso) agora é lida: antes o mod a recusava com o aviso.
+        ("osso (compound)", stack("bone"), "diamond"),
+    ]
+    # O Smelter lê o cozimento do jogo (`smelting`), que o Horizon só entrega se o `neoforge:components` passa pela injeção `components-ingredient`.
+    smelter = [
+        ("graveto Foo", stack("stick", '"minecraft:custom_name":"Foo"'), "gold_nugget"),
+        ("graveto sem nome", stack("stick"), None),
+        ("graveto Bar", stack("stick", '"minecraft:custom_name":"Bar"'), None),
+        ("compound: sílex repair_cost 5", stack("flint", '"minecraft:repair_cost":5'), "iron_nugget"),
+        ("compound: sílex sem nada", stack("flint"), None),
+        ("compound: osso", stack("bone"), "iron_nugget"),
+        ("tag: carvão repair_cost 7", stack("coal", '"minecraft:repair_cost":7'), "copper_ingot"),
+        ("tag: carvão repair_cost 8", stack("coal", '"minecraft:repair_cost":8'), None),
+    ]
+    ok = run_cases("mekanism:enrichment_chamber", BASE, chamber) if "smelter" not in sys.argv[1:] else True
+    ok &= run_cases("mekanism:energized_smelter", (BASE[0], BASE[1], BASE[2] + 6), smelter) if "chamber" not in sys.argv[1:] else True
     print("TUDO OK" if ok else "HÁ FALHAS")
     sys.exit(0 if ok else 1)
 

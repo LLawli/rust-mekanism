@@ -6,11 +6,11 @@
 //! respostas de `ItemStackIngredient.test` e `testType`. `cache`: as receitas num `InputRecipeCache.SingleItem`, com o hash de identidade de
 //! cada id, e as respostas de `findFirstRecipe`, `containsInput` e `findTypeBasedRecipeHolder`.
 use machinery_basis_core::components::Components;
-use machinery_basis_core::components_ingredient::ComponentsIngredient;
+use machinery_basis_core::components_ingredient::{ComponentsIngredient, Leaf, Tree};
 use machinery_basis_core::containers::{ItemResource, SlotContents};
 use machinery_basis_core::recipe_cache::{
-    ComponentSensitiveInputCache, ComponentsKey, IngredientShape, InputIngredient,
-    ShapedIngredient, SingleInputRecipe, SingleInputRecipeCache, TypedInstance,
+    ComponentSensitiveInputCache, ComponentsKey, InputIngredient, ShapedIngredient,
+    SingleInputRecipe, SingleInputRecipeCache, TypedInstance,
 };
 use machinery_basis_core::recipe_monitor::RecipeId;
 use serde_json::Value;
@@ -79,7 +79,7 @@ fn items_of(ingredient: &Value) -> Vec<String> {
 }
 
 thread_local! {
-    /// O patch que cada chave de componentes guarda, para o teste de tipo refazer a pilha (o `EXTRAS` do glue).
+    /// O patch que cada chave de componentes guarda, para o teste de tipo refazer a pilha (o `PATCHES` do glue).
     static PATCHES: RefCell<HashMap<String, Vec<(String, String)>>> = RefCell::new(HashMap::new());
 }
 
@@ -98,22 +98,6 @@ fn patch_of(stack: &Value) -> Vec<(String, String)> {
         .unwrap_or_default()
 }
 
-/// Todos os componentes de uma entrada: os padrão do item e o patch por cima.
-fn view(defaults: &Defaults, item: &str, patch: &[(String, String)]) -> BTreeMap<String, String> {
-    let mut full = defaults_of(defaults, item);
-    for (kind, value) in patch {
-        match kind.strip_prefix('!') {
-            Some(removed) => {
-                full.remove(removed);
-            }
-            None => {
-                full.insert(kind.clone(), value.clone());
-            }
-        }
-    }
-    full
-}
-
 fn components_of(patch: &[(String, String)]) -> Components {
     let components = Components::new(
         patch
@@ -128,54 +112,80 @@ fn components_of(patch: &[(String, String)]) -> Components {
     components
 }
 
-fn parse_ingredient(spec: &Value) -> Option<ComponentsIngredient> {
-    ComponentsIngredient::parse(spec.as_object()?, canon)
+fn kind_of(spec: &Value) -> &str {
+    spec.get("neoforge:ingredient_type")
+        .and_then(Value::as_str)
+        .unwrap_or("")
 }
 
-/// A classificação que o glue faz do ingrediente (`ItemInputCache.mapIngredient`): um item simples indexa o tipo; `strict` indexa a chave
-/// de cada item (`fromPatch` contra os padrão dele); o resto é complexo.
-fn shape(spec: &Value, defaults: &Defaults) -> IngredientShape {
-    if let Some(item) = spec.as_str() {
-        return IngredientShape::types(&[item]);
+/// A árvore que o glue monta do ingrediente (`build_node`): texto e lista são `Plain`, `neoforge:components` uma folha com os padrão de cada
+/// item, e `compound`, `intersection` e `difference` guardam os filhos.
+fn tree_of(spec: &Value, defaults: &Defaults) -> Tree {
+    match spec {
+        Value::String(item) => Tree::Plain(vec![item.clone()]),
+        Value::Array(list) => Tree::Plain(
+            list.iter()
+                .map(|item| item.as_str().unwrap().to_owned())
+                .collect(),
+        ),
+        Value::Object(object) => {
+            let kids = |field: &str| -> Vec<Tree> {
+                spec[field]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|kid| tree_of(kid, defaults))
+                    .collect()
+            };
+            match kind_of(spec) {
+                "neoforge:components" => {
+                    let items = items_of(spec);
+                    Tree::Components(Leaf {
+                        ingredient: ComponentsIngredient::parse(object, canon).unwrap(),
+                        defaults: items
+                            .iter()
+                            .map(|item| (item.clone(), defaults_of(defaults, item)))
+                            .collect(),
+                        items,
+                    })
+                }
+                "neoforge:compound" => Tree::Compound(kids("children")),
+                "neoforge:intersection" => Tree::Intersection(kids("children")),
+                "neoforge:difference" => Tree::Difference(
+                    Box::new(tree_of(&spec["base"], defaults)),
+                    Box::new(tree_of(&spec["subtracted"], defaults)),
+                ),
+                other => panic!("tipo {other}"),
+            }
+        }
+        other => panic!("ingrediente {other}"),
     }
-    let ingredient = parse_ingredient(spec).unwrap();
-    if !ingredient.is_strict() {
-        return IngredientShape::Custom;
-    }
-    IngredientShape::Compound(
-        items_of(spec)
-            .iter()
-            .map(|item| {
-                let key = ingredient.exact_components(&defaults_of(defaults, item));
-                IngredientShape::exact(&[item], (!key.is_empty()).then(|| key.key()))
-            })
-            .collect(),
-    )
 }
 
-/// `ItemStackIngredient.testType`: o item está na lista e o ingrediente aceita os componentes da entrada.
-fn test_type(spec: &Value, defaults: &Defaults, input: &dyn TypedInstance) -> bool {
-    if let Some(item) = spec.as_str() {
-        return input.type_id() == item;
+/// A classificação do rastro (`ItemInputCache.mapIngredient`) de uma árvore.
+fn label(tree: &Tree) -> &'static str {
+    match tree {
+        Tree::Plain(_) => "types",
+        Tree::Components(leaf) if leaf.ingredient.is_strict() => "exact",
+        Tree::Compound(_) => "compound",
+        _ => "complex",
     }
-    if !items_of(spec).iter().any(|item| item == input.type_id()) {
-        return false;
-    }
-    let patch = match input.components_key() {
+}
+
+fn patch_key_of(input: &dyn TypedInstance) -> Vec<(String, String)> {
+    match input.components_key() {
         ComponentsKey::Patch(key) => {
             PATCHES.with(|table| table.borrow().get(key).cloned().unwrap_or_default())
         }
         ComponentsKey::Default | ComponentsKey::Unmatchable => Vec::new(),
-    };
-    parse_ingredient(spec)
-        .unwrap()
-        .test(&view(defaults, input.type_id(), &patch))
+    }
 }
 
 fn ingredient(spec: &Value, defaults: &Rc<Defaults>) -> ShapedIngredient {
-    let (own, table) = (spec.clone(), defaults.clone());
-    ShapedIngredient::new(shape(spec, defaults), move |input: &dyn TypedInstance| {
-        test_type(&own, &table, input)
+    let tree = Rc::new(tree_of(spec, defaults));
+    let shape = tree.shape();
+    ShapedIngredient::new(shape, move |input: &dyn TypedInstance| {
+        tree.accepts(input.type_id(), &patch_key_of(input))
     })
 }
 
@@ -245,26 +255,30 @@ fn load(file: &str) -> Vec<Value> {
 #[test]
 fn the_component_ingredient_matches_like_the_original() {
     let lines = load("recipe_components.jsonl");
+    let defaults = defaults_from(&lines);
     let (mut count, mut accepted, mut refused) = (0, 0, 0);
     for line in lines.iter().filter(|line| line["kind"] == "matrix") {
         count += 1;
-        let spec = &line["ingredient"];
-        let ingredient = parse_ingredient(spec).unwrap();
+        let tree = tree_of(&line["ingredient"], &defaults);
         let stack = &line["stack"];
-        let listed = items_of(spec)
+        let full = full_map(&line["full"]);
+        // A pilha tem os componentes dela por inteiro (`full`); o teste do porte recebe só o patch e põe os padrão por baixo.
+        let base = defaults_of(&defaults, stack["id"].as_str().unwrap());
+        let mut patch: Vec<(String, String)> = full
             .iter()
-            .any(|item| item == stack["id"].as_str().unwrap());
-        let rust = listed
-            && stack["count"].as_u64().unwrap() >= 1
-            && ingredient.test(&full_map(&line["full"]));
+            .filter(|(kind, value)| base.get(*kind) != Some(*value))
+            .map(|(kind, value)| (kind.clone(), value.clone()))
+            .collect();
+        patch.extend(
+            base.keys()
+                .filter(|kind| !full.contains_key(*kind))
+                .map(|kind| (format!("!{kind}"), String::new())),
+        );
+        let rust = stack["count"].as_u64().unwrap() >= 1
+            && tree.accepts(stack["id"].as_str().unwrap(), &patch);
         assert_eq!(rust, line["test"].as_bool().unwrap(), "{line}");
         assert_eq!(rust, line["test_type"].as_bool().unwrap(), "{line}");
-        let wanted = if ingredient.is_strict() {
-            "exact"
-        } else {
-            "complex"
-        };
-        assert_eq!(wanted, line["shape"].as_str().unwrap(), "{line}");
+        assert_eq!(label(&tree), line["shape"].as_str().unwrap(), "{line}");
         if rust {
             accepted += 1;
         } else {

@@ -554,7 +554,7 @@ fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
 }
 
 /// O ingrediente de uma receita do jogo e, se é um `neoforge:components`, os componentes dele.
-type Source<'a> = (&'a Ingredient, Option<&'a Arc<basis::ComponentsInput>>);
+type Source<'a> = (&'a Ingredient, Option<&'a Arc<machinery_basis_core::components_ingredient::Tree>>);
 
 fn recipe_ingredient(recipe: &basis::MachineRecipe) -> Source<'_> {
     (&recipe.item, recipe.components.as_ref())
@@ -581,8 +581,8 @@ fn is_plain(ingredient: &Ingredient) -> bool {
 /// O que `ItemInputCache.mapIngredient` faz com o ingrediente. O Horizon já resolveu as tags: `order` são os itens do
 /// ingrediente na ordem do `HolderSet` (`getValues()`, e `items()` do ingrediente simples), e `children` guarda os filhos do
 /// `CompoundIngredient`. Um ingrediente simples indexa os itens, um composto com filho que não é simples mapeia cada filho, e
-/// qualquer outro é complexo (`Custom`). O `DataComponentIngredient` não vem do Horizon: o mod o lê do arquivo (`basis::ComponentsInput`).
-fn item_shape(ingredient: &Ingredient, components: Option<&Arc<basis::ComponentsInput>>) -> IngredientShape {
+/// qualquer outro é complexo (`Custom`). O `DataComponentIngredient` não vem do Horizon: o mod o lê do arquivo (`machinery_basis_core::components_ingredient::Tree`).
+fn item_shape(ingredient: &Ingredient, components: Option<&Arc<machinery_basis_core::components_ingredient::Tree>>) -> IngredientShape {
     // O `DataComponentIngredient` (`neoforge:components`) o Horizon não entrega: o mod o lê do arquivo da receita. Com `strict` é exato
     // (`addComponentInputCache`), senão complexo.
     if let Some(components) = components {
@@ -624,7 +624,7 @@ fn item_ingredient<T: 'static>(source: &Arc<Vec<T>>, index: usize, ingredient: f
             return *answer;
         }
         let answer = match &components {
-            Some(components) => components.accepts(id, patch),
+            Some(components) => basis::tree_accepts(components, id, patch),
             None => {
                 let stack = ItemStack {
                     item: Arc::from(id),
