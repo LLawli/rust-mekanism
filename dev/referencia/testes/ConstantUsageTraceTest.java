@@ -62,6 +62,9 @@ public class ConstantUsageTraceTest {
     private static final int INPUT = 1;
     private static final int OUTPUT = 2;
     private static final int REFILL_TICKS = 3;
+    /// `maxUpgradeMultiplier` dos cenários de mais de uma operação por tick: o padrão (10) deixa o Infuser em `200 / 10 = 20` ticks, e
+    /// `UpgradeUtils.getOperationsPerTick` só passa de 1 com `ticksD < 1`.
+    private static final int OPS_MULTIPLIER = 1000;
 
     private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
           RecipeError.NOT_ENOUGH_OUTPUT_SPACE, RecipeError.INPUT_DOESNT_PRODUCE_OUTPUT, RecipeError.NOT_ENOUGH_SECONDARY_INPUT);
@@ -195,6 +198,46 @@ public class ConstantUsageTraceTest {
               .thenSucceed());
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_constant_ops_a")
+    @TestHolder(description = "Records the Metallurgic Infuser with a per_tick_usage recipe and maxUpgradeMultiplier 1000, where speed 7 and 8 make getOperationsPerTick pass 1 and the chemical use per tick multiplies.")
+    public static void infuserConstOps(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene("infuser_const_ops");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> scene.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> scene.begin(helper, 0, 0, OPS_MULTIPLIER))
+              .thenExecuteAfter(5, () -> scene.apply("item gravel 40, tank redstone 3000"))
+              .thenExecuteAfter(60, () -> scene.apply("speed 4"))
+              .thenExecuteAfter(40, () -> scene.apply("speed 7"))
+              .thenExecuteAfter(40, () -> scene.apply("energy 3"))
+              .thenExecuteAfter(30, () -> scene.apply("speed 8"))
+              .thenExecuteAfter(30, () -> scene.apply("tank redstone 3000"))
+              .thenExecuteAfter(40, () -> scene.apply("speed 6"))
+              .thenExecuteAfter(30, () -> scene.apply("speed 7, reload"))
+              .thenExecuteAfter(40, () -> scene.apply("tank redstone 5"))
+              .thenExecuteAfter(20, () -> scene.apply("tank redstone 3000"))
+              .thenExecuteAfter(40, () -> scene.apply("speed 0"))
+              .thenExecuteAfter(60, scene::write)
+              .thenSucceed());
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_constant_ops_b")
+    @TestHolder(description = "Records the Metallurgic Infuser with a per_tick_usage recipe and maxUpgradeMultiplier 1000 placed by a player with 8 speed and 2 energy upgrades in the item, the chemical running dry in the middle of the operations.")
+    public static void infuserConstOpsPlaced(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene("infuser_const_ops_placed");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> scene.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> scene.begin(helper, 8, 2, OPS_MULTIPLIER))
+              .thenExecuteAfter(5, () -> scene.apply("item gravel 30, tank redstone 120"))
+              .thenExecuteAfter(40, () -> scene.apply("tank redstone 3000"))
+              .thenExecuteAfter(40, () -> scene.apply("speed 7, tank redstone 40"))
+              .thenExecuteAfter(30, () -> scene.apply("tank redstone 3000"))
+              .thenExecuteAfter(40, () -> scene.apply("reload"))
+              .thenExecuteAfter(60, scene::write)
+              .thenSucceed());
+    }
+
     private static final class Scene {
         private final String name;
         private final List<String> lines = new ArrayList<>();
@@ -202,12 +245,39 @@ public class ConstantUsageTraceTest {
         private MekGameTestHelper helper;
         private int tick;
 
+        private boolean multiplierChanged;
+
         Scene(String name) {
             this.name = name;
         }
 
+        /// O valor em cache de `CachedIntValue` (sem gravar o arquivo de configuração): é ele que `UpgradeUtils.getTicksD` lê.
+        private static void setMultiplier(int value) {
+            try {
+                Object cached = mekanism.common.config.MekanismConfig.general.maxUpgradeMultiplier;
+                Class<?> type = cached.getClass();
+                Field resolved = type.getDeclaredField("resolved");
+                Field cachedValue = type.getDeclaredField("cachedValue");
+                resolved.setAccessible(true);
+                cachedValue.setAccessible(true);
+                cachedValue.setInt(cached, value);
+                resolved.setBoolean(cached, true);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
         void begin(MekGameTestHelper helper, int speed, int energy) {
+            begin(helper, speed, energy, 10);
+        }
+
+        /// `multiplier` é o `GeneralConfig.maxUpgradeMultiplier` (padrão 10), posto antes de a máquina nascer e devolvido em `write`.
+        void begin(MekGameTestHelper helper, int speed, int energy, int multiplier) {
             this.helper = helper;
+            if (multiplier != 10) {
+                setMultiplier(multiplier);
+                multiplierChanged = true;
+            }
             Player player = helper.makeMockPlayerLookingAt(FLOOR, Direction.UP);
             helper.useOn(FLOOR, upgraded(speed, energy), player, Direction.UP);
         }
@@ -355,6 +425,9 @@ public class ConstantUsageTraceTest {
 
         void write() {
             helper = null;
+            if (multiplierChanged) {
+                setMultiplier(10);
+            }
             try {
                 Path file = Path.of("trace", name + ".jsonl");
                 Files.createDirectories(file.getParent());

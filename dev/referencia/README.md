@@ -223,6 +223,20 @@ Em jogo, no `horizon2`, `horizon2/h2_cursor.py MAQUINA` repete uma amostra das l
 Infuser e no Heat Generator, porque o slot de infusão converte e o gerador queima no tick seguinte) e compara slot, cursor, barra e arrasto; `h2_placed.py` mede a
 capacidade pela energia que um Heat Generator encostado deixa na máquina, e uma operação de 200 ticks com o servidor parado. Copie os dois `.java` para
 `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar, como os outros, e apague-os depois.
+Além dos quatro cliques, o `SlotClickTraceTest` grava, nas mesmas linhas (`machine_after` com todos os slots da máquina e `dropped` no Q): o Q (`throw`, uma unidade) e o Ctrl+Q (`throw_all`) de um slot com outro
+item ou com o mesmo, o clique do meio (`clone`, com o jogador no criativo) e o clique duplo (`double`: `PICKUP_ALL` sobre o slot vazio, com o item nos outros slots da máquina, 2 na barra e 5 no inventário);
+dois baldes com o componente `max_stack_size` 16 (`lava_bucket+16`, `water_bucket+16`), varridos com os quatro cliques; e, em `slot_click_upgrade_<máquina>.jsonl` (outros campos: `kind` é `upgrade_in` ou
+`upgrade_out`, `item` é `upgrade:<tipo>` ou o id de um item comum), os dois slots virtuais da janela de upgrades com os oito tipos do registro e dois itens comuns. `mods/mekanism/tests/slot_click.rs`
+(`the_original_throws_clones_and_collects_without_asking_the_slot_rules`, `the_cursor_puts_a_supported_upgrade_in_the_upgrade_input_and_nothing_in_the_output`) e
+`mods/mekanismgenerators/tests/upgrade_window.rs` os repetem. Em jogo, `horizon2/h2_cursor_extra.py throw|stacked|upgrade MAQUINA` (`H_NAME=horizon`): o Q e o Ctrl+Q pelo teclado sobre o slot, os baldes empilhados
+com `[minecraft:max_stack_size=16]` e os slots da janela (a aba em (422, 116) com guiScale 3, o servidor parado); o `horizon-ctl` não manda o clique do meio nem o clique duplo.
+
+`testes/UpgradeQuitTraceTest.java` grava (`upgrade_quit_{enrichment_chamber,metallurgic_infuser,heat_generator}.jsonl`) o `Save and Quit` com a janela de upgrades aberta: o menu e a janela selecionados pelos pacotes reais
+(`PacketWindowSelect`, `PacketGuiInteract.CONTAINER_TRACK_UPGRADES`), upgrades no slot da janela por um clique do cursor (instalando, os 20 ticks), a máquina andando com energia, entrada e progresso, e `quit`: o tile gravado com o
+menu aberto (`saveWithFullMetadata`, como `PlayerList.remove` faz antes de `Player.remove` fechar o menu) e relido (`BlockEntity.loadStatic`). Mostra que os itens dos dois slots, os instalados, a energia, a entrada, a saída, o tanque e o
+progresso voltam, e que `upgradeTicks` e `canCheckUpgrades` não são gravados (a instalação recomeça dos 20 ticks). `mods/mekanism/tests/upgrade_quit.rs` e `mods/mekanismgenerators/tests/upgrade_window.rs`
+(`the_generator_keeps_the_upgrade_slot_and_restarts_the_install_after_save_and_quit`) o repetem; em jogo, `horizon2/h2_quit.py antes|depois` (o jogo é fechado com `horizon-ctl quit` com a janela aberta e aberto de novo entre as etapas).
+`testes/ConstantUsageTraceTest.java` ganhou `infuser_const_ops` e `infuser_const_ops_placed`, com `maxUpgradeMultiplier` 1.000 (o valor em cache de `CachedIntValue`, devolvido ao fim): `getOperationsPerTick` passa de 1 (2 e 5 por tick).
 
 `testes/TrackerTraceTest.java` grava (`{chamber,crusher,smelter,infuser,heat_generator}_trackers.jsonl`) o que o `MekanismContainer.broadcastChanges` e o
 `sendAllDataToRemote` mandariam a um jogador com a tela aberta, uma linha por tick (`sent`, `dirty`, cada entrada `[índice, classe, "DIRTY"|"SIZE", valor]`).
