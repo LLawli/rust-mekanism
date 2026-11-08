@@ -8,10 +8,10 @@ fn mekanismgenerators_widget_tooltip(
     if game.carried.is_some() {
         return core::ops::ControlFlow::Continue(());
     }
-    let Some((block, data, at)) = game.native_screen_at() else {
+    let Some((block, _, at)) = game.native_screen_at() else {
         return core::ops::ControlFlow::Continue(());
     };
-    if crate::game::mekanismgenerators_glue::widget_tooltip(game, batch, &block, &data, at, game.cursor) {
+    if crate::game::mekanismgenerators_glue::widget_tooltip(game, batch, &block, at, game.cursor) {
         core::ops::ControlFlow::Break(())
     } else {
         core::ops::ControlFlow::Continue(())

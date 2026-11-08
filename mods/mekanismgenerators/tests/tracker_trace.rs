@@ -4,7 +4,9 @@
 //! queima lava, esquenta e gera, muda de modo de redstone e instala um upgrade de silêncio com a janela aberta e fechada.
 mod common;
 
-use machinery_basis_core::container_sync::{ContainerSync, DirtyType, Property, PropertyData};
+use machinery_basis_core::container_sync::{
+    ContainerSync, DirtyType, Kind as DataKind, Mirror, Property, PropertyData, wire,
+};
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::tile::RedstoneControl;
 use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
@@ -16,6 +18,7 @@ use mekanismgenerators_rules::{
     heat_generator_trackers, step, upgrade_window_data,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -81,6 +84,8 @@ struct Scene {
     /// O que o último tick produziu: `producingEnergy`, `lastTransferLoss` e `lastEnvironmentLoss` ficam nos campos do tile.
     last: Produced,
     sync: Option<ContainerSync<u8>>,
+    /// O menu do mesmo jogador no cliente: o que o servidor manda chega a ele em bytes, e cada dado vai para a posição dele.
+    client: Option<Mirror>,
     sent: Vec<Property>,
 }
 
@@ -98,6 +103,7 @@ impl Scene {
             upgrades: &upgrades,
         }));
         self.sync = Some(sync);
+        self.client = Some(Mirror::new(&heat_generator_trackers()));
     }
 
     fn open_window(&mut self) {
@@ -113,6 +119,11 @@ impl Scene {
             },
         ));
         self.sync = Some(sync);
+        // O cliente acrescenta os dados da janela no mesmo lugar (`GuiUpgradeWindow` chama `startTracking`).
+        self.client
+            .as_mut()
+            .expect("sem menu aberto")
+            .start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
     }
 
     fn click_upgrade_slot(&self, name: &str, count: u32) {
@@ -136,10 +147,17 @@ impl Scene {
         let words: Vec<&str> = action.split_whitespace().collect();
         match words.as_slice() {
             ["open"] => self.open(),
-            ["close"] => self.sync = None,
+            ["close"] => {
+                self.sync = None;
+                self.client = None;
+            }
             ["window", "upgrade", ..] => self.open_window(),
             ["stop", "tracking"] => {
                 self.sync
+                    .as_mut()
+                    .expect("sem menu aberto")
+                    .stop_tracking(&UPGRADE_WINDOW_KEY);
+                self.client
                     .as_mut()
                     .expect("sem menu aberto")
                     .stop_tracking(&UPGRADE_WINDOW_KEY);
@@ -242,6 +260,82 @@ fn read_trace(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
+/// O gerador no estado do primeiro tick gravado.
+fn scene_from(first: &Value) -> Scene {
+    let mut state = State::new(first["ambient"].as_f64().unwrap());
+    // O primeiro tick gravado já aconteceu quando o cenário começa: o calor dele semeia o estado, e a regra roda a partir do seguinte.
+    state.heat.heat = first["heat"].as_f64().unwrap();
+    Scene {
+        state,
+        slot: Slot::empty(),
+        upgrades: UpgradeComponent::new(
+            common::upgrade_data(),
+            Rc::new(|| {}),
+            Box::new(|_, _, _| {}),
+        ),
+        last: Produced {
+            energy: first["produced"].as_i64().unwrap() as i32,
+            transfer_loss: first["transfer_loss"].as_f64().unwrap(),
+            environment_loss: first["environment_loss"].as_f64().unwrap(),
+            ..Produced::default()
+        },
+        sync: None,
+        client: None,
+        sent: Vec::new(),
+    }
+}
+
+/// O pacote do tick: o que o servidor mandou, em bytes, e o `handleWindowProperty` de cada dado no menu do cliente.
+fn deliver(client: &mut Mirror, properties: &[Property]) {
+    if properties.is_empty() {
+        return;
+    }
+    let packet = wire::Packet::new([0, 64, 0], None, properties);
+    let packet = wire::decode(&wire::encode(&packet)).expect("o pacote volta");
+    for (index, data) in &packet.data {
+        client.apply(*index, data);
+    }
+}
+
+/// O que o cliente do Java guarda de cada dado depois de aplicar o que o rastro diz que o servidor mandou, na forma do rastro. Uma pilha
+/// mandada só pelo tamanho muda a quantidade da que ele já tem (`SyncableLargeResourceStack.set(long)`).
+fn java_client_applies(view: &mut BTreeMap<u64, Value>, entry: &Value) {
+    let [index, class, dirty, value] = entry.as_array().unwrap().as_slice() else {
+        panic!("entrada fora de forma: {entry}");
+    };
+    let index = index.as_u64().unwrap();
+    let class = class.as_str().unwrap().split('$').next().unwrap();
+    if class == "SyncableLargeResourceStack" && dirty == "SIZE" {
+        if let Some(stack) = view.get_mut(&index)
+            && stack["resource"] != ""
+        {
+            *stack = if value.as_u64() == Some(0) {
+                json!({"resource": "", "amount": 0})
+            } else {
+                json!({"resource": stack["resource"], "amount": value})
+            };
+        }
+        return;
+    }
+    view.insert(index, expected_entry(entry)[3].clone());
+}
+
+/// O valor de um dado do espelho, na forma do rastro.
+fn mirror_value(mirror: &Mirror, position: usize, kind: DataKind) -> Value {
+    match kind {
+        DataKind::Boolean => json!(mirror.boolean(position)),
+        DataKind::Int => json!(mirror.int(position)),
+        DataKind::Enum { .. } => json!(mirror.enum_ordinal(position)),
+        DataKind::Long => json!(mirror.long(position)),
+        DataKind::Double => json!(mirror.double(position)),
+        DataKind::LargeResourceStack => {
+            let stack = mirror.stack(position);
+            json!({"resource": stack.resource, "amount": stack.amount})
+        }
+        DataKind::StreamCodec => bytes_json(mirror.bytes(position)),
+    }
+}
+
 #[test]
 fn the_heat_generator_container_sends_what_the_original_sends() {
     let lines = read_trace(SCENARIO);
@@ -255,27 +349,9 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
         machinery_basis_core::heat::EPSILON,
         "o limite de troca de calor"
     );
-    let mut state = State::new(lines[0]["ambient"].as_f64().unwrap());
-    // O primeiro tick gravado já aconteceu quando o cenário começa: o calor dele semeia o estado, e a regra roda a partir do seguinte.
-    state.heat.heat = lines[0]["heat"].as_f64().unwrap();
-    let mut scene = Scene {
-        state,
-        slot: Slot::empty(),
-        upgrades: UpgradeComponent::new(
-            common::upgrade_data(),
-            Rc::new(|| {}),
-            Box::new(|_, _, _| {}),
-        ),
-        last: Produced {
-            energy: lines[0]["produced"].as_i64().unwrap() as i32,
-            transfer_loss: lines[0]["transfer_loss"].as_f64().unwrap(),
-            environment_loss: lines[0]["environment_loss"].as_f64().unwrap(),
-            ..Produced::default()
-        },
-        sync: None,
-        sent: Vec::new(),
-    };
-    let (mut sent_lines, mut dirty_lines) = (0, 0);
+    let mut scene = scene_from(&lines[0]);
+    let (mut sent_lines, mut dirty_lines, mut compared) = (0, 0, 0);
+    let mut view: BTreeMap<u64, Value> = BTreeMap::new();
     for expected in &lines {
         let t = expected["t"].as_u64().unwrap();
         if t > 0 {
@@ -313,7 +389,13 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
             }),
             None => Vec::new(),
         };
-        let actual_sent: Vec<Value> = scene.sent.drain(..).map(|p| actual_entry(&p)).collect();
+        let sent_properties: Vec<Property> = std::mem::take(&mut scene.sent);
+        // O servidor manda ao jogador os dados da abertura e depois os sujos; o cliente os aplica nessa ordem.
+        if let Some(client) = scene.client.as_mut() {
+            deliver(client, &sent_properties);
+            deliver(client, &dirty);
+        }
+        let actual_sent: Vec<Value> = sent_properties.iter().map(actual_entry).collect();
         let actual_dirty: Vec<Value> = dirty.iter().map(actual_entry).collect();
         let expected_sent: Vec<Value> = expected["sent"]
             .as_array()
@@ -343,11 +425,38 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
                 "{SCENARIO}, tick {t}: quantos dados o menu sincroniza"
             );
         }
+        // O que a tela lê do espelho é o que o cliente do Java leria: cada dado que o rastro mandou, no valor e na classe que o cliente dele tem.
+        if scene.client.is_none() {
+            view.clear();
+        }
+        for entry in expected["sent"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(expected["dirty"].as_array().unwrap())
+        {
+            java_client_applies(&mut view, entry);
+        }
+        if let (Some(client), Some(sync)) = (scene.client.as_ref(), scene.sync.as_ref()) {
+            let tracked = sync.tracked();
+            view.retain(|index, _| (*index as usize) < tracked.len());
+            for (index, wanted) in &view {
+                let position = *index as usize;
+                assert_eq!(
+                    &mirror_value(client, position, tracked[position].kind),
+                    wanted,
+                    "{SCENARIO}, tick {t}: o que a tela lê do dado {index} ({})",
+                    tracked[position].kind.class()
+                );
+                compared += 1;
+            }
+        }
         sent_lines += usize::from(!expected_sent.is_empty());
         dirty_lines += usize::from(!expected_dirty.is_empty());
     }
     assert!(sent_lines >= 2, "{sent_lines} envios iniciais");
     assert!(dirty_lines >= 150, "{dirty_lines} ticks sujos");
+    assert!(compared >= 2_000, "{compared} leituras do espelho");
 }
 
 #[test]
@@ -364,5 +473,40 @@ fn the_declared_list_has_the_size_and_classes_the_original_measured() {
         .map(|tracked| tracked.kind.class())
         .collect();
     assert_eq!(declared, wanted);
-    assert_eq!(declared.len(), mekanismgenerators_rules::HEAT_TRACKED_BASE);
+}
+
+/// `redstoneLastTick` (posição 4, `WAS_POWERED`) é gravado no fim do `tickServer` (`TileEntityMekanism.java:652-655`): vira verdadeiro só no
+/// tick seguinte ao sinal ligar, e falso no seguinte ao sinal desligar. Aqui só o fim de tick real do gerador, sem o menu: o valor do tile
+/// confere com o último que o rastro mandou a cada tick.
+#[test]
+fn redstone_last_tick_follows_the_signal_one_tick_later() {
+    let lines = read_trace(SCENARIO);
+    let mut scene = scene_from(&lines[0]);
+    let mut expected = false;
+    let mut transitions = Vec::new();
+    for line in &lines {
+        let t = line["t"].as_u64().unwrap();
+        if t > 0 {
+            scene.state.tile.finish_tick(|| 0);
+        }
+        for mark in line["marks"].as_array().unwrap() {
+            for action in mark.as_str().unwrap().split(", ") {
+                if action.starts_with("signal") || action.starts_with("mode") {
+                    scene.apply(action);
+                }
+            }
+        }
+        let sent = line["sent"].as_array().unwrap();
+        let dirty = line["dirty"].as_array().unwrap();
+        for entry in sent.iter().chain(dirty) {
+            if entry[0] == 4 {
+                expected = entry[3].as_bool().unwrap();
+                transitions.push(t);
+            }
+        }
+        let tile = scene.state.tile.redstone_sync();
+        assert_eq!(tile.was_powered, expected, "tick {t}: redstoneLastTick");
+    }
+    // O sinal liga e desliga três vezes depois do envio inicial: cada mudança de `powered` chega a `wasPowered` um tick depois.
+    assert_eq!(transitions, [3, 215, 219, 227, 231, 235, 239]);
 }

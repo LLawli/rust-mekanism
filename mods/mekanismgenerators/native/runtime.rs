@@ -1,6 +1,8 @@
 // Regras do Heat Generator, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o
 // módulo crate::game::mekanismgenerators_rules. Segue TileEntityHeatGenerator.
-use machinery_basis_core::container_sync::{Kind, StackValue, Tracked, TrackedSource, Value};
+use machinery_basis_core::container_sync::{
+    Kind, Mirror, StackValue, Tracked, TrackedSource, Value,
+};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::machine_sync::upgrade_map;
@@ -8,9 +10,10 @@ use machinery_basis_core::slot_view::{ContainerSlotType, SlotOverlay, SlotSpec};
 use machinery_basis_core::temperature::{self, TemperatureUnit};
 use machinery_basis_core::tile::TileBase;
 use machinery_basis_core::tile_trackers::{
-    EnergyTrackers, TileTrackers, source, upgrade_window_trackers,
+    EnergyTrackers, TileTrackers, position_of, source, upgrade_window_trackers,
 };
 use machinery_basis_core::units::{energy_fraction, stored_mb};
+use std::sync::LazyLock;
 
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
 pub const MENU: &str = "mekanismgenerators:heat_generator";
@@ -543,41 +546,63 @@ impl TrackedSource for HeatGeneratorSync<'_> {
     }
 }
 
-/// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela de upgrades.
-pub const UPGRADE_TRACKING_KEY: u8 = 2;
-/// Quantos dados a janela acrescenta ao contêiner (`getSpecificSyncableData`: `upgradeTicks` e o mapa).
-pub const UPGRADE_TRACKED_ITEMS: usize = 2;
-/// Quantos dados o contêiner do Heat Generator já sincroniza ao nascer (`addContainerTrackers`), medidos no rastro
-/// `heat_generator_container_tracking`.
-pub const HEAT_TRACKED_BASE: usize = 13;
+/// Onde cada dado da tela fica na lista do menu (`trackedData`), tirada da própria lista de `addContainerTrackers`: a posição que o servidor
+/// mandou no `PacketUpdateContainer` e o cliente lê do espelho.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScreenIndexes {
+    /// O tanque de lava (`SyncableLargeResourceStack`) e a energia.
+    pub lava: usize,
+    pub energy: usize,
+    /// `getProductionRate`, `getLastTransferLoss` e `getLastEnvironmentLoss`.
+    pub production: usize,
+    pub transfer_loss: usize,
+    pub environment_loss: usize,
+    /// O calor do capacitor (`getHeat`).
+    pub heat: usize,
+}
 
-/// Quantos tipos de upgrade o Mekanism declara em `data/mekanism/mekanism/upgrade`: cada um tem a contagem dele num data slot.
-pub const UPGRADE_TYPES: usize = 8;
-/// Os data slots dos upgrades: `upgradeTicks` e uma contagem por tipo, na ordem do registro. O Java os sincroniza só com a janela aberta,
-/// por jogador, e aqui eles são do bloco.
-pub const UPGRADE_SYNC_LEN: usize = 1 + UPGRADE_TYPES;
-/// Onde eles começam. Os índices de 6 a 13 são da aba de calor (quatro perdas de transferência e quatro do ambiente).
-pub const UPGRADE_DATA: usize = 14;
-/// O calor exato do capacitor (um `double`, quatro slots de 16 bits), depois dos upgrades: a aba de calor mostra o calor sobre a capacidade.
-pub const DATA_HEAT: usize = UPGRADE_DATA + UPGRADE_SYNC_LEN;
-/// Quantos data slots o menu do gerador declara: o `data_slots` do arquivo de menu.
-pub const DATA_SLOTS: usize = DATA_HEAT + 4;
-
-/// Escreve o `upgradeTicks` e o mapa de upgrades nos data slots.
-pub fn write_upgrade_sync(data: &mut [i32], sync: &UpgradeSync) {
-    for (slot, value) in data
-        .iter_mut()
-        .skip(UPGRADE_DATA)
-        .zip(sync.write(UPGRADE_SYNC_LEN))
-    {
-        *slot = value;
+impl ScreenIndexes {
+    pub fn of(list: &[Tracked]) -> Self {
+        let at = |source| position_of(list, source);
+        Self {
+            lava: at(source::FLUID_TANK),
+            energy: at(source::ENERGY),
+            production: at(SOURCE_PRODUCTION_RATE),
+            transfer_loss: at(SOURCE_TRANSFER_LOSS),
+            environment_loss: at(SOURCE_ENVIRONMENT_LOSS),
+            heat: at(source::HEAT),
+        }
     }
 }
 
-/// O que o cliente lê dos data slots dos upgrades.
-pub fn read_upgrade_sync(data: &[i32]) -> UpgradeSync {
-    let slots = data.get(UPGRADE_DATA..).unwrap_or_default();
-    UpgradeSync::read(&slots[..slots.len().min(UPGRADE_SYNC_LEN)])
+static INDEXES: LazyLock<ScreenIndexes> =
+    LazyLock::new(|| ScreenIndexes::of(&heat_generator_trackers()));
+
+/// O que o cliente lê do espelho do menu do Heat Generator.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ScreenData {
+    pub energy: u32,
+    pub lava: u64,
+    pub production: u32,
+    pub heat: f64,
+    pub transfer_loss: f64,
+    pub environment_loss: f64,
+}
+
+impl ScreenData {
+    /// O que o cliente lê. Antes dos primeiros valores do servidor o espelho está vazio, e o que falta vale o padrão do dado.
+    pub fn read(mirror: &Mirror) -> Self {
+        let indexes = &*INDEXES;
+        let unsigned = |value: i64| u32::try_from(value.clamp(0, i64::from(u32::MAX))).unwrap_or(0);
+        Self {
+            energy: unsigned(mirror.long(indexes.energy)),
+            lava: mirror.stack(indexes.lava).amount,
+            production: unsigned(i64::from(mirror.int(indexes.production))),
+            heat: mirror.double(indexes.heat),
+            transfer_loss: mirror.double(indexes.transfer_loss),
+            environment_loss: mirror.double(indexes.environment_loss),
+        }
+    }
 }
 
 /// `WindowType`, na ordem do enum do Java. `CRAFTING` aceita `MAX_CRAFTING_WINDOWS` (3) janelas. É a tabela do Mekanism: o gerador abre a

@@ -8,6 +8,7 @@ mod common;
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::quick_move::{QuickMenu, Region, quick_move};
 use machinery_basis_core::sound::{fully_muffled, volume_factor};
+use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::upgrade::{
     self, UpgradeComponent, UpgradeData, UpgradeSaved, UpgradeTransient,
@@ -18,11 +19,9 @@ use machinery_basis_core::upgrade_window::{
 use machinery_basis_core::window::{SelectedWindow, WindowType};
 use machinery_basis_core::window_session::Sessions;
 use mekanismgenerators_rules::{
-    CONTAINER_ORDER, DATA_HEAT, DATA_SLOTS, ENERGY_CAPACITY, ENERGY_SLOT, FUEL_SLOT,
-    HEAT_TRACKED_BASE, MENU_SLOTS, MUFFLING_UPGRADE, UPGRADE_DATA, UPGRADE_OUTPUT_SLOT,
-    UPGRADE_SLOT, UPGRADE_SYNC_LEN, UPGRADE_TRACKED_ITEMS, UPGRADE_TRACKING_KEY, UPGRADE_TYPES,
-    UPGRADE_WINDOW, WINDOW_TYPES, accepts_upgrade, read_upgrade_sync, slot_exists,
-    write_upgrade_sync,
+    CONTAINER_ORDER, ENERGY_CAPACITY, ENERGY_SLOT, FUEL_SLOT, MENU_SLOTS, MUFFLING_UPGRADE,
+    UPGRADE_OUTPUT_SLOT, UPGRADE_SLOT, UPGRADE_WINDOW, WINDOW_TYPES, accepts_upgrade,
+    heat_generator_trackers, slot_exists, upgrade_window_data,
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
@@ -196,10 +195,19 @@ fn state(tile: &HeatTile, t: &Value, marks: &Value) -> Value {
         .filter(|(_, count)| **count > 0)
         .map(|(id, count)| (id.trim_start_matches("mekanism:").to_owned(), json!(count)))
         .collect();
-    // O que o cliente lê dos data slots é o que o servidor tem, depois dos 16 bits.
-    let mut data = vec![0; DATA_SLOTS];
-    write_upgrade_sync(&mut data, &sync);
-    assert_eq!(read_upgrade_sync(&data), sync);
+    // O que a janela lê do espelho do cliente é o que o servidor tem: o pacote em bytes leva `upgradeTicks` e o mapa de upgrades sem perda.
+    let server = common::Server {
+        upgrades: sync.clone(),
+        ..common::Server::new(0.0)
+    };
+    let (client, window) = common::client_of(&server, true);
+    let read = client.upgrades(&window);
+    assert_eq!(read.ticks, sync.ticks);
+    // O mapa só leva os tipos instalados: os que o cliente não recebeu valem zero.
+    for index in 0..sync.counts.len() {
+        assert_eq!(read.count(index), sync.count(index), "tipo {index}");
+    }
+    assert_eq!(read.installed(), sync.installed());
     json!({
         "t": t,
         "marks": marks,
@@ -393,6 +401,7 @@ fn carried_json(carried: &Option<(ItemResource, u32)>) -> Value {
 fn installing_through_the_window_follows_the_original_trace() {
     let mut tile = HeatTile::new();
     let mut sessions = Sessions::<u32, u128, u8>::default();
+    let base = heat_generator_trackers();
     let mut carried: Option<(ItemResource, u32)> = None;
     // O que o contêiner tinha ao fechar: o rastro continua gravando a contagem depois disso.
     let mut last_tracked = 0;
@@ -402,29 +411,31 @@ fn installing_through_the_window_follows_the_original_trace() {
         for mark in actions(&expected) {
             let words: Vec<&str> = mark.split_whitespace().collect();
             match words.as_slice() {
-                ["open", "container"] => sessions.open(CONTAINER, PLAYER, HEAT_TRACKED_BASE),
+                ["open", "container"] => sessions.open(
+                    CONTAINER,
+                    PLAYER,
+                    "overworld",
+                    "mekanismgenerators:heat_generator",
+                    &base,
+                ),
                 ["select", "upgrade", "window"] => {
                     sessions.select(CONTAINER, PLAYER, Some(window));
                 }
                 ["track", "upgrades"] => {
                     let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
                     session
-                        .tracking
-                        .start(UPGRADE_TRACKING_KEY, UPGRADE_TRACKED_ITEMS);
+                        .sync
+                        .start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
                 }
                 ["stop", "tracking"] => {
                     let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
-                    session.tracking.stop(&UPGRADE_TRACKING_KEY);
+                    session.sync.stop_tracking(&UPGRADE_WINDOW_KEY);
                 }
                 ["deselect", "window"] => {
                     sessions.select(CONTAINER, PLAYER, None);
                 }
                 ["close", "container"] => {
-                    last_tracked = sessions
-                        .session(CONTAINER, PLAYER)
-                        .unwrap()
-                        .tracking
-                        .count();
+                    last_tracked = sessions.session(CONTAINER, PLAYER).unwrap().sync.count();
                     sessions.close(CONTAINER, PLAYER);
                 }
                 ["click", "upgrade", "slot", "with", name, count, ..] => {
@@ -447,7 +458,7 @@ fn installing_through_the_window_follows_the_original_trace() {
             } else {
                 "none"
             });
-            actual["tracked"] = json!(session.map_or(last_tracked, |s| s.tracking.count()));
+            actual["tracked"] = json!(session.map_or(last_tracked, |s| s.sync.count()));
             actual["carried"] = carried_json(&carried);
             actual["players"] = json!(sessions.players(CONTAINER));
         } else {
@@ -462,7 +473,8 @@ fn installing_through_the_window_follows_the_original_trace() {
 fn the_container_tracking_follows_the_original_trace() {
     let mut sessions = Sessions::<u32, u128, u8>::default();
     let window = SelectedWindow::new(UPGRADE_WINDOW, 0);
-    let mut count = HEAT_TRACKED_BASE;
+    let base = heat_generator_trackers();
+    let mut count = base.len();
     let rows = lines("heat_generator_container_tracking");
     assert_eq!(rows.len(), 8, "o rastro do contêiner tem oito linhas");
     for expected in rows {
@@ -471,8 +483,14 @@ fn the_container_tracking_follows_the_original_trace() {
         for mark in marks(&expected) {
             match mark {
                 "container created" => {
-                    sessions.open(CONTAINER, PLAYER, HEAT_TRACKED_BASE);
-                    added = (0..HEAT_TRACKED_BASE).collect();
+                    sessions.open(
+                        CONTAINER,
+                        PLAYER,
+                        "overworld",
+                        "mekanismgenerators:heat_generator",
+                        &base,
+                    );
+                    added = (0..base.len()).collect();
                 }
                 "PacketWindowSelect upgrade" => {
                     sessions.select(CONTAINER, PLAYER, Some(window));
@@ -481,26 +499,22 @@ fn the_container_tracking_follows_the_original_trace() {
                     sessions.select(CONTAINER, PLAYER, None);
                 }
                 mark if mark.starts_with("PacketGuiInteract CONTAINER_TRACK_UPGRADES") => {
-                    let tracking = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().tracking;
-                    added = tracking.start(UPGRADE_TRACKING_KEY, UPGRADE_TRACKED_ITEMS);
+                    let sync = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().sync;
+                    added = sync.start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
                 }
                 "PacketGuiInteract CONTAINER_STOP_TRACKING" => {
-                    let tracking = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().tracking;
-                    removed = tracking.stop(&UPGRADE_TRACKING_KEY);
+                    let sync = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().sync;
+                    removed = sync.stop_tracking(&UPGRADE_WINDOW_KEY);
                 }
                 "container closed" => {
-                    count = sessions
-                        .session(CONTAINER, PLAYER)
-                        .unwrap()
-                        .tracking
-                        .count();
+                    count = sessions.session(CONTAINER, PLAYER).unwrap().sync.count();
                     sessions.close(CONTAINER, PLAYER);
                 }
                 other => panic!("marca desconhecida: {other:?}"),
             }
         }
         if let Some(session) = sessions.session(CONTAINER, PLAYER) {
-            count = session.tracking.count();
+            count = session.sync.count();
         }
         let t = &expected["t"];
         assert_eq!(json!(count), expected["count"], "tick {t}: count");
@@ -535,6 +549,101 @@ fn the_container_tracking_follows_the_original_trace() {
             "tick {t}: players"
         );
     }
+}
+
+/// Cada jogador tem o seu `ContainerSync` e o seu espelho: a janela de upgrades que um abre acrescenta dados só à lista dele, e o outro
+/// não recebe nada dela. Pedir de novo sem parar vaza a lista antiga, como o `startTracking` do Java (que não tira a anterior).
+#[test]
+fn the_upgrade_window_adds_data_only_to_the_player_who_opened_it() {
+    const OTHER: u128 = 2;
+    let base = heat_generator_trackers();
+    let mut server = common::Server::new(0.0);
+    let mut sessions = Sessions::<u32, u128, u8>::default();
+    let mut clients = BTreeMap::new();
+    for player in [PLAYER, OTHER] {
+        sessions.open(
+            CONTAINER,
+            player,
+            "overworld",
+            "mekanismgenerators:heat_generator",
+            &base,
+        );
+        let sync = &mut sessions.session_mut(CONTAINER, player).unwrap().sync;
+        clients.insert(player, common::Client::open(sync, &server));
+    }
+    assert!(!sessions.any_extra(CONTAINER));
+
+    // O primeiro jogador abre a janela: o servidor manda os dois dados novos a ele, e só a ele.
+    let sent = sessions
+        .session_mut(CONTAINER, PLAYER)
+        .unwrap()
+        .sync
+        .start_tracking_server(UPGRADE_WINDOW_KEY, &upgrade_window_data(), &server.source());
+    let positions = clients.get_mut(&PLAYER).unwrap().track_window(&sent);
+    assert_eq!(positions, [base.len(), base.len() + 1]);
+    assert_eq!(
+        sent.iter()
+            .map(|p| usize::from(p.index))
+            .collect::<Vec<_>>(),
+        positions
+    );
+    let count_of = |sessions: &Sessions<u32, u128, u8>, player| {
+        sessions.session(CONTAINER, player).unwrap().sync.count()
+    };
+    assert_eq!(count_of(&sessions, PLAYER), base.len() + 2);
+    assert_eq!(count_of(&sessions, OTHER), base.len());
+    assert_eq!(clients[&OTHER].mirror.count(), base.len());
+
+    // Um upgrade instalado: só quem tem a janela vê o mapa mudar, e o outro jogador não recebe nenhum dado.
+    let mut counts = vec![0; common::declared_types()];
+    counts[0] = 1;
+    server.upgrades = UpgradeSync { ticks: 7, counts };
+    let mut dirty = BTreeMap::new();
+    for player in [PLAYER, OTHER] {
+        let sync = &mut sessions.session_mut(CONTAINER, player).unwrap().sync;
+        dirty.insert(player, sync.broadcast_changes(&server.source()));
+    }
+    assert_eq!(
+        dirty[&PLAYER]
+            .iter()
+            .map(|p| usize::from(p.index))
+            .collect::<Vec<_>>(),
+        positions
+    );
+    assert!(dirty[&OTHER].is_empty());
+    clients
+        .get_mut(&PLAYER)
+        .unwrap()
+        .receive(&dirty[&PLAYER], false);
+    let seen = clients[&PLAYER].upgrades(&positions);
+    assert_eq!((seen.ticks, seen.count(0)), (7, 1));
+
+    // Pedir de novo sem parar: a lista antiga fica e continua sincronizando, e parar tira só a nova.
+    let again = sessions
+        .session_mut(CONTAINER, PLAYER)
+        .unwrap()
+        .sync
+        .start_tracking_server(UPGRADE_WINDOW_KEY, &upgrade_window_data(), &server.source());
+    assert_eq!(
+        again
+            .iter()
+            .map(|p| usize::from(p.index))
+            .collect::<Vec<_>>(),
+        [base.len() + 2, base.len() + 3]
+    );
+    assert_eq!(count_of(&sessions, PLAYER), base.len() + 4);
+    let sync = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().sync;
+    assert_eq!(
+        sync.stop_tracking(&UPGRADE_WINDOW_KEY),
+        [base.len() + 2, base.len() + 3]
+    );
+    assert_eq!(sync.count(), base.len() + 2);
+    assert!(sessions.any_extra(CONTAINER));
+    assert_eq!(count_of(&sessions, OTHER), base.len());
+    // Fechar o menu de quem o abriu desfaz a lista dele, e a do outro jogador nunca existiu.
+    sessions.close(CONTAINER, PLAYER);
+    assert!(!sessions.any_extra(CONTAINER));
+    assert_eq!(sessions.players(CONTAINER), 1);
 }
 
 /// O menu do rastro de shift-clique, com os índices do Java: a classe de cada slot vem da primeira linha do rastro, e o papel dos
@@ -953,10 +1062,12 @@ fn the_window_type_table_matches_the_java_enum() {
     let _: WindowType = UPGRADE_WINDOW;
 }
 
+/// O mapa de upgrades leva um tipo por índice do registro: o servidor conta todos os tipos que o Mekanism declara.
 #[test]
-fn the_data_declares_as_many_upgrade_types_as_the_menu_has_slots_for() {
-    assert_eq!(common::declared_types(), UPGRADE_TYPES);
-    assert_eq!(UPGRADE_SYNC_LEN, 1 + UPGRADE_TYPES);
+fn the_upgrade_map_covers_every_declared_type() {
+    let tile = HeatTile::new();
+    let sync = UpgradeSync::of(&tile.component());
+    assert_eq!(sync.counts.len(), common::declared_types());
 }
 
 /// O que o gerador aceita é o que a tag `muffling_only` diz: o silêncio, e nenhum dos outros sete tipos.
@@ -966,29 +1077,16 @@ fn the_generator_supports_only_muffling() {
     let supported: Vec<String> = data.supported().map(|id| id.to_string()).collect();
     assert_eq!(supported, [MUFFLING_UPGRADE]);
     assert_eq!(data.max(MUFFLING_UPGRADE), Some(1));
-    assert_eq!(data.type_ids().len(), UPGRADE_TYPES);
+    assert_eq!(data.type_ids().len(), common::declared_types());
 }
 
-/// Os data slots do menu: nenhum se sobrepõe ao que já havia (energia, lava, temperatura, produção) nem à aba de calor (6 a 13), e todos
-/// cabem no que o arquivo do menu declara.
+/// O arquivo do menu só declara os slots: os dados da tela vêm da lista de trackers do `MekanismContainer`, não de campos do arquivo.
 #[test]
-fn the_menu_file_declares_what_the_layout_writes() {
-    assert_eq!(UPGRADE_DATA, 14, "a aba de calor ocupa 6 a 13");
-    assert_eq!(
-        DATA_HEAT,
-        UPGRADE_DATA + UPGRADE_SYNC_LEN,
-        "o calor exato vem depois dos upgrades"
-    );
-    assert_eq!(
-        DATA_SLOTS,
-        DATA_HEAT + 4,
-        "um double são quatro slots de 16 bits"
-    );
+fn the_menu_file_declares_only_the_slots() {
     let file = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("content/data/mekanismgenerators/horizon/menu/heat_generator.json");
     let menu: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
-    assert_eq!(menu["data_slots"], DATA_SLOTS);
-    assert_eq!(menu["slots"], MENU_SLOTS);
+    assert_eq!(menu, json!({ "slots": MENU_SLOTS }));
     assert_eq!(
         (UPGRADE_SLOT, UPGRADE_OUTPUT_SLOT),
         (2, 3),
@@ -1066,7 +1164,7 @@ fn every_declared_upgrade_type_has_a_known_color() {
         );
         seen += 1;
     }
-    assert_eq!(seen, UPGRADE_TYPES);
+    assert_eq!(seen, common::declared_types());
 }
 
 /// A tabela de janelas e a de cores são as do Mekanism, copiadas porque o Generators não depende do crate dele: as duas cópias não

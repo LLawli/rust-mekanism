@@ -11,7 +11,6 @@ use horizon_client::mod_api::{NativeScreen, NativeScreenView};
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::armor_bar;
 use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
-use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::Capacitor;
@@ -23,6 +22,7 @@ use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
 use machinery_basis_core::tile::{ItemEnergy, RedstoneControl, SavedState, TileBase, energy_can_drain};
 use machinery_basis_core::upgrade::{self, UpgradeComponent, UpgradeTransient};
+use machinery_basis_core::container_sync::TrackedSource;
 use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
 use machinery_basis_core::window::SelectedWindow;
 use std::cell::{Cell, RefCell};
@@ -46,19 +46,6 @@ const CONTROL_TYPE: &str = "control_type";
 const REDSTONE_OWNER: &str = "mekanismgenerators";
 const UPDATE_DELAY: &str = "update_delay";
 const LIT: &str = "lit";
-
-// Os data slots da tela. Os 3 e 4 ficaram livres: eram a temperatura inteira, que a aba de calor lê agora como o calor exato (`DATA_HEAT`).
-// Um `double` ocupa quatro slots de 16 bits.
-const DATA_ENERGY: usize = 0;
-const DATA_LAVA: usize = 2;
-const DATA_PRODUCTION: usize = 5;
-/// `SyncableDouble` de `lastTransferLoss` e de `lastEnvironmentLoss`, nesta ordem (`addContainerTrackers`).
-const DATA_TRANSFER_LOSS: usize = 6;
-const DATA_ENVIRONMENT_LOSS: usize = 10;
-/// O calor do capacitor (`BasicHeatCapacitor.getHeat`, que `TileEntityMekanism.addContainerTrackers` sincroniza): a aba mostra o calor
-/// sobre a capacidade, a temperatura do tile.
-const DATA_HEAT: usize = rules::DATA_HEAT;
-const DATA_SLOTS: usize = rules::DATA_SLOTS;
 
 // A tela, nas posições de GuiHeatGenerator. O Mekanism Generators usa os sprites do Mekanism, como o original.
 const WIDTH: f32 = 176.0;
@@ -124,6 +111,12 @@ pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
     basis::name_container_opened(game, player, pos, &is_generator_id);
+    // `MekanismTileContainer.openInventory`: o jogador recebe os dados do menu.
+    if let Some(pos) = pos
+        && is_generator(&game.native_block(pos))
+    {
+        game.mb_container_open(player, pos, rules::HEAT_GENERATOR);
+    }
 }
 
 pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
@@ -180,7 +173,7 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         // Os slots virtuais da janela de upgrades vêm depois dos do gerador e ficam escondidos até a janela abrir.
         let mut slots: Vec<Option<[f32; 2]>> = rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect();
         slots.extend([None, None]);
-        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades);
+        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
         *screen = Some(NativeScreen {
             width: WIDTH,
             height: HEIGHT,
@@ -274,8 +267,8 @@ fn load_heat(entity: &ModBlockEntity, ambient: f64) -> Capacitor {
 }
 
 /// O que `TileEntityMekanism.loadAdditional` lê (`redstone`, o modo de controle, `currentActive` e `updateDelay`), com o estado `lit` que o
-/// bloco tem no mundo.
-fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
+/// bloco tem no mundo, e o `redstoneLastTick` que o tile tinha (o Java o guarda no objeto, e não o salva).
+fn load_tile(entity: &ModBlockEntity, block_active: bool, was_powered: bool) -> TileBase {
     let redstone = matches!(entity.nbt.get(&JavaString::from(REDSTONE)), Some(Tag::Byte(value)) if *value != 0);
     let control_type = match entity.nbt.get(&JavaString::from(CONTROL_TYPE)) {
         Some(Tag::String(name)) => RedstoneControl::from_serialized_name(&name.to_string_lossy()),
@@ -295,6 +288,7 @@ fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
         ..Default::default()
     };
     tile.restore(&saved, block_active);
+    tile.set_redstone_last_tick(was_powered);
     tile
 }
 
@@ -321,11 +315,8 @@ const STALE_TICKS: i64 = 100;
 static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
     block: rules::HEAT_GENERATOR,
     virtual_slots: [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT],
-    tracked_base: rules::HEAT_TRACKED_BASE,
-    tracking_key: rules::UPGRADE_TRACKING_KEY,
-    tracked_items: rules::UPGRADE_TRACKED_ITEMS,
-    sync_offset: rules::UPGRADE_DATA,
-    sync_len: rules::UPGRADE_SYNC_LEN,
+    trackers: rules::heat_generator_trackers,
+    window_trackers: rules::upgrade_window_data,
     ns: "mekanism",
     window_type: rules::UPGRADE_WINDOW,
     window_types: &rules::WINDOW_TYPES,
@@ -347,14 +338,23 @@ fn upgrade_data(game: &Game<'_>) -> Rc<upgrade::UpgradeData> {
     rules::upgrade_data(&upgrade::current_types(), &upgrade::current_tags(), stack)
 }
 
+/// O Heat Generator como o `MekanismContainer` o lê: o estado do fim do tick (o objeto do Java está vivo, o port o refaz a cada tick) e o que
+/// o tick produziu.
+struct View {
+    state: rules::State,
+    last: rules::Produced,
+    upgrades: UpgradeSync,
+}
+
 /// O que o gerador guarda do componente só na memória.
 struct UpgradeMemory {
     transient: UpgradeTransient,
     /// O último tick em que o gerador andou: um tick que não é o seguinte é um objeto novo no Java (o chunk saiu, o mundo foi reaberto).
     last_seen: i64,
-    /// O que a janela de upgrades viu no tick anterior. O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na batida
-    /// seguinte da tela: o cliente mostra o valor de um tick atrás.
-    sync_seen: Option<UpgradeSync>,
+    /// `redstoneLastTick`: o tile do Java o guarda no objeto (`TileEntityMekanism.java:653-655`), e aqui o tile é refeito do NBT a cada tick.
+    was_powered: bool,
+    /// O que o último tick deixou para o `broadcastChanges` ler (o objeto vivo do Java): o menu mostra o estado do fim do tick.
+    view: Option<View>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
     muffling_sent: i32,
 }
@@ -364,7 +364,8 @@ impl UpgradeMemory {
         Self {
             transient: UpgradeTransient::default(),
             last_seen: i64::MIN,
-            sync_seen: None,
+            was_powered: false,
+            view: None,
             // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
             muffling_sent: -1,
         }
@@ -383,6 +384,43 @@ fn ensure_slots(entity: &mut ModBlockEntity) {
     }
 }
 
+/// O valor vivo dos dados do menu do Heat Generator em `pos` (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote`): o estado do fim do
+/// último tick do gerador (o objeto do Java está sempre vivo, o port o refaz a cada tick), com a energia que o buffer guarda agora, porque
+/// uma extração de fora do tick a muda, e o `redstone` que um aviso deixou depois do tick (`updatePower` troca o campo na hora: o valor vai
+/// também para o NBT, de onde o tick seguinte refaz o tile). Devolve se havia estado para ler.
+fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
+    let at = (pos[0], pos[1], pos[2]);
+    let ours = matches!(
+        game.world.block_entities.get(&at),
+        Some(BlockEntity::Mod(entity)) if is_generator(&entity.id) && entity.nbt.contains_key(&JavaString::from(ACTIVE_STATE))
+    );
+    let key = (game.native_dimension(), pos);
+    // Sem estado de um tick para ler, o aviso fica na fila para o tick do gerador, que o lê.
+    if !ours || !UPGRADES.with_borrow(|tiles| tiles.get(&key).is_some_and(|memory| memory.view.is_some())) {
+        return false;
+    }
+    let power = basis::take_power(game, pos);
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) else {
+        return false;
+    };
+    if let Some(powered) = power {
+        entity.nbt.insert(JavaString::from(REDSTONE), Tag::Byte(i8::from(powered)));
+    }
+    let energy = basis::stored_energy(entity);
+    UPGRADES.with_borrow_mut(|tiles| {
+        let Some(view) = tiles.get_mut(&key).and_then(|memory| memory.view.as_mut()) else {
+            return false;
+        };
+        if let Some(powered) = power {
+            view.state.tile.update_power(powered);
+        }
+        let mut state = view.state.clone();
+        state.energy = energy;
+        act(&rules::HeatGeneratorSync { state: &state, last: &view.last, upgrades: &view.upgrades });
+        true
+    })
+}
+
 /// Os dois slots virtuais como o menu os tem, a entrada e a saída.
 fn menu_contents(game: &Game<'_>, entity: &ModBlockEntity) -> [machinery_basis_core::containers::SlotContents; 2] {
     [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT].map(|index| basis::slot_contents(game, entity.items.get(index).and_then(Option::as_ref)))
@@ -398,8 +436,8 @@ fn sync_muffling(game: &mut Game<'_>, dimension: &str, pos: [i32; 3], memory: &m
 }
 
 /// O primeiro passo do tick do tile (`TileEntityMekanism.tickServer`: o componente anda antes de tudo). Devolve o que a janela de upgrades
-/// mostra neste tick.
-fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) -> UpgradeSync {
+/// mostra depois dele e o `redstoneLastTick` que o tile tinha.
+fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) -> (UpgradeSync, bool) {
     ensure_slots(entity);
     let now = game.world.game_time;
     let dimension = game.native_dimension();
@@ -425,7 +463,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
     memory.transient = component.transient();
     sync_muffling(game, dimension, pos, &mut memory, &component);
     let sync = UpgradeSync::of(&component);
-    let shown = memory.sync_seen.replace(sync.clone()).unwrap_or(sync);
+    let was_powered = memory.was_powered;
     memory.last_seen = now;
     UPGRADES.with_borrow_mut(|tiles| {
         tiles.insert(key, memory);
@@ -434,7 +472,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
             tiles.retain(|_, memory| now - memory.last_seen <= STALE_TICKS);
         }
     });
-    shown
+    (sync, was_powered)
 }
 
 /// Faz `act` no componente de upgrades do gerador em `pos` fora do tick (o pacote de remoção, o upgrade na mão), e guarda o que ele
@@ -475,6 +513,10 @@ fn act_upgrades<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&Upgrade
     if let Some(memory) = memory.as_mut() {
         memory.transient = component.transient();
         sync_muffling(game, dimension, pos, memory, &component);
+        // O objeto do Java é um só: o `broadcastChanges` vê o mapa novo no tick seguinte, não depois do próximo tick do tile.
+        if let Some(view) = memory.view.as_mut() {
+            view.upgrades = UpgradeSync::of(&component);
+        }
     }
     if let Some(memory) = memory {
         UPGRADES.with_borrow_mut(|tiles| tiles.insert(key, memory));
@@ -499,7 +541,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
     basis::name_apply_pending(entity, pos);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
-    let upgrade_sync = tick_upgrades(game, pos, entity);
+    let (upgrade_sync, was_powered) = tick_upgrades(game, pos, entity);
     let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
     let tank = &mut tanks[0];
     fill_or_burn(game, entity, tank);
@@ -520,7 +562,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         heat: load_heat(entity, ambient),
         lava: tank.amount(),
         energy: basis::stored_energy(entity),
-        tile: load_tile(entity, block_active),
+        tile: load_tile(entity, block_active, was_powered),
     };
     // `updatePower` só roda quando o jogo avisa o bloco (`neighborChanged`, `onNeighborChange`, `onAdded`): o `redstone` não é lido a cada
     // tick. O que o aviso deixou chega aqui, antes de `canFunction()`.
@@ -559,28 +601,26 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         game.native_set_block_property(pos, LIT, if lit { "true" } else { "false" });
     }
 
-    let mut data = vec![0; DATA_SLOTS];
-    let energy = data_slots::split(basis::stored_energy(entity) as u32);
-    data[DATA_ENERGY] = energy[0];
-    data[DATA_ENERGY + 1] = energy[1];
-    data[DATA_LAVA] = tank.amount() as i32;
-    data[DATA_PRODUCTION] = produced.energy;
-    data[DATA_TRANSFER_LOSS..DATA_TRANSFER_LOSS + 4].copy_from_slice(&data_slots::split_f64(produced.transfer_loss));
-    data[DATA_ENVIRONMENT_LOSS..DATA_ENVIRONMENT_LOSS + 4].copy_from_slice(&data_slots::split_f64(produced.environment_loss));
-    data[DATA_HEAT..DATA_HEAT + 4].copy_from_slice(&data_slots::split_f64(heat.heat));
-    // O Java só sincroniza `upgradeTicks` e o mapa com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só levam o
-    // valor enquanto alguém acompanha, e ficam em zero (sem tráfego) no resto do tempo.
-    if Game::mb_window_tracking(pos) {
-        rules::write_upgrade_sync(&mut data, &upgrade_sync);
-    }
-    entity.data = data;
+    // `TileEntityMekanism.tickServer`, o fim: `ticker++` e `redstoneLastTick = redstone` (`TileEntityMekanism.java:652-655`). O gerador não tem
+    // comparador, então o nível de redstone que o fim do tick pergunta nunca é pedido.
+    state.tile.finish_tick(|| 0);
+    // O que o `broadcastChanges` do tick seguinte lê: o estado do fim deste tick, com a energia que o buffer guarda agora.
+    let mut view_state = state;
+    view_state.lava = tank.amount();
+    view_state.energy = basis::stored_energy(entity);
+    let key = (game.native_dimension(), pos);
+    UPGRADES.with_borrow_mut(|tiles| {
+        if let Some(memory) = tiles.get_mut(&key) {
+            memory.was_powered = view_state.tile.redstone_sync().was_powered;
+            memory.view = Some(View { state: view_state, last: produced, upgrades: upgrade_sync });
+        }
+    });
     basis::save_tanks(entity, &tanks);
 }
 
 pub(in crate::game) fn screen_draw(
     game: &Game<'_>,
     block: &str,
-    data: &[i32],
     batch: &mut HudBatch,
     origin: [f32; 2],
 ) {
@@ -589,7 +629,7 @@ pub(in crate::game) fn screen_draw(
     }
     let [x, y] = origin;
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
-    let get = |i: usize| data.get(i).copied().unwrap_or(0);
+    let read = rules::ScreenData::read(&game.mb_mirror(block));
 
     let title = basis::screen_title(game, "container.mekanismgenerators.heat_generator");
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
@@ -601,12 +641,11 @@ pub(in crate::game) fn screen_draw(
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
     game.mb_window_draw_tab(batch, block, origin);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
-    let lava = get(DATA_LAVA).max(0) as u64;
+    let lava = read.lava;
     let scaled = gui::gauge_level(lava, rules::TANK_CAPACITY, LAVA_GAUGE[3] as i32);
     let fill = (lava > 0).then_some((rules::LAVA_SPRITE, rules::LAVA_FRAME, LAVA_TINT));
     basis::gauge(game, batch, &GAUGE_STYLE, at(LAVA_GAUGE), scaled, fill);
-    let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
-    let level = gui::divide_to_level(f64::from(energy), f64::from(rules::ENERGY_CAPACITY));
+    let level = gui::divide_to_level(f64::from(read.energy), f64::from(rules::ENERGY_CAPACITY));
     basis::vertical_bar(game, batch, &BAR_STYLE, at(ENERGY_BAR), level, None, &|game, batch, dst| {
         basis::power_bar_contents(game, batch, POWER_BAR_SPRITE, rules::POWER_BAR_TILE, dst);
     });
@@ -665,7 +704,6 @@ pub(in crate::game) fn widget_tooltip(
     game: &Game<'_>,
     batch: &mut HudBatch,
     block: &str,
-    data: &[i32],
     at: [f32; 2],
     cursor: (f32, f32),
 ) -> bool {
@@ -676,11 +714,11 @@ pub(in crate::game) fn widget_tooltip(
     if game.mb_window_tooltip(batch, block, at, cursor) {
         return true;
     }
-    let get = |i: usize| data.get(i).copied().unwrap_or(0);
+    let read = rules::ScreenData::read(&game.mb_mirror(block));
     let translate = |key: &str| lang::get(key);
     // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
     if rules::ENERGY_TAB.is_mouse_over(at, false) {
-        let production = get(DATA_PRODUCTION).max(0) as u64;
+        let production = u64::from(read.production);
         let lines = wrapped(game, &rules::energy_tab_tooltip(production, &translate));
         let [x, y, w, h] = rules::ENERGY_TAB.rect;
         basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
@@ -689,26 +727,18 @@ pub(in crate::game) fn widget_tooltip(
     // `GuiHeatTab.updateTooltip`: as três linhas do `GuiHeatGenerator` na unidade do cliente, e a da unidade, quebradas do mesmo jeito.
     // Uma janela por cima do ponto esconde a aba (`isMouseOverCheckWindows`).
     if rules::HEAT_TAB.is_mouse_over(at, game.mb_window_covers(at)) {
-        let slice = |first: usize| data.get(first..first + 4).unwrap_or(&[]);
         let unit = basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE);
-        let info = rules::heat_tab_tooltip(
-            data_slots::join_f64(slice(DATA_HEAT)),
-            data_slots::join_f64(slice(DATA_TRANSFER_LOSS)),
-            data_slots::join_f64(slice(DATA_ENVIRONMENT_LOSS)),
-            unit,
-            &translate,
-        );
+        let info = rules::heat_tab_tooltip(read.heat, read.transfer_loss, read.environment_loss, unit, &translate);
         let lines = wrapped(game, &info);
         let [x, y, w, h] = rules::HEAT_TAB.rect;
         basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
         return true;
     }
     let (widget, text) = if gui::contains(ENERGY_BAR, at) {
-        let energy = data_slots::join(get(DATA_ENERGY), get(DATA_ENERGY + 1));
         let capacity = rules::ENERGY_CAPACITY as u64;
-        (ENERGY_BAR, rules::energy_tooltip(u64::from(energy), capacity, &translate))
+        (ENERGY_BAR, rules::energy_tooltip(u64::from(read.energy), capacity, &translate))
     } else if gui::contains(LAVA_GAUGE, at) {
-        (LAVA_GAUGE, rules::lava_tooltip(get(DATA_LAVA).max(0) as u64, &translate))
+        (LAVA_GAUGE, rules::lava_tooltip(read.lava, &translate))
     } else {
         return false;
     };

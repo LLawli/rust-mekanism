@@ -1,6 +1,8 @@
 //! As abas do Heat Generator fora da imagem contra o que o cliente oficial responde: `GuiMekanism.hasClickedOutside` numa grade de pixels de GUI
 //! inteiros (`rastros/fora.jsonl`, `generator_fora_*`, modo `sem_upgrades`: a aba de upgrades é da janela da lib). Os cinco slots da barra de
 //! armadura não contam para o original (`GuiSlot` está inativo): quem os acha sob o mouse é o NeoForge, e o port os põe em `armor_bar::over_slot`.
+mod common;
+
 use machinery_basis_core::{armor_bar, screen_elements};
 use mekanismgenerators_rules as rules;
 use serde_json::Value;
@@ -44,6 +46,8 @@ fn grid(case: &str, mode: &str) -> (i32, i32, i32, i32, Vec<Vec<[i32; 2]>>) {
 fn the_generator_tabs_are_what_the_original_finds_under_the_mouse() {
     screen_elements::declare_once(rules::MENU, rules::screen_elements);
     armor_bar::declare_once(rules::MENU, rules::armor_bar_declaration);
+    // Os elementos não dependem de dado nenhum do servidor: o espelho é o do menu recém-aberto.
+    let (client, _) = common::client_of(&common::Server::new(0.0), false);
     for case in ["generator_fora_base", "generator_fora_lava"] {
         let (x0, y0, x1, y1, rows) = grid(case, "sem_upgrades");
         assert_eq!((x0, y0, x1, y1), (-32, -6, 240, 176));
@@ -55,7 +59,7 @@ fn the_generator_tabs_are_what_the_original_finds_under_the_mouse() {
                     .any(|[a, b]| (*a..*b).contains(&x));
                 let inside = (0..IMAGE[0]).contains(&x) && (0..IMAGE[1]).contains(&y);
                 let at = [x as f32, y as f32];
-                let port = inside || screen_elements::over_element(rules::MENU, at, &[]);
+                let port = inside || screen_elements::over_element(rules::MENU, at, &client.mirror);
                 assert_eq!(port, java, "{case} em ({x}, {y})");
                 outside_hits += usize::from(!inside && java);
                 // Os slots da barra ficam de fora do original e dentro do jogo: o clique sobre eles nunca é "fora" no NeoForge.

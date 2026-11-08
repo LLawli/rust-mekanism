@@ -3,6 +3,8 @@
 //! (`GuiMekanism.hasClickedOutside`), e o shift-clique que o glue monta sobre `machinery_basis_core::quick_move` (a ordem `first + 36 + k`).
 //! Os valores são os do rastro do Java (`heat_generator_armor_layout`): índices 40 a 43 de `ArmorSlot` em (-20, 11 + 18 i), `OffhandSlot` em
 //! (-20, 83) no 44; e os casos de `heat_generator_armor_quick_move` que valem sem o jogo.
+mod common;
+
 use machinery_basis_core::armor_bar;
 use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui::NineSlice;
@@ -77,10 +79,12 @@ fn the_menu_has_the_bar_at_indices_40_to_44_as_in_the_original() {
 #[test]
 fn the_screen_keeps_the_tabs_outside_the_image_but_not_the_holder_margin() {
     declare();
+    // Os elementos não dependem de dado nenhum do servidor: o espelho é o do menu recém-aberto.
+    let (client, _) = common::client_of(&common::Server::new(0.0), false);
     // O que o jogo responde (`GuiMekanism.hasClickedOutside` mais o slot do NeoForge): os quadros da barra e os elementos declarados.
     let over = |x: f32, y: f32| {
         armor_bar::over_slot(rules::MENU, [x, y])
-            || screen_elements::over_element(rules::MENU, [x, y], &[])
+            || screen_elements::over_element(rules::MENU, [x, y], &client.mirror)
     };
     // A aba de calor (-26, 109) e a de energia (-26, 137), de 26 por 26, e os cinco quadros dos slots.
     assert!(over(-26.0, 109.0) && over(-1.0, 134.9));
