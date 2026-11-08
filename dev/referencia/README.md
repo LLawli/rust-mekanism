@@ -97,6 +97,11 @@ Cenários: `chamber_notified`, `chamber_unnotified`, `chamber_mid_tick`, `chambe
 `horizon2/h2_vizinhos.py CENARIO` (`H_NAME=horizon`) repete as operações como comandos (`setblock`, `setblock ... strict` para a mudança sem aviso, `interact` na alavanca, `place` como jogador) com `tick freeze` e
 `tick step 1` e compara `redstone`, `active_state` e `progress` do NBT com o rastro.
 
+`TrackerTraceTest` também grava, para a tela aberta num tile reaberto antes do primeiro tick dele, `{chamber,infuser,heat_generator}_trackers_reloaded` (a máquina operando, com upgrade e o modo de redstone baixo; `Track.reload`
+grava o tile e o relê por `BlockEntity.loadStatic`, e a tela abre no mesmo tick: o `sent` dessa linha é o `sendAllDataToRemote` do tile que o `loadAdditional` carregou; a linha traz o `recheck_offset` que o tile novo sorteou) e
+`upgradeOrder` (`upgrade_order.jsonl`: a ordem de `getInstalledTypes()` da Enrichment Chamber com os quatro upgrades, que muda a cada execução do JVM; `rastros/upgrade_order.jsonl` tem as quatro execuções da decisão 10 do plano).
+`mods/mekanism/tests/tracker_trace.rs` e `mods/mekanismgenerators/tests/tracker_trace.rs` repetem os `_reloaded` (a marca `reload` refaz a máquina do que foi gravado, como o `born` do primeiro tick) e o `upgrade_order`.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
@@ -130,6 +135,12 @@ mundo atrás é uma caixa de concreto preto. `cena_telas.py port DESTINO ESCALA.
 `comparar_lote.py PASTA_ORIGINAL PASTA_PORT SAIDA ESCALA...` compara tudo e grava `tela_<caso>.png` (original, port e diferença) e um JSON.
 Os cantos transparentes do painel mostram o mundo e contam à parte (`canto_*`). Os casos `ciclo` tiram 40 prints no original e `ciclo_port` no port (o ciclo inteiro da animação), um por passo, e cada print
 do original tem de ser igual a algum do port.
+
+
+`CenaTelas` com `reabrir=1` grava o tile e o relê por `BlockEntity.loadStatic` (como o jogo ao descarregar e carregar o chunk) depois dos `passos`, com o servidor parado, e abre a tela antes de qualquer tick do tile novo; `cena_telas.py port` faz o mesmo no
+Horizon (`reabre_no_port`: o NBT que o `data get block` mostra, `setblock` do ar e do bloco, `data merge`). Os casos `casos_reabertas` e `casos_infuser_entrada` (o Infuser com item de entrada e sem químico nem energia, que não mostra a aba de avisos
+nos dois jogos) estão em `todos_os_casos`. `reabrir_real.py montar|abrir` é a versão com o mundo de verdade: monta as máquinas a 600 blocos, salva e sai (`quit`); com o jogo aberto de novo e o servidor parado, vai até cada uma e tira o print da tela
+(o mundo reaberto não nasce parado, e o chunk longe só carrega com o jogador perto, já com o servidor parado).
 
 
 ### O clique sobre as abas (`hasClickedOutside`)

@@ -699,3 +699,56 @@ fn the_capacity_data_never_reads_below_the_stored_energy() {
     let below = MachineSync { stored: 1, ..view };
     assert_eq!(below.value(source::MAX_ENERGY), Value::Long(capacity));
 }
+
+/// O mapa de upgrades do original sai na ordem de um `Object2IntOpenHashMap<Holder<Upgrade>>` cuja chave tem o `hashCode` de identidade (`ResourceKey` não o
+/// sobrescreve): o rastro `upgrade_order` tem a ordem de quatro execuções do `runGameTestServer`, a Enrichment Chamber com os quatro tipos que ela aceita. Não
+/// há ordem a copiar (as quatro são diferentes), e o cliente, que monta o próprio mapa, lê os bytes de qualquer ordem na mesma contagem por tipo: a do port, na
+/// ordem do registro, é uma das 24 que o original pode mandar (decisão 10 do plano).
+#[test]
+fn the_upgrade_map_order_of_the_original_changes_per_run_and_the_client_reads_every_order_alike() {
+    use machinery_basis_core::container_sync::Value as Sync;
+    use machinery_basis_core::machine_sync::{read_upgrade_map, upgrade_map};
+    use machinery_basis_core::upgrade_window::UpgradeSync;
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/upgrade_order.jsonl");
+    let runs: Vec<Value> = std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert!(runs.len() >= 4, "{} execuções", runs.len());
+    let names = |run: &Value, key: &str| -> Vec<String> {
+        run[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|name| name.as_str().unwrap().to_owned())
+            .collect()
+    };
+    let registry = names(&runs[0], "registro");
+    let mut orders: Vec<Vec<String>> = runs.iter().map(|run| names(run, "ordem")).collect();
+    orders.sort();
+    orders.dedup();
+    assert!(
+        orders.len() >= 2,
+        "as execuções do original deram a mesma ordem: {orders:?}"
+    );
+    // A contagem 1 de cada tipo, na ordem do registro: o que o port manda.
+    let sync = UpgradeSync {
+        ticks: 0,
+        counts: vec![1; registry.len()],
+    };
+    let Sync::Codec { bytes: ours, .. } = upgrade_map(&sync) else {
+        panic!("o mapa de upgrades não é um codec");
+    };
+    let wanted = read_upgrade_map(0, &ours);
+    assert_eq!(wanted.counts, vec![1; registry.len()]);
+    for order in &orders {
+        let mut bytes = vec![order.len() as u8];
+        for name in order {
+            bytes.push(registry.iter().position(|id| id == name).unwrap() as u8);
+            bytes.push(1);
+        }
+        assert_eq!(read_upgrade_map(0, &bytes), wanted, "ordem {order:?}");
+    }
+}

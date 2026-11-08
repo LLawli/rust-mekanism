@@ -359,8 +359,18 @@ def casos_reabertas():
     ]
 
 
+def casos_infuser_entrada():
+    """O Infuser com item de entrada e sem químico: com e sem energia, e o item que nenhuma receita usa (a aba de avisos)."""
+    return [
+        caso("infuser_entrada_sem_nada", "infuser", energia="0", entrada="clay_ball:2", passos="5"),
+        caso("infuser_entrada_cobre_sem_nada", "infuser", energia="0", entrada="copper_ingot:2", passos="5"),
+        caso("infuser_entrada_sem_receita", "infuser", energia="0", entrada="stick:2", passos="5"),
+        caso("infuser_entrada_sem_receita_com_energia", "infuser", energia="cap", entrada="stick:2", passos="5"),
+    ]
+
+
 def todos_os_casos():
-    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas()
+    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada()
 
 
 def casos_do_roteiro(so=None):

@@ -600,6 +600,45 @@ public class TrackerTraceTest {
         );
     }
 
+    // ------------------------------------------------------------------------------------------------ a ordem do mapa de upgrades
+
+    /// `TileComponentUpgrade.upgrades` é um `Object2IntOpenHashMap<Holder<Upgrade>>` e o `Holder.Reference.hashCode()` é o do `ResourceKey`, que não
+    /// sobrescreve `hashCode` (identidade): a ordem em que `getInstalledTypes()` (a lista da janela de upgrades) e o pacote do mapa saem muda de uma
+    /// execução da JVM para outra. Grava, para cada máquina, a ordem dos tipos instalados, em `upgrade_order.jsonl` (um arquivo por execução; o
+    /// `ordem` é a do mapa e o `registro` a do registro).
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tracker")
+    @TestHolder(description = "Records the iteration order of the installed upgrade types of the Enrichment Chamber, which follows identity hash codes.")
+    public static void upgradeOrder(final DynamicTest test) {
+        template(test, MekanismBlocks.ENRICHMENT_CHAMBER::defaultState);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecuteAfter(3, () -> {
+                  TileEntityMekanism tile = (TileEntityMekanism) helper.getLevel().getBlockEntity(helper.absolutePos(POS));
+                  RegistryAccess access = helper.getLevel().registryAccess();
+                  var component = tile.getComponent();
+                  List<String> registry = new ArrayList<>();
+                  access.lookupOrThrow(MekanismRegistries.Keys.UPGRADES).listElements().forEach(holder -> {
+                      if (component.supports(holder)) {
+                          component.addUpgrades(access, holder, 1);
+                          registry.add(holder.getRegisteredName());
+                      }
+                  });
+                  List<String> order = new ArrayList<>();
+                  for (Holder<Upgrade> holder : component.getInstalledTypes()) {
+                      order.add(holder.getRegisteredName());
+                  }
+                  try {
+                      Path file = Path.of("trace", "upgrade_order.jsonl");
+                      Files.createDirectories(file.getParent());
+                      Files.writeString(file, "{\"registro\":" + registry.stream().map(name -> "\"" + name + "\"").toList()
+                            + ",\"ordem\":" + order.stream().map(name -> "\"" + name + "\"").toList() + "}\n");
+                  } catch (IOException e) {
+                      throw new IllegalStateException(e);
+                  }
+              })
+              .thenSucceed()
+        );
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ gravação
 
     private static final class BuiltInId {
