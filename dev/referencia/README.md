@@ -102,6 +102,16 @@ grava o tile e o relê por `BlockEntity.loadStatic`, e a tela abre no mesmo tick
 `upgradeOrder` (`upgrade_order.jsonl`: a ordem de `getInstalledTypes()` da Enrichment Chamber com os quatro upgrades, que muda a cada execução do JVM; `rastros/upgrade_order.jsonl` tem as quatro execuções da decisão 10 do plano).
 `mods/mekanism/tests/tracker_trace.rs` e `mods/mekanismgenerators/tests/tracker_trace.rs` repetem os `_reloaded` (a marca `reload` refaz a máquina do que foi gravado, como o `born` do primeiro tick) e o `upgrade_order`.
 
+`testes/ComparatorTraceTest.java` grava o comparador das máquinas. `comparator_order.jsonl` (duas Enrichment Chambers encostadas, N e S, com um comparador a leste de cada, nas duas ordens de ticker: a linha 0 põe N antes de S, a 1
+põe S antes de N) e `comparator_first_tick.jsonl` (uma máquina posta sem avisar, que não avisa ninguém no primeiro tick) levam, a cada tick, o estado de S (`powered`, `can_function`, atividade, progresso, energia), o
+`currentRedstoneLevel` de N e a saída dos dois comparadores (`ComparatorBlockEntity.getOutputSignal`); `comparator_levels_<máquina>.jsonl` (as cinco máquinas) leva, a cada marca, o conteúdo de cada slot (item, quantidade, capacidade),
+`getRedstoneLevel()` e a saída do comparador, com a máquina vazia, com itens, com a saída cheia e com todos os slots cheios (o tanque de lava, no Heat Generator). `PlacedTraceTest` ganhou `placed_fed_<máquina>.jsonl`: a máquina posta
+por um jogador ao lado de um Heat Generator cheio (240) que a encara, com cinco pares de upgrade no item e em dois momentos do tick (`pre`: antes dos block entities, como uma ação do jogador; `step`: depois deles), com a capacidade e a energia
+no tick da colocação e nos sete seguintes. Copie os arquivos para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-os depois (os testes do `mekanism-ref` que já estão lá, `MachineTraceTest` e
+companhia, rodam todos juntos: tire-os da pasta enquanto isso). `mods/mekanism/tests/comparator_trace.rs` (as duas ordens, o primeiro tick e o valor analógico das quatro máquinas, com o bloco do comparador simulado), `mods/mekanismgenerators/tests/comparator_levels.rs`
+e `mods/mekanism/tests/placed_fed.rs` os repetem, e em jogo `horizon2/h2_comparador.py order|first_tick|levels MAQUINA` e `horizon2/h2_placed_fed.py` (`H_NAME=horizon`) repetem as operações como comandos, com `tick freeze` e `tick step 1`.
+`horizon2/h2_comparador_video.py capturar|montar ordem|cinco|posta` faz os prints e o vídeo com legenda.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
