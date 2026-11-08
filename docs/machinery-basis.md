@@ -250,6 +250,20 @@ Um tile sem objeto vivo (o Heat Generator, que lê e grava tudo no NBT a cada ti
 NBT (`deserialize`), o que a memória levava (`UpgradeTransient`: `upgradeTicks` e `canCheckUpgrades`, que o Java não salva) e os dois slots
 do menu, que mandam sobre o NBT. O glue lê e grava o NBT com `read_upgrades` e `write_upgrades`, e a memória fica numa tabela por thread.
 
+### Dados sincronizados do menu
+
+`container_sync.rs` porta o `MekanismContainer.trackedData` e as classes `Syncable*` sem conhecer campo nenhum: um dado é uma fonte
+(`u16`, que quem usa entende) e uma classe (`Kind`: `Boolean`, `Int`, `Long`, `Double`, `Enum`, `LargeResourceStack`, `StreamCodec`). O
+`ContainerSync` é o menu de um jogador: guarda o último valor de cada dado e, a cada `broadcast_changes`, devolve só os sujos com a regra
+da classe (`!=`, a pilha que distingue o tipo do tamanho, o hash do codec). `send_all` é o `sendAllDataToRemote`, e `start_tracking_server`
+e `stop_tracking` são os da lista específica da janela de upgrades (reaproveitam o `Tracking` de `window_session`, inclusive o vazamento
+de pedir de novo sem parar). O valor vivo vem de um `TrackedSource`.
+
+`tile_trackers.rs` tem a ordem que as classes de tile do Mekanism dão à lista (`TileEntityMekanism`, `TileEntityRecipeMachine`,
+`TileEntityProgressMachine`, a janela de upgrades) com as fontes `source::*`; as máquinas acrescentam as delas a partir de `source::MOD`.
+`machine_sync.rs` lê esses valores de uma `ProgressMachine`, e `last_energy.rs` é o `LastEnergyTracker` (o que a capability de energia
+entregou no tick anterior). Nada disso troca o transporte: o jogo ainda manda data slots (veja o item `MekanismContainer` do plano).
+
 ### Unidade de temperatura
 
 `temperature.rs` porta o `UnitDisplayUtils.TemperatureUnit` (K, C, R, F e STP, nessa ordem, com `convertFromK`, `convertToK`, `getNext` e
