@@ -8,7 +8,7 @@ A energia vem dos geradores e não é comparada (o rastro a mantém com um `refi
 `used_so_far`, que o NBT do tile guarda. A cada marca, e dois ticks antes e depois, e a cada 10 ticks, o jogo é lido; entre dois pontos
 andam `tick step N`.
 
-Uso: H_NAME=horizon h2_infuser_const.py run|dry|reload|speed [...]   (o `reload` do rastro tem `reload`, que no jogo é salvar e reabrir:
+Uso: H_NAME=horizon h2_infuser_const.py run|dry|placed_speed [...]   (o `reload` do rastro tem `reload`, que no jogo é salvar e reabrir:
 fica a cargo de `reopen`, abaixo)
   reopen ETAPA   antes (monta, anda 90 ticks, anota o estado e salva) | depois (lê o estado do mundo reaberto e anda até o fim)
 """
@@ -89,7 +89,39 @@ def fuel():
         h.command(f'data merge block {pos(generator)} {{Items:[{{Slot:0b,id:"minecraft:coal",count:64}}]}}')
 
 
-def build():
+# Os cenários com upgrades: o item de bloco do jogo não traz `UPGRADES` (conteúdo guardado no item é da Fase 5), então a máquina é posta e os upgrades entram
+# pelo jogador (o upgrade na mão, com shift, no bloco: `ItemUpgrade.useOn`), antes de o servidor parar. O rastro `infuser_const_placed_speed` compara
+# entrada, saída, tanque, progresso e `used_so_far` (a energia vem dos geradores e não é comparada), que não dependem de como os upgrades chegaram.
+UPGRADES = {"placed_speed": (4, 1)}
+TOPUP = 2300
+
+
+def install_upgrades(speed, energy):
+    """Pela janela de upgrades: a aba, o upgrade na mão, um clique no slot de entrada da janela e 25 ticks para instalar (20 de `UPGRADE_TICKS_REQUIRED`)."""
+    h.ctl("tp", "70", "-60", "97")
+    h.ctl("wait", "5")
+    for _ in range(4):
+        h.ctl("interact", *map(str, SPOT))
+        time.sleep(0.6)
+        if '"screen":"container"' in h.ctl("screen").replace(" ", ""):
+            break
+    h.ctl("click-at", str(232 + 190), str(97 + 19))
+    time.sleep(0.7)
+    scr = json.loads(h.ctl("screen"))
+    first = sorted(s["slot"] for s in scr["slots"] if 300 <= s["slot"] < 500)[-2]
+    for kind, count in (("speed", speed), ("energy", energy)):
+        if not count:
+            continue
+        h.command("clear @s")
+        h.command(f'item replace entity @s hotbar.8 with mekanism:upgrade[mekanism:upgrade_type="mekanism:{kind}"] {count}')
+        time.sleep(0.4)
+        h.ctl("click-slot", "8")
+        h.ctl("click-slot", str(first))
+        h.ctl("wait", "25")
+    h.ctl("close")
+
+
+def build(upgrades=None):
     h.command("tick unfreeze")
     h.ctl("close")
     h.command("difficulty peaceful")
@@ -103,6 +135,8 @@ def build():
     h.ctl("give", "mekanism:metallurgic_infuser", "1")
     out = json.loads(h.ctl("place", *map(str, SPOT), "--item", "mekanism:metallurgic_infuser"))
     assert "error" not in out, out
+    if upgrades:
+        install_upgrades(*upgrades)
     for generator in GENERATORS:
         h.ctl("setblock", *map(str, generator), "mekanismgenerators:heat_generator")
     h.ctl("wait", "10")
@@ -137,13 +171,17 @@ def checkpoints(lines, first):
 def replay(scenario):
     lines = [json.loads(line) for line in open(f"{TRACES}/infuser_const_{scenario}.jsonl")]
     first = next(i for i, line in enumerate(lines) if line["marks"])
-    build()
+    build(UPGRADES.get(scenario))
     points = checkpoints(lines, first)
     done = first
     bad = checked = 0
     for index in points:
         if index > done:
             # A marca de um ponto acontece depois do tick dele (e antes da amostra): anda até lá e só então aplica.
+            if scenario in UPGRADES:
+                # Com upgrades de velocidade o uso por tick passa do que dois geradores dão, e o rastro do Java mantém o cabo cheio (`Trace.refill`): a energia sobe
+                # a cada passo (no máximo 10 ticks, que gastam bem menos do que isto).
+                h.command(f"data merge block {pos()} {{energy:{TOPUP}}}")
             step(index - done)
         done = index
         if index == first or lines[index]["marks"]:
