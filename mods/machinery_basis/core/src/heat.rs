@@ -18,6 +18,32 @@ pub fn ambient(biome: f64) -> f64 {
     AMBIENT_TEMP + KELVIN_PER_BIOME_DEGREE * (biome - PLAINS_BIOME_TEMP)
 }
 
+/// `CachedAmbientTemperature`: o ar de uma máquina, lido do mundo na primeira vez que alguém o pede e guardado pelo resto da vida do
+/// objeto. Há um valor por face (o do bloco vizinho, na ordem das direções do jogo) e um para o próprio bloco (`side == null`). Um
+/// bioma que muda depois (`/fillbiome`) não muda o que o tile lê: só um tile novo (o chunk que descarrega e carrega) lê de novo.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AmbientCache {
+    /// Seis faces e, no fim, o próprio bloco.
+    values: [Option<f64>; 7],
+}
+
+impl AmbientCache {
+    /// O índice do próprio bloco (`side == null`).
+    pub const SELF_INDEX: usize = 6;
+
+    /// O valor da face `index` (0 a 5) ou do bloco (`SELF_INDEX`): o guardado, ou o que `read` lê do mundo agora. Sem mundo para ler (`read`
+    /// devolve `None`: o `world == null` do original) vale `AMBIENT_TEMP` e nada é guardado.
+    pub fn get(&mut self, index: usize, read: impl FnOnce() -> Option<f64>) -> f64 {
+        if let Some(value) = self.values[index] {
+            return value;
+        }
+        match read() {
+            Some(value) => *self.values[index].insert(value),
+            None => AMBIENT_TEMP,
+        }
+    }
+}
+
 /// O que guarda calor numa máquina.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Capacitor {
@@ -78,6 +104,23 @@ impl Capacitor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ambient_cache_reads_once_per_index() {
+        let mut cache = AmbientCache::default();
+        assert_eq!(cache.get(0, || Some(281.5)), 281.5);
+        assert_eq!(cache.get(0, || Some(330.0)), 281.5);
+        assert_eq!(cache.get(AmbientCache::SELF_INDEX, || Some(330.0)), 330.0);
+        assert_eq!(cache.get(1, || Some(299.0)), 299.0);
+    }
+
+    #[test]
+    fn without_a_world_the_air_is_300_and_nothing_is_kept() {
+        let mut cache = AmbientCache::default();
+        assert_eq!(cache.get(2, || None), AMBIENT_TEMP);
+        assert_eq!(cache.get(2, || Some(285.0)), 285.0);
+        assert_eq!(cache.get(2, || None), 285.0);
+    }
 
     #[test]
     fn plains_are_the_reference() {

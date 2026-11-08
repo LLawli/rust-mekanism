@@ -284,6 +284,18 @@ a cada quadro) e grava o clique sem tocar nas outras chaves. O mod escolhe o nam
 textos de idioma; o clique que troca a unidade usa `screen_mouse_button_pressed_pre`, que toma o clique sem o som nem o pacote do
 `screen_click`. Um `double` que a tela precisa (o calor e as duas perdas do Heat Generator) viaja inteiro, como um `SyncableDouble`.
 
+### Temperatura do ar por altura
+
+`biome_temperature.rs` porta `Biome.getTemperature(pos, seaLevel)` sem o cache por posição: o modificador do bioma (`none` ou `frozen`, este com `FROZEN_TEMPERATURE_NOISE` de semente
+3456 e `BIOME_INFO_NOISE` de 2345) e, acima de `seaLevel + 17`, o ajuste por altura com o `TEMPERATURE_NOISE` (semente 1234) lido em (x / 8, z / 8). O ruído é o `SimplexNoise` do vanilla
+(`LegacyRandom`, `SimplexNoise`, `ClimateNoises`), igual ao bit: o `nextDouble` do `BitRandomSource` multiplica por um `float`, e as contas do ajuste são em `float`. `Climate::ambient_at` leva o
+resultado a kelvin (`HeatAPI.getAmbientTemp(double)`, que é `heat::ambient`), e `sea_level` dá o nível do mar da dimensão (63, 32 e 0; -63 no overworld de um mundo plano, `FlatLevelSource`).
+`heat::AmbientCache` é o `CachedAmbientTemperature`: o ar do bloco e o de cada face, lidos do mundo na primeira vez e guardados pelo resto da vida do objeto. É o vanilla, não o Mekanism, e
+serve a qualquer mod que leia a temperatura de um bioma ou o ar de um bloco (um gerador solar, um aquecedor). A lib não conhece bioma nenhum: o mod entrega a temperatura base e se é `frozen`
+(o Horizon as tem no `BiomeInfo`), a posição e o nível do mar. O Horizon tem uma cópia (`BiomeInfo::temperature_at`, em `horizon-world`), mas só alcançável de dentro do jogo e com o nível do mar
+fixo em 63, 32 e 0 por dimensão: a lib a porta de novo, para o teste repetir o rastro do Java sem o jogo. O bioma de um bloco, no glue, passa pelo `BiomeZoom` do Horizon
+(`BiomeManager.getBiome`, o quadrado mais próximo com sorteio), não pelo quadrado que contém o bloco.
+
 ### Barra de armadura e mão
 
 `armor_slots.rs` porta `MekanismContainer.addArmorSlots`, `ArmorSlot` e `OffhandSlot` (a coluna de quatro slots com a mão logo abaixo, `mayPlace`, tamanho, `mayPickup` e o `insert`),
