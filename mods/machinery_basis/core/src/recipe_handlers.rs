@@ -410,3 +410,84 @@ impl OutputHandler<ItemOutput> for ItemOutputHandler {
         Self::handle_output(self, output, operations, transaction)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operation_tracker::RecipeErrors;
+
+    const COUNT: u32 = 3;
+
+    fn handler(items: u32) -> ItemInputHandler {
+        let slot = InventorySlot::new(None);
+        slot.set_contents(Some(ItemResource::new("hdpe_pellet", 64)), items, None);
+        ItemInputHandler::new(slot, RecipeError::NOT_ENOUGH_INPUT)
+    }
+
+    fn ingredient() -> ItemIngredient {
+        ItemIngredient::item("hdpe_pellet")
+    }
+
+    /// Roda `calculate_operations_can_support` num tracker novo e devolve o máximo de operações e os erros que sobraram.
+    fn run(items: u32, constant: bool, multiplier: i32) -> (i32, RecipeErrors) {
+        let handler = handler(items);
+        let input = RecipeStack {
+            resource: ItemResource::new("hdpe_pellet", 64),
+            amount: COUNT,
+        };
+        let mut tracker = OperationTracker::new(RecipeErrors::EMPTY, false, 8);
+        let root = Transaction::open_root();
+        handler.calculate_operations_can_support(&mut tracker, &root, &input, constant, multiplier);
+        (tracker.current_max(), tracker.errors())
+    }
+
+    /// `InputResourceHandler.getRecipeInput` + `SizedIngredient.test`: menos do que a receita pede nem chega ao
+    /// `calculateOperationsCanSupport`, e a receita vira `mismatchedRecipe`, sem erro.
+    #[test]
+    fn less_than_the_recipe_asks_for_is_no_recipe_input_at_all() {
+        assert!(
+            handler(COUNT - 1)
+                .recipe_input(&ingredient(), COUNT)
+                .is_none()
+        );
+        assert!(handler(0).recipe_input(&ingredient(), COUNT).is_none());
+        assert!(handler(COUNT).recipe_input(&ingredient(), COUNT).is_some());
+    }
+
+    /// O que o `recipe_input` entrega sempre dá ao menos uma operação a uma operação por tick: o erro de entrada não nasce.
+    #[test]
+    fn what_the_recipe_input_gives_always_supports_an_operation() {
+        for items in COUNT..=COUNT * 4 {
+            let (max, errors) = run(items, false, 1);
+            assert_eq!(max, (items / COUNT) as i32, "{items}");
+            assert!(errors.is_empty(), "{items}");
+        }
+    }
+
+    /// A única entrada do Java para o erro: um multiplicador de uso maior que um, sem uso constante (nenhum `CachedRecipe` do Mekanism a usa).
+    #[test]
+    fn a_usage_multiplier_above_the_stock_is_the_only_way_to_the_error() {
+        let (max, errors) = run(COUNT, false, 2);
+        assert_eq!(max, -1, "o progresso volta a zero");
+        assert!(errors.contains(RecipeError::NOT_ENOUGH_INPUT));
+        // Com o estoque que cobre o multiplicador, nada.
+        let (max, errors) = run(COUNT * 2, false, 2);
+        assert_eq!((max, errors.is_empty()), (1, true));
+    }
+
+    /// Com uso constante a receita só pausa (`updateOperations(0)`): o erro não nasce, e é por isso que o Infuser sem químico para sem aviso.
+    #[test]
+    fn constant_usage_pauses_without_the_error() {
+        let (max, errors) = run(COUNT, true, 2);
+        assert_eq!(max, 0);
+        assert!(errors.is_empty());
+    }
+
+    /// Multiplicador zero: o Java nem calcula (`usageMultiplier > 0`).
+    #[test]
+    fn a_zero_multiplier_does_not_touch_the_tracker() {
+        let (max, errors) = run(0, false, 0);
+        assert_eq!(max, 8);
+        assert!(errors.is_empty());
+    }
+}

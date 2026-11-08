@@ -556,8 +556,11 @@ impl RecipeLookupHandler<ItemChemicalToItemRecipe> for ChemicalLookup {
             let shared = self.shared.clone();
             Box::new(ItemChemicalConstantUsageRecipe::new(
                 recipe,
-                ItemInputHandler::new(self.input.clone(), RecipeError::NOT_ENOUGH_SECONDARY_INPUT),
-                ChemicalInputHandler::new(self.tank.clone(), RecipeError::NOT_ENOUGH_INPUT),
+                ItemInputHandler::new(self.input.clone(), CHEMICAL_MACHINE_INPUT_ERRORS.item),
+                ChemicalInputHandler::new(
+                    self.tank.clone(),
+                    CHEMICAL_MACHINE_INPUT_ERRORS.chemical,
+                ),
                 usage,
                 move |used| shared.used_so_far.set(used),
                 ItemOutputHandler::new(self.output.clone(), RecipeError::NOT_ENOUGH_OUTPUT_SPACE),
@@ -567,9 +570,9 @@ impl RecipeLookupHandler<ItemChemicalToItemRecipe> for ChemicalLookup {
             Box::new(TwoInputItemChemicalRecipe::new(
                 recipe,
                 self.input.clone(),
-                RecipeError::NOT_ENOUGH_SECONDARY_INPUT,
+                CHEMICAL_MACHINE_INPUT_ERRORS.item,
                 self.tank.clone(),
-                RecipeError::NOT_ENOUGH_INPUT,
+                CHEMICAL_MACHINE_INPUT_ERRORS.chemical,
                 self.output.clone(),
                 RecipeError::NOT_ENOUGH_OUTPUT_SPACE,
             ))
@@ -682,6 +685,20 @@ pub fn energy_can_drain(
     }
     container_extractable && item.accepts_energy
 }
+
+/// Os erros que os handlers de entrada de uma máquina de item e químico dão a quem não tem o bastante. O Metallurgic Infuser os monta cruzados
+/// (`TileEntityMetallurgicInfuser`: `itemInputHandler = getInputHandler(inputSlot, NOT_ENOUGH_SECONDARY_INPUT)` e `infusionInputHandler =
+/// getInputHandler(infusionTank, NOT_ENOUGH_INPUT)`), e a tela os cruza de volta: a barra do químico avisa pelo erro do item e o slot de entrada pelo do
+/// químico. Nenhuma receita os acende (ver `recipe_handlers`), mas o par tem de ser este.
+pub struct InputErrors {
+    pub item: RecipeError,
+    pub chemical: RecipeError,
+}
+
+pub const CHEMICAL_MACHINE_INPUT_ERRORS: InputErrors = InputErrors {
+    item: RecipeError::NOT_ENOUGH_SECONDARY_INPUT,
+    chemical: RecipeError::NOT_ENOUGH_INPUT,
+};
 
 /// O tanque de químico de uma máquina e o slot que o enche (`ChemicalInventorySlot.fillOrConvert`).
 pub struct ChemicalSide {
