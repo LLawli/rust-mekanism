@@ -18,12 +18,12 @@ use machinery_basis_core::tile::{
     CHEMICAL_MACHINE_INPUT_ERRORS, ProgressMachine, RedstoneControl, SavedState,
 };
 use machinery_basis_core::upgrade::UpgradeSaved;
-use machinery_basis_core::warning::ErrorMask;
+use machinery_basis_core::upgrade_window::UpgradeSync;
 use mekanism_rules::{
-    CRUSHER_USAGE, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENRICHMENT_USAGE,
-    INFUSER_TRACKED_ERRORS, INFUSER_USAGE, INFUSER_WARNINGS, SMELTER_USAGE, SPEED_UPGRADE,
-    ScreenElement, ScreenWarnings, SyncedMachine, WarningType, electric_config, infuser_config,
-    infusing_cache_of, machine_warnings,
+    CRUSHER_USAGE, DataLayout, ELECTRIC_DATA, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS,
+    ENRICHMENT_USAGE, INFUSER_DATA, INFUSER_TRACKED_ERRORS, INFUSER_USAGE, INFUSER_WARNINGS,
+    SMELTER_USAGE, SPEED_UPGRADE, ScreenData, ScreenElement, ScreenWarnings, SyncedMachine,
+    TileScreen, WarningType, electric_config, infuser_config, infusing_cache_of, machine_warnings,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -34,16 +34,24 @@ const SPEED: &str = "mekanism:speed";
 /// O retângulo da barra de energia (`GuiVerticalPowerBar` em (164, 16), 4 de largura e 52 de altura, mais a moldura).
 const ENERGY_BAR: [f32; 4] = [164.0, 16.0, 6.0, 54.0];
 
-/// A máquina e o `game_time` do mundo em que o rastro foi gravado: o recheck de erros depende de `game_time % 100`.
-struct Sim(ProgressMachine, u64);
+/// A máquina, o `game_time` do mundo em que o rastro foi gravado (o recheck de erros depende de `game_time % 100`), e os data slots da
+/// tela com o desenho deles: o que o port escreve no `ServerTickEnd` e o `broadcastChanges` do original manda ao cliente.
+struct Sim(ProgressMachine, u64, TileScreen, &'static DataLayout);
 
 impl SimBlockEntity for Sim {
     fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) {
         self.0.tick_server(game_time + self.1, neighbours);
+        self.2.machine_ticked(UpgradeSync::of(self.0.upgrades()));
     }
 
     fn neighbor_changed(&mut self, powered: bool) {
         self.0.tile_mut().update_power(powered);
+    }
+
+    /// `ServerTickEvent.Post`: a energia que o tile guarda agora, a de dentro do objeto na simulação.
+    fn server_tick_end(&mut self) {
+        let screen = ScreenData::of_machine(&self.0, self.0.energy().amount());
+        self.2.server_tick_end(self.3, screen, false);
     }
 }
 
@@ -126,7 +134,12 @@ fn world(kind: Kind, offset: u64, base: u64, smelting: Vec<Rc<ItemToItemRecipe>>
     // Como um jogador a põe (`applyImplicitComponents` recalcula os upgrades, e com eles a capacidade de energia).
     let mut machine = machine;
     machine.apply_item_components(&UpgradeSaved::default());
-    SimWorld::new(Sim(machine, base))
+    let layout = if kind.chemical() {
+        &INFUSER_DATA
+    } else {
+        &ELECTRIC_DATA
+    };
+    SimWorld::new(Sim(machine, base, TileScreen::default(), layout))
 }
 
 fn install(machine: &ProgressMachine, total: i32) {
@@ -275,7 +288,9 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
                     .unwrap_or_else(|| panic!("{scenario}: sem {key}")),
             );
         }
-        scene.world.tick();
+        // O tick do nível, o que o cenário fez depois dele (uma chegada de energia, um item) e o `ServerTickEvent.Post`, onde o port escreve
+        // os data slots que o cliente recebe no tick seguinte.
+        scene.world.tick_level();
         for mark in expected["marks"].as_array().unwrap() {
             for action in mark.as_str().unwrap().split(", ") {
                 if action == "player opens" {
@@ -288,6 +303,7 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
                 scene.apply(action);
             }
         }
+        scene.world.finish_tick();
         let t = expected["t"].as_u64().unwrap();
         let machine = scene.machine();
         let mut actual = serde_json::json!({
@@ -332,12 +348,26 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
             format!("{:?}", machine.tile().control_type()).to_lowercase(),
             "{scenario}, tick {t}: modo"
         );
-        // O que passa pelo data slot (16 bits com sinal) é o que chega ao cliente.
-        let synced = SyncedMachine::of(machine, kind.tracked());
+        // O que chega ao cliente é o quadro do `ServerTickEnd` depois dos 16 bits com sinal de cada data slot: a energia, a capacidade e os erros
+        // desse tick, e não os do tick da máquina.
+        let sim = &scene.world.block_entity;
+        let wire: Vec<i32> = sim
+            .2
+            .frame()
+            .iter()
+            .map(|&value| i32::from(value as i16))
+            .collect();
+        let screen = ScreenData::read(sim.3, &wire);
         let client = SyncedMachine {
-            errors: ErrorMask::from_slot(synced.errors.to_slot()),
-            ..synced
+            tracked: kind.tracked(),
+            errors: screen.errors,
+            redstone: screen.redstone,
         };
+        assert_eq!(
+            i64::from(screen.energy),
+            machine.energy().amount(),
+            "{scenario}, tick {t}: a energia do quadro do cliente"
+        );
         for (side, tracker) in [
             ("servidor", machine_warnings(machine, kind.warnings())),
             ("cliente", machine_warnings(&client, kind.warnings())),
@@ -357,8 +387,8 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
             recorded["bar_overlay"],
             bar_overlay(
                 &client,
-                machine.energy().amount(),
-                machine.energy().capacity()
+                i64::from(screen.energy),
+                i64::from(screen.capacity)
             ),
             "{scenario}, tick {t}: overlay da barra de energia"
         );
@@ -444,6 +474,12 @@ fn the_error_left_in_a_paused_machine_draws_the_energy_bar_overlay() {
                 >= 0.98 * line["capacity"].as_i64().unwrap() as f64
         );
     }
+    // A chegada de energia fora do tick da máquina (t=105: `energy 9999`, depois do tick que acendeu o erro e antes do recálculo): o quadro do
+    // `ServerTickEnd` já leva a energia nova com o erro velho, que é o que o `broadcastChanges` do tick seguinte manda ao cliente, e a
+    // barra desenha o overlay. No tick seguinte o erro some. O `replay` confere o quadro do cliente (energia, capacidade, erros) nos dois.
+    assert_eq!(lines[105]["marks"], serde_json::json!(["energy 9999"]));
+    assert_eq!(lines[105]["bar_overlay"], true);
+    assert_eq!(lines[106]["bar_overlay"], false);
     // E há ticks com o erro aceso e a barra abaixo do limiar, sem overlay.
     assert!(lines.iter().any(|line| {
         line["bar_overlay"] == false
