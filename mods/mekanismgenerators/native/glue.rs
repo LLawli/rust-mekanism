@@ -13,7 +13,7 @@ use machinery_basis_core::armor_bar;
 use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
-use machinery_basis_core::heat::Capacitor;
+use machinery_basis_core::heat::{AmbientCache, Capacitor};
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::side_tab;
@@ -353,6 +353,9 @@ struct UpgradeMemory {
     last_seen: i64,
     /// `redstoneLastTick`: o tile do Java o guarda no objeto (`TileEntityMekanism.java:653-655`), e aqui o tile é refeito do NBT a cada tick.
     was_powered: bool,
+    /// `TileEntityMekanism.ambientTemperature` (`CachedAmbientTemperature`): o ar de cada face e do bloco, lido do mundo na primeira vez e
+    /// guardado enquanto o objeto vive. Um tile novo (o mesmo `last_seen` de cima) lê de novo; o bioma que muda por baixo não o muda.
+    ambient: AmbientCache,
     /// O que o último tick deixou para o `broadcastChanges` ler (o objeto vivo do Java): o menu mostra o estado do fim do tick.
     view: Option<View>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
@@ -365,6 +368,7 @@ impl UpgradeMemory {
             transient: UpgradeTransient::default(),
             last_seen: i64::MIN,
             was_powered: false,
+            ambient: AmbientCache::default(),
             view: None,
             // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
             muffling_sent: -1,
@@ -436,8 +440,8 @@ fn sync_muffling(game: &mut Game<'_>, dimension: &str, pos: [i32; 3], memory: &m
 }
 
 /// O primeiro passo do tick do tile (`TileEntityMekanism.tickServer`: o componente anda antes de tudo). Devolve o que a janela de upgrades
-/// mostra depois dele e o `redstoneLastTick` que o tile tinha.
-fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) -> (UpgradeSync, bool) {
+/// mostra depois dele, o `redstoneLastTick` que o tile tinha e o ar que o objeto já leu do mundo.
+fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) -> (UpgradeSync, bool, AmbientCache) {
     ensure_slots(entity);
     let now = game.world.game_time;
     let dimension = game.native_dimension();
@@ -464,6 +468,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
     sync_muffling(game, dimension, pos, &mut memory, &component);
     let sync = UpgradeSync::of(&component);
     let was_powered = memory.was_powered;
+    let ambient = memory.ambient;
     memory.last_seen = now;
     UPGRADES.with_borrow_mut(|tiles| {
         tiles.insert(key, memory);
@@ -472,7 +477,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
             tiles.retain(|_, memory| now - memory.last_seen <= STALE_TICKS);
         }
     });
-    (sync, was_powered)
+    (sync, was_powered, ambient)
 }
 
 /// Faz `act` no componente de upgrades do gerador em `pos` fora do tick (o pacote de remoção, o upgrade na mão), e guarda o que ele
@@ -541,21 +546,24 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
     basis::name_apply_pending(entity, pos);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
-    let (upgrade_sync, was_powered) = tick_upgrades(game, pos, entity);
+    let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);
     let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
     let tank = &mut tanks[0];
     fill_or_burn(game, entity, tank);
 
-    let ambient = basis::ambient_temperature(game, pos);
+    // `CachedAmbientTemperature.getTemperature(side)`: o ar do próprio bloco (o que a eficiência de Carnot e o calor inicial usam) e o do
+    // bloco vizinho de cada face (a perda para o ambiente), lidos do mundo na primeira vez e guardados pelo resto da vida do objeto.
+    let ambient = ambient_cache.get(AmbientCache::SELF_INDEX, || basis::ambient_temperature(game, pos));
+    let mut face_ambient = [0.0; 6];
+    for (index, face) in Face::ALL.into_iter().enumerate() {
+        let [x, y, z] = face.offset();
+        face_ambient[index] = ambient_cache.get(index, || basis::ambient_temperature(game, [pos[0] + x, pos[1] + y, pos[2] + z]));
+    }
     let around = rules::Surroundings {
         lava_faces: lava_faces(game, pos) + u32::from(basis::has_logged_lava(game, pos)),
         in_nether: game.native_dimension() == NETHER,
         ambient,
-        // `CachedAmbientTemperature.getTemperature(side)`: o ar do bloco vizinho, face por face.
-        face_ambient: Face::ALL.map(|face| {
-            let [x, y, z] = face.offset();
-            basis::ambient_temperature(game, [pos[0] + x, pos[1] + y, pos[2] + z])
-        }),
+        face_ambient,
     };
     let block_active = game.native_block_property(pos, LIT).as_deref() == Some("true");
     let mut state = rules::State {
@@ -612,6 +620,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     UPGRADES.with_borrow_mut(|tiles| {
         if let Some(memory) = tiles.get_mut(&key) {
             memory.was_powered = view_state.tile.redstone_sync().was_powered;
+            memory.ambient = ambient_cache;
             memory.view = Some(View { state: view_state, last: produced, upgrades: upgrade_sync });
         }
     });

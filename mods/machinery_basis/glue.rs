@@ -14,6 +14,7 @@ use horizon_world::registry::BlockStateId;
 use horizon_client::item_data::{StackData, canon_tag, decode_components, encode_components};
 use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::{ItemResource, SlotContents, room_for};
+use machinery_basis_core::biome_temperature;
 use machinery_basis_core::fluid_logged;
 use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
@@ -1235,13 +1236,28 @@ pub(in crate::game) fn eject_items(
     save_cooldowns(entity, values);
 }
 
-/// A temperatura do ar numa posição. Usa a temperatura base do bioma, sem o ajuste por altura.
-pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> f64 {
-    let [x, y, z] = pos;
-    let biome = game.world.chunks.get(&(x >> 4, z >> 4)).map(|chunk| {
-        world_biomes!(game).list[chunk.biome(x, y, z) as usize].temperature
-    });
-    biome.map_or(heat::AMBIENT_TEMP, |temperature| heat::ambient(f64::from(temperature)))
+/// O clima do bioma que `Level.getBiome(pos)` dá em `pos`: o `BiomeManager` não lê o quadrado de 4 por 4 que contém o bloco, e sim o
+/// mais próximo de (x - 2, y - 2, z - 2) com um sorteio por quadrado (`BiomeZoom::quart_at_block`, do Horizon), e o quadrado pode
+/// estar no chunk vizinho. `None` se o chunk dele não está carregado.
+fn biome_climate(game: &Game<'_>, pos: [i32; 3]) -> Option<biome_temperature::Climate> {
+    let [qx, qy, qz] = game.streaming.biome_zoom.quart_at_block(BlockPos::new(pos[0], pos[1], pos[2]));
+    let [x, y, z] = [qx << 2, qy << 2, qz << 2];
+    let chunk = game.world.chunks.get(&(x >> 4, z >> 4))?;
+    let biome = &world_biomes!(game).list[chunk.biome(x, y, z) as usize];
+    Some(biome_temperature::Climate { temperature: biome.temperature, frozen: biome.frozen })
+}
+
+/// `Level.getSeaLevel()` do nível em que o jogo está: o do gerador da dimensão (63, 32 e 0), ou -63 no overworld de um mundo plano
+/// (`FlatLevelSource.getSeaLevel`). O Horizon sabe só qual predefinição o mundo tem (`world_flat`).
+pub(in crate::game) fn sea_level(game: &Game<'_>) -> i32 {
+    biome_temperature::sea_level(game.native_dimension(), game.world_flat)
+}
+
+/// A temperatura do ar numa posição (`HeatAPI.getAmbientTemp(level, pos)`): a temperatura do bioma ali com o ajuste por altura de
+/// `Biome.getTemperature(pos, seaLevel)`, levada para kelvin. `None` se o chunk do bioma não está carregado (o Java o carregaria): quem
+/// guarda o valor (`heat::AmbientCache`) não guarda esse caso.
+pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> Option<f64> {
+    biome_climate(game, pos).map(|climate| climate.ambient_at(pos, sea_level(game)))
 }
 
 /// As configurações locais do cliente (`MekanismConfig.local`), uma por namespace: a unidade de temperatura que as abas de calor

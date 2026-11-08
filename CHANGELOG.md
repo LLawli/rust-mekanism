@@ -6,6 +6,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O ar que o Heat Generator lê passa a ser o do original: `Biome.getTemperature(pos, seaLevel)` com o ajuste por altura (acima de `seaLevel + 17` a temperatura cai com a altura e com um ruído
+  por posição de semente fixa) e o modificador `frozen` dos oceanos congelados, em vez da temperatura base do bioma; o bioma de cada bloco vem do `BiomeManager.getBiome` (o quadrado mais próximo com
+  sorteio) e o nível do mar da dimensão (63, 32, 0 e -63 num mundo plano). O ar de cada face e o do bloco ficam guardados enquanto o tile vive (`CachedAmbientTemperature`): um bioma que muda
+  depois não muda o gerador até o chunk descarregar e carregar. A regra está na `machinery_basis` (`biome_temperature`, `heat::AmbientCache`), igual ao bit contra cinco rastros do Java
+  (`heat_ambient_{table,height,cache,game_desert,game_frozen}`: 2.880 temperaturas de bioma, 1.800 posições do modificador `frozen` e 12 geradores de 160 ticks), e em jogo os geradores de seis
+  alturas, de 6 a 300, dão o calor e a energia do Java tick a tick.
 - O mundo simulado (`sim::chunks`) tem as notificações de vizinhança do `setBlock`: a flag 1 avisa os seis vizinhos em `NeighborUpdater.UPDATE_ORDER`, `updateNeighbourForOutputSignal` manda o
   `onNeighborChange` do NeoForge em `Level.NEIGHBOR_UPDATE_LIST`, o bloco posto por jogador roda `setPlacedBy`, e um tile sai do chunk e volta do NBT (`detach_block_entity`, `attach_block_entity`).
   `sim::neighbor_replay` repete os rastros `neighbors_*` do Java, tick a tick e no meio do tick, e `machinery_basis_core::neighbors` guarda as duas ordens, as flags e o sinal que um aviso deixa
