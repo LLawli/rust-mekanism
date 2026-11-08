@@ -100,6 +100,11 @@ Como está feito, sem hook novo: o crate `[api]` da `machinery_basis` implementa
 (`may_place &= regra`), e o clique de quem não tem menu nosso aberto apaga a do dono. É uma regra por clique e por thread: o clique
 roda na thread do servidor, a mesma onde o hook responde.
 
+A regra recebe também a pilha que o hook entregou, como `&dyn Any` (a lib não conhece o tipo do jogo): os slots virtuais da janela de upgrades
+(`UpgradeInventorySlot`) dependem do tipo do upgrade, que é um componente do item (`mekanism:upgrade_type`) e não está no id. Os mods a leem por
+`ItemStack::data().other(..)`, que não precisa do `Game`. Sem isto a regra só via o id e vetava os dois slots, e um upgrade na mão não entrava
+na janela (2026-11-08). É o mesmo hook do catálogo e a mesma estrutura privada de antes: nenhuma injeção nova, a contagem não muda.
+
 O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique. Com `pos` e `Game` no hook, o mod responderia pelo bloco direto.
 
 ## Termos e estados
