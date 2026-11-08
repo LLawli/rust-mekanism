@@ -383,3 +383,35 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "energy", ty = "i32", value = "energy" },
 ]
+
+# O arquivo de configuração de cliente (`mekanism/client.toml`, o `Mekanism/client.toml` do original): registrar, ler ao abrir o jogo e ler de novo quando o jogador o edita
+# (`ModContainer.registerConfig`, `ModConfigEvent.Loading` e `Reloading`). O som lê dele `baseSoundVolume` e `enableMachineSounds`.
+[[injection]]
+id = "register-configs"
+hook = "register_configs"
+hook_version = 1
+kind = "HEAD"
+helper = "register_configs.rs"
+bindings = [
+  { name = "configs", ty = "&mut Vec<crate::game::NativeConfig>", value = "&mut *configs" },
+]
+
+[[injection]]
+id = "config-loading"
+hook = "config_loading"
+hook_version = 1
+kind = "HEAD"
+helper = "config_loading.rs"
+bindings = [
+  { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
+]
+
+[[injection]]
+id = "config-reloading"
+hook = "config_reloading"
+hook_version = 1
+kind = "HEAD"
+helper = "config_reloading.rs"
+bindings = [
+  { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
+]

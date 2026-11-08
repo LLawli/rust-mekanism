@@ -7,6 +7,16 @@ pub const TICKS_PER_SECOND: i32 = 20;
 pub const DEFAULT_ATTENUATION_DISTANCE: i32 = 16;
 /// `ITileSound.getInitialVolume`.
 pub const INITIAL_VOLUME: f32 = 1.0;
+/// `SoundSource.BLOCKS`, a categoria de `ITileSound.getSoundCategory`, pelo índice do enum (`MASTER`, `MUSIC`, `RECORDS`, `WEATHER`, `BLOCKS`...).
+pub const SOUND_SOURCE_BLOCKS: usize = 4;
+/// O nome do `SoundSource.BLOCKS` (`getName`).
+pub const SOUND_SOURCE_BLOCKS_NAME: &str = "block";
+/// O que o `TileTickableSound` fixa na instância: o tom (o `pitch` de `AbstractSoundInstance`), o atraso (`delay = 0`), o laço (`looping = true`, o padrão de
+/// `startTileSound`) e `canStartSilent`.
+pub const TILE_SOUND_PITCH: f32 = 1.0;
+pub const TILE_SOUND_DELAY: i32 = 0;
+pub const TILE_SOUND_LOOPING: bool = true;
+pub const TILE_SOUND_CAN_START_SILENT: bool = true;
 
 /// `1 - min(mufflerCount, max) / max`, o `getVolumeFactor` do tile. Sem o upgrade (`max` `None`), 1.
 pub fn volume_factor(muffling: Option<(i32, i32)>) -> f32 {
@@ -61,6 +71,63 @@ pub fn holiday_sound<'a>(
             .map_or(sound, |(_, replacement)| replacement)
     } else {
         sound
+    }
+}
+
+/// O que o servidor e o cliente sabem de quantos upgrades de silêncio um tile tem. O original só avisa o cliente quando um upgrade ENTRA
+/// (`TileComponentUpgrade.setUpgrades` chama `sendUpdatePacket`; `removeUpgrade`, `TileComponentUpgrade.java:167-189`, não): o cliente segue com a
+/// contagem velha, e o som que o upgrade calou não volta, até um pacote do bloco levar a contagem verdadeira (o `lit` que muda, via
+/// `ChunkHolder.broadcastBlockEntityIfNeeded`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MufflingSync {
+    server: i32,
+    sent: i32,
+}
+
+/// O que um tick do servidor decide: a contagem verdadeira nova (para quem entrar depois) e a que vai ao cliente agora.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MufflingStep {
+    pub server: Option<i32>,
+    pub send: Option<i32>,
+}
+
+impl Default for MufflingSync {
+    /// Nada ainda: a primeira contagem vista vai ao cliente, como o pacote de dados que ele recebe ao ver o tile.
+    fn default() -> Self {
+        Self {
+            server: -1,
+            sent: -1,
+        }
+    }
+}
+
+impl MufflingSync {
+    /// A contagem do servidor neste tick. Só sobe avisa (o primeiro valor conta como subida).
+    pub fn tick(&mut self, count: i32) -> MufflingStep {
+        let mut step = MufflingStep::default();
+        if count != self.server {
+            self.server = count;
+            step.server = Some(count);
+        }
+        if count > self.sent {
+            self.sent = count;
+            step.send = Some(count);
+        }
+        step
+    }
+
+    /// O bloco mandou um pacote de dados (o estado dele mudou): o cliente fica com a contagem verdadeira.
+    pub fn block_update(&mut self) -> Option<i32> {
+        if self.server >= 0 && self.server != self.sent {
+            self.sent = self.server;
+            return Some(self.server);
+        }
+        None
+    }
+
+    /// A contagem que o cliente sabe (`-1` antes da primeira).
+    pub fn sent(&self) -> i32 {
+        self.sent
     }
 }
 
@@ -379,6 +446,54 @@ mod tests {
         sound.tick(Some(27), true, |_| true, 0.0);
         assert_eq!(sound.volume, 0.0);
         assert!(!sound.is_stopped());
+    }
+
+    #[test]
+    fn the_first_count_always_reaches_the_client_and_only_an_increase_after_it() {
+        let mut sync = MufflingSync::default();
+        assert_eq!(
+            sync.tick(0),
+            MufflingStep {
+                server: Some(0),
+                send: Some(0)
+            }
+        );
+        assert_eq!(sync.tick(0), MufflingStep::default());
+        assert_eq!(
+            sync.tick(1),
+            MufflingStep {
+                server: Some(1),
+                send: Some(1)
+            }
+        );
+        // Tirar o upgrade: o servidor sabe, o cliente não é avisado.
+        assert_eq!(
+            sync.tick(0),
+            MufflingStep {
+                server: Some(0),
+                send: None
+            }
+        );
+        assert_eq!(sync.sent(), 1);
+        // Pôr de novo: sobe para 1, e o cliente já sabia 1.
+        assert_eq!(
+            sync.tick(1),
+            MufflingStep {
+                server: Some(1),
+                send: None
+            }
+        );
+    }
+
+    #[test]
+    fn a_block_update_brings_the_true_count_to_the_client() {
+        let mut sync = MufflingSync::default();
+        assert_eq!(sync.block_update(), None, "nada visto ainda");
+        sync.tick(1);
+        sync.tick(0);
+        assert_eq!(sync.block_update(), Some(0));
+        assert_eq!(sync.block_update(), None, "o cliente já sabe");
+        assert_eq!(sync.sent(), 0);
     }
 
     #[test]

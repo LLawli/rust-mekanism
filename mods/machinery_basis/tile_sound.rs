@@ -4,17 +4,13 @@ use super::Game;
 use horizon_world::nbt::{Limits, Tag, read_network, write_network};
 use horizon_client::sound_engine::{Attenuation, InstanceId, SoundEngine, SoundInstance, Sounds, Ticking};
 use machinery_basis_core::sound::{
-    DEFAULT_ATTENUATION_DISTANCE, SoundConfig, TileSound, TileSoundEngine, TileTickableSound, TileView, player_in_range,
+    DEFAULT_ATTENUATION_DISTANCE, SOUND_SOURCE_BLOCKS, SoundConfig, TILE_SOUND_CAN_START_SILENT, TILE_SOUND_DELAY, TILE_SOUND_LOOPING, TILE_SOUND_PITCH, TileSound, TileSoundEngine, TileTickableSound, TileView, player_in_range,
     sound_position,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// `SoundSource.BLOCKS`, a categoria de `ITileSound.getSoundCategory`.
-const BLOCKS: usize = 4;
-/// `MekanismConfig.client.baseSoundVolume`: o padrão. O port ainda não tem o arquivo de configuração de cliente.
-const BASE_VOLUME: f32 = 1.0;
 /// Escreve no stderr cada início, parada e mudança de volume. Só as cópias de teste ligam.
 const TRACE: bool = false;
 
@@ -32,14 +28,21 @@ pub(in crate::game) struct SoundTile {
 
 struct Entry {
     tile: TileSound,
-    playing: Option<(InstanceId, TileTickableSound)>,
+    playing: Option<Playing>,
     last_factor: f32,
+    /// Só para o rastro: o último `lit` e `fully_muffled` impressos.
+    seen: Option<(bool, bool)>,
 }
 
 /// Quantos upgrades de silêncio cada tile tem, como o cliente sabe: no servidor o `TileComponentUpgrade.saveToUpdateTag` os manda
 /// (`MUFFLING_COUNT`) e o cliente guarda o número, que é só o que ele precisa. No anfitrião os dois lados são o mesmo processo e
 /// dividem esta tabela.
 static MUFFLING: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), i32>>> = std::sync::Mutex::new(None);
+
+/// Quantos upgrades de silêncio o servidor sabe que cada tile tem. Difere da tabela acima quando um upgrade sai: o original não avisa o cliente
+/// (`TileComponentUpgrade.removeUpgrade` não chama `sendUpdatePacket`, só o `setUpgrades` de quem instala chama), então o cliente guarda a contagem
+/// velha até o próximo pacote do bloco (o `lit` que muda, a troca de chunk). Quem entra no servidor recebe esta.
+static MUFFLING_SERVER: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), i32>>> = std::sync::Mutex::new(None);
 
 const MUFFLING_CHANNEL: &str = "machinery_basis:muffling";
 
@@ -152,8 +155,14 @@ pub(in crate::game) fn name_from_server(channel: &str, data: &[u8]) -> bool {
     true
 }
 
+type Playing = (InstanceId, TileTickableSound);
+
 thread_local! {
     static SOUNDS: RefCell<HashMap<(&'static str, [i32; 3]), Entry>> = RefCell::new(HashMap::new());
+    /// Os sons que ficaram tocando depois de o tile sair (`SoundHandler.soundMap`): com `enableMachineSounds` desligado o `updateSound` do tile que sai
+    /// volta antes do `stopTileSound`, e a instância segue sendo tickada pelo motor sem dono (fator 1) até o jogador sair do alcance. Um tile novo no mesmo
+    /// bloco a encontra em `startTileSound` e a usa.
+    static ORPHANS: RefCell<HashMap<(&'static str, [i32; 3]), Playing>> = RefCell::new(HashMap::new());
 }
 
 /// `ThreadLocalRandom.nextInt(TICKS_PER_SECOND)`: o instante em que o som confere o silenciador.
@@ -166,8 +175,10 @@ fn random_second() -> i32 {
 struct Adapter<'a, 'g> {
     game: &'a mut Game<'g>,
     pos: [i32; 3],
-    playing: &'a mut Option<(InstanceId, TileTickableSound)>,
+    playing: &'a mut Option<Playing>,
     factor: f32,
+    /// `MekanismConfig.client.baseSoundVolume`, lido quando o som nasce (o construtor do `TileTickableSound`).
+    base_volume: f32,
 }
 
 impl TileSoundEngine for Adapter<'_, '_> {
@@ -178,38 +189,53 @@ impl TileSoundEngine for Adapter<'_, '_> {
         {
             return true;
         }
-        let instance = TileTickableSound::new(initial_volume, BASE_VOLUME, self.factor, random_second());
+        let instance = TileTickableSound::new(initial_volume, self.base_volume, self.factor, random_second());
         let center = sound_position(self.pos);
-        // O jogador local não está no `Game` durante o tick do nível; o quadro mais recente dá a posição dele.
+        // `Minecraft.getInstance().player.position()`: os pés do jogador local, que só existem no tick do cliente.
         let Some(player) = self.game.player_position() else {
             if TRACE {
-                eprintln!("MEKSOUND no-player pos={:?}", self.pos);
+                eprintln!("MEKSOUND no-player t={} pos={:?}", self.game.world.game_time, self.pos);
             }
             return false;
         };
         if !player_in_range(player, center, instance.volume, DEFAULT_ATTENUATION_DISTANCE) {
             if TRACE {
-                eprintln!("MEKSOUND out-of-range pos={:?} player={player:?}", self.pos);
+                eprintln!("MEKSOUND out-of-range t={} pos={:?} player={player:?}", self.game.world.game_time, self.pos);
             }
             return false;
         }
         let mut sound = SoundInstance::new(
             sound,
-            BLOCKS,
+            SOUND_SOURCE_BLOCKS,
             instance.volume,
-            1.0,
+            TILE_SOUND_PITCH,
             SoundEngine::unseeded(),
-            true,
-            0,
+            TILE_SOUND_LOOPING,
+            TILE_SOUND_DELAY,
             Attenuation::Linear,
             center,
             false,
         );
         sound.ticking = Ticking::Native;
-        sound.can_start_silent = true;
+        sound.can_start_silent = TILE_SOUND_CAN_START_SILENT;
+        let described = TRACE.then(|| {
+            format!(
+                "event={} source={} volume={} pitch={} looping={} delay={} attenuation={:?} relative={} silent_start={} at={:?}",
+                sound.identifier,
+                sound.source,
+                sound.volume,
+                sound.pitch,
+                sound.looping,
+                sound.delay,
+                sound.attenuation,
+                sound.relative,
+                sound.can_start_silent,
+                sound.position
+            )
+        });
         let (id, _) = self.game.audio.play_instance(sound, true);
-        if TRACE {
-            eprintln!("MEKSOUND start pos={:?} id={id} volume={}", self.pos, instance.volume);
+        if let Some(described) = described {
+            eprintln!("MEKSOUND start t={} pos={:?} id={id} {described}", self.game.world.game_time, self.pos);
         }
         *self.playing = Some((id, instance));
         true
@@ -218,7 +244,7 @@ impl TileSoundEngine for Adapter<'_, '_> {
     fn stop(&mut self) {
         if let Some((id, _)) = self.playing.take() {
             if TRACE {
-                eprintln!("MEKSOUND stop pos={:?} id={id}", self.pos);
+                eprintln!("MEKSOUND stop t={} pos={:?} id={id}", self.game.world.game_time, self.pos);
             }
             self.game.audio.stop_and_release(id);
         }
@@ -250,23 +276,36 @@ impl Game<'_> {
         let _ = self.native_net_send_to_player(player, NAME_CHANNEL, &encode_name(dimension, pos, name));
     }
 
+    /// A contagem que o servidor tem agora, sem avisar o cliente (veja `MUFFLING_SERVER`).
+    pub(in crate::game) fn mb_muffling_server(&mut self, dimension: &str, pos: [i32; 3], count: i32) {
+        let mut guard = MUFFLING_SERVER.lock().unwrap_or_else(|error| error.into_inner());
+        let table = guard.get_or_insert_with(HashMap::new);
+        if count == 0 {
+            table.remove(&(dimension.to_owned(), pos));
+        } else {
+            table.insert((dimension.to_owned(), pos), count);
+        }
+    }
+
     /// Quem entrou depois recebe as contagens que o servidor tem.
     pub(in crate::game) fn mb_muffling_player_in(&mut self, player: u128) {
-        let entries: Vec<(String, [i32; 3], i32)> =
-            muffling_table(|table| table.iter().map(|((dimension, pos), count)| (dimension.clone(), *pos, *count)).collect());
+        let entries: Vec<(String, [i32; 3], i32)> = {
+            let mut guard = MUFFLING_SERVER.lock().unwrap_or_else(|error| error.into_inner());
+            guard.get_or_insert_with(HashMap::new).iter().map(|((dimension, pos), count)| (dimension.clone(), *pos, *count)).collect()
+        };
         for (dimension, pos, count) in entries {
             let _ = self.native_net_send_to_player(player, MUFFLING_CHANNEL, &encode_muffling(&dimension, pos, count));
         }
     }
 
-    /// `Minecraft.player.position()`: onde o jogador local está.
+    /// `Minecraft.player.position()`: os pés do jogador local (não a câmera, que fica na altura dos olhos e, em terceira pessoa, atrás
+    /// dele). Falta fora do tick do cliente com um mundo aberto.
     fn player_position(&self) -> Option<[f64; 3]> {
-        self.native_camera().map(|camera| camera.position)
+        self.native_player().map(|player| [player.x, player.y, player.z])
     }
 
     /// Um tick do cliente para os tiles com som de uma dimensão. Um tile que já estava aqui e não vem mais foi removido.
-    pub(in crate::game) fn mb_tile_sounds(&mut self, dimension: &str, tiles: &[SoundTile]) {
-        let config = SoundConfig::default();
+    pub(in crate::game) fn mb_tile_sounds(&mut self, dimension: &str, tiles: &[SoundTile], config: SoundConfig) {
         let gone: Vec<(&'static str, [i32; 3])> = SOUNDS.with_borrow(|sounds| {
             sounds
                 .keys()
@@ -279,13 +318,17 @@ impl Game<'_> {
                 continue;
             };
             // `setRemoved` chama `updateSound` uma vez: `isRemoved()` para o som.
-            let mut adapter = Adapter { game: self, pos: key.1, playing: &mut entry.playing, factor: entry.last_factor };
+            let mut adapter =
+                Adapter { game: self, pos: key.1, playing: &mut entry.playing, factor: entry.last_factor, base_volume: config.base_volume };
             entry.tile.update(
                 config,
                 TileView { can_play: true, removed: true, fully_muffled: false, sound: "" },
                 true,
                 &mut adapter,
             );
+            if let Some(orphan) = entry.playing.take() {
+                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, orphan));
+            }
         }
         let now = self.world.game_time;
         let normal = self.clock.runs_normally();
@@ -296,39 +339,66 @@ impl Game<'_> {
             if tile.key.0 != dimension {
                 continue;
             }
-            let mut entry = SOUNDS
-                .with_borrow_mut(|sounds| sounds.remove(&tile.key))
-                .unwrap_or(Entry { tile: TileSound::default(), playing: None, last_factor: tile.volume_factor });
+            let mut entry = SOUNDS.with_borrow_mut(|sounds| sounds.remove(&tile.key)).unwrap_or_else(|| Entry {
+                tile: TileSound::default(),
+                playing: ORPHANS.with_borrow_mut(|orphans| orphans.remove(&tile.key)),
+                last_factor: tile.volume_factor,
+                seen: None,
+            });
             entry.last_factor = tile.volume_factor;
+            if TRACE && entry.seen != Some((tile.lit, tile.fully_muffled)) {
+                entry.seen = Some((tile.lit, tile.fully_muffled));
+                eprintln!("MEKSOUND tile t={now} pos={:?} lit={} fully_muffled={} factor={}", tile.key.1, tile.lit, tile.fully_muffled, tile.volume_factor);
+            }
             let engine_active = entry.playing.as_ref().is_some_and(|(id, _)| self.audio.is_active(*id));
             let view = TileView { can_play: tile.lit, removed: false, fully_muffled: tile.fully_muffled, sound: &tile.sound };
-            let mut adapter = Adapter { game: self, pos: tile.key.1, playing: &mut entry.playing, factor: tile.volume_factor };
+            let mut adapter =
+                Adapter { game: self, pos: tile.key.1, playing: &mut entry.playing, factor: tile.volume_factor, base_volume: config.base_volume };
             entry.tile.update(config, view, engine_active, &mut adapter);
             // A instância em laço, no tick do motor de som.
-            if let Some((id, instance)) = entry.playing.as_mut() {
-                let player = self.player_position();
-                let center = sound_position(tile.key.1);
-                instance.tick(
-                    Some(now),
-                    normal,
-                    |volume| player.is_some_and(|player| player_in_range(player, center, volume, DEFAULT_ATTENUATION_DISTANCE)),
-                    tile.volume_factor,
-                );
-                if instance.is_stopped() {
-                    let id = *id;
-                    entry.playing = None;
-                    if TRACE {
-                        eprintln!("MEKSOUND ended pos={:?} id={id}", tile.key.1);
-                    }
-                    self.audio.stop_and_release(id);
-                } else if let Some(playing) = self.audio.engine().instance_mut(*id) {
-                    if TRACE && playing.volume != instance.volume {
-                        eprintln!("MEKSOUND volume pos={:?} {} -> {}", tile.key.1, playing.volume, instance.volume);
-                    }
-                    playing.volume = instance.volume;
-                }
-            }
+            self.tick_playing(tile.key.1, &mut entry.playing, tile.volume_factor, now, normal);
             SOUNDS.with_borrow_mut(|sounds| sounds.insert(tile.key, entry));
+        }
+        // Os sons sem tile: o motor os tica com o fator 1 (`getTileVolumeFactor` não acha tile).
+        let orphans: Vec<(&'static str, [i32; 3])> =
+            ORPHANS.with_borrow(|orphans| orphans.keys().filter(|(owner, _)| *owner == dimension).copied().collect());
+        for key in orphans {
+            let Some(orphan) = ORPHANS.with_borrow_mut(|orphans| orphans.remove(&key)) else {
+                continue;
+            };
+            let mut playing = Some(orphan);
+            self.tick_playing(key.1, &mut playing, 1.0, now, normal);
+            if let Some(orphan) = playing {
+                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, orphan));
+            }
+        }
+    }
+
+    /// `TileTickableSound.tick` no tick do motor de som: confere o alcance a cada intervalo, aplica o volume e solta a instância que parou.
+    fn tick_playing(&mut self, pos: [i32; 3], playing: &mut Option<Playing>, factor: f32, now: i64, normal: bool) {
+        let Some((id, instance)) = playing.as_mut() else {
+            return;
+        };
+        let id = *id;
+        let player = self.player_position();
+        let center = sound_position(pos);
+        instance.tick(
+            Some(now),
+            normal,
+            |volume| player.is_some_and(|player| player_in_range(player, center, volume, DEFAULT_ATTENUATION_DISTANCE)),
+            factor,
+        );
+        if instance.is_stopped() {
+            *playing = None;
+            if TRACE {
+                eprintln!("MEKSOUND ended t={now} pos={pos:?} id={id}");
+            }
+            self.audio.stop_and_release(id);
+        } else if let Some(sound) = self.audio.engine().instance_mut(id) {
+            if TRACE && sound.volume != instance.volume {
+                eprintln!("MEKSOUND volume t={now} pos={pos:?} {} -> {}", sound.volume, instance.volume);
+            }
+            sound.volume = instance.volume;
         }
     }
 }

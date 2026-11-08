@@ -2,6 +2,10 @@
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
+use machinery_basis_core::client_config::{
+    Entry as ClientEntry, Loaded as ClientLoaded, Section as ClientSection,
+    Setting as ClientSetting, Spec as ClientSpec,
+};
 use machinery_basis_core::components::Components;
 use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
@@ -14,6 +18,7 @@ use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{
     ContainerSlotType, DataType, ItemConfig, SlotOverlay, SlotSpec, SlotType, slot_type,
 };
+use machinery_basis_core::sound::SoundConfig;
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
     RedstoneSync, UpgradeConfig, machine_energy_slot_accepts,
@@ -179,6 +184,49 @@ pub const CHRISTMAS_SOUNDS: [(&str, &str); 4] = [
 /// `Holiday.Christmas`: 25 de dezembro.
 pub const CHRISTMAS: (u32, u32) = (12, 25);
 pub const XP_CONTAINMENT_UPGRADE: &str = "mekanism:xp_containment";
+
+/// O arquivo de cliente: o do original é `Mekanism/client.toml` (`MekanismConfigHelper.registerConfig`: `Mekanism.MOD_NAME` + `/` + `ClientConfig.getFileName()` +
+/// `.toml`). O port o chama `mekanism/client.toml`, com a pasta em minúscula que ele já usa para as posições das janelas (`config/<ns>/client.toml`) e para
+/// `local.toml`: um arquivo só, como no original (decisão 12).
+pub const CLIENT_CONFIG_FILE: &str = "mekanism/client.toml";
+/// A seção `sounds` do `ClientConfig` (`ClientConfig.java:74-81`), com o texto que o `MekanismConfigTranslations` dá a cada comentário. O
+/// original traz também `enablePlayer` (os sons do jetpack, da máscara de mergulho, do lança-chamas e do modulador de gravidade, que não
+/// estão portados) e as demais seções (acessibilidade, renderização, HUD, QIO e janelas), que entram junto de quem as lê.
+pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
+    sections: &[ClientSection {
+        name: "sounds",
+        comment: "Settings for configuring Mekanism's Sounds",
+        entries: &[
+            ClientEntry {
+                key: "baseVolume",
+                comment: "Adjust Mekanism sounds' base volume. < 1 is softer, higher is louder.",
+                setting: ClientSetting::Float {
+                    default: 1.0,
+                    min: 0.0,
+                    max: 10.0,
+                },
+            },
+            ClientEntry {
+                key: "enableMachine",
+                comment: "Play sounds for active machines.",
+                setting: ClientSetting::Bool { default: true },
+            },
+        ],
+    }],
+};
+
+/// `MekanismConfig.client.baseSoundVolume` (`CachedFloatValue`: o `double` do arquivo como `float`) e `enableMachineSounds`.
+pub fn sound_config(loaded: &ClientLoaded) -> SoundConfig {
+    let defaults = SoundConfig::default();
+    SoundConfig {
+        enabled: loaded
+            .bool(&CLIENT_CONFIG, "sounds", "enableMachine")
+            .unwrap_or(defaults.enabled),
+        base_volume: loaded
+            .float(&CLIENT_CONFIG, "sounds", "baseVolume")
+            .map_or(defaults.base_volume, |volume| volume as f32),
+    }
+}
 
 /// `GuiMekanismTile.addGenericTabs`: `new GuiXpContainmentTab(this, recipeLookupHandler, false, 90)`, na lateral direita (`imageWidth`) a
 /// 90. As quatro máquinas são `IRecipeLookupHandler` e têm o livro de receitas (`!Mekanism.hooks.isRecipeBookDisabled()`), então a aba

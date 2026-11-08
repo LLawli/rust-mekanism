@@ -2,7 +2,7 @@
 // machinery_basis.
 use crate::game::mekanism_rules as rules;
 use crate::game::mekanism_rules::{Held, Indexes};
-use crate::game::{Game, GameLevel, NativeReloadListener, machinery_basis as basis};
+use crate::game::{Game, GameLevel, NativeConfig, NativeConfigFile, NativeConfigKind, NativeReloadListener, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::crafting::{Ingredient, Shape};
 use horizon_client::hud::HudBatch;
@@ -522,7 +522,8 @@ struct Live {
     /// A capacidade que o Horizon já sabe desta máquina.
     energy_capacity: Option<i32>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
-    muffling_sent: i32,
+    /// O que o servidor e o cliente sabem da contagem de upgrades de silêncio.
+    muffling: machinery_basis_core::sound::MufflingSync,
 }
 
 /// A experiência de cada receita da máquina, por id.
@@ -1068,7 +1069,7 @@ fn born(
         upgrades_version: None,
         energy_capacity: None,
         // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
-        muffling_sent: -1,
+        muffling: Default::default(),
     }
 }
 
@@ -1549,6 +1550,11 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if live.lit != Some(lit) {
         game.native_set_block_property(pos, "lit", if lit { "true" } else { "false" });
         live.lit = Some(lit);
+        // O pacote de dados do bloco que acompanha a mudança de estado (`ChunkHolder.broadcastBlockEntityIfNeeded` chama `getUpdatePacket`, que leva o
+        // `MUFFLING_COUNT`) leva ao cliente a contagem verdadeira. Só o campo `muffling` do objeto: `machine` segue emprestado.
+        if let Some(count) = live.muffling.block_update() {
+            game.mb_muffling_changed(dimension, pos, count);
+        }
     }
     // O que a tela mostra não sai deste tick: o Java lê o valor vivo de cada dado no `broadcastChanges` do tick seguinte (`window_source`).
     // O Horizon só guarda o `data` do tile enquanto o objeto é o mesmo; a marca diz ao tick seguinte que ele continua.
@@ -1763,13 +1769,54 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
     })
 }
 
-/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há.
+/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há, e só é avisado quando um
+/// upgrade ENTRA (`addUpgrades` e o slot de upgrade). `removeUpgrade` não chama `sendUpdatePacket` (`TileComponentUpgrade.java:167-189`): o cliente
+/// segue com a contagem velha até um pacote do bloco (o `lit` que muda, em `tick_machine`). A contagem verdadeira vai à tabela do servidor, que quem
+/// entra depois recebe. Em jogo contra o original (2026-11-08, `silencio_tocando_tirado`): o som silenciado com o upgrade que entrou não volta
+/// quando ele sai, enquanto a máquina segue acesa.
 fn sync_muffling(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], live: &mut Live) {
     let count = live.machine.upgrades().get_upgrades(rules::MUFFLING_UPGRADE);
-    if count != live.muffling_sent {
-        live.muffling_sent = count;
-        game.mb_muffling_changed(dimension, pos, count);
+    let step = live.muffling.tick(count);
+    if let Some(server) = step.server {
+        game.mb_muffling_server(dimension, pos, server);
     }
+    if let Some(send) = step.send {
+        game.mb_muffling_changed(dimension, pos, send);
+    }
+}
+
+/// `MekanismConfig.client`, como o último `mekanism/client.toml` lido o deixou (`ModConfigEvent.Loading` e `Reloading`, que limpam o
+/// cache dos `CachedValue`). Antes do primeiro arquivo valem os padrões. O carregamento e o `tick` do cliente rodam na mesma janela, mas o
+/// processo também tem a thread do servidor integrado, então a tabela é do processo.
+static CLIENT_CONFIG: std::sync::Mutex<Option<machinery_basis_core::client_config::Loaded>> = std::sync::Mutex::new(None);
+
+/// O que o som lê da configuração de cliente: `enableMachineSounds` e `baseSoundVolume`.
+fn sound_config() -> machinery_basis_core::sound::SoundConfig {
+    let guard = CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner());
+    guard.as_ref().map_or_else(Default::default, rules::sound_config)
+}
+
+/// `ModContainer.registerConfig(Type.CLIENT, spec, "Mekanism/client.toml")` (`MekanismConfigHelper.registerConfig`; aqui `mekanism/client.toml`, o arquivo onde a
+/// janela de upgrades já guarda a posição): o texto padrão é o que o NightConfig escreve quando o arquivo não existe. Um arquivo que já existe só com as
+/// posições das janelas ganha a seção `sounds` na primeira leitura (`config_loaded`).
+pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
+    configs.push(NativeConfig::new("mekanism", NativeConfigKind::Client, &rules::CLIENT_CONFIG.default_text()).file(rules::CLIENT_CONFIG_FILE));
+}
+
+/// `ModConfigEvent.Loading` e `Reloading`: o arquivo lido vira a configuração de cliente. Um valor errado vai para o limite ou para o padrão
+/// e o arquivo é escrito de novo, com as outras seções como estavam, como o `acceptConfig` do `ModConfigSpec` (`config.save()`); o Horizon avisa da mudança no segundo
+/// seguinte, e o texto novo já está certo.
+pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
+    if config.mod_id != "mekanism" || config.file != rules::CLIENT_CONFIG_FILE {
+        return;
+    }
+    let loaded = rules::CLIENT_CONFIG.load(&config.text);
+    if loaded.corrected
+        && let Err(error) = std::fs::write(&config.path, rules::CLIENT_CONFIG.rewrite(&config.text, &loaded))
+    {
+        eprintln!("mekanism: não consegui corrigir {}: {error}", config.path.display());
+    }
+    *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
 }
 
 /// `TileEntityMekanism.tickClient` → `updateSound` de cada máquina que o cliente vê: o som em laço de quem está ligado. O cliente
@@ -1806,7 +1853,7 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
             })
         })
         .collect();
-    game.mb_tile_sounds(dimension, &tiles);
+    game.mb_tile_sounds(dimension, &tiles, sound_config());
 }
 
 /// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.

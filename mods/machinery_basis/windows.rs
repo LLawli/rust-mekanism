@@ -244,7 +244,9 @@ fn save_positions(spec: &UpgradeWindowSpec, positions: &WindowPositions) {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = std::fs::write(path, positions.to_toml());
+        // O arquivo é o `client.toml` inteiro do mod: as seções `window.*` são nossas e as outras (`sounds`) não.
+        let existing = std::fs::read_to_string(&path).unwrap_or_default();
+        let _ = std::fs::write(path, machinery_basis_core::client_config::replace_sections(&existing, "window", &positions.to_toml()));
     }
 }
 
