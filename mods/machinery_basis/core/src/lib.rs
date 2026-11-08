@@ -4,6 +4,7 @@ pub mod armor_slots;
 pub mod biome_temperature;
 pub mod cached_recipe;
 pub mod chemical;
+pub mod client_config;
 pub mod components;
 pub mod components_ingredient;
 pub mod composter;
