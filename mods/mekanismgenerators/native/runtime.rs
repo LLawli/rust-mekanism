@@ -1,10 +1,15 @@
 // Regras do Heat Generator, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o
 // módulo crate::game::mekanismgenerators_rules. Segue TileEntityHeatGenerator.
+use machinery_basis_core::container_sync::{Kind, StackValue, Tracked, TrackedSource, Value};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
+use machinery_basis_core::machine_sync::upgrade_map;
 use machinery_basis_core::slot_view::{ContainerSlotType, SlotOverlay, SlotSpec};
 use machinery_basis_core::temperature::{self, TemperatureUnit};
 use machinery_basis_core::tile::TileBase;
+use machinery_basis_core::tile_trackers::{
+    EnergyTrackers, TileTrackers, source, upgrade_window_trackers,
+};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
@@ -262,10 +267,17 @@ fn boost(around: &Surroundings) -> f64 {
     }
 }
 
-/// Um tick. `lava` é o que há no tanque, e a energia sai sem o limite do buffer.
-pub fn tick(heat: &mut Capacitor, around: &Surroundings, lava: u64, energy_full: bool) -> Produced {
+/// Um tick. `lava` é o que há no tanque, e a energia sai sem o limite do buffer. `can_function` é o `canFunction()` do tile (o controle
+/// de redstone o deixa funcionar): sem ele a lava não queima, mas o calor guardado segue gerando.
+pub fn tick(
+    heat: &mut Capacitor,
+    around: &Surroundings,
+    lava: u64,
+    energy_full: bool,
+    can_function: bool,
+) -> Produced {
     heat.handle(boost(around));
-    let active = lava >= FLUID_RATE && !energy_full;
+    let active = can_function && lava >= FLUID_RATE && !energy_full;
     if active {
         heat.handle(HEAT_GENERATION);
     }
@@ -311,7 +323,8 @@ impl State {
 pub fn step(state: &mut State, around: &Surroundings) -> Produced {
     state.tile.tick_delay();
     let full = state.energy >= ENERGY_CAPACITY;
-    let mut produced = tick(&mut state.heat, around, state.lava, full);
+    let can_function = state.tile.is_redstone_activated();
+    let mut produced = tick(&mut state.heat, around, state.lava, full, can_function);
     state.lava -= produced.lava_used;
     let filled = state
         .energy
@@ -454,6 +467,81 @@ pub fn accepts_upgrade(data: &UpgradeData, item: &str, kind: Option<&str>) -> bo
     item == UPGRADE_ITEM && kind.is_some_and(|kind| data.supports(kind))
 }
 
+/// As fontes que o Heat Generator acrescenta às da estrutura do tile (`TileEntityHeatGenerator.addContainerTrackers`).
+pub const SOURCE_PRODUCTION_RATE: u16 = source::MOD;
+pub const SOURCE_TRANSFER_LOSS: u16 = source::MOD + 1;
+pub const SOURCE_ENVIRONMENT_LOSS: u16 = source::MOD + 2;
+
+/// Os dados que o menu do Heat Generator sincroniza, na ordem de `addContainerTrackers`: a base do tile (a lava é o tanque de fluido,
+/// o calor e a capacidade vêm do capacitor, e a energia é um `BasicEnergyContainer`, que não é ajustável) e depois `getProductionRate`,
+/// `getLastTransferLoss` e `getLastEnvironmentLoss`. O rastro `heat_generator_trackers` do Java confere a ordem, a classe e o valor.
+pub fn heat_generator_trackers() -> Vec<Tracked> {
+    let mut list = TileTrackers {
+        security: true,
+        redstone: true,
+        fluid_tanks: 1,
+        heat: true,
+        energy: Some(EnergyTrackers {
+            last_energy: true,
+            adjustable: false,
+        }),
+        ..TileTrackers::default()
+    }
+    .trackers();
+    list.extend([
+        Tracked::new(SOURCE_PRODUCTION_RATE, Kind::Int),
+        Tracked::new(SOURCE_TRANSFER_LOSS, Kind::Double),
+        Tracked::new(SOURCE_ENVIRONMENT_LOSS, Kind::Double),
+    ]);
+    list
+}
+
+/// O que a janela de upgrades acrescenta (`TileComponentUpgrade.getSpecificSyncableData`).
+pub fn upgrade_window_data() -> [Tracked; 2] {
+    upgrade_window_trackers()
+}
+
+/// O Heat Generator visto pelo `broadcastChanges`: o objeto vivo (calor, lava, energia e o estado de redstone do tile), o que o último
+/// tick produziu (`producingEnergy`, `lastTransferLoss` e `lastEnvironmentLoss` ficam nos campos do tile até o tick seguinte) e o
+/// `upgradeTicks` e o mapa de upgrades.
+pub struct HeatGeneratorSync<'a> {
+    pub state: &'a State,
+    pub last: &'a Produced,
+    pub upgrades: &'a UpgradeSync,
+}
+
+impl TrackedSource for HeatGeneratorSync<'_> {
+    fn value(&self, id: u16) -> Value {
+        let redstone = self.state.tile.redstone_sync();
+        match id {
+            // Sem o componente de segurança no port: sem dono, a frequência é `null` e o modo é `PUBLIC`.
+            source::SECURITY_FREQUENCY => Value::Codec {
+                hash: 0,
+                bytes: vec![0],
+            },
+            source::SECURITY_MODE => Value::Enum(0),
+            source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
+            source::POWERED => Value::Boolean(redstone.powered),
+            source::WAS_POWERED => Value::Boolean(redstone.was_powered),
+            source::FLUID_TANK => Value::Stack(StackValue {
+                resource: if self.state.lava > 0 { LAVA } else { "" }.to_owned(),
+                amount: self.state.lava,
+            }),
+            source::HEAT => Value::Double(self.state.heat.heat),
+            source::HEAT_CAPACITY => Value::Double(self.state.heat.capacity),
+            // O buffer só aceita energia de dentro (`BasicEnergyContainer.output`): nada entra pela capability.
+            source::LAST_ENERGY_RECEIVED => Value::Long(0),
+            source::ENERGY => Value::Long(i64::from(self.state.energy)),
+            SOURCE_PRODUCTION_RATE => Value::Int(self.last.energy),
+            SOURCE_TRANSFER_LOSS => Value::Double(self.last.transfer_loss),
+            SOURCE_ENVIRONMENT_LOSS => Value::Double(self.last.environment_loss),
+            source::UPGRADE_TICKS => Value::Int(self.upgrades.ticks),
+            source::UPGRADE_MAP => upgrade_map(self.upgrades),
+            other => panic!("fonte {other} desconhecida"),
+        }
+    }
+}
+
 /// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela de upgrades.
 pub const UPGRADE_TRACKING_KEY: u8 = 2;
 /// Quantos dados a janela acrescenta ao contêiner (`getSpecificSyncableData`: `upgradeTicks` e o mapa).
@@ -554,7 +642,7 @@ mod tests {
         let mut heat = new_capacitor(AMBIENT_TEMP);
         let mut last = Produced::default();
         for _ in 0..ticks {
-            last = tick(&mut heat, around, lava, false);
+            last = tick(&mut heat, around, lava, false, true);
         }
         (heat, last)
     }
@@ -608,7 +696,7 @@ mod tests {
     #[test]
     fn stops_burning_when_full() {
         let mut heat = new_capacitor(AMBIENT_TEMP);
-        let produced = tick(&mut heat, &PLAINS, TANK_CAPACITY, true);
+        let produced = tick(&mut heat, &PLAINS, TANK_CAPACITY, true, true);
         assert!(!produced.active);
         assert_eq!(produced.lava_used, 0);
     }

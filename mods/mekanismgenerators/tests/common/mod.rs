@@ -1,5 +1,6 @@
 //! O que os testes de rastro do Heat Generator partilham: os dados de upgrade lidos dos mesmos arquivos que o jogo lê. O Generators usa
 //! os tipos e as tags do Mekanism (`data/mekanism/mekanism/upgrade` e `data/mekanism/tags/mekanism/upgrade`), então vêm do conteúdo dele.
+#![allow(dead_code)]
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
 use serde_json::Value;
 use std::path::{Path, PathBuf};

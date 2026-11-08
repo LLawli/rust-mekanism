@@ -3,6 +3,7 @@
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
 use machinery_basis_core::components::Components;
+use machinery_basis_core::container_sync::Tracked;
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::data_slots;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
@@ -17,6 +18,10 @@ use machinery_basis_core::slot_view::{
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
     RedstoneSync, UpgradeConfig, machine_energy_slot_accepts,
+};
+use machinery_basis_core::tile_trackers::{
+    EnergyTrackers, TileTrackers, progress_machine_trackers, recipe_machine_trackers,
+    upgrade_window_trackers,
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
@@ -1289,6 +1294,41 @@ pub const UPGRADE_TRACKED_ITEMS: usize = 2;
 /// Quantos dados o contêiner já sincroniza ao nascer (`addContainerTrackers`), medidos nos rastros `*_container_tracking`.
 pub const ELECTRIC_TRACKED_BASE: usize = 16;
 pub const INFUSER_TRACKED_BASE: usize = 18;
+
+/// Os dados que o menu de uma máquina elétrica (Enrichment Chamber, Crusher, Energized Smelter) sincroniza, na ordem de
+/// `addContainerTrackers`: a base do tile (`TileEntityMekanism`), os erros rastreados e `hasXpContainment`
+/// (`TileEntityRecipeMachine`), e `operatingTicks` e `ticksRequired` (`TileEntityProgressMachine`). `TileEntityElectricMachine` e as
+/// classes das máquinas não acrescentam nada. O rastro `*_trackers` do Java confere a ordem, a classe e o valor de cada um.
+pub fn electric_trackers() -> Vec<Tracked> {
+    machine_trackers(0, ELECTRIC_TRACKED_ERRORS.len())
+}
+
+/// O mesmo do Metallurgic Infuser: o tanque de infusão entra depois da redstone, e há um erro rastreado a mais.
+pub fn infuser_trackers() -> Vec<Tracked> {
+    machine_trackers(1, INFUSER_TRACKED_ERRORS.len())
+}
+
+fn machine_trackers(chemical_tanks: usize, tracked_errors: usize) -> Vec<Tracked> {
+    let mut list = TileTrackers {
+        security: true,
+        redstone: true,
+        chemical_tanks,
+        energy: Some(EnergyTrackers {
+            last_energy: true,
+            adjustable: true,
+        }),
+        ..TileTrackers::default()
+    }
+    .trackers();
+    list.extend(recipe_machine_trackers(tracked_errors));
+    list.extend(progress_machine_trackers());
+    list
+}
+
+/// O que a janela de upgrades acrescenta (`TileComponentUpgrade.getSpecificSyncableData`), na chave `UPGRADE_TRACKING_KEY`.
+pub fn upgrade_window_data() -> [Tracked; 2] {
+    upgrade_window_trackers()
+}
 
 /// `EnumColor.getColor` pelo nome que o arquivo do tipo de upgrade usa (`color`), a cor primária (`colormap/primary.png`) em ARGB. Só as
 /// que os tipos declarados usam; um nome que não é daqui vale branco, o que o `Upgrade.argb()` de uma cor sem tinta dá.
