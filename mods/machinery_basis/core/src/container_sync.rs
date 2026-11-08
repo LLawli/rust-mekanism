@@ -17,6 +17,29 @@ pub enum DirtyType {
     Dirty,
 }
 
+/// O `ResourceType` de `ResourceStackPropertyData`: o que o pacote diz do recurso de uma pilha antes do id dela (item, fluido ou químico), para o
+/// cliente escolher o `StackHelper` que a decodifica. É o `idMapper` do `StreamCodec` do Java (`VarInt` do ordinal), e um id fora de 0 a 2 volta
+/// ao começo (`ByIdMap.OutOfBoundsStrategy.WRAP`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResourceType {
+    Item,
+    Fluid,
+    Chemical,
+}
+
+impl ResourceType {
+    const ALL: [Self; 3] = [Self::Item, Self::Fluid, Self::Chemical];
+
+    pub fn ordinal(self) -> i32 {
+        self as i32
+    }
+
+    /// `ByIdMap.continuous(ResourceType::ordinal, values(), WRAP)`.
+    pub fn by_id(id: i32) -> Self {
+        Self::ALL[id.rem_euclid(Self::ALL.len() as i32) as usize]
+    }
+}
+
 /// A classe do `Syncable*`: o que decide como se compara com o último valor e o que se manda.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -31,8 +54,8 @@ pub enum Kind {
     /// `SyncableEnum`: o último valor começa no padrão que a criação dá (`defaultValue`), não no que o getter devolve. Manda o
     /// ordinal, como um `IntPropertyData`.
     Enum { default: i32 },
-    /// `SyncableLargeResourceStack`: o último valor começa na pilha vazia.
-    LargeResourceStack,
+    /// `SyncableLargeResourceStack`: o último valor começa na pilha vazia. O tipo é o do contêiner (`handler.stackHelper()`).
+    LargeResourceStack(ResourceType),
     /// `SyncableStreamCodec`: compara o `hashCode` do valor com o último (que começa em zero) e manda os bytes do codec.
     StreamCodec,
 }
@@ -47,7 +70,7 @@ impl Kind {
             Self::Long => "SyncableLong",
             Self::Double => "SyncableDouble",
             Self::Enum { .. } => "SyncableEnum",
-            Self::LargeResourceStack => "SyncableLargeResourceStack",
+            Self::LargeResourceStack(_) => "SyncableLargeResourceStack",
             Self::StreamCodec => "SyncableStreamCodec",
         }
     }
@@ -112,7 +135,8 @@ pub enum PropertyData {
     /// `LongPropertyData`: um `long`, e também só o tamanho de uma pilha.
     Long(i64),
     Double(f64),
-    Stack(StackValue),
+    /// `ResourceStackPropertyData`: o tipo do recurso e a pilha.
+    Stack(ResourceType, StackValue),
     Bytes(Vec<u8>),
 }
 
@@ -162,7 +186,7 @@ impl Syncable {
             Kind::Long => Last::Long(0),
             Kind::Double => Last::Double(0.0),
             Kind::Enum { default } => Last::Enum(default),
-            Kind::LargeResourceStack => Last::Stack(StackValue::default()),
+            Kind::LargeResourceStack(_) => Last::Stack(StackValue::default()),
             Kind::StreamCodec => Last::Hash(0),
         };
         Self { tracked, last }
@@ -248,12 +272,12 @@ impl Syncable {
             }
             (Kind::Long, Value::Long(value)) => PropertyData::Long(*value),
             (Kind::Double, Value::Double(value)) => PropertyData::Double(*value),
-            (Kind::LargeResourceStack, Value::Stack(stack)) => {
+            (Kind::LargeResourceStack(kind), Value::Stack(stack)) => {
                 if dirty == DirtyType::Size {
                     // Só o tamanho mudou: não se reenvia o tipo.
                     PropertyData::Long(i64::try_from(stack.amount).unwrap_or(i64::MAX))
                 } else {
-                    PropertyData::Stack(stack.clone())
+                    PropertyData::Stack(kind, stack.clone())
                 }
             }
             (Kind::StreamCodec, Value::Codec { bytes, .. }) => PropertyData::Bytes(bytes.clone()),
@@ -469,27 +493,35 @@ impl<K: Ord> ContainerMirror<K> {
             | (Kind::Int | Kind::Enum { .. }, PropertyData::Int(_))
             | (Kind::Long, PropertyData::Long(_))
             | (Kind::Double, PropertyData::Double(_))
-            | (Kind::StreamCodec, PropertyData::Bytes(_))
-            | (Kind::LargeResourceStack, PropertyData::Stack(_)) => {
+            | (Kind::StreamCodec, PropertyData::Bytes(_)) => {
+                slot.value = Some(data.clone());
+                true
+            }
+            // O tipo que o pacote diz tem de ser o do contêiner: o cliente do Java decodifica a pilha com o `StackHelper` do tipo e a entrega
+            // ao `setContents` do dado, que não aceita outro tipo.
+            (Kind::LargeResourceStack(wanted), PropertyData::Stack(sent, _)) if wanted == *sent => {
                 slot.value = Some(data.clone());
                 true
             }
             // `SyncableLargeResourceStack.set(long)`: só a quantidade, sobre o recurso que o cliente já tem.
-            (Kind::LargeResourceStack, PropertyData::Long(amount)) => {
+            (Kind::LargeResourceStack(kind), PropertyData::Long(amount)) => {
                 let current = match &slot.value {
-                    Some(PropertyData::Stack(stack)) => stack.clone(),
+                    Some(PropertyData::Stack(_, stack)) => stack.clone(),
                     _ => StackValue::default(),
                 };
                 if !current.is_empty() {
                     let amount = u64::try_from(*amount).unwrap_or(0);
-                    slot.value = Some(PropertyData::Stack(if amount == 0 {
-                        StackValue::default()
-                    } else {
-                        StackValue {
-                            resource: current.resource,
-                            amount,
-                        }
-                    }));
+                    slot.value = Some(PropertyData::Stack(
+                        kind,
+                        if amount == 0 {
+                            StackValue::default()
+                        } else {
+                            StackValue {
+                                resource: current.resource,
+                                amount,
+                            }
+                        },
+                    ));
                 }
                 true
             }
@@ -559,8 +591,8 @@ impl<K: Ord> ContainerMirror<K> {
     pub fn stack(&self, position: usize) -> StackValue {
         match self.slot(position) {
             Some(Mirrored {
-                kind: Kind::LargeResourceStack,
-                value: Some(PropertyData::Stack(stack)),
+                kind: Kind::LargeResourceStack(_),
+                value: Some(PropertyData::Stack(_, stack)),
             }) => stack.clone(),
             _ => StackValue::default(),
         }
@@ -583,7 +615,7 @@ impl<K: Ord> ContainerMirror<K> {
 /// diz ao cliente a lista de dados do menu. O recurso de uma pilha vai só como id, sem o `ResourceType`: o tipo do tanque é o da lista.
 pub mod wire {
     use super::PropertyData;
-    use super::{Property, StackValue};
+    use super::{Property, ResourceType, StackValue};
 
     /// `PropertyType.ordinal()`.
     const BOOLEAN: u8 = 0;
@@ -702,9 +734,10 @@ pub mod wire {
                     write_var_int(&mut bytes, i32::try_from(value.len()).unwrap_or(i32::MAX));
                     bytes.extend_from_slice(value);
                 }
-                PropertyData::Stack(StackValue { resource, amount }) => {
+                PropertyData::Stack(kind, StackValue { resource, amount }) => {
                     bytes.push(LARGE_RESOURCE_STACK);
                     bytes.extend_from_slice(&index.to_be_bytes());
+                    write_var_int(&mut bytes, kind.ordinal());
                     write_text(&mut bytes, resource);
                     write_var_long(&mut bytes, i64::try_from(*amount).unwrap_or(i64::MAX));
                 }
@@ -738,10 +771,16 @@ pub mod wire {
                     let length = usize::try_from(read_var_long(bytes, 5)?).ok()?;
                     PropertyData::Bytes(read_bytes(bytes, length)?.to_vec())
                 }
-                LARGE_RESOURCE_STACK => PropertyData::Stack(StackValue {
-                    resource: read_text(bytes)?,
-                    amount: u64::try_from(read_var_long(bytes, 10)? as i64).unwrap_or(0),
-                }),
+                LARGE_RESOURCE_STACK => {
+                    let kind = ResourceType::by_id(read_var_long(bytes, 5)? as u32 as i32);
+                    PropertyData::Stack(
+                        kind,
+                        StackValue {
+                            resource: read_text(bytes)?,
+                            amount: u64::try_from(read_var_long(bytes, 10)? as i64).unwrap_or(0),
+                        },
+                    )
+                }
                 _ => return None,
             };
             data.push((index, value));
@@ -849,7 +888,7 @@ mod tests {
     #[test]
     fn a_stack_sends_only_the_size_when_the_resource_is_the_same() {
         let values = Values::default();
-        let mut sync = one(Kind::LargeResourceStack);
+        let mut sync = one(Kind::LargeResourceStack(ResourceType::Chemical));
         values.set(0, stack("", 0));
         assert_eq!(
             sync.broadcast_changes(&values),
@@ -861,10 +900,13 @@ mod tests {
         assert_eq!(sent[0].dirty, DirtyType::Dirty);
         assert_eq!(
             sent[0].data,
-            PropertyData::Stack(StackValue {
-                resource: "mekanism:redstone".into(),
-                amount: 30
-            })
+            PropertyData::Stack(
+                ResourceType::Chemical,
+                StackValue {
+                    resource: "mekanism:redstone".into(),
+                    amount: 30
+                }
+            )
         );
         values.set(0, stack("mekanism:redstone", 29));
         let sent = sync.broadcast_changes(&values);
@@ -877,7 +919,10 @@ mod tests {
         values.set(0, stack("", 0));
         let sent = sync.broadcast_changes(&values);
         assert_eq!(sent[0].dirty, DirtyType::Dirty);
-        assert_eq!(sent[0].data, PropertyData::Stack(StackValue::default()));
+        assert_eq!(
+            sent[0].data,
+            PropertyData::Stack(ResourceType::Chemical, StackValue::default())
+        );
     }
 
     #[test]
@@ -929,7 +974,7 @@ mod tests {
         let values = Values::default();
         let mut sync = ContainerSync::<u8>::new(&[
             Tracked::new(0, Kind::Int),
-            Tracked::new(1, Kind::LargeResourceStack),
+            Tracked::new(1, Kind::LargeResourceStack(ResourceType::Chemical)),
         ]);
         values.set(0, Value::Int(0));
         values.set(1, stack("a", 5));
@@ -938,10 +983,13 @@ mod tests {
         assert_eq!(sent[1].dirty, DirtyType::Dirty);
         assert_eq!(
             sent[1].data,
-            PropertyData::Stack(StackValue {
-                resource: "a".into(),
-                amount: 5
-            })
+            PropertyData::Stack(
+                ResourceType::Chemical,
+                StackValue {
+                    resource: "a".into(),
+                    amount: 5
+                }
+            )
         );
         assert_eq!(sync.broadcast_changes(&values), []);
     }
@@ -1004,7 +1052,7 @@ mod tests {
             Tracked::new(2, Kind::Long),
             Tracked::new(3, Kind::Double),
             Tracked::new(4, Kind::Enum { default: 2 }),
-            Tracked::new(5, Kind::LargeResourceStack),
+            Tracked::new(5, Kind::LargeResourceStack(ResourceType::Chemical)),
             Tracked::new(6, Kind::StreamCodec),
         ]);
         // Antes de o servidor mandar: os padrões.
@@ -1049,16 +1097,22 @@ mod tests {
 
     #[test]
     fn a_size_only_stack_changes_the_amount_of_the_stack_the_client_has() {
-        let mut mirror = mirror_of(&[Tracked::new(0, Kind::LargeResourceStack)]);
+        let mut mirror = mirror_of(&[Tracked::new(
+            0,
+            Kind::LargeResourceStack(ResourceType::Chemical),
+        )]);
         // Sem pilha no cliente, `set(long)` não faz nada (`if (!stack.isEmpty())`).
         assert!(mirror.apply(0, &PropertyData::Long(40)));
         assert_eq!(mirror.stack(0), StackValue::default());
         mirror.apply(
             0,
-            &PropertyData::Stack(StackValue {
-                resource: "mekanism:carbon".into(),
-                amount: 100,
-            }),
+            &PropertyData::Stack(
+                ResourceType::Chemical,
+                StackValue {
+                    resource: "mekanism:carbon".into(),
+                    amount: 100,
+                },
+            ),
         );
         mirror.apply(0, &PropertyData::Long(40));
         assert_eq!(
@@ -1105,12 +1159,18 @@ mod tests {
                 (6, PropertyData::Bytes(vec![1, 5, 2])),
                 (
                     7,
-                    PropertyData::Stack(StackValue {
-                        resource: "mekanism:carbon".into(),
-                        amount: 1000,
-                    }),
+                    PropertyData::Stack(
+                        ResourceType::Chemical,
+                        StackValue {
+                            resource: "mekanism:carbon".into(),
+                            amount: 1000,
+                        },
+                    ),
                 ),
-                (8, PropertyData::Stack(StackValue::default())),
+                (
+                    8,
+                    PropertyData::Stack(ResourceType::Chemical, StackValue::default()),
+                ),
             ],
         };
         assert_eq!(wire::decode(&wire::encode(&packet)), Some(packet));
@@ -1120,6 +1180,64 @@ mod tests {
             data: Vec::new(),
         };
         assert_eq!(wire::decode(&wire::encode(&update)), Some(update));
+    }
+
+    /// `ResourceStackPropertyData.ResourceType`: o ordinal (item 0, fluido 1, químico 2) vai antes do id do recurso, e cada tipo volta como foi.
+    #[test]
+    fn a_stack_on_the_wire_carries_its_resource_type_before_the_id() {
+        for (kind, ordinal) in [
+            (ResourceType::Item, 0u8),
+            (ResourceType::Fluid, 1),
+            (ResourceType::Chemical, 2),
+        ] {
+            let packet = wire::Packet {
+                pos: [0, 0, 0],
+                opens: None,
+                data: vec![(
+                    3,
+                    PropertyData::Stack(
+                        kind,
+                        StackValue {
+                            resource: "a".into(),
+                            amount: 7,
+                        },
+                    ),
+                )],
+            };
+            let bytes = wire::encode(&packet);
+            // opens (1) + pos (12) + contagem (1) + classe (1) + índice (2) = 17: depois vêm o tipo, o tamanho do texto (1) e o texto.
+            assert_eq!(&bytes[17..20], [ordinal, 1, b'a'], "{kind:?}");
+            assert_eq!(wire::decode(&bytes), Some(packet));
+        }
+    }
+
+    /// O `ByIdMap` do Java volta ao começo para um id fora dos três (`WRAP`).
+    #[test]
+    fn a_resource_type_id_out_of_range_wraps() {
+        assert_eq!(ResourceType::by_id(3), ResourceType::Item);
+        assert_eq!(ResourceType::by_id(5), ResourceType::Chemical);
+        assert_eq!(ResourceType::by_id(-1), ResourceType::Chemical);
+    }
+
+    /// O cliente do Java decodifica a pilha com o `StackHelper` do tipo e a entrega ao dado, que não aceita outro tipo: o pacote de outro tipo não muda o
+    /// que o cliente guarda.
+    #[test]
+    fn a_stack_of_another_resource_type_is_not_applied() {
+        let mut mirror = mirror_of(&[Tracked::new(
+            0,
+            Kind::LargeResourceStack(ResourceType::Chemical),
+        )]);
+        let stack = StackValue {
+            resource: "mekanism:carbon".into(),
+            amount: 5,
+        };
+        assert!(!mirror.apply(0, &PropertyData::Stack(ResourceType::Fluid, stack.clone())));
+        assert_eq!(mirror.stack(0), StackValue::default());
+        assert!(mirror.apply(
+            0,
+            &PropertyData::Stack(ResourceType::Chemical, stack.clone())
+        ));
+        assert_eq!(mirror.stack(0), stack);
     }
 
     #[test]

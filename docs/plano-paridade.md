@@ -397,8 +397,8 @@ Falta na Fase 1:
   **Diferenças que ficam (o port ainda não tem a peça):** (1) o componente de segurança: a frequência de segurança e o `SecurityMode`
   existem na lista mas valem `null`/`PUBLIC` (o rastro foi gravado com o bloco do molde, sem dono; uma máquina posta por jogador manda a
   frequência do dono, e o hash dela sai de `Frequency.hashCode`); entra com a aba de segurança. (2) O mapa de upgrades vai na ordem do
-  registro e não na do mapa de hash do Java (que muda de uma execução para a outra); o cliente lê os dois do mesmo jeito. (3) O pacote leva o
-  id do recurso da pilha sem o `ResourceType` do Java: o tipo do tanque (químico, fluido) é o da lista.
+  registro e não na do mapa de hash do Java (que muda de uma execução para a outra); o cliente lê os dois do mesmo jeito. **(3) Feito em 2026-11-08:** o pacote leva o `ResourceType` da pilha (item 0, fluido 1, químico 2, antes do id), como o `ResourceStackPropertyData` do Java;
+  o espelho só aceita a pilha do tipo do dado, e `tile_trackers` dá químico aos tanques de químico e fluido aos de fluido (ver "Dados sincronizados do menu" em `docs/machinery-basis.md`).
   **Parte 2 (feita, 2026-11-08): o transporte.** *Formato* (`machinery_basis_core::container_sync::wire`): o `PacketUpdateContainer`
   (`PacketUpdateContainer.java`) é um pacote no canal de mod `machinery_basis:container`, um por jogador por tick: se abre um menu (o
   `sendAllDataToRemote` do menu novo) e então traz o id do bloco, que diz ao cliente a lista de dados; a posição do bloco no lugar do `windowId`;

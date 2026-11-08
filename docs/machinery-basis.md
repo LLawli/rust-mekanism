@@ -265,6 +265,10 @@ de pedir de novo sem parar). O valor vivo vem de um `TrackedSource`.
 uma `ProgressMachine` e lê de volta o mapa de upgrades (`read_upgrade_map`), e `last_energy.rs` é o `LastEnergyTracker` (o que a capability de
 energia entregou no tick anterior).
 
+A pilha grande leva o tipo do recurso, como o `ResourceStackPropertyData` do Java (`ResourceType`: item 0, fluido 1, químico 2, um `VarInt` antes do id): o `Kind::LargeResourceStack` carrega o `ResourceType` do contêiner
+(`tile_trackers` dá químico aos tanques de químico e fluido aos de fluido), o pacote o escreve, e o espelho do cliente só aceita a pilha do tipo do dado dele (o cliente do Java decodifica com o `StackHelper` do tipo e o `setContents`
+do dado recusa outro).
+
 O transporte (2026-11-08) é o do original, um pacote por jogador. No servidor, `window_session::Sessions` guarda um `ContainerSync` por (contêiner,
 jogador): a sessão nasce quando o jogador abre o menu (`Game::mb_container_open`, que manda tudo) e é largada quando ele deixa de ter o menu
 daquele bloco (`mb_container_recount`); `mb_container_broadcast`, no começo do tick do servidor, lê o valor vivo que o dono do bloco entrega

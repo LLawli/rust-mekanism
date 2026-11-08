@@ -178,6 +178,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O pacote do menu leva o `ResourceType` da pilha (item, fluido ou químico, antes do id), como o `ResourceStackPropertyData` do Java, e o espelho só aceita a pilha do tipo do dado. Sem mudança que o jogador veja.
 - O `redstone` das quatro máquinas e do Heat Generator só muda quando o jogo avisa o bloco, como no original (`updatePower`, `TileEntityMekanism.java:1109`): `BlockTile.neighborChanged`
   (um vizinho que mudou com a flag 1 do `setBlock`), `onNeighborChange` do NeoForge (uma máquina vizinha que mudou o nível do comparador) e `onAdded` (o bloco posto com um
   item). O port lia o sinal dos seis vizinhos a cada tick da máquina, então uma mudança que não avisa (`/setblock ... strict`, `setBlock` sem a flag 1) ligava ou desligava

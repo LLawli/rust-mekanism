@@ -3,7 +3,7 @@
 //! (`TileComponentUpgrade.getSpecificSyncableData`). Cada classe de máquina acrescenta os dela depois (o Heat Generator, a produção e
 //! as duas perdas). A lib não sabe de onde vem o valor de cada dado: a [`source`] só dá nomes às fontes que a estrutura do tile
 //! tem, e quem usa implementa o [`crate::container_sync::TrackedSource`] sobre o tile vivo.
-use crate::container_sync::{Kind, Tracked};
+use crate::container_sync::{Kind, ResourceType, Tracked};
 
 /// Os identificadores de fonte da estrutura do tile. As máquinas acrescentam as delas a partir de [`MOD`].
 pub mod source {
@@ -89,13 +89,13 @@ impl TileTrackers {
         for index in 0..self.chemical_tanks {
             list.push(Tracked::new(
                 source::CHEMICAL_TANK + index as u16,
-                Kind::LargeResourceStack,
+                Kind::LargeResourceStack(ResourceType::Chemical),
             ));
         }
         for index in 0..self.fluid_tanks {
             list.push(Tracked::new(
                 source::FLUID_TANK + index as u16,
-                Kind::LargeResourceStack,
+                Kind::LargeResourceStack(ResourceType::Fluid),
             ));
         }
         if self.heat {

@@ -352,7 +352,7 @@ fn actual_entry(property: &Property) -> Value {
         PropertyData::Int(value) => json!(value),
         PropertyData::Long(value) => json!(value),
         PropertyData::Double(value) => json!(value),
-        PropertyData::Stack(stack) => json!({"resource": stack.resource, "amount": stack.amount}),
+        PropertyData::Stack(_, stack) => json!({"resource": stack.resource, "amount": stack.amount}),
         PropertyData::Bytes(bytes) => bytes_json(bytes),
     };
     json!([property.index, property.class, dirty, value])
@@ -411,7 +411,7 @@ fn mirror_value(mirror: &Mirror, position: usize, kind: DataKind) -> Value {
         DataKind::Enum { .. } => json!(mirror.enum_ordinal(position)),
         DataKind::Long => json!(mirror.long(position)),
         DataKind::Double => json!(mirror.double(position)),
-        DataKind::LargeResourceStack => {
+        DataKind::LargeResourceStack(_) => {
             let stack = mirror.stack(position);
             json!({"resource": stack.resource, "amount": stack.amount})
         }
