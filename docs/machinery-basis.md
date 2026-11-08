@@ -47,6 +47,7 @@ serve a outros mods.
 | Receitas incompletas | O Horizon só diz que um ingrediente não resolveu nada, e o log só sairia no primeiro uso da máquina | `incomplete_recipes(game, tipos..)` lê já na carga as receitas dos tipos que o mod usa e devolve os ids das que ficaram sem item (tag vazia), com `Incomplete recipe detected` e `Empty tag` no log, para o mod decidir a mensagem (a do Mekanism é `IncompleteRecipeScanner`) |
 | Telas | `native_screen` e `native_sprite` são primitivas, e o Horizon só lê o `gui.scaling` dos sprites do vanilla | Painel e molduras de nove partes pelo `.mcmeta` do mod, mosaico com âncora e corte, barra e medidor de tanque, seta de progresso, slots pelo papel que a configuração de lados dá, rótulos, tooltip de widget |
 | Faces relativas | `faces` são absolutas e por tipo de bloco, e a máquina gira | Conversão de lado relativo para direção, pelo `facing` |
+| Arquivos de configuração | O Horizon entrega o texto do arquivo (`Client`, `Common` ou `Server`) e o resto é do mod | `client_config`: a especificação, a leitura, a correção e o texto do `ModConfigSpec`, mais `settings` para o que as máquinas leem no uso (seção abaixo) |
 
 **Reimplementar:** o Horizon não tem, ou não serve para a meta.
 
@@ -120,6 +121,26 @@ divisão vai aos primeiros. Por isso persistência e chunk descarregado saem de 
 
 Sem guardar, dez geradores numa rede de mil cabos custariam até 30 ms dos 50 ms de um tick. A travessia dura 20 ticks, então
 uma mudança leva até um segundo para valer, e a energia só espera no transmissor.
+
+## Arquivos de configuração
+
+O Horizon lê os arquivos de configuração de um mod (`native_register_configs`, `config_loading`, `config_reloading`: `Client` na janela, `Common` uma vez por processo, `Server` a cada mundo, com a cópia do mundo em lugar da de `config/`) e entrega o
+texto. O resto é do mod, e é o mesmo para todo mod que use o `ModConfigSpec`: `machinery_basis_core::client_config` (o nome é o da primeira versão, só o arquivo de cliente; a API pública não mudou). O mod dá uma `Spec` (seções, chaves, padrão,
+limite e comentário, em `const`), e a lib dá o que o NeoForge faz:
+
+| Parte | O que faz | Java |
+|---|---|---|
+| Tipos | `Bool`, `Float` (`double`), `Int`, `Long` e `IntWhere` (`define(.., validador)`, sem faixa, que pode olhar outra chave) | `ModConfigSpec.Builder.define*` |
+| Correção | Número fora do limite vai ao limite; outro tipo, chave que falta ou validador que recusa vão ao padrão; um número com ponto em chave de `int` vai ao padrão (o Java falha ao ler) | `Range.correct`, `ValueSpec.correct` |
+| Validador entre chaves | Num arquivo ainda não lido vê o padrão da outra chave, numa releitura vê o valor de antes (`Spec::load_after`) | `CachedValue.getOrDefault`, medido: `heatGenerationFluidRate = 3000` com `tankCapacity = 5000` voltou a 100 |
+| Texto | Comentário da seção sem espaço depois do `#`, um tab por nível, `# Default:` e `# Range:` só nos números (`> mínimo` quando o máximo é `Integer.MAX_VALUE`), a raiz primeiro e sem recuo, `Double.toString` do Java | `NightConfig`, `Range.toString` |
+| Nomes com ponto | `rendering.particle` é sub-seção de `rendering`, um nível a mais de recuo; o nome vazio é a raiz | |
+| Reescrita | Escreve de novo o que precisou de correção (valor, chave ou seção que falta, comentário diferente), na ordem do arquivo, e **guarda** o que a `Spec` não conhece | `ModConfigSpec.correct` (que apaga; aqui a `Spec` é parcial) |
+| Cópia | `<nome>-1.toml.bak` com o arquivo de antes, até cinco (`back_up`) | `ConfigFileTypeHandler.backUpConfig` |
+| Valor vivo | `settings::ConfigValue`: fixo ou lido na hora, o `IntSupplier` que o tile guarda; `MachineSettings` (`blockDeactivationDelay`, `maxUpgradeMultiplier`) é o que as máquinas de qualquer mod leem | `MekanismConfig.general.*.get()` |
+
+O mod diz os nomes e os valores, a lib não sabe de máquina: `mekanism_rules` tem as `Spec` de `general`, `machine-usage`, `tiers` e `client`, e `mekanismgenerators_rules` as de `generators` e `generator-storage`. As posições das janelas
+(`window.<nome>`) moram no mesmo arquivo de cliente e são de `window::WindowPositions`, que escreve o bloco no texto do original e que a `Spec` deixa como está.
 
 ## Dados de um mod que já tem formato
 
