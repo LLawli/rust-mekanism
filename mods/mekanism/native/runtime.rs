@@ -3,9 +3,8 @@
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
 use machinery_basis_core::components::Components;
-use machinery_basis_core::container_sync::Tracked;
+use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
-use machinery_basis_core::data_slots;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::operation_tracker::RecipeError;
@@ -20,18 +19,18 @@ use machinery_basis_core::tile::{
     RedstoneSync, UpgradeConfig, machine_energy_slot_accepts,
 };
 use machinery_basis_core::tile_trackers::{
-    EnergyTrackers, TileTrackers, progress_machine_trackers, recipe_machine_trackers,
-    upgrade_window_trackers,
+    EnergyTrackers, TileTrackers, position_of, progress_machine_trackers, recipe_machine_trackers,
+    source, upgrade_window_trackers,
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
-use machinery_basis_core::upgrade_window::UpgradeSync;
 use machinery_basis_core::warning::{ErrorMask, WarningTracker};
 use machinery_basis_core::window::WindowType;
 use serde_json::Value;
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 pub const INFUSER: &str = "mekanism:metallurgic_infuser";
 
@@ -246,11 +245,11 @@ pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
 pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_elements::Element> {
     use machinery_basis_core::screen_elements::Element;
     vec![
-        Element::when(machinery_basis_core::gui::WARNING_TAB_LEFT, move |data| {
-            screen.view(data).tab()
+        Element::when(machinery_basis_core::gui::WARNING_TAB_LEFT, move |mirror| {
+            screen.view(mirror).tab()
         }),
-        Element::when(xp_tab().tab.button(), move |data| {
-            ScreenData::read(screen.data, data).xp_containment
+        Element::when(xp_tab().tab.button(), move |mirror| {
+            mirror.boolean((screen.indexes)().xp_containment)
         }),
         Element::always(ENERGY_TAB.rect),
     ]
@@ -435,7 +434,7 @@ pub const INFUSER_WARNINGS: [(ScreenElement, WarningType, RecipeError); 5] = [
     ),
 ];
 
-/// O que as verificações de aviso leem de uma máquina: no servidor, o objeto vivo; no cliente, o que os data slots trouxeram.
+/// O que as verificações de aviso leem de uma máquina: no servidor, o objeto vivo; no cliente, o que o servidor sincronizou.
 pub trait WarningSource {
     /// `getWarningCheck(error)`.
     fn has_error(&self, error: RecipeError) -> bool;
@@ -459,24 +458,13 @@ impl WarningSource for ProgressMachine {
     }
 }
 
-/// O que o cliente tem da máquina: a máscara de erros rastreados de um data slot, a lista rastreada que o mod conhece (a mesma da
-/// máquina) e o que `addContainerTrackers` manda de redstone (o modo, `redstone` e `redstoneLastTick`).
+/// O que o cliente tem da máquina: a máscara dos erros rastreados (um `SyncableBoolean` por erro), a lista rastreada que o mod conhece (a
+/// mesma da máquina) e o que `addContainerTrackers` manda de redstone (o modo, `redstone` e `redstoneLastTick`).
 #[derive(Clone, Copy, Debug)]
 pub struct SyncedMachine {
     pub tracked: &'static [RecipeError],
     pub errors: ErrorMask,
     pub redstone: RedstoneSync,
-}
-
-impl SyncedMachine {
-    /// O que o servidor manda de uma máquina: a máscara e o redstone. Os mesmos valores que o cliente lê dos data slots.
-    pub fn of(machine: &ProgressMachine, tracked: &'static [RecipeError]) -> Self {
-        Self {
-            tracked,
-            errors: machine.tracked_errors_mask(),
-            redstone: machine.tile().redstone_sync(),
-        }
-    }
 }
 
 impl WarningSource for SyncedMachine {
@@ -515,142 +503,82 @@ pub fn machine_warnings<'a>(
     tracker
 }
 
-/// Onde cada valor fica nos data slots da tela de uma máquina. Cada slot trafega em 16 bits: energia, tint e capacidade ocupam dois.
-/// A capacidade muda com os upgrades e a tela não a sabe de cabeça, e os `ticksRequired` também (`TileEntityProgressMachine`
-/// sincroniza os dois). A máscara de erros e o redstone são o que `SyncedMachine` lê.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DataLayout {
-    pub energy: usize,
+/// Onde cada dado da tela fica na lista do menu (`trackedData`): a posição que o servidor mandou no `PacketUpdateContainer` e o cliente
+/// lê do espelho. Sai da própria lista de `addContainerTrackers` (`electric_trackers`, `infuser_trackers`), a mesma que o servidor
+/// sincroniza, então não há outro lugar onde combinar posições. A capacidade muda com os upgrades, e a tela não a sabe de cabeça; os
+/// `ticksRequired` também (`TileEntityProgressMachine` sincroniza os dois).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScreenIndexes {
+    pub control_type: usize,
+    pub powered: usize,
+    pub was_powered: usize,
     /// O tanque de químico, nas máquinas que têm um.
-    pub chemical: Option<ChemicalSlots>,
-    pub progress: usize,
+    pub chemical: Option<usize>,
     pub capacity: usize,
-    pub errors: usize,
-    pub redstone: usize,
-    /// `ticksRequired`: com upgrades de velocidade a seta de progresso se enche por ele, não pelo de base.
-    pub ticks_required: usize,
-    /// Onde começam os data slots dos upgrades (`UPGRADE_SYNC_LEN` deles): `upgradeTicks` e uma contagem por tipo.
-    pub upgrade: usize,
-    /// `hasXpContainment`, o `SyncableBoolean` que `TileEntityRecipeMachine.addContainerTrackers` registra: a aba de xp só aparece com ele.
-    /// Fica depois dos upgrades, para os índices dos outros valores não mudarem.
-    pub xp_containment: usize,
-    /// `getEnergyPerTick` (`SyncableInt` de `addContainerTrackers`, dois slots): o `Using: N/t` da aba de energia. A aba pede o que o
-    /// contêiner do cliente tem, e ele só sabe depois do primeiro valor do servidor.
     pub energy_per_tick: usize,
-    /// Quantos data slots o menu declara: o `data_slots` do arquivo de menu.
-    pub len: usize,
+    pub energy: usize,
+    /// `trackedErrors[i]`, na ordem de `TRACKED_ERROR_TYPES`.
+    pub errors: Vec<usize>,
+    /// `hasXpContainment`: a aba de xp só aparece com ele.
+    pub xp_containment: usize,
+    /// `operatingTicks` e `ticksRequired`: com upgrades de velocidade a seta de progresso se enche por ele, não pelo de base.
+    pub progress: usize,
+    pub ticks_required: usize,
 }
 
-/// Quantos tipos de upgrade o mod declara em `data/mekanism/mekanism/upgrade`: cada um tem a contagem dele num data slot.
-pub const UPGRADE_TYPES: usize = 8;
-
-/// Os data slots dos upgrades: `upgradeTicks` e uma contagem por tipo, na ordem do registro. O Java os sincroniza só com a janela
-/// aberta, por jogador, e aqui eles são do bloco (veja `docs/mekanism-no-horizon.md`).
-pub const UPGRADE_SYNC_LEN: usize = 1 + UPGRADE_TYPES;
-
-/// Os data slots do tanque de químico: a quantidade (um slot), o `tint` ARGB do que ele guarda (dois), o sprite (um, o índice em
-/// [`CHEMICAL_ICONS`] mais um, e zero sem sprite) e o id (`CHEMICAL_ID_SLOTS` slots, dois bytes em cada), de onde sai o nome do
-/// tooltip.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ChemicalSlots {
-    pub amount: usize,
-    pub tint: usize,
-    pub icon: usize,
-    pub id: usize,
-}
-
-/// Quantos data slots levam o id do químico: 32 caracteres, o bastante para `mekanism:refined_obsidian`.
-pub const CHEMICAL_ID_SLOTS: usize = 16;
-
-pub const ELECTRIC_DATA: DataLayout = DataLayout {
-    energy: 0,
-    chemical: None,
-    progress: 2,
-    capacity: 3,
-    errors: 5,
-    redstone: 6,
-    ticks_required: 7,
-    upgrade: 8,
-    xp_containment: 8 + UPGRADE_SYNC_LEN,
-    energy_per_tick: 9 + UPGRADE_SYNC_LEN,
-    len: 11 + UPGRADE_SYNC_LEN,
-};
-
-pub const INFUSER_DATA: DataLayout = DataLayout {
-    energy: 0,
-    chemical: Some(ChemicalSlots {
-        amount: 2,
-        tint: 3,
-        icon: 11,
-        id: 12,
-    }),
-    progress: 5,
-    capacity: 6,
-    errors: 8,
-    redstone: 9,
-    ticks_required: 10,
-    upgrade: 12 + CHEMICAL_ID_SLOTS,
-    xp_containment: 12 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
-    energy_per_tick: 13 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
-    len: 15 + CHEMICAL_ID_SLOTS + UPGRADE_SYNC_LEN,
-};
-
-/// Escreve o `upgradeTicks` e o mapa de upgrades nos data slots. Fora de `ScreenData` porque o mapa não é `Copy`.
-pub fn write_upgrade_sync(data: &mut [i32], layout: &DataLayout, sync: &UpgradeSync) {
-    for (slot, value) in data
-        .iter_mut()
-        .skip(layout.upgrade)
-        .zip(sync.write(UPGRADE_SYNC_LEN))
-    {
-        *slot = value;
-    }
-}
-
-/// O tanque de químico esvaziado fora do tick (`IHasDumpButton.dump`, que o pacote `GuiInteraction.DUMP_BUTTON` roda quando chega):
-/// põe nos data slots o que o tick escreveria para um tanque vazio. O Java sincroniza o tanque ao jogador no `broadcastChanges` do
-/// menu, que roda mesmo com o servidor parado (`tick freeze`); aqui os data slots são do bloco e só o tick os escrevia.
-pub fn clear_chemical_screen(layout: &DataLayout, data: &mut [i32]) {
-    let Some(chemical) = layout.chemical else {
-        return;
-    };
-    let empty = ScreenData::default().write(layout);
-    let slots = [
-        chemical.amount,
-        chemical.tint,
-        chemical.tint + 1,
-        chemical.icon,
-    ];
-    for index in slots
-        .into_iter()
-        .chain(chemical.id..chemical.id + CHEMICAL_ID_SLOTS)
-    {
-        if let Some(slot) = data.get_mut(index) {
-            *slot = empty[index];
+impl ScreenIndexes {
+    /// As posições na lista `list` de uma máquina com `tracked_errors` erros rastreados.
+    pub fn of(list: &[Tracked], tracked_errors: usize) -> Self {
+        let at = |source| position_of(list, source);
+        Self {
+            control_type: at(source::CONTROL_TYPE),
+            powered: at(source::POWERED),
+            was_powered: at(source::WAS_POWERED),
+            chemical: list
+                .iter()
+                .any(|tracked| tracked.source == source::CHEMICAL_TANK)
+                .then(|| at(source::CHEMICAL_TANK)),
+            capacity: at(source::MAX_ENERGY),
+            energy_per_tick: at(source::ENERGY_PER_TICK),
+            energy: at(source::ENERGY),
+            errors: (0..tracked_errors)
+                .map(|index| at(source::TRACKED_ERROR + index as u16))
+                .collect(),
+            xp_containment: at(source::HAS_XP_CONTAINMENT),
+            progress: at(source::OPERATING_TICKS),
+            ticks_required: at(source::TICKS_REQUIRED),
         }
     }
+
+    /// Onde a janela de upgrades põe os dados dela (`upgradeTicks`, depois o mapa): logo depois dos do construtor.
+    pub fn window(&self, base: usize) -> [usize; 2] {
+        [base, base + 1]
+    }
 }
 
-/// O que o cliente lê dos data slots dos upgrades.
-pub fn read_upgrade_sync(layout: &DataLayout, data: &[i32]) -> UpgradeSync {
-    // Só os `UPGRADE_SYNC_LEN` do mapa: o data slot da aba de xp vem logo depois.
-    let slots = data.get(layout.upgrade..).unwrap_or_default();
-    UpgradeSync::read(&slots[..slots.len().min(UPGRADE_SYNC_LEN)])
+static ELECTRIC_INDEXES: LazyLock<ScreenIndexes> =
+    LazyLock::new(|| ScreenIndexes::of(&electric_trackers(), ELECTRIC_TRACKED_ERRORS.len()));
+static INFUSER_INDEXES: LazyLock<ScreenIndexes> =
+    LazyLock::new(|| ScreenIndexes::of(&infuser_trackers(), INFUSER_TRACKED_ERRORS.len()));
+
+fn electric_indexes() -> &'static ScreenIndexes {
+    &ELECTRIC_INDEXES
 }
 
-/// O que o servidor escreve nos data slots de uma máquina e o cliente lê.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+fn infuser_indexes() -> &'static ScreenIndexes {
+    &INFUSER_INDEXES
+}
+
+/// O que o cliente lê do espelho do menu de uma máquina.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ScreenData {
     pub energy: u32,
     pub capacity: u32,
     pub progress: i32,
     /// `ticksRequired`, zero antes de o servidor mandar.
     pub ticks_required: i32,
-    /// A quantidade do tanque de químico, o `tint` ARGB do que ele guarda e o sprite (índice em [`CHEMICAL_ICONS`] mais um).
-    pub chemical_amount: i32,
-    pub chemical_tint: u32,
-    pub chemical_icon: u32,
-    /// O id do químico, empacotado como [`data_slots::pack_text`]; vazio sem químico.
-    pub chemical_id: [u16; CHEMICAL_ID_SLOTS],
+    /// O tanque de químico (o id do químico, vazio sem nenhum, e a quantidade); o `tint` e o sprite saem do registro, pelo id.
+    pub chemical: StackValue,
     pub errors: ErrorMask,
     pub redstone: RedstoneSync,
     /// `hasXpContainment()` no servidor: o upgrade de xp está instalado (ou o tipo saiu do registro).
@@ -660,136 +588,35 @@ pub struct ScreenData {
 }
 
 impl ScreenData {
-    pub fn write(&self, layout: &DataLayout) -> Vec<i32> {
-        let mut data = vec![0; layout.len];
-        let [low, high] = data_slots::split(self.energy);
-        data[layout.energy] = low;
-        data[layout.energy + 1] = high;
-        data[layout.progress] = self.progress;
-        let [low, high] = data_slots::split(self.capacity);
-        data[layout.capacity] = low;
-        data[layout.capacity + 1] = high;
-        if let Some(chemical) = layout.chemical {
-            data[chemical.amount] = self.chemical_amount;
-            let [low, high] = data_slots::split(self.chemical_tint);
-            data[chemical.tint] = low;
-            data[chemical.tint + 1] = high;
-            data[chemical.icon] = self.chemical_icon as i32;
-            for (index, slot) in self.chemical_id.iter().enumerate() {
-                data[chemical.id + index] = i32::from(*slot as i16);
-            }
-        }
-        data[layout.errors] = self.errors.to_slot();
-        data[layout.redstone] = self.redstone.to_slot();
-        data[layout.ticks_required] = self.ticks_required;
-        data[layout.xp_containment] = i32::from(self.xp_containment);
-        let [low, high] = data_slots::split(self.energy_per_tick);
-        data[layout.energy_per_tick] = low;
-        data[layout.energy_per_tick + 1] = high;
-        data
-    }
-
-    /// O que o cliente lê. Antes dos primeiros valores do servidor os data slots estão vazios, e o que falta vale zero.
-    pub fn read(layout: &DataLayout, data: &[i32]) -> Self {
-        let get = |index: usize| data.get(index).copied().unwrap_or(0);
-        let chemical = layout.chemical.map(|chemical| {
-            let mut id = [0u16; CHEMICAL_ID_SLOTS];
-            for (index, slot) in id.iter_mut().enumerate() {
-                *slot = get(chemical.id + index) as u16;
-            }
-            (
-                get(chemical.amount),
-                data_slots::join(get(chemical.tint), get(chemical.tint + 1)),
-                get(chemical.icon) as u32 & 0xFFFF,
-                id,
-            )
-        });
-        let (chemical_amount, chemical_tint, chemical_icon, chemical_id) =
-            chemical.unwrap_or_default();
+    /// O que o cliente lê. Antes dos primeiros valores do servidor o espelho está vazio, e o que falta vale o padrão do dado.
+    pub fn read(spec: &ScreenSpec, mirror: &Mirror) -> Self {
+        let indexes = (spec.indexes)();
+        let unsigned = |value: i64| u32::try_from(value.clamp(0, i64::from(u32::MAX))).unwrap_or(0);
+        let flags: Vec<bool> = indexes
+            .errors
+            .iter()
+            .map(|index| mirror.boolean(*index))
+            .collect();
         Self {
-            energy: data_slots::join(get(layout.energy), get(layout.energy + 1)),
-            capacity: data_slots::join(get(layout.capacity), get(layout.capacity + 1)),
-            progress: get(layout.progress),
-            ticks_required: get(layout.ticks_required),
-            chemical_amount,
-            chemical_tint,
-            chemical_icon,
-            chemical_id,
-            errors: ErrorMask::from_slot(get(layout.errors)),
-            redstone: RedstoneSync::from_slot(get(layout.redstone)),
-            xp_containment: get(layout.xp_containment) != 0,
-            energy_per_tick: data_slots::join(
-                get(layout.energy_per_tick),
-                get(layout.energy_per_tick + 1),
-            ),
+            energy: unsigned(mirror.long(indexes.energy)),
+            capacity: unsigned(mirror.long(indexes.capacity)),
+            progress: mirror.int(indexes.progress),
+            ticks_required: mirror.int(indexes.ticks_required),
+            chemical: indexes
+                .chemical
+                .map(|index| mirror.stack(index))
+                .unwrap_or_default(),
+            errors: ErrorMask::from_flags(&flags),
+            redstone: RedstoneSync {
+                control_type: RedstoneControl::from_ordinal(
+                    mirror.enum_ordinal(indexes.control_type),
+                ),
+                powered: mirror.boolean(indexes.powered),
+                was_powered: mirror.boolean(indexes.was_powered),
+            },
+            xp_containment: mirror.boolean(indexes.xp_containment),
+            energy_per_tick: unsigned(i64::from(mirror.int(indexes.energy_per_tick))),
         }
-    }
-}
-
-impl ScreenData {
-    /// O que o `MekanismContainer.broadcastChanges` lê de uma máquina de progresso, menos o tanque de químico: a energia é a que o tile
-    /// guarda agora (`stored`, que uma chegada de fora do tick da máquina já mudou) e a capacidade nunca fica abaixo dela
-    /// (`getCapacityAsLong`). O resto é o estado do objeto, o mesmo que o Java lê dos campos.
-    pub fn of_machine(machine: &ProgressMachine, stored: i64) -> Self {
-        let clamp = |value: i64| i32::try_from(value).unwrap_or(i32::MAX) as u32;
-        Self {
-            energy: clamp(stored),
-            capacity: clamp(machine.energy().capacity().max(stored)),
-            progress: machine.recipe_progress(),
-            ticks_required: machine.ticks_required(),
-            errors: machine.tracked_errors_mask(),
-            redstone: machine.tile().redstone_sync(),
-            xp_containment: machine.has_xp_containment(),
-            energy_per_tick: machine.energy().energy_per_tick().max(0) as u32,
-            ..Self::default()
-        }
-    }
-}
-
-/// Os data slots da tela de uma máquina no servidor, e quando eles são escritos. O Java não escreve nada no tick do bloco: o
-/// `MekanismContainer.broadcastChanges` roda no `ServerPlayer.tick` (`ServerPlayer.java:606`, na fase das entidades, antes dos block
-/// entities) e lê o valor vivo de cada `ISyncableData`, então o quadro que o cliente recebe a cada tick é o estado do fim do tick
-/// anterior, com a energia que chegou depois do tick da máquina e o erro que ela ainda não recalculou. O port escreve o quadro no
-/// `ServerTickEnd` (`server_tick_end`), depois de tudo o que mexe na máquina no tick, e o Horizon o manda no tick seguinte, antes dos
-/// block entities, como o `broadcastChanges`. O tick da máquina (`machine_ticked`) só guarda o que a janela de upgrades mostra, que o
-/// Java sincroniza um tick depois (ver [`UpgradeSync`]).
-#[derive(Debug, Default)]
-pub struct TileScreen {
-    /// O que a janela de upgrades viu no tick da máquina anterior.
-    seen: Option<UpgradeSync>,
-    /// O que o tick da máquina de agora manda: o valor que o tick anterior guardou.
-    shown: Option<UpgradeSync>,
-    frame: Vec<i32>,
-}
-
-impl TileScreen {
-    /// O fim do tick da máquina (`tickServer`). O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na batida
-    /// seguinte da tela: o cliente do original mostra o valor de um tick atrás (medido: passos 10 do original igual a passos 9 do
-    /// port).
-    pub fn machine_ticked(&mut self, upgrades: UpgradeSync) {
-        self.shown = Some(self.seen.replace(upgrades.clone()).unwrap_or(upgrades));
-    }
-
-    /// `ServerTickEvent.Post`: o quadro que o `broadcastChanges` do tick seguinte lê. O Java só sincroniza `upgradeTicks` e o mapa
-    /// com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só levam o valor enquanto alguém acompanha
-    /// (`window_tracking`), e ficam em zero (sem tráfego) no resto do tempo.
-    pub fn server_tick_end(
-        &mut self,
-        layout: &DataLayout,
-        screen: ScreenData,
-        window_tracking: bool,
-    ) -> &[i32] {
-        let mut frame = screen.write(layout);
-        if window_tracking && let Some(shown) = &self.shown {
-            write_upgrade_sync(&mut frame, layout, shown);
-        }
-        self.frame = frame;
-        &self.frame
-    }
-
-    /// O quadro do último `server_tick_end`; vazio antes do primeiro.
-    pub fn frame(&self) -> &[i32] {
-        &self.frame
     }
 }
 
@@ -799,7 +626,9 @@ impl TileScreen {
 pub struct ScreenSpec {
     pub tracked: &'static [RecipeError],
     pub warnings: &'static ScreenWarnings,
-    pub data: &'static DataLayout,
+    /// Os dados que o menu sincroniza (`addContainerTrackers`) e onde cada um da tela fica nessa lista.
+    pub trackers: fn() -> Vec<Tracked>,
+    pub indexes: fn() -> &'static ScreenIndexes,
     pub item_config: &'static ItemConfig,
     pub slots: &'static [SlotSpec],
 }
@@ -875,7 +704,8 @@ pub const INFUSER_SLOTS_SPEC: [SlotSpec; SLOTS] = [
 pub const ELECTRIC_SCREEN: ScreenSpec = ScreenSpec {
     tracked: &ELECTRIC_TRACKED_ERRORS,
     warnings: &ELECTRIC_WARNINGS,
-    data: &ELECTRIC_DATA,
+    trackers: electric_trackers,
+    indexes: electric_indexes,
     item_config: &ELECTRIC_ITEM_CONFIG,
     slots: &ELECTRIC_SLOTS_SPEC,
 };
@@ -883,12 +713,13 @@ pub const ELECTRIC_SCREEN: ScreenSpec = ScreenSpec {
 pub const INFUSER_SCREEN: ScreenSpec = ScreenSpec {
     tracked: &INFUSER_TRACKED_ERRORS,
     warnings: &INFUSER_WARNINGS,
-    data: &INFUSER_DATA,
+    trackers: infuser_trackers,
+    indexes: infuser_indexes,
     item_config: &INFUSER_ITEM_CONFIG,
     slots: &INFUSER_SLOTS_SPEC,
 };
 
-/// O que a tela desenha de aviso, decidido do que o cliente tem dos data slots: a aba (`hasWarning`), as linhas dela
+/// O que a tela desenha de aviso, decidido do que o cliente tem do menu sincronizado: a aba (`hasWarning`), as linhas dela
 /// (`getWarnings`) e que elementos estão em aviso.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WarningView {
@@ -917,8 +748,8 @@ impl ScreenSpec {
     }
 
     /// A máquina como o cliente a vê.
-    pub fn synced(&self, data: &[i32]) -> SyncedMachine {
-        let read = ScreenData::read(self.data, data);
+    pub fn synced(&self, mirror: &Mirror) -> SyncedMachine {
+        let read = ScreenData::read(self, mirror);
         SyncedMachine {
             tracked: self.tracked,
             errors: read.errors,
@@ -926,8 +757,8 @@ impl ScreenSpec {
         }
     }
 
-    pub fn view(&self, data: &[i32]) -> WarningView {
-        let source = self.synced(data);
+    pub fn view(&self, mirror: &Mirror) -> WarningView {
+        let source = self.synced(mirror);
         let tracker = machine_warnings(&source, self.warnings);
         let mut elements = Vec::new();
         for &(element, _, error) in self.warnings {
@@ -1287,14 +1118,6 @@ pub const ELECTRIC_UPGRADE_OUTPUT_SLOT: usize = ELECTRIC_SLOTS + 1;
 /// Quantos slots o contêiner das máquinas elétricas declara, os virtuais inclusos.
 pub const ELECTRIC_MENU_SLOTS: usize = ELECTRIC_SLOTS + 2;
 
-/// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela de upgrades.
-pub const UPGRADE_TRACKING_KEY: u8 = 2;
-/// Quantos dados a janela acrescenta ao contêiner (`getSpecificSyncableData`: `upgradeTicks` e o mapa).
-pub const UPGRADE_TRACKED_ITEMS: usize = 2;
-/// Quantos dados o contêiner já sincroniza ao nascer (`addContainerTrackers`), medidos nos rastros `*_container_tracking`.
-pub const ELECTRIC_TRACKED_BASE: usize = 16;
-pub const INFUSER_TRACKED_BASE: usize = 18;
-
 /// Os dados que o menu de uma máquina elétrica (Enrichment Chamber, Crusher, Energized Smelter) sincroniza, na ordem de
 /// `addContainerTrackers`: a base do tile (`TileEntityMekanism`), os erros rastreados e `hasXpContainment`
 /// (`TileEntityRecipeMachine`), e `operatingTicks` e `ticksRequired` (`TileEntityProgressMachine`). `TileEntityElectricMachine` e as
@@ -1325,7 +1148,7 @@ fn machine_trackers(chemical_tanks: usize, tracked_errors: usize) -> Vec<Tracked
     list
 }
 
-/// O que a janela de upgrades acrescenta (`TileComponentUpgrade.getSpecificSyncableData`), na chave `UPGRADE_TRACKING_KEY`.
+/// O que a janela de upgrades acrescenta (`TileComponentUpgrade.getSpecificSyncableData`), na chave `UPGRADE_WINDOW_KEY`.
 pub fn upgrade_window_data() -> [Tracked; 2] {
     upgrade_window_trackers()
 }
@@ -1496,24 +1319,21 @@ fn chemical_color(json: &Value) -> Option<u32> {
         .map(|(_, rgb)| *rgb)
 }
 
-/// Os sprites que um tanque de infusão desenha (`Chemical.icon`), na ordem em que o data slot os numera. São tiras animadas do atlas
-/// de blocos do original (`assets/minecraft/atlases/blocks.json` lista a pasta `mek_chemical`), e o HUD do Horizon as anima como o
-/// jogo. Um químico com sprite fora desta lista não desenha o sprite; o teste dos dados confere que os de infusão estão todos aqui.
+/// Os sprites que um tanque de infusão desenha (`Chemical.icon`). São tiras animadas do atlas de blocos do original
+/// (`assets/minecraft/atlases/blocks.json` lista a pasta `mek_chemical`), e o HUD do Horizon as anima como o jogo. Um químico com sprite
+/// fora desta lista não desenha o sprite; o teste dos dados confere que os de infusão estão todos aqui.
 pub const CHEMICAL_ICONS: [&str; 3] = [
     "mekanism:mek_chemical/infuse_type/base",
     "mekanism:mek_chemical/infuse_type/bio",
     "mekanism:mek_chemical/infuse_type/fungi",
 ];
 
-/// O valor do data slot para um sprite: o índice em [`CHEMICAL_ICONS`] mais um, e zero sem sprite.
-pub fn chemical_icon_slot(icon: Option<&str>) -> u32 {
-    icon.and_then(|icon| CHEMICAL_ICONS.iter().position(|known| *known == icon))
-        .map_or(0, |index| index as u32 + 1)
-}
-
-/// O sprite de um valor de data slot.
-pub fn chemical_icon(slot: u32) -> Option<&'static str> {
-    CHEMICAL_ICONS.get((slot as usize).checked_sub(1)?).copied()
+/// O sprite que a tela desenha para o `icon` de um químico: ele, se é um dos que a lista traz.
+pub fn chemical_icon(icon: Option<&str>) -> Option<&'static str> {
+    CHEMICAL_ICONS
+        .iter()
+        .copied()
+        .find(|known| Some(*known) == icon)
 }
 
 /// `tint` e `color_representation` de um químico: ARGB com o alfa que o arquivo traz, `#aarrggbb`.

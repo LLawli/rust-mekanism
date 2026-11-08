@@ -5,7 +5,7 @@ use machinery_basis_core::slot_view::SlotType;
 use mekanism_rules::{
     BAR_FRAME_SLICE, CHEMICAL_FOLDER, CHEMICAL_ICONS, ELECTRIC_SCREEN, EMPTY_CHEMICAL,
     GAUGE_FRAME_SLICE, INFUSER_SCREEN, PANEL_SLICE, POWER_BAR_TILE, chemical_icon,
-    chemical_icon_slot, chemical_resource, chemical_tooltip, energy_tooltip,
+    chemical_resource, chemical_tooltip, energy_tooltip,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -96,9 +96,12 @@ fn every_infusion_icon_is_known_and_shipped() {
         }
         infusions += 1;
         let icon = resource.icon.as_deref();
-        let slot = chemical_icon_slot(icon);
-        assert_ne!(slot, 0, "{id}: sprite fora da lista, {icon:?}");
-        assert_eq!(chemical_icon(slot).unwrap(), icon.unwrap());
+        // O sprite do arquivo é um dos que a lista traz, e a tela desenha esse mesmo.
+        assert_eq!(
+            chemical_icon(icon),
+            Some(icon.unwrap()),
+            "{id}: sprite fora da lista, {icon:?}"
+        );
         // O `tint` é o do arquivo (`#aarrggbb`), com o alfa.
         assert_eq!(resource.tint >> 24, 0xFF, "{id}");
     }
@@ -113,9 +116,12 @@ fn every_infusion_icon_is_known_and_shipped() {
     let atlas =
         std::fs::read_to_string(content().join("assets/minecraft/atlases/blocks.json")).unwrap();
     assert!(atlas.contains("\"source\": \"mek_chemical\""));
-    assert_eq!(chemical_icon_slot(None), 0);
-    assert_eq!(chemical_icon(0), None);
-    assert_eq!(chemical_icon(CHEMICAL_ICONS.len() as u32 + 1), None);
+    // Sem sprite, ou com um que a lista não traz, a tela não desenha sprite.
+    assert_eq!(chemical_icon(None), None);
+    assert_eq!(
+        chemical_icon(Some("mekanism:mek_chemical/infuse_type/other")),
+        None
+    );
 }
 
 #[test]

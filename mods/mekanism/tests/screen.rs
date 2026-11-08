@@ -1,13 +1,18 @@
-//! A tela dos avisos sem o jogo: o que o servidor escreve nos data slots, o que o cliente lê deles e o que a tela decide
+//! A tela dos avisos sem o jogo: o que o servidor manda na lista de dados do menu, o que o cliente lê do espelho e o que a tela decide
 //! desenhar por máquina, contra os rastros do original.
-use machinery_basis_core::data_slots;
+mod common;
+
+use common::Live;
+use machinery_basis_core::container_sync::{
+    ContainerSync, DirtyType, Mirror, PropertyData, StackValue,
+};
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::tile::{RedstoneControl, RedstoneSync};
+use machinery_basis_core::tile_trackers::source;
 use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
-    CHEMICAL_ID_SLOTS, ChemicalSlots, DataLayout, ELECTRIC_DATA, ELECTRIC_SCREEN,
-    ELECTRIC_TRACKED_ERRORS, INFUSER_DATA, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData,
-    ScreenElement, ScreenSpec, WarningType, clear_chemical_screen, tab_tooltip,
+    ELECTRIC_SCREEN, ELECTRIC_TRACKED_ERRORS, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData,
+    ScreenElement, ScreenSpec, WarningType, tab_tooltip,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -23,177 +28,246 @@ fn trace(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
-/// O que o Horizon faz com um data slot: manda 16 bits com sinal, e o cliente lê o que chega.
-fn over_the_wire(data: &[i32]) -> Vec<i32> {
-    data.iter().map(|&value| i32::from(value as i16)).collect()
+fn bio(amount: u64) -> StackValue {
+    StackValue {
+        resource: "mekanism:bio".to_owned(),
+        amount,
+    }
 }
 
-fn full() -> ScreenData {
-    ScreenData {
+/// O que o servidor lê da máquina, com todos os dados diferentes do padrão e valores grandes (energia acima de 65535).
+fn full() -> Live {
+    Live {
         energy: 256_000_000,
         capacity: 256_000_000,
+        energy_per_tick: 70_000,
         progress: 199,
         ticks_required: 100,
-        chemical_amount: 1_000,
-        chemical_tint: 0xFF_59_C1_5F,
-        chemical_icon: 2,
-        chemical_id: data_slots::pack_text("mekanism:bio"),
-        errors: ErrorMask::from_flags(&[true, false, true, true, true]),
-        redstone: RedstoneSync {
-            control_type: RedstoneControl::Low,
-            powered: true,
-            was_powered: true,
-        },
+        chemical: bio(1_000),
+        errors: vec![true, false, true, true, true],
+        control_type: RedstoneControl::Low,
+        powered: true,
+        was_powered: true,
         xp_containment: true,
-        energy_per_tick: 70_000,
+    }
+}
+
+/// O que a tela lê de `live` quando o espelho tem `errors` erros rastreados e (ou não) um tanque.
+fn read_of(live: &Live, errors: usize, tank: bool) -> ScreenData {
+    ScreenData {
+        energy: live.energy as u32,
+        capacity: live.capacity as u32,
+        progress: live.progress,
+        ticks_required: live.ticks_required,
+        chemical: if tank {
+            live.chemical.clone()
+        } else {
+            StackValue::default()
+        },
+        errors: ErrorMask::from_flags(&live.errors[..errors]),
+        redstone: RedstoneSync {
+            control_type: live.control_type,
+            powered: live.powered,
+            was_powered: live.was_powered,
+        },
+        xp_containment: live.xp_containment,
+        energy_per_tick: live.energy_per_tick as u32,
     }
 }
 
 #[test]
-fn the_electric_layout_round_trips_through_sixteen_bits() {
-    let data = ScreenData {
-        chemical_amount: 0,
-        chemical_tint: 0,
-        chemical_icon: 0,
-        chemical_id: [0; CHEMICAL_ID_SLOTS],
-        ..full()
-    };
-    let written = data.write(&ELECTRIC_DATA);
-    assert_eq!(written.len(), ELECTRIC_DATA.len);
+fn the_electric_screen_reads_from_the_mirror_what_the_server_reads() {
+    let live = full();
+    let mirror = live.mirror(&ELECTRIC_SCREEN);
     assert_eq!(
-        ScreenData::read(&ELECTRIC_DATA, &over_the_wire(&written)),
-        data
+        ScreenData::read(&ELECTRIC_SCREEN, &mirror),
+        read_of(&live, ELECTRIC_TRACKED_ERRORS.len(), false)
     );
 }
 
 #[test]
-fn the_infuser_layout_round_trips_through_sixteen_bits() {
-    let data = full();
-    let written = data.write(&INFUSER_DATA);
-    assert_eq!(written.len(), INFUSER_DATA.len);
+fn the_infuser_screen_reads_from_the_mirror_what_the_server_reads() {
+    let live = full();
+    let mirror = live.mirror(&INFUSER_SCREEN);
     assert_eq!(
-        ScreenData::read(&INFUSER_DATA, &over_the_wire(&written)),
-        data
+        ScreenData::read(&INFUSER_SCREEN, &mirror),
+        read_of(&live, INFUSER_TRACKED_ERRORS.len(), true)
     );
 }
 
+/// A energia acima de 65535, o `u32::MAX` e os inteiros negativos chegam à tela iguais ao que o servidor lê.
 #[test]
-fn the_old_slots_keep_their_place() {
-    // O que a tela lia antes dos avisos: energia (0 e 1), progresso e capacidade nas mesmas posições.
-    assert_eq!(
-        (
-            ELECTRIC_DATA.energy,
-            ELECTRIC_DATA.progress,
-            ELECTRIC_DATA.capacity
-        ),
-        (0, 2, 3)
-    );
-    assert_eq!(
-        INFUSER_DATA.chemical,
-        Some(ChemicalSlots {
-            amount: 2,
-            tint: 3,
-            icon: 11,
-            id: 12
-        })
-    );
-    assert_eq!(
-        (
-            INFUSER_DATA.energy,
-            INFUSER_DATA.progress,
-            INFUSER_DATA.capacity
-        ),
-        (0, 5, 6)
-    );
-}
-
-/// Cada valor tem os seus slots, sem sobreposição, e todos cabem no que o menu declara.
-fn assert_layout_is_disjoint(layout: &DataLayout) {
-    let mut used = vec![
-        layout.energy,
-        layout.energy + 1,
-        layout.progress,
-        layout.capacity,
-    ];
-    used.push(layout.capacity + 1);
-    used.push(layout.errors);
-    used.push(layout.redstone);
-    used.push(layout.ticks_required);
-    used.push(layout.xp_containment);
-    used.extend([layout.energy_per_tick, layout.energy_per_tick + 1]);
-    // `upgradeTicks` e uma contagem por tipo de upgrade, ao fim do layout.
-    used.extend(layout.upgrade..layout.upgrade + mekanism_rules::UPGRADE_SYNC_LEN);
-    if let Some(chemical) = layout.chemical {
-        used.extend([
-            chemical.amount,
-            chemical.tint,
-            chemical.tint + 1,
-            chemical.icon,
-        ]);
-        used.extend(chemical.id..chemical.id + CHEMICAL_ID_SLOTS);
-    }
-    let mut sorted = used.clone();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(sorted.len(), used.len(), "slots repetidos: {used:?}");
-    assert_eq!(
-        *sorted.last().unwrap() + 1,
-        layout.len,
-        "sobra ou falta slot: {used:?}"
-    );
-}
-
-/// A aba de xp lê o `hasXpContainment` do servidor: um valor só, no slot dele, que sobe e desce sem mexer nos outros.
-#[test]
-fn the_xp_containment_flag_travels_in_its_own_slot() {
-    for layout in [&ELECTRIC_DATA, &INFUSER_DATA] {
-        let off = ScreenData {
-            xp_containment: false,
-            ..full()
+fn big_and_negative_values_reach_the_screen_whole() {
+    for spec in [&ELECTRIC_SCREEN, &INFUSER_SCREEN] {
+        let indexes = (spec.indexes)();
+        for energy in [0, 1, 65_535, 65_536, 1_000_000, i64::from(u32::MAX)] {
+            let live = Live {
+                energy,
+                capacity: i64::from(u32::MAX),
+                ..Live::default()
+            };
+            let mirror = live.mirror(spec);
+            let read = ScreenData::read(spec, &mirror);
+            assert_eq!(i64::from(read.energy), energy);
+            assert_eq!(read.capacity, u32::MAX);
+        }
+        // O espelho guarda o `long` inteiro; é a tela que o corta ao `u32` que desenha.
+        let live = Live {
+            energy: 10_000_000_000,
+            capacity: -1,
+            ..Live::default()
         };
-        let on = ScreenData {
-            xp_containment: true,
-            ..full()
-        };
-        let (off_data, on_data) = (off.write(layout), on.write(layout));
-        let differing: Vec<usize> = (0..layout.len)
-            .filter(|&i| off_data[i] != on_data[i])
-            .collect();
-        assert_eq!(differing, vec![layout.xp_containment]);
-        assert!(!ScreenData::read(layout, &over_the_wire(&off_data)).xp_containment);
-        assert!(ScreenData::read(layout, &over_the_wire(&on_data)).xp_containment);
+        let mirror = live.mirror(spec);
+        assert_eq!(mirror.long(indexes.energy), 10_000_000_000);
+        assert_eq!(mirror.long(indexes.capacity), -1);
+        let read = ScreenData::read(spec, &mirror);
+        assert_eq!((read.energy, read.capacity), (u32::MAX, 0));
+        // Os inteiros mantêm o sinal.
+        for value in [-1, -32_769, i32::MIN, i32::MAX] {
+            let live = Live {
+                progress: value,
+                ticks_required: value,
+                energy_per_tick: value,
+                ..Live::default()
+            };
+            let mirror = live.mirror(spec);
+            assert_eq!(mirror.int(indexes.progress), value);
+            assert_eq!(mirror.int(indexes.ticks_required), value);
+            assert_eq!(mirror.int(indexes.energy_per_tick), value);
+            let read = ScreenData::read(spec, &mirror);
+            assert_eq!((read.progress, read.ticks_required), (value, value));
+        }
     }
-    // Antes de o servidor mandar o primeiro valor os data slots estão vazios: sem upgrade, sem aba.
-    assert!(!ScreenData::read(&ELECTRIC_DATA, &[]).xp_containment);
 }
 
+/// `handleWindowProperty` entrega o dado à posição dele pela classe que mora lá: um pacote de outra classe, ou de posição que o menu não
+/// tem, não muda nada.
 #[test]
-fn the_layouts_use_every_slot_once() {
-    assert_layout_is_disjoint(&ELECTRIC_DATA);
-    assert_layout_is_disjoint(&INFUSER_DATA);
+fn a_packet_of_the_wrong_class_or_for_a_missing_position_is_ignored() {
+    for spec in [&ELECTRIC_SCREEN, &INFUSER_SCREEN] {
+        let indexes = (spec.indexes)();
+        let live = full();
+        let mut mirror = live.mirror(spec);
+        let before = ScreenData::read(spec, &mirror);
+        let wrong = [
+            (indexes.energy, PropertyData::Boolean(false)),
+            (indexes.energy, PropertyData::Int(7)),
+            (indexes.progress, PropertyData::Long(7)),
+            (indexes.xp_containment, PropertyData::Int(0)),
+            (indexes.control_type, PropertyData::Boolean(false)),
+            (indexes.errors[0], PropertyData::Long(0)),
+        ];
+        for (index, data) in wrong {
+            assert!(!mirror.apply(index as u16, &data), "{index}: {data:?}");
+        }
+        let missing = mirror.count() as u16;
+        for index in [missing, missing + 1, u16::MAX] {
+            assert!(!mirror.apply(index, &PropertyData::Long(7)), "{index}");
+            assert!(
+                !mirror.apply(index, &PropertyData::Boolean(true)),
+                "{index}"
+            );
+        }
+        assert_eq!(ScreenData::read(spec, &mirror), before);
+    }
 }
 
+/// A lista que a tela lê é a que o servidor sincroniza: cada posição de `ScreenIndexes` guarda a fonte do dado que a tela espera, e
+/// nenhuma se repete.
 #[test]
-fn the_menu_files_declare_what_the_layouts_write() {
-    // O Horizon corta `entity.data` para `data_slots`: um slot a mais no código e não no arquivo é um valor que não chega.
+fn each_screen_value_has_its_own_position_in_the_menu_list() {
+    for (spec, tank, errors) in [
+        (&ELECTRIC_SCREEN, false, ELECTRIC_TRACKED_ERRORS.len()),
+        (&INFUSER_SCREEN, true, INFUSER_TRACKED_ERRORS.len()),
+    ] {
+        let list = (spec.trackers)();
+        let indexes = (spec.indexes)();
+        let mut used = vec![
+            (indexes.control_type, source::CONTROL_TYPE),
+            (indexes.powered, source::POWERED),
+            (indexes.was_powered, source::WAS_POWERED),
+            (indexes.capacity, source::MAX_ENERGY),
+            (indexes.energy_per_tick, source::ENERGY_PER_TICK),
+            (indexes.energy, source::ENERGY),
+            (indexes.xp_containment, source::HAS_XP_CONTAINMENT),
+            (indexes.progress, source::OPERATING_TICKS),
+            (indexes.ticks_required, source::TICKS_REQUIRED),
+        ];
+        assert_eq!(indexes.errors.len(), errors);
+        used.extend(
+            indexes
+                .errors
+                .iter()
+                .enumerate()
+                .map(|(error, index)| (*index, source::TRACKED_ERROR + error as u16)),
+        );
+        assert_eq!(indexes.chemical.is_some(), tank);
+        used.extend(indexes.chemical.map(|index| (index, source::CHEMICAL_TANK)));
+        for (index, expected) in &used {
+            assert_eq!(list[*index].source, *expected, "posição {index}");
+        }
+        let mut positions: Vec<usize> = used.iter().map(|(index, _)| *index).collect();
+        positions.sort_unstable();
+        positions.dedup();
+        assert_eq!(positions.len(), used.len(), "posições repetidas: {used:?}");
+    }
+}
+
+/// A aba de xp lê o `hasXpContainment` do servidor: um valor só, na posição dele, que sobe e desce sem mexer nos outros.
+#[test]
+fn the_xp_containment_flag_travels_in_its_own_position() {
+    for spec in [&ELECTRIC_SCREEN, &INFUSER_SCREEN] {
+        let off = ScreenData::read(
+            spec,
+            &Live {
+                xp_containment: false,
+                ..full()
+            }
+            .mirror(spec),
+        );
+        let on = ScreenData::read(
+            spec,
+            &Live {
+                xp_containment: true,
+                ..full()
+            }
+            .mirror(spec),
+        );
+        assert!(!off.xp_containment);
+        assert!(on.xp_containment);
+        assert_eq!(
+            ScreenData {
+                xp_containment: true,
+                ..off
+            },
+            on
+        );
+    }
+    // Antes de o servidor mandar o primeiro valor o espelho está vazio: sem upgrade, sem aba.
+    let empty = Mirror::new(&(ELECTRIC_SCREEN.trackers)());
+    assert!(!ScreenData::read(&ELECTRIC_SCREEN, &empty).xp_containment);
+}
+
+/// Os dados da tela viajam na lista do menu (`PacketUpdateContainer`), e os arquivos de menu do Horizon não declaram `data_slots`.
+#[test]
+fn the_menu_files_declare_no_data_slots() {
     let menus = Path::new(env!("CARGO_MANIFEST_DIR")).join("content/data/mekanism/horizon/menu");
-    let machines = [
-        ("enrichment_chamber", ELECTRIC_DATA.len),
-        ("crusher", ELECTRIC_DATA.len),
-        ("energized_smelter", ELECTRIC_DATA.len),
-        ("metallurgic_infuser", INFUSER_DATA.len),
-    ];
-    for (name, expected) in machines {
+    for name in [
+        "enrichment_chamber",
+        "crusher",
+        "energized_smelter",
+        "metallurgic_infuser",
+    ] {
         let file = std::fs::read_to_string(menus.join(format!("{name}.json"))).unwrap();
         let menu: Value = serde_json::from_str(&file).unwrap();
-        assert_eq!(menu["data_slots"], expected, "{name}");
+        assert!(menu.get("data_slots").is_none(), "{name}");
     }
 }
 
 #[test]
 fn a_menu_without_values_yet_shows_nothing() {
     for spec in [ELECTRIC_SCREEN, INFUSER_SCREEN] {
-        let view = spec.view(&[]);
+        let view = spec.view(&Mirror::new(&(spec.trackers)()));
         assert!(!view.tab());
         assert!(view.issues.is_empty());
         for element in ALL_ELEMENTS {
@@ -210,16 +284,15 @@ const ALL_ELEMENTS: [ScreenElement; 5] = [
     ScreenElement::OutputSlot,
 ];
 
-fn view_of(spec: &ScreenSpec, data: &ScreenData) -> mekanism_rules::WarningView {
-    spec.view(&over_the_wire(&data.write(spec.data)))
+fn view_of(spec: &ScreenSpec, live: &Live) -> mekanism_rules::WarningView {
+    spec.view(&live.mirror(spec))
 }
 
-fn with_errors(tracked: &[RecipeError], present: &[RecipeError]) -> ErrorMask {
-    let flags: Vec<bool> = tracked
+fn with_errors(tracked: &[RecipeError], present: &[RecipeError]) -> Vec<bool> {
+    tracked
         .iter()
         .map(|error| present.contains(error))
-        .collect();
-    ErrorMask::from_flags(&flags)
+        .collect()
 }
 
 /// Cada erro liga o elemento que o Java registra para ele, e só esse. A aba lista o tipo.
@@ -248,9 +321,9 @@ fn each_error_lights_its_own_element_in_the_electric_machines() {
         ),
     ];
     for (error, element, kind) in cases {
-        let data = ScreenData {
+        let data = Live {
             errors: with_errors(&ELECTRIC_TRACKED_ERRORS, &[error]),
-            ..ScreenData::default()
+            ..Live::default()
         };
         let view = view_of(&ELECTRIC_SCREEN, &data);
         assert!(view.tab(), "{error:?}");
@@ -267,21 +340,21 @@ fn each_error_lights_its_own_element_in_the_electric_machines() {
 
 #[test]
 fn the_infuser_lights_the_chemical_bar_for_the_secondary_input_only() {
-    let secondary = ScreenData {
+    let secondary = Live {
         errors: with_errors(
             &INFUSER_TRACKED_ERRORS,
             &[RecipeError::NOT_ENOUGH_SECONDARY_INPUT],
         ),
-        ..ScreenData::default()
+        ..Live::default()
     };
     let view = view_of(&INFUSER_SCREEN, &secondary);
     assert_eq!(view.issues, [WarningType::NoMatchingRecipe]);
     assert!(view.element(ScreenElement::ChemicalBar));
     assert!(!view.element(ScreenElement::InputSlot));
     // O erro de entrada acende o slot, não a barra, e o tipo na aba é o mesmo.
-    let input = ScreenData {
+    let input = Live {
         errors: with_errors(&INFUSER_TRACKED_ERRORS, &[RecipeError::NOT_ENOUGH_INPUT]),
-        ..ScreenData::default()
+        ..Live::default()
     };
     let view = view_of(&INFUSER_SCREEN, &input);
     assert_eq!(view.issues, [WarningType::NoMatchingRecipe]);
@@ -292,21 +365,19 @@ fn the_infuser_lights_the_chemical_bar_for_the_secondary_input_only() {
 /// As máquinas elétricas não têm barra de químico: o erro do secundário não acende nada nelas.
 #[test]
 fn the_electric_machines_have_no_chemical_bar() {
-    let data = ScreenData {
-        errors: ErrorMask::from_flags(&[true, true, true, true, true]),
-        ..ScreenData::default()
+    let data = Live {
+        errors: vec![true; 5],
+        ..Live::default()
     };
     assert!(!view_of(&ELECTRIC_SCREEN, &data).element(ScreenElement::ChemicalBar));
 }
 
-fn redstone(control_type: RedstoneControl, powered: bool) -> ScreenData {
-    ScreenData {
-        redstone: RedstoneSync {
-            control_type,
-            powered,
-            was_powered: powered,
-        },
-        ..ScreenData::default()
+fn redstone(control_type: RedstoneControl, powered: bool) -> Live {
+    Live {
+        control_type,
+        powered,
+        was_powered: powered,
+        ..Live::default()
     }
 }
 
@@ -333,7 +404,7 @@ fn redstone_waiting_shows_the_tab_and_lights_no_element() {
 /// Sem energia e sem sinal: o aviso de energia fecha a lista, e o de redstone não aparece no tooltip. A aba e a barra, sim.
 #[test]
 fn no_energy_hides_the_redstone_line_but_not_the_tab() {
-    let data = ScreenData {
+    let data = Live {
         errors: with_errors(&ELECTRIC_TRACKED_ERRORS, &[RecipeError::NOT_ENOUGH_ENERGY]),
         ..redstone(RedstoneControl::High, false)
     };
@@ -354,10 +425,10 @@ fn error_named(name: &str) -> Option<RecipeError> {
     })
 }
 
-/// O que o rastro do original diz que está em aviso, passado pelos data slots: a aba e a lista que `getWarnings` devolve batem
+/// O que o rastro do original diz que está em aviso, passado pelo espelho do menu: a aba e a lista que `getWarnings` devolve batem
 /// com as dele, e cada elemento acende quando o erro dele está no rastro.
 #[test]
-fn the_view_from_the_data_slots_matches_the_original_traces() {
+fn the_view_from_the_mirror_matches_the_original_traces() {
     let scenarios = [
         "chamber_warnings_redstone",
         "chamber_recheck_alone",
@@ -386,7 +457,7 @@ fn the_view_from_the_data_slots_matches_the_original_traces() {
                 _ => RedstoneControl::Disabled,
             };
             let powered = line["powered"].as_bool().unwrap();
-            let data = ScreenData {
+            let data = Live {
                 errors: with_errors(&ELECTRIC_TRACKED_ERRORS, &present),
                 ..redstone(control, powered)
             };
@@ -485,24 +556,38 @@ fn the_tab_tooltip_has_the_yellow_header_and_one_wrapped_block_per_issue() {
     assert!(body.len() > 2);
 }
 
+/// Esvaziar o tanque: no `broadcastChanges` seguinte o servidor manda só o tanque (a pilha vazia, que é outro tipo), e a tela do cliente
+/// fica com ele vazio e o resto como estava.
 #[test]
-fn dumping_the_tank_clears_the_screen_slots_without_a_tick() {
-    // O botão de esvaziar age quando o pacote chega, mesmo com o servidor parado: os data slots do tanque voltam ao que o tick
-    // escreveria para um tanque vazio, e o resto da tela fica como estava.
-    let mut data = full().write(&INFUSER_DATA);
-    let before = data.clone();
-    clear_chemical_screen(&INFUSER_DATA, &mut data);
-    let expected = ScreenData {
-        chemical_amount: 0,
-        chemical_tint: 0,
-        chemical_icon: 0,
-        chemical_id: [0; CHEMICAL_ID_SLOTS],
-        ..full()
+fn dumping_the_tank_reaches_the_screen_with_the_next_broadcast() {
+    let spec = &INFUSER_SCREEN;
+    let chemical = (spec.indexes)().chemical.unwrap();
+    let live = full();
+    // O servidor já mandou tudo ao abrir (`send_all` guarda o último valor de cada dado).
+    let mut sync = ContainerSync::<u8>::new(&(spec.trackers)());
+    sync.send_all(&live);
+    let mut mirror = live.mirror(spec);
+    let before = ScreenData::read(spec, &mirror);
+    assert_eq!(before.chemical, bio(1_000));
+
+    let emptied = Live {
+        chemical: StackValue::default(),
+        ..live
     };
-    assert_eq!(data, expected.write(&INFUSER_DATA));
-    assert_ne!(data, before);
-    let mut electric = full().write(&ELECTRIC_DATA);
-    let untouched = electric.clone();
-    clear_chemical_screen(&ELECTRIC_DATA, &mut electric);
-    assert_eq!(electric, untouched, "uma máquina sem tanque não muda");
+    let dirty = sync.broadcast_changes(&emptied);
+    assert_eq!(dirty.len(), 1, "{dirty:?}");
+    assert_eq!(dirty[0].index as usize, chemical);
+    assert_eq!(dirty[0].dirty, DirtyType::Dirty);
+    for property in &dirty {
+        assert!(mirror.apply(property.index, &property.data));
+    }
+    assert_eq!(
+        ScreenData::read(spec, &mirror),
+        ScreenData {
+            chemical: StackValue::default(),
+            ..before
+        }
+    );
+    // Sem mudança nenhuma depois, o servidor não manda nada.
+    assert!(sync.broadcast_changes(&emptied).is_empty());
 }

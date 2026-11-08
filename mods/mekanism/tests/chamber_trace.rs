@@ -11,11 +11,9 @@ use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
 use machinery_basis_core::upgrade::UpgradeSaved;
-use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
-    CRUSHER_USAGE, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENERGY_UPGRADE, ENRICHMENT_USAGE,
-    SMELTER_USAGE, SPEED_UPGRADE, SyncedMachine, electric_config, machine_warnings, trace_line,
-    upgrade_type_of,
+    CRUSHER_USAGE, ELECTRIC_SCREEN, ELECTRIC_WARNINGS, ENERGY_UPGRADE, ENRICHMENT_USAGE,
+    SMELTER_USAGE, SPEED_UPGRADE, electric_config, machine_warnings, trace_line, upgrade_type_of,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -520,19 +518,15 @@ fn replay(scenario: &str) {
 }
 
 /// Os avisos da tela: `warnings` são os tipos ativos e `warnings_shown` o que `getWarnings` lista, depois da ordem do enum e do
-/// corte. A segunda conta é a do cliente, que só tem a máscara de erros num data slot e o modo de redstone.
+/// corte. A segunda conta é a do cliente, que só tem os dados do espelho do menu: os erros rastreados e o modo de redstone.
 fn assert_warnings<'a>(
     scenario: &str,
     tick: u64,
     machine: &ProgressMachine,
     field: &impl Fn(&str) -> Option<&'a Value>,
 ) {
-    let synced = SyncedMachine::of(machine, &ELECTRIC_TRACKED_ERRORS);
-    // O que passa pelo data slot (16 bits com sinal) é o que chega ao cliente.
-    let client = SyncedMachine {
-        errors: ErrorMask::from_slot(synced.errors.to_slot()),
-        ..synced
-    };
+    // O que o servidor manda no pacote do menu é o que chega ao cliente.
+    let client = ELECTRIC_SCREEN.synced(&common::machine_mirror(&ELECTRIC_SCREEN, machine));
     for (side, tracker) in [
         ("servidor", machine_warnings(machine, &ELECTRIC_WARNINGS)),
         ("cliente", machine_warnings(&client, &ELECTRIC_WARNINGS)),

@@ -1,6 +1,9 @@
-//! A aba de energia (`GuiEnergyTab`) sem o jogo: o retângulo, o tooltip com os textos do idioma do mod, e o slot que leva o consumo ao cliente.
+//! A aba de energia (`GuiEnergyTab`) sem o jogo: o retângulo, o tooltip com os textos do idioma do mod, e o dado que leva o consumo ao cliente.
+mod common;
+
+use common::Live;
 use mekanism_rules::{
-    ELECTRIC_DATA, ENERGY_TAB, ENERGY_TAB_SPRITE, INFUSER_DATA, ScreenData, energy_tab_tooltip,
+    ELECTRIC_SCREEN, ENERGY_TAB, ENERGY_TAB_SPRITE, INFUSER_SCREEN, ScreenData, energy_tab_tooltip,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -44,22 +47,25 @@ fn the_tooltip_says_what_it_uses_what_it_needs_and_the_unit() {
     assert_eq!(tooltip(true, 1_500, 0, 1_000)[0], "Using: 1.5 kFE/t");
 }
 
+/// O consumo (`getEnergyPerTick`, um `SyncableInt`) chega ao cliente inteiro, sem corte de tamanho: valores acima de
+/// 65535 e o maior inteiro voltam iguais, e nenhum outro dado da tela muda.
 #[test]
-fn the_consumption_rate_travels_in_its_own_two_slots() {
-    for layout in [&ELECTRIC_DATA, &INFUSER_DATA] {
-        let data = ScreenData {
-            energy_per_tick: 70_000,
-            ..ScreenData::default()
-        };
-        let written = data.write(layout);
-        let wire: Vec<i32> = written.iter().map(|&v| i32::from(v as i16)).collect();
-        assert_eq!(ScreenData::read(layout, &wire).energy_per_tick, 70_000);
-        let differing: Vec<usize> = (0..layout.len)
-            .filter(|&i| written[i] != ScreenData::default().write(layout)[i])
-            .collect();
-        assert_eq!(
-            differing,
-            vec![layout.energy_per_tick, layout.energy_per_tick + 1]
-        );
+fn the_consumption_rate_arrives_whole_and_moves_nothing_else() {
+    for spec in [&ELECTRIC_SCREEN, &INFUSER_SCREEN] {
+        for per_tick in [0, 1, 70_000, i32::MAX] {
+            let live = Live {
+                energy_per_tick: per_tick,
+                ..Live::default()
+            };
+            let mirror = live.mirror(spec);
+            assert_eq!(mirror.int((spec.indexes)().energy_per_tick), per_tick);
+            assert_eq!(
+                ScreenData::read(spec, &mirror),
+                ScreenData {
+                    energy_per_tick: per_tick as u32,
+                    ..ScreenData::default()
+                }
+            );
+        }
     }
 }

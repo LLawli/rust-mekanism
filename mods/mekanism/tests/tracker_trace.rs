@@ -9,7 +9,7 @@ mod common;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalResource};
 use machinery_basis_core::container_sync::{
-    ContainerSync, DirtyType, Property, PropertyData, Tracked,
+    ContainerSync, DirtyType, Kind as DataKind, Mirror, Property, PropertyData, Tracked, wire,
 };
 use machinery_basis_core::containers::{AutomationType, ItemResource};
 use machinery_basis_core::item_handler::ItemCapabilities;
@@ -23,6 +23,7 @@ use mekanism_rules::{
     electric_trackers, infuser_config, infuser_trackers, infusing_cache_of, upgrade_window_data,
 };
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -127,6 +128,8 @@ struct Scene {
     kind: Kind,
     base: u64,
     sync: Option<ContainerSync<u8>>,
+    /// O menu do mesmo jogador no cliente: o que o servidor manda chega a ele em bytes, e cada dado vai para a posição dele.
+    client: Option<Mirror>,
     window: bool,
     sent: Vec<Property>,
     /// O que o último `insert` deixou entrar, à espera de a marca `inserted` do Java conferir.
@@ -148,11 +151,13 @@ impl Scene {
         self.sent
             .extend(sync.send_all(&MachineSync::of(self.machine())));
         self.sync = Some(sync);
+        self.client = Some(Mirror::new(&self.kind.trackers()));
     }
 
     fn close(&mut self) {
         self.machine().close();
         self.sync = None;
+        self.client = None;
         self.window = false;
     }
 
@@ -167,11 +172,20 @@ impl Scene {
         );
         self.sent.extend(sent);
         self.sync = Some(sync);
+        // O cliente acrescenta os dados da janela no mesmo lugar (`GuiUpgradeWindow` chama `startTracking`).
+        self.client
+            .as_mut()
+            .expect("sem menu aberto")
+            .start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
     }
 
     /// `CONTAINER_STOP_TRACKING` e a janela deselecionada.
     fn close_window(&mut self) {
         self.window = false;
+        self.client
+            .as_mut()
+            .expect("sem menu aberto")
+            .stop_tracking(&UPGRADE_WINDOW_KEY);
         self.sync
             .as_mut()
             .expect("sem menu aberto")
@@ -354,6 +368,57 @@ fn read_trace(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
+/// O pacote do tick: o que o servidor mandou, em bytes, e o `handleWindowProperty` de cada dado no menu do cliente.
+fn deliver(client: &mut Mirror, properties: &[Property]) {
+    if properties.is_empty() {
+        return;
+    }
+    let packet = wire::Packet::new([0, 64, 0], None, properties);
+    let packet = wire::decode(&wire::encode(&packet)).expect("o pacote volta");
+    for (index, data) in &packet.data {
+        client.apply(*index, data);
+    }
+}
+
+/// O que o cliente do Java guarda de cada dado depois de aplicar o que o rastro diz que o servidor mandou: o valor na forma do rastro. Uma
+/// pilha mandada só pelo tamanho muda a quantidade da que ele já tem (`SyncableLargeResourceStack.set(long)`).
+fn java_client_applies(view: &mut BTreeMap<u64, Value>, entry: &Value) {
+    let [index, class, dirty, value] = entry.as_array().unwrap().as_slice() else {
+        panic!("entrada fora de forma: {entry}");
+    };
+    let index = index.as_u64().unwrap();
+    let class = class.as_str().unwrap().split('$').next().unwrap();
+    if class == "SyncableLargeResourceStack" && dirty == "SIZE" {
+        if let Some(stack) = view.get_mut(&index)
+            && stack["resource"] != ""
+        {
+            *stack = if value.as_u64() == Some(0) {
+                json!({"resource": "", "amount": 0})
+            } else {
+                json!({"resource": stack["resource"], "amount": value})
+            };
+        }
+        return;
+    }
+    view.insert(index, expected_entry(entry)[3].clone());
+}
+
+/// O valor de um dado do espelho, na forma do rastro.
+fn mirror_value(mirror: &Mirror, position: usize, kind: DataKind) -> Value {
+    match kind {
+        DataKind::Boolean => json!(mirror.boolean(position)),
+        DataKind::Int => json!(mirror.int(position)),
+        DataKind::Enum { .. } => json!(mirror.enum_ordinal(position)),
+        DataKind::Long => json!(mirror.long(position)),
+        DataKind::Double => json!(mirror.double(position)),
+        DataKind::LargeResourceStack => {
+            let stack = mirror.stack(position);
+            json!({"resource": stack.resource, "amount": stack.amount})
+        }
+        DataKind::StreamCodec => bytes_json(mirror.bytes(position)),
+    }
+}
+
 fn replay(kind: Kind) {
     let scenario = kind.scenario();
     let lines = read_trace(scenario);
@@ -369,11 +434,13 @@ fn replay(kind: Kind) {
         kind,
         base,
         sync: None,
+        client: None,
         window: false,
         sent: Vec::new(),
         inserted: None,
     };
-    let (mut sent_lines, mut dirty_lines) = (0, 0);
+    let (mut sent_lines, mut dirty_lines, mut compared) = (0, 0, 0);
+    let mut view: BTreeMap<u64, Value> = BTreeMap::new();
     for expected in &lines {
         let t = expected["t"].as_u64().unwrap();
         assert_eq!(
@@ -393,7 +460,13 @@ fn replay(kind: Kind) {
             Some(sync) => sync.broadcast_changes(&MachineSync::of(&scene.world.block_entity.0)),
             None => Vec::new(),
         };
-        let actual_sent: Vec<Value> = scene.sent.drain(..).map(|p| actual_entry(&p)).collect();
+        let sent_properties: Vec<Property> = std::mem::take(&mut scene.sent);
+        // O servidor manda ao jogador os dados da abertura e depois os sujos; o cliente de cada lado os aplica nessa ordem.
+        if let Some(client) = scene.client.as_mut() {
+            deliver(client, &sent_properties);
+            deliver(client, &dirty);
+        }
+        let actual_sent: Vec<Value> = sent_properties.iter().map(actual_entry).collect();
         let actual_dirty: Vec<Value> = dirty.iter().map(actual_entry).collect();
         let expected_sent: Vec<Value> = expected["sent"]
             .as_array()
@@ -423,12 +496,42 @@ fn replay(kind: Kind) {
                 "{scenario}, tick {t}: quantos dados o menu sincroniza"
             );
         }
+        // O que a tela lê do espelho é o que o cliente do Java leria: cada dado que o rastro mandou, no valor e na classe que o cliente dele tem.
+        if scene.client.is_none() {
+            view.clear();
+        }
+        for entry in expected["sent"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(expected["dirty"].as_array().unwrap())
+        {
+            java_client_applies(&mut view, entry);
+        }
+        if let (Some(client), Some(sync)) = (scene.client.as_ref(), scene.sync.as_ref()) {
+            let tracked = sync.tracked();
+            view.retain(|index, _| (*index as usize) < tracked.len());
+            for (index, wanted) in &view {
+                let position = *index as usize;
+                assert_eq!(
+                    &mirror_value(client, position, tracked[position].kind),
+                    wanted,
+                    "{scenario}, tick {t}: o que a tela lê do dado {index} ({})",
+                    tracked[position].kind.class()
+                );
+                compared += 1;
+            }
+        }
         sent_lines += usize::from(!expected_sent.is_empty());
         dirty_lines += usize::from(!expected_dirty.is_empty());
     }
     // O rastro tem de ter o que o teste confere: aberturas e muitos ticks sujos.
     assert!(sent_lines >= 3, "{scenario}: {sent_lines} envios iniciais");
     assert!(dirty_lines >= 150, "{scenario}: {dirty_lines} ticks sujos");
+    assert!(
+        compared >= 4_000,
+        "{scenario}: {compared} leituras do espelho"
+    );
 }
 
 #[test]
@@ -454,14 +557,8 @@ fn the_metallurgic_infuser_container_sends_what_the_original_sends() {
 /// A lista que o teste de cima confere é a que o mod declara, e tem o tamanho que os rastros `*_container_tracking` mediram.
 #[test]
 fn the_declared_lists_have_the_sizes_the_original_measured() {
-    assert_eq!(
-        electric_trackers().len(),
-        mekanism_rules::ELECTRIC_TRACKED_BASE
-    );
-    assert_eq!(
-        infuser_trackers().len(),
-        mekanism_rules::INFUSER_TRACKED_BASE
-    );
+    assert_eq!(electric_trackers().len(), 16);
+    assert_eq!(infuser_trackers().len(), 18);
 }
 
 /// Os `*_container_tracking` gravam a classe de cada posição (o que `trackedData` tem); a lista do mod tem de ter as mesmas.

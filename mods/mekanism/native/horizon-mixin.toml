@@ -100,7 +100,6 @@ helper = "screen_draw.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "block", ty = "&str", value = "block" },
-  { name = "data", ty = "&[i32]", value = "data" },
   { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
   { name = "origin", ty = "[f32; 2]", value = "origin" },
 ]
@@ -114,7 +113,6 @@ helper = "screen_click.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "block", ty = "&str", value = "block" },
-  { name = "data", ty = "&[i32]", value = "data" },
   { name = "at", ty = "[f32; 2]", value = "at" },
   { name = "right", ty = "bool", value = "right" },
   { name = "button", ty = "&mut Option<i32>", value = "&mut *button" },
@@ -195,36 +193,6 @@ helper = "level_tick_post.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "dimension", ty = "&str", value = "dimension" },
-]
-
-# Quantos jogadores têm a tela do bloco aberta mudou (`ContainerOpenersCounter`: convidados que não são espectadores e o
-# anfitrião). É a contagem que o `playersUsing` do Java tem, e a checagem de erros da receita depende dela.
-[[injection]]
-id = "mod_container_viewers"
-hook = "mod_container_viewers"
-hook_version = 1
-kind = "HEAD"
-helper = "mod_container_viewers.rs"
-bindings = [
-  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "dimension", ty = "&str", value = "dimension" },
-  { name = "pos", ty = "[i32; 3]", value = "pos" },
-  { name = "viewers", ty = "u32", value = "viewers" },
-  { name = "previous", ty = "u32", value = "previous" },
-]
-
-# Os data slots da tela das máquinas, escritos no fim do tick do servidor (`ServerTickEvent.Post`). O `MekanismContainer.broadcastChanges`
-# lê o valor vivo de cada `ISyncableData` no `ServerPlayer.tick` do tick seguinte, então o quadro que o cliente recebe tem a energia que
-# chegou depois do tick da máquina e o erro que ela ainda não recalculou (o overlay de 0,98 da barra de energia depende disso).
-[[injection]]
-id = "server_tick"
-hook = "server_tick"
-hook_version = 1
-kind = "HEAD"
-helper = "server_tick.rs"
-bindings = [
-  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "phase", ty = "horizon_client::mod_api::ServerTickPhase", value = "phase" },
 ]
 
 # O som em laço das máquinas, no tick do cliente (`TileEntityMekanism.tickClient`). O `tick` roda no cliente e no servidor; o som é do cliente.
@@ -411,4 +379,18 @@ helper = "active_light.rs"
 bindings = [
   { name = "block", ty = "&NewBlock<'_>", value = "b" },
   { name = "row", ty = "&mut J", value = "&mut *row" },
+]
+
+# `TrackingEnergyHandler.insert` → `LastEnergyTracker.received`: a energia que entra numa máquina pela capability (um cabo, um gerador ao lado) soma no
+# `lastEnergyReceived` do tick. O `ModEnergyBuffer` do Horizon recebe sem passar por um ponto nosso, e todo `insert` e `move` termina em
+# `native_energy_store`, que grava o valor novo no tile. Alvo cru, H37.
+[[injection]]
+id = "energy_store"
+target = "horizon_client::game::machines::native_energy::Game<'_>::native_energy_store"
+kind = "HEAD"
+helper = "energy_store.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "energy", ty = "i32", value = "energy" },
 ]

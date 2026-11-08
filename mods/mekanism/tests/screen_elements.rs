@@ -5,12 +5,15 @@
 //! - `oculto`: as abas que o port não tem escondidas, como a cena de pixel;
 //! - `sem_upgrades`: o mesmo sem a aba de upgrades, que a janela de upgrades da lib responde (`windows.rs`), então o que sobra é o que
 //!   `screen_elements` declara.
+mod common;
+
+use common::Live;
+use machinery_basis_core::container_sync::Mirror;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::screen_elements;
-use machinery_basis_core::warning::ErrorMask;
 use mekanism_rules::{
-    ELECTRIC_SCREEN, ELECTRIC_TRACKED_ERRORS, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenData,
-    ScreenSpec, screen_elements as machine_elements,
+    ELECTRIC_SCREEN, ELECTRIC_TRACKED_ERRORS, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, ScreenSpec,
+    screen_elements as machine_elements,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -87,7 +90,7 @@ fn inside_image(x: i32, y: i32) -> bool {
 }
 
 /// A máquina de um caso (`chamber_fora_xp_aviso`) e o estado dele. O aviso é a falta de energia (`energia=0` com entrada), que o servidor
-/// sincroniza no data slot dos erros; o xp é o upgrade instalado.
+/// sincroniza no dado dos erros rastreados; o xp é o upgrade instalado.
 fn machine_of(case: &str) -> Option<(ScreenSpec, &'static [RecipeError], bool, bool)> {
     let (spec, tracked) = match case.split('_').next()? {
         "chamber" | "crusher" | "smelter" => (ELECTRIC_SCREEN, &ELECTRIC_TRACKED_ERRORS[..]),
@@ -97,18 +100,18 @@ fn machine_of(case: &str) -> Option<(ScreenSpec, &'static [RecipeError], bool, b
     Some((spec, tracked, case.contains("_xp"), case.contains("_aviso")))
 }
 
-/// O que o cliente da máquina tem nos data slots no estado do caso.
-fn data_of(spec: ScreenSpec, tracked: &[RecipeError], xp: bool, warning: bool) -> Vec<i32> {
-    let flags: Vec<bool> = tracked
+/// O espelho do menu que o cliente da máquina tem no estado do caso.
+fn mirror_of(spec: ScreenSpec, tracked: &[RecipeError], xp: bool, warning: bool) -> Mirror {
+    let errors = tracked
         .iter()
         .map(|error| warning && *error == RecipeError::NOT_ENOUGH_ENERGY)
         .collect();
-    ScreenData {
+    Live {
         xp_containment: xp,
-        errors: ErrorMask::from_flags(&flags),
-        ..ScreenData::default()
+        errors,
+        ..Live::default()
     }
-    .write(spec.data)
+    .mirror(&spec)
 }
 
 fn grid<'a>(grids: &'a [Grid], case: &str, mode: &str) -> &'a Grid {
@@ -130,11 +133,11 @@ fn the_declared_elements_are_the_ones_the_original_finds_under_the_mouse() {
         };
         let menu = format!("test:screen_elements:{}", original.case);
         screen_elements::declare(&menu, machine_elements(spec));
-        let data = data_of(spec, tracked, xp, warning);
+        let mirror = mirror_of(spec, tracked, xp, warning);
         let mut outside_hits = 0;
         for (x, y) in original.points() {
             let port = inside_image(x, y)
-                || screen_elements::over_element(&menu, [x as f32, y as f32], &data);
+                || screen_elements::over_element(&menu, [x as f32, y as f32], &mirror);
             assert_eq!(port, original.over(x, y), "{} em ({x}, {y})", original.case);
             outside_hits += usize::from(!inside_image(x, y) && port);
         }
@@ -184,10 +187,10 @@ fn the_port_never_claims_more_than_the_original_has() {
         let full = grid(&grids, &hidden.case, "completo");
         let menu = format!("test:screen_elements:full:{}", hidden.case);
         screen_elements::declare(&menu, machine_elements(spec));
-        let data = data_of(spec, tracked, xp, warning);
+        let mirror = mirror_of(spec, tracked, xp, warning);
         let mut missing = 0;
         for (x, y) in full.points() {
-            let port = screen_elements::over_element(&menu, [x as f32, y as f32], &data);
+            let port = screen_elements::over_element(&menu, [x as f32, y as f32], &mirror);
             assert!(!port || full.over(x, y), "{} em ({x}, {y})", hidden.case);
             missing += usize::from(!inside_image(x, y) && full.over(x, y) && !port);
         }

@@ -9,21 +9,22 @@ mod common;
 
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalResource};
+use machinery_basis_core::container_sync::{ContainerSync, Mirror, Property, wire};
 use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::gui::{bar_warning, divide_to_level};
 use machinery_basis_core::item_handler::ItemCapabilities;
+use machinery_basis_core::machine_sync::MachineSync;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{
     CHEMICAL_MACHINE_INPUT_ERRORS, ProgressMachine, RedstoneControl, SavedState,
 };
 use machinery_basis_core::upgrade::UpgradeSaved;
-use machinery_basis_core::upgrade_window::UpgradeSync;
 use mekanism_rules::{
-    CRUSHER_USAGE, DataLayout, ELECTRIC_DATA, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS,
-    ENRICHMENT_USAGE, INFUSER_DATA, INFUSER_TRACKED_ERRORS, INFUSER_USAGE, INFUSER_WARNINGS,
-    SMELTER_USAGE, SPEED_UPGRADE, ScreenData, ScreenElement, ScreenWarnings, SyncedMachine,
-    TileScreen, WarningType, electric_config, infuser_config, infusing_cache_of, machine_warnings,
+    CRUSHER_USAGE, ELECTRIC_SCREEN, ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, ENRICHMENT_USAGE,
+    INFUSER_SCREEN, INFUSER_TRACKED_ERRORS, INFUSER_USAGE, INFUSER_WARNINGS, SMELTER_USAGE,
+    SPEED_UPGRADE, ScreenData, ScreenElement, ScreenSpec, ScreenWarnings, SyncedMachine,
+    WarningType, electric_config, infuser_config, infusing_cache_of, machine_warnings,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -34,24 +35,45 @@ const SPEED: &str = "mekanism:speed";
 /// O retângulo da barra de energia (`GuiVerticalPowerBar` em (164, 16), 4 de largura e 52 de altura, mais a moldura).
 const ENERGY_BAR: [f32; 4] = [164.0, 16.0, 6.0, 54.0];
 
-/// A máquina, o `game_time` do mundo em que o rastro foi gravado (o recheck de erros depende de `game_time % 100`), e os data slots da
-/// tela com o desenho deles: o que o port escreve no `ServerTickEnd` e o `broadcastChanges` do original manda ao cliente.
-struct Sim(ProgressMachine, u64, TileScreen, &'static DataLayout);
+/// A máquina, o `game_time` do mundo em que o rastro foi gravado (o recheck de erros depende de `game_time % 100`), e o menu de um jogador
+/// que a tem aberta desde o início: a lista de dados do servidor e o espelho do cliente. O `broadcastChanges` roda no `ServerTickEvent.Post`,
+/// e o que ele manda chega ao cliente em bytes.
+struct Sim(ProgressMachine, u64, ScreenSpec, ContainerSync<u8>, Mirror);
+
+impl Sim {
+    fn new(machine: ProgressMachine, base: u64, spec: ScreenSpec) -> Self {
+        let list = (spec.trackers)();
+        let mut sync = ContainerSync::new(&list);
+        // `sendAllDataToRemote`, ao abrir.
+        let sent = sync.send_all(&MachineSync::of(&machine));
+        let mut sim = Self(machine, base, spec, sync, Mirror::new(&list));
+        sim.deliver(&sent);
+        sim
+    }
+
+    /// O pacote em bytes e a entrega de cada dado à posição dele no espelho do cliente.
+    fn deliver(&mut self, properties: &[Property]) {
+        let packet = wire::Packet::new([0, 64, 0], None, properties);
+        let packet = wire::decode(&wire::encode(&packet)).expect("o pacote volta");
+        for (index, data) in &packet.data {
+            assert!(self.4.apply(*index, data), "o dado {index} não foi aceito");
+        }
+    }
+}
 
 impl SimBlockEntity for Sim {
     fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities) {
         self.0.tick_server(game_time + self.1, neighbours);
-        self.2.machine_ticked(UpgradeSync::of(self.0.upgrades()));
     }
 
     fn neighbor_changed(&mut self, powered: bool) {
         self.0.tile_mut().update_power(powered);
     }
 
-    /// `ServerTickEvent.Post`: a energia que o tile guarda agora, a de dentro do objeto na simulação.
+    /// `ServerTickEvent.Post`: o `broadcastChanges` do menu, com a energia que o tile guarda agora, a de dentro do objeto na simulação.
     fn server_tick_end(&mut self) {
-        let screen = ScreenData::of_machine(&self.0, self.0.energy().amount());
-        self.2.server_tick_end(self.3, screen, false);
+        let dirty = self.3.broadcast_changes(&MachineSync::of(&self.0));
+        self.deliver(&dirty);
     }
 }
 
@@ -134,12 +156,12 @@ fn world(kind: Kind, offset: u64, base: u64, smelting: Vec<Rc<ItemToItemRecipe>>
     // Como um jogador a põe (`applyImplicitComponents` recalcula os upgrades, e com eles a capacidade de energia).
     let mut machine = machine;
     machine.apply_item_components(&UpgradeSaved::default());
-    let layout = if kind.chemical() {
-        &INFUSER_DATA
+    let spec = if kind.chemical() {
+        INFUSER_SCREEN
     } else {
-        &ELECTRIC_DATA
+        ELECTRIC_SCREEN
     };
-    SimWorld::new(Sim(machine, base, TileScreen::default(), layout))
+    SimWorld::new(Sim::new(machine, base, spec))
 }
 
 fn install(machine: &ProgressMachine, total: i32) {
@@ -289,7 +311,7 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
             );
         }
         // O tick do nível, o que o cenário fez depois dele (uma chegada de energia, um item) e o `ServerTickEvent.Post`, onde o port escreve
-        // os data slots que o cliente recebe no tick seguinte.
+        // o `broadcastChanges` que manda ao cliente o que mudou.
         scene.world.tick_level();
         for mark in expected["marks"].as_array().unwrap() {
             for action in mark.as_str().unwrap().split(", ") {
@@ -348,16 +370,10 @@ fn replay(scenario: &str, kind: Kind) -> Vec<Value> {
             format!("{:?}", machine.tile().control_type()).to_lowercase(),
             "{scenario}, tick {t}: modo"
         );
-        // O que chega ao cliente é o quadro do `ServerTickEnd` depois dos 16 bits com sinal de cada data slot: a energia, a capacidade e os erros
-        // desse tick, e não os do tick da máquina.
+        // O que chega ao cliente é o que o `broadcastChanges` do fim do tick mandou: a energia, a capacidade e os erros desse tick, lidos do
+        // espelho pela posição de cada dado.
         let sim = &scene.world.block_entity;
-        let wire: Vec<i32> = sim
-            .2
-            .frame()
-            .iter()
-            .map(|&value| i32::from(value as i16))
-            .collect();
-        let screen = ScreenData::read(sim.3, &wire);
+        let screen = ScreenData::read(&sim.2, &sim.4);
         let client = SyncedMachine {
             tracked: kind.tracked(),
             errors: screen.errors,

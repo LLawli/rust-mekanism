@@ -1,10 +1,12 @@
 //! Os avisos da tela: o `WarningType` do Mekanism, os pares de cada máquina portada e o corte de `getWarnings`, sem jogo.
+mod common;
+
+use common::Live;
 use machinery_basis_core::operation_tracker::RecipeError;
-use machinery_basis_core::tile::{RedstoneControl, RedstoneSync};
-use machinery_basis_core::warning::ErrorMask;
+use machinery_basis_core::tile::RedstoneControl;
 use mekanism_rules::{
-    ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, INFUSER_TRACKED_ERRORS, INFUSER_WARNINGS,
-    SyncedMachine, WarningSource, WarningType, machine_warnings,
+    ELECTRIC_TRACKED_ERRORS, ELECTRIC_WARNINGS, INFUSER_SCREEN, INFUSER_TRACKED_ERRORS,
+    INFUSER_WARNINGS, WarningSource, WarningType, machine_warnings,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -276,7 +278,7 @@ fn the_three_redstone_warnings_need_their_mode_and_no_activation() {
     assert!(!machine_warnings(&disabled, &ELECTRIC_WARNINGS).has_warning());
 }
 
-/// O que o cliente lê dos data slots dá os mesmos avisos que o objeto no servidor, para cada subconjunto de erros do infuser.
+/// O que o cliente lê do espelho do menu dá os mesmos avisos que o objeto no servidor, para cada subconjunto de erros do infuser.
 #[test]
 fn the_client_warnings_from_the_mask_match_the_server_ones() {
     for bits in 0..1u32 << INFUSER_TRACKED_ERRORS.len() {
@@ -295,16 +297,15 @@ fn the_client_warnings_from_the_mask_match_the_server_ones() {
             .iter()
             .map(|error| server.has_error(*error))
             .collect();
-        let client = SyncedMachine {
-            tracked: &INFUSER_TRACKED_ERRORS,
-            errors: ErrorMask::from_slot(ErrorMask::from_flags(&flags).to_slot()),
-            redstone: RedstoneSync {
-                control_type: server.control,
-                // HIGH: ativada é a máquina ter sinal.
-                powered: server.activated,
-                was_powered: server.activated,
-            },
+        let live = Live {
+            errors: flags,
+            control_type: server.control,
+            // HIGH: ativada é a máquina ter sinal.
+            powered: server.activated,
+            was_powered: server.activated,
+            ..Live::default()
         };
+        let client = INFUSER_SCREEN.synced(&live.mirror(&INFUSER_SCREEN));
         assert_eq!(
             machine_warnings(&client, &INFUSER_WARNINGS).warnings(),
             machine_warnings(&server, &INFUSER_WARNINGS).warnings(),

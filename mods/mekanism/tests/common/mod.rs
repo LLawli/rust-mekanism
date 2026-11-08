@@ -486,3 +486,88 @@ pub fn bare_machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
         other => panic!("máquina fora da lista: {other}"),
     }
 }
+
+// ------------------------------------------------------------------------------------------------------------ a tela do cliente
+
+use machinery_basis_core::container_sync::{
+    ContainerSync, Mirror, StackValue, TrackedSource, Value as Synced, wire,
+};
+use machinery_basis_core::machine_sync::MachineSync;
+use machinery_basis_core::tile::RedstoneControl;
+use machinery_basis_core::tile_trackers::source;
+use mekanism_rules::ScreenSpec;
+
+/// O que o servidor lê de uma máquina para o menu de um jogador (o tile vivo, no jogo): os valores que a tela mostra, na mão do teste.
+/// `mirror` faz o caminho inteiro até o cliente: `sendAllDataToRemote`, o pacote em bytes e o `handleWindowProperty` de cada dado.
+#[derive(Clone, Debug, Default)]
+pub struct Live {
+    pub energy: i64,
+    pub capacity: i64,
+    pub energy_per_tick: i32,
+    pub progress: i32,
+    pub ticks_required: i32,
+    pub chemical: StackValue,
+    /// `trackedErrors`, na ordem da lista da máquina.
+    pub errors: Vec<bool>,
+    pub control_type: RedstoneControl,
+    pub powered: bool,
+    pub was_powered: bool,
+    pub xp_containment: bool,
+}
+
+impl TrackedSource for Live {
+    fn value(&self, id: u16) -> Synced {
+        match id {
+            source::SECURITY_FREQUENCY => Synced::Codec {
+                hash: 0,
+                bytes: vec![0],
+            },
+            source::SECURITY_MODE => Synced::Enum(0),
+            source::CONTROL_TYPE => Synced::Enum(self.control_type.ordinal()),
+            source::POWERED => Synced::Boolean(self.powered),
+            source::WAS_POWERED => Synced::Boolean(self.was_powered),
+            source::LAST_ENERGY_RECEIVED => Synced::Long(0),
+            source::MAX_ENERGY => Synced::Long(self.capacity),
+            source::ENERGY_PER_TICK => Synced::Int(self.energy_per_tick),
+            source::ENERGY => Synced::Long(self.energy),
+            source::HAS_XP_CONTAINMENT => Synced::Boolean(self.xp_containment),
+            source::OPERATING_TICKS => Synced::Int(self.progress),
+            source::TICKS_REQUIRED => Synced::Int(self.ticks_required),
+            source::CHEMICAL_TANK => Synced::Stack(self.chemical.clone()),
+            error if (source::TRACKED_ERROR..source::MOD).contains(&error) => {
+                let index = usize::from(error - source::TRACKED_ERROR);
+                Synced::Boolean(self.errors.get(index).copied().unwrap_or(false))
+            }
+            other => panic!("fonte {other} desconhecida"),
+        }
+    }
+}
+
+impl Live {
+    /// O menu como o cliente o tem logo depois de abrir: todos os dados, pelo pacote que o servidor manda.
+    pub fn mirror(&self, spec: &ScreenSpec) -> Mirror {
+        opened_mirror(spec, self)
+    }
+}
+
+/// O menu de uma máquina como o cliente o tem logo depois de abrir, com os valores que ela tem agora: o que o servidor lê dela
+/// (`MachineSync`) vai em bytes, e cada dado entra na posição dele.
+pub fn machine_mirror(spec: &ScreenSpec, machine: &ProgressMachine) -> Mirror {
+    opened_mirror(spec, &MachineSync::of(machine))
+}
+
+fn opened_mirror(spec: &ScreenSpec, source: &dyn TrackedSource) -> Mirror {
+    let list = (spec.trackers)();
+    let mut sync = ContainerSync::<u8>::new(&list);
+    let packet = wire::Packet::new(
+        [0, 64, 0],
+        Some("mekanism:test".into()),
+        &sync.send_all(source),
+    );
+    let packet = wire::decode(&wire::encode(&packet)).expect("o pacote volta");
+    let mut mirror = Mirror::new(&list);
+    for (index, data) in &packet.data {
+        assert!(mirror.apply(*index, data), "o dado {index} não foi aceito");
+    }
+    mirror
+}

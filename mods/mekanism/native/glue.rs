@@ -15,7 +15,6 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents};
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
-use machinery_basis_core::data_slots;
 use machinery_basis_core::gui;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
@@ -26,7 +25,9 @@ use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, Redsto
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
-use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
+use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked, TrackedSource};
+use machinery_basis_core::machine_sync::MachineSync;
+use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::window::SelectedWindow;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType};
@@ -318,21 +319,18 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         // O cliente pergunta a cada clique se ele cai sobre uma aba (`GuiMekanism.hasClickedOutside`), com os data slots de agora.
         machinery_basis_core::screen_elements::declare_once(block, || rules::screen_elements(*machine.screen));
         if let Some(spec) = window_spec(block) {
-            Game::mb_window_register(spec, remove_upgrade, add_upgrades);
+            Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
         }
     }
 }
 
 // A janela de upgrades de cada máquina: só dados. A mecânica (aba, janela, slots virtuais) é da machinery_basis.
-const fn window_spec_of(block: &'static str, slots: &Slots, tracked_base: usize, layout: &rules::DataLayout) -> UpgradeWindowSpec {
+const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Vec<Tracked>) -> UpgradeWindowSpec {
     UpgradeWindowSpec {
         block,
         virtual_slots: [slots.upgrade, slots.upgrade_output],
-        tracked_base,
-        tracking_key: rules::UPGRADE_TRACKING_KEY,
-        tracked_items: rules::UPGRADE_TRACKED_ITEMS,
-        sync_offset: layout.upgrade,
-        sync_len: rules::UPGRADE_SYNC_LEN,
+        trackers,
+        window_trackers: rules::upgrade_window_data,
         ns: "mekanism",
         window_type: rules::UPGRADE_WINDOW,
         window_types: &rules::WINDOW_TYPES,
@@ -350,9 +348,9 @@ fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
 }
 
 static WINDOW_SPECS: [UpgradeWindowSpec; 4] = [
-    window_spec_of(rules::ENRICHMENT_CHAMBER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
-    window_spec_of(rules::CRUSHER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
-    window_spec_of(rules::ENERGIZED_SMELTER, &ELECTRIC_SLOT_LAYOUT, rules::ELECTRIC_TRACKED_BASE, &rules::ELECTRIC_DATA),
+    window_spec_of(rules::ENRICHMENT_CHAMBER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
+    window_spec_of(rules::CRUSHER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
+    window_spec_of(rules::ENERGIZED_SMELTER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
     window_spec_of(
         rules::INFUSER,
         &Slots {
@@ -363,8 +361,7 @@ static WINDOW_SPECS: [UpgradeWindowSpec; 4] = [
             upgrade: rules::UPGRADE_SLOT,
             upgrade_output: rules::UPGRADE_OUTPUT_SLOT,
         },
-        rules::INFUSER_TRACKED_BASE,
-        &rules::INFUSER_DATA,
+        rules::infuser_trackers,
     ),
 ];
 
@@ -432,9 +429,6 @@ thread_local! {
     static LIVE_MACHINES: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
     static COMPARATOR_LEVELS: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
     static COMPARATOR_QUEUE: RefCell<Vec<(&'static str, [i32; 3])>> = const { RefCell::new(Vec::new()) };
-    // Quantos jogadores têm a tela aberta, por bloco, como o `mod_container_viewers` disse por último. Existe mesmo sem objeto
-    // vivo: a abertura que chega antes do primeiro tick, ou depois de a varredura tirar o objeto, é contada quando ele nasce.
-    static VIEWERS: RefCell<HashMap<(&'static str, [i32; 3]), u32>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
     // Se o objeto vivo que a varredura tirou já tinha recalculado a capacidade (`capacity_recalculated`). O tile do Java continua o
     // mesmo quando o port larga o objeto de uma máquina que ficou sem andar; o objeto novo recebe isto de volta.
@@ -516,8 +510,8 @@ struct Live {
     /// O nível que os comparadores já viram.
     reported_level: Option<i32>,
     lit: Option<bool>,
-    /// Os data slots da tela, escritos no fim do tick do servidor (`server_tick_end`).
-    screen: rules::TileScreen,
+    /// Quantos jogadores o objeto sabe que têm a tela aberta (`playersUsing`): a diferença para as sessões vira `open()` e `close()`.
+    players: usize,
     /// A face de saída do ejetor, a direita da frente.
     eject_side: Option<Face>,
     /// Os tipos e as tags de upgrade de onde os dados da máquina saíram: uma carga nova de dados os troca.
@@ -1030,10 +1024,9 @@ fn born(
         progress.apply_item_components(&UpgradeSaved::default());
     }
     progress.set_experience_lookup(experience_of(&basis::machine_recipes(game, &machine.recipes)));
-    // Quem já tinha a tela aberta antes de o objeto existir: a contagem guardada é aplicada uma vez, aqui, num objeto novo.
-    let viewers =
-        VIEWERS.with_borrow(|counts| counts.get(&(game.native_dimension(), pos)).copied());
-    for _ in 0..viewers.unwrap_or(0) {
+    // Quem já tinha a tela aberta antes de o objeto existir: as sessões são aplicadas uma vez, aqui, num objeto novo.
+    let players = Game::mb_container_players(pos);
+    for _ in 0..players {
         progress.open();
     }
     Live {
@@ -1044,7 +1037,7 @@ fn born(
         used_version: None,
         reported_level: None,
         lit: None,
-        screen: rules::TileScreen::default(),
+        players,
         eject_side: None,
         upgrade_types,
         upgrade_tags,
@@ -1366,7 +1359,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     result_take_after(game, pos, entity, spec);
     basis::name_apply_pending(entity, pos);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
-    // O tile é o mesmo se o Horizon ainda guarda os data slots que o objeto anterior escreveu (um tile lido do disco nasce sem eles).
+    // O tile é o mesmo se o Horizon ainda guarda a marca que o tick anterior pôs (um tile lido do disco nasce sem ela).
     let continuing = (!entity.data.is_empty())
         .then(|| match &alive {
             Some(live) => Some(live.machine.capacity_recalculated()),
@@ -1398,6 +1391,16 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.machine.upgrades().set_data(upgrade_data(game, &upgrade_types, &upgrade_tags));
         live.upgrade_types = upgrade_types;
         live.upgrade_tags = upgrade_tags;
+    }
+    // `MekanismTileContainer.openInventory` e `closeInventory`: quem abriu ou fechou a tela desde o último tick entra ou sai do `playersUsing`.
+    let players = Game::mb_container_players(pos);
+    while live.players < players {
+        live.machine.open();
+        live.players += 1;
+    }
+    while live.players > players {
+        live.machine.close();
+        live.players -= 1;
     }
     let machine = &live.machine;
     slot_from_entity(game, machine.input(), entity.items[slots.input].as_ref());
@@ -1520,9 +1523,11 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         game.native_set_block_property(pos, "lit", if lit { "true" } else { "false" });
         live.lit = Some(lit);
     }
-    // Os data slots da tela não saem deste tick: o Java os lê vivos no `broadcastChanges` do tick seguinte, então o quadro é o do fim do
-    // tick do servidor (`server_tick_end`), com a energia que chegou depois daqui.
-    live.screen.machine_ticked(UpgradeSync::of(live.machine.upgrades()));
+    // O que a tela mostra não sai deste tick: o Java lê o valor vivo de cada dado no `broadcastChanges` do tick seguinte (`window_source`).
+    // O Horizon só guarda o `data` do tile enquanto o objeto é o mesmo; a marca diz ao tick seguinte que ele continua.
+    if entity.data.is_empty() {
+        entity.data = vec![TILE_TICKED];
+    }
 
     match live.machine.chemical_side() {
         None => {
@@ -1666,68 +1671,74 @@ pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) 
     }
 }
 
-/// `ServerTickEvent.Post`: escreve os data slots da tela de cada máquina viva com o estado do fim do tick, que é o que o
-/// `MekanismContainer.broadcastChanges` lê (`ServerPlayer.tick`, `ServerPlayer.java:606`, antes dos block entities do tick seguinte)
-/// e o Horizon manda no `tick_lan` do tick seguinte, também antes deles. A energia e o tanque vêm do que o tile guarda agora, porque
-/// chegam de fora do tick da máquina (um gerador, o botão de esvaziar); o resto é o objeto vivo, com o erro que ele ainda não
-/// recalculou. Nenhuma máquina é lida ou escrita fora disso: o tick dela não toca em `entity.data`.
-pub(in crate::game) fn server_tick_end(game: &mut Game<'_>) {
-    let dimensions: Vec<&'static str> =
-        LIVE_MACHINES.with_borrow(|machines| machines.keys().map(|(dimension, _)| *dimension).collect());
-    game.mb_in_levels(
-        |dimension| dimensions.iter().any(|known| *known == dimension),
-        |game, dimension| {
-            let positions: Vec<[i32; 3]> = LIVE_MACHINES.with_borrow(|machines| {
-                machines.keys().filter(|(at, _)| *at == dimension).map(|(_, pos)| *pos).collect()
-            });
-            for pos in positions {
-                write_screen(game, dimension, pos);
-            }
-        },
-    );
+/// `TrackingEnergyHandler.insert` → `LastEnergyTracker.received`: o buffer da máquina em `pos` passou a guardar `energy` (`native_energy_store`, o
+/// fim de todo `insert` e `move`). O que subiu entrou pela capability e soma no `lastEnergyReceived` do tick; o que desceu saiu (`extract`) e
+/// o Java não conta. O objeto vivo que está no meio do próprio tick não recebe energia (o Horizon o tira do mundo), então o empréstimo da
+/// tabela só falha se um tick da própria máquina estiver chamando isto, e então não há o que contar.
+pub(in crate::game) fn energy_stored(game: &Game<'_>, pos: [i32; 3], energy: i32) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    if machine_of(&entity.id).is_none() {
+        return;
+    }
+    let before = basis::stored_energy(entity);
+    let Some(received) = energy.checked_sub(before).filter(|received| *received > 0) else {
+        return;
+    };
+    let key = (game.native_dimension(), pos);
+    LIVE_MACHINES.with(|machines| {
+        if let Ok(machines) = machines.try_borrow()
+            && let Some(live) = machines.get(&key)
+        {
+            live.machine.energy_received(i64::from(received), game.world.game_time as u64);
+        }
+    });
 }
 
-fn write_screen(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
-    // O `redstone` que um aviso deixou depois do tick da máquina já vale no fim do tick (`updatePower` troca o campo na hora), e a tela o lê aqui. Só
-    // vale para o objeto vivo do tile que está no mundo: o de um bloco que acabou de ser trocado (o tile novo ainda não tem `redstone` salvo) espera o
-    // primeiro tick do tile novo, que o pega; e o objeto vivo de uma máquina que deu lugar a outro bloco (um Heat Generator) não pega o aviso do bloco novo. Com o
-    // servidor parado este gancho roda a cada quadro, entre dois ticks.
+/// A marca que o tick de uma máquina deixa em `ModBlockEntity.data` (que o Horizon não salva, e que o menu da máquina não usa: ela declara
+/// zero data slots): o tile é o mesmo objeto de antes. Um tile novo, ou lido do disco, nasce sem ela.
+const TILE_TICKED: i32 = 1;
+
+/// O valor vivo dos dados do menu da máquina em `pos`, o que o `MekanismContainer` lê no `broadcastChanges` (`ServerPlayer.tick`,
+/// `ServerPlayer.java:606`, antes dos block entities) e no `sendAllDataToRemote` da abertura. A energia e o tanque vêm do que o tile
+/// guarda agora, porque chegam de fora do tick da máquina (um gerador, o botão de esvaziar); o resto é o objeto vivo, com o erro que ele
+/// ainda não recalculou. O `redstone` que um aviso deixou depois do tick da máquina já vale aqui (`updatePower` troca o campo na hora). Só
+/// vale para o objeto vivo do tile que está no mundo: o de um bloco que acabou de ser trocado (o tile novo ainda não tem `redstone`
+/// salvo) espera o primeiro tick do tile novo, que o pega; e o objeto vivo de uma máquina que deu lugar a outro bloco (um Heat Generator)
+/// não pega o aviso do bloco novo. Devolve se havia objeto vivo para ler.
+fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
+    let at = (pos[0], pos[1], pos[2]);
     let current = matches!(
-        game.world.block_entities.get(&(pos[0], pos[1], pos[2])),
+        game.world.block_entities.get(&at),
         Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() && has_saved(entity)
     );
     let power = if current { basis::take_power(game, pos) } else { None };
-    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
-        return;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+        return false;
     };
     let Some(spec) = machine_of(&entity.id) else {
-        return;
+        return false;
     };
-    let tracking = Game::mb_window_tracking(pos);
     let stored = i64::from(basis::stored_energy(entity));
-    let tank = spec.slots.infusion.map(|_| read_tank(entity));
-    let frame = LIVE_MACHINES.with_borrow_mut(|machines| {
-        let live = machines.get_mut(&(dimension, pos))?;
+    let tank = spec.slots.infusion.map(|_| {
+        let tank = read_tank(entity);
+        StackValue {
+            resource: tank.resource.as_ref().map(|held| held.id.to_string()).unwrap_or_default(),
+            amount: tank.amount,
+        }
+    });
+    let key = (game.native_dimension(), pos);
+    LIVE_MACHINES.with_borrow_mut(|machines| {
+        let Some(live) = machines.get_mut(&key) else {
+            return false;
+        };
         if let Some(powered) = power {
             live.machine.tile_mut().update_power(powered);
         }
-        let mut screen = rules::ScreenData::of_machine(&live.machine, stored);
-        if let Some(tank) = &tank {
-            let id = tank.resource.as_ref().map(|held| held.id.to_string()).unwrap_or_default();
-            let registry = resource::current();
-            let infusion = registry.get(&id);
-            screen.chemical_amount = tank.amount as i32;
-            screen.chemical_tint = infusion.map_or(0, |infusion| infusion.tint);
-            screen.chemical_icon = rules::chemical_icon_slot(infusion.and_then(|infusion| infusion.icon.as_deref()));
-            screen.chemical_id = data_slots::pack_text(&id);
-        }
-        Some(live.screen.server_tick_end(spec.screen.data, screen, tracking).to_vec())
-    });
-    if let Some(frame) = frame
-        && entity.data != frame
-    {
-        entity.data = frame;
-    }
+        act(&MachineSync { machine: &live.machine, stored, tank });
+        true
+    })
 }
 
 /// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há.
@@ -1993,6 +2004,13 @@ pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
     basis::name_container_opened(game, player, pos, &is_machine_id);
+    // `MekanismTileContainer.openInventory`: o jogador entra no `playersUsing` e recebe os dados do menu.
+    if let Some(pos) = pos {
+        let block = game.native_block(pos);
+        if is_machine(&block) {
+            game.mb_container_open(player, pos, &block);
+        }
+    }
 }
 
 /// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
@@ -2081,41 +2099,6 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     } else if let Some(machine) = machine_of(&entity.id) {
         tick_machine(game, pos, entity, machine);
     }
-}
-
-/// `native_mod_container_viewers`: a contagem de jogadores com a tela do bloco em `pos` foi de `previous` para `viewers`.
-/// Guarda a contagem atual, e se a máquina tem objeto vivo, aplica só a diferença, com `open()` e `close()`. Chega para
-/// qualquer mod container: uma posição que não é máquina nossa não tem objeto, então só fica guardada até a contagem zerar.
-pub(in crate::game) fn viewers_changed(
-    game: &Game<'_>,
-    dimension: &str,
-    pos: [i32; 3],
-    viewers: u32,
-    previous: u32,
-) {
-    // A chave usa a dimensão do jogo, com o mesmo valor (`self.dim.id()`) que o hook recebe. Outra dimensão não é deste nível.
-    let dim = game.native_dimension();
-    if dim != dimension {
-        return;
-    }
-    let key = (dim, pos);
-    VIEWERS.with_borrow_mut(|counts| {
-        if viewers == 0 {
-            counts.remove(&key);
-        } else {
-            counts.insert(key, viewers);
-        }
-    });
-    LIVE_MACHINES.with_borrow(|machines| {
-        if let Some(live) = machines.get(&key) {
-            for _ in previous..viewers {
-                live.machine.open();
-            }
-            for _ in viewers..previous {
-                live.machine.close();
-            }
-        }
-    });
 }
 
 /// O menu de uma máquina visto pelo `quickMoveStack` do Mekanism: os slots do bloco (`entity.items`, os virtuais da janela no fim)
@@ -2295,13 +2278,9 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
         return;
     }
     // `dump()`: `dumpOrClearContents` no tanque de infusão, que fora a radiação (que não existe aqui) só o esvazia. O objeto
-    // vivo o relê no tick seguinte, como um `setContents` de fora. O pacote age na hora, e o menu sincroniza o tanque ao jogador no
-    // mesmo instante, mesmo com o servidor parado: os data slots da tela mudam junto, não no próximo tick.
+    // vivo o relê no tick seguinte, como um `setContents` de fora.
     if !read_tank(entity).is_empty() {
         write_tank(entity, &TankContents::default());
-        if let Some(machine) = machine_of(&entity.id) {
-            rules::clear_chemical_screen(machine.screen.data, &mut entity.data);
-        }
     }
 }
 
@@ -2330,14 +2309,14 @@ fn input_stacks_of(entity: &ModBlockEntity) -> Vec<Option<ItemStack>> {
 }
 
 /// `GuiDumpButton` é um `MekanismImageButton` com a mesma ação nos dois botões do mouse: o clique direito também esvazia o tanque.
-pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, data: &[i32], at: [f32; 2], right: bool, button: &mut Option<i32>) {
+pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
     if is_infuser(block) && inside(DUMP_RECT, at) {
         *button = Some(DUMP_BUTTON);
         return;
     }
     // `GuiXpContainmentTab.onClick`: só o botão esquerdo, com a aba visível e fora de uma janela por cima dela.
     if let Some(machine) = machine_of(block) {
-        let read = rules::ScreenData::read(machine.screen.data, data);
+        let read = rules::ScreenData::read(machine.screen, &game.mb_mirror(block));
         if rules::xp_tab().click(read.xp_containment, at, right, game.mb_window_covers(at)) {
             *button = Some(XP_BUTTON);
         }
@@ -2373,7 +2352,6 @@ pub(in crate::game) fn widget_tooltip(
     game: &Game<'_>,
     batch: &mut HudBatch,
     block: &str,
-    data: &[i32],
     at: [f32; 2],
     cursor: (f32, f32),
 ) -> bool {
@@ -2384,7 +2362,8 @@ pub(in crate::game) fn widget_tooltip(
     if game.mb_window_tooltip(batch, block, at, cursor) {
         return true;
     }
-    let read = rules::ScreenData::read(machine.screen.data, data);
+    let mirror = game.mb_mirror(block);
+    let read = rules::ScreenData::read(machine.screen, &mirror);
     let translate = |key: &str| lang::get(key);
     // `GuiXpContainmentTab`: `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, que `Tooltip.create` quebra em 170 pixels. A janela de upgrades
     // por cima do botão o esconde (`isMouseOverCheckWindows`).
@@ -2416,7 +2395,7 @@ pub(in crate::game) fn widget_tooltip(
         return true;
     }
     let (widget, lines): ([f32; 4], Vec<(String, Option<u32>)>) = if gui::contains(gui::WARNING_TAB_LEFT, at) {
-        let view = machine.screen.view(data);
+        let view = machine.screen.view(&mirror);
         // Sem aviso a aba some (`updateVisibility`), e não há o que mostrar.
         if !view.tab() {
             return false;
@@ -2428,9 +2407,8 @@ pub(in crate::game) fn widget_tooltip(
         let text = rules::energy_tooltip(u64::from(read.energy), u64::from(capacity), &translate);
         (energy_bar(machine), vec![(text, None)])
     } else if machine.slots.infusion.is_some() && inside(INFUSION_BAR, at) {
-        let amount = read.chemical_amount.max(0) as u64;
-        let id = data_slots::unpack_text(&read.chemical_id);
-        let name = (amount > 0).then(|| translate(&rules::chemical_lang_key(&id)));
+        let amount = read.chemical.amount;
+        let name = (amount > 0).then(|| translate(&rules::chemical_lang_key(&read.chemical.resource)));
         (INFUSION_BAR, vec![(rules::chemical_tooltip(name.as_deref(), amount, &translate), None)])
     } else {
         return false;
@@ -2476,11 +2454,11 @@ fn draw_energy_bar(
     });
 }
 
-fn draw_infuser(game: &Game<'_>, machine: &Machine, data: &[i32], batch: &mut HudBatch, origin: [f32; 2]) {
+fn draw_infuser(game: &Game<'_>, machine: &Machine, mirror: &Mirror, batch: &mut HudBatch, origin: [f32; 2]) {
     let [x, y] = origin;
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
-    let read = rules::ScreenData::read(machine.screen.data, data);
-    let view = machine.screen.view(data);
+    let read = rules::ScreenData::read(machine.screen, mirror);
+    let view = machine.screen.view(mirror);
     let warning = |element| view.element(element).then_some(&WARNING_SPRITES);
 
     let title = screen_title(game, "container.mekanism.metallurgic_infuser");
@@ -2536,26 +2514,29 @@ fn draw_chemical_bar(
     rect: [f32; 4],
     warning: Option<&basis::WarningSprites>,
 ) {
-    let level = gui::divide_to_level(f64::from(read.chemical_amount.max(0)), rules::TANK_CAPACITY as f64);
+    let level = gui::divide_to_level(read.chemical.amount as f64, rules::TANK_CAPACITY as f64);
+    // O cliente resolve o químico pelo registro dele (cor e sprite), como o do original resolve o `Chemical` do pacote.
+    let registry = resource::current();
+    let chemical = registry.get(&read.chemical.resource);
     basis::vertical_bar(game, batch, &BAR_STYLE, rect, level, warning, &|game, batch, dst| {
-        let Some(icon) = rules::chemical_icon(read.chemical_icon) else {
+        let Some(icon) = rules::chemical_icon(chemical.and_then(|chemical| chemical.icon.as_deref())) else {
             return;
         };
-        basis::tank_bar_contents(game, batch, icon, [CHEMICAL_FRAME; 2], dst, read.chemical_tint);
+        basis::tank_bar_contents(game, batch, icon, [CHEMICAL_FRAME; 2], dst, chemical.map_or(0, |chemical| chemical.tint));
     });
 }
 
 fn draw_electric(
     game: &Game<'_>,
     electric: &Machine,
-    data: &[i32],
+    mirror: &Mirror,
     batch: &mut HudBatch,
     origin: [f32; 2],
 ) {
     let [x, y] = origin;
     let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
-    let read = rules::ScreenData::read(electric.screen.data, data);
-    let view = electric.screen.view(data);
+    let read = rules::ScreenData::read(electric.screen, mirror);
+    let view = electric.screen.view(mirror);
 
     let title = screen_title(game, electric.title);
     basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
@@ -2584,15 +2565,15 @@ fn draw_electric(
 pub(in crate::game) fn screen_draw(
     game: &Game<'_>,
     block: &str,
-    data: &[i32],
     batch: &mut HudBatch,
     origin: [f32; 2],
 ) {
     if let Some(machine) = machine_of(block) {
+        let mirror = game.mb_mirror(block);
         if is_infuser(block) {
-            draw_infuser(game, machine, data, batch, origin);
+            draw_infuser(game, machine, &mirror, batch, origin);
         } else {
-            draw_electric(game, machine, data, batch, origin);
+            draw_electric(game, machine, &mirror, batch, origin);
         }
     }
 }

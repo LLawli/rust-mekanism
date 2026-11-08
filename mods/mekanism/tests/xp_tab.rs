@@ -1,9 +1,12 @@
 //! A aba de xp (`GuiXpContainmentTab`) contra o que o cliente oficial dá: onde ela fica, e se aparece, em cada estado da cena
 //! (`xp_tab.jsonl`, do log da `CenaTelas`). Mais o que o port decide com a mesma regra: o clique, o foco e o tooltip.
+mod common;
+
+use common::Live;
 use machinery_basis_core::side_tab::{ButtonLook, XpTab};
 use mekanism_rules::{
-    ELECTRIC_DATA, INFUSER_DATA, ScreenData, XP_TAB_ICON, XP_TAB_TINT, XP_TAB_TOOLTIP, XP_TAB_Y,
-    xp_tab,
+    ELECTRIC_SCREEN, INFUSER_SCREEN, ScreenData, XP_TAB_ICON, XP_TAB_TINT, XP_TAB_TOOLTIP,
+    XP_TAB_Y, xp_tab,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -72,21 +75,19 @@ fn the_button_the_tooltip_and_the_look_are_the_ones_of_the_class() {
     );
 }
 
-/// O cliente só sabe do upgrade pelo data slot que o servidor manda (`SyncableBoolean` de `hasXpContainment`): sem ele a aba não existe.
+/// O cliente só sabe do upgrade pelo `SyncableBoolean` de `hasXpContainment` que o servidor manda: sem ele a aba não existe.
 #[test]
 fn the_tab_follows_the_synced_flag() {
-    for layout in [&ELECTRIC_DATA, &INFUSER_DATA] {
-        let with = ScreenData {
+    for spec in [&ELECTRIC_SCREEN, &INFUSER_SCREEN] {
+        let with = Live {
             xp_containment: true,
-            ..ScreenData::default()
+            ..Live::default()
         }
-        .write(layout);
-        let without = ScreenData::default().write(layout);
-        assert!(XpTab::visible(
-            ScreenData::read(layout, &with).xp_containment
-        ));
+        .mirror(spec);
+        let without = Live::default().mirror(spec);
+        assert!(XpTab::visible(ScreenData::read(spec, &with).xp_containment));
         assert!(!XpTab::visible(
-            ScreenData::read(layout, &without).xp_containment
+            ScreenData::read(spec, &without).xp_containment
         ));
     }
 }

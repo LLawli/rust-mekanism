@@ -4,12 +4,15 @@
 mod common;
 
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
+use machinery_basis_core::container_sync::{Mirror, Property, Tracked, Value as Synced, wire};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::item_handler::ItemCapabilities;
+use machinery_basis_core::machine_sync::{MachineSync, read_upgrade_map, upgrade_map};
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::quick_move::{QuickMenu, Region, quick_move};
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::ProgressMachine;
+use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::upgrade_window::{
     UpgradeSync, decode_remove, encode_remove, type_at, type_index,
@@ -17,9 +20,8 @@ use machinery_basis_core::upgrade_window::{
 use machinery_basis_core::window::{SelectedWindow, WindowType};
 use machinery_basis_core::window_session::Sessions;
 use mekanism_rules::{
-    ELECTRIC_TRACKED_BASE, ENERGY_UPGRADE, ENRICHMENT_USAGE, INFUSER_TRACKED_BASE, SPEED_UPGRADE,
-    UPGRADE_TRACKED_ITEMS, UPGRADE_TRACKING_KEY, UPGRADE_TYPES, UPGRADE_WINDOW, WINDOW_TYPES,
-    electric_config, upgrade_type_of,
+    ENERGY_UPGRADE, ENRICHMENT_USAGE, SPEED_UPGRADE, UPGRADE_WINDOW, WINDOW_TYPES, electric_config,
+    electric_trackers, infuser_trackers, upgrade_type_of, upgrade_window_data,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -30,6 +32,9 @@ const MINIMUM_LINES: usize = 10;
 /// O contêiner e o jogador do cenário: o rastro tem um só.
 const CONTAINER: u32 = 1;
 const PLAYER: u128 = 1;
+const LEVEL: &str = "minecraft:overworld";
+/// Os tipos de upgrade do original (`Upgrade`): um arquivo de `mekanism/upgrade` por tipo.
+const UPGRADE_TYPES: usize = 8;
 
 struct Chamber(ProgressMachine);
 
@@ -281,10 +286,70 @@ fn carried_json(carried: &Option<(ItemResource, u32)>) -> Value {
     }
 }
 
+/// O menu de um jogador no cliente: o espelho dele e, com a janela de upgrades acompanhando, onde ela pôs os dados dela.
+struct Client {
+    mirror: Mirror,
+    /// As posições de `upgradeTicks` e do mapa, que `startTracking` devolveu.
+    window: Option<Vec<usize>>,
+}
+
+impl Client {
+    fn new(base: &[Tracked]) -> Self {
+        Self {
+            mirror: Mirror::new(base),
+            window: None,
+        }
+    }
+
+    /// O pacote em bytes e a entrega de cada dado à posição dele (`handleWindowProperty`). Devolve quantos o espelho aceitou.
+    fn receive(&mut self, properties: &[Property]) -> usize {
+        let packet = wire::Packet::new([0, 64, 0], None, properties);
+        let packet = wire::decode(&wire::encode(&packet)).expect("o pacote volta");
+        packet
+            .data
+            .iter()
+            .filter(|(index, data)| self.mirror.apply(*index, data))
+            .count()
+    }
+
+    /// `GuiUpgradeWindow` chama `startTracking` na mesma hora em que o servidor o faz.
+    fn start_window(&mut self) -> Vec<usize> {
+        let positions = self
+            .mirror
+            .start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
+        self.window = Some(positions.clone());
+        positions
+    }
+
+    fn stop_window(&mut self) {
+        self.mirror.stop_tracking(&UPGRADE_WINDOW_KEY);
+        self.window = None;
+    }
+
+    /// O que a janela lê do espelho: `upgradeTicks` e os bytes do mapa, nas posições dela.
+    fn upgrades(&self) -> Option<UpgradeSync> {
+        let positions = self.window.as_ref()?;
+        Some(read_upgrade_map(
+            self.mirror.int(positions[0]),
+            self.mirror.bytes(positions[1]),
+        ))
+    }
+}
+
+/// O que o cliente leu é o que o servidor tem: os mesmos `upgradeTicks`, os mesmos tipos instalados e a mesma contagem de cada um.
+fn assert_same_upgrades(read: &UpgradeSync, sync: &UpgradeSync) {
+    assert_eq!(read.ticks, sync.ticks);
+    assert_eq!(read.installed(), sync.installed());
+    for index in 0..sync.counts.len() {
+        assert_eq!(read.count(index), sync.count(index), "tipo {index}");
+    }
+}
+
 #[test]
 fn installing_through_the_window_follows_the_original_trace() {
     let mut world = chamber();
     let mut sessions = Sessions::<u32, u128, u8>::default();
+    let mut client: Option<Client> = None;
     let mut carried: Option<(ItemResource, u32)> = None;
     // O que o contêiner tinha ao fechar: o rastro continua gravando a contagem depois disso.
     let mut last_tracked = 0;
@@ -295,30 +360,53 @@ fn installing_through_the_window_follows_the_original_trace() {
         for mark in actions(&expected) {
             let words: Vec<&str> = mark.split_whitespace().collect();
             match words.as_slice() {
-                ["open", "container"] => sessions.open(CONTAINER, PLAYER, ELECTRIC_TRACKED_BASE),
+                ["open", "container"] => {
+                    sessions.open(
+                        CONTAINER,
+                        PLAYER,
+                        LEVEL,
+                        "mekanism:test",
+                        &electric_trackers(),
+                    );
+                    // `sendAllDataToRemote`, ao abrir.
+                    let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
+                    let sent = session.sync.send_all(&MachineSync::of(machine));
+                    let mut opened = Client::new(&electric_trackers());
+                    assert_eq!(opened.receive(&sent), sent.len());
+                    client = Some(opened);
+                }
                 ["select", "upgrade", "window"] => {
                     sessions.select(CONTAINER, PLAYER, Some(window));
                 }
                 ["track", "upgrades"] => {
+                    // Os dados da janela entram no menu deste jogador, no servidor e no cliente dele, e o servidor manda os valores.
                     let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
-                    session
-                        .tracking
-                        .start(UPGRADE_TRACKING_KEY, UPGRADE_TRACKED_ITEMS);
+                    let sent = session.sync.start_tracking_server(
+                        UPGRADE_WINDOW_KEY,
+                        &upgrade_window_data(),
+                        &MachineSync::of(machine),
+                    );
+                    let client = client.as_mut().unwrap();
+                    let positions = client.start_window();
+                    let indexes: Vec<usize> = sent
+                        .iter()
+                        .map(|property| usize::from(property.index))
+                        .collect();
+                    assert_eq!(indexes, positions);
+                    assert_eq!(client.receive(&sent), sent.len());
                 }
                 ["stop", "tracking"] => {
                     let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
-                    session.tracking.stop(&UPGRADE_TRACKING_KEY);
+                    session.sync.stop_tracking(&UPGRADE_WINDOW_KEY);
+                    client.as_mut().unwrap().stop_window();
                 }
                 ["deselect", "window"] => {
                     sessions.select(CONTAINER, PLAYER, None);
                 }
                 ["close", "container"] => {
-                    last_tracked = sessions
-                        .session(CONTAINER, PLAYER)
-                        .unwrap()
-                        .tracking
-                        .count();
+                    last_tracked = sessions.session(CONTAINER, PLAYER).unwrap().sync.count();
                     sessions.close(CONTAINER, PLAYER);
+                    client = None;
                 }
                 ["click", "upgrade", "slot", "with", name, count, ..] => {
                     let resource = machine.upgrades().data().resource_of(&upgrade_id(name));
@@ -333,12 +421,16 @@ fn installing_through_the_window_follows_the_original_trace() {
         }
         let mut actual = machine_state(machine, &expected["t"], &expected["marks"]);
         let sync = UpgradeSync::of(machine.upgrades());
-        // O que o cliente lê dos data slots é o que o servidor tem, depois dos 16 bits.
-        let wire = mekanism_rules::ELECTRIC_DATA;
-        let mut data = vec![0; wire.len];
-        mekanism_rules::write_upgrade_sync(&mut data, &wire, &sync);
-        let read = mekanism_rules::read_upgrade_sync(&wire, &data);
-        assert_eq!(read, sync);
+        // O `broadcastChanges` do fim do tick manda ao cliente o que mudou, e a janela lê dele o que o servidor tem.
+        if let (Some(session), Some(client)) =
+            (sessions.session_mut(CONTAINER, PLAYER), client.as_mut())
+        {
+            let dirty = session.sync.broadcast_changes(&MachineSync::of(machine));
+            assert_eq!(client.receive(&dirty), dirty.len());
+            if let Some(read) = client.upgrades() {
+                assert_same_upgrades(&read, &sync);
+            }
+        }
         actual["upgrade_ticks"] = sync.ticks.into();
         let map: serde_json::Map<String, Value> = machine
             .upgrades()
@@ -359,7 +451,7 @@ fn installing_through_the_window_follows_the_original_trace() {
             } else {
                 "none"
             });
-            actual["tracked"] = json!(session.map_or(last_tracked, |s| s.tracking.count()));
+            actual["tracked"] = json!(session.map_or(last_tracked, |s| s.sync.count()));
             actual["carried"] = carried_json(&carried);
             actual["players"] = json!(sessions.players(CONTAINER));
         }
@@ -368,18 +460,18 @@ fn installing_through_the_window_follows_the_original_trace() {
 }
 
 /// O contêiner dos rastros `*_container_tracking`: uma sessão, e as posições que cada pedido acrescentou ou tirou.
-fn replay_tracking(scenario: &str, base: usize) {
+fn replay_tracking(scenario: &str, base: &[Tracked]) {
     let mut sessions = Sessions::<u32, u128, u8>::default();
     let window = SelectedWindow::new(UPGRADE_WINDOW, 0);
-    let mut count = base;
+    let mut count = base.len();
     for expected in lines_unbounded(scenario) {
         let mut added: Vec<usize> = Vec::new();
         let mut removed: Vec<usize> = Vec::new();
         for mark in marks(&expected) {
             match mark {
                 "container created" => {
-                    sessions.open(CONTAINER, PLAYER, base);
-                    added = (0..base).collect();
+                    sessions.open(CONTAINER, PLAYER, LEVEL, "mekanism:test", base);
+                    added = (0..base.len()).collect();
                 }
                 "PacketWindowSelect upgrade" => {
                     sessions.select(CONTAINER, PLAYER, Some(window));
@@ -388,26 +480,22 @@ fn replay_tracking(scenario: &str, base: usize) {
                     sessions.select(CONTAINER, PLAYER, None);
                 }
                 mark if mark.starts_with("PacketGuiInteract CONTAINER_TRACK_UPGRADES") => {
-                    let tracking = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().tracking;
-                    added = tracking.start(UPGRADE_TRACKING_KEY, UPGRADE_TRACKED_ITEMS);
+                    let sync = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().sync;
+                    added = sync.start_tracking(UPGRADE_WINDOW_KEY, &upgrade_window_data());
                 }
                 "PacketGuiInteract CONTAINER_STOP_TRACKING" => {
-                    let tracking = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().tracking;
-                    removed = tracking.stop(&UPGRADE_TRACKING_KEY);
+                    let sync = &mut sessions.session_mut(CONTAINER, PLAYER).unwrap().sync;
+                    removed = sync.stop_tracking(&UPGRADE_WINDOW_KEY);
                 }
                 "container closed" => {
-                    count = sessions
-                        .session(CONTAINER, PLAYER)
-                        .unwrap()
-                        .tracking
-                        .count();
+                    count = sessions.session(CONTAINER, PLAYER).unwrap().sync.count();
                     sessions.close(CONTAINER, PLAYER);
                 }
                 other => panic!("marca desconhecida: {other:?}"),
             }
         }
         if let Some(session) = sessions.session(CONTAINER, PLAYER) {
-            count = session.tracking.count();
+            count = session.sync.count();
         }
         let t = &expected["t"];
         assert_eq!(
@@ -468,12 +556,114 @@ fn lines_unbounded(scenario: &str) -> Vec<Value> {
 
 #[test]
 fn the_chamber_container_tracking_follows_the_original_trace() {
-    replay_tracking("chamber_container_tracking", ELECTRIC_TRACKED_BASE);
+    replay_tracking("chamber_container_tracking", &electric_trackers());
 }
 
 #[test]
 fn the_infuser_container_tracking_follows_the_original_trace() {
-    replay_tracking("infuser_container_tracking", INFUSER_TRACKED_BASE);
+    replay_tracking("infuser_container_tracking", &infuser_trackers());
+}
+
+/// Dois jogadores com o mesmo bloco aberto: cada um tem o menu dele (`MekanismContainer` por jogador). A janela de upgrades de um acrescenta os
+/// dados dela só à lista dele, no servidor e no cliente. O outro não recebe nada dela, e pedir de novo sem parar vaza como no Java: os
+/// dados antigos continuam sincronizando depois do `stopTracking`.
+#[test]
+fn the_upgrade_window_adds_its_data_only_to_the_player_who_opened_it() {
+    const OTHER: u128 = 2;
+    let world = chamber();
+    let machine = &world.block_entity.0;
+    let base = electric_trackers();
+    let first = base.len();
+    let mut sessions = Sessions::<u32, u128, u8>::default();
+    let mut viewer = Client::new(&base);
+    let mut other = Client::new(&base);
+    for (player, client) in [(PLAYER, &mut viewer), (OTHER, &mut other)] {
+        sessions.open(CONTAINER, player, LEVEL, "mekanism:test", &base);
+        let session = sessions.session_mut(CONTAINER, player).unwrap();
+        let sent = session.sync.send_all(&MachineSync::of(machine));
+        assert_eq!(client.receive(&sent), sent.len());
+    }
+    machine.upgrades().add_upgrades(SPEED_UPGRADE, 2);
+
+    // O jogador PLAYER abre a janela: o servidor põe os dois dados no fim da lista dele e manda os valores.
+    let source = MachineSync::of(machine);
+    let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
+    let sent =
+        session
+            .sync
+            .start_tracking_server(UPGRADE_WINDOW_KEY, &upgrade_window_data(), &source);
+    assert_eq!(viewer.start_window(), [first, first + 1]);
+    assert_eq!(viewer.receive(&sent), 2);
+    let installed = UpgradeSync::of(machine.upgrades());
+    assert_eq!(installed.installed().len(), 1);
+    assert_same_upgrades(&viewer.upgrades().unwrap(), &installed);
+
+    // O outro jogador segue com a lista do construtor, e a janela dele não existe.
+    let session = sessions.session(CONTAINER, OTHER).unwrap();
+    assert_eq!(session.sync.count(), first);
+    assert!(!session.sync.has_extra());
+    assert_eq!(other.mirror.count(), first);
+    assert!(other.upgrades().is_none());
+    assert!(
+        sessions
+            .session(CONTAINER, PLAYER)
+            .unwrap()
+            .sync
+            .has_extra()
+    );
+    assert!(sessions.any_extra(CONTAINER));
+
+    // O que muda depois chega aos dois, mas só o PLAYER recebe os dados da janela.
+    machine.upgrades().add_upgrades(ENERGY_UPGRADE, 3);
+    let source = MachineSync::of(machine);
+    let for_viewer = sessions
+        .session_mut(CONTAINER, PLAYER)
+        .unwrap()
+        .sync
+        .broadcast_changes(&source);
+    let for_other = sessions
+        .session_mut(CONTAINER, OTHER)
+        .unwrap()
+        .sync
+        .broadcast_changes(&source);
+    assert!(for_viewer.iter().any(|p| usize::from(p.index) == first + 1));
+    assert!(for_other.iter().all(|p| usize::from(p.index) < first));
+    assert_eq!(viewer.receive(&for_viewer), for_viewer.len());
+    assert_eq!(other.receive(&for_other), for_other.len());
+    let installed = UpgradeSync::of(machine.upgrades());
+    assert_eq!(installed.installed().len(), 2);
+    assert_same_upgrades(&viewer.upgrades().unwrap(), &installed);
+    assert!(other.upgrades().is_none());
+
+    // Pedir de novo sem parar: os dados novos entram no fim e os antigos ficam, no servidor e no cliente.
+    let source = MachineSync::of(machine);
+    let session = sessions.session_mut(CONTAINER, PLAYER).unwrap();
+    let sent =
+        session
+            .sync
+            .start_tracking_server(UPGRADE_WINDOW_KEY, &upgrade_window_data(), &source);
+    assert_eq!(session.sync.count(), first + 4);
+    assert_eq!(viewer.start_window(), [first + 2, first + 3]);
+    assert_eq!(viewer.receive(&sent), 2);
+    assert_same_upgrades(&viewer.upgrades().unwrap(), &installed);
+    // Parar tira só a lista nova: a antiga vazou e segue sincronizando.
+    session.sync.stop_tracking(&UPGRADE_WINDOW_KEY);
+    viewer.stop_window();
+    assert_eq!(session.sync.count(), first + 2);
+    assert_eq!(viewer.mirror.count(), first + 2);
+    machine.upgrades().add_upgrades(SPEED_UPGRADE, 1);
+    let leaked = session.sync.broadcast_changes(&MachineSync::of(machine));
+    let indexes: Vec<usize> = leaked.iter().map(|p| usize::from(p.index)).collect();
+    assert!(indexes.contains(&(first + 1)), "{indexes:?}");
+    assert!(
+        indexes.iter().all(|index| *index < first + 2),
+        "{indexes:?}"
+    );
+    // O outro jogador continua sem nada.
+    assert_eq!(
+        sessions.session(CONTAINER, OTHER).unwrap().sync.count(),
+        first
+    );
 }
 
 /// O menu do rastro de shift-clique, com os índices do Java: 0 e 1 são os slots virtuais, 2 a 4 os da máquina, 5 a 31 o
@@ -804,9 +994,31 @@ fn the_window_type_table_matches_the_java_enum() {
     let _: WindowType = UPGRADE_WINDOW;
 }
 
+/// Um tipo por arquivo de `mekanism/upgrade`, os oito do original: o mapa que o servidor manda leva o índice de cada um no registro.
 #[test]
-fn the_data_declares_as_many_upgrade_types_as_the_menu_has_slots_for() {
+fn the_data_declares_one_upgrade_type_per_file_of_the_original() {
+    let folder =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("content/data/mekanism/mekanism/upgrade");
+    assert_eq!(std::fs::read_dir(folder).unwrap().count(), UPGRADE_TYPES);
     assert_eq!(common::upgrade_data().type_ids().len(), UPGRADE_TYPES);
+}
+
+/// O mapa de upgrades chega inteiro ao cliente, de cada tipo, com contagens que passam de um byte e de dois.
+#[test]
+fn the_upgrade_map_reaches_the_client_for_every_type_and_count() {
+    for index in 0..UPGRADE_TYPES {
+        for count in [1, 127, 128, 300, 70_000, i32::MAX] {
+            let mut sync = UpgradeSync {
+                ticks: -3,
+                counts: vec![0; UPGRADE_TYPES],
+            };
+            sync.counts[index] = count;
+            let Synced::Codec { bytes, .. } = upgrade_map(&sync) else {
+                unreachable!()
+            };
+            assert_same_upgrades(&read_upgrade_map(sync.ticks, &bytes), &sync);
+        }
+    }
 }
 
 fn content() -> std::path::PathBuf {
