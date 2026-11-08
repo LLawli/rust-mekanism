@@ -312,7 +312,7 @@ def case_tabs(failures):
         settle(0.5)
         expect(f"clique na aba de {name}: o cursor continua", carried(), before, failures)
         if name == "calor":
-            # A aba de calor troca a unidade de temperatura do cliente (`config/mekanism/local.toml`): o clique direito a devolve.
+            # A aba de calor troca a unidade de temperatura do cliente (`config/Mekanism/local.toml`): o clique direito a devolve.
             ctl("click-at", str(x), str(y), "right")
             settle(0.4)
             expect("clique direito na aba de calor: o cursor continua", carried(), before, failures)

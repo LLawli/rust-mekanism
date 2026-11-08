@@ -1,0 +1,104 @@
+[energy_cubes]
+	basicCapacity = 4000000
+	basicOutput = 4000
+	advancedCapacity = 16000000
+	advancedOutput = 16000
+	eliteCapacity = 64000000
+	eliteOutput = 64000
+	ultimateCapacity = 256000000
+	ultimateOutput = 256000
+	creativeCapacity = 9223372036854775807
+	creativeOutput = 2147483647
+
+[fluid_tanks]
+	basicCapacity = 32000
+	basicOutput = 1000
+	advancedCapacity = 64000
+	advancedOutput = 4000
+	eliteCapacity = 128000
+	eliteOutput = 16000
+	ultimateCapacity = 256000
+	ultimateOutput = 64000
+	creativeCapacity = 9223372036854775807
+	creativeOutput = 2147483647
+
+[chemical_tanks]
+	basicCapacity = 64000
+	basicOutput = 1000
+	advancedCapacity = 256000
+	advancedOutput = 16000
+	eliteCapacity = 1024000
+	eliteOutput = 128000
+	ultimateCapacity = 8192000
+	ultimateOutput = 512000
+	creativeCapacity = 9223372036854775807
+	creativeOutput = 2147483647
+
+[bins]
+	basicCapacity = 4096
+	advancedCapacity = 8192
+	eliteCapacity = 32768
+	ultimateCapacity = 262144
+	creativeCapacity = 9223372036854775807
+
+[induction]
+	basicCapacity = 8000000000
+	advancedCapacity = 64000000000
+	eliteCapacity = 512000000000
+	ultimateCapacity = 4000000000000
+	basicOutput = 256000
+	advancedOutput = 2048000
+	eliteOutput = 16384000
+	ultimateOutput = 131072000
+
+[transmitters]
+
+	[transmitters.energy]
+		basicCapacity = 0
+		advancedCapacity = 128000
+		eliteCapacity = "lots"
+		ultimateCapacity = 5000000000
+
+	[transmitters.fluid]
+		basicCapacity = 2000
+		basicPullAmount = 250
+		advancedCapacity = 8000
+		advancedPullAmount = 1000
+		eliteCapacity = 32000
+		elitePullAmount = 8000
+		ultimateCapacity = 128000
+		ultimatePullAmount = 32000
+
+	[transmitters.chemical]
+		basicCapacity = 4000
+		basicPullAmount = 750
+		advancedCapacity = 16000
+		advancedPullAmount = 2000
+		eliteCapacity = 256000
+		elitePullAmount = 64000
+		ultimateCapacity = 1024000
+		ultimatePullAmount = 256000
+
+	[transmitters.items]
+		basicPullAmount = 1
+		basicSpeed = 5
+		advancedPullAmount = 16
+		advancedSpeed = 10
+		elitePullAmount = 32
+		eliteSpeed = 20
+		ultimatePullAmount = 64
+		ultimateSpeed = 50
+
+	[transmitters.heat]
+		basicInverseConduction = 5.0
+		basicHeatCapacity = 1.0
+		basicInsulation = 10.0
+		advancedInverseConduction = 5.0
+		advancedHeatCapacity = 1.0
+		advancedInsulation = 400.0
+		eliteInverseConduction = 5.0
+		eliteHeatCapacity = 1.0
+		eliteInsulation = 8000.0
+		ultimateInverseConduction = 5.0
+		ultimateHeatCapacity = 1.0
+		ultimateInsulation = 100000.0

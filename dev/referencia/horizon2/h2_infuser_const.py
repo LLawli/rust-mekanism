@@ -8,11 +8,11 @@ A energia vem dos geradores e não é comparada (o rastro a mantém com um `refi
 `used_so_far`, que o NBT do tile guarda. A cada marca, e dois ticks antes e depois, e a cada 10 ticks, o jogo é lido; entre dois pontos
 andam `tick step N`.
 
-Uso: H_NAME=horizon h2_infuser_const.py run|dry|placed_speed [...]   (o `reload` do rastro tem `reload`, que no jogo é salvar e reabrir:
+Uso: H_NAME=horizon h2_infuser_const.py run|dry|placed_speed|ops_placed [...]   (o `reload` do rastro tem `reload`, que no jogo é salvar e reabrir:
 fica a cargo de `reopen`, abaixo)
   reopen ETAPA   antes (monta, anda 90 ticks, anota o estado e salva) | depois (lê o estado do mundo reaberto e anda até o fim)
 """
-import json, os, re, sys, time
+import json, os, re, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import h2_identity as h
@@ -73,6 +73,18 @@ def set_tank(chemical, amount):
         h.command(f'data merge block {pos()} {{chemical_tanks:[{{container:0b,stored:{{type:"mekanism:{chemical}",amount:{amount}L}}}}]}}')
 
 
+def uninstall_one(kind):
+    """O botão Uninstall da janela de upgrades (`PacketRemoveUpgrade`, um por clique): abre a tela, escolhe a linha do tipo e clica. O servidor segue parado; o pacote vale no tick seguinte."""
+    h.ctl("interact", *map(str, SPOT))
+    time.sleep(1.0)
+    left = ((-(-1920 // GUI_SCALE)) - 176) // 2
+    top = ((-(-1080 // GUI_SCALE)) - 166) // 2
+    for x, y in (TAB, ROWS[kind], UNINSTALL):
+        h.ctl("click-at", str(left + x), str(top + y))
+        time.sleep(0.5)
+    h.ctl("close")
+
+
 def apply(mark):
     for action in mark.split(", "):
         words = action.split()
@@ -80,8 +92,20 @@ def apply(mark):
             merge_items(slot1=(f"minecraft:{words[1]}", int(words[2])))
         elif words[0] == "tank":
             set_tank(words[1], int(words[2]))
+        elif words[0] == "speed" and int(words[1]) == 7 and OPS_RUNNING:
+            uninstall_one("speed")
         else:
             raise SystemExit(f"marca sem equivalente no jogo: {action}")
+
+
+OPS_RUNNING = False
+
+
+def set_multiplier(value):
+    """`maxUpgradeMultiplier` no arquivo de configuração do servidor: o jogo o relê em até um segundo (`native_config_reloading`)."""
+    script = f"f={CONFIG}; sed -i 's/^maxUpgradeMultiplier = .*/maxUpgradeMultiplier = {value}/' $f; grep ^maxUpgradeMultiplier $f"
+    print("  config:", subprocess.run(["ssh", "desktop", script], capture_output=True, text=True).stdout.strip())
+    time.sleep(3.0)
 
 
 def fuel():
@@ -92,8 +116,17 @@ def fuel():
 # Os cenários com upgrades: o item de bloco do jogo não traz `UPGRADES` (conteúdo guardado no item é da Fase 5), então a máquina é posta e os upgrades entram
 # pelo jogador (o upgrade na mão, com shift, no bloco: `ItemUpgrade.useOn`), antes de o servidor parar. O rastro `infuser_const_placed_speed` compara
 # entrada, saída, tanque, progresso e `used_so_far` (a energia vem dos geradores e não é comparada), que não dependem de como os upgrades chegaram.
-UPGRADES = {"placed_speed": (4, 1)}
+UPGRADES = {"placed_speed": (4, 1), "ops_placed": (8, 2)}
 TOPUP = 2300
+# `ops_placed` é o rastro `infuser_const_ops_placed` (`maxUpgradeMultiplier` 1.000, 8 de velocidade e 2 de energia): passa de uma operação por tick, o consumo por tick é de seis
+# dígitos e a energia é reposta a cada tick (`Trace.refill`), então ele anda de tick em tick. O multiplicador vem de `Mekanism/general.toml`, que o jogo relê sozinho. A marca `reload`
+# (tile salvo e relido) não tem equivalente aqui, e a repetição para antes dela; `speed 7` é o botão Uninstall da janela de upgrades.
+OPS = {"ops_placed": 1000}
+CONFIG = "~/.local/share/jogo-isolado/horizon/data/horizon/config/Mekanism/general.toml"
+# A janela de upgrades (veja `h2_som_medida.py`): a aba, a linha de cada tipo instalado (a energia vem antes da velocidade, na ordem do registro) e o botão Uninstall, em pixels de GUI
+# relativos ao canto da tela de 176 por 166, com `guiScale` 3.
+TAB, ROWS, UNINSTALL = (190, 19), {"energy": (29, 40), "speed": (29, 52)}, (132, 75)
+GUI_SCALE = 3
 
 
 def install_upgrades(speed, energy):
@@ -168,7 +201,44 @@ def checkpoints(lines, first):
     return sorted(points)
 
 
+def replay_ops(scenario):
+    """De tick em tick, com a energia reposta ao fim de cada um (`Trace.refill`), até a marca `reload`."""
+    global OPS_RUNNING
+    lines = [json.loads(line) for line in open(f"{TRACES}/infuser_const_{scenario}.jsonl")]
+    first = next(i for i, line in enumerate(lines) if line["marks"])
+    stop = next(i for i, line in enumerate(lines) if any("reload" in mark for mark in line["marks"]))
+    set_multiplier(OPS[scenario])
+    OPS_RUNNING = True
+    try:
+        build(UPGRADES[scenario])
+        done, bad, checked = first, 0, 0
+        points = set(checkpoints(lines[:stop], first))
+        for index in range(first, stop):
+            if index > done:
+                h.command(f"data merge block {pos()} {{energy:{lines[index - 1]['capacity']}}}")
+                step(1)
+            done = index
+            if lines[index]["marks"]:
+                for mark in lines[index]["marks"]:
+                    apply(mark)
+                time.sleep(0.15)
+                h.command(f"data merge block {pos()} {{energy:{lines[index]['capacity']}}}")
+            if index in points:
+                got, want = read(), expected(lines[index])
+                checked += 1
+                if got != want:
+                    bad += 1
+                    print(f"  DIFF {scenario} t={lines[index]['t']}: esperado {want} obtido {got}")
+        print(("OK   " if not bad else "DIFF ") + f"{scenario}: {checked} pontos de {stop - first} ticks (até a marca reload), {bad} diferentes")
+        return not bad
+    finally:
+        OPS_RUNNING = False
+        set_multiplier(10)
+
+
 def replay(scenario):
+    if scenario in OPS:
+        return replay_ops(scenario)
     lines = [json.loads(line) for line in open(f"{TRACES}/infuser_const_{scenario}.jsonl")]
     first = next(i for i, line in enumerate(lines) if line["marks"])
     build(UPGRADES.get(scenario))

@@ -2,7 +2,7 @@
 """Roda no container `horizon` (H_NAME=horizon) os cenários de `cenas/som_medida.txt`, os mesmos que o original roda com `testes/CenaSomMedida.java`, e
 guarda o que o som do port escreveu no stderr (`MEKSOUND ...`, só nas cópias de teste com `TRACE = true` em `tile_sound.rs`).
 
-Cada cenário: escreve o `mekanism/client.toml` do jogo (o Horizon relê o arquivo em até 1 s), põe a máquina como um jogador (o item dá a capacidade), instala o
+Cada cenário: escreve o `Mekanism/client.toml` do jogo (o Horizon relê o arquivo em até 1 s), põe a máquina como um jogador (o item dá a capacidade), instala o
 silêncio se o cenário pede, põe o jogador onde ele tem de estar (os PÉS, relativos ao centro do bloco), liga com `data merge` (energia e item na entrada)
 e desliga zerando a energia, nos instantes do cenário (20 ticks = 1 s), e recorta do log o que saiu entre o começo e o fim.
 
@@ -19,7 +19,7 @@ import h2_identity as h
 
 POS = (70, -60, 60)
 CENTER = (POS[0] + 0.5, POS[1] + 0.5, POS[2] + 0.5)
-CONFIG = "~/.local/share/jogo-isolado/horizon/data/horizon/config/mekanism/client.toml"
+CONFIG = "~/.local/share/jogo-isolado/horizon/data/horizon/config/Mekanism/client.toml"
 BLOCK = {
     "chamber": "mekanism:enrichment_chamber",
     "crusher": "mekanism:crusher",

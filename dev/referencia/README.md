@@ -201,6 +201,19 @@ escolhe a máquina, os upgrades de silêncio, a configuração, onde ficam os P�
 `tile_sound.rs` (o repositório fica com `false`), `horizon2/construir_horizon.sh` pega a `horizon.lock` e faz o `native-build`, e `horizon2/h2_som_medida.py` roda os mesmos cenários pelo `horizon-ctl` e recorta as linhas `MEKSOUND`
 do stderr; `som_comparar.py` e `som_grafico.py` põem os dois lado a lado (texto e PNG). `audio_nulo.sh` tira o som de um container das caixas do usuário (sink nulo do PipeWire) e o grava.
 
+### A configuração: texto, correção e cópia
+
+`rastros/mekanism_{client,general,machine_usage,tiers,generators,generator_storage,local}.toml` são os arquivos que o cliente oficial escreveu sozinho (`runs/client/config/Mekanism/`, `runs/gameTestServer/config/Mekanism/` tem os mesmos): o texto do
+NightConfig de cada chave, e o bloco `[window]` do `client.toml`. `mods/mekanism/tests/{client_config,server_config}.rs` e `mods/mekanismgenerators/tests/server_config.rs` conferem o texto de cada chave portada, a
+leitura do arquivo inteiro sem correção e o bloco das janelas, byte a byte.
+
+`oficial_config.sh ENTRADA SAIDA` roda o `runGameTestServer` (sem janela, sem som, uns 30 s) com arquivos de servidor errados de propósito no lugar dos de `runs/gameTestServer/config/Mekanism/`, devolve os arquivos como o NeoForge os corrigiu e escreveu
+de novo, e restaura os originais (e apaga as cópias `.bak`). `rastros/config_correcao/entrada` tem os cinco arquivos errados (um valor abaixo do mínimo, acima do máximo, de outro tipo, uma chave de fora, uma seção de fora, um arquivo sem nenhum comentário
+e uma chave que falta; `heatGenerationFluidRate = 3000` com `tankCapacity = 5000`) e `saida` o que o original deixou. Os testes `a_wrong_file_is_corrected_the_way_neoforge_corrected_it` repetem cada chave portada: o valor e o bloco de texto. O que o
+original apaga (a chave e a seção de fora) o port guarda, porque a especificação dele é parcial. `oficial_config_backups.sh` corrige o `general.toml` sete vezes seguidas e devolve as cinco cópias que ficam (`rastros/config_correcao/backups`, a mais nova em
+`general-1.toml.bak`); `config_backup.rs` (núcleo) repete a rotação. Em jogo, `horizon2/h2_config.py` (`H_NAME=horizon`) confere os seis arquivos que o jogo escreve, a correção feita com o jogo aberto e o efeito do consumo da Enrichment Chamber;
+`horizon2/h2_infuser_const.py ops_placed` repete `infuser_const_ops_placed` (`maxUpgradeMultiplier` 1.000 pelo `general.toml`, 8 de velocidade e 2 de energia, de tick em tick até a marca `reload`).
+
 ### A aba de xp e o nome com estilo
 
 `CenaTelas` agora deixa visível a aba de xp (`GuiXpContainmentTab`) e escreve no log, para cada caso, `cena: <caso> xp_tab visible <v> x <x> y
