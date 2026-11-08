@@ -3,13 +3,13 @@
 
 O data pack (em `dev/referencia/testes/dados/mektest`) tem: `named_stick` (graveto com `custom_name` "Foo" dá diamante), `cost_flint` (sílex com `repair_cost` 5
 dá barra de ouro) e `strict_coal` (carvão sem nada a mais, `strict`, dá esmeralda), mais receitas que o mod recusa e o log tem de explicar. Cada caso põe o item
-na entrada da máquina, com um Heat Generator encostado, e espera uma operação. Uso: h2_componentes.py
+na entrada da máquina, com a energia posta por `data merge` (o Heat Generator no deserto de pedra dá pouca), e espera uma operação. Uso: h2_componentes.py
 """
 import re, sys, time
 import h2_identity as h
 
 BASE = (90, -60, 70)
-WAIT = 16
+WAIT = 14
 
 
 def put(pos, item):
@@ -31,20 +31,21 @@ def main():
     h.ctl("setblock", str(x), str(y), str(z + 1), "mekanismgenerators:heat_generator")
     time.sleep(3)
     cases = [
-        ("graveto Foo", stack("stick", "\"minecraft:custom_name\":'\"Foo\"'"), "diamond"),
+        ("graveto Foo", stack("stick", '"minecraft:custom_name":"Foo"'), "diamond"),
         ("graveto sem nome", stack("stick"), None),
-        ("graveto Bar", stack("stick", "\"minecraft:custom_name\":'\"Bar\"'"), None),
+        ("graveto Bar", stack("stick", '"minecraft:custom_name":"Bar"'), None),
         ("sílex repair_cost 5", stack("flint", '"minecraft:repair_cost":5'), "gold_ingot"),
         ("sílex repair_cost 6", stack("flint", '"minecraft:repair_cost":6'), None),
         ("sílex sem nada", stack("flint"), None),
         ("carvão padrão (strict)", stack("coal"), "emerald"),
-        ("carvão com nome (strict)", stack("coal", "\"minecraft:custom_name\":'\"Foo\"'"), None),
+        # O `strict` pede o carvão sem nada a mais: o com nome cai na receita simples de carvão (`enriched_carbon`).
+        ("carvão com nome (strict)", stack("coal", '"minecraft:custom_name":"Foo"'), "enriched_carbon"),
         ("osso (compound recusado)", stack("bone"), None),
     ]
     ok = True
     for name, item, product in cases:
-        h.command(f"data merge block {x} {y} {z+1} {{Items:[{{Slot:0b,id:\"minecraft:coal\",count:64}}]}}")
         put((x, y, z), item)
+        h.command(f"data merge block {x} {y} {z} {{energy:100000}}")
         time.sleep(WAIT)
         items = h.read_items((x, y, z))
         made = [it for it in items if it[1] == product] if product else []

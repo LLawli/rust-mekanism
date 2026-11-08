@@ -410,10 +410,8 @@ impl ComponentsInput {
             return false;
         }
         let mut full = self.defaults.get(item).cloned().unwrap_or_default();
-        if let Some(components) = patch_key.and_then(|key| PATCHES.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned()) {
-            for (kind, value) in components.iter() {
-                full.insert(kind.to_owned(), value.to_owned());
-            }
+        if let Some(patch) = patch_key.and_then(|key| PATCHES.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned()) {
+            full.extend(patch);
         }
         self.ingredient.test(&full)
     }
@@ -426,7 +424,7 @@ fn json_tag(value: &serde_json::Value) -> Tag {
         serde_json::Value::Bool(flag) => Tag::Byte(i8::from(*flag)),
         serde_json::Value::Number(number) => match number.as_i64() {
             Some(whole) => i32::try_from(whole).map_or(Tag::Long(whole), Tag::Int),
-            None => Tag::Double(number.as_f64().unwrap_or(0.0)),
+            None => Tag::Double(number.as_f64().unwrap_or(0.0).to_bits()),
         },
         serde_json::Value::String(text) => Tag::String(JavaString::from(text.as_str())),
         serde_json::Value::Array(list) => Tag::List(list.iter().map(json_tag).collect()),
@@ -685,7 +683,7 @@ type Extras = (u32, Option<Box<StackData>>);
 static EXTRAS: Mutex<BTreeMap<String, Extras>> = Mutex::new(BTreeMap::new());
 /// Os componentes em texto canônico de cada chave de `EXTRAS`: o teste de um ingrediente de componentes (`neoforge:components`) só recebe a
 /// chave da entrada e refaz a pilha daqui.
-static PATCHES: Mutex<BTreeMap<String, Components>> = Mutex::new(BTreeMap::new());
+static PATCHES: Mutex<BTreeMap<String, Vec<(String, String)>>> = Mutex::new(BTreeMap::new());
 const MAX_STACK_SIZE_COMPONENT: &str = "minecraft:max_stack_size";
 
 /// O `DataComponentPatch` de uma pilha como a lib o compara: cada componente com o valor em texto canônico, o dano entre eles
@@ -707,7 +705,7 @@ fn item_components(stack: &ItemStack) -> Components {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .entry(components.key().to_owned())
-        .or_insert_with(|| components.clone());
+        .or_insert_with(|| components.iter().map(|(kind, value)| (kind.to_owned(), value.to_owned())).collect());
     components
 }
 
