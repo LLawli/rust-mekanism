@@ -468,8 +468,10 @@ def abre_a_janela(c):
 
 
 def passos_do_port(c):
-    """Os passos que o port dá antes de abrir a tela. A janela de upgrades só recebe os dados no tick seguinte à abertura (ver `tira_port`): esse tick
-    sai da conta, e o servidor chega aos mesmos `passos` que o do original quando o print sai."""
+    """Os passos que o port dá antes de abrir a tela. O original com a janela de upgrades mostra o progresso de instalação de um tick atrás do valor vivo
+    (medido em 2026-11-08 e antes: o print com N passos é o do port com N - 1; o servidor do original manda o valor vivo, como o rastro `*_trackers`
+    confirma, e a causa do atraso na cena parada não foi isolada). O port manda os dados na abertura da janela, então o um passo a menos fica antes
+    dela e nenhum depois."""
     passos = int(c["args"].get("passos", "2"))
     return passos - 1 if abre_a_janela(c) else passos
 
@@ -580,11 +582,6 @@ def tira_port(c, x, escala, destino):
         cx, cy = (int(v) for v in clique.split(","))
         ctl("click-at", str(esquerda + cx), str(topo + cy))
         ctl("wait", "6")
-        if (cx, cy) == ABA:
-            # A janela de upgrades só recebe os dados do servidor no tick seguinte à abertura (o servidor os escreve com a janela
-            # acompanhada): com o servidor parado, a primeira janela de uma rodada abria com a lista vazia. Um tick, como o do original.
-            comando("tick step 1")
-            ctl("wait", "4")
     if "hover" in c["args"]:
         # O Horizon dá o cursor em pixels de GUI da janela: o canto da tela mais o ponto dentro dela.
         hx, hy = c["args"]["hover"]
