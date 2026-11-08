@@ -125,31 +125,22 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
     medido em jogo (entrada sem o pack: chat vazio; `/reload` com o pack: mensagem; entrada com o pack ligado: mensagem; desligado e recarregado: nada). O custo de C é uma lista de 40 ids, que encolhe com o conteúdo e que `incomplete_recipes_gaps.rs` mantém honesta: ele calcula do conteúdo (itens e tags dos arquivos)
     quais receitas ficam incompletas com a regra do Horizon e exige que sejam exatamente as da lista, então conteúdo novo que tira uma receita dela, ou receita nova que fica incompleta sem entrar nela, falha o teste. Quando o conteúdo estiver completo a lista fica vazia e `unexplained_incomplete` vira o comportamento do original (A); ela e o teste
     saem junto com a última lacuna. Se o usuário preferir A (a mensagem a toda entrada enquanto o port está incompleto, que é verdadeira: faltam receitas) ou B, o ponto de troca é `mekanism_rules::unexplained_incomplete` (`return !incomplete.is_empty()` ou `false`). Número usado: 13 (conferido o último em 12).
+14. **As pendências da Fase 1, respondidas pelo usuário (2026-11-08).** Ponto a ponto, sobre a lista que estava em "Esperando decisão do usuário (fim da Fase 1)":
+   - **Componente de segurança:** entra na Fase 5, junto da aba de segurança. Até lá todo bloco segue público (`null` e `PUBLIC` nos dados 0 e 1 do menu).
+   - **Partículas da máquina acesa:** tentar uma injeção no cliente, no ponto em que ele sorteia os blocos em volta do jogador a cada tick (o `animateTick`), para o sorteio ficar no cliente e respeitar `machineEffects`. É trabalho da Fase 1. Se nem a injeção der o 1:1, medir as opções e registrar uma decisão.
+   - **Configuração de servidor do Mekanism:** portar agora a leitura do arquivo de servidor, com os nomes, padrões e limites do original, só nas chaves das mecânicas já portadas (o multiplicador de upgrade, a capacidade do tanque do Heat Generator e as que mais a Fase 1 usa). Cada fase acrescenta as suas. É o mesmo método da decisão 12.
+   - **Decisão 12, revista:** o arquivo de cliente vai para a pasta do original, `config/Mekanism/client.toml` (com o M maiúsculo), para quem trouxer o arquivo do mod de verdade. As chaves continuam só as que o port lê, crescendo por fase. As posições de janela do Heat Generator, hoje em `config/mekanismgenerators/client.toml`, vão para o mesmo arquivo, como no original.
+   - **Itens, blocos e fluidos do mod:** entram no início da Fase 2, mesmo sem função, a começar pelos itens de craft. Junto deles entram as tags `c:` que apontam para eles. Com o conteúdo completo, as 40 receitas que hoje ficam incompletas por conteúdo que falta (`CONTENT_GAPS`) deixam de existir e a mensagem do chat (decisão 13) passa a valer como no original. Até lá a decisão 13 fica como está (opção C).
+   - **Testes com dois clientes:** dois clientes de jogo ficam liberados no desktop só para os casos que pedem um segundo jogador (convidado de LAN, a armadura mudada por outro agente com o menu aberto e o espectador), headless e mudos, no container `horizon`. Fora desses testes vale um cliente por vez.
+   - **Decisão 3:** fica para a Fase 6, quando chegar o Combiner. A frente tenta a injeção primeiro, mede e traz as opções.
+   - **Decisões 5 a 11:** mantidas como estão.
+   - **A forma de onda do som do original:** não é escolha do usuário. A regra do jogo mudo permite gravar pelo sink nulo, então a comparação fica como trabalho da Fase 1.
+   - **A issue do Horizon:** segue para o fim do port, como já estava.
+
 
 ### Esperando decisão do usuário (fim da Fase 1)
 
-Pontos que a Fase 1 deixou em aberto por serem escolha do usuário (decisão 4, 2026-11-08). Cada um tem uma linha e o link para a entrada que o detalha. Nenhum impede a próxima frente de código da Fase 1.
-
-1. **Decisão 3 (aberta).** Duas entradas com regra de slot: aproximação ou nova injeção, a decidir quando chegar o Combiner (Fase 6). Detalhe: [Decisões, item 3](#decisões).
-2. **A fase do componente de segurança.** `TileComponentSecurity` e a frequência de segurança (`TileComponentFrequency`) não estão em nenhuma fase: a Fase 5 lista a aba de segurança, mas não o componente, e o port manda `null` e `PUBLIC` nos dados 0 e 1 do menu. Detalhe: [Fase 1, `MekanismContainer`, "Diferenças que ficam"](#fases).
-3. **As partículas.** A máquina acesa solta `SMOKE` e `REDSTONE` (o gerador, `SMOKE` e `FLAME`); o catálogo do Horizon não tem `animateTick`, e o único caminho (`send_particles` pelo servidor) muda quem sorteia e ignora `machineEffects`. Sem decisão. Detalhe: [Inventário, "Partículas da máquina acesa"](#inventário-do-que-diverge-hoje).
-4. **As tags `c:` não copiadas e as tags de fluido e de `entity_type`.** Faltam 143 das 173 da datagen (30 de bloco, 87 de item, 23 de fluido, 3 de `entity_type`); as de item e de bloco entram com os itens (Fase 6). Não se confirmou que o Horizon leia as de fluido e as de `entity_type` que um mod traz: uma leitura rápida do pin (2026-11-08) acha o carregamento de tags de fluido (`horizon-client/src/game/debug_lines.rs:574`, só para o debug) e o de `entity_type` de mods
-   (`horizon-client/src/mod_content.rs:2057-2075`), sem provar que as receitas ou o jogo as usem. Detalhe: [Fase 0, "Tags `c:`"](#fase-0-o-que-o-horizon-permite) e [Fase 1, item de receitas](#fases).
-5. **A configuração de servidor do Mekanism.** O port não a lê: `UPGRADE_MULTIPLIER` é uma constante de 10 (`maxUpgradeMultiplier`), e o `heatTankCapacity` do gerador também é fixo (1.000, o padrão). O caso de mais de uma operação por tick só existe com a configuração mudada (acima de 200), então fica sem prova em jogo. Decidir se a configuração entra e em que fase. Detalhe: [Fase 1, "Receita de uso constante"](#fases) e o item do Heat Generator (inventário).
-6. **As aproximações das decisões 5 a 13**, uma linha cada, para o usuário revisar o método ([Decisões](#decisões)):
-   - **5** (quadro do overlay, superada em parte pela 8): sem efeito medido o que um pacote do jogador muda entre o `ServerTickEnd` e o `tick_lan`; o overlay a 3 e 6 pixels do original é o mundo atrás da tela (H22).
-   - **6** (trackers por fonte): o valor vem do objeto vivo por uma fonte e não por closures, com o mesmo comportamento (5 rastros iguais).
-   - **7** (quando o `updatePower` lê o sinal): a injeção `flush_signals` lê o sinal no fim da operação, não dentro do aviso; ficam de fora uma operação que avisa e depois muda o sinal sem avisar, e os block entities do vanilla sem contêiner.
-   - **8** (`broadcastChanges` e jogadores olhando): o envio sai no `ServerTickStart` e a conta de quem olha sai do `server_tick`, sem injeção; o espectador por `interact` não abre a tela no Horizon.
-   - **9** (ordem do mapa de upgrades): a do registro, porque a do original é sorteada a cada execução.
-   - **10** (cache de `Biome.getTemperature`): sem cache, o cálculo a cada leitura, então a mesma posição em dois níveis do mar devolve valores que o original (primeiro valor) não devolveria.
-   - **11** (receitas complexas dos índices): `HashSet` do JDK com hash de identidade sorteado por id e por processo; só importa com duas receitas complexas casando a mesma entrada.
-   - **12** (arquivo de cliente): só as seções que o port lê (`sounds` e as posições das janelas), em `config/mekanism/client.toml`, com a pasta em minúscula.
-   - **13** (mensagem de receita incompleta): só vai ao chat se sobra receita incompleta fora das 40 que faltam por conteúdo do port (`CONTENT_GAPS`); o original, com o conteúdo inteiro, não manda nada, e o port mandaria a toda entrada.
-7. **O que não dá para testar com um cliente só.** O convidado de LAN (o clique do menu, a aba de xp, o reenvio dos tipos de upgrade no `/reload`, a contagem de silêncio por pacote, o transporte de tela de depois da parte 2 dos trackers), a sincronização da armadura com o menu aberto quando outro agente a muda, o espectador por `interact`
-   (o Horizon não abre a tela de um bloco para espectador) e os casos `*_reload` (o jogo não descarrega um tile sem o chunk, só o simulador os repete). E o clique do meio e o clique duplo, que o `horizon-ctl` não manda (só o esquerdo e o direito). Detalhe: [Inventário, "Clique do cursor"](#inventário-do-que-diverge-hoje) e [Fase 1, "Upgrades"](#fases).
-8. **A forma de onda do som do original não foi comparada.** A regra do usuário de 2026-11-08 (o jogo de teste nunca toca nas caixas dele; o áudio vai para um sink nulo) impediu gravar o original; os `.ogg` são byte a byte os do original, então só o ganho podia diferir, e o ganho do port foi medido (razões de 0,496 e 1,058). Detalhe: [Fase 1, "Som da máquina"](#fases).
-9. **A issue do Horizon do fim do port.** [docs/injecoes-horizon.md](injecoes-horizon.md) é a base dela, e só se abre ao final do port: hoje são 28 injeções cruas, 17 módulos e 31 hooks com estrutura privada (91 `[[injection]]`), e os pedidos H1 a H38.
+Respondida ponto a ponto pelo usuário em 2026-11-08: ver a decisão 14. O que dela é trabalho da Fase 1 (as partículas pela injeção no cliente, a configuração de servidor, a pasta do arquivo de cliente, os testes com dois clientes e a forma de onda do som do original) está no estado da Fase 1, em "Fases". Nada mais espera o usuário nesta fase.
 
 ### Spike de validação (2026-11-05)
 
@@ -199,7 +190,7 @@ do Mekanism servem de ponto de partida.
 
 Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo.
 
-**Fase 1, base de tile.** *Estado (2026-11-08): cumpre "Pronto significa" salvo o que espera decisão do usuário, não fechada (fechar é do usuário, que tem pendências). A fase foi conferida inteira contra o código e os testes do `main` em 2026-11-08. Feitos nas quatro máquinas e no Heat Generator: a base de tile,
+**Fase 1, base de tile.** *Estado (2026-11-08): em andamento. O usuário respondeu as pendências (decisão 14) e delas saiu trabalho da Fase 1: as partículas da máquina acesa por injeção no cliente, a configuração de servidor nas chaves das mecânicas portadas, o arquivo de cliente em `config/Mekanism/client.toml` (com as janelas do Heat Generator no mesmo arquivo), os testes com dois clientes (convidado de LAN, armadura mudada com o menu aberto, espectador) e a forma de onda do som do original pelo sink nulo. A fase fecha quando esses cinco cumprirem "Pronto significa". A fase foi conferida inteira contra o código e os testes do `main` em 2026-11-08. Feitos nas quatro máquinas e no Heat Generator: a base de tile,
 o `CachedRecipe` com erros e avisos na tela, upgrades, redstone pelo aviso de vizinho, comparador, nome, som, luz, experiência, o clique do cursor, a capacidade de energia, o hopper, o ejetor (só por comando; a configuração é da Fase 2), os trackers do menu, o ar do gerador, as receitas por componentes e o cozimento do Smelter.
 **Os três pontos que não dependiam do usuário fecharam em 2026-11-08** (a frente dos restos): (1) o `bio_fuel` ganhou o componente `minecraft:cooking_fuel` (100 ticks no original, 50 num bloco de cozimento rápido) e o forno, o alto-forno e o slot de combustível do Heat Generator o aceitam e o queimam como o original; (2) a mensagem de receita incompleta chega ao chat (`IncompleteRecipeScanner`), a quem o original manda e quando ele manda, com a escolha da decisão 13 para o conteúdo que o port ainda não tem; (3) o carvão que "não convertia com ferro na entrada do Infuser" não se reproduz: com o tanque vazio ele converte (21 fases iguais ao original, em jogo e no simulador), e com o tanque cheio de carbono, que é o que o `power()` de `h2_som_medida.py` põe no Infuser, ele espera, no original também; a causa provável da medição de 2026-11-08, que o ambiente dela não deixou reconstruir (ver "Fora: carbon e tin", abaixo). **A Fase 1 cumpre "Pronto significa", salvo o que espera decisão do usuário** (a seção "Esperando decisão do usuário (fim da Fase 1)", logo depois de "Decisões", com a decisão 13 a mais). Não está marcada como fechada: fechar é do usuário.
 O que a fase listava e pertence a outra fase foi movido para ela em 2026-11-08 (Fases 2, 3, 5 e 6, cada uma com o que já está feito e o que falta).*
@@ -734,6 +725,8 @@ Porte de `TileComponentConfig`, `ConfigInfo`, `DataType`, `ISlotInfo`, `Transmis
 Tela de lados, Configurator e os slots por `DataType` (`INPUT_1`, `INPUT_2`, `EXTRA`). Substitui `Sides`, `FaceSlots` e o
 `machinery_basis/energy` atual.
 
+Primeiro passo da fase (usuário, 2026-11-08, decisão 14): os itens, blocos e fluidos do Mekanism e do Generators que o port ainda não tem, mesmo sem função, a começar pelos itens de craft, com as tags `c:` que apontam para eles. Isso também esvazia o `CONTENT_GAPS` da decisão 13.
+
 Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
 
 - `TileEntityConfigurableMachine` (`TileEntityConfigurableMachine.java`): é a casca dos dois componentes desta fase por instância, `configComponent` (`TileComponentConfig`, que não tica) e `ejectorComponent`
@@ -770,7 +763,7 @@ upgrades, conteúdo guardado no item, som, partículas e luz. A bateria de teste
 
 Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
 
-- Partículas da máquina acesa e do gerador: nada feito, e sem decisão (inventário, "Partículas da máquina acesa"; "Esperando decisão do usuário (fim da Fase 1)").
+- Partículas da máquina acesa e do gerador: nada feito; o usuário mandou tentar a injeção no cliente na Fase 1 (decisão 14, inventário "Partículas da máquina acesa").
 - Abas de lado (os elementos fora da imagem): feitos o registro `screen_elements` e as abas de energia, de avisos, de xp, de upgrades e, no gerador, a de calor. Faltam, nas máquinas, a configuração de itens (-21, 10) e de transporte (-21, 38) à esquerda
   (lógica na Fase 2) e a segurança (179, 38), o livro de receitas (179, 66) e a redstone (179, 141) à direita; no gerador, a segurança, a redstone e a de avisos à direita. Enquanto faltam, o clique nelas com item no cursor solta o item (no original não solta).
 - Som do gerador: nada feito (`GeneratorsSounds.HEAT_GENERATOR`). O `tile-sound` das máquinas e os quatro comportamentos do original que parecem bug (seção própria) valem para ele, e o `sync_muffling` do gerador ainda manda a contagem de silêncio na hora, onde o original
@@ -778,6 +771,7 @@ Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
 - Conteúdo guardado no item: nada feito. O item de bloco do port não traz `UPGRADES` nem o tanque (`addAttachmentOnlyContainers`, `MekanismBlocks.java:305` e `:375`), e o bloco quebrado solta o conteúdo; em jogo só o par (0, 0) de upgrades se repete.
 - Slot de energia funcional do gerador (`EnergyInventorySlot.drain`, nenhum item portado o alimenta) e a transferência de calor pela base (`simulateAdjacent`, `lastTransferLoss` vale 0): nada feito.
 - Sincronização das cinco peças da barra de armadura quando mudam por fora com o menu aberto: segue a do menu do inventário, um tick depois.
+- Componente de segurança (`TileComponentSecurity` e `TileComponentFrequency`): entra nesta fase, junto da aba de segurança (usuário, 2026-11-08, decisão 14). Até lá todo bloco é público.
 
 **Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-08): aberta, nenhum bloco ou item portado; o que a Fase 1 deixou para cá está na lista ao fim do parágrafo.* Itens com capability de químico e o que a lib já tem para eles (2026-11-08): `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, e nada portado os alimenta; o
 `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer` o lê e nenhum slot portado o chama. Os itens com capability de químico do original são o Chemical Tank
@@ -888,7 +882,7 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
   gabarito `minecraft:furnace` aceso, porque `properties.light` do Horizon é um inteiro por bloco. A injeção `active_light` troca a emissão dos estados acesos dessas quatro por 8; o
   Heat Generator segue em 13 (`ACTIVE_MELT_LIGHT`). Em jogo, `horizon-ctl light`: máquina acesa 8, vizinhos 7, 6, 5 (a propagação do Java), apagada 0. O mundo atrás da tela com a máquina
   acesa deixou de precisar de um limite à parte (era 16): vale o limite do nível de luz (`LIMITE_MUNDO_POR_LUZ`).
-- **Partículas da máquina acesa (aberta, não portada; Fase 5, sem decisão).** `Machine.java:23` registra um `AttributeParticleFX` com duas partículas, `ParticleTypes.SMOKE`
+- **Partículas da máquina acesa (aberta, não portada; Fase 1, tentar injeção no cliente, decisão 14).** `Machine.java:23` registra um `AttributeParticleFX` com duas partículas, `ParticleTypes.SMOKE`
   e `DustParticleOptions.REDSTONE`, ambas em `(rand * 0,6 - 0,3, rand * 6/16, 0,52)` relativo ao centro do bloco (a face da frente, girada pelo `facing`:
   `yRot(PI)` para norte). `BlockTile.animateTick` (`BlockTile.java:80-103`) as solta com `world.addParticle(type, x, y, z, 0, 0, 0)` a cada chamada de
   `animateTick` (o cliente sorteia posições em volta do jogador a cada tick), só com `Attribute.isActive(state)` e `machineEffects` ligado
