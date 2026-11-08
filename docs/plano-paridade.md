@@ -211,8 +211,20 @@ Falta na Fase 1:
   `IngredientShape::Types`; um filho de `CompoundIngredient` que não é simples vira `Compound`, e um ingrediente de tipo de mod, ou
   interseção e diferença com um filho assim, vira `Custom` (complexo). As tags de químico vêm de `Tags::members`. Não precisou de
   injeção. Conferido em `mods/mekanism/tests/recipe_order.rs`: as máquinas de verdade respondem como o Java nas perguntas de
-  `recipe_cache.jsonl` (7 execuções de `findFirstRecipe` e 4 perguntas por tipo em que a ordem da lista erra). Não coberto sem o jogo: o
-  `DataComponentIngredient` exato, que o Horizon não representa (os arquivos das quatro máquinas não o usam).
+  `recipe_cache.jsonl` (7 execuções de `findFirstRecipe` e 4 perguntas por tipo em que a ordem da lista erra). O `DataComponentIngredient` (`neoforge:components`, **feito em 2026-11-08**, sem o jogo): o Horizon `f319701` não o lê. `native_recipe_ingredient` aceita só texto e lista e devolve `None` para qualquer objeto, então a receita de data pack com esse ingrediente
+  (e com `neoforge:compound`, `intersection`, `difference` ou de mod) saía da máquina sem aviso, e a de cozimento do jogo (Smelter) cai no `Ingredient::parse`, que manda o tipo ao hook `ingredient` e, sem dono, descarta o arquivo. O original
+  lê o arquivo (`DataComponentIngredient.CODEC`: `items`, `components` no formato do `DataComponentPatch`, `strict`) e indexa o `strict` por componentes exatos e o resto como complexo (`ItemInputCache.mapIngredient`, `ItemInputCache.java:34-59`). Agora o mod lê o arquivo das
+  receitas de tipo próprio (`enriching`, `crushing`, `metallurgic_infusing`, as conversões de químico e de energia): `machinery_basis_core::components_ingredient` porta o `test` (`DataComponentIngredient.java:62-87`: o valor tem de ser igual, `!tipo`
+  pede que a pilha não tenha o componente, `strict` pede que nenhum componente da pilha fique fora do patch) e a chave exata (`PatchedDataComponentMap.fromPatch`, que tira do patch o que repete o padrão do item), sobre os componentes todos da pilha: o padrão
+  do item (`items.json`, com o que os mods mudam) e o patch dela. Rastro `recipe_components` (285 pares de ingrediente e pilha, com `test`, `testType` e a classificação, e 6 caches, com 5 perguntas por pilha) repetido em `recipe_components_reference.rs`;
+  4 mutações morrem (sem `strict`, sem a remoção `!tipo`, a ordem da lista no lugar da de hash, e a receita exata de cada item sem o bug abaixo). Em jogo (desktop, 2026-11-08, `horizon`, build `native-f319701-a1150953690b`, mundo novo com o data pack `mektest`, Enrichment Chamber com a energia posta por `data merge`, `h2_componentes.py`): 9 de 9 casos como o Java: o graveto com `custom_name` "Foo" dá o diamante da receita e o sem nome e o "Bar" não;
+  o sílex com `repair_cost` 5 dá a barra de ouro e o de 6 e o sem nada não; o carvão padrão dá a esmeralda da receita `strict` feita de uma pilha (a lista dos 14 componentes padrão do `items.json` do Horizon fecha com a do NeoForge) e o carvão com nome cai na receita simples (`enriched_carbon`), como o índice exato do Java; o `compound` fica de fora. O log
+  de carga disse a causa de `bad_count`, `bad_missing_output`, `compound_bone`, `empty_tag` e `unknown_item`. Não coberto: os componentes que o Horizon guarda de outra forma que o JSON do arquivo (um `custom_name` de texto composto, por exemplo), e a receita de cozimento do Smelter. Cuidado de escrita: no 26.3 o `custom_name` do `data merge` é `"minecraft:custom_name":"Foo"`,
+  e a forma antiga `'"Foo"'` põe as aspas no texto. **Ainda diverge:** a receita de cozimento do jogo com `neoforge:components` ou `compound` (o Smelter lê o cozimento do Horizon, que descarta
+  o arquivo antes do mod); o hook `ingredient` não dá acesso às tags de item, então nem ele resolveria `items` com `#tag`. Pedido ao Horizon: entregar o JSON do ingrediente com as tags resolvidas, ou ler `neoforge:components` e `compound` de verdade.
+  Descartes sem aviso (**feito em 2026-11-08**): a receita ou conversão que o mod recusa agora diz por quê no log, como o original (`Couldn't parse data file '<id>': ...` do `SimpleJsonResourceReloadListener`, e `Incomplete recipe detected: <id>` com `Empty tag: <tag>` de
+  `MekanismRecipeType.checkMyIncompleteRecipes`). O original guarda a receita de ingrediente vazio (ela não casa com nada) e o mod a deixa de fora: o resultado é o mesmo. Falta a mensagem no chat aos jogadores (`IncompleteRecipeScanner.sendMessageToPlayer`,
+  `MekanismLang.RECIPE_WARNING`).
   Em jogo (desktop, 2026-11-06, `horizon2`, mundo `spike` em x=300, build `dev` de 2 min, sem erro nem aviso do compilador),
   nas quatro máquinas, com energia de um Heat Generator encostado: o hopper de cima põe no slot de entrada o item que alguma receita
   usa e deixa no hopper o que nenhuma usa (graveto) e o que o slot ocupado por outro item não aceita; o shift-clique faz o mesmo e o
@@ -298,8 +310,9 @@ Falta na Fase 1:
   com 20, um item por tick com espaço, exatamente o espaço que há, o bloco de 90.000, item sem receita), `chamber_energy_conversion_running`
   (a conversão vem antes da receita no mesmo tick) e `infuser_energy_conversion` (energia e infusão no mesmo tick), com a capacidade
   posta por `setMaxEnergy`; o port os repete tick a tick. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
-  complexas do Java itera em ordem de hash, e aqui na da lista, o que só difere com mais de uma receita complexa casando a mesma
-  entrada.
+  complexas (**feito em 2026-11-08**, decisão 11): o `hashCode` de um `RecipeHolder` é o do `ResourceKey` do id (`RecipeHolder.java:19-20`), o de identidade do JVM, que muda a cada execução; o port faz o mesmo `HashSet` do JDK (`sim::java_hash`) com um hash de identidade
+  sorteado por id e por processo (`machinery_basis_core::identity_hash`), e as caches de um e de dois ingredientes iteram as complexas nessa ordem. Rastro `recipe_components` (duas execuções do `runGameTestServer`, 48 receitas em 12 itens e 6 em 1, com o `System.identityHashCode` de cada id): o
+  port com os hashes do rastro dá a receita certa em 24 de 24 perguntas e a ordem da lista em 4 de 24.
 - Chegada dos itens no Infuser (feito, 2026-11-07). Relato: com `dirt` na entrada e `bio_fuel` no slot de infusão ao mesmo tempo, com o
   tanque vazio, "nada converte nem processa"; com a conversão antes da entrada funciona. **Não é defeito do port.** Rastro do Java
   `infuser_arrival.jsonl` (`ArrivalTraceTest`): tanque vazio, o item da receita e o item que vira o químico dela chegam por `insert` com
@@ -513,8 +526,12 @@ Falta na Fase 1:
   `NeighborUpdater.UPDATE_ORDER` (oeste, leste, baixo, cima, norte, sul; `NeighborUpdater.java:18`), `update_neighbour_for_output_signal` com o `onNeighborChange` do
   NeoForge na ordem de `Level.NEIGHBOR_UPDATE_LIST` (norte, leste, sul, oeste, cima, baixo; `Level.java:990-1006`), `place_by_player` (`setPlacedBy`) e
   `detach_block_entity`/`attach_block_entity` (um tile que sai do chunk e volta do NBT). As duas ordens vêm do jogo, lidas por reflexão na primeira linha de cada
-  `neighbors_*.jsonl`, e `sim_neighbors.rs` e `neighbors_trace.rs` as conferem. Não cobre a fila aninhada do `CollectingNeighborUpdater` (um aviso que dispara outro: os
-  ganchos das máquinas do Mekanism não avisam ninguém), o aviso a vizinho em chunk descarregado (o jogo o carrega) nem o `onNeighborChange` passado ao bloco de trás de um condutor
+  `neighbors_*.jsonl`, e `sim_neighbors.rs` e `neighbors_trace.rs` as conferem. A fila aninhada do `CollectingNeighborUpdater` (um aviso que dispara outro) não existe no simulador, e **nenhum bloco portado a usa** (provado em 2026-11-08, `neighbors_nested.jsonl`, `neighbors_nested.rs`):
+  `BlockTile.neighborChanged` e `onNeighborChange` só chamam `TileEntityMekanism.updatePower`, que lê o sinal e guarda `redstone`; `onPowerChange` (`ITileRedstone.java:16`, vazio) não é sobrescrito em nenhum tile das cinco máquinas (a reflexão dá `""`), só no `TileEntityIndustrialAlarm` e no
+  `TileEntityFissionReactorLogicAdapter`, que não estão portados. O `debugListener` da fila anunciou 12 posições (os seis vizinhos e as seis formas) em cada operação ao lado de cada máquina, as mesmas de um bloco de pedra; um fio de redstone, que avisa em cadeia, anuncia 72 (a guarda que pode falhar).
+  `updateNeighbourForOutputSignal` e o `setChanged` do baú chamam o `onNeighborChange` direto, sem a fila (0 posições). Quando entrarem o cabo e as máquinas com `onPowerChange` (o Industrial Alarm, os reatores), a fila aninhada precisa entrar no simulador. O aviso a vizinho em chunk descarregado:
+  `MultiNeighborUpdate.runNext` lê `level.getBlockState(neighborPos)`, que carrega o chunk (`Level.getChunk` em `FULL`), e o Horizon não o carrega (não medido): uma máquina num chunk sem ticket, vizinha de um bloco que muda na borda de um chunk carregado, perde o aviso e fica com o `redstone` velho até o próximo. Só
+  se alcança com `/forceload` ou uma máquina na borda do anel de chunks; fica registrado, sem medida em jogo. Também não cobre o `onNeighborChange` passado ao bloco de trás de um condutor
   (só quem pede "weak changes" o recebe, e nenhum bloco do Mekanism pede). Os testes de rede em si são da Fase 3.
 - `updatePower` pela vizinhança, como o original (**feito em 2026-11-08**, com duas ressalvas abaixo). Divergência que o plano não registrava: o port lia o sinal dos seis vizinhos a cada tick da
   máquina (`native_neighbor_signal` em `tick_machine`), e o Heat Generator ignorava o controle de redstone e o `redstone` salvo (`canFunction()` de `TileEntityHeatGenerator.java:140`
@@ -826,6 +843,15 @@ e das máquinas que o Mekanism ainda vai portar entram só declarando (`armorSid
   (`RecipeCacheLookupMonitor.updateAndProcess`, `:106-120`, devolve falso sem processar) e nenhum erro é marcado: `trackedErrors` fica todo falso (`TileEntityRecipeMachine.clearRecipeErrors`, `:174-177`), e nenhum `getWarningCheck` da tela dispara
   (`GuiMetallurgicInfuser.java:31-41`). Com 500 de bio e sem energia a receita existe, `NOT_ENOUGH_ENERGY` acende e a aba aparece (`infuser_aviso_energia`). É o que o rastro `warnings_input_infuser` já dizia (a entrada que não basta nunca dá `NOT_ENOUGH_INPUT`).
 
+11. **A ordem das receitas complexas dos índices (fechada, 2026-11-08).** O original guarda as receitas de ingrediente complexo (as que o índice não indexa por item: `neoforge:components` sem `strict`, tipos de mod) num `HashSet<RecipeHolder>` por índice
+    (`SingleInputRecipeCache.java:23`, `DoubleInputRecipeCache.java:24-26`) e `findFirstRecipe`, `findTypeBasedRecipe` e `containsInput` as percorrem nessa ordem depois do mapa. `RecipeHolder.hashCode` é `id.hashCode()` (`RecipeHolder.java:19-20`) e `ResourceKey` não sobrescreve
+    `hashCode`: vale o de identidade do JVM, sorteado a cada execução e igual para o mesmo id durante ela (a chave é internada, então a recarga de dados não o muda). Só importa com mais de uma receita complexa casando a mesma entrada. Como na decisão 9, a ordem não se reproduz; a decisão é qual o port usa.
+    Opções, medidas contra o rastro `recipe_components` (duas execuções do `runGameTestServer`, 12 itens com 4 receitas complexas cada e 1 item com 6; os hashes de cada id vão no rastro): **A**, a ordem da lista (a de antes): casa o vencedor do Java em 4 de 24 perguntas (17%), e é sempre a
+    primeira da lista; **B**, o mesmo `HashSet` do JDK com um hash de identidade sorteado por id e por processo: com os hashes do rastro dá o vencedor em 24 de 24 perguntas, nas duas execuções (que sorteiam hashes e vencedores diferentes: 6 de 12 itens mudam de vencedor de uma execução para a outra), e
+    sem eles reproduz a distribuição (cada receita vence uma fração igual dos itens: no rastro os índices vencedores foram 4, 5, 7 e 8 de 24) e a estabilidade dentro de uma execução. **Escolhida B**: é o mecanismo do original, com as mesmas propriedades (vencedor sorteado entre as que casam, fixo durante a
+    execução e pela recarga de dados, outro na seguinte), e o que muda para o jogador é só qual receita vence quando um data pack põe duas complexas para a mesma entrada, o que no original também é arbitrário. Diferente da decisão 9, aqui a ordem decide a saída de uma máquina, e A daria sempre a primeira. Os testes dão os hashes
+    do rastro (`SingleInputRecipeCache::with_identity_hash`). A tabela de `HashSet` mantém o tamanho a que chegou depois do `clear` (a recarga), como o `HashMap.clear`. Se o usuário preferir A (reprodutível), o ponto de troca é `recipe_cache::ComplexSet::seal`.
+
 ## Comportamento do original que parece bug e fica
 
 1:1 inclui os bugs: o que o original faz e parece erro é portado igual, com teste de referência contra o Java, e registrado aqui com a linha do Java. Nesta frente (telas, upgrades,
@@ -839,6 +865,13 @@ abas, luz e o comparador) o que pareceu estranho no original foi conferido e o p
   com um tipo (casos `_um_`). A sincronização do mapa (`SyncableStreamCodec.upgradeMap`) o troca por um `Object2IntOpenHashMap` novo no cliente, de ordem de hash, e o `CenaTelas`
   refaz a ordem (`orderClientUpgrades`) antes de cada clique e de cada quadro só para a imagem ser repetível.
 
+- O índice de receitas de componentes exatos (`ComponentSensitiveInputCache.addComponentInputCache`, `ComponentSensitiveInputCache.java:97-120`) guarda só a primeira receita de cada item: a segunda copia o `Collections.singletonMap` para um
+  `Object2ObjectOpenCustomHashMap` que fica numa variável local (`holderMatch = newMap`) e nunca volta a `componentInputCache`, então uma segunda receita `strict` do mesmo item, com outra chave ou a mesma, se perde. Rastro `recipe_components`, caso `strict_written`
+  (uma `strict` de `repair_cost` 5 e depois uma `strict` vazia: a pilha sem patch não acha a segunda). O port faz o mesmo (`ComponentSensitiveInputCache::add_component_input_cache`).
+- A receita `strict` escrita à mão com só alguns componentes nunca passa em `test` (a pilha tem os componentes padrão do item, e `strict` pede que todos estejam no patch) mas o índice a acha pela chave: `type_based` devolve a receita e `find_first` não (`strict_written`, a pilha com `repair_cost` 5).
+  Só o `strict` feito de uma pilha (`DataComponentIngredient.of(true, stack)`, que lista os componentes padrão) casa nos dois. O port repete as duas respostas.
+- O `ItemResource` sem patch devolve o mapa do protótipo, que não é igual a nenhuma chave do índice exato, e o `ItemStack` sem patch devolve o `PatchedDataComponentMap` vazio, que é: o mesmo item sem componentes é achado por `findFirstRecipe` (pilha) e não por `containsInput` (recurso) (`strict_defaults`).
+  Já estava portado (`ComponentsKey::Unmatchable`); o rastro novo repete.
 - `GuiInsetElement.isMouseOver` (`GuiInsetElement.java:43-48`) só considera o botão de dentro (18 por 18), não o suporte de 26 por 26 (`GuiSideHolder`, `active = false`, `GuiSideHolder.java:36`). Com um item no cursor, o clique na borda do
   suporte de uma aba inset (3 pixels à esquerda e 5 à direita do botão de xp, e a faixa de 4 em cima e embaixo) é "fora" e solta o item, mesmo parecendo parte da aba. As abas de textura (`GuiEnergyTab`, `GuiWarningTab`,
   `GuiHeatTab`) têm o retângulo inteiro. O port reproduz (`mekanism_rules::screen_elements` declara o botão da aba de xp, `xp_tab().tab.button()`), conferido ponto a ponto no rastro `fora.jsonl`.

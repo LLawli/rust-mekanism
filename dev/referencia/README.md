@@ -112,6 +112,13 @@ companhia, rodam todos juntos: tire-os da pasta enquanto isso). `mods/mekanism/t
 e `mods/mekanism/tests/placed_fed.rs` os repetem, e em jogo `horizon2/h2_comparador.py order|first_tick|levels MAQUINA` e `horizon2/h2_placed_fed.py` (`H_NAME=horizon`) repetem as operações como comandos, com `tick freeze` e `tick step 1`.
 `horizon2/h2_comparador_video.py capturar|montar ordem|cinco|posta` faz os prints e o vídeo com legenda.
 
+`testes/ComponentIngredientTraceTest.java` grava `recipe_components.jsonl` (e `recipe_components_2.jsonl`, uma segunda execução do mesmo teste): o `DataComponentIngredient` do NeoForge (`neoforge:components`, com `strict` verdadeiro e falso, lido do JSON como um arquivo de receita o escreve) contra
+pilhas (`ItemStackIngredient.test`, `testType`, os componentes todos da pilha e a classificação de `ItemInputCache.mapIngredient`), e seis caches de entrada (`InputRecipeCache.SingleItem`) com as perguntas de `findFirstRecipe`, `containsInput` e `findTypeBasedRecipeHolder`. Os casos
+`complex_hash_order*` levam o `System.identityHashCode` da chave do id de cada receita (o `RecipeHolder.hashCode`), que muda a cada execução: por isso são duas. `machinery_basis/core/tests/recipe_components_reference.rs` os repete. `NeighborTraceTest.nestedUpdates` grava `neighbors_nested.jsonl`: as posições que o
+`debugListener` do `CollectingNeighborUpdater` anuncia em cada operação ao lado de cada máquina, de um bloco de pedra e de um fio de redstone (o controle que avisa em cadeia), e a classe que declara `onPowerChange`, `updatePower` e `onNeighborChange` em cada tile; `mods/mekanism/tests/neighbors_nested.rs` o confere. Copie os dois
+arquivos para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` (tire de lá os outros testes enquanto isso) e apague-os depois.
+Em jogo, `horizon2/h2_componentes.py` (`H_NAME=horizon`) repete as receitas do data pack `testes/dados/mektest` (graveto com nome, sílex com `repair_cost`, carvão `strict`, e as receitas que o mod recusa e o log explica) na Enrichment Chamber; o data pack vai em `saves/<mundo>/datapacks/mektest` e se liga com `reload`.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

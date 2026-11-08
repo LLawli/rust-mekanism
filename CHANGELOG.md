@@ -6,6 +6,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- As receitas de data pack das máquinas (`enriching`, `crushing`, `metallurgic_infusing`, a conversão de químico e a de energia) aceitam o ingrediente `neoforge:components` (`DataComponentIngredient`: `items`, `components` e `strict`). O Horizon só entrega ao mod o ingrediente em texto ou lista e descartava a receita sem aviso; o mod lê o arquivo e porta o `test` do NeoForge (valor igual, `!tipo` para o componente ausente, `strict` para a pilha sem componente fora do patch) sobre os componentes padrão do item e o patch da pilha, e o índice de receitas o trata como o original (exato com `strict`, complexo sem). `machinery_basis_core::components_ingredient`, repetido contra um rastro do Java de 285 pares. Ficam de fora o `compound`, o `intersection` e o `difference` em arquivos de receita e as receitas de cozimento do Smelter com esses ingredientes, que o Horizon descarta antes do mod.
 - O ar que o Heat Generator lê passa a ser o do original: `Biome.getTemperature(pos, seaLevel)` com o ajuste por altura (acima de `seaLevel + 17` a temperatura cai com a altura e com um ruído
   por posição de semente fixa) e o modificador `frozen` dos oceanos congelados, em vez da temperatura base do bioma; o bioma de cada bloco vem do `BiomeManager.getBiome` (o quadrado mais próximo com
   sorteio) e o nível do mar da dimensão (63, 32, 0 e -63 num mundo plano). O ar de cada face e o do bloco ficam guardados enquanto o tile vive (`CachedAmbientTemperature`): um bioma que muda
@@ -183,6 +184,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O índice de componentes exatos guarda só a primeira receita `strict` de cada item, como `ComponentSensitiveInputCache.addComponentInputCache` do original (a segunda cai num mapa local e se perde).
+- Duas receitas complexas (ingrediente `neoforge:components` sem `strict`, por exemplo) que casam a mesma entrada seguem a ordem de um `HashSet` com o hash de identidade da chave do id, como o `HashSet<RecipeHolder>` do original, e não a ordem da lista: o vencedor é sorteado entre as que casam, fixo durante a execução. Decisão 11 do plano.
+- Uma receita que o mod recusa (campo faltando ou inválido, item ou químico desconhecido, tag sem membros, tipo de ingrediente que o Horizon não entrega) agora aparece no log com o motivo, no texto do original (`Couldn't parse data file '<id>': ...`, `Incomplete recipe detected: <id>` e `Empty tag: <tag>`), em vez de sumir.
 - A parte fracionária da experiência que as máquinas soltam (`AbstractFurnaceBlockEntity.createExperience`) sai de um gerador uniforme: o `java.util.Random` de 48 bits que o `Math.random()` do Java usa (`machinery_basis_core::java_random`, conferido contra o JDK 21), semeado a cada execução. A fração do relógio de antes andava poucos nanossegundos entre dois sorteios seguidos, então a chance do ponto a mais não era a fração da receita.
 - A tela de uma máquina (as quatro e o Heat Generator) aberta num mundo reaberto antes do primeiro tick dela mostra os valores salvos (energia, progresso da receita, tanque, calor, upgrades e modo de redstone) em vez
   dos padrão, como no original, que lê o tile direto (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote` leem o tile que o `loadAdditional` já carregou). O objeto vivo do port nasce no primeiro tick; até lá o menu
