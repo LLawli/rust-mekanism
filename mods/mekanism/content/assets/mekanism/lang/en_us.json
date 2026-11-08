@@ -118,5 +118,8 @@
   "sound_event.mekanism.tile.machine.crusher": "Crusher clangs",
   "sound_event.mekanism.tile.machine.energized_smelter": "Smelter whines",
   "sound_event.mekanism.tile.machine.enrichment_chamber": "Enricher hums",
-  "sound_event.mekanism.tile.machine.metallurgic_infuser": "Metallurgic infuser hums"
+  "sound_event.mekanism.tile.machine.metallurgic_infuser": "Metallurgic infuser hums",
+  "constants.mekanism.log_format": "[%1$s] %2$s",
+  "constants.mekanism.mod_name": "Mekanism",
+  "constants.mekanism.recipe_warning": "Broken tags in Mekanism recipes detected, please check server logs for details. You will be missing some recipes and machines may not accept expected inputs."
 }

@@ -184,6 +184,30 @@ bindings = [
   { name = "output", ty = "&mut i32", value = "&mut *output" },
 ]
 
+# A varredura de receitas incompletas (`IncompleteRecipeScanner`): ao abrir o mundo (`ServerStartedEvent`) e a cada `/reload` (`OnDatapackSyncEvent` sem
+# jogador), que também manda a mensagem a quem está no servidor, e na entrada de cada jogador (`OnDatapackSyncEvent` com jogador).
+[[injection]]
+id = "server_data_loaded"
+hook = "server_data_loaded"
+hook_version = 1
+kind = "HEAD"
+helper = "server_data_loaded.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "reload", ty = "bool", value = "reload" },
+]
+
+[[injection]]
+id = "player_logged_in"
+hook = "player_logged_in"
+hook_version = 1
+kind = "HEAD"
+helper = "player_logged_in.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "player", ty = "u128", value = "player" },
+]
+
 # O som em laço das máquinas, no tick do cliente (`TileEntityMekanism.tickClient`). O `tick` roda no cliente e no servidor; o som é do cliente.
 [[injection]]
 id = "client_tick"

@@ -31,7 +31,7 @@ use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::tank::{FORMAT, Tank};
 use machinery_basis_core::temperature;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Instant;
@@ -66,6 +66,9 @@ static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
 static ENERGY_CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemEnergyConversion>>>> = Mutex::new(BTreeMap::new());
+/// As receitas que `report` achou incompletas (um ingrediente sem membro: `placementInfo().isImpossibleToPlace()`) nesta carga de dados.
+/// Se esvazia a cada carga, junto dos índices.
+static INCOMPLETE: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// Sobe a cada carga de dados (`data_loaded`). Os índices de receitas de cada thread (`MekanismRecipeType.getInputCache`) guardam a
 /// carga de onde saíram e se limpam (`clear`) quando ela muda.
 static DATA_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -372,6 +375,7 @@ pub(in crate::game) fn data_loaded() {
     MACHINE_RECIPES.lock().unwrap_or_else(|e| e.into_inner()).clear();
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     ENERGY_CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    INCOMPLETE.lock().unwrap_or_else(|e| e.into_inner()).clear();
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
@@ -473,6 +477,7 @@ fn report(id: &str, problem: &Problem) {
     match problem {
         Problem::Parse(why) => eprintln!("machinery_basis: Couldn't parse data file '{id}': {why}"),
         Problem::Empty(tags) => {
+            INCOMPLETE.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_owned());
             eprintln!("machinery_basis: Incomplete recipe detected: {id}");
             for tag in tags {
                 eprintln!("machinery_basis: Empty tag: {tag}");
@@ -528,6 +533,13 @@ fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> 
             report(&recipe.id, &Problem::Parse(format!("resultado inválido ou com item desconhecido: {}", parsed.output)));
             continue;
         };
+        // Uma tag de recurso sem membro (`ChemicalStackIngredient.hasNoMatchingInstances`) deixa a receita incompleta, como a de item. O
+        // original a guarda, e ela não casa com nada: aqui a receita fica, com o mesmo efeito, e só o aviso sai.
+        if let Some(tag) = parsed.resource.as_ref().and_then(|input| input.ingredient.strip_prefix(resource::TAG_PREFIX))
+            && resource::current_tags().members(tag).next().is_none()
+        {
+            report(&recipe.id, &Problem::Empty(vec![tag.to_owned()]));
+        }
         recipes.push(MachineRecipe {
             id: recipe.id.clone(),
             item,
@@ -668,6 +680,27 @@ pub(in crate::game) fn energy_conversions(
     let conversions = Arc::new(conversions);
     index.insert(recipe_type.to_owned(), conversions.clone());
     conversions
+}
+
+/// `MekanismRecipeType.checkIncompleteRecipes`: lê agora as receitas dos tipos que o mod usa (o que o primeiro uso faria depois da carga de
+/// dados) e devolve os ids das que ficaram incompletas, em ordem. Cada uma já foi ao log (`Incomplete recipe detected: <id>`, com
+/// `Empty tag: <tag>`), como `checkMyIncompleteRecipes` e `logMissingTags`.
+pub(in crate::game) fn incomplete_recipes(
+    game: &Game<'_>,
+    machines: &[RecipeSource],
+    conversions: &[(&str, &ConversionFields)],
+    energy: &[(&str, &ConversionFields)],
+) -> Vec<String> {
+    for source in machines {
+        machine_recipes(game, source);
+    }
+    for (recipe_type, fields) in conversions {
+        self::conversions(game, recipe_type, fields);
+    }
+    for (recipe_type, fields) in energy {
+        energy_conversions(game, recipe_type, fields);
+    }
+    INCOMPLETE.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect()
 }
 
 /// `Item.getMaxStackSize` de uma pilha: o componente `minecraft:max_stack_size` dela, se tem, e senão o do item

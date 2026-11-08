@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-08, sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-08 (depois da frente dos restos da Fase 1), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 89 | |
-| Hook do catálogo, usado só com o contrato dele | 31 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 30 | sim |
+| `[[injection]]` no total | 91 | |
+| Hook do catálogo, usado só com o contrato dele | 32 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 31 | sim |
 | Injeção crua (`target = ...`) | 28 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 17 | sim |
 
-31 + 30 + 28 = 89. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-58 injeções e 17 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+32 + 31 + 28 = 91. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+59 injeções e 17 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 28 | 17 | 30 |
+| Em uso | 28 | 17 | 31 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -127,15 +127,15 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 39 | 20 | 19 | 13 |
-| `mods/mekanism/native/horizon-mixin.toml` | 32 | 25 | 7 | 2 |
+| `mods/mekanism/native/horizon-mixin.toml` | 34 | 27 | 7 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 18 | 16 | 2 | 2 |
-| Total | 89 | 61 | 28 | 17 |
+| Total | 91 | 63 | 28 | 17 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 28 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 61 linhas `hook =`: 17 nomes se repetem em dois mods, 61 - 17 = 44; a contagem anterior, 45, estava velha) existem no catálogo do pin, na versão 1.
 
-Dos 61 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 31 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 25, 9 e 16; `mekanismgenerators` tem 16, 6 e 10; 15 + 9 + 6 = 30 e 5 + 16 + 10 = 31, e o total dos três arquivos fecha em 61): 5 em `machinery_basis`, 16 em `mekanism` (os 3 da configuração de cliente entre eles), 10 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 30 com estrutura privada são os 7 de antes, os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 63 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 32 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 16, 6 e 10; 15 + 10 + 6 = 31 e 5 + 17 + 10 = 32, e o total dos três arquivos fecha em 63): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração de cliente e o `player_logged_in` da mensagem de receita incompleta entre eles), 10 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
 ## Injeções cruas em uso (28)
 
@@ -479,7 +479,7 @@ e 31 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08,
 
 ## Hooks do catálogo com estrutura privada
 
-Os 30 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 31 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -509,6 +509,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `explosion_detonate` (mekanism) | `explosion_detonate` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`) | H8: `award_experience(at, points)` |
 | `place_block`, `loot_drops`, `container_opened` e `destroy_block` (mekanismgenerators) | os mesmos | os da linha de `place_block` etc. do `mekanism`: `game.world.block_entities` e `game.world.modified`, pelas funções `name_*` da `machinery_basis` | H8: `mod_block_entity`, `change_mod_block_entity` e `block_entity` em `NativeLootDrops` |
 | `menu_button` (mekanism) | `menu_button` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), para a aba de xp (`COLLECT_XP`) dar a experiência ao jogador que clicou; e, para `ServerPlayer.awardRecipes` + `triggerRecipeCrafted`, `game.level.recipe_book.add_recipes`, `game.recipe_unlocked`, `game.trigger_recipe_crafted` e a macro `world_stations!` (o livro de receitas e os critérios de `advancements.rs`) | H8: `award_experience(at, points)` e `award_recipes(player, recipes, items)` |
+| `server_data_loaded` (mekanism) | `server_data_loaded` | `game.recipes().cooking` e `game.native_recipes_of_type` (pelas funções `machine_recipes`, `conversions` e `energy_conversions` da `machinery_basis`, que a varredura de receitas incompletas chama para ler já na carga o que o primeiro uso leria), e `native_tell` e `native_server_players` (documentados, na lista de baixo) para a mensagem a quem está no servidor | H8: `cooking_recipes(kind)`; o resto é o que `native_menu_quick_move` já pede |
 | `neighbor_changed` (basis) | `neighbor_changed` | `level.native_state_block(state)` (a que bloco o estado pertence: o hook só dá o id do estado), e a fila estática da `machinery_basis` que `flush_signals` esvazia | H34: o nome do bloco no hook, ou o sinal dos vizinhos lido dentro do aviso |
 | `server_tick` (basis) | `server_tick` | `game.world.block_entities.get` (o id do bloco do menu), os campos privados que os `SourceFn` dos mods leem do mundo, `game.container` e `game.lan.hub.guests[].menu` (quem tem o menu de que bloco aberto, o espectador inclusive: o `recount`), e, pelo `mb_in_levels` da `machinery_basis` (módulo `glue`), `game.levels_to_tick`, `game.enter_level` e `game.dim`, porque no começo do tick só o último nível está no lugar; e `native_net_send_to_player` (`pub(super)` do `game`) | H33: um hook que o hub chame na fase das entidades, com o bloco do nível certo, e um helper de envio ao jogador; H36: a lista de jogadores com o menu aberto |
 
@@ -541,6 +542,7 @@ que não cobre helpers além da lista; pedir que entrem nela dá contrato a eles
 | `native_energy_insert`, `native_move_energy` | API 142 | `distribute_energy`, `transmit_energy` |
 | `native_update_output_neighbors` | API 64 | `publish_comparator` (mekanism e mekanismgenerators), chamado dentro do `native_block_entity_tick` da própria máquina: funciona com o tile fora do mundo porque `analog_output` responde por uma tabela do mod |
 | `native_container_slots` | API 48 | ejetor, hoppers |
+| `native_tell`, `native_server_players` | API 21 | `player_logged_in` e `server_data_loaded` do Mekanism (a mensagem de receita incompleta, `IncompleteRecipeScanner`); `native_server_players` também no som e nos tipos de upgrade da `machinery_basis`. O jogador da janela entra por memória no servidor integrado (`integrated.rs`), por isso o `player_logged_in` e o `native_tell` o alcançam em mundo de um jogador só |
 | `native_state_block`, `native_state_with_property` | API 164, 76 | `has_analog_output` (mekanism e mekanismgenerators), `update_shape`, `state_for_placement` |
 | `native_schedule_fluid_tick` | API 32 | `update_shape`, `use_item_on` |
 
@@ -1243,8 +1245,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=89 hook=61 target=28 module=17 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 31 + 30 tem de somar `hook`.
+   Hoje: `injection=91 hook=63 target=28 module=17 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 32 + 31 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

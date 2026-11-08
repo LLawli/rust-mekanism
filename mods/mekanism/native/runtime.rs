@@ -1412,6 +1412,115 @@ pub fn chemical_resource(id: &str, json: &Value) -> Option<Resource> {
     })
 }
 
+/// `MekanismLang.LOG_FORMAT`, `MEKANISM` e `RECIPE_WARNING`: as chaves de tradução da mensagem de receita incompleta
+/// (`IncompleteRecipeScanner.RECIPE_WARNING`, `IncompleteRecipeScanner.java:14`).
+pub const LOG_FORMAT_KEY: &str = "constants.mekanism.log_format";
+pub const MOD_NAME_KEY: &str = "constants.mekanism.mod_name";
+pub const RECIPE_WARNING_KEY: &str = "constants.mekanism.recipe_warning";
+/// `EnumColor.RED.getTextColor()`: a cor da mensagem inteira (`translateColored(EnumColor.RED, ..)`).
+pub const RECIPE_WARNING_COLOR: u32 = 0xFF_38_3C;
+
+/// O componente da mensagem como o `ComponentSerialization` do original o escreve: `LOG_FORMAT.translateColored(EnumColor.RED, MEKANISM,
+/// RECIPE_WARNING.translate())` é um `translatable` de `log_format` com os dois outros `translatable` de argumento, e a cor no estilo do
+/// pai (os argumentos a herdam).
+pub fn recipe_warning_json() -> serde_json::Value {
+    serde_json::json!({
+        "color": format!("#{RECIPE_WARNING_COLOR:06X}"),
+        "translate": LOG_FORMAT_KEY,
+        "with": [{ "translate": MOD_NAME_KEY }, { "translate": RECIPE_WARNING_KEY }],
+    })
+}
+
+/// As receitas que ficam incompletas hoje só porque o port ainda não tem o conteúdo delas (decisão 13): um ingrediente de tag cujos itens o port não traz
+/// (estanho, urânio, chumbo, fluorita, bronze, os pós sujos e os tijolos de bio fuel). O original, com o conteúdo inteiro, não tem nenhuma, e por isso a
+/// mensagem do `IncompleteRecipeScanner` só sai quando sobra receita incompleta fora desta lista (veja `unexplained_incomplete`). A lista encolhe com o
+/// conteúdo, e `tests/incomplete_recipes_gaps.rs` confere que ela é exatamente o que os arquivos do conteúdo dão: um conteúdo novo que a deixa velha falha o teste.
+pub const CONTENT_GAPS: [&str; 40] = [
+    "mekanism:chemical_conversion/bio/from_bio_fuel_block",
+    "mekanism:chemical_conversion/carbon/from_charcoal_block",
+    "mekanism:chemical_conversion/tin/from_dust",
+    "mekanism:chemical_conversion/tin/from_enriched",
+    "mekanism:enriching/charcoal_dust",
+    "mekanism:enriching/enriched/tin",
+    "mekanism:processing/bronze/dust/from_ingot",
+    "mekanism:processing/copper/dirty_dust/from_clump",
+    "mekanism:processing/copper/dust/from_dirty_dust",
+    "mekanism:processing/fluorite/from_dust",
+    "mekanism:processing/fluorite/from_ore",
+    "mekanism:processing/fluorite/to_dust",
+    "mekanism:processing/gold/dirty_dust/from_clump",
+    "mekanism:processing/gold/dust/from_dirty_dust",
+    "mekanism:processing/iron/dirty_dust/from_clump",
+    "mekanism:processing/iron/dust/from_dirty_dust",
+    "mekanism:processing/lead/dirty_dust/from_clump",
+    "mekanism:processing/lead/dust/from_dirty_dust",
+    "mekanism:processing/lead/dust/from_ingot",
+    "mekanism:processing/lead/dust/from_ore",
+    "mekanism:processing/lead/dust/from_raw_block",
+    "mekanism:processing/lead/dust/from_raw_ore",
+    "mekanism:processing/osmium/dirty_dust/from_clump",
+    "mekanism:processing/osmium/dust/from_dirty_dust",
+    "mekanism:processing/osmium/dust/from_raw_block",
+    "mekanism:processing/refined_glowstone/ingot_to_dust",
+    "mekanism:processing/refined_obsidian/dust/from_ingot",
+    "mekanism:processing/tin/dirty_dust/from_clump",
+    "mekanism:processing/tin/dust/from_dirty_dust",
+    "mekanism:processing/tin/dust/from_ingot",
+    "mekanism:processing/tin/dust/from_ore",
+    "mekanism:processing/tin/dust/from_raw_block",
+    "mekanism:processing/tin/dust/from_raw_ore",
+    "mekanism:processing/uranium/dirty_dust/from_clump",
+    "mekanism:processing/uranium/dust/from_dirty_dust",
+    "mekanism:processing/uranium/dust/from_ingot",
+    "mekanism:processing/uranium/dust/from_ore",
+    "mekanism:processing/uranium/dust/from_raw_block",
+    "mekanism:processing/uranium/dust/from_raw_ore",
+    "mekanism:processing/uranium/yellow_cake_uranium",
+];
+
+/// Se alguma receita incompleta (os ids que a varredura achou) não é uma das que só faltam por conteúdo do port. É o `foundIncompleteRecipes` do port.
+pub fn unexplained_incomplete(incomplete: &[String]) -> bool {
+    incomplete
+        .iter()
+        .any(|id| !CONTENT_GAPS.contains(&id.as_str()))
+}
+
+/// Quem recebe a mensagem de receita incompleta (`IncompleteRecipeScanner`). O original guarda um `boolean` estático
+/// (`foundIncompleteRecipes`) que o `ServerStartedEvent` e o `OnDatapackSyncEvent` sem jogador (o `/reload`) refazem com a varredura
+/// (`MekanismRecipeType.checkIncompleteRecipes`), e o `OnDatapackSyncEvent` de um jogador que entra só lê.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct IncompleteScanner {
+    found: bool,
+}
+
+impl IncompleteScanner {
+    pub const fn new() -> Self {
+        Self { found: false }
+    }
+
+    /// `IncompleteRecipeScanner.foundIncompleteRecipes`.
+    pub fn found(&self) -> bool {
+        self.found
+    }
+
+    /// `ServerStartedEvent`: refaz a varredura. "Em teoria não há jogadores a esta altura", então ninguém recebe a mensagem.
+    pub fn server_started(&mut self, found: bool) {
+        self.found = found;
+    }
+
+    /// `OnDatapackSyncEvent` sem jogador (o `/reload`): refaz a varredura e devolve se a mensagem vai a todos os jogadores.
+    pub fn reloaded(&mut self, found: bool) -> bool {
+        self.found = found;
+        self.found
+    }
+
+    /// `OnDatapackSyncEvent` de um jogador que entra: não varre ("já rodou ao começar ou na última recarga") e devolve se ele recebe a
+    /// mensagem.
+    pub fn player_joined(&self) -> bool {
+        self.found
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

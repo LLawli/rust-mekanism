@@ -1819,6 +1819,58 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
     *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
 }
 
+/// `IncompleteRecipeScanner.foundIncompleteRecipes`: o resultado da última varredura.
+static SCANNER: Mutex<rules::IncompleteScanner> = Mutex::new(rules::IncompleteScanner::new());
+
+/// `IncompleteRecipeScanner.RECIPE_WARNING`: `LOG_FORMAT.translateColored(EnumColor.RED, MEKANISM, RECIPE_WARNING.translate())`, um
+/// `translatable` de `log_format` com a cor no estilo dele e os outros dois `translatable` de argumento.
+fn recipe_warning() -> horizon_client::mod_api::Text {
+    use horizon_client::mod_api::Text;
+    Text::translate(
+        rules::LOG_FORMAT_KEY,
+        &[Text::translate(rules::MOD_NAME_KEY, &[]), Text::translate(rules::RECIPE_WARNING_KEY, &[])],
+    )
+    .with_style(&horizon_client::text::Style::color(rules::RECIPE_WARNING_COLOR))
+}
+
+/// `MekanismRecipeType.checkIncompleteRecipes`: se alguma receita dos tipos do Mekanism ficou incompleta nesta carga de dados. Fora as que só faltam por
+/// conteúdo que o port ainda não tem (`rules::CONTENT_GAPS`, decisão 13): o original, com o conteúdo inteiro, não tem nenhuma.
+fn scan_incomplete_recipes(game: &Game<'_>) -> bool {
+    let machines: Vec<basis::RecipeSource> = MACHINES.iter().map(|machine| machine.recipes).collect();
+    let conversions = [(rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS)];
+    let energy = [(rules::ENERGY_CONVERSION, &rules::CONVERSION_FIELDS)];
+    rules::unexplained_incomplete(&basis::incomplete_recipes(game, &machines, &conversions, &energy))
+}
+
+/// `IncompleteRecipeScanner.serverStarted` (a carga de um mundo que abre) e `recipes` sem jogador (o `/reload`): a varredura, e no
+/// `/reload` a mensagem a todos os jogadores que estão no servidor.
+pub(in crate::game) fn server_data_loaded(game: &mut Game<'_>, reload: bool) {
+    let found = scan_incomplete_recipes(game);
+    let everyone = {
+        let mut scanner = SCANNER.lock().unwrap_or_else(|error| error.into_inner());
+        if reload {
+            scanner.reloaded(found)
+        } else {
+            scanner.server_started(found);
+            false
+        }
+    };
+    if everyone {
+        let players: Vec<u128> = game.native_server_players().iter().map(|player| player.uuid).collect();
+        for player in players {
+            game.native_tell(player, recipe_warning());
+        }
+    }
+}
+
+/// `IncompleteRecipeScanner.recipes` com jogador: quem entra recebe a mensagem se a última varredura achou receita incompleta.
+pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
+    let found = SCANNER.lock().unwrap_or_else(|error| error.into_inner()).player_joined();
+    if found {
+        game.native_tell(player, recipe_warning());
+    }
+}
+
 /// `TileEntityMekanism.tickClient` → `updateSound` de cada máquina que o cliente vê: o som em laço de quem está ligado. O cliente
 /// não tem o objeto vivo: vê o bloco (`lit`), os tipos de upgrade que o servidor mandou e quantos de silêncio o tile tem.
 pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
