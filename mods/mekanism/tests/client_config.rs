@@ -4,7 +4,9 @@
 use machinery_basis_core::sound::{
     SoundConfig, TileSound, TileSoundEngine, TileTickableSound, TileView,
 };
-use mekanism_rules::{CLIENT_CONFIG, WINDOW_TYPES, client_default_text, sound_config};
+use mekanism_rules::{
+    CLIENT_CONFIG, WINDOW_TYPES, client_default_text, machine_effects, sound_config,
+};
 use std::path::Path;
 
 const SOUND: &str = "mekanism:tile.machine.enrichment_chamber";
@@ -41,9 +43,66 @@ fn original_sounds_section() -> String {
     kept.join("\n") + "\n"
 }
 
+/// A seção `rendering` do arquivo do original, sem as chaves que o port não lê: o comentário e o cabeçalho de `[rendering]` (o `berRange` e o resto ficam de fora) e a
+/// sub-seção `rendering.particle` só com `machineEffects` (multibloco, radiação, atração magnética e área de ferramenta ficam de fora).
+fn original_rendering_section() -> String {
+    let text = original();
+    let start = text
+        .find("#Settings for adjusting how Mekanism renders certain blocks")
+        .unwrap();
+    let header: Vec<&str> = text[start..].lines().take(2).collect();
+    let nested_start = text
+        .find("\t#Settings for configuring Mekanism's Particles")
+        .unwrap();
+    let nested = &text[nested_start..];
+    let nested = &nested[..nested.find("\n\n").unwrap_or(nested.len())];
+    let mut kept = Vec::new();
+    let mut lines = nested.lines().peekable();
+    while let Some(line) = lines.next() {
+        // Cada chave leva o comentário na linha de cima: fica só o par de `machineEffects`.
+        let own = line.contains("machineEffects")
+            || lines
+                .peek()
+                .is_some_and(|next| next.contains("machineEffects"));
+        if line.starts_with("\t\t") && !own {
+            continue;
+        }
+        kept.push(line);
+    }
+    format!("{}\n\n{}\n", header.join("\n"), kept.join("\n"))
+}
+
 #[test]
-fn the_default_text_is_the_sounds_section_of_the_file_the_original_wrote() {
-    assert_eq!(CLIENT_CONFIG.default_text(), original_sounds_section());
+fn the_default_text_is_the_sounds_and_rendering_sections_of_the_file_the_original_wrote() {
+    assert_eq!(
+        CLIENT_CONFIG.default_text(),
+        format!(
+            "{}\n{}",
+            original_sounds_section(),
+            original_rendering_section()
+        )
+    );
+}
+
+#[test]
+fn machine_effects_is_read_from_the_particle_section_and_defaults_to_on() {
+    assert!(machine_effects(&CLIENT_CONFIG.load(&original())));
+    assert!(machine_effects(&CLIENT_CONFIG.load("")));
+    let off = original().replace("machineEffects = true", "machineEffects = false");
+    assert!(!machine_effects(&CLIENT_CONFIG.load(&off)));
+    // Uma chave com o nome certo na seção errada não vale.
+    assert!(machine_effects(
+        &CLIENT_CONFIG.load("[rendering]\n\tmachineEffects = false\n")
+    ));
+    // O valor errado volta ao padrão e o arquivo é escrito de novo, com o resto de `[rendering]` como estava.
+    let wrong = original().replace("machineEffects = true", "machineEffects = 5");
+    let loaded = CLIENT_CONFIG.load(&wrong);
+    assert!(loaded.corrected);
+    assert!(machine_effects(&loaded));
+    let rewritten = CLIENT_CONFIG.rewrite(&wrong, &loaded);
+    assert!(rewritten.contains("berRange = 256"));
+    assert!(rewritten.contains("machineEffects = true"));
+    assert!(!CLIENT_CONFIG.load(&rewritten).corrected);
 }
 
 #[test]

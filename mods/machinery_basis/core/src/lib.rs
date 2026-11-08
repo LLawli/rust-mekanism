@@ -1,4 +1,5 @@
 //! Regras puras da machinery_basis: nada aqui conhece tipos do jogo, então tudo testa sem ele.
+pub mod active_fx;
 pub mod armor_bar;
 pub mod armor_slots;
 pub mod biome_temperature;

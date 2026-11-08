@@ -1841,6 +1841,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
     match config.file.as_str() {
         rules::CLIENT_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::CLIENT_CONFIG, None);
+            basis::set_machine_effects(rules::machine_effects(&loaded));
             *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
         }
         rules::GENERAL_CONFIG_FILE => {
@@ -1857,6 +1858,17 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
         }
         _ => {}
     }
+}
+
+/// `BlockTile.animateTick` das quatro máquinas (`Machine.java:23`): o `ClientLevel.animateTick` chama o `animateTick` do bloco sorteado, e aqui o mod o
+/// registra na injeção `animate_tick` da `machinery_basis`.
+fn machine_animator(
+    engine: &mut horizon_client::particles::ParticleEngine,
+    ctx: &horizon_client::animate_tick::AnimateContext<'_>,
+    state: BlockStateId,
+    pos: [i32; 3],
+) {
+    basis::animate_active_block(engine, ctx, state, pos, &|block| machine_of(block).map(|_| &rules::MACHINE_FX[..]));
 }
 
 /// `IncompleteRecipeScanner.foundIncompleteRecipes`: o resultado da última varredura.
@@ -1914,6 +1926,7 @@ pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
 /// `TileEntityMekanism.tickClient` → `updateSound` de cada máquina que o cliente vê: o som em laço de quem está ligado. O cliente
 /// não tem o objeto vivo: vê o bloco (`lit`), os tipos de upgrade que o servidor mandou e quantos de silêncio o tile tem.
 pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
+    horizon_client::animate_tick::machinery_animate::register("mekanism", machine_animator);
     if !game.native_window() {
         return;
     }

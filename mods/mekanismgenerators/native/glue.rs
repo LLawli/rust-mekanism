@@ -152,6 +152,21 @@ fn is_generator_id(id: &str) -> bool {
     is_generator(id)
 }
 
+/// `BlockTile.animateTick` do Heat Generator (`GeneratorsBlockTypes.java:69`), pela injeção `animate_tick` da `machinery_basis`.
+fn heat_generator_animator(
+    engine: &mut horizon_client::particles::ParticleEngine,
+    ctx: &horizon_client::animate_tick::AnimateContext<'_>,
+    state: BlockStateId,
+    pos: [i32; 3],
+) {
+    basis::animate_active_block(engine, ctx, state, pos, &|block| (block == rules::HEAT_GENERATOR).then_some(&rules::HEAT_GENERATOR_FX[..]));
+}
+
+/// O `tick` do cliente: registra o animador do Heat Generator (registrar de novo não faz nada).
+pub(in crate::game) fn client_tick() {
+    horizon_client::animate_tick::machinery_animate::register("mekanismgenerators", heat_generator_animator);
+}
+
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_generator_id);
     if is_generator(&game.native_block(pos)) {

@@ -2203,3 +2203,75 @@ pub(in crate::game) fn container_changed(game: &mut Game<'_>, pos: (i32, i32, i3
         }
     }
 }
+
+/// `MekanismConfig.client.machineEffects` (`ClientConfig.java:92`, `rendering.particle.machineEffects`), como o último arquivo de cliente o deixou. Fica
+/// aqui porque quem lê é cada mod com blocos que soltam partículas (as máquinas e o Heat Generator usam a mesma chave do Mekanism).
+static MACHINE_EFFECTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// `ModConfigEvent.Loading` e `Reloading` do arquivo de cliente.
+pub(in crate::game) fn set_machine_effects(enabled: bool) {
+    MACHINE_EFFECTS.store(enabled, Ordering::Relaxed);
+}
+
+/// Escreve no stderr cada chamada que soltou partículas, com o tick do jogo. Só as cópias de teste ligam.
+const FX_TRACE: bool = false;
+
+/// `ParticleOptions` de uma partícula de `AttributeParticleFX`.
+fn fx_options(particle: machinery_basis_core::active_fx::Particle) -> horizon_client::particles::ParticleOptions {
+    use horizon_client::particles::{ParticleOptions, ParticleType};
+    use machinery_basis_core::active_fx::Particle;
+    match particle {
+        Particle::Smoke => ParticleOptions::simple(ParticleType::Smoke),
+        Particle::Flame => ParticleOptions::simple(ParticleType::Flame),
+        // `DustParticleOptions(color, scale)`: `ARGB.vector3fFromRGB24`.
+        Particle::Dust { rgb, scale } => ParticleOptions::dust(
+            [((rgb >> 16) & 255) as f32 / 255.0, ((rgb >> 8) & 255) as f32 / 255.0, (rgb & 255) as f32 / 255.0],
+            scale,
+        ),
+    }
+}
+
+/// O motor de partículas como o `Level` de `BlockTile.animateTick`: o gerador do sorteio das posições e o `addParticle`.
+struct FxLevel<'a>(&'a mut horizon_client::particles::ParticleEngine);
+
+impl machinery_basis_core::active_fx::ParticleLevel for FxLevel<'_> {
+    fn next_double(&mut self) -> f64 {
+        // `BitRandomSource.nextDouble`: o `next_double` do Horizon faz a conta em `double` (2^-53), e o jogo em `float` (`long * 1.110223E-16F`). Com um expoente de potência de dois,
+        // `nextInt(1 << bits)` é `next(bits)` (`BitRandomSource.nextInt(int)`, `(bound * next(31)) >> 31`), um passo do gerador cada.
+        use horizon_core::random::RandomSource;
+        let random = self.0.random();
+        let high = random.next_int_bound(1 << 26).unwrap_or(0);
+        let low = random.next_int_bound(1 << 27).unwrap_or(0);
+        machinery_basis_core::active_fx::bit_random_double(high, low)
+    }
+
+    fn add_particle(&mut self, spawn: machinery_basis_core::active_fx::Spawn) {
+        self.0.add(&fx_options(spawn.particle), spawn.pos, [0.0; 3]);
+    }
+}
+
+/// `BlockTile.animateTick` (`BlockTile.java:80-103`), para o bloco sorteado pelo `ClientLevel.animateTick`: `fx_of` devolve o `AttributeParticleFX` do bloco
+/// (ou `None` se ele não tem). Com `machineEffects` ligado e o bloco ativo (`lit`), solta uma partícula por entrada, na posição que ela sorteia, girada pelo
+/// `facing` e somada ao centro do bloco. O gerador é o do motor de partículas, o mesmo do sorteio das posições.
+pub(in crate::game) fn animate_active_block(
+    engine: &mut horizon_client::particles::ParticleEngine,
+    ctx: &horizon_client::animate_tick::AnimateContext<'_>,
+    state: BlockStateId,
+    pos: [i32; 3],
+    fx_of: &dyn Fn(&str) -> Option<&'static [machinery_basis_core::active_fx::FxParticle]>,
+) {
+    use machinery_basis_core::active_fx::{Facing, animate_tick, center_of};
+    let Some(row) = ctx.registry.state(state) else {
+        return;
+    };
+    let Some(fx) = fx_of(&row.name) else {
+        return;
+    };
+    let active = row.properties.get("lit").map(String::as_str) == Some("true");
+    let facing = Facing::from_property(row.properties.get("facing").map_or("", String::as_str));
+    let effects = MACHINE_EFFECTS.load(Ordering::Relaxed);
+    animate_tick(fx, facing, center_of(pos), active, effects, &mut FxLevel(engine));
+    if FX_TRACE && active && effects {
+        eprintln!("MEKFX gt={} block={} pos={pos:?} facing={facing:?} n={}", ctx.world.game_time, row.name, fx.len());
+    }
+}

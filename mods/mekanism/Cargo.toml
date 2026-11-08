@@ -13,3 +13,5 @@ path = "native/runtime.rs"
 serde_json = "1"
 machinery-basis-core = { path = "../machinery_basis/core" }
 
+[dev-dependencies]
+serde_json = { version = "1", features = ["float_roundtrip"] }

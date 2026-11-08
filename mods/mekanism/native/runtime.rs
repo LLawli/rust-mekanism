@@ -1,5 +1,6 @@
 // Regras das máquinas, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o módulo
 // crate::game::mekanism_rules. Segue TileEntityMetallurgicInfuser e TileEntityElectricMachine.
+use machinery_basis_core::active_fx::{FxParticle, Particle, REDSTONE, face_position};
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
 use machinery_basis_core::client_config::{
@@ -193,26 +194,44 @@ pub const LOCAL_CONFIG_NAMESPACE: &str = "Mekanism";
 /// estão portados) e as demais seções (acessibilidade, renderização, HUD e QIO), que entram junto de quem as lê. As posições das janelas (`window`) são de
 /// `WindowPositions`.
 pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
-    sections: &[ClientSection {
-        name: "sounds",
-        comment: "Settings for configuring Mekanism's Sounds",
-        entries: &[
-            ClientEntry {
-                key: "baseVolume",
-                comment: "Adjust Mekanism sounds' base volume. < 1 is softer, higher is louder.",
-                setting: ClientSetting::Float {
-                    default: 1.0,
-                    min: 0.0,
-                    max: 10.0,
+    sections: &[
+        ClientSection {
+            name: "sounds",
+            comment: "Settings for configuring Mekanism's Sounds",
+            entries: &[
+                ClientEntry {
+                    key: "baseVolume",
+                    comment: "Adjust Mekanism sounds' base volume. < 1 is softer, higher is louder.",
+                    setting: ClientSetting::Float {
+                        default: 1.0,
+                        min: 0.0,
+                        max: 10.0,
+                    },
                 },
-            },
-            ClientEntry {
-                key: "enableMachine",
-                comment: "Play sounds for active machines.",
+                ClientEntry {
+                    key: "enableMachine",
+                    comment: "Play sounds for active machines.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+            ],
+        },
+        // `ClientConfig.java:84-93`: `rendering` > `particle` > `machineEffects`. A seção pai vem antes (um comentário e nenhuma chave: o `berRange` e as
+        // demais de `rendering`, e as outras de `particle` (formação de multibloco, radiação, atração magnética, área de ferramenta), entram junto de quem as lê).
+        ClientSection {
+            name: "rendering",
+            comment: "Settings for adjusting how Mekanism renders certain blocks and how many particles Mekanism adds.",
+            entries: &[],
+        },
+        ClientSection {
+            name: "rendering.particle",
+            comment: "Settings for configuring Mekanism's Particles",
+            entries: &[ClientEntry {
+                key: "machineEffects",
+                comment: "Show particles when machines active.",
                 setting: ClientSetting::Bool { default: true },
-            },
-        ],
-    }],
+            }],
+        },
+    ],
 };
 
 /// O arquivo de cliente que o Horizon escreve quando ele não existe: a seção `sounds` e as posições das janelas que o port abre (`window.upgrade`), no
@@ -226,6 +245,26 @@ pub fn client_default_text() -> String {
         &windows,
     )
 }
+
+/// `MekanismConfig.client.machineEffects`: as máquinas acesas soltam partículas (`BlockTile.animateTick`).
+pub fn machine_effects(loaded: &ClientLoaded) -> bool {
+    loaded
+        .bool(&CLIENT_CONFIG, "rendering.particle", "machineEffects")
+        .unwrap_or(true)
+}
+
+/// `Machine.java:23`: `SMOKE` e `DustParticleOptions.REDSTONE`, ambas em `(rand * 0,6 - 0,3, rand * 6/16, 0,52)` relativo ao centro do bloco, na face
+/// da frente (o `facing` gira a posição).
+pub static MACHINE_FX: [FxParticle; 2] = [
+    FxParticle {
+        particle: Particle::Smoke,
+        position: |next| face_position(0.52, next),
+    },
+    FxParticle {
+        particle: REDSTONE,
+        position: |next| face_position(0.52, next),
+    },
+];
 
 /// `MekanismConfig.client.baseSoundVolume` (`CachedFloatValue`: o `double` do arquivo como `float`) e `enableMachineSounds`.
 pub fn sound_config(loaded: &ClientLoaded) -> SoundConfig {

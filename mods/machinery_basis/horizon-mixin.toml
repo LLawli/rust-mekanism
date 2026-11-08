@@ -591,3 +591,26 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "pos", ty = "(i32, i32, i32)", value = "pos" },
 ]
+
+# `Block.animateTick` dos blocos de mod (H39). `ClientLevel.animateTick` sorteia 667 posições a 16 e 667 a 32 blocos do jogador por tick e chama o `animateTick`
+# do bloco sorteado; o Horizon faz o sorteio (`animate_tick.rs`) mas só anima os blocos do vanilla, por nome (`classify`), e não tem hook para o bloco de mod.
+# O módulo guarda os animadores que os mods registram (o crate do jogo registra no `tick` do cliente, e o lib não pode chamá-lo: depende dele), e o HEAD de
+# `block_animate_tick` os chama para cada posição sorteada, com o gerador do `ParticleEngine`. Alvo cru.
+[[module]]
+id = "animate-registry"
+file = "crates/horizon-client/src/animate_tick.rs"
+name = "machinery_animate"
+source = "animate_registry.rs"
+visibility = "pub"
+
+[[injection]]
+id = "animate_tick"
+target = "horizon_client_lib::animate_tick::block_animate_tick"
+kind = "HEAD"
+helper = "animate_tick.rs"
+bindings = [
+  { name = "engine", ty = "&mut ParticleEngine", value = "&mut *engine" },
+  { name = "ctx", ty = "&AnimateContext<'_>", value = "ctx" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]

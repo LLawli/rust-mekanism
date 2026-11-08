@@ -1,5 +1,6 @@
 // Regras do Heat Generator, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o
 // módulo crate::game::mekanismgenerators_rules. Segue TileEntityHeatGenerator.
+use machinery_basis_core::active_fx::{FxParticle, Particle, face_position};
 use machinery_basis_core::client_config::{
     Entry, Loaded, Lookup, Section, Setting, Spec, Value as ConfigScalar,
 };
@@ -20,6 +21,19 @@ use machinery_basis_core::units::{energy_fraction, stored_mb};
 use std::sync::LazyLock;
 
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
+
+/// `GeneratorsBlockTypes.java:69`: `SMOKE` e `FLAME` em `(rand * 0,6 - 0,3, rand * 6/16, -0,52)` relativo ao centro do bloco, na face de trás (o
+/// `facing` gira a posição). O Heat Generator não é um `Machine`, então não tem as partículas de `Machine.java:23`.
+pub static HEAT_GENERATOR_FX: [FxParticle; 2] = [
+    FxParticle {
+        particle: Particle::Smoke,
+        position: |next| face_position(-0.52, next),
+    },
+    FxParticle {
+        particle: Particle::Flame,
+        position: |next| face_position(-0.52, next),
+    },
+];
 pub const MENU: &str = "mekanismgenerators:heat_generator";
 pub const LAVA: &str = "minecraft:lava";
 

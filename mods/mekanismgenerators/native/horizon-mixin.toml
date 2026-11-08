@@ -278,3 +278,14 @@ helper = "config_reloading.rs"
 bindings = [
   { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
 ]
+
+# O animador do Heat Generator (`BlockTile.animateTick`) é registrado em `machinery_basis` no `tick` do cliente (`tick` roda no cliente e no servidor).
+[[injection]]
+id = "client_tick"
+hook = "tick"
+hook_version = 1
+kind = "HEAD"
+helper = "client_tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
