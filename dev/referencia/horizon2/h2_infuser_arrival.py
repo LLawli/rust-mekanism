@@ -6,15 +6,20 @@ Cada item chega pelo shift-clique do menu (o que o jogador faz), com o servidor 
 compara a entrada, o slot de infusão, a saída, o tanque e o progresso com a linha do rastro. A energia é a de uma máquina nova (20,
 quatro ticks de receita), posta no NBT antes de cada fase.
 
-Uso: h2_infuser_arrival.py [PAR ...]   (par: bio_dirt, fungi_dirt, redstone_dust, ...; sem argumentos, todos)
+Uso: h2_infuser_arrival.py [PAR ...] | full_tank   (par: bio_dirt, fungi_dirt, redstone_dust, carbon_coal, ...; sem argumentos, todos). `H_POS=x,y,z` troca a posição da máquina
+(o padrão é a de `h2_identity.POS`, num mundo plano); `H_NAME=horizon` aponta para o container `horizon`.
 
 Armadilhas: `container X Y Z item n` põe no primeiro slot livre, que no Infuser é o de infusão (slot 0), e um `data merge ... Items` com
 a lista fora da ordem dos slots não vira itens da máquina. Nenhum dos dois serve para montar uma chegada: use o menu.
 """
 import json, re, sys, time
 
+import os
+
 import h2_identity as h
 
+if os.environ.get("H_POS"):
+    h.POS = tuple(int(part) for part in os.environ["H_POS"].split(","))
 POS = h.POS
 # O jogador põe cada item no inventário (slots 9 e 10 do menu) e o shift-clique o leva à máquina.
 PLAYER_SLOT = {"input": 9, "conversion": 10}
@@ -71,7 +76,7 @@ def item_spec(item):
 
 
 MEKANISM_ITEMS = {"bio_fuel", "alloy_infused", "alloy_reinforced", "dust_diamond", "enriched_diamond", "dust_gold", "enriched_gold",
-                  "dust_refined_obsidian", "enriched_refined_obsidian"}
+                  "dust_refined_obsidian", "enriched_refined_obsidian", "dust_coal", "enriched_carbon", "dust_iron", "enriched_iron"}
 
 
 def open_menu():
@@ -124,7 +129,38 @@ def run_phase(phase):
     return same
 
 
+def full_tank():
+    """`infuser_full_tank.jsonl` (`RestosTraceTest.infuserFullTank`): ferro na entrada, carvão no slot de infusão e o tanque cheio de carbono (1.000), postos por `data merge`
+    (sem a regra do slot). O carvão espera até a primeira operação (200 ticks) gastar 10 de carbono; a energia fica cheia a cada tick, como no rastro."""
+    lines = [json.loads(l) for l in open(f"{h.TRACES}/infuser_full_tank.jsonl")]
+    where = f"{POS[0]} {POS[1]} {POS[2]}"
+    h.command("tick freeze")
+    h.command(f"setblock {where} minecraft:air")
+    h.ctl("setblock", *map(str, POS), "mekanism:metallurgic_infuser")
+    h.command("tick step 3")
+    time.sleep(0.4)
+    h.command(f'data merge block {where} {{energy:20000,Items:[{{Slot:0b,id:"minecraft:coal",count:8}},{{Slot:1b,id:"minecraft:iron_ingot",count:8}}],'
+              'chemical_tanks:[{container:0b,stored:{type:"mekanism:carbon",amount:1000L}}]}')
+    same = True
+    for want in lines[1:]:
+        h.command(f"data merge block {where} {{energy:20000}}")
+        h.command("tick step 1")
+        time.sleep(0.12)
+        got = state()
+        expected_state = {key: want[key] for key in ("input", "output", "infusion", "tank", "progress")}
+        got = {key: got[key] for key in expected_state}
+        if got != expected_state:
+            same = False
+            print(f"  DIFF full_tank t={want['t']}: esperado {expected_state} obtido {got}")
+    print(("OK   " if same else "DIFF ") + f"full_tank: {len(lines) - 1} ticks")
+    h.command(f"setblock {where} minecraft:air")
+    h.command("tick unfreeze")
+    sys.exit(0 if same else 1)
+
+
 def main():
+    if sys.argv[1:] == ["full_tank"]:
+        full_tank()
     lines = [json.loads(l) for l in open(f"{h.TRACES}/infuser_arrival.jsonl")]
     wanted = set(sys.argv[1:])
     ok = True

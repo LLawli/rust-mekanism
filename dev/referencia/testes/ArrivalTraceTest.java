@@ -65,7 +65,16 @@ public class ArrivalTraceTest {
           new Pair("gold_dust", "blackstone", "mekanism:dust_gold"),
           new Pair("gold_enriched", "blackstone", "mekanism:enriched_gold"),
           new Pair("obsidian_dust", "mekanism:alloy_reinforced", "mekanism:dust_refined_obsidian"),
-          new Pair("obsidian_enriched", "mekanism:alloy_reinforced", "mekanism:enriched_refined_obsidian"));
+          new Pair("obsidian_enriched", "mekanism:alloy_reinforced", "mekanism:enriched_refined_obsidian"),
+          // O carbono: o ferro (`processing/iron/enriched`) com o que vira carbono, o pó de ferro (`enriched_dust`) com carvão, e o ferro enriquecido
+          // (`enriched_iron_to_dust`). Estanho não entra: o port não tem os itens de estanho.
+          new Pair("carbon_coal", "iron_ingot", "coal"),
+          new Pair("carbon_charcoal", "iron_ingot", "charcoal"),
+          new Pair("carbon_coal_block", "iron_ingot", "coal_block"),
+          new Pair("carbon_coal_dust", "iron_ingot", "mekanism:dust_coal"),
+          new Pair("carbon_enriched", "iron_ingot", "mekanism:enriched_carbon"),
+          new Pair("carbon_iron_dust", "mekanism:dust_iron", "coal"),
+          new Pair("carbon_enriched_iron", "mekanism:enriched_iron", "coal"));
 
     private static final List<RecipeError> ERRORS = List.of(RecipeError.NOT_ENOUGH_ENERGY, RecipeError.NOT_ENOUGH_INPUT,
           RecipeError.NOT_ENOUGH_OUTPUT_SPACE, RecipeError.INPUT_DOESNT_PRODUCE_OUTPUT, RecipeError.NOT_ENOUGH_SECONDARY_INPUT);

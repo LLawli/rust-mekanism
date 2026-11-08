@@ -48,11 +48,10 @@ rodar o `runGameTestServer` e apague-o depois. `mods/mekanism/tests/identity_tra
 `testes/ArrivalTraceTest.java` grava `infuser_arrival.jsonl`: o Metallurgic Infuser com o tanque vazio, recebendo o item de entrada de uma
 receita e o item que vira o químico dela, em três ordens (a entrada primeiro, a conversão primeiro, os dois no mesmo tick), para 13
 pares (bio com terra, areia e argila; fungi com terra e nylium; redstone, diamond, gold e refined_obsidian, cada um com o pó e o
-`enriched`/bloco). Cada item chega como o jogador o põe (`insert` com `AutomationType.MANUAL`), a marca guarda quanto o slot aceitou, e a
+`enriched`/bloco; e, desde 2026-11-08, 7 de carbono: ferro com carvão, carvão vegetal, bloco de carvão, pó de carvão e carbono enriquecido, pó de ferro com carvão e ferro enriquecido com carvão). Cada item chega como o jogador o põe (`insert` com `AutomationType.MANUAL`), a marca guarda quanto o slot aceitou, e a
 linha é a de `infuser_run` mais o id do químico do tanque. `mods/mekanism/tests/infuser_arrival_trace.rs` o repete com as receitas e as
-conversões lidas dos arquivos do port (`common::infuser_from_content`); `horizon2/h2_infuser_arrival.py` repete as fases no jogo, por
-shift-clique, com `tick freeze` e `tick step 1`. Carbon e tin não estão: o port não tem nenhuma receita de infusão que os use (o original tem 31
-receitas, o port 19), então o tanque os recusa. Não monte uma chegada com `container X Y Z item n` (põe no primeiro slot livre, que no
+conversões lidas dos arquivos do port, de qualquer pasta (`common::infuser_from_content_by_type`); `horizon2/h2_infuser_arrival.py` repete as fases no jogo, por
+shift-clique, com `tick freeze` e `tick step 1`. Tin não está: o port não tem os itens de estanho. Não monte uma chegada com `container X Y Z item n` (põe no primeiro slot livre, que no
 Infuser é o de infusão) nem com `data merge ... Items` fora da ordem dos slots (medido: `[terra no slot 1, bio_fuel no slot 0]` deixou só a terra no tile; o Horizon
 só decodifica a lista que reescreve igual, `decode_mod_block_entity`).
 
@@ -118,6 +117,14 @@ pilhas (`ItemStackIngredient.test`, `testType`, os componentes todos da pilha e 
 `debugListener` do `CollectingNeighborUpdater` anuncia em cada operação ao lado de cada máquina, de um bloco de pedra e de um fio de redstone (o controle que avisa em cadeia), e a classe que declara `onPowerChange`, `updatePower` e `onNeighborChange` em cada tile; `mods/mekanism/tests/neighbors_nested.rs` o confere. Copie os dois
 arquivos para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` (tire de lá os outros testes enquanto isso) e apague-os depois.
 Em jogo, `horizon2/h2_componentes.py` (`H_NAME=horizon`) repete as receitas do data pack `testes/dados/mektest` (graveto com nome, sílex com `repair_cost`, carvão `strict`, e as receitas que o mod recusa e o log explica) na Enrichment Chamber; o data pack vai em `saves/<mundo>/datapacks/mektest` e se liga com `reload`.
+
+`testes/RestosTraceTest.java` (frente dos restos da Fase 1, 2026-11-08) grava `furnace_bio_fuel` e `blast_furnace_bio_fuel` (um forno e um alto-forno do vanilla com 64 `raw_iron` e 4 `bio_fuel`, tick a tick: o `getBurnDuration` que o forno lê, o relógio aceso, o total da queima, o combustível no slot e o `lit`; `bio_fuel_trace.rs`),
+`infuser_full_tank` (ferro na entrada, carvão no slot de infusão e o tanque cheio de carbono, 260 ticks: o carvão espera a primeira operação abrir espaço; `the_coal_waits_for_room_in_a_full_tank`, em `infuser_arrival_trace.rs`) e `incomplete_recipes` (o componente da mensagem do `IncompleteRecipeScanner` em JSON e em
+texto, as receitas que a varredura acha incompletas e quantas mensagens cada jogador recebe na entrada, no `/reload` e no `ServerStartedEvent`; `incomplete_recipes_trace.rs`). Os jogadores do rastro de mensagens são `ServerPlayer` sem conexão que contam o `sendSystemMessage`, e o evento é postado direto no `IncompleteRecipeScanner`
+(o `makeMockServerPlayerInLevel` faz o `placeNewPlayer` de verdade e o `CommonPlayerTracker` do Mekanism falha sem rede). Precisa do data pack `mekanismtests` de `testes/dados/data/mekanismtests/` (`recipe/enriching/incomplete_empty_tag.json` e `tags/item/empty.json`, uma tag definida e vazia: uma tag indefinida numa receita derruba a carga do original
+com `Missing tag`) em `src/src/gameTest/resources/data/` só na hora de rodar. `MachineTraceTest.heatGeneratorBioFuelRun` grava `heat_generator_bio_fuel_run` (o Heat Generator convertendo `bio_fuel` em lava: 3 itens, espaço para 4 dos 5 mB de um item, espaço exato e 64 itens; `heat_trace.rs`). `rastros/context_int_provider_time_bio_fuel.json`
+é o arquivo de `src/datagen/generated/.../context_int_provider/cooking/time_bio_fuel.json` do original, que o `bio_fuel.json` do port repete dentro do componente. Em jogo (`H_NAME=horizon`), `horizon2/h2_bio_fuel.py furnace|blast|heat` repete os três rastros do `bio_fuel` com `tick freeze` e `tick step 1`, e `horizon2/h2_infuser_arrival.py` aceita `H_POS=x,y,z` (a posição da
+máquina num mundo que não é plano) e o modo `full_tank`. `horizon2/abrir_horizon.sh MUNDO` abre o jogo no container `horizon` com o gamescope **headless** e o volume mestre em 0 (o chamador restaura o `options.txt`). O `MachineTraceTest.java` do `main` tinha uma linha `=======` solta (resto de um merge, linha 3319) que o deixava sem compilar; saiu.
 
 | Caminho | Conteúdo |
 |---|---|

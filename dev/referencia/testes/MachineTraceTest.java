@@ -2208,6 +2208,38 @@ public class MachineTraceTest {
     }
 
     @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Heat Generator burning Mekanism's bio fuel, whose cooking_fuel component the fuel slot reads: three items, a tank with room for 4 of the 5 mB one item gives, and one with room for exactly 5.")
+    public static void heatGeneratorBioFuelRun(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        HeatTrace trace = new HeatTrace("heat_generator_bio_fuel_run");
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("fuel bio_fuel 3");
+                  trace.setFuel(MekanismItems.BIO_FUEL.asItem(), 3);
+              })
+              .thenExecuteAfter(40, () -> {
+                  trace.mark("lava 996, fuel bio_fuel 2");
+                  trace.setLava(996);
+                  trace.setFuel(MekanismItems.BIO_FUEL.asItem(), 2);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("lava 995, fuel bio_fuel 2");
+                  trace.setLava(995);
+                  trace.setFuel(MekanismItems.BIO_FUEL.asItem(), 2);
+              })
+              .thenExecuteAfter(30, () -> {
+                  trace.mark("lava 0, fuel bio_fuel 64");
+                  trace.setLava(0);
+                  trace.setFuel(MekanismItems.BIO_FUEL.asItem(), 64);
+              })
+              .thenExecuteAfter(100, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
     @TestHolder(description = "Records the Heat Generator warmed by lava blocks around it, with and without fuel in the tank.")
     public static void heatGeneratorLavaSides(final DynamicTest test) {
         template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
@@ -3284,7 +3316,6 @@ public class MachineTraceTest {
         );
     }
     // ===== fim de telas-calor =====
-=======
     // ===========================================================================================================================
     // Heat Generator, janela de upgrades (workspace telas-upg). Rastros heat_generator_upgrades, heat_generator_upgrade_slot,
     // heat_generator_upgrade_window_install, heat_generator_upgrade_remove_by_packet, heat_generator_upgrade_slot_quick_move e

@@ -1,0 +1,7 @@
+{"case":"component","json":{"translate":"constants.mekanism.log_format","with":[{"translate":"constants.mekanism.mod_name"},{"translate":"constants.mekanism.recipe_warning"}],"color":"#FF383C"},"string":"[Mekanism] Broken tags in Mekanism recipes detected, please check server logs for details. You will be missing some recipes and machines may not accept expected inputs."}
+{"case":"scan","incomplete":["mekanismtests:enriching/incomplete_empty_tag"]}
+{"case":"initial","found":true}
+{"case":"server_started","found":true,"messages_to_online":0}
+{"case":"join_found","found":true,"messages":1}
+{"case":"join_not_found","found":false,"messages":0}
+{"case":"reload","found":true,"players":3,"messages":[1,1,1]}
