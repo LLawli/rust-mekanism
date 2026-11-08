@@ -1904,11 +1904,34 @@ fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
         input: entity.items.get(machine.slots.input).and_then(Option::as_ref).map(|stack| resource_of(game, stack)),
     };
     let rule_slots = machine.slots.rule_slots();
+    let (upgrade_input, upgrade_output) = (machine.slots.upgrade, machine.slots.upgrade_output);
+    let upgrades = window_upgrade_data();
     slot_rules::set(
         RULES_OWNER,
         machine.block,
-        Rc::new(move |slot, item| rules::slot_accepts(&indexes, &rule_slots, slot, &ItemResource::new(item, UNKNOWN_STACK), &held)),
+        Rc::new(move |slot, item, stack| {
+            // Os dois slots virtuais da janela de upgrades (`UpgradeInventorySlot`): a entrada aceita o upgrade que a máquina suporta
+            // (`isValidForInsertion(.., MANUAL)`: o item tem o componente do tipo e o tipo está na tag), a saída só deixa o jogador tirar.
+            if slot == upgrade_output {
+                return false;
+            }
+            if slot == upgrade_input {
+                return stack.downcast_ref::<ItemStack>().is_some_and(|stack| {
+                    item == rules::UPGRADE_ITEM && upgrade_type_of(stack).is_some_and(|kind| upgrades.supports(&kind))
+                });
+            }
+            rules::slot_accepts(&indexes, &rule_slots, slot, &ItemResource::new(item, UNKNOWN_STACK), &held)
+        }),
     );
+}
+
+/// O tipo de upgrade que o item carrega (`MekanismDataComponents.UPGRADE_TYPE`), lido da pilha que o hook recebeu. O hook roda dentro do
+/// menu, sem o jogo, então lê o componente guardado na própria pilha, como `native_component` faz antes do padrão do item.
+fn upgrade_type_of(stack: &ItemStack) -> Option<String> {
+    match stack.data()?.other(rules::UPGRADE_TYPE_COMPONENT)? {
+        Tag::String(kind) => Some(kind.to_string_lossy()),
+        _ => None,
+    }
 }
 
 /// No começo do tick da máquina, antes de o espelho ver o slot: o clique tirou o resultado?

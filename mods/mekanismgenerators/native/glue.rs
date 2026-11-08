@@ -866,17 +866,32 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
             .entry(stack.item.to_string())
             .or_insert_with(|| (is_fuel(game, stack), energy_can_drain(stored, true, item_energy(stack))));
     }
+    let upgrades = window_upgrade_data();
     slot_rules::set(
         RULES_OWNER,
         rules::HEAT_GENERATOR,
-        std::rc::Rc::new(move |slot, item| {
-            answers.get(item).is_some_and(|&(fuel, drain)| match slot {
+        std::rc::Rc::new(move |slot, item, stack| match slot {
+            // O slot virtual de entrada de upgrades (`UpgradeInventorySlot.input`) aceita o upgrade da tag do gerador, que o tipo, um componente
+            // da pilha, diz; o de saída só deixa o jogador tirar.
+            rules::UPGRADE_SLOT => stack
+                .downcast_ref::<ItemStack>()
+                .is_some_and(|stack| rules::accepts_upgrade(&upgrades, item, upgrade_type_of(stack).as_deref())),
+            _ => answers.get(item).is_some_and(|&(fuel, drain)| match slot {
                 FUEL_SLOT => fuel,
                 ENERGY_SLOT => drain,
                 _ => false,
-            })
+            }),
         }),
     );
+}
+
+/// O tipo de upgrade que o item carrega (`MekanismDataComponents.UPGRADE_TYPE`), lido da pilha que o hook recebeu: o hook roda dentro do
+/// menu, sem o jogo, então lê o componente guardado na própria pilha, como `native_component` faz antes do padrão do item.
+fn upgrade_type_of(stack: &ItemStack) -> Option<String> {
+    match stack.data()?.other(rules::UPGRADE_TYPE_COMPONENT)? {
+        Tag::String(kind) => Some(kind.to_string_lossy()),
+        _ => None,
+    }
 }
 
 /// O menu do Heat Generator visto pelo `quickMoveStack` do Mekanism: os slots do bloco (`entity.items`: combustível e energia, na ordem

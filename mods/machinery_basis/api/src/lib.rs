@@ -12,7 +12,7 @@ impl Hooks for Mod {
     /// que o tipo de menu já recusa, continua recusando.
     fn menu_slot_rules(&self, event: &mut MenuSlotRulesEvent<'_>) {
         let mut may_place = event.may_place;
-        core::slot_rules::ask(event.menu, event.slot, &event.stack.item, &mut may_place);
+        core::slot_rules::ask(event.menu, event.slot, &event.stack.item, event.stack, &mut may_place);
         event.may_place = may_place;
     }
 }
