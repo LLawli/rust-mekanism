@@ -72,8 +72,8 @@ fn item(id: &str) -> ItemResource {
     ItemResource::new(id, 64)
 }
 
-fn world(kind: Kind, offset: u64, base: u64) -> SimWorld<Sim> {
-    let machine = match kind {
+fn machine_of(kind: Kind, offset: u64) -> ProgressMachine {
+    match kind {
         Kind::Chamber | Kind::Crusher | Kind::Smelter => {
             let (usage, recipes) = match kind {
                 Kind::Chamber => (
@@ -118,8 +118,11 @@ fn world(kind: Kind, offset: u64, base: u64) -> SimWorld<Sim> {
             config.energy_conversion = common::energy_conversions();
             ProgressMachine::chemical(config)
         }
-    };
-    SimWorld::new(Sim(machine, base))
+    }
+}
+
+fn world(kind: Kind, offset: u64, base: u64) -> SimWorld<Sim> {
+    SimWorld::new(Sim(machine_of(kind, offset), base))
 }
 
 /// O menu do jogador e o que o servidor mandou a ele nesse tick.
@@ -134,6 +137,8 @@ struct Scene {
     sent: Vec<Property>,
     /// O que o último `insert` deixou entrar, à espera de a marca `inserted` do Java conferir.
     inserted: Option<i32>,
+    /// O `recheckOffset` que o tile reaberto sorteou (a linha do rastro com a marca `reload` o grava).
+    reload_offset: u64,
 }
 
 impl Scene {
@@ -152,6 +157,39 @@ impl Scene {
             .extend(sync.send_all(&MachineSync::of(self.machine())));
         self.sync = Some(sync);
         self.client = Some(Mirror::new(&self.kind.trackers()));
+    }
+
+    /// O jogo descarrega e carrega o chunk: o tile é gravado e outro nasce do NBT (`BlockEntity.loadStatic`, o `loadAdditional`) e ainda não andou. É
+    /// o que o mod faz com o `born` do primeiro tick (`restore` do que foi gravado, com a energia, o tanque e os slots que o NBT guarda), e o que o menu
+    /// lê antes dele (`menu_source`). Sem menu aberto.
+    fn reload(&mut self) {
+        let old = self.machine();
+        let saved = old.saved_state();
+        let block_active = old.tile().block_active();
+        let (stored, input, output, energy_slot) = (
+            old.energy().amount(),
+            old.input().contents(),
+            old.output().contents(),
+            old.energy_slot().contents(),
+        );
+        let chemical = old
+            .chemical_side()
+            .map(|side| (side.tank.contents(), side.slot.contents()));
+        let mut fresh = machine_of(self.kind, self.reload_offset);
+        fresh.restore(&saved, block_active);
+        fresh.energy().set_energy(stored, None);
+        for (slot, contents) in [
+            (fresh.input(), input),
+            (fresh.output(), output),
+            (fresh.energy_slot(), energy_slot),
+        ] {
+            slot.set_contents(contents.resource, contents.amount, None);
+        }
+        if let (Some(side), Some((tank, slot))) = (fresh.chemical_side(), chemical) {
+            side.tank.set_contents(tank.resource, tank.amount, None);
+            side.slot.set_contents(slot.resource, slot.amount, None);
+        }
+        self.world.block_entity.0 = fresh;
     }
 
     fn close(&mut self) {
@@ -231,6 +269,7 @@ impl Scene {
         match parts.as_slice() {
             ["open"] => self.open(),
             ["close"] => self.close(),
+            ["reload"] => self.reload(),
             ["window", "upgrade", ..] => self.open_window(),
             ["stop", "tracking"] => self.close_window(),
             ["energy", amount] => self
@@ -352,7 +391,9 @@ fn actual_entry(property: &Property) -> Value {
         PropertyData::Int(value) => json!(value),
         PropertyData::Long(value) => json!(value),
         PropertyData::Double(value) => json!(value),
-        PropertyData::Stack(_, stack) => json!({"resource": stack.resource, "amount": stack.amount}),
+        PropertyData::Stack(_, stack) => {
+            json!({"resource": stack.resource, "amount": stack.amount})
+        }
         PropertyData::Bytes(bytes) => bytes_json(bytes),
     };
     json!([property.index, property.class, dirty, value])
@@ -420,10 +461,37 @@ fn mirror_value(mirror: &Mirror, position: usize, kind: DataKind) -> Value {
 }
 
 fn replay(kind: Kind) {
-    let scenario = kind.scenario();
+    replay_scenario(kind, kind.scenario(), Minimums::STANDARD);
+}
+
+/// O que o rastro tem de ter para o teste valer.
+struct Minimums {
+    lines: usize,
+    sends: usize,
+    dirty_ticks: usize,
+    reads: usize,
+}
+
+impl Minimums {
+    const STANDARD: Self = Self {
+        lines: MINIMUM_LINES,
+        sends: 3,
+        dirty_ticks: 150,
+        reads: 4_000,
+    };
+    /// Os rastros `*_trackers_reloaded`: uma abertura no tile novo e o resto da operação.
+    const RELOADED: Self = Self {
+        lines: 100,
+        sends: 2,
+        dirty_ticks: 20,
+        reads: 1_000,
+    };
+}
+
+fn replay_scenario(kind: Kind, scenario: &str, minimums: Minimums) {
     let lines = read_trace(scenario);
     assert!(
-        lines.len() >= MINIMUM_LINES,
+        lines.len() >= minimums.lines,
         "rastro curto demais: {}",
         lines.len()
     );
@@ -438,6 +506,7 @@ fn replay(kind: Kind) {
         window: false,
         sent: Vec::new(),
         inserted: None,
+        reload_offset: offset,
     };
     let (mut sent_lines, mut dirty_lines, mut compared) = (0, 0, 0);
     let mut view: BTreeMap<u64, Value> = BTreeMap::new();
@@ -450,6 +519,11 @@ fn replay(kind: Kind) {
         );
         // O tick do nível, o que o cenário fez depois dele e o `ServerTickEvent.Post`, onde o `broadcastChanges` roda.
         scene.world.tick_level();
+        if t > 0
+            && let Some(offset) = expected["recheck_offset"].as_u64()
+        {
+            scene.reload_offset = offset;
+        }
         for mark in expected["marks"].as_array().unwrap() {
             for action in mark.as_str().unwrap().split(", ") {
                 scene.apply(action);
@@ -526,11 +600,37 @@ fn replay(kind: Kind) {
         dirty_lines += usize::from(!expected_dirty.is_empty());
     }
     // O rastro tem de ter o que o teste confere: aberturas e muitos ticks sujos.
-    assert!(sent_lines >= 3, "{scenario}: {sent_lines} envios iniciais");
-    assert!(dirty_lines >= 150, "{scenario}: {dirty_lines} ticks sujos");
     assert!(
-        compared >= 4_000,
+        sent_lines >= minimums.sends,
+        "{scenario}: {sent_lines} envios iniciais"
+    );
+    assert!(
+        dirty_lines >= minimums.dirty_ticks,
+        "{scenario}: {dirty_lines} ticks sujos"
+    );
+    assert!(
+        compared >= minimums.reads,
         "{scenario}: {compared} leituras do espelho"
+    );
+}
+
+/// A tela abre num tile reaberto antes do primeiro tick dele (o `sendAllDataToRemote` lê o que o `loadAdditional` carregou), e o resto da
+/// operação segue como o original: o que o servidor manda ao abrir, o conjunto sujo de cada tick depois, e o que a tela lê do dado.
+#[test]
+fn a_reloaded_enrichment_chamber_opens_with_what_the_original_loaded() {
+    replay_scenario(
+        Kind::Chamber,
+        "chamber_trackers_reloaded",
+        Minimums::RELOADED,
+    );
+}
+
+#[test]
+fn a_reloaded_metallurgic_infuser_opens_with_what_the_original_loaded() {
+    replay_scenario(
+        Kind::Infuser,
+        "infuser_trackers_reloaded",
+        Minimums::RELOADED,
     );
 }
 

@@ -32,7 +32,10 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
@@ -48,7 +51,7 @@ import net.neoforged.neoforge.transfer.item.ItemResource;
 /// `comparar_tela.py`. Só age com o arquivo `cena-telas` na pasta do jogo. Uma linha `escala N` define o `guiScale` dos casos
 /// seguintes, e uma linha `caso NOME MAQUINA chave=valor...` um estado: `energia` (número ou `cap`), `entrada` e `saida`
 /// (`item:quantidade`), `quimico` (`bio:500`), `lava`, `passos` (ticks do servidor depois de montar), `hover` (`x,y` em pixels de
-/// GUI relativos à tela) e `capturas` (quantos prints, um a cada 2 ticks).
+/// GUI relativos à tela), `capturas` (quantos prints, um a cada 2 ticks) e `reabrir` (o tile é gravado e relido do NBT depois dos passos, e a tela abre antes do primeiro tick dele).
 ///
 /// O servidor fica parado (`tick freeze`) enquanto o estado é montado e avança `passos` ticks com `tick step`, o que dá o mesmo
 /// progresso nos dois jogos.
@@ -166,6 +169,11 @@ public class CenaTelas {
                 container.setEnergy(Long.parseLong(caso.args().get("energia_depois")), null);
             });
         }
+        // `reabrir=1`: o mundo foi salvo e reaberto com a máquina como está (o tile é gravado e relido do NBT, sem nenhum tick depois), e a tela abre antes do primeiro
+        // tick do tile novo. O servidor segue parado, então nada o tica até o print.
+        if (caseTick == 20 + steps + 9 && caso.args().containsKey("reabrir")) {
+            server.execute(() -> reopen(server, caso));
+        }
         // O `tick step` roda a 20 ticks por segundo, o mesmo ritmo do cliente: espera os passos e uma folga.
         int base = 25 + steps + 20;
         if (caseTick >= base) {
@@ -242,6 +250,24 @@ public class CenaTelas {
         // Como um jogador coloca a máquina: `applyImplicitComponents` recalcula os upgrades, e com eles a capacidade de energia.
         tile(server, caso).applyComponents(net.minecraft.core.component.DataComponentMap.EMPTY,
               net.minecraft.core.component.DataComponentPatch.EMPTY);
+    }
+
+    /// O que o jogo faz ao descarregar e carregar o chunk: grava o tile e cria outro do NBT (`BlockEntity.loadStatic`, que chama o `loadAdditional`), como o
+    /// `ConstantUsageTraceTest.reload`. O tile novo ainda não tickou.
+    private static void reopen(MinecraftServer server, Caso caso) {
+        ServerLevel level = server.overworld();
+        BlockPos pos = new BlockPos(caso.x(), Y, Z);
+        TileEntityMekanism old = tile(server, caso);
+        CompoundTag tag = old.saveWithFullMetadata(level.registryAccess());
+        BlockEntity loaded = BlockEntity.loadStatic(pos, level.getBlockState(pos), tag, level.registryAccess());
+        if (loaded == null || loaded == old) {
+            throw new IllegalStateException("loadStatic gave " + loaded);
+        }
+        LevelChunk chunk = level.getChunkAt(pos);
+        old.onChunkUnloaded();
+        chunk.removeBlockEntity(pos);
+        chunk.addAndRegisterBlockEntity(loaded);
+        Mekanism.logger.info("cena: {} reaberto {}", caso.name(), tag);
     }
 
     private static TileEntityMekanism tile(MinecraftServer server, Caso caso) {

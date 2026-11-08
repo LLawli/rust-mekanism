@@ -8,14 +8,14 @@ use machinery_basis_core::container_sync::{
     ContainerSync, DirtyType, Kind as DataKind, Mirror, Property, PropertyData, wire,
 };
 use machinery_basis_core::containers::AutomationType;
-use machinery_basis_core::tile::RedstoneControl;
+use machinery_basis_core::tile::{RedstoneControl, SavedState, TileBase};
 use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::upgrade::UpgradeComponent;
 use machinery_basis_core::upgrade_window::UpgradeSync;
 use mekanismgenerators_rules::{
-    FuelItem, HeatGeneratorSync, Produced, State, Surroundings, fuel_to_tank,
-    heat_generator_trackers, step, upgrade_window_data,
+    BLOCK_DEACTIVATION_DELAY, FuelItem, HeatGeneratorSync, Produced, State, Surroundings,
+    fuel_to_tank, heat_generator_trackers, step, upgrade_window_data,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -143,10 +143,37 @@ impl Scene {
         }
     }
 
+    /// O jogo descarrega e carrega o chunk: o gerador nasce do NBT (`BlockEntity.loadStatic`, o `loadAdditional`) e ainda não andou. O calor, a lava e a
+    /// energia ficam, o `TileEntityMekanism` volta do que ele salva (o `redstoneLastTick` e o que o tick produziu não são salvos) e os upgrades voltam
+    /// do componente, com a contagem de instalação do zero. É o que o mod faz no primeiro tick e o que o menu lê antes dele (`loaded_view`).
+    fn reload(&mut self) {
+        let old = &self.state.tile;
+        let saved = SavedState {
+            redstone: old.is_powered(),
+            control_type: old.control_type(),
+            active: old.active(),
+            update_delay: old.update_delay(),
+            ..SavedState::default()
+        };
+        let mut tile = TileBase::new(BLOCK_DEACTIVATION_DELAY);
+        tile.restore(&saved, old.block_active());
+        tile.set_redstone_last_tick(false);
+        self.state.tile = tile;
+        let upgrades = UpgradeComponent::new(
+            common::upgrade_data(),
+            Rc::new(|| {}),
+            Box::new(|_, _, _| {}),
+        );
+        upgrades.restore(&self.upgrades.saved());
+        self.upgrades = upgrades;
+        self.last = Produced::default();
+    }
+
     fn apply(&mut self, action: &str) {
         let words: Vec<&str> = action.split_whitespace().collect();
         match words.as_slice() {
             ["open"] => self.open(),
+            ["reload"] => self.reload(),
             ["close"] => {
                 self.sync = None;
                 self.client = None;
@@ -243,7 +270,9 @@ fn actual_entry(property: &Property) -> Value {
         PropertyData::Int(value) => json!(value),
         PropertyData::Long(value) => json!(value),
         PropertyData::Double(value) => json!(value),
-        PropertyData::Stack(_, stack) => json!({"resource": stack.resource, "amount": stack.amount}),
+        PropertyData::Stack(_, stack) => {
+            json!({"resource": stack.resource, "amount": stack.amount})
+        }
         PropertyData::Bytes(bytes) => bytes_json(bytes),
     };
     json!([property.index, property.class, dirty, value])
@@ -338,9 +367,26 @@ fn mirror_value(mirror: &Mirror, position: usize, kind: DataKind) -> Value {
 
 #[test]
 fn the_heat_generator_container_sends_what_the_original_sends() {
-    let lines = read_trace(SCENARIO);
+    replay(SCENARIO, MINIMUM_LINES, 2, 150, 2_000);
+}
+
+/// A tela abre num gerador reaberto antes do primeiro tick dele (o `sendAllDataToRemote` lê o que o `loadAdditional` carregou: o calor, a lava, a
+/// energia e os upgrades do NBT, sem produção nem perdas), e o resto segue como o original.
+#[test]
+fn a_reloaded_heat_generator_opens_with_what_the_original_loaded() {
+    replay("heat_generator_trackers_reloaded", 100, 2, 20, 1_000);
+}
+
+fn replay(
+    scenario: &str,
+    minimum_lines: usize,
+    minimum_sends: usize,
+    minimum_dirty: usize,
+    minimum_reads: usize,
+) {
+    let lines = read_trace(scenario);
     assert!(
-        lines.len() >= MINIMUM_LINES,
+        lines.len() >= minimum_lines,
         "rastro curto demais: {}",
         lines.len()
     );
@@ -411,18 +457,18 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
             .collect();
         assert_eq!(
             actual_sent, expected_sent,
-            "{SCENARIO}, tick {t}: o que foi mandado ao abrir"
+            "{scenario}, tick {t}: o que foi mandado ao abrir"
         );
         assert_eq!(
             actual_dirty, expected_dirty,
-            "{SCENARIO}, tick {t}: o conjunto sujo ({})",
+            "{scenario}, tick {t}: o conjunto sujo ({})",
             expected["marks"]
         );
         if let Some(tracked) = expected.get("tracked") {
             assert_eq!(
                 scene.sync.as_ref().map(ContainerSync::count),
                 tracked.as_u64().map(|count| count as usize),
-                "{SCENARIO}, tick {t}: quantos dados o menu sincroniza"
+                "{scenario}, tick {t}: quantos dados o menu sincroniza"
             );
         }
         // O que a tela lê do espelho é o que o cliente do Java leria: cada dado que o rastro mandou, no valor e na classe que o cliente dele tem.
@@ -445,7 +491,7 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
                 assert_eq!(
                     &mirror_value(client, position, tracked[position].kind),
                     wanted,
-                    "{SCENARIO}, tick {t}: o que a tela lê do dado {index} ({})",
+                    "{scenario}, tick {t}: o que a tela lê do dado {index} ({})",
                     tracked[position].kind.class()
                 );
                 compared += 1;
@@ -454,9 +500,18 @@ fn the_heat_generator_container_sends_what_the_original_sends() {
         sent_lines += usize::from(!expected_sent.is_empty());
         dirty_lines += usize::from(!expected_dirty.is_empty());
     }
-    assert!(sent_lines >= 2, "{sent_lines} envios iniciais");
-    assert!(dirty_lines >= 150, "{dirty_lines} ticks sujos");
-    assert!(compared >= 2_000, "{compared} leituras do espelho");
+    assert!(
+        sent_lines >= minimum_sends,
+        "{scenario}: {sent_lines} envios iniciais"
+    );
+    assert!(
+        dirty_lines >= minimum_dirty,
+        "{scenario}: {dirty_lines} ticks sujos"
+    );
+    assert!(
+        compared >= minimum_reads,
+        "{scenario}: {compared} leituras do espelho"
+    );
 }
 
 #[test]

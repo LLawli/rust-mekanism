@@ -1883,6 +1883,18 @@ pub(in crate::game) fn take_power(game: &mut Game<'_>, pos: [i32; 3]) -> Option<
     PENDING_POWER.lock().unwrap_or_else(|e| e.into_inner()).take(&key)
 }
 
+/// O que `updatePower` deixou para o tile de `pos`, sem tirá-lo da fila: o menu de um tile que ainda não andou o mostra, e o primeiro tick dele o pega.
+pub(in crate::game) fn peek_power(game: &mut Game<'_>, pos: [i32; 3]) -> Option<bool> {
+    flush_neighbor_signals(game);
+    let key = (game.native_dimension(), pos);
+    let mut pending = PENDING_POWER.lock().unwrap_or_else(|e| e.into_inner());
+    let power = pending.take(&key);
+    if let Some(power) = power {
+        pending.record(key, power);
+    }
+    power
+}
+
 /// `TileEntityMekanism.onAdded`, de `BlockMekanism.setPlacedBy`: o bloco posto com um item lê o sinal na hora.
 pub(in crate::game) fn on_added(game: &mut Game<'_>, pos: [i32; 3]) {
     let key = (game.native_dimension(), pos);

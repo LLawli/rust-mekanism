@@ -269,6 +269,10 @@ A pilha grande leva o tipo do recurso, como o `ResourceStackPropertyData` do Jav
 (`tile_trackers` dá químico aos tanques de químico e fluido aos de fluido), o pacote o escreve, e o espelho do cliente só aceita a pilha do tipo do dado dele (o cliente do Java decodifica com o `StackHelper` do tipo e o `setContents`
 do dado recusa outro).
 
+`menu_source.rs` diz de que objeto o menu de um tile lê. O `MekanismContainer` lê o tile direto, e o tile do Java existe desde o `loadAdditional`; o objeto vivo do port nasce no primeiro tick do tile, então até lá o menu lê um objeto
+feito do NBT, como o `born` do primeiro tick o fará, e o objeto vivo só vale para o tile que ele andou (o dono marca o tile em `ModBlockEntity.data` no fim do tick, e um tile novo ou lido do disco nasce sem a marca). Sem isso uma tela aberta
+num mundo reaberto antes do primeiro tick mostrava os valores padrão.
+
 O transporte (2026-11-08) é o do original, um pacote por jogador. No servidor, `window_session::Sessions` guarda um `ContainerSync` por (contêiner,
 jogador): a sessão nasce quando o jogador abre o menu (`Game::mb_container_open`, que manda tudo) e é largada quando ele deixa de ter o menu
 daquele bloco (`mb_container_recount`); `mb_container_broadcast`, no começo do tick do servidor, lê o valor vivo que o dono do bloco entrega

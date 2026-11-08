@@ -14,6 +14,7 @@ use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::{AmbientCache, Capacitor};
+use machinery_basis_core::menu_source;
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::side_tab;
@@ -33,6 +34,8 @@ const FUEL_SLOT: usize = rules::FUEL_SLOT;
 const ENERGY_SLOT: usize = rules::ENERGY_SLOT;
 const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
+/// A marca que o tick do gerador deixa em `ModBlockEntity.data` (que o Horizon não salva): o tile é o mesmo de antes. Um tile novo, ou lido do disco, nasce sem ela.
+const TILE_TICKED: i32 = 1;
 const NETHER: &str = "minecraft:the_nether";
 const LAVA_BLOCK: &str = "minecraft:lava";
 const HEAT_KEY: &str = "heat";
@@ -391,18 +394,16 @@ fn ensure_slots(entity: &mut ModBlockEntity) {
 /// O valor vivo dos dados do menu do Heat Generator em `pos` (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote`): o estado do fim do
 /// último tick do gerador (o objeto do Java está sempre vivo, o port o refaz a cada tick), com a energia que o buffer guarda agora, porque
 /// uma extração de fora do tick a muda, e o `redstone` que um aviso deixou depois do tick (`updatePower` troca o campo na hora: o valor vai
-/// também para o NBT, de onde o tick seguinte refaz o tile). Devolve se havia estado para ler.
+/// também para o NBT, de onde o tick seguinte refaz o tile). Até o primeiro tick do tile (a marca em `entity.data`, que um tile novo ou
+/// lido do disco não tem) o Java já tem o tile carregado do NBT (`loadAdditional`): o menu lê o estado que o NBT dá, sem produção nem
+/// perdas (`menu_source`). Devolve se havia estado para ler.
 fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
     let at = (pos[0], pos[1], pos[2]);
-    let ours = matches!(
-        game.world.block_entities.get(&at),
-        Some(BlockEntity::Mod(entity)) if is_generator(&entity.id) && entity.nbt.contains_key(&JavaString::from(ACTIVE_STATE))
-    );
+    let ticked = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) if is_generator(&entity.id) => !entity.data.is_empty(),
+        _ => return false,
+    };
     let key = (game.native_dimension(), pos);
-    // Sem estado de um tick para ler, o aviso fica na fila para o tick do gerador, que o lê.
-    if !ours || !UPGRADES.with_borrow(|tiles| tiles.get(&key).is_some_and(|memory| memory.view.is_some())) {
-        return false;
-    }
     let power = basis::take_power(game, pos);
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) else {
         return false;
@@ -410,12 +411,17 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
     if let Some(powered) = power {
         entity.nbt.insert(JavaString::from(REDSTONE), Tag::Byte(i8::from(powered)));
     }
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+        return false;
+    };
     let energy = basis::stored_energy(entity);
+    let mut loaded = None;
     UPGRADES.with_borrow_mut(|tiles| {
-        let Some(view) = tiles.get_mut(&key).and_then(|memory| memory.view.as_mut()) else {
+        let live = tiles.get_mut(&key).and_then(|memory| memory.view.as_mut());
+        let Some(view) = menu_source::object(ticked, live, &mut loaded, || loaded_view(game, pos, entity)) else {
             return false;
         };
-        if let Some(powered) = power {
+        if ticked && let Some(powered) = power {
             view.state.tile.update_power(powered);
         }
         let mut state = view.state.clone();
@@ -423,6 +429,25 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
         act(&rules::HeatGeneratorSync { state: &state, last: &view.last, upgrades: &view.upgrades });
         true
     })
+}
+
+/// O gerador como o `loadAdditional` o deixa, antes do primeiro tick: o calor, a lava, a energia, o `TileEntityMekanism` e os upgrades do
+/// NBT; o que o tick produz (`productionRate`, as duas perdas de calor) não é salvo e vale zero, e o `redstoneLastTick` começa falso. O
+/// `loadAdditional` não lê o ar: o calor salvo entra com `setHeat`, e só um calor que nunca foi salvo parte do ar do bloco
+/// (`BasicHeatCapacitor.getHeat`, inicializado preguiçosamente), que é a mesma leitura do tick (`AmbientCache`, `SELF_INDEX`). O objeto da tela
+/// lê num cache descartável: não preenche nem grava o `ambient` do objeto vivo (a tela não chama `getAmbientTemperature`).
+fn loaded_view(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) -> View {
+    let ambient = AmbientCache::default().get(AmbientCache::SELF_INDEX, || basis::ambient_temperature(game, pos));
+    let block_active = game.native_block_property(pos, LIT).as_deref() == Some("true");
+    let tanks = basis::load_tanks(entity, &LAVA_TANK);
+    let state = rules::State {
+        heat: load_heat(entity, ambient),
+        lava: tanks[0].amount(),
+        energy: basis::stored_energy(entity),
+        tile: load_tile(entity, block_active, false),
+    };
+    let component = upgrade::rebuild(upgrade_data(game), &basis::read_upgrades(game, entity), None, UpgradeTransient::default());
+    View { state, last: rules::Produced::default(), upgrades: UpgradeSync::of(&component) }
 }
 
 /// Os dois slots virtuais como o menu os tem, a entrada e a saída.
@@ -616,6 +641,10 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let mut view_state = state;
     view_state.lava = tank.amount();
     view_state.energy = basis::stored_energy(entity);
+    // O Horizon só guarda o `data` do tile enquanto ele é o mesmo: a marca diz ao menu que o estado de `view` é deste tile (`window_source`).
+    if entity.data.is_empty() {
+        entity.data = vec![TILE_TICKED];
+    }
     let key = (game.native_dimension(), pos);
     UPGRADES.with_borrow_mut(|tiles| {
         if let Some(memory) = tiles.get_mut(&key) {

@@ -345,8 +345,22 @@ def casos_avisos():
 
 
 
+def casos_reabertas():
+    """O mundo salvo e reaberto com a máquina como estava, e a tela aberta antes do primeiro tick do tile novo (`reabrir=1`): o `CenaTelas` grava o tile e o relê
+    do NBT (`BlockEntity.loadStatic`), o port refaz o tile com o NBT que o jogo mostra (`monta_port`). O Java lê o tile direto, que o `loadAdditional` já carregou."""
+    return [
+        # A câmara operando (energia gasta, progresso da receita): a barra, a seta e o hover do progresso saem do NBT.
+        caso("chamber_reaberta", "chamber", energia="cap", entrada="coal:4", passos="30", reabrir="1"),
+        caso("chamber_reaberta_upgrades", "chamber", upgrades="speed:2", energia="800", entrada="coal:4", passos="30", reabrir="1"),
+        # Sem energia e com a entrada: o tile reaberto não tem erro rastreado até o primeiro tick (os erros não são salvos), então a aba de avisos não aparece.
+        caso("chamber_reaberta_sem_energia", "chamber", energia="0", entrada="coal:2", passos="5", reabrir="1"),
+        caso("infuser_reaberta", "infuser", energia="cap", entrada="copper_ingot:2", quimico="redstone:10", passos="30", reabrir="1"),
+        caso("generator_reaberto", "generator", energia="0", lava="1000", passos="10", reabrir="1"),
+    ]
+
+
 def todos_os_casos():
-    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos()
+    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas()
 
 
 def casos_do_roteiro(so=None):
@@ -530,7 +544,45 @@ def monta_port(c, x, escala):
         # `ServerTickEnd` seguinte (o servidor parado também tica o fim do tick) a leva aos data slots, com o erro velho ainda aceso.
         comando(f"data merge block {pos} {{energy:{int(c['args']['energia_depois'])}}}")
         ctl("wait", "6")
+    if "reabrir" in c["args"]:
+        reabre_no_port(pos, spec["block"])
     return x
+
+
+def nbt_do_tile(pos):
+    """O NBT do tile como o `data get block` o mostra (o `saveWithFullMetadata` do original), sem o `data get ... has the following block data:`."""
+    chat = json.loads(comando(f"data get block {pos}"))["chat"][0]
+    return chat.split("block data: ", 1)[1]
+
+
+def sem_chaves_do_topo(snbt, chaves):
+    """O mesmo composto sem as `chaves` do nível de cima: `x`, `y`, `z` e `id` dizem onde o tile está e o que ele é, e o `setblock` já os dá."""
+    corpo = snbt.strip()[1:-1]
+    partes, fundo, inicio, aspas = [], 0, 0, None
+    for i, ch in enumerate(corpo):
+        if aspas:
+            if ch == aspas and corpo[i - 1] != "\\":
+                aspas = None
+        elif ch in "\"'":
+            aspas = ch
+        elif ch in "{[":
+            fundo += 1
+        elif ch in "}]":
+            fundo -= 1
+        elif ch == "," and fundo == 0:
+            partes.append(corpo[inicio:i])
+            inicio = i + 1
+    partes.append(corpo[inicio:])
+    return "{" + ",".join(p for p in partes if p.split(":", 1)[0].strip() not in chaves) + "}"
+
+
+def reabre_no_port(pos, bloco):
+    """O mundo salvo e reaberto com a máquina como está (`reabrir=1`): o tile sai e outro nasce do mesmo NBT, com o servidor parado, então ele ainda não andou
+    quando a tela abre. O objeto vivo do tile velho segue na memória do mod, e o menu não o lê (o tile novo não tem a marca do tick)."""
+    nbt = sem_chaves_do_topo(nbt_do_tile(pos), ("x", "y", "z", "id"))
+    comando(f"setblock {pos} minecraft:air")
+    comando(f"setblock {pos} {bloco}")
+    comando(f"data merge block {pos} {nbt}")
 
 
 def espera_estado_estavel(alvo, destino, tentativas=12):

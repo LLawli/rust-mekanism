@@ -20,6 +20,7 @@ pub mod item_chemical_constant_recipe;
 pub mod item_handler;
 pub mod last_energy;
 pub mod machine_sync;
+pub mod menu_source;
 pub mod name;
 pub mod neighbors;
 pub mod network;

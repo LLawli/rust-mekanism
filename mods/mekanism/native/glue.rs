@@ -16,6 +16,7 @@ use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, Che
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::gui;
+use machinery_basis_core::menu_source;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::slot_rules;
@@ -1703,17 +1704,18 @@ const TILE_TICKED: i32 = 1;
 /// O valor vivo dos dados do menu da máquina em `pos`, o que o `MekanismContainer` lê no `broadcastChanges` (`ServerPlayer.tick`,
 /// `ServerPlayer.java:606`, antes dos block entities) e no `sendAllDataToRemote` da abertura. A energia e o tanque vêm do que o tile
 /// guarda agora, porque chegam de fora do tick da máquina (um gerador, o botão de esvaziar); o resto é o objeto vivo, com o erro que ele
-/// ainda não recalculou. O `redstone` que um aviso deixou depois do tick da máquina já vale aqui (`updatePower` troca o campo na hora). Só
-/// vale para o objeto vivo do tile que está no mundo: o de um bloco que acabou de ser trocado (o tile novo ainda não tem `redstone`
-/// salvo) espera o primeiro tick do tile novo, que o pega; e o objeto vivo de uma máquina que deu lugar a outro bloco (um Heat Generator)
-/// não pega o aviso do bloco novo. Devolve se havia objeto vivo para ler.
+/// ainda não recalculou. O `redstone` que um aviso deixou depois do tick da máquina já vale aqui (`updatePower` troca o campo na hora).
+/// O objeto vivo só vale para o tile que ele andou (`entity.data` guarda a marca do tick, e um tile novo ou lido do disco nasce sem ela):
+/// até o primeiro tick do tile o Java já tem o tile carregado do NBT (`loadAdditional`), então o menu lê um objeto feito do NBT, como o
+/// `born` do primeiro tick o fará (`menu_source`). Devolve se havia o que ler (um tile que já andou e cujo objeto saiu da tabela não tem).
 fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
     let at = (pos[0], pos[1], pos[2]);
-    let current = matches!(
-        game.world.block_entities.get(&at),
-        Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() && has_saved(entity)
-    );
-    let power = if current { basis::take_power(game, pos) } else { None };
+    let ticked = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() => !entity.data.is_empty(),
+        _ => return false,
+    };
+    // O aviso que o tile novo ainda não leu fica na fila para o primeiro tick dele, que o pega.
+    let power = if ticked { basis::take_power(game, pos) } else { basis::peek_power(game, pos) };
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
         return false;
     };
@@ -1729,14 +1731,20 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
         }
     });
     let key = (game.native_dimension(), pos);
+    let mut loaded = None;
     LIVE_MACHINES.with_borrow_mut(|machines| {
-        let Some(live) = machines.get_mut(&key) else {
+        let live = machines.get_mut(&key).map(|live| &mut live.machine);
+        let Some(machine) = menu_source::object(ticked, live, &mut loaded, || {
+            // `placed_here` sem consumir: o primeiro tick ainda a vai pedir.
+            let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
+            born(game, pos, entity, spec, &indexes_of(game, spec), origin).machine
+        }) else {
             return false;
         };
         if let Some(powered) = power {
-            live.machine.tile_mut().update_power(powered);
+            machine.tile_mut().update_power(powered);
         }
-        act(&MachineSync { machine: &live.machine, stored, tank });
+        act(&MachineSync { machine, stored, tank });
         true
     })
 }

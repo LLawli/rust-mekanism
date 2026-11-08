@@ -49,7 +49,10 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -430,6 +433,173 @@ public class TrackerTraceTest {
         );
     }
 
+
+    // ------------------------------------------------------------------------------------------------- tile reaberto antes do primeiro tick
+
+    /// O mundo salvo e reaberto no meio de uma operação, com a tela aberta antes do primeiro tick do tile novo: o `sendAllDataToRemote` lê o tile que o
+    /// `loadAdditional` carregou do NBT, e o `broadcastChanges` dos ticks seguintes mostra o que o primeiro tick muda.
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tracker")
+    @TestHolder(description = "Records what the Enrichment Chamber container sends when the screen opens on a tile just loaded from the saved NBT, before its first tick.")
+    public static void chamberReloaded(final DynamicTest test) {
+        template(test, MekanismBlocks.ENRICHMENT_CHAMBER::defaultState);
+        Track track = new Track("chamber_trackers_reloaded", MekanismContainerTypes.ENRICHMENT_CHAMBER);
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> track.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> track.start(helper))
+              .thenExecuteAfter(3, () -> {
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(3, () -> {
+                  track.mark("energy 20000");
+                  track.setEnergy(20_000);
+              })
+              .thenExecuteAfter(1, () -> {
+                  track.mark("item clay 1");
+                  track.setSlot(0, Items.CLAY, 1);
+              })
+              .thenExecuteAfter(4, () -> {
+                  track.mark("slot speed 2");
+                  track.clickUpgradeSlot(UpgradeIds.SPEED, 2);
+              })
+              .thenExecuteAfter(45, () -> {
+                  track.mark("mode low");
+                  track.setMode(RedstoneControl.LOW);
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("reload");
+                  track.reload();
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(5, () -> {
+                  track.mark("window upgrade");
+                  track.openUpgradeWindow();
+              })
+              .thenExecuteAfter(40, () -> {
+                  track.mark("energy 0");
+                  track.setEnergy(0);
+              })
+              .thenExecuteAfter(20, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(5, track::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tracker")
+    @TestHolder(description = "Records the same for the Metallurgic Infuser, with the chemical tank and the upgrades of the loaded tile.")
+    public static void infuserReloaded(final DynamicTest test) {
+        template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
+        Track track = new Track("infuser_trackers_reloaded", MekanismContainerTypes.METALLURGIC_INFUSER);
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> track.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> track.start(helper))
+              .thenExecuteAfter(3, () -> {
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(3, () -> {
+                  track.mark("energy 20000");
+                  track.setEnergy(20_000);
+              })
+              .thenExecuteAfter(1, () -> {
+                  track.mark("item copper_ingot 1, tank redstone 30");
+                  track.setSlot(1, Items.COPPER_INGOT, 1);
+                  track.setTank(30);
+              })
+              .thenExecuteAfter(4, () -> {
+                  track.mark("slot speed 2");
+                  track.clickUpgradeSlot(UpgradeIds.SPEED, 2);
+              })
+              .thenExecuteAfter(45, () -> {
+                  track.mark("mode low");
+                  track.setMode(RedstoneControl.LOW);
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("reload");
+                  track.reload();
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(5, () -> {
+                  track.mark("window upgrade");
+                  track.openUpgradeWindow();
+              })
+              .thenExecuteAfter(40, () -> {
+                  track.mark("tank redstone 0");
+                  track.setTank(0);
+              })
+              .thenExecuteAfter(20, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(5, track::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tracker")
+    @TestHolder(description = "Records the same for the Heat Generator: the heat, the lava and the energy of the loaded tile, with production and losses at zero.")
+    public static void heatGeneratorReloaded(final DynamicTest test) {
+        template(test, GeneratorsBlocks.HEAT_GENERATOR::defaultState);
+        Track track = new Track("heat_generator_trackers_reloaded", GeneratorsContainerTypes.HEAT_GENERATOR);
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> track.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> track.start(helper))
+              .thenExecuteAfter(3, () -> {
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(3, () -> {
+                  track.mark("lava 500");
+                  track.setLava(500);
+              })
+              .thenExecuteAfter(30, () -> {
+                  track.mark("slot muffling 1");
+                  track.clickUpgradeSlot(UpgradeIds.MUFFLING, 1);
+              })
+              .thenExecuteAfter(45, () -> {
+                  track.mark("mode low");
+                  track.setMode(RedstoneControl.LOW);
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(2, () -> {
+                  track.mark("reload");
+                  track.reload();
+                  track.mark("open");
+                  track.open();
+              })
+              .thenExecuteAfter(5, () -> {
+                  track.mark("window upgrade");
+                  track.openUpgradeWindow();
+              })
+              .thenExecuteAfter(40, () -> {
+                  track.mark("lava 0");
+                  track.setLava(0);
+              })
+              .thenExecuteAfter(20, () -> {
+                  track.mark("close");
+                  track.close();
+              })
+              .thenExecuteAfter(5, track::write)
+              .thenSucceed()
+        );
+    }
+
     // ------------------------------------------------------------------------------------------------------------------ gravação
 
     private static final class BuiltInId {
@@ -480,6 +650,7 @@ public class TrackerTraceTest {
         private String error;
         private BooleanSupplier recheck;
         private int recheckOffset = -1;
+        private boolean reloaded;
 
         Track(String name, ContainerTypeRegistryObject<?> type) {
             this.name = name;
@@ -586,6 +757,26 @@ public class TrackerTraceTest {
         void close() {
             menu.removed(player);
             menu = null;
+        }
+
+        /// O que o jogo faz ao descarregar e carregar o chunk: grava o tile e cria outro do NBT (`BlockEntity.loadStatic`, que chama o `loadAdditional`), como o
+        /// `ConstantUsageTraceTest.reload`. O tile novo sorteia outro `recheckOffset`, que a próxima linha grava. Sem menu aberto.
+        void reload() {
+            TileEntityMekanism old = tile();
+            BlockPos pos = helper.absolutePos(POS);
+            net.minecraft.server.level.ServerLevel level = helper.getLevel();
+            CompoundTag tag = old.saveWithFullMetadata(access());
+            BlockEntity loaded = BlockEntity.loadStatic(pos, level.getBlockState(pos), tag, access());
+            if (loaded == null || loaded == old) {
+                throw new IllegalStateException("loadStatic gave " + loaded);
+            }
+            LevelChunk chunk = level.getChunkAt(pos);
+            old.onChunkUnloaded();
+            chunk.removeBlockEntity(pos);
+            chunk.addAndRegisterBlockEntity(loaded);
+            recheck = null;
+            recheckOffset = -1;
+            reloaded = true;
         }
 
         /// `PacketWindowSelect` e `PacketGuiInteract.CONTAINER_TRACK_UPGRADES`, os reais, com o menu como o `containerMenu` do jogador
@@ -762,8 +953,9 @@ public class TrackerTraceTest {
             }
             long gameTime = helper.getLevel().getGameTime();
             StringBuilder line = new StringBuilder("{\"t\":").append(tick++).append(",\"game_time\":").append(gameTime);
-            if (tick == 1) {
+            if (tick == 1 || reloaded) {
                 line.append(",\"recheck_offset\":").append(recheckOffset());
+                reloaded = false;
             }
             if (menu != null) {
                 // O que `open` mandou já está em `sent`; o laço do broadcast só traz o que sujou depois.

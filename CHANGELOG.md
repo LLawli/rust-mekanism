@@ -178,6 +178,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- A tela de uma máquina (as quatro e o Heat Generator) aberta num mundo reaberto antes do primeiro tick dela mostra os valores salvos (energia, progresso da receita, tanque, calor, upgrades e modo de redstone) em vez
+  dos padrão, como no original, que lê o tile direto (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote` leem o tile que o `loadAdditional` já carregou). O objeto vivo do port nasce no primeiro tick; até lá o menu
+  lê um objeto feito do NBT (`machinery_basis_core::menu_source`), e um objeto vivo velho não vale para um tile novo na mesma posição. Rastros `{chamber,infuser,heat_generator}_trackers_reloaded` do Java
+  (`TrackerTraceTest`), repetidos por `tracker_trace.rs` dos dois mods, e a cena `reabrir=1` de `CenaTelas` lado a lado em jogo.
 - O pacote do menu leva o `ResourceType` da pilha (item, fluido ou químico, antes do id), como o `ResourceStackPropertyData` do Java, e o espelho só aceita a pilha do tipo do dado. Sem mudança que o jogador veja.
 - O `redstone` das quatro máquinas e do Heat Generator só muda quando o jogo avisa o bloco, como no original (`updatePower`, `TileEntityMekanism.java:1109`): `BlockTile.neighborChanged`
   (um vizinho que mudou com a flag 1 do `setBlock`), `onNeighborChange` do NeoForge (uma máquina vizinha que mudou o nível do comparador) e `onAdded` (o bloco posto com um
