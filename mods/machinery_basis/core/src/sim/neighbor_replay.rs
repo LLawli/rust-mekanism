@@ -73,10 +73,6 @@ pub trait Scene: ChunkHooks {
     fn fill(&self, entity: &Self::BlockEntity);
     /// Põe (`true`) ou tira a entrada da máquina do norte.
     fn set_other_input(&self, entity: &Self::BlockEntity, filled: bool);
-    /// Os comparadores a avisar depois do tick do nível (`level_tick_post` no port): quem mudou de nível.
-    fn take_comparator_queue(&mut self) -> Vec<BlockPos> {
-        Vec::new()
-    }
     /// Depois de cada tick, o que o rastro grava e o port não calcula (a energia que o gerador produz depende do ambiente, que o rastro não
     /// grava) volta ao tile: o cenário semeia o tile com a linha do rastro.
     fn seed(&self, _entity: &Self::BlockEntity, _row: &Value) {}
@@ -294,10 +290,6 @@ pub fn replay<S: Scene>(
             run.check_ops(t, op);
         }
         run.level.tick_level();
-        // `level_tick_post`: os comparadores que mudaram avisam os vizinhos depois de todos os block entities.
-        for pos in run.level.hooks.take_comparator_queue() {
-            run.level.update_neighbour_for_output_signal(pos);
-        }
         for op in ops.iter().filter(|op| op["phase"] == "step") {
             run.apply(t, op);
             run.check_ops(t, op);

@@ -184,17 +184,6 @@ bindings = [
   { name = "output", ty = "&mut i32", value = "&mut *output" },
 ]
 
-[[injection]]
-id = "level_tick_post"
-hook = "level_tick_post"
-hook_version = 1
-kind = "HEAD"
-helper = "level_tick_post.rs"
-bindings = [
-  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "dimension", ty = "&str", value = "dimension" },
-]
-
 # O som em laço das máquinas, no tick do cliente (`TileEntityMekanism.tickClient`). O `tick` roda no cliente e no servidor; o som é do cliente.
 [[injection]]
 id = "client_tick"

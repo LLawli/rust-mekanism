@@ -429,7 +429,6 @@ fn remove_upgrade(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, all: bool) 
 thread_local! {
     static LIVE_MACHINES: RefCell<HashMap<(&'static str, [i32; 3]), Live>> = RefCell::new(HashMap::new());
     static COMPARATOR_LEVELS: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
-    static COMPARATOR_QUEUE: RefCell<Vec<(&'static str, [i32; 3])>> = const { RefCell::new(Vec::new()) };
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
     // Se o objeto vivo que a varredura tirou já tinha recalculado a capacidade (`capacity_recalculated`). O tile do Java continua o
     // mesmo quando o port larga o objeto de uma máquina que ficou sem andar; o objeto novo recebe isto de volta.
@@ -508,8 +507,6 @@ struct Live {
     saved: Option<SavedState>,
     used_version: Option<u32>,
     /// O `lit` que o bloco tem, para só escrever quando muda.
-    /// O nível que os comparadores já viram.
-    reported_level: Option<i32>,
     lit: Option<bool>,
     /// Quantos jogadores o objeto sabe que têm a tela aberta (`playersUsing`): a diferença para as sessões vira `open()` e `close()`.
     players: usize,
@@ -1036,7 +1033,6 @@ fn born(
         last_seen: i64::MIN,
         saved: None,
         used_version: None,
-        reported_level: None,
         lit: None,
         players,
         eject_side: None,
@@ -1462,8 +1458,11 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         created: RefCell::new(Vec::new()),
         composters: RefCell::new(Vec::new()),
     };
-    live.machine.tick_server(now as u64, &neighbours);
+    let comparator_changed = live.machine.tick_server(now as u64, &neighbours);
     let (ejected, raised) = neighbours.finish();
+    // O fim de `TileEntityMekanism.tickServer` (`:645-652`): o nível do comparador mudou, e os vizinhos são avisados dentro deste tick, antes do
+    // ticker seguinte (o Java chama `notifyComparatorChange` ali, e uma máquina vizinha que tica depois já vê o aviso).
+    publish_comparator(game, dimension, pos, live.machine.tile().current_redstone_level(), comparator_changed);
     // Um upgrade de contenção de xp instalado neste tick (`recalculateUpgrades`) pode ter soltado a experiência guardada.
     let drops = live.machine.take_experience_drops();
     if !drops.is_empty() {
@@ -1571,7 +1570,6 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         }
     }
 
-    report_comparator(&mut live, key);
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
         machines.insert(key, live);
@@ -1592,14 +1590,15 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     });
 }
 
-/// `notifyComparatorChange`, mais o nível que `getAnalogOutputSignal` devolve. O objeto vivo sai da tabela durante o próprio
-/// tick, e um comparador pode perguntar nessa hora, por isso o nível fica em outra tabela.
-fn report_comparator(live: &mut Live, key: (&'static str, [i32; 3])) {
-    let level = live.machine.tile().current_redstone_level();
-    if live.reported_level != Some(level) {
-        live.reported_level = Some(level);
-        COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert(key, level));
-        COMPARATOR_QUEUE.with_borrow_mut(|queue| queue.push(key));
+/// O nível que `getAnalogOutputSignal` devolve (`currentRedstoneLevel`) e, quando `tickServer` o mudou, `notifyComparatorChange`
+/// (`Level.updateNeighbourForOutputSignal`): os comparadores em volta releem, e as máquinas vizinhas recebem o `onNeighborChange` do
+/// NeoForge (`updatePower`). O objeto vivo está fora da tabela durante o próprio tick (e o Horizon tira o tile do mundo), e um
+/// comparador pode perguntar nessa hora, por isso o nível fica numa tabela à parte, posta antes do aviso.
+fn publish_comparator(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], level: i32, changed: bool) {
+    COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((dimension, pos), level));
+    if changed {
+        game.native_update_output_neighbors(dimension, pos);
+        basis::on_neighbor_change(game, dimension, pos);
     }
 }
 
@@ -1657,18 +1656,6 @@ pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStat
 pub(in crate::game) fn analog_output(dimension: &'static str, pos: [i32; 3], output: &mut i32) {
     if let Some(level) = COMPARATOR_LEVELS.with_borrow(|levels| levels.get(&(dimension, pos)).copied()) {
         *output = level;
-    }
-}
-
-/// Avisa os comparadores depois do tick do nível: dentro do `block_entity_tick` a máquina está fora do mundo.
-pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) {
-    let pending = COMPARATOR_QUEUE.with_borrow_mut(std::mem::take);
-    for (at, pos) in pending {
-        if at == dimension {
-            game.native_update_output_neighbors(dimension, pos);
-            // O `Level.updateNeighbourForOutputSignal` do NeoForge também avisa (`onNeighborChange`) os vizinhos que não são comparadores.
-            basis::on_neighbor_change(game, at, pos);
-        }
     }
 }
 

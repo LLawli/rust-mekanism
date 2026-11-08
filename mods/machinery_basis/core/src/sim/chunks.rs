@@ -291,6 +291,14 @@ pub trait ChunkHooks {
     ) {
     }
 
+    /// Os block entities cujo nível de comparador mudou no tick que acabou de rodar (`TileEntityMekanism.tickServer`, `:645-652`: o tick de
+    /// quem mudou chama `notifyComparatorChange`, ou seja, `Level.updateNeighbourForOutputSignal`, dentro dele). O simulador os avisa logo depois
+    /// de cada `block_entity_tick`, antes do ticker seguinte, porque um objeto de mod que está no meio do próprio tick fica fora do mapa e não se
+    /// avisa a si mesmo. Horizon: `native_update_output_neighbors`, chamado no próprio `native_block_entity_tick`.
+    fn take_comparator_changes(&mut self) -> Vec<BlockPos> {
+        Vec::new()
+    }
+
     /// `BlockEntity.onChunkUnloaded` (`TileEntityTransmitter.onChunkUnloaded`, `:156`).
     fn block_entity_chunk_unloaded(
         &mut self,
@@ -1166,6 +1174,10 @@ impl<H: ChunkHooks> SimLevel<H> {
                 self.with_entity(pos, |hooks, view, entity| {
                     hooks.block_entity_tick(view, pos, entity)
                 });
+                // O aviso do comparador sai dentro do tick de quem mudou: o ticker seguinte já o vê.
+                for changed in self.hooks.take_comparator_changes() {
+                    self.update_neighbour_for_output_signal(changed);
+                }
             }
             alive.push(ticker);
         }

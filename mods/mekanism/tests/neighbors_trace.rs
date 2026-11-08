@@ -221,6 +221,10 @@ impl ChunkHooks for Mek {
         }
     }
 
+    fn take_comparator_changes(&mut self) -> Vec<BlockPos> {
+        std::mem::take(&mut self.comparators)
+    }
+
     fn block_signal(&self, block: &str) -> i32 {
         if block == REDSTONE_BLOCK || block == LEVER_ON {
             15
@@ -316,10 +320,6 @@ impl Scene for Mek {
         } else {
             slot.set_contents(None, 0, None);
         }
-    }
-
-    fn take_comparator_queue(&mut self) -> Vec<BlockPos> {
-        std::mem::take(&mut self.comparators)
     }
 }
 
