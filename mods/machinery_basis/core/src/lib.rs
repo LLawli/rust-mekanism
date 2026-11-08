@@ -21,6 +21,7 @@ pub mod item_handler;
 pub mod last_energy;
 pub mod machine_sync;
 pub mod name;
+pub mod neighbors;
 pub mod network;
 pub mod operation_tracker;
 pub mod quick_move;

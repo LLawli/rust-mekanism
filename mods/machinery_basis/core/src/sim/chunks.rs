@@ -51,11 +51,17 @@
 //! - Quando um ticket vizinho faz o `DistanceManager` recalcular um chunk (`update_ticket_level`): o teste diz quando.
 //! - `areEntitiesLoaded`, o limite do mundo na altura e as entidades.
 //! - O `Set` de `chunksToUpdateFutures` do jogo é de identidade, sem ordem definida: aqui é a ordem do pedido.
-//! - Notificações de vizinhança (`onNeighborBlockChange`) são da Fase 3.
+//! - A fila aninhada do `CollectingNeighborUpdater` (`CollectingNeighborUpdater.java:59-117`): um aviso que dispara outro aviso roda na
+//!   hora, e não depois do atual. Os ganchos de máquina do Mekanism não avisam ninguém, então a ordem aninhada não aparece.
+//! - Avisar um vizinho em chunk não carregado: o jogo carrega o chunk para ler o estado; o simulador o ignora.
+//! - O bloco que conduz sinal (`isRedstoneConductor`) passa o `onNeighborChange` ao bloco de trás dele (`Level.java:999-1005`), mas só os que
+//!   querem "weak changes" o recebem, e nenhum bloco do Mekanism quer.
 //! - Durante um gancho que recebe o block entity, ele está fora do mapa (o Horizon faz o mesmo em
 //!   `native_block_entity_tick`, `native_hooks.rs:3198`); no Java ele continua no mapa.
 use super::java_hash::{hash_set_order, initial_capacity_for};
 use super::open_hash::{OpenHashMap, OpenKey, mix_int, mix_long};
+use crate::neighbors::{OUTPUT_SIGNAL_ORDER, UPDATE_ORDER, flags};
+use crate::sides::Face;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -149,6 +155,12 @@ impl BlockPos {
     /// `ChunkPos.containing`: `SectionPos.blockToSectionCoord` é o deslocamento aritmético por 4.
     pub fn chunk(self) -> ChunkPos {
         ChunkPos::new(self.x >> 4, self.z >> 4)
+    }
+
+    /// `BlockPos.relative(direction)`.
+    pub fn relative(self, face: Face) -> Self {
+        let [x, y, z] = face.offset();
+        Self::new(self.x + x, self.y + y, self.z + z)
     }
 
     /// `Vec3i.hashCode`, `(y + z * 31) * 31 + x`: a chave dos mapas do fastutil.
@@ -310,6 +322,66 @@ pub trait ChunkHooks {
 
     /// `ServerTickEvent.Post`, onde roda `TransmitterNetworkRegistry.onTick`. Horizon: `server_tick`, fase `ServerTickEnd`.
     fn server_tick_post(&mut self, _level: &LevelView<Self::BlockEntity>) {}
+
+    /// O sinal de redstone que o bloco `block` dá a quem encosta nele (`BlockBehaviour.getSignal`), de 0 a 15. Serve a
+    /// `SimLevel::has_neighbor_signal` (`SignalGetter.hasNeighborSignal`). O simulador não distingue a face nem o sinal forte do fraco:
+    /// o bloco de redstone e a alavanca dão 15 por todos os lados.
+    fn block_signal(&self, _block: &str) -> i32 {
+        0
+    }
+
+    /// `BlockState.hasAnalogOutputSignal`: um bloco novo com sinal analógico avisa os vizinhos pelo `updateNeighbourForOutputSignal` depois do
+    /// `updateNeighborsAt` (`Level.markAndNotifyBlock`, `Level.java:272-274`).
+    fn has_analog_output(&self, _block: &str) -> bool {
+        false
+    }
+
+    /// `BlockBehaviour.neighborChanged` do bloco do block entity, entregue por `Level.updateNeighborsAt` (`BlockTile.java:115-124` chama
+    /// `updatePower`). `powered` é `level.hasNeighborSignal(pos)` na hora do aviso. Horizon: `neighbor_changed`
+    /// (`native_hooks.rs:1317`), que observa cada `neighborChanged` do servidor.
+    fn neighbor_changed(
+        &mut self,
+        _level: &LevelView<Self::BlockEntity>,
+        _pos: BlockPos,
+        _entity: &mut Self::BlockEntity,
+        _powered: bool,
+    ) {
+    }
+
+    /// `IBlockExtension.onNeighborChange` (NeoForge), entregue por `Level.updateNeighbourForOutputSignal` (`Level.java:998`):
+    /// `BlockTile.onNeighborChange` -> `TileEntityMekanism.onNeighborChange` -> `updatePower`. `neighbor` é a posição de quem mudou.
+    /// O Horizon só tem o `updateNeighbourForOutputSignal` do vanilla, que avisa comparadores.
+    fn on_neighbor_change(
+        &mut self,
+        _level: &LevelView<Self::BlockEntity>,
+        _pos: BlockPos,
+        _entity: &mut Self::BlockEntity,
+        _powered: bool,
+        _neighbor: BlockPos,
+    ) {
+    }
+
+    /// `BlockMekanism.setPlacedBy` -> `TileEntityMekanism.onAdded` -> `updatePower`: o bloco posto por um jogador (`BlockItem.place`), depois do
+    /// `setBlock` com as flags 11. Horizon: `place_block`.
+    fn placed_by(
+        &mut self,
+        _level: &LevelView<Self::BlockEntity>,
+        _pos: BlockPos,
+        _entity: &mut Self::BlockEntity,
+        _powered: bool,
+    ) {
+    }
+}
+
+/// Um aviso de vizinhança entregue a um bloco, na ordem em que o jogo o entrega.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NeighborCall {
+    /// `neighborChanged` de `pos`, por causa de `source` (o bloco que mudou, `Level.updateNeighborsAt(source, block)`).
+    NeighborChanged { pos: BlockPos, source: BlockPos },
+    /// `onNeighborChange` de `pos`, por causa de `neighbor`.
+    OnNeighborChange { pos: BlockPos, neighbor: BlockPos },
+    /// `setPlacedBy` de `pos`.
+    PlacedBy { pos: BlockPos },
 }
 
 /// Um block entity no mapa do chunk. `entity` fica `None` enquanto um gancho o tem.
@@ -472,6 +544,8 @@ pub struct SimLevel<H: ChunkHooks> {
     fresh: Vec<(BlockPos, u64)>,
     next_id: u64,
     events: Vec<SimEvent>,
+    /// Os avisos de vizinhança entregues a cada block entity. Fora de `events` para não mexer nos rastros de chunk.
+    neighbor_calls: Vec<NeighborCall>,
 }
 
 impl<H: ChunkHooks> SimLevel<H> {
@@ -488,6 +562,7 @@ impl<H: ChunkHooks> SimLevel<H> {
             fresh: Vec::new(),
             next_id: 0,
             events: Vec::new(),
+            neighbor_calls: Vec::new(),
         }
     }
 
@@ -713,10 +788,22 @@ impl<H: ChunkHooks> SimLevel<H> {
         Some(result)
     }
 
-    /// `Level.setBlock(pos, state, 3)` sobre `LevelChunk.setBlockState` (`LevelChunk.java:270`): troca o bloco (`None` é ar) e,
-    /// nesta ordem, remove o block entity do bloco antigo, cria o do novo e avisa `block_changed`. `false` se o bloco já era
-    /// aquele. O chunk tem de estar carregado: o `setBlock` do jogo carregaria um que não está, e o simulador não faz isso.
+    /// `Level.setBlock(pos, state, 3)`: veja [`SimLevel::set_block_flags`].
     pub fn set_block(&mut self, pos: BlockPos, block: Option<&str>) -> bool {
+        self.set_block_flags(pos, block, flags::UPDATE_ALL)
+    }
+
+    /// `Level.setBlock(pos, state, flags)` sobre `LevelChunk.setBlockState` (`LevelChunk.java:270`): troca o bloco (`None` é ar) e,
+    /// nesta ordem, remove o block entity do bloco antigo, cria o do novo, avisa `block_changed` e, com a flag
+    /// [`flags::UPDATE_NEIGHBORS`], avisa os vizinhos (`Level.markAndNotifyBlock`, `Level.java:256-275`): `updateNeighborsAt` e, se o bloco
+    /// novo tem sinal analógico, `updateNeighbourForOutputSignal`. Sem a flag nenhum vizinho sabe. `false` se o bloco já era
+    /// aquele. O chunk tem de estar carregado: o `setBlock` do jogo carregaria um que não está, e o simulador não faz isso.
+    pub fn set_block_flags(
+        &mut self,
+        pos: BlockPos,
+        block: Option<&str>,
+        update_flags: i32,
+    ) -> bool {
         let chunk = pos.chunk();
         assert!(
             self.view.is_chunk_loaded(chunk) && self.view.has_level_chunk(chunk),
@@ -748,7 +835,115 @@ impl<H: ChunkHooks> SimLevel<H> {
         });
         self.hooks
             .block_changed(&self.view, pos, old.as_deref(), block);
+        if flags::notifies_neighbors(update_flags) {
+            self.update_neighbors_at(pos);
+            if block.is_some_and(|block| self.hooks.has_analog_output(block)) {
+                self.update_neighbour_for_output_signal(pos);
+            }
+        }
         true
+    }
+
+    /// `SignalGetter.hasNeighborSignal`: algum dos seis vizinhos dá sinal.
+    pub fn has_neighbor_signal(&self, pos: BlockPos) -> bool {
+        Face::ALL.iter().any(|&face| {
+            self.view
+                .block_if_loaded(pos.relative(face))
+                .is_some_and(|block| self.hooks.block_signal(block) > 0)
+        })
+    }
+
+    /// `Level.updateNeighborsAt(pos, block)` (`ServerLevel.java:1206`): cada vizinho carregado, na ordem de [`UPDATE_ORDER`], recebe
+    /// `neighborChanged` (`NeighborUpdater.executeUpdate`, `NeighborUpdater.java:59`). Quem tem block entity do mod lê o sinal na hora do aviso.
+    pub fn update_neighbors_at(&mut self, pos: BlockPos) {
+        for face in UPDATE_ORDER {
+            let neighbor = pos.relative(face);
+            if !self.view.is_block_loaded(neighbor)
+                || self.view.block_entity_unchecked(neighbor).is_none()
+            {
+                continue;
+            }
+            let powered = self.has_neighbor_signal(neighbor);
+            self.neighbor_calls.push(NeighborCall::NeighborChanged {
+                pos: neighbor,
+                source: pos,
+            });
+            self.with_entity(neighbor, |hooks, view, entity| {
+                hooks.neighbor_changed(view, neighbor, entity, powered);
+            });
+        }
+    }
+
+    /// `Level.updateNeighbourForOutputSignal(pos, block)` (NeoForge, `Level.java:992`): cada vizinho carregado, na ordem de
+    /// [`OUTPUT_SIGNAL_ORDER`], recebe `onNeighborChange` (`Level.java:998`).
+    pub fn update_neighbour_for_output_signal(&mut self, pos: BlockPos) {
+        for face in OUTPUT_SIGNAL_ORDER {
+            let neighbor = pos.relative(face);
+            if !self.view.is_block_loaded(neighbor)
+                || self.view.block_entity_unchecked(neighbor).is_none()
+            {
+                continue;
+            }
+            let powered = self.has_neighbor_signal(neighbor);
+            self.neighbor_calls.push(NeighborCall::OnNeighborChange {
+                pos: neighbor,
+                neighbor: pos,
+            });
+            self.with_entity(neighbor, |hooks, view, entity| {
+                hooks.on_neighbor_change(view, neighbor, entity, powered, pos);
+            });
+        }
+    }
+
+    /// `BlockItem.place` de um bloco com block entity: `setBlock` com as flags 11 (`BlockItem.placeBlock`) e `setPlacedBy`
+    /// (`BlockMekanism.setPlacedBy`, `BlockMekanism.java:179`), que lê o sinal dos vizinhos (`onAdded`).
+    pub fn place_by_player(&mut self, pos: BlockPos, block: &str) -> bool {
+        if !self.set_block_flags(pos, Some(block), flags::UPDATE_ALL | 8) {
+            return false;
+        }
+        if self.view.block_entity_unchecked(pos).is_some() {
+            let powered = self.has_neighbor_signal(pos);
+            self.neighbor_calls.push(NeighborCall::PlacedBy { pos });
+            self.with_entity(pos, |hooks, view, entity| {
+                hooks.placed_by(view, pos, entity, powered);
+            });
+        }
+        true
+    }
+
+    /// O block entity de `pos` sai do chunk e do mundo, com o que ele grava guardado: `BlockEntity.saveWithFullMetadata`, `onChunkUnloaded` e
+    /// `LevelChunk.removeBlockEntity` (`LevelChunk.java:480`), como um teste do Mekanism descarrega um tile sem descarregar o chunk
+    /// (`ConstantUsageTraceTest.reload`). O bloco fica. Enquanto o tile não está, os avisos de vizinhança não o encontram.
+    pub fn detach_block_entity(&mut self, pos: BlockPos) -> Option<H::Saved> {
+        let saved =
+            self.with_entity(pos, |hooks, _, entity| hooks.save_block_entity(pos, entity))?;
+        self.events.push(SimEvent::BlockEntitySaved { pos });
+        self.events.push(SimEvent::BlockEntityChunkUnloaded { pos });
+        self.with_entity(pos, |hooks, view, entity| {
+            hooks.block_entity_chunk_unloaded(view, pos, entity);
+        });
+        self.remove_block_entity(pos);
+        Some(saved)
+    }
+
+    /// Um tile lido do que `detach_block_entity` guardou volta ao mundo (`BlockEntity.loadStatic` e `LevelChunk.addAndRegisterBlockEntity`,
+    /// `LevelChunk.java:398`): entra no mapa, ganha ticker e recebe `onLoad` no próximo tick. Não avisa nenhum vizinho e não lê o sinal.
+    pub fn attach_block_entity(&mut self, pos: BlockPos, saved: &H::Saved) -> bool {
+        let Some(block) = self.view.block_unchecked(pos).map(str::to_owned) else {
+            return false;
+        };
+        let Some(entity) = self.hooks.new_block_entity(pos, &block, Some(saved)) else {
+            return false;
+        };
+        let id = self.set_block_entity(pos, entity);
+        self.update_ticker(pos);
+        self.fresh.push((pos, id));
+        true
+    }
+
+    /// Os avisos de vizinhança desde a última vez que o teste os pediu.
+    pub fn take_neighbor_calls(&mut self) -> Vec<NeighborCall> {
+        std::mem::take(&mut self.neighbor_calls)
     }
 
     /// `LevelChunk.setBlockEntity` (`LevelChunk.java:426`): `setLevel` e `clearRemoved`, e entra no mapa. Quem estava lá sai

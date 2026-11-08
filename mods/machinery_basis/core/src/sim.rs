@@ -2,6 +2,7 @@
 //! roda um tick. Os chunks (carga, descarga, blocos e block entities que somem e voltam) estão em `chunks`.
 pub mod chunks;
 pub mod java_hash;
+pub mod neighbor_replay;
 pub mod open_hash;
 
 use crate::item_handler::{ItemCapabilities, ItemHandler};
