@@ -553,17 +553,23 @@ class Lote(unittest.TestCase):
         for nome in ("generator_lava_meio", "generator_lava_cheia", "generator_hover_barra", "generator_hover_medidor"):
             self.assertEqual(por_nome[nome]["args"]["energia"], "cap", nome)
 
-    def test_o_port_tira_um_passo_a_menos_antes_do_tick_que_a_janela_de_upgrades_pede(self):
+    def test_o_item_de_upgrade_entra_depois_do_tick_do_nascimento_e_os_passos_sao_os_do_caso(self):
         por_nome = {c["nome"]: c for c in cena_telas.todos_os_casos()}
-        self.assertTrue(cena_telas.abre_a_janela(por_nome["chamber_aba_instalando"]))
-        self.assertFalse(cena_telas.abre_a_janela(por_nome["chamber_aba_fechada"]))
-        self.assertFalse(cena_telas.abre_a_janela(por_nome["chamber_xp_clique"]))
-        # 10 passos do original são 9 do port mais o tick depois de abrir; sem a janela, os mesmos.
-        self.assertEqual(cena_telas.passos_do_port(por_nome["chamber_aba_instalando"]), 9)
-        self.assertEqual(cena_telas.passos_do_port(por_nome["chamber_aba_instalado"]), 29)
-        self.assertEqual(cena_telas.passos_do_port(por_nome["chamber_aba_vazia"]), 1)
-        self.assertEqual(cena_telas.passos_do_port(por_nome["chamber_operacao"]), 100)
-        self.assertEqual(cena_telas.passos_do_port(por_nome["chamber_vazia"]), 2)
+        instalando = por_nome["chamber_aba_instalando"]
+        # O `CenaTelas` do original põe o item no slot depois do tick da montagem: o do nascimento não conta no `upgradeTicks`.
+        self.assertIsNone(cena_telas.componente_upgrade(instalando))
+        itens = cena_telas.nbt_itens(instalando, "chamber")
+        self.assertEqual(len(itens), 1)
+        self.assertIn('Slot:3b,id:"mekanism:upgrade",count:5', itens[0])
+        self.assertIn('"mekanism:upgrade_type":"mekanism:speed"', itens[0])
+        # Os dois slots de cada máquina: a entrada e a saída de upgrades vêm depois dos slots da máquina.
+        saida = cena_telas.nbt_itens(por_nome["chamber_aba_saida"], "chamber")
+        self.assertIn("Slot:4b", saida[0])
+        self.assertIn("Slot:2b", cena_telas.nbt_itens(por_nome["generator_aba_instalando"], "generator")[0])
+        self.assertIn("Slot:4b", cena_telas.nbt_itens(por_nome["infuser_aba_vazia"] | {"args": {"upgradeentrada": "speed:1"}}, "infuser")[0])
+        # Os passos são os do caso, com a janela ou sem ela: os dados chegam na abertura, sem tick depois.
+        for nome, passos in (("chamber_aba_instalando", 10), ("chamber_aba_instalado", 30), ("chamber_aba_vazia", 2), ("chamber_operacao", 100)):
+            self.assertEqual(cena_telas.passos_do_port(por_nome[nome]), passos, nome)
 
     @staticmethod
     def _barra(img, altura, cor, trocados=0):
