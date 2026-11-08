@@ -19,7 +19,7 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalResource};
 use machinery_basis_core::containers::ItemResource;
 use mekanism_rules::{Held, Indexes, SlotIndexes, infusing_cache_of, slot_accepts};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
@@ -41,6 +41,12 @@ fn rows(machine: &str) -> Vec<Value> {
         .skip(1)
         .map(|line| serde_json::from_str(line).expect("linha JSON válida"))
         .collect()
+}
+
+/// O item da linha: os baldes empilhados (`lava_bucket+16`, o componente `max_stack_size` 16) são o mesmo item para a regra do slot.
+fn item_id(row: &Value) -> &str {
+    let id = row["item"].as_str().unwrap();
+    id.strip_suffix("+16").unwrap_or(id)
 }
 
 fn item(id: &str) -> ItemResource {
@@ -140,7 +146,7 @@ fn check(machine: &str, indexes: &Indexes, slots: &SlotIndexes, minimum: usize) 
             indexes,
             slots,
             row["slot"].as_u64().unwrap() as usize,
-            &item(row["item"].as_str().unwrap()),
+            &item(item_id(row)),
             &held(row),
         );
         assert_eq!(
@@ -266,7 +272,7 @@ fn the_heat_generator_cursor_takes_fuel_whatever_the_tank_holds_and_no_energy_it
         let mut fuel: Vec<&str> = all
             .iter()
             .filter(|row| row["tank"] == tank && row["kind"] == "fuel" && row["may_place"] == true)
-            .map(|row| row["item"].as_str().unwrap())
+            .map(item_id)
             .collect();
         fuel.sort_unstable();
         fuel.dedup();
@@ -280,6 +286,149 @@ fn the_heat_generator_cursor_takes_fuel_whatever_the_tank_holds_and_no_energy_it
                 .filter(|row| row["kind"] == "energy")
                 .all(|row| row["may_place"] == false),
             "o slot de energia do gerador não aceita item sem handler de energia"
+        );
+    }
+}
+
+/// O Q (`THROW`), o clique do meio (`CLONE`) e o clique duplo (`PICKUP_ALL`) do original (as linhas `throw`, `throw_all`, `clone` e `double` do
+/// rastro): nenhum olha o `mayPlace`. O Q larga uma unidade (Ctrl+Q, a pilha) de qualquer slot, inclusive o de saída e o de energia; o do meio
+/// copia a pilha cheia do slot para o cursor; e o clique duplo sobre um slot vazio recolhe o item de todos os outros slots da máquina e do
+/// inventário até a pilha do item (quem não empilha, o balde de lava e o de água, fica onde está). É o motor do menu quem faz isso, e a prova
+/// em jogo (`h2_cursor.py`) repete cada caso contra estas linhas.
+#[test]
+fn the_original_throws_clones_and_collects_without_asking_the_slot_rules() {
+    let present = 4;
+    for (machine, slots) in [
+        ("enrichment_chamber", 3),
+        ("crusher", 3),
+        ("energized_smelter", 3),
+        ("metallurgic_infuser", 4),
+        ("heat_generator", 2),
+    ] {
+        let all = rows(machine);
+        let of = |action: &str| -> Vec<&Value> {
+            all.iter().filter(|row| row["action"] == action).collect()
+        };
+        assert!(of("throw").len() >= ITEMS * slots * 2, "{machine}: Q");
+        assert!(
+            of("throw_all").len() >= ITEMS * slots * 2,
+            "{machine}: Ctrl+Q"
+        );
+        assert!(
+            of("clone").len() >= ITEMS * slots * 2,
+            "{machine}: clique do meio"
+        );
+        assert!(
+            of("double").len() >= ITEMS * slots,
+            "{machine}: clique duplo"
+        );
+        for row in of("throw") {
+            assert_eq!(row["dropped"], 1, "{machine}: {row}");
+            assert_eq!(row["slot_after"][1], present - 1, "{machine}: {row}");
+        }
+        for row in of("throw_all") {
+            assert_eq!(row["dropped"], present, "{machine}: {row}");
+            assert_eq!(row["slot_after"][1], 0, "{machine}: {row}");
+        }
+        for row in of("clone") {
+            // O que está no slot (o item da linha, ou um graveto) vai inteiro para o cursor, com a pilha cheia do item.
+            let held = if row["content"] == "same" {
+                row["item"].clone()
+            } else {
+                Value::from("stick")
+            };
+            assert_eq!(row["carried"][0], held, "{machine}: {row}");
+            assert!(row["carried"][1].as_u64().unwrap() >= 1, "{machine}: {row}");
+            assert_eq!(
+                row["slot_after"][1], present,
+                "{machine}: o do meio não tira do slot: {row}"
+            );
+        }
+        for row in of("double") {
+            let stackable = !matches!(
+                row["item"].as_str().unwrap(),
+                "lava_bucket" | "water_bucket"
+            );
+            let machine_after = row["machine_after"].as_array().unwrap();
+            assert_eq!(machine_after.len(), slots, "{machine}: {row}");
+            if stackable {
+                // Um no cursor, `present` em cada um dos outros slots, 2 na barra e 5 no inventário, até a pilha do item.
+                let wanted = 1 + present as usize * (slots - 1) + 2 + 5;
+                let stack = if row["item"] == "bucket" { 16 } else { 64 };
+                assert_eq!(row["carried"][1], wanted.min(stack), "{machine}: {row}");
+                if wanted <= stack {
+                    assert!(
+                        machine_after.iter().all(|slot| slot[1] == 0),
+                        "{machine}: {row}"
+                    );
+                }
+            } else {
+                assert_eq!(row["carried"][1], 1, "{machine}: {row}");
+                let kept = machine_after
+                    .iter()
+                    .filter(|slot| slot[1] == present)
+                    .count();
+                assert_eq!(kept, slots - 1, "{machine}: {row}");
+            }
+        }
+    }
+}
+
+fn upgrade_rows(machine: &str) -> Vec<Value> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros")
+        .join(format!("slot_click_upgrade_{machine}.jsonl"));
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+        .lines()
+        .skip(1)
+        .map(|line| serde_json::from_str(line).expect("linha JSON válida"))
+        .collect()
+}
+
+/// Os dois slots virtuais da janela de upgrades (`UpgradeInventorySlot`), pelo cursor: a entrada aceita o upgrade de um tipo que a máquina suporta
+/// (`isValidForInsertion(.., MANUAL)`: o item tem o componente do tipo e o tipo está na tag `default_machine`) e nenhum item comum, e a saída
+/// não aceita nada (`internalOnly`). O hook de regra de slot do Horizon vetava os dois slots, e um upgrade na mão não entrava em nenhum; a regra
+/// do glue (`upgrade_input`/`upgrade_output` de `publish_slot_rules`) responde pelo `UpgradeData::supports` que este teste confere.
+#[test]
+fn the_cursor_puts_a_supported_upgrade_in_the_upgrade_input_and_nothing_in_the_output() {
+    let data = common::upgrade_data();
+    for machine in [
+        "enrichment_chamber",
+        "crusher",
+        "energized_smelter",
+        "metallurgic_infuser",
+    ] {
+        let all = upgrade_rows(machine);
+        // 10 itens (os 8 tipos do registro e dois comuns), dois slots, e por slot 4 cliques com o slot vazio e 2 com outro tipo e 2 com o mesmo.
+        assert!(
+            all.len() >= 10 * 2 * 8,
+            "{machine}: só {} linhas",
+            all.len()
+        );
+        let mut accepted = std::collections::BTreeSet::new();
+        for row in &all {
+            let item = row["item"].as_str().unwrap();
+            let kind = row["kind"].as_str().unwrap();
+            let wanted = kind == "upgrade_in"
+                && item
+                    .strip_prefix("upgrade:")
+                    .is_some_and(|name| data.supports(&format!("mekanism:{name}")));
+            assert_eq!(row["may_place"], wanted, "{machine}: {row}");
+            if wanted {
+                accepted.insert(item.to_owned());
+            }
+        }
+        assert!(accepted.len() >= 4, "{machine}: {accepted:?}");
+        // Com o slot vazio, o clique esquerdo de um upgrade aceito o põe (3 de 3) e o de outro tipo na mão fica no cursor.
+        assert!(all.iter().any(|row| row["kind"] == "upgrade_in"
+            && row["content"] == "empty"
+            && row["action"] == "left"
+            && row["may_place"] == true
+            && row["carried"] == json!(["", 0])));
+        assert!(
+            all.iter()
+                .any(|row| row["kind"] == "upgrade_out" && row["carried"] != json!(["", 0]))
         );
     }
 }

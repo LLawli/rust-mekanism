@@ -1211,3 +1211,79 @@ fn the_copied_tables_are_the_ones_the_mekanism_has() {
         assert_eq!(mekanismgenerators_rules::enum_color(name), value, "{name}");
     }
 }
+
+/// `Save and Quit` com a janela de upgrades aberta (`upgrade_quit_heat_generator`, `UpgradeQuitTraceTest.java`): o tile é gravado com o menu
+/// aberto e relido, e os upgrades no slot da janela, os instalados e o slot de saída voltam como estavam; `upgradeTicks` e `canCheckUpgrades`
+/// são só memória, então a instalação recomeça dos 20 ticks (`UpgradeTransient::default`). A queima do combustível e a energia são
+/// `heat_trace.rs`: este rastro grava só o que o componente de upgrades faz, e o teste compara só isso.
+#[test]
+fn the_generator_keeps_the_upgrade_slot_and_restarts_the_install_after_save_and_quit() {
+    let mut tile = HeatTile::new();
+    let mut quits = 0;
+    let lines = ticks("upgrade_quit_heat_generator");
+    for expected in &lines {
+        tile.tick();
+        for action in actions(expected) {
+            let words: Vec<&str> = action.split_whitespace().collect();
+            match words.as_slice() {
+                ["item", ..] | ["open"] | ["window"] | ["carried", ..] => {}
+                ["slot", name, count] => {
+                    let mut carried =
+                        Some((tile.resource(&upgrade_id(name)), count.parse().unwrap()));
+                    tile.act(|c| click_slot(c.upgrade_slot(), &mut carried));
+                }
+                ["quit"] => {
+                    quits += 1;
+                    // O mundo reaberto: o NBT e os itens do menu voltam, e a memória do componente não.
+                    tile.transient = UpgradeTransient::default();
+                }
+                other => panic!("marca desconhecida: {other:?}"),
+            }
+        }
+        let actual = state(&tile, &expected["t"], &expected["marks"]);
+        for key in ["muffling", "upgrade_in", "upgrade_out", "upgrade_ticks"] {
+            assert_eq!(actual[key], expected[key], "{key}, tick {}", expected["t"]);
+        }
+    }
+    assert_eq!(quits, 2, "os dois Save and Quit do cenário");
+    assert_eq!(
+        lines[54]["upgrade_ticks"], 0,
+        "o `quit` zera a barra de instalação"
+    );
+    assert_eq!(lines[53]["upgrade_ticks"], 8);
+    assert_eq!(lines.last().unwrap()["muffling"], 1);
+}
+
+/// O cursor nos dois slots virtuais da janela de upgrades do Heat Generator (`slot_click_upgrade_heat_generator`, `SlotClickTraceTest.java`): a entrada
+/// aceita o upgrade de silêncio, o único tipo que a tag do gerador tem (`isValidForInsertion(.., MANUAL)`: o item tem o componente do tipo e o tipo está
+/// na tag), e nenhum outro tipo nem item comum; a saída não aceita nada. É a regra que `menu_click_before` deixa em `slot_rules` para o slot de upgrades.
+#[test]
+fn the_cursor_puts_only_muffling_in_the_upgrade_input_and_nothing_in_the_output() {
+    let data = common::upgrade_data();
+    let rows: Vec<Value> = ticks("slot_click_upgrade_heat_generator")
+        .into_iter()
+        .skip(1)
+        .collect();
+    assert!(rows.len() >= 10 * 2 * 8, "só {} linhas", rows.len());
+    let mut accepted = std::collections::BTreeSet::new();
+    for row in &rows {
+        let item = row["item"].as_str().unwrap();
+        let (kind, may) = (
+            row["kind"].as_str().unwrap(),
+            row["may_place"].as_bool().unwrap(),
+        );
+        let wanted = kind == "upgrade_in"
+            && item.strip_prefix("upgrade:").is_some_and(|name| {
+                mekanismgenerators_rules::accepts_upgrade(
+                    &data,
+                    "mekanism:upgrade",
+                    Some(&format!("mekanism:{name}")),
+                )
+            });
+        assert_eq!(may, wanted, "{row}");
+        if may {
+            accepted.insert(item.to_owned());
+        }
+    }
+    assert_eq!(accepted, ["upgrade:muffling".to_owned()].into());
+}

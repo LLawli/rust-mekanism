@@ -18,11 +18,20 @@ use mekanism_rules::{
     ENERGY_UPGRADE, INFUSER_USAGE, SPEED_UPGRADE, infuser_config, infusing_cache_of,
 };
 use serde_json::{Value, json};
+use std::cell::Cell;
 use std::path::Path;
 
 /// `Trace.refillTicks` do cenário: o cabo devolve energia para tantos ticks.
 const REFILL_TICKS: i64 = 3;
+/// `GeneralConfig.maxUpgradeMultiplier` dos cenários de mais de uma operação por tick (`OPS_MULTIPLIER` de `ConstantUsageTraceTest`). O padrão
+/// é 10, e com ele o Infuser nunca passa de `200 / 10 = 20` ticks: `UpgradeUtils.getOperationsPerTick` só passa de 1 com `ticksD < 1`.
+const OPS_MULTIPLIER: f64 = 1000.0;
 const RECIPE_FILE: &str = "dev/referencia/testes/dados/data/mekanismtests/recipe/metallurgic_infusing/gravel_to_flint_per_tick.json";
+
+thread_local! {
+    /// O multiplicador do cenário que a thread do teste repete: cada teste roda na sua.
+    static MULTIPLIER: Cell<f64> = const { Cell::new(10.0) };
+}
 
 fn root() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -52,6 +61,7 @@ fn infuser() -> ProgressMachine {
         common::upgrade_data(),
     );
     config.energy_conversion = common::energy_conversions();
+    config.machine.upgrades.max_upgrade_multiplier = MULTIPLIER.get();
     ProgressMachine::chemical(config)
 }
 
@@ -195,6 +205,18 @@ fn read_trace(scenario: &str) -> Vec<Value> {
 /// Repete o cenário e devolve quantas marcas viu e quantos ticks teve a máquina com o químico acabado (`active` falso com o item
 /// na entrada e o tanque vazio), para o teste conferir que o rastro tem o efeito que diz ter.
 fn replay(scenario: &str, speed: i32, energy: i32, minimum_lines: usize) -> (usize, Vec<Value>) {
+    replay_with(scenario, speed, energy, 10.0, minimum_lines)
+}
+
+/// O mesmo, com `maxUpgradeMultiplier` diferente do padrão.
+fn replay_with(
+    scenario: &str,
+    speed: i32,
+    energy: i32,
+    multiplier: f64,
+    minimum_lines: usize,
+) -> (usize, Vec<Value>) {
+    MULTIPLIER.set(multiplier);
     let lines = read_trace(scenario);
     assert!(
         lines.len() >= minimum_lines,
@@ -320,4 +342,41 @@ fn a_save_without_the_used_so_far_catches_up_with_more_than_one_per_tick() {
     assert_eq!(lines[106]["tank"], 796);
     assert_eq!(lines[106]["used_so_far"], 2);
     assert_eq!(lines[205]["output"], json!(["flint", 1]));
+}
+
+/// Com `maxUpgradeMultiplier` 1000, 7 de velocidade dá `ticksD = 200 * 1000^(-7/8) = 0,47` e `getOperationsPerTick` 2, e 8 dá 0,2 e 5
+/// (`UpgradeUtils.getOperationsPerTick`, `max(1, 1 / ticksD)`); a receita de `per_tick_usage` gasta então `amount * operações * multiplicador`
+/// por tick (`ItemStackConstantChemicalToObjectCachedRecipe.useResources`) e o tanque cai de acordo. O padrão do original (10) nunca chega
+/// aqui, e o port não lê a configuração (`UPGRADE_MULTIPLIER` é uma constante): a prova em jogo não alcança este caso.
+#[test]
+fn the_infuser_with_more_than_one_operation_per_tick_spends_the_chemical_per_operation() {
+    let (marks, lines) = replay_with("infuser_const_ops", 0, 0, OPS_MULTIPLIER, 400);
+    assert_eq!(marks, 11, "as marcas do cenário");
+    let operations: std::collections::BTreeSet<i64> = lines
+        .iter()
+        .map(|line| line["max_operations"].as_i64().unwrap())
+        .collect();
+    assert_eq!(operations, [1, 2, 5].into(), "operações por tick vistas");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line["max_operations"] == 5 && line["required"] == 1),
+        "o ticksRequired chega a 1"
+    );
+}
+
+/// A máquina posta com 8 de velocidade e 2 de energia no item (5 operações por tick), com o químico acabando no meio das operações, e
+/// depois com 7 de velocidade (2 por tick), e salva e relida.
+#[test]
+fn a_machine_placed_with_many_speed_upgrades_runs_five_operations_per_tick() {
+    let (marks, lines) = replay_with("infuser_const_ops_placed", 8, 2, OPS_MULTIPLIER, 200);
+    assert_eq!(marks, 5, "as marcas do cenário");
+    assert!(
+        lines.iter().any(|line| line["max_operations"] == 5),
+        "5 operações por tick"
+    );
+    assert!(
+        lines.iter().any(|line| line["max_operations"] == 2),
+        "2 operações por tick depois de tirar um upgrade"
+    );
 }
