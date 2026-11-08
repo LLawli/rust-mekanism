@@ -117,6 +117,30 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
     `mekanism/client.toml`, o arquivo que já existe, com os dois escritores cooperando (`Spec::rewrite` troca só a seção `sounds`, `replace_sections` troca só as `window.*`; 12 testes em `client_config.rs`). **Escolhida B**: um arquivo só, como no original, sem migrar nem duplicar nada; a diferença para o original é a caixa da pasta, que já era a do port. As posições do Heat Generator seguem no
     arquivo do namespace dele (`config/mekanismgenerators/client.toml`), enquanto no original todas moram no mesmo; fica como estava. Número usado: 12 (conferido o último em 11).
 
+### Esperando decisão do usuário (fim da Fase 1)
+
+Pontos que a Fase 1 deixou em aberto por serem escolha do usuário (decisão 4, 2026-11-08). Cada um tem uma linha e o link para a entrada que o detalha. Nenhum impede a próxima frente de código da Fase 1.
+
+1. **Decisão 3 (aberta).** Duas entradas com regra de slot: aproximação ou nova injeção, a decidir quando chegar o Combiner (Fase 6). Detalhe: [Decisões, item 3](#decisões).
+2. **A fase do componente de segurança.** `TileComponentSecurity` e a frequência de segurança (`TileComponentFrequency`) não estão em nenhuma fase: a Fase 5 lista a aba de segurança, mas não o componente, e o port manda `null` e `PUBLIC` nos dados 0 e 1 do menu. Detalhe: [Fase 1, `MekanismContainer`, "Diferenças que ficam"](#fases).
+3. **As partículas.** A máquina acesa solta `SMOKE` e `REDSTONE` (o gerador, `SMOKE` e `FLAME`); o catálogo do Horizon não tem `animateTick`, e o único caminho (`send_particles` pelo servidor) muda quem sorteia e ignora `machineEffects`. Sem decisão. Detalhe: [Inventário, "Partículas da máquina acesa"](#inventário-do-que-diverge-hoje).
+4. **As tags `c:` não copiadas e as tags de fluido e de `entity_type`.** Faltam 143 das 173 da datagen (30 de bloco, 87 de item, 23 de fluido, 3 de `entity_type`); as de item e de bloco entram com os itens (Fase 6). Não se confirmou que o Horizon leia as de fluido e as de `entity_type` que um mod traz: uma leitura rápida do pin (2026-11-08) acha o carregamento de tags de fluido (`horizon-client/src/game/debug_lines.rs:574`, só para o debug) e o de `entity_type` de mods
+   (`horizon-client/src/mod_content.rs:2057-2075`), sem provar que as receitas ou o jogo as usem. Detalhe: [Fase 0, "Tags `c:`"](#fase-0-o-que-o-horizon-permite) e [Fase 1, item de receitas](#fases).
+5. **A configuração de servidor do Mekanism.** O port não a lê: `UPGRADE_MULTIPLIER` é uma constante de 10 (`maxUpgradeMultiplier`), e o `heatTankCapacity` do gerador também é fixo (1.000, o padrão). O caso de mais de uma operação por tick só existe com a configuração mudada (acima de 200), então fica sem prova em jogo. Decidir se a configuração entra e em que fase. Detalhe: [Fase 1, "Receita de uso constante"](#fases) e o item do Heat Generator (inventário).
+6. **As aproximações das decisões 5 a 12**, uma linha cada, para o usuário revisar o método ([Decisões](#decisões)):
+   - **5** (quadro do overlay, superada em parte pela 8): sem efeito medido o que um pacote do jogador muda entre o `ServerTickEnd` e o `tick_lan`; o overlay a 3 e 6 pixels do original é o mundo atrás da tela (H22).
+   - **6** (trackers por fonte): o valor vem do objeto vivo por uma fonte e não por closures, com o mesmo comportamento (5 rastros iguais).
+   - **7** (quando o `updatePower` lê o sinal): a injeção `flush_signals` lê o sinal no fim da operação, não dentro do aviso; ficam de fora uma operação que avisa e depois muda o sinal sem avisar, e os block entities do vanilla sem contêiner.
+   - **8** (`broadcastChanges` e jogadores olhando): o envio sai no `ServerTickStart` e a conta de quem olha sai do `server_tick`, sem injeção; o espectador por `interact` não abre a tela no Horizon.
+   - **9** (ordem do mapa de upgrades): a do registro, porque a do original é sorteada a cada execução.
+   - **10** (cache de `Biome.getTemperature`): sem cache, o cálculo a cada leitura, então a mesma posição em dois níveis do mar devolve valores que o original (primeiro valor) não devolveria.
+   - **11** (receitas complexas dos índices): `HashSet` do JDK com hash de identidade sorteado por id e por processo; só importa com duas receitas complexas casando a mesma entrada.
+   - **12** (arquivo de cliente): só as seções que o port lê (`sounds` e as posições das janelas), em `config/mekanism/client.toml`, com a pasta em minúscula.
+7. **O que não dá para testar com um cliente só.** O convidado de LAN (o clique do menu, a aba de xp, o reenvio dos tipos de upgrade no `/reload`, a contagem de silêncio por pacote, o transporte de tela de depois da parte 2 dos trackers), a sincronização da armadura com o menu aberto quando outro agente a muda, o espectador por `interact`
+   (o Horizon não abre a tela de um bloco para espectador) e os casos `*_reload` (o jogo não descarrega um tile sem o chunk, só o simulador os repete). E o clique do meio e o clique duplo, que o `horizon-ctl` não manda (só o esquerdo e o direito). Detalhe: [Inventário, "Clique do cursor"](#inventário-do-que-diverge-hoje) e [Fase 1, "Upgrades"](#fases).
+8. **A forma de onda do som do original não foi comparada.** A regra do usuário de 2026-11-08 (o jogo de teste nunca toca nas caixas dele; o áudio vai para um sink nulo) impediu gravar o original; os `.ogg` são byte a byte os do original, então só o ganho podia diferir, e o ganho do port foi medido (razões de 0,496 e 1,058). Detalhe: [Fase 1, "Som da máquina"](#fases).
+9. **A issue do Horizon do fim do port.** [docs/injecoes-horizon.md](injecoes-horizon.md) é a base dela, e só se abre ao final do port: hoje são 28 injeções cruas, 17 módulos e 30 hooks com estrutura privada (89 `[[injection]]`), e os pedidos H1 a H38.
+
 ### Spike de validação (2026-11-05)
 
 Rodado em jogo, no pin `f319701`, numa mudança descartável. Comparado com o original pela cena de `dev/referencia/testes/CenaCabo.java`.
@@ -165,8 +189,11 @@ do Mekanism servem de ponto de partida.
 
 Cada fase depende da anterior. Ao fechar uma fase, atualize o inventário abaixo.
 
-**Fase 1, base de tile.** *Estado (2026-11-07): em andamento. Feitos nas quatro máquinas e no Heat Generator: a base de tile, o `CachedRecipe` com erros e avisos na tela, upgrades,
-redstone, comparador, nome, som, luz, experiência, o clique do cursor, a capacidade de energia, o hopper e o ejetor (este só por comando). Falta o que está em "Falta na Fase 1" abaixo.*
+**Fase 1, base de tile.** *Estado (2026-11-08): em andamento, perto do fim, não fechada (fechar é do usuário, que tem pendências). A fase foi conferida inteira contra o código e os testes do `main` em 2026-11-08. Feitos nas quatro máquinas e no Heat Generator: a base de tile,
+o `CachedRecipe` com erros e avisos na tela, upgrades, redstone pelo aviso de vizinho, comparador, nome, som, luz, experiência, o clique do cursor, a capacidade de energia, o hopper, o ejetor (só por comando; a configuração é da Fase 2), os trackers do menu, o ar do gerador, as receitas por componentes e o cozimento do Smelter.
+**Ainda não cumpre "Pronto significa" em três pontos que não dependem do usuário, e são a próxima frente:** (1) o `bio_fuel` sem o componente `minecraft:cooking_fuel` (100 ticks no original), que o forno e o slot de combustível do Heat Generator recusam (inventário, "`bio_fuel` sem tempo de queima"); (2) a mensagem de receita incompleta no chat
+(`IncompleteRecipeScanner`, o item de receitas abaixo, "Descartes sem aviso"); (3) o carvão que não converte com ferro na entrada do Infuser, contra uma receita (`processing/iron/enriched`) que existe no conteúdo ("Fora: carbon e tin", abaixo). **Fora esses três, o que sobra espera decisão do usuário:** a seção "Esperando decisão do usuário (fim da Fase 1)", logo depois de "Decisões".
+O que a fase listava e pertence a outra fase foi movido para ela em 2026-11-08 (Fases 2, 3, 5 e 6, cada uma com o que já está feito e o que falta).*
 Porte de `TileEntityMekanism`, `TileEntityConfigurableMachine`, `TileEntityRecipeMachine`,
 `TileEntityProgressMachine` e `CapabilityTileEntity`: ordem do tick, `setActive` com seu atraso, controle de redstone, nome,
 comparador, som, upgrades, sincronização de tela (`MekanismContainer`). Inclui `CachedRecipe` completo, com `OperationTracker`,
@@ -200,7 +227,7 @@ O Horizon não simula inserção, então o ejetor transaciona numa cópia do viz
 `game/machines/native_items.rs`, dá a regra real de cada slot, que é privada ali: é o `isValid` do `ResourceHandler`. O rastro
 `chamber_eject_furnace` confere a regra sem o jogo, e em jogo forno e baú quase cheio deram o que o original dá. O ejetor ligado à configuração por instância (modo e lados) e o `TileEntityConfigurableMachine` que o guarda são da Fase 2 (movidos em 2026-11-08, lá está o que já se fez).
 
-Falta na Fase 1:
+Falta na Fase 1 (revisto em 2026-11-08: o que sobra sem depender do usuário está no estado da fase, acima; o resto da lista é o registro do que se fez, com o que saiu para outras fases marcado "movido"):
 
 - Receita de uso constante nas máquinas: **feito em 2026-11-07 para o Metallurgic Infuser.** `ItemChemicalConstantUsageRecipe`
   (`ItemStackConstantChemicalToObjectCachedRecipe`), o `ChemicalUsageMultiplier`, o `usedSoFar` e os handlers de fluido e de saída de
