@@ -84,7 +84,7 @@ químico que ela pede) nunca dá `NOT_ENOUGH_INPUT` nem `NOT_ENOUGH_SECONDARY_IN
 ela pede, e com velocidade 8, em ciclos de 5 ticks, e grava os erros que apareceram em cada caso: nenhum é de entrada. `redstone_pulse` põe PULSE por `setControlType`, pelo NBT e pelo componente do item nas
 quatro máquinas e no Heat Generator. `mods/mekanism/tests/warnings_trace.rs` e `mods/mekanismgenerators/tests/redstone_pulse.rs` os repetem. Copie o arquivo para
 `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois. A cena de telas ganhou `energia_depois=N` (a energia chega depois dos passos, fora do
-tick da máquina) e o roteiro `casos_avisos` de `cena_telas.py`; `so_oficial=1` marca o que só o original mostra. `oficial_fora.sh` aceita `LARGURA` e `ALTURA` (os prints do lote são de 1920 por 1080).
+tick da máquina) e o roteiro `casos_avisos` de `cena_telas.py`; `so_oficial=1` marca o que só o original mostra (hoje nenhum caso: o overlay do port saiu do `so_oficial` em 2026-11-08, com os data slots no `ServerTickEnd`). `oficial_fora.sh` aceita `LARGURA` e `ALTURA` (os prints do lote são de 1920 por 1080).
 Em jogo, `horizon2/h2_avisos.py capturar` e `montar` (com `H_NAME=horizon`) fazem o ciclo (entrada curta sem aviso, a entrada chega, o aviso de energia acende e apaga) em prints e vídeo com legenda.
 
 | Caminho | Conteúdo |

@@ -162,6 +162,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O overlay de nível >= 0,98 da barra de energia das quatro máquinas agora aparece: com o erro de energia ainda aceso (a máquina pausada, que não recalculou) e a energia que
+  chegou de fora do tick dela (um gerador encostado, ou a energia posta por comando), a barra cheia ganha o aviso listrado por cima do conteúdo e a aba de avisos aparece, como
+  no original (`GuiBar.java:70`). O original sincroniza os data slots da tela no `broadcastChanges`, no `ServerPlayer.tick` do tick seguinte, com o valor vivo de cada um, e o port
+  os escrevia no tick da máquina, antes de a energia chegar; agora os escreve no fim do tick do servidor (`server_tick`, fase `ServerTickEnd`), e a energia posta por `data merge`
+  não zera mais a barra até o tick seguinte. Sem injeção crua nova (um hook do catálogo com estrutura privada, ficha H33 em `docs/injecoes-horizon.md`).
 - Clicar numa aba lateral da tela de uma máquina (a de calor e a de energia do Heat Generator, a de upgrades e a janela dela) ou num slot fora da imagem com um item no
   cursor não solta mais o item: `GuiMekanism.hasClickedOutside` só chama de "fora" o que não está sobre um elemento ativo da tela, e o NeoForge nunca deixa um slot sob
   o mouse ser "fora". O Horizon olhava só o retângulo da imagem de 176 por 166 e soltava a pilha. As abas de energia, de avisos e de experiência das quatro máquinas

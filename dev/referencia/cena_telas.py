@@ -318,8 +318,8 @@ def casos_fora():
 # Os avisos que o `CachedRecipe` não acende (`NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT`: a entrada que não basta é receita que não casa, `mismatchedRecipe`, sem
 # erro) e o overlay de nível >= 0,98 da barra de energia (`GuiBar.drawBackground`), que só o erro de energia de uma máquina pausada alcança, quando a energia chega
 # fora do tick dela (`energia_depois`). `inativa=1`: a máquina não anda no estado, mesmo com energia e entrada (para a luz do mundo atrás da tela).
-# `so_oficial=1`: só o cliente oficial roda o caso. O port escreve os data slots da tela no fim do tick da máquina (`glue.rs`, `ScreenData`), então a energia que chega
-# depois dele, no mesmo tick, só aparece no tick seguinte, quando o erro já foi recalculado: o estado (barra cheia e erro velho aceso) não chega à tela do port.
+# `so_oficial=1`: só o cliente oficial roda o caso (hoje nenhum: o port escreve os data slots no `ServerTickEnd`, como o `broadcastChanges` do original os lê, e mostra
+# o estado do overlay; antes de 2026-11-08 ele os escrevia no tick da máquina e o estado não chegava à tela do port).
 FERRO = "raw_iron"
 
 
@@ -338,9 +338,9 @@ def casos_avisos():
         caso("chamber_ferro_sem_energia", "chamber", energia="0", entrada=f"{FERRO}:3", passos="5"),
         # O overlay: velocidade 8 (consumo 500, capacidade 10000), energia 400 (erro aceso, máquina pausada), e 9999 que chega depois do tick: a barra a
         # 99,99 % com o erro velho aceso. O controle tem a mesma barra sem erro.
-        caso("chamber_overlay_erro_velho", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9999", inativa="1", so_oficial="1"),
+        caso("chamber_overlay_erro_velho", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9999", inativa="1"),
         caso("chamber_overlay_sem_erro", "chamber", upgrades="speed:8", energia="9999", entrada="coal:2", passos="5", inativa="1"),
-        caso("chamber_overlay_abaixo", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9000", inativa="1", so_oficial="1"),
+        caso("chamber_overlay_abaixo", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9000", inativa="1"),
     ]
 
 
@@ -535,6 +535,11 @@ def monta_port(c, x, escala):
     passos = passos_do_port(c)
     comando(f"tick step {passos}")
     ctl("wait", str(passos + 4))
+    if "energia_depois" in c["args"]:
+        # A energia chega depois dos passos, fora do tick da máquina, como no `CenaTelas`: o `data merge` muda a energia que o tile guarda e o
+        # `ServerTickEnd` seguinte (o servidor parado também tica o fim do tick) a leva aos data slots, com o erro velho ainda aceso.
+        comando(f"data merge block {pos} {{energy:{int(c['args']['energia_depois'])}}}")
+        ctl("wait", "6")
     return x
 
 
