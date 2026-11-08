@@ -243,8 +243,8 @@ posição e por id de bloco. O que passa de `i32::MAX` fica em `i32::MAX` e vai 
 
 A tela dos upgrades usa estes slots assim: dois slots a mais no `ModContainer`, depois dos da máquina, ligados aos slots do componente
 como o glue liga a entrada e a saída (`slot_from_entity` antes do tick, `slot_to_entity` depois), e a aba lê o progresso e os totais por
-data slots (`UpgradeWindowSpec`: só dados, e `Game::mb_window_register` com as duas funções que o mod dá, tirar um upgrade e pôr da mão).
-O `ItemUpgrade.useOn` e a limpeza da seleção de quem sai do menu são da lib e valem para todo bloco registrado.
+o espelho do menu (`UpgradeWindowSpec`: só dados, e `Game::mb_window_register` com as funções que o mod dá, tirar um upgrade, pôr da mão e a fonte dos dados do menu).
+O `ItemUpgrade.useOn` e a limpeza da sessão de quem sai do menu são da lib e valem para todo bloco registrado.
 
 Um tile sem objeto vivo (o Heat Generator, que lê e grava tudo no NBT a cada tick) refaz o componente a cada tick com `upgrade::rebuild`: o
 NBT (`deserialize`), o que a memória levava (`UpgradeTransient`: `upgradeTicks` e `canCheckUpgrades`, que o Java não salva) e os dois slots
@@ -260,9 +260,19 @@ e `stop_tracking` são os da lista específica da janela de upgrades (reaproveit
 de pedir de novo sem parar). O valor vivo vem de um `TrackedSource`.
 
 `tile_trackers.rs` tem a ordem que as classes de tile do Mekanism dão à lista (`TileEntityMekanism`, `TileEntityRecipeMachine`,
-`TileEntityProgressMachine`, a janela de upgrades) com as fontes `source::*`; as máquinas acrescentam as delas a partir de `source::MOD`.
-`machine_sync.rs` lê esses valores de uma `ProgressMachine`, e `last_energy.rs` é o `LastEnergyTracker` (o que a capability de energia
-entregou no tick anterior). Nada disso troca o transporte: o jogo ainda manda data slots (veja o item `MekanismContainer` do plano).
+`TileEntityProgressMachine`, a janela de upgrades) com as fontes `source::*`; as máquinas acrescentam as delas a partir de `source::MOD`, e
+`position_of` acha a posição de uma fonte na lista (o cliente e o servidor combinam posições só por ela). `machine_sync.rs` lê esses valores de
+uma `ProgressMachine` e lê de volta o mapa de upgrades (`read_upgrade_map`), e `last_energy.rs` é o `LastEnergyTracker` (o que a capability de
+energia entregou no tick anterior).
+
+O transporte (2026-11-08) é o do original, um pacote por jogador. No servidor, `window_session::Sessions` guarda um `ContainerSync` por (contêiner,
+jogador): a sessão nasce quando o jogador abre o menu (`Game::mb_container_open`, que manda tudo) e é largada quando ele deixa de ter o menu
+daquele bloco (`mb_container_recount`); `mb_container_broadcast`, no começo do tick do servidor, lê o valor vivo que o dono do bloco entrega
+(`SourceFn`, dada em `mb_window_register`) e manda a cada sessão só o sujo; o número de sessões de um bloco é o `playersUsing` do tile
+(`mb_container_players`, espectador incluso). No cliente, `container_sync::ContainerMirror` (`Mirror`) é o `trackedData` do cliente: um
+espelho por posição, que entrega cada `Property` à posição dela pela classe do dado (`apply`, o `handleWindowProperty`) e que a tela lê
+(`boolean`, `int`, `long`, `double`, `enum_ordinal`, `stack`, `bytes`; `Game::mb_mirror(bloco)`). O pacote (`container_sync::wire`) viaja no canal
+`machinery_basis:container`; o registro de recursos (cor e sprite dos químicos, que o cliente resolve pelo id) no canal `machinery_basis:resources`.
 
 ### Unidade de temperatura
 
@@ -272,8 +282,7 @@ A unidade que o cliente escolhe é o `MekanismConfig.local.tempUnit`: `LocalUnit
 `temperatureUnit`, o nome do enum), relê o arquivo quando a data dele muda (no máximo uma olhada por segundo, porque o desenho pergunta
 a cada quadro) e grava o clique sem tocar nas outras chaves. O mod escolhe o namespace, os sprites (`tab/heat_info_<getTabName>`) e os
 textos de idioma; o clique que troca a unidade usa `screen_mouse_button_pressed_pre`, que toma o clique sem o som nem o pacote do
-`screen_click`. Um `double` que a tela precisa (o calor e as duas perdas do Heat Generator) viaja em quatro data slots
-(`data_slots::split_f64` e `join_f64`).
+`screen_click`. Um `double` que a tela precisa (o calor e as duas perdas do Heat Generator) viaja inteiro, como um `SyncableDouble`.
 
 ### Barra de armadura e mão
 
@@ -291,13 +300,13 @@ vínculo, o `onEquipItem` do clique). A lib faz o que o motor não faz: a lista 
 `hasClickedOutside` de soltar o item do cursor (`GuiElement.isMouseOver` exige `active && visible`). A lib não conhece nenhum id: o mod declara, uma vez por tipo de menu, uma lista de `Element`.
 
 - `Element::always(rect)`: um retângulo (relativo ao canto da tela) sempre ativo e visível (`GuiEnergyTab`, `GuiHeatTab`).
-- `Element::when(rect, |state: &[i32]| -> bool)`: o mesmo com uma condição que lê os data slots que o servidor sincroniza para a tela (a aba de xp só com o upgrade, a de avisos só com algum aviso). A condição
+- `Element::when(rect, |state: &Mirror| -> bool)`: o mesmo com uma condição que lê o espelho do menu que o servidor sincroniza para a tela (a aba de xp só com o upgrade, a de avisos só com algum aviso). A condição
   roda fora da trava do registro.
 - `declare(menu, elements)`, `declare_once(menu, || elements)`, `declared(menu)` e `over_element(menu, at, state)`. O registro é um só por processo.
 
 O que é do elemento e o que não é: o retângulo de uma aba inset (`GuiInsetElement`) é o botão de dentro (18 por 18), não o suporte de 26 por 26 (`side_tab::InsetTab::button`); os `GuiSlot` e o `GuiSideHolder`
 são inativos e não contam. A aba de upgrades e a janela dela são da `window` (`mb_window_over`), e os slots da barra de armadura são de `armor_bar::over_slot`; a injeção `bar_clicked_outside` junta os três
-(`mb_bar_over_element`) com os data slots da tela aberta (`mb_screen_data`).
+(`mb_bar_over_element`) com o espelho da tela aberta (`mb_open_mirror`).
 
 ## Fora da lib
 
@@ -324,7 +333,7 @@ Quando elas chegarem, boa parte do `glue.rs` deve encolher, por isso a lib mant�
 
 ## Ordem
 
-1. **`core`:** recursos, tanque, lados, a base de máquina de progresso, codec de data slots e índice de receitas.
+1. **`core`:** recursos, tanque, lados, a base de máquina de progresso, o menu sincronizado (`container_sync`) e índice de receitas.
 2. **`glue.rs`:** salvar tanques no NBT, distribuir energia e ejetar.
 3. **Telas:** barra, medidor e seta, com a primeira tela real.
 4. **Rede:** cabo de energia, depois tubo de fluido e de químico.

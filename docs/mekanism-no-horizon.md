@@ -172,12 +172,11 @@ Tomadas em 2026-11-05:
 
 ## Janela de upgrades: o que o Horizon faz diferente
 
-- **Sincronização.** No Java, `upgradeTicks` e o mapa de upgrades só viajam para quem abriu a janela (`startTracking` por jogador). Os
-  data slots do Horizon são por bloco, então o menu leva 9 data slots a mais (`upgradeTicks` e uma contagem por tipo, na ordem do
-  registro) e o servidor só escreve valores neles enquanto algum jogador acompanha (`CONTAINER_TRACK_UPGRADES` sem `STOP`); no resto do
-  tempo eles ficam em zero e não geram tráfego. Diferença visível: nenhuma. Diferença de tráfego: com a janela aberta para um jogador,
-  todos os que olham o mesmo bloco recebem os 9 valores quando mudam, e o Java mandaria só a quem abriu. Um segundo `TRACK` sem `STOP`
-  deixa o acompanhamento ligado depois do `STOP`, como o contêiner do Java faz (rastros `*_container_tracking`).
+- **Sincronização.** No Java, `upgradeTicks` e o mapa de upgrades só viajam para quem abriu a janela (`startTracking` por jogador). Desde
+  2026-11-08 o port faz o mesmo: o menu de cada jogador é um `ContainerSync` com a lista do bloco, o pedido da janela
+  (`CONTAINER_TRACK_UPGRADES`) acrescenta os dois dados dela ao fim da lista dele, e o pacote por jogador (`PacketUpdateContainer`) leva só
+  o que mudou. Quem não abriu a janela não recebe nada dela. Um segundo `TRACK` sem `STOP` deixa o acompanhamento ligado depois do
+  `STOP`, como o contêiner do Java faz (rastros `*_container_tracking`).
 - **Ordem da lista.** O Java lista `Object2IntOpenHashMap.keySet()`, ordem de hash de objetos sem `hashCode` próprio, ou seja, não
   definida. A lista aqui segue a ordem do registro (por id).
 - **Dados do cliente.** Os tipos e as tags de upgrade são lidos onde a carga de dados roda, e um cliente de outro processo (convidado
@@ -187,9 +186,11 @@ Tomadas em 2026-11-05:
   `net_from_server` na fonte `sync`. `datapack_sync` não serve: ele leva só receitas. Medido em jogo com dois clientes (2026-11-06): o
   convidado vê a lista e os ícones de "Supported:". Limite: a fonte `sync` fica até o próximo envio, então um cliente que sai de um
   servidor e abre um mundo local carrega os tipos do servidor antigo até a primeira carga local (os tipos vêm dos mesmos arquivos do
-  mod). Os 9 data slots do `upgradeTicks` e do mapa ficam: o envio por jogador só pouparia o tráfego de quem não abriu a janela.
+  mod). O mesmo vale para os químicos: o cliente resolve o id de um tanque pelo registro de recursos, e o servidor o manda no canal
+  `machinery_basis:resources`.
 - **Um tick de atraso.** O cliente do original mostra o progresso de instalação de um tick atrás (medido: o print do original com 10
-  passos é igual ao do port com 9). O port escreve nos data slots o valor do tick anterior (`upgrade_sync_seen`).
+  passos é igual ao do port com 9). É o `broadcastChanges` do tick seguinte lendo o valor vivo, que o port também faz agora (o atraso
+  antes escrito à mão, `upgrade_sync_seen`, saiu).
 
 ## Lib compartilhada
 

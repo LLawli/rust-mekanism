@@ -19,17 +19,17 @@ Contagem em 2026-11-08, sobre os `horizon-mixin.toml` (conferência na [próxima
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
 | `[[injection]]` no total | 84 | |
-| Hook do catálogo, usado só com o contrato dele | 27 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 31 | sim |
-| Injeção crua (`target = ...`) | 26 | sim |
+| Hook do catálogo, usado só com o contrato dele | 26 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 30 | sim |
+| Injeção crua (`target = ...`) | 28 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 16 | sim |
 
-27 + 31 + 26 = 84. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-57 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+26 + 30 + 28 = 84. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+58 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 26 | 16 | 31 |
+| Em uso | 28 | 16 | 30 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -75,9 +75,11 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 | H31 barra de armadura e mão no tipo de menu (`armorSideBar`) | dado + hook | `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_menu_slot`, `bar_machine_menu`, `bar_quick_move`, `bar_answer_click`, `bar_resend_menu` e os módulos `armor-bar`, `bar-menu`, `bar-machine`, `bar-hub`, `bar-quick-move` | em uso (8 injeções, 5 módulos) |
 | H32 elementos da tela fora da imagem (`hasClickedOutside`) | dado | `bar_clicked_outside` | em uso (1) |
-| H33 `menu_data_sync` | hook | `server_tick` (fase `ServerTickEnd`) do `mekanism`, que entra em cada nível por `enter_level` para escrever `entity.data` | em uso (1) |
+| H33 `menu_data_sync` | hook | `server_tick` (fase `ServerTickStart`) da `machinery_basis`, que entra em cada nível por `enter_level` para ler o valor vivo e mandar o pacote do menu | em uso (1) |
 | H34 `neighbor_changed` v2 | hook | `flush_signals` (cru, HEAD de `Game::flush_spill`) | em uso (1) |
 | H35 `block_entity_changed` | hook | `container_changed` (cru, HEAD de `Game::container_changed`) | em uso (1) |
+| H36 `mod_container_viewers` v2 | hook | `container_viewers` (cru, HEAD de `Game::tick_mod_container_viewers`) | em uso (1) |
+| H37 `block_entity_energy_inserted` | hook | `energy_store` (cru, HEAD de `Game::native_energy_store`) | em uso (1) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -118,18 +120,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 37 | 19 | 18 | 12 |
-| `mods/mekanism/native/horizon-mixin.toml` | 31 | 25 | 6 | 2 |
+| `mods/machinery_basis/horizon-mixin.toml` | 38 | 19 | 19 | 12 |
+| `mods/mekanism/native/horizon-mixin.toml` | 30 | 23 | 7 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 16 | 14 | 2 | 2 |
-| Total | 84 | 58 | 26 | 16 |
+| Total | 84 | 56 | 28 | 16 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 26 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 28 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `container_viewers`, `energy_store`, `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 42 nomes distintos de `hook` (eram 41 antes do `neighbor_changed`, 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
 
-Dos 58 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, os 10 da janela de upgrades (`window_*`, com o `window_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` do `mekanism` (os data slots no fim do tick do servidor, 2026-11-08) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 56 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 26 não: 4 em `machinery_basis`, 14 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 30 com estrutura privada são os 7 de antes, os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (26)
+## Injeções cruas em uso (28)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -396,9 +398,9 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
     `super.hasClickedOutside(..) && findElementOver(..) == null`, e o NeoForge acrescenta `if (slot != null) clickedOutside = false`
     (`AbstractContainerScreen.mouseClicked`). O Horizon dá a vez a "fora" sobre um slot (`container_screen::Target::of`, a regra do vanilla), e o retângulo da
     imagem tem 176 de largura: um clique sobre um slot da barra (x -21 a -3) ou sobre uma aba lateral com um item no cursor soltava o item. O HEAD responde falso
-    sobre um elemento ativo da tela: os quadros dos slots da barra (`armor_bar::over_slot`), os elementos que o mod declarou em `screen_elements` e que estão ativos com os
-    data slots de agora (`GuiHeatTab` e `GuiEnergyTab` do gerador; `GuiEnergyTab`, `GuiWarningTab` e o botão da `GuiXpContainmentTab` das quatro máquinas, as duas últimas condicionais), e a
-    aba de upgrades e a janela dela, que a lib sabe. O helper lê os data slots de `mod_screen.data`, privado de `native_hooks.rs`, por um método do módulo `windows` (`mb_screen_data`), que é
+    sobre um elemento ativo da tela: os quadros dos slots da barra (`armor_bar::over_slot`), os elementos que o mod declarou em `screen_elements` e que estão ativos com o
+    espelho do menu de agora (`GuiHeatTab` e `GuiEnergyTab` do gerador; `GuiEnergyTab`, `GuiWarningTab` e o botão da `GuiXpContainmentTab` das quatro máquinas, as duas últimas condicionais), e a
+    aba de upgrades e a janela dela, que a lib sabe. O helper lê o espelho do menu do cliente (que o módulo `windows`, filho de `native_hooks.rs`, guarda), por um método dele (`mb_open_mirror`), que é
     filho dele: nenhuma injeção nova, e a contagem não muda. O suporte (`GuiSideHolder`) e o `GuiSlot` têm `active = false` (`GuiSideHolder.java`, `GuiSlot.java:91`), então a margem deles continua "fora".
     Cursor com 5 de terra e um clique em cada aba, no jogo (`horizon`, 2026-11-07): antes soltava o item, depois fica (o gerador, e as quatro máquinas em 16 estados, com o botão direito também).
 - **Java:** `MekanismContainer.java:231,278-330` (`addArmorSlots`, `quickMoveStack`), `ArmorSlot.java`, `OffhandSlot.java`,
@@ -445,6 +447,33 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
 - **Risco:** renomear `container_changed` ou mudar a posição (`Pos`) quebra o build.
 - **Conferido em jogo** (2026-11-08, `horizon`): `chamber_output_signal` (um baú vizinho que muda, e uma máquina vizinha que muda o comparador) dava 99 diferenças em 226 leituras sem a injeção e 0 com ela; `heat_output_signal` 0.
 
+### `container_viewers` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client::game::native_hooks::Game<'_>::tick_mod_container_viewers` (`native_hooks.rs:9788`), HEAD. **Proposta:** H36.
+- **Helper:** `mods/machinery_basis/container_viewers.rs` chama `Game::mb_container_recount`, que larga a sessão de menu de todo jogador que não tem mais o menu do bloco
+  (`Sessions::retain_players` sobre `open_container`: `game.container` e `game.lan.hub.guests[].menu`).
+- **Por que é necessária:** o `playersUsing` do Java conta quem tem o menu do bloco aberto, o espectador inclusive (`MekanismTileContainer.openInventory` chama `tile.open(inv.player)` sem olhar o modo de
+  jogo; o `PacketTileButtonPress` e o clique de um espectador abrem o menu), e a checagem de erros da receita depende dele (`shouldRecheckAllErrors`, `TileEntityRecipeMachine.java:198`). O hook
+  `mod_container_viewers` conta os convidados que não são espectadores (`!g.spectator()`, `tick_mod_container_viewers`, o `BarrelBlockEntity.startOpen`) e só avisa quando essa contagem muda, então não vê o
+  espectador, nem a saída dele. A conta é refeita aqui, uma vez por tick na mesma fase (as entidades, antes dos block entities), com o menu que cada jogador tem agora; a abertura é o hook `container_opened`.
+- **Hook mais próximo:** `mod_container_viewers` v1 (`viewers`, `previous`), que deixou de ser usado nos dois mods.
+- **Hook proposto:** H36 `mod_container_viewers` v2: a lista de jogadores (`uuid`) com o menu do bloco aberto, os espectadores inclusive e marcados, em vez da contagem. Elimina esta injeção.
+- **Risco:** renomear `tick_mod_container_viewers` ou mudar quem a chama quebra o build. O jogo só a chama com o mundo andando (`running`), e com o servidor parado o `server_tick` (`ServerTickStart`, `world_running` falso) faz a mesma conta a cada passada, porque o Java a faz quando o menu fecha.
+- **Conferido em jogo** (2026-11-08, `horizon`): ver o item `MekanismContainer` do plano (espectador e `shouldRecheckAllErrors`).
+
+### `energy_store` (mekanism)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client::game::machines::native_energy::Game<'_>::native_energy_store` (`native_energy.rs:82`), HEAD. **Proposta:** H37.
+- **Helper:** `mods/mekanism/native/energy_store.rs` chama `mekanism_glue::energy_stored(game, pos, energy)`: se o tile em `pos` é uma máquina e o valor subiu, a diferença entra no `LastEnergyTracker` do
+  objeto vivo (`ProgressMachine::energy_received`, no `game_time` do jogo).
+- **Por que é necessária:** `lastEnergyReceived` (`TrackingEnergyHandler.insert` -> `LastEnergyTracker.received`) é um dado do menu (`trackLastEnergy`, `TileEntityMekanism.java:967-972`) e entra na conta de
+  `getInputRate`. A energia entra nas máquinas por `native_energy_insert` e `native_move_energy`, e as duas terminam em `native_energy_store`, que grava o valor novo no tile: nenhum hook do catálogo
+  avisa a inserção, e o `ModEnergyBuffer` é um dado, sem lugar para um observador.
+- **Hook mais próximo:** nenhum.
+- **Hook proposto:** H37 `block_entity_energy_inserted` (`listen`): `dimension`, `pos`, a face e a quantidade que de fato entrou.
+- **Risco:** renomear `native_energy_store` ou fazer outro caminho gravar `energy` sem passar por ele (ainda não existe) deixa o `lastEnergyReceived` em zero, sem erro.
+- **Conferido em jogo** (2026-11-08, `horizon`): ver o item `MekanismContainer` do plano.
+
 ## Hooks do catálogo com estrutura privada
 
 Os 31 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
@@ -468,7 +497,6 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `window_scroll` (basis) | `screen_mouse_scrolled_pre` | `game.mod_screen`, `game.renderer` | H9 |
 | `window_net` (basis) | `net_from_client` | `game.lan.hub.guests`, `hide_menu_slots` e `play.crafting.machine` do menu de LAN, `game.container`, `game.world.block_entities` | H12 |
 | `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
-| `window_viewers` (basis) | `mod_container_viewers` | `game.container` e `game.lan.hub.guests`, pelo `prune` do módulo `machinery_basis_windows`: larga a janela escolhida de quem saiu do menu sem fechá-lo | H12 |
 | `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a câmera | H19 e H8 |
 | `place_block` (mekanism) | `place_block` | `game.world.block_entities.get_mut`, `game.world.modified` | H8: `mod_block_entity`, `change_mod_block_entity` |
 | `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou: o Horizon já o tirou do mundo quando rola a tabela de um jogador, então o nome vem do que `destroy_block` guardou) | H8: `mod_block_entity`; `NativeLootDrops` sem o block entity é o buraco: `block_entity: Option<&Tag>` resolve |
@@ -479,14 +507,14 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `place_block`, `loot_drops`, `container_opened` e `destroy_block` (mekanismgenerators) | os mesmos | os da linha de `place_block` etc. do `mekanism`: `game.world.block_entities` e `game.world.modified`, pelas funções `name_*` da `machinery_basis` | H8: `mod_block_entity`, `change_mod_block_entity` e `block_entity` em `NativeLootDrops` |
 | `menu_button` (mekanism) | `menu_button` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), para a aba de xp (`COLLECT_XP`) dar a experiência ao jogador que clicou; e, para `ServerPlayer.awardRecipes` + `triggerRecipeCrafted`, `game.level.recipe_book.add_recipes`, `game.recipe_unlocked`, `game.trigger_recipe_crafted` e a macro `world_stations!` (o livro de receitas e os critérios de `advancements.rs`) | H8: `award_experience(at, points)` e `award_recipes(player, recipes, items)` |
 | `neighbor_changed` (basis) | `neighbor_changed` | `level.native_state_block(state)` (a que bloco o estado pertence: o hook só dá o id do estado), e a fila estática da `machinery_basis` que `flush_signals` esvazia | H34: o nome do bloco no hook, ou o sinal dos vizinhos lido dentro do aviso |
-| `server_tick` (mekanism) | `server_tick` | `game.world.block_entities.get_mut` (escreve `entity.data`, os data slots que o Horizon manda ao menu aberto), e, pelo `mb_in_levels` da `machinery_basis` (módulo `glue`), `game.levels_to_tick`, `game.enter_level` e `game.dim`, porque no `ServerTickEnd` só o último nível está no lugar | H33: um hook que o hub chame logo antes de comparar `entity.data` com o que mandou (`sync_container_data`), com o bloco do nível certo |
+| `server_tick` (basis) | `server_tick` | `game.world.block_entities.get` (o id do bloco do menu), os campos privados que os `SourceFn` dos mods leem do mundo, e, pelo `mb_in_levels` da `machinery_basis` (módulo `glue`), `game.levels_to_tick`, `game.enter_level` e `game.dim`, porque no começo do tick só o último nível está no lugar; e `native_net_send_to_player` (`pub(super)` do `game`) | H33: um hook que o hub chame na fase das entidades, com o bloco do nível certo, e um helper de envio ao jogador |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
 os dois primeiros; `ItemUpgrade.useOn` (`ItemUpgrade.java:28-45`) para o `use_item_on` da `machinery_basis` (o Mekanism e o Heat Generator); `MekanismRecipeType.java:334` e
 `TileEntityEnergizedSmelter.java:26` para a receita de cozimento que vem do `RecipeType.SMELTING` do jogo;
 `TileEntityHeatGenerator.java:111`, `MekanismUtils.getBurnTime` (`MekanismUtils.java:469-478`) e `HeatAPI.getAmbientTemp`
 (`HeatAPI.java:42-46`, que chama `Biome.getTemperature(pos, seaLevel)`) para o gerador; `MekanismContainer.broadcastChanges` (`MekanismContainer.java:647-667`) e
-`ServerPlayer.tick` (`ServerPlayer.java:598-606`) para o `server_tick` (H33).
+`ServerPlayer.tick` (`ServerPlayer.java:598-606`) para o `server_tick` (H33), e `MekanismTileContainer.openInventory` e `closeInventory` (`MekanismTileContainer.java:53-62`) para o `container_viewers` (H36).
 
 Por que cada um existe em vez de usar helper que já há:
 
@@ -537,7 +565,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 
 | Módulo | Arquivo alvo | Para quê | Precisa de |
 |---|---|---|---|
-| `glue` (machinery_basis) | `game.rs` | liga a lib ao jogo: tudo `pub(in crate::game)`. `Game::mb_in_levels` (2026-11-08) roda uma ação em cada nível ticado com o nível no lugar, para o `ServerTickEnd`: usa `levels_to_tick`, `enter_level` e `Dim`, privados de `levels.rs` e `game.rs` | H8, H33 e o que está em [Dependências a vigiar](#dependências-a-vigiar) |
+| `glue` (machinery_basis) | `game.rs` | liga a lib ao jogo: tudo `pub(in crate::game)`. `Game::mb_in_levels` (2026-11-08) roda uma ação em cada nível ticado com o nível no lugar, para o `ServerTickStart`: usa `levels_to_tick`, `enter_level` e `Dim`, privados de `levels.rs` e `game.rs` | H8, H33 e o que está em [Dependências a vigiar](#dependências-a-vigiar) |
 | `glue` (mekanism) | `game.rs` | liga as máquinas e a tela: 1.596 linhas | idem |
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 280 linhas | idem |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
@@ -620,8 +648,8 @@ Decisões que o código tem e o spike não tinha:
 - **Esc.** `GuiMekanism.keyPressed` (`:577-585`) pergunta a cada janela: a que não está fixa fecha e consome a tecla; fixa, a tecla
   segue e a tela fecha (`GuiWindow.keyPressed`, `:152-162`).
 - **Seleção por jogador no servidor.** `net_from_client` guarda a escolha por (contêiner, jogador) e esconde os slots virtuais no menu
-  de quem está sem janela. Quem sai sem avisar é largado em `mod_container_viewers` (`prune`): o hook de jogador (`player_container_close`)
-  não dispara para o anfitrião, e a contagem do `mod_container_viewers` dispara para os dois casos.
+  de quem está sem janela. Quem sai sem avisar é largado em `tick_mod_container_viewers` (`recount`, injeção `container_viewers`; até 2026-11-08 era o hook `mod_container_viewers`): o hook de jogador (`player_container_close`)
+  não dispara para o anfitrião.
 - **Posição.** Fica no cliente, em `config/<ns>/client.toml`, tabela `[window.upgrade]` com `x`, `y` e `pinned`, gravada em `close()`
   e lida na primeira janela: persiste entre sessões como o `lastWindowPositions` do `ClientConfig` (`ClientConfig.java:59,145-158`),
   que o NeoForge grava em `config/mekanism/client.toml`.
@@ -1028,7 +1056,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 ### H31 barra de armadura e mão no tipo de menu
 
 - **Lado:** servidor e cliente. **Tipo:** dado, no JSON do tipo de menu (`data/<id>/horizon/menu/`), mais o que o motor já tem.
-- **O que faz:** `{ "slots": 4, "data_slots": 27, "armor_bar": { "x": -20, "y": 11, "offhand_offset": 0 } }`. O `Menu::new(Kind::Mod)` põe, depois dos 36 do inventário,
+- **O que faz:** `{ "slots": 4, "armor_bar": { "x": -20, "y": 11, "offhand_offset": 0 } }`. O `Menu::new(Kind::Mod)` põe, depois dos 36 do inventário,
   quatro `Role::Armor` (a cabeça primeiro, sobre os índices 39 a 36 do jogador) e a mão (índice 40), como o `Kind::Inventory` já faz; a tela de mod põe os ids 500 a
   504 nessas posições, o `menu_slot` os mapeia, o hub os sincroniza com a resposta do clique e o `native_menu_quick_move` os recebe como origem, com `mayPickup` conferido antes.
   `offset` ausente ou -1 deixa a mão fora (`armorSideBar(x, y)`).
@@ -1047,16 +1075,19 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 ### H33 `menu_data_sync`
 
 - **Lado:** servidor. **Tipo:** hook, `listen`, por bloco de mod com menu aberto.
-- **O que faz:** o hub o chama logo antes de `sync_container_data` (`lan/containers.rs:859`) comparar `ModBlockEntity.data` com o último valor enviado a cada jogador
-  com o menu do bloco aberto, com a posição e a dimensão, e o mod escreve nos data slots o valor vivo. É o que o `AbstractContainerMenu.broadcastChanges`
-  (`AbstractContainerMenu.java:197-215`, chamado pelo `ServerPlayer.tick`, `ServerPlayer.java:606`, na fase das entidades, antes dos block entities) faz com cada `DataSlot` e o
-  `MekanismContainer.broadcastChanges` (`MekanismContainer.java:647-667`) com cada `ISyncableData`: lê o campo na hora de mandar, e não o que o bloco escreveu no próprio tick. O quadro que o cliente recebe é o estado do fim do tick
-  anterior, com a energia que chegou depois do tick da máquina e o erro que ela ainda não recalculou (o overlay de nível >= 0,98 da barra de energia, `GuiBar.java:70`, depende disso).
-- **Hoje:** o port escreve `entity.data` no `server_tick`, fase `ServerTickEnd`, de cada máquina viva (`server_tick_end`, `glue.rs` do Mekanism), e o `tick_lan` do tick seguinte o manda, antes dos block entities.
-  O estado é o mesmo que o do Java, com uma diferença sem efeito medido: o que um pacote do jogador muda entre o `ServerTickEnd` e o `tick_lan` do tick seguinte (o Horizon o drena em `tick_world`, antes do `tick_lan`; o Java o drena na conexão, também antes do `broadcastChanges`) só chega ao quadro no fim desse tick. Pede estrutura privada porque
-  no `ServerTickEnd` só o último nível está no lugar: `Game::mb_in_levels` entra em cada nível (`enter_level`, como `close_idle_levels`) para alcançar `world.block_entities`.
-- **Exemplo:** `fn menu_data_sync(&mut self, dimension: &str, pos: [i32; 3], data: &mut Vec<i32>)`: o mod lê o objeto vivo e devolve os data slots, sem trocar de nível.
-- **Risco do que existe hoje:** renomear ou mudar a assinatura de `levels_to_tick`, `enter_level`, `Dim` ou `world.block_entities`.
+- **O que faz:** o hub o chama na fase das entidades (onde o `ServerPlayer.tick` chama o `broadcastChanges`), uma vez por jogador com o menu de um bloco de mod
+  aberto, com a posição e a dimensão, e o mod devolve o valor vivo de cada dado sincronizado (ou os pacotes que mandaria). É o que o `AbstractContainerMenu.broadcastChanges`
+  (`AbstractContainerMenu.java:197-215`, chamado pelo `ServerPlayer.tick`, `ServerPlayer.java:606`, antes dos block entities) e o `MekanismContainer.broadcastChanges`
+  (`MekanismContainer.java:647-667`) fazem com cada `ISyncableData`: lê o campo na hora de mandar, e não o que o bloco escreveu no próprio tick. O estado que o cliente recebe
+  é o do fim do tick anterior, com a energia que chegou depois do tick da máquina e o erro que ela ainda não recalculou (o overlay de nível >= 0,98 da barra de energia,
+  `GuiBar.java:70`, depende disso).
+- **Hoje (2026-11-08, parte 2 dos trackers):** o hook `server_tick` da `machinery_basis` roda `Game::mb_container_broadcast` no `ServerTickStart` (a cada passada, também com o servidor parado,
+  onde o jogador continua andando): para cada sessão de menu entra no nível do bloco (`Game::mb_in_levels`), pede ao dono do bloco o valor vivo (`SourceFn`) e manda o `ContainerSync` do jogador,
+  um pacote por jogador, por `native_net_send_to_player`; o `tick_lan` do mesmo tick o leva ao cliente, antes dos block entities. O estado é o mesmo que o do Java, e o que um pacote do jogador muda
+  antes do `ServerTickStart` entra no quadro. Pede estrutura privada porque no começo do tick só o último nível está no lugar (`levels_to_tick`, `enter_level`) e porque o `SourceFn` lê
+  `world.block_entities`.
+- **Exemplo:** `fn menu_data_sync(&mut self, player: u128, dimension: &str, pos: [i32; 3]) -> Option<Vec<u8>>`: o mod devolve os bytes do pacote de atualização desse jogador.
+- **Risco do que existe hoje:** renomear ou mudar a assinatura de `levels_to_tick`, `enter_level`, `Dim` ou `world.block_entities`; o canal de mod limita a 32 mensagens por jogador por tick.
 
 ### H34 `neighbor_changed` v2
 

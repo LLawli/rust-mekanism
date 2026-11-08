@@ -135,6 +135,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Changed
 
+- A tela das cinco máquinas (as quatro de progresso e o Heat Generator) recebe os dados do servidor como o `MekanismContainer` do original: um pacote por jogador com só o que mudou
+  (`PacketUpdateContainer`), lido por um espelho do menu no cliente, no lugar dos data slots de 16 bits. A janela de upgrades acrescenta os dados dela só ao menu de quem a abriu, o
+  atraso de um tick dos upgrades na janela acabou (o servidor lê o valor vivo), e o cliente de outro processo resolve o químico do tanque pelo registro de recursos que o servidor
+  manda. Um espectador com a tela de uma máquina aberta passa a contar como jogador olhando (`playersUsing`), e a máquina refaz a checagem de erros da receita enquanto ele olha.
+  `lastEnergyReceived` passa a contar a energia que entra pela capability em jogo (injeção `energy_store`), e o Heat Generator guarda `redstoneLastTick` no fim do tick. Duas injeções
+  cruas novas (`container_viewers` e `energy_store`) e o hook `mod_container_viewers` deixou de ser usado (`docs/injecoes-horizon.md`).
 - O bloco aceso das quatro máquinas emite luz 8, como `Attributes.ACTIVE_LIGHT` (`Machine.java:26`), e não 13 do gabarito `minecraft:furnace`; o Heat Generator
   segue em 13 (`ACTIVE_MELT_LIGHT`) e apagado emite 0. Injeção crua `active_light` (`properties.light` é um inteiro por bloco, H18).
 
