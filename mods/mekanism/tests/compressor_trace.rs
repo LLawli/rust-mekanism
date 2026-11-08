@@ -3,8 +3,9 @@
 //! faz o gasto alcançar o total, a energia que acaba e o item que vira osmium.
 //!
 //! A máquina é montada aqui, só com o que a lib entrega (`CachedRecipe`, o monitor, os contêineres e a receita de uso
-//! constante), como o `TileEntityAdvancedElectricMachine` monta: o `ProgressMachine` do core ainda não escolhe a receita de uso
-//! constante, que é o glue que o diz.
+//! constante), como o `TileEntityAdvancedElectricMachine` monta: o Osmium Compressor ainda não existe como máquina portada
+//! (Fase 6). O Metallurgic Infuser, que o `ProgressMachine` monta e que escolhe a receita de uso constante, está em
+//! `infuser_constant_trace.rs`.
 use machinery_basis_core::cached_recipe::{CachedRecipe, ItemIngredient, ItemOutput};
 use machinery_basis_core::chemical::{
     ChemicalConversion, ChemicalIngredient, ChemicalInputHandler, ChemicalResource, ChemicalTank,

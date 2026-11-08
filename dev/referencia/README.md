@@ -56,6 +56,14 @@ receitas, o port 19), então o tanque os recusa. Não monte uma chegada com `con
 Infuser é o de infusão) nem com `data merge ... Items` fora da ordem dos slots (medido: `[terra no slot 1, bio_fuel no slot 0]` deixou só a terra no tile; o Horizon
 só decodifica a lista que reescreve igual, `decode_mod_block_entity`).
 
+`testes/ConstantUsageTraceTest.java` grava (`infuser_const_{run,dry,speed,placed_speed,reload,reload_speed,reload_without_usage}.jsonl`) o Metallurgic Infuser com uma receita de
+`per_tick_usage`, que nenhuma receita do original usa nele: a receita está em `testes/dados/data/mekanismtests/recipe/metallurgic_infusing/` (gravel e 2 de redstone por tick) e vai, com a
+pasta `data/`, para `src/src/gameTest/resources/` só na hora de rodar o `runGameTestServer` (o mod de teste `mekanismtests` a serve como data pack); copie também o `.java` para
+`src/src/gameTest/java/mekanism/common/tests/network/` e apague os dois depois. A máquina é posta por um jogador (`useOn`, com os upgrades do item) com a energia de um cabo, e as marcas
+mexem no item, no tanque, nos upgrades e no tile salvo e relido (`BlockEntity.loadStatic`, com `reload-without-usage` tirando `used_so_far` do NBT). `mods/mekanism/tests/infuser_constant_trace.rs`
+o repete com a receita lida do mesmo arquivo. Em jogo, `horizon2/h2_infuser_const.py run|dry` repete `infuser_const_run` e `infuser_const_dry` com `tick freeze` e `tick step` (`H_NAME=horizon`), e
+`horizon2/h2_infuser_const_video.py antes|depois|montar` faz o ciclo completo com salvar e reabrir no meio, em prints e um vídeo com legenda.
+
 `testes/HeatArmorTraceTest.java` grava (`heat_generator_armor_{layout,may_place,clicks,binding,quick_move}.jsonl`) os cinco slots que o
 `.armorSideBar(-20, 11, 0)` acrescenta ao menu do Heat Generator (quatro `ArmorSlot` e um `OffhandSlot`): o menu é aberto pela fábrica registrada
 (`MekanismContainerType.create`, 45 slots; os outros testes de slot usam `new MekanismTileContainer<>` e saem com 40, sem armadura). O layout, o `mayPlace`

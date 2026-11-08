@@ -241,7 +241,8 @@ fn the_infuser_converts_redstone_into_energy_and_into_infusion_in_the_same_tick(
 }
 
 /// As 19 receitas de infusão do Mekanism gastam o químico de uma vez, no fim: nenhuma tem `per_tick_usage`, e é por isso
-/// que o `ProgressMachine::chemical` monta só o `TwoInputCachedRecipe`, sem escolher a receita de uso constante.
+/// que os rastros acima só passam pelo `TwoInputCachedRecipe`. A receita de uso constante, que o `ProgressMachine::chemical`
+/// escolhe quando a receita tem a opção, é conferida em `infuser_constant_trace.rs`, com uma receita de teste.
 #[test]
 fn no_infusing_recipe_spends_the_chemical_per_tick() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))

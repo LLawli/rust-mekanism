@@ -349,6 +349,25 @@ pub fn load_of_type(kind: &str) -> Vec<(String, Value)> {
         .collect()
 }
 
+/// Uma receita `metallurgic_infusing` como o jogo a lê do JSON: entrada, químico, quantidades, saída e `per_tick_usage`.
+pub fn infusing_recipe(id: &str, json: &Value) -> Rc<ItemChemicalToItemRecipe> {
+    let item = &json["item_input"];
+    let chemical = &json["chemical_input"];
+    let output = &json["output"];
+    Rc::new(ItemChemicalToItemRecipe {
+        id: id.to_owned(),
+        item_input: item_ingredient(&item["ingredient"]),
+        item_count: item["count"].as_u64().unwrap() as u32,
+        chemical_input: chemical_ingredient(chemical["ingredient"].as_str().unwrap()),
+        chemical_amount: chemical["amount"].as_u64().unwrap() as u32,
+        output: ItemOutput {
+            resource: item_of(output["id"].as_str().unwrap()),
+            count: output["count"].as_u64().unwrap_or(1) as u32,
+        },
+        per_tick_usage: json["per_tick_usage"].as_bool().unwrap(),
+    })
+}
+
 fn infuser_recipes(
     infusing: Vec<(String, Value)>,
     converting: Vec<(String, Value)>,
@@ -357,23 +376,7 @@ fn infuser_recipes(
 ) -> (Vec<Rc<ItemChemicalToItemRecipe>>, Vec<ChemicalConversion>) {
     let recipes: Vec<Rc<ItemChemicalToItemRecipe>> = infusing
         .iter()
-        .map(|(id, json)| {
-            let item = &json["item_input"];
-            let chemical = &json["chemical_input"];
-            let output = &json["output"];
-            Rc::new(ItemChemicalToItemRecipe {
-                id: id.clone(),
-                item_input: item_ingredient(&item["ingredient"]),
-                item_count: item["count"].as_u64().unwrap() as u32,
-                chemical_input: chemical_ingredient(chemical["ingredient"].as_str().unwrap()),
-                chemical_amount: chemical["amount"].as_u64().unwrap() as u32,
-                output: ItemOutput {
-                    resource: item_of(output["id"].as_str().unwrap()),
-                    count: output["count"].as_u64().unwrap_or(1) as u32,
-                },
-                per_tick_usage: json["per_tick_usage"].as_bool().unwrap(),
-            })
-        })
+        .map(|(id, json)| infusing_recipe(id, json))
         .collect();
     assert!(
         recipes.len() >= minimum_recipes,
