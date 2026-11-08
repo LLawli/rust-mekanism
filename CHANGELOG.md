@@ -139,6 +139,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Injeção crua `container_dim` (`machinery_basis`): o fundo escurecido das telas de contêiner é o degradê do original (`0xC0101010` a `0xD0101010`), no
   lugar do retângulo fixo do Horizon (H22 em `docs/injecoes-horizon.md`).
 
+- O Heat Generator tem o sinal do comparador, como no original (`Generator` adiciona `Attributes.COMPARATOR`; `TileEntityHeatGenerator.getRedstoneLevel` lê o tanque de lava,
+  `ContainerType.FLUID.getRedstoneSignalFromContainer`, e só o tanque marca o comparador como sujo): o nível (0 a 15, `Mth.lerpDiscrete`) é guardado em `current_redstone`, relido no fim
+  do tick em que o tanque mudou, e os vizinhos são avisados dentro do tick. Dois hooks novos em `mekanismgenerators` (`has_analog_output` e `analog_output`).
+  Rastro `comparator_levels_heat_generator` (lava de 0 a 10.000), repetido tick a tick por `comparator_levels.rs`.
+
 ### Changed
 
 - A tela das cinco máquinas (as quatro de progresso e o Heat Generator) recebe os dados do servidor como o `MekanismContainer` do original: um pacote por jogador com só o que mudou
@@ -183,6 +188,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   lê um objeto feito do NBT (`machinery_basis_core::menu_source`), e um objeto vivo velho não vale para um tile novo na mesma posição. Rastros `{chamber,infuser,heat_generator}_trackers_reloaded` do Java
   (`TrackerTraceTest`), repetidos por `tracker_trace.rs` dos dois mods, e a cena `reabrir=1` de `CenaTelas` lado a lado em jogo.
 - O pacote do menu leva o `ResourceType` da pilha (item, fluido ou químico, antes do id), como o `ResourceStackPropertyData` do Java, e o espelho só aceita a pilha do tipo do dado. Sem mudança que o jogador veja.
+- O aviso do comparador de uma máquina sai dentro do tick dela, como no original (`TileEntityMekanism.tickServer`, `:645-652`: `notifyComparatorChange` roda ali), e não
+  depois de todos os block entities (`level_tick_post`). Uma máquina vizinha que tica depois já recebe o `onNeighborChange` no mesmo tick (e conserta o `redstone` velho nele); a
+  que tica antes o recebe no tick seguinte. Antes, a máquina também avisava os vizinhos no primeiro tick mesmo sem mudar de nível, o que o original não faz. A injeção
+  `level_tick_post` saiu. Rastros `comparator_order` (as duas ordens de ticker, com um comparador lendo cada máquina, a saída a cada tick) e `comparator_first_tick`,
+  repetidos por `comparator_trace.rs`, que também repete o valor analógico das quatro máquinas vazias, com itens e cheias (`comparator_levels_*`).
+- Uma máquina posta por um jogador já tem a capacidade do item (1.000, ou a que os upgrades dão) no tick da colocação (`setPlacedBy` -> `applyImplicitComponents` ->
+  `recalculateUpgrades`), e não só no primeiro tick dela: um Heat Generator ou um cabo que encha a máquina nesse tick esvazia tudo de uma vez, e antes o port a deixava com os
+  quatro ticks de consumo do bloco (20). Rastro `placed_fed_*` (o gerador cheio encostado, nos dois momentos do tick), repetido por `placed_fed.rs`.
 - O `redstone` das quatro máquinas e do Heat Generator só muda quando o jogo avisa o bloco, como no original (`updatePower`, `TileEntityMekanism.java:1109`): `BlockTile.neighborChanged`
   (um vizinho que mudou com a flag 1 do `setBlock`), `onNeighborChange` do NeoForge (uma máquina vizinha que mudou o nível do comparador) e `onAdded` (o bloco posto com um
   item). O port lia o sinal dos seis vizinhos a cada tick da máquina, então uma mudança que não avisa (`/setblock ... strict`, `setBlock` sem a flag 1) ligava ou desligava
