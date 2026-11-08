@@ -47,7 +47,7 @@ static MATH_RANDOM: Mutex<Option<JavaRandom>> = Mutex::new(None);
 
 /// Uma semente que muda a cada execução, como `seedUniquifier() ^ System.nanoTime()`: a entropia do `RandomState` da biblioteca
 /// padrão (sorteada pelo sistema operacional) somada ao relógio.
-fn entropy_seed() -> i64 {
+pub(crate) fn entropy_seed() -> i64 {
     let mut hasher = RandomState::new().build_hasher();
     if let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         hasher.write_u128(since.as_nanos());
@@ -95,7 +95,11 @@ mod tests {
         for (bin, count) in bins.iter().enumerate() {
             assert!(count.abs_diff(20_000) < 600, "faixa {bin}: {count}");
         }
-        assert!((sum / 200_000.0 - 0.5).abs() < 0.005, "média {}", sum / 200_000.0);
+        assert!(
+            (sum / 200_000.0 - 0.5).abs() < 0.005,
+            "média {}",
+            sum / 200_000.0
+        );
     }
 
     /// Sorteios seguidos são independentes: a diferença média entre dois seguidos de dois uniformes independentes é 1/3. Uma fração do

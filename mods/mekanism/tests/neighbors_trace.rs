@@ -96,6 +96,7 @@ fn machine_of(kind: Kind) -> ProgressMachine {
         Kind::Infuser => {
             let recipes = vec![infusing("dirt", "bio", 10, "podzol")];
             let conversions = vec![ChemicalConversion {
+                id: String::new(),
                 input: ItemIngredient::item("redstone"),
                 input_count: 1,
                 output: ChemicalResource::new("redstone"),

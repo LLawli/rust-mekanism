@@ -19,10 +19,13 @@ const MACHINES: [&str; 5] = [
     "heat_generator",
 ];
 /// Operações que passam pela fila (as outras, `chest_changed` e `output_signal`, chamam `onNeighborChange` direto e não anunciam nada).
-const QUEUED: [&str; 7] = ["poke_on", "poke_off", "src_on", "src_off", "setblock", "clear", "place"];
+const QUEUED: [&str; 7] = [
+    "poke_on", "poke_off", "src_on", "src_off", "setblock", "clear", "place",
+];
 
 fn load() -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros/neighbors_nested.jsonl");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/neighbors_nested.jsonl");
     std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
         .lines()
@@ -35,7 +38,12 @@ fn announced(lines: &[Value], machine: &str) -> BTreeMap<String, Vec<Value>> {
     lines
         .iter()
         .filter(|line| line["machine"] == machine && line.get("op").is_some())
-        .map(|line| (line["op"].as_str().unwrap().to_owned(), line["announced"].as_array().unwrap().clone()))
+        .map(|line| {
+            (
+                line["op"].as_str().unwrap().to_owned(),
+                line["announced"].as_array().unwrap().clone(),
+            )
+        })
         .collect()
 }
 
@@ -60,7 +68,11 @@ fn a_machine_announces_what_a_plain_block_does() {
             assert!(own[op].is_empty(), "{machine} {op}");
         }
     }
-    assert!(QUEUED.iter().all(|op| MACHINES.iter().all(|machine| announced(&lines, machine).contains_key(*op))));
+    assert!(QUEUED.iter().all(|op| {
+        MACHINES
+            .iter()
+            .all(|machine| announced(&lines, machine).contains_key(*op))
+    }));
 }
 
 /// Uma guarda que pode falhar: o fio de redstone avisa em cadeia, e a contagem o vê.
@@ -79,8 +91,14 @@ fn no_machine_overrides_the_power_change() {
         seen += 1;
         let machine = line["machine"].as_str().unwrap();
         assert_eq!(line["on_power_change"], "", "{machine}");
-        assert_eq!(line["update_power"], "mekanism.common.tile.base.TileEntityMekanism", "{machine}");
-        assert_eq!(line["on_neighbor_change"], "mekanism.common.tile.base.TileEntityMekanism", "{machine}");
+        assert_eq!(
+            line["update_power"], "mekanism.common.tile.base.TileEntityMekanism",
+            "{machine}"
+        );
+        assert_eq!(
+            line["on_neighbor_change"], "mekanism.common.tile.base.TileEntityMekanism",
+            "{machine}"
+        );
     }
     assert_eq!(seen, MACHINES.len());
 }

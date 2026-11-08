@@ -170,6 +170,7 @@ pub fn energy_conversions() -> Rc<EnergyConversionCache> {
             let data = EnergyConversionData::parse(json, &FIELDS)
                 .unwrap_or_else(|| panic!("{id}: receita de energia inválida"));
             EnergyConversion {
+                id: String::new(),
                 input: {
                     let mut items = Vec::new();
                     ingredient_items_of(&data.item.ingredient, &mut items);
@@ -208,6 +209,7 @@ pub fn recipe(input: &str, chemical: &str, output: &str) -> Rc<ItemChemicalToIte
 
 pub fn conversion(input: &str, chemical: &str) -> ChemicalConversion {
     ChemicalConversion {
+        id: String::new(),
         input: ItemIngredient::item(input),
         input_count: 1,
         output: ChemicalResource::new(chemical),
@@ -388,6 +390,7 @@ fn infuser_recipes(
         .map(|(id, json)| {
             let output = &json["output"];
             ChemicalConversion {
+                id: String::new(),
                 input: item_ingredient(&json["input"]["ingredient"]),
                 input_count: json["input"]["count"].as_u64().unwrap() as u32,
                 output: ChemicalResource::new(

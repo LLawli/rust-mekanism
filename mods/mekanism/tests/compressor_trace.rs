@@ -237,6 +237,7 @@ fn compressor(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Compressor {
         output,
         tank,
         conversions: ChemicalConversion::cache_of(vec![ChemicalConversion {
+            id: String::new(),
             input: ItemIngredient::item("ingot_osmium"),
             input_count: 1,
             output: osmium(),

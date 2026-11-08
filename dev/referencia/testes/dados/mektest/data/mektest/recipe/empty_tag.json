@@ -1,0 +1,10 @@
+{
+ "type": "mekanism:enriching",
+ "input": {
+  "count": 1,
+  "ingredient": "#mektest:nothing"
+ },
+ "output": {
+  "id": "minecraft:diamond"
+ }
+}

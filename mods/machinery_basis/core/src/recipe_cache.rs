@@ -15,10 +15,14 @@
 //! simples, composto, de componentes exatos, ou qualquer outro).
 //!
 //! `RecipeHolder` é a posição da receita na lista que a fonte devolve: o `Set` de receitas complexas e as listas dos mapas
-//! guardam essa posição. O `HashSet` do Java itera em ordem de hash, que não se reproduz (o `hashCode` de uma receita depende
-//! do ingrediente); aqui as receitas complexas iteram na ordem da lista.
+//! guardam essa posição. O `HashSet` das receitas complexas itera em ordem de hash, e o `hashCode` de um `RecipeHolder` é o do
+//! `ResourceKey` do id, o de identidade do JVM (`identity_hash`): o port faz o mesmo `HashSet` (`sim::java_hash`) com um hash de
+//! identidade sorteado por id e por processo, como o JVM faz por execução.
 use crate::chemical::{ChemicalResource, TankContents};
 use crate::containers::{ItemResource, SlotContents};
+use crate::identity_hash::identity_hash;
+use crate::recipe_monitor::RecipeId;
+use crate::sim::java_hash::hash_set_table;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter::Copied;
@@ -388,19 +392,23 @@ impl ComponentSensitiveInputCache {
         Self::default()
     }
 
-    /// `addComponentInputCache`: só para casamento exato.
+    /// `addComponentInputCache`: só para casamento exato. **O original guarda só a primeira receita de cada item.** A primeira vez
+    /// põe um `Collections.singletonMap`; da segunda em diante o código copia esse mapa para um `Object2ObjectOpenCustomHashMap`
+    /// local (`holderMatch = newMap`) e escreve nele, mas nunca o devolve a `componentInputCache`. A receita de componentes
+    /// exatos seguinte do mesmo item, de outra chave ou da mesma, se perde (`ComponentSensitiveInputCache.java:97-120`; rastro
+    /// `recipe_components`, caso `strict_written`). Fica igual, como bug do original.
     fn add_component_input_cache(
         &mut self,
         input: &Rc<str>,
         components: &Option<Rc<str>>,
         recipe: usize,
     ) {
-        self.component_input_cache
-            .entry(input.clone())
-            .or_default()
-            .entry(components.clone())
-            .or_default()
-            .push(recipe);
+        if self.component_input_cache.contains_key(input) {
+            return;
+        }
+        let mut recipes = ComponentRecipes::default();
+        recipes.insert(components.clone(), vec![recipe]);
+        self.component_input_cache.insert(input.clone(), recipes);
     }
 
     /// `getComponentMatches`.
@@ -470,12 +478,51 @@ impl InputCache for ComponentSensitiveInputCache {
     }
 }
 
+/// O `hashCode` que o `HashSet` das receitas complexas usa para a receita de `index`: o `RecipeHolder.hashCode` (o `hashCode` da chave do id).
+type HashOf<'a> = &'a dyn Fn(usize) -> i32;
+
+/// Um `Set<RecipeHolder>` de receitas complexas (`new HashSet<>()`): `add` na ordem em que o cache mapeia, e a iteração na ordem da tabela.
+/// `clear` esvazia sem encolher a tabela, como o `HashMap.clear`, então a carga seguinte parte do tamanho a que a anterior chegou.
+#[derive(Default)]
+struct ComplexSet {
+    added: Vec<usize>,
+    order: Vec<usize>,
+    table: usize,
+}
+
+impl ComplexSet {
+    fn add(&mut self, recipe: usize) {
+        self.added.push(recipe);
+    }
+
+    /// Fecha as inserções de um `initCache`: a ordem de iteração, com a capacidade padrão de 16 ou a que a tabela já tinha.
+    fn seal(&mut self, hash_of: HashOf<'_>) {
+        let (order, table) =
+            hash_set_table(self.added.iter().copied(), hash_of, self.table.max(16));
+        self.order = order;
+        self.table = table;
+    }
+
+    fn clear(&mut self) {
+        self.added.clear();
+        self.order.clear();
+    }
+
+    /// As receitas na ordem de iteração do `HashSet`.
+    fn iter(&self) -> Copied<slice::Iter<'_, usize>> {
+        self.order.iter().copied()
+    }
+}
+
+/// O hash de identidade de cada receita, pelo id dela.
+type IdentityHash = Rc<dyn Fn(&str) -> i32>;
+
 /// Um lado de uma receita: o cache de uma entrada, o que o extrator tira da receita e as receitas em que esse ingrediente
 /// é complexo (`complexRecipes` do `SingleInputRecipeCache`, `complexIngredientA` e `complexIngredientB`).
 struct Side<R, G, C> {
     extractor: fn(&R) -> &G,
     cache: C,
-    complex: Vec<usize>,
+    complex: ComplexSet,
 }
 
 impl<R, G: InputIngredient, C: InputCache> Side<R, G, C> {
@@ -483,7 +530,7 @@ impl<R, G: InputIngredient, C: InputCache> Side<R, G, C> {
         Self {
             extractor,
             cache,
-            complex: Vec::new(),
+            complex: ComplexSet::default(),
         }
     }
 
@@ -493,7 +540,7 @@ impl<R, G: InputIngredient, C: InputCache> Side<R, G, C> {
             || self
                 .complex
                 .iter()
-                .any(|&recipe| (self.extractor)(&recipes[recipe]).test_type(input))
+                .any(|recipe| (self.extractor)(&recipes[recipe]).test_type(input))
     }
 
     fn map(&mut self, recipes: &[Rc<R>], index: usize) -> bool {
@@ -501,7 +548,7 @@ impl<R, G: InputIngredient, C: InputCache> Side<R, G, C> {
             .cache
             .map_inputs(index, (self.extractor)(&recipes[index]).shape());
         if complex {
-            self.complex.push(index);
+            self.complex.add(index);
         }
         complex
     }
@@ -518,6 +565,7 @@ impl<R, G: InputIngredient, C: InputCache> Side<R, G, C> {
 /// `ItemResource` do Java, que se comparam de modo diferente nos componentes (ver [`ComponentsKey`]).
 pub struct SingleInputRecipeCache<R, G, S, C> {
     source: Box<dyn Fn() -> Vec<Rc<R>>>,
+    identity: IdentityHash,
     state: RefCell<SingleState<R, G, C>>,
     stack: PhantomData<fn(&S)>,
 }
@@ -533,7 +581,7 @@ where
     G: InputIngredient,
     S: TypedInstance,
     C: InputCache,
-    R: SingleInputRecipe<S>,
+    R: SingleInputRecipe<S> + RecipeId,
 {
     pub fn new(
         source: impl Fn() -> Vec<Rc<R>> + 'static,
@@ -542,6 +590,7 @@ where
     ) -> Self {
         Self {
             source: Box::new(source),
+            identity: Rc::new(identity_hash),
             state: RefCell::new(SingleState {
                 initialized: false,
                 recipes: Vec::new(),
@@ -549,6 +598,13 @@ where
             }),
             stack: PhantomData,
         }
+    }
+
+    /// Troca o hash de identidade das receitas (o `System.identityHashCode` da chave do id), que a ordem das receitas complexas usa.
+    /// O padrão sorteia um por id e por processo; um teste dá os do rastro do Java.
+    pub fn with_identity_hash(mut self, identity: impl Fn(&str) -> i32 + 'static) -> Self {
+        self.identity = Rc::new(identity);
+        self
     }
 
     /// `clear`: o cache volta a ser montado na próxima pergunta.
@@ -570,6 +626,11 @@ where
         for index in 0..recipes.len() {
             state.side.map(&recipes, index);
         }
+        let identity = &self.identity;
+        state
+            .side
+            .complex
+            .seal(&|recipe| identity(recipes[recipe].recipe_id()));
         state.recipes = recipes;
     }
 
@@ -606,7 +667,6 @@ where
                 .side
                 .complex
                 .iter()
-                .copied()
                 .find(|&recipe| state.recipes[recipe].test(input))
         });
         found.map(|recipe| state.recipes[recipe].clone())
@@ -636,7 +696,7 @@ where
             .get_recipes(input)
             .find(|&recipe| match_criteria(&state.recipes[recipe]));
         let found = from_cache.or_else(|| {
-            state.side.complex.iter().copied().find(|&recipe| {
+            state.side.complex.iter().find(|&recipe| {
                 let candidate = &state.recipes[recipe];
                 (state.side.extractor)(candidate).test_type(input) && match_criteria(candidate)
             })
@@ -651,6 +711,7 @@ type Selector<State, Part> = fn(&State) -> &Part;
 /// `DoubleInputRecipeCache` (e `DoubleSameInputRecipeCache`, que só repete o tipo dos dois lados).
 pub struct DoubleInputRecipeCache<R, GA, SA, CA, GB, SB, CB> {
     source: Box<dyn Fn() -> Vec<Rc<R>>>,
+    identity: IdentityHash,
     state: RefCell<DoubleState<R, GA, CA, GB, CB>>,
     stacks: PhantomData<fn(&SA, &SB)>,
 }
@@ -661,7 +722,7 @@ struct DoubleState<R, GA, CA, GB, CB> {
     a: Side<R, GA, CA>,
     b: Side<R, GB, CB>,
     /// `complexRecipes`: qualquer um dos dois ingredientes é complexo.
-    complex_recipes: Vec<usize>,
+    complex_recipes: ComplexSet,
 }
 
 impl<R, GA, SA, CA, GB, SB, CB> DoubleInputRecipeCache<R, GA, SA, CA, GB, SB, CB>
@@ -672,7 +733,7 @@ where
     SB: TypedInstance,
     CA: InputCache,
     CB: InputCache,
-    R: DoubleInputRecipe<SA, SB>,
+    R: DoubleInputRecipe<SA, SB> + RecipeId,
 {
     pub fn new(
         source: impl Fn() -> Vec<Rc<R>> + 'static,
@@ -683,15 +744,22 @@ where
     ) -> Self {
         Self {
             source: Box::new(source),
+            identity: Rc::new(identity_hash),
             state: RefCell::new(DoubleState {
                 initialized: false,
                 recipes: Vec::new(),
                 a: Side::new(input_a_extractor, cache_a),
                 b: Side::new(input_b_extractor, cache_b),
-                complex_recipes: Vec::new(),
+                complex_recipes: ComplexSet::default(),
             }),
             stacks: PhantomData,
         }
+    }
+
+    /// Como em [`SingleInputRecipeCache::with_identity_hash`].
+    pub fn with_identity_hash(mut self, identity: impl Fn(&str) -> i32 + 'static) -> Self {
+        self.identity = Rc::new(identity);
+        self
     }
 
     pub fn clear(&self) {
@@ -715,9 +783,14 @@ where
             let complex_a = state.a.map(&recipes, index);
             let complex_b = state.b.map(&recipes, index);
             if complex_a || complex_b {
-                state.complex_recipes.push(index);
+                state.complex_recipes.add(index);
             }
         }
+        let identity = &self.identity;
+        let hash_of = |recipe: usize| identity(recipes[recipe].recipe_id());
+        state.a.complex.seal(&hash_of);
+        state.b.complex.seal(&hash_of);
+        state.complex_recipes.seal(&hash_of);
         state.recipes = recipes;
     }
 
@@ -804,7 +877,7 @@ where
             }
         }
         // O cache rápido do 1 não tem: olha as receitas em que o ingrediente 1 é complexo.
-        first.complex.iter().any(|&recipe| {
+        first.complex.iter().any(|recipe| {
             let candidate = &state.recipes[recipe];
             (first.extractor)(candidate).test_type(input1)
                 && (second.extractor)(candidate).test_type(input2)
@@ -838,7 +911,7 @@ where
         } else {
             state.b.cache.get_recipes(input_b).find(tests)
         };
-        let found = found.or_else(|| state.complex_recipes.iter().copied().find(tests));
+        let found = found.or_else(|| state.complex_recipes.iter().find(tests));
         found.map(|recipe| state.recipes[recipe].clone())
     }
 
@@ -864,7 +937,7 @@ where
                 .get_recipes(input_a)
                 .find(|&recipe| match_criteria(&state.recipes[recipe]))
                 .or_else(|| {
-                    state.complex_recipes.iter().copied().find(|&recipe| {
+                    state.complex_recipes.iter().find(|&recipe| {
                         let candidate = &state.recipes[recipe];
                         (state.a.extractor)(candidate).test_type(input_a)
                             && match_criteria(candidate)
@@ -880,7 +953,7 @@ where
                     (state.b.extractor)(candidate).test_type(input_b) && match_criteria(candidate)
                 })
                 .or_else(|| {
-                    state.complex_recipes.iter().copied().find(|&recipe| {
+                    state.complex_recipes.iter().find(|&recipe| {
                         let candidate = &state.recipes[recipe];
                         (state.a.extractor)(candidate).test_type(input_a)
                             && (state.b.extractor)(candidate).test_type(input_b)
@@ -901,6 +974,12 @@ mod tests {
         id: &'static str,
         input: ShapedIngredient,
         count: u32,
+    }
+
+    impl RecipeId for Single {
+        fn recipe_id(&self) -> &str {
+            self.id
+        }
     }
 
     impl SingleInputRecipe<SlotContents> for Single {
@@ -1119,7 +1198,7 @@ mod tests {
         // Está no mapa pelo filho simples, e também na lista das complexas.
         assert_eq!(name(cache.find_first_recipe(&charcoal)), Some("m"));
         let state = cache.state.borrow();
-        assert_eq!(state.side.complex, vec![0]);
+        assert_eq!(state.side.complex.iter().collect::<Vec<_>>(), vec![0]);
     }
 
     #[test]
@@ -1157,6 +1236,12 @@ mod tests {
         id: &'static str,
         item: ShapedIngredient,
         chemical: ShapedIngredient,
+    }
+
+    impl RecipeId for Pair {
+        fn recipe_id(&self) -> &str {
+            self.id
+        }
     }
 
     impl DoubleInputRecipe<SlotContents, TankContents> for Pair {

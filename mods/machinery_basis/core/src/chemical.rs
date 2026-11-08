@@ -11,6 +11,7 @@ use crate::recipe_cache::{
     SingleInputRecipeCache,
 };
 use crate::recipe_handlers::{ResourceOutput, TankInputHandler, TankOutputHandler};
+use crate::recipe_monitor::RecipeId;
 use crate::resource_tank::{
     Ingredient, ResourceHandler, ResourceTank, Rule, StackContents, Validator,
     fill_container_from_slot,
@@ -223,10 +224,18 @@ pub fn fill_tank_from_slot(
 /// Uma receita de `chemical_conversion` (`ItemStackToChemicalRecipe`): um item que vira químico.
 #[derive(Clone, Debug)]
 pub struct ChemicalConversion {
+    /// O id da receita (`RecipeHolder.id`), de onde vem o hash de identidade da ordem das receitas complexas.
+    pub id: String,
     pub input: ItemIngredient,
     pub input_count: u32,
     pub output: ChemicalResource,
     pub amount: i32,
+}
+
+impl RecipeId for ChemicalConversion {
+    fn recipe_id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl SingleInputRecipe<SlotContents> for ChemicalConversion {
@@ -469,6 +478,7 @@ mod tests {
 
     fn dust_to_redstone() -> Rc<ConversionCache> {
         conversions(vec![ChemicalConversion {
+            id: String::new(),
             input: ItemIngredient::item("redstone"),
             input_count: 1,
             output: redstone(),
@@ -743,6 +753,7 @@ mod tests {
         let slot = canister_slot();
         let tank = ChemicalTank::open(1_000, None);
         let conversion = ChemicalConversion {
+            id: String::new(),
             input: ItemIngredient::item("canister"),
             input_count: 1,
             output: redstone(),

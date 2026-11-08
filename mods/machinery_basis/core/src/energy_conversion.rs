@@ -8,16 +8,25 @@ use crate::containers::{AutomationType, EnergyContainer, InventorySlot, SlotCont
 use crate::recipe_cache::{
     ComponentSensitiveInputCache, InputIngredient, SingleInputRecipe, SingleInputRecipeCache,
 };
+use crate::recipe_monitor::RecipeId;
 use crate::transaction::Transaction;
 use std::rc::Rc;
 
 /// Uma receita `energy_conversion` (`ItemStackToEnergyRecipe`): um item que dá uma quantidade de energia.
 #[derive(Clone, Debug)]
 pub struct EnergyConversion {
+    /// O id da receita (`RecipeHolder.id`), de onde vem o hash de identidade da ordem das receitas complexas.
+    pub id: String,
     pub input: ItemIngredient,
     pub input_count: u32,
     /// `getOutput`: a energia, constante (`@Range(from = 1)`).
     pub output: i32,
+}
+
+impl RecipeId for EnergyConversion {
+    fn recipe_id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl SingleInputRecipe<SlotContents> for EnergyConversion {
@@ -96,11 +105,13 @@ mod tests {
     fn conversions() -> Rc<EnergyConversionCache> {
         EnergyConversion::cache_of(vec![
             EnergyConversion {
+                id: String::new(),
                 input: ItemIngredient::item("redstone_block"),
                 input_count: 1,
                 output: 90_000,
             },
             EnergyConversion {
+                id: String::new(),
                 input: ItemIngredient::item("redstone"),
                 input_count: 1,
                 output: 10_000,
@@ -166,6 +177,7 @@ mod tests {
     #[test]
     fn a_recipe_that_needs_more_than_the_slot_has_is_not_found() {
         let cache = EnergyConversion::cache_of(vec![EnergyConversion {
+            id: String::new(),
             input: ItemIngredient::item("redstone"),
             input_count: 2,
             output: 7,

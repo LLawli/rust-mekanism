@@ -226,6 +226,7 @@ fn conversions(recipes: &[ItemRecipe]) -> Vec<ChemicalConversion> {
     recipes
         .iter()
         .map(|recipe| ChemicalConversion {
+            id: String::new(),
             input: recipe.input.clone(),
             input_count: recipe.count,
             output: ChemicalResource::new(&format!("conv_{}", recipe.id)),

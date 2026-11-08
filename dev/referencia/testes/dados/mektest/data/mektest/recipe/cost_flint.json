@@ -1,0 +1,16 @@
+{
+ "type": "mekanism:enriching",
+ "input": {
+  "count": 1,
+  "ingredient": {
+   "neoforge:ingredient_type": "neoforge:components",
+   "items": "minecraft:flint",
+   "components": {
+    "minecraft:repair_cost": 5
+   }
+  }
+ },
+ "output": {
+  "id": "minecraft:gold_ingot"
+ }
+}

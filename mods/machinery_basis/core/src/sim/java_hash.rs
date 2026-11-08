@@ -58,6 +58,16 @@ pub fn hash_set_order<K: Copy>(
     hash_code: impl Fn(K) -> i32,
     initial_capacity: usize,
 ) -> Vec<K> {
+    hash_set_table(keys, hash_code, initial_capacity).0
+}
+
+/// [`hash_set_order`] e o tamanho que a tabela ficou. `HashSet.clear()` esvazia a tabela sem encolhê-la, então quem limpa e volta a
+/// inserir parte desse tamanho.
+pub fn hash_set_table<K: Copy>(
+    keys: impl IntoIterator<Item = K>,
+    hash_code: impl Fn(K) -> i32,
+    initial_capacity: usize,
+) -> (Vec<K>, usize) {
     let capacity = table_size_for(initial_capacity);
     let mut table = Table {
         buckets: (0..capacity).map(|_| Vec::new()).collect(),
@@ -83,12 +93,14 @@ pub fn hash_set_order<K: Copy>(
             table.double();
         }
     }
-    table
+    let length = table.buckets.len();
+    let order = table
         .buckets
         .into_iter()
         .flatten()
         .map(|(_, key)| key)
-        .collect()
+        .collect();
+    (order, length)
 }
 
 #[cfg(test)]

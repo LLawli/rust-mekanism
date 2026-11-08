@@ -13,6 +13,7 @@ use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use horizon_client::item_data::{StackData, canon_tag, decode_components, encode_components};
 use machinery_basis_core::components::Components;
+use machinery_basis_core::components_ingredient::{self, ComponentsIngredient};
 use machinery_basis_core::containers::{ItemResource, SlotContents, room_for};
 use machinery_basis_core::biome_temperature;
 use machinery_basis_core::fluid_logged;
@@ -95,6 +96,8 @@ pub(in crate::game) struct PanelStyle {
 pub(in crate::game) struct MachineRecipe {
     pub id: String,
     pub item: Ingredient,
+    /// Os componentes do ingrediente, quando ele é um `neoforge:components`.
+    pub components: Option<Arc<ComponentsInput>>,
     pub count: u32,
     pub resource: Option<ResourceInput>,
     pub output: ItemStack,
@@ -106,7 +109,9 @@ pub(in crate::game) struct MachineRecipe {
 
 /// Um item que vira recurso, com o que o jogo resolveu.
 pub(in crate::game) struct ItemConversion {
+    pub id: String,
     pub item: Ingredient,
+    pub components: Option<Arc<ComponentsInput>>,
     pub count: u32,
     pub resource: String,
     pub amount: u64,
@@ -114,7 +119,9 @@ pub(in crate::game) struct ItemConversion {
 
 /// Um item que vira energia, com o que o jogo resolveu.
 pub(in crate::game) struct ItemEnergyConversion {
+    pub id: String,
     pub item: Ingredient,
+    pub components: Option<Arc<ComponentsInput>>,
     pub count: u32,
     pub amount: i32,
 }
@@ -368,20 +375,177 @@ pub(in crate::game) fn data_loaded() {
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
+/// Um `DataComponentIngredient` (`neoforge:components`) de uma receita de máquina: os itens (já com as tags resolvidas pelo jogo), o patch e
+/// `strict`, mais os componentes padrão de cada item, em texto canônico (`items.json`, com o que os mods mudam).
+pub(in crate::game) struct ComponentsInput {
+    ingredient: ComponentsIngredient,
+    items: Vec<String>,
+    defaults: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl ComponentsInput {
+    /// `ItemInputCache.mapIngredient` para este ingrediente: `strict` indexa a chave de cada item (`componentIngredient.componentsExhaustive()`,
+    /// `addComponentInputCache`), e o resto é complexo.
+    pub(in crate::game) fn shape(&self) -> machinery_basis_core::recipe_cache::IngredientShape {
+        use machinery_basis_core::recipe_cache::IngredientShape;
+        if !self.ingredient.is_strict() {
+            return IngredientShape::Custom;
+        }
+        let none = BTreeMap::new();
+        IngredientShape::Compound(
+            self.items
+                .iter()
+                .map(|item| {
+                    let key = self.ingredient.exact_components(self.defaults.get(item).unwrap_or(&none));
+                    IngredientShape::exact(&[item], (!key.is_empty()).then(|| key.key()))
+                })
+                .collect(),
+        )
+    }
+
+    /// `DataComponentIngredient.test` para um item e o patch que a entrada tem (`components_key`): o item está na lista e o patch, por cima dos
+    /// componentes padrão dele, passa no teste.
+    pub(in crate::game) fn accepts(&self, item: &str, patch_key: Option<&str>) -> bool {
+        if !self.items.iter().any(|listed| listed == item) {
+            return false;
+        }
+        let mut full = self.defaults.get(item).cloned().unwrap_or_default();
+        if let Some(components) = patch_key.and_then(|key| PATCHES.lock().unwrap_or_else(|e| e.into_inner()).get(key).cloned()) {
+            for (kind, value) in components.iter() {
+                full.insert(kind.to_owned(), value.to_owned());
+            }
+        }
+        self.ingredient.test(&full)
+    }
+}
+
+/// O valor JSON de um componente como `Tag`, para o texto canônico ser o mesmo do patch de uma pilha do jogo.
+fn json_tag(value: &serde_json::Value) -> Tag {
+    match value {
+        serde_json::Value::Null => Tag::Compound(Compound::default()),
+        serde_json::Value::Bool(flag) => Tag::Byte(i8::from(*flag)),
+        serde_json::Value::Number(number) => match number.as_i64() {
+            Some(whole) => i32::try_from(whole).map_or(Tag::Long(whole), Tag::Int),
+            None => Tag::Double(number.as_f64().unwrap_or(0.0)),
+        },
+        serde_json::Value::String(text) => Tag::String(JavaString::from(text.as_str())),
+        serde_json::Value::Array(list) => Tag::List(list.iter().map(json_tag).collect()),
+        serde_json::Value::Object(map) => {
+            Tag::Compound(map.iter().map(|(key, value)| (JavaString::from(key.as_str()), json_tag(value))).collect())
+        }
+    }
+}
+
+/// Os componentes padrão de um item em texto canônico.
+fn default_texts(defaults: &horizon_world::item_defaults::Defaults, item: &str) -> BTreeMap<String, String> {
+    defaults
+        .get(item)
+        .and_then(serde_json::Value::as_object)
+        .map(|components| components.iter().map(|(kind, value)| (kind.clone(), canon_tag(&json_tag(value)))).collect())
+        .unwrap_or_default()
+}
+
+/// Por que um ingrediente não virou nada: o arquivo está errado (o codec o recusaria: `Couldn't parse data file`), ou o ingrediente
+/// não tem item nenhum (uma tag vazia: o Mekanism guarda a receita, que não casa com nada, e avisa em `Incomplete recipe detected`).
+enum Problem {
+    Parse(String),
+    Empty(Vec<String>),
+}
+
+/// O texto de `Problem` para a receita `id`, no log, como o original: `Couldn't parse data file` do `SimpleJsonResourceReloadListener`, e
+/// `Incomplete recipe detected` com `Empty tag` (`MekanismRecipeType.checkMyIncompleteRecipes`, `ItemStackIngredient.logMissingTags`).
+fn report(id: &str, problem: &Problem) {
+    match problem {
+        Problem::Parse(why) => eprintln!("machinery_basis: Couldn't parse data file '{id}': {why}"),
+        Problem::Empty(tags) => {
+            eprintln!("machinery_basis: Incomplete recipe detected: {id}");
+            for tag in tags {
+                eprintln!("machinery_basis: Empty tag: {tag}");
+            }
+        }
+    }
+}
+
+/// O que `native_recipe_ingredient` não achou: um item que o jogo não conhece é erro do arquivo, e uma tag sem membros deixa a receita
+/// incompleta.
+fn missing_items(json: &serde_json::Value) -> Problem {
+    let names: Vec<&str> = match json {
+        serde_json::Value::String(name) => vec![name.as_str()],
+        serde_json::Value::Array(list) => list.iter().filter_map(serde_json::Value::as_str).collect(),
+        other => return Problem::Parse(format!("ingrediente inválido: {other}")),
+    };
+    let tags: Vec<String> = names.iter().filter_map(|name| name.strip_prefix('#')).map(str::to_owned).collect();
+    if !tags.is_empty() && tags.len() == names.len() {
+        return Problem::Empty(tags);
+    }
+    Problem::Parse(format!("item desconhecido em {json}"))
+}
+
+/// O ingrediente de item de uma receita de máquina. Um item, uma tag ou uma lista saem pelo jogo (`native_recipe_ingredient`); um
+/// `neoforge:components` o jogo não entrega (só lê texto e lista), então o arquivo é lido aqui, com os itens resolvidos pelo jogo. Os
+/// outros tipos de ingrediente (`neoforge:compound`, `intersection`, `difference` e os de mod) o jogo não entrega: a receita fica de fora,
+/// com o aviso.
+fn machine_ingredient(
+    game: &Game<'_>,
+    json: &serde_json::Value,
+) -> Result<(Ingredient, Option<Arc<ComponentsInput>>), Problem> {
+    let Some(object) = json.as_object() else {
+        return game.native_recipe_ingredient(json).map(|ingredient| (ingredient, None)).ok_or_else(|| missing_items(json));
+    };
+    let kind = object
+        .get("neoforge:ingredient_type")
+        .or_else(|| object.get("type"))
+        .and_then(serde_json::Value::as_str);
+    if kind != Some(components_ingredient::KIND) {
+        return Err(Problem::Parse(format!(
+            "o tipo de ingrediente {} não chega ao mod pelo Horizon",
+            kind.unwrap_or("sem tipo")
+        )));
+    }
+    let items = object.get("items").ok_or_else(|| Problem::Parse("`items` faltando".into()))?;
+    let mut ingredient = game
+        .native_recipe_ingredient(&machinery_basis_core::recipe::plain_ingredient(items))
+        .ok_or_else(|| missing_items(items))?;
+    let parsed = ComponentsIngredient::parse(object, |value| canon_tag(&json_tag(value)))
+        .ok_or_else(|| Problem::Parse("`components` ou `strict` inválido".into()))?;
+    let defaults = horizon_world::item_defaults::shared(&game.options.resources)
+        .map_err(|error| Problem::Parse(format!("componentes padrão: {error}")))?;
+    let items = ingredient.order.clone();
+    let table = items.iter().map(|item| (item.clone(), default_texts(&defaults, item))).collect();
+    ingredient.custom = Some((components_ingredient::KIND.to_owned(), object.clone()));
+    Ok((ingredient, Some(Arc::new(ComponentsInput { ingredient: parsed, items, defaults: table }))))
+}
+
 fn custom_recipes(game: &Game<'_>, recipe_type: &str, fields: &RecipeFields) -> Vec<MachineRecipe> {
-    let recipes = game.native_recipes_of_type(recipe_type).iter().filter_map(|recipe| {
-        let parsed = MachineRecipeData::parse(&recipe.json, fields)?;
-        Some(MachineRecipe {
+    let mut recipes = Vec::new();
+    for recipe in game.native_recipes_of_type(recipe_type) {
+        let Some(parsed) = MachineRecipeData::parse(&recipe.json, fields) else {
+            report(&recipe.id, &Problem::Parse(MachineRecipeData::why_not(&recipe.json, fields)));
+            continue;
+        };
+        let (item, components) = match machine_ingredient(game, &parsed.item.ingredient) {
+            Ok(found) => found,
+            Err(problem) => {
+                report(&recipe.id, &problem);
+                continue;
+            }
+        };
+        let Some(output) = game.native_recipe_result(&parsed.output) else {
+            report(&recipe.id, &Problem::Parse(format!("resultado inválido ou com item desconhecido: {}", parsed.output)));
+            continue;
+        };
+        recipes.push(MachineRecipe {
             id: recipe.id.clone(),
-            item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
+            item,
+            components,
             count: parsed.item.count,
             resource: parsed.resource,
-            output: game.native_recipe_result(&parsed.output)?,
+            output,
             per_tick_usage: parsed.per_tick_usage,
             experience: recipe.json.get("experience").and_then(serde_json::Value::as_f64).unwrap_or(0.0) as f32,
-        })
-    });
-    recipes.collect()
+        });
+    }
+    recipes
 }
 
 fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
@@ -391,6 +555,7 @@ fn cooking_recipes(game: &Game<'_>, kind: &str) -> Vec<MachineRecipe> {
         .map(|recipe| MachineRecipe {
             id: recipe.id.clone(),
             item: recipe.ingredient.clone(),
+            components: None,
             count: 1,
             resource: None,
             output: recipe.result.clone(),
@@ -428,17 +593,34 @@ pub(in crate::game) fn conversions(
         return conversions.clone();
     }
     let registry = resource::current();
-    let conversions = game.native_recipes_of_type(recipe_type).iter().filter_map(|recipe| {
-        let parsed = Conversion::parse(&recipe.json, fields)?;
-        registry.get(&parsed.resource)?;
-        Some(ItemConversion {
-            item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
+    let mut loaded = Vec::new();
+    for recipe in game.native_recipes_of_type(recipe_type) {
+        let Some(parsed) = Conversion::parse(&recipe.json, fields) else {
+            report(&recipe.id, &Problem::Parse(Conversion::why_not(&recipe.json, fields)));
+            continue;
+        };
+        if registry.get(&parsed.resource).is_none() {
+            report(&recipe.id, &Problem::Parse(format!("o recurso {} não existe", parsed.resource)));
+            continue;
+        }
+        let (item, components) = match machine_ingredient(game, &parsed.item.ingredient) {
+            Ok(found) => found,
+            Err(problem) => {
+                report(&recipe.id, &problem);
+                continue;
+            }
+        };
+        loaded.push(ItemConversion {
+            id: recipe.id.clone(),
+            item,
+            components,
             count: parsed.item.count,
             resource: parsed.resource,
             amount: parsed.amount,
-        })
-    });
-    let conversions = Arc::new(conversions.collect::<Vec<_>>());
+        });
+    }
+    let conversions = loaded;
+    let conversions = Arc::new(conversions);
     index.insert(recipe_type.to_owned(), conversions.clone());
     conversions
 }
@@ -455,15 +637,29 @@ pub(in crate::game) fn energy_conversions(
     if let Some(conversions) = index.get(recipe_type) {
         return conversions.clone();
     }
-    let conversions = game.native_recipes_of_type(recipe_type).iter().filter_map(|recipe| {
-        let parsed = EnergyConversionData::parse(&recipe.json, fields)?;
-        Some(ItemEnergyConversion {
-            item: game.native_recipe_ingredient(&parsed.item.ingredient)?,
+    let mut loaded = Vec::new();
+    for recipe in game.native_recipes_of_type(recipe_type) {
+        let Some(parsed) = EnergyConversionData::parse(&recipe.json, fields) else {
+            report(&recipe.id, &Problem::Parse(EnergyConversionData::why_not(&recipe.json, fields)));
+            continue;
+        };
+        let (item, components) = match machine_ingredient(game, &parsed.item.ingredient) {
+            Ok(found) => found,
+            Err(problem) => {
+                report(&recipe.id, &problem);
+                continue;
+            }
+        };
+        loaded.push(ItemEnergyConversion {
+            id: recipe.id.clone(),
+            item,
+            components,
             count: parsed.item.count,
             amount: parsed.amount,
-        })
-    });
-    let conversions = Arc::new(conversions.collect::<Vec<_>>());
+        });
+    }
+    let conversions = loaded;
+    let conversions = Arc::new(conversions);
     index.insert(recipe_type.to_owned(), conversions.clone());
     conversions
 }
@@ -487,6 +683,9 @@ pub(in crate::game) fn stack_limit(game: &Game<'_>, stack: &ItemStack) -> u32 {
 /// máquina.
 type Extras = (u32, Option<Box<StackData>>);
 static EXTRAS: Mutex<BTreeMap<String, Extras>> = Mutex::new(BTreeMap::new());
+/// Os componentes em texto canônico de cada chave de `EXTRAS`: o teste de um ingrediente de componentes (`neoforge:components`) só recebe a
+/// chave da entrada e refaz a pilha daqui.
+static PATCHES: Mutex<BTreeMap<String, Components>> = Mutex::new(BTreeMap::new());
 const MAX_STACK_SIZE_COMPONENT: &str = "minecraft:max_stack_size";
 
 /// O `DataComponentPatch` de uma pilha como a lib o compara: cada componente com o valor em texto canônico, o dano entre eles
@@ -504,6 +703,11 @@ fn item_components(stack: &ItemStack) -> Components {
     extras
         .entry(components.key().to_owned())
         .or_insert_with(|| (stack.damage, stack.extra.clone()));
+    PATCHES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(components.key().to_owned())
+        .or_insert_with(|| components.clone());
     components
 }
 

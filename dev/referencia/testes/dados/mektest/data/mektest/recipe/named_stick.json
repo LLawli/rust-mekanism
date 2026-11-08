@@ -1,0 +1,16 @@
+{
+ "type": "mekanism:enriching",
+ "input": {
+  "count": 1,
+  "ingredient": {
+   "neoforge:ingredient_type": "neoforge:components",
+   "items": "minecraft:stick",
+   "components": {
+    "minecraft:custom_name": "Foo"
+   }
+  }
+ },
+ "output": {
+  "id": "minecraft:diamond"
+ }
+}

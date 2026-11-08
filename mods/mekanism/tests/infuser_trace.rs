@@ -62,6 +62,7 @@ fn recipe(
 
 fn conversion(input: &str, chemical: &str, amount: i32) -> ChemicalConversion {
     ChemicalConversion {
+        id: String::new(),
         input: ItemIngredient::item(input),
         input_count: 1,
         output: ChemicalResource::new(chemical),

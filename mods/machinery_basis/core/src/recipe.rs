@@ -98,7 +98,7 @@ pub struct EnergyConversionData {
 /// O `neoforge:or` é só uma lista, a forma que o jogo aceita de um mod. Um `or` dentro de outro `or` (ou de uma lista) é a
 /// mesma união: o jogo só lê as cadeias de uma lista e descartaria o resto, então a lista sai achatada, na ordem dos filhos
 /// (`CompoundIngredient.items()`).
-fn plain_ingredient(json: &Value) -> Value {
+pub fn plain_ingredient(json: &Value) -> Value {
     if json.get("type").and_then(Value::as_str) == Some(OR_INGREDIENT) {
         let mut flat = Vec::new();
         flatten_or(json, &mut flat);
@@ -142,7 +142,45 @@ fn resource_input(json: &Value) -> Option<ResourceInput> {
     })
 }
 
+/// Por que `item_input` não deu um [`ItemInput`], no texto de um erro de codec.
+fn why_not_item(json: &Value, field: &str) -> Option<String> {
+    let Some(input) = json.get(field) else {
+        return Some(format!("falta `{field}`"));
+    };
+    if input.get(ITEM_INGREDIENT).is_none() {
+        return Some(format!("falta `{field}.{ITEM_INGREDIENT}`"));
+    }
+    if item_input(input).is_none() {
+        return Some(format!(
+            "`{field}.{ITEM_COUNT}` tem de ser um inteiro positivo"
+        ));
+    }
+    None
+}
+
 impl MachineRecipeData {
+    /// Por que [`MachineRecipeData::parse`] devolveu `None`: a primeira parte que falta ou está errada, para o log da receita recusada.
+    pub fn why_not(json: &Value, fields: &RecipeFields) -> String {
+        if let Some(field) = fields.resource {
+            match json.get(field) {
+                None => return format!("falta `{field}`"),
+                Some(input) if resource_input(input).is_none() => {
+                    return format!(
+                        "`{field}` precisa de `{ITEM_INGREDIENT}` (texto) e de `{RESOURCE_AMOUNT}` positivo"
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        why_not_item(json, fields.item)
+            .or_else(|| {
+                json.get(fields.output)
+                    .is_none()
+                    .then(|| format!("falta `{}`", fields.output))
+            })
+            .unwrap_or_else(|| "receita inválida".to_owned())
+    }
+
     pub fn parse(json: &Value, fields: &RecipeFields) -> Option<Self> {
         let resource = match fields.resource {
             Some(field) => Some(resource_input(json.get(field)?)?),
@@ -161,6 +199,23 @@ impl MachineRecipeData {
 }
 
 impl Conversion {
+    /// Por que [`Conversion::parse`] devolveu `None`.
+    pub fn why_not(json: &Value, fields: &ConversionFields) -> String {
+        if let Some(why) = why_not_item(json, fields.item) {
+            return why;
+        }
+        match json.get(fields.output) {
+            None => format!("falta `{}`", fields.output),
+            Some(output) if output.get(RESOURCE_ID).and_then(Value::as_str).is_none() => {
+                format!("`{}.{RESOURCE_ID}` tem de ser um texto", fields.output)
+            }
+            Some(_) => format!(
+                "`{}.{RESOURCE_AMOUNT}` tem de ser um inteiro positivo",
+                fields.output
+            ),
+        }
+    }
+
     pub fn parse(json: &Value, fields: &ConversionFields) -> Option<Self> {
         let output = json.get(fields.output)?;
         Some(Self {
@@ -172,6 +227,16 @@ impl Conversion {
 }
 
 impl EnergyConversionData {
+    /// Por que [`EnergyConversionData::parse`] devolveu `None`.
+    pub fn why_not(json: &Value, fields: &ConversionFields) -> String {
+        why_not_item(json, fields.item).unwrap_or_else(|| {
+            format!(
+                "`{}` tem de ser um inteiro positivo de 32 bits (`ExtraCodecs.POSITIVE_INT`)",
+                fields.output
+            )
+        })
+    }
+
     /// `fields.item` e `fields.output` dizem onde ficam o item e a energia. Uma energia que não é um inteiro positivo não é
     /// receita (o codec do original recusa o arquivo).
     pub fn parse(json: &Value, fields: &ConversionFields) -> Option<Self> {
@@ -249,6 +314,40 @@ mod tests {
         let parsed = MachineRecipeData::parse(&json, &ITEMS).unwrap();
         assert_eq!(parsed.resource, None);
         assert_eq!(parsed.output, json!({"count": 2, "id": "a:c"}));
+    }
+
+    #[test]
+    fn a_refused_recipe_says_what_is_wrong() {
+        for (field, why) in [
+            ("chemical_input", "falta `chemical_input`"),
+            ("item_input", "falta `item_input`"),
+            ("output", "falta `output`"),
+        ] {
+            let mut json = recipe();
+            json.as_object_mut().unwrap().remove(field);
+            assert_eq!(MachineRecipeData::why_not(&json, &FIELDS), why);
+        }
+        let mut json = recipe();
+        json["item_input"]["count"] = json!(0);
+        assert_eq!(
+            MachineRecipeData::why_not(&json, &FIELDS),
+            "`item_input.count` tem de ser um inteiro positivo"
+        );
+        let mut json = recipe();
+        json["chemical_input"]["amount"] = json!(0);
+        assert!(MachineRecipeData::why_not(&json, &FIELDS).starts_with("`chemical_input` precisa"));
+        let bad = json!({"input": {"ingredient": "a:b"}, "output": {"id": "a:c", "amount": 0}});
+        assert_eq!(
+            Conversion::why_not(&bad, &CONVERSION),
+            "`output.amount` tem de ser um inteiro positivo"
+        );
+        let bad = json!({"input": {"ingredient": "a:b"}, "output": {"amount": 1}});
+        assert_eq!(
+            Conversion::why_not(&bad, &CONVERSION),
+            "`output.id` tem de ser um texto"
+        );
+        let bad = json!({"input": {"ingredient": "a:b"}, "output": -3});
+        assert!(EnergyConversionData::why_not(&bad, &CONVERSION).contains("inteiro positivo"));
     }
 
     #[test]

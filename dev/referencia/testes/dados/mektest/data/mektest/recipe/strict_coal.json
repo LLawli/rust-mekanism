@@ -1,0 +1,35 @@
+{
+ "type": "mekanism:enriching",
+ "input": {
+  "count": 1,
+  "ingredient": {
+   "neoforge:ingredient_type": "neoforge:components",
+   "items": "minecraft:coal",
+   "components": {
+    "minecraft:interact_animation": {},
+    "minecraft:item_name": {
+     "translate": "item.minecraft.coal"
+    },
+    "minecraft:break_sound": "minecraft:entity.item.break",
+    "minecraft:cooking_fuel": {
+     "burn_time": "minecraft:cooking/time_coal",
+     "speed_multiplier": "minecraft:cooking/speed_default"
+    },
+    "minecraft:attack_animation": {},
+    "minecraft:repair_cost": 0,
+    "minecraft:use_effects": {},
+    "minecraft:tooltip_display": {},
+    "minecraft:item_model": "minecraft:coal",
+    "minecraft:rarity": "common",
+    "minecraft:max_stack_size": 64,
+    "minecraft:attribute_modifiers": [],
+    "minecraft:lore": [],
+    "minecraft:enchantments": {}
+   },
+   "strict": true
+  }
+ },
+ "output": {
+  "id": "minecraft:emerald"
+ }
+}

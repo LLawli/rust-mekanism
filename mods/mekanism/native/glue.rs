@@ -24,7 +24,7 @@ use machinery_basis_core::resource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::tile::{ProgressMachine, RECIPE_CHECK_FREQUENCY, RedstoneControl, SavedState};
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
-use machinery_basis_core::recipe_cache::{IngredientShape, ShapedIngredient, TypedInstance};
+use machinery_basis_core::recipe_cache::{ComponentsKey, IngredientShape, ShapedIngredient, TypedInstance};
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked, TrackedSource};
 use machinery_basis_core::machine_sync::MachineSync;
@@ -551,16 +551,19 @@ fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
     basis::item_resource(game, stack)
 }
 
-fn recipe_ingredient(recipe: &basis::MachineRecipe) -> &Ingredient {
-    &recipe.item
+/// O ingrediente de uma receita do jogo e, se é um `neoforge:components`, os componentes dele.
+type Source<'a> = (&'a Ingredient, Option<&'a Arc<basis::ComponentsInput>>);
+
+fn recipe_ingredient(recipe: &basis::MachineRecipe) -> Source<'_> {
+    (&recipe.item, recipe.components.as_ref())
 }
 
-fn conversion_ingredient(conversion: &basis::ItemConversion) -> &Ingredient {
-    &conversion.item
+fn conversion_ingredient(conversion: &basis::ItemConversion) -> Source<'_> {
+    (&conversion.item, conversion.components.as_ref())
 }
 
-fn energy_conversion_ingredient(conversion: &basis::ItemEnergyConversion) -> &Ingredient {
-    &conversion.item
+fn energy_conversion_ingredient(conversion: &basis::ItemEnergyConversion) -> Source<'_> {
+    (&conversion.item, conversion.components.as_ref())
 }
 
 /// Se o ingrediente do Horizon não guarda nada além dos itens: nem um tipo de ingrediente de mod, nem um filho que guarde
@@ -576,14 +579,19 @@ fn is_plain(ingredient: &Ingredient) -> bool {
 /// O que `ItemInputCache.mapIngredient` faz com o ingrediente. O Horizon já resolveu as tags: `order` são os itens do
 /// ingrediente na ordem do `HolderSet` (`getValues()`, e `items()` do ingrediente simples), e `children` guarda os filhos do
 /// `CompoundIngredient`. Um ingrediente simples indexa os itens, um composto com filho que não é simples mapeia cada filho, e
-/// qualquer outro é complexo (`Custom`). O Horizon não tem o `DataComponentIngredient` exato (`Exact`).
-fn item_shape(ingredient: &Ingredient) -> IngredientShape {
+/// qualquer outro é complexo (`Custom`). O `DataComponentIngredient` não vem do Horizon: o mod o lê do arquivo (`basis::ComponentsInput`).
+fn item_shape(ingredient: &Ingredient, components: Option<&Arc<basis::ComponentsInput>>) -> IngredientShape {
+    // O `DataComponentIngredient` (`neoforge:components`) o Horizon não entrega: o mod o lê do arquivo da receita. Com `strict` é exato
+    // (`addComponentInputCache`), senão complexo.
+    if let Some(components) = components {
+        return components.shape();
+    }
     if is_plain(ingredient) {
         return IngredientShape::Types(ingredient.order.iter().map(|item| Rc::from(item.as_str())).collect());
     }
     match &ingredient.children {
         Some((Shape::Compound, children)) if ingredient.custom.is_none() => {
-            IngredientShape::Compound(children.iter().map(item_shape).collect())
+            IngredientShape::Compound(children.iter().map(|child| item_shape(child, None)).collect())
         }
         _ => IngredientShape::Custom,
     }
@@ -592,25 +600,40 @@ fn item_shape(ingredient: &Ingredient) -> IngredientShape {
 /// O ingrediente do Horizon (item ou tag) vira o da lib, com a classificação do índice e o teste de tipo (`testType`, sem a
 /// quantidade), e guarda a última resposta, porque a receita em cache pergunta todo tick pelo mesmo item. `source` e `index` dizem
 /// de qual entrada da lista ele sai.
-fn item_ingredient<T: 'static>(source: &Arc<Vec<T>>, index: usize, ingredient: fn(&T) -> &Ingredient) -> ItemIngredient {
-    let shape = item_shape(ingredient(&source[index]));
+fn item_ingredient<T: 'static>(source: &Arc<Vec<T>>, index: usize, ingredient: fn(&T) -> Source<'_>) -> ItemIngredient {
+    let components = ingredient(&source[index]).1.cloned();
+    let shape = {
+        let (found, components) = ingredient(&source[index]);
+        item_shape(found, components)
+    };
     let source = source.clone();
-    let last: RefCell<Option<(Rc<str>, bool)>> = RefCell::new(None);
+    // A última resposta, por item e, num ingrediente de componentes, pelo patch da entrada.
+    let last: RefCell<Option<(Rc<str>, Option<Rc<str>>, bool)>> = RefCell::new(None);
     ItemIngredient::shaped(ShapedIngredient::new(shape, move |input: &dyn TypedInstance| {
         let id = input.type_id();
-        if let Some((held, answer)) = &*last.borrow()
+        let patch = match input.components_key() {
+            ComponentsKey::Patch(key) if components.is_some() => Some(key),
+            _ => None,
+        };
+        if let Some((held, held_patch, answer)) = &*last.borrow()
             && **held == *id
+            && held_patch.as_deref() == patch
         {
             return *answer;
         }
-        let stack = ItemStack {
-            item: Arc::from(id),
-            count: 1,
-            damage: 0,
-            extra: None,
+        let answer = match &components {
+            Some(components) => components.accepts(id, patch),
+            None => {
+                let stack = ItemStack {
+                    item: Arc::from(id),
+                    count: 1,
+                    damage: 0,
+                    extra: None,
+                };
+                ingredient(&source[index]).0.test(&stack)
+            }
         };
-        let answer = ingredient(&source[index]).test(&stack);
-        *last.borrow_mut() = Some((Rc::from(id), answer));
+        *last.borrow_mut() = Some((Rc::from(id), patch.map(Rc::from), answer));
         answer
     }))
 }
@@ -664,6 +687,7 @@ fn core_conversions(conversions: &Arc<Vec<basis::ItemConversion>>) -> Vec<Rc<Che
     let mut converted = Vec::with_capacity(conversions.len());
     for (index, conversion) in conversions.iter().enumerate() {
         converted.push(Rc::new(ChemicalConversion {
+            id: conversion.id.clone(),
             input: item_ingredient(conversions, index, conversion_ingredient),
             input_count: conversion.count,
             output: ChemicalResource::new(&conversion.resource),
@@ -678,6 +702,7 @@ fn core_energy_conversions(conversions: &Arc<Vec<basis::ItemEnergyConversion>>) 
     let mut converted = Vec::with_capacity(conversions.len());
     for (index, conversion) in conversions.iter().enumerate() {
         converted.push(Rc::new(EnergyConversion {
+            id: conversion.id.clone(),
             input: item_ingredient(conversions, index, energy_conversion_ingredient),
             input_count: conversion.count,
             output: conversion.amount,

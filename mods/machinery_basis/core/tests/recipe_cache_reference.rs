@@ -12,6 +12,7 @@ use machinery_basis_core::recipe_cache::{
     DoubleInputRecipeCache, IngredientShape, InputIngredient, ShapedIngredient, SingleInputRecipe,
     SingleInputRecipeCache, TypedInstance,
 };
+use machinery_basis_core::recipe_monitor::RecipeId;
 use serde_json::Value;
 use std::path::Path;
 use std::rc::Rc;
@@ -122,6 +123,12 @@ struct ItemRecipe {
     count: u32,
 }
 
+impl RecipeId for ItemRecipe {
+    fn recipe_id(&self) -> &str {
+        &self.id
+    }
+}
+
 impl SingleInputRecipe<SlotContents> for ItemRecipe {
     fn test(&self, input: &SlotContents) -> bool {
         self.input.test_type(input) && input.amount >= self.count
@@ -134,6 +141,12 @@ struct PairRecipe {
     count: u32,
     chemical: ShapedIngredient,
     amount: u64,
+}
+
+impl RecipeId for PairRecipe {
+    fn recipe_id(&self) -> &str {
+        &self.id
+    }
 }
 
 impl DoubleInputRecipe<SlotContents, TankContents> for PairRecipe {

@@ -1395,6 +1395,7 @@ mod tests {
 
     fn conversions() -> Rc<EnergyConversionCache> {
         EnergyConversion::cache_of(vec![EnergyConversion {
+            id: String::new(),
             input: crate::cached_recipe::ItemIngredient::item("redstone"),
             input_count: 1,
             output: 10_000,
