@@ -408,8 +408,10 @@ bindings = [
   { name = "energy", ty = "i32", value = "energy" },
 ]
 
-# O arquivo de configuração de cliente (`mekanism/client.toml`, o `Mekanism/client.toml` do original): registrar, ler ao abrir o jogo e ler de novo quando o jogador o edita
-# (`ModContainer.registerConfig`, `ModConfigEvent.Loading` e `Reloading`). O som lê dele `baseSoundVolume` e `enableMachineSounds`.
+# Os arquivos de configuração (`config/Mekanism/client.toml`, `general.toml`, `machine-usage.toml` e `tiers.toml`, como o original): registrar, ler ao abrir o jogo (o de
+# cliente) ou o servidor de um mundo (os outros, `Type.SYNCED` no original e `Server` no Horizon) e ler de novo quando o jogador os edita (`ModContainer.registerConfig`,
+# `ModConfigEvent.Loading` e `Reloading`). O som lê do cliente `baseSoundVolume` e `enableMachineSounds`; as máquinas leem o consumo, o multiplicador de upgrade, o
+# atraso do bloco aceso e a capacidade dos cabos.
 [[injection]]
 id = "register-configs"
 hook = "register_configs"

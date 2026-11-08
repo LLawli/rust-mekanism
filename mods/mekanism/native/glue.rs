@@ -71,12 +71,20 @@ struct Machine {
     block: &'static str,
     title: &'static str,
     recipes: basis::RecipeSource,
-    energy_per_tick: i32,
+    /// `MekanismConfig.usage.<máquina>`: a chave de `UsageConfig` que a máquina usa (`AttributeEnergy.getUsage`).
+    usage: fn(&rules::Usage) -> i32,
     slots: Slots,
     /// Os data slots da tela e os avisos dela.
     screen: &'static rules::ScreenSpec,
     /// `AttributeSound`: o evento do som da máquina.
     sound: &'static str,
+}
+
+impl Machine {
+    /// `AttributeEnergy.getUsage`: o consumo de `UsageConfig` de agora. O tile o guarda quando nasce (`MachineEnergyContainer`).
+    fn energy_per_tick(&self) -> i32 {
+        (self.usage)(&server_config().usage)
+    }
 }
 
 const ELECTRIC_SLOT_LAYOUT: Slots = Slots {
@@ -92,14 +100,14 @@ const fn electric(
     block: &'static str,
     title: &'static str,
     recipes: basis::RecipeSource,
-    energy_per_tick: i32,
+    usage: fn(&rules::Usage) -> i32,
     sound: &'static str,
 ) -> Machine {
     Machine {
         block,
         title,
         recipes,
-        energy_per_tick,
+        usage,
         slots: ELECTRIC_SLOT_LAYOUT,
         screen: &rules::ELECTRIC_SCREEN,
         sound,
@@ -111,28 +119,28 @@ static MACHINES: [Machine; 4] = [
         rules::ENRICHMENT_CHAMBER,
         "container.mekanism.enrichment_chamber",
         Custom(rules::ENRICHING, rules::ELECTRIC_FIELDS),
-        rules::ENRICHMENT_USAGE,
+        |usage| usage.enrichment_chamber,
         rules::ENRICHMENT_SOUND,
     ),
     electric(
         rules::CRUSHER,
         "container.mekanism.crusher",
         Custom(rules::CRUSHING, rules::ELECTRIC_FIELDS),
-        rules::CRUSHER_USAGE,
+        |usage| usage.crusher,
         rules::CRUSHER_SOUND,
     ),
     electric(
         rules::ENERGIZED_SMELTER,
         "container.mekanism.energized_smelter",
         Cooking(rules::SMELTING),
-        rules::SMELTER_USAGE,
+        |usage| usage.energized_smelter,
         rules::SMELTER_SOUND,
     ),
     Machine {
         block: rules::INFUSER,
         title: "container.mekanism.metallurgic_infuser",
         recipes: INFUSING,
-        energy_per_tick: rules::INFUSER_USAGE,
+        usage: |usage| usage.metallurgic_infuser,
         slots: Slots {
             input: rules::INPUT_SLOT,
             output: rules::OUTPUT_SLOT,
@@ -268,7 +276,9 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 }
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
-    if let Some(capacity) = rules::cable_capacity(block) {
+    if let Some(tier) = rules::cable_tier(block) {
+        // `CableTier.getCableCapacity`: a capacidade do arquivo `tiers.toml` (o `ModEnergyBuffer` do Horizon é `i32`).
+        let capacity = basis::energy_as_int(server_config().cables[tier], "a capacidade do cabo");
         *energy = Some(ModEnergyBuffer {
             capacity,
             max_insert: capacity,
@@ -280,7 +290,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
     let Some(machine) = machine_of(block) else {
         return;
     };
-    let usage = machine.energy_per_tick;
+    let usage = machine.energy_per_tick();
     // `LightConfigInfo.INPUT_ONLY`: energia entra por todas as faces.
     *energy = Some(ModEnergyBuffer {
         capacity: rules::energy_capacity(usage),
@@ -338,7 +348,8 @@ const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Ve
         window_type: rules::UPGRADE_WINDOW,
         window_types: &rules::WINDOW_TYPES,
         base_slice: rules::PANEL_SLICE,
-        max_multiplier: rules::UPGRADE_MULTIPLIER as i32,
+        max_multiplier: machinery_basis_core::settings::max_upgrade_multiplier,
+        client_config: rules::CLIENT_CONFIG_FILE,
         data: window_upgrade_data,
         color: rules::enum_color,
         item: rules::UPGRADE_ITEM,
@@ -1026,13 +1037,13 @@ fn born(
     let upgrades = upgrade_data(game, &upgrade_types, &upgrade_tags);
     let mut progress = match indexes {
         Indexes::Electric { recipes, energy } => {
-            let mut config = rules::electric_config(machine.energy_per_tick, recipes.clone(), check_offset, upgrades);
+            let mut config = rules::electric_config(machine.energy_per_tick(), recipes.clone(), check_offset, upgrades);
             config.energy_conversion = energy.clone();
             ProgressMachine::electric(config)
         }
         Indexes::Infuser { recipes, conversions, energy } => {
             let mut config = rules::infuser_config(
-                machine.energy_per_tick,
+                machine.energy_per_tick(),
                 recipes.clone(),
                 conversions.clone(),
                 check_offset,
@@ -1785,7 +1796,7 @@ fn sync_muffling(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], li
     }
 }
 
-/// `MekanismConfig.client`, como o último `mekanism/client.toml` lido o deixou (`ModConfigEvent.Loading` e `Reloading`, que limpam o
+/// `MekanismConfig.client`, como o último `Mekanism/client.toml` lido o deixou (`ModConfigEvent.Loading` e `Reloading`, que limpam o
 /// cache dos `CachedValue`). Antes do primeiro arquivo valem os padrões. O carregamento e o `tick` do cliente rodam na mesma janela, mas o
 /// processo também tem a thread do servidor integrado, então a tabela é do processo.
 static CLIENT_CONFIG: std::sync::Mutex<Option<machinery_basis_core::client_config::Loaded>> = std::sync::Mutex::new(None);
@@ -1796,27 +1807,56 @@ fn sound_config() -> machinery_basis_core::sound::SoundConfig {
     guard.as_ref().map_or_else(Default::default, rules::sound_config)
 }
 
-/// `ModContainer.registerConfig(Type.CLIENT, spec, "Mekanism/client.toml")` (`MekanismConfigHelper.registerConfig`; aqui `mekanism/client.toml`, o arquivo onde a
-/// janela de upgrades já guarda a posição): o texto padrão é o que o NightConfig escreve quando o arquivo não existe. Um arquivo que já existe só com as
-/// posições das janelas ganha a seção `sounds` na primeira leitura (`config_loaded`).
-pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
-    configs.push(NativeConfig::new("mekanism", NativeConfigKind::Client, &rules::CLIENT_CONFIG.default_text()).file(rules::CLIENT_CONFIG_FILE));
+/// `MekanismConfig` dos arquivos de servidor (`SYNCED`), como o último `Mekanism/*.toml` lido os deixou: o uso das máquinas e as capacidades dos cabos. A
+/// configuração geral (`blockDeactivationDelay` e `maxUpgradeMultiplier`) fica na `machinery_basis`, que as máquinas de qualquer mod leem. O processo tem a janela e a
+/// thread do servidor integrado, então a tabela é do processo; um convidado de LAN não a recebe do anfitrião (o original sincroniza).
+static SERVER_CONFIG: std::sync::RwLock<rules::ServerConfig> = std::sync::RwLock::new(rules::ServerConfig::DEFAULT);
+
+fn server_config() -> rules::ServerConfig {
+    *SERVER_CONFIG.read().unwrap_or_else(|error| error.into_inner())
 }
 
-/// `ModConfigEvent.Loading` e `Reloading`: o arquivo lido vira a configuração de cliente. Um valor errado vai para o limite ou para o padrão
-/// e o arquivo é escrito de novo, com as outras seções como estavam, como o `acceptConfig` do `ModConfigSpec` (`config.save()`); o Horizon avisa da mudança no segundo
-/// seguinte, e o texto novo já está certo.
+/// `ModContainer.registerConfig` (`MekanismConfigHelper.registerConfig`, o nome é `Mekanism/<arquivo>.toml`): o de cliente (`Type.CLIENT`, o que o som e as
+/// janelas leem) e os de servidor (`Type.SYNCED`, que o Horizon lê com o tipo `Server`: a cada mundo que abre, com o do mundo em lugar do de `config/`). O
+/// texto padrão é o que o NightConfig escreve quando o arquivo não existe. Um arquivo de cliente que já existe só com as posições das janelas ganha a seção
+/// `sounds` na primeira leitura (`config_loaded`).
+pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
+    configs.push(NativeConfig::new("mekanism", NativeConfigKind::Client, &rules::client_default_text()).file(rules::CLIENT_CONFIG_FILE));
+    for (file, spec) in [
+        (rules::GENERAL_CONFIG_FILE, &rules::GENERAL_CONFIG),
+        (rules::USAGE_CONFIG_FILE, &rules::USAGE_CONFIG),
+        (rules::TIERS_CONFIG_FILE, &rules::TIERS_CONFIG),
+    ] {
+        configs.push(NativeConfig::new("mekanism", NativeConfigKind::Server, &spec.default_text()).file(file));
+    }
+}
+
+/// `ModConfigEvent.Loading` e `Reloading`: o arquivo lido vira a configuração. Um valor errado vai para o limite ou para o padrão e o arquivo é escrito de
+/// novo, com as outras seções como estavam, como o `acceptConfig` do `ModConfigSpec` (`config.save()`); o Horizon avisa da mudança no segundo seguinte, e o texto
+/// novo já está certo.
 pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
-    if config.mod_id != "mekanism" || config.file != rules::CLIENT_CONFIG_FILE {
+    if config.mod_id != "mekanism" {
         return;
     }
-    let loaded = rules::CLIENT_CONFIG.load(&config.text);
-    if loaded.corrected
-        && let Err(error) = std::fs::write(&config.path, rules::CLIENT_CONFIG.rewrite(&config.text, &loaded))
-    {
-        eprintln!("mekanism: não consegui corrigir {}: {error}", config.path.display());
+    match config.file.as_str() {
+        rules::CLIENT_CONFIG_FILE => {
+            let loaded = basis::read_config(config, &rules::CLIENT_CONFIG, None);
+            *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
+        }
+        rules::GENERAL_CONFIG_FILE => {
+            let loaded = basis::read_config(config, &rules::GENERAL_CONFIG, None);
+            machinery_basis_core::settings::set_machine_settings(rules::machine_settings(&loaded));
+        }
+        rules::USAGE_CONFIG_FILE => {
+            let loaded = basis::read_config(config, &rules::USAGE_CONFIG, None);
+            SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner()).usage = rules::Usage::of(&loaded);
+        }
+        rules::TIERS_CONFIG_FILE => {
+            let loaded = basis::read_config(config, &rules::TIERS_CONFIG, None);
+            SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner()).cables = rules::cable_capacities(&loaded);
+        }
+        _ => {}
     }
-    *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
 }
 
 /// `IncompleteRecipeScanner.foundIncompleteRecipes`: o resultado da última varredura.
@@ -1883,6 +1923,7 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
     let supports = upgrade_data(game, &types, &tags).supports(rules::MUFFLING_UPGRADE);
     let christmas = rules::CHRISTMAS_SOUNDS;
     let today = crate::game::machinery_tile_sound::today();
+    let holidays = basis::holidays_enabled(rules::LOCAL_CONFIG_NAMESPACE);
     let tiles: Vec<crate::game::machinery_tile_sound::SoundTile> = game
         .world
         .block_entities
@@ -1894,8 +1935,8 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
             let machine = machine_of(&entity.id)?;
             let pos = [x, y, z];
             let muffling = muffling_max.filter(|_| supports).map(|max| (crate::game::machinery_tile_sound::muffling_count(dimension, pos), max));
-            // `HolidayManager.filterSound`: `MekanismConfig.local.holidays` vale `true` por padrão.
-            let sound = machinery_basis_core::sound::holiday_sound(machine.sound, true, today, rules::CHRISTMAS, &christmas);
+            // `HolidayManager.filterSound`: `MekanismConfig.local.holidays` (`config/Mekanism/local.toml`, `true` por padrão).
+            let sound = machinery_basis_core::sound::holiday_sound(machine.sound, holidays, today, rules::CHRISTMAS, &christmas);
             Some(crate::game::machinery_tile_sound::SoundTile {
                 key: (dimension, pos),
                 lit: game.native_block_property(pos, "lit").as_deref() == Some("true"),
@@ -2500,7 +2541,7 @@ fn energy_bar(machine: &Machine) -> [f32; 4] {
 /// contêiner que o tile do cliente tem desde que nasce.
 fn screen_capacity(machine: &Machine, read: &rules::ScreenData) -> u32 {
     if read.capacity == 0 {
-        rules::energy_capacity(machine.energy_per_tick) as u32
+        rules::energy_capacity(machine.energy_per_tick()) as u32
     } else {
         read.capacity
     }
@@ -2546,7 +2587,7 @@ pub(in crate::game) fn widget_tooltip(
         // `tile.getActive()` no cliente é o estado `lit` do bloco.
         let active = game.mb_open_screen_pos().is_some_and(|pos| game.native_block_property(pos, "lit").as_deref() == Some("true"));
         // Antes do primeiro valor do servidor o contêiner do cliente tem o consumo de base.
-        let per_tick = if read.energy_per_tick == 0 { machine.energy_per_tick as u32 } else { read.energy_per_tick };
+        let per_tick = if read.energy_per_tick == 0 { machine.energy_per_tick() as u32 } else { read.energy_per_tick };
         let capacity = u64::from(screen_capacity(machine, &read));
         let lines: Vec<(String, Option<u32>)> =
             rules::energy_tab_tooltip(active, per_tick, u64::from(read.energy), capacity, &translate)

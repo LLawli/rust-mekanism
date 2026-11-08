@@ -61,7 +61,7 @@ fn infuser() -> ProgressMachine {
         common::upgrade_data(),
     );
     config.energy_conversion = common::energy_conversions();
-    config.machine.upgrades.max_upgrade_multiplier = MULTIPLIER.get();
+    config.machine.upgrades.max_upgrade_multiplier = MULTIPLIER.get().into();
     ProgressMachine::chemical(config)
 }
 
@@ -347,7 +347,7 @@ fn a_save_without_the_used_so_far_catches_up_with_more_than_one_per_tick() {
 /// Com `maxUpgradeMultiplier` 1000, 7 de velocidade dá `ticksD = 200 * 1000^(-7/8) = 0,47` e `getOperationsPerTick` 2, e 8 dá 0,2 e 5
 /// (`UpgradeUtils.getOperationsPerTick`, `max(1, 1 / ticksD)`); a receita de `per_tick_usage` gasta então `amount * operações * multiplicador`
 /// por tick (`ItemStackConstantChemicalToObjectCachedRecipe.useResources`) e o tanque cai de acordo. O padrão do original (10) nunca chega
-/// aqui, e o port não lê a configuração (`UPGRADE_MULTIPLIER` é uma constante): a prova em jogo não alcança este caso.
+/// aqui; o port lê `maxUpgradeMultiplier` de `Mekanism/general.toml`, então em jogo basta pôr 1000 no arquivo (`h2_infuser_const.py ops_placed`).
 #[test]
 fn the_infuser_with_more_than_one_operation_per_tick_spends_the_chemical_per_operation() {
     let (marks, lines) = replay_with("infuser_const_ops", 0, 0, OPS_MULTIPLIER, 400);

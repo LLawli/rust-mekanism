@@ -14,6 +14,7 @@ use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
+use machinery_basis_core::settings::{self, ConfigValue, MachineSettings};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{
     ContainerSlotType, DataType, ItemConfig, SlotOverlay, SlotSpec, SlotType, slot_type,
@@ -82,7 +83,8 @@ pub const ENRICHING: &str = "mekanism:enriching";
 pub const CRUSHING: &str = "mekanism:crushing";
 pub const SMELTING: &str = "smelting";
 
-/// `CableTier`: o id de cada cabo e quanto ele guarda.
+/// `CableTier`: o id de cada cabo e quanto ele guarda de padrão (`TierConfig`, `basicCapacity` e as outras três, as capacidades que o arquivo `tiers.toml`
+/// muda).
 pub const UNIVERSAL_CABLES: [(&str, i32); 4] = [
     ("mekanism:basic_universal_cable", 8_000),
     ("mekanism:advanced_universal_cable", 128_000),
@@ -90,18 +92,13 @@ pub const UNIVERSAL_CABLES: [(&str, i32); 4] = [
     ("mekanism:ultimate_universal_cable", 8_192_000),
 ];
 
-/// `BASE_TICKS_REQUIRED`, `MAX_INFUSE` e os padrões de `UsageConfig`.
+/// `BASE_TICKS_REQUIRED`, `MAX_INFUSE` e os padrões de `UsageConfig` (`enrichmentChamber`, `crusher`, `energizedSmelter`, `metallurgicInfuser`).
 pub const TICKS_REQUIRED: u32 = 200;
 pub const TANK_CAPACITY: u64 = 1_000;
 pub const INFUSER_USAGE: i32 = 5;
 pub const ENRICHMENT_USAGE: i32 = 5;
 pub const CRUSHER_USAGE: i32 = 8;
 pub const SMELTER_USAGE: i32 = 5;
-
-/// `blockDeactivationDelay`, o padrão de `GeneralConfig`: quantos ticks o bloco espera para apagar.
-pub const BLOCK_DEACTIVATION_DELAY: i32 = 60;
-/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`). O máximo de cada tipo vem dos dados.
-pub const UPGRADE_MULTIPLIER: f64 = 10.0;
 
 /// `MekanismItems.UPGRADE` e o componente `MekanismDataComponents.UPGRADE_TYPE`, que guarda o tipo no item.
 pub const UPGRADE_ITEM: &str = "mekanism:upgrade";
@@ -185,13 +182,16 @@ pub const CHRISTMAS_SOUNDS: [(&str, &str); 4] = [
 pub const CHRISTMAS: (u32, u32) = (12, 25);
 pub const XP_CONTAINMENT_UPGRADE: &str = "mekanism:xp_containment";
 
-/// O arquivo de cliente: o do original é `Mekanism/client.toml` (`MekanismConfigHelper.registerConfig`: `Mekanism.MOD_NAME` + `/` + `ClientConfig.getFileName()` +
-/// `.toml`). O port o chama `mekanism/client.toml`, com a pasta em minúscula que ele já usa para as posições das janelas (`config/<ns>/client.toml`) e para
-/// `local.toml`: um arquivo só, como no original (decisão 12).
-pub const CLIENT_CONFIG_FILE: &str = "mekanism/client.toml";
+/// O arquivo de cliente: `Mekanism/client.toml` (`MekanismConfigHelper.registerConfig`: `Mekanism.MOD_NAME` + `/` + `ClientConfig.getFileName()` + `.toml`), na
+/// pasta do original, com o M maiúsculo (decisão 14). É o arquivo onde as janelas do Mekanism e do Generators guardam a posição (`window.<nome>`), como
+/// no original.
+pub const CLIENT_CONFIG_FILE: &str = "Mekanism/client.toml";
+/// A pasta do `local.toml` (`LocalConfig.getFileName()`, `holidays`): a mesma do `client.toml`.
+pub const LOCAL_CONFIG_NAMESPACE: &str = "Mekanism";
 /// A seção `sounds` do `ClientConfig` (`ClientConfig.java:74-81`), com o texto que o `MekanismConfigTranslations` dá a cada comentário. O
 /// original traz também `enablePlayer` (os sons do jetpack, da máscara de mergulho, do lança-chamas e do modulador de gravidade, que não
-/// estão portados) e as demais seções (acessibilidade, renderização, HUD, QIO e janelas), que entram junto de quem as lê.
+/// estão portados) e as demais seções (acessibilidade, renderização, HUD e QIO), que entram junto de quem as lê. As posições das janelas (`window`) são de
+/// `WindowPositions`.
 pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
     sections: &[ClientSection {
         name: "sounds",
@@ -215,6 +215,18 @@ pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
     }],
 };
 
+/// O arquivo de cliente que o Horizon escreve quando ele não existe: a seção `sounds` e as posições das janelas que o port abre (`window.upgrade`), no
+/// texto do NightConfig. O original escreve as seis seções e as onze janelas; o port, só o que lê (decisão 12, revista pela 14).
+pub fn client_default_text() -> String {
+    use machinery_basis_core::window::WindowPositions;
+    let windows = WindowPositions::defaults_for(&[UPGRADE_WINDOW]).to_toml(&WINDOW_TYPES);
+    machinery_basis_core::client_config::replace_sections(
+        &CLIENT_CONFIG.default_text(),
+        "window",
+        &windows,
+    )
+}
+
 /// `MekanismConfig.client.baseSoundVolume` (`CachedFloatValue`: o `double` do arquivo como `float`) e `enableMachineSounds`.
 pub fn sound_config(loaded: &ClientLoaded) -> SoundConfig {
     let defaults = SoundConfig::default();
@@ -226,6 +238,224 @@ pub fn sound_config(loaded: &ClientLoaded) -> SoundConfig {
             .float(&CLIENT_CONFIG, "sounds", "baseVolume")
             .map_or(defaults.base_volume, |volume| volume as f32),
     }
+}
+
+/// Os arquivos de servidor do `MekanismConfig`: `GeneralConfig`, `UsageConfig` e `TierConfig`, todos `Type.SYNCED` (`getConfigType`), registrados por
+/// `MekanismConfigHelper.registerConfig` com o nome `Mekanism/<arquivo>.toml`. O NeoForge lê o arquivo de `config/` quando o servidor vai começar e deixa
+/// um do mundo (`syncedconfig/`) trocá-lo; o Horizon tem o tipo `Server` para isso (decisão 15). Cada especificação traz só as chaves das mecânicas portadas.
+pub const GENERAL_CONFIG_FILE: &str = "Mekanism/general.toml";
+pub const USAGE_CONFIG_FILE: &str = "Mekanism/machine-usage.toml";
+pub const TIERS_CONFIG_FILE: &str = "Mekanism/tiers.toml";
+
+/// `GeneralConfig`: `blockDeactivationDelay` (`:126-127`, `defineInRange(.., 3 * TICKS_PER_SECOND, 0, TICKS_PER_MINUTE)`) e `maxUpgradeMultiplier` (`:133-134`,
+/// `defineInRange(.., 10, 1, Integer.MAX_VALUE)`), as duas de fora de qualquer seção. O resto do arquivo entra com a fase que o lê.
+pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
+    sections: &[ClientSection {
+        name: "",
+        comment: "",
+        entries: &[
+            ClientEntry {
+                key: "blockDeactivationDelay",
+                comment: "How many ticks must pass until a block's active state is synced with the client when the block stops being active. This prevents rapid state changes that can cause lag. Note: Mekanism's blocks always sync immediately when they go from inactive to active; this only controls the time it takes to go from active to inactive.",
+                setting: ClientSetting::Int {
+                    default: 60,
+                    min: 0,
+                    max: 1_200,
+                },
+            },
+            ClientEntry {
+                key: "maxUpgradeMultiplier",
+                comment: "Base factor for working out machine performance with upgrades - UpgradeModifier * (UpgradesInstalled/UpgradesPossible).",
+                setting: ClientSetting::Int {
+                    default: 10,
+                    min: 1,
+                    max: i32::MAX,
+                },
+            },
+        ],
+    }],
+};
+
+/// `GeneralConfig.blockDeactivationDelay` e `maxUpgradeMultiplier` de um arquivo lido.
+pub fn machine_settings(loaded: &ClientLoaded) -> MachineSettings {
+    let defaults = MachineSettings::DEFAULT;
+    MachineSettings {
+        block_deactivation_delay: loaded
+            .int(&GENERAL_CONFIG, "", "blockDeactivationDelay")
+            .unwrap_or(defaults.block_deactivation_delay),
+        max_upgrade_multiplier: loaded
+            .int(&GENERAL_CONFIG, "", "maxUpgradeMultiplier")
+            .unwrap_or(defaults.max_upgrade_multiplier),
+    }
+}
+
+/// `UsageConfig` (`:51-66`): a energia por operação de cada máquina portada, `defineInRange(.., padrão, 0, Integer.MAX_VALUE)`, com o texto de
+/// `TranslationPreset.ENERGY_USAGE` (`Energy per operation of: <máquina>`). A chave do Metallurgic Infuser vem depois da do Crusher, na ordem do original.
+pub const USAGE_CONFIG: ClientSpec = ClientSpec {
+    sections: &[ClientSection {
+        name: "",
+        comment: "",
+        entries: &[
+            ClientEntry {
+                key: "enrichmentChamber",
+                comment: "Energy per operation of: Enrichment Chamber",
+                setting: ClientSetting::Int {
+                    default: ENRICHMENT_USAGE,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+            ClientEntry {
+                key: "crusher",
+                comment: "Energy per operation of: Crusher",
+                setting: ClientSetting::Int {
+                    default: CRUSHER_USAGE,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+            ClientEntry {
+                key: "metallurgicInfuser",
+                comment: "Energy per operation of: Metallurgic Infuser",
+                setting: ClientSetting::Int {
+                    default: INFUSER_USAGE,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+            ClientEntry {
+                key: "energizedSmelter",
+                comment: "Energy per operation of: Energized Smelter",
+                setting: ClientSetting::Int {
+                    default: SMELTER_USAGE,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+        ],
+    }],
+};
+
+/// `MekanismConfig.usage.*` das quatro máquinas portadas. O tile guarda o valor quando nasce (`MachineEnergyContainer.input` lê `AttributeEnergy.getUsage()` no
+/// construtor), então uma mudança do arquivo vale para as máquinas novas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Usage {
+    pub enrichment_chamber: i32,
+    pub crusher: i32,
+    pub metallurgic_infuser: i32,
+    pub energized_smelter: i32,
+}
+
+impl Usage {
+    pub const DEFAULT: Self = Self {
+        enrichment_chamber: ENRICHMENT_USAGE,
+        crusher: CRUSHER_USAGE,
+        metallurgic_infuser: INFUSER_USAGE,
+        energized_smelter: SMELTER_USAGE,
+    };
+
+    pub fn of(loaded: &ClientLoaded) -> Self {
+        let read = |key: &str, default: i32| loaded.int(&USAGE_CONFIG, "", key).unwrap_or(default);
+        Self {
+            enrichment_chamber: read("enrichmentChamber", ENRICHMENT_USAGE),
+            crusher: read("crusher", CRUSHER_USAGE),
+            metallurgic_infuser: read("metallurgicInfuser", INFUSER_USAGE),
+            energized_smelter: read("energizedSmelter", SMELTER_USAGE),
+        }
+    }
+}
+
+/// `TierConfig.addUniversalCableCategory` (`:121-130`): as capacidades dos cabos, `defineInRange(<tier>Capacity, CableTier.getBaseCapacity(), 1,
+/// Long.MAX_VALUE)`, nas seções `transmitters` e `transmitters.energy`, com o texto de `TierTranslations.create(CableTier)`.
+pub const TIERS_CONFIG: ClientSpec = ClientSpec {
+    sections: &[
+        ClientSection {
+            name: "transmitters",
+            comment: "Settings for configuring Transmitters",
+            entries: &[],
+        },
+        ClientSection {
+            name: "transmitters.energy",
+            comment: "Settings for configuring Universal Cables",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic universal cables in FE.",
+                    setting: ClientSetting::Long {
+                        default: 8_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced universal cables in FE.",
+                    setting: ClientSetting::Long {
+                        default: 128_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite universal cables in FE.",
+                    setting: ClientSetting::Long {
+                        default: 1_024_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate universal cables in FE.",
+                    setting: ClientSetting::Long {
+                        default: 8_192_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+            ],
+        },
+    ],
+};
+
+/// As capacidades dos quatro cabos (`CableTier.getCableCapacity`: o valor do arquivo, ou o padrão sem ele), na ordem de [`UNIVERSAL_CABLES`].
+pub fn cable_capacities(loaded: &ClientLoaded) -> [i64; 4] {
+    const KEYS: [&str; 4] = [
+        "basicCapacity",
+        "advancedCapacity",
+        "eliteCapacity",
+        "ultimateCapacity",
+    ];
+    let mut out = DEFAULT_CABLE_CAPACITIES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .long(&TIERS_CONFIG, "transmitters.energy", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// Os padrões de `UNIVERSAL_CABLES` como `long`.
+pub const DEFAULT_CABLE_CAPACITIES: [i64; 4] = [8_000, 128_000, 1_024_000, 8_192_000];
+
+/// O que os arquivos de servidor dizem às mecânicas portadas do Mekanism, de uma vez.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ServerConfig {
+    pub usage: Usage,
+    pub cables: [i64; 4],
+}
+
+impl ServerConfig {
+    pub const DEFAULT: Self = Self {
+        usage: Usage::DEFAULT,
+        cables: DEFAULT_CABLE_CAPACITIES,
+    };
+}
+
+/// Qual cabo é o bloco, na ordem de [`UNIVERSAL_CABLES`].
+pub fn cable_tier(block: &str) -> Option<usize> {
+    UNIVERSAL_CABLES.iter().position(|(id, _)| *id == block)
 }
 
 /// `GuiMekanismTile.addGenericTabs`: `new GuiXpContainmentTab(this, recipeLookupHandler, false, 90)`, na lateral direita (`imageWidth`) a
@@ -902,9 +1132,10 @@ fn machine_config(
     MachineConfig {
         energy_per_tick,
         base_ticks_required: TICKS_REQUIRED as i32,
-        deactivation_delay: BLOCK_DEACTIVATION_DELAY,
+        // O original guarda o fornecedor de `blockDeactivationDelay` e lê `maxUpgradeMultiplier` a cada conta: o valor de agora, não o do nascimento.
+        deactivation_delay: ConfigValue::Live(settings::block_deactivation_delay),
         upgrades: UpgradeConfig {
-            max_upgrade_multiplier: UPGRADE_MULTIPLIER,
+            max_upgrade_multiplier: ConfigValue::Live(settings::max_upgrade_multiplier_f64),
             speed: Rc::from(SPEED_UPGRADE),
             energy: Rc::from(ENERGY_UPGRADE),
             xp_containment: Rc::from(XP_CONTAINMENT_UPGRADE),
@@ -1140,8 +1371,14 @@ pub fn slot_accepts(
 }
 
 /// `AttributeEnergy.STORAGE_MULTIPLIER`: o buffer guarda quatro ticks de uso.
+/// O Horizon guarda a capacidade em `i32` (`ModEnergyBuffer`): o que passa disso fica em `i32::MAX`; a máquina viva guarda a conta inteira em `i64`.
 pub const fn energy_capacity(usage: i32) -> i32 {
-    4 * usage
+    let capacity = 4 * (usage as i64);
+    if capacity > i32::MAX as i64 {
+        i32::MAX
+    } else {
+        capacity as i32
+    }
 }
 
 // Na ordem de getInitialInventory.

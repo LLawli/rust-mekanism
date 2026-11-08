@@ -4,7 +4,7 @@
 use machinery_basis_core::sound::{
     SoundConfig, TileSound, TileSoundEngine, TileTickableSound, TileView,
 };
-use mekanism_rules::{CLIENT_CONFIG, sound_config};
+use mekanism_rules::{CLIENT_CONFIG, WINDOW_TYPES, client_default_text, sound_config};
 use std::path::Path;
 
 const SOUND: &str = "mekanism:tile.machine.enrichment_chamber";
@@ -165,7 +165,7 @@ fn a_base_volume_change_does_not_touch_a_sound_already_playing() {
     assert_eq!(sound.original_volume(), 1.0);
 }
 
-/// O arquivo é o mesmo onde a janela de upgrades guarda a posição (`WindowPositions`): cada escritor deixa a seção do outro como está.
+/// O arquivo é o mesmo onde as janelas guardam a posição (`WindowPositions`): cada escritor deixa a seção do outro como está.
 #[test]
 fn the_sound_section_and_the_window_positions_live_in_one_file() {
     use machinery_basis_core::client_config::replace_sections;
@@ -184,7 +184,64 @@ fn the_sound_section_and_the_window_positions_live_in_one_file() {
     );
     // A janela grava de novo: `sounds` fica, com o que o jogador pôs nele.
     let edited = with_sounds.replace("baseVolume = 1.0", "baseVolume = 0.25");
-    let saved = replace_sections(&edited, "window", &positions.to_toml());
+    let saved = replace_sections(&edited, "window", &positions.to_toml(&WINDOW_TYPES));
     assert_eq!(WindowPositions::from_toml(&saved), positions);
     assert_eq!(sound_config(&CLIENT_CONFIG.load(&saved)).base_volume, 0.25);
+}
+
+/// O bloco `[window]` do arquivo que o cliente oficial escreveu sozinho (onze janelas, a de upgrades em (-11, 15)): ler e escrever de novo dá o mesmo texto,
+/// byte a byte, com os comentários, a ordem do enum `WindowType` e o recuo do NightConfig.
+#[test]
+fn the_window_block_is_the_one_the_original_writes() {
+    use machinery_basis_core::window::WindowPositions;
+    let text = original();
+    let block = &text[text.find("#Stores the last position").unwrap()..];
+    let positions = WindowPositions::from_toml(&text);
+    assert_eq!(positions.to_toml(&WINDOW_TYPES), block);
+}
+
+/// O que o Horizon escreve quando o arquivo não existe é o do original sem o que o port não lê: a seção `sounds` (sem `enablePlayer`) e a janela de upgrades, cada
+/// trecho igual ao do arquivo do original.
+#[test]
+fn the_default_file_is_the_original_without_what_the_port_does_not_read() {
+    use machinery_basis_core::window::WindowPositions;
+    let text = client_default_text();
+    assert!(text.starts_with(&original_sounds_section()), "{text}");
+    let window = &text[text.find("#Stores the last position").unwrap()..];
+    let original = original();
+    let original_window = &original[original.find("#Stores the last position").unwrap()..];
+    let upgrade = &original_window[original_window
+        .find("\t#The last position the Upgrade")
+        .unwrap()..];
+    // O padrão tem só a janela de upgrades, com x e y por gravar; o original tem a que o jogo gravou em (-11, 15).
+    let header = &original_window[..original_window
+        .find("\t#The last position the Color")
+        .unwrap()];
+    assert_eq!(
+        window,
+        format!(
+            "{header}{}",
+            upgrade
+                .replace("x = -11", "x = 2147483647")
+                .replace("y = 15", "y = 2147483647")
+        )
+    );
+    // Lê limpo: nada a corrigir.
+    assert!(!CLIENT_CONFIG.load(&text).corrected);
+    let positions = WindowPositions::from_toml(&text);
+    assert_eq!(positions.to_toml(&WINDOW_TYPES), window);
+}
+
+/// Um arquivo que veio do mod de verdade (as seis seções e as onze janelas) não perde nada quando o port corrige o volume: o port só escreve o que lê.
+#[test]
+fn a_file_from_the_original_keeps_everything_it_does_not_read() {
+    let edited = original().replace("baseVolume = 1.0", "baseVolume = 25.5");
+    let loaded = CLIENT_CONFIG.load(&edited);
+    assert!(loaded.corrected);
+    assert_eq!(sound_config(&loaded).base_volume, 10.0);
+    let written = CLIENT_CONFIG.rewrite(&edited, &loaded);
+    assert_eq!(
+        written,
+        original().replace("baseVolume = 1.0", "baseVolume = 10.0")
+    );
 }
