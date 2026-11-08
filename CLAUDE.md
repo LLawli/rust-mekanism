@@ -48,6 +48,8 @@ Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repet
   um cliente de jogo por vez. (O usuário voltou a usar o desktop em 2026-11-07; os limites só sobem quando ele disser.)
 - O jogo é sempre headless: `gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080`, sem `-f`. Nunca `--backend wayland` nem nada que abra
   janela no desktop, que o usuário está usando. Prints e vídeo saem pelo `horizon-ctl`. Nunca mate um gamescope que não seja do teste.
+- O jogo de teste também é mudo: todo cliente, do port e do original, manda o áudio para um sink nulo do PipeWire (criado antes, removido ao fim)
+  ou roda com o som desligado. Nunca pelas caixas do usuário.
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
 - Desktop: até 4 núcleos e 6 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 1 vaga e põe `CARGO_BUILD_JOBS=4`, com
