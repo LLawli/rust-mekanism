@@ -18,18 +18,18 @@ Contagem em 2026-11-08, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 84 | |
-| Hook do catálogo, usado só com o contrato dele | 27 | não |
+| `[[injection]]` no total | 86 | |
+| Hook do catálogo, usado só com o contrato dele | 28 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 30 | sim |
-| Injeção crua (`target = ...`) | 27 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 16 | sim |
+| Injeção crua (`target = ...`) | 28 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 17 | sim |
 
-27 + 30 + 27 = 84. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-57 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+28 + 30 + 28 = 86. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+58 injeções e 17 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 27 | 16 | 30 |
+| Em uso | 28 | 17 | 30 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -80,6 +80,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H35 `block_entity_changed` | hook | `container_changed` (cru, HEAD de `Game::container_changed`) | em uso (1) |
 | H36 `mod_container_viewers` v2 | hook | nenhuma injeção: o `server_tick` da `machinery_basis` faz a conta com o que lê de `hub.guests` (o proposto dá a lista de jogadores com o menu, espectadores marcados) | pedido |
 | H37 `block_entity_energy_inserted` | hook | `energy_store` (cru, HEAD de `Game::native_energy_store`) | em uso (1) |
+| H38 `ingredient` v2 | hook | `components-ingredient-stash` (cru, HEAD de `Ingredient::parse_object`), o hook `ingredient` v1 `components-ingredient-items` e o módulo `components-ingredient` | em uso (1 cru, 1 hook, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -125,12 +126,12 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 37 | 19 | 18 | 12 |
+| `mods/machinery_basis/horizon-mixin.toml` | 39 | 20 | 19 | 13 |
 | `mods/mekanism/native/horizon-mixin.toml` | 29 | 22 | 7 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 18 | 16 | 2 | 2 |
-| Total | 84 | 57 | 27 | 16 |
+| Total | 86 | 58 | 28 | 17 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 27 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 28 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 42 nomes distintos de `hook` (eram 41 antes do `neighbor_changed`, 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
 
 Dos 57 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
@@ -464,6 +465,17 @@ e 27 não: 4 em `machinery_basis`, 13 em `mekanism`, 10 em `mekanismgenerators` 
 - **Hook proposto:** H37 `block_entity_energy_inserted` (`listen`): `dimension`, `pos`, a face e a quantidade que de fato entrou.
 - **Risco:** renomear `native_energy_store` ou fazer outro caminho gravar `energy` sem passar por ele (ainda não existe) deixa o `lastEnergyReceived` em zero, sem erro.
 - **Conferido em jogo** (2026-11-08, `horizon`): ver o item `MekanismContainer` do plano.
+
+### `components-ingredient` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo cru:** `horizon_client_lib::crafting::Ingredient::parse_object` (`crafting.rs`), HEAD, com o `o` (o JSON do objeto) e o `items` (`&Items`). **Hook:** `ingredient` v1 (`native_ingredient`, HEAD, só o contrato). **Módulo:** `components-ingredient`, em `crafting.rs`. **Proposta:** H38.
+- **Helper:** `components_stash.rs` chama `machinery_components::stash(o, &items.item_tag_order)`, que guarda uma cópia das tags de item só se o objeto é `neoforge:components` e cita `#tag`; `components_resolve.rs` chama `machinery_components::resolve(kind, data, items)`, que
+  preenche a lista do hook com os ids, as tags guardadas e o `neoforge:or` achatado (e larga a cópia). O teste dos componentes é da mod (`Tree` em `machinery_basis_core::components_ingredient`, montada em `machinery_basis/glue.rs` do `Ingredient` com `custom` do Horizon).
+- **Por que é necessária:** o `neoforge:components` cai no braço de tipos de mod de `parse_object`, que chama o hook `ingredient`; sem dono a lista fica vazia e a receita de cozimento inteira (Smelter) é descartada. O hook recebe `kind`, o JSON e uma lista para preencher, mas não o `Items`: `items` de um `DataComponentIngredient`
+  é um `HolderSet` e `#tag` não se resolve ali. Tentado antes, e recusado pelo `horizon-mixins`: um RETURN em `parse_object` (`E_UNSUPPORTED_CONTROL_FLOW`, o corpo tem `?`) e um HEAD cancelável (`E_UNSUPPORTED_SIGNATURE`, o resultado `Option<Self>` não é concreto).
+- **Hook mais próximo:** `ingredient` (collect), sem as tags. **Hook proposto:** H38 `ingredient` v2: o mesmo contrato com `&Items` (ou um resolvedor de `HolderSet`) entre os argumentos. Com ele a injeção crua e o módulo saem e a `machinery_basis` implementa o hook tipado.
+- **Risco:** renomear `parse_object` ou `native_ingredient`, ou chamar o hook de outro lugar que não `parse_object` (a cópia das tags só vale dentro da chamada). Não cobre o teste do `Ingredient` pelo próprio Horizon (forno, mesa de crafting): o hook `ingredient_test` não tem dono, então ali o ingrediente casa só pelo item. O Smelter da mod usa a árvore própria.
+- **Conferido em jogo** (2026-11-08, `horizon`): `h2_componentes.py smelter`, ver o item `DataComponentIngredient` do plano.
 
 ## Hooks do catálogo com estrutura privada
 
