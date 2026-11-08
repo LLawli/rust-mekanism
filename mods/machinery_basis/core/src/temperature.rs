@@ -11,6 +11,8 @@ pub const DISPLAY_DECIMALS: i32 = 2;
 
 /// A chave do valor no arquivo da configuração local (`LocalConfig.tempUnit`: `defineEnum("temperatureUnit", KELVIN)`).
 pub const CONFIG_KEY: &str = "temperatureUnit";
+/// A chave de `LocalConfig.holidays`.
+pub const HOLIDAYS_KEY: &str = "holidays";
 
 /// `UnitDisplayUtils.TemperatureUnit`, na ordem do enum: `ordinal`, `getNext` e `getPrevious` seguem essa ordem.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -194,6 +196,30 @@ pub fn unit_from_toml(text: &str) -> TemperatureUnit {
         .unwrap_or_default()
 }
 
+/// `LocalConfig.holidays` lido do texto do arquivo (`define("holidays", true)`): `true` ou `false`, também escrito como texto em qualquer caixa (o validador de `define(String,
+/// boolean)`). Chave ausente ou valor que não é um booleano valem o padrão, `true`.
+pub fn holidays_from_toml(text: &str) -> bool {
+    text.lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            (key.trim() == HOLIDAYS_KEY).then(|| {
+                value
+                    .split('#')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_ascii_lowercase()
+            })
+        })
+        .and_then(|value| match value.as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        })
+        .unwrap_or(true)
+}
+
 /// O texto do arquivo com `tempUnit` trocado por `unit`, sem tocar nas outras chaves nem nos comentários. Sem a chave, ela entra no fim.
 pub fn unit_into_toml(text: &str, unit: TemperatureUnit) -> String {
     let line = format!("{CONFIG_KEY} = \"{}\"", unit.name());
@@ -229,6 +255,7 @@ pub const RELOAD_EVERY: Duration = Duration::from_secs(1);
 pub struct LocalUnit {
     path: PathBuf,
     unit: TemperatureUnit,
+    holidays: bool,
     modified: Option<SystemTime>,
     checked: Option<Instant>,
 }
@@ -238,6 +265,7 @@ impl LocalUnit {
         Self {
             path,
             unit: TemperatureUnit::default(),
+            holidays: true,
             modified: None,
             checked: None,
         }
@@ -249,14 +277,25 @@ impl LocalUnit {
 
     fn read(&mut self) {
         self.modified = self.modified();
-        self.unit = std::fs::read_to_string(&self.path)
-            .map(|text| unit_from_toml(&text))
-            .unwrap_or_default();
+        let text = std::fs::read_to_string(&self.path).unwrap_or_default();
+        self.unit = unit_from_toml(&text);
+        self.holidays = holidays_from_toml(&text);
     }
 
     /// A unidade de agora. Na primeira vez lê o arquivo, e depois só quando a data dele muda, olhando no máximo a cada
     /// [`RELOAD_EVERY`]: o desenho pergunta a cada quadro.
     pub fn get(&mut self, now: Instant) -> TemperatureUnit {
+        self.refresh(now);
+        self.unit
+    }
+
+    /// `MekanismConfig.local.holidays` de agora, relido do arquivo como a unidade.
+    pub fn holidays(&mut self, now: Instant) -> bool {
+        self.refresh(now);
+        self.holidays
+    }
+
+    fn refresh(&mut self, now: Instant) {
         match self.checked {
             None => {
                 self.checked = Some(now);
@@ -270,7 +309,6 @@ impl LocalUnit {
             }
             Some(_) => {}
         }
-        self.unit
     }
 
     /// `tempUnit.set(unit)` e `save()`: a unidade vale já no próximo quadro, e o arquivo guarda as outras chaves como estavam.
@@ -301,6 +339,19 @@ mod tests {
 
     /// Os valores da tabela vêm de `UnitDisplayUtils.TemperatureUnit` (`dev/referencia/rastros/temperature_units.jsonl` os confere
     /// contra o Java rodando).
+    #[test]
+    fn holidays_are_on_unless_the_file_says_false() {
+        assert!(holidays_from_toml(""));
+        assert!(holidays_from_toml("holidays = true\n"));
+        assert!(!holidays_from_toml(
+            "compactEnergyDisplay = true\nholidays = false\n"
+        ));
+        assert!(!holidays_from_toml("holidays = \"FALSE\" # nada\n"));
+        // Um valor que não é booleano volta ao padrão, que é ligado.
+        assert!(holidays_from_toml("holidays = 3\n"));
+        assert!(holidays_from_toml("#holidays = false\n"));
+    }
+
     #[test]
     fn the_units_keep_the_original_order_symbols_and_scales() {
         let table: Vec<_> = TemperatureUnit::ALL

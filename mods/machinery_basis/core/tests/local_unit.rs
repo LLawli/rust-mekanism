@@ -145,3 +145,28 @@ fn the_file_the_click_wrote_is_not_read_back() {
         TemperatureUnit::Rankine
     );
 }
+
+#[test]
+fn holidays_are_read_from_the_same_file_and_follow_an_edit() {
+    let dir = folder("holidays");
+    let path = dir.join(LOCAL_CONFIG_FILE);
+    let start = Instant::now();
+    // Sem arquivo: ligados (`define("holidays", true)`).
+    let mut local = LocalUnit::new(path.clone());
+    assert!(local.holidays(start));
+    // O arquivo aparece desligado, e a releitura (no máximo uma por segundo) o vê.
+    edit(
+        &path,
+        "temperatureUnit = \"CELSIUS\"\nholidays = false\n",
+        1_000,
+    );
+    assert!(
+        local.holidays(start + RELOAD_EVERY / 2),
+        "antes de passar um segundo vale o de antes"
+    );
+    assert!(!local.holidays(start + RELOAD_EVERY));
+    // A unidade e os feriados vêm da mesma leitura.
+    assert_eq!(local.get(start + RELOAD_EVERY), TemperatureUnit::Celsius);
+    edit(&path, "holidays = true\n", 2_000);
+    assert!(local.holidays(start + RELOAD_EVERY * 2));
+}

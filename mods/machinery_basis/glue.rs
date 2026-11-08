@@ -1069,6 +1069,27 @@ pub(in crate::game) fn set_stored_energy(entity: &mut ModBlockEntity, stored: i3
 static ENERGY_CAPACITIES: Mutex<BTreeMap<(&'static str, [i32; 3]), (String, i32)>> =
     Mutex::new(BTreeMap::new());
 
+/// O arquivo de configuração que o jogo leu, como o `ModConfigSpec` o lê (`acceptConfig`): um valor errado vai para o limite ou para o padrão, e o arquivo é
+/// escrito de novo, no lugar de onde foi lido (o do mundo, se um do mundo trocou o de `config/`), com as chaves que a especificação não tem como estavam. O
+/// Horizon avisa da mudança no segundo seguinte, e o texto novo já está certo. `previous` é o que a leitura anterior do mesmo arquivo deu: um validador que
+/// olha outra chave a vê pelo valor em cache (`Spec::load_after`).
+pub(in crate::game) fn read_config(
+    config: &crate::game::NativeConfigFile,
+    spec: &machinery_basis_core::client_config::Spec,
+    previous: Option<&machinery_basis_core::client_config::Loaded>,
+) -> machinery_basis_core::client_config::Loaded {
+    let loaded = spec.load_after(&config.text, previous);
+    if loaded.corrected {
+        // `ConfigFileTypeHandler`: o arquivo de antes fica em `<nome>-1.toml.bak` (até cinco), e só então o corrigido o substitui.
+        let saved = machinery_basis_core::client_config::back_up(&config.path, machinery_basis_core::client_config::MAX_BACKUPS)
+            .and_then(|()| std::fs::write(&config.path, spec.rewrite(&config.text, &loaded)));
+        if let Err(error) = saved {
+            eprintln!("machinery_basis: não consegui corrigir {}: {error}", config.path.display());
+        }
+    }
+    loaded
+}
+
 /// Uma capacidade em `i64` como o `ModEnergyBuffer` a guarda, em `i32`. O que passa de `i32::MAX` fica em `i32::MAX`, e isso é
 /// dito no log: o tipo do Horizon é o limite, e nada o corta sem aviso.
 pub(in crate::game) fn energy_as_int(value: i64, what: &str) -> i32 {
@@ -1522,6 +1543,11 @@ fn with_local_unit<T>(ns: &'static str, f: impl FnOnce(&mut temperature::LocalUn
 /// tooltip da aba de calor a leem a cada quadro.
 pub(in crate::game) fn temperature_unit(ns: &'static str) -> temperature::TemperatureUnit {
     with_local_unit(ns, |local| local.get(Instant::now())).unwrap_or_default()
+}
+
+/// `MekanismConfig.local.holidays.get()`: se os feriados valem (o som de Natal), relido do arquivo quando ele muda.
+pub(in crate::game) fn holidays_enabled(ns: &'static str) -> bool {
+    with_local_unit(ns, |local| local.holidays(Instant::now())).unwrap_or(true)
 }
 
 /// `tempUnit.set(unit)` seguido de `save()`: vale no próximo quadro e fica no arquivo.

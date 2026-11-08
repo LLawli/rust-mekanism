@@ -25,6 +25,7 @@ use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler};
 use crate::recipe_monitor::{
     Awarded, MonitorFlags, RecipeCacheLookupMonitor, RecipeId, RecipeLookupHandler, UsedHandle,
 };
+use crate::settings::ConfigValue;
 use crate::transaction::Callback;
 use crate::two_input_recipe::{
     ItemChemicalCache, ItemChemicalToItemRecipe, TwoInputItemChemicalRecipe,
@@ -150,13 +151,14 @@ pub struct TileBase {
     update_comparators: bool,
     current_active: bool,
     update_delay: i32,
-    deactivation_delay: i32,
+    deactivation_delay: ConfigValue<i32>,
     block_active: bool,
 }
 
 impl TileBase {
-    /// `deactivation_delay` é o `blockDeactivationDelay` da configuração.
-    pub fn new(deactivation_delay: i32) -> Self {
+    /// `deactivation_delay` é o `blockDeactivationDelay` da configuração: o número fixo dos testes, ou o valor vivo (`ConfigValue::Live`), que o
+    /// original lê no `setActive` a cada vez.
+    pub fn new(deactivation_delay: impl Into<ConfigValue<i32>>) -> Self {
         Self {
             ticker: 0,
             redstone: false,
@@ -166,7 +168,7 @@ impl TileBase {
             update_comparators: false,
             current_active: false,
             update_delay: 0,
-            deactivation_delay,
+            deactivation_delay: deactivation_delay.into(),
             block_active: false,
         }
     }
@@ -212,7 +214,7 @@ impl TileBase {
                 if self.update_delay == 0 {
                     self.block_active = false;
                 }
-                self.update_delay = self.deactivation_delay;
+                self.update_delay = self.deactivation_delay.get();
             }
         }
     }
@@ -323,7 +325,7 @@ impl UpgradeRules {
 /// (`UpgradeIds.SPEED` e `UpgradeIds.ENERGY`, que o mod diz) e os dados dos tipos e do que a máquina aceita.
 #[derive(Clone, Debug)]
 pub struct UpgradeConfig {
-    pub max_upgrade_multiplier: f64,
+    pub max_upgrade_multiplier: ConfigValue<f64>,
     pub speed: Rc<str>,
     pub energy: Rc<str>,
     /// `UpgradeIds.XP_CONTAINMENT`.
@@ -338,7 +340,7 @@ pub struct UpgradeConfig {
 pub struct MachineConfig {
     pub energy_per_tick: i32,
     pub base_ticks_required: i32,
-    pub deactivation_delay: i32,
+    pub deactivation_delay: ConfigValue<i32>,
     pub upgrades: UpgradeConfig,
     /// `TRACKED_ERROR_TYPES`, na ordem da tela.
     pub tracked_errors: Vec<RecipeError>,
@@ -1298,7 +1300,7 @@ fn recalculate_upgrades(
     let data = upgrades.data();
     let (speed, energy_upgrade) = (&*config.speed, &*config.energy);
     let rules = |max_speed: i32, max_energy: i32| UpgradeRules {
-        max_upgrade_multiplier: config.max_upgrade_multiplier,
+        max_upgrade_multiplier: config.max_upgrade_multiplier.get(),
         max_speed,
         max_energy,
     };
@@ -1349,7 +1351,7 @@ fn update_energy_per_tick(
     };
     if data.supports(energy_upgrade) || data.supports(speed) {
         let rules = UpgradeRules {
-            max_upgrade_multiplier: config.max_upgrade_multiplier,
+            max_upgrade_multiplier: config.max_upgrade_multiplier.get(),
             max_speed,
             max_energy,
         };
@@ -1378,7 +1380,8 @@ fn update_max_energy(
     {
         // `UpgradeUtils.getMaxEnergy`: `clampToLong` do `double`, que em Rust é a conversão que satura.
         let fraction = f64::from(upgrades.get_upgrades(energy_upgrade)) / f64::from(max_energy);
-        let max = energy.base_max_energy() as f64 * config.max_upgrade_multiplier.powf(fraction);
+        let max =
+            energy.base_max_energy() as f64 * config.max_upgrade_multiplier.get().powf(fraction);
         energy.set_max_energy(max as i64);
     }
 }
