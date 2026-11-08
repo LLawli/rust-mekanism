@@ -185,3 +185,11 @@ Em jogo, no `horizon2`, `horizon2/h2_cursor.py MAQUINA` repete uma amostra das l
 Infuser e no Heat Generator, porque o slot de infusão converte e o gerador queima no tick seguinte) e compara slot, cursor, barra e arrasto; `h2_placed.py` mede a
 capacidade pela energia que um Heat Generator encostado deixa na máquina, e uma operação de 200 ticks com o servidor parado. Copie os dois `.java` para
 `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar, como os outros, e apague-os depois.
+
+`testes/TrackerTraceTest.java` grava (`{chamber,crusher,smelter,infuser,heat_generator}_trackers.jsonl`) o que o `MekanismContainer.broadcastChanges` e o
+`sendAllDataToRemote` mandariam a um jogador com a tela aberta, uma linha por tick (`sent`, `dirty`, cada entrada `[índice, classe, "DIRTY"|"SIZE", valor]`).
+O jogador é um `ServerPlayer` falso que não é o dono do menu fora dos pacotes, então o teste chama os métodos reais do menu uma vez por tick em
+`ServerTickEvent.Post` (um espião troca cada `ISyncableData` só durante a chamada, para anotar o `getPropertyData`); o `startTrackingServer` da janela de upgrades
+é lido logo depois da chamada. A energia entra pela capability do bloco depois de os lados de energia irem para `INPUT` (o bloco do molde não aceita de nenhum
+lado), o que alimenta o `lastEnergyReceived`. Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o
+`runGameTestServer` e apague-o depois. `mods/mekanism/tests/tracker_trace.rs` e `mods/mekanismgenerators/tests/tracker_trace.rs` os repetem.
