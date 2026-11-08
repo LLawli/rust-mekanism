@@ -1344,6 +1344,7 @@ pub(in crate::game) fn container_open(game: &mut Game<'_>, player: u128, pos: [i
 /// tick do servidor (`ServerTickStart`), com o estado do fim do tick anterior, como o `ServerPlayer.tick` do original (que o lê antes dos
 /// block entities), e a cada passada com o servidor parado, porque o jogador continua andando nele.
 pub(in crate::game) fn broadcast(game: &mut Game<'_>) {
+    adopt_open_menus(game);
     let containers = sessions().as_ref().map(ContainerSessions::containers).unwrap_or_default();
     if containers.is_empty() {
         return;
@@ -1356,6 +1357,34 @@ pub(in crate::game) fn broadcast(game: &mut Game<'_>) {
             }
         },
     );
+}
+
+/// Um jogador com o menu de um bloco nosso aberto e sem sessão (o menu abriu por um caminho que não passou por `container_opened`) ganha a sessão
+/// aqui, com todos os dados: o `MekanismContainer` do Java nasce com o menu, não importa quem o abriu.
+fn adopt_open_menus(game: &mut Game<'_>) {
+    let Some(host) = game.lan.as_ref() else {
+        return;
+    };
+    let open: Vec<(u128, [i32; 3])> = host
+        .hub
+        .guests
+        .iter()
+        .filter(|guest| guest.placed)
+        .filter_map(|guest| match guest.menu.as_ref()?.slots {
+            horizon_client::lan::menu::Slots::Block(pos) => Some((guest.uuid, [pos.0, pos.1, pos.2])),
+            _ => None,
+        })
+        .collect();
+    for (player, pos) in open {
+        if sessions().as_ref().is_some_and(|table| table.is_open(pos, player)) {
+            continue;
+        }
+        let block = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+            Some(BlockEntity::Mod(entity)) => entity.id.clone(),
+            _ => continue,
+        };
+        container_open(game, player, pos, &block);
+    }
 }
 
 fn broadcast_container(game: &mut Game<'_>, pos: [i32; 3]) {
