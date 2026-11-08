@@ -518,3 +518,44 @@ bindings = [
   { name = "hub", ty = "&mut Hub", value = "&mut *self" },
   { name = "conn", ty = "u32", value = "conn" },
 ]
+
+# `BlockTile.neighborChanged` -> `TileEntityMekanism.updatePower`: o jogo avisou um bloco. O gancho só anota quem foi avisado; o sinal dos
+# vizinhos é lido por `flush_neighbor_signals`, porque o gancho recebe só `&GameLevel` e o sinal pede o motor de redstone (`Behaviours`).
+# Hook do catálogo (`neighbor_changed`), usado com estrutura privada (`GameLevel::native_state_block`, para saber de que bloco é o estado).
+[[injection]]
+id = "neighbor_changed"
+hook = "neighbor_changed"
+hook_version = 1
+kind = "HEAD"
+helper = "neighbor_changed.rs"
+bindings = [
+  { name = "dimension", ty = "LevelDimension", value = "dimension" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "level", ty = "&GameLevel<'_>", value = "self" },
+]
+
+# O fim de cada operação no mundo (`with_level` chama `flush_spill` por último): onde o sinal dos vizinhos avisados é lido, com o mundo como
+# ele ficou depois da operação que avisou. O Java lê dentro do aviso (`level.hasNeighborSignal(pos)`); a diferença só aparece se a mesma
+# operação avisa um bloco e depois muda o sinal dele sem avisar (nenhuma do jogo ou dos mods daqui faz isso). Alvo cru, H34.
+[[injection]]
+id = "flush_signals"
+target = "horizon_client::game::spill::Game<'_>::flush_spill"
+kind = "HEAD"
+helper = "flush_signals.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+# `BlockEntity.setChanged` de um block entity do vanilla com contêiner (um baú, um funil, um forno): o NeoForge avisa os vizinhos pelo `updateNeighbourForOutputSignal`, que
+# chama `onNeighborChange` em cada um (`BlockEntity.java:216-221`, `Level.java:992-1006`), e as máquinas do Mekanism releem o sinal (`updatePower`). O Horizon só avisa
+# comparadores nesse caminho (`Game::container_changed`, o equivalente do `setChanged` de contêiner). Alvo cru, H35.
+[[injection]]
+id = "container_changed"
+target = "horizon_client::game::machines::Game<'_>::container_changed"
+kind = "HEAD"
+helper = "container_changed.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "(i32, i32, i32)", value = "pos" },
+]

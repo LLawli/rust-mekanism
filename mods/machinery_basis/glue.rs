@@ -19,6 +19,7 @@ use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
+use machinery_basis_core::neighbors::{OUTPUT_SIGNAL_ORDER, PendingPower};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
 use machinery_basis_core::recipe::{
     Conversion, ConversionFields, EnergyConversionData, MachineRecipeData, RecipeFields, ResourceInput,
@@ -1779,4 +1780,137 @@ pub(in crate::game) fn bench_record(game_time: i64, nanos: u64) {
 /// Uma linha de `MEKTRACE`: o JSON de um tick, com os campos dos rastros.
 pub(in crate::game) fn trace(json: &str) {
     eprintln!("MEKTRACE {json}");
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O sinal de redstone dos vizinhos (`TileEntityMekanism.updatePower`). Só muda quando o jogo avisa o bloco; veja
+// `machinery_basis_core::neighbors`.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+type PowerKey = (&'static str, [i32; 3]);
+
+/// Quem o jogo avisou desde a última leitura, na ordem em que avisou. Quem avisa e quem lê podem ser threads diferentes (o servidor de
+/// um jogador só), por isso não é `thread_local!`.
+static NOTIFIED: Mutex<Vec<PowerKey>> = Mutex::new(Vec::new());
+/// O que `flush_neighbor_signals` leu e o dono do tile ainda não pegou (`take_power`).
+static PENDING_POWER: LazyLock<Mutex<PendingPower<PowerKey>>> = LazyLock::new(Default::default);
+/// Os blocos que têm `redstone` como o `TileEntityMekanism`, por dono (um mod): cada um diz os seus por nome.
+static REDSTONE_OWNERS: Mutex<Vec<(&'static str, fn(&str) -> bool)>> = Mutex::new(Vec::new());
+
+/// Um mod diz quais dos seus blocos são `TileEntityMekanism` com `supportsRedstone()`. Pode ser dito mais de uma vez.
+pub(in crate::game) fn watch_redstone(owner: &'static str, is_ours: fn(&str) -> bool) {
+    let mut owners = REDSTONE_OWNERS.lock().unwrap_or_else(|e| e.into_inner());
+    if !owners.iter().any(|(known, _)| *known == owner) {
+        owners.push((owner, is_ours));
+    }
+}
+
+fn takes_redstone(block: &str) -> bool {
+    REDSTONE_OWNERS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(_, is_ours)| is_ours(block))
+}
+
+/// `BlockTile.neighborChanged`: o jogo avisou o bloco em `pos`. Só anota quem; o sinal é lido no fim da operação em andamento
+/// (`flush_neighbor_signals`), porque o gancho não tem como ler o mundo.
+pub(in crate::game) fn neighbor_changed(
+    level: &GameLevel<'_>,
+    dimension: &'static str,
+    pos: BlockPos,
+    state: BlockStateId,
+) {
+    if level.native_state_block(state).is_some_and(takes_redstone) {
+        NOTIFIED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((dimension, [pos.x, pos.y, pos.z]));
+    }
+}
+
+/// Lê o sinal dos vizinhos de cada bloco avisado (`level.hasNeighborSignal(pos)`) e guarda para o dono. Roda no fim de cada operação no
+/// mundo (`Game::flush_spill`, o último passo de `with_level`) e antes de o dono ler o `redstone`, então o valor é o do mundo no fim da
+/// operação que avisou, e não o de um tick depois. Um aviso de outra dimensão espera a vez dela.
+pub(in crate::game) fn flush_neighbor_signals(game: &mut Game<'_>) {
+    let notified = std::mem::take(&mut *NOTIFIED.lock().unwrap_or_else(|e| e.into_inner()));
+    if notified.is_empty() {
+        return;
+    }
+    let here = game.native_dimension();
+    let mut later = Vec::new();
+    for key in notified {
+        if key.0 != here {
+            later.push(key);
+            continue;
+        }
+        record_power(game, key);
+    }
+    if !later.is_empty() {
+        NOTIFIED.lock().unwrap_or_else(|e| e.into_inner()).extend(later);
+    }
+}
+
+/// `updatePower`: guarda o sinal de agora se há um tile do mod em `key`. Sem tile o Java não faz nada (`tile != null`).
+fn record_power(game: &mut Game<'_>, key: PowerKey) {
+    let (dimension, pos) = key;
+    let ours = matches!(
+        game.world.block_entities.get(&(pos[0], pos[1], pos[2])),
+        Some(horizon_client::containers::BlockEntity::Mod(entity)) if takes_redstone(&entity.id)
+    );
+    if !ours {
+        return;
+    }
+    let power = game.native_neighbor_signal(dimension, pos) > 0;
+    PENDING_POWER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .record(key, power);
+}
+
+/// O que `updatePower` deixou para o tile de `pos`: o dono chama antes de ler o `redstone`, uma vez por tick.
+pub(in crate::game) fn take_power(game: &mut Game<'_>, pos: [i32; 3]) -> Option<bool> {
+    flush_neighbor_signals(game);
+    let key = (game.native_dimension(), pos);
+    PENDING_POWER.lock().unwrap_or_else(|e| e.into_inner()).take(&key)
+}
+
+/// `TileEntityMekanism.onAdded`, de `BlockMekanism.setPlacedBy`: o bloco posto com um item lê o sinal na hora.
+pub(in crate::game) fn on_added(game: &mut Game<'_>, pos: [i32; 3]) {
+    let key = (game.native_dimension(), pos);
+    let power = game.native_neighbor_signal(key.0, pos) > 0;
+    PENDING_POWER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .record(key, power);
+}
+
+/// `Level.updateNeighbourForOutputSignal` do NeoForge, para o que o mod mesmo faz (`notifyComparatorChange`): cada vizinho com tile do mod
+/// recebe `onNeighborChange`, na ordem de `OUTPUT_SIGNAL_ORDER`, e lê o sinal na hora (`updatePower`). O Horizon só avisa os
+/// comparadores do vanilla.
+pub(in crate::game) fn on_neighbor_change(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    for face in OUTPUT_SIGNAL_ORDER {
+        let [x, y, z] = face.offset();
+        let neighbor = [pos[0] + x, pos[1] + y, pos[2] + z];
+        record_power(game, (dimension, neighbor));
+    }
+}
+
+/// `BlockEntity.setChanged` de um block entity do vanilla com contêiner (`Game::container_changed`): o NeoForge avisa os vizinhos pelo
+/// `updateNeighbourForOutputSignal` (`BlockEntity.java:216-221`), e as máquinas do Mekanism releem o sinal (`onNeighborChange`). Um tile de mod fica de fora: o
+/// `TileEntityMekanism.setChanged` não avisa ninguém (`TileEntityUpdateable.java:89-100`), só o nível do comparador avisa (`notify_comparators`). As duas metades de um
+/// baú duplo mudam juntas (`CompoundContainer.setChanged`), cada uma com os vizinhos dela.
+pub(in crate::game) fn container_changed(game: &mut Game<'_>, pos: (i32, i32, i32)) {
+    let dimension = game.native_dimension();
+    let halves: Vec<(i32, i32, i32)> = std::iter::once(pos).chain(game.chest_other_half(pos)).collect();
+    for half in halves {
+        let vanilla = game
+            .world
+            .block_entities
+            .get(&half)
+            .is_some_and(|entity| !matches!(entity, horizon_client::containers::BlockEntity::Mod(_)));
+        if vanilla {
+            on_neighbor_change(game, dimension, [half.0, half.1, half.2]);
+        }
+    }
 }

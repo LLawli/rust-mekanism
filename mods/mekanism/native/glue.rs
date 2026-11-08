@@ -245,6 +245,10 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 }
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
+    if is_machine(block) {
+        // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
+        basis::watch_redstone(REDSTONE_OWNER, is_machine);
+    }
     if (is_machine(block) || is_cable(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
@@ -465,6 +469,8 @@ fn placed_here(game: &Game<'_>, pos: [i32; 3], consume: bool) -> bool {
 /// Os nomes de `SerializationConstants` que o Java grava, em tags simples no NBT da `ModBlockEntity`. `REDSTONE` é a
 /// marca de que o tile já foi salvo: o Java a escreve sempre.
 const REDSTONE: &str = "redstone";
+/// O nome com que o mod diz à `machinery_basis` quais blocos têm `redstone`.
+const REDSTONE_OWNER: &str = "mekanism";
 const CONTROL_TYPE: &str = "control_type";
 const ACTIVE_STATE: &str = "active_state";
 const UPDATE_DELAY: &str = "update_delay";
@@ -1414,10 +1420,10 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if machine.energy().amount() != stored {
         machine.energy().set_energy(stored, None);
     }
-    // `updatePower`: o sinal dos vizinhos, lido a cada tick.
-    let powered = game.native_neighbor_signal(dimension, pos) > 0;
-    if machine.tile().is_powered() != powered {
-        machine.tile_mut().update_power(powered);
+    // `updatePower` só roda quando o jogo avisa o bloco (`BlockTile.neighborChanged`, `onNeighborChange`, `onAdded`): o `redstone` não é lido
+    // a cada tick. O que o aviso deixou chega aqui, antes de qualquer leitura do tick.
+    if let Some(powered) = basis::take_power(game, pos) {
+        live.machine.tile_mut().update_power(powered);
     }
     // O ejetor liga e desliga por `mekanism_eject`; sai pela direita da frente.
     let switch = match entity.nbt.get(&JavaString::from(EJECT_SWITCH)) {
@@ -1654,6 +1660,8 @@ pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) 
     for (at, pos) in pending {
         if at == dimension {
             game.native_update_output_neighbors(dimension, pos);
+            // O `Level.updateNeighbourForOutputSignal` do NeoForge também avisa (`onNeighborChange`) os vizinhos que não são comparadores.
+            basis::on_neighbor_change(game, at, pos);
         }
     }
 }
@@ -1680,6 +1688,15 @@ pub(in crate::game) fn server_tick_end(game: &mut Game<'_>) {
 }
 
 fn write_screen(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    // O `redstone` que um aviso deixou depois do tick da máquina já vale no fim do tick (`updatePower` troca o campo na hora), e a tela o lê aqui. Só
+    // vale para o objeto vivo do tile que está no mundo: o de um bloco que acabou de ser trocado (o tile novo ainda não tem `redstone` salvo) espera o
+    // primeiro tick do tile novo, que o pega; e o objeto vivo de uma máquina que deu lugar a outro bloco (um Heat Generator) não pega o aviso do bloco novo. Com o
+    // servidor parado este gancho roda a cada quadro, entre dois ticks.
+    let current = matches!(
+        game.world.block_entities.get(&(pos[0], pos[1], pos[2])),
+        Some(BlockEntity::Mod(entity)) if machine_of(&entity.id).is_some() && has_saved(entity)
+    );
+    let power = if current { basis::take_power(game, pos) } else { None };
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
         return;
     };
@@ -1691,6 +1708,9 @@ fn write_screen(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
     let tank = spec.slots.infusion.map(|_| read_tank(entity));
     let frame = LIVE_MACHINES.with_borrow_mut(|machines| {
         let live = machines.get_mut(&(dimension, pos))?;
+        if let Some(powered) = power {
+            live.machine.tile_mut().update_power(powered);
+        }
         let mut screen = rules::ScreenData::of_machine(&live.machine, stored);
         if let Some(tank) = &tank {
             let id = tank.resource.as_ref().map(|held| held.id.to_string()).unwrap_or_default();
@@ -1962,6 +1982,8 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     basis::name_placed(game, stack, pos, &is_machine_id);
     if is_machine_id(&game.native_block(pos)) {
         note_placed(game, pos);
+        // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
+        basis::on_added(game, pos);
     }
 }
 

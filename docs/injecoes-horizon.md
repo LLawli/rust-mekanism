@@ -18,18 +18,18 @@ Contagem em 2026-11-08, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 81 | |
+| `[[injection]]` no total | 84 | |
 | Hook do catálogo, usado só com o contrato dele | 27 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 30 | sim |
-| Injeção crua (`target = ...`) | 24 | sim |
+| Hook do catálogo, usado com estrutura privada do jogo | 31 | sim |
+| Injeção crua (`target = ...`) | 26 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 16 | sim |
 
-27 + 30 + 24 = 81. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-54 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+27 + 31 + 26 = 84. Os 16 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+57 injeções e 16 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 24 | 16 | 30 |
+| Em uso | 26 | 16 | 31 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -76,6 +76,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H31 barra de armadura e mão no tipo de menu (`armorSideBar`) | dado + hook | `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_menu_slot`, `bar_machine_menu`, `bar_quick_move`, `bar_answer_click`, `bar_resend_menu` e os módulos `armor-bar`, `bar-menu`, `bar-machine`, `bar-hub`, `bar-quick-move` | em uso (8 injeções, 5 módulos) |
 | H32 elementos da tela fora da imagem (`hasClickedOutside`) | dado | `bar_clicked_outside` | em uso (1) |
 | H33 `menu_data_sync` | hook | `server_tick` (fase `ServerTickEnd`) do `mekanism`, que entra em cada nível por `enter_level` para escrever `entity.data` | em uso (1) |
+| H34 `neighbor_changed` v2 | hook | `flush_signals` (cru, HEAD de `Game::flush_spill`) | em uso (1) |
+| H35 `block_entity_changed` | hook | `container_changed` (cru, HEAD de `Game::container_changed`) | em uso (1) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -116,18 +118,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 34 | 18 | 16 | 12 |
+| `mods/machinery_basis/horizon-mixin.toml` | 37 | 19 | 18 | 12 |
 | `mods/mekanism/native/horizon-mixin.toml` | 31 | 25 | 6 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 16 | 14 | 2 | 2 |
-| Total | 81 | 57 | 24 | 16 |
+| Total | 84 | 58 | 26 | 16 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 24 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
-`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 41 nomes distintos de `hook` (eram 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 26 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 42 nomes distintos de `hook` (eram 41 antes do `neighbor_changed`, 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
 
-Dos 57 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 30 com estrutura privada são os 7 de antes, os 10 da janela de upgrades (`window_*`, com o `window_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) e o `server_tick` do `mekanism` (os data slots no fim do tick do servidor, 2026-11-08).
+Dos 58 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, os 10 da janela de upgrades (`window_*`, com o `window_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` do `mekanism` (os data slots no fim do tick do servidor, 2026-11-08) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (24)
+## Injeções cruas em uso (26)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -408,9 +410,44 @@ e 27 não: 4 em `machinery_basis`, 15 em `mekanism`, 8 em `mekanismgenerators` (
   um deles quebra o build; mudar a ordem dos slots do menu (os cinco depois dos 36) ou o que `lan_machine_click` faz com `crafting.machine` quebra a barra sem erro. O
   registro tem uma cópia por crate (`armor_bar` no cliente, `machinery_bar_menu` no crate de baixo, que o servidor usa), e o mod declara nos dois pela mesma chamada.
 
+### `flush_signals` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client::game::spill::Game<'_>::flush_spill` (`spill.rs:733`), HEAD. **Proposta:** H34.
+- **Helper:** `mods/machinery_basis/flush_signals.rs` chama `machinery_basis::flush_neighbor_signals(game)`. `Game::with_level` (`game.rs:4577`) chama
+  `flush_spill` por último (`game.rs:4755`), depois de a operação no mundo acabar e de o `GameLevel` sair de uso, então `flush_spill` é o fim de toda
+  operação (`setblock`, uso de item, comando, alavanca, pistão): um ponto só, não genérico e com `&mut Game`.
+- **Por que é necessária:** `BlockTile.neighborChanged` chama `TileEntityMekanism.updatePower` (`BlockTile.java:115-124`, `TileEntityMekanism.java:1109-1116`), que lê
+  `level.hasNeighborSignal(pos)` na hora do aviso, e o campo `redstone` fica com aquele valor até o próximo aviso (rastros `neighbors_*`). O hook `neighbor_changed`
+  (`native_hooks.rs:1317`, `listen`) avisa quem foi notificado, mas roda com `&GameLevel` no meio de `Behaviours::update_neighbors_at`, que tem `level` e `ticks` emprestados
+  como `&mut`: não há como ler o sinal ali (`Behaviours::has_neighbor_signal` pede os dois), e o código do motor de redstone é genérico (`Sim<L: LevelAccess>`,
+  `impl<'a, L> Sim<'a, L>`), que o `horizon-mixins` não aceita como alvo (`boundary-head-and-modules.md`: "Type/const generic impls ... remain unsupported").
+  O hook anota (dimensão e posição) e `flush_spill` lê o sinal com `native_neighbor_signal` no fim da operação que avisou. Lido no tick da máquina em vez disso,
+  uma operação que avisa e outra, no mesmo tick, que muda o sinal sem avisar (rastro `chamber_unnotified`, t=100) davam outro valor: 264 diferenças de
+  comportamento em 150 ticks e 3 máquinas, medidas no simulador contra o Java.
+- **Hook mais próximo:** `neighbor_changed` v1 (`listen`, `&self`), `level_tick_post` (depois do tick do nível, tarde demais para o fim de cada operação).
+- **Hook proposto:** H34: o `neighbor_changed` v2 entregaria `signal: i32` (`getBestNeighborSignal` lido dentro do aviso, pelo motor que já está de posse do nível) ou
+  pediria `&mut` à `Game`. Elimina esta injeção e o `flush_neighbor_signals`.
+- **Risco:** renomear ou mover `flush_spill`, ou `with_level` deixar de chamá-lo no fim, deixa as máquinas sem o `redstone` (o aviso fica na fila e só é lido
+  no tick da máquina, o que ainda funciona para o caso comum, mas perde o caso composto).
+- **Conferido em jogo** (2026-11-08, `horizon`, build `native-f319701-3baabd0d9efd`): os nove cenários de `h2_vizinhos.py` contra os rastros `neighbors_*` do Java, 0 diferenças em 2.673 leituras; decisão 7 do plano.
+
+### `container_changed` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client::game::machines::Game<'_>::container_changed` (`machines.rs:565`), HEAD. **Proposta:** H35.
+- **Helper:** `mods/machinery_basis/container_changed.rs` chama `machinery_basis::container_changed(game, pos)`: para o block entity do vanilla em `pos` (e a outra metade de um baú duplo,
+  `chest_other_half`), cada vizinho com tile do Mekanism relê o sinal na hora (`onNeighborChange`, na ordem de `Level.NEIGHBOR_UPDATE_LIST`).
+- **Por que é necessária:** `BlockEntity.setChanged` (`BlockEntity.java:216-221`) chama `Level.updateNeighbourForOutputSignal` (`Level.java:992-1006`), que no NeoForge manda `onNeighborChange` a
+  cada vizinho (`BlockTile.onNeighborChange`, `BlockTile.java:105-113`, -> `updatePower`). O Horizon só avisa comparadores nesse caminho (`Sim::update_neighbour_for_output_signal`, `update.rs:679`,
+  genérico e fora do alcance de um alvo cru). `Game::container_changed` é o `setChanged` dos contêineres do vanilla (o funil que enche um baú, o jogador que mexe nos itens, o forno que
+  queima), um ponto não genérico e com `&mut Game`; não cobre os block entities do vanilla sem contêiner (uma placa, um sino), que no original também mandam o aviso.
+- **Hook mais próximo:** nenhum (`block_changed` só vê `setBlock`).
+- **Hook proposto:** H35 `block_entity_changed` (`listen`): `dimension`, `pos` e o tipo do block entity, chamado no `BlockEntity.setChanged` e em `Level.removeBlockEntity` (`Level.java:686`).
+- **Risco:** renomear `container_changed` ou mudar a posição (`Pos`) quebra o build.
+- **Conferido em jogo** (2026-11-08, `horizon`): `chamber_output_signal` (um baú vizinho que muda, e uma máquina vizinha que muda o comparador) dava 99 diferenças em 226 leituras sem a injeção e 0 com ela; `heat_output_signal` 0.
+
 ## Hooks do catálogo com estrutura privada
 
-Os 30 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 31 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -441,6 +478,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `explosion_detonate` (mekanism) | `explosion_detonate` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`) | H8: `award_experience(at, points)` |
 | `place_block`, `loot_drops`, `container_opened` e `destroy_block` (mekanismgenerators) | os mesmos | os da linha de `place_block` etc. do `mekanism`: `game.world.block_entities` e `game.world.modified`, pelas funções `name_*` da `machinery_basis` | H8: `mod_block_entity`, `change_mod_block_entity` e `block_entity` em `NativeLootDrops` |
 | `menu_button` (mekanism) | `menu_button` | `game.spawn_orbs` (`ExperienceOrb.award`, privado de `game.rs`), para a aba de xp (`COLLECT_XP`) dar a experiência ao jogador que clicou; e, para `ServerPlayer.awardRecipes` + `triggerRecipeCrafted`, `game.level.recipe_book.add_recipes`, `game.recipe_unlocked`, `game.trigger_recipe_crafted` e a macro `world_stations!` (o livro de receitas e os critérios de `advancements.rs`) | H8: `award_experience(at, points)` e `award_recipes(player, recipes, items)` |
+| `neighbor_changed` (basis) | `neighbor_changed` | `level.native_state_block(state)` (a que bloco o estado pertence: o hook só dá o id do estado), e a fila estática da `machinery_basis` que `flush_signals` esvazia | H34: o nome do bloco no hook, ou o sinal dos vizinhos lido dentro do aviso |
 | `server_tick` (mekanism) | `server_tick` | `game.world.block_entities.get_mut` (escreve `entity.data`, os data slots que o Horizon manda ao menu aberto), e, pelo `mb_in_levels` da `machinery_basis` (módulo `glue`), `game.levels_to_tick`, `game.enter_level` e `game.dim`, porque no `ServerTickEnd` só o último nível está no lugar | H33: um hook que o hub chame logo antes de comparar `entity.data` com o que mandou (`sync_container_data`), com o bloco do nível certo |
 
 Java de cada um: `IStateFluidLoggable.updateFluids` e `BlockStateHelper.getStateForPlacement` (`BlockStateHelper.java:102-115`) para
@@ -1020,6 +1058,26 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Exemplo:** `fn menu_data_sync(&mut self, dimension: &str, pos: [i32; 3], data: &mut Vec<i32>)`: o mod lê o objeto vivo e devolve os data slots, sem trocar de nível.
 - **Risco do que existe hoje:** renomear ou mudar a assinatura de `levels_to_tick`, `enter_level`, `Dim` ou `world.block_entities`.
 
+### H34 `neighbor_changed` v2
+
+- **Lado:** servidor. **Tipo:** hook, `listen`, por `neighborChanged` entregue.
+- **O que faz:** o `neighbor_changed` v1 observa cada `neighborChanged` antes de o bloco tratá-lo, com a dimensão, a posição, o estado e o bloco que mudou. A v2 acrescentaria o
+  que o Mekanism lê dentro do aviso (`BlockTile.neighborChanged` -> `TileEntityMekanism.updatePower` -> `level.hasNeighborSignal(pos)`): `signal: i32` (o `getBestNeighborSignal`,
+  ou `hasNeighborSignal` como bool) calculado pelo motor de redstone, que já tem o nível e o `Ticks` em mãos, e o nome do bloco do estado.
+- **Hoje:** `flush_signals` (cru) lê o sinal no fim da operação que avisou, e o hook v1 só anota. Só diverge do Java se a mesma operação avisa um bloco e depois muda o sinal dele sem
+  avisar, o que nenhuma operação do jogo ou dos mods daqui faz; os rastros `neighbors_*` repetidos no simulador e em jogo (repetições separadas em operações) não mostram diferença.
+- **Exemplo:** `fn neighbor_changed(&mut self, dimension: &str, pos: [i32; 3], block: &str, changed: &str, signal: i32, moved: bool)`.
+- **Risco do que existe hoje:** `Game::flush_spill` e a ordem de `with_level` (ver a ficha de `flush_signals`).
+
+### H35 `block_entity_changed`
+
+- **Lado:** servidor. **Tipo:** hook, `listen`, por `BlockEntity.setChanged` e por `Level.removeBlockEntity`.
+- **O que faz:** avisa que o block entity de `pos` mudou (ou saiu), com a dimensão e o tipo, antes de os comparadores relerem. No NeoForge esse é o caminho do `onNeighborChange`
+  de todo vizinho (`Level.updateNeighbourForOutputSignal`), que um mod de máquina usa para reler o que vem dos vizinhos (o sinal de redstone, uma capability).
+- **Hoje:** `container_changed` (cru) cobre os contêineres do vanilla; falta o resto dos block entities do vanilla e `removeBlockEntity`.
+- **Exemplo:** `fn block_entity_changed(&mut self, dimension: &str, pos: [i32; 3], block_entity: &str, removed: bool)`.
+- **Risco do que existe hoje:** `Game::container_changed`, `Game::chest_other_half` e `world.block_entities`.
+
 ## Correções pedidas ao renderer do Horizon
 
 Estas não são injeções. São diferenças de pixel que vêm do próprio renderer do Horizon, então afetam o jogo inteiro, não só o
@@ -1149,8 +1207,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=81 hook=57 target=24 module=16 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 30 tem de somar `hook`.
+   Hoje: `injection=84 hook=58 target=26 module=16 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 31 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

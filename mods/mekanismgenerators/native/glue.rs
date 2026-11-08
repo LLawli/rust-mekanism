@@ -21,7 +21,7 @@ use machinery_basis_core::side_tab;
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
-use machinery_basis_core::tile::{ItemEnergy, SavedState, TileBase, energy_can_drain};
+use machinery_basis_core::tile::{ItemEnergy, RedstoneControl, SavedState, TileBase, energy_can_drain};
 use machinery_basis_core::upgrade::{self, UpgradeComponent, UpgradeTransient};
 use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
 use machinery_basis_core::window::SelectedWindow;
@@ -38,6 +38,12 @@ const LAVA_BLOCK: &str = "minecraft:lava";
 const HEAT_KEY: &str = "heat";
 /// `SerializationConstants.ACTIVE_STATE` e `UPDATE_DELAY`: o `currentActive` e o `updateDelay` que `TileEntityMekanism` salva.
 const ACTIVE_STATE: &str = "active_state";
+/// `SerializationConstants.REDSTONE` e `CONTROL_TYPE`: o `redstone` que o último aviso dos vizinhos deixou (`TileEntityMekanism.java:775`) e o
+/// modo de controle (`writeSustainedData`).
+const REDSTONE: &str = "redstone";
+const CONTROL_TYPE: &str = "control_type";
+/// O nome com que o mod diz à `machinery_basis` quais blocos têm `redstone`.
+const REDSTONE_OWNER: &str = "mekanismgenerators";
 const UPDATE_DELAY: &str = "update_delay";
 const LIT: &str = "lit";
 
@@ -106,6 +112,10 @@ fn is_generator_id(id: &str) -> bool {
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_generator_id);
+    if is_generator(&game.native_block(pos)) {
+        // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
+        basis::on_added(game, pos);
+    }
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
@@ -123,6 +133,10 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
 }
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
+    if is_generator(block) {
+        // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
+        basis::watch_redstone(REDSTONE_OWNER, is_generator);
+    }
     if is_generator(block) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
@@ -259,8 +273,14 @@ fn load_heat(entity: &ModBlockEntity, ambient: f64) -> Capacitor {
     capacitor
 }
 
-/// O que `TileEntityMekanism.loadAdditional` lê (`currentActive` e `updateDelay`), com o estado `lit` que o bloco tem no mundo.
+/// O que `TileEntityMekanism.loadAdditional` lê (`redstone`, o modo de controle, `currentActive` e `updateDelay`), com o estado `lit` que o
+/// bloco tem no mundo.
 fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
+    let redstone = matches!(entity.nbt.get(&JavaString::from(REDSTONE)), Some(Tag::Byte(value)) if *value != 0);
+    let control_type = match entity.nbt.get(&JavaString::from(CONTROL_TYPE)) {
+        Some(Tag::String(name)) => RedstoneControl::from_serialized_name(&name.to_string_lossy()),
+        _ => RedstoneControl::Disabled,
+    };
     let active = matches!(entity.nbt.get(&JavaString::from(ACTIVE_STATE)), Some(Tag::Byte(value)) if *value != 0);
     let update_delay = match entity.nbt.get(&JavaString::from(UPDATE_DELAY)) {
         Some(Tag::Int(value)) => *value,
@@ -268,6 +288,8 @@ fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
     };
     let mut tile = TileBase::new(rules::BLOCK_DEACTIVATION_DELAY);
     let saved = SavedState {
+        redstone,
+        control_type,
         active,
         update_delay,
         ..Default::default()
@@ -276,8 +298,10 @@ fn load_tile(entity: &ModBlockEntity, block_active: bool) -> TileBase {
     tile
 }
 
-/// `saveAdditional` do `TileEntityMekanism`: `currentActive` e `updateDelay`.
+/// `saveAdditional` do `TileEntityMekanism`: `redstone`, o modo de controle, `currentActive` e `updateDelay`.
 fn save_tile(entity: &mut ModBlockEntity, tile: &TileBase) {
+    entity.nbt.insert(JavaString::from(REDSTONE), Tag::Byte(i8::from(tile.is_powered())));
+    entity.nbt.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(tile.control_type().serialized_name())));
     entity.nbt.insert(JavaString::from(ACTIVE_STATE), Tag::Byte(i8::from(tile.active())));
     entity.nbt.insert(JavaString::from(UPDATE_DELAY), Tag::Int(tile.update_delay()));
 }
@@ -498,6 +522,11 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         energy: basis::stored_energy(entity),
         tile: load_tile(entity, block_active),
     };
+    // `updatePower` só roda quando o jogo avisa o bloco (`neighborChanged`, `onNeighborChange`, `onAdded`): o `redstone` não é lido a cada
+    // tick. O que o aviso deixou chega aqui, antes de `canFunction()`.
+    if let Some(powered) = basis::take_power(game, pos) {
+        state.tile.update_power(powered);
+    }
     let produced = rules::step(&mut state, &around);
     if basis::MEDIR {
         let fuel = entity.items[FUEL_SLOT].as_ref().map_or(("", 0), |stack| {

@@ -267,8 +267,9 @@ fn boost(around: &Surroundings) -> f64 {
     }
 }
 
-/// Um tick. `lava` é o que há no tanque, e a energia sai sem o limite do buffer. `can_function` é o `canFunction()` do tile (o controle
-/// de redstone o deixa funcionar): sem ele a lava não queima, mas o calor guardado segue gerando.
+/// Um tick. `lava` é o que há no tanque, e a energia sai sem o limite do buffer. `can_function` é o `canFunction()` do tile
+/// (`TileEntityHeatGenerator.java:140`): o controle de redstone e o `redstone` que o último aviso dos vizinhos deixou; sem ele a lava não
+/// queima, mas o calor guardado segue gerando.
 pub fn tick(
     heat: &mut Capacitor,
     around: &Surroundings,

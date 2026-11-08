@@ -6,6 +6,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O mundo simulado (`sim::chunks`) tem as notificações de vizinhança do `setBlock`: a flag 1 avisa os seis vizinhos em `NeighborUpdater.UPDATE_ORDER`, `updateNeighbourForOutputSignal` manda o
+  `onNeighborChange` do NeoForge em `Level.NEIGHBOR_UPDATE_LIST`, o bloco posto por jogador roda `setPlacedBy`, e um tile sai do chunk e volta do NBT (`detach_block_entity`, `attach_block_entity`).
+  `sim::neighbor_replay` repete os rastros `neighbors_*` do Java, tick a tick e no meio do tick, e `machinery_basis_core::neighbors` guarda as duas ordens, as flags e o sinal que um aviso deixa
+  para o tile.
 - O Heat Generator tem os slots de armadura e de mão secundária (`armorSideBar(-20, 11, 0)`, `GeneratorsContainerTypes.java:29`): quatro `ArmorSlot` em
   (-20, 11 + 18 i), a cabeça em cima, e o `OffhandSlot` em (-20, 83), sobre o suporte `GuiSideHolder.create(this, -26, 6, 98, true, true, TAB_ARMOR_SLOTS)`
   (`holder_left`). São os slots 40 a 44 do menu do servidor, que o motor verificado do Horizon já sabe tratar: o capacete entra no slot da cabeça e é recusado no das
@@ -161,6 +165,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   (`VirtualSlotContainerScreen.extractSlotHighlightFront` chama o `Back`). Uma injeção em `draw_slot_highlight`.
 
 ### Fixed
+
+- O `redstone` das quatro máquinas e do Heat Generator só muda quando o jogo avisa o bloco, como no original (`updatePower`, `TileEntityMekanism.java:1109`): `BlockTile.neighborChanged`
+  (um vizinho que mudou com a flag 1 do `setBlock`), `onNeighborChange` do NeoForge (uma máquina vizinha que mudou o nível do comparador) e `onAdded` (o bloco posto com um
+  item). O port lia o sinal dos seis vizinhos a cada tick da máquina, então uma mudança que não avisa (`/setblock ... strict`, `setBlock` sem a flag 1) ligava ou desligava
+  a máquina na hora, e no original o `redstone` fica velho até o próximo aviso (um bloco posto ao lado, uma alavanca vizinha); uma máquina posta por `/setblock` ao lado de um
+  sinal ligado também nasce com `redstone = false`, e só a posta com um item o lê. O Heat Generator ignorava o controle de redstone: agora `canFunction()`
+  (`TileEntityHeatGenerator.java:140`) segue o modo e o `redstone`, e os dois vão ao NBT. O hook `neighbor_changed` anota o aviso e o fim da operação no mundo (`Game::flush_spill`,
+  injeção crua, ficha H34 em `docs/injecoes-horizon.md`) lê o sinal. Rastros do Java `neighbors_*` (`NeighborTraceTest`, quinze arquivos), repetidos tick a tick no simulador
+  (`neighbors_trace.rs` no Mekanism e no Generators) e em jogo (`h2_vizinhos.py`). O `onNeighborChange` do NeoForge dos contêineres do vanilla (um baú, um funil) sai de `Game::container_changed` (segunda injeção crua, ficha H35); fica de fora o dos block entities do vanilla sem contêiner (uma placa, um sino) e o de `Level.removeBlockEntity`.
 
 - O overlay de nível >= 0,98 da barra de energia das quatro máquinas agora aparece: com o erro de energia ainda aceso (a máquina pausada, que não recalculou) e a energia que
   chegou de fora do tick dela (um gerador encostado, ou a energia posta por comando), a barra cheia ganha o aviso listrado por cima do conteúdo e a aba de avisos aparece, como
