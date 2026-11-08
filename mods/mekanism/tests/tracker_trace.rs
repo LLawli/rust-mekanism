@@ -703,7 +703,7 @@ fn the_capacity_data_never_reads_below_the_stored_energy() {
 /// O mapa de upgrades do original sai na ordem de um `Object2IntOpenHashMap<Holder<Upgrade>>` cuja chave tem o `hashCode` de identidade (`ResourceKey` não o
 /// sobrescreve): o rastro `upgrade_order` tem a ordem de quatro execuções do `runGameTestServer`, a Enrichment Chamber com os quatro tipos que ela aceita. Não
 /// há ordem a copiar (as quatro são diferentes), e o cliente, que monta o próprio mapa, lê os bytes de qualquer ordem na mesma contagem por tipo: a do port, na
-/// ordem do registro, é uma das 24 que o original pode mandar (decisão 10 do plano).
+/// ordem do registro, é uma das 24 que o original pode mandar (decisão 9 do plano).
 #[test]
 fn the_upgrade_map_order_of_the_original_changes_per_run_and_the_client_reads_every_order_alike() {
     use machinery_basis_core::container_sync::Value as Sync;

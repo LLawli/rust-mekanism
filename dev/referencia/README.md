@@ -99,7 +99,7 @@ Cenários: `chamber_notified`, `chamber_unnotified`, `chamber_mid_tick`, `chambe
 
 `TrackerTraceTest` também grava, para a tela aberta num tile reaberto antes do primeiro tick dele, `{chamber,infuser,heat_generator}_trackers_reloaded` (a máquina operando, com upgrade e o modo de redstone baixo; `Track.reload`
 grava o tile e o relê por `BlockEntity.loadStatic`, e a tela abre no mesmo tick: o `sent` dessa linha é o `sendAllDataToRemote` do tile que o `loadAdditional` carregou; a linha traz o `recheck_offset` que o tile novo sorteou) e
-`upgradeOrder` (`upgrade_order.jsonl`: a ordem de `getInstalledTypes()` da Enrichment Chamber com os quatro upgrades, que muda a cada execução do JVM; `rastros/upgrade_order.jsonl` tem as quatro execuções da decisão 10 do plano).
+`upgradeOrder` (`upgrade_order.jsonl`: a ordem de `getInstalledTypes()` da Enrichment Chamber com os quatro upgrades, que muda a cada execução do JVM; `rastros/upgrade_order.jsonl` tem as quatro execuções da decisão 9 do plano).
 `mods/mekanism/tests/tracker_trace.rs` e `mods/mekanismgenerators/tests/tracker_trace.rs` repetem os `_reloaded` (a marca `reload` refaz a máquina do que foi gravado, como o `born` do primeiro tick) e o `upgrade_order`.
 
 `testes/ComparatorTraceTest.java` grava o comparador das máquinas. `comparator_order.jsonl` (duas Enrichment Chambers encostadas, N e S, com um comparador a leste de cada, nas duas ordens de ticker: a linha 0 põe N antes de S, a 1
