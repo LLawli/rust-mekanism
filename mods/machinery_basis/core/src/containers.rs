@@ -654,7 +654,6 @@ impl WeakInventorySlot {
 
 /// `ResourceContainerType.getRedstoneSignalFromContainers`, em `f32` como o Java.
 pub fn redstone_signal(slots: &[&InventorySlot]) -> i32 {
-    const SIGNAL_MAX: i32 = 15;
     let mut proportion = 0.0_f32;
     let mut sample_count = 0;
     for slot in slots {
@@ -670,7 +669,22 @@ pub fn redstone_signal(slots: &[&InventorySlot]) -> i32 {
         return 0;
     }
     proportion /= sample_count as f32;
-    // `Mth.lerpDiscrete`.
+    lerp_discrete(proportion)
+}
+
+/// `ResourceContainerType.getRedstoneSignalFromContainer`: um contêiner só (o tanque de lava do Heat Generator). Vazio, ou sem capacidade, dá 0; o
+/// que passa da capacidade conta como cheio.
+pub fn redstone_signal_of_container(amount: u64, capacity: u64) -> i32 {
+    if amount > 0 && capacity > 0 {
+        lerp_discrete((amount as f32 / capacity as f32).min(1.0))
+    } else {
+        0
+    }
+}
+
+/// `Mth.lerpDiscrete(proportion, SIGNAL_NONE, SIGNAL_MAX)`.
+fn lerp_discrete(proportion: f32) -> i32 {
+    const SIGNAL_MAX: i32 = 15;
     (proportion * (SIGNAL_MAX - 1) as f32).floor() as i32 + i32::from(proportion > 0.0)
 }
 

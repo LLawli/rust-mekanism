@@ -340,6 +340,22 @@ pub fn step(state: &mut State, around: &Surroundings) -> Produced {
     produced
 }
 
+/// O fim de `TileEntityMekanism.tickServer` do Heat Generator (`:645-655`): o comparador relê o tanque de lava, mas só se alguma coisa o marcou
+/// (`makesComparatorDirty` é só o tanque de fluido, `TileEntityHeatGenerator.java:236-238`), e o nível novo é o do tanque
+/// (`ContainerType.FLUID.getRedstoneSignalFromContainer`). `lava_before` é a lava do começo do tick, antes de o combustível entrar; `lava_seen` é a que o
+/// tanque tinha quando o comparador leu da última vez (`None` num tile novo, que nasce sem a marca: só uma mudança dentro do tick a acende). Devolve se o
+/// nível mudou, ou seja, se `notifyComparatorChange` avisa os vizinhos.
+pub fn finish_tick(state: &mut State, lava_before: u64, lava_seen: &mut Option<u64>) -> bool {
+    if state.lava != lava_seen.unwrap_or(lava_before) {
+        state.tile.set_changed();
+    }
+    *lava_seen = Some(state.lava);
+    let lava = state.lava;
+    state.tile.finish_tick(|| {
+        machinery_basis_core::containers::redstone_signal_of_container(lava, TANK_CAPACITY)
+    })
+}
+
 /// O `MEKTRACE` de um tick: os campos de `dev/referencia/rastros/heat_generator_*` que a regra calcula, com os mesmos nomes. `now` é o
 /// tempo do jogo, `fuel` o item do slot de combustível (caminho e quantidade) e `state` o que o tick deixou.
 pub fn trace_line(

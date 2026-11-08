@@ -221,3 +221,27 @@ bindings = [
   { name = "host", ty = "&crate::game::lan::LanHost", value = "&*host" },
   { name = "conn", ty = "u32", value = "conn" },
 ]
+
+[[injection]]
+id = "has_analog_output"
+hook = "has_analog_output"
+hook_version = 1
+kind = "HEAD"
+helper = "has_analog_output.rs"
+bindings = [
+  { name = "level", ty = "&GameLevel<'_>", value = "self" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "output", ty = "&mut bool", value = "&mut *output" },
+]
+
+[[injection]]
+id = "analog_output"
+hook = "analog_output"
+hook_version = 1
+kind = "HEAD"
+helper = "analog_output.rs"
+bindings = [
+  { name = "dimension", ty = "LevelDimension", value = "dimension" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "output", ty = "&mut i32", value = "&mut *output" },
+]

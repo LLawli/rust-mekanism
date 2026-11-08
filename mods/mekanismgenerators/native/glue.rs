@@ -2,13 +2,14 @@
 // machinery_basis.
 use crate::game::mekanismgenerators_rules as rules;
 use crate::game::machinery_armor_bar::declare as declare_armor_bar;
-use crate::game::{Game, machinery_basis as basis};
+use crate::game::{Game, GameLevel, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::{NativeScreen, NativeScreenView};
 use horizon_world::nbt::{Compound, JavaString, Tag};
+use horizon_world::registry::BlockStateId;
 use machinery_basis_core::armor_bar;
 use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui;
@@ -48,6 +49,8 @@ const CONTROL_TYPE: &str = "control_type";
 /// O nome com que o mod diz à `machinery_basis` quais blocos têm `redstone`.
 const REDSTONE_OWNER: &str = "mekanismgenerators";
 const UPDATE_DELAY: &str = "update_delay";
+/// `SerializationConstants.CURRENT_REDSTONE`: o nível que o comparador lê, salvo porque o Heat Generator tem `AttributeComparator`.
+const CURRENT_REDSTONE: &str = "current_redstone";
 const LIT: &str = "lit";
 
 // A tela, nas posições de GuiHeatGenerator. O Mekanism Generators usa os sprites do Mekanism, como o original.
@@ -105,6 +108,8 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     if is_generator(&game.native_block(pos)) {
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
+        // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de um gerador que esteve ali antes.
+        COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), 0));
     }
 }
 
@@ -282,12 +287,17 @@ fn load_tile(entity: &ModBlockEntity, block_active: bool, was_powered: bool) -> 
         Some(Tag::Int(value)) => *value,
         _ => 0,
     };
+    let current_redstone = match entity.nbt.get(&JavaString::from(CURRENT_REDSTONE)) {
+        Some(Tag::Int(value)) => *value,
+        _ => 0,
+    };
     let mut tile = TileBase::new(rules::BLOCK_DEACTIVATION_DELAY);
     let saved = SavedState {
         redstone,
         control_type,
         active,
         update_delay,
+        current_redstone,
         ..Default::default()
     };
     tile.restore(&saved, block_active);
@@ -301,6 +311,7 @@ fn save_tile(entity: &mut ModBlockEntity, tile: &TileBase) {
     entity.nbt.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(tile.control_type().serialized_name())));
     entity.nbt.insert(JavaString::from(ACTIVE_STATE), Tag::Byte(i8::from(tile.active())));
     entity.nbt.insert(JavaString::from(UPDATE_DELAY), Tag::Int(tile.update_delay()));
+    entity.nbt.insert(JavaString::from(CURRENT_REDSTONE), Tag::Int(tile.current_redstone_level()));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -363,6 +374,10 @@ struct UpgradeMemory {
     view: Option<View>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
     muffling_sent: i32,
+    /// A lava que o tanque tinha no fim do último tick: o `makesComparatorDirty` do Heat Generator é o tanque de fluido (`TileEntityHeatGenerator.java:236-238`),
+    /// então o comparador só relê quando a lava mudou desde a última leitura (`TileEntityMekanism.java:645`). `None` num objeto novo: o Java
+    /// também nasce sem a marca (`updateComparators = false`) e só uma mudança dentro do primeiro tick a acende.
+    lava_seen: Option<u64>,
 }
 
 impl UpgradeMemory {
@@ -375,12 +390,16 @@ impl UpgradeMemory {
             view: None,
             // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
             muffling_sent: -1,
+            lava_seen: None,
         }
     }
 }
 
 thread_local! {
     static UPGRADES: RefCell<HashMap<(&'static str, [i32; 3]), UpgradeMemory>> = RefCell::new(HashMap::new());
+    /// `currentRedstoneLevel` de cada gerador que já andou, o que `getAnalogOutputSignal` devolve. O tile está fora do mundo durante o próprio tick, e
+    /// um comparador pode perguntar nessa hora.
+    static COMPARATOR_LEVELS: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: Cell<i64> = const { Cell::new(i64::MIN) };
 }
 
@@ -500,6 +519,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
         if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
             LAST_SWEEP.set(now);
             tiles.retain(|_, memory| now - memory.last_seen <= STALE_TICKS);
+            COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.retain(|key, _| tiles.contains_key(key)));
         }
     });
     (sync, was_powered, ambient)
@@ -565,6 +585,30 @@ fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i3
     act_upgrades(game, pos, |component| component.add_upgrades(upgrade, available)).unwrap_or(0)
 }
 
+/// `notifyComparatorChange` (`Level.updateNeighbourForOutputSignal`) quando `tickServer` mudou o nível, mais o nível que `getAnalogOutputSignal`
+/// devolve. O aviso sai dentro do tick do gerador, como no Java: uma máquina vizinha que tica depois já o vê.
+fn publish_comparator(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], level: i32, changed: bool) {
+    COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((dimension, pos), level));
+    if changed {
+        game.native_update_output_neighbors(dimension, pos);
+        basis::on_neighbor_change(game, dimension, pos);
+    }
+}
+
+/// `hasAnalogOutputSignal`: o Heat Generator tem `AttributeComparator` (`Generator.java:15`).
+pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
+    if level.native_state_block(state).is_some_and(is_generator) {
+        *output = true;
+    }
+}
+
+/// `getAnalogOutputSignal`: o `currentRedstoneLevel` do tile.
+pub(in crate::game) fn analog_output(dimension: &'static str, pos: [i32; 3], output: &mut i32) {
+    if let Some(level) = COMPARATOR_LEVELS.with_borrow(|levels| levels.get(&(dimension, pos)).copied()) {
+        *output = level;
+    }
+}
+
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if !is_generator(&entity.id) {
         return;
@@ -574,6 +618,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);
     let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
     let tank = &mut tanks[0];
+    let lava_before = tank.amount();
     fill_or_burn(game, entity, tank);
 
     // `CachedAmbientTemperature.getTemperature(side)`: o ar do próprio bloco (o que a eficiência de Carnot e o calor inicial usam) e o do
@@ -634,9 +679,13 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         game.native_set_block_property(pos, LIT, if lit { "true" } else { "false" });
     }
 
-    // `TileEntityMekanism.tickServer`, o fim: `ticker++` e `redstoneLastTick = redstone` (`TileEntityMekanism.java:652-655`). O gerador não tem
-    // comparador, então o nível de redstone que o fim do tick pergunta nunca é pedido.
-    state.tile.finish_tick(|| 0);
+    // `TileEntityMekanism.tickServer`, o fim (`:645-655`): o comparador relê o tanque de lava se ele mudou desde a última leitura
+    // (`makesComparatorDirty`, só o fluido), e avisa os vizinhos dentro deste tick; depois `ticker++` e `redstoneLastTick = redstone`.
+    let key = (game.native_dimension(), pos);
+    let mut lava_seen = UPGRADES.with_borrow(|tiles| tiles.get(&key).and_then(|memory| memory.lava_seen));
+    let comparator_changed = rules::finish_tick(&mut state, lava_before, &mut lava_seen);
+    entity.nbt.insert(JavaString::from(CURRENT_REDSTONE), Tag::Int(state.tile.current_redstone_level()));
+    publish_comparator(game, key.0, pos, state.tile.current_redstone_level(), comparator_changed);
     // O que o `broadcastChanges` do tick seguinte lê: o estado do fim deste tick, com a energia que o buffer guarda agora.
     let mut view_state = state;
     view_state.lava = tank.amount();
@@ -645,9 +694,9 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     if entity.data.is_empty() {
         entity.data = vec![TILE_TICKED];
     }
-    let key = (game.native_dimension(), pos);
     UPGRADES.with_borrow_mut(|tiles| {
         if let Some(memory) = tiles.get_mut(&key) {
+            memory.lava_seen = lava_seen;
             memory.was_powered = view_state.tile.redstone_sync().was_powered;
             memory.ambient = ambient_cache;
             memory.view = Some(View { state: view_state, last: produced, upgrades: upgrade_sync });
