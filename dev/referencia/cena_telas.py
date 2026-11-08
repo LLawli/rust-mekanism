@@ -44,11 +44,11 @@ HOVER = {
 # `applyImplicitComponents` recalcula (`MachineEnergyContainer.updateMaxEnergy`: consumo por tick vezes `ticksRequired`, 200),
 # a entrada que tem receita, e o slot de entrada e de saída na ordem do menu.
 MAQUINAS = {
-    "chamber": dict(block="mekanism:enrichment_chamber", tela="electric", cap=1000, entrada="coal", slots=(0, 1)),
-    "crusher": dict(block="mekanism:crusher", tela="electric", cap=1600, entrada="blaze_rod", slots=(0, 1)),
-    "smelter": dict(block="mekanism:energized_smelter", tela="electric", cap=1000, entrada="raw_iron", slots=(0, 1)),
-    "infuser": dict(block="mekanism:metallurgic_infuser", tela="infuser", cap=1000, entrada="clay_ball", slots=(1, 2)),
-    "generator": dict(block="mekanismgenerators:heat_generator", tela="generator", cap=240, entrada=None, slots=(0, 1)),
+    "chamber": dict(block="mekanism:enrichment_chamber", tela="electric", cap=1000, entrada="coal", slots=(0, 1), upgrade=(3, 4)),
+    "crusher": dict(block="mekanism:crusher", tela="electric", cap=1600, entrada="blaze_rod", slots=(0, 1), upgrade=(3, 4)),
+    "smelter": dict(block="mekanism:energized_smelter", tela="electric", cap=1000, entrada="raw_iron", slots=(0, 1), upgrade=(3, 4)),
+    "infuser": dict(block="mekanism:metallurgic_infuser", tela="infuser", cap=1000, entrada="clay_ball", slots=(1, 2), upgrade=(4, 5)),
+    "generator": dict(block="mekanismgenerators:heat_generator", tela="generator", cap=240, entrada=None, slots=(0, 1), upgrade=(2, 3)),
 }
 
 # O que sai do slot de saída "cheio" e o item que não é o da receita.
@@ -439,41 +439,29 @@ def nbt_itens(c, maquina):
             if ":" not in item:
                 item = "minecraft:" + item
             itens.append(f'{{Slot:{slot}b,id:"{item}",count:{n}}}')
+    # Os itens dos dois slots de upgrade entram depois do tick em que a máquina nasce, como o `CenaTelas` (`state` roda depois do `tick step 1` da
+    # montagem): um item que já está no slot quando o objeto nasce conta o tick do nascimento, e a seta de instalação sai um tick adiante (medido em 2026-11-08, `docs/plano-paridade.md`, item `MekanismContainer`, "Em jogo").
+    entrada_up, saida_up = MAQUINAS[maquina]["upgrade"]
+    for chave, slot in (("upgradeentrada", entrada_up), ("upgradesaida", saida_up)):
+        if chave in c["args"]:
+            tipo, n = c["args"][chave].split(":")
+            itens.append(f'{{Slot:{slot}b,id:"mekanism:upgrade",count:{n},components:{{"mekanism:upgrade_type":"mekanism:{tipo}"}}}}')
     return itens
-
-
-def item_upgrade(texto):
-    tipo, n = texto.split(":")
-    return f'{{type:{{id:"mekanism:upgrade",components:{{"mekanism:upgrade_type":"mekanism:{tipo}"}}}},amount:{n}L}}'
 
 
 def componente_upgrade(c):
     a = c["args"]
-    partes, itens = [], []
+    partes = []
     if "upgrades" in a:
         mapa = ",".join(f'"mekanism:{t}":{n}' for t, n in (p.split(":") for p in a["upgrades"].split(",")))
         partes.append(f"upgrades:{{{mapa}}}")
-    if "upgradeentrada" in a:
-        itens.append(f"{{container:0b,stored:{item_upgrade(a['upgradeentrada'])}}}")
-    if "upgradesaida" in a:
-        itens.append(f"{{container:1b,stored:{item_upgrade(a['upgradesaida'])}}}")
-    if itens:
-        partes.append("items:[" + ",".join(itens) + "]")
     return "{" + ",".join(partes) + "}" if partes else None
 
 
-def abre_a_janela(c):
-    """Se o caso clica na aba da janela de upgrades."""
-    return "%d,%d" % ABA in c["args"].get("clicar", "").split(";")
-
-
 def passos_do_port(c):
-    """Os passos que o port dá antes de abrir a tela. O original com a janela de upgrades mostra o progresso de instalação de um tick atrás do valor vivo
-    (medido em 2026-11-08 e antes: o print com N passos é o do port com N - 1; o servidor do original manda o valor vivo, como o rastro `*_trackers`
-    confirma, e a causa do atraso na cena parada não foi isolada). O port manda os dados na abertura da janela, então o um passo a menos fica antes
-    dela e nenhum depois."""
+    """Os passos que o port dá antes de abrir a tela: os `passos` do caso, como o `CenaTelas`. A janela de upgrades recebe os dados na abertura, sem tick depois."""
     passos = int(c["args"].get("passos", "2"))
-    return passos - 1 if abre_a_janela(c) else passos
+    return passos
 
 
 def monta_port(c, x, escala):
