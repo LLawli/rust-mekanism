@@ -18,6 +18,7 @@ pub mod heat;
 pub mod hopper;
 pub mod item_chemical_constant_recipe;
 pub mod item_handler;
+pub mod java_random;
 pub mod last_energy;
 pub mod machine_sync;
 pub mod menu_source;

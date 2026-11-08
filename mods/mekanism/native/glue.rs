@@ -530,11 +530,11 @@ fn experience_of(recipes: &Arc<Vec<basis::MachineRecipe>>) -> machinery_basis_co
 }
 
 /// `AbstractFurnaceBlockEntity.createExperience` + `ExperienceOrb.award`: as bolas de experiência de uma remessa de receitas, em
-/// `at`. O sorteio da parte fracionária é o `Math.random()` do Java: não há semente a reproduzir.
+/// `at`. O sorteio da parte fracionária é o `Math.random()` do Java (`java_random::math_random`, o mesmo gerador): não há semente a
+/// reproduzir, e a distribuição é a mesma, uniforme em `[0, 1)`.
 fn pop_experience(game: &mut Game<'_>, at: [f64; 3], drops: &[machinery_basis_core::experience::ExperienceDrop]) {
     for drop in drops {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| u64::from(since.subsec_nanos()));
-        let points = drop.points((nanos % 1_000_000) as f64 / 1_000_000.0);
+        let points = drop.points(machinery_basis_core::java_random::math_random());
         if points > 0 {
             game.spawn_orbs(at, points as u32);
         }

@@ -183,6 +183,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- A parte fracionária da experiência que as máquinas soltam (`AbstractFurnaceBlockEntity.createExperience`) sai de um gerador uniforme: o `java.util.Random` de 48 bits que o `Math.random()` do Java usa (`machinery_basis_core::java_random`, conferido contra o JDK 21), semeado a cada execução. A fração do relógio de antes andava poucos nanossegundos entre dois sorteios seguidos, então a chance do ponto a mais não era a fração da receita.
 - A tela de uma máquina (as quatro e o Heat Generator) aberta num mundo reaberto antes do primeiro tick dela mostra os valores salvos (energia, progresso da receita, tanque, calor, upgrades e modo de redstone) em vez
   dos padrão, como no original, que lê o tile direto (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote` leem o tile que o `loadAdditional` já carregou). O objeto vivo do port nasce no primeiro tick; até lá o menu
   lê um objeto feito do NBT (`machinery_basis_core::menu_source`), e um objeto vivo velho não vale para um tile novo na mesma posição. Rastros `{chamber,infuser,heat_generator}_trackers_reloaded` do Java
