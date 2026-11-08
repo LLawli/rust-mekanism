@@ -1,14 +1,15 @@
 //! Repete, tick a tick, o rastro `infuser_arrival.jsonl` (`ArrivalTraceTest`): o Metallurgic Infuser com o tanque vazio, recebendo o
 //! item de entrada de uma receita e o item que vira o químico dela, em três ordens (a entrada primeiro, a conversão primeiro e os
 //! dois no mesmo tick). Um par por receita de infusão portada e por item que converte para o químico dela (bio, fungi, redstone,
-//! diamond, gold e refined_obsidian; carbon e tin não têm receita no port).
+//! diamond, gold, refined_obsidian e carbon; tin não, porque o port não tem os itens de estanho).
 //!
-//! A máquina é a dos arquivos que o port entrega (`common::infuser_from_content`): as receitas `metallurgic_infusing` e as conversões
-//! `chemical_conversion`, com as tags do conteúdo. Cada item chega como um jogador o põe (`insert` com `Manual`, o que o menu
+//! A máquina é a dos arquivos que o port entrega (`common::infuser_from_content_by_type`): as receitas `metallurgic_infusing` e as conversões
+//! `chemical_conversion` de qualquer pasta (o jogo lê o `type`), com as tags do conteúdo. Cada item chega como um jogador o põe (`insert` com `Manual`, o que o menu
 //! usa), e a marca guarda quanto o slot aceitou no original.
 mod common;
 
-use common::{infuser_from_content, item};
+use common::{infuser_from_content_by_type, item};
+use machinery_basis_core::chemical::ChemicalResource;
 use machinery_basis_core::containers::{AutomationType, InventorySlot};
 use machinery_basis_core::item_handler::ItemCapabilities;
 use machinery_basis_core::operation_tracker::RecipeError;
@@ -19,8 +20,8 @@ use mekanism_rules::trace_line;
 use serde_json::Value;
 use std::path::Path;
 
-/// Os pares do cenário: 13, cada um em 3 ordens.
-const PAIRS: usize = 13;
+/// Os pares do cenário: 13 de bio, fungi, redstone, diamond, gold e refined_obsidian e 7 de carbon, cada um em 3 ordens.
+const PAIRS: usize = 20;
 const ORDERS: usize = 3;
 
 struct Infuser(ProgressMachine);
@@ -136,7 +137,7 @@ fn apply(machine: &ProgressMachine, mark: &str, arrivals: &mut usize) {
 fn the_infuser_follows_the_recorded_arrivals_tick_by_tick() {
     let lines = read_trace("infuser_arrival");
     assert!(lines.len() >= 900, "rastro curto demais: {}", lines.len());
-    let mut world = SimWorld::new(Infuser(infuser_from_content()));
+    let mut world = SimWorld::new(Infuser(infuser_from_content_by_type()));
     let (mut arrivals, mut converted, mut processing) = (0, 0, 0);
     for expected in &lines {
         world.tick();
@@ -168,4 +169,46 @@ fn the_infuser_follows_the_recorded_arrivals_tick_by_tick() {
         processing >= PAIRS as i32 * ORDERS as i32 * 5,
         "{processing}"
     );
+}
+
+/// `infuser_full_tank` (`RestosTraceTest.infuserFullTank`): ferro na entrada, carvão no slot de infusão e o tanque cheio de carbono (1.000), postos sem a
+/// regra do slot, como o `data merge` do jogo os põe. O carvão espera: `fillTankOrConvert` só confirma se o tanque aceita os 10 que a conversão dá
+/// (`chemicalTank.insert(..) == chemicalProduced`), e a primeira operação (200 ticks) gasta 10 de carbono e abre o espaço. Foi o que a medição em jogo de
+/// 2026-11-08 (frente do som, que põe o tanque em 1.000) tomou por "o carvão não converte com ferro na entrada".
+#[test]
+fn the_coal_waits_for_room_in_a_full_tank() {
+    let lines = read_trace("infuser_full_tank");
+    assert_eq!(lines.len(), 260);
+    let mut world = SimWorld::new(Infuser(infuser_from_content_by_type()));
+    let machine = &world.block_entity.0;
+    let side = machine.chemical_side().unwrap();
+    side.tank
+        .set_contents(Some(ChemicalResource::new("carbon")), 1_000, None);
+    side.slot.set_contents(Some(item("coal")), 8, None);
+    machine
+        .input()
+        .set_contents(Some(item("iron_ingot")), 8, None);
+    let mut waited = 0;
+    let mut converted_after_the_operation = false;
+    for expected in &lines {
+        world.tick();
+        let machine = &world.block_entity.0;
+        let side = machine.chemical_side().unwrap();
+        let actual = serde_json::json!({
+            "t": expected["t"],
+            "progress": machine.recipe_progress(),
+            "tank": side.tank.amount(),
+            "input": slot(machine.input()),
+            "output": slot(machine.output()),
+            "infusion": slot(&side.slot),
+        });
+        assert_eq!(&actual, expected, "tick {}", expected["t"]);
+        waited += i32::from(expected["infusion"][1] == 8 && expected["tank"] == 1000);
+        converted_after_the_operation |= expected["infusion"][1] == 7;
+        let energy = machine.energy();
+        energy.set_energy(energy.capacity(), None);
+    }
+    // O rastro tem de ter o efeito: o carvão espera as 200 operações de ticks e converte um depois que a operação abre o espaço.
+    assert!(waited >= 199, "{waited}");
+    assert!(converted_after_the_operation);
 }
