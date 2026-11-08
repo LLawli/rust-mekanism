@@ -359,6 +359,76 @@ public class NeighborTraceTest {
         }).thenSucceed());
     }
 
+    // ---- a prova de que o aviso de uma máquina não dispara outro aviso ----
+
+    /// Cada máquina com a fonte a oeste, o "cutucão" a leste e o baú ao norte; a linha 5 tem um bloco de pedra no lugar da máquina (controle sem gancho) e a 6 um fio de
+    /// redstone (controle que avisa em cadeia).
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_neighbors")
+    @TestHolder(description = "Records which positions the neighbor updater announces for each operation beside a machine, a stone block and a redstone wire.")
+    public static void nestedUpdates(final DynamicTest test) {
+        List<Kind> kinds = List.of(CHAMBER, CRUSHER, SMELTER, INFUSER, HEAT);
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(7, 3, ROW_STRIDE * 7 + 1)
+                  .fill(0, 0, 0, 6, 0, ROW_STRIDE * 7, Blocks.STONE.defaultBlockState());
+            for (int row = 0; row < 7; row++) {
+                BlockPos at = subject(row);
+                BlockState state = row < 5 ? kinds.get(row).state.get() : row == 5 ? Blocks.STONE.defaultBlockState() : Blocks.REDSTONE_WIRE.defaultBlockState();
+                builder = builder.fill(at.getX(), at.getY(), at.getZ(), at.getX(), at.getY(), at.getZ(), state);
+                BlockPos next = other(row);
+                builder = builder.fill(next.getX(), next.getY(), next.getZ(), next.getX(), next.getY(), next.getZ(), Blocks.CHEST.defaultBlockState());
+            }
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            var level = helper.getLevel();
+            net.minecraft.world.level.redstone.CollectingNeighborUpdater updater;
+            try {
+                java.lang.reflect.Field field = net.minecraft.world.level.Level.class.getDeclaredField("neighborUpdater");
+                field.setAccessible(true);
+                updater = (net.minecraft.world.level.redstone.CollectingNeighborUpdater) field.get(level);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+            Player player = helper.makeMockPlayerLookingAt(new BlockPos(3, 0, 2), Direction.UP);
+            List<String> lines = new ArrayList<>();
+            List<String> announced = new ArrayList<>();
+            for (int row = 0; row < 7; row++) {
+                final int current = row;
+                BlockPos origin = helper.absolutePos(subject(row));
+                updater.setDebugListener(pos -> announced.add("[" + (pos.getX() - origin.getX()) + "," + (pos.getY() - origin.getY()) + "," + (pos.getZ() - origin.getZ()) + "]"));
+                String name = row < 5 ? kinds.get(row).name : row == 5 ? "stone" : "redstone_wire";
+                BlockState at = level.getBlockState(origin);
+                java.util.function.BiConsumer<String, Runnable> record = (op, action) -> {
+                    announced.clear();
+                    action.run();
+                    lines.add("{\"machine\":\"" + name + "\",\"op\":\"" + op + "\",\"announced\":[" + String.join(",", announced) + "]}");
+                };
+                BlockPos source = helper.absolutePos(source(current));
+                BlockPos poke = helper.absolutePos(poke(current));
+                record.accept("poke_on", () -> level.setBlock(poke, Blocks.STONE.defaultBlockState(), 3));
+                record.accept("poke_off", () -> level.setBlock(poke, Blocks.AIR.defaultBlockState(), 3));
+                record.accept("src_on", () -> level.setBlock(source, Blocks.REDSTONE_BLOCK.defaultBlockState(), 3));
+                record.accept("src_off", () -> level.setBlock(source, Blocks.AIR.defaultBlockState(), 3));
+                record.accept("chest_changed", () -> ((ChestBlockEntity) level.getBlockEntity(helper.absolutePos(other(current)))).setChanged());
+                record.accept("output_signal", () -> level.updateNeighbourForOutputSignal(origin, at.getBlock()));
+                if (row < 5) {
+                    record.accept("clear", () -> level.setBlock(origin, Blocks.AIR.defaultBlockState(), 3));
+                    record.accept("setblock", () -> level.setBlock(origin, at, 3));
+                    record.accept("clear_again", () -> level.setBlock(origin, Blocks.AIR.defaultBlockState(), 3));
+                    final Kind kind = kinds.get(row);
+                    record.accept("place", () -> helper.useOn(subject(current).below(), new ItemStack(kind.item.get()), player, Direction.UP));
+                    BlockEntity tile = level.getBlockEntity(origin);
+                    lines.add("{\"machine\":\"" + name + "\",\"tile_class\":\"" + (tile == null ? "" : tile.getClass().getName()) + "\",\"on_power_change\":\""
+                          + (tile == null ? "" : declaring(tile.getClass(), "onPowerChange")) + "\",\"on_neighbor_change\":\""
+                          + (tile == null ? "" : declaring(tile.getClass(), "onNeighborChange")) + "\",\"update_power\":\""
+                          + (tile == null ? "" : declaring(tile.getClass(), "updatePower")) + "\"}");
+                }
+                updater.setDebugListener(null);
+            }
+            write("neighbors_nested", lines);
+        }).thenSucceed());
+    }
+
     private static String declaring(Class<?> type, String method) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             for (java.lang.reflect.Method declared : current.getDeclaredMethods()) {
