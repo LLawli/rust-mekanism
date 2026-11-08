@@ -147,13 +147,22 @@ O Horizon não simula inserção, então o ejetor transaciona numa cópia do viz
 
 Falta na Fase 1:
 
-- Receita de uso constante nas máquinas. `ItemChemicalConstantUsageRecipe` (`ItemStackConstantChemicalToObjectCachedRecipe`), o
-  `ChemicalUsageMultiplier`, o `usedSoFar` e os handlers de fluido e de saída de químico estão na lib, conferidos tick a tick com o
-  Osmium Compressor original (`compressor_run`). O Metallurgic Infuser já escolhe por `per_tick_usage` no `createNewCachedRecipe`,
-  como o Java (`ConstantUsageRecipeLookupHandler`, com o `usedSoFar` do tile): nenhuma receita dos arquivos do original usa a opção
-  nele, então o caminho só é exercitado por um teste sintético (`recipe_order.rs`), sem rastro do original para o Infuser. A
-  Enrichment Chamber, o Crusher e o Energized Smelter não leem o campo (o original também não: a receita deles não o tem). Seguem
-  sem máquina portada o Osmium Compressor, a Purification Chamber e a Chemical Injection Chamber, que o usam.
+- Receita de uso constante nas máquinas: **feito em 2026-11-07 para o Metallurgic Infuser.** `ItemChemicalConstantUsageRecipe`
+  (`ItemStackConstantChemicalToObjectCachedRecipe`), o `ChemicalUsageMultiplier`, o `usedSoFar` e os handlers de fluido e de saída de
+  químico estão na lib, conferidos tick a tick com o Osmium Compressor original (`compressor_run`) e agora também com o Infuser original
+  (`mods/mekanism/tests/infuser_constant_trace.rs`, rastros `infuser_const_{run,dry,speed,placed_speed,reload,reload_speed,reload_without_usage}`,
+  gravados por `dev/referencia/testes/ConstantUsageTraceTest.java` com uma receita de `per_tick_usage` num data pack do próprio teste,
+  `dev/referencia/testes/dados/`: gravel e 2 de redstone por tick). O Infuser escolhe por `per_tick_usage` no `createNewCachedRecipe`, como o Java
+  (`ConstantUsageRecipeLookupHandler`, com o `usedSoFar` do tile, que ele grava e relê). O rastro cobre a operação inteira com químico sobrando,
+  o tanque que seca no meio e volta (menos que a quantidade da receita, outro químico, entrada que some), os upgrades de velocidade e de energia
+  postos e tirados no meio, a máquina posta com upgrades no item, e salvar e reler o tile (com upgrades, parada por falta de químico, com o
+  progresso que não cabe mais e sem o `used_so_far` no NBT). Divergência achada: nenhuma, o port já seguia o Java. Em jogo (`horizon`, 2026-11-07,
+  superplano, máquina posta por um jogador, servidor parado e `tick step`) `infuser_const_run` e `infuser_const_dry` batem em 216 pontos de 1.490
+  ticks, e salvar e reabrir no meio da operação devolve progresso, tanque e `used_so_far` iguais e a operação termina com o total (`h2_infuser_const.py`,
+  `h2_infuser_const_video.py`). Nenhuma receita dos arquivos do original usa a opção no Infuser (só o Osmium Compressor, a Purification Chamber e a Chemical
+  Injection Chamber). Não coberto: mais de uma operação por tick (precisa de `maxUpgradeMultiplier` acima do padrão de 10) e os upgrades em jogo (o rastro os
+  cobre). A Enrichment Chamber, o Crusher e o Energized Smelter não leem o campo (o original também não: a receita deles não o tem). As três máquinas que só
+  existem no original, Osmium Compressor, Purification Chamber e Chemical Injection Chamber, são pendência da Fase 6 (é onde máquina nova entra), não da Fase 1.
 - `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, mas nada os alimenta: nenhum item portado tem a capability
   de químico (`ChemicalItems`), e nenhum mapa de dados de atributos (`chemical_attribute_*`) é lido para o `ChemicalAttributes`. O
   `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer`
@@ -477,7 +486,7 @@ da bateria `mek_teste`; o Steel Casing não foi revisado nesta frente.* Heat Gen
 Energized Smelter e Steel Casing, um a um, conferindo o inventário. Telas com os sprites e widgets originais, energia em slot,
 upgrades, conteúdo guardado no item, som, partículas e luz. Sai a bateria de teste `mek_teste` do build.
 
-**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
+**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Pendência herdada da Fase 1: Osmium Compressor, Purification Chamber e Chemical Injection Chamber, as máquinas de `per_tick_usage` que só existem no original; a mecânica (`ItemChemicalConstantUsageRecipe`, `usedSoFar`) já está na lib e conferida com o Compressor e o Infuser, falta cada bloco (valores, receitas, texturas, tela). Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
 fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 ### Tetos dos resíduos do comparador de telas (2026-11-07)
@@ -534,7 +543,7 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
 **Máquinas (infuser e elétricas)**
 
 - Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
-- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só no Infuser, sem receita dos arquivos que o use.
+- `CachedRecipe` portado, mas a tela ainda não mostra erros e avisos. `per_tick_usage` só no Infuser, sem receita dos arquivos que o use, mas conferido tick a tick com o original por uma receita de teste (`infuser_constant_trace.rs`).
 - Clique do cursor (feito, 2026-11-07). Relato: terra com o cursor entrava no slot de infusão do Infuser, e o clique (e o arrasto) punham qualquer item em
   qualquer slot da máquina. O original usa `InventoryContainerSlot.mayPlace`, que é `isValidForInsertion(item, MANUAL)` do slot. **Medido no
   Java** (`SlotClickTraceTest`, `slot_click_<máquina>.jsonl`, 4 máquinas e o Heat Generator, 15 itens por slot, o slot vazio, com outro item e com o mesmo,
@@ -669,6 +678,19 @@ abas, luz e o comparador) o que pareceu estranho no original foi conferido e o p
   carvão e graveto (rastro `heat_generator_armor_quick_move.jsonl`, casos `_lava_full` e `direct_offhand_*`/`shift_offhand_*`).
 - Tirar uma peça da armadura emite o evento de jogo `minecraft:unequip`, e tirar ou pôr algo na mão secundária não emite nenhum (nem `equip` com o escudo, que ainda toca `equip_generic`):
   é o `onEquipItem` do vanilla, que só emite evento para os slots de armadura do jogador. O port segue o motor (rastro `heat_generator_armor_clicks.jsonl`, casos `take_*` e os da mão secundária).
+
+- O Metallurgic Infuser com uma receita de `per_tick_usage` (`ItemStackConstantChemicalToObjectCachedRecipe`) gasta do tanque a quantidade da receita vezes o multiplicador a cada tick
+  (`InputResourceHandler.java:66`, `getAmount(recipeInput) * operations`), mas o `usedSoFar` conta só o multiplicador (`ItemStackConstantChemicalToObjectCachedRecipe.java:129-135`):
+  com 2 de redstone por tick o tanque cai 2 por tick e o `used_so_far` sobe 1. O tick que termina a operação gasta de novo (`finishProcessing`, `:151`), então a operação de 200 ticks
+  custa 400 e não 398. O port reproduz (rastro `infuser_const_run.jsonl`).
+- O multiplicador do Infuser é `constantUse(() -> ticksRequired, this::getTicksRequired)` (`TileEntityMetallurgicInfuser.java:90`): o total de uso é o `ticksRequired` de agora, não o da receita
+  sem upgrades, então ele nunca alcança nada depois de um upgrade de velocidade (o Compressor, com o total fixo, alcança). Fica 1 por tick em todas as mudanças de velocidade
+  (`infuser_const_speed.jsonl`).
+- Salvar com um progresso que já não cabe nos upgrades que voltam: `loadSavedOperatingTicks` recusa o progresso (`CachedRecipe.java:241`, `operatingTicks < requiredTicks`), e o
+  `loadSavedUsageSoFar` aceita o gasto (`ItemStackConstantChemicalToObjectCachedRecipe.java:59-63`, só confere `> 0`). O gasto fica maior que o progresso, o multiplicador dá 0
+  (`:164`) e a operação inteira roda sem gastar químico (`infuser_const_reload_speed.jsonl`, t=106 a t=124: o tanque fica em 800 e o `used_so_far` em 100). Com o progresso e sem o
+  `used_so_far` no NBT (`getIntOr(USED_SO_FAR, 0)`, `TileEntityMetallurgicInfuser.java:228`) acontece o contrário: o multiplicador vira 2 e o gasto alcança o total
+  (`infuser_const_reload_without_usage.jsonl`). O port reproduz os dois.
 
 Quando uma frente achar outro, entra aqui, com a linha do Java e o teste que o prova.
 
