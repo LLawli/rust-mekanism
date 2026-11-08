@@ -18,13 +18,13 @@ Contagem em 2026-11-08, sobre os `horizon-mixin.toml` (conferência na [próxima
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 86 | |
-| Hook do catálogo, usado só com o contrato dele | 28 | não |
+| `[[injection]]` no total | 89 | |
+| Hook do catálogo, usado só com o contrato dele | 31 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 30 | sim |
 | Injeção crua (`target = ...`) | 28 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 17 | sim |
 
-28 + 30 + 28 = 86. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+31 + 30 + 28 = 89. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
 58 injeções e 17 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
@@ -127,15 +127,15 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 39 | 20 | 19 | 13 |
-| `mods/mekanism/native/horizon-mixin.toml` | 29 | 22 | 7 | 2 |
+| `mods/mekanism/native/horizon-mixin.toml` | 32 | 25 | 7 | 2 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 18 | 16 | 2 | 2 |
-| Total | 86 | 58 | 28 | 17 |
+| Total | 89 | 61 | 28 | 17 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 28 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
-`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 42 nomes distintos de `hook` (eram 41 antes do `neighbor_changed`, 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
+`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 45 nomes distintos de `hook` (eram 42 antes de `register_configs`, `config_loading` e `config_reloading`, 41 antes do `neighbor_changed`, 40 antes do `server_tick`; a contagem anterior, 36, estava velha) existem no catálogo do pin, na versão 1.
 
-Dos 57 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 27 não: 4 em `machinery_basis`, 13 em `mekanism`, 10 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 30 com estrutura privada são os 7 de antes, os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 61 hooks, 30 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 31 não: 5 em `machinery_basis`, 16 em `mekanism` (os 3 da configuração de cliente entre eles), 10 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 30 com estrutura privada são os 7 de antes, os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
 ## Injeções cruas em uso (27)
 
@@ -500,7 +500,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `window_scroll` (basis) | `screen_mouse_scrolled_pre` | `game.mod_screen`, `game.renderer` | H9 |
 | `window_net` (basis) | `net_from_client` | `game.lan.hub.guests`, `hide_menu_slots` e `play.crafting.machine` do menu de LAN, `game.container`, `game.world.block_entities` | H12 |
 | `window_player_in` (basis) | `player_logged_in` | `native_net_send_to_player` (`pub(super)` do `game`), pelo módulo `machinery_basis_windows` | H12 |
-| `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a câmera | H19 e H8 |
+| `client_tick` (mekanism) | `tick` | `game.world.block_entities` (os tiles que o cliente vê), `game.native_window`, e pelo módulo `tile-sound` o motor de som (`game.audio`), o relógio (`game.clock`) e a posição do jogador (`native_player`, `pub(super)` de `native_hooks` e fora da lista `helpers` do catálogo) | H19 e H8 |
 | `place_block` (mekanism) | `place_block` | `game.world.block_entities.get_mut`, `game.world.modified` | H8: `mod_block_entity`, `change_mod_block_entity` |
 | `loot_drops` (mekanism) | `loot_drops` | `game.world.block_entities.get` (o `CustomName` do tile que quebrou: o Horizon já o tirou do mundo quando rola a tabela de um jogador, então o nome vem do que `destroy_block` guardou) | H8: `mod_block_entity`; `NativeLootDrops` sem o block entity é o buraco: `block_entity: Option<&Tag>` resolve |
 | `container_opened` (mekanism) | `container_opened` | `game.world.block_entities.get` | H8: `mod_block_entity` |
@@ -574,7 +574,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 280 linhas | idem |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
-| `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e a câmera, privados | H19 |
+| `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e `native_player` (os pés do jogador local), privados | H19 |
 | `composter-wrapper` (machinery_basis) | `game/composter.rs` | o sorteio das camadas de um item e a subida de um nível da composteira, como o `ComposterWrapper` do NeoForge faz | H29 |
 | `container-dim` (machinery_basis) | `horizon-client-render/src/hud.rs` | o estado "a tela aberta é de uma máquina nossa" (`machinery_container_dim`), que o HEAD de `HudBatch::fill` lê e o `Game` escreve | H22 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
@@ -997,7 +997,7 @@ O pedido é aceitar em `light` a mesma condição de `random_ticks`. Elimina `ac
   Chamber toca ao ligar, para ao parar e fica mudo com o upgrade de silêncio no máximo (`MEKSOUND` no stderr e vídeo com áudio).
   O módulo guarda o `InstanceId` por tile e chama `Audio::play_instance` (com `Ticking::Native`), `stop_and_release` e
   `engine().instance_mut` a cada tick do cliente, e a regra (cooldown de 20 ticks, `isFullyMuffled`, alcance, verificação a cada 20 a 39
-  ticks) vem de `machinery_basis_core::sound`, repetida do Java. A câmera do último quadro faz as vezes da posição do jogador.
+  ticks) vem de `machinery_basis_core::sound`, repetida do Java. A posição do jogador é `native_player()` (os pés, `Minecraft.player.position()`; até 2026-11-08 era a câmera do último quadro, que fica na altura dos olhos e, em terceira pessoa, atrás do jogador). `baseSoundVolume` e `enableMachineSounds` vêm do `mekanism/client.toml` (o `Mekanism/client.toml` do original) pelos hooks `register_configs`, `config_loading` e `config_reloading` (API 397, limpos), no `mekanism`.
 - **Lado:** cliente. **Tipo:** helpers do `Host`.
 - **O que faz:** toca um som em laço preso a um ponto e o para, e o som cessa sozinho se o chunk descarrega. Hoje só há
   `native_play_local_sound` (uma vez, com atraso).
@@ -1010,7 +1010,7 @@ fn stop_sound(&mut self, handle: SoundHandle)
 
 - **Exemplo:** a máquina ativa chama `looping_sound` ao ligar e `stop_sound` ao parar (`TileEntityMekanism` e `SoundHandler`).
 - **O que falta no helper proposto:** mudar o volume de um som em laço já tocando (`set_sound_volume(handle, volume)`), perguntar se ele
-  ainda toca (`is_sound_active`) e dar a posição do jogador local no tick do cliente (`native_camera` só existe depois de um quadro).
+  ainda toca (`is_sound_active`) e dar a posição do jogador local no tick do cliente: `native_player` existe no `Game` (os pés) mas não está na lista de helpers do catálogo, e `native_camera` é a câmera, não os pés, e só existe depois de um quadro.
 
 ### H27 `menu_result_taken`
 
@@ -1242,8 +1242,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=84 hook=57 target=27 module=16 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 27 + 30 tem de somar `hook`.
+   Hoje: `injection=89 hook=61 target=28 module=17 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 31 + 30 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 
