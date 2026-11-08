@@ -213,6 +213,20 @@ bindings = [
   { name = "previous", ty = "u32", value = "previous" },
 ]
 
+# Os data slots da tela das máquinas, escritos no fim do tick do servidor (`ServerTickEvent.Post`). O `MekanismContainer.broadcastChanges`
+# lê o valor vivo de cada `ISyncableData` no `ServerPlayer.tick` do tick seguinte, então o quadro que o cliente recebe tem a energia que
+# chegou depois do tick da máquina e o erro que ela ainda não recalculou (o overlay de 0,98 da barra de energia depende disso).
+[[injection]]
+id = "server_tick"
+hook = "server_tick"
+hook_version = 1
+kind = "HEAD"
+helper = "server_tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "phase", ty = "horizon_client::mod_api::ServerTickPhase", value = "phase" },
+]
+
 # O som em laço das máquinas, no tick do cliente (`TileEntityMekanism.tickClient`). O `tick` roda no cliente e no servidor; o som é do cliente.
 [[injection]]
 id = "client_tick"

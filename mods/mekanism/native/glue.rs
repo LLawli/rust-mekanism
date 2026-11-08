@@ -510,10 +510,8 @@ struct Live {
     /// O nível que os comparadores já viram.
     reported_level: Option<i32>,
     lit: Option<bool>,
-    /// O que a janela de upgrades viu no tick anterior. O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na
-    /// batida seguinte da tela: o cliente do original mostra o valor de um tick atrás (medido: passos 10 do original igual a
-    /// passos 9 do port).
-    upgrade_sync_seen: Option<UpgradeSync>,
+    /// Os data slots da tela, escritos no fim do tick do servidor (`server_tick_end`).
+    screen: rules::TileScreen,
     /// A face de saída do ejetor, a direita da frente.
     eject_side: Option<Face>,
     /// Os tipos e as tags de upgrade de onde os dados da máquina saíram: uma carga nova de dados os troca.
@@ -1040,7 +1038,7 @@ fn born(
         used_version: None,
         reported_level: None,
         lit: None,
-        upgrade_sync_seen: None,
+        screen: rules::TileScreen::default(),
         eject_side: None,
         upgrade_types,
         upgrade_tags,
@@ -1502,7 +1500,6 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         live.upgrades_version = Some(upgrades_version);
     }
     deliver(game, entity, slots.output, ejected, raised);
-    let progress = machine.recipe_progress();
     if let Some(started) = started {
         basis::bench_record(now, u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
         let chest = machine
@@ -1517,38 +1514,9 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         game.native_set_block_property(pos, "lit", if lit { "true" } else { "false" });
         live.lit = Some(lit);
     }
-    let mut screen = rules::ScreenData {
-        energy: energy as u32,
-        capacity: capacity as u32,
-        progress,
-        ticks_required: machine.ticks_required(),
-        errors: machine.tracked_errors_mask(),
-        redstone: machine.tile().redstone_sync(),
-        xp_containment: machine.has_xp_containment(),
-        energy_per_tick: machine.energy().energy_per_tick().max(0) as u32,
-        ..Default::default()
-    };
-    if let Some(side) = machine.chemical_side() {
-        let held = side.tank.resource();
-        let id = held.as_ref().map(|held| held.id.to_string()).unwrap_or_default();
-        let registry = resource::current();
-        let infusion = registry.get(&id);
-        screen.chemical_amount = side.tank.amount() as i32;
-        screen.chemical_tint = infusion.map_or(0, |infusion| infusion.tint);
-        screen.chemical_icon = rules::chemical_icon_slot(infusion.and_then(|infusion| infusion.icon.as_deref()));
-        screen.chemical_id = data_slots::pack_text(&id);
-    }
-    let mut data = screen.write(spec.screen.data);
-    // O Java só sincroniza `upgradeTicks` e o mapa com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só
-    // levam o valor enquanto alguém acompanha, e ficam em zero (sem tráfego) no resto do tempo.
-    let upgrade_sync = UpgradeSync::of(machine.upgrades());
-    let shown = live.upgrade_sync_seen.replace(upgrade_sync.clone()).unwrap_or(upgrade_sync);
-    if Game::mb_window_tracking(pos) {
-        rules::write_upgrade_sync(&mut data, spec.screen.data, &shown);
-    }
-    if entity.data != data {
-        entity.data = data;
-    }
+    // Os data slots da tela não saem deste tick: o Java os lê vivos no `broadcastChanges` do tick seguinte, então o quadro é o do fim do
+    // tick do servidor (`server_tick_end`), com a energia que chegou depois daqui.
+    live.screen.machine_ticked(UpgradeSync::of(live.machine.upgrades()));
 
     match live.machine.chemical_side() {
         None => {
@@ -1687,6 +1655,58 @@ pub(in crate::game) fn notify_comparators(game: &mut Game<'_>, dimension: &str) 
         if at == dimension {
             game.native_update_output_neighbors(dimension, pos);
         }
+    }
+}
+
+/// `ServerTickEvent.Post`: escreve os data slots da tela de cada máquina viva com o estado do fim do tick, que é o que o
+/// `MekanismContainer.broadcastChanges` lê (`ServerPlayer.tick`, `ServerPlayer.java:606`, antes dos block entities do tick seguinte)
+/// e o Horizon manda no `tick_lan` do tick seguinte, também antes deles. A energia e o tanque vêm do que o tile guarda agora, porque
+/// chegam de fora do tick da máquina (um gerador, o botão de esvaziar); o resto é o objeto vivo, com o erro que ele ainda não
+/// recalculou. Nenhuma máquina é lida ou escrita fora disso: o tick dela não toca em `entity.data`.
+pub(in crate::game) fn server_tick_end(game: &mut Game<'_>) {
+    let dimensions: Vec<&'static str> =
+        LIVE_MACHINES.with_borrow(|machines| machines.keys().map(|(dimension, _)| *dimension).collect());
+    game.mb_in_levels(
+        |dimension| dimensions.iter().any(|known| *known == dimension),
+        |game, dimension| {
+            let positions: Vec<[i32; 3]> = LIVE_MACHINES.with_borrow(|machines| {
+                machines.keys().filter(|(at, _)| *at == dimension).map(|(_, pos)| *pos).collect()
+            });
+            for pos in positions {
+                write_screen(game, dimension, pos);
+            }
+        },
+    );
+}
+
+fn write_screen(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let Some(spec) = machine_of(&entity.id) else {
+        return;
+    };
+    let tracking = Game::mb_window_tracking(pos);
+    let stored = i64::from(basis::stored_energy(entity));
+    let tank = spec.slots.infusion.map(|_| read_tank(entity));
+    let frame = LIVE_MACHINES.with_borrow_mut(|machines| {
+        let live = machines.get_mut(&(dimension, pos))?;
+        let mut screen = rules::ScreenData::of_machine(&live.machine, stored);
+        if let Some(tank) = &tank {
+            let id = tank.resource.as_ref().map(|held| held.id.to_string()).unwrap_or_default();
+            let registry = resource::current();
+            let infusion = registry.get(&id);
+            screen.chemical_amount = tank.amount as i32;
+            screen.chemical_tint = infusion.map_or(0, |infusion| infusion.tint);
+            screen.chemical_icon = rules::chemical_icon_slot(infusion.and_then(|infusion| infusion.icon.as_deref()));
+            screen.chemical_id = data_slots::pack_text(&id);
+        }
+        Some(live.screen.server_tick_end(spec.screen.data, screen, tracking).to_vec())
+    });
+    if let Some(frame) = frame
+        && entity.data != frame
+    {
+        entity.data = frame;
     }
 }
 

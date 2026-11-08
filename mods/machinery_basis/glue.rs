@@ -126,6 +126,32 @@ pub(in crate::game) enum RecipeSource {
     Cooking(&'static str),
 }
 
+impl Game<'_> {
+    /// Roda `act` em cada nível que o servidor ticou e que `wanted` aceita (pelo id da dimensão), com o nível no lugar de `self.world`.
+    /// Serve ao `ServerTickEnd`, onde só o último nível está no lugar: entra em cada um como `close_idle_levels` e deixa no lugar o
+    /// que estava, para o resto do fim do tick não ver outro nível.
+    pub(in crate::game) fn mb_in_levels(
+        &mut self,
+        wanted: impl Fn(&str) -> bool,
+        mut act: impl FnMut(&mut Self, &'static str),
+    ) {
+        let back = self.dim;
+        let mut dims: Vec<crate::game::Dim> =
+            self.levels_to_tick().into_iter().filter(|dim| wanted(dim.id())).collect();
+        // O nível que já está no lugar fica por último: o caso comum, uma dimensão só, não troca nada.
+        dims.sort_by_key(|dim| *dim == back);
+        for dim in dims {
+            if dim != self.dim && self.enter_level(None, dim).is_err() {
+                continue;
+            }
+            act(self, dim.id());
+        }
+        if self.dim != back {
+            let _ = self.enter_level(None, back);
+        }
+    }
+}
+
 impl RecipeSource {
     /// O tipo de receita de onde as da máquina saem: um índice de receitas por tipo.
     pub(in crate::game) fn key(&self) -> &'static str {

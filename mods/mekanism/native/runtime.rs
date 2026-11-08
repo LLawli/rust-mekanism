@@ -721,6 +721,73 @@ impl ScreenData {
     }
 }
 
+impl ScreenData {
+    /// O que o `MekanismContainer.broadcastChanges` lê de uma máquina de progresso, menos o tanque de químico: a energia é a que o tile
+    /// guarda agora (`stored`, que uma chegada de fora do tick da máquina já mudou) e a capacidade nunca fica abaixo dela
+    /// (`getCapacityAsLong`). O resto é o estado do objeto, o mesmo que o Java lê dos campos.
+    pub fn of_machine(machine: &ProgressMachine, stored: i64) -> Self {
+        let clamp = |value: i64| i32::try_from(value).unwrap_or(i32::MAX) as u32;
+        Self {
+            energy: clamp(stored),
+            capacity: clamp(machine.energy().capacity().max(stored)),
+            progress: machine.recipe_progress(),
+            ticks_required: machine.ticks_required(),
+            errors: machine.tracked_errors_mask(),
+            redstone: machine.tile().redstone_sync(),
+            xp_containment: machine.has_xp_containment(),
+            energy_per_tick: machine.energy().energy_per_tick().max(0) as u32,
+            ..Self::default()
+        }
+    }
+}
+
+/// Os data slots da tela de uma máquina no servidor, e quando eles são escritos. O Java não escreve nada no tick do bloco: o
+/// `MekanismContainer.broadcastChanges` roda no `ServerPlayer.tick` (`ServerPlayer.java:606`, na fase das entidades, antes dos block
+/// entities) e lê o valor vivo de cada `ISyncableData`, então o quadro que o cliente recebe a cada tick é o estado do fim do tick
+/// anterior, com a energia que chegou depois do tick da máquina e o erro que ela ainda não recalculou. O port escreve o quadro no
+/// `ServerTickEnd` (`server_tick_end`), depois de tudo o que mexe na máquina no tick, e o Horizon o manda no tick seguinte, antes dos
+/// block entities, como o `broadcastChanges`. O tick da máquina (`machine_ticked`) só guarda o que a janela de upgrades mostra, que o
+/// Java sincroniza um tick depois (ver [`UpgradeSync`]).
+#[derive(Debug, Default)]
+pub struct TileScreen {
+    /// O que a janela de upgrades viu no tick da máquina anterior.
+    seen: Option<UpgradeSync>,
+    /// O que o tick da máquina de agora manda: o valor que o tick anterior guardou.
+    shown: Option<UpgradeSync>,
+    frame: Vec<i32>,
+}
+
+impl TileScreen {
+    /// O fim do tick da máquina (`tickServer`). O Java sincroniza o `upgradeTicks` e o mapa depois do tick do bloco, na batida
+    /// seguinte da tela: o cliente do original mostra o valor de um tick atrás (medido: passos 10 do original igual a passos 9 do
+    /// port).
+    pub fn machine_ticked(&mut self, upgrades: UpgradeSync) {
+        self.shown = Some(self.seen.replace(upgrades.clone()).unwrap_or(upgrades));
+    }
+
+    /// `ServerTickEvent.Post`: o quadro que o `broadcastChanges` do tick seguinte lê. O Java só sincroniza `upgradeTicks` e o mapa
+    /// com a janela aberta, por jogador; aqui os data slots são do bloco, então eles só levam o valor enquanto alguém acompanha
+    /// (`window_tracking`), e ficam em zero (sem tráfego) no resto do tempo.
+    pub fn server_tick_end(
+        &mut self,
+        layout: &DataLayout,
+        screen: ScreenData,
+        window_tracking: bool,
+    ) -> &[i32] {
+        let mut frame = screen.write(layout);
+        if window_tracking && let Some(shown) = &self.shown {
+            write_upgrade_sync(&mut frame, layout, shown);
+        }
+        self.frame = frame;
+        &self.frame
+    }
+
+    /// O quadro do último `server_tick_end`; vazio antes do primeiro.
+    pub fn frame(&self) -> &[i32] {
+        &self.frame
+    }
+}
+
 /// O que a tela de um tipo de máquina sabe: os avisos (os erros que a máquina rastreia e os registros dos elementos), os data
 /// slots e os slots de item com a configuração de lados que decide a moldura deles.
 #[derive(Clone, Copy, Debug)]

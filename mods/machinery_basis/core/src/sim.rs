@@ -13,6 +13,9 @@ pub trait SimBlockEntity {
     fn tick_server(&mut self, game_time: u64, neighbours: &dyn ItemCapabilities);
     /// `onNeighborChange`, já com o sinal que os vizinhos dão.
     fn neighbor_changed(&mut self, powered: bool);
+    /// `ServerTickEvent.Post`, depois de tudo o que mexe no bloco no tick (Horizon: `server_tick`, fase `ServerTickEnd`). É onde o
+    /// port escreve o que o `broadcastChanges` do tick seguinte lê.
+    fn server_tick_end(&mut self) {}
 }
 
 /// Os blocos ao redor, vistos pelas capabilities de item.
@@ -62,8 +65,20 @@ impl<T: SimBlockEntity> SimWorld<T> {
 
     /// O bloco anda primeiro. O que o teste faz depois deste tick só aparece no próximo, como num `gameTest`.
     pub fn tick(&mut self) {
+        self.tick_level();
+        self.finish_tick();
+    }
+
+    /// `ServerLevel.tick`: o bloco anda. O que um `gameTest` faz num passo (uma chegada de energia, um item) vem depois disso e antes
+    /// de `finish_tick`.
+    pub fn tick_level(&mut self) {
         self.block_entity
             .tick_server(self.game_time, &self.neighbours);
+    }
+
+    /// `ServerTickEvent.Post` e o relógio.
+    pub fn finish_tick(&mut self) {
+        self.block_entity.server_tick_end();
         self.game_time += 1;
     }
 
