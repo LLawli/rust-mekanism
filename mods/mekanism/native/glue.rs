@@ -1986,11 +1986,31 @@ fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client:
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_machine_id);
-    if is_machine_id(&game.native_block(pos)) {
+    let block = game.native_block(pos);
+    if is_machine_id(&block) {
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
+        placed_capacity(game, pos, &block);
     }
+}
+
+/// `TileEntityMekanism.applyImplicitComponents` (de `setPlacedBy`) -> `recalculateUpgrades` -> `MachineEnergyContainer.updateMaxEnergy`: a
+/// capacidade do item (1.000, ou o que os upgrades dão) vale desde a colocação, e não só desde o primeiro tick da máquina. Um gerador ou um
+/// cabo que encha a máquina nesse tick lê a capacidade nova, e não os quatro ticks de consumo do construtor.
+fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) {
+    let Some(spec) = machine_of(block) else {
+        return;
+    };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let origin = Origin { placed: true, recalculated_before: false };
+    let live = born(game, pos, entity, spec, &indexes_of(game, spec), origin);
+    let capacity = basis::energy_as_int(live.machine.energy().capacity(), "a capacidade de energia");
+    basis::set_energy_capacity(game.native_dimension(), pos, &entity.id, capacity);
+    // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de uma máquina que esteve ali antes.
+    COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), live.machine.tile().current_redstone_level()));
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
