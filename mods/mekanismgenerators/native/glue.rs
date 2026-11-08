@@ -137,6 +137,8 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
     if is_generator(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
         basis::watch_redstone(REDSTONE_OWNER, is_generator);
+        // A janela de upgrades vale desde que o bloco existe (`ItemUpgrade.useOn`), e não só depois de a tela abrir.
+        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
     }
     if is_generator(block) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
@@ -181,7 +183,6 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         // Os slots virtuais da janela de upgrades vêm depois dos do gerador e ficam escondidos até a janela abrir.
         let mut slots: Vec<Option<[f32; 2]>> = rules::SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect();
         slots.extend([None, None]);
-        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
         *screen = Some(NativeScreen {
             width: WIDTH,
             height: HEIGHT,

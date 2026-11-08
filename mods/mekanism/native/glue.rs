@@ -250,6 +250,11 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
     if is_machine(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
         basis::watch_redstone(REDSTONE_OWNER, is_machine);
+        // A janela de upgrades do bloco (`ItemUpgrade.useOn`, `TileComponentUpgrade.addUpgrades`) vale desde que o bloco existe, e não só depois
+        // de a tela dele abrir: o jogo pergunta por este hook ao criar o tile, antes de qualquer uso do item.
+        if let Some(spec) = window_spec(block) {
+            Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+        }
     }
     if (is_machine(block) || is_cable(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
@@ -319,9 +324,6 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         *screen = Some(native_screen(machine));
         // O cliente pergunta a cada clique se ele cai sobre uma aba (`GuiMekanism.hasClickedOutside`), com os data slots de agora.
         machinery_basis_core::screen_elements::declare_once(block, || rules::screen_elements(*machine.screen));
-        if let Some(spec) = window_spec(block) {
-            Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
-        }
     }
 }
 
