@@ -158,6 +158,14 @@ public class CenaTelas {
             default -> {
             }
         }
+        // `energia_depois=N`: a energia chega depois dos passos, fora do tick da máquina (um cabo que enche o contêiner depois de ela ter rodado): o erro
+        // de energia da máquina pausada fica aceso com a barra cheia. Com o servidor parado nenhum tick o limpa antes de a tela abrir.
+        if (caseTick == 20 + steps + 9 && caso.args().containsKey("energia_depois")) {
+            server.execute(() -> {
+                BasicEnergyContainer container = (BasicEnergyContainer) tile(server, caso).getEnergyContainer();
+                container.setEnergy(Long.parseLong(caso.args().get("energia_depois")), null);
+            });
+        }
         // O `tick step` roda a 20 ticks por segundo, o mesmo ritmo do cliente: espera os passos e uma folga.
         int base = 25 + steps + 20;
         if (caseTick >= base) {

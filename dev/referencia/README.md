@@ -76,6 +76,17 @@ não tem dono no evento. Copie o arquivo para `src/src/gameTest/java/mekanism/co
 (`showSubtitles`, o servidor parado e o `screenshot` de antes e de depois de cada clique: legenda é som, e o texto diz qual `equip_*`), e `horizon2/h2_armor_video.py capturar` e `montar` fazem o vídeo do ciclo completo
 (um print por passo, com a legenda do jogo ligada, e o `ffmpeg` junta com a legenda de cada passo). Os três supõem a janela de 1920 por 1080 em guiScale 3 (o canto da tela em (232, 97)).
 
+`testes/WarningsTraceTest.java` grava os avisos de entrada, o overlay da barra de energia e o PULSE (`warnings_input_chamber`, `warnings_input_infuser`, `warnings_overlay`,
+`warnings_sweep_<máquina>`, `redstone_pulse`). A máquina é posta por um jogador (`useOn`), e as linhas dos três primeiros levam o que a tela mostra (`warnings`, `warnings_shown`, o
+recheck e `bar_overlay`: o aviso de energia aceso e o nível da barra, `GuiBar.drawBackground`, >= 0,98). O que mostrou: a entrada que não basta (menos itens que a receita pede, menos
+químico que ela pede) nunca dá `NOT_ENOUGH_INPUT` nem `NOT_ENOUGH_SECONDARY_INPUT`, porque `getRecipeInput` devolve vazio e o `CachedRecipe` marca `mismatchedRecipe`, que limpa os erros. A varredura
+(`warnings_sweep_*`) passa por todas as receitas de `ENRICHING`, `CRUSHING`, `SMELTING` e `METALLURGIC_INFUSING` do jogo, a cada uma com a entrada (e o tanque, no Infuser) abaixo, na quantidade e acima do que
+ela pede, e com velocidade 8, em ciclos de 5 ticks, e grava os erros que apareceram em cada caso: nenhum é de entrada. `redstone_pulse` põe PULSE por `setControlType`, pelo NBT e pelo componente do item nas
+quatro máquinas e no Heat Generator. `mods/mekanism/tests/warnings_trace.rs` e `mods/mekanismgenerators/tests/redstone_pulse.rs` os repetem. Copie o arquivo para
+`src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois. A cena de telas ganhou `energia_depois=N` (a energia chega depois dos passos, fora do
+tick da máquina) e o roteiro `casos_avisos` de `cena_telas.py`; `so_oficial=1` marca o que só o original mostra. `oficial_fora.sh` aceita `LARGURA` e `ALTURA` (os prints do lote são de 1920 por 1080).
+Em jogo, `horizon2/h2_avisos.py capturar` e `montar` (com `H_NAME=horizon`) fazem o ciclo (entrada curta sem aviso, a entrada chega, o aviso de energia acende e apaga) em prints e vídeo com legenda.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

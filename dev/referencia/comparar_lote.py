@@ -265,6 +265,8 @@ CICLO_DO_QUIMICO = {
     ("bio", 1000): "infuser_fase_bio_1000",
     ("fungi", 500): "infuser_tanque_fungi_ciclo",
     ("carbon", 500): "infuser_tanque_carbono",
+    ("redstone", 9): "infuser_fase_redstone_9",
+    ("redstone", 10): "infuser_fase_redstone_10",
 }
 
 
@@ -333,7 +335,7 @@ def principal(argv):
     os.makedirs(saida, exist_ok=True)
     visivel = ler_visibilidade(os.path.join(original, "oficial.log"))
     mundo_max = 0
-    casos = [c for c in cena_telas.todos_os_casos() if not so or c["nome"] in so]
+    casos = [c for c in cena_telas.todos_os_casos() if (not so or c["nome"] in so) and "so_oficial" not in c["args"]]
     resultados = []
     falhas = 0
     realmente = 0  # estados com diferença fora dos resíduos

@@ -315,8 +315,38 @@ def casos_fora():
     return out
 
 
+# Os avisos que o `CachedRecipe` não acende (`NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT`: a entrada que não basta é receita que não casa, `mismatchedRecipe`, sem
+# erro) e o overlay de nível >= 0,98 da barra de energia (`GuiBar.drawBackground`), que só o erro de energia de uma máquina pausada alcança, quando a energia chega
+# fora do tick dela (`energia_depois`). `inativa=1`: a máquina não anda no estado, mesmo com energia e entrada (para a luz do mundo atrás da tela).
+# `so_oficial=1`: só o cliente oficial roda o caso. O port escreve os data slots da tela no fim do tick da máquina (`glue.rs`, `ScreenData`), então a energia que chega
+# depois dele, no mesmo tick, só aparece no tick seguinte, quando o erro já foi recalculado: o estado (barra cheia e erro velho aceso) não chega à tela do port.
+FERRO = "raw_iron"
+
+
+def casos_avisos():
+    return [
+        # A câmara com menos do que a receita pede (3 de ferro bruto): nenhum aviso, a tela é a de uma máquina parada. Com 3 ela anda.
+        caso("chamber_ferro_curto", "chamber", energia="cap", entrada=f"{FERRO}:2", passos="5", inativa="1"),
+        caso("chamber_ferro_exato", "chamber", energia="cap", entrada=f"{FERRO}:3", passos="5"),
+        # O Infuser com menos químico do que a receita pede (10 de redstone com lingote de cobre): a barra de químico e o slot de entrada não piscam. Com 10 ele anda.
+        # O item é plano (um bloco, como a terra, o Horizon desenha com outro sombreamento: H25), e cada tanque tem o ciclo de referência da animação do químico.
+        caso("infuser_quimico_curto", "infuser", energia="cap", entrada="copper_ingot:2", quimico="redstone:9", passos="5", inativa="1"),
+        caso("infuser_quimico_exato", "infuser", energia="cap", entrada="copper_ingot:2", quimico="redstone:10", passos="5"),
+        caso("infuser_fase_redstone_9", "infuser", energia="0", quimico="redstone:9", ciclo="40", ciclo_port="40"),
+        caso("infuser_fase_redstone_10", "infuser", energia="0", quimico="redstone:10", ciclo="40", ciclo_port="40"),
+        # O erro de energia aceso (a barra pisca e a aba de avisos mostra o texto), para comparar com os de cima.
+        caso("chamber_ferro_sem_energia", "chamber", energia="0", entrada=f"{FERRO}:3", passos="5"),
+        # O overlay: velocidade 8 (consumo 500, capacidade 10000), energia 400 (erro aceso, máquina pausada), e 9999 que chega depois do tick: a barra a
+        # 99,99 % com o erro velho aceso. O controle tem a mesma barra sem erro.
+        caso("chamber_overlay_erro_velho", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9999", inativa="1", so_oficial="1"),
+        caso("chamber_overlay_sem_erro", "chamber", upgrades="speed:8", energia="9999", entrada="coal:2", passos="5", inativa="1"),
+        caso("chamber_overlay_abaixo", "chamber", upgrades="speed:8", energia="400", entrada="coal:2", passos="5", energia_depois="9000", inativa="1", so_oficial="1"),
+    ]
+
+
+
 def todos_os_casos():
-    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador()
+    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos()
 
 
 def casos_do_roteiro(so=None):
@@ -330,7 +360,7 @@ def maquina_ativa(c):
     """Se o bloco do caso está aceso (`lit`) quando o print sai: a máquina operando (entrada com receita, energia e saída com lugar) ou o gerador queimando lava
     (energia que ainda cabe). O bloco aceso ilumina o mundo atrás da tela: ver `luz_do_caso`."""
     a = c["args"]
-    if int(a.get("passos", "2")) < 2:
+    if int(a.get("passos", "2")) < 2 or "inativa" in a:
         return False
     if c["maquina"] == "generator":
         return "lava" in a and a.get("energia") != "cap"
@@ -616,6 +646,8 @@ def roda_port(destino, escalas, so=None):
         ctl("options-set", "guiScale", str(escala))
         x = 3
         for c in casos_do_roteiro(so):
+            if "so_oficial" in c["args"]:
+                continue
             monta_port(c, x, escala)
             tira_port(c, x, escala, destino)
             print(c["nome"], escala, flush=True)
