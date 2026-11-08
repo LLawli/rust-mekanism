@@ -87,6 +87,16 @@ quatro máquinas e no Heat Generator. `mods/mekanism/tests/warnings_trace.rs` e 
 tick da máquina) e o roteiro `casos_avisos` de `cena_telas.py`; `so_oficial=1` marca o que só o original mostra (hoje nenhum caso: o overlay do port saiu do `so_oficial` em 2026-11-08, com os data slots no `ServerTickEnd`). `oficial_fora.sh` aceita `LARGURA` e `ALTURA` (os prints do lote são de 1920 por 1080).
 Em jogo, `horizon2/h2_avisos.py capturar` e `montar` (com `H_NAME=horizon`) fazem o ciclo (entrada curta sem aviso, a entrada chega, o aviso de energia acende e apaga) em prints e vídeo com legenda.
 
+`testes/NeighborTraceTest.java` grava (`neighbors_<cenário>.jsonl`) o campo `redstone` das máquinas e o que ele manda (`canFunction`, atividade, progresso, o bloco aceso), a cada tick e no meio dele,
+quando o sinal dos vizinhos muda de jeitos que avisam o bloco (`BlockTile.neighborChanged` por `updateNeighborsAt`, o `onNeighborChange` do NeoForge por `updateNeighbourForOutputSignal`, `setPlacedBy` -> `onAdded`)
+e de jeitos que não avisam (`setBlock` sem a flag 1, bloco posto por `setBlock` ou pelo gabarito, chunk descarregado). Cada linha leva as operações do tick (`ops`), em `pre` (`ServerTickEvent.Pre`, antes do tick da máquina) ou
+`step` (o passo do gameTest), cada uma com o `redstone` de todas as máquinas logo depois dela. Linha 0: as ordens do jogo (`NeighborUpdater.UPDATE_ORDER`, `Level.NEIGHBOR_UPDATE_LIST`), lidas por reflexão.
+Cenários: `chamber_notified`, `chamber_unnotified`, `chamber_mid_tick`, `chamber_placed`, `chamber_reload`, `chamber_output_signal`, `heat_*` (os mesmos cinco) e `crusher_core`, `smelter_core`, `infuser_core`;
+`neighbors_block_classes` prova que as cinco máquinas herdam `neighborChanged` e `onNeighborChange` de `BlockTile`. Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o
+`runGameTestServer` e apague-o depois. `mods/mekanism/tests/neighbors_trace.rs` e `mods/mekanismgenerators/tests/neighbors_trace.rs` os repetem no `SimLevel` (`sim::neighbor_replay`), e em jogo
+`horizon2/h2_vizinhos.py CENARIO` (`H_NAME=horizon`) repete as operações como comandos (`setblock`, `setblock ... strict` para a mudança sem aviso, `interact` na alavanca, `place` como jogador) com `tick freeze` e
+`tick step 1` e compara `redstone`, `active_state` e `progress` do NBT com o rastro.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |

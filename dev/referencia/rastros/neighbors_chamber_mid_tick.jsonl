@@ -1,0 +1,81 @@
+{"machine":"enrichment_chamber","rows":1,"update_order":["west","east","down","up","north","south"],"output_signal_order":["north","east","south","west","up","down"]}
+{"t":0,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":true,"mode":"disabled","active":false,"block_active":false,"comparator":0,"progress":0,"energy":0}]}
+{"t":1,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":true,"mode":"disabled","active":false,"block_active":false,"comparator":0,"progress":0,"energy":0}]}
+{"t":2,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":true,"mode":"disabled","active":false,"block_active":false,"comparator":0,"progress":0,"energy":0}]}
+{"t":3,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":true,"mode":"disabled","active":false,"block_active":false,"comparator":0,"progress":0,"energy":0}]}
+{"t":4,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":true,"mode":"disabled","active":false,"block_active":false,"comparator":0,"progress":0,"energy":0}]}
+{"t":5,"marks":[],"ops":[{"op":"mode 0 HIGH","phase":"step","powered":[false]},{"op":"fill 0","phase":"step","powered":[false]}],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":0,"progress":0,"energy":20000}]}
+{"t":6,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":0,"energy":20000}]}
+{"t":7,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":0,"energy":20000}]}
+{"t":8,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":0,"energy":20000}]}
+{"t":9,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":0,"energy":20000}]}
+{"t":10,"marks":[],"ops":[{"op":"src 0 on 3","phase":"pre","powered":[true]}],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":1,"energy":19995}]}
+{"t":11,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":2,"energy":19990}]}
+{"t":12,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":3,"energy":19985}]}
+{"t":13,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":4,"energy":19980}]}
+{"t":14,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":5,"energy":19975}]}
+{"t":15,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":6,"energy":19970}]}
+{"t":16,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":7,"energy":19965}]}
+{"t":17,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":8,"energy":19960}]}
+{"t":18,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":9,"energy":19955}]}
+{"t":19,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":10,"energy":19950}]}
+{"t":20,"marks":[],"ops":[{"op":"src 0 off 3","phase":"step","powered":[false]}],"rows":[{"powered":false,"was_powered":true,"can_function":false,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":11,"energy":19945}]}
+{"t":21,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":22,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":23,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":24,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":25,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":26,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":27,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":28,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":29,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":false,"comparator":5,"progress":11,"energy":19945}]}
+{"t":30,"marks":[],"ops":[{"op":"src 0 on 3","phase":"pre","powered":[true]},{"op":"src 0 off 2","phase":"pre","powered":[true]}],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":12,"energy":19940}]}
+{"t":31,"marks":[],"ops":[{"op":"poke 0 3","phase":"step","powered":[false]}],"rows":[{"powered":false,"was_powered":true,"can_function":false,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":32,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":33,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":34,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":35,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":36,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":37,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":38,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":39,"marks":[],"ops":[],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":40,"marks":[],"ops":[{"op":"poke 0 3","phase":"pre","powered":[false]},{"op":"src 0 on 3","phase":"step","powered":[true]}],"rows":[{"powered":true,"was_powered":false,"can_function":true,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":13,"energy":19935}]}
+{"t":41,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":14,"energy":19930}]}
+{"t":42,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":15,"energy":19925}]}
+{"t":43,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":16,"energy":19920}]}
+{"t":44,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":17,"energy":19915}]}
+{"t":45,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":18,"energy":19910}]}
+{"t":46,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":19,"energy":19905}]}
+{"t":47,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":20,"energy":19900}]}
+{"t":48,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":21,"energy":19895}]}
+{"t":49,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":22,"energy":19890}]}
+{"t":50,"marks":[],"ops":[{"op":"src 0 off 3","phase":"pre","powered":[false]},{"op":"src 0 on 2","phase":"pre","powered":[false]}],"rows":[{"powered":false,"was_powered":false,"can_function":false,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":22,"energy":19890}]}
+{"t":51,"marks":[],"ops":[{"op":"poke 0 3","phase":"step","powered":[true]}],"rows":[{"powered":true,"was_powered":false,"can_function":true,"mode":"high","active":false,"block_active":true,"comparator":5,"progress":22,"energy":19890}]}
+{"t":52,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":23,"energy":19885}]}
+{"t":53,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":24,"energy":19880}]}
+{"t":54,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":25,"energy":19875}]}
+{"t":55,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":26,"energy":19870}]}
+{"t":56,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":27,"energy":19865}]}
+{"t":57,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":28,"energy":19860}]}
+{"t":58,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":29,"energy":19855}]}
+{"t":59,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":30,"energy":19850}]}
+{"t":60,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":31,"energy":19845}]}
+{"t":61,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":32,"energy":19840}]}
+{"t":62,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":33,"energy":19835}]}
+{"t":63,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":34,"energy":19830}]}
+{"t":64,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":35,"energy":19825}]}
+{"t":65,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":36,"energy":19820}]}
+{"t":66,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":37,"energy":19815}]}
+{"t":67,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":38,"energy":19810}]}
+{"t":68,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":39,"energy":19805}]}
+{"t":69,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":40,"energy":19800}]}
+{"t":70,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":41,"energy":19795}]}
+{"t":71,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":42,"energy":19790}]}
+{"t":72,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":43,"energy":19785}]}
+{"t":73,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":44,"energy":19780}]}
+{"t":74,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":45,"energy":19775}]}
+{"t":75,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":46,"energy":19770}]}
+{"t":76,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":47,"energy":19765}]}
+{"t":77,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":48,"energy":19760}]}
+{"t":78,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":49,"energy":19755}]}
+{"t":79,"marks":[],"ops":[],"rows":[{"powered":true,"was_powered":true,"can_function":true,"mode":"high","active":true,"block_active":true,"comparator":5,"progress":50,"energy":19750}]}

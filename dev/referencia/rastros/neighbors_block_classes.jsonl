@@ -1,0 +1,5 @@
+{"machine":"enrichment_chamber","block_class":"mekanism.common.block.prefab.BlockFactoryMachine","neighbor_changed":"mekanism.common.block.prefab.BlockTile","on_neighbor_change":"mekanism.common.block.prefab.BlockTile"}
+{"machine":"crusher","block_class":"mekanism.common.block.prefab.BlockFactoryMachine","neighbor_changed":"mekanism.common.block.prefab.BlockTile","on_neighbor_change":"mekanism.common.block.prefab.BlockTile"}
+{"machine":"energized_smelter","block_class":"mekanism.common.block.prefab.BlockFactoryMachine","neighbor_changed":"mekanism.common.block.prefab.BlockTile","on_neighbor_change":"mekanism.common.block.prefab.BlockTile"}
+{"machine":"metallurgic_infuser","block_class":"mekanism.common.block.prefab.BlockFactoryMachine$BlockFactoryMachineModel","neighbor_changed":"mekanism.common.block.prefab.BlockTile","on_neighbor_change":"mekanism.common.block.prefab.BlockTile"}
+{"machine":"heat_generator","block_class":"mekanism.common.block.prefab.BlockTile$BlockTileModel","neighbor_changed":"mekanism.common.block.prefab.BlockTile","on_neighbor_change":"mekanism.common.block.prefab.BlockTile"}
