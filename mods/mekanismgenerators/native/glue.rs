@@ -2,7 +2,7 @@
 // machinery_basis.
 use crate::game::mekanismgenerators_rules as rules;
 use crate::game::machinery_armor_bar::declare as declare_armor_bar;
-use crate::game::{Game, GameLevel, machinery_basis as basis};
+use crate::game::{Game, GameLevel, NativeConfig, NativeConfigFile, NativeConfigKind, machinery_basis as basis};
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
@@ -34,7 +34,56 @@ use std::rc::Rc;
 const FUEL_SLOT: usize = rules::FUEL_SLOT;
 const ENERGY_SLOT: usize = rules::ENERGY_SLOT;
 const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
-const LAVA_TANK: [u64; 1] = [rules::TANK_CAPACITY];
+
+/// `MekanismGeneratorsConfig.generators` e `.storageConfig` (os dois `Type.SYNCED`, `Mekanism/generators.toml` e `Mekanism/generator-storage.toml`), como o
+/// último arquivo lido os deixou. O processo tem a janela e a thread do servidor integrado, então a tabela é do processo; um convidado de LAN não a recebe do
+/// anfitrião (o original sincroniza).
+static HEAT_CONFIG: std::sync::RwLock<rules::HeatConfig> = std::sync::RwLock::new(rules::HeatConfig::DEFAULT);
+/// O que cada arquivo deu na última leitura: o validador de `heatGenerationFluidRate` vê o `tankCapacity` de antes (`CachedLongValue.getOrDefault`).
+static LOADED: std::sync::Mutex<(Option<machinery_basis_core::client_config::Loaded>, Option<machinery_basis_core::client_config::Loaded>)> =
+    std::sync::Mutex::new((None, None));
+
+fn heat_config() -> rules::HeatConfig {
+    *HEAT_CONFIG.read().unwrap_or_else(|error| error.into_inner())
+}
+
+/// `VariableCapacityFluidTank`: a capacidade do tanque de lava, lida da configuração a cada uso.
+fn lava_tank() -> [u64; 1] {
+    [heat_config().tank()]
+}
+
+/// `ModContainer.registerConfig(Type.SYNCED, ..)` dos dois arquivos do Generators (`MekanismGeneratorsConfig.registerConfigs`), lidos pelo Horizon como `Server`
+/// (decisão 15).
+pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
+    for (file, spec) in [
+        (rules::GENERATORS_CONFIG_FILE, &rules::GENERATORS_CONFIG),
+        (rules::GENERATOR_STORAGE_CONFIG_FILE, &rules::GENERATOR_STORAGE_CONFIG),
+    ] {
+        configs.push(NativeConfig::new("mekanismgenerators", NativeConfigKind::Server, &spec.default_text()).file(file));
+    }
+}
+
+/// `ModConfigEvent.Loading` e `Reloading`: o arquivo lido vira a configuração (um valor errado é corrigido e o arquivo escrito de novo, como no Mekanism).
+pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
+    if config.mod_id != "mekanismgenerators" {
+        return;
+    }
+    let mut loaded = LOADED.lock().unwrap_or_else(|error| error.into_inner());
+    match config.file.as_str() {
+        rules::GENERATORS_CONFIG_FILE => {
+            let next = basis::read_config(config, &rules::GENERATORS_CONFIG, loaded.0.as_ref());
+            loaded.0 = Some(next);
+        }
+        rules::GENERATOR_STORAGE_CONFIG_FILE => {
+            let next = basis::read_config(config, &rules::GENERATOR_STORAGE_CONFIG, None);
+            loaded.1 = Some(next);
+        }
+        _ => return,
+    }
+    let defaults = (rules::GENERATORS_CONFIG.defaults(), rules::GENERATOR_STORAGE_CONFIG.defaults());
+    let (generators, storage) = (loaded.0.as_ref().unwrap_or(&defaults.0), loaded.1.as_ref().unwrap_or(&defaults.1));
+    *HEAT_CONFIG.write().unwrap_or_else(|error| error.into_inner()) = rules::HeatConfig::of(generators, storage);
+}
 /// A marca que o tick do gerador deixa em `ModBlockEntity.data` (que o Horizon não salva): o tile é o mesmo de antes. Um tile novo, ou lido do disco, nasce sem ela.
 const TILE_TICKED: i32 = 1;
 const NETHER: &str = "minecraft:the_nether";
@@ -153,9 +202,11 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
     if is_generator(block) {
+        // `withEnergyStorage(generator-storage.heatGenerator)`: o `ModEnergyBuffer` do Horizon é `i32`.
+        let energy_capacity = basis::energy_as_int(heat_config().energy_capacity, "a capacidade do gerador");
         *energy = Some(ModEnergyBuffer {
-            capacity: rules::ENERGY_CAPACITY,
-            max_extract: rules::ENERGY_CAPACITY,
+            capacity: energy_capacity,
+            max_extract: energy_capacity,
             extract_faces: [true; 6],
             ..Default::default()
         });
@@ -292,7 +343,7 @@ fn load_tile(entity: &ModBlockEntity, block_active: bool, was_powered: bool) -> 
         Some(Tag::Int(value)) => *value,
         _ => 0,
     };
-    let mut tile = TileBase::new(rules::BLOCK_DEACTIVATION_DELAY);
+    let mut tile = TileBase::new(machinery_basis_core::settings::ConfigValue::Live(machinery_basis_core::settings::block_deactivation_delay));
     let saved = SavedState {
         redstone,
         control_type,
@@ -336,7 +387,8 @@ static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
     window_type: rules::UPGRADE_WINDOW,
     window_types: &rules::WINDOW_TYPES,
     base_slice: rules::PANEL_SLICE,
-    max_multiplier: rules::UPGRADE_MULTIPLIER as i32,
+    max_multiplier: machinery_basis_core::settings::max_upgrade_multiplier,
+    client_config: "Mekanism/client.toml",
     data: window_upgrade_data,
     color: rules::enum_color,
     item: rules::UPGRADE_ITEM,
@@ -459,12 +511,13 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
 fn loaded_view(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) -> View {
     let ambient = AmbientCache::default().get(AmbientCache::SELF_INDEX, || basis::ambient_temperature(game, pos));
     let block_active = game.native_block_property(pos, LIT).as_deref() == Some("true");
-    let tanks = basis::load_tanks(entity, &LAVA_TANK);
+    let tanks = basis::load_tanks(entity, &lava_tank());
     let state = rules::State {
         heat: load_heat(entity, ambient),
         lava: tanks[0].amount(),
         energy: basis::stored_energy(entity),
         tile: load_tile(entity, block_active, false),
+        config: heat_config(),
     };
     let component = upgrade::rebuild(upgrade_data(game), &basis::read_upgrades(game, entity), None, UpgradeTransient::default());
     View { state, last: rules::Produced::default(), upgrades: UpgradeSync::of(&component) }
@@ -617,7 +670,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     basis::name_apply_pending(entity, pos);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);
-    let mut tanks = basis::load_tanks(entity, &LAVA_TANK);
+    let mut tanks = basis::load_tanks(entity, &lava_tank());
     let tank = &mut tanks[0];
     let lava_before = tank.amount();
     fill_or_burn(game, entity, tank);
@@ -642,6 +695,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         lava: tank.amount(),
         energy: basis::stored_energy(entity),
         tile: load_tile(entity, block_active, was_powered),
+        config: heat_config(),
     };
     // `updatePower` só roda quando o jogo avisa o bloco (`neighborChanged`, `onNeighborChange`, `onAdded`): o `redstone` não é lido a cada
     // tick. O que o aviso deixou chega aqui, antes de `canFunction()`.
@@ -730,10 +784,10 @@ pub(in crate::game) fn screen_draw(
     game.mb_window_draw_tab(batch, block, origin);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = read.lava;
-    let scaled = gui::gauge_level(lava, rules::TANK_CAPACITY, LAVA_GAUGE[3] as i32);
+    let scaled = gui::gauge_level(lava, heat_config().tank(), LAVA_GAUGE[3] as i32);
     let fill = (lava > 0).then_some((rules::LAVA_SPRITE, rules::LAVA_FRAME, LAVA_TINT));
     basis::gauge(game, batch, &GAUGE_STYLE, at(LAVA_GAUGE), scaled, fill);
-    let level = gui::divide_to_level(f64::from(read.energy), f64::from(rules::ENERGY_CAPACITY));
+    let level = gui::divide_to_level(f64::from(read.energy), f64::from(heat_config().energy_capacity_int()));
     basis::vertical_bar(game, batch, &BAR_STYLE, at(ENERGY_BAR), level, None, &|game, batch, dst| {
         basis::power_bar_contents(game, batch, POWER_BAR_SPRITE, rules::POWER_BAR_TILE, dst);
     });
@@ -823,7 +877,7 @@ pub(in crate::game) fn widget_tooltip(
         return true;
     }
     let (widget, text) = if gui::contains(ENERGY_BAR, at) {
-        let capacity = rules::ENERGY_CAPACITY as u64;
+        let capacity = heat_config().energy_capacity_int() as u64;
         (ENERGY_BAR, rules::energy_tooltip(u64::from(read.energy), capacity, &translate))
     } else if gui::contains(LAVA_GAUGE, at) {
         (LAVA_GAUGE, rules::lava_tooltip(read.lava, &translate))

@@ -1,11 +1,15 @@
 // Regras do Heat Generator, sem tipos do jogo. Este arquivo é a lib de teste do mod e também o
 // módulo crate::game::mekanismgenerators_rules. Segue TileEntityHeatGenerator.
+use machinery_basis_core::client_config::{
+    Entry, Loaded, Lookup, Section, Setting, Spec, Value as ConfigScalar,
+};
 use machinery_basis_core::container_sync::{
     Kind, Mirror, StackValue, Tracked, TrackedSource, Value,
 };
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::machine_sync::upgrade_map;
+use machinery_basis_core::settings::ConfigValue;
 use machinery_basis_core::slot_view::{ContainerSlotType, SlotOverlay, SlotSpec};
 use machinery_basis_core::temperature::{self, TemperatureUnit};
 use machinery_basis_core::tile::TileBase;
@@ -26,7 +30,8 @@ pub const INVERSE_INSULATION: f64 = 100.0;
 pub const INSULATION_BY_FACE: [f64; 6] = [0.0, 100.0, 100.0, 100.0, 100.0, 100.0];
 const THERMAL_EFFICIENCY: f64 = 0.5;
 
-/// Valores padrão de `GeneratorsConfig` e `GeneratorsStorageConfig`.
+/// Valores padrão de `GeneratorsConfig` e `GeneratorsStorageConfig` (`heatGeneration`, `heatGenerationLava`, `heatGenerationNether`,
+/// `heatGenerationFluidRate`, `tankCapacity` e `heatGenerator`): o que vale sem arquivo, e o que os testes dos rastros usam.
 pub const HEAT_GENERATION: f64 = 100.0;
 pub const HEAT_GENERATION_LAVA: f64 = 7.0;
 pub const HEAT_GENERATION_NETHER: f64 = 10.0;
@@ -37,8 +42,162 @@ pub const ENERGY_CAPACITY: i32 = 240;
 pub const MAX_PRODUCTION: i32 = 7 * 7 + 10 + 100;
 pub const BUCKET_VOLUME: u64 = 1_000;
 /// `blockDeactivationDelay`, o padrão de `GeneralConfig` do Mekanism: quantos ticks o bloco aceso espera para apagar depois que o
-/// gerador para (`TileEntityMekanism.setActive`). O Heat Generator não troca o `delaySupplier`.
+/// gerador para (`TileEntityMekanism.setActive`). O Heat Generator não troca o `delaySupplier`. O jogo lê o valor do arquivo
+/// (`machinery_basis_core::settings`); este é o dos testes.
 pub const BLOCK_DEACTIVATION_DELAY: i32 = 60;
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os arquivos de configuração do Generators (`MekanismGeneratorsConfig`): `generators` e `generator-storage`, os dois `Type.SYNCED`, registrados por
+// `MekanismConfigHelper.registerConfig` na pasta do Mekanism (`Mekanism/<arquivo>.toml`, `Mekanism.MOD_NAME`). Só as chaves do Heat Generator.
+
+pub const GENERATORS_CONFIG_FILE: &str = "Mekanism/generators.toml";
+pub const GENERATOR_STORAGE_CONFIG_FILE: &str = "Mekanism/generator-storage.toml";
+
+/// `heatGenerationFluidRate` é `define(.., 100, value -> value instanceof Integer i && i > 0 && i <= heatTankCapacity.getOrDefault())`
+/// (`GeneratorsConfig.java:130`): sem faixa, e o que passa da capacidade do tanque que o validador vê volta ao padrão.
+fn fluid_rate_fits_the_tank(rate: i32, lookup: Lookup<'_>) -> bool {
+    let Some(ConfigScalar::Long(tank)) = lookup("heat_generator", "tankCapacity") else {
+        return false;
+    };
+    rate > 0 && i64::from(rate) <= tank
+}
+
+/// `GeneratorsConfig` (`:115-130`), a seção `heat_generator`, com o texto de `GeneratorsConfigTranslations`. `heatGenerationLava` vai até
+/// `Integer.MAX_VALUE / (EnumUtils.DIRECTIONS.length + 1)`, para as sete faces não estourarem o `int`.
+pub const GENERATORS_CONFIG: Spec = Spec {
+    sections: &[Section {
+        name: "heat_generator",
+        comment: "Settings for configuring Heat Generators",
+        entries: &[
+            Entry {
+                key: "heatGeneration",
+                comment: "Amount of energy the Heat Generator produces per tick. heatGeneration + heatGenerationLava * lavaSides + heatGenerationNether. Note: lavaSides is how many sides are adjacent to lava, this includes the block itself if it is lava logged allowing for a max of 7 \"sides\".",
+                setting: Setting::Int {
+                    default: 100,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+            Entry {
+                key: "heatGenerationLava",
+                comment: "Multiplier of effectiveness of Lava that is adjacent to the Heat Generator.",
+                setting: Setting::Int {
+                    default: 7,
+                    min: 0,
+                    max: i32::MAX / 7,
+                },
+            },
+            Entry {
+                key: "heatGenerationNether",
+                comment: "Add this amount to the energy produced by a heat generator if it is in an 'ultrawarm' dimension, in vanilla this is just the Nether.",
+                setting: Setting::Int {
+                    default: 10,
+                    min: 0,
+                    max: i32::MAX,
+                },
+            },
+            Entry {
+                key: "tankCapacity",
+                comment: "The capacity in mB of the fluid tank in the Heat Generator.",
+                setting: Setting::Long {
+                    default: 1_000,
+                    min: 1,
+                    max: i64::MAX,
+                },
+            },
+            Entry {
+                key: "heatGenerationFluidRate",
+                comment: "The amount of lava in mB that gets consumed to transfer heatGeneration Joules to the Heat Generator.",
+                setting: Setting::IntWhere {
+                    default: 100,
+                    valid: fluid_rate_fits_the_tank,
+                },
+            },
+        ],
+    }],
+};
+
+/// `GeneratorsStorageConfig` (`:25-26`): `heatGenerator`, `CachedLongValue.definedMin(.., 12 * TICKS_PER_SECOND, 1)`, com o texto de
+/// `TranslationPreset.ENERGY_STORAGE`. É a capacidade do buffer de energia (`withEnergyStorage`).
+pub const GENERATOR_STORAGE_CONFIG: Spec = Spec {
+    sections: &[Section {
+        name: "",
+        comment: "",
+        entries: &[Entry {
+            key: "heatGenerator",
+            comment: "Base energy capacity of: Heat Generator",
+            setting: Setting::Long {
+                default: 240,
+                min: 1,
+                max: i64::MAX,
+            },
+        }],
+    }],
+};
+
+/// O que o Heat Generator lê da configuração, de uma vez. O original lê cada valor no uso (`generators.heatGeneration.get()` no tick, o tanque com um
+/// fornecedor): o glue refaz isto do valor de agora a cada tick.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeatConfig {
+    pub heat_generation: i32,
+    pub heat_generation_lava: i32,
+    pub heat_generation_nether: i32,
+    pub tank_capacity: i64,
+    pub fluid_rate: i32,
+    pub energy_capacity: i64,
+}
+
+impl HeatConfig {
+    pub const DEFAULT: Self = Self {
+        heat_generation: 100,
+        heat_generation_lava: 7,
+        heat_generation_nether: 10,
+        tank_capacity: 1_000,
+        fluid_rate: 100,
+        energy_capacity: 240,
+    };
+
+    /// Os valores dos dois arquivos lidos.
+    pub fn of(generators: &Loaded, storage: &Loaded) -> Self {
+        let d = Self::DEFAULT;
+        let int = |key: &str, default: i32| {
+            generators
+                .int(&GENERATORS_CONFIG, "heat_generator", key)
+                .unwrap_or(default)
+        };
+        Self {
+            heat_generation: int("heatGeneration", d.heat_generation),
+            heat_generation_lava: int("heatGenerationLava", d.heat_generation_lava),
+            heat_generation_nether: int("heatGenerationNether", d.heat_generation_nether),
+            tank_capacity: generators
+                .long(&GENERATORS_CONFIG, "heat_generator", "tankCapacity")
+                .unwrap_or(d.tank_capacity),
+            fluid_rate: int("heatGenerationFluidRate", d.fluid_rate),
+            energy_capacity: storage
+                .long(&GENERATOR_STORAGE_CONFIG, "", "heatGenerator")
+                .unwrap_or(d.energy_capacity),
+        }
+    }
+
+    /// `MAX_PRODUCTION` (`TileEntityHeatGenerator.java:41-45`): `heatGenerationLava * 7`, mais `heatGenerationNether` e `heatGeneration`, cada soma truncada
+    /// em `Integer.MAX_VALUE` (`MathUtils.addClamped`).
+    pub fn max_production(&self) -> i32 {
+        self.heat_generation_lava
+            .saturating_mul(7)
+            .saturating_add(self.heat_generation_nether)
+            .saturating_add(self.heat_generation)
+    }
+
+    /// A capacidade do tanque em mB (o `defineInRange` dela começa em 1).
+    pub fn tank(&self) -> u64 {
+        self.tank_capacity.max(1) as u64
+    }
+
+    /// A capacidade do buffer de energia como o Horizon a guarda (`i32`): o que passa disso fica em `i32::MAX`.
+    pub fn energy_capacity_int(&self) -> i32 {
+        i32::try_from(self.energy_capacity).unwrap_or(i32::MAX)
+    }
+}
 
 /// Os slots de `TileEntityHeatGenerator.getInitialInventory`, na ordem dos índices: o do combustível (`FluidInventorySlot`, `EXTRA` no
 /// contêiner) e o de energia (`EnergyInventorySlot`, com o raio por cima). A posição é a do item. O gerador não tem configuração de
@@ -149,8 +308,8 @@ pub fn screen_elements() -> Vec<machinery_basis_core::screen_elements::Element> 
 pub fn heat_tab_sprite(unit: TemperatureUnit) -> String {
     format!("mekanism:gui/sprites/tab/heat_info_{}", unit.tab_name())
 }
-/// O arquivo da configuração local do Mekanism (`MekanismConfig.local`, `Mekanism/local.toml`), na pasta do namespace dele.
-pub const LOCAL_CONFIG_NAMESPACE: &str = "mekanism";
+/// O arquivo da configuração local do Mekanism (`MekanismConfig.local`, `Mekanism/local.toml`), na pasta do original (`config/Mekanism/`, como o `client.toml`).
+pub const LOCAL_CONFIG_NAMESPACE: &str = "Mekanism";
 /// `MekanismLang.TEMPERATURE`, `TRANSFERRED_RATE` e `DISSIPATED_RATE`: os modelos das três linhas da aba de calor.
 pub const TEMPERATURE_LANG: &str = "temperature.mekanism.short";
 pub const TRANSFERRED_RATE_LANG: &str = "gui.mekanism.transferred_rate";
@@ -261,39 +420,50 @@ pub fn new_capacitor(ambient: f64) -> Capacitor {
     )
 }
 
-fn boost(around: &Surroundings) -> f64 {
-    let lava = HEAT_GENERATION_LAVA * f64::from(around.lava_faces);
-    if around.in_nether {
-        lava + HEAT_GENERATION_NETHER
+/// `getBoost` (`TileEntityHeatGenerator.java:155-182`): `heatGenerationLava` por lado com lava (nada, se ele for zero) e, no Nether, `heatGenerationNether`
+/// somado com `addClamped`.
+fn boost(config: &HeatConfig, around: &Surroundings) -> f64 {
+    let lava = if config.heat_generation_lava == 0 {
+        0
+    } else {
+        config
+            .heat_generation_lava
+            .saturating_mul(i32::try_from(around.lava_faces).unwrap_or(i32::MAX))
+    };
+    let boost = if around.in_nether {
+        lava.saturating_add(config.heat_generation_nether)
     } else {
         lava
-    }
+    };
+    f64::from(boost)
 }
 
 /// Um tick. `lava` é o que há no tanque, e a energia sai sem o limite do buffer. `can_function` é o `canFunction()` do tile
 /// (`TileEntityHeatGenerator.java:140`): o controle de redstone e o `redstone` que o último aviso dos vizinhos deixou; sem ele a lava não
 /// queima, mas o calor guardado segue gerando.
 pub fn tick(
+    config: &HeatConfig,
     heat: &mut Capacitor,
     around: &Surroundings,
     lava: u64,
     energy_full: bool,
     can_function: bool,
 ) -> Produced {
-    heat.handle(boost(around));
-    let active = can_function && lava >= FLUID_RATE && !energy_full;
+    heat.handle(boost(config, around));
+    let fluid_rate = u64::try_from(config.fluid_rate).unwrap_or(0);
+    let active = can_function && lava >= fluid_rate && !energy_full;
     if active {
-        heat.handle(HEAT_GENERATION);
+        heat.handle(f64::from(config.heat_generation));
     }
     let temperature = heat.temperature();
     let carnot = 1.0 - around.ambient.min(temperature) / around.ambient.max(temperature);
     let heat_lost = THERMAL_EFFICIENCY * (temperature - around.ambient);
     heat.handle(-heat_lost);
-    let energy = ((heat_lost.abs() * carnot) as i32).min(MAX_PRODUCTION);
+    let energy = ((heat_lost.abs() * carnot) as i32).min(config.max_production());
     let environment_loss = heat.lose_to_faces(around.face_ambient, INSULATION_BY_FACE);
     Produced {
         active,
-        lava_used: if active { FLUID_RATE } else { 0 },
+        lava_used: if active { fluid_rate } else { 0 },
         energy,
         transfer_loss: 0.0,
         environment_loss,
@@ -308,15 +478,21 @@ pub struct State {
     pub lava: u64,
     pub energy: i32,
     pub tile: TileBase,
+    /// A configuração de agora (`MekanismGeneratorsConfig`).
+    pub config: HeatConfig,
 }
 
 impl State {
+    /// Um gerador novo com a configuração padrão (os testes dos rastros); o jogo troca `config` pelo valor lido do arquivo antes de cada tick.
     pub fn new(ambient: f64) -> Self {
         Self {
             heat: new_capacitor(ambient),
             lava: 0,
             energy: 0,
-            tile: TileBase::new(BLOCK_DEACTIVATION_DELAY),
+            tile: TileBase::new(ConfigValue::Live(
+                machinery_basis_core::settings::block_deactivation_delay,
+            )),
+            config: HeatConfig::DEFAULT,
         }
     }
 }
@@ -326,14 +502,19 @@ impl State {
 /// da energia antes e depois, que o limite do buffer corta).
 pub fn step(state: &mut State, around: &Surroundings) -> Produced {
     state.tile.tick_delay();
-    let full = state.energy >= ENERGY_CAPACITY;
+    let capacity = state.config.energy_capacity_int();
+    let full = state.energy >= capacity;
     let can_function = state.tile.is_redstone_activated();
-    let mut produced = tick(&mut state.heat, around, state.lava, full, can_function);
+    let mut produced = tick(
+        &state.config,
+        &mut state.heat,
+        around,
+        state.lava,
+        full,
+        can_function,
+    );
     state.lava -= produced.lava_used;
-    let filled = state
-        .energy
-        .saturating_add(produced.energy)
-        .min(ENERGY_CAPACITY);
+    let filled = state.energy.saturating_add(produced.energy).min(capacity);
     produced.energy = filled - state.energy;
     state.energy = filled;
     state.tile.set_active(produced.active);
@@ -351,9 +532,10 @@ pub fn finish_tick(state: &mut State, lava_before: u64, lava_seen: &mut Option<u
     }
     *lava_seen = Some(state.lava);
     let lava = state.lava;
-    state.tile.finish_tick(|| {
-        machinery_basis_core::containers::redstone_signal_of_container(lava, TANK_CAPACITY)
-    })
+    let tank = state.config.tank();
+    state
+        .tile
+        .finish_tick(|| machinery_basis_core::containers::redstone_signal_of_container(lava, tank))
 }
 
 /// O `MEKTRACE` de um tick: os campos de `dev/referencia/rastros/heat_generator_*` que a regra calcula, com os mesmos nomes. `now` é o
@@ -367,13 +549,14 @@ pub fn trace_line(
 ) -> String {
     let faces: Vec<String> = around.face_ambient.iter().map(f64::to_string).collect();
     format!(
-        "{{\"t\":{now},\"heat\":{},\"temperature\":{},\"ambient\":{},\"ambient_faces\":[{}],\"lava_faces\":{},\"energy\":{},\"capacity\":{ENERGY_CAPACITY},\"lava\":{},\"produced\":{},\"transfer_loss\":{:?},\"environment_loss\":{:?},\"active\":{},\"block_active\":{},\"update_delay\":{},\"fuel\":[\"{}\",{}]}}",
+        "{{\"t\":{now},\"heat\":{},\"temperature\":{},\"ambient\":{},\"ambient_faces\":[{}],\"lava_faces\":{},\"energy\":{},\"capacity\":{},\"lava\":{},\"produced\":{},\"transfer_loss\":{:?},\"environment_loss\":{:?},\"active\":{},\"block_active\":{},\"update_delay\":{},\"fuel\":[\"{}\",{}]}}",
         state.heat.heat,
         state.heat.temperature(),
         around.ambient,
         faces.join(","),
         around.lava_faces,
         state.energy,
+        state.config.energy_capacity_int(),
         state.lava,
         produced.energy,
         produced.transfer_loss,
@@ -439,8 +622,6 @@ pub const UPGRADE_TYPE_COMPONENT: &str = "mekanism:upgrade_type";
 pub const MUFFLING_UPGRADE: &str = "mekanism:muffling";
 /// `MekanismTags.Upgrades.MUFFLING_ONLY`: o que `AttributeUpgradeSupport.MUFFLING_ONLY` aceita.
 pub const MUFFLING_ONLY: &str = "mekanism:upgrade_support/muffling_only";
-/// `UpgradeUtils`: o multiplicador dos upgrades (`upgradesMultiplier`).
-pub const UPGRADE_MULTIPLIER: f64 = 10.0;
 
 /// Os dados de upgrade do gerador: os tipos, o que a tag `muffling_only` aceita, e o item que os carrega, com o limite de pilha dele.
 pub fn upgrade_data(
@@ -684,7 +865,7 @@ mod tests {
         let mut heat = new_capacitor(AMBIENT_TEMP);
         let mut last = Produced::default();
         for _ in 0..ticks {
-            last = tick(&mut heat, around, lava, false, true);
+            last = tick(&HeatConfig::DEFAULT, &mut heat, around, lava, false, true);
         }
         (heat, last)
     }
@@ -738,7 +919,14 @@ mod tests {
     #[test]
     fn stops_burning_when_full() {
         let mut heat = new_capacitor(AMBIENT_TEMP);
-        let produced = tick(&mut heat, &PLAINS, TANK_CAPACITY, true, true);
+        let produced = tick(
+            &HeatConfig::DEFAULT,
+            &mut heat,
+            &PLAINS,
+            TANK_CAPACITY,
+            true,
+            true,
+        );
         assert!(!produced.active);
         assert_eq!(produced.lava_used, 0);
     }

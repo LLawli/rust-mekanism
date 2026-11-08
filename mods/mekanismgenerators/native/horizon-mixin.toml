@@ -245,3 +245,36 @@ bindings = [
   { name = "pos", ty = "BlockPos", value = "pos" },
   { name = "output", ty = "&mut i32", value = "&mut *output" },
 ]
+
+# Os arquivos de configuração de servidor do Generators (`Mekanism/generators.toml` e `Mekanism/generator-storage.toml`, o `MekanismGeneratorsConfig`): registrar, ler
+# quando o servidor de um mundo vai começar e ler de novo quando o arquivo muda (`ModContainer.registerConfig`, `ModConfigEvent.Loading` e `Reloading`). O Heat
+# Generator lê deles o calor, o tanque, o consumo de lava e a capacidade de energia.
+[[injection]]
+id = "register-configs"
+hook = "register_configs"
+hook_version = 1
+kind = "HEAD"
+helper = "register_configs.rs"
+bindings = [
+  { name = "configs", ty = "&mut Vec<crate::game::NativeConfig>", value = "&mut *configs" },
+]
+
+[[injection]]
+id = "config-loading"
+hook = "config_loading"
+hook_version = 1
+kind = "HEAD"
+helper = "config_loading.rs"
+bindings = [
+  { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
+]
+
+[[injection]]
+id = "config-reloading"
+hook = "config_reloading"
+hook_version = 1
+kind = "HEAD"
+helper = "config_reloading.rs"
+bindings = [
+  { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
+]
