@@ -19,6 +19,7 @@ use crate::item_chemical_constant_recipe::{
     ChemicalUsageMultiplier, ItemChemicalConstantUsageRecipe,
 };
 use crate::item_handler::ItemCapabilities;
+use crate::last_energy::LastEnergyTracker;
 use crate::operation_tracker::{RecipeError, RecipeErrors};
 use crate::recipe_handlers::{ItemInputHandler, ItemOutputHandler};
 use crate::recipe_monitor::{
@@ -840,6 +841,8 @@ pub struct ProgressMachine {
     monitor: Box<dyn MonitorOps>,
     ejector: ItemEjector,
     upgrades: UpgradeComponent,
+    /// `LastEnergyTracker`: o que a capability de energia entregou no tick anterior (`lastEnergyReceived`).
+    last_energy: LastEnergyTracker,
 }
 
 impl ProgressMachine {
@@ -1005,6 +1008,7 @@ impl ProgressMachine {
             monitor,
             ejector,
             upgrades: parts.upgrades,
+            last_energy: LastEnergyTracker::default(),
         }
     }
 
@@ -1253,6 +1257,17 @@ impl ProgressMachine {
         self.shared.players_using.set(using.saturating_sub(1));
     }
 
+    /// `TrackingEnergyHandler.insert`: `inserted` é o que a capability de energia deixou entrar (o contêiner já o guardou) em
+    /// `game_time`.
+    pub fn energy_received(&self, inserted: i64, game_time: u64) {
+        self.last_energy.received(inserted, game_time);
+    }
+
+    /// `LastEnergyTracker.getLastEnergyReceived`.
+    pub fn last_energy_received(&self) -> i64 {
+        self.last_energy.last_energy_received()
+    }
+
     /// `getRedstoneLevel`, com os slots de `getInventorySlots`.
     pub fn redstone_level(&self) -> i32 {
         redstone_level_of(&self.inventory_slots)
@@ -1276,6 +1291,8 @@ impl ProgressMachine {
             fill_tank_or_convert(&side.slot, &side.tank, &side.conversions, None);
         }
         self.monitor.update_and_process();
+        // O fim de `TileEntityMekanism.tickServer`: pergunta ao `LastEnergyTracker` se o tick mudou, para o que não entrou voltar a zero.
+        self.last_energy.check_tick_changed(game_time);
         let slots = &self.inventory_slots;
         self.shared
             .tile

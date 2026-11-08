@@ -33,6 +33,11 @@ impl<K: Ord> Tracking<K> {
         self.tracked.len()
     }
 
+    /// Os ids dos dados, na ordem de `trackedData`: quem guarda o estado de cada um (`ContainerSync`) o acha por eles.
+    pub fn ids(&self) -> &[u32] {
+        &self.tracked
+    }
+
     /// O número de dados do construtor.
     pub fn base(&self) -> usize {
         self.base
