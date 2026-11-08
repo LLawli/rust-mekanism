@@ -66,6 +66,8 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
    8.000.000.000, e a API do Horizon é `i32`. A energia do Mekanism vive em `i64` no NBT próprio, e `ModEnergyBuffer` fica só para
    falar com outros mods.
 3. **Duas entradas com regra de slot (aberta).** Aproximação ou nova injeção, a decidir quando chegar o Combiner.
+4. **Fase 1 sem pausas e a mais próxima do original (usuário, 2026-11-08).** As frentes seguem uma após a outra até a Fase 1 cumprir "Pronto significa". Quando nem uma injeção dá o 1:1, as opções são medidas contra o original e fica a mais próxima, registrada aqui com os números. O que as diretrizes não decidem fica de fora, anotado como pendente, e vai ao usuário no fim da fase. Cada escolha assim ganha uma entrada nesta seção com as opções medidas, a escolhida e o porquê; o usuário as revisa e, se discordar, muda o método.
+5. **Quadro do overlay de 0,98 sem chegar à tela do port (aberta, 2026-11-08).** Pendente: nem uma injeção foi medida. O original manda os data slots no fim do tick (`broadcastChanges`), com a energia nova e o erro velho; o port os escreve no fim do tick da máquina, antes de a energia chegar. Medido: a diferença dura um tick por chegada de energia fora do tick da máquina (rastro `warnings_overlay`, t=105 e t=106; original em `chamber_overlay_erro_velho`, port sem o quadro). Opções: (a) o bloco que entrega a energia atualiza os data slots do receptor (pede um gancho entre blocos no tick, ver `docs/injecoes-horizon.md`); (b) um gancho de fim de tick que reescreve os data slots de todas as máquinas vivas (custo por máquina por tick, a medir contra o `MEKBENCH`); (c) deixar como está. Escolhida: nenhuma, espera o usuário no fim da Fase 1.
 
 ### Spike de validação (2026-11-05)
 
@@ -163,10 +165,8 @@ Falta na Fase 1:
   Injection Chamber). Não coberto: mais de uma operação por tick (precisa de `maxUpgradeMultiplier` acima do padrão de 10) e os upgrades em jogo (o rastro os
   cobre). A Enrichment Chamber, o Crusher e o Energized Smelter não leem o campo (o original também não: a receita deles não o tem). As três máquinas que só
   existem no original, Osmium Compressor, Purification Chamber e Chemical Injection Chamber, são pendência da Fase 6 (é onde máquina nova entra), não da Fase 1.
-- `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, mas nada os alimenta: nenhum item portado tem a capability
-  de químico (`ChemicalItems`), e nenhum mapa de dados de atributos (`chemical_attribute_*`) é lido para o `ChemicalAttributes`. O
-  `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer`
-  o lê e nenhum slot portado o chama.
+- `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, e nada portado os alimenta (conferido em 2026-11-08); o `setLastTransferDirection` não foi portado. A razão e
+  o que os liga estão na Fase 6 (Chemical Tank e os itens de químico) e na Fase 5 (conteúdo guardado no item).
 - Índice de receitas ligado. `ElectricLookup` e `ChemicalLookup` perguntam ao `SingleInputRecipeCache` e ao `DoubleInputRecipeCache`
   (`findFirstRecipe`, com a quantidade que o `SizedIngredient.test` confere), a conversão de item em químico do slot de infusão usa
   o `SingleInputRecipeCache` do `chemical_conversion` (`findFirstRecipe` ao converter, `findTypeBasedRecipe` na regra do slot,
@@ -365,8 +365,32 @@ Falta na Fase 1:
     `GuiProgress`, rótulos e tooltips de widget), coberto por testes sem o jogo e comparado em imagem com o original, por
     `dev/referencia/comparar_lote.py`, em 36 estados por escala de GUI (2 e 3): slots, barras, setas, medidor, rótulos, título e
     tooltips de widget com 0 pixels diferentes, fora as diferenças de renderer acima.
-- `NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT` não acenderam em nenhum dos dois jogos, e o overlay de nível >= 0,98 e
-  PULSE só têm teste de unidade.
+- Avisos de entrada, overlay de 0,98 e PULSE (fechado em 2026-11-08, contra o Java e em jogo). **`NOT_ENOUGH_INPUT` e `NOT_ENOUGH_SECONDARY_INPUT` não acendem em máquina nenhuma do original, e
+  portanto não acendem no port.** O erro só nasce em `InputResourceHandler.calculateOperationsCanSupport` (`InputResourceHandler.java:96`, `resetProgress(notEnoughError)`), com `usageMultiplier > 0`, sem
+  `isConstantUsage` e com menos que uma operação de entrada. Antes disso `getRecipeInput` (`:47-53`) devolve vazio para o contêiner vazio e, para menos do que a receita pede, também
+  (`ItemStackIngredient.getMatchingInstance`, `test` com a quantidade: `SizedIngredient.test`; `ChemicalStackIngredient.test`, `amount >= amount`), e `CachedRecipeHelper.twoInputCalculateOperationsThisTick`
+  (`:72` e `:78`) marca `mismatchedRecipe`, que zera o progresso e limpa os erros, sem erro. O que `getRecipeInput` entrega sempre cobre uma operação (a extração é do próprio tipo, `INTERNAL`), e o único
+  multiplicador diferente de 1 é o do uso constante (`ItemStackConstantChemicalToObjectCachedRecipe.java:98`), que pausa sem erro (`InputResourceHandler.java:92-94`, `isConstantUsage`; `ItemStackConstantChemicalToObjectCachedRecipe.java:86` com o químico vazio). Nenhum `CachedRecipe` do Mekanism chama com multiplicador
+  maior que 1 sem uso constante: o erro é inalcançável. Prova por observação: `WarningsTraceTest.warningsSweep*` passa por todas as receitas do jogo de cada máquina (2.689 casos de 614 receitas: Enrichment Chamber 910
+  de 223, Crusher 1.028 de 255, Energized Smelter 409 de 105, Metallurgic Infuser 342 de 31), com a entrada (e o tanque) abaixo, na quantidade e acima do que a receita pede, e com velocidade 8, e nenhum caso tem erro de
+  entrada. O port repete a varredura (`warnings_trace.rs`, receitas dos arquivos do mod; o forno com as receitas que o rastro descreve) e bate em progresso por tick, erros e atividade em 2.413 casos (742, 938, 409 e 324);
+  276 ficam de fora por receita ou tag que o port não tem (168, 90, 0 e 18). Receitas portadas com mais de um item na entrada, que a varredura cobre: enriquecimento de 3 (minérios brutos) e 8 (serragem), trituração de 2, 3, 4 e 10,
+  infusão de 3 e 4 itens e até 240 de químico. Rastros tick a tick com o jogador na tela (`warnings_input_chamber`, `warnings_input_infuser`): menos entrada, a entrada chegando, saindo no meio da operação e com
+  velocidade 8 não dão erro, nem aviso, nem a aba (o modo `recheck` ligado). Mutações: o erro posto onde o Java não o põe (câmara, triturador e Infuser) é morto por 7 e 4 testes; sem o erro, o erro trocado e o uso constante
+  trocado no `calculate_operations_can_support` (hoje só alcançável por teste unitário, `recipe_handlers::tests`), idem; o par cruzado do Infuser (item `SECONDARY`, químico `INPUT`, `TileEntityMetallurgicInfuser.java:121-122`,
+  que a tela usa ao contrário, `GuiMetallurgicInfuser.java:36`) é a constante `CHEMICAL_MACHINE_INPUT_ERRORS`, morta por `the_infuser_crosses_its_input_errors_as_the_original_does`. Sobrevive, por ser inobservável, a troca
+  nos pontos de uso das duas constantes (o erro nunca aparece). Em jogo (`dev/referencia/comparar_lote.py`, guiScale 2 e 3, 12 estados e 4 ciclos de 40 prints): a câmara com 2 e 3 de ferro bruto, o aviso de
+  energia aceso e o Infuser com 9 e 10 de redstone dão 0 pixels diferentes fora do mundo atrás da tela (até 1 por canal, H22 e H30) e da fase do químico (H26, provada pelos ciclos `infuser_fase_redstone_*`: 40 de 40 prints
+  do original têm quadro idêntico no port); a aba de avisos não aparece nos quatro casos de entrada curta nem no original. **Overlay de nível >= 0,98** (`GuiBar.java:70`; o medidor `GuiGauge.java:110` o tem com `> 0,98`, e o
+  Heat Generator não registra aviso nenhum nele): só a barra de energia o alcança, e só com o erro de energia velho, porque uma máquina com erro de energia tem menos energia que o consumo e a capacidade é no mínimo quatro
+  ticks de consumo. O erro velho (a receita pausada, `pausedForErrors`) fica aceso quando a energia chega depois do tick da máquina e antes do seguinte: no rastro `warnings_overlay`, t=105, 9.999 de 10.000 com o erro aceso e
+  `bar_overlay` verdadeiro, e no t=106 o erro some. O original o mostra (`chamber_overlay_erro_velho`, `energia_depois`: a barra cheia listrada e a aba de avisos) e com 9.000 não (`chamber_overlay_abaixo`). O Rust repete o
+  rastro tick a tick, com a geometria da lib (`bar_warning`, `BAR_WARNING_OVERLAY_LEVEL`; mutações 0,97, 0,99 e 1,0 mortas). **Divergência aberta**: o port escreve os data slots da tela no fim do tick da máquina
+  (`glue.rs`, `ScreenData`), então a energia que chega depois dele no mesmo tick só aparece no tick seguinte, quando o erro já foi recalculado, e o quadro do overlay nunca chega à tela do port (em jogo, `data merge` de energia
+  zera os data slots até o tick seguinte: a barra sai vazia e sem aba). Duração da diferença: um tick por chegada de energia fora do tick da máquina. Aguarda a decisão 5. **PULSE**: nenhuma das cinco máquinas o aceita
+  (`ITileRedstone.supportsMode`, `mode != PULSE`; só o Logistical Sorter, o Laser Amplifier, a Electric Pump, o Formulaic Assemblicator e o Oredictionificator o aceitam), e o pedido cai em `DISABLED` em
+  `setControlType`, no NBT salvo (`readSustainedData`, `TileEntityMekanism.java:809`) e no componente do item (`:852`): rastro `redstone_pulse`, 40 linhas (5 máquinas, 8 caminhos), repetido em `warnings_trace.rs` e
+  `mekanismgenerators/tests/redstone_pulse.rs`; o aviso `REDSTONE_PULSE_REQUIRED` nunca acende. O Heat Generator não tem aba de redstone nem de avisos no port (ver as abas que faltam).
 - Ejetor para composteira (feito, 2026-11-07). O caminho do original é `Capabilities.Item.BLOCK` da composteira, o `ComposterWrapper` do
   NeoForge (lido em `neoforge-26.3.0.100-sources.jar`): só as faces vertical têm capacidade, e **a saída padrão do item é a
   direita, uma face lateral, então com a configuração padrão o ejetor nunca chega a uma composteira, no original nem no port**
@@ -486,7 +510,12 @@ da bateria `mek_teste`; o Steel Casing não foi revisado nesta frente.* Heat Gen
 Energized Smelter e Steel Casing, um a um, conferindo o inventário. Telas com os sprites e widgets originais, energia em slot,
 upgrades, conteúdo guardado no item, som, partículas e luz. Sai a bateria de teste `mek_teste` do build.
 
-**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Pendência herdada da Fase 1: Osmium Compressor, Purification Chamber e Chemical Injection Chamber, as máquinas de `per_tick_usage` que só existem no original; a mecânica (`ItemChemicalConstantUsageRecipe`, `usedSoFar`) já está na lib e conferida com o Compressor e o Infuser, falta cada bloco (valores, receitas, texturas, tela). Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
+**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Itens com capability de químico e o que a lib já tem para eles (2026-11-08): `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, e nada portado os alimenta; o
+`setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer` o lê e nenhum slot portado o chama. Os itens com capability de químico do original são o Chemical Tank
+(`ItemBlockChemicalTank`, `MekanismBlocks.java:973`), o Gauge Dropper, o flamethrower, o scuba tank e os jetpacks (`MekanismItems.java`, `addAttachedContainerCapabilities(ContainerType.CHEMICAL, ...)`), nenhum portado; os itens das
+máquinas usam `addAttachmentOnlyContainers` (`MekanismBlocks.java:305` e `:375`), que guarda o tanque no item sem expor capability (é o "conteúdo guardado no item" da Fase 5). O tanque do Infuser
+(`TileEntityMetallurgicInfuser.java:135`) valida com `containsRecipeB`, que recusa qualquer químico radioativo antes do `ChemicalAttributeValidator.DEFAULT`, então os mapas de dados
+`chemical_attribute_*` (sodium, superheated_sodium, ethene, hydrogen, nuclear_waste, plutonium, polonium, spent_nuclear_waste) não mudam nada nas máquinas portadas: nenhum é lido hoje para o `ChemicalAttributes`, e entram com o Chemical Tank e com os itens acima. Pendência herdada da Fase 1: Osmium Compressor, Purification Chamber e Chemical Injection Chamber, as máquinas de `per_tick_usage` que só existem no original; a mecânica (`ItemChemicalConstantUsageRecipe`, `usedSoFar`) já está na lib e conferida com o Compressor e o Infuser, falta cada bloco (valores, receitas, texturas, tela). Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
 fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
 
 ### Tetos dos resíduos do comparador de telas (2026-11-07)
@@ -691,6 +720,11 @@ abas, luz e o comparador) o que pareceu estranho no original foi conferido e o p
   (`:164`) e a operação inteira roda sem gastar químico (`infuser_const_reload_speed.jsonl`, t=106 a t=124: o tanque fica em 800 e o `used_so_far` em 100). Com o progresso e sem o
   `used_so_far` no NBT (`getIntOr(USED_SO_FAR, 0)`, `TileEntityMetallurgicInfuser.java:228`) acontece o contrário: o multiplicador vira 2 e o gasto alcança o total
   (`infuser_const_reload_without_usage.jsonl`). O port reproduz os dois.
+
+- Uma máquina que perde os upgrades de velocidade com o erro de energia aceso continua com ele aceso (pausada, `CachedRecipe.java:250`, `pausedForErrors`): só uma mudança de energia ou de entrada a acorda, e a barra de energia fica
+  com o nível da energia sobre a capacidade nova (`getCapacityAsLong` é o maior entre o máximo e o guardado). Rastro `warnings_overlay`, t=25 a t=45. O port reproduz.
+- O Metallurgic Infuser dá ao item o erro `NOT_ENOUGH_SECONDARY_INPUT` e ao químico o `NOT_ENOUGH_INPUT` (`TileEntityMetallurgicInfuser.java:121-122`), e a tela os usa pelo nome: a barra de químico avisa pelo erro do item e o slot de
+  entrada pelo do químico (`GuiMetallurgicInfuser.java:36`, `TileEntityMetallurgicInfuser.java:151`). Como nenhum dos dois acende, não se vê. O port tem o par (`CHEMICAL_MACHINE_INPUT_ERRORS`, `INFUSER_WARNINGS`).
 
 Quando uma frente achar outro, entra aqui, com a linha do Java e o teste que o prova.
 
