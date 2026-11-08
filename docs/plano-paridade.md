@@ -198,7 +198,7 @@ e reabrir foram conferidos em jogo sem comparar cada tick. Um mundo antigo migro
 
 O Horizon não simula inserção, então o ejetor transaciona numa cópia do vizinho, e `slot_accepts.rs`, injetado em
 `game/machines/native_items.rs`, dá a regra real de cada slot, que é privada ali: é o `isValid` do `ResourceHandler`. O rastro
-`chamber_eject_furnace` confere a regra sem o jogo, e em jogo forno e baú quase cheio deram o que o original dá.
+`chamber_eject_furnace` confere a regra sem o jogo, e em jogo forno e baú quase cheio deram o que o original dá. O ejetor ligado à configuração por instância (modo e lados) e o `TileEntityConfigurableMachine` que o guarda são da Fase 2 (movidos em 2026-11-08, lá está o que já se fez).
 
 Falta na Fase 1:
 
@@ -294,8 +294,7 @@ Falta na Fase 1:
   `ingots/osmium`, `ingots/steel`, `ores/osmium` e `raw_materials/osmium`, e `c:ores/osmium` de bloco); as 143 que faltam (30 de bloco, 87 de item, 23 de fluido e 3 de `entity_type`) citam item, bloco ou
   fluido que o port não tem (pós, lingotes, pepitas e blocos de bronze, chumbo, estanho, urânio e fluorita; baldes; pellets; baús e barris
   pessoais; ferramentas Meka; `#mekanism:transmitters/buffered`), e não se edita uma tag do original para listar menos. Fluid e
-  entity_type não foram copiados: não se confirmou que o Horizon os leia. Falta ainda comparar o que o Horizon descarta em silêncio
-  (entrada ou `#tag` desconhecida) com cada receita portada quando esses itens chegarem.
+  entity_type não foram copiados: não se confirmou que o Horizon os leia. Movido para a Fase 6 (2026-11-08): comparar o que o Horizon descarta em silêncio (entrada ou `#tag` desconhecida) com cada receita portada quando esses itens chegarem, e as 143 tags de item e de bloco, que entram junto dos itens; as de fluido e de `entity_type` esperam saber se o Horizon as lê ("Esperando decisão do usuário (fim da Fase 1)").
 - Slots de entrada. `InputInventorySlot` passa `ConstantPredicates.notExternal()` como `canExtract` (`InputInventorySlot.java`, o
   construtor protegido chama `super(capacity, notExternal(), insertPredicate, ..)`), e `BasicResourceContainer
   .isCurrentValidForExtraction` aplica o predicado com o `AutomationType` de quem pede: o hopper e o cano (`External`) não tiram a
@@ -318,7 +317,7 @@ Falta na Fase 1:
   (`item_slots`, `sides` e o `can_give` do `tick_hoppers`). Rastro do Java com o hopper embaixo, e um em cada face apontando para a
   máquina com um item de cada tipo, nas quatro máquinas, posta como um jogador a poria; `slot_rules.rs` repete as seis faces e as
   fases de baixo. Em jogo (`horizon2`): o hopper embaixo do Infuser leva o graveto, não leva o cogumelo que o tanque converte, leva o
-  bio fuel quando o tanque tem fungi, e embaixo da Chamber não leva nada. Fica para a Fase 2: uma máquina posta por `setblock` ficaria
+  bio fuel quando o tanque tem fungi, e embaixo da Chamber não leva nada. Movido para a Fase 2 em 2026-11-08 (lá está o que já se fez e o que falta): uma máquina posta por `setblock` ficaria
   com todos os lados em `NONE` no original (`ConfigInfo` nasce em `NONE` e só `applyImplicitComponents` aplica o padrão do item;
   lido no código, não gravado), e o port trata toda máquina como se viesse do item; e a configuração por instância (a tela de lados, o Configurator).
   **Slot de energia** (feito, 2026-11-07): `energy_conversion` e `EnergyInventorySlot.fillContainerOrConvert`. A lib tem
@@ -339,7 +338,7 @@ Falta na Fase 1:
   o shift-click de 3 `redstone_block` com o menu aberto soma ao slot de energia (2 para 5); Na máquina de um jogador sem upgrade a energia fica sem subir. Rastros do Java: `chamber_energy_conversion` (recusa
   com 20, um item por tick com espaço, exatamente o espaço que há, o bloco de 90.000, item sem receita), `chamber_energy_conversion_running`
   (a conversão vem antes da receita no mesmo tick) e `infuser_energy_conversion` (energia e infusão no mesmo tick), com a capacidade
-  posta por `setMaxEnergy`; o port os repete tick a tick. Sobram `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
+  posta por `setMaxEnergy`; o port os repete tick a tick. Movidos para a Fase 6 em 2026-11-08: `EitherSide`, `Triple` e `Rotary`, sem máquina portada que os use, e os limites de taxa. O `HashSet` das receitas
   complexas (**feito em 2026-11-08**, decisão 11): o `hashCode` de um `RecipeHolder` é o do `ResourceKey` do id (`RecipeHolder.java:19-20`), o de identidade do JVM, que muda a cada execução; o port faz o mesmo `HashSet` do JDK (`sim::java_hash`) com um hash de identidade
   sorteado por id e por processo (`machinery_basis_core::identity_hash`), e as caches de um e de dois ingredientes iteram as complexas nessa ordem. Rastro `recipe_components` (duas execuções do `runGameTestServer`, 48 receitas em 12 itens e 6 em 1, com o `System.identityHashCode` de cada id): o
   port com os hashes do rastro dá a receita certa em 24 de 24 perguntas e a ordem da lista em 4 de 24.
@@ -357,12 +356,14 @@ Falta na Fase 1:
   decodifica a lista que reescreve igual (slots em ordem). Com a conversão primeiro o `bio_fuel` ocupa o slot 0 e funciona. Mutações
   que o rastro mata: o tanque recusar o químico com item na entrada (`containsRecipeBA` com item), a conversão depois da receita no tick, e
   a quantidade convertida; o slot de infusão aceitar químico diferente do que o tanque guarda não passa por este rastro (ele começa com o tanque
-  vazio) e é morto por `slot_rules.rs`. **Fora:** carbon e tin: o original tem 31 receitas `metallurgic_infusing` e o port 19 (faltam
-  `processing/iron/enriched`, `processing/iron/enriched_dust`, `processing/steel/enriched_iron_to_dust`, `processing/bronze/*`,
-  `processing/netherite/scrap_to_dust`, `processing/refined_obsidian/dust/from_obsidian_dust`, os quatro `control_circuit/*` e o
-  `mekanismgenerators:hohlraum`), então nenhuma receita usa carbono nem estanho, o tanque os recusa e o `coal` não entra no slot de infusão (no original entra).
-- Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede; **medido em 2026-11-06, antes de o transporte da tela trocar para o pacote por jogador (trackers, parte 2, 2026-11-08), e o caso não foi refeito depois**). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Estão portados e conferidos contra rastros do original (2026-11-06): o tooltip do item (`upgrade_tooltip`, os 8 tipos, linha a linha), a receita e a tag `muffling_center` do `muffling` e o efeito dele no som (`chamber_muffling`), e o `xp_containment` (`chamber_xp_containment`, `chamber_xp_vanilla`, `chamber_xp_broken`, repetidos por `effects_trace.rs`). A aba de XP (`GuiXpContainmentTab`) está portada, veja o item dela abaixo. Faltam os tipos que
-  nenhuma máquina portada aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
+  vazio) e é morto por `slot_rules.rs`. **Fora:** carbon e tin, que o rastro não cobre porque a conta dos 13 pares usa só as 19 receitas da pasta
+  `recipe/metallurgic_infusing`. **Linha velha corrigida em 2026-11-08 (frente do plano):** o texto de antes dizia que o original tem 31 receitas e o port 19 e que por isso o `coal` não entra no slot de infusão. O conteúdo
+  do port guarda as 30 receitas de tipo `mekanism:metallurgic_infusing` do `mekanism` (as 19 da pasta e 11 em `control_circuit/` e `processing/`, contadas por `type` em `tests/common/mod.rs`, `infuser_recipes_by_type`; o jogo lê o `type`, não a pasta),
+  e a 31ª do original, `mekanismgenerators:hohlraum`, é do Generators e o port não a tem. Então `processing/iron/enriched` (ferro com `#mekanism:carbon`) existe no port, e o
+  `chemical_conversion` tem 19 conversões contra 24 do original (as de estanho e as de itens que o port não tem, Fase 6). **Em aberto, sem depender do usuário (Fase 1):** a medição em jogo de 2026-11-08 (item Som da máquina, "Também visto") viu o `coal` não converter com `iron_ingot` na entrada
+  e a atribuiu a essa receita faltar; como o arquivo existe, a causa não é essa e não foi achada. Pontas a investigar: se a receita é carregada (`#c:ingots/iron` e `#mekanism:carbon` resolvem), e o `containsRecipeAB` do tanque com o ferro na entrada.
+- Upgrades: a aba e a janela estão portadas nas quatro máquinas. Em jogo (desktop, 2026-11-06), nas quatro: abrir, instalar (20 ticks, vários de uma vez até o máximo) e remover; saída cheia (64) bloqueia a remoção; saída com outro tipo bloqueia; a lista rola com 8 tipos; o Dump atrás da janela no Infuser não recebe o clique (sem a janela recebe); mundo antigo (sem `component_upgrade` e sem os slots 3 e 4) abre sem perder item; salvar e reabrir devolve os upgrades e os dois slots cheios; jogador que cai com a janela aberta não deixa seleção (o que reentra faz shift-clique normal); `upgradeTicks` anda com a tela fechada e o progresso aparece ao abrir; o convidado vê os tipos (sincronia por rede; **medido em 2026-11-06, antes de o transporte da tela trocar para o pacote por jogador (trackers, parte 2, 2026-11-08), e o caso não foi refeito depois**). Pixel contra o oficial (guiScale 2 e 3, quatro máquinas, sem tolerância e sem máscara além da das abas): zero nos elementos do mod, exceto os ícones de item em escala (H25: "Supported:" e linha da lista), o mundo atrás da janela (H22) e, com o servidor parado, o Dump que o port só aplica no tick seguinte; a ordem da lista com mais de um tipo é de hash por identidade no original, então a comparação vale com um tipo (casos `_um_`). Não testado em jogo: o reenvio dos tipos ao convidado no `/reload`, e Save and Quit com a janela aberta. Estão portados e conferidos contra rastros do original (2026-11-06): o tooltip do item (`upgrade_tooltip`, os 8 tipos, linha a linha), a receita e a tag `muffling_center` do `muffling` e o efeito dele no som (`chamber_muffling`), e o `xp_containment` (`chamber_xp_containment`, `chamber_xp_vanilla`, `chamber_xp_broken`, repetidos por `effects_trace.rs`). A aba de XP (`GuiXpContainmentTab`) está portada, veja o item dela abaixo. Os tipos que
+  nenhuma máquina portada aceita são da Fase 6 (movidos em 2026-11-08): entram com a máquina que os aceita. Em jogo foram conferidos a receita, o shift-clique, reabrir e a capacidade por instância em
   `native_energy_at` (1000, 600 com 2 de energia, 400 com 4, e a vizinha não muda). A instalação de 20 ticks só foi comparada sem o jogo.
   **Divergência achada e corrigida (feito, 2026-11-08):** o upgrade na mão com shift sobre o bloco (`ItemUpgrade.useOn`, `ItemUpgrade.java:28-48`) só instalava depois que a tela daquele tipo de máquina abriu
   ao menos uma vez no processo do jogo: a spec da janela (`mb_window_register`) era registrada em `screen()` (`glue.rs`, quando a tela se cria), e `adder_of` não achava o bloco antes disso. Medido em jogo antes do conserto: o Crusher, o Energized
@@ -408,7 +409,7 @@ Falta na Fase 1:
   tudo em 200 (112) ticks e a segunda não começa; `placed_run.rs` repete cada tick (energia, progresso, ticks, consumo, saída). **O que a conclusão
   anterior errava:** "no máximo 1.000 com upgrades" (a tabela vai a 16.000) e "a `redstone` nunca converte nas 4 máquinas": converte com velocidade 8
   (Chamber, Smelter, Infuser; 7 e 8 no Crusher) e o contêiner vazio; `placed_capacity.rs` confere, nas 324 linhas, que o port converte exatamente onde o Java chega a 10.000.
-  **Fica de fora:** o item que guarda os upgrades do bloco quebrado (o `UPGRADES` do item; o port solta o conteúdo ao quebrar), então a linha `use_on` com
+  **Fica de fora (Fase 5, conteúdo guardado no item; movido em 2026-11-08):** o item que guarda os upgrades do bloco quebrado (o `UPGRADES` do item; o port solta o conteúdo ao quebrar), então a linha `use_on` com
   upgrades no item só é repetida por `apply_item_components` com o mapa na mão. **A primeira capacidade (feito em 2026-11-08):** a máquina posta por um jogador tinha a do bloco (20) até o primeiro tick
   dela, e o Java já tem a do item desde o `setPlacedBy` (`BlockMekanism.java:179-196` -> `applyImplicitComponents`): um gerador ou cabo que a enche no tick da colocação via 20 e o Java vê 1.000. Rastro `placed_fed_<máquina>` (`PlacedTraceTest.fed`:
   um Heat Generator cheio, 240, de frente para a máquina, que um jogador põe com cinco pares de upgrade no item e em dois momentos do tick, `pre` (antes dos block entities, como uma ação de jogador, e o gerador tica depois no mesmo tick) e
@@ -444,7 +445,7 @@ Falta na Fase 1:
   é medido em segundos; a contagem de silêncio chega ao cliente do anfitrião um tick antes do estado do bloco (a tabela é memória do processo), então o `lit` que apaga mostra o fator já certo um tick antes dele. **Áudio:** o port foi gravado pelo
   PipeWire (sink nulo, WAV de 48 kHz): RMS 97,7 com o volume 1, 48,4 com 0,5 e 103,3 com 2, razões de 0,496 e 1,058, que é o `calculateVolume` do motor (o volume vai a 1 no máximo: 0,5 dá metade e 2 dá o mesmo que 1). O áudio do original **não foi gravado**: a
   primeira tentativa não achou o stream do `mekanism-ref` no PipeWire do host e o som foi para as caixas do usuário, e não insisti (**regra do usuário, 2026-11-08: o jogo de teste, o port e o original, nunca toca nas caixas dele; o áudio vai para um sink nulo (`audio_nulo.sh`) ou o volume mestre vai a 0, e os scripts de `dev/referencia` já fazem o segundo**); a forma de onda do original **fica pendente**, gravada só pelo sink nulo; sem ele a forma de onda não foi comparada, e os `.ogg` são byte a byte os do original, então o que podia
-  diferir é só o ganho. Também visto, fora do som (o carvão no slot de infusão do Metallurgic Infuser, investigado em jogo em 2026-11-08 e **não é divergência nova**): com o slot de entrada vazio, 64 `coal` postos por `data merge` no slot de infusão viram 640 de carbono (10 por item, em poucos ticks), e o mesmo vale pela tela; com um `iron_ingot` na entrada eles não viram, nem pela ordem (ferro antes ou depois), porque o tanque de infusão só aceita um químico que alguma receita junte com o item da entrada (`canFillOrConvert`, regra já registrada e coberta por `slot_rules.rs`) e o original tem `processing/iron/enriched` (ferro com `#mekanism:carbon`, que o port ainda não traz: veja "Fora: carbon e tin" acima). O `data merge` do driver só passou o ferro e o carvão juntos, sem passar pela regra do slot, mas a regra que recusou o carvão é a do original, aplicada com as receitas que o port tem. O que ainda difere: o som de Natal usa o fuso do jogador, como `LocalDate.now()`; o convidado de LAN recebe a contagem de silêncio por pacote, mas isso não foi testado com convidado; o booleano escrito como texto no
+  diferir é só o ganho. Também visto, fora do som (o carvão no slot de infusão do Metallurgic Infuser, investigado em jogo em 2026-11-08 e **não é divergência nova**): com o slot de entrada vazio, 64 `coal` postos por `data merge` no slot de infusão viram 640 de carbono (10 por item, em poucos ticks), e o mesmo vale pela tela; com um `iron_ingot` na entrada eles não viram, nem pela ordem (ferro antes ou depois), porque o tanque de infusão só aceita um químico que alguma receita junte com o item da entrada (`canFillOrConvert`, regra já registrada e coberta por `slot_rules.rs`) e o original tem `processing/iron/enriched` (ferro com `#mekanism:carbon`, a explicação "que o port ainda não traz" estava velha, o arquivo existe no port e a causa ficou em aberto: veja "Fora: carbon e tin" acima). O `data merge` do driver só passou o ferro e o carvão juntos, sem passar pela regra do slot, mas a regra que recusou o carvão é a do original, aplicada com as receitas que o port tem. O que ainda difere: o som de Natal usa o fuso do jogador, como `LocalDate.now()`; o convidado de LAN recebe a contagem de silêncio por pacote, mas isso não foi testado com convidado; o booleano escrito como texto no
   arquivo de configuração (`enableMachine = "true"`) o validador do `ModConfigSpec` aceita e a leitura falha com `ClassCastException`, e o port o lê como o booleano; o intervalo de verificação (20 a 39 ticks) é
   sorteado por instância nos dois jogos e não tem semente a reproduzir; e a forma de onda do original não foi gravada (veja "Em jogo"). O silêncio vai de 1 (sem upgrade) a 0 (máximo 1: o `muffling.json` do original diz `max` 1, então não há 2 nem 4).
 - Experiência (`TileEntityRecipeMachine`, `RecipeCacheLookupMonitor`): `recipesUsed`, a última receita, `hadContainment` (`has_containment`) e `setRecipeUsed` têm rastro. `awardUsedRecipesAndPopExperience` roda ao tirar o resultado (injeção H27: o Horizon não avisa a retirada em slot de resultado de mod), com a experiência de cada receita lida do JSON (`experience`) ou do cozimento do jogo. Em jogo, 2 carvões com `xp_containment` e a retirada pelo clique deram 2 pontos ao jogador (4 operações vezes 0,5) e limparam `recipes_used`. Quebrar a máquina solta a experiência guardada (`destroy_block`, só o jogador; explosão, pistão e `/setblock` não passam por ele), e tirar o upgrade a perde, como o original (`hasXpContainment` já é falso dentro do `recalculateUpgrades`). A parte fracionária (`Math.random()` no Java, `AbstractFurnaceBlockEntity.createExperience`) sai de um `java.util.Random` de 48 bits semeado a cada execução (`machinery_basis_core::java_random`, igual ao JDK 21 em seis saídas; **feito em 2026-11-08**): não há semente a reproduzir, mas a distribuição é a mesma, uniforme em [0, 1), testada em 200.000 sorteios (dez faixas, média e independência de sorteios seguidos). Antes era uma fração de nanossegundos do relógio, que anda poucos nanossegundos entre dois sorteios seguidos (diferença média de 0,0001 contra 1/3 de dois uniformes independentes).
@@ -693,40 +694,74 @@ tick, e a diferença parecia ser de 19 vezes.
 contém `NOT_ENOUGH_ENERGY_REDUCED_RATE`. Com a máquina sem sinal no modo HIGH, ligar o sinal depois disso não a faz andar: só um
 listener despausa (`chamber_paused`, tick 35). PULSE também não existe na Enrichment Chamber: `supportsMode` recusa e cai em DISABLED.
 
-**Fase 2, lados coloridos.** *Estado (2026-11-07): aberta. Adiantado: a regra por slot (`slot_accepts`, o `isValid` do `ResourceHandler`) e o ejetor sobre ela; falta o resto.*
+**Fase 2, lados coloridos.** *Estado (2026-11-08, conferido): aberta. Adiantado, na Fase 1: a regra por slot (`slot_accepts`, o `isValid` do `ResourceHandler`) e o ejetor sobre ela, só por comando; falta o resto.*
 Porte de `TileComponentConfig`, `ConfigInfo`, `DataType`, `ISlotInfo`, `TransmissionType` e
 `TileComponentEjector`: por instância, por tipo de transmissão, com as cores, salvo no NBT, `AttachedSideConfig` como padrão.
 Tela de lados, Configurator e os slots por `DataType` (`INPUT_1`, `INPUT_2`, `EXTRA`). Substitui `Sides`, `FaceSlots` e o
 `machinery_basis/energy` atual.
 
-**Fase 3, rede de transmissores.** *Estado (2026-11-07): aberta. Adiantado: um cabo de energia simplificado (buffer só nos cabos de entrada, ver o inventário); falta o resto.*
+Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
+
+- `TileEntityConfigurableMachine` (`TileEntityConfigurableMachine.java`): é a casca dos dois componentes desta fase por instância, `configComponent` (`TileComponentConfig`, que não tica) e `ejectorComponent`
+  (`TileComponentEjector`, que tica em `onUpdateServer` depois do `super`), com `ISideConfiguration` e o par `writeConfigurationData`/`setConfigurationData`, que o Configurator usa para copiar a configuração. As quatro máquinas
+  o herdam por `TileEntityRecipeMachine`; o Heat Generator não (`TileEntityGenerator` estende `TileEntityMekanism`). O plano citava a classe na Fase 1 sem dizer a fase; como ela só guarda a configuração e o ejetor,
+  cai aqui. Feito: o ejetor tica no tick da máquina, só por comando (`mekanism_eject` e `mekanism_eject_face`), com a regra do slot do vizinho e a composteira (rastro `chamber_eject_furnace`). Falta: o componente de configuração, salvo no NBT, e o ejetor guiado por ele.
+- Máquina posta por `setblock`: no original `ConfigInfo` nasce em `NONE` e só `applyImplicitComponents` aplica o padrão do item (lido no código, não gravado), e o port trata toda máquina como se viesse do item. O hopper embaixo do Infuser e o `Access::NotExternal` dos
+  slots de entrada já seguem o padrão do item (Fase 1, feito).
+- Faces por instância: o original responde pela capability por lado e por instância, o port por tipo de bloco (H1 e H2; só a capacidade de energia é por instância).
+- As abas de configuração de itens (-21, 10) e de transporte (-21, 38): a lógica é daqui, e o desenho da Fase 5; entram no registro `screen_elements` quando portadas.
+
+**Fase 3, rede de transmissores.** *Estado (2026-11-08, conferido): aberta. Adiantado: um cabo de energia simplificado (buffer só nos cabos de entrada, ver o inventário); falta o resto.*
 Porte de `TransmitterNetworkRegistry`, `OrphanPathFinder`, `DynamicNetwork`,
 `DynamicBufferedNetwork`, `Transmitter`, `BufferedTransmitter`, `AcceptorCache`, `NetworkAcceptorCache`, `EnergyNetwork`,
 `UniversalCable`, `Target` e `SplitInfo`: buffer somado, save shares, fusão e divisão de rede, chunks, `ConnectionType`, pull,
 redstone reativo, upgrade de tier no lugar, `currentScale` e `PacketNetworkScale`. Substitui `network.rs`, `transmit_energy` e o
 cache de 20 ticks. A base genérica já precisa servir fluido, químico, item e calor.
+Vindo da Fase 1 (movido em 2026-11-08): a lava vinda de cano. O tanque do Heat Generator (`lavaTank`, `VariableCapacityFluidTank.input` que só aceita lava, exposto por todas as faces menos a da frente, `TileEntityHeatGenerator.java:98-103`) não recebe de cano no port; nada disso está feito além do tanque e do balde, e pede
+o fluido por instância (H2, `native_fluid_at`) e a rede de fluido desta fase.
 
-**Fase 4, visual do cabo.** *Estado (2026-11-07): aberta. Adiantado: um modelo de cabo em JSON aproximado; falta o resto.*
+**Fase 4, visual do cabo.** *Estado (2026-11-08, conferido): aberta. Adiantado: um modelo de cabo em JSON aproximado; falta o resto.*
 Modelo original com todas as partes, textura com recorte (não a `opaque/`), `hideContiguousJoin`,
 conteúdo `mek_liquid/energy` animado com alfa pela escala, opção `opaqueTransmitters`, forma de seleção e colisão por lado
 (`BlockSmallTransmitter`: `SIDES`, `CENTER`, flanges).
 
-**Fase 5, refazer os blocos prontos sobre a base.** *Estado (2026-11-07): em andamento (as frentes de tela, upgrades e abas). Já saiu: as telas das quatro máquinas e do Heat Generator
+**Fase 5, refazer os blocos prontos sobre a base.** *Estado (2026-11-08): em andamento (as frentes de tela, upgrades e abas). Já saiu: as telas das quatro máquinas e do Heat Generator
 com os sprites e widgets do original, comparadas em pixel contra o original (`dev/referencia/comparar_lote.py`, 129 estados em guiScale 2 e 3; ver "Tetos dos resíduos"); upgrades (aba
 e janela, nas cinco); aba de XP, de energia e de avisos nas máquinas e de energia, de calor e de upgrades no gerador; som das quatro máquinas; luz do bloco aceso (8 e 13); nome com estilo;
 o fundo escurecido das telas (injeção `container_dim`); o tooltip da lista de upgrades; os slots de armadura e de mão do gerador (2026-11-07). Falta: as partículas das máquinas e do gerador; as abas de
-configuração, segurança, redstone e livro de receitas; o slot de energia funcional e a transferência de calor do gerador; o som do gerador; o conteúdo guardado no item; a remoção
-da bateria `mek_teste`; o Steel Casing não foi revisado nesta frente.* Heat Generator, Metallurgic Infuser, Enrichment Chamber, Crusher,
+configuração, segurança, redstone e livro de receitas; o slot de energia funcional e a transferência de calor do gerador; o som do gerador; o conteúdo guardado no item; o Steel Casing não foi
+revisado nesta frente. A remoção da bateria `mek_teste` está feita (conferido em 2026-11-08: nenhum item ou bloco com esse nome no conteúdo nem no código).* Heat Generator, Metallurgic Infuser, Enrichment Chamber, Crusher,
 Energized Smelter e Steel Casing, um a um, conferindo o inventário. Telas com os sprites e widgets originais, energia em slot,
-upgrades, conteúdo guardado no item, som, partículas e luz. Sai a bateria de teste `mek_teste` do build.
+upgrades, conteúdo guardado no item, som, partículas e luz. A bateria de teste `mek_teste` já saiu do build.
 
-**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-07): aberta, sem nada feito.* Itens com capability de químico e o que a lib já tem para eles (2026-11-08): `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, e nada portado os alimenta; o
+Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
+
+- Partículas da máquina acesa e do gerador: nada feito, e sem decisão (inventário, "Partículas da máquina acesa"; "Esperando decisão do usuário (fim da Fase 1)").
+- Abas de lado (os elementos fora da imagem): feitos o registro `screen_elements` e as abas de energia, de avisos, de xp, de upgrades e, no gerador, a de calor. Faltam, nas máquinas, a configuração de itens (-21, 10) e de transporte (-21, 38) à esquerda
+  (lógica na Fase 2) e a segurança (179, 38), o livro de receitas (179, 66) e a redstone (179, 141) à direita; no gerador, a segurança, a redstone e a de avisos à direita. Enquanto faltam, o clique nelas com item no cursor solta o item (no original não solta).
+- Som do gerador: nada feito (`GeneratorsSounds.HEAT_GENERATOR`). O `tile-sound` das máquinas e os quatro comportamentos do original que parecem bug (seção própria) valem para ele, e o `sync_muffling` do gerador ainda manda a contagem de silêncio na hora, onde o original
+  (`TileComponentUpgrade.removeUpgrade`) não avisa o cliente.
+- Conteúdo guardado no item: nada feito. O item de bloco do port não traz `UPGRADES` nem o tanque (`addAttachmentOnlyContainers`, `MekanismBlocks.java:305` e `:375`), e o bloco quebrado solta o conteúdo; em jogo só o par (0, 0) de upgrades se repete.
+- Slot de energia funcional do gerador (`EnergyInventorySlot.drain`, nenhum item portado o alimenta) e a transferência de calor pela base (`simulateAdjacent`, `lastTransferLoss` vale 0): nada feito.
+- Sincronização das cinco peças da barra de armadura quando mudam por fora com o menu aberto: segue a do menu do inventário, um tick depois.
+
+**Fase 6, seguir a cadeia com paridade.** *Estado (2026-11-08): aberta, nenhum bloco ou item portado; o que a Fase 1 deixou para cá está na lista ao fim do parágrafo.* Itens com capability de químico e o que a lib já tem para eles (2026-11-08): `fillTankFromSlot` e `ChemicalAttributeValidator` estão na lib, com testes, e nada portado os alimenta; o
 `setLastTransferDirection` que o Java grava no slot dentro do `fillContainerFromSlot` não foi portado, porque só o `handleContainer` o lê e nenhum slot portado o chama. Os itens com capability de químico do original são o Chemical Tank
 (`ItemBlockChemicalTank`, `MekanismBlocks.java:973`), o Gauge Dropper, o flamethrower, o scuba tank e os jetpacks (`MekanismItems.java`, `addAttachedContainerCapabilities(ContainerType.CHEMICAL, ...)`), nenhum portado; os itens das
 máquinas usam `addAttachmentOnlyContainers` (`MekanismBlocks.java:305` e `:375`), que guarda o tanque no item sem expor capability (é o "conteúdo guardado no item" da Fase 5). O tanque do Infuser
 (`TileEntityMetallurgicInfuser.java:135`) valida com `containsRecipeB`, que recusa qualquer químico radioativo antes do `ChemicalAttributeValidator.DEFAULT`, então os mapas de dados
 `chemical_attribute_*` (sodium, superheated_sodium, ethene, hydrogen, nuclear_waste, plutonium, polonium, spent_nuclear_waste) não mudam nada nas máquinas portadas: nenhum é lido hoje para o `ChemicalAttributes`, e entram com o Chemical Tank e com os itens acima. Pendência herdada da Fase 1: Osmium Compressor, Purification Chamber e Chemical Injection Chamber, as máquinas de `per_tick_usage` que só existem no original; a mecânica (`ItemChemicalConstantUsageRecipe`, `usedSoFar`) já está na lib e conferida com o Compressor e o Infuser, falta cada bloco (valores, receitas, texturas, tela). Energy Cube e Energy Tablet, Solar Generator, minérios de estanho, chumbo, urânio e
 fluorita, tubos, canos e transportadores sobre a rede da Fase 3.
+
+Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
+
+- Itens de químico e o que liga a lib a eles: feitos `fillTankFromSlot` e `ChemicalAttributeValidator` (lib, com testes); faltam o Chemical Tank e os itens acima, os mapas de dados `chemical_attribute_*` e o `setLastTransferDirection`.
+- As máquinas a mais e as receitas delas: Osmium Compressor, Purification Chamber e Chemical Injection Chamber (as de `per_tick_usage`; a mecânica está na lib e conferida com o Compressor e o Infuser), com valores, receitas, texturas e tela. Chegam junto as 24
+  conversões `chemical_conversion` do original (o port tem 19) e as receitas que citam item que o port não tem (bronze, estanho, chumbo, urânio, fluorita).
+- `EitherSide`, `Triple` e `Rotary`, os limites de taxa, e os tipos de upgrade que nenhuma máquina portada aceita: entram com a primeira máquina que os usa.
+- As 143 tags `c:` da datagen que faltam (de item e de bloco), e comparar o que o Horizon descarta em silêncio (entrada ou `#tag` desconhecida) com cada receita portada quando esses itens chegarem.
+- A decisão 3 (duas entradas com regra de slot) é decidida com o Combiner.
+- O bio fuel em bloco (`COOKING_TIME_BIO_FUEL_BLOCK`, 10 vezes o do item) com o bloco; o tempo de queima do item é da Fase 1 (aberto, inventário).
 
 ### Tetos dos resíduos do comparador de telas (2026-11-07)
 
@@ -781,7 +816,7 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
 
 **Máquinas (infuser e elétricas)**
 
-- Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`), até a Fase 2.
+- Faces fixas e sem tela de lados. O ejetor existe, mas só liga por comando (`mekanism_eject`). **Fase 2** (movido em 2026-11-08).
 - `CachedRecipe` portado, e a tela mostra os erros e os avisos (feito em 2026-11-07 e 2026-11-08: a aba de avisos, o overlay das barras e os dados do `MekanismContainer`, abaixo). `per_tick_usage` só no Infuser, sem receita dos arquivos que o use, mas conferido tick a tick com o original por uma receita de teste (`infuser_constant_trace.rs`).
 - Clique do cursor (feito, 2026-11-07). Relato: terra com o cursor entrava no slot de infusão do Infuser, e o clique (e o arrasto) punham qualquer item em
   qualquer slot da máquina. O original usa `InventoryContainerSlot.mayPlace`, que é `isValidForInsertion(item, MANUAL)` do slot. **Medido no
@@ -811,14 +846,14 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
   só tem o esquerdo e o direito) e o clique duplo (dois `click-at` seguidos num `script` pegam e põem de volta, sem `PICKUP_ALL`): ficam só no rastro do Java e em `slot_click.rs`
   (`the_original_throws_clones_and_collects_without_asking_the_slot_rules`), até o Horizon ou um `xdotool` na imagem do jogo os mandar.
 - Feito (2026-11-05 a 2026-11-07): upgrades (aba e janela, 2026-11-06), a aba de XP, a de energia e a de avisos, o controle de redstone e o comparador do tile, o som, o nome com
-  estilo, a luz e o tooltip da barra de químico com o nome do químico (`infuser_hover_barra_quimico`, 0 pixel contra o original). **Falta**: as partículas (abaixo); a aba de
-  configuração de itens e a de transporte (à esquerda, Fase 2), a de segurança, a de redstone e o livro de receitas (à direita): a cena do original as oculta e o port não as tem.
-- Conteúdo solto ao quebrar, em vez de guardado no item.
+  estilo, a luz e o tooltip da barra de químico com o nome do químico (`infuser_hover_barra_quimico`, 0 pixel contra o original). **Falta**: as partículas (abaixo, Fase 5); a aba de
+  configuração de itens e a de transporte (à esquerda: a lógica é da Fase 2 e o desenho da Fase 5), a de segurança, a de redstone e o livro de receitas (à direita, Fase 5): a cena do original as oculta e o port não as tem.
+- Conteúdo solto ao quebrar, em vez de guardado no item. **Fase 5** (movido em 2026-11-08).
 - Luz do bloco aceso (feito, 2026-11-07): `Attributes.ACTIVE_LIGHT` é 8 nas quatro máquinas (`Machine.java:26`, `AttributeStateActive.java:49-51`) e 0 apagadas; o port herdava 13 do
   gabarito `minecraft:furnace` aceso, porque `properties.light` do Horizon é um inteiro por bloco. A injeção `active_light` troca a emissão dos estados acesos dessas quatro por 8; o
   Heat Generator segue em 13 (`ACTIVE_MELT_LIGHT`). Em jogo, `horizon-ctl light`: máquina acesa 8, vizinhos 7, 6, 5 (a propagação do Java), apagada 0. O mundo atrás da tela com a máquina
   acesa deixou de precisar de um limite à parte (era 16): vale o limite do nível de luz (`LIMITE_MUNDO_POR_LUZ`).
-- **Partículas da máquina acesa (aberta, não portada).** `Machine.java:23` registra um `AttributeParticleFX` com duas partículas, `ParticleTypes.SMOKE`
+- **Partículas da máquina acesa (aberta, não portada; Fase 5, sem decisão).** `Machine.java:23` registra um `AttributeParticleFX` com duas partículas, `ParticleTypes.SMOKE`
   e `DustParticleOptions.REDSTONE`, ambas em `(rand * 0,6 - 0,3, rand * 6/16, 0,52)` relativo ao centro do bloco (a face da frente, girada pelo `facing`:
   `yRot(PI)` para norte). `BlockTile.animateTick` (`BlockTile.java:80-103`) as solta com `world.addParticle(type, x, y, z, 0, 0, 0)` a cada chamada de
   `animateTick` (o cliente sorteia posições em volta do jogador a cada tick), só com `Attribute.isActive(state)` e `machineEffects` ligado
@@ -883,10 +918,10 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
   `generator_queima` (0 pixel no medidor) e no rastro `heat_generator_lava_run`.
 - Lava dentro do bloco desenhada pela block entity; entidade ali dentro não conta como dentro de lava.
 - Feito (2026-11-07): as abas de energia, de calor (com a unidade de temperatura e as conversões) e de upgrades, o nome com estilo. O som do gerador não está portado (abaixo, em "Falta"). A tela tem o
-  medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java. **Falta**: o slot de energia funcional (o item não converte), a
+  medidor de lava e a barra de energia do original; o painel de texto que havia ali não existe no Java. **Falta (Fase 5, movido em 2026-11-08)**: o slot de energia funcional (o item não converte), a
   transferência de calor pela base (`lastTransferLoss` vale 0), o som (`GeneratorsSounds.HEAT_GENERATOR` não existe no port) e as partículas (`SMOKE` e `FLAME`, abaixo). Os slots de
   armadura e de mão estão portados (abaixo).
-- Tanque de lava não recebe de cano.
+- Tanque de lava não recebe de cano. **Fase 3** (movido em 2026-11-08).
 - **Slots de armadura e de mão do Heat Generator (feito, 2026-11-07; pixel contra o original e som medidos no mesmo dia).** **Java** (lido e gravado em
   `heat_generator_armor_{layout,may_place,clicks,binding,quick_move}.jsonl`): `GeneratorsContainerTypes.java:29` registra o gerador com `.armorSideBar(-20, 11, 0)` (o mesmo nos geradores bio,
   a gás, solar e eólico), que chama `MekanismContainer.addArmorSlots(inv, -20, 11, 0)` (`MekanismContainer.java:231`): quatro `ArmorSlot` em `(-20, 11 + 18 i)` com
@@ -934,7 +969,7 @@ e das máquinas que o Mekanism ainda vai portar entram só declarando (`armorSid
   Em jogo (desktop, container `horizon`, `horizon2/h2_abas.py`, 16 estados, terra no cursor): o clique esquerdo e o direito (que o original também não solta: o elemento está sob o mouse, só `isValidClickButton` falha)
   nas abas de energia, de avisos e de xp mantêm a pilha, e o clique onde a aba não existe naquele estado (avisos sem aviso, xp sem o upgrade), nas bordas do suporte da aba de xp (3 e 5 pixels) e na margem solta, como o rastro.
   Antes (build `native-f319701-4815b98243f2`, Enrichment Chamber e Infuser): o clique nas abas de energia e de avisos soltava a pilha, e o direito na de xp também; o esquerdo na de xp já mantinha, porque `screen_click`
-  a trata antes de `clicked_outside`. Prints de antes e depois em `~/.cache/rust-mekanism/wa/abas/`. **Falta:** os elementos que o original tem fora da imagem e o port ainda não desenha (o rastro modo `completo` os mostra,
+  a trata antes de `clicked_outside`. Prints de antes e depois em `~/.cache/rust-mekanism/wa/abas/`. **Falta (Fase 2 para a lógica, Fase 5 para o desenho; movido em 2026-11-08):** os elementos que o original tem fora da imagem e o port ainda não desenha (o rastro modo `completo` os mostra,
   todos com botão de 18 por 18): a configuração de itens (-21, 10) e a de transporte (-21, 38) à esquerda, e a segurança (179, 38), o livro de receitas (179, 66) e a redstone (179, 141) à direita. Com um item no cursor, o
   clique neles ainda solta (no original não solta); cada um entra no registro quando a aba for portada. O Heat Generator tem a mesma coisa nas abas de segurança e de redstone, e a de avisos à direita (`GuiHeatGenerator.addWarningTab`,
   invisível nos estados do rastro: o gerador não tem aviso a mostrar). **Fechado em 2026-11-08, sem divergência:** o Metallurgic Infuser com item de entrada, sem químico e sem energia não mostra a aba de avisos, e o original faz o mesmo. Medido no original (`CenaTelas`, 1920 por 1080, `guiScale` 2 e 3) e no
