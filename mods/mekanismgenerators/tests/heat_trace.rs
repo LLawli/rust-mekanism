@@ -1,6 +1,7 @@
 //! Repete, tick a tick, os rastros do Heat Generator original em `dev/referencia/rastros`: `heat_generator_lava_run` (a lava que
 //! acaba, o calor guardado que segue gerando, o resto de lava menor que uma queima e o buffer cheio) e `heat_generator_fuel_run`
-//! (o slot que converte item em lava, o balde de lava e o item que não cabe). Cada linha do rastro é um tick, gravado depois do
+//! (o slot que converte item em lava, o balde de lava e o item que não cabe) e `heat_generator_bio_fuel_run` (o mesmo com o `bio_fuel` do Mekanism,
+//! cujo tempo de queima vem do `minecraft:cooking_fuel` do JSON do item). Cada linha do rastro é um tick, gravado depois do
 //! tick do tile e das marcas do cenário, como os rastros das máquinas. `transfer_loss` e `environment_loss` são o `lastTransferLoss` e o
 //! `lastEnvironmentLoss` que a aba de calor mostra. `active` é o `currentActive` do tile e `block_active` o estado
 //! `lit` do bloco, que o atraso de `blockDeactivationDelay` segura aceso depois que o gerador para.
@@ -9,6 +10,10 @@ use mekanismgenerators_rules::{
 };
 use serde_json::Value;
 use std::path::Path;
+
+// O tempo de queima do `bio_fuel` sai do JSON do item do Mekanism, como o Horizon o lê.
+#[path = "../../mekanism/tests/common/burn_time.rs"]
+mod burn_time;
 
 /// `Items.COAL` e `Items.LAVA_BUCKET` no `FuelValues` do jogo.
 const COAL_BURN_TIME: i32 = 1_600;
@@ -34,6 +39,11 @@ impl Slot {
             "lava_bucket" => Some(FuelItem::LavaBucket),
             "coal" => Some(FuelItem::Solid {
                 burn_time: COAL_BURN_TIME,
+                lava_bucket_burn_time: LAVA_BUCKET_BURN_TIME,
+            }),
+            // O gerador não queima em bloco de cozimento rápido: o contexto é o do próprio gerador.
+            "bio_fuel" => Some(FuelItem::Solid {
+                burn_time: burn_time::burn_time(&burn_time::item_json("bio_fuel"), false),
                 lava_bucket_burn_time: LAVA_BUCKET_BURN_TIME,
             }),
             _ => None,
@@ -206,4 +216,9 @@ fn lava_sides_match_the_original() {
 #[test]
 fn fuel_run_matches_the_original() {
     replay("heat_generator_fuel_run", 240);
+}
+
+#[test]
+fn bio_fuel_run_matches_the_original() {
+    replay("heat_generator_bio_fuel_run", 200);
 }

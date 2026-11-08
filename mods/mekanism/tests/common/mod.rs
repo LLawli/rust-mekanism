@@ -1,6 +1,7 @@
 //! O que os testes de rastro partilham: os dados de upgrade e as receitas de energia lidos dos mesmos arquivos que o jogo lê. Cada teste
 //! usa uma parte.
 #![allow(dead_code)]
+pub mod burn_time;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
 use machinery_basis_core::containers::ItemResource;
@@ -310,6 +311,20 @@ fn chemical_ingredient(ingredient: &str) -> ChemicalIngredient {
 /// arquivos que o jogo lê (com as tags do conteúdo), na ordem de pasta. Nada escrito à mão.
 pub fn infuser_from_content() -> ProgressMachine {
     let (recipes, conversions) = infuser_recipes_from_content();
+    let mut config = infuser_config(
+        INFUSER_USAGE,
+        infusing_cache_of(recipes),
+        ChemicalConversion::cache_of(conversions),
+        0,
+        upgrade_data(),
+    );
+    config.energy_conversion = energy_conversions();
+    ProgressMachine::chemical(config)
+}
+
+/// O Infuser com todas as receitas e conversões do conteúdo, de qualquer pasta (o jogo lê o `type`: `infuser_recipes_by_type`).
+pub fn infuser_from_content_by_type() -> ProgressMachine {
+    let (recipes, conversions) = infuser_recipes_by_type();
     let mut config = infuser_config(
         INFUSER_USAGE,
         infusing_cache_of(recipes),
