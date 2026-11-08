@@ -1,6 +1,7 @@
 //! O valor vivo dos dados que a estrutura do tile sincroniza, lido de uma `ProgressMachine` (a base das quatro máquinas portadas):
 //! o [`TrackedSource`] das fontes de [`crate::tile_trackers::source`]. O que o jogo guarda fora do objeto (a energia e o tanque de
 //! químico, que chegam de fora do tick da máquina) entra como argumento.
+use crate::container_sync::wire::write_var_int;
 use crate::container_sync::{StackValue, TrackedSource, Value};
 use crate::tile::ProgressMachine;
 use crate::tile_trackers::source;
@@ -96,14 +97,39 @@ pub fn upgrade_map(sync: &UpgradeSync) -> Value {
     Value::Codec { hash, bytes }
 }
 
-/// `VarInt.write`.
-pub fn write_var_int(bytes: &mut Vec<u8>, value: i32) {
-    let mut rest = value as u32;
-    while rest & !0x7F != 0 {
-        bytes.push((rest & 0x7F | 0x80) as u8);
-        rest >>= 7;
+/// O inverso de [`upgrade_map`], como o cliente lê o `SyncableStreamCodec` do mapa: o tamanho, e o índice do registro e a contagem de cada
+/// tipo instalado. Bytes que não fecham dão o mapa vazio, como um valor que o cliente não conseguiu decodificar.
+pub fn read_upgrade_map(ticks: i32, bytes: &[u8]) -> UpgradeSync {
+    fn next(bytes: &mut &[u8]) -> Option<i32> {
+        let mut value = 0u32;
+        for shift in 0..5 {
+            let (&byte, rest) = bytes.split_first()?;
+            *bytes = rest;
+            value |= u32::from(byte & 0x7F) << (7 * shift);
+            if byte & 0x80 == 0 {
+                return Some(value as i32);
+            }
+        }
+        None
     }
-    bytes.push(rest as u8);
+    let mut counts: Vec<i32> = Vec::new();
+    let mut rest = bytes;
+    let mut read = || -> Option<()> {
+        let size = next(&mut rest)?;
+        for _ in 0..size {
+            let index = usize::try_from(next(&mut rest)?).ok()?;
+            let count = next(&mut rest)?;
+            if counts.len() <= index {
+                counts.resize(index + 1, 0);
+            }
+            counts[index] = count;
+        }
+        rest.is_empty().then_some(())
+    };
+    if read().is_none() {
+        counts.clear();
+    }
+    UpgradeSync { ticks, counts }
 }
 
 #[cfg(test)]
@@ -122,6 +148,29 @@ mod tests {
         assert_eq!(encode(127), [127]);
         assert_eq!(encode(128), [0x80, 1]);
         assert_eq!(encode(300), [0xAC, 2]);
+    }
+
+    #[test]
+    fn the_client_reads_back_the_map_the_server_wrote() {
+        let sync = UpgradeSync {
+            ticks: 7,
+            counts: vec![0, 3, 0, 0, 0, 2, 0, 0],
+        };
+        let Value::Codec { bytes, .. } = upgrade_map(&sync) else {
+            unreachable!()
+        };
+        let read = read_upgrade_map(7, &bytes);
+        assert_eq!(read.ticks, 7);
+        assert_eq!(read.count(1), 3);
+        assert_eq!(read.count(5), 2);
+        assert_eq!(read.count(4), 0);
+        assert_eq!(read.installed(), [1, 5]);
+        assert_eq!(read_upgrade_map(0, &[0]), UpgradeSync::default());
+        // Bytes cortados: o cliente não lê nada.
+        assert_eq!(
+            read_upgrade_map(4, &[1, 5]).installed(),
+            Vec::<usize>::new()
+        );
     }
 
     #[test]

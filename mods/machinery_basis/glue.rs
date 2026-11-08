@@ -209,14 +209,6 @@ pub(in crate::game) fn use_item_on(
     *claimed = true;
 }
 
-/// `native_mod_container_viewers`: a contagem de jogadores com a tela do bloco em `pos` mudou. Quem saiu sem fechar o menu (conexão
-/// perdida, longe demais) deixa a janela escolhida para trás: larga o que não tem mais menu no bloco. Outra dimensão não é deste nível.
-pub(in crate::game) fn viewers_changed(game: &Game<'_>, dimension: &str, pos: [i32; 3], viewers: u32) {
-    if game.native_dimension() == dimension {
-        game.mb_window_prune(pos, viewers);
-    }
-}
-
 /// O mesmo clique ainda chega como uso do item, já com o balde cheio na mão: sem isto, ele despeja
 /// a lava que acabou de sair do bloco.
 pub(in crate::game) fn use_item(game: &Game<'_>, stack: &ItemStack, claimed: &mut bool) {

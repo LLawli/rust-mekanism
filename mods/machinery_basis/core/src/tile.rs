@@ -95,18 +95,13 @@ impl RedstoneControl {
 }
 
 /// O que o cliente recebe de redstone de um tile: `controlType`, `redstone` e `redstoneLastTick`, os três `container.track` de
-/// `TileEntityMekanism.addContainerTrackers`. O Java manda cada um num sync próprio; aqui os três vão num data slot só.
+/// `TileEntityMekanism.addContainerTrackers`. O Java manda cada um num sync próprio, e o cliente os junta.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RedstoneSync {
     pub control_type: RedstoneControl,
     pub powered: bool,
     pub was_powered: bool,
 }
-
-/// Os dois bits do modo, e os bits de `redstone` e de `redstoneLastTick`, acima deles.
-const CONTROL_BITS: i32 = 0b11;
-const POWERED_BIT: i32 = 1 << 2;
-const WAS_POWERED_BIT: i32 = 1 << 3;
 
 impl RedstoneSync {
     /// `isRedstoneActivated`, sobre o que o cliente tem (e o servidor, pelos mesmos campos).
@@ -116,22 +111,6 @@ impl RedstoneSync {
             RedstoneControl::High => self.powered,
             RedstoneControl::Low => !self.powered,
             RedstoneControl::Pulse => self.powered && !self.was_powered,
-        }
-    }
-
-    /// O valor do data slot: cabe em 16 bits, sem sinal.
-    pub fn to_slot(self) -> i32 {
-        self.control_type.ordinal()
-            | if self.powered { POWERED_BIT } else { 0 }
-            | if self.was_powered { WAS_POWERED_BIT } else { 0 }
-    }
-
-    /// O inverso. O cliente pode receber o slot como negativo: só os bits baixos contam.
-    pub fn from_slot(slot: i32) -> Self {
-        Self {
-            control_type: RedstoneControl::from_ordinal(slot & CONTROL_BITS),
-            powered: slot & POWERED_BIT != 0,
-            was_powered: slot & WAS_POWERED_BIT != 0,
         }
     }
 }
@@ -209,6 +188,11 @@ impl TileBase {
         self.update_delay = saved.update_delay;
         self.current_redstone_level = saved.current_redstone;
         self.block_active = block_active;
+    }
+
+    /// `redstoneLastTick`. O Java o guarda no objeto do tile e não o salva: quem refaz o tile a cada tick o devolve.
+    pub fn set_redstone_last_tick(&mut self, was_powered: bool) {
+        self.redstone_last_tick = was_powered;
     }
 
     /// O estado do bloco, que atrasa em relação a [`TileBase::active`] ao desligar.
@@ -1465,22 +1449,14 @@ mod tests {
     };
 
     #[test]
-    fn the_redstone_slot_round_trips_every_combination() {
-        for ordinal in 0..4 {
-            for powered in [false, true] {
-                for was_powered in [false, true] {
-                    let sync = RedstoneSync {
-                        control_type: RedstoneControl::from_ordinal(ordinal),
-                        powered,
-                        was_powered,
-                    };
-                    let slot = sync.to_slot();
-                    assert!((0..=0xF).contains(&slot), "cabe em quatro bits");
-                    assert_eq!(RedstoneSync::from_slot(slot), sync);
-                    // O Horizon manda 16 bits com sinal, e o cliente lê o que chega.
-                    assert_eq!(RedstoneSync::from_slot(i32::from(slot as i16)), sync);
-                }
-            }
+    fn the_redstone_control_ordinals_round_trip() {
+        for control in [
+            RedstoneControl::Disabled,
+            RedstoneControl::High,
+            RedstoneControl::Low,
+            RedstoneControl::Pulse,
+        ] {
+            assert_eq!(RedstoneControl::from_ordinal(control.ordinal()), control);
         }
         assert_eq!(RedstoneControl::from_ordinal(9), RedstoneControl::Disabled);
         assert_eq!(RedstoneControl::Pulse.ordinal(), 3);
@@ -1498,7 +1474,7 @@ mod tests {
             for powered in [false, true] {
                 tile.update_power(powered);
                 assert_eq!(
-                    RedstoneSync::from_slot(tile.redstone_sync().to_slot()).is_activated(),
+                    tile.redstone_sync().is_activated(),
                     tile.is_redstone_activated(),
                     "{control:?} powered={powered}"
                 );

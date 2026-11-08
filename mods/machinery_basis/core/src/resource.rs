@@ -146,6 +146,44 @@ impl Registry {
     }
 }
 
+/// O que o servidor manda ao cliente que não leu os dados dele: os recursos. No original os químicos são um registro sincronizado, e o
+/// cliente resolve o id de um tanque pelo registro dele (cor, sprite); aqui eles vêm da carga de dados do servidor.
+pub fn encode_sync(registry: &Registry) -> Vec<u8> {
+    let resources: Vec<Value> = registry
+        .resources
+        .values()
+        .map(|resource| {
+            serde_json::json!({
+                "id": resource.id,
+                "kind": resource.kind,
+                "color": resource.color,
+                "icon": resource.icon,
+                "tint": resource.tint,
+            })
+        })
+        .collect();
+    Value::from(resources).to_string().into_bytes()
+}
+
+/// O inverso de [`encode_sync`]. `None` quando os bytes não são o que o servidor manda.
+pub fn decode_sync(bytes: &[u8]) -> Option<Registry> {
+    let json: Value = serde_json::from_slice(bytes).ok()?;
+    let mut resources = Vec::new();
+    for entry in json.as_array()? {
+        resources.push(Resource {
+            id: entry.get("id")?.as_str()?.to_owned(),
+            kind: entry.get("kind")?.as_str()?.to_owned(),
+            color: u32::try_from(entry.get("color")?.as_u64()?).ok()?,
+            icon: match entry.get("icon")? {
+                Value::Null => None,
+                icon => Some(icon.as_str()?.to_owned()),
+            },
+            tint: u32::try_from(entry.get("tint")?.as_u64()?).ok()?,
+        });
+    }
+    Some(Registry::from_resources(resources))
+}
+
 /// As tags de recursos de uma carga de dados.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Tags {
@@ -232,6 +270,29 @@ pub fn current_tags() -> Arc<Tags> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_registry_survives_the_trip_to_a_client() {
+        let registry = Registry::from_resources([
+            Resource {
+                id: "mekanism:bio".into(),
+                kind: "infusion".into(),
+                color: 0x12_34_56,
+                icon: Some("mekanism:mek_chemical/infuse_type/bio".into()),
+                tint: 0xFF_AB_CD_EF,
+            },
+            Resource {
+                id: "mekanism:hydrogen".into(),
+                kind: "chemical".into(),
+                color: 0xFF_FF_FF,
+                icon: None,
+                tint: NO_TINT,
+            },
+        ]);
+        assert_eq!(decode_sync(&encode_sync(&registry)), Some(registry));
+        assert_eq!(decode_sync(b"nao e json"), None);
+        assert_eq!(decode_sync(b"[{\"id\":1}]"), None);
+    }
 
     fn file(id: &str, json: Value) -> (String, Value) {
         (id.to_owned(), json)

@@ -30,14 +30,11 @@ pub struct UpgradeWindowSpec {
     pub block: &'static str,
     /// Os índices dos dois slots virtuais (entrada e saída) no menu do bloco.
     pub virtual_slots: [usize; 2],
-    /// Quantos dados o contêiner sincroniza ao nascer (`addContainerTrackers`).
-    pub tracked_base: usize,
-    /// A chave de `startTracking` da janela e quantos dados ela acrescenta.
-    pub tracking_key: u8,
-    pub tracked_items: usize,
-    /// Onde, nos data slots do menu, ficam o `upgradeTicks` e as contagens, e quantos são.
-    pub sync_offset: usize,
-    pub sync_len: usize,
+    /// Os dados que o contêiner sincroniza ao nascer (`addContainerTrackers`), na ordem do Java.
+    pub trackers: fn() -> Vec<crate::container_sync::Tracked>,
+    /// Os dados que a janela acrescenta (`getSpecificSyncableData`: `upgradeTicks` e o mapa), que `startTracking(UPGRADE_WINDOW_KEY, ..)` põe
+    /// no fim da lista.
+    pub window_trackers: fn() -> [crate::container_sync::Tracked; 2],
     /// O namespace dos sprites (`<ns>:gui/sprites/...`) e dos textos de upgrade (`upgrade.<ns>.<tipo>`).
     pub ns: &'static str,
     /// O tipo da janela e a tabela de todos, na ordem do enum.
@@ -228,28 +225,6 @@ impl UpgradeSync {
                 .iter()
                 .map(|id| component.get_upgrades(id))
                 .collect(),
-        }
-    }
-
-    /// Os data slots: o primeiro é `upgradeTicks`, depois uma contagem por tipo, completando com zeros até `len`. Tipos além de `len - 1`
-    /// ficam sem contagem (o menu declara um número fixo de data slots).
-    pub fn write(&self, len: usize) -> Vec<i32> {
-        let mut slots = vec![0; len];
-        if let Some(first) = slots.first_mut() {
-            *first = self.ticks;
-        }
-        for (slot, count) in slots.iter_mut().skip(1).zip(&self.counts) {
-            *slot = *count;
-        }
-        slots
-    }
-
-    /// O inverso de [`write`](Self::write): o cliente recebe cada slot como `i16`.
-    pub fn read(slots: &[i32]) -> Self {
-        let wire = |value: i32| i32::from(value as i16);
-        Self {
-            ticks: slots.first().copied().map_or(0, wire),
-            counts: slots.iter().skip(1).copied().map(wire).collect(),
         }
     }
 
@@ -457,20 +432,15 @@ mod tests {
     }
 
     #[test]
-    fn the_sync_round_trips_through_sixteen_bits() {
+    fn the_sync_lists_what_is_installed_in_registry_order() {
         let sync = UpgradeSync {
             ticks: 20,
             counts: vec![0, 3, 0, 8, 1, 0, 0, 64],
         };
-        let slots = sync.write(9);
-        assert_eq!(slots, [20, 0, 3, 0, 8, 1, 0, 0, 64]);
-        assert_eq!(UpgradeSync::read(&slots), sync);
         assert_eq!(sync.installed(), [1, 3, 4, 7]);
         assert_eq!(sync.count(3), 8);
         assert_eq!(sync.count(40), 0);
-        // Mais tipos que slots: os que sobram não chegam.
-        assert_eq!(sync.write(3), [20, 0, 3]);
-        assert_eq!(UpgradeSync::read(&[]), UpgradeSync::default());
+        assert_eq!(UpgradeSync::default().installed(), Vec::<usize>::new());
     }
 
     #[test]

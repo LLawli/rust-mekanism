@@ -11,14 +11,19 @@ use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreenView;
 use horizon_world::nbt::{JavaString, Tag};
+use machinery_basis_core::container_sync::{Mirror, Property, TrackedSource, wire};
 use machinery_basis_core::gui::NineSlice;
+use machinery_basis_core::machine_sync::read_upgrade_map;
+use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
+use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
 use machinery_basis_core::upgrade::{self, UpgradeData};
 use machinery_basis_core::upgrade_window::{self as uw, SupportedLayout, UpgradeSync, UpgradeWindowSpec};
 use machinery_basis_core::window::{
     self, Click, Screen, SelectedWindow, Window, WindowPositions,
 };
 use machinery_basis_core::window_session::Sessions;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -35,8 +40,13 @@ const OP_TRACK: u8 = 1;
 const OP_STOP: u8 = 2;
 const OP_REMOVE: u8 = 3;
 
+/// O canal do `PacketUpdateContainer`: o servidor manda a cada jogador, por tick, os dados sujos do menu dele (`machinery_basis_core::container_sync::wire`).
+const CONTAINER_CHANNEL: &str = "machinery_basis:container";
+
 /// O canal em que o servidor leva os tipos e as tags de upgrade a um cliente que não os carregou (o registro sincronizado do original).
 const TYPES_CHANNEL: &str = "machinery_basis:upgrade_types";
+/// O canal em que o servidor leva os recursos (os químicos: cor e sprite) pelo mesmo motivo.
+const RESOURCES_CHANNEL: &str = "machinery_basis:resources";
 /// A fonte dos tipos que vieram do servidor, ao lado das que a carga de dados local põe.
 const SYNC_SOURCE: &str = "sync";
 
@@ -44,26 +54,41 @@ const SYNC_SOURCE: &str = "sync";
 type RemoveFn = fn(&mut Game<'_>, [i32; 3], &str, bool);
 /// `TileComponentUpgrade.addUpgrades`: põe até `max_available` do tipo no bloco em `pos` e devolve quantos entraram.
 type AddFn = fn(&mut Game<'_>, [i32; 3], &str, i32) -> i32;
+/// O valor vivo dos dados do menu do bloco em `pos` (`ISyncableData.getValue`): o dono do tile entrega a fonte a `act` e diz se havia tile
+/// vivo para ler. É o que `broadcastChanges` e `sendAllDataToRemote` leem.
+pub(in crate::game) type SourceFn = fn(&mut Game<'_>, [i32; 3], &mut dyn FnMut(&dyn TrackedSource)) -> bool;
 
-static SPECS: Mutex<Vec<(&'static UpgradeWindowSpec, RemoveFn, AddFn)>> = Mutex::new(Vec::new());
+/// O que o dono do bloco entrega à janela: a remoção, a entrada e a fonte dos dados sincronizados.
+#[derive(Clone, Copy)]
+struct Owner {
+    remove: RemoveFn,
+    add: AddFn,
+    source: SourceFn,
+}
 
-/// O mod diz que blocos têm a janela, como o servidor remove um upgrade (`PacketRemoveUpgrade`) e como o item de upgrade entra no bloco
-/// (`ItemUpgrade.useOn`). Pode repetir: a mesma spec entra uma vez.
-fn register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn) {
+static SPECS: Mutex<Vec<(&'static UpgradeWindowSpec, Owner)>> = Mutex::new(Vec::new());
+
+/// O mod diz que blocos têm a janela, como o servidor remove um upgrade (`PacketRemoveUpgrade`), como o item de upgrade entra no bloco
+/// (`ItemUpgrade.useOn`) e de onde vêm os dados do menu. Pode repetir: a mesma spec entra uma vez.
+fn register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn, source: SourceFn) {
     let mut specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    if !specs.iter().any(|(known, ..)| known.block == spec.block) {
-        specs.push((spec, remove, add));
+    if !specs.iter().any(|(known, _)| known.block == spec.block) {
+        specs.push((spec, Owner { remove, add, source }));
     }
 }
 
 fn spec_of(block: &str) -> Option<&'static UpgradeWindowSpec> {
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    specs.iter().find(|(spec, ..)| spec.block == block).map(|(spec, ..)| *spec)
+    specs.iter().find(|(spec, _)| spec.block == block).map(|(spec, _)| *spec)
+}
+
+fn owner_of(block: &str) -> Option<Owner> {
+    let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
+    specs.iter().find(|(spec, _)| spec.block == block).map(|(_, owner)| *owner)
 }
 
 fn remover_of(block: &str) -> Option<RemoveFn> {
-    let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    specs.iter().find(|(spec, ..)| spec.block == block).map(|(_, remove, _)| *remove)
+    owner_of(block).map(|owner| owner.remove)
 }
 
 /// A spec do bloco `block` e como o upgrade entra nele, se o `item` é o item de upgrade de algum bloco registrado.
@@ -71,14 +96,14 @@ fn adder_of(block: &str, item: &str) -> Option<(&'static UpgradeWindowSpec, AddF
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
     specs
         .iter()
-        .find(|(spec, ..)| spec.block == block && spec.item == item)
-        .map(|(spec, _, add)| (*spec, *add))
+        .find(|(spec, _)| spec.block == block && spec.item == item)
+        .map(|(spec, owner)| (*spec, owner.add))
 }
 
 /// Se `item` é o item de upgrade de algum bloco registrado: a pergunta barata, antes de olhar o bloco.
 fn is_upgrade_item(item: &str) -> bool {
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
-    specs.iter().any(|(spec, ..)| spec.item == item)
+    specs.iter().any(|(spec, _)| spec.item == item)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -134,6 +159,8 @@ struct Open {
 struct Client {
     /// O bloco da tela a que o estado pertence; trocar de tela começa de novo.
     screen_block: Option<String>,
+    /// Onde esse bloco fica: o espelho do menu dele mora ali.
+    screen_pos: Option<[i32; 3]>,
     positions: Option<WindowPositions>,
     window: Option<Open>,
     pending: Vec<Action>,
@@ -143,6 +170,7 @@ struct Client {
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
     screen_block: None,
+    screen_pos: None,
     positions: None,
     window: None,
     pending: Vec::new(),
@@ -151,6 +179,46 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
     CLIENT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// O menu de uma tela aberta no cliente: o espelho de `trackedData` e onde, nele, a janela de upgrades pôs os dados dela.
+struct ScreenMirror {
+    mirror: Mirror,
+    /// As posições de `upgradeTicks` e do mapa, enquanto a janela acompanha (`startTracking`).
+    window: Option<[usize; 2]>,
+}
+
+/// Os espelhos por posição do bloco. É um `Mutex` porque o desenho e a entrada leem, e a rede do jogo escreve.
+static MIRRORS: Mutex<Option<HashMap<[i32; 3], ScreenMirror>>> = Mutex::new(None);
+
+fn mirrors<R>(act: impl FnOnce(&mut HashMap<[i32; 3], ScreenMirror>) -> R) -> R {
+    let mut guard = MIRRORS.lock().unwrap_or_else(|e| e.into_inner());
+    act(guard.get_or_insert_with(HashMap::new))
+}
+
+/// `PacketUpdateContainer.handle` no cliente: cada dado vai para a posição dele no menu aberto (`handleWindowProperty`). Um pacote que
+/// abre o menu traz o id do bloco, que diz a lista de dados; o menu que o cliente já tinha para a posição (uma janela fixa abriu
+/// antes do primeiro pacote) fica.
+fn container_from_server(data: &[u8]) {
+    let Some(packet) = wire::decode(data) else {
+        eprintln!("machinery_basis: o servidor mandou dados de menu ilegíveis");
+        return;
+    };
+    mirrors(|table| {
+        if let Some(block) = &packet.opens
+            && let Some(spec) = spec_of(block)
+        {
+            table.entry(packet.pos).or_insert_with(|| ScreenMirror {
+                mirror: Mirror::new(&(spec.trackers)()),
+                window: None,
+            });
+        }
+        if let Some(entry) = table.get_mut(&packet.pos) {
+            for (index, value) in &packet.data {
+                entry.mirror.apply(*index, value);
+            }
+        }
+    });
 }
 
 fn now_ms() -> i64 {
@@ -240,7 +308,7 @@ fn send(game: &mut Game<'_>, body: Vec<u8>) {
 
 /// `GuiWindow.close`: tira a janela, grava onde ela estava e avisa o servidor.
 fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, tell_server: bool) {
-    {
+    let pos = {
         let mut guard = client();
         let state = &mut *guard;
         let Some(open) = state.window.take() else {
@@ -251,6 +319,16 @@ fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, tell_server: bool
             save_positions(spec, positions);
         }
         state.sent_selected = false;
+        state.screen_pos
+    };
+    // `stopTracking`: os dados da janela saem do menu, no cliente e (pelo pedido) no servidor.
+    if let Some(pos) = pos {
+        mirrors(|table| {
+            if let Some(entry) = table.get_mut(&pos) {
+                entry.mirror.stop_tracking(&UPGRADE_WINDOW_KEY);
+                entry.window = None;
+            }
+        });
     }
     if tell_server {
         send(game, vec![OP_STOP]);
@@ -301,7 +379,16 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
         selected_ms: now,
     });
     drop(guard);
-    // `startTracking` e o `PacketGuiInteract`, e `onFocused` que escolhe a janela.
+    // `startTracking`: a janela acrescenta os dados dela ao menu, no cliente e (pelo pedido) no servidor, nas mesmas posições.
+    if let Some(pos) = client().screen_pos {
+        mirrors(|table| {
+            if let Some(entry) = table.get_mut(&pos) {
+                let positions = entry.mirror.start_tracking(UPGRADE_WINDOW_KEY, &(spec.window_trackers)());
+                entry.window = positions.try_into().ok();
+            }
+        });
+    }
+    // O `PacketGuiInteract` do `startTracking`, e `onFocused` que escolhe a janela.
     send(game, vec![OP_TRACK]);
     let mut body = vec![OP_SELECT];
     body.extend(window::encode_selection(Some(selection(spec))));
@@ -341,6 +428,10 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             guard.screen_block = None;
             guard.pending.clear();
             guard.sent_selected = false;
+            // `MekanismContainer.removed`: o menu some com a tela.
+            if let Some(pos) = guard.screen_pos.take() {
+                mirrors(|table| table.remove(&pos));
+            }
         }
         return;
     };
@@ -348,8 +439,15 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
     {
         let mut guard = client();
         let state = &mut *guard;
-        if state.screen_block.as_deref() != Some(spec.block) {
+        let at = game.mb_open_screen_pos();
+        let moved = matches!((state.screen_pos, at), (Some(old), Some(new)) if old != new);
+        if state.screen_block.as_deref() != Some(spec.block) || moved {
+            // Um menu que substitui outro de um bloco igual (o vizinho): o espelho do anterior vai embora.
+            if moved && let Some(old) = state.screen_pos {
+                mirrors(|table| table.remove(&old));
+            }
             state.screen_block = Some(spec.block.to_owned());
+            state.screen_pos = at;
             state.window = None;
             state.pending.clear();
             let positions = state.positions.get_or_insert_with(|| load_positions(spec));
@@ -437,7 +535,7 @@ pub(in crate::game) fn mouse_pressed(
         return;
     };
     let mouse = mouse_of(view);
-    let sync = read_sync(game, spec);
+    let sync = read_sync(game);
     let mut guard = client();
     let state = &mut *guard;
     let Some(open) = state.window.as_mut() else {
@@ -541,7 +639,7 @@ pub(in crate::game) fn mouse_scrolled(
         return;
     };
     let mouse = mouse_of(view);
-    let total = read_sync(game, spec).installed().len();
+    let total = read_sync(game).installed().len();
     let mut state = client();
     let Some(open) = state.window.as_mut() else {
         return;
@@ -558,11 +656,21 @@ pub(in crate::game) fn mouse_scrolled(
 // ---------------------------------------------------------------------------------------------------------------------------
 // Slots: a ordem de desenho e o alvo do mouse.
 
-/// O que o servidor sincronizou, lido dos data slots do menu aberto.
-fn read_sync(game: &Game<'_>, spec: &UpgradeWindowSpec) -> UpgradeSync {
-    let data = game.mod_screen.as_ref().map(|screen| screen.data.as_slice()).unwrap_or(&[]);
-    let slots = data.get(spec.sync_offset..).unwrap_or(&[]);
-    UpgradeSync::read(&slots[..slots.len().min(spec.sync_len)])
+/// O que o servidor sincronizou da janela de upgrades, lido do espelho do menu aberto: o `upgradeTicks` e o mapa, nas posições em que a
+/// janela os acompanha. Sem janela acompanhando, ou antes do primeiro valor, o padrão.
+fn read_sync(game: &Game<'_>) -> UpgradeSync {
+    let Some(pos) = game.mb_open_screen_pos() else {
+        return UpgradeSync::default();
+    };
+    mirrors(|table| {
+        let Some(entry) = table.get(&pos) else {
+            return UpgradeSync::default();
+        };
+        let Some([ticks, map]) = entry.window else {
+            return UpgradeSync::default();
+        };
+        read_upgrade_map(entry.mirror.int(ticks), entry.mirror.bytes(map))
+    })
 }
 
 fn virtual_ids(spec: &UpgradeWindowSpec) -> [usize; 2] {
@@ -787,7 +895,7 @@ fn draw_window(
     let data = (spec.data)();
     let order = data.type_ids();
     let types = upgrade::current_types();
-    let sync = read_sync(game, spec);
+    let sync = read_sync(game);
     let installed = sync.installed();
     let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
     let (w, h) = (open.window.width as f32, open.window.height as f32);
@@ -1059,7 +1167,7 @@ pub(in crate::game) fn tooltip(
             }
             let win = |r: [i32; 4]| shifted(r, origin[0] + wx, origin[1] + wy);
             let order = spec_types(spec);
-            let sync = read_sync(game, spec);
+            let sync = read_sync(game);
             let installed = sync.installed();
             if in_rect(CLOSE, rel_i) {
                 lines.push((lang::get("gui.mekanism.close"), None));
@@ -1160,7 +1268,8 @@ fn sessions() -> std::sync::MutexGuard<'static, Option<ContainerSessions>> {
     SESSIONS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Onde o jogador `player` tem um contêiner aberto: o anfitrião (0) pelo `container` do jogo, um convidado pelo menu dele.
+/// Onde o jogador `player` tem um contêiner aberto: o anfitrião (0) pelo `container` do jogo, um convidado pelo menu dele. O espectador
+/// também (`MekanismTileContainer.openInventory` não olha o modo de jogo).
 fn open_container(game: &Game<'_>, player: u128) -> Option<[i32; 3]> {
     if player == 0 {
         return game.container.map(|key| [key.0, key.1, key.2]);
@@ -1178,9 +1287,10 @@ pub(in crate::game) fn selected_for(pos: [i32; 3], player: u128) -> Option<Selec
     sessions().as_ref().and_then(|table| table.selected(pos, player))
 }
 
-/// Alguém acompanha os dados extras do contêiner: o servidor só escreve o `upgradeTicks` e o mapa nos data slots então.
-pub(in crate::game) fn tracking_active(pos: [i32; 3]) -> bool {
-    sessions().as_ref().is_some_and(|table| table.any_extra(pos))
+/// `playersUsing.size()` do tile em `pos`: os jogadores com o menu dele aberto, o espectador incluso (`MekanismTileContainer.openInventory`
+/// chama `tile.open(player)` sem olhar o modo de jogo).
+pub(in crate::game) fn players_using(pos: [i32; 3]) -> usize {
+    sessions().as_ref().map_or(0, |table| table.players(pos))
 }
 
 /// Quem chama de fora age: o jogador do turno (`lan_acting_uuid`) ou o anfitrião (0).
@@ -1192,6 +1302,88 @@ pub(in crate::game) fn acting(game: &Game<'_>) -> u128 {
 pub(in crate::game) fn net_from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]) {
     if channel == CHANNEL {
         server_message(game, player, data);
+    }
+}
+
+/// `PacketUpdateContainer`: os dados `properties` do menu do bloco em `pos` vão ao jogador. Um pacote que abre o menu leva o id do bloco.
+fn deliver(game: &mut Game<'_>, player: u128, pos: [i32; 3], opens: Option<&str>, properties: &[Property]) {
+    if properties.is_empty() {
+        return;
+    }
+    let packet = wire::Packet::new(pos, opens.map(str::to_owned), properties);
+    if let Err(error) = game.native_net_send_to_player(player, CONTAINER_CHANNEL, &wire::encode(&packet)) {
+        eprintln!("machinery_basis: os dados do menu não chegaram a {player:032x}: {error}");
+    }
+}
+
+/// O menu do jogador no bloco `block` em `pos` nasce (`MekanismContainer.<init>` com `openInventory`): o jogador entra no `playersUsing` do
+/// tile e recebe todos os dados (`sendAllDataToRemote`). Um tile sem objeto vivo ainda (acabou de nascer) não tem o que ler: os dados vão no
+/// primeiro `broadcast` depois que ele tiver.
+pub(in crate::game) fn container_open(game: &mut Game<'_>, player: u128, pos: [i32; 3], block: &str) {
+    let Some(spec) = spec_of(block) else {
+        return;
+    };
+    let level = game.native_dimension();
+    sessions()
+        .get_or_insert_with(Default::default)
+        .open(pos, player, level, block, &(spec.trackers)());
+    let Some(owner) = owner_of(block) else {
+        return;
+    };
+    let mut sent = Vec::new();
+    (owner.source)(game, pos, &mut |source| {
+        sent = sessions()
+            .as_mut()
+            .and_then(|table| table.send_initial(pos, player, source))
+            .unwrap_or_default();
+    });
+    deliver(game, player, pos, Some(block), &sent);
+}
+
+/// `MekanismContainer.broadcastChanges` de cada menu aberto: só os dados sujos de cada jogador, num pacote por jogador. Roda no começo do
+/// tick do servidor (`ServerTickStart`), com o estado do fim do tick anterior, como o `ServerPlayer.tick` do original (que o lê antes dos
+/// block entities), e a cada passada com o servidor parado, porque o jogador continua andando nele.
+pub(in crate::game) fn broadcast(game: &mut Game<'_>) {
+    let containers = sessions().as_ref().map(ContainerSessions::containers).unwrap_or_default();
+    if containers.is_empty() {
+        return;
+    }
+    game.mb_in_levels(
+        |dimension| containers.iter().any(|(_, level)| level == dimension),
+        |game, dimension| {
+            for (pos, _) in containers.iter().filter(|(_, level)| level == dimension) {
+                broadcast_container(game, *pos);
+            }
+        },
+    );
+}
+
+fn broadcast_container(game: &mut Game<'_>, pos: [i32; 3]) {
+    let block = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) => entity.id.clone(),
+        _ => return,
+    };
+    let Some(owner) = owner_of(&block) else {
+        return;
+    };
+    let mut packets = Vec::new();
+    (owner.source)(game, pos, &mut |source| {
+        packets = sessions().as_mut().map(|table| table.broadcast(pos, &block, source)).unwrap_or_default();
+    });
+    for packet in packets {
+        deliver(game, packet.player, pos, packet.opens.then_some(block.as_str()), &packet.properties);
+    }
+}
+
+/// `MekanismContainer.removed`: quem fechou o menu sai do `playersUsing` e perde a sessão. O Java chama `close(player)` na hora; o jogo só
+/// diz que o menu mudou, então a conta é refeita a cada tick (`tick_mod_container_viewers`), com o menu que cada jogador tem agora.
+pub(in crate::game) fn recount(game: &Game<'_>) {
+    let mut guard = sessions();
+    let Some(table) = guard.as_mut() else {
+        return;
+    };
+    for (pos, _) in table.containers() {
+        table.retain_players(pos, |player| open_container(game, player) == Some(pos));
     }
 }
 
@@ -1209,19 +1401,21 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
     let Some(spec) = spec_of(&block) else {
         return;
     };
+    // Uma mensagem de quem ainda não tem sessão (a abertura não passou por `container_open`): cria a sessão, e os dados esperam o `broadcast`.
+    let level = game.native_dimension();
+    {
+        let mut guard = sessions();
+        let table = guard.get_or_insert_with(Default::default);
+        if !table.is_open(pos, player) {
+            table.open(pos, player, level, &block, &(spec.trackers)());
+        }
+    }
     match op {
         OP_SELECT => {
             let Some(selected) = window::decode_selection(body, spec.window_types) else {
                 return;
             };
-            {
-                let mut guard = sessions();
-                let table = guard.get_or_insert_with(Default::default);
-                if !table.is_open(pos, player) {
-                    table.open(pos, player, spec.tracked_base);
-                }
-                table.select(pos, player, selected);
-            }
+            sessions().get_or_insert_with(Default::default).select(pos, player, selected);
             // O menu do convidado esconde os slots virtuais sem janela, e recomeça do bloco no clique seguinte.
             let shown = selected == Some(selection(spec));
             if let Some(host) = game.lan.as_mut()
@@ -1234,18 +1428,29 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
                 }
             }
         }
-        OP_TRACK | OP_STOP => {
-            let mut guard = sessions();
-            let table = guard.get_or_insert_with(Default::default);
-            if !table.is_open(pos, player) {
-                table.open(pos, player, spec.tracked_base);
-            }
-            if let Some(session) = table.session_mut(pos, player) {
-                if op == OP_TRACK {
-                    session.tracking.start(spec.tracking_key, spec.tracked_items);
-                } else {
-                    session.tracking.stop(&spec.tracking_key);
+        OP_TRACK => {
+            // `startTrackingServer`: os dados da janela entram no fim e vão logo ao jogador.
+            let window = (spec.window_trackers)();
+            let mut sent = Vec::new();
+            let read = owner_of(&block).is_some_and(|owner| {
+                (owner.source)(game, pos, &mut |source| {
+                    sent = sessions()
+                        .as_mut()
+                        .map(|table| table.start_tracking_server(pos, player, UPGRADE_WINDOW_KEY, &window, source))
+                        .unwrap_or_default();
+                })
+            });
+            if !read {
+                // Sem tile vivo para ler, os dados entram sem o envio inicial: o primeiro `broadcast` os manda se mudarem do padrão.
+                if let Some(table) = sessions().as_mut() {
+                    table.start_tracking(pos, player, UPGRADE_WINDOW_KEY, &window);
                 }
+            }
+            deliver(game, player, pos, None, &sent);
+        }
+        OP_STOP => {
+            if let Some(table) = sessions().as_mut() {
+                table.stop_tracking(pos, player, &UPGRADE_WINDOW_KEY);
             }
         }
         OP_REMOVE => {
@@ -1263,11 +1468,16 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
     }
 }
 
-/// Manda ao jogador os tipos e as tags de upgrade do servidor. Só quem não carregou os dados precisa: o anfitrião os tem.
+/// Manda ao jogador os tipos e as tags de upgrade do servidor, e os recursos (os químicos). Só quem não carregou os dados precisa: o
+/// anfitrião os tem.
 fn send_types(game: &mut Game<'_>, player: u128) {
     let bytes = upgrade::encode_sync(&upgrade::current_types(), &upgrade::current_tags());
     if let Err(error) = game.native_net_send_to_player(player, TYPES_CHANNEL, &bytes) {
         eprintln!("machinery_basis: tipos de upgrade não chegaram a {player:032x}: {error}");
+    }
+    let bytes = resource::encode_sync(&resource::current());
+    if let Err(error) = game.native_net_send_to_player(player, RESOURCES_CHANNEL, &bytes) {
+        eprintln!("machinery_basis: recursos não chegaram a {player:032x}: {error}");
     }
 }
 
@@ -1292,30 +1502,21 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
     {
         return;
     }
-    if channel != TYPES_CHANNEL {
-        return;
+    match channel {
+        CONTAINER_CHANNEL => container_from_server(data),
+        RESOURCES_CHANNEL => match resource::decode_sync(data) {
+            Some(registry) => resource::set_source(SYNC_SOURCE, registry),
+            None => eprintln!("machinery_basis: o servidor mandou recursos ilegíveis"),
+        },
+        TYPES_CHANNEL => match upgrade::decode_sync(data) {
+            Some((types, tags)) => {
+                upgrade::set_types_source(SYNC_SOURCE, types);
+                upgrade::set_tags_source(SYNC_SOURCE, tags);
+            }
+            None => eprintln!("machinery_basis: o servidor mandou tipos de upgrade ilegíveis"),
+        },
+        _ => {}
     }
-    match upgrade::decode_sync(data) {
-        Some((types, tags)) => {
-            upgrade::set_types_source(SYNC_SOURCE, types);
-            upgrade::set_tags_source(SYNC_SOURCE, tags);
-        }
-        None => eprintln!("machinery_basis: o servidor mandou tipos de upgrade ilegíveis"),
-    }
-}
-
-/// Quem saiu sem fechar o contêiner (conexão perdida, longe demais, morreu) deixa a seleção e o acompanhamento para trás. Chamado
-/// quando a contagem de jogadores do bloco muda: fica só quem ainda tem o menu aberto ali. `game.lan_acting_uuid` não serve aqui.
-pub(in crate::game) fn prune(game: &Game<'_>, pos: [i32; 3], viewers: u32) {
-    let mut guard = sessions();
-    let Some(table) = guard.as_mut() else {
-        return;
-    };
-    if viewers == 0 {
-        table.close_container(pos);
-        return;
-    }
-    table.retain_players(pos, |player| open_container(game, player) == Some(pos));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1323,8 +1524,8 @@ pub(in crate::game) fn prune(game: &Game<'_>, pos: [i32; 3], viewers: u32) {
 
 impl Game<'_> {
     /// O mod registra a janela de um bloco.
-    pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn) {
-        register(spec, remove, add);
+    pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn, source: SourceFn) {
+        register(spec, remove, add, source);
     }
 
     /// `ItemUpgrade.useOn`.
@@ -1399,9 +1600,18 @@ impl Game<'_> {
         draw_tab(self, batch, block, origin);
     }
 
-    /// Os data slots que o servidor sincroniza para a tela de mod aberta (vazios sem tela): o estado que as condições de `screen_elements` leem.
-    pub(in crate::game) fn mb_screen_data(&self) -> Vec<i32> {
-        self.mod_screen.as_ref().map(|screen| screen.data.clone()).unwrap_or_default()
+    /// O espelho do menu da tela de mod aberta, seja qual for o bloco.
+    pub(in crate::game) fn mb_open_mirror(&self) -> Mirror {
+        let block = self.mod_screen.as_ref().map(|screen| screen.block.clone()).unwrap_or_default();
+        self.mb_mirror(&block)
+    }
+
+    /// O espelho do menu da tela de mod aberta, que o servidor sincroniza (`MekanismContainer.trackedData` no cliente): o estado que as telas, as
+    /// abas e as condições de `screen_elements` leem. Antes do primeiro pacote, ou sem tela do bloco `block`, o menu vazio dele.
+    pub(in crate::game) fn mb_mirror(&self, block: &str) -> Mirror {
+        let pos = self.mb_open_screen_pos();
+        mirrors(|table| pos.and_then(|pos| table.get(&pos)).map(|entry| entry.mirror.clone()))
+            .unwrap_or_else(|| Mirror::new(&spec_of(block).map(|spec| (spec.trackers)()).unwrap_or_default()))
     }
 
     /// Se o ponto `at` (relativo ao canto da tela) está sobre a janela de upgrades ou a aba dela: um elemento ativo da tela.
@@ -1425,23 +1635,33 @@ impl Game<'_> {
         tooltip(self, batch, block, at, cursor)
     }
 
-    /// O contêiner em `pos` mudou de espectadores.
     /// O bloco da tela de mod aberta.
     pub(in crate::game) fn mb_open_screen_pos(&self) -> Option<[i32; 3]> {
         self.mod_screen.as_ref().and_then(|screen| screen.pos())
     }
 
-    pub(in crate::game) fn mb_window_prune(&self, pos: [i32; 3], viewers: u32) {
-        prune(self, pos, viewers);
+    /// O jogador abriu o menu do bloco `block` em `pos`: sessão nova e todos os dados.
+    pub(in crate::game) fn mb_container_open(&mut self, player: u128, pos: [i32; 3], block: &str) {
+        container_open(self, player, pos, block);
+    }
+
+    /// O `broadcastChanges` de todos os menus abertos.
+    pub(in crate::game) fn mb_container_broadcast(&mut self) {
+        broadcast(self);
+    }
+
+    /// Quem fechou o menu sai das sessões.
+    pub(in crate::game) fn mb_container_recount(&self) {
+        recount(self);
+    }
+
+    /// `playersUsing.size()` do tile em `pos`.
+    pub(in crate::game) fn mb_container_players(pos: [i32; 3]) -> usize {
+        players_using(pos)
     }
 
     /// A janela escolhida por quem age no contêiner em `pos`.
     pub(in crate::game) fn mb_window_selected(&self, pos: [i32; 3]) -> Option<SelectedWindow> {
         selected_for(pos, acting(self))
-    }
-
-    /// Alguém acompanha os upgrades do contêiner em `pos`.
-    pub(in crate::game) fn mb_window_tracking(pos: [i32; 3]) -> bool {
-        tracking_active(pos)
     }
 }

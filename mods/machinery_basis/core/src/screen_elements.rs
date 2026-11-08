@@ -4,15 +4,16 @@
 //! O mod declara por tipo de menu, uma vez, os retângulos relativos ao canto da tela de cada elemento ativo e visível que fica fora
 //! dos 176 por 166 da imagem (as abas laterais). `findElementOver` só considera quem está ativo e visível no instante
 //! (`GuiElement.isMouseOver`, que exige `active && visible`), então cada elemento pode trazer uma condição que pergunta ao estado da
-//! tela, os data slots que o servidor sincroniza, se ele está ativo agora: a aba de experiência só com o upgrade instalado, a de
+//! tela, os dados que o servidor sincroniza (o espelho do menu no cliente), se ele está ativo agora: a aba de experiência só com o upgrade instalado, a de
 //! avisos só com algum aviso. O registro é um só no processo, porque o servidor e o cliente rodam em threads diferentes e precisam da
 //! mesma resposta. A lib não conhece id de menu, de químico ou de máquina: tudo chega por parâmetro.
+use crate::container_sync::Mirror;
 use crate::gui::{Rect, contains};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-/// A condição de um elemento: recebe os data slots da tela e diz se ele está ativo e visível agora.
-type Condition = Arc<dyn Fn(&[i32]) -> bool + Send + Sync>;
+/// A condição de um elemento: recebe os dados sincronizados da tela e diz se ele está ativo e visível agora.
+type Condition = Arc<dyn Fn(&Mirror) -> bool + Send + Sync>;
 
 /// Um elemento de tela: o retângulo (relativo ao canto da tela) e, se ele nem sempre está ativo, a condição.
 #[derive(Clone)]
@@ -31,7 +32,7 @@ impl Element {
     }
 
     /// Um elemento que só conta quando `active` diz que sim para o estado da tela (`GuiXpContainmentTab.visible`, `GuiWarningTab.visible`).
-    pub fn when(rect: Rect, active: impl Fn(&[i32]) -> bool + Send + Sync + 'static) -> Self {
+    pub fn when(rect: Rect, active: impl Fn(&Mirror) -> bool + Send + Sync + 'static) -> Self {
         Self {
             rect,
             condition: Some(Arc::new(active)),
@@ -42,15 +43,15 @@ impl Element {
         self.rect
     }
 
-    /// Se o elemento está ativo e visível com os data slots `state`.
-    pub fn is_active(&self, state: &[i32]) -> bool {
+    /// Se o elemento está ativo e visível com os dados `state`.
+    pub fn is_active(&self, state: &Mirror) -> bool {
         self.condition
             .as_ref()
             .is_none_or(|condition| condition(state))
     }
 
     /// `GuiElement.isMouseOver`: ativo, visível e com o ponto dentro do retângulo.
-    pub fn is_mouse_over(&self, state: &[i32], at: [f32; 2]) -> bool {
+    pub fn is_mouse_over(&self, state: &Mirror, at: [f32; 2]) -> bool {
         contains(self.rect, at) && self.is_active(state)
     }
 }
@@ -96,8 +97,8 @@ pub fn declared(menu: &str) -> bool {
 }
 
 /// `GuiMekanism.findElementOver(..) != null` para os elementos declarados: o ponto `at` (relativo ao canto da tela) está sobre algum
-/// elemento ativo e visível com os data slots `state`. A condição roda fora da trava do registro.
-pub fn over_element(menu: &str, at: [f32; 2], state: &[i32]) -> bool {
+/// elemento ativo e visível com os dados `state`. A condição roda fora da trava do registro.
+pub fn over_element(menu: &str, at: [f32; 2], state: &Mirror) -> bool {
     let elements = with(|registry| {
         registry
             .iter()
@@ -113,11 +114,29 @@ pub fn over_element(menu: &str, at: [f32; 2], state: &[i32]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::container_sync::{Kind, PropertyData, Tracked};
+
+    /// O menu de teste: um booleano na posição 2, como o `hasXpContainment` de uma tela.
+    fn mirror(flag: Option<bool>) -> Mirror {
+        let mut mirror = Mirror::new(&[
+            Tracked::new(0, Kind::Int),
+            Tracked::new(1, Kind::Int),
+            Tracked::new(2, Kind::Boolean),
+        ]);
+        if let Some(flag) = flag {
+            mirror.apply(2, &PropertyData::Boolean(flag));
+        }
+        mirror
+    }
 
     #[test]
     fn a_menu_without_a_declaration_has_no_element() {
         assert!(!declared("test:elements_none"));
-        assert!(!over_element("test:elements_none", [-10.0, 150.0], &[]));
+        assert!(!over_element(
+            "test:elements_none",
+            [-10.0, 150.0],
+            &mirror(None)
+        ));
     }
 
     #[test]
@@ -126,7 +145,7 @@ mod tests {
             "test:elements_a",
             vec![Element::always([-26.0, 137.0, 26.0, 26.0])],
         );
-        let over = |x: f32, y: f32| over_element("test:elements_a", [x, y], &[]);
+        let over = |x: f32, y: f32| over_element("test:elements_a", [x, y], &mirror(None));
         // O canto de cima e da esquerda entram, o de baixo e o da direita não (`GuiElement.isMouseOver`).
         assert!(over(-26.0, 137.0));
         assert!(over(-0.1, 162.9));
@@ -142,18 +161,20 @@ mod tests {
             "test:elements_b",
             vec![
                 Element::always([-26.0, 137.0, 26.0, 26.0]),
-                Element::when([179.0, 94.0, 18.0, 18.0], |state| {
-                    state.get(2).copied().unwrap_or(0) != 0
-                }),
+                Element::when([179.0, 94.0, 18.0, 18.0], |state| state.boolean(2)),
             ],
         );
-        let over = |state: &[i32]| over_element("test:elements_b", [188.0, 103.0], state);
-        assert!(!over(&[0, 0, 0]));
-        assert!(over(&[0, 0, 1]));
-        // Antes do primeiro valor do servidor os data slots estão vazios: a condição vê zero.
-        assert!(!over(&[]));
+        let over = |state: &Mirror| over_element("test:elements_b", [188.0, 103.0], state);
+        assert!(!over(&mirror(Some(false))));
+        assert!(over(&mirror(Some(true))));
+        // Antes do primeiro valor do servidor o espelho está vazio: a condição vê o padrão.
+        assert!(!over(&mirror(None)));
         // O elemento sempre ativo não depende do estado.
-        assert!(over_element("test:elements_b", [-10.0, 150.0], &[]));
+        assert!(over_element(
+            "test:elements_b",
+            [-10.0, 150.0],
+            &mirror(None)
+        ));
     }
 
     #[test]
@@ -165,11 +186,15 @@ mod tests {
         declare_once("test:elements_c", || panic!("já declarado"));
         declare("test:elements_c", Vec::new());
         assert!(declared("test:elements_c"));
-        assert!(!over_element("test:elements_c", [-10.0, 150.0], &[]));
+        assert!(!over_element(
+            "test:elements_c",
+            [-10.0, 150.0],
+            &mirror(None)
+        ));
         declare_once("test:elements_d", || {
             vec![Element::always([0.0, 0.0, 1.0, 1.0])]
         });
-        assert!(over_element("test:elements_d", [0.5, 0.5], &[]));
+        assert!(over_element("test:elements_d", [0.5, 0.5], &mirror(None)));
     }
 
     #[test]
@@ -180,6 +205,6 @@ mod tests {
                 declared("test:elements_e")
             })],
         );
-        assert!(over_element("test:elements_e", [1.0, 1.0], &[]));
+        assert!(over_element("test:elements_e", [1.0, 1.0], &mirror(None)));
     }
 }

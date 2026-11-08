@@ -4,7 +4,6 @@
 //! - a ordem, que no Java é a do `enum` por causa do `EnumMap`. Aqui é a ordem de `K: Ord`, e um `enum` do mod com
 //!   `#[derive(PartialOrd, Ord)]` tem a ordem da declaração, igual ao ordinal;
 //! - o corte de `getWarnings`, que para na primeira mensagem de `NOT_ENOUGH_ENERGY`. Aqui é `stop_after`, o tipo que fecha a lista.
-use crate::data_slots;
 use crate::operation_tracker::RecipeError;
 use std::collections::BTreeMap;
 
@@ -69,11 +68,11 @@ impl<'a, K: Ord + Copy> WarningTracker<'a, K> {
     }
 }
 
-/// Quantos erros rastreados cabem num data slot: ele trafega em 16 bits.
+/// Quantos erros rastreados cabem na máscara.
 pub const MAX_TRACKED_ERRORS: usize = 16;
 
 /// `trackedErrors` como bits: o bit `i` é o erro `i` da lista que o mod passou à máquina (`TRACKED_ERROR_TYPES`). O Java manda um
-/// `SyncableBoolean` por erro; aqui a lista toda vai num data slot só.
+/// `SyncableBoolean` por erro, e o cliente remonta a máscara deles.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ErrorMask(u32);
 
@@ -82,7 +81,7 @@ impl ErrorMask {
     pub fn from_flags(flags: &[bool]) -> Self {
         assert!(
             flags.len() <= MAX_TRACKED_ERRORS,
-            "mais erros rastreados que bits num data slot: {}",
+            "mais erros rastreados que bits na máscara: {}",
             flags.len()
         );
         Self(
@@ -96,16 +95,6 @@ impl ErrorMask {
 
     pub fn bits(self) -> u32 {
         self.0
-    }
-
-    /// O valor do data slot. O bit mais alto o deixa negativo, e o cliente o recebe assim.
-    pub fn to_slot(self) -> i32 {
-        i32::from(data_slots::split(self.0)[0] as i16)
-    }
-
-    /// O inverso: só os 16 bits contam.
-    pub fn from_slot(slot: i32) -> Self {
-        Self(data_slots::join(slot, 0))
     }
 
     /// `getWarningCheck` sobre os bits: o erro precisa estar na lista rastreada, e a posição dele nela é o bit. Fora da lista
@@ -280,20 +269,6 @@ mod tests {
         assert!(mask.has(&tracked, RecipeError::NOT_ENOUGH_OUTPUT_SPACE));
         // Fora da lista: nunca, como o `ALWAYS_FALSE` do Java.
         assert!(!mask.has(&tracked, RecipeError::NOT_ENOUGH_SECONDARY_INPUT));
-    }
-
-    #[test]
-    fn the_mask_travels_in_one_signed_sixteen_bit_slot() {
-        let all = [true; MAX_TRACKED_ERRORS];
-        let mask = ErrorMask::from_flags(&all);
-        assert_eq!(mask.bits(), 0xFFFF);
-        // O bit mais alto liga o sinal do `short`, e o cliente lê só os 16 bits.
-        assert_eq!(mask.to_slot(), -1);
-        assert_eq!(ErrorMask::from_slot(-1), mask);
-        for bits in [0b1, 0b1010, 0x8000, 0x7FFF] {
-            let mask = ErrorMask(bits);
-            assert_eq!(ErrorMask::from_slot(mask.to_slot()), mask);
-        }
     }
 
     #[test]

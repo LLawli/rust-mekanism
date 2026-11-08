@@ -7,7 +7,6 @@ pub mod components;
 pub mod composter;
 pub mod container_sync;
 pub mod containers;
-pub mod data_slots;
 pub mod ejector;
 pub mod energy_conversion;
 pub mod experience;

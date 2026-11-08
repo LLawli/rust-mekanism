@@ -140,6 +140,14 @@ pub fn upgrade_window_trackers() -> [Tracked; 2] {
     ]
 }
 
+/// A posição, na lista do menu (`trackedData`), do primeiro dado que lê a fonte `source`: onde o cliente acha o valor no espelho. A
+/// lista é a mesma que o servidor sincroniza, então servidor e cliente não têm outro lugar onde combinar posições.
+pub fn position_of(list: &[Tracked], source: u16) -> usize {
+    list.iter()
+        .position(|tracked| tracked.source == source)
+        .unwrap_or_else(|| panic!("a lista não tem a fonte {source}"))
+}
+
 /// `MekanismContainer.UPGRADE_WINDOW`: a chave de `startTracking` da janela.
 pub const UPGRADE_WINDOW_KEY: u8 = 2;
 
@@ -210,6 +218,23 @@ mod tests {
                 source::ENERGY,
             ]
         );
+    }
+
+    #[test]
+    fn a_source_is_found_at_its_position_in_the_list() {
+        let list = TileTrackers {
+            security: true,
+            redstone: true,
+            energy: Some(EnergyTrackers {
+                last_energy: true,
+                adjustable: false,
+            }),
+            ..TileTrackers::default()
+        }
+        .trackers();
+        assert_eq!(position_of(&list, source::SECURITY_FREQUENCY), 0);
+        assert_eq!(position_of(&list, source::WAS_POWERED), 4);
+        assert_eq!(position_of(&list, source::ENERGY), 6);
     }
 
     #[test]

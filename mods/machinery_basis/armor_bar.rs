@@ -69,7 +69,7 @@ impl Game<'_> {
     }
 
     /// `GuiMekanism.hasClickedOutside`: `super.hasClickedOutside(..) && findElementOver(..) == null`. O ponto sobre um elemento da tela fora
-    /// da imagem (um slot da barra, uma aba declarada em `screen_elements` e ativa com os data slots de agora, a janela de upgrades) não é
+    /// da imagem (um slot da barra, uma aba declarada em `screen_elements` e ativa com os dados sincronizados de agora, a janela de upgrades) não é
     /// "fora": a injeção `bar_clicked_outside` responde falso antes de o jogo olhar só o retângulo da imagem, e o que não está sobre nenhum
     /// elemento segue pela conta dele.
     pub(in crate::game) fn mb_bar_over_element(&self, batch: &HudBatch) -> bool {
@@ -79,7 +79,7 @@ impl Game<'_> {
         let (ox, oy) = self.inventory_origin(batch);
         let at = [self.cursor.0 - ox, self.cursor.1 - oy];
         self.remote_menu_type().is_some_and(|menu| {
-            armor_bar::over_slot(menu, at) || screen_elements::over_element(menu, at, &self.mb_screen_data())
+            armor_bar::over_slot(menu, at) || screen_elements::over_element(menu, at, &self.mb_open_mirror())
         }) || self.mb_window_over(at)
     }
 }
