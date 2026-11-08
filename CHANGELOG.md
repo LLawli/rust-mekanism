@@ -192,6 +192,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   de 2026-11-07, só conhecia a entrada, a energia e a infusão e vetava os dois slots da janela, então o upgrade ficava no cursor (o shift-clique passava por outro caminho). A entrada aceita o tipo que a
   máquina suporta (energia, silêncio, velocidade e xp nas quatro, só o silêncio no Heat Generator) e a saída não aceita nada. Medido em jogo: 36 casos por máquina nas quatro e 20 no gerador, sem diferença
   contra o rastro `slot_click_upgrade_<máquina>`.
+- O upgrade na mão, com shift, sobre uma máquina (`ItemUpgrade.useOn`) instala desde o primeiro uso, como no original: antes só instalava depois de a tela daquele tipo de máquina abrir uma vez no jogo
+  (o registro da janela de upgrades era feito na criação da tela), então o Crusher, o Energized Smelter, o Infuser e o Heat Generator recém-postos não aceitavam o item. O registro passou para o hook `block_entity`.
 - A tela de uma máquina (as quatro e o Heat Generator) aberta num mundo reaberto antes do primeiro tick dela mostra os valores salvos (energia, progresso da receita, tanque, calor, upgrades e modo de redstone) em vez
   dos padrão, como no original, que lê o tile direto (`MekanismContainer.broadcastChanges` e `sendAllDataToRemote` leem o tile que o `loadAdditional` já carregou). O objeto vivo do port nasce no primeiro tick; até lá o menu
   lê um objeto feito do NBT (`machinery_basis_core::menu_source`), e um objeto vivo velho não vale para um tile novo na mesma posição. Rastros `{chamber,infuser,heat_generator}_trackers_reloaded` do Java

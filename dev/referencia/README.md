@@ -236,6 +236,7 @@ com `[minecraft:max_stack_size=16]` e os slots da janela (a aba em (422, 116) co
 menu aberto (`saveWithFullMetadata`, como `PlayerList.remove` faz antes de `Player.remove` fechar o menu) e relido (`BlockEntity.loadStatic`). Mostra que os itens dos dois slots, os instalados, a energia, a entrada, a saída, o tanque e o
 progresso voltam, e que `upgradeTicks` e `canCheckUpgrades` não são gravados (a instalação recomeça dos 20 ticks). `mods/mekanism/tests/upgrade_quit.rs` e `mods/mekanismgenerators/tests/upgrade_window.rs`
 (`the_generator_keeps_the_upgrade_slot_and_restarts_the_install_after_save_and_quit`) o repetem; em jogo, `horizon2/h2_quit.py antes|depois` (o jogo é fechado com `horizon-ctl quit` com a janela aberta e aberto de novo entre as etapas).
+Em jogo, `horizon2/h2_upgrade_use.py` (`H_NAME=horizon`, jogo recém-aberto, nenhuma tela aberta antes) põe cada máquina, passa o jogador a sobrevivente e usa o upgrade com shift: confere quantos entram e quantos sobram na mão (`ItemUpgrade.useOn`).
 `testes/ConstantUsageTraceTest.java` ganhou `infuser_const_ops` e `infuser_const_ops_placed`, com `maxUpgradeMultiplier` 1.000 (o valor em cache de `CachedIntValue`, devolvido ao fim): `getOperationsPerTick` passa de 1 (2 e 5 por tick).
 
 `testes/TrackerTraceTest.java` grava (`{chamber,crusher,smelter,infuser,heat_generator}_trackers.jsonl`) o que o `MekanismContainer.broadcastChanges` e o
