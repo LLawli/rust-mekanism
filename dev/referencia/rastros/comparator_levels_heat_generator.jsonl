@@ -1,0 +1,81 @@
+{"machine":"heat_generator"}
+{"mark":"empty","t":10,"level":0,"current":0,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":0,"lava_capacity":1000}
+{"mark":"lava_1","t":16,"level":1,"current":1,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":1,"lava_capacity":1000}
+{"mark":"lava_62","t":22,"level":1,"current":1,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":62,"lava_capacity":1000}
+{"mark":"lava_63","t":28,"level":1,"current":1,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":63,"lava_capacity":1000}
+{"mark":"lava_500","t":34,"level":8,"current":8,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":500,"lava_capacity":1000}
+{"mark":"lava_999","t":40,"level":14,"current":14,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":999,"lava_capacity":1000}
+{"mark":"lava_1000","t":46,"level":15,"current":15,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":1000,"lava_capacity":1000}
+{"mark":"lava_10000","t":52,"level":15,"current":15,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":10000,"lava_capacity":1000}
+{"mark":"emptied","t":58,"level":0,"current":0,"slots":[{"item":"","count":0,"capacity":99},{"item":"","count":0,"capacity":99}],"lava":0,"lava_capacity":1000}
+{"mark":"fuel_64","t":64,"level":0,"current":0,"slots":[{"item":"clay","count":64,"capacity":64},{"item":"clay","count":64,"capacity":64}],"lava":0,"lava_capacity":1000}
+{"t":0,"ops":[],"rows":[null]}
+{"t":1,"ops":[],"rows":[null]}
+{"t":2,"ops":[],"rows":[null]}
+{"t":3,"ops":[],"rows":[null]}
+{"t":4,"ops":[],"rows":[null]}
+{"t":5,"ops":[{"op":"put","phase":"step"},{"op":"mode HIGH","phase":"step"}],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":6,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":7,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":8,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":9,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":10,"ops":[{"op":"mark empty","phase":"step"}],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":11,"ops":[{"op":"lava 1","phase":"step"}],"rows":[{"level":1,"current":0,"cn":0}]}
+{"t":12,"ops":[],"rows":[{"level":1,"current":1,"cn":0}]}
+{"t":13,"ops":[],"rows":[{"level":1,"current":1,"cn":0}]}
+{"t":14,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":15,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":16,"ops":[{"op":"mark lava_1","phase":"step"}],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":17,"ops":[{"op":"lava 62","phase":"step"}],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":18,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":19,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":20,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":21,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":22,"ops":[{"op":"mark lava_62","phase":"step"}],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":23,"ops":[{"op":"lava 63","phase":"step"}],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":24,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":25,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":26,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":27,"ops":[],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":28,"ops":[{"op":"mark lava_63","phase":"step"}],"rows":[{"level":1,"current":1,"cn":1}]}
+{"t":29,"ops":[{"op":"lava 500","phase":"step"}],"rows":[{"level":8,"current":1,"cn":1}]}
+{"t":30,"ops":[],"rows":[{"level":8,"current":8,"cn":1}]}
+{"t":31,"ops":[],"rows":[{"level":8,"current":8,"cn":1}]}
+{"t":32,"ops":[],"rows":[{"level":8,"current":8,"cn":8}]}
+{"t":33,"ops":[],"rows":[{"level":8,"current":8,"cn":8}]}
+{"t":34,"ops":[{"op":"mark lava_500","phase":"step"}],"rows":[{"level":8,"current":8,"cn":8}]}
+{"t":35,"ops":[{"op":"lava 999","phase":"step"}],"rows":[{"level":14,"current":8,"cn":8}]}
+{"t":36,"ops":[],"rows":[{"level":14,"current":14,"cn":8}]}
+{"t":37,"ops":[],"rows":[{"level":14,"current":14,"cn":8}]}
+{"t":38,"ops":[],"rows":[{"level":14,"current":14,"cn":14}]}
+{"t":39,"ops":[],"rows":[{"level":14,"current":14,"cn":14}]}
+{"t":40,"ops":[{"op":"mark lava_999","phase":"step"}],"rows":[{"level":14,"current":14,"cn":14}]}
+{"t":41,"ops":[{"op":"lava 1000","phase":"step"}],"rows":[{"level":15,"current":14,"cn":14}]}
+{"t":42,"ops":[],"rows":[{"level":15,"current":15,"cn":14}]}
+{"t":43,"ops":[],"rows":[{"level":15,"current":15,"cn":14}]}
+{"t":44,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":45,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":46,"ops":[{"op":"mark lava_1000","phase":"step"}],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":47,"ops":[{"op":"lava 10000","phase":"step"}],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":48,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":49,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":50,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":51,"ops":[],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":52,"ops":[{"op":"mark lava_10000","phase":"step"}],"rows":[{"level":15,"current":15,"cn":15}]}
+{"t":53,"ops":[{"op":"lava 0","phase":"step"}],"rows":[{"level":0,"current":15,"cn":15}]}
+{"t":54,"ops":[],"rows":[{"level":0,"current":0,"cn":15}]}
+{"t":55,"ops":[],"rows":[{"level":0,"current":0,"cn":15}]}
+{"t":56,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":57,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":58,"ops":[{"op":"mark emptied","phase":"step"}],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":59,"ops":[{"op":"slots 64","phase":"step"}],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":60,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":61,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":62,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":63,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":64,"ops":[{"op":"mark fuel_64","phase":"step"}],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":65,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":66,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":67,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":68,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}
+{"t":69,"ops":[],"rows":[{"level":0,"current":0,"cn":0}]}

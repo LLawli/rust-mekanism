@@ -28,6 +28,7 @@ import mekanism.common.tile.machine.TileEntityMetallurgicInfuser;
 import mekanism.common.tile.prefab.TileEntityProgressMachine;
 import mekanism.generators.common.registries.GeneratorsBlocks;
 import mekanism.generators.common.tile.TileEntityGenerator;
+import mekanism.generators.common.tile.TileEntityHeatGenerator;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -40,6 +41,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -139,6 +141,155 @@ public class PlacedTraceTest {
     @TestHolder(description = "Records a Metallurgic Infuser placed by a player and given one burst of energy, plain and with speed 2.")
     public static void infuserPlacedRun(final DynamicTest test) {
         run(test, INFUSER);
+    }
+
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_placed")
+    @TestHolder(description = "Records the Enrichment Chamber placed by a player next to a full Heat Generator: the capacity and the energy in the tick of the placement and the next ones.")
+    public static void chamberFed(final DynamicTest test) {
+        fed(test, CHAMBER);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_placed")
+    @TestHolder(description = "Records the Crusher placed by a player next to a full Heat Generator: the capacity and the energy in the tick of the placement and the next ones.")
+    public static void crusherFed(final DynamicTest test) {
+        fed(test, CRUSHER);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_placed")
+    @TestHolder(description = "Records the Energized Smelter placed by a player next to a full Heat Generator: the capacity and the energy in the tick of the placement and the next ones.")
+    public static void smelterFed(final DynamicTest test) {
+        fed(test, SMELTER);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_placed")
+    @TestHolder(description = "Records the Metallurgic Infuser placed by a player next to a full Heat Generator: the capacity and the energy in the tick of the placement and the next ones.")
+    public static void infuserFed(final DynamicTest test) {
+        fed(test, INFUSER);
+    }
+
+    /// A Heat Generator cheio (240) encostado, de frente para a máquina (`ENERGY_SIDES` é só a frente), e a máquina posta por um jogador em dois momentos do tick:
+    /// `pre` (`ServerTickEvent.Pre`, antes dos block entities, como uma ação do jogador, que roda antes do tick: o gerador tica depois, no mesmo tick) e `step` (depois dos
+    /// block entities: o gerador só empurra no tick seguinte).
+    private static void fed(DynamicTest test, Spec spec) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(6, 3, 3)
+              .fill(0, 0, 0, 5, 0, 2, Blocks.STONE.defaultBlockState())
+              .fill(1, 1, 1, 1, 1, 1, GeneratorsBlocks.HEAT_GENERATOR.defaultState().setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.EAST)));
+        Fed scene = new Fed(spec);
+        test.eventListeners().forge().addListener((final ServerTickEvent.Pre event) -> scene.pre());
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> scene.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            var sequence = helper.startSequence();
+            sequence.thenExecute(() -> scene.begin(helper));
+            int tick = 0;
+            for (String phase : new String[]{"pre", "step"}) {
+                for (int[] combo : FED_COMBOS) {
+                    int at = scene.nextSlot();
+                    if (phase.equals("pre")) {
+                        scene.schedulePre(at, phase, combo);
+                    } else {
+                        sequence.thenExecuteAfter(at - tick, () -> scene.place(phase, combo));
+                        tick = at;
+                    }
+                    sequence.thenExecuteAfter(Math.max(0, at + FED_SPAN - tick), () -> scene.clear());
+                    tick = Math.max(tick, at + FED_SPAN);
+                }
+            }
+            sequence.thenExecuteAfter(2, scene::finish);
+            sequence.thenSucceed();
+        });
+    }
+
+    private static final int[][] FED_COMBOS = {{0, 0}, {2, 0}, {0, 4}, {3, 2}, {8, 8}};
+    private static final int FED_SPAN = 8;
+    private static final BlockPos FED_SPOT = new BlockPos(2, 1, 1);
+    private static final BlockPos FED_FLOOR = new BlockPos(2, 0, 1);
+    private static final BlockPos FED_GENERATOR = new BlockPos(1, 1, 1);
+
+    private static final class Fed {
+        private final Spec spec;
+        private final List<String> lines = new ArrayList<>();
+        private final java.util.Map<Integer, Object[]> pre = new java.util.HashMap<>();
+        private MekGameTestHelper helper;
+        private Player player;
+        private boolean recording;
+        private String label = "";
+        private int since = -1;
+        private int tick;
+        private int slots;
+
+        Fed(Spec spec) {
+            this.spec = spec;
+        }
+
+        void begin(MekGameTestHelper helper) {
+            this.helper = helper;
+            player = helper.makeMockPlayerLookingAt(FED_FLOOR, Direction.UP);
+            recording = true;
+        }
+
+        /// O próximo tick livre, 12 depois do anterior (a primeira marca fica no tick 10, depois dos ticks de arranque).
+        int nextSlot() {
+            return 10 + (FED_SPAN + 4) * slots++;
+        }
+
+        void schedulePre(int at, String phase, int[] combo) {
+            pre.put(at, new Object[]{phase, combo});
+        }
+
+        void pre() {
+            if (!recording) {
+                return;
+            }
+            Object[] entry = pre.get(tick);
+            if (entry != null) {
+                place((String) entry[0], (int[]) entry[1]);
+            }
+        }
+
+        void place(String phase, int[] combo) {
+            helper.setBlock(FED_SPOT, Blocks.AIR.defaultBlockState());
+            generator().energyContainer().setEnergy(240, null);
+            helper.useOn(FED_FLOOR, upgraded(helper, spec, combo[0], combo[1], 0), player, Direction.UP);
+            label = phase + "_" + combo[0] + "_" + combo[1];
+            since = 0;
+            lines.add("{\"placed\":\"" + label + "\",\"t\":" + tick + ",\"phase\":\"" + phase + "\",\"speed\":" + combo[0] + ",\"energy_upgrades\":" + combo[1]
+                  + ",\"at_placement\":" + state() + "}");
+        }
+
+        void clear() {
+            helper.setBlock(FED_SPOT, Blocks.AIR.defaultBlockState());
+            since = -1;
+        }
+
+        private TileEntityHeatGenerator generator() {
+            return (TileEntityHeatGenerator) helper.getLevel().getBlockEntity(helper.absolutePos(FED_GENERATOR));
+        }
+
+        private String state() {
+            BlockEntity entity = helper.getLevel().getBlockEntity(helper.absolutePos(FED_SPOT));
+            StringBuilder out = new StringBuilder("{\"generator\":").append(generator().energyContainer().getAmountAsLong());
+            if (entity instanceof TileEntityProgressMachine<?> machine && machine.getEnergyContainer() instanceof MachineEnergyContainer<?> energy) {
+                out.append(",\"energy\":").append(energy.getAmountAsLong()).append(",\"max_energy\":").append(currentMaxEnergy(energy)).append(",\"capacity\":")
+                      .append(energy.getCapacityAsLong());
+            }
+            return out.append('}').toString();
+        }
+
+        void record() {
+            if (!recording) {
+                return;
+            }
+            if (since >= 0) {
+                lines.add("{\"placed\":\"" + label + "\",\"t\":" + tick + ",\"since\":" + since++ + ",\"after_tick\":" + state() + "}");
+            }
+            tick++;
+        }
+
+        void finish() {
+            recording = false;
+            write("placed_fed_" + spec.name, lines);
+        }
     }
 
     private static void capacity(DynamicTest test, Spec spec) {
