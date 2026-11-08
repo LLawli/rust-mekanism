@@ -265,3 +265,16 @@ O jogador é um `ServerPlayer` falso que não é o dono do menu fora dos pacotes
 é lido logo depois da chamada. A energia entra pela capability do bloco depois de os lados de energia irem para `INPUT` (o bloco do molde não aceita de nenhum
 lado), o que alimenta o `lastEnergyReceived`. Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o
 `runGameTestServer` e apague-o depois. `mods/mekanism/tests/tracker_trace.rs` e `mods/mekanismgenerators/tests/tracker_trace.rs` os repetem.
+
+**Dois clientes ao mesmo tempo (decisão 14 do plano, 2026-11-08).** Só para os casos que pedem um segundo jogador (convidado de LAN, a armadura mudada por outro agente com a tela aberta, o espectador); os dois
+clientes headless (um `gamescope --backend headless` cada) e mudos (volume mestre 0 no `options.txt` de cada um), nunca mais de dois, e o original e o port nunca juntos.
+No port, no container `horizon`: `horizon2/abrir_dois.sh anfitriao MUNDO` abre o cliente que abre o mundo (depois `horizon-ctl lan open 0 commands`) e `abrir_dois.sh convidado 127.0.0.1:PORTA Convidado` abre o
+segundo (`--server`, `--name`, `--player-dir`, socket `horizon-control-b.sock`; os arquivos dele ficam em `data/horizon-b`). `horizon2/ctl.sh` fala com o segundo com `H_SOCKET=/run/user/1000/horizon-control-b.sock`,
+e `horizon2/h2_dois.py` dá `host(...)` e `guest(...)` e um roteador que faz um roteiro de um cliente só (`h2_cursor.py`) rodar com o convidado como o jogador (os comandos e o `tp` vão pelo anfitrião: o `tp` do `horizon-ctl`
+do convidado só vale no cliente e o servidor o desfaz). Os roteiros: `h2_convidado_cursor.py` (o rastro `slot_click_*` pelo clique do convidado), `h2_convidado_xp.py` (a aba de xp), `h2_convidado_tela.py` (as telas do
+convidado contra as do anfitrião, pixel a pixel com `comparar_tela.py`; a fase da animação do tanque e da lava é de cada cliente), `h2_dois_armadura.py` e `medir_armadura.sh` (a armadura mudada por um comando, em ms,
+rodado dentro do container). Um aviso que custou tempo: `chatVisibility` oculto (2), que `cena_telas.py` põe para esconder o chat, **também impede o cliente de mandar comandos**; volte a 0 antes de o convidado usar `command`.
+`h2_dois_roteiro.py ROTEIRO DESTINO` roda no port o MESMO roteiro (`cenas/dois_*.txt`, todos juntos em `cenas/dois_tudo.txt`) que o original roda: `testes/CenaDois.java` é uma cena de cliente (como `CenaTelas`) com dois papéis,
+o anfitrião (maestro: abre a LAN, monta as máquinas, dá os passos do servidor e manda comandos ao convidado por `dois-sync/comandos.txt`) e o convidado (um segundo processo do `runGameTestClient`, com a linha de comando do
+primeiro e outra pasta de jogo, que clica, lê e tira prints). `oficial_dois.sh CenaDois.java cenas/dois_tudo.txt SAIDA` pega a trava do `mekanism-ref`, sobe os dois e devolve a árvore como estava; `comparar_dois.py` compara os
+prints do convidado nos dois jogos.

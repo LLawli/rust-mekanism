@@ -1,0 +1,37 @@
+# A armadura do anfitrião mudada por OUTRO agente (um comando) com a tela do Heat Generator aberta: quando o slot da cabeça da tela atualiza, a cada tick do cliente. Parado (`tick freeze`, o jogador
+# tica mesmo assim) e depois um `tick step 1` de cada vez.
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+anf escala 3
+srv tp Dev 300.0 -60.0 0.0 0 0
+srv tp Convidado 300.0 -60.0 -2.0 0 0
+espera 20
+montar generator 300
+passos 2
+estado 300 lava=1000
+passos 2
+anf abrir 300 -60 3
+espera 60
+anf ler armadura_antes
+anf observar 12 armadura_parado
+srv item replace entity Dev armor.head with minecraft:iron_helmet
+espera 12
+passos 1
+anf ler armadura_passo1
+passos 1
+anf ler armadura_passo2
+srv item replace entity Dev armor.head with minecraft:air
+passos 2
+espera 10
+descongela
+anf observar 12 armadura_corrido
+srv item replace entity Dev armor.head with minecraft:iron_helmet
+espera 14
+anf ler armadura_corrido_fim
+anf fechar
+fim

@@ -1,0 +1,50 @@
+# O silêncio da máquina no convidado: o fator de volume do tile no cliente dele (o que o som lê), com o servidor andando. (a) o silêncio chega depois de a máquina estar ligada; (b) o silêncio
+# já estava quando ela ligou; (c) o silêncio sai com a máquina ligada e só o `lit` que muda devolve a contagem verdadeira. Convidado a 3 blocos da máquina, como o `CenaSomMedida`.
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+srv tp Convidado 303.5 -60.0 3.5 0 12
+srv tp Dev 300.5 -60.0 -3.0 0 0
+espera 40
+# (a) silencio_depois
+montar chamber 300
+espera 20
+conv observar 200 silencio_depois 300 -60 3
+liga 300
+espera 100
+silencio 300 1
+espera 60
+desliga 300
+espera 40
+srv setblock 300 -60 3 minecraft:air
+espera 40
+# (b) silencio_1
+montar chamber 300
+espera 20
+silencio 300 1
+espera 20
+conv observar 160 silencio_1 300 -60 3
+liga 300
+espera 100
+desliga 300
+espera 60
+srv setblock 300 -60 3 minecraft:air
+espera 40
+# (c) silencio_tirado
+montar chamber 300
+espera 20
+silencio 300 1
+espera 20
+conv observar 260 silencio_tirado 300 -60 3
+liga 300
+espera 80
+silencio 300 0
+espera 80
+desliga 300
+espera 80
+srv setblock 300 -60 3 minecraft:air
+espera 40
+fim

@@ -1,0 +1,41 @@
+# A aba de xp da Enrichment Chamber clicada pelo convidado (o anfitrião longe, a 5 blocos: as bolas de experiência vão para o jogador mais perto, e perto do anfitrião o sorteio delas dividiria o total): o botão direito não faz nada, o esquerdo dá a experiência dos 4 carvões ao convidado (não ao anfitrião) e zera as receitas guardadas.
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+srv xp set @a 0 points
+caixa 300
+congela
+conv escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -5.0 0 0
+espera 20
+montar chamber 300
+estado 300 upgrades=speed:8,xp_containment:1
+passos 1
+estado 300 entrada=coal:8
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+conv abrir 300 -60 3
+espera 60
+conv ler xp_antes
+conv foto xp_aberta
+conv clicar 188 103 d
+passos 2
+espera 10
+conv ler xp_depois_direito
+conv clicar 188 103
+passos 10
+espera 20
+conv ler xp_depois_esquerdo
+conv foto xp_depois
+conv fechar
+descongela
+fim

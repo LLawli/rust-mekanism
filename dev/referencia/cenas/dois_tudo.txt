@@ -1,0 +1,316 @@
+# Os seis roteiros de `dois_*.txt` em sequência, numa só sessão de dois clientes (o original e o port rodam este mesmo arquivo; veja `oficial_dois.sh` e `horizon2/h2_dois_roteiro.py`).
+lan 25599
+espera_convidado
+# ===== dois_tela
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+congela
+conv escala 3
+anf escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+
+# chamber_vazia
+montar chamber 300
+passos 1
+estado 300 energia=0
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_vazia
+conv fechar
+
+# chamber_operacao, e depois cinco ticks seguidos com a tela aberta
+montar chamber 300
+passos 1
+estado 300 energia=cap entrada=coal:2
+passos 100
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_operacao_t0
+passos 1
+espera 8
+conv foto chamber_operacao_t1
+passos 1
+espera 8
+conv foto chamber_operacao_t2
+passos 1
+espera 8
+conv foto chamber_operacao_t3
+passos 1
+espera 8
+conv foto chamber_operacao_t4
+passos 1
+espera 8
+conv foto chamber_operacao_t5
+conv fechar
+
+# chamber_aviso_energia
+montar chamber 300
+passos 1
+estado 300 energia=0 entrada=coal:2
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_aviso_energia
+conv fechar
+
+# chamber_aviso_saida
+montar chamber 300
+passos 1
+estado 300 energia=cap entrada=coal:2 saida=mekanism:enriched_carbon:64
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_aviso_saida
+conv fechar
+
+# infuser_operacao
+montar infuser 300
+passos 1
+estado 300 energia=cap entrada=clay_ball:2 quimico=bio:800
+passos 100
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto infuser_operacao
+conv fechar
+
+# infuser_aviso_infusao
+montar infuser 300
+passos 1
+estado 300 energia=cap entrada=clay_ball:2
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto infuser_aviso_infusao
+conv fechar
+
+# generator_lava_meio
+montar generator 300
+passos 1
+estado 300 energia=cap lava=500
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto generator_lava_meio
+conv fechar
+descongela
+
+# ===== dois_xp
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+srv xp set @a 0 points
+caixa 300
+congela
+conv escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -5.0 0 0
+espera 20
+montar chamber 300
+estado 300 upgrades=speed:8,xp_containment:1
+passos 1
+estado 300 entrada=coal:8
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+estado 300 energia=10000
+passos 30
+conv abrir 300 -60 3
+espera 60
+conv ler xp_antes
+conv foto xp_aberta
+conv clicar 188 103 d
+passos 2
+espera 10
+conv ler xp_depois_direito
+conv clicar 188 103
+passos 10
+espera 20
+conv ler xp_depois_esquerdo
+conv foto xp_depois
+conv fechar
+descongela
+
+# ===== dois_reload
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+conv escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+montar chamber 300
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv clicar 190 19
+espera 40
+conv tipos
+conv foto reload_antes
+srv reload
+espera 100
+conv tipos
+conv foto reload_depois
+conv fechar
+descongela
+
+# ===== dois_armadura
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+anf escala 3
+srv tp Dev 300.0 -60.0 0.0 0 0
+srv tp Convidado 300.0 -60.0 -2.0 0 0
+espera 20
+montar generator 300
+passos 2
+estado 300 lava=1000
+passos 2
+anf abrir 300 -60 3
+espera 60
+anf ler armadura_antes
+anf observar 12 armadura_parado
+srv item replace entity Dev armor.head with minecraft:iron_helmet
+espera 12
+passos 1
+anf ler armadura_passo1
+passos 1
+anf ler armadura_passo2
+srv item replace entity Dev armor.head with minecraft:air
+passos 2
+espera 10
+descongela
+anf observar 12 armadura_corrido
+srv item replace entity Dev armor.head with minecraft:iron_helmet
+espera 14
+anf ler armadura_corrido_fim
+anf fechar
+
+# ===== dois_som
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+srv tp Convidado 303.5 -60.0 3.5 0 12
+srv tp Dev 300.5 -60.0 -3.0 0 0
+espera 40
+# (a) silencio_depois
+montar chamber 300
+espera 20
+conv observar 200 silencio_depois 300 -60 3
+liga 300
+espera 100
+silencio 300 1
+espera 60
+desliga 300
+espera 40
+srv setblock 300 -60 3 minecraft:air
+espera 40
+# (b) silencio_1
+montar chamber 300
+espera 20
+silencio 300 1
+espera 20
+conv observar 160 silencio_1 300 -60 3
+liga 300
+espera 100
+desliga 300
+espera 60
+srv setblock 300 -60 3 minecraft:air
+espera 40
+# (c) silencio_tirado
+montar chamber 300
+espera 20
+silencio 300 1
+espera 20
+conv observar 260 silencio_tirado 300 -60 3
+liga 300
+espera 80
+silencio 300 0
+espera 80
+desliga 300
+espera 80
+srv setblock 300 -60 3 minecraft:air
+espera 40
+
+# ===== dois_espectador
+descongela
+srv gamemode creative @a
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+conv escala 3
+anf escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+montar chamber 300
+passos 2
+srv gamemode spectator Convidado
+passos 2
+espera 20
+conv ler espectador_antes
+conv abrir 300 -60 3
+espera 40
+conv ler espectador_clique
+conv foto espectador_clique
+conv fechar
+# (2) o gerador no mesmo lugar, a tela aberta no anfitrião, e o convidado olhando o anfitrião
+montar generator 300
+passos 2
+estado 300 lava=500
+passos 2
+anf abrir 300 -60 3
+espera 40
+srv spectate Dev Convidado
+passos 2
+espera 40
+anf ler anfitriao_tela
+conv ler espectador_olhando
+conv foto espectador_olhando
+anf foto anfitriao_tela
+srv spectate
+passos 2
+anf fechar
+descongela
+
+fim

@@ -1,0 +1,27 @@
+# O `/reload` com o convidado na janela de upgrades: os tipos de upgrade que o convidado tem antes e depois (o original não os reenvia: são um registro dinâmico, que o /reload não refaz).
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+conv escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+montar chamber 300
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv clicar 190 19
+espera 40
+conv tipos
+conv foto reload_antes
+srv reload
+espera 100
+conv tipos
+conv foto reload_depois
+conv fechar
+descongela
+fim

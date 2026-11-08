@@ -1,0 +1,44 @@
+# O espectador: (1) clica com o botão direito na máquina; (2) olha o anfitrião (`/spectate`) com a tela do Heat Generator aberta nele. No original `getMenuProvider` das máquinas é nulo (o Mekanism
+# não o sobrescreve), então o clique do espectador passa sem abrir tela (`ServerPlayerGameMode.useItemOn`).
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv clear @a
+caixa 300
+congela
+conv escala 3
+anf escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+montar chamber 300
+passos 2
+srv gamemode spectator Convidado
+passos 2
+espera 20
+conv ler espectador_antes
+conv abrir 300 -60 3
+espera 40
+conv ler espectador_clique
+conv foto espectador_clique
+conv fechar
+# (2) o gerador no mesmo lugar, a tela aberta no anfitrião, e o convidado olhando o anfitrião
+montar generator 300
+passos 2
+estado 300 lava=500
+passos 2
+anf abrir 300 -60 3
+espera 40
+srv spectate Dev Convidado
+passos 2
+espera 40
+anf ler anfitriao_tela
+conv ler espectador_olhando
+conv foto espectador_olhando
+anf foto anfitriao_tela
+srv spectate
+passos 2
+anf fechar
+descongela
+fim

@@ -1,0 +1,118 @@
+# O convidado de LAN vê a tela da máquina nos mesmos estados de `cena_telas.py` (energia, progresso, tanque e avisos), com o servidor parado e o progresso andando de um tick em um.
+# O MESMO roteiro roda no original (`oficial_dois.sh`, `testes/CenaDois.java`) e no port (`horizon2/h2_dois_roteiro.py`). `Dev` é o anfitrião do original; o convidado se chama `Convidado`.
+# O convidado fica onde o jogador do `CenaTelas` fica (x, -60, 0), de frente para a máquina; o anfitrião um bloco atrás dele.
+lan 25599
+espera_convidado
+srv gamemode creative @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+congela
+conv escala 3
+anf escala 3
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+
+# chamber_vazia
+montar chamber 300
+passos 1
+estado 300 energia=0
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_vazia
+conv fechar
+
+# chamber_operacao, e depois cinco ticks seguidos com a tela aberta
+montar chamber 300
+passos 1
+estado 300 energia=cap entrada=coal:2
+passos 100
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_operacao_t0
+passos 1
+espera 8
+conv foto chamber_operacao_t1
+passos 1
+espera 8
+conv foto chamber_operacao_t2
+passos 1
+espera 8
+conv foto chamber_operacao_t3
+passos 1
+espera 8
+conv foto chamber_operacao_t4
+passos 1
+espera 8
+conv foto chamber_operacao_t5
+conv fechar
+
+# chamber_aviso_energia
+montar chamber 300
+passos 1
+estado 300 energia=0 entrada=coal:2
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_aviso_energia
+conv fechar
+
+# chamber_aviso_saida
+montar chamber 300
+passos 1
+estado 300 energia=cap entrada=coal:2 saida=mekanism:enriched_carbon:64
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto chamber_aviso_saida
+conv fechar
+
+# infuser_operacao
+montar infuser 300
+passos 1
+estado 300 energia=cap entrada=clay_ball:2 quimico=bio:800
+passos 100
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto infuser_operacao
+conv fechar
+
+# infuser_aviso_infusao
+montar infuser 300
+passos 1
+estado 300 energia=cap entrada=clay_ball:2
+passos 5
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto infuser_aviso_infusao
+conv fechar
+
+# generator_lava_meio
+montar generator 300
+passos 1
+estado 300 energia=cap lava=500
+passos 2
+conv abrir 300 -60 3
+espera 60
+conv cursor 2 2
+espera 10
+conv foto generator_lava_meio
+conv fechar
+descongela
+fim
