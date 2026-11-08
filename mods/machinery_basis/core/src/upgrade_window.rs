@@ -42,8 +42,10 @@ pub struct UpgradeWindowSpec {
     pub window_types: &'static [crate::window::WindowType],
     /// O painel de fundo (`base`) e o `gui.scaling` dele.
     pub base_slice: NineSlice,
-    /// `maxUpgradeMultiplier`.
-    pub max_multiplier: i32,
+    /// `maxUpgradeMultiplier`, lido a cada vez que a janela mostra o efeito (`MekanismConfig.general.maxUpgradeMultiplier`).
+    pub max_multiplier: fn() -> i32,
+    /// O arquivo de cliente onde a janela guarda a posição, relativo à pasta de configuração do jogo (`Mekanism/client.toml`).
+    pub client_config: &'static str,
     /// Os tipos de upgrade e o que a tag do bloco aceita.
     pub data: fn() -> std::rc::Rc<crate::upgrade::UpgradeData>,
     /// Do nome da cor (`red`) para o ARGB (`EnumColor`).

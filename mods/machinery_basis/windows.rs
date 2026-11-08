@@ -227,9 +227,10 @@ fn now_ms() -> i64 {
         .map_or(0, |since| since.as_millis() as i64)
 }
 
-/// A posição guardada no cliente, como o `client.toml` do Mekanism: `config/<ns>/client.toml`.
+/// A posição guardada no cliente: o `client.toml` do Mekanism (`config/Mekanism/client.toml`, que o mod diz), onde o original guarda as posições de todas
+/// as janelas, nas seções `window.<nome>`.
 fn positions_path(spec: &UpgradeWindowSpec) -> Option<std::path::PathBuf> {
-    Some(Game::native_config_dir().ok()?.join(spec.ns).join("client.toml"))
+    Some(Game::native_config_dir().ok()?.join(spec.client_config))
 }
 
 fn load_positions(spec: &UpgradeWindowSpec) -> WindowPositions {
@@ -246,7 +247,7 @@ fn save_positions(spec: &UpgradeWindowSpec, positions: &WindowPositions) {
         }
         // O arquivo é o `client.toml` inteiro do mod: as seções `window.*` são nossas e as outras (`sounds`) não.
         let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        let _ = std::fs::write(path, machinery_basis_core::client_config::replace_sections(&existing, "window", &positions.to_toml()));
+        let _ = std::fs::write(path, machinery_basis_core::client_config::replace_sections(&existing, "window", &positions.to_toml(spec.window_types)));
     }
 }
 
@@ -1105,7 +1106,7 @@ fn draw_screen_text(
         scrolling_text(game, batch, text, [wx + 116.0, top, wx + 169.0, top + LINE_HEIGHT], false, SCREEN_COLOR, 0.6, open.selected_ms);
     };
     line(&uw::translate(&lang::get("gui.mekanism.upgrades.amount"), &[amount.to_string(), max.to_string()]), text_y);
-    if let Some(effect) = uw::effect_text(data.supports(id), amount, max, spec.max_multiplier) {
+    if let Some(effect) = uw::effect_text(data.supports(id), amount, max, (spec.max_multiplier)()) {
         text_y += 6.0;
         line(&uw::translate(&lang::get("gui.mekanism.upgrades.effect"), &[effect]), text_y);
     }

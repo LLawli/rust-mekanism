@@ -4,7 +4,7 @@
 //!
 //! Coordenadas: o `relative_x` e o `relative_y` de uma janela são relativos ao canto da tela (`leftPos`, `topPos`), como no Java. O
 //! mouse chega em pixels de GUI absolutos.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// O valor de uma posição que nunca foi gravada (`Integer.MAX_VALUE` no `ClientConfig`).
 pub const UNSET_POSITION: i32 = i32::MAX;
@@ -103,10 +103,39 @@ impl WindowPosition {
 }
 
 /// `ClientConfig.lastWindowPositions`: uma entrada por nome de gravação, com o x, o y e (nas janelas que fixam) o `pinned`. Mora no
-/// cliente e persiste num arquivo, como o `client.toml` do Mekanism.
+/// cliente e persiste no arquivo de cliente do Mekanism, nas seções `[window.<nome>]`, com o texto do NightConfig.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WindowPositions {
     entries: BTreeMap<String, WindowPosition>,
+    /// Os nomes que têm a chave `pinned` (`windowType.canPin()`).
+    pins: BTreeSet<String>,
+}
+
+/// O comentário do bloco `[window]` (`MekanismConfigTranslations.CLIENT_LAST_WINDOW_POSITIONS`).
+const WINDOWS_COMMENT: &str = "Stores the last position various windows were in when they were closed, and whether they are pinned. In general these values should not be modified manually.";
+/// `CLIENT_LAST_WINDOW_POSITIONS_X`, `_Y` e `_PINNED`.
+const X_COMMENT: &str = "The x component of this window's last position.";
+const Y_COMMENT: &str = "The y component of this window's last position.";
+const PINNED_COMMENT: &str = "Determines whether this window is pinned, and should open automatically when the GUI is reopened.";
+
+/// `TextUtils.formatAndCapitalize`: `_` e espaço viram espaço, e a letra depois deles (e a primeira) fica maiúscula.
+pub fn format_and_capitalize(text: &str) -> String {
+    let mut first = true;
+    let mut out = String::new();
+    for c in text.chars() {
+        if c == '_' || c == ' ' {
+            first = true;
+            out.push(' ');
+        } else {
+            if first {
+                out.extend(c.to_uppercase());
+            } else {
+                out.push(c);
+            }
+            first = false;
+        }
+    }
+    out
 }
 
 impl WindowPositions {
@@ -135,26 +164,91 @@ impl WindowPositions {
         let Some(name) = window.ty.save_name_for(window.extra) else {
             return false;
         };
-        let entry = self.entries.entry(name).or_insert(WindowPosition::UNSET);
+        let entry = self
+            .entries
+            .entry(name.clone())
+            .or_insert(WindowPosition::UNSET);
         let before = *entry;
         entry.x = x;
         entry.y = y;
         if window.ty.can_pin {
             entry.pinned = pinned;
+            self.pins.insert(name);
         }
         *entry != before
     }
 
-    /// O arquivo: uma tabela `[window.<nome>]` por entrada, com as chaves `x`, `y` e `pinned` do `ClientConfig`.
-    pub fn to_toml(&self) -> String {
-        let mut out = String::new();
-        for (name, position) in &self.entries {
+    /// O arquivo: o bloco `[window]` e uma tabela `[window.<nome>]` por entrada, na ordem de `types` (o enum `WindowType`; o que não é de nenhum tipo vai
+    /// depois, por nome), com as chaves `x`, `y` e `pinned` do `ClientConfig` e os comentários que o NightConfig escreve. Vazio sem entradas.
+    pub fn to_toml(&self, types: &[WindowType]) -> String {
+        if self.entries.is_empty() {
+            return String::new();
+        }
+        let base_of = |name: &str| -> (usize, String) {
+            for (index, ty) in types.iter().enumerate() {
+                let Some(base) = ty.save_name else { continue };
+                let rest = name.strip_prefix(base);
+                let indexed = ty.max_data > 1;
+                if rest.is_some_and(|rest| {
+                    if indexed {
+                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                    } else {
+                        rest.is_empty()
+                    }
+                }) {
+                    return (index, base.to_owned());
+                }
+            }
+            (
+                types.len(),
+                name.trim_end_matches(|c: char| c.is_ascii_digit())
+                    .to_owned(),
+            )
+        };
+        let mut names: Vec<&String> = self.entries.keys().collect();
+        names.sort_by_key(|name| (base_of(name).0, (*name).clone()));
+        let mut out = format!("#{WINDOWS_COMMENT}\n[window]\n");
+        for name in names {
+            let position = self.entries[name];
+            let pins = self.pins.contains(name);
+            let title = format_and_capitalize(&base_of(name).1);
+            let tooltip = if pins {
+                format!(
+                    "The last position the {title} window was in when it was closed, and whether it was pinned."
+                )
+            } else {
+                format!("The last position the {title} window was in when it was closed.")
+            };
             out.push_str(&format!(
-                "[window.{name}]\nx = {}\ny = {}\npinned = {}\n\n",
-                position.x, position.y, position.pinned
+                "\n\t#{tooltip}\n\t[window.{name}]\n\t\t#{X_COMMENT}\n\t\tx = {}\n\t\t#{Y_COMMENT}\n\t\ty = {}\n",
+                position.x, position.y
             ));
+            if pins {
+                out.push_str(&format!(
+                    "\t\t#{PINNED_COMMENT}\n\t\tpinned = {}\n",
+                    position.pinned
+                ));
+            }
         }
         out
+    }
+
+    /// As posições que o arquivo de um jogo que nunca gravou nada tem: uma entrada por nome de gravação de `types`, no padrão.
+    pub fn defaults_for(types: &[WindowType]) -> Self {
+        let mut positions = Self::default();
+        for ty in types {
+            for extra in 0..ty.max_data {
+                if let Some(name) = ty.save_name_for(extra) {
+                    positions
+                        .entries
+                        .insert(name.clone(), WindowPosition::UNSET);
+                    if ty.can_pin {
+                        positions.pins.insert(name);
+                    }
+                }
+            }
+        }
+        positions
     }
 
     /// Lê o que [`to_toml`](Self::to_toml) escreve. Linha que não entende é ignorada, e valor fora do intervalo de um inteiro vale
@@ -163,6 +257,9 @@ impl WindowPositions {
         let mut positions = Self::default();
         let mut current: Option<String> = None;
         for line in text.lines().map(str::trim) {
+            if line.starts_with('#') {
+                continue;
+            }
             if let Some(header) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
                 current = header.strip_prefix("window.").map(str::to_owned);
                 if let Some(name) = &current {
@@ -183,7 +280,10 @@ impl WindowPositions {
             match key {
                 "x" => entry.x = value.parse().unwrap_or(UNSET_POSITION),
                 "y" => entry.y = value.parse().unwrap_or(UNSET_POSITION),
-                "pinned" => entry.pinned = value == "true",
+                "pinned" => {
+                    entry.pinned = value == "true";
+                    positions.pins.insert(name.clone());
+                }
                 _ => {}
             }
         }
@@ -597,15 +697,26 @@ mod tests {
         assert!(!positions.update_last_position(unspecified, 1, 2, false));
     }
 
+    /// A tabela do enum `WindowType`, na ordem do original (as que guardam posição).
+    const TYPES: [WindowType; 3] = [COLOR, CRAFTING, UPGRADE];
+
     #[test]
     fn the_positions_file_round_trips() {
         let mut positions = WindowPositions::default();
         positions.update_last_position(upgrade(), -4, 33, true);
         positions.update_last_position(SelectedWindow::new(CRAFTING, 1), 5, 6, false);
-        let text = positions.to_toml();
+        positions.update_last_position(SelectedWindow::new(COLOR, 0), 1, 2, false);
+        let text = positions.to_toml(&TYPES);
         assert_eq!(WindowPositions::from_toml(&text), positions);
-        assert!(text.contains("[window.upgrade]\nx = -4\ny = 33\npinned = true"));
-        assert!(text.contains("[window.crafting1]"));
+        assert!(text.contains("\t[window.upgrade]\n\t\t#The x component of this window's last position.\n\t\tx = -4\n\t\t#The y component of this window's last position.\n\t\ty = 33\n\t\t#Determines whether this window is pinned, and should open automatically when the GUI is reopened.\n\t\tpinned = true"));
+        assert!(text.contains("\t#The last position the Crafting window was in when it was closed, and whether it was pinned.\n\t[window.crafting1]"));
+        // A janela que não fixa não tem a chave `pinned`, e a ordem é a do enum.
+        assert!(text.contains("\t#The last position the Color window was in when it was closed.\n\t[window.color]\n\t\t#The x component of this window's last position.\n\t\tx = 1\n\t\t#The y component of this window's last position.\n\t\ty = 2\n\n"));
+        let order: Vec<usize> = ["window.color]", "window.crafting1]", "window.upgrade]"]
+            .iter()
+            .map(|name| text.find(name).unwrap())
+            .collect();
+        assert!(order.windows(2).all(|pair| pair[0] < pair[1]));
         // Valor inválido volta ao padrão, e uma linha solta não derruba a leitura.
         let broken = WindowPositions::from_toml("lixo\n[window.upgrade]\nx = abc\ny = 2\n");
         assert_eq!(
@@ -616,6 +727,28 @@ mod tests {
                 pinned: false
             }
         );
+        assert_eq!(WindowPositions::default().to_toml(&TYPES), "");
+    }
+
+    #[test]
+    fn the_names_are_capitalized_like_the_original() {
+        assert_eq!(format_and_capitalize("upgrade"), "Upgrade");
+        assert_eq!(format_and_capitalize("side_config"), "Side Config");
+        assert_eq!(format_and_capitalize("mekasuit_helmet"), "Mekasuit Helmet");
+        assert_eq!(format_and_capitalize("recipe book"), "Recipe Book");
+    }
+
+    #[test]
+    fn the_default_positions_have_a_table_for_each_save_name() {
+        let text =
+            WindowPositions::defaults_for(&[CRAFTING, UPGRADE]).to_toml(&[CRAFTING, UPGRADE]);
+        for name in ["crafting0", "crafting1", "crafting2", "upgrade"] {
+            assert!(
+                text.contains(&format!("[window.{name}]\n\t\t#The x component")),
+                "{name}"
+            );
+        }
+        assert!(text.contains(&format!("x = {UNSET_POSITION}")));
     }
 
     #[test]
