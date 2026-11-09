@@ -256,6 +256,37 @@
    "hides_cape": false
   }
  },
+ "foil": {
+  "mekasuit": {
+   "style": "armor",
+   "render_type": "armorCutoutNoCullGlint",
+   "texturing": "ARMOR_ENTITY_GLINT_TEXTURING",
+   "sampler": "ENCHANTED_GLINT_ARMOR",
+   "scale": 0.16,
+   "pieces_with_glint": 3
+  },
+  "free_runners": {
+   "style": "item",
+   "render_type": "itemCutoutGlint",
+   "texturing": "GLINT_TEXTURING",
+   "sampler": "ENCHANTED_GLINT_ITEM",
+   "scale": 8.0
+  },
+  "jetpack": {
+   "style": "item",
+   "render_type": "itemCutoutGlint",
+   "texturing": "GLINT_TEXTURING",
+   "sampler": "ENCHANTED_GLINT_ITEM",
+   "scale": 8.0
+  },
+  "scuba_tank": {
+   "style": "item",
+   "render_type": "itemCutoutGlint",
+   "texturing": "GLINT_TEXTURING",
+   "sampler": "ENCHANTED_GLINT_ITEM",
+   "scale": 8.0
+  }
+ },
  "obj_state": {
   "rotation": "ZP",
   "radians": "PI"

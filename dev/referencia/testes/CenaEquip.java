@@ -35,7 +35,9 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 ///   sobrevivência, com o jogador no boneco);
 /// - `entidades=1`: um armor stand à direita do jogador (2 blocos) e um husk (zumbi que não queima de dia, `NoAI`) à esquerda, com as mesmas peças e virados `giro` graus (0 é
 ///   para o sul, para a câmera da frente); `bebe=1` faz o husk um bebê;
-/// - `parede=1`: um chão e uma parede de concreto preto (a parede 3 blocos atrás das figuras, vistas pela câmera), para o fundo ser o mesmo nos dois jogos.
+/// - `parede=1`: um chão e uma parede de concreto preto (a parede 3 blocos atrás das figuras, vistas pela câmera), para o fundo ser o mesmo nos dois jogos;
+/// - `encantado=1`: toda peça vestida leva o encantamento `minecraft:unbreaking` nível 1 (`hasFoil`, o brilho de encantamento). O brilho anda com o relógio, então os dois jogos rodam com
+///   `glintSpeed:0.0` no `options.txt` (o padrão que o brilho tem num tempo só); este programa põe a opção em 0 ao abrir o primeiro mundo.
 @EventBusSubscriber(modid = MekanismTests.MODID, value = Dist.CLIENT)
 public class CenaEquip {
 
@@ -46,8 +48,10 @@ public class CenaEquip {
     private static final int ESPERA = 60;
     private static final int ENTRADA = 10;
     private static final int PAUSA = 10;
+    /// O componente de uma peça encantada (`encantado=1`): o brilho vem de `ItemStack.hasFoil`.
+    private static final String ENCANTO = "[enchantments={\"minecraft:unbreaking\":1}]";
 
-    private record Etapa(String nome, List<String[]> pecas, String camera, boolean entidades, float giro, boolean bebe, boolean parede) {
+    private record Etapa(String nome, List<String[]> pecas, String camera, boolean entidades, float giro, boolean bebe, boolean parede, boolean encantado) {
     }
 
     private static final List<Etapa> etapas = new ArrayList<>();
@@ -77,6 +81,7 @@ public class CenaEquip {
                 boolean entidades = false;
                 boolean bebe = false;
                 boolean parede = false;
+                boolean encantado = false;
                 float giro = 0;
                 List<String[]> pecas = new ArrayList<>();
                 for (String word : line.split("\\s+")) {
@@ -94,6 +99,8 @@ public class CenaEquip {
                         bebe = kv[1].equals("1");
                     } else if (kv[0].equals("parede")) {
                         parede = kv[1].equals("1");
+                    } else if (kv[0].equals("encantado")) {
+                        encantado = kv[1].equals("1");
                     } else if (kv[0].equals("giro")) {
                         giro = Float.parseFloat(kv[1]);
                     } else if (kv[0].equals("pecas")) {
@@ -102,7 +109,7 @@ public class CenaEquip {
                         }
                     }
                 }
-                etapas.add(new Etapa(nome, pecas, camera, entidades, giro, bebe, parede));
+                etapas.add(new Etapa(nome, pecas, camera, entidades, giro, bebe, parede, encantado));
             }
         } catch (IOException e) {
             Mekanism.logger.error("cena-equip: leitura", e);
@@ -185,6 +192,8 @@ public class CenaEquip {
         if (ticks == 1) {
             minecraft.options.getSoundSourceOptionInstance(SoundSource.MUSIC).set(0.0);
             minecraft.options.getSoundSourceOptionInstance(SoundSource.AMBIENT).set(0.0);
+            // O brilho de encantamento anda com o relógio: parado (velocidade 0), os dois jogos o mostram no mesmo ponto do ciclo.
+            minecraft.options.glintSpeed().set(0.0);
         }
         if (ticks == 20) {
             server.execute(() -> run(server, "difficulty easy"));
@@ -223,7 +232,7 @@ public class CenaEquip {
                 run(server, "gamemode " + (e.camera().equals("inv") ? "survival" : "creative") + " @a");
                 run(server, String.format(Locale.ROOT, "tp @a %.2f %.2f %.2f 0 %d", X, Y, Z, e.camera().equals("first") ? 60 : 10));
                 for (String[] peca : e.pecas()) {
-                    run(server, "item replace entity @a armor." + peca[0] + " with mekanism:" + peca[1] + " 1");
+                    run(server, "item replace entity @a armor." + peca[0] + " with mekanism:" + peca[1] + (e.encantado() ? ENCANTO : "") + " 1");
                 }
                 if (e.parede()) {
                     // O fundo igual nos dois jogos: um chão e uma parede de concreto preto, a parede 3 blocos atrás das figuras vistas pela câmera.
@@ -255,8 +264,8 @@ public class CenaEquip {
             if (e.entidades()) {
                 server.execute(() -> {
                     for (String[] peca : e.pecas()) {
-                        run(server, "item replace entity @e[type=minecraft:armor_stand,limit=1] armor." + peca[0] + " with mekanism:" + peca[1] + " 1");
-                        run(server, "item replace entity @e[type=minecraft:husk,limit=1] armor." + peca[0] + " with mekanism:" + peca[1] + " 1");
+                        run(server, "item replace entity @e[type=minecraft:armor_stand,limit=1] armor." + peca[0] + " with mekanism:" + peca[1] + (e.encantado() ? ENCANTO : "") + " 1");
+                        run(server, "item replace entity @e[type=minecraft:husk,limit=1] armor." + peca[0] + " with mekanism:" + peca[1] + (e.encantado() ? ENCANTO : "") + " 1");
                     }
                     run(server, String.format(Locale.ROOT, "tp @e[type=minecraft:armor_stand,limit=1] %.2f %.2f %.2f %.1f 0", X + 2, Y, Z, e.giro()));
                     run(server, String.format(Locale.ROOT, "tp @e[type=minecraft:husk,limit=1] %.2f %.2f %.2f %.1f 0", X - 2, Y, Z, e.giro()));

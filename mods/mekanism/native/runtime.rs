@@ -1848,7 +1848,7 @@ pub fn name_color(item: &str) -> Option<u32> {
 /// O desenho vestido do MekaSuit, do jetpack, das botas e do tanque de mergulho: o que o `IClientItemExtensions` deles (`ISpecialGear.gearModel`) faz no original
 /// (`client/render/armor`), como tabela para `machinery_basis_core::worn_gear`. Os números saem do Java (`rastros/armor_gear.json`, que `tests/worn_gear.rs` confere).
 pub mod worn_gear {
-    use machinery_basis_core::worn_gear::{Attachment, Gear, Op, Slot};
+    use machinery_basis_core::worn_gear::{Attachment, Foil, Gear, Op, Slot};
 
     /// `OBJModelData.modelState`: a rotação de PI em Z que o original põe em todo quad do OBJ do MekaSuit ao assar (`Transformation(matrix.rotate(Axis.ZP.rotation(PI)))`, em volta do
     /// centro do bloco): o ponto (x, y, z) vira (1 - x, 1 - y, z). Como passos da pose, `translate(1, 1, 0)` e `scale(-1, -1, 1)`: o Horizon assa o OBJ sem ela.
@@ -2202,6 +2202,7 @@ pub mod worn_gear {
         slot: Slot,
         hides: &'static [&'static str],
         hides_cape: bool,
+        foil: Foil,
         attachments: &'static [Attachment],
     ) -> Gear {
         Gear {
@@ -2210,6 +2211,7 @@ pub mod worn_gear {
             slot,
             hides,
             hides_cape,
+            foil,
             attachments,
         }
     }
@@ -2222,6 +2224,7 @@ pub mod worn_gear {
             Slot::Head,
             SUIT_HIDES_HEAD,
             false,
+            Foil::Armor,
             &HELMET_PARTS,
         ),
         gear(
@@ -2230,6 +2233,7 @@ pub mod worn_gear {
             Slot::Chest,
             SUIT_HIDES_CHEST,
             true,
+            Foil::Armor,
             &BODYARMOR_PARTS,
         ),
         gear(
@@ -2238,6 +2242,7 @@ pub mod worn_gear {
             Slot::Legs,
             SUIT_HIDES_LEGS,
             false,
+            Foil::Armor,
             &PANTS_PARTS,
         ),
         gear(
@@ -2246,6 +2251,7 @@ pub mod worn_gear {
             Slot::Feet,
             &[],
             false,
+            Foil::Armor,
             &BOOTS_PARTS,
         ),
         gear(
@@ -2254,6 +2260,7 @@ pub mod worn_gear {
             Slot::Chest,
             &[],
             true,
+            Foil::Item,
             &JETPACK_PARTS,
         ),
         gear(
@@ -2262,6 +2269,7 @@ pub mod worn_gear {
             Slot::Chest,
             &[],
             true,
+            Foil::Item,
             &JETPACK_ARMORED_PARTS,
         ),
         gear(
@@ -2270,6 +2278,7 @@ pub mod worn_gear {
             Slot::Chest,
             &[],
             true,
+            Foil::Item,
             &SCUBA_TANK_PARTS,
         ),
         gear(
@@ -2278,6 +2287,7 @@ pub mod worn_gear {
             Slot::Feet,
             &[],
             false,
+            Foil::Item,
             &FREE_RUNNERS_PARTS,
         ),
         gear(
@@ -2286,6 +2296,7 @@ pub mod worn_gear {
             Slot::Feet,
             &[],
             false,
+            Foil::Item,
             &FREE_RUNNERS_ARMORED_PARTS,
         ),
     ];

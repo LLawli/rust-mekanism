@@ -7,7 +7,7 @@ O que sai, em `dev/referencia/rastros/`:
 - `armor_assets.json`: o hash (FNV-1a 64 e tamanho) de cada arquivo de `mods/mekanism/content` que o port copia do original para o desenho vestido (o modelo OBJ do
   MekaSuit, o `.mtl`, as texturas), para `tests/worn_gear.rs` conferir byte a byte;
 - `armor_gear.json`: os números do código de cliente do original, lidos do texto do Java: `MekaSuitArmor` (a translação de base, o deslocamento de cada `ModelPos`, a
-  translação do bebê, os pares de peças, a ordem de `EquipmentSlot`, o filtro de cada peça), `ChestArmor` (o jetpack e o tanque), `FreeRunnerArmor` (as botas), a rotação
+  translação do bebê, os pares de peças, a ordem de `EquipmentSlot`, o filtro de cada peça), `ChestArmor` (o jetpack e o tanque), `FreeRunnerArmor` (as botas), o brilho de encantamento (`foil`: o tipo de desenho de cada família e a escala da textura do brilho), a rotação
   do estado do modelo OBJ (`OBJModelData`) e as partes do OBJ (nome, material e quantidade de quads de cada objeto).
 O Rust não lê o checkout do original: lê estes arquivos. Cada número sai de uma expressão regular que tem de achar exatamente o que espera: se o Java mudar, o script para.
 """
@@ -169,6 +169,52 @@ def free_runners():
     }
 
 
+def foil():
+    """O brilho de encantamento (`stack.hasFoil()`) de cada família de peça, lido do texto: o tipo de desenho que o original usa e a escala da textura do brilho."""
+    suit = open(f"{ARMOR}/MekaSuitArmor.java").read()
+    runners = open(f"{ARMOR}/FreeRunnerArmor.java").read()
+    chest_text = open(f"{ARMOR}/ChestArmor.java").read()
+    cache = open(f"{MODEL}/BaseModelCache.java").read()
+    client = open(f"{ORIGINAL}/src/main/java/mekanism/client/ClientRegistration.java").read()
+    render_types = open(f"{MINECRAFT}/net/minecraft/client/renderer/rendertype/RenderTypes.java").read()
+    transform = open(f"{MINECRAFT}/net/minecraft/client/renderer/rendertype/TextureTransform.java").read()
+    sheets = open(f"{MINECRAFT}/net/minecraft/client/renderer/Sheets.java").read()
+    # MekaSuit: toda peça (opaca, emissiva, translúcida) ganha o brilho da armadura quando a pilha vestida o tem.
+    exactly_one(r"boolean renderFoil = stack\.hasFoil\(\);", suit, "MekaSuitArmor renderFoil")
+    exactly_one(r"BASE_GLINT = RenderTypes\.armorCutoutNoCullGlint\(TextureAtlas\.LOCATION_ITEMS\)", suit, "BASE_GLINT")
+    parts = exactly_one(r"public void render\(PoseStack poseStack, SubmitNodeCollector nodeCollector, int lightCoords, int outlineColor, int tintColor, boolean renderFoil\) \{(.*?)\n        \}\n\n        private void submitModel", suit, "PartData.render", re.S)
+    glints = re.findall(r"if \(renderFoil\) \{", parts)
+    if len(glints) != 3:
+        sys.exit(f"PartData.render: esperava 3 brilhos (opaca, emissiva, translúcida), achei {len(glints)}")
+    for name in ("MekanismRenderType.MEKASUIT_GLINT", "BASE_GLINT, emissive", "MekanismRenderType.ARMOR_TRANSLUCENT_GLINT"):
+        if name not in parts:
+            sys.exit(f"PartData.render mudou: {name}")
+    # As botas: `stack.hasFoil()` e o modelo do `BaseModelCache`, que pede a folha de item com brilho.
+    exactly_one(r"boolean hasFoil = stack\.hasFoil\(\);", runners, "FreeRunnerArmor hasFoil")
+    if len(re.findall(r"submitModel\(nodeCollector, poseStack, lightCoords, state\.outlineColor, hasFoil\)", runners)) != 2:
+        sys.exit("FreeRunnerArmor: as duas botas têm de passar hasFoil")
+    exactly_one(r"nodeCollector\.order\(1\)\.submitBlockModel\(poseStack, Sheets\.cutoutItemGlintSheet\(\)", cache, "BaseModelCache.submitModel")
+    exactly_one(r"public static RenderType cutoutItemGlintSheet\(\) \{\s+return CUTOUT_ITEM_GLINT_SHEET;", sheets, "Sheets.cutoutItemGlintSheet")
+    exactly_one(r"CUTOUT_ITEM_GLINT_SHEET = RenderTypes\.itemCutoutGlint\(TextureAtlas\.LOCATION_ITEMS\)", sheets, "CUTOUT_ITEM_GLINT_SHEET")
+    # O jetpack e o tanque: o `ItemStackRenderState` do item, `bodyItem.submit` (o brilho do item, `updateForLiving` com a pilha vestida).
+    exactly_one(r"bodyItem\.submit\(poseStack, collector, lightCoords", chest_text, "ChestArmor.submit")
+    exactly_one(r"updateForLiving\(bodyItem, state\.chestEquipment, ItemDisplayContext\.NONE, entity\)", client, "updateForLiving")
+    # O vanilla: qual textura e qual escala cada tipo de desenho usa.
+    armor_type = exactly_one(r"ARMOR_CUTOUT_NO_CULL_GLINT = Util\.memoize\((.*?)\n    \);", render_types, "ARMOR_CUTOUT_NO_CULL_GLINT", re.S)
+    item_type = exactly_one(r"ITEM_CUTOUT_GLINT = Util\.memoize\((.*?)\n    \);", render_types, "ITEM_CUTOUT_GLINT", re.S)
+    armor_texture = exactly_one(r"setTextureTransform\(TextureTransform\.(\w+)\)", armor_type, "armor transform")
+    item_texture = exactly_one(r"setTextureTransform\(TextureTransform\.(\w+)\)", item_type, "item transform")
+    armor_sampler = exactly_one(r'withTexture\("GlintSampler", ItemFeatureRenderer\.(\w+)\)', armor_type, "armor sampler")
+    item_sampler = exactly_one(r'withTexture\("GlintSampler", ItemFeatureRenderer\.(\w+)\)', item_type, "item sampler")
+    scales = {name: java_number(scale) for name, scale in re.findall(r'new TextureTransform\("(\w+)", \(\) -> setupGlintTexturing\(([0-9.]+F?)\)\)', transform)}
+    return {
+        "mekasuit": {"style": "armor", "render_type": "armorCutoutNoCullGlint", "texturing": armor_texture, "sampler": armor_sampler, "scale": scales[armor_texture.lower()], "pieces_with_glint": 3},
+        "free_runners": {"style": "item", "render_type": "itemCutoutGlint", "texturing": item_texture, "sampler": item_sampler, "scale": scales[item_texture.lower()]},
+        "jetpack": {"style": "item", "render_type": "itemCutoutGlint", "texturing": item_texture, "sampler": item_sampler, "scale": scales[item_texture.lower()]},
+        "scuba_tank": {"style": "item", "render_type": "itemCutoutGlint", "texturing": item_texture, "sampler": item_sampler, "scale": scales[item_texture.lower()]},
+    }
+
+
 def registration():
     """`ClientRegistration.registerRenderStateModifiers`: as partes do vanilla que cada peça esconde e a capa."""
     text = open(f"{ORIGINAL}/src/main/java/mekanism/client/ClientRegistration.java").read()
@@ -256,6 +302,7 @@ def main():
         "free_runners": free_runners(),
         "models": model_cache(),
         "registration": registration(),
+        "foil": foil(),
         "obj_state": obj_state(),
         "equipment_slots": slots(),
         "obj_parts": obj_parts(),

@@ -29,7 +29,7 @@ def etapas(arquivo):
             continue
         if line.startswith("grupos"):
             continue
-        campos = {"nome": "x", "pecas": "", "camera": "front", "entidades": "0", "giro": "0", "bebe": "0", "parede": "0"}
+        campos = {"nome": "x", "pecas": "", "camera": "front", "entidades": "0", "giro": "0", "bebe": "0", "parede": "0", "encantado": "0"}
         for word in line.split()[1:]:
             k, _, v = word.partition("=")
             campos[k] = v
@@ -47,15 +47,19 @@ def camera(atual, alvo):
     return atual
 
 
+ENCANTO = '[enchantments={"minecraft:unbreaking":1}]'
+
+
 def uma(e, pasta, atual):
     inv = e["camera"] == "inv"
+    encanto = ENCANTO if e["encantado"] == "1" else ""
     cmd("kill @e[type=!player]")
     cmd("clear @s")
     cmd(f"gamemode {'survival' if inv else 'creative'} @s")
     pitch = 60 if e["camera"] == "first" else 10
     cmd(f"tp @s {X} {Y} {Z} 0 {pitch}")
     for slot, item in e["pecas"]:
-        cmd(f"item replace entity @s armor.{slot} with mekanism:{item} 1")
+        cmd(f"item replace entity @s armor.{slot} with mekanism:{item}{encanto} 1")
     if e["parede"] == "1":
         x, y, z = int(X), int(Y), int(Z)
         wall = z + (3 if e["camera"] == "back" else -3)
@@ -69,8 +73,8 @@ def uma(e, pasta, atual):
         cmd(f"summon minecraft:husk {X - 2} {Y} {Z} {{NoAI:1b,Silent:1b,PersistenceRequired:1b,NoGravity:1b{baby}}}")
         time.sleep(1.0)
         for slot, item in e["pecas"]:
-            cmd(f"item replace entity @e[type=minecraft:armor_stand,limit=1] armor.{slot} with mekanism:{item} 1")
-            cmd(f"item replace entity @e[type=minecraft:husk,limit=1] armor.{slot} with mekanism:{item} 1")
+            cmd(f"item replace entity @e[type=minecraft:armor_stand,limit=1] armor.{slot} with mekanism:{item}{encanto} 1")
+            cmd(f"item replace entity @e[type=minecraft:husk,limit=1] armor.{slot} with mekanism:{item}{encanto} 1")
         cmd(f"tp @e[type=minecraft:armor_stand,limit=1] {X + 2} {Y} {Z} {e['giro']} 0")
         cmd(f"tp @e[type=minecraft:husk,limit=1] {X - 2} {Y} {Z} {e['giro']} 0")
     atual = camera(atual, "first" if e["camera"] in ("first", "inv") else e["camera"])

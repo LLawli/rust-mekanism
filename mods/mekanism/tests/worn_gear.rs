@@ -5,7 +5,7 @@ mod common;
 
 use common::craft::{assets, check_model, content, digest, json, rastro};
 use machinery_basis_core::worn_gear::{
-    Attachment, Gear, Op, Slot, compose, hidden_parts, hides_cape, transform_point,
+    Attachment, Foil, Gear, Op, Slot, compose, foil_of, hidden_parts, hides_cape, transform_point,
     visible_attachments,
 };
 use mekanism_rules::worn_gear::{WORN_GEAR, models};
@@ -437,6 +437,49 @@ fn the_chest_and_boot_poses_are_the_ones_of_the_code() {
                 "{id} {side} bebê"
             );
         }
+    }
+}
+
+/// O brilho de encantamento (`stack.hasFoil()`) de cada item vestido é o tipo de desenho do original (`rastros/armor_gear.json`, `foil`, lido do texto do código de cliente e
+/// do Minecraft): o MekaSuit leva o `armorCutoutNoCullGlint` (a textura da armadura, escala 0,16) em toda peça, e o jetpack, o tanque e as botas levam o brilho do item
+/// (`itemCutoutGlint`, a textura do item, escala 8).
+#[test]
+fn the_enchantment_glint_of_each_item_is_the_render_type_of_the_original() {
+    let foil = &gear()["foil"];
+    assert_eq!(foil["mekasuit"]["render_type"], "armorCutoutNoCullGlint");
+    assert_eq!(foil["mekasuit"]["sampler"], "ENCHANTED_GLINT_ARMOR");
+    assert_eq!(number(&foil["mekasuit"]["scale"]), 0.16);
+    assert_eq!(
+        foil["mekasuit"]["pieces_with_glint"], 3,
+        "a opaca, a emissiva e a translúcida"
+    );
+    for family in ["free_runners", "jetpack", "scuba_tank"] {
+        assert_eq!(foil[family]["render_type"], "itemCutoutGlint", "{family}");
+        assert_eq!(foil[family]["sampler"], "ENCHANTED_GLINT_ITEM", "{family}");
+        assert_eq!(number(&foil[family]["scale"]), 8.0, "{family}");
+    }
+    let style = |name: &str| match foil[name]["style"].as_str().unwrap() {
+        "armor" => Foil::Armor,
+        "item" => Foil::Item,
+        other => panic!("{other}"),
+    };
+    for gear in &WORN_GEAR {
+        let id = gear.item.strip_prefix("mekanism:").unwrap();
+        let family = match id {
+            "jetpack" | "jetpack_armored" => "jetpack",
+            "scuba_tank" => "scuba_tank",
+            "free_runners" | "free_runners_armored" => "free_runners",
+            suit => {
+                assert!(suit.starts_with("mekasuit_"), "{suit}");
+                "mekasuit"
+            }
+        };
+        assert_eq!(gear.foil, style(family), "{id}");
+        // O brilho é do slot do item: encantado, brilha; sem encantar, não.
+        let mut enchanted = [false; 4];
+        assert_eq!(foil_of(gear, &enchanted), None, "{id}");
+        enchanted[gear.slot.index()] = true;
+        assert_eq!(foil_of(gear, &enchanted), Some(style(family)), "{id}");
     }
 }
 

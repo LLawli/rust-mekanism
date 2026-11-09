@@ -19,3 +19,11 @@ vestir nome=scuba_costas pecas=head:scuba_mask,chest:scuba_tank camera=back enti
 vestir nome=scuba_lado pecas=head:scuba_mask,chest:scuba_tank camera=front entidades=1 giro=90 parede=1
 vestir nome=scuba_bebe pecas=head:scuba_mask,chest:scuba_tank camera=back entidades=1 bebe=1 parede=1
 vestir nome=jetpack_mekasuit_pernas pecas=legs:mekasuit_pants,feet:free_runners camera=front entidades=1 parede=1
+# O brilho de encantamento (`hasFoil`), com o brilho parado (`glintSpeed:0.0` nos dois jogos): as peças com o encantamento `unbreaking`, nas três figuras.
+vestir nome=mekasuit_encantado_frente pecas=head:mekasuit_helmet,chest:mekasuit_bodyarmor,legs:mekasuit_pants,feet:mekasuit_boots camera=front entidades=1 parede=1 encantado=1
+vestir nome=mekasuit_encantado_costas pecas=head:mekasuit_helmet,chest:mekasuit_bodyarmor,legs:mekasuit_pants,feet:mekasuit_boots camera=back entidades=1 parede=1 encantado=1
+vestir nome=jetpack_encantado_costas pecas=chest:jetpack,feet:free_runners camera=back entidades=1 parede=1 encantado=1
+vestir nome=jetpack_encantado_frente pecas=chest:jetpack,feet:free_runners camera=front entidades=1 parede=1 encantado=1
+vestir nome=scuba_encantado_costas pecas=head:scuba_mask,chest:scuba_tank camera=back entidades=1 parede=1 encantado=1
+vestir nome=mekasuit_encantado_peito pecas=chest:mekasuit_bodyarmor camera=front entidades=1 parede=1 encantado=1
+vestir nome=mekasuit_encantado_primeira pecas=head:mekasuit_helmet,chest:mekasuit_bodyarmor,legs:mekasuit_pants,feet:mekasuit_boots camera=first parede=1 encantado=1

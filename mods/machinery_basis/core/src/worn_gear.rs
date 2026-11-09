@@ -72,6 +72,17 @@ pub struct Attachment {
     pub needs_visible_part: bool,
 }
 
+/// Como o item vestido recebe o brilho de encantamento (`stack.hasFoil()`): é o tipo de desenho do original que decide a textura do brilho e a escala dela.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Foil {
+    /// O brilho da armadura: `RenderTypes.armorCutoutNoCullGlint`, a textura `enchanted_glint_armor` com `ARMOR_ENTITY_GLINT_TEXTURING` (escala 0,16). É o do MekaSuit
+    /// (`MekaSuitArmor.PartData.render`: `BASE_GLINT`, `MEKASUIT_GLINT`, `ARMOR_TRANSLUCENT_GLINT`).
+    Armor,
+    /// O brilho do item: `Sheets.cutoutItemGlintSheet` (`RenderTypes.itemCutoutGlint`), a textura `enchanted_glint_item` com `GLINT_TEXTURING` (escala 8). É o do jetpack, do
+    /// tanque (o `ItemStackRenderState` do item) e das botas (`BaseModelCache.submitModel`).
+    Item,
+}
+
 /// Um item vestido que tem modelo próprio.
 #[derive(Clone, Copy, Debug)]
 pub struct Gear {
@@ -83,6 +94,8 @@ pub struct Gear {
     pub hides: &'static [&'static str],
     /// A capa do jogador some (`showCape = false`).
     pub hides_cape: bool,
+    /// O brilho de encantamento das peças do item.
+    pub foil: Foil,
     pub attachments: &'static [Attachment],
 }
 
@@ -121,6 +134,14 @@ pub fn hides_cape(table: &[Gear], worn: &Worn<'_>) -> bool {
 
 /// Os modelos a desenhar: cada anexo dos itens vestidos que aparece com o que o corpo veste (`hidden_if_worn`) e com as partes que sobram (`needs_visible_part`).
 pub fn visible_attachments<'a>(table: &'a [Gear], worn: &Worn<'_>) -> Vec<&'a Attachment> {
+    visible_pieces(table, worn)
+        .into_iter()
+        .map(|(_, attachment)| attachment)
+        .collect()
+}
+
+/// [`visible_attachments`] com o item a que cada anexo pertence (o slot e o brilho dele).
+pub fn visible_pieces<'a>(table: &'a [Gear], worn: &Worn<'_>) -> Vec<(&'a Gear, &'a Attachment)> {
     let gear = worn_gear(table, worn);
     let hidden: Vec<&str> = gear.iter().flat_map(|g| g.hides.iter().copied()).collect();
     let mut out = Vec::new();
@@ -136,10 +157,16 @@ pub fn visible_attachments<'a>(table: &'a [Gear], worn: &Worn<'_>) -> Vec<&'a At
             if attachment.needs_visible_part && hidden.contains(&attachment.part) {
                 continue;
             }
-            out.push(attachment);
+            out.push((*item, attachment));
         }
     }
     out
+}
+
+/// O brilho de encantamento de uma peça do item `gear`: o do item, se o que o corpo veste no slot dele tem brilho (`foil[slot]`, na ordem de [`Worn`]: `stack.hasFoil()`).
+/// Cada peça de um item encantado brilha, a opaca, a emissiva e a translúcida (`PartData.render`), e a bota também (`FreeRunnerArmor.render`).
+pub fn foil_of(gear: &Gear, foil: &[bool; 4]) -> Option<Foil> {
+    foil[gear.slot.index()].then_some(gear.foil)
 }
 
 /// Os passos de uma peça compostos numa matriz 4x4 em colunas (a ordem de `glam::Mat4::from_cols_array`): a pose parte da identidade e cada passo se soma à direita,
@@ -222,6 +249,7 @@ mod tests {
         slot: Slot::Chest,
         hides: &["body"],
         hides_cape: true,
+        foil: Foil::Item,
         attachments: &[BODY],
     };
     const BOOT: Gear = Gear {
@@ -230,6 +258,7 @@ mod tests {
         slot: Slot::Feet,
         hides: &[],
         hides_cape: false,
+        foil: Foil::Armor,
         attachments: &[LEG],
     };
     const PANTS: Gear = Gear {
@@ -238,6 +267,7 @@ mod tests {
         slot: Slot::Legs,
         hides: &["left_leg", "right_leg"],
         hides_cape: false,
+        foil: Foil::Armor,
         attachments: &[],
     };
     const TABLE: [Gear; 3] = [PACK, BOOT, PANTS];
@@ -313,6 +343,28 @@ mod tests {
         let table = [SUIT_BOOT, OTHER_PANTS];
         let worn = [None, None, Some("t:other_pants"), Some("t:boot")];
         assert_eq!(visible_attachments(&table, &worn).len(), 1);
+    }
+
+    #[test]
+    fn a_piece_glints_with_the_style_of_its_item_when_its_slot_is_enchanted() {
+        // A bota (a única peça que aparece: o corpo da mochila se esconde a si mesmo) sabe de que item é.
+        let worn = [None, Some("t:pack"), None, Some("t:boot")];
+        let pieces = visible_pieces(&TABLE, &worn);
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(pieces[0].0.item, "t:boot");
+        // O peito encantado não faz a bota brilhar: o brilho é do slot do item.
+        assert_eq!(foil_of(pieces[0].0, &[false, true, false, false]), None);
+        assert_eq!(
+            foil_of(pieces[0].0, &[false, false, false, true]),
+            Some(Foil::Armor)
+        );
+        let all = [true; 4];
+        assert_eq!(foil_of(&PACK, &all), Some(Foil::Item));
+        assert_eq!(foil_of(&PACK, &[false; 4]), None);
+        assert_eq!(
+            foil_of(&PACK, &[false, true, false, false]),
+            Some(Foil::Item)
+        );
     }
 
     fn close(a: [f32; 3], b: [f32; 3]) -> bool {
