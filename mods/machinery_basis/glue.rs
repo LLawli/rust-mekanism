@@ -2371,6 +2371,8 @@ pub(in crate::game) fn animate_active_block(
 // colocação e a quebra do bloco.
 
 /// `SerializationConstants.COMPONENT_CONFIG` e `COMPONENT_EJECTOR`: os filhos do NBT do tile.
+/// Liga as linhas `MEKSIDE` do stderr (a colocação e a quebra), para o teste em jogo; o repositório fica com `false`.
+const SIDE_TRACE: bool = false;
 const COMPONENT_CONFIG: &str = "component_config";
 const COMPONENT_EJECTOR: &str = "component_ejector";
 /// `EJECT` e `CONFIG`, mais o `ordinal` do tipo de transmissão.
@@ -2423,8 +2425,8 @@ pub(in crate::game) fn side_nbt_from(nbt: &Compound) -> SideNbt {
         let mut data = ConfigData::default();
         for kind in TransmissionType::VALUES {
             let ordinal = kind.ordinal();
-            data.eject[ordinal] = nbt_flag(compound.get(&JavaString::from(format!("{EJECT_PREFIX}{ordinal}"))));
-            if let Some(Tag::IntArray(sides)) = compound.get(&JavaString::from(format!("{CONFIG_PREFIX}{ordinal}"))) {
+            data.eject[ordinal] = nbt_flag(compound.get(&JavaString::from(format!("{EJECT_PREFIX}{ordinal}").as_str())));
+            if let Some(Tag::IntArray(sides)) = compound.get(&JavaString::from(format!("{CONFIG_PREFIX}{ordinal}").as_str())) {
                 data.config[ordinal] = Some(sides.clone());
             }
         }
@@ -2464,10 +2466,10 @@ pub(in crate::game) fn side_nbt_into(nbt: &mut Compound, side: &SideNbt) {
         for kind in TransmissionType::VALUES {
             let ordinal = kind.ordinal();
             if let Some(ejecting) = data.eject[ordinal] {
-                compound.insert(JavaString::from(format!("{EJECT_PREFIX}{ordinal}")), Tag::Byte(i8::from(ejecting)));
+                compound.insert(JavaString::from(format!("{EJECT_PREFIX}{ordinal}").as_str()), Tag::Byte(i8::from(ejecting)));
             }
             if let Some(sides) = &data.config[ordinal] {
-                compound.insert(JavaString::from(format!("{CONFIG_PREFIX}{ordinal}")), Tag::IntArray(sides.clone()));
+                compound.insert(JavaString::from(format!("{CONFIG_PREFIX}{ordinal}").as_str()), Tag::IntArray(sides.clone()));
             }
         }
         nbt.insert(JavaString::from(COMPONENT_CONFIG), Tag::Compound(compound));
@@ -2698,6 +2700,9 @@ pub(in crate::game) fn side_destroying(game: &Game<'_>, pos: [i32; 3], spec_of: 
         Some(BlockEntity::Mod(entity)) if spec_of(&entity.id).is_some() => Some(read_side_nbt(entity)),
         _ => None,
     };
+    if SIDE_TRACE {
+        eprintln!("MEKSIDE destroying pos={pos:?} nbt={}", nbt.is_some());
+    }
     BROKEN_SIDES.with_borrow_mut(|slot| *slot = Some((pos, nbt)));
 }
 
@@ -2711,6 +2716,9 @@ pub(in crate::game) fn side_loot(
     spec_of: &dyn Fn(&str) -> Option<SideSpec>,
 ) {
     use horizon_client::containers::BlockEntity;
+    if SIDE_TRACE {
+        eprintln!("MEKSIDE loot block={:?} drops={}", context.block.map(|(pos, _)| pos), drops.len());
+    }
     let Some((pos, _)) = context.block else {
         return;
     };
@@ -2731,11 +2739,15 @@ pub(in crate::game) fn side_loot(
             continue;
         };
         let (attached, ejector) = side_components_of(&nbt, &side, facing);
-        if attached != side.default_side_config {
-            let _ = game.native_set_component(stack, components.side_config, side_config_to_tag(&attached));
+        if attached != side.default_side_config
+            && let Err(error) = game.native_set_component(stack, components.side_config, side_config_to_tag(&attached))
+        {
+            eprintln!("machinery_basis: o item solto não leva {}: {error}", components.side_config);
         }
-        if ejector != machinery_basis_core::ejector::AttachedEjector::DEFAULT {
-            let _ = game.native_set_component(stack, components.ejector, ejector_to_tag(&ejector));
+        if ejector != machinery_basis_core::ejector::AttachedEjector::DEFAULT
+            && let Err(error) = game.native_set_component(stack, components.ejector, ejector_to_tag(&ejector))
+        {
+            eprintln!("machinery_basis: o item solto não leva {}: {error}", components.ejector);
         }
     }
 }

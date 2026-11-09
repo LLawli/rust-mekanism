@@ -99,7 +99,9 @@ def eject():
     scenes = [
         # (nome, lados em DataType por lado relativo, itens no slot de entrada, ejetando, onde sai: lados relativos)
         ("direita", {"right": 4}, 0, True, ["right"]),
-        ("tres_lados", {"right": 4, "back": 4, "bottom": 4}, 0, True, ["right", "back", "bottom"]),
+        # Com vários lados em OUTPUT a pilha inteira vai para a primeira face na ordem de `Direction` (a base): o baú aceita tudo e o laço sai.
+        ("tres_lados", {"right": 4, "back": 4, "bottom": 4}, 0, True, ["bottom"]),
+        # INPUT_OUTPUT usa a entrada e a saída, mas o slot de entrada não deixa o ejetor tirar: só a saída (cascalho) sai.
         ("entrada_e_saida_na_frente", {"front": 7}, 20, True, ["front"]),
         ("sem_datatype", {}, 0, True, []),
         ("desligado", {"right": 4}, 0, False, []),
@@ -112,12 +114,16 @@ def eject():
             origin = (X0 + 6 * index, Y, Z0)
             setblock(origin, "minecraft:air")
             for face in FACES:
+                # Um baú novo: `setblock` de um baú sobre um baú não esvazia o que a cena anterior deixou.
+                setblock(at(origin, face), "minecraft:air")
+            time.sleep(0.3)
+            for face in FACES:
                 setblock(at(origin, face), "minecraft:chest")
             setblock(origin, f"{MACHINE}[facing={facing}]")
             time.sleep(0.6)
-            items = f'{{Slot:1b,id:"{GRAVEL}",count:20}}'
-            if entrada:
-                items += f',{{Slot:0b,id:"{ITEM}",count:{entrada}}}'
+            # Na ordem dos slots: o Horizon só decodifica a lista que está nela.
+            items = f'{{Slot:0b,id:"{ITEM}",count:{entrada}}},' if entrada else ""
+            items += f'{{Slot:1b,id:"{GRAVEL}",count:20}}'
             command(
                 f"data merge block {origin[0]} {origin[1]} {origin[2]} {{Items:[{items}],"
                 + config_nbt(item=sides_with(config), eject=ejecting)
@@ -152,6 +158,8 @@ def hopper():
         setblock(origin, "minecraft:air")
         setblock(at(origin, "up"), "minecraft:air")
         under = at(origin, "down")
+        setblock(under, "minecraft:air")
+        time.sleep(0.3)
         setblock(under, "minecraft:hopper[facing=south]")
         setblock(origin, f"{MACHINE}[facing=north]")
         time.sleep(0.6)
@@ -172,7 +180,12 @@ def cable():
     origin = (X0, Y, Z0 + 20)
     generator = at(at(origin, "east"), "east")
     cable_pos = at(origin, "east")
-    for name, energy, esperado in (("energia na direita? (norte: oeste)", None, False), ("energia em todos", [1] * 6, True)):
+    # O cabo está a leste, e o Crusher virado para o norte tem a esquerda (RelativeSide.LEFT) a leste.
+    for name, energy, esperado in (
+        ("sem DataType de energia", None, False),
+        ("INPUT só na direita (oeste): o cabo a leste não entrega", [0, 0, 1, 0, 0, 0], False),
+        ("INPUT na esquerda (leste)", [0, 1, 0, 0, 0, 0], True),
+    ):
         for pos in (origin, cable_pos, generator):
             setblock(pos, "minecraft:air")
         setblock(origin, f"{MACHINE}[facing=north]")
@@ -207,38 +220,50 @@ def setblock_case():
 
 
 def place():
+    """O item posto por um jogador traz o padrão, e quebrar e repor guarda a configuração. O hook de loot não ouve quebra em criativo nem
+    `/setblock ... destroy`: o jogador está em sobrevivência com uma picareta de diamante."""
     ok = True
     command("tick unfreeze")
     origin = (X0, Y, Z0 + 36)
+    ctl("close")
+    command("gamemode survival @s")
+    command("clear @s")
+    command("item replace entity @s hotbar.3 with minecraft:diamond_pickaxe")
+    ctl("give", MACHINE, "1")
     for pos in (origin, at(origin, "up")):
         setblock(pos, "minecraft:air")
-    ctl("close")
     ctl("tp", str(origin[0]), str(origin[1]), str(origin[2] - 3))
     ctl("wait", "5")
-    command("clear @s")
-    ctl("give", MACHINE, "1")
+    ctl("select", "mekanism:crusher")
     out = json.loads(ctl("place", *map(str, origin), "--item", MACHINE))
     ok &= report("place: o jogador pôs", True, "error" not in out)
     ctl("wait", "10")
-    chat = command(f"data get block {origin[0]} {origin[1]} {origin[2]} component_config")[0]
-    # MACHINE: tudo INPUT, direita OUTPUT, costas ENERGY. Virado para o jogador, ou para onde a guinada mandar: lê os seis valores.
-    found = re.search(r"config3: \[I; ([-\d, ]+)\]", chat)
+    read = lambda: re.search(r"config3: \[I; ([-\d, ]+)\]", command(f"data get block {origin[0]} {origin[1]} {origin[2]} component_config")[0])
+    found = read()
     values = [int(v) for v in found.group(1).split(",")] if found else None
+    # Tudo INPUT, a direita OUTPUT e as costas ENERGY (`LightConfigInfo.MACHINE`).
     ok &= report("place: o padrão do item (frente INPUT, direita OUTPUT, costas ENERGY)", [1, 1, 4, 8, 1, 1], values)
-    # Muda a configuração, quebra, pega o item e repõe.
     command(f"data merge block {origin[0]} {origin[1]} {origin[2]} {{component_config:{{config3:[I;4,0,0,7,0,0],eject3:1b}}}}")
     ctl("wait", "10")
-    command(f"setblock {origin[0]} {origin[1]} {origin[2]} minecraft:air destroy")
-    ctl("wait", "20")
-    ctl("tp", str(origin[0]), str(origin[1]), str(origin[2]))
-    ctl("wait", "20")
-    out = json.loads(ctl("place", *map(str, origin), "--item", MACHINE))
+    ctl("select", "minecraft:diamond_pickaxe")
+    broken = json.loads(ctl("break", *map(str, origin)))
     ctl("wait", "10")
-    chat = command(f"data get block {origin[0]} {origin[1]} {origin[2]} component_config")[0]
-    found = re.search(r"config3: \[I; ([-\d, ]+)\]", chat)
+    drop = broken["on_ground"][0]["pos"] if broken.get("on_ground") else None
+    if drop:
+        ctl("tp", str(drop[0]), str(drop[1]), str(drop[2]))
+        ctl("wait", "20")
+    inventory = command("data get entity @s Inventory")[0]
+    ok &= report("place: o item solto leva o side_config", True, "mekanism:side_config" in inventory)
+    ctl("tp", str(origin[0]), str(origin[1]), str(origin[2] - 3))
+    ctl("wait", "5")
+    ctl("select", "mekanism:crusher")
+    json.loads(ctl("place", *map(str, origin), "--item", MACHINE))
+    ctl("wait", "10")
+    found = read()
     values = [int(v) for v in found.group(1).split(",")] if found else None
     ok &= report("place: quebrar e repor guarda a configuração", [4, 0, 0, 7, 0, 0], values)
-    ok &= report("place: e o ejetar", True, "eject3: 1b" in chat)
+    ok &= report("place: e o ejetar", True, "eject3: 1b" in command(f"data get block {origin[0]} {origin[1]} {origin[2]} component_config")[0])
+    command("gamemode creative @s")
     return ok
 
 
