@@ -708,7 +708,8 @@ bindings = [
 ]
 
 # A água apaga o fogo do jogador (`tick_remaining_fire`: `was_touching_water` zera os ticks), e o `FluidType` dos fluidos do Mekanism tem `canExtinguish` falso. O HEAD
-# de `tick_remaining_fire` desliga `was_touching_water` para o jogador dentro de um bloco de líquido de mod; `update_fluids` o refaz no começo do tick seguinte. Alvo cru, H47.
+# de `tick_remaining_fire` desliga `was_touching_water` para o jogador dentro de um bloco de líquido de mod; `update_fluids` o refaz no começo do tick seguinte. Alvo cru, H47:
+# o mob não precisa dela (o `MobWorld::fluids` lê o fluido pela tabela de fatos do bloco, que não dá água ao bloco de mod: o mob em chamas não apaga, medido em 2026-11-09).
 [[injection]]
 id = "fire_before"
 target = "horizon_client_lib::motion::environment::MotionWorld<'_,'_,'_>::tick_remaining_fire"
@@ -716,30 +717,6 @@ kind = "HEAD"
 helper = "fire_before.rs"
 bindings = [
   { name = "world", ty = "&mut MotionWorld<'_, '_, '_>", value = "&mut *self" },
-]
-
-# O mob em chamas apaga na água porque `base_tick` (`mobs/ai.rs`) zera `fire_ticks` quando `fluids.in_water`, e o `fluid_state` dá a água ao bloco de líquido de mod; o original
-# (`canExtinguish` falso) o deixa queimar. Não há função entre `update_fluids` e o teste do fogo que receba o mob, então o RETURN de `update_fluids` desliga `in_water` do mob em
-# chamas dentro de um bloco de líquido de mod e o HEAD de `block_contact_damage` (chamado depois do fogo contado) o devolve, para o resto do tick ver a água de mod. O RETURN de
-# `base_tick` não serve: o corpo tem `matches!`. Dois alvos crus, H47.
-[[injection]]
-id = "fire_mob_flip"
-target = "horizon_client_lib::mobs::living::Mob::update_fluids"
-kind = "RETURN"
-helper = "fire_mob_flip.rs"
-bindings = [
-  { name = "value", ty = "()", value = "$value" },
-  { name = "m", ty = "&mut crate::mobs::Mob", value = "&mut *self" },
-  { name = "w", ty = "&crate::mobs::MobWorld<'_>", value = "w" },
-]
-
-[[injection]]
-id = "fire_mob_restore"
-target = "horizon_client_lib::mobs::ai::block_contact_damage"
-kind = "HEAD"
-helper = "fire_mob_restore.rs"
-bindings = [
-  { name = "m", ty = "&mut crate::mobs::Mob", value = "&mut *m" },
 ]
 
 # O equipamento vestido que o mod desenha por código (H55): o `MekanismArmorLayer` do original (`HumanoidArmorLayer` com o `ICustomArmor` de cada item) pede o modelo de cada peça na

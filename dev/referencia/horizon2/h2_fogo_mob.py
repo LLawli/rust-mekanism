@@ -58,12 +58,15 @@ def main():
     nomes = sys.argv[1:] or ["brine", "water"]
     blocos = {"brine": "mekanism:brine[level=0,up=true]", "water": "minecraft:water"}
     ctl("time", "18000")
+    cmd("gamerule send_command_feedback true")  # a resposta de `data get` vem pelo chat
+    cmd("difficulty easy")  # o zumbi não nasce em pacífico
     cmd("gamerule advance_time false")
     cmd("gamerule spawn_mobs false")
     cmd("tp @s " + at(5.5, 9, 9))
     resultado = {nome: uma(nome, blocos[nome]) for nome in nomes}
     queima = {nome: all(f is not None and f > 0 for f, _ in leituras) for nome, leituras in resultado.items()}
     print("segue queimando:", queima)
+    cmd(f"fill {at(2, 0, 2)} {at(8, 8, 8)} minecraft:air")  # a coluna e a pedra saem: o mundo fica limpo para os prints
 
 
 if __name__ == "__main__":
