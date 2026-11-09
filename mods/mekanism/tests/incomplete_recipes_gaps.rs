@@ -1,12 +1,12 @@
-//! `CONTENT_GAPS` (decisão 13): as receitas que ficam incompletas só porque o port ainda não tem o conteúdo delas. O Horizon dá `Incomplete recipe detected`
-//! (e a mensagem do `IncompleteRecipeScanner`) a toda receita de tipo do Mekanism cujo ingrediente é só de tags sem item nenhum, e hoje são 40; o original, com o
-//! conteúdo inteiro, não tem nenhuma. A lista do mod tem de ser exatamente o que os arquivos do conteúdo dão, com a regra do Horizon: um ingrediente de item
-//! (id, tag, lista ou `neoforge:or`) que não resolve nenhum item e só tem tags é incompleto, e um que cita um item desconhecido é erro do arquivo (`Couldn't parse`).
-//! Conteúdo novo que tira uma receita da lista (ou põe uma nela) falha este teste: ajuste `CONTENT_GAPS`.
+//! Nenhuma receita dos tipos do Mekanism que o port lê fica incompleta só porque falta conteúdo (decisão 13, fechada em 2026-11-09). O Horizon dá
+//! `Incomplete recipe detected` (e a mensagem do `IncompleteRecipeScanner`) a toda receita cujo ingrediente é só de tags sem item nenhum, e o original, com o
+//! conteúdo inteiro, não tem nenhuma. Antes dos itens de craft e de recurso eram 40 (a lista `CONTENT_GAPS`, de estanho, urânio, chumbo, fluorita, bronze, os pós
+//! sujos e os blocos de bio fuel e de carvão vegetal); com eles são 0, e a lista saiu junto. Este teste fica de guarda: um ingrediente de receita (id, tag, lista
+//! ou `neoforge:or`) que não resolve nenhum item e só tem tags é incompleto, e um que cita um item desconhecido é erro do arquivo (`Couldn't parse`). Receita nova
+//! ou tag esvaziada que deixe uma incompleta falha aqui, em vez de aparecer só no chat do jogador.
 mod common;
 
 use common::load_of_type;
-use mekanism_rules::CONTENT_GAPS;
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -106,8 +106,9 @@ fn classify(ingredient: &Value) -> Option<bool> {
 }
 
 #[test]
-fn the_content_gaps_are_what_the_content_files_give() {
+fn no_recipe_of_the_types_the_port_reads_is_incomplete() {
     let mut incomplete = BTreeSet::new();
+    let mut unknown_item = BTreeSet::new();
     let mut seen = 0;
     for (kind, path) in TYPES {
         for (id, json) in load_of_type(kind) {
@@ -116,29 +117,85 @@ fn the_content_gaps_are_what_the_content_files_give() {
             for key in path {
                 ingredient = &ingredient[*key];
             }
-            if classify(ingredient) == Some(true) {
-                incomplete.insert(id);
+            match classify(ingredient) {
+                Some(true) => {
+                    incomplete.insert(id);
+                }
+                Some(false) => {
+                    unknown_item.insert(id);
+                }
+                None => {}
             }
         }
     }
     assert!(seen >= 150, "receitas lidas: {seen}");
-    let listed: BTreeSet<String> = CONTENT_GAPS.iter().map(|id| (*id).to_owned()).collect();
-    assert_eq!(incomplete, listed, "CONTENT_GAPS não bate com o conteúdo");
-    assert_eq!(
-        CONTENT_GAPS.len(),
-        listed.len(),
-        "id repetido em CONTENT_GAPS"
+    assert!(
+        incomplete.is_empty(),
+        "receitas incompletas (a mensagem sairia no chat): {incomplete:?}"
+    );
+    assert!(
+        unknown_item.is_empty(),
+        "receitas com item desconhecido (o Horizon as recusa): {unknown_item:?}"
     );
 }
 
+/// Os 40 ids de `CONTENT_GAPS` (a lista antes do conteúdo de craft e de recurso): nenhum ficou incompleto nem desconhecido, e todos têm o arquivo.
 #[test]
-fn nothing_the_port_already_has_is_in_the_list() {
-    // As receitas que o port leva a sério (ferro, carbono, osmium, aço) não podem estar na lista.
-    for id in [
-        "mekanism:processing/iron/enriched",
-        "mekanism:processing/iron/enriched_dust",
-        "mekanism:enriching/enriched/carbon",
-    ] {
-        assert!(!CONTENT_GAPS.contains(&id), "{id}");
+fn the_forty_old_gaps_are_complete_now() {
+    const OLD_GAPS: [&str; 40] = [
+        "mekanism:chemical_conversion/bio/from_bio_fuel_block",
+        "mekanism:chemical_conversion/carbon/from_charcoal_block",
+        "mekanism:chemical_conversion/tin/from_dust",
+        "mekanism:chemical_conversion/tin/from_enriched",
+        "mekanism:enriching/charcoal_dust",
+        "mekanism:enriching/enriched/tin",
+        "mekanism:processing/bronze/dust/from_ingot",
+        "mekanism:processing/copper/dirty_dust/from_clump",
+        "mekanism:processing/copper/dust/from_dirty_dust",
+        "mekanism:processing/fluorite/from_dust",
+        "mekanism:processing/fluorite/from_ore",
+        "mekanism:processing/fluorite/to_dust",
+        "mekanism:processing/gold/dirty_dust/from_clump",
+        "mekanism:processing/gold/dust/from_dirty_dust",
+        "mekanism:processing/iron/dirty_dust/from_clump",
+        "mekanism:processing/iron/dust/from_dirty_dust",
+        "mekanism:processing/lead/dirty_dust/from_clump",
+        "mekanism:processing/lead/dust/from_dirty_dust",
+        "mekanism:processing/lead/dust/from_ingot",
+        "mekanism:processing/lead/dust/from_ore",
+        "mekanism:processing/lead/dust/from_raw_block",
+        "mekanism:processing/lead/dust/from_raw_ore",
+        "mekanism:processing/osmium/dirty_dust/from_clump",
+        "mekanism:processing/osmium/dust/from_dirty_dust",
+        "mekanism:processing/osmium/dust/from_raw_block",
+        "mekanism:processing/refined_glowstone/ingot_to_dust",
+        "mekanism:processing/refined_obsidian/dust/from_ingot",
+        "mekanism:processing/tin/dirty_dust/from_clump",
+        "mekanism:processing/tin/dust/from_dirty_dust",
+        "mekanism:processing/tin/dust/from_ingot",
+        "mekanism:processing/tin/dust/from_ore",
+        "mekanism:processing/tin/dust/from_raw_block",
+        "mekanism:processing/tin/dust/from_raw_ore",
+        "mekanism:processing/uranium/dirty_dust/from_clump",
+        "mekanism:processing/uranium/dust/from_dirty_dust",
+        "mekanism:processing/uranium/dust/from_ingot",
+        "mekanism:processing/uranium/dust/from_ore",
+        "mekanism:processing/uranium/dust/from_raw_block",
+        "mekanism:processing/uranium/dust/from_raw_ore",
+        "mekanism:processing/uranium/yellow_cake_uranium",
+    ];
+    let mut loaded: BTreeSet<String> = BTreeSet::new();
+    for (kind, path) in TYPES {
+        for (id, json) in load_of_type(kind) {
+            let mut ingredient = &json;
+            for key in path {
+                ingredient = &ingredient[*key];
+            }
+            assert!(classify(ingredient).is_none(), "{id}");
+            loaded.insert(id);
+        }
+    }
+    for id in OLD_GAPS {
+        assert!(loaded.contains(id), "falta a receita {id}");
     }
 }

@@ -1,9 +1,7 @@
 //! `IncompleteRecipeScanner`: a mensagem de receita incompleta e quem a recebe. O rastro `incomplete_recipes` (`RestosTraceTest.incompleteRecipes`) grava o
 //! componente `RECIPE_WARNING` como o `ComponentSerialization` o escreve, o texto dele, as receitas que a varredura acha incompletas (só a do data pack
 //! de teste, de uma tag que existe e não tem membro) e, em cada evento, quantas mensagens cada jogador recebeu.
-use mekanism_rules::{
-    CONTENT_GAPS, IncompleteScanner, recipe_warning_json, unexplained_incomplete,
-};
+use mekanism_rules::{IncompleteScanner, recipe_warning_json};
 use serde_json::Value;
 use std::path::Path;
 
@@ -128,22 +126,17 @@ fn the_scanner_messages_the_players_the_original_does() {
     assert!(!negative.found());
 }
 
-/// Decisão 13: o que o original acha incompleto (a receita do data pack de teste, de uma tag que existe e está vazia) o port acha também e conta; as receitas que só
-/// faltam por conteúdo do port não contam, porque o original, com o conteúdo inteiro, não tem nenhuma.
+/// Decisão 13 (fechada em 2026-11-09): com o conteúdo de craft e de recurso completo, qualquer receita incompleta conta, como no original. A varredura do rastro
+/// (a receita do data pack de teste, de uma tag que existe e está vazia) acha uma, e uma varredura sem nenhuma não levanta a mensagem.
 #[test]
-fn only_incomplete_recipes_outside_the_content_gaps_raise_the_message() {
+fn any_incomplete_recipe_raises_the_message() {
     let lines = trace();
-    let from_the_original: Vec<String> = case(&lines, "scan")["incomplete"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|id| id.as_str().unwrap().to_owned())
-        .collect();
-    assert!(unexplained_incomplete(&from_the_original));
-    let gaps: Vec<String> = CONTENT_GAPS.iter().map(|id| (*id).to_owned()).collect();
-    assert!(!unexplained_incomplete(&gaps));
-    assert!(!unexplained_incomplete(&[]));
-    let mut both = gaps;
-    both.extend(from_the_original);
-    assert!(unexplained_incomplete(&both));
+    let from_the_original = case(&lines, "scan")["incomplete"].as_array().unwrap();
+    assert!(!from_the_original.is_empty());
+    let mut found = IncompleteScanner::new();
+    found.server_started(!from_the_original.is_empty());
+    assert!(found.found());
+    let mut none = IncompleteScanner::new();
+    none.server_started(false);
+    assert!(!none.found());
 }

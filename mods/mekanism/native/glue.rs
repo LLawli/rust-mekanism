@@ -1885,13 +1885,13 @@ fn recipe_warning() -> horizon_client::mod_api::Text {
     .with_style(&horizon_client::text::Style::color(rules::RECIPE_WARNING_COLOR))
 }
 
-/// `MekanismRecipeType.checkIncompleteRecipes`: se alguma receita dos tipos do Mekanism ficou incompleta nesta carga de dados. Fora as que só faltam por
-/// conteúdo que o port ainda não tem (`rules::CONTENT_GAPS`, decisão 13): o original, com o conteúdo inteiro, não tem nenhuma.
+/// `MekanismRecipeType.checkIncompleteRecipes`: se alguma receita dos tipos do Mekanism ficou incompleta nesta carga de dados. Com o conteúdo de craft e de
+/// recurso completo (itens, blocos e tags `c:`), nenhuma receita dos tipos que o port lê fica incompleta sozinha, como no original (decisão 13, fechada em 2026-11-09).
 fn scan_incomplete_recipes(game: &Game<'_>) -> bool {
     let machines: Vec<basis::RecipeSource> = MACHINES.iter().map(|machine| machine.recipes).collect();
     let conversions = [(rules::CHEMICAL_CONVERSION, &rules::CONVERSION_FIELDS)];
     let energy = [(rules::ENERGY_CONVERSION, &rules::CONVERSION_FIELDS)];
-    rules::unexplained_incomplete(&basis::incomplete_recipes(game, &machines, &conversions, &energy))
+    !basis::incomplete_recipes(game, &machines, &conversions, &energy).is_empty()
 }
 
 /// `IncompleteRecipeScanner.serverStarted` (a carga de um mundo que abre) e `recipes` sem jogador (o `/reload`): a varredura, e no
@@ -2234,6 +2234,16 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
 /// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
     use horizon_client::mod_api::Text;
+    // `u32::MAX` mantém a cor do próprio texto; a cor de `rgba` vem com o alfa embaixo.
+    let rgba = |rgb: u32| (rgb << 8) | 0xFF;
+    // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
+    if let Some(rgb) = rules::name_color(&stack.item) {
+        if let Some(name) = lines.first_mut() {
+            paint(&mut name.0, rgb);
+            name.1 = rgba(rgb);
+        }
+        return;
+    }
     if &*stack.item != rules::UPGRADE_ITEM {
         return;
     }
@@ -2245,8 +2255,6 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     let Some(upgrade_type) = types.get(&id) else {
         return;
     };
-    // `u32::MAX` mantém a cor do próprio texto; a cor de `rgba` vem com o alfa embaixo.
-    let rgba = |rgb: u32| (rgb << 8) | 0xFF;
     for line in rules::upgrade_tooltip(&id, upgrade_type) {
         let args: Vec<Text> = line
             .args
@@ -2794,4 +2802,11 @@ pub(in crate::game) fn screen_draw(
             draw_electric(game, machine, &mirror, batch, origin);
         }
     }
+}
+
+/// `BlockOre.getExpDrop`: a experiência que a fluorita dá ao ser quebrada por um jogador (1 a 4, `OreType.FLUORITE`). `value` é o que o Horizon calculou pelo nome do
+/// bloco (0 para um bloco de mod). O sorteio é o `Math.random()` do Java (`java_random::math_random`, como o da experiência das receitas): a injeção roda no retorno de
+/// `Game::block_experience`, onde o gerador do nível está emprestado, e a distribuição é a mesma, uniforme de 1 a 4.
+pub(in crate::game) fn block_experience(name: &str, value: u32) -> u32 {
+    rules::ore_experience(name, |bound| (machinery_basis_core::java_random::math_random() * f64::from(bound)) as i32).unwrap_or(value)
 }

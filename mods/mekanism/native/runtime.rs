@@ -1707,60 +1707,6 @@ pub fn recipe_warning_json() -> serde_json::Value {
     })
 }
 
-/// As receitas que ficam incompletas hoje só porque o port ainda não tem o conteúdo delas (decisão 13): um ingrediente de tag cujos itens o port não traz
-/// (estanho, urânio, chumbo, fluorita, bronze, os pós sujos e os tijolos de bio fuel). O original, com o conteúdo inteiro, não tem nenhuma, e por isso a
-/// mensagem do `IncompleteRecipeScanner` só sai quando sobra receita incompleta fora desta lista (veja `unexplained_incomplete`). A lista encolhe com o
-/// conteúdo, e `tests/incomplete_recipes_gaps.rs` confere que ela é exatamente o que os arquivos do conteúdo dão: um conteúdo novo que a deixa velha falha o teste.
-pub const CONTENT_GAPS: [&str; 40] = [
-    "mekanism:chemical_conversion/bio/from_bio_fuel_block",
-    "mekanism:chemical_conversion/carbon/from_charcoal_block",
-    "mekanism:chemical_conversion/tin/from_dust",
-    "mekanism:chemical_conversion/tin/from_enriched",
-    "mekanism:enriching/charcoal_dust",
-    "mekanism:enriching/enriched/tin",
-    "mekanism:processing/bronze/dust/from_ingot",
-    "mekanism:processing/copper/dirty_dust/from_clump",
-    "mekanism:processing/copper/dust/from_dirty_dust",
-    "mekanism:processing/fluorite/from_dust",
-    "mekanism:processing/fluorite/from_ore",
-    "mekanism:processing/fluorite/to_dust",
-    "mekanism:processing/gold/dirty_dust/from_clump",
-    "mekanism:processing/gold/dust/from_dirty_dust",
-    "mekanism:processing/iron/dirty_dust/from_clump",
-    "mekanism:processing/iron/dust/from_dirty_dust",
-    "mekanism:processing/lead/dirty_dust/from_clump",
-    "mekanism:processing/lead/dust/from_dirty_dust",
-    "mekanism:processing/lead/dust/from_ingot",
-    "mekanism:processing/lead/dust/from_ore",
-    "mekanism:processing/lead/dust/from_raw_block",
-    "mekanism:processing/lead/dust/from_raw_ore",
-    "mekanism:processing/osmium/dirty_dust/from_clump",
-    "mekanism:processing/osmium/dust/from_dirty_dust",
-    "mekanism:processing/osmium/dust/from_raw_block",
-    "mekanism:processing/refined_glowstone/ingot_to_dust",
-    "mekanism:processing/refined_obsidian/dust/from_ingot",
-    "mekanism:processing/tin/dirty_dust/from_clump",
-    "mekanism:processing/tin/dust/from_dirty_dust",
-    "mekanism:processing/tin/dust/from_ingot",
-    "mekanism:processing/tin/dust/from_ore",
-    "mekanism:processing/tin/dust/from_raw_block",
-    "mekanism:processing/tin/dust/from_raw_ore",
-    "mekanism:processing/uranium/dirty_dust/from_clump",
-    "mekanism:processing/uranium/dust/from_dirty_dust",
-    "mekanism:processing/uranium/dust/from_ingot",
-    "mekanism:processing/uranium/dust/from_ore",
-    "mekanism:processing/uranium/dust/from_raw_block",
-    "mekanism:processing/uranium/dust/from_raw_ore",
-    "mekanism:processing/uranium/yellow_cake_uranium",
-];
-
-/// Se alguma receita incompleta (os ids que a varredura achou) não é uma das que só faltam por conteúdo do port. É o `foundIncompleteRecipes` do port.
-pub fn unexplained_incomplete(incomplete: &[String]) -> bool {
-    incomplete
-        .iter()
-        .any(|id| !CONTENT_GAPS.contains(&id.as_str()))
-}
-
 /// Quem recebe a mensagem de receita incompleta (`IncompleteRecipeScanner`). O original guarda um `boolean` estático
 /// (`foundIncompleteRecipes`) que o `ServerStartedEvent` e o `OnDatapackSyncEvent` sem jogador (o `/reload`) refazem com a varredura
 /// (`MekanismRecipeType.checkIncompleteRecipes`), e o `OnDatapackSyncEvent` de um jogador que entra só lê.
@@ -1879,5 +1825,37 @@ mod tests {
     fn the_buffer_holds_four_ticks() {
         assert_eq!(energy_capacity(INFUSER_USAGE), 20);
         assert_eq!(energy_capacity(CRUSHER_USAGE), 32);
+    }
+}
+
+/// A experiência que o minério dá ao quebrar (`BlockOre.getExpDrop`, `BlockOre.java`): `Mth.nextInt(random, minExp, maxExp)` com o `minExp` e o `maxExp` do
+/// `OreType` (`OreType.java`). Só a fluorita dá (1 a 4: `FLUORITE(MiscResource.FLUORITE, 1, 4, 0.7F, ...)`); estanho, ósmio, urânio e chumbo têm 0 e 0 e não sorteiam
+/// nada. O Horizon só dá experiência aos minérios do vanilla pelo nome (`break_experience`), então o que o mod acrescenta passa por esta função. `Mth.nextInt` não
+/// sorteia quando `min >= max`.
+pub fn ore_experience(block: &str, mut next_int_bound: impl FnMut(i32) -> i32) -> Option<u32> {
+    let (min, max) = match block {
+        "mekanism:fluorite_ore" | "mekanism:deepslate_fluorite_ore" => (1, 4),
+        _ => return None,
+    };
+    Some(if min >= max {
+        min as u32
+    } else {
+        (next_int_bound(max - min + 1) + min) as u32
+    })
+}
+
+/// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
+/// circuitos e os quatro discos do QIO (`BaseTier.getTextColor`, `BaseTier.java:22-25`) e os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`).
+/// O Horizon lê o `item_name` só do dado de cada pilha, não do componente padrão do item, então a cor vai pelo hook do tooltip (`glue::tooltip`).
+pub fn name_color(item: &str) -> Option<u32> {
+    match item {
+        "mekanism:basic_control_circuit" | "mekanism:qio_drive_base" => Some(0x5FFFB8),
+        "mekanism:advanced_control_circuit" | "mekanism:qio_drive_hyper_dense" => Some(0xFF806A),
+        "mekanism:elite_control_circuit" | "mekanism:qio_drive_time_dilating" => Some(0x4BF8FF),
+        "mekanism:ultimate_control_circuit" | "mekanism:qio_drive_supermassive" => Some(0xF787FF),
+        "mekanism:pellet_antimatter" => Some(0xA460D9),
+        "mekanism:pellet_plutonium" => Some(0xCFCFCF),
+        "mekanism:pellet_polonium" => Some(0x559EFF),
+        _ => None,
     }
 }

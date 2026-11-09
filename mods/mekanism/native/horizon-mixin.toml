@@ -24,6 +24,15 @@ file = "crates/horizon-client/src/game.rs"
 name = "mekanism_glue"
 source = "glue.rs"
 
+# A aba criativa do Mekanism pede mais do que o Horizon faz com o arquivo `creative_tab/mekanism.json` (só ids): as pilhas de upgrade com o componente de tipo e o que o
+# original acrescenta às abas do vanilla (`MekanismCreativeTabs.addToExistingTabs`). A tabela e a conta são código puro, testado em `tests/creative_tabs.rs`; o
+# módulo vai para o arquivo do `Plan`, onde está `creative_tabs`, e o RETURN dele (injeção `creative_tabs`) a aplica à lista de abas já montada. Alvo cru, H43.
+[[module]]
+id = "creative-tabs-table"
+file = "crates/horizon-client/src/mod_content.rs"
+name = "mekanism_tabs"
+source = "creative_tabs_table.rs"
+
 [[injection]]
 id = "block_entity"
 hook = "block_entity"
@@ -440,4 +449,30 @@ kind = "HEAD"
 helper = "config_reloading.rs"
 bindings = [
   { name = "config", ty = "&crate::game::NativeConfigFile", value = "config" },
+]
+
+# `Plan::creative_tabs` monta as linhas da aba de cada mod e a do search depois de ler as dos mods. O RETURN dele põe as pilhas de upgrade com tipo no lugar do
+# `mekanism:upgrade` da aba do mod e acrescenta os itens do mod ao fim das abas do vanilla, como o evento `BuildCreativeModeTabContentsEvent` do original.
+# Alvo cru, H43.
+[[injection]]
+id = "creative_tabs"
+target = "horizon_client_lib::mod_content::Plan<'_>::creative_tabs"
+kind = "RETURN"
+helper = "creative_tabs.rs"
+bindings = [
+  { name = "doc", ty = "&mut J", value = "&mut *doc" },
+  { name = "result", ty = "Result<()>", value = "$value" },
+]
+
+# `BlockOre.getExpDrop` da fluorita (1 a 4, `OreType.FLUORITE`): o Horizon só sorteia experiência de minério pelo nome do vanilla (`Game::block_experience`, que
+# devolve 0 para um bloco de mod), então o RETURN dele troca o 0 pelo sorteio da fluorita. O gerador do nível está emprestado dentro do corpo
+# (o `return` do spawner), então o sorteio é o `Math.random()` do Java. Alvo cru, H42.
+[[injection]]
+id = "fluorite_experience"
+target = "horizon_client::game::Game<'_>::block_experience"
+kind = "RETURN"
+helper = "fluorite_experience.rs"
+bindings = [
+  { name = "name", ty = "&str", value = "name" },
+  { name = "value", ty = "u32", value = "$value" },
 ]
