@@ -2566,23 +2566,31 @@ pub(in crate::game) fn side_config_from_tag(tag: &Tag) -> Option<machinery_basis
     Some(attached)
 }
 
-/// `AttachedEjector.CODEC` como NBT: `input_color` (uma entrada por lado: o nome da cor, ou um compound vazio), `strict_input` e `color`
-/// (a cor de saída, só quando há).
+/// A chave da cor de saída no componente do item (`AttachedEjector.CODEC` usa `SerializationConstants.TYPES`, e não `COLOR`, que é
+/// a do NBT do tile): o original grava assim e o port copia.
+const EJECTOR_ITEM_COLOR: &str = "types";
+
+/// `AttachedEjector.CODEC` como NBT: `input_color` (uma entrada por lado: um compound vazio sem cor, ou o nome da cor, que numa lista
+/// com compounds o NBT guarda embrulhado num compound de chave vazia, como o arquivo do jogo faz), `strict_input` e `types` (a cor
+/// de saída, só quando há).
 pub(in crate::game) fn ejector_to_tag(attached: &machinery_basis_core::ejector::AttachedEjector) -> Tag {
     use machinery_basis_core::side_config::ENUM_COLOR_NAMES;
     let colors = attached
         .input_colors
         .iter()
-        .map(|color| match color {
-            Some(color) => Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(*color).min(17)])),
-            None => Tag::Compound(Compound::default()),
+        .map(|color| {
+            let mut wrapped = Compound::default();
+            if let Some(color) = color {
+                wrapped.insert(JavaString::from(""), Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(*color).min(17)])));
+            }
+            Tag::Compound(wrapped)
         })
         .collect();
     let mut root = Compound::default();
     root.insert(JavaString::from(INPUT_COLOR), Tag::List(colors));
     root.insert(JavaString::from(STRICT_INPUT), Tag::Byte(i8::from(attached.strict_input)));
     if let Some(color) = attached.output_color {
-        root.insert(JavaString::from(EJECTOR_COLOR), Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(color).min(17)])));
+        root.insert(JavaString::from(EJECTOR_ITEM_COLOR), Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(color).min(17)])));
     }
     Tag::Compound(root)
 }
@@ -2592,18 +2600,30 @@ pub(in crate::game) fn ejector_from_tag(tag: &Tag) -> Option<machinery_basis_cor
     let Tag::Compound(root) = tag else {
         return None;
     };
-    let color_of = |tag: &Tag| match tag {
-        Tag::String(name) => ENUM_COLOR_NAMES.iter().position(|known| *known == name.to_string_lossy()).map(|i| i as u8),
+    let color_of = |name: &JavaString| {
+        let name = name.to_string_lossy();
+        ENUM_COLOR_NAMES.iter().position(|known| *known == name).map(|index| index as u8)
+    };
+    // Um nome solto, ou embrulhado num compound de chave vazia.
+    let entry = |tag: &Tag| match tag {
+        Tag::String(name) => color_of(name),
+        Tag::Compound(wrapped) => match wrapped.get(&JavaString::from("")) {
+            Some(Tag::String(name)) => color_of(name),
+            _ => None,
+        },
         _ => None,
     };
     let mut attached = machinery_basis_core::ejector::AttachedEjector::DEFAULT;
     if let Some(Tag::List(colors)) = root.get(&JavaString::from(INPUT_COLOR)) {
         for (slot, color) in attached.input_colors.iter_mut().zip(colors.iter()) {
-            *slot = color_of(color);
+            *slot = entry(color);
         }
     }
     attached.strict_input = nbt_flag(root.get(&JavaString::from(STRICT_INPUT))).unwrap_or(false);
-    attached.output_color = root.get(&JavaString::from(EJECTOR_COLOR)).and_then(color_of);
+    attached.output_color = match root.get(&JavaString::from(EJECTOR_ITEM_COLOR)) {
+        Some(Tag::String(name)) => color_of(name),
+        _ => None,
+    };
     Some(attached)
 }
 

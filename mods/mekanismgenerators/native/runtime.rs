@@ -663,6 +663,29 @@ pub const MENU_SLOTS: usize = UPGRADE_SLOT + 2;
 pub const FUEL_SLOT: usize = 0;
 pub const ENERGY_SLOT: usize = 1;
 
+/// O slot de itens que `TileEntityHeatGenerator.getInitialInventory` põe em cada lado (`MekContainerHelper.forSide`, um
+/// `BasicContainerHolder`, sem configuração de lados: `TileEntityGenerator` não herda `TileEntityConfigurableMachine`): o combustível na
+/// frente, na esquerda, nas costas, no alto e na base, e o slot de energia só na direita. É por instância porque os lados são relativos
+/// à frente do bloco.
+pub fn item_slot_of(
+    front: machinery_basis_core::sides::Face,
+    face: machinery_basis_core::sides::Face,
+) -> usize {
+    use machinery_basis_core::side_config::RelativeSide;
+    match RelativeSide::from_directions(front, face) {
+        RelativeSide::Right => ENERGY_SLOT,
+        _ => FUEL_SLOT,
+    }
+}
+
+/// A capability de energia do gerador (`TileEntityGenerator.ENERGY_SIDES`, `BasicSingleHolder`): só a frente.
+pub fn has_energy_capability(
+    front: machinery_basis_core::sides::Face,
+    face: machinery_basis_core::sides::Face,
+) -> bool {
+    face == front
+}
+
 /// Os slots do contêiner do menu, na ordem em que o Java os adiciona (`inventoryContainerSlots`): os dois virtuais da janela de upgrades
 /// vêm ANTES dos do gerador (`MekanismTileContainer.addSlots`: "add them before the main inventory to make sure they take priority in
 /// targeting"), e a prioridade do shift-clique vem daí. No Horizon eles ficam no fim, para não deslocar o NBT de mundos antigos.

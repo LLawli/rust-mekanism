@@ -6,6 +6,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- A configuração de lados por instância das quatro máquinas (`TileComponentConfig`, `ConfigInfo`, `DataType`, `TransmissionType`, `ISlotInfo`, `RelativeSide`, `AttachedSideConfig`, `TileEntityConfigurableMachine`) e o ejetor guiado por ela
+  (`TileComponentEjector`: o modo de ejetar, os lados de saída, as cores do filtro, `strictInput`, o atraso de meio segundo). Cada lado nasce em `NONE`, e só o item que põe a máquina aplica o padrão dele
+  (`AttachedSideConfig.ELECTRIC_MACHINE` e `ADVANCED_MACHINE`): uma máquina posta por `setblock` não aceita nem entrega por face nenhuma, como no original. A configuração é salva no NBT do tile com as chaves do original
+  (`component_config`: `eject<n>` e `config<n>`; `component_ejector`) e no item pelos componentes `mekanism:side_config` e `mekanism:ejector`, então sobrevive a quebrar e repor e a sair e voltar ao mundo; os hoppers vizinhos
+  seguem o `DataType` de cada face pela frente de agora (o giro do bloco os acompanha), e a capability de energia responde por instância, pelas faces da configuração (injeção `energy_capacity`, H1), então cabo e gerador só entregam pelas faces em
+  `INPUT`. O par `writeConfigurationData`/`setConfigurationData` está pronto para o Configurator e o cartão de configuração. A tela de lados, o Configurator e as abas de configuração são de outras frentes.
 - O brilho de encantamento no equipamento vestido (`stack.hasFoil()`): o MekaSuit leva o brilho da armadura (`armorCutoutNoCullGlint`, a textura `enchanted_glint_armor` em escala 0,16, em toda peça, opaca, brilhante e translúcida) e o jetpack, o tanque de
   mergulho e as Free Runners o brilho do item (`itemCutoutGlint`, `enchanted_glint_item` em escala 8), no jogador, no armor stand e nos mobs. O original amostra a textura do brilho com a UV0 do quad no atlas de itens, então onde cada sprite cai
   no atlas decide que parte da peça brilha: o port usa o retângulo de cada sprite no atlas do original (`rastros/armor_atlas.json`). Os tipos de desenho e as escalas saem do texto do Java e do Minecraft (`rastros/armor_gear.json`, `foil`).
@@ -246,6 +252,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Changed
 
+- Os comandos `mekanism_eject` e `mekanism_eject_face` saem: o ejetor liga e escolhe os lados pelo NBT `component_config` do tile (por exemplo
+  `/data merge block x y z {component_config:{eject3:1b,config3:[I;0,0,4,0,0,0]}}`, a direita em `OUTPUT`), que é o que o original grava. `FaceSlots` e `Sides` deixam de ser declarados à mão por bloco: saem do `DataType` de cada lado.
 - A mensagem de receita incompleta (decisão 13) vale como no original: com o conteúdo de craft e de recurso completo, as 40 receitas que só faltavam por conteúdo (`CONTENT_GAPS`) viraram 0 e a
   lista saiu; qualquer receita incompleta dos tipos do Mekanism que o port lê levanta a mensagem. As 8 receitas que o Horizon recusava por item desconhecido também deixaram de existir.
 - O arquivo de cliente e o de configuração local passam da pasta `config/mekanism/` para a do original, `config/Mekanism/` (o M maiúsculo, `MekanismConfigHelper.CONFIG_DIR`): `client.toml` e `local.toml`. O original não migra nada, então o port também não: quem tinha as posições

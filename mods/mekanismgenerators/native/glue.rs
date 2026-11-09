@@ -328,7 +328,10 @@ fn sides(front: Face) -> Sides {
         input: [true; 6],
         output: [false; 6],
     };
-    sides.input[front.right_of() as usize] = false;
+    // O slot de combustível é o dos lados menos a direita (`rules::item_slot_of`); a direita é do slot de energia.
+    for face in Face::ALL {
+        sides.input[face as usize] = rules::item_slot_of(front, face) == FUEL_SLOT;
+    }
     sides.output[Face::Down as usize] = true;
     sides
 }
