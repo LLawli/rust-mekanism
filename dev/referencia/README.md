@@ -348,3 +348,14 @@ configuração de inicialização da armadura e o `ArmorMaterials.NETHERITE`, ma
 de hazmat e do conta-gotas citam). `mods/mekanism/tests/equipment_content.rs` os repete contra o conteúdo do port. `testes/CenaEquip.java` põe o jogador de frente para a câmera do cliente oficial com as peças de armadura de cada etapa
 (`cenas/equip.txt`: `vestir nome=... pecas=slot:item,...`) e tira um print por etapa; `oficial_equipamento.sh CenaEquip.java cenas/equip.txt PASTA` (no desktop, com a `mekanism-ref.lock`, `lim-build` e o gamescope headless e mudo) a roda e
 devolve a árvore como estava. No port, `horizon2/h2_equipamento.py items|tab|armor|table|configurator` (`H_NAME=horizon`) dá os 37 itens, tira os prints das abas criativas e da armadura vestida e confere duas receitas de mesa do traje de hazmat.
+
+`armadura_rastros.py` (frente `armadura-vestida`) lê do texto do Java do cliente do original os números do desenho vestido e grava `rastros/armor_gear.json` (`MekaSuitArmor`: a translação de base, o deslocamento de cada
+`ModelPos`, a translação do bebê, os pares de peças e a ordem de `EquipmentSlot`; `ChestArmor` e `FreeRunnerArmor`: cada `translate` e `scale`; a rotação de PI em Z do estado do modelo OBJ; o que o
+`registerRenderStateModifiers` esconde de cada peça e a capa; as partes do OBJ, com o material e os quads de cada uma) e `rastros/armor_assets.json` (o hash dos arquivos copiados: o OBJ, o `.mtl`, o `.json` e as
+texturas). Cada número sai de uma expressão regular que tem de achar exatamente uma ocorrência: se o Java mudar, o script para. `armadura_modelos.py` gera os 22 modelos avulsos do traje
+(`models/entity/mekasuit/*.json`, um por grupo que `createQuads` pode montar) a partir do OBJ do conteúdo. `testes/CenaEquip.java` ganhou etapas de `camera=front|back|first|inv`, `entidades=1` (um armor stand à
+direita e um husk à esquerda com as mesmas peças, `giro=` graus, `bebe=1`), `parede=1` (chão e parede de concreto preto, o mesmo fundo nos dois jogos) e a linha `grupos`, que roda `MekaSuitArmor.createQuads` (por
+reflexão, sem módulos) para cada peça do traje e cada combinação de peças vestidas e grava `armor_groups.jsonl`, os quads opacos, brilhantes e translúcidos de cada posição, contando também os quads com direção de
+descarte (o `automaticCulling` do OBJ dá `cull` ao que cai no limite do bloco; a entidade os desenha todos). `cenas/equip_vestida.txt` é o roteiro (18 etapas); `oficial_equipamento.sh` copia os prints e o
+`armor_groups.jsonl`. No port, `horizon2/h2_armadura_vestida.py CENA PASTA [NOME ...]` (`H_NAME=horizon`) repete as mesmas etapas pelo `horizon-ctl` (F5 para a câmera, `item replace` nas três figuras, o mesmo
+chão e a mesma parede). `mods/mekanism/tests/worn_gear.rs` confere a tabela `mekanism_rules::worn_gear` contra esses rastros e contra o OBJ.

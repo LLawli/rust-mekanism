@@ -1,5 +1,5 @@
 #!/bin/bash
-# Roda a `CenaEquip` no cliente oficial (`runGameTestClient`, num gamescope headless: nenhuma janela abre no desktop) com uma lista de etapas de armadura vestida e
+# Roda a `CenaEquip` (a linha `grupos` do arquivo de etapas grava `armor_groups.jsonl`, copiado junto dos prints) no cliente oficial (`runGameTestClient`, num gamescope headless: nenhuma janela abre no desktop) com uma lista de etapas de armadura vestida e
 # devolve a árvore como estava: a `CenaEquip.java` e o `cena-equip` saem, o `cena-cabo` e o `options.txt` voltam. Roda no desktop.
 # Uso: oficial_equipamento.sh CenaEquip.java cenas/equip.txt PASTA_DOS_PRINTS
 # Pega `~/.cache/rust-mekanism/mekanism-ref.lock` (o checkout do original e o gradle) com `mkdir`, espera em laço de `mkdir` a cada 5 s (nunca `pgrep`) e a solta ao
@@ -17,7 +17,7 @@ until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
 echo "$DONO" > "$LOCK/dono"
 echo "TRAVA $(date +%T)"
 restore() {
-  rm -f "$N/CenaEquip.java" "$R/cena-equip" "$R"/screenshots/equip_oficial_*.png
+  rm -f "$N/CenaEquip.java" "$R/cena-equip" "$R/armor_groups.jsonl" "$R"/screenshots/equip_oficial_*.png
   [ -e "$C/cena-cabo.antes-equip" ] && mv "$C/cena-cabo.antes-equip" "$R/cena-cabo"
   [ -e "$C/options.txt.antes-equip" ] && cp "$C/options.txt.antes-equip" "$R/options.txt" && rm -f "$C/options.txt.antes-equip"
   rm -rf "$LOCK"
@@ -36,5 +36,5 @@ cp "$CENA" "$R/cena-equip"
 JANELA="-W 1920 -H 1080 -w 1920 -h 1080"
 "$C/lim-build" env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
 echo "EXIT $?"
-mkdir -p "$PRINTS"; cp "$R"/screenshots/equip_oficial_*.png "$PRINTS"/ 2>/dev/null
+mkdir -p "$PRINTS"; cp "$R"/screenshots/equip_oficial_*.png "$R/armor_groups.jsonl" "$PRINTS"/ 2>/dev/null
 ls "$PRINTS"

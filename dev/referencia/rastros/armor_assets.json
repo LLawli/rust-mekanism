@@ -1,0 +1,9 @@
+{
+ "assets/mekanism/models/entity/mekasuit.json": "eccba585f6e58791:372",
+ "assets/mekanism/models/entity/mekasuit.mtl": "bae1ac5308da15cb:312",
+ "assets/mekanism/models/entity/mekasuit.obj": "8dbabc3f5d8cfae5:128970",
+ "assets/mekanism/textures/entity/armor/mekasuit_armor_body.png": "8e0210758c8411b1:686",
+ "assets/mekanism/textures/entity/armor/mekasuit_armor_exoskeleton.png": "65c7ee5f4c1ef552:648",
+ "assets/mekanism/textures/entity/armor/mekasuit_armor_helmet.png": "881566faa7fb889f:1100",
+ "assets/mekanism/textures/entity/armor/mekasuit_player.png": "7d8def10beb5ea2d:552"
+}

@@ -1,0 +1,1031 @@
+{
+ "mekasuit": {
+  "base_translation": [
+   -1.0,
+   0.5,
+   0.0
+  ],
+  "positions": [
+   {
+    "name": "HEAD",
+    "add": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "contains": "head"
+   },
+   {
+    "name": "BODY",
+    "add": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "contains": "body"
+   },
+   {
+    "name": "LEFT_ARM",
+    "add": [
+     -0.3125,
+     -0.125,
+     0.0
+    ],
+    "contains": "left_arm"
+   },
+   {
+    "name": "RIGHT_ARM",
+    "add": [
+     0.3125,
+     -0.125,
+     0.0
+    ],
+    "contains": "right_arm"
+   },
+   {
+    "name": "LEFT_LEG",
+    "add": [
+     -0.125,
+     -0.75,
+     0.0
+    ],
+    "contains": "left_leg"
+   },
+   {
+    "name": "RIGHT_LEG",
+    "add": [
+     0.125,
+     -0.75,
+     0.0
+    ],
+    "contains": "right_leg"
+   },
+   {
+    "name": "LEFT_WING",
+    "add": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "contains": "left_wing"
+   },
+   {
+    "name": "RIGHT_WING",
+    "add": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "contains": "right_wing"
+   }
+  ],
+  "baby_scales_all_but_head": true,
+  "baby_translation": {
+   "BODY": [
+    0.0,
+    -0.55,
+    0.0
+   ],
+   "LEFT_ARM": [
+    -0.15625,
+    0.0,
+    0.0
+   ],
+   "LEFT_WING": [
+    -0.15625,
+    0.0,
+    0.0
+   ],
+   "RIGHT_ARM": [
+    0.15625,
+    0.0,
+    0.0
+   ],
+   "RIGHT_WING": [
+    0.15625,
+    0.0,
+    0.0
+   ],
+   "LEFT_LEG": [
+    -0.0625,
+    -0.25,
+    0.0
+   ],
+   "RIGHT_LEG": [
+    0.0625,
+    -0.25,
+    0.0
+   ]
+  },
+  "instances": {
+   "HELMET": {
+    "slot": "HEAD",
+    "adjacent": "CHEST"
+   },
+   "BODYARMOR": {
+    "slot": "CHEST",
+    "adjacent": "HEAD"
+   },
+   "PANTS": {
+    "slot": "LEGS",
+    "adjacent": "FEET"
+   },
+   "BOOTS": {
+    "slot": "FEET",
+    "adjacent": "LEGS"
+   }
+  },
+  "equipment_check": {
+   "HEAD": "helmet",
+   "CHEST": "chest",
+   "LEGS": "leggings",
+   "FEET": "boots"
+  },
+  "tags": {
+   "inactive": "inactive_",
+   "exclusive": "excl_",
+   "shared": "shared_",
+   "glass": "glass",
+   "emissive": "_led"
+  }
+ },
+ "chest": {
+  "jetpack": {
+   "baby": [
+    0.0,
+    -0.05,
+    0.0
+   ],
+   "adult": [
+    0.0,
+    0.3,
+    0.0
+   ],
+   "translate": [
+    0.0,
+    0.0,
+    0.145
+   ],
+   "scale": [
+    1.02,
+    -1.02,
+    -1.02
+   ]
+  },
+  "scuba_tank": {
+   "baby": null,
+   "adult": [
+    0.0,
+    0.41,
+    0.0
+   ],
+   "translate": [
+    0.0,
+    0.0,
+    0.28
+   ],
+   "scale": [
+    1.0,
+    -1.0,
+    -1.0
+   ]
+  }
+ },
+ "free_runners": {
+  "baby": {
+   "scale_age": true,
+   "translate": [
+    0.0,
+    -0.2,
+    0.0
+   ]
+  },
+  "xo": {
+   "left": -0.65,
+   "right": -0.375
+  },
+  "translate_z": 0.525,
+  "translate_y": 1.0,
+  "scale": [
+   1.02,
+   -1.02,
+   -1.02
+  ],
+  "models": [
+   [
+    "MekanismModelCache.INSTANCE.LEFT_FREE_RUNNER",
+    "MekanismModelCache.INSTANCE.RIGHT_FREE_RUNNER"
+   ],
+   [
+    "MekanismModelCache.INSTANCE.LEFT_FREE_RUNNER_ARMORED",
+    "MekanismModelCache.INSTANCE.RIGHT_FREE_RUNNER_ARMORED"
+   ]
+  ]
+ },
+ "models": {
+  "left_free_runner": "item/left_free_runner",
+  "left_free_runner_armored": "item/left_free_runner_armored",
+  "right_free_runner": "item/right_free_runner",
+  "right_free_runner_armored": "item/right_free_runner_armored",
+  "mekasuit": "entity/mekasuit"
+ },
+ "registration": {
+  "mekasuit_helmet": {
+   "hides": [
+    "head"
+   ],
+   "hides_cape": false
+  },
+  "mekasuit_bodyarmor": {
+   "hides": [
+    "body",
+    "left_arm",
+    "right_arm"
+   ],
+   "hides_cape": true
+  },
+  "jetpack_or_scuba_tank": {
+   "hides": [],
+   "hides_cape": true
+  },
+  "mekasuit_pants": {
+   "hides": [
+    "left_leg",
+    "right_leg"
+   ],
+   "hides_cape": false
+  }
+ },
+ "obj_state": {
+  "rotation": "ZP",
+  "radians": "PI"
+ },
+ "equipment_slots": [
+  "MAINHAND",
+  "OFFHAND",
+  "FEET",
+  "LEGS",
+  "CHEST",
+  "HEAD",
+  "BODY",
+  "SADDLE"
+ ],
+ "obj_parts": [
+  {
+   "name": "chest_body",
+   "material": "player",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm",
+   "material": "player",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg",
+   "material": "player",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg",
+   "material": "player",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm",
+   "material": "player",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_main",
+   "material": "helmet",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_top",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_left_ear",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_left1",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_left2",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_rail2",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_rail1",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_center2",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_center1",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_center3",
+   "material": "helmet",
+   "quads": 3,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_center4",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_chin1",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_ventilator",
+   "material": "helmet",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_chin2",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_visor_lower",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_visor_upper",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_led1",
+   "material": "helmet_led",
+   "quads": 3,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_visor_left",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_visor_right",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_right2",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_right1",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_right_ear",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_led2",
+   "material": "helmet_led",
+   "quads": 3,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_back",
+   "material": "helmet",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_rail3",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "helmet_head_rail4",
+   "material": "helmet",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_lower_plate2",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_satchel1",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_lower_plate1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_satchel2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_satchel3",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_back_exo_brace_spine",
+   "material": "exoskeleton",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_back_exo_brace_mid",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_back_exo_brace_upper",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_back_exo_brace_pack",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_shoulder_exo_brace_left",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_shoulder_exo_brace_right",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_plate1",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_plate4",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_plate5",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_plate2",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_brace1",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_waist",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_plate3",
+   "material": "body",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_brace2",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_brace3",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_led1",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_led2",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_body_neck",
+   "material": "helmet",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_exo_brace1",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_exo_brace2",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_exo_brace3",
+   "material": "exoskeleton",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_upper_plate",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_middle_plate1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_brace1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_middle_plate2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_lower_plate",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger6",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger3",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger4",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_finger5",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_led1",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_left_arm_brace2",
+   "material": "body",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_exo_brace1",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_exo_brace2",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_exo_brace3",
+   "material": "exoskeleton",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_led1",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_upper_plate",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_lower_plate",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_middle_plate1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_middle_plate2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_brace1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_brace2",
+   "material": "body",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger3",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger4",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger5",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "chest_right_arm_finger6",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "shared_chest_leggings_body_brace2",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "shared_chest_leggings_body_brace1",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_lower_plate2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_lower_plate3",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_upper_plate1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_upper_plate2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_led1",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_exo_frame1",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_exo_joint",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_exo_brace3",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_exo_brace2",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_right_leg_led2",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_shin_plate",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_plate1",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_plate2",
+   "material": "body",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_plate3",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "shared_boots_leggings_right_leg_exo_frame",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_base1",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "excl_boots_right_leg_shin_plate",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "shared_boots_leggings_right_leg_exo_plate",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_right_leg_base2",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_exo_frame1",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_exo_joint",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_exo_brace2",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_exo_brace3",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_lower_plate3",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_upper_plate1",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_upper_plate2",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_lower_plate2",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_led1",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "leggings_left_leg_led2",
+   "material": "body_led",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "shared_boots_leggings_left_leg_exo_frame",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "shared_boots_leggings_left_leg_exo_plate",
+   "material": "exoskeleton",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_base2",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_shin_plate",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_plate1",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_plate3",
+   "material": "body",
+   "quads": 5,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_plate2",
+   "material": "body",
+   "quads": 4,
+   "triangles": 0
+  },
+  {
+   "name": "excl_boots_left_leg_shin_plate",
+   "material": "body",
+   "quads": 6,
+   "triangles": 0
+  },
+  {
+   "name": "boots_left_leg_base1",
+   "material": "exoskeleton",
+   "quads": 6,
+   "triangles": 0
+  }
+ ]
+}
