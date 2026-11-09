@@ -65,8 +65,9 @@ def shot(name, blocks, by_id, active=False, lava=False, alternate=False):
         cmds.append(f"setblock {X0 + i * spacing} {Y} {Z} {NS}:{block}{state(by_id[block], active or (alternate and nth == 1), lava, nth)}")
     width = (len(blocks) - 1) * spacing
     cx = X0 + width / 2 + 0.5
-    distance = max(3.5, width * 0.45 + 2.5)
-    aim = Y + (2.0 if name.startswith("geradores_grandes") else 0.6)
+    # O Advanced Solar Generator e o Wind Generator passam de 3 e de 4,7 blocos de altura: de mais longe (9 blocos), olhando a base, a torre entra quase toda no quadro.
+    distance = max(3.5, width * 0.45 + 2.5, 9 if name.startswith("geradores_grandes") else 0)
+    aim = Y + 0.6
     pitch = round(math.degrees(math.atan2(EYE - aim, distance)), 1)
     return {"name": name, "cmds": cmds, "tp": f"{cx} {EYE} {Z - distance} 0 {pitch}"}
 
@@ -88,8 +89,9 @@ def main():
         shots.append(shot(family, blocks, by_id, alternate=family == "fusao"))
         if any("active" in {p["name"] for p in by_id[b]["properties"]} for b in blocks) and family != "fusao":
             shots.append(shot(family + "_ativos", blocks, by_id, active=True))
-    shots.append(shot("geradores_lava", FAMILIES["geradores"], by_id, active=True, lava=True))
     shots.append(glass_shot())
+    # A lava dentro do bloco queima o chão do original (o `fluid_logged=lava` deixa chão queimado): o tiro vai por último, para não sujar os outros.
+    shots.append(shot("geradores_lava", FAMILIES["geradores"], by_id, active=True, lava=True))
     spec = {
         "setup": ["difficulty peaceful", "time set 6000", "weather clear", "gamemode creative"]
         + [f"fill {X0 - 8 + 24 * i} {Y} {Z - 30} {X0 + 15 + 24 * i} {Y + 8} {Z + 8} minecraft:air" for i in range(3)],

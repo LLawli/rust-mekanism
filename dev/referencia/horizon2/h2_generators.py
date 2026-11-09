@@ -6,7 +6,7 @@ Uso: H_NAME=horizon h2_generators.py give|estados|luz|colocar|tags|mesa NOME|tab
 - estados: cada bloco, em até cinco estados do original (o primeiro, o último, `active=true`, cada `facing`, cada `mode`), é posto por `setblock` e lido de volta por `block`;
 - luz: a luz de cada estado (`ctl light`), contra o original (`rastros/blocos_generators.jsonl`);
 - colocar: cada gerador posto como jogador (guinada, inclinação, face e fluido do lugar) e o `facing` e o `fluid_logged` lidos de volta;
-- tags: as tags de bloco que a datagen do Generators escreve valem em jogo (`execute if block ... #tag`), inclusive as que o Generators acrescenta às do Mekanism e as do vanilla;
+- tags: as tags do vanilla que a datagen do Generators amplia valem em jogo (`execute if block ... #tag`; o comando não conhece as tags de mod);
 - mesa NOME: a receita de mesa `data/mekanismgenerators/recipe/NOME.json`, posta na grade como um jogador;
 - tab: prints da aba do Generators e do fim das abas do vanilla em que ele acrescenta itens;
 - cena: o roteiro `cenas/generators.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`).
@@ -80,8 +80,8 @@ def luz():
     for name, row in sorted(scope().items()):
         seen = set()
         for state in row["states"]:
-            key = (state["props"].get("active"), state["light"], state["props"].get("fluid_logged"))
-            if key in seen:
+            key = (state["props"].get("active"), state["light"])
+            if state["props"].get("fluid_logged") in ("water", "lava") or key in seen:
                 continue
             seen.add(key)
             (lit if state["light"] > 0 else dark).append((name, state["props"], state["light"]))
@@ -89,13 +89,22 @@ def luz():
     bad = []
 
     def medir(casos, posicoes):
-        for (name, props, _), pos in zip(casos, posicoes):
-            h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} {NS}:{name}{hb.state_text(props)}")
-        time.sleep(3.0)
-        for (name, props, want), pos in zip(casos, posicoes):
-            got = json.loads(h.ctl("light", *map(str, pos), *map(str, pos)))["block"]
-            if int(got, 16) != want:
-                bad.append((name, props, want, got))
+        """Em levas de uma fileira da grade: o jogador vai para o meio dela (fora da distância de carga o `setblock` não pega e a luz lê `.`), os blocos se põem, e a luz se lê depois."""
+        fileiras = {}
+        for item in zip(casos, posicoes):
+            fileiras.setdefault(item[1][2], []).append(item)
+        for z, fila in sorted(fileiras.items()):
+            meio = sum(pos[0] for _, pos in fila) // len(fila)
+            h.ctl("tp", str(meio), "-58", str(z))
+            h.ctl("wait-ready")
+            time.sleep(1.5)
+            for (name, props, _), pos in fila:
+                h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} {NS}:{name}{hb.state_text(props)}")
+            time.sleep(3.0)
+            for (name, props, want), pos in fila:
+                got = json.loads(h.ctl("light", *map(str, pos), *map(str, pos)))["block"]
+                if got == "." or int(got, 16) != want:
+                    bad.append((name, props, want, got))
 
     medir(dark, [(40 + (i % 30) * 4, -60, 40 + (i // 30) * 4) for i in range(len(dark))])
     medir(lit, [(40 + (i % 8) * 16, -60, 200 + (i // 8) * 16) for i in range(len(lit))])
@@ -155,14 +164,12 @@ def colocar():
 def tags():
     """`execute if block` com cada tag de bloco da datagen: o bloco posto está nela. Lê o resultado do chat do comando."""
     datagen = json.load(open(os.path.join(ROOT, "dev/referencia/rastros/generators_datagen.json")))
-    cases = [("mekanismgenerators:turbine_rotor", "mekanismgenerators:structures/turbine"), ("mekanismgenerators:turbine_rotor", "mekanism:structures"),
-             ("mekanismgenerators:fission_reactor_casing", "mekanismgenerators:structures/reactors"), ("mekanismgenerators:fission_reactor_casing", "mekanism:structures"),
-             ("mekanismgenerators:fusion_reactor_frame", "mekanismgenerators:structures/reactors/fusion"), ("mekanismgenerators:reactor_glass", "mekanism:structures/common"),
-             ("mekanismgenerators:reactor_glass", "minecraft:impermeable"), ("mekanismgenerators:wind_generator", "minecraft:mineable/pickaxe"),
+    # O comando `execute if block #tag` só conhece as tags do vanilla (medido: `#mekanism:factories`, `#c:storage_blocks/osmium` e `#mekanismgenerators:structures/turbine` dão
+    # "Unknown block tag" mesmo nas que o Mekanism já tinha); as tags do mod ficam para `tests/generators_content.rs`.
+    cases = [("mekanismgenerators:reactor_glass", "minecraft:impermeable"), ("mekanismgenerators:wind_generator", "minecraft:mineable/pickaxe"),
              ("mekanismgenerators:laser_focus_matrix", "minecraft:dangerous_for_teleportation"), ("mekanismgenerators:control_rod_assembly", "minecraft:dangerous_for_teleportation"),
              ("mekanismgenerators:solar_generator", "minecraft:blocks_motion_no_leaves"), ("mekanismgenerators:bioethanol", "minecraft:replaceable")]
-    negative = [("mekanismgenerators:turbine_rotor", "mekanismgenerators:structures/reactors"), ("mekanismgenerators:solar_generator", "mekanism:structures"),
-                ("minecraft:stone", "mekanism:structures")]
+    negative = [("mekanismgenerators:turbine_rotor", "minecraft:impermeable"), ("mekanismgenerators:turbine_casing", "minecraft:dangerous_for_teleportation"), ("minecraft:stone", "minecraft:impermeable")]
     bad = []
     for block, tag in cases + negative:
         h.command(f"setblock 70 -60 70 {block}" if "bioethanol" not in block else "setblock 70 -60 70 mekanismgenerators:bioethanol")
@@ -280,8 +287,12 @@ def cena(out):
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas/generators.json")))
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
     h.command("tick unfreeze")
+    # Só do port: o mundo novo nasce com mobs (queimam à luz do dia e entram no print); o original não tem nenhum.
+    for cmd in ("gamerule spawn_mobs false", "gamerule advance_time false", "gamerule advance_weather false", "kill @e[type=!minecraft:player]"):
+        h.command(cmd)
     for cmd in spec["setup"]:
         h.command(cmd)
+    h.command("kill @e[type=!minecraft:player]")
     time.sleep(1.0)
     h.ctl("key", "f1", "tap")
     for s in spec["shots"]:

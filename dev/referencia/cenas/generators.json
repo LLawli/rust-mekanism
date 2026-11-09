@@ -34,7 +34,7 @@
     "setblock 60 -60 82 mekanismgenerators:advanced_solar_generator[facing=north,active=false]",
     "setblock 64 -60 82 mekanismgenerators:wind_generator[facing=north,active=false]"
    ],
-   "tp": "62.5 -58.38 77.7 0 -5.1"
+   "tp": "62.5 -58.38 73 0 6.5"
   },
   {
    "name": "geradores_grandes_ativos",
@@ -42,7 +42,7 @@
     "setblock 60 -60 82 mekanismgenerators:advanced_solar_generator[facing=north,active=true]",
     "setblock 64 -60 82 mekanismgenerators:wind_generator[facing=north,active=true]"
    ],
-   "tp": "62.5 -58.38 77.7 0 -5.1"
+   "tp": "62.5 -58.38 73 0 6.5"
   },
   {
    "name": "turbina",
@@ -85,15 +85,6 @@
    "tp": "64.0 -58.38 76.35 0 10.2"
   },
   {
-   "name": "geradores_lava",
-   "cmds": [
-    "setblock 60 -60 82 mekanismgenerators:solar_generator[facing=north,active=true,fluid_logged=lava]",
-    "setblock 61 -60 82 mekanismgenerators:gas_burning_generator[facing=north,active=true,fluid_logged=lava]",
-    "setblock 62 -60 82 mekanismgenerators:bio_generator[facing=north,active=true,fluid_logged=lava]"
-   ],
-   "tp": "61.5 -58.38 78.5 0 16.2"
-  },
-  {
    "name": "vidro",
    "cmds": [
     "fill 59 -60 83 63 -57 83 minecraft:oak_planks",
@@ -101,6 +92,15 @@
     "setblock 61 -59 82 mekanismgenerators:laser_focus_matrix"
    ],
    "tp": "61.5 -57.88 77 0 8"
+  },
+  {
+   "name": "geradores_lava",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:solar_generator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 61 -60 82 mekanismgenerators:gas_burning_generator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 62 -60 82 mekanismgenerators:bio_generator[facing=north,active=true,fluid_logged=lava]"
+   ],
+   "tp": "61.5 -58.38 78.5 0 16.2"
   }
  ]
 }
