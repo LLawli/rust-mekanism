@@ -244,6 +244,8 @@ def creative_order():
 NEOFORGE_TAGS = ["dyes/black", "dyes/orange", "glass_panes", "glass_panes/colorless"]
 # E as das receitas de mesa dos blocos de máquina (frente `blocos-maquinas`): o diamante, o resíduo de resina, o balde vazio, o baú e o barril de madeira.
 NEOFORGE_TAGS += ["storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden"]
+# E as das receitas do disperso de pressão e dos dois transportadores especiais (frente `blocos-estrutura`): as barras, com as de cobre e de ferro (a aninhada `#minecraft:bars` o Horizon tem).
+NEOFORGE_TAGS += ["bars", "bars/copper", "bars/iron"]
 
 
 def neoforge_tags_rastro():

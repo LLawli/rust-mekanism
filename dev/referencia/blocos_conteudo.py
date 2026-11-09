@@ -865,7 +865,7 @@ NEOFORGE_JAR = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/neoforge-26.3.0.1
 # As tags de item `c:` do NeoForge (o jar `neoforge-26.3.0.100`) que as receitas de mesa dos blocos de máquina citam e o port ainda não tinha, e a do Mekanism que o
 # Combiner cita. O balde vazio, o baú e o barril de madeira (Electric Pump, Osmium Compressor, Personal Chest e Barrel, Formulaic Assemblicator, Modification Station e Oredictionificator) também são do NeoForge, como as da
 # decisão 19: o arquivo é o do jar, byte a byte.
-NEOFORGE_TAGS = ["glass_panes", "glass_panes/colorless", "storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden"]
+NEOFORGE_TAGS = ["glass_panes", "glass_panes/colorless", "storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden", "bars", "bars/copper", "bars/iron"]
 DATAGEN_TAGS = ["mekanism/tags/item/stone_crafting_materials.json"]
 
 
