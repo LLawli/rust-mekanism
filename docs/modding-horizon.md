@@ -333,7 +333,7 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
   instância, e são direções absolutas.
 - Data slots de menu viajam em 16 bits. Valor maior precisa ser dividido em dois slots ou ir por outro canal.
 - Energia é `i32`, gravada no NBT como o int `energy`.
-- Fluidos de mod existem em tanques, mas ainda não como blocos no mundo nem em baldes.
+- Fluidos de mod existem em tanques, mas ainda não como blocos no mundo nem em baldes: o port faz um bloco de líquido por fluido com o fluxo na lib (`machinery_basis_core::liquid`, H47 em `docs/injecoes-horizon.md`).
 - O tick de block entity só roda no servidor. A tela lê data slots, o update tag ou `native_screen_extra_data`.
 - `native_menu_slot_rules` roda no crate da biblioteca (`horizon-client-lib`), sem `Game`, e não alcança os módulos do mod nem o crate `[[crate]]`
   (que é dependência do `horizon-client`, não da biblioteca): a injeção por `hook =` não compila (`unlinked crate`). O que alcança é o crate `[api]`:

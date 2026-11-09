@@ -32,7 +32,7 @@ Sugestão de primeiro marco: os passos 1 a 3, porque exercitam mundo, energia, m
 | Receitas de crafting e fornalha | Formato vanilla | Coberto; as tags `c:` também são aceitas |
 | `mekanism:enriching`, `crushing` etc. | `native_recipes_of_type` lê os arquivos do `.hmod`; a máquina aplica | Coberto; o JEI e o livro de receitas ficam de fora |
 | Energia | `ModEnergyBuffer`, em `i32` | Coberto; o maior cubo não criativo (256.000.000) cabe em `i32` |
-| Tanques de fluido | `ModFluidTanks` | Coberto para tanques; sem bloco nem balde de fluido de mod |
+| Tanques de fluido | `ModFluidTanks` | Coberto para tanques; o bloco de líquido e o balde de cada fluido existem como bloco com `level` (frente `fluidos`, H47): o motor não tem fluido de mod |
 | Menus e telas | Tipo de menu próprio, `native_screen`, `native_sprite` | Coberto |
 | Cabos | `connects_to` e `thickness` dão a forma | Coberto: a rede é da `machinery_basis`; falta o item e o fluido |
 | Químicos (`#mekanism:redstone`, `#mekanism:carbon`) | Não existe | Recursos e tags da `machinery_basis`, com o tanque no NBT da máquina |

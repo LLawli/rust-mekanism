@@ -126,6 +126,12 @@ com `Missing tag`) em `src/src/gameTest/resources/data/` só na hora de rodar. `
 é o arquivo de `src/datagen/generated/.../context_int_provider/cooking/time_bio_fuel.json` do original, que o `bio_fuel.json` do port repete dentro do componente. Em jogo (`H_NAME=horizon`), `horizon2/h2_bio_fuel.py furnace|blast|heat` repete os três rastros do `bio_fuel` com `tick freeze` e `tick step 1`, e `horizon2/h2_infuser_arrival.py` aceita `H_POS=x,y,z` (a posição da
 máquina num mundo que não é plano) e o modo `full_tank`. `horizon2/abrir_horizon.sh MUNDO` abre o jogo no container `horizon` com o gamescope **headless** e o volume mestre em 0 (o chamador restaura o `options.txt`). O `MachineTraceTest.java` do `main` tinha uma linha `=======` solta (resto de um merge, linha 3319) que o deixava sem compilar; saiu.
 
+`testes/FluidsTraceTest.java` (frente `fluidos`, 2026-11-09) grava `fluids.jsonl` (uma linha por fluido, 22: o `FluidType` com todos os getters, os números do `BaseFlowingFluid`, o `LiquidBlock` com os 16 níveis, a luz medida no mundo e o balde com os componentes e o dispensador),
+`fluids_bucket.jsonl` (o balde cheio e o vazio em mundos pequenos, sobrevivência e criativo, o dispensador e o balde de pasta nutritiva bebido), `fluids_flow_<cenário>.jsonl` (13 cenários, as células que mudaram a cada 5 ticks mais a contagem de ticks de fluido: `flat`, `flat_hydrogen`, `flat_bucket`, `waterfall`, `hole`, `slope`,
+`obstacles`, `remove_source`, `two_sources`, `ceiling`, `column`, `meets_water` e `lava_control`) e `fluids_entity.jsonl` (jogador falso, item e porco dentro de uma coluna de fluido e do fluxo, com a água e o ar de controle). Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois.
+`mods/mekanism/tests/fluids.rs` compara o conteúdo com o `fluids.jsonl` e com a datagen copiada em `datagen/fluidos/`, `machinery_basis/core/tests/liquid_flow_reference.rs` repete os 13 fluxos no simulador (zero diferença), `mods/mekanism/tests/paste_config.rs` confere a seção `nutritional_paste` com o `general.toml` que o original escreve e `test_texturas_fluidos.py` as texturas com a cor do rastro. Em jogo, `horizon2/h2_fluidos.py flat|waterfall|bucket|dispenser|paste` (`H_NAME=horizon`) repete o fluxo com `tick freeze` e `tick step`,
+comparando o número de células de fluido em cada marca do rastro, e os casos do balde, do dispensador e da pasta.
+
 | Caminho | Conteúdo |
 |---|---|
 | `~/.local/share/jogo-isolado/mekanism-ref/src` | Código do Mekanism |
