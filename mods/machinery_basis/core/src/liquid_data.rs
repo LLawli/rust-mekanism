@@ -182,6 +182,12 @@ impl Liquids {
     }
 }
 
+/// `FlowingFluid.canBeReplacedWith` de um fluido de mod (`BaseFlowingFluid`: `direction == Direction.DOWN && !isSame`): o fluido de outro tipo, como a água e a
+/// lava do vanilla, só ocupa uma célula de líquido de mod vindo da célula de cima. `from` e `to` são a origem do fluxo e a célula que ele quer ocupar.
+pub fn replaceable_from(from: [i32; 3], to: [i32; 3]) -> bool {
+    from == [to[0], to[1] + 1, to[2]]
+}
+
 static CURRENT: RwLock<Option<Arc<Liquids>>> = RwLock::new(None);
 static SOURCES: Mutex<BTreeMap<String, Liquids>> = Mutex::new(BTreeMap::new());
 
@@ -267,6 +273,22 @@ mod tests {
         );
         assert_eq!(liquids.by_bucket("mod:brine"), None);
         assert_eq!(liquids.index_of_block("mod:brine"), Some(0));
+    }
+
+    #[test]
+    fn another_fluid_takes_a_mod_liquid_only_from_above() {
+        let to = [4, 10, -3];
+        assert!(replaceable_from([4, 11, -3], to));
+        for from in [
+            [4, 9, -3],
+            [5, 10, -3],
+            [3, 10, -3],
+            [4, 10, -2],
+            [4, 10, -4],
+            [5, 11, -3],
+        ] {
+            assert!(!replaceable_from(from, to), "{from:?}");
+        }
     }
 
     #[test]

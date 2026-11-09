@@ -705,3 +705,15 @@ bindings = [
   { name = "state", ty = "BlockStateId", value = "state" },
   { name = "found", ty = "FluidState", value = "$value" },
 ]
+
+# A água apaga o fogo do jogador (`tick_remaining_fire`: `was_touching_water` zera os ticks), e o `FluidType` dos fluidos do Mekanism tem `canExtinguish` falso. O HEAD
+# de `tick_remaining_fire` desliga `was_touching_water` para o jogador dentro de um bloco de líquido de mod; `update_fluids` o refaz no começo do tick seguinte. Alvo cru, H47:
+# o apagamento de entidades que não são o jogador (`mobs`, `splash_water`) não foi coberto.
+[[injection]]
+id = "fire_before"
+target = "horizon_client_lib::motion::environment::MotionWorld<'_,'_,'_>::tick_remaining_fire"
+kind = "HEAD"
+helper = "fire_before.rs"
+bindings = [
+  { name = "world", ty = "&mut MotionWorld<'_, '_, '_>", value = "&mut *self" },
+]

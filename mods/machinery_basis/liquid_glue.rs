@@ -64,7 +64,7 @@ pub(in crate::game) fn block_spread(
     }
     let liquids = liquid_data::current();
     let state = level.block_state(to);
-    if liquid_of(level, &liquids, state).is_some() && from.y != to.y + 1 {
+    if liquid_of(level, &liquids, state).is_some() && !liquid_data::replaceable_from([from.x, from.y, from.z], [to.x, to.y, to.z]) {
         *canceled = true;
     }
 }

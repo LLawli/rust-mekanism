@@ -165,6 +165,14 @@ def bucket():
     cmd(f"setblock {at(5, 1, 5)} minecraft:stone")
     use_on(5, 1, 5, "west", full)
     ok &= check("full_side_of_stone célula", block(4, 1, 5), ours(0))
+    # full_short_grass e full_leaves: o raio do balde para no contorno da planta, e o fluido vai para a célula de cima, com a planta no lugar.
+    for plant in ("minecraft:short_grass", "minecraft:oak_leaves[persistent=true]"):
+        clean()
+        cmd(f"setblock {at(5, 0, 5)} minecraft:grass_block")
+        cmd(f"setblock {at(5, 1, 5)} {plant}")
+        use_on(5, 1, 5, "up", full)
+        ok &= check(f"full_{plant.split(':')[1].split('[')[0]} célula de cima", block(5, 2, 5), ours(0))
+        ok &= check(f"full_{plant.split(':')[1].split('[')[0]} a planta fica", block(5, 1, 5).split("[")[0], plant.split("[")[0])
     # full_water_source: a fonte de água é trocada.
     clean()
     cmd(f"setblock {at(5, 1, 5)} minecraft:water")
@@ -238,24 +246,85 @@ def dispenser():
 def paste():
     """O balde de pasta nutritiva: com fome é bebido (a fome sobe e o balde vira o vazio), sem fome esvazia."""
     ok = True
-    cmd("gamemode survival"); cmd("clear @s")
+    cmd("gamemode survival"); cmd("clear @s"); cmd("difficulty normal")
     cmd("give @s mekanism:nutritional_paste_bucket"); h.ctl("select", "1")
     cmd("tick unfreeze")
-    cmd("effect give @s minecraft:hunger 20 255 true")
-    time.sleep(8)
+    cmd("effect give @s minecraft:hunger 14 255")
+    time.sleep(16)
     cmd("effect clear @s minecraft:hunger")
-    before = " ".join(cmd("data get entity @s foodLevel"))
-    h.ctl("use-item", "--hold", "2.5")
+    h.ctl("tp", str(ORIGIN[0] + 5.5), str(ORIGIN[1] + 1), str(ORIGIN[2] + 2.5)); h.ctl("look", "0", "-20")
     time.sleep(1)
-    after = " ".join(cmd("data get entity @s foodLevel"))
-    print(f"fome antes {before} depois {after}; inventário {counts()}")
+    before = (" ".join(cmd("data get entity @s foodLevel")), " ".join(cmd("data get entity @s foodSaturationLevel")))
+    h.ctl("use-item", "--hold", "3")
+    time.sleep(1.2)
+    after = (" ".join(cmd("data get entity @s foodLevel")), " ".join(cmd("data get entity @s foodSaturationLevel")))
+    print(f"fome e saturação antes {before} depois {after}; inventário {counts()}")
     ok &= check("pasta bebida: o balde vira o vazio", counts().get("minecraft:bucket", 0), 1)
     return ok
 
 
+def meets(kind):
+    """O fluido de mod ao lado da água (`kind` `water`) ou da lava (`lava`) do vanilla, como em `meets_water`: as células de cada fluido na região do par, a cada marca do
+    rastro. O balde de água por cima (as outras duas fontes do rastro) não entra: a região é só o par."""
+    trace = rows("meets_water")
+    z0 = 0 if kind == "water" else 24
+    vanilla = f"minecraft:{kind}"
+    prepare((48, 6, 48), lambda: (
+        cmd(f"setblock {at(10, 1, z0 + 10)} {FLUID}[level=0,up=false]"),
+        cmd(f"setblock {at(11, 1, z0 + 10)} {vanilla}"),
+    ))
+    cells, t, ok = {}, 0, True
+    box = (at(0, 0, z0), at(23, 5, z0 + 23))
+    for row in trace:
+        target = row["tick"]
+        if row.get("full"):
+            for c in row["cells"]:
+                cells[tuple(c[:3])] = (c[3], c[4])
+            continue
+        if target > t:
+            step(target - t)
+            t = target
+        for c in row["cells"]:
+            cells[tuple(c[:3])] = (c[3], c[4])
+        if t > 70:
+            break
+        want = {}
+        for (x, y, z), (block, _) in cells.items():
+            if x < 24 and z0 <= z < z0 + 24 and block in (FLUID, "minecraft:water", "minecraft:lava"):
+                want[block] = want.get(block, 0) + 1
+        got = json.loads(h.ctl("blocks", *box[0].split(), *box[1].split()))["counts"]
+        got = {k: v for k, v in got.items() if k in (FLUID, "minecraft:water", "minecraft:lava")}
+        ok &= check(f"meets_{kind} t={t}", got, want)
+    return ok
+
+
+def fire_and_air():
+    """O jogador em chamas dentro do fluido de mod e dentro da água do vanilla, e o ar a cada tick nos dois (coluna de 4 células, jogador no meio)."""
+    out = {}
+    for name, block in (("brine", f"{FLUID}[level=0,up=true]"), ("water", "minecraft:water")):
+        clean((12, 8, 12))
+        cmd("tick unfreeze")
+        cmd(f"fill {at(4, 1, 4)} {at(6, 6, 6)} minecraft:stone")
+        cmd(f"fill {at(5, 1, 5)} {at(5, 4, 5)} {block}")
+        cmd("gamemode survival"); cmd("effect clear @s")
+        cmd(f"tp @s {ORIGIN[0] + 5.5} {ORIGIN[1] + 3.0} {ORIGIN[2] + 5.5}")
+        cmd("tick freeze"); time.sleep(0.5)
+        cmd("data merge entity @s {Fire:200s}")
+        air = []
+        for t in range(6):
+            step(1)
+            p = json.loads(h.ctl("state"))["player"]
+            air.append(p["air"])
+        fire = " ".join(cmd("data get entity @s Fire"))
+        out[name] = (air, fire)
+        print(name, "ar a cada tick", air, "| fogo", fire)
+    cmd("tick unfreeze")
+    return out
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "flat"
-    ok = {"flat": flat, "waterfall": waterfall, "bucket": bucket, "dispenser": dispenser, "paste": paste}[what]()
+    ok = {"flat": flat, "waterfall": waterfall, "bucket": bucket, "dispenser": dispenser, "paste": paste, "meets_water": lambda: meets("water"), "meets_lava": lambda: meets("lava"), "fire_air": fire_and_air}[what]()
     sys.exit(0 if ok else 1)
 
 
