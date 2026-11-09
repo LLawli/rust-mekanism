@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Collection;
 import mekanism.common.block.attribute.Attribute;
 import mekanism.common.block.attribute.AttributeStateFacing;
 import mekanism.common.block.attribute.Attributes.AttributeComparator;
@@ -18,6 +19,7 @@ import mekanism.common.content.blocktype.BlockType;
 import mekanism.common.content.blocktype.Machine;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.tests.helpers.MekGameTestHelper;
+import mekanism.generators.common.registries.GeneratorsBlocks;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -25,6 +27,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -34,6 +37,7 @@ import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.testframework.DynamicTest;
 import net.neoforged.testframework.annotation.ForEachTest;
 import net.neoforged.testframework.annotation.TestHolder;
@@ -61,6 +65,44 @@ public class BlocosTraceTest {
                   write("blocos_colocacao", COLOCACAO);
               })
               .thenSucceed());
+    }
+
+
+    /// A mesma gravação para os blocos do Mekanism Generators (`GeneratorsBlocks`, frente `generators-conteudo`): `blocos_generators.jsonl`,
+    /// `blocos_generators_formas.jsonl` e `blocos_generators_colocacao.jsonl`, e os itens do mod que não são de bloco (`GeneratorsItems`) em
+    /// `blocos_generators_itens.jsonl`, na ordem do registro de itens do jogo.
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = 60 * SharedConstants.TICKS_PER_SECOND, batch = "trace_blocos")
+    @TestHolder(description = "Records every Mekanism Generators block and item: properties, states, shapes, tags, item components and the state the placement gives.")
+    public static void generators(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(3, 3, 3).fill(0, 0, 0, 2, 0, 2, Blocks.STONE.defaultBlockState()));
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  FORMAS.clear();
+                  COLOCACAO.clear();
+                  write("blocos_generators", dump(helper, GeneratorsBlocks.BLOCKS.getPrimaryEntries()));
+                  write("blocos_generators_formas", FORMAS);
+                  write("blocos_generators_colocacao", COLOCACAO);
+                  write("blocos_generators_itens", generatorsItems());
+              })
+              .thenSucceed());
+    }
+
+    private static List<String> generatorsItems() {
+        List<String> lines = new ArrayList<>();
+        BuiltInRegistries.ITEM.stream().filter(i -> BuiltInRegistries.ITEM.getKey(i).getNamespace().equals("mekanismgenerators")).forEach(item -> {
+            if (item instanceof BlockItem) {
+                return;
+            }
+            StringBuilder out = new StringBuilder("{\"id\":").append(q(BuiltInRegistries.ITEM.getKey(item).toString()));
+            out.append(",\"class\":").append(q(item.getClass().getSimpleName()));
+            out.append(",\"rarity\":").append(q(String.valueOf(item.components().get(DataComponents.RARITY))));
+            out.append(",\"max_stack\":").append(item.components().getOrDefault(DataComponents.MAX_STACK_SIZE, 64));
+            out.append(",\"components\":").append(list(item.components().stream()
+                  .map(c -> q(BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(c.type()).toString() + "=" + c.value())).sorted().collect(Collectors.toList())));
+            out.append(",\"tags\":").append(list(item.builtInRegistryHolder().tags().map(t -> q(t.location().toString())).sorted().collect(Collectors.toList())));
+            lines.add(out.append('}').toString());
+        });
+        return lines;
     }
 
     private static final List<String> FORMAS = new ArrayList<>();
@@ -97,11 +139,15 @@ public class BlocosTraceTest {
     }
 
     private static List<String> dump(MekGameTestHelper helper) {
+        return dump(helper, MekanismBlocks.BLOCKS.getPrimaryEntries());
+    }
+
+    private static List<String> dump(MekGameTestHelper helper, Collection<DeferredHolder<Block, ? extends Block>> entries) {
         ServerLevel level = helper.getLevel();
         BlockPos pos = helper.absolutePos(new BlockPos(1, 1, 1));
         Player player = helper.makeMockPlayerLookingAt(new BlockPos(1, 0, 1), Direction.UP);
         List<String> lines = new ArrayList<>();
-        for (var entry : MekanismBlocks.BLOCKS.getPrimaryEntries()) {
+        for (var entry : entries) {
             Block block = entry.get();
             lines.add(block(level, pos, player, block));
         }
