@@ -1,0 +1,15 @@
+{
+  "facing": {
+    "property": "facing",
+    "mode": "selected_face",
+    "values": [
+      "north",
+      "east",
+      "south",
+      "west",
+      "up",
+      "down"
+    ]
+  },
+  "fluid_logged": "fluid_logged"
+}

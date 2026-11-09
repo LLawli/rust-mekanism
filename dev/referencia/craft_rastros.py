@@ -6,7 +6,8 @@ Uso: craft_rastros.py [CHECKOUT_DO_MEKANISM] [CHECKOUT_DO_HORIZON_PIN]
 O que sai, em `dev/referencia/rastros/`:
 - `craft_datagen.json`: o hash (FNV-1a 64 e tamanho) de cada arquivo de `mods/mekanism/content` que o port copia do original (a datagen, `src/datagen/generated/mekanism`,
   ou os `src/main/resources` dele), para `tests/craft_content.rs` conferir byte a byte (JSON pelo texto canônico: chaves em ordem, sem espaço);
-- `craft_tags.json`: os valores de cada tag `c:`, `minecraft:` e `mekanism:` da datagen que cita um id da frente;
+- `craft_tags.json`: os valores de cada tag `c:`, `minecraft:` e `mekanism:` da datagen que cita um id da frente (e `craft_tags_expanded.json`, com as tags aninhadas resolvidas);
+- `blocos.jsonl` não sai daqui: é o original em jogo (`testes/BlocosTraceTest.java`), de onde vêm a ordem de registro dos blocos e as listas das abas do vanilla;
 - `craft_lang.json`: o texto da datagen para cada chave do `en_us.json` do port;
 - `craft_worldgen.json`: os arquivos de worldgen da datagen (`worldgen/feature`, `placed_feature`, `neoforge/biome_modifier`) dos minérios e do sal;
 - `craft_recipes.json`: as receitas `minecraft:*` da datagen que a frente leva (todos os ingredientes e o resultado existem) e as que ficam de fora, com o motivo;
@@ -104,6 +105,24 @@ def tags_rastro():
                 out[f"{namespace}/tags/{rel}"] = values
     json.dump(out, open(f"{OUT}/craft_tags.json", "w"), indent=0, sort_keys=True)
     print("craft_tags.json:", len(out))
+    # Os mesmos valores com as tags aninhadas do próprio original resolvidas (`#mekanism:factory_supported` vira os ids dela): as tags do vanilla que o port achata
+    # (`mineable/pickaxe`) são conferidas por esta lista, não pela direta.
+    def expand(key, seen=()):
+        values = []
+        for v in json.load(open(f"{GEN}/data/{key}"))["values"]:
+            v = v if isinstance(v, str) else v["id"]
+            if v.startswith("#"):
+                namespace, rest = v[1:].split(":")
+                kind = key.split("/")[2]
+                nested = f"{namespace}/tags/{kind}/{rest}.json"
+                if os.path.exists(f"{GEN}/data/{nested}") and nested not in seen:
+                    values.extend(expand(nested, seen + (nested,)))
+                    continue
+            values.append(v)
+        return values
+
+    json.dump({key: expand(key, (key,)) for key in out}, open(f"{OUT}/craft_tags_expanded.json", "w"), indent=0, sort_keys=True)
+    print("craft_tags_expanded.json:", len(out))
 
 
 def worldgen_rastro():
@@ -209,13 +228,12 @@ def creative_order():
             order.append(f"{prefix_of[m.group(1)]}_{misc.get(m.group(2), m.group(2).lower())}")
         elif s.startswith("public static final"):
             raise SystemExit("registro de item não entendido: " + s[:90])
-    # `MekanismBlocks`: o bloco `static` (blocos de recurso por `PrimaryResource`, minérios por `OreType`) vem antes dos campos, que seguem a ordem do arquivo.
-    blocks = ["block_osmium", "block_raw_osmium", "block_tin", "block_raw_tin", "block_lead", "block_raw_lead", "block_uranium", "block_raw_uranium"]
-    for ore in ("tin", "osmium", "uranium", "fluorite", "lead"):
-        blocks += [f"{ore}_ore", f"deepslate_{ore}_ore"]
-    blocks += ["block_charcoal", "block_bronze", "block_steel", "block_fluorite", "block_refined_obsidian", "block_refined_glowstone", "teleporter_frame",
-               "steel_casing", "enrichment_chamber", "crusher", "metallurgic_infuser", "energized_smelter", "basic_universal_cable", "advanced_universal_cable",
-               "elite_universal_cable", "ultimate_universal_cable", "block_salt", "block_bio_fuel"]
+    # `MekanismBlocks`: a ordem de registro que o original em jogo deu (`rastros/blocos.jsonl`, `testes/BlocosTraceTest.java`: `MekanismBlocks.BLOCKS.getPrimaryEntries()`), que é a da
+    # aba criativa (`addToDisplay` sobre `BLOCKS.getSecondaryEntries()`): o bloco `static` (fábricas, blocos de recurso por `PrimaryResource`, minérios por `OreType`) vem antes dos campos.
+    blocks = []
+    with open(f"{OUT}/blocos.jsonl") as handle:
+        for line in handle:
+            blocks.append(json.loads(line)["id"].split(":")[1])
     json.dump({"items": order, "blocks": blocks}, open(f"{OUT}/craft_creative_order.json", "w"), indent=0)
     print("craft_creative_order.json:", len(order), len(blocks))
 

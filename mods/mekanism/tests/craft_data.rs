@@ -24,24 +24,36 @@ fn values(path: &std::path::Path) -> Vec<String> {
         .collect()
 }
 
-/// As três tags do vanilla que o original lista por inteiro com blocos que o port ainda não tem: o port traz só as entradas que existem (as da lista do original, na
-/// ordem dela, e as que ele já tinha achatadas de tags aninhadas, como as máquinas e os cabos em `#mekanism:factory_supported` e `#mekanism:transmitters`).
+/// As três tags do vanilla que o original lista por inteiro com blocos que o port ainda não tem: o port traz só as entradas que existem, achatadas (as tags aninhadas do
+/// original, como `#mekanism:factory_supported` e `#mekanism:transmitters`, viram os ids dela). A conferência é pela lista expandida do original
+/// (`craft_tags_expanded.json`) contra a do port com as tags aninhadas do próprio port resolvidas.
 const PARTIAL: [&str; 3] = [
     "minecraft/tags/block/mineable/pickaxe.json",
     "minecraft/tags/block/blocks_motion_no_leaves.json",
     "minecraft/tags/block/guarded_by_piglins.json",
 ];
 
-const FLATTENED: [&str; 8] = [
-    "mekanism:enrichment_chamber",
-    "mekanism:crusher",
-    "mekanism:metallurgic_infuser",
-    "mekanism:energized_smelter",
-    "mekanism:basic_universal_cable",
-    "mekanism:advanced_universal_cable",
-    "mekanism:elite_universal_cable",
-    "mekanism:ultimate_universal_cable",
-];
+/// Os ids de uma tag do port com as tags `#mekanism:` aninhadas resolvidas pelos arquivos do port (as outras `#tag` ficam de fora).
+fn expanded(kind: &str, values: &[String]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for entry in values {
+        if let Some(tag) = entry.strip_prefix('#') {
+            let (namespace, rest) = tag.split_once(':').unwrap();
+            let file = content()
+                .join("data")
+                .join(namespace)
+                .join("tags")
+                .join(kind)
+                .join(format!("{rest}.json"));
+            if file.is_file() {
+                out.extend(expanded(kind, &self::values(&file)));
+            }
+        } else {
+            out.insert(entry.clone());
+        }
+    }
+    out
+}
 
 /// Os itens e blocos que o port tem em `ids` e uma tag do original lista: conferidos um a um.
 #[test]
@@ -58,19 +70,23 @@ fn every_tag_lists_the_ids_the_original_lists() {
             .collect();
         let path = content().join("data").join(relative);
         if PARTIAL.contains(&relative.as_str()) {
-            let ours = values(&path);
-            for id in own.iter().filter(|id| original.contains(id)) {
-                assert!(ours.contains(id), "{relative}: falta {id}");
-            }
-            // O que o original não lista direto e o port tem: as máquinas e os cabos, que o original põe por tags aninhadas (`#mekanism:factory_supported` e
-            // `#mekanism:transmitters`) e o port achata na tag do vanilla.
-            for entry in ours.iter().filter(|entry| !original.contains(entry)) {
-                assert!(
-                    relative.ends_with("mineable/pickaxe.json")
-                        && FLATTENED.contains(&entry.as_str()),
-                    "{relative}: {entry} não está na tag do original"
-                );
-            }
+            let kind = if relative.contains("/tags/block/") {
+                "block"
+            } else {
+                "item"
+            };
+            let want: BTreeSet<String> = rastro("craft_tags_expanded.json")[relative.as_str()]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .filter(|id| own.contains(id))
+                .collect();
+            let got: BTreeSet<String> = expanded(kind, &values(&path))
+                .into_iter()
+                .filter(|id| id.starts_with("mekanism:"))
+                .collect();
+            assert_eq!(got, want, "{relative}");
             checked += 1;
             continue;
         }
@@ -178,7 +194,7 @@ fn every_complete_crafting_and_smelting_recipe_is_in_the_content() {
         }
     }
     assert!(present >= 120, "{present}");
-    assert!(absent.len() >= 100, "{}", absent.len());
+    assert!(absent.len() >= 60, "{}", absent.len());
     // Cada uma é a do original (o hash do rastro de arquivos cobre os bytes; aqui o tipo e o resultado).
     for (relative, recipe) in recipes.as_object().unwrap() {
         let path = content().join("data").join(relative);

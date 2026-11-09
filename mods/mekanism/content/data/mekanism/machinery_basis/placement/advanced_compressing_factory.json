@@ -1,0 +1,13 @@
+{
+  "facing": {
+    "property": "facing",
+    "mode": "player_location",
+    "values": [
+      "north",
+      "south",
+      "west",
+      "east"
+    ]
+  },
+  "fluid_logged": "fluid_logged"
+}

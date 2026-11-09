@@ -7,7 +7,8 @@ mod common;
 #[path = "../native/creative_tabs_table.rs"]
 mod table;
 
-use common::craft::{content, declared, json, rastro};
+use common::craft::{blocos, content, declared, json, rastro};
+use serde_json::Value;
 use std::collections::BTreeSet;
 
 fn port_ids() -> BTreeSet<String> {
@@ -116,17 +117,46 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         "lead_ore",
         "deepslate_lead_ore",
     ];
-    // `FUNCTIONAL_BLOCKS` e `REDSTONE_BLOCKS`: as máquinas (`Machine`, com `AttributeComparator`) e os cabos que não são de transporte, em ordem de registro.
-    let machines = vec![
-        "enrichment_chamber",
-        "crusher",
-        "metallurgic_infuser",
-        "energized_smelter",
-        "basic_universal_cable",
-        "advanced_universal_cable",
-        "elite_universal_cable",
-        "ultimate_universal_cable",
-    ];
+    // `FUNCTIONAL_BLOCKS` e `REDSTONE_BLOCKS` (`MekanismCreativeTabs.java:99-115`), com o que o original em jogo diz de cada bloco (`rastros/blocos.jsonl`): `functional_tab` é
+    // "transmissor ou `Machine`" e `redstone_tab` é "tem `AttributeComparator`", ambos na ordem do registro; depois a lista fixa de cada aba.
+    let blocks = blocos();
+    let have = port_ids();
+    let ported = |row: &&Value| have.contains(row["id"].as_str().unwrap().strip_prefix("mekanism:").unwrap());
+    let id = |row: &Value| row["id"].as_str().unwrap().strip_prefix("mekanism:").unwrap().to_owned();
+    let mut machines: Vec<String> = blocks.iter().filter(ported).filter(|r| r["functional_tab"] == true).map(|r| id(r)).collect();
+    machines.extend(
+        [
+            "security_desk",
+            "radioactive_waste_barrel",
+            "personal_chest",
+            "personal_barrel",
+            "chargepad",
+            "laser",
+            "laser_amplifier",
+            "laser_tractor_beam",
+            "quantum_entangloporter",
+            "oredictionificator",
+            "fuelwood_heater",
+            "modification_station",
+            "qio_drive_array",
+            "qio_dashboard",
+            "qio_exporter",
+            "qio_importer",
+            "qio_redstone_adapter",
+        ]
+        .map(str::to_owned),
+    );
+    // O alarme primeiro; depois cada bloco com comparador e cada cabo de energia (`BlockTransmitter` com `AttributeTier` que não é de transporte).
+    let mut redstone = vec!["industrial_alarm".to_owned()];
+    redstone.extend(
+        blocks
+            .iter()
+            .filter(ported)
+            .filter(|r| (r["redstone_tab"] == true || r["class"] == "BlockSmallTransmitter") && id(r) != "industrial_alarm")
+            .map(|r| id(r)),
+    );
+    let machines: Vec<&'static str> = machines.into_iter().map(|id| &*Box::leak(id.into_boxed_str())).collect();
+    let redstone: Vec<&'static str> = redstone.into_iter().map(|id| &*Box::leak(id.into_boxed_str())).collect();
     // `INGREDIENTS`: a lista de `MekanismCreativeTabs.java:132-145` e depois `PROCESSED_RESOURCES.values()` (por tipo, depois por recurso, na ordem de registro).
     let mut ingredients = vec![
         "module_base",
@@ -209,7 +239,7 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         .collect();
     ingredients.extend(processed);
     // `TOOLS_AND_UTILITIES` (`MekanismCreativeTabs.java:120-132`): as ferramentas, as armaduras de uso geral, o upgrade (que a injeção troca por uma pilha por tipo) e os
-    // instaladores. A caixa de papelão, os tanques de fluido e os fluidos não têm id no port ainda.
+    // instaladores. Os tanques de fluido não têm id no port ainda.
     let mut tools = vec![
         "configurator",
         "network_reader",
@@ -233,6 +263,7 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         "hazmat_gown",
         "hazmat_pants",
         "hazmat_boots",
+        "cardboard_box",
         "upgrade",
         "basic_tier_installer",
         "advanced_tier_installer",
@@ -257,8 +288,8 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         ("minecraft:building_blocks", building),
         ("minecraft:natural_blocks", natural),
-        ("minecraft:functional_blocks", machines.clone()),
-        ("minecraft:redstone_blocks", machines),
+        ("minecraft:functional_blocks", machines),
+        ("minecraft:redstone_blocks", redstone),
         ("minecraft:tools_and_utilities", tools),
         ("minecraft:combat", combat),
         ("minecraft:ingredients", ingredients),
@@ -341,19 +372,21 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     // As ferramentas: 26 itens e, no lugar do upgrade, uma pilha por tipo.
     let mut tools = Vec::new();
     assert!(table::edit_tab("minecraft:tools_and_utilities", &mut tools));
+    // O Cardboard Box vem antes do item de upgrade (`MekanismCreativeTabs.java:128`).
     assert_eq!(
         tools.len(),
-        26 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
+        27 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
     );
     assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
-    assert_eq!(tools[22], table::upgrade_stack("anchor"));
+    assert_eq!(tools[22], table::plain_stack("mekanism:cardboard_box"));
+    assert_eq!(tools[23], table::upgrade_stack("anchor"));
     assert_eq!(
-        tools[30],
+        tools[31],
         table::plain_stack("mekanism:basic_tier_installer")
     );
-    // Os 18 baldes dos fluidos do Mekanism, depois dos instaladores.
+    // O último instalador, e os 18 baldes dos fluidos do Mekanism depois dele.
     assert_eq!(
-        tools[table::UPGRADE_TYPES.len() + 26 - 1],
+        tools[table::UPGRADE_TYPES.len() + 27 - 1],
         table::plain_stack("mekanism:ultimate_tier_installer")
     );
     assert_eq!(

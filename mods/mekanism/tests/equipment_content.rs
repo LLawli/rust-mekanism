@@ -520,7 +520,7 @@ fn the_neoforge_tags_the_recipes_need_are_the_neoforge_ones() {
 }
 
 /// As receitas que dão um item de equipamento. As de mesa estão no port quando tudo o que citam existe (`craft_data.rs` confere a regra para todas); as que ficam de fora
-/// são seis, por um bloco que outra frente traz, e as de tipo `mekanism:mek_data` (a receita que copia os dados do item, como a energia e os módulos) esperam o tipo.
+/// são cinco, por um bloco que outra frente traz, e as de tipo `mekanism:mek_data` (a receita que copia os dados do item, como a energia e os módulos) esperam o tipo.
 #[test]
 fn the_recipes_of_the_equipment_are_in_or_wait_for_a_known_cause() {
     let java = rastro("equipment_items.json");
@@ -560,7 +560,7 @@ fn the_recipes_of_the_equipment_are_in_or_wait_for_a_known_cause() {
             "mekanism/recipe/seismic_reader.json",
         ])
     );
-    // Faltam `basic_induction_cell` (cinco receitas, o Meka-Tool e as quatro peças do MekaSuit) e `qio_dashboard`.
+    // Faltam `basic_induction_cell` (cinco receitas, o Meka-Tool e as quatro peças do MekaSuit). A do `portable_qio_dashboard` ficou completa com o `qio_dashboard`, da frente `blocos-maquinas`.
     assert_eq!(
         absent_table,
         BTreeSet::from([
@@ -569,7 +569,6 @@ fn the_recipes_of_the_equipment_are_in_or_wait_for_a_known_cause() {
             "mekanism/recipe/mekasuit_boots.json",
             "mekanism/recipe/mekasuit_helmet.json",
             "mekanism/recipe/mekasuit_pants.json",
-            "mekanism/recipe/portable_qio_dashboard.json",
         ])
     );
 }

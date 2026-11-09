@@ -402,7 +402,8 @@ bindings = [
 
 # A luz do bloco aceso. As quatro máquinas são `Machine` (`Machine.java:26`), com `Attributes.ACTIVE_LIGHT`: luz 8 só no estado ativo
 # (`AttributeStateActive`, `Attributes.java:27`). O gabarito `minecraft:furnace` dá 13 ao estado `lit`, e `properties.light` vale para todos
-# os estados (o desligado ficaria aceso). O HEAD de `override_gameplay` troca a emissão dos estados acesos dessas máquinas. Alvo cru.
+# os estados (o desligado ficaria aceso). O HEAD de `override_gameplay` troca a emissão dos estados acesos dessas máquinas. Desde a frente dos blocos de
+# máquina também aplica a tabela `mekanism_rows` (luz do `active` e da lava, reação ao pistão e oclusão) às linhas dos blocos sem função. Alvo cru, H18 e H49.
 [[injection]]
 id = "active_light"
 target = "horizon_client_lib::mod_content::Plan<'_>::override_gameplay"
@@ -410,7 +411,27 @@ kind = "HEAD"
 helper = "active_light.rs"
 bindings = [
   { name = "block", ty = "&NewBlock<'_>", value = "b" },
+  { name = "combo", ty = "&[(String, String)]", value = "combo" },
   { name = "row", ty = "&mut J", value = "&mut *row" },
+]
+
+# A tabela das linhas de jogo dos blocos de máquina (gerada do original em jogo, testada em `tests/blocos_rows.rs`). Vai para o arquivo do `Plan`, onde está `active_light`.
+[[module]]
+id = "block-rows"
+file = "crates/horizon-client/src/mod_content.rs"
+name = "mekanism_rows"
+source = "block_rows_table.rs"
+
+# O Horizon aceita 16 caixas por forma (`BlockShapes::check`, `horizon-mods/src/content.rs:186`) e o original tem formas de até 47 caixas depois de cobertas (o Digital
+# Miner): doze blocos passam do limite. O HEAD cancelável de `check` refaz a conferência sem o limite e devolve o resultado. Alvo cru, H50.
+[[injection]]
+id = "shape_limit"
+target = "horizon_mods::content::BlockShapes::check"
+kind = "HEAD"
+cancellable = true
+helper = "shape_limit.rs"
+bindings = [
+  { name = "shapes", ty = "&BlockShapes", value = "&*self" },
 ]
 
 # `TrackingEnergyHandler.insert` → `LastEnergyTracker.received`: a energia que entra numa máquina pela capability (um cabo, um gerador ao lado) soma no

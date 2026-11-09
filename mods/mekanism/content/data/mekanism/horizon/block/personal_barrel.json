@@ -1,0 +1,29 @@
+{
+  "template": "minecraft:lodestone",
+  "properties": {
+    "hardness": 3.5,
+    "requires_tool": true,
+    "map_color": 21,
+    "sounds": "minecraft:stone"
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "east",
+        "south",
+        "west",
+        "up",
+        "down"
+      ]
+    },
+    "open": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "open": "false"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "template": "minecraft:lodestone",
+  "properties": {
+    "hardness": 3.5,
+    "requires_tool": true,
+    "map_color": 29,
+    "sounds": "minecraft:stone",
+    "explosion_resistance": 16.0
+  },
+  "state_properties": {
+    "active": {
+      "type": "boolean"
+    },
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "west",
+        "east"
+      ]
+    },
+    "fluid_logged": {
+      "type": "enum",
+      "values": [
+        "empty",
+        "water",
+        "lava"
+      ]
+    }
+  },
+  "default_state": {
+    "active": "false",
+    "facing": "north",
+    "fluid_logged": "empty"
+  },
+  "shapes": {
+    "properties": [
+      "facing"
+    ],
+    "values": {
+      "north": [
+        [
+          0.125,
+          0.0,
+          0.125,
+          0.875,
+          1.0,
+          0.875
+        ]
+      ],
+      "south": [
+        [
+          0.125,
+          0.0,
+          0.125,
+          0.875,
+          1.0,
+          0.875
+        ]
+      ],
+      "west": [
+        [
+          0.125,
+          0.0,
+          0.125,
+          0.875,
+          1.0,
+          0.875
+        ]
+      ],
+      "east": [
+        [
+          0.125,
+          0.0,
+          0.125,
+          0.875,
+          1.0,
+          0.875
+        ]
+      ]
+    }
+  }
+}

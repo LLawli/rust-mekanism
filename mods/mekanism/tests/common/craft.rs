@@ -19,6 +19,46 @@ pub fn rastro(name: &str) -> Value {
     .unwrap()
 }
 
+/// Os blocos do Mekanism original em jogo, na ordem do registro: `rastros/blocos.jsonl` (`testes/BlocosTraceTest.java`: propriedades, estados, tags, item),
+/// `blocos_formas.jsonl` (a tabela de formas de cada bloco) e `blocos_colocacao.jsonl` (o `facing` e o `fluid_logged` ao pôr). Um estado herda de `base` o que não difere do
+/// estado padrão.
+pub fn blocos() -> Vec<Value> {
+    fn lines(name: &str) -> Vec<Value> {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/rastros")
+            .join(name);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+    let shapes: std::collections::BTreeMap<String, Value> = lines("blocos_formas.jsonl")
+        .into_iter()
+        .map(|row| (row["id"].as_str().unwrap().to_owned(), row["shapes"].clone()))
+        .collect();
+    let placement: std::collections::BTreeMap<String, Value> = lines("blocos_colocacao.jsonl")
+        .into_iter()
+        .map(|row| (row["id"].as_str().unwrap().to_owned(), row["placement"].clone()))
+        .collect();
+    lines("blocos.jsonl")
+        .into_iter()
+        .map(|mut row| {
+            let id = row["id"].as_str().unwrap().to_owned();
+            row["shapes"] = shapes[&id].clone();
+            row["placement"] = placement[&id].clone();
+            let base = row["base"].as_object().unwrap().clone();
+            for state in row["states"].as_array_mut().unwrap() {
+                let state = state.as_object_mut().unwrap();
+                for (key, value) in &base {
+                    state.entry(key.clone()).or_insert_with(|| value.clone());
+                }
+            }
+            row
+        })
+        .collect()
+}
+
 pub fn json(path: &Path) -> Value {
     serde_json::from_str(
         &std::fs::read_to_string(path)

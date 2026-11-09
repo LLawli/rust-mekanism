@@ -1,0 +1,12 @@
+{
+  "facing": {
+    "property": "facing",
+    "mode": "player_location",
+    "values": [
+      "north",
+      "south",
+      "west",
+      "east"
+    ]
+  }
+}

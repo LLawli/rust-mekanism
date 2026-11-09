@@ -1,4 +1,13 @@
 {
+"c/tags/block/barrels/personal.json": [
+"mekanism:personal_barrel"
+],
+"c/tags/block/chests/electric.json": [
+"mekanism:personal_chest"
+],
+"c/tags/block/chests/personal.json": [
+"mekanism:personal_chest"
+],
 "c/tags/block/ore_rates/dense.json": [
 "mekanism:fluorite_ore",
 "mekanism:deepslate_fluorite_ore"
@@ -363,6 +372,74 @@
 "c/tags/item/tools/wrench.json": [
 "mekanism:configurator"
 ],
+"mekanism/tags/block/cardboard_blacklist.json": [
+"#c:relocation_not_supported",
+"mekanism:cardboard_box",
+"minecraft:trial_spawner",
+"minecraft:vault"
+],
+"mekanism/tags/block/factories/combining.json": [
+"mekanism:basic_combining_factory",
+"mekanism:advanced_combining_factory",
+"mekanism:elite_combining_factory",
+"mekanism:ultimate_combining_factory"
+],
+"mekanism/tags/block/factories/compressing.json": [
+"mekanism:basic_compressing_factory",
+"mekanism:advanced_compressing_factory",
+"mekanism:elite_compressing_factory",
+"mekanism:ultimate_compressing_factory"
+],
+"mekanism/tags/block/factories/crushing.json": [
+"mekanism:basic_crushing_factory",
+"mekanism:advanced_crushing_factory",
+"mekanism:elite_crushing_factory",
+"mekanism:ultimate_crushing_factory"
+],
+"mekanism/tags/block/factories/enriching.json": [
+"mekanism:basic_enriching_factory",
+"mekanism:advanced_enriching_factory",
+"mekanism:elite_enriching_factory",
+"mekanism:ultimate_enriching_factory"
+],
+"mekanism/tags/block/factories/infusing.json": [
+"mekanism:basic_infusing_factory",
+"mekanism:advanced_infusing_factory",
+"mekanism:elite_infusing_factory",
+"mekanism:ultimate_infusing_factory"
+],
+"mekanism/tags/block/factories/injecting.json": [
+"mekanism:basic_injecting_factory",
+"mekanism:advanced_injecting_factory",
+"mekanism:elite_injecting_factory",
+"mekanism:ultimate_injecting_factory"
+],
+"mekanism/tags/block/factories/purifying.json": [
+"mekanism:basic_purifying_factory",
+"mekanism:advanced_purifying_factory",
+"mekanism:elite_purifying_factory",
+"mekanism:ultimate_purifying_factory"
+],
+"mekanism/tags/block/factories/sawing.json": [
+"mekanism:basic_sawing_factory",
+"mekanism:advanced_sawing_factory",
+"mekanism:elite_sawing_factory",
+"mekanism:ultimate_sawing_factory"
+],
+"mekanism/tags/block/factories/smelting.json": [
+"mekanism:basic_smelting_factory",
+"mekanism:advanced_smelting_factory",
+"mekanism:elite_smelting_factory",
+"mekanism:ultimate_smelting_factory"
+],
+"mekanism/tags/block/factory_supported/combining.json": [
+"mekanism:combiner",
+"#mekanism:factories/combining"
+],
+"mekanism/tags/block/factory_supported/compressing.json": [
+"mekanism:osmium_compressor",
+"#mekanism:factories/compressing"
+],
 "mekanism/tags/block/factory_supported/crushing.json": [
 "mekanism:crusher",
 "#mekanism:factories/crushing"
@@ -375,9 +452,25 @@
 "mekanism:metallurgic_infuser",
 "#mekanism:factories/infusing"
 ],
+"mekanism/tags/block/factory_supported/injecting.json": [
+"mekanism:chemical_injection_chamber",
+"#mekanism:factories/injecting"
+],
+"mekanism/tags/block/factory_supported/purifying.json": [
+"mekanism:purification_chamber",
+"#mekanism:factories/purifying"
+],
+"mekanism/tags/block/factory_supported/sawing.json": [
+"mekanism:precision_sawmill",
+"#mekanism:factories/sawing"
+],
 "mekanism/tags/block/factory_supported/smelting.json": [
 "mekanism:energized_smelter",
 "#mekanism:factories/smelting"
+],
+"mekanism/tags/block/heaters.json": [
+"mekanism:fuelwood_heater",
+"mekanism:resistive_heater"
 ],
 "mekanism/tags/block/transmitters/energy.json": [
 "mekanism:basic_universal_cable",
@@ -466,6 +559,68 @@
 "mekanism/tags/item/enriched/tin.json": [
 "mekanism:enriched_tin"
 ],
+"mekanism/tags/item/factories/combining.json": [
+"mekanism:basic_combining_factory",
+"mekanism:advanced_combining_factory",
+"mekanism:elite_combining_factory",
+"mekanism:ultimate_combining_factory"
+],
+"mekanism/tags/item/factories/compressing.json": [
+"mekanism:basic_compressing_factory",
+"mekanism:advanced_compressing_factory",
+"mekanism:elite_compressing_factory",
+"mekanism:ultimate_compressing_factory"
+],
+"mekanism/tags/item/factories/crushing.json": [
+"mekanism:basic_crushing_factory",
+"mekanism:advanced_crushing_factory",
+"mekanism:elite_crushing_factory",
+"mekanism:ultimate_crushing_factory"
+],
+"mekanism/tags/item/factories/enriching.json": [
+"mekanism:basic_enriching_factory",
+"mekanism:advanced_enriching_factory",
+"mekanism:elite_enriching_factory",
+"mekanism:ultimate_enriching_factory"
+],
+"mekanism/tags/item/factories/infusing.json": [
+"mekanism:basic_infusing_factory",
+"mekanism:advanced_infusing_factory",
+"mekanism:elite_infusing_factory",
+"mekanism:ultimate_infusing_factory"
+],
+"mekanism/tags/item/factories/injecting.json": [
+"mekanism:basic_injecting_factory",
+"mekanism:advanced_injecting_factory",
+"mekanism:elite_injecting_factory",
+"mekanism:ultimate_injecting_factory"
+],
+"mekanism/tags/item/factories/purifying.json": [
+"mekanism:basic_purifying_factory",
+"mekanism:advanced_purifying_factory",
+"mekanism:elite_purifying_factory",
+"mekanism:ultimate_purifying_factory"
+],
+"mekanism/tags/item/factories/sawing.json": [
+"mekanism:basic_sawing_factory",
+"mekanism:advanced_sawing_factory",
+"mekanism:elite_sawing_factory",
+"mekanism:ultimate_sawing_factory"
+],
+"mekanism/tags/item/factories/smelting.json": [
+"mekanism:basic_smelting_factory",
+"mekanism:advanced_smelting_factory",
+"mekanism:elite_smelting_factory",
+"mekanism:ultimate_smelting_factory"
+],
+"mekanism/tags/item/factory_supported/combining.json": [
+"mekanism:combiner",
+"#mekanism:factories/combining"
+],
+"mekanism/tags/item/factory_supported/compressing.json": [
+"mekanism:osmium_compressor",
+"#mekanism:factories/compressing"
+],
 "mekanism/tags/item/factory_supported/crushing.json": [
 "mekanism:crusher",
 "#mekanism:factories/crushing"
@@ -478,9 +633,25 @@
 "mekanism:metallurgic_infuser",
 "#mekanism:factories/infusing"
 ],
+"mekanism/tags/item/factory_supported/injecting.json": [
+"mekanism:chemical_injection_chamber",
+"#mekanism:factories/injecting"
+],
+"mekanism/tags/item/factory_supported/purifying.json": [
+"mekanism:purification_chamber",
+"#mekanism:factories/purifying"
+],
+"mekanism/tags/item/factory_supported/sawing.json": [
+"mekanism:precision_sawmill",
+"#mekanism:factories/sawing"
+],
 "mekanism/tags/item/factory_supported/smelting.json": [
 "mekanism:energized_smelter",
 "#mekanism:factories/smelting"
+],
+"mekanism/tags/item/heaters.json": [
+"mekanism:fuelwood_heater",
+"mekanism:resistive_heater"
 ],
 "mekanism/tags/item/module_containers/armor/boots.json": [
 "mekanism:mekasuit_boots"
@@ -502,6 +673,10 @@
 ],
 "mekanism/tags/item/module_containers/held/meka_tool.json": [
 "mekanism:meka_tool"
+],
+"mekanism/tags/item/personal_storage.json": [
+"mekanism:personal_barrel",
+"mekanism:personal_chest"
 ],
 "mekanism/tags/item/shards/copper.json": [
 "mekanism:shard_copper"
@@ -618,10 +793,20 @@
 "minecraft/tags/block/camels_spawnable_on.json": [
 "mekanism:block_salt"
 ],
+"minecraft/tags/block/cats_can_lie_on.json": [
+"mekanism:cardboard_box"
+],
+"minecraft/tags/block/cats_can_sit_on.json": [
+"mekanism:cardboard_box"
+],
 "minecraft/tags/block/guarded_by_piglins.json": [
 "mekanism:block_refined_glowstone",
 "mekanism:personal_barrel",
 "mekanism:personal_chest"
+],
+"minecraft/tags/block/hoglin_repellents.json": [
+"mekanism:teleporter",
+"mekanism:quantum_entangloporter"
 ],
 "minecraft/tags/block/mineable/pickaxe.json": [
 "#mekanism:heaters",
@@ -749,6 +934,9 @@
 ],
 "minecraft/tags/block/triggers_ambient_desert_sand_block_sounds.json": [
 "mekanism:block_salt"
+],
+"minecraft/tags/block/wall_post_override.json": [
+"mekanism:industrial_alarm"
 ],
 "minecraft/tags/item/beacon_payment_items.json": [
 "mekanism:ingot_osmium",
