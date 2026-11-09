@@ -112,8 +112,8 @@ Enrichment Chamber, Crusher e Energized Smelter são uma tabela só em `native/g
 ticks de uso. O Smelter não tem arquivos de receita próprios: usa as receitas de fornalha do jogo, como o `WrappedSmelterRecipe`.
 
 As 460 receitas de `mekanism:enriching` e `mekanism:crushing` são os arquivos originais. As tags `c:` do NeoForge que o vanilla
-não tem foram escritas à mão em `data/c/tags/item/`, com os mesmos itens. Ficam dormentes as receitas de estanho, chumbo,
-urânio, fluorita, sal e o que vem do processamento de minério em mais etapas, até esses itens existirem.
+não tem foram escritas à mão em `data/c/tags/item/`, com os mesmos itens. As receitas de estanho, chumbo, urânio, fluorita, sal e as de bronze e
+dos pós sujos, que ficavam dormentes, estão completas desde 2026-11-09 (os itens, blocos e tags de craft e de recurso chegaram; veja o plano, Fase 2).
 
 Testado em mundo: craft das quatro peças, minério bruto em pó (3 para 4), carvão em `enriched_carbon`, ferro em pó,
 pedregulho em cascalho, pó em lingote, `enriched_carbon` dando 80 mB de carbono no infuser, hoppers por face e item sem

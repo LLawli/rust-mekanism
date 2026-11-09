@@ -6,6 +6,22 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- Os itens e blocos de craft e de recurso do original, sem função, com tudo o que ele dá a eles (`MekanismItems`, `MekanismBlocks`, `BlockResourceInfo`, `OreType`): 74 itens (os `clump_`,
+  `crystal_`, `dirty_dust_` e `shard_` de cada metal, os pós, lingotes, pepitas e brutos de estanho, chumbo e urânio, o bronze e o glowstone e obsidiano refinados, `enriched_tin`,
+  `fluorite_gem`, `salt`, `sawdust`, `substrate`, `dye_base`, os `hdpe_*`, os `pellet_*`, `yellow_cake_uranium`, `reprocessed_fissile_fragment`, `teleportation_core`,
+  `electrolytic_core`, `module_base`, `module` e os quatro `qio_drive_*`) e 25 blocos (os 16 blocos de recurso, o sal e o bio fuel, os minérios de estanho, urânio, fluorita e chumbo na
+  pedra e no deepslate, e o quadro do teleporter), cada um com modelo, estado de bloco, textura, nome, loot table (minério com fortuna; a fluorita de 2 a 4 gemas antes dela),
+  dureza, resistência, ferramenta, cor do mapa, luz, som, raridade, resistência ao fogo, tempo de queima (carvão vegetal 16.000 e bio fuel 1.000), cor do nome (no tooltip), material de
+  acabamento (os 12 materiais do original, com a paleta e a tag `#minecraft:trim_materials`) e as tags de bloco e de item (`mineable/pickaxe`, `needs_stone_tool`, `beacon_base_blocks`...).
+  Os itens e o `steel_casing` que o port já tinha ganham o que faltava (a raridade das ligas, a resistência ao fogo do obsidiano refinado, o `.mcmeta` animado de três texturas e o gabarito
+  sem o material de acabamento do ferro). Os arquivos copiados do original são conferidos por hash contra a datagen dele (`rastros/craft_datagen.json`).
+- As tags `c:` da datagen que citam esses itens e blocos (84 de item e de bloco; 114 das 173) e as tags `minecraft:` e `mekanism:` do mesmo grupo, mais `c:ender_pearls`, `c:buckets/water` e
+  `c:rods/wooden` do NeoForge, e as 99 receitas de mesa e de forno do original que ficaram completas (blocos, lingotes e pepitas, o forno e o alto-forno de cada minério, as peças
+  `hdpe`, o núcleo eletrolítico, o quadro do teleporter e três receitas de upgrade). As seis receitas do forno do ósmio escritas à mão saíram: o original tem as dele em `processing/osmium/ingot`.
+- Estanho, urânio, fluorita e chumbo geram no mundo como o ósmio (`OreType`: tamanho e descarte, quantidade e altura dos padrões do `WorldConfig`), e o sal gera em discos no fundo da água
+  (`ResizableDiskFeature`: raio de 2 a 3, meia-altura 1, duas por chunk). A fluorita dá de 1 a 4 de experiência ao ser quebrada (`BlockOre.getExpDrop`, injeção `fluorite_experience`, H42).
+- A aba criativa "Mekanism" (`MekanismCreativeTabs`), com os 143 itens e blocos que o port tem na ordem de registro do original e as oito pilhas de upgrade por tipo; o Mekanism também acrescenta
+  os itens ao fim das abas de construção, natureza, funcionais, redstone, ferramentas e ingredientes do vanilla (`addToExistingTabs`), pela injeção `creative_tabs` (H43).
 - As quatro máquinas acesas soltam a fumaça e o pó de redstone na face da frente (`Machine.java:23`), e o Heat Generator aceso a fumaça e a chama pela de trás (`GeneratorsBlockTypes.java:69`), como o `BlockTile.animateTick` do original: o cliente sorteia as posições em volta do jogador a cada tick (667 a 16 blocos e 667 a 32, no
   `ClientLevel.animateTick` do Horizon) e cada bloco aceso sorteado solta uma partícula por entrada, girada pelo `facing`. A chave `machineEffects` (`rendering.particle` do `config/Mekanism/client.toml`, ligada por padrão) as desliga. Uma injeção nova na `machinery_basis` (`animate_tick`, mais um módulo que guarda os animadores dos mods) leva o sorteio do Horizon até o
   bloco de mod; as regras (`machinery_basis_core::active_fx`) repetem um rastro do original com semente fixa, bit a bit para a fumaça e o pó, e em jogo a taxa por segundo fica a menos de 2 desvios da esperança do sorteio nos dois jogos (3,0 por segundo de cada tipo a 3 blocos).
@@ -172,6 +188,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Changed
 
+- A mensagem de receita incompleta (decisão 13) vale como no original: com o conteúdo de craft e de recurso completo, as 40 receitas que só faltavam por conteúdo (`CONTENT_GAPS`) viraram 0 e a
+  lista saiu; qualquer receita incompleta dos tipos do Mekanism que o port lê levanta a mensagem. As 8 receitas que o Horizon recusava por item desconhecido também deixaram de existir.
 - O arquivo de cliente e o de configuração local passam da pasta `config/mekanism/` para a do original, `config/Mekanism/` (o M maiúsculo, `MekanismConfigHelper.CONFIG_DIR`): `client.toml` e `local.toml`. O original não migra nada, então o port também não: quem tinha as posições
   das janelas, o volume dos sons ou a unidade de temperatura em `config/mekanism/` começa dos padrões (os arquivos velhos ficam onde estão, sem uso, e podem ser copiados à mão). As posições das janelas, do Mekanism e do Heat Generator, estão no mesmo arquivo e passam a ter o texto do
   NightConfig do original: o bloco `[window]` com o comentário e uma tabela `[window.<nome>]` por janela, recuada, com um comentário em cada chave (a janela de upgrades é `[window.upgrade]`). O arquivo novo já nasce com `sounds` e `window.upgrade`. Uma correção do arquivo guarda as chaves e as seções que o port não lê, em vez de apagá-las.
