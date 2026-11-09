@@ -425,7 +425,7 @@ fn every_block_and_item_is_in_the_tags_the_original_puts_it_in() {
 }
 
 /// Cada tag da datagen que cita o Generators está no port com os ids que o port tem, e o que falta é só o que a datagen lista de outra frente
-/// (`mekanism:pressure_disperser` e `#mekanism:structures/common`, do Mekanism, da frente `blocos-estrutura`; quando entrarem, o gerador os acrescenta e esta lista esvazia).
+/// (nada mais: `mekanism:pressure_disperser` e `#mekanism:structures/common` entraram com a frente `blocos-estrutura`).
 #[test]
 fn the_tags_hold_what_the_datagen_lists_except_what_is_not_ported_yet() {
     let datagen = datagen();
@@ -443,6 +443,32 @@ fn the_tags_hold_what_the_datagen_lists_except_what_is_not_ported_yet() {
             // O Horizon não deixa um mod acrescentar a tag de outro (`a mod adds files in its own namespaces`): fica para o arquivo do Mekanism.
             assert_eq!(namespace, "mekanism", "{key}");
             assert!(!file.exists(), "{key}");
+            // Elas vivem no arquivo do Mekanism, com as entradas do Generators como opcionais (`required: false`: sem o Generators somem, com ele entram), que o gerador do Mekanism
+            // escreve (`blocos_conteudo.py`, `generators_optional_tags`).
+            let theirs = json(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../mekanism/content/data")
+                    .join(key),
+            );
+            let optional: Vec<(String, bool)> = theirs["values"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|v| v.is_object())
+                .map(|v| {
+                    (
+                        v["id"].as_str().unwrap().to_owned(),
+                        v["required"].as_bool().unwrap(),
+                    )
+                })
+                .collect();
+            let want: Vec<(String, bool)> = tag["missing"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| (v.as_str().unwrap().to_owned(), false))
+                .collect();
+            assert_eq!(optional, want, "{key}");
             pending.insert(key.clone());
             continue;
         }
@@ -485,13 +511,8 @@ fn the_tags_hold_what_the_datagen_lists_except_what_is_not_ported_yet() {
         assert_eq!(ours.iter().collect::<Vec<_>>(), expected, "{key}");
         let _ = path;
     }
-    assert_eq!(
-        missing.into_iter().collect::<Vec<_>>(),
-        vec![
-            "#mekanism:structures/common".to_owned(),
-            "mekanism:pressure_disperser".to_owned()
-        ]
-    );
+    // O dispersor de pressão e `#mekanism:structures/common` entraram com a frente `blocos-estrutura`: nada falta.
+    assert!(missing.is_empty(), "{missing:?}");
     assert_eq!(pending.len(), 4, "{pending:?}");
 }
 
@@ -511,7 +532,7 @@ fn the_neoforge_tags_are_the_jars() {
 }
 
 /// Cada receita da datagen que ficou completa com o conteúdo do port existe no port, no mesmo caminho (o id da receita é o do original), igual ao original; as que não, são as
-/// cinco que citam o que o port não tem (o tanque químico de `blocos-estrutura`, as duas de módulo do Mekanism, e a haste de ferro que o `turbine_vent` pede).
+/// duas que citam o que o port não tem (as unidades de módulo do Mekanism). A do conjunto de combustível da fissão e a do controlador do reator ficaram completas com o tanque de químico e o dispersor de pressão da frente `blocos-estrutura`.
 #[test]
 fn every_complete_recipe_of_the_datagen_is_ported() {
     let datagen = datagen();
@@ -536,13 +557,11 @@ fn every_complete_recipe_of_the_datagen_is_ported() {
             incomplete.push(relative.clone());
         }
     }
-    assert_eq!(ported, 24);
+    assert_eq!(ported, 26);
     assert_eq!(
         incomplete,
         vec![
-            "mekanismgenerators/recipe/fission_reactor/fuel_assembly.json",
             "mekanismgenerators/recipe/geothermal_generator_unit.json",
-            "mekanismgenerators/recipe/reactor/controller.json",
             "mekanismgenerators/recipe/solar_recharging_unit.json",
         ]
     );

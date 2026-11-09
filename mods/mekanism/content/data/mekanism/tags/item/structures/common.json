@@ -1,5 +1,9 @@
 {
   "values": [
-    "mekanism:structural_glass"
+    "mekanism:structural_glass",
+    {
+      "id": "mekanismgenerators:reactor_glass",
+      "required": false
+    }
   ]
 }

@@ -258,6 +258,7 @@
   "data/mekanismgenerators/recipe/electromagnetic_coil.json": "2f67563c6f945691:226",
   "data/mekanismgenerators/recipe/fission_reactor/casing.json": "17fd6b93d204a7bf:215",
   "data/mekanismgenerators/recipe/fission_reactor/control_rod_assembly.json": "4b2c8b8ccc744519:199",
+  "data/mekanismgenerators/recipe/fission_reactor/fuel_assembly.json": "21f592f96be82c99:211",
   "data/mekanismgenerators/recipe/fission_reactor/logic_adapter.json": "58676ef132609ffe:278",
   "data/mekanismgenerators/recipe/fission_reactor/port.json": "0885162dec3b5dfe:236",
   "data/mekanismgenerators/recipe/generator/advanced_solar.json": "77062ff286a0d12b:229",
@@ -267,6 +268,7 @@
   "data/mekanismgenerators/recipe/generator/solar.json": "01c42e13b0e04883:268",
   "data/mekanismgenerators/recipe/hohlraum.json": "b87318bd7cc47149:243",
   "data/mekanismgenerators/recipe/laser_focus_matrix.json": "08fb1a44e69749eb:212",
+  "data/mekanismgenerators/recipe/reactor/controller.json": "eaccae49216e9e16:288",
   "data/mekanismgenerators/recipe/reactor/frame.json": "6c45b80aaf725fe9:243",
   "data/mekanismgenerators/recipe/reactor/glass.json": "2568d7ba2a37e5de:213",
   "data/mekanismgenerators/recipe/reactor/logic_adapter.json": "96e5f5fa6ee2de86:275",
@@ -282,9 +284,11 @@
   "data/mekanismgenerators/tags/block/structures/reactors.json": "4b31445c4ca0feae:111",
   "data/mekanismgenerators/tags/block/structures/reactors/fission.json": "ebb3b65a2c06586e:269",
   "data/mekanismgenerators/tags/block/structures/reactors/fusion.json": "79384f076cadc15e:267",
+  "data/mekanismgenerators/tags/block/structures/turbine.json": "894dc245b5b2f8e4:336",
   "data/mekanismgenerators/tags/item/structures/reactors.json": "4b31445c4ca0feae:111",
   "data/mekanismgenerators/tags/item/structures/reactors/fission.json": "ebb3b65a2c06586e:269",
   "data/mekanismgenerators/tags/item/structures/reactors/fusion.json": "79384f076cadc15e:267",
+  "data/mekanismgenerators/tags/item/structures/turbine.json": "894dc245b5b2f8e4:336",
   "data/minecraft/tags/block/blocks_motion_no_leaves.json": "ae3f4364ed8fe03f:245",
   "data/minecraft/tags/block/impermeable.json": "b18a89d9d304aa9b:47",
   "data/minecraft/tags/block/mineable/pickaxe.json": "ae3f4364ed8fe03f:245",
@@ -422,7 +426,7 @@
    "type": "minecraft:crafting_shaped"
   },
   "mekanismgenerators/recipe/fission_reactor/fuel_assembly.json": {
-   "complete": false,
+   "complete": true,
    "refs": [
     "#c:ingots/lead",
     "#c:ingots/steel",
@@ -550,7 +554,7 @@
    "type": "minecraft:crafting_shaped"
   },
   "mekanismgenerators/recipe/reactor/controller.json": {
-   "complete": false,
+   "complete": true,
    "refs": [
     "#c:circuits/ultimate",
     "#c:glass_panes",
@@ -798,10 +802,7 @@
    ]
   },
   "mekanismgenerators/tags/block/structures/turbine.json": {
-   "missing": [
-    "mekanism:pressure_disperser",
-    "#mekanism:structures/common"
-   ],
+   "missing": [],
    "values": [
     "mekanism:pressure_disperser",
     "mekanismgenerators:turbine_rotor",
@@ -844,10 +845,7 @@
    ]
   },
   "mekanismgenerators/tags/item/structures/turbine.json": {
-   "missing": [
-    "mekanism:pressure_disperser",
-    "#mekanism:structures/common"
-   ],
+   "missing": [],
    "values": [
     "mekanism:pressure_disperser",
     "mekanismgenerators:turbine_rotor",

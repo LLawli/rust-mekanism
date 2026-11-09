@@ -850,6 +850,39 @@ def datagen_tags():
     return tags
 
 
+GENERATORS_GEN = f"{ORIGINAL}/src/datagen/generated/mekanismgenerators"
+
+
+def generators_optional_tags():
+    """As tags `mekanism:` de bloco e de item que a datagen do Generators amplia (`mekanism:structures` e `structures/common`: as da turbina e dos reatores, o vidro do reator). O Horizon recusa o
+    Generators inteiro se ele escrever `data/mekanism/tags` (H65), então as entradas dele entram no arquivo do Mekanism como opcionais (`{"id": ..., "required": false}`): somem sem o outro
+    mod, e entram quando ele existe. Só as tags que o Mekanism já tem no port; as outras (químicos, `data_component_type`) são de função."""
+    changed = 0
+    base = f"{GENERATORS_GEN}/data/mekanism/tags"
+    for kind in ("block", "item"):
+        folder = f"{base}/{kind}"
+        if not os.path.isdir(folder):
+            continue
+        for dirpath, _, names in os.walk(folder):
+            for name in sorted(names):
+                source = os.path.join(dirpath, name)
+                target = os.path.join(CONTENT, "data/mekanism/tags", os.path.relpath(source, base))
+                if not os.path.exists(target):
+                    continue
+                data = json.load(open(target))
+                present = {v if isinstance(v, str) else v["id"] for v in data["values"]}
+                extra = []
+                for value in json.load(open(source))["values"]:
+                    entry = value if isinstance(value, str) else value["id"]
+                    if entry not in present:
+                        extra.append({"id": entry, "required": False})
+                if extra:
+                    data["values"] = [v for v in data["values"]] + extra
+                    write_json(target, data)
+                    changed += 1
+    return changed
+
+
 def sync_tags():
     """Cada tag do original que ficou completa com os ids do port vira arquivo (cópia); a tag do vanilla que o original lista por inteiro e o port achata ganha os ids novos.
     Completa: todo `mekanism:` que ela cita existe no port e toda `#mekanism:` aninhada é uma tag completa. As tags `c:` e `minecraft:` citadas não contam."""
@@ -903,7 +936,8 @@ def sync_tags():
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 shutil.copyfile(f"{GEN}/data/{key}", target)
                 written += 1
-    print(f"tags: {written} novas, {changed} achatadas ampliadas")
+    optional = generators_optional_tags()
+    print(f"tags: {written} novas, {changed} achatadas ampliadas, {optional} com entradas opcionais do Generators")
 
 
 NEOFORGE_JAR = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/neoforge-26.3.0.100-sources.jar"

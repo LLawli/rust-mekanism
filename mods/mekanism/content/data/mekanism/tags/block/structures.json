@@ -4,6 +4,14 @@
     "#mekanism:structures/matrix",
     "#mekanism:structures/boiler",
     "#mekanism:structures/evaporation",
-    "#mekanism:structures/sps"
+    "#mekanism:structures/sps",
+    {
+      "id": "#mekanismgenerators:structures/turbine",
+      "required": false
+    },
+    {
+      "id": "#mekanismgenerators:structures/reactors",
+      "required": false
+    }
   ]
 }

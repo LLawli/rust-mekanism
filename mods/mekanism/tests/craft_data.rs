@@ -20,7 +20,8 @@ fn values(path: &std::path::Path) -> Vec<String> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| v.as_str().unwrap().to_owned())
+        // Só as entradas obrigatórias: as opcionais (`{"id": ..., "required": false}`, as do Generators nas tags `mekanism:structures`) são conferidas por `generators_content.rs`.
+        .filter_map(|v| v.as_str().map(str::to_owned))
         .collect()
 }
 
