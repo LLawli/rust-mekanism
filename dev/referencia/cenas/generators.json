@@ -1,0 +1,106 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 120 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "geradores",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:solar_generator[facing=north,active=false]",
+    "setblock 61 -60 82 mekanismgenerators:gas_burning_generator[facing=north,active=false]",
+    "setblock 62 -60 82 mekanismgenerators:bio_generator[facing=north,active=false]"
+   ],
+   "tp": "61.5 -58.38 78.5 0 16.2"
+  },
+  {
+   "name": "geradores_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:solar_generator[facing=north,active=true]",
+    "setblock 61 -60 82 mekanismgenerators:gas_burning_generator[facing=north,active=true]",
+    "setblock 62 -60 82 mekanismgenerators:bio_generator[facing=north,active=true]"
+   ],
+   "tp": "61.5 -58.38 78.5 0 16.2"
+  },
+  {
+   "name": "geradores_grandes",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:advanced_solar_generator[facing=north,active=false]",
+    "setblock 64 -60 82 mekanismgenerators:wind_generator[facing=north,active=false]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 -5.1"
+  },
+  {
+   "name": "geradores_grandes_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:advanced_solar_generator[facing=north,active=true]",
+    "setblock 64 -60 82 mekanismgenerators:wind_generator[facing=north,active=true]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 -5.1"
+  },
+  {
+   "name": "turbina",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:turbine_rotor",
+    "setblock 61 -60 82 mekanismgenerators:rotational_complex",
+    "setblock 62 -60 82 mekanismgenerators:electromagnetic_coil",
+    "setblock 63 -60 82 mekanismgenerators:turbine_casing",
+    "setblock 64 -60 82 mekanismgenerators:turbine_valve",
+    "setblock 65 -60 82 mekanismgenerators:turbine_vent",
+    "setblock 66 -60 82 mekanismgenerators:saturating_condenser"
+   ],
+   "tp": "63.5 -58.38 76.8 0 11.1"
+  },
+  {
+   "name": "fissao",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:fission_reactor_casing",
+    "setblock 61 -60 82 mekanismgenerators:fission_reactor_port[mode=input]",
+    "setblock 62 -60 82 mekanismgenerators:fission_reactor_port[mode=output_waste]",
+    "setblock 63 -60 82 mekanismgenerators:fission_reactor_port[mode=output_coolant]",
+    "setblock 64 -60 82 mekanismgenerators:fission_reactor_logic_adapter",
+    "setblock 65 -60 82 mekanismgenerators:fission_fuel_assembly",
+    "setblock 66 -60 82 mekanismgenerators:control_rod_assembly"
+   ],
+   "tp": "63.5 -58.38 76.8 0 11.1"
+  },
+  {
+   "name": "fusao",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:fusion_reactor_controller[active=false]",
+    "setblock 61 -60 82 mekanismgenerators:fusion_reactor_controller[active=true]",
+    "setblock 62 -60 82 mekanismgenerators:fusion_reactor_frame",
+    "setblock 63 -60 82 mekanismgenerators:fusion_reactor_port[active=false]",
+    "setblock 64 -60 82 mekanismgenerators:fusion_reactor_port[active=true]",
+    "setblock 65 -60 82 mekanismgenerators:fusion_reactor_logic_adapter",
+    "setblock 66 -60 82 mekanismgenerators:laser_focus_matrix",
+    "setblock 67 -60 82 mekanismgenerators:reactor_glass"
+   ],
+   "tp": "64.0 -58.38 76.35 0 10.2"
+  },
+  {
+   "name": "geradores_lava",
+   "cmds": [
+    "setblock 60 -60 82 mekanismgenerators:solar_generator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 61 -60 82 mekanismgenerators:gas_burning_generator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 62 -60 82 mekanismgenerators:bio_generator[facing=north,active=true,fluid_logged=lava]"
+   ],
+   "tp": "61.5 -58.38 78.5 0 16.2"
+  },
+  {
+   "name": "vidro",
+   "cmds": [
+    "fill 59 -60 83 63 -57 83 minecraft:oak_planks",
+    "fill 60 -60 82 62 -58 82 mekanismgenerators:reactor_glass",
+    "setblock 61 -59 82 mekanismgenerators:laser_focus_matrix"
+   ],
+   "tp": "61.5 -57.88 77 0 8"
+  }
+ ]
+}

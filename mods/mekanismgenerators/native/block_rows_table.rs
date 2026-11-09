@@ -1,0 +1,71 @@
+// GERADO por `dev/referencia/generators_conteudo.py` a partir de `rastros/blocos_generators.jsonl` (`testes/BlocosTraceTest.java`, o original em jogo). Não edite à mão.
+//
+// O que o original dá à linha de jogo de cada estado dos blocos do Mekanism Generators que o Horizon não deixa o mod dizer em `properties`:
+// a luz do estado ativo (`AttributeStateActive`: `Attributes.ACTIVE_LIGHT` 8, `ACTIVE_MELT_LIGHT` 13, `ACTIVE_FULL_LIGHT` 15), a reação ao pistão (`BlockMekanism.
+// getPistonPushReaction`: `IMMOVEABLE` com bloco de entidade) e a oclusão (`isSolidRender`, `canOcclude`, `getLightDampening`, `propagatesSkylightDown`: o cubo
+// cheio do gabarito não vale para uma forma menor). A injeção `block_rows` aplica a tabela em cada linha, antes das `properties` declaradas.
+
+/// Uma linha da tabela: o bloco e o que a linha de jogo dele leva.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Facts {
+    pub id: &'static str,
+    /// A luz do estado com `active=true`, quando o original acende o bloco (0: o bloco não tem `active` com luz).
+    pub active_light: u8,
+    pub push: &'static str,
+    pub can_occlude: bool,
+    pub solid_render: bool,
+    pub dampening: u8,
+    pub skylight_down: bool,
+    /// A oclusão do estado com água ou lava dentro (`fluid_logged`), que o fluido muda.
+    pub wet_dampening: u8,
+    pub wet_skylight_down: bool,
+    /// A resistência a explosões que o arquivo do Horizon não aceita (negativa: `AttributeCustomResistance`).
+    pub explosion: Option<f32>,
+}
+
+/// A luz da lava dentro do bloco (`IStateFluidLoggable.getFluidLightLevel`).
+pub const LAVA_LIGHT: u8 = 15;
+
+pub const BLOCKS: [Facts; 23] = [
+    Facts { id: "mekanismgenerators:solar_generator", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:gas_burning_generator", active_light: 13, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:bio_generator", active_light: 13, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:advanced_solar_generator", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:wind_generator", active_light: 8, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:turbine_rotor", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:rotational_complex", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:electromagnetic_coil", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:turbine_casing", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:turbine_valve", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:turbine_vent", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:saturating_condenser", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:reactor_glass", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 0, wet_skylight_down: true, explosion: None },
+    Facts { id: "mekanismgenerators:fission_reactor_casing", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fission_reactor_port", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fission_reactor_logic_adapter", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fission_fuel_assembly", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:control_rod_assembly", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 1, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fusion_reactor_controller", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fusion_reactor_frame", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fusion_reactor_port", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:fusion_reactor_logic_adapter", active_light: 0, push: "IMMOVEABLE", can_occlude: true, solid_render: true, dampening: 15, skylight_down: false, wet_dampening: 15, wet_skylight_down: false, explosion: None },
+    Facts { id: "mekanismgenerators:laser_focus_matrix", active_light: 0, push: "IMMOVEABLE", can_occlude: false, solid_render: false, dampening: 0, skylight_down: true, wet_dampening: 0, wet_skylight_down: true, explosion: None },
+];
+
+/// A linha da tabela de um bloco do Mekanism Generators, pelo id.
+pub fn facts(id: &str) -> Option<&'static Facts> {
+    BLOCKS.iter().find(|facts| facts.id == id)
+}
+
+/// A luz do estado de `facts` com as propriedades `combo` (`active`, `fluid_logged`): a maior entre a do `active`, a da lava e a que o bloco já tinha.
+pub fn light(facts: &Facts, combo: &[(String, String)], base: u8) -> u8 {
+    let has = |name: &str, value: &str| combo.iter().any(|(k, v)| k == name && v == value);
+    let mut light = base;
+    if facts.active_light > 0 && has("active", "true") {
+        light = light.max(facts.active_light);
+    }
+    if has("fluid_logged", "lava") {
+        light = light.max(LAVA_LIGHT);
+    }
+    light
+}

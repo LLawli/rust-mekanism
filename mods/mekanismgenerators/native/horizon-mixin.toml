@@ -289,3 +289,43 @@ helper = "client_tick.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
 ]
+
+# A linha de jogo de cada estado dos blocos do Generators (luz do estado ativo e da lava, reação ao pistão, oclusão), que `properties` não alcança: a mesma injeção do
+# Mekanism (`active_light`), com a tabela do Generators, gerada do original em jogo e testada em `tests/blocos_registry.rs`. Alvo cru, H18 e H49.
+[[injection]]
+id = "block_rows"
+target = "horizon_client_lib::mod_content::Plan<'_>::override_gameplay"
+kind = "HEAD"
+helper = "block_rows.rs"
+bindings = [
+  { name = "block", ty = "&NewBlock<'_>", value = "b" },
+  { name = "combo", ty = "&[(String, String)]", value = "combo" },
+  { name = "row", ty = "&mut J", value = "&mut *row" },
+]
+
+# A tabela das linhas de jogo dos blocos do Generators. Vai para o arquivo do `Plan`, onde está `block_rows`.
+[[module]]
+id = "block-rows"
+file = "crates/horizon-client/src/mod_content.rs"
+name = "mekanismgenerators_rows"
+source = "block_rows_table.rs"
+
+# O que o Generators acrescenta às abas do vanilla (`GeneratorsCreativeTabs.addToExistingTabs`), no RETURN de `Plan::creative_tabs`, como a injeção `creative_tabs` do Mekanism.
+# Alvo cru, H43. O resultado vem antes do `doc` nos `bindings`: o Horizon aninha as duas injeções RETURN (a do Mekanism fica por dentro), e `&mut *doc` antes do resultado interno
+# seria um segundo empréstimo mutável.
+[[injection]]
+id = "creative_tabs"
+target = "horizon_client_lib::mod_content::Plan<'_>::creative_tabs"
+kind = "RETURN"
+helper = "creative_tabs.rs"
+bindings = [
+  { name = "result", ty = "Result<()>", value = "$value" },
+  { name = "doc", ty = "&mut J", value = "&mut *doc" },
+]
+
+# A lista que o Generators põe nas abas do vanilla (código puro, gerado do original em jogo e testado em `tests/creative_tabs.rs`).
+[[module]]
+id = "creative-tabs-table"
+file = "crates/horizon-client/src/mod_content.rs"
+name = "mekanismgenerators_tabs"
+source = "creative_tabs_table.rs"

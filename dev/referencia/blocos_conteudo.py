@@ -47,17 +47,18 @@ TEMPLATE = "minecraft:lodestone"
 MAX_BOXES = 16
 
 
-def rows():
+def rows(prefix="blocos"):
     """Os blocos do original em jogo: `blocos.jsonl` (propriedades, estados, tags, item), `blocos_formas.jsonl` (a tabela de formas de cada bloco) e `blocos_colocacao.jsonl`
-    (o `facing` e o `fluid_logged` ao pôr). Um estado herda de `base` o que não diferiu do estado padrão."""
+    (o `facing` e o `fluid_logged` ao pôr). Um estado herda de `base` o que não diferiu do estado padrão. `prefix` escolhe o conjunto: `blocos` é o do Mekanism e
+    `blocos_generators` o do Mekanism Generators (`generators_conteudo.py`), com os mesmos três arquivos e o mesmo formato."""
     shapes, placement = {}, {}
-    for name, target, key in (("blocos_formas", shapes, "shapes"), ("blocos_colocacao", placement, "placement")):
+    for name, target, key in ((f"{prefix}_formas", shapes, "shapes"), (f"{prefix}_colocacao", placement, "placement")):
         with open(os.path.join(HERE, f"rastros/{name}.jsonl")) as handle:
             for line in handle:
                 row = json.loads(line)
                 target[row["id"]] = row[key]
     out = {}
-    with open(RASTRO) as handle:
+    with open(os.path.join(HERE, f"rastros/{prefix}.jsonl")) as handle:
         for line in handle:
             row = json.loads(line)
             row["shapes"] = shapes[row["id"]]
@@ -180,13 +181,17 @@ def shapes_of(row, kind):
 # --- bloco --------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
+# O som de quebra que o original dá ao bloco e o bloco do vanilla cujo som o port usa (`properties.sounds`).
+SOUND_BLOCKS = {"minecraft:block.stone.break": "minecraft:stone", "minecraft:block.glass.break": "minecraft:glass"}
+
+
 def sound_block(row):
     sounds = {s["sound"] for s in row["states"]}
-    assert sounds == {"minecraft:block.stone.break"}, (row["id"], sounds)
-    return "minecraft:stone"
+    assert len(sounds) == 1 and sounds <= set(SOUND_BLOCKS), (row["id"], sounds)
+    return SOUND_BLOCKS[sounds.pop()]
 
 
-def block_declaration(row):
+def block_declaration(row, template=TEMPLATE):
     first = row["states"][0]
     properties = {"hardness": row["hardness"], "requires_tool": row["requires_tool"], "map_color": first["map_color"], "sounds": sound_block(row)}
     # `Properties.strength` e o arquivo do Horizon aceitam 0 ou mais; a resistência -1 do `AttributeCustomResistance` (o cofre, o barril e a mesa de segurança) vai pela
@@ -201,7 +206,7 @@ def block_declaration(row):
     static_light = [s["light"] for s in row["states"] if s["props"].get("active") in (None, "false") and s["props"].get("fluid_logged") in (None, "empty")]
     if row["id"].endswith("teleporter"):
         properties["light"] = max(static_light)
-    declaration = {"template": TEMPLATE, "properties": properties}
+    declaration = {"template": template, "properties": properties}
     state_properties = {}
     for prop in row["properties"]:
         values = prop["values"]

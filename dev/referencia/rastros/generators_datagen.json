@@ -1,0 +1,886 @@
+{
+ "creative": {
+  "tab": {
+   "icon": "mekanismgenerators:heat_generator",
+   "items": [
+    "mekanismgenerators:solar_panel",
+    "mekanismgenerators:hohlraum",
+    "mekanismgenerators:turbine_blade",
+    "mekanismgenerators:heat_generator",
+    "mekanismgenerators:solar_generator",
+    "mekanismgenerators:gas_burning_generator",
+    "mekanismgenerators:bio_generator",
+    "mekanismgenerators:advanced_solar_generator",
+    "mekanismgenerators:wind_generator",
+    "mekanismgenerators:turbine_rotor",
+    "mekanismgenerators:rotational_complex",
+    "mekanismgenerators:electromagnetic_coil",
+    "mekanismgenerators:turbine_casing",
+    "mekanismgenerators:turbine_valve",
+    "mekanismgenerators:turbine_vent",
+    "mekanismgenerators:saturating_condenser",
+    "mekanismgenerators:reactor_glass",
+    "mekanismgenerators:fission_reactor_casing",
+    "mekanismgenerators:fission_reactor_port",
+    "mekanismgenerators:fission_reactor_logic_adapter",
+    "mekanismgenerators:fission_fuel_assembly",
+    "mekanismgenerators:control_rod_assembly",
+    "mekanismgenerators:fusion_reactor_controller",
+    "mekanismgenerators:fusion_reactor_frame",
+    "mekanismgenerators:fusion_reactor_port",
+    "mekanismgenerators:fusion_reactor_logic_adapter",
+    "mekanismgenerators:laser_focus_matrix",
+    "mekanismgenerators:bioethanol_bucket",
+    "mekanismgenerators:deuterium_bucket",
+    "mekanismgenerators:fusion_fuel_bucket",
+    "mekanismgenerators:tritium_bucket"
+   ],
+   "title": "constants.mekanismgenerators.mod_name"
+  },
+  "vanilla": {
+   "minecraft:functional_blocks": [
+    "heat_generator",
+    "solar_generator",
+    "advanced_solar_generator",
+    "wind_generator",
+    "bio_generator",
+    "gas_burning_generator"
+   ],
+   "minecraft:ingredients": [
+    "hohlraum",
+    "solar_panel"
+   ],
+   "minecraft:redstone_blocks": [
+    "heat_generator",
+    "solar_generator",
+    "gas_burning_generator",
+    "bio_generator",
+    "advanced_solar_generator",
+    "wind_generator",
+    "turbine_valve"
+   ],
+   "minecraft:tools_and_utilities": [
+    "bioethanol_bucket",
+    "deuterium_bucket",
+    "fusion_fuel_bucket",
+    "tritium_bucket"
+   ]
+  }
+ },
+ "files": {
+  "assets/mekanismgenerators/blockstates/advanced_solar_generator.json": "0bf6a05d0ac875cc:343",
+  "assets/mekanismgenerators/blockstates/bio_generator.json": "9cb998642c127bd9:305",
+  "assets/mekanismgenerators/blockstates/control_rod_assembly.json": "b2a0b3ba911a4f09:83",
+  "assets/mekanismgenerators/blockstates/electromagnetic_coil.json": "8618e54bd5dadea9:75",
+  "assets/mekanismgenerators/blockstates/fission_fuel_assembly.json": "146f29d20465ddcc:76",
+  "assets/mekanismgenerators/blockstates/fission_reactor_casing.json": "6c35f0534ff5c2f6:69",
+  "assets/mekanismgenerators/blockstates/fission_reactor_logic_adapter.json": "772d20d7ba1bd673:76",
+  "assets/mekanismgenerators/blockstates/fission_reactor_port.json": "1b26fffcf6e2ab7b:253",
+  "assets/mekanismgenerators/blockstates/fusion_reactor_controller.json": "3d79ff27445728d4:156",
+  "assets/mekanismgenerators/blockstates/fusion_reactor_frame.json": "d5714810b8af859b:67",
+  "assets/mekanismgenerators/blockstates/fusion_reactor_logic_adapter.json": "a3a7f2c330b9f944:75",
+  "assets/mekanismgenerators/blockstates/fusion_reactor_port.json": "5fc9cc2a41c4c892:148",
+  "assets/mekanismgenerators/blockstates/gas_burning_generator.json": "b294363514c3c7fc:331",
+  "assets/mekanismgenerators/blockstates/laser_focus_matrix.json": "c0d39367fded8e10:80",
+  "assets/mekanismgenerators/blockstates/reactor_glass.json": "00d8c5b00b457cec:68",
+  "assets/mekanismgenerators/blockstates/rotational_complex.json": "c802b9e5091531ad:73",
+  "assets/mekanismgenerators/blockstates/saturating_condenser.json": "22fcfe5fd98dfca7:75",
+  "assets/mekanismgenerators/blockstates/solar_generator.json": "88231f43a8c1ffd2:70",
+  "assets/mekanismgenerators/blockstates/turbine_casing.json": "9fdce4acce65b3b2:69",
+  "assets/mekanismgenerators/blockstates/turbine_rotor.json": "aee88df125bcca91:68",
+  "assets/mekanismgenerators/blockstates/turbine_valve.json": "831147f363eebf7b:68",
+  "assets/mekanismgenerators/blockstates/turbine_vent.json": "01b0aee03476ea2a:67",
+  "assets/mekanismgenerators/blockstates/wind_generator.json": "2e64e7657fdb9288:303",
+  "assets/mekanismgenerators/items/advanced_solar_generator.json": "73396f90f570e078:96",
+  "assets/mekanismgenerators/items/bio_generator.json": "f91e81b679387b06:85",
+  "assets/mekanismgenerators/items/control_rod_assembly.json": "d375e63c854bf26e:100",
+  "assets/mekanismgenerators/items/electromagnetic_coil.json": "99db665b2a7ef052:92",
+  "assets/mekanismgenerators/items/fission_fuel_assembly.json": "a428e9e3cebf69eb:93",
+  "assets/mekanismgenerators/items/fission_reactor_casing.json": "b137a2f0ddca88c9:86",
+  "assets/mekanismgenerators/items/fission_reactor_logic_adapter.json": "22db8b3a31e24124:93",
+  "assets/mekanismgenerators/items/fission_reactor_port.json": "0928d5ab6ca71722:90",
+  "assets/mekanismgenerators/items/fusion_reactor_controller.json": "f5d309229d371bcb:89",
+  "assets/mekanismgenerators/items/fusion_reactor_frame.json": "99be034255f1bc78:84",
+  "assets/mekanismgenerators/items/fusion_reactor_logic_adapter.json": "bdd0b481c04ec603:92",
+  "assets/mekanismgenerators/items/fusion_reactor_port.json": "b892b00208a49298:83",
+  "assets/mekanismgenerators/items/gas_burning_generator.json": "5523fd30e30fa405:93",
+  "assets/mekanismgenerators/items/hohlraum.json": "4719f719ce593b16:79",
+  "assets/mekanismgenerators/items/laser_focus_matrix.json": "5ddb103a143de93b:97",
+  "assets/mekanismgenerators/items/reactor_glass.json": "c20c10d12e795497:85",
+  "assets/mekanismgenerators/items/rotational_complex.json": "dac419372ebb7c76:90",
+  "assets/mekanismgenerators/items/saturating_condenser.json": "a69609a75da85354:92",
+  "assets/mekanismgenerators/items/solar_generator.json": "7cedaf95c82584e7:86",
+  "assets/mekanismgenerators/items/solar_panel.json": "0a259e21510b6b28:82",
+  "assets/mekanismgenerators/items/turbine_blade.json": "900df82550c4f41a:84",
+  "assets/mekanismgenerators/items/turbine_casing.json": "b0283805117a3bf5:86",
+  "assets/mekanismgenerators/items/turbine_rotor.json": "9b4ed1bb8db4c982:85",
+  "assets/mekanismgenerators/items/turbine_valve.json": "6914f4d56ee2c6e0:85",
+  "assets/mekanismgenerators/items/turbine_vent.json": "44e0d288dbd63915:84",
+  "assets/mekanismgenerators/items/wind_generator.json": "1bfd5c29635e96b0:145",
+  "assets/mekanismgenerators/models/block/advanced_solar_generator.json": "dd2e81466395a0bb:8067",
+  "assets/mekanismgenerators/models/block/bio_generator.json": "54f256be304d5de5:3403",
+  "assets/mekanismgenerators/models/block/electromagnetic_coil.json": "60db6d61a860cfb4:94",
+  "assets/mekanismgenerators/models/block/fission/casing.json": "049afd16fae1f004:96",
+  "assets/mekanismgenerators/models/block/fission/control_rod_assembly.json": "bb03d40ac8b4b370:8282",
+  "assets/mekanismgenerators/models/block/fission/fuel_assembly.json": "7d2a3411374cc52f:3396",
+  "assets/mekanismgenerators/models/block/fission/logic_adapter.json": "dead65b49892c371:103",
+  "assets/mekanismgenerators/models/block/fission/port_input.json": "e5b84fe6d45b4261:100",
+  "assets/mekanismgenerators/models/block/fission/port_output_coolant.json": "1ca20555b8e5f0e7:109",
+  "assets/mekanismgenerators/models/block/fission/port_output_waste.json": "951fe241a521365f:107",
+  "assets/mekanismgenerators/models/block/fusion/controller.json": "51436977b3486b2b:197",
+  "assets/mekanismgenerators/models/block/fusion/controller_on.json": "a7c278a00e11b140:122",
+  "assets/mekanismgenerators/models/block/fusion/frame.json": "0e9669d2a3ce6510:87",
+  "assets/mekanismgenerators/models/block/fusion/laser_focus_matrix.json": "fb3da7440f502df8:92",
+  "assets/mekanismgenerators/models/block/fusion/logic_adapter.json": "2a9ab24d813c7d1d:95",
+  "assets/mekanismgenerators/models/block/fusion/port.json": "505d1bc83afc94bc:86",
+  "assets/mekanismgenerators/models/block/fusion/port_output.json": "27c1a692d13d35ec:115",
+  "assets/mekanismgenerators/models/block/gas_burning_generator.json": "24d57820a7093c97:7043",
+  "assets/mekanismgenerators/models/block/reactor_glass.json": "40625f819fddc257:87",
+  "assets/mekanismgenerators/models/block/rotational_complex.json": "0dc995ddca9871c5:278",
+  "assets/mekanismgenerators/models/block/saturating_condenser.json": "9102b2fe0e7c27de:94",
+  "assets/mekanismgenerators/models/block/solar_generator.json": "173272c3b7e88d43:3886",
+  "assets/mekanismgenerators/models/block/turbine/casing.json": "0a24bdd265140625:88",
+  "assets/mekanismgenerators/models/block/turbine/rotor.json": "cf5e0ab34458ac85:93",
+  "assets/mekanismgenerators/models/block/turbine/valve.json": "47ddfc6ef5079b0a:87",
+  "assets/mekanismgenerators/models/block/turbine/vent.json": "4d72ac13714faab5:86",
+  "assets/mekanismgenerators/models/block/wind_generator.json": "40f0f12d21f071d7:3141",
+  "assets/mekanismgenerators/models/block/wind_generator.mtl": "ae07b18c92c806ad:95",
+  "assets/mekanismgenerators/models/block/wind_generator.obj": "e71f3b1e02d33801:9174",
+  "assets/mekanismgenerators/models/block/wind_generator_blades.json": "d75cf2131306a879:264",
+  "assets/mekanismgenerators/models/block/wind_generator_blades.mtl": "ae07b18c92c806ad:95",
+  "assets/mekanismgenerators/models/block/wind_generator_blades.obj": "5c40befc05a6e4b8:11389",
+  "assets/mekanismgenerators/models/item/hohlraum.json": "55e420c107430faf:94",
+  "assets/mekanismgenerators/models/item/solar_generator.json": "df67a2b25d704257:385",
+  "assets/mekanismgenerators/models/item/solar_panel.json": "00fafd03a8fb55f7:97",
+  "assets/mekanismgenerators/models/item/turbine_blade.json": "ae7d124a1fca8bf1:99",
+  "assets/mekanismgenerators/render/turbine.png": "06c25a9311c1e35b:215",
+  "assets/mekanismgenerators/textures/block/electromagnetic_coil.png": "04c74239b2e1c3c3:262",
+  "assets/mekanismgenerators/textures/block/electromagnetic_coil.png.mcmeta": "304e74013efea813:157",
+  "assets/mekanismgenerators/textures/block/fission_reactor_casing.png": "51e05b564095ba57:503",
+  "assets/mekanismgenerators/textures/block/fission_reactor_casing.png.mcmeta": "e255c92b67f235d2:467",
+  "assets/mekanismgenerators/textures/block/fission_reactor_logic_adapter.png": "6607f8b63c349d74:561",
+  "assets/mekanismgenerators/textures/block/fission_reactor_logic_adapter.png.mcmeta": "fbcc0e3f94f4b093:474",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_input.png": "cccd02d33f7aeedc:478",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_input.png.mcmeta": "7c6d347104864a83:471",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_output_coolant.png": "f2efa0aeb34d9118:484",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_output_coolant.png.mcmeta": "128b3ac1b5aea369:480",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_output_waste.png": "b89943832e77aae1:479",
+  "assets/mekanismgenerators/textures/block/fission_reactor_port_output_waste.png.mcmeta": "a3bec5c6bd9db951:478",
+  "assets/mekanismgenerators/textures/block/laser_focus_matrix.png": "e540b32b63c29e86:809",
+  "assets/mekanismgenerators/textures/block/laser_focus_matrix.png.mcmeta": "43f0cddaa63c24e6:367",
+  "assets/mekanismgenerators/textures/block/model/advanced_solar_generator.png": "81df6458001d88c2:5555",
+  "assets/mekanismgenerators/textures/block/model/bio_generator1.png": "8d975ca2cc6fb163:1108",
+  "assets/mekanismgenerators/textures/block/model/bio_generator2.png": "3f73b0be0c05a13a:1106",
+  "assets/mekanismgenerators/textures/block/model/fuel_assembly/control_rod_assembly.png": "8e96b78271ec70e6:251",
+  "assets/mekanismgenerators/textures/block/model/fuel_assembly/control_rod_assembly_components.png": "7aee940334fd3b09:223",
+  "assets/mekanismgenerators/textures/block/model/fuel_assembly/fuel_rod_assembly_base.png": "1053a5b2be41a732:278",
+  "assets/mekanismgenerators/textures/block/model/fuel_assembly/fuel_rod_assembly_rods_top.png": "96c3277b5b37fdb4:272",
+  "assets/mekanismgenerators/textures/block/model/fuel_assembly/fuel_rod_assembly_side.png": "484d1efc0e8a4cb2:660",
+  "assets/mekanismgenerators/textures/block/model/gas_burning_generator.png": "e9314b3ff56ceb45:1071",
+  "assets/mekanismgenerators/textures/block/model/solar_generator.png": "e9c7a062c832fd2d:1442",
+  "assets/mekanismgenerators/textures/block/model/wind_generator.png": "9b3ab359e542de14:3887",
+  "assets/mekanismgenerators/textures/block/reactor_controller.png": "7f0b71c260e88a18:561",
+  "assets/mekanismgenerators/textures/block/reactor_controller.png.mcmeta": "abb93f0bbd08769e:546",
+  "assets/mekanismgenerators/textures/block/reactor_controller_on.png": "f22f63c0a4a48de3:660",
+  "assets/mekanismgenerators/textures/block/reactor_controller_on.png.mcmeta": "0c7915c9a6ed27dc:549",
+  "assets/mekanismgenerators/textures/block/reactor_frame.png": "680b3d882f2bb6dc:557",
+  "assets/mekanismgenerators/textures/block/reactor_frame.png.mcmeta": "71a4f3a8d0f81849:541",
+  "assets/mekanismgenerators/textures/block/reactor_glass.png": "8b106c70554baf12:747",
+  "assets/mekanismgenerators/textures/block/reactor_glass.png.mcmeta": "8df88186cb04ef45:362",
+  "assets/mekanismgenerators/textures/block/reactor_logic_adapter.png": "cc86ad3d5a53efb4:567",
+  "assets/mekanismgenerators/textures/block/reactor_logic_adapter.png.mcmeta": "6e2fba3aeb3e8d0e:549",
+  "assets/mekanismgenerators/textures/block/reactor_port.png": "2b29f492f3a8e7c7:645",
+  "assets/mekanismgenerators/textures/block/reactor_port.png.mcmeta": "238c60f6623dbe8d:540",
+  "assets/mekanismgenerators/textures/block/reactor_port_output.png": "af14d161d93d2a30:651",
+  "assets/mekanismgenerators/textures/block/reactor_port_output.png.mcmeta": "ea83a006d57d2401:547",
+  "assets/mekanismgenerators/textures/block/rotational_complex_side.png": "91e60aaf5c3123b1:479",
+  "assets/mekanismgenerators/textures/block/rotational_complex_top.png": "9eefb99c82c67408:196",
+  "assets/mekanismgenerators/textures/block/saturating_condenser.png": "9718de2bffb08b37:516",
+  "assets/mekanismgenerators/textures/block/saturating_condenser.png.mcmeta": "69782a2a93e63881:157",
+  "assets/mekanismgenerators/textures/block/turbine_casing.png": "fc8fcecdf84c7f3b:476",
+  "assets/mekanismgenerators/textures/block/turbine_casing.png.mcmeta": "affb6a34be0d7c32:427",
+  "assets/mekanismgenerators/textures/block/turbine_rotor.png": "12560c34ea3c161d:381",
+  "assets/mekanismgenerators/textures/block/turbine_valve.png": "c0193b3bfc376212:530",
+  "assets/mekanismgenerators/textures/block/turbine_valve.png.mcmeta": "6763ea681248aa0d:426",
+  "assets/mekanismgenerators/textures/block/turbine_vent.png": "10da1f332a52bc9f:529",
+  "assets/mekanismgenerators/textures/block/turbine_vent.png.mcmeta": "2b803b5569f6bfc2:425",
+  "assets/mekanismgenerators/textures/item/hohlraum.png": "b9cb8c2b3b81fe45:486",
+  "assets/mekanismgenerators/textures/item/solar_panel.png": "80445f57cd078115:510",
+  "assets/mekanismgenerators/textures/item/turbine_blade.png": "800ce75c316f1740:528",
+  "data/c/tags/item/buckets/bioethanol.json": "d54f2c9bb488abbc:51",
+  "data/c/tags/item/buckets/deuterium.json": "129f7d26c54030e7:50",
+  "data/c/tags/item/buckets/fusion_fuel.json": "a33b23a675c86da0:52",
+  "data/c/tags/item/buckets/tritium.json": "5a6d7cc2fc3332e1:48",
+  "data/mekanismgenerators/loot_table/blocks/advanced_solar_generator.json": "e3a2ace8f87afe4a:485",
+  "data/mekanismgenerators/loot_table/blocks/bio_generator.json": "de20820efef0b300:481",
+  "data/mekanismgenerators/loot_table/blocks/control_rod_assembly.json": "f6256d27436aaceb:268",
+  "data/mekanismgenerators/loot_table/blocks/electromagnetic_coil.json": "22b0e1109c10b5f3:268",
+  "data/mekanismgenerators/loot_table/blocks/fission_fuel_assembly.json": "828249801e64e447:270",
+  "data/mekanismgenerators/loot_table/blocks/fission_reactor_casing.json": "4913056bc084e0fb:272",
+  "data/mekanismgenerators/loot_table/blocks/fission_reactor_logic_adapter.json": "8d88a53ed5f4e6df:490",
+  "data/mekanismgenerators/loot_table/blocks/fission_reactor_port.json": "3f8f3d4185c25133:268",
+  "data/mekanismgenerators/loot_table/blocks/fusion_reactor_controller.json": "2263856a2a3ca8fb:278",
+  "data/mekanismgenerators/loot_table/blocks/fusion_reactor_frame.json": "320dbd8f0d263aa9:268",
+  "data/mekanismgenerators/loot_table/blocks/fusion_reactor_logic_adapter.json": "3b8694f7f79d73cd:494",
+  "data/mekanismgenerators/loot_table/blocks/fusion_reactor_port.json": "703f6218837f4f97:266",
+  "data/mekanismgenerators/loot_table/blocks/gas_burning_generator.json": "98ca5ca522c5d0f4:500",
+  "data/mekanismgenerators/loot_table/blocks/laser_focus_matrix.json": "cadda15527c652d3:264",
+  "data/mekanismgenerators/loot_table/blocks/reactor_glass.json": "86726f097cb9d7c7:254",
+  "data/mekanismgenerators/loot_table/blocks/rotational_complex.json": "ccc6d52ae8dd81b3:264",
+  "data/mekanismgenerators/loot_table/blocks/saturating_condenser.json": "d506b1d5ee44c64b:268",
+  "data/mekanismgenerators/loot_table/blocks/solar_generator.json": "252166550479cb6a:467",
+  "data/mekanismgenerators/loot_table/blocks/turbine_casing.json": "12d23c667e598901:256",
+  "data/mekanismgenerators/loot_table/blocks/turbine_rotor.json": "a7c255b2a1a05cc3:254",
+  "data/mekanismgenerators/loot_table/blocks/turbine_valve.json": "2dd3cb71b2faf3ab:254",
+  "data/mekanismgenerators/loot_table/blocks/turbine_vent.json": "23dc0e9ee211cb4d:252",
+  "data/mekanismgenerators/loot_table/blocks/wind_generator.json": "1409e64bb9d92856:465",
+  "data/mekanismgenerators/recipe/electromagnetic_coil.json": "2f67563c6f945691:226",
+  "data/mekanismgenerators/recipe/fission_reactor/casing.json": "17fd6b93d204a7bf:215",
+  "data/mekanismgenerators/recipe/fission_reactor/control_rod_assembly.json": "4b2c8b8ccc744519:199",
+  "data/mekanismgenerators/recipe/fission_reactor/logic_adapter.json": "58676ef132609ffe:278",
+  "data/mekanismgenerators/recipe/fission_reactor/port.json": "0885162dec3b5dfe:236",
+  "data/mekanismgenerators/recipe/generator/advanced_solar.json": "77062ff286a0d12b:229",
+  "data/mekanismgenerators/recipe/generator/bio.json": "accb735141ef2ac9:244",
+  "data/mekanismgenerators/recipe/generator/gas_burning.json": "37f56a6900f3501f:248",
+  "data/mekanismgenerators/recipe/generator/heat.json": "fb77c396be5a5845:255",
+  "data/mekanismgenerators/recipe/generator/solar.json": "01c42e13b0e04883:268",
+  "data/mekanismgenerators/recipe/hohlraum.json": "b87318bd7cc47149:243",
+  "data/mekanismgenerators/recipe/laser_focus_matrix.json": "08fb1a44e69749eb:212",
+  "data/mekanismgenerators/recipe/reactor/frame.json": "6c45b80aaf725fe9:243",
+  "data/mekanismgenerators/recipe/reactor/glass.json": "2568d7ba2a37e5de:213",
+  "data/mekanismgenerators/recipe/reactor/logic_adapter.json": "96e5f5fa6ee2de86:275",
+  "data/mekanismgenerators/recipe/reactor/port.json": "70993b81c1259128:236",
+  "data/mekanismgenerators/recipe/rotational_complex.json": "c594b6baf7ccb100:232",
+  "data/mekanismgenerators/recipe/saturating_condenser.json": "a2be79a86ebef939:219",
+  "data/mekanismgenerators/recipe/solar_panel.json": "1c5439614fa25b1e:222",
+  "data/mekanismgenerators/recipe/turbine/blade.json": "e901103a8f7e373c:178",
+  "data/mekanismgenerators/recipe/turbine/casing.json": "98a99b56cc701f74:203",
+  "data/mekanismgenerators/recipe/turbine/rotor.json": "99eac40bc88dd868:200",
+  "data/mekanismgenerators/recipe/turbine/valve.json": "d3c546f5fd66cc43:224",
+  "data/mekanismgenerators/recipe/turbine/vent.json": "5733db1b955ae569:210",
+  "data/mekanismgenerators/tags/block/structures/reactors.json": "4b31445c4ca0feae:111",
+  "data/mekanismgenerators/tags/block/structures/reactors/fission.json": "ebb3b65a2c06586e:269",
+  "data/mekanismgenerators/tags/block/structures/reactors/fusion.json": "79384f076cadc15e:267",
+  "data/mekanismgenerators/tags/item/structures/reactors.json": "4b31445c4ca0feae:111",
+  "data/mekanismgenerators/tags/item/structures/reactors/fission.json": "ebb3b65a2c06586e:269",
+  "data/mekanismgenerators/tags/item/structures/reactors/fusion.json": "79384f076cadc15e:267",
+  "data/minecraft/tags/block/blocks_motion_no_leaves.json": "ae3f4364ed8fe03f:245",
+  "data/minecraft/tags/block/impermeable.json": "b18a89d9d304aa9b:47",
+  "data/minecraft/tags/block/mineable/pickaxe.json": "ae3f4364ed8fe03f:245",
+  "data/minecraft/tags/block/replaceable.json": "140f5c8bc3f84e95:137"
+ },
+ "lang": {
+  "block.mekanismgenerators.advanced_solar_generator": "Advanced Solar Generator",
+  "block.mekanismgenerators.bio_generator": "Bio-Generator",
+  "block.mekanismgenerators.control_rod_assembly": "Control Rod Assembly",
+  "block.mekanismgenerators.electromagnetic_coil": "Electromagnetic Coil",
+  "block.mekanismgenerators.fission_fuel_assembly": "Fission Fuel Assembly",
+  "block.mekanismgenerators.fission_reactor_casing": "Fission Reactor Casing",
+  "block.mekanismgenerators.fission_reactor_logic_adapter": "Fission Reactor Logic Adapter",
+  "block.mekanismgenerators.fission_reactor_port": "Fission Reactor Port",
+  "block.mekanismgenerators.fusion_reactor_controller": "Fusion Reactor Controller",
+  "block.mekanismgenerators.fusion_reactor_frame": "Fusion Reactor Frame",
+  "block.mekanismgenerators.fusion_reactor_logic_adapter": "Fusion Reactor Logic Adapter",
+  "block.mekanismgenerators.fusion_reactor_port": "Fusion Reactor Port",
+  "block.mekanismgenerators.gas_burning_generator": "Gas-Burning Generator",
+  "block.mekanismgenerators.heat_generator": "Heat Generator",
+  "block.mekanismgenerators.laser_focus_matrix": "Laser Focus Matrix",
+  "block.mekanismgenerators.reactor_glass": "Reactor Glass",
+  "block.mekanismgenerators.rotational_complex": "Rotational Complex",
+  "block.mekanismgenerators.saturating_condenser": "Saturating Condenser",
+  "block.mekanismgenerators.solar_generator": "Solar Generator",
+  "block.mekanismgenerators.turbine_casing": "Turbine Casing",
+  "block.mekanismgenerators.turbine_rotor": "Turbine Rotor",
+  "block.mekanismgenerators.turbine_valve": "Turbine Valve",
+  "block.mekanismgenerators.turbine_vent": "Turbine Vent",
+  "block.mekanismgenerators.wind_generator": "Wind Generator",
+  "constants.mekanismgenerators.mod_name": "Mekanism: Generators",
+  "description.mekanismgenerators.advanced_solar_generator": "An advanced generator that directly absorbs the sun's rays with little loss to produce energy.",
+  "description.mekanismgenerators.bio_generator": "A generator that burns organic materials of the world to produce energy.",
+  "description.mekanismgenerators.control_rod_assembly": "A collection of control rods used to halt a fission chain reaction. Placed on top of a tower of Fission Fuel Assemblies.",
+  "description.mekanismgenerators.electromagnetic_coil": "A block that converts kinetic energy from a Rotational Complex into usable electricity. These can be placed in any arrangement above your Rotational Complex, as long as they are all touching each other and the complex itself.",
+  "description.mekanismgenerators.fission_fuel_assembly": "A cluster of fuel rods used to house fission fuel within a Fission Reactor. These can be stacked on top of each other.",
+  "description.mekanismgenerators.fission_reactor_casing": "Lead-infused steel casing used to create a Fission Reactor. Mostly heat-resistant, mostly radiation-resistant, and mostly safe!",
+  "description.mekanismgenerators.fission_reactor_logic_adapter": "A block that can be used to monitor or control the Fission Reactor with redstone.",
+  "description.mekanismgenerators.fission_reactor_port": "A port which can be placed on a Fission Reactor multiblock to transfer coolant, fuel, and waste.",
+  "description.mekanismgenerators.fusion_reactor_controller": "The controlling block for the entire Fusion Reactor structure.",
+  "description.mekanismgenerators.fusion_reactor_frame": "Reinforced framing that can be used in the Fusion Reactor multiblock.",
+  "description.mekanismgenerators.fusion_reactor_logic_adapter": "A block that can be used to allow basic monitoring of a Fusion Reactor using redstone.",
+  "description.mekanismgenerators.fusion_reactor_port": "A block of reinforced framing that is capable of managing both the chemical and energy transfer of the Fusion Reactor.",
+  "description.mekanismgenerators.gas_burning_generator": "A generator that harnesses the varying molecular gases to produce energy.",
+  "description.mekanismgenerators.heat_generator": "A generator that uses the heat of lava or other burnable resources to produce energy.",
+  "description.mekanismgenerators.laser_focus_matrix": "A panel of Fusion Reactor Glass that is capable of absorbing optical energy and thereby heating up the Fusion Reactor.",
+  "description.mekanismgenerators.reactor_glass": "Reinforced glass that can be used in the Fission Reactor and Fusion Reactor multiblocks (as well as any others!).",
+  "description.mekanismgenerators.rotational_complex": "A connector that is placed on the highest Turbine Rotor of an Industrial Turbine to carry kinetic energy into its Electromagnetic Coils.",
+  "description.mekanismgenerators.saturating_condenser": "A block that condenses steam processed by an Industrial Turbine into reusable water. These can be placed in any arrangement above your rotational complex.",
+  "description.mekanismgenerators.solar_generator": "A generator that uses the power of the sun to produce energy.",
+  "description.mekanismgenerators.turbine_casing": "Pressure-resistant casing used in the creation of an Industrial Turbine.",
+  "description.mekanismgenerators.turbine_rotor": "The steel rod that is used to house Turbine Blades within an Industrial Turbine.",
+  "description.mekanismgenerators.turbine_valve": "A type of Turbine Casing that includes a port for the transfer of energy and steam.",
+  "description.mekanismgenerators.turbine_vent": "A type of Turbine Casing with an integrated vent for the release of steam. These should be placed on the level of or above the turbine's Rotational Complex.",
+  "description.mekanismgenerators.wind_generator": "A generator that uses the strength of the wind to produce energy, with greater efficiency at higher levels.",
+  "item.mekanismgenerators.hohlraum": "Hohlraum",
+  "item.mekanismgenerators.solar_panel": "Solar Panel",
+  "item.mekanismgenerators.turbine_blade": "Turbine Blade"
+ },
+ "neoforge_tags": {
+  "data/c/tags/item/bars.json": "38ba85a0014a673a:62",
+  "data/c/tags/item/bars/copper.json": "065d972acaf31717:282",
+  "data/c/tags/item/bars/iron.json": "32b4c4274e448787:34"
+ },
+ "order": {
+  "blocks": [
+   "heat_generator",
+   "solar_generator",
+   "gas_burning_generator",
+   "bio_generator",
+   "advanced_solar_generator",
+   "wind_generator",
+   "turbine_rotor",
+   "rotational_complex",
+   "electromagnetic_coil",
+   "turbine_casing",
+   "turbine_valve",
+   "turbine_vent",
+   "saturating_condenser",
+   "reactor_glass",
+   "fission_reactor_casing",
+   "fission_reactor_port",
+   "fission_reactor_logic_adapter",
+   "fission_fuel_assembly",
+   "control_rod_assembly",
+   "fusion_reactor_controller",
+   "fusion_reactor_frame",
+   "fusion_reactor_port",
+   "fusion_reactor_logic_adapter",
+   "laser_focus_matrix"
+  ],
+  "buckets": [
+   "bioethanol_bucket",
+   "deuterium_bucket",
+   "fusion_fuel_bucket",
+   "tritium_bucket"
+  ],
+  "items": [
+   "solar_panel",
+   "hohlraum",
+   "turbine_blade"
+  ]
+ },
+ "recipes": {
+  "mekanismgenerators/recipe/electromagnetic_coil.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/gold",
+    "#c:ingots/steel",
+    "mekanism:energy_tablet"
+   ],
+   "result": "mekanismgenerators:electromagnetic_coil",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/fission_reactor/casing.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/lead",
+    "mekanism:steel_casing"
+   ],
+   "result": "mekanismgenerators:fission_reactor_casing",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/fission_reactor/control_rod_assembly.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/elite",
+    "#c:ingots/lead",
+    "#c:ingots/steel"
+   ],
+   "result": "mekanismgenerators:control_rod_assembly",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/fission_reactor/fuel_assembly.json": {
+   "complete": false,
+   "refs": [
+    "#c:ingots/lead",
+    "#c:ingots/steel",
+    "mekanism:basic_chemical_tank"
+   ],
+   "result": "mekanismgenerators:fission_fuel_assembly",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/fission_reactor/logic_adapter.json": {
+   "complete": true,
+   "refs": [
+    "#c:dusts/redstone",
+    "mekanismgenerators:fission_reactor_casing"
+   ],
+   "result": "mekanismgenerators:fission_reactor_logic_adapter",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/fission_reactor/port.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/elite",
+    "mekanismgenerators:fission_reactor_casing"
+   ],
+   "result": "mekanismgenerators:fission_reactor_port",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/generator/advanced_solar.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/iron",
+    "#mekanism:alloys/infused",
+    "mekanismgenerators:solar_generator"
+   ],
+   "result": "mekanismgenerators:advanced_solar_generator",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/generator/bio.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/basic",
+    "#c:dusts/redstone",
+    "#c:fuels/bio",
+    "#c:ingots/iron",
+    "#mekanism:alloys/infused"
+   ],
+   "result": "mekanismgenerators:bio_generator",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/generator/gas_burning.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/osmium",
+    "#mekanism:alloys/infused",
+    "mekanism:electrolytic_core",
+    "mekanism:steel_casing"
+   ],
+   "result": "mekanismgenerators:gas_burning_generator",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/generator/heat.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/copper",
+    "#c:ingots/iron",
+    "#c:ingots/osmium",
+    "#c:player_workstations/furnaces",
+    "#minecraft:planks"
+   ],
+   "result": "mekanismgenerators:heat_generator",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/generator/solar.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/iron",
+    "#c:ingots/osmium",
+    "#mekanism:alloys/infused",
+    "mekanism:energy_tablet",
+    "mekanismgenerators:solar_panel"
+   ],
+   "result": "mekanismgenerators:solar_generator",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/geothermal_generator_unit.json": {
+   "complete": false,
+   "refs": [
+    "#c:alloys/elite",
+    "#c:pellets/polonium",
+    "mekanism:module_base",
+    "mekanismgenerators:heat_generator"
+   ],
+   "result": "mekanism:module",
+   "result_components": [
+    "mekanism:module_type",
+    "minecraft:rarity"
+   ],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/hohlraum.json": {
+   "complete": true,
+   "refs": [
+    "###mekanism:carbon",
+    "#c:dusts/gold"
+   ],
+   "result": "mekanismgenerators:hohlraum",
+   "result_components": [],
+   "type": "mekanism:metallurgic_infusing"
+  },
+  "mekanismgenerators/recipe/laser_focus_matrix.json": {
+   "complete": true,
+   "refs": [
+    "#c:storage_blocks/redstone",
+    "mekanismgenerators:reactor_glass"
+   ],
+   "result": "mekanismgenerators:laser_focus_matrix",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/reactor/controller.json": {
+   "complete": false,
+   "refs": [
+    "#c:circuits/ultimate",
+    "#c:glass_panes",
+    "mekanism:basic_chemical_tank",
+    "mekanismgenerators:fusion_reactor_frame"
+   ],
+   "result": "mekanismgenerators:fusion_reactor_controller",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/reactor/frame.json": {
+   "complete": true,
+   "refs": [
+    "#c:alloys/ultimate",
+    "#c:pellets/polonium",
+    "mekanism:steel_casing"
+   ],
+   "result": "mekanismgenerators:fusion_reactor_frame",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/reactor/glass.json": {
+   "complete": true,
+   "refs": [
+    "#c:glass_blocks/cheap",
+    "#c:ingots/lead",
+    "mekanism:enriched_iron"
+   ],
+   "result": "mekanismgenerators:reactor_glass",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/reactor/logic_adapter.json": {
+   "complete": true,
+   "refs": [
+    "#c:dusts/redstone",
+    "mekanismgenerators:fusion_reactor_frame"
+   ],
+   "result": "mekanismgenerators:fusion_reactor_logic_adapter",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/reactor/port.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/ultimate",
+    "mekanismgenerators:fusion_reactor_frame"
+   ],
+   "result": "mekanismgenerators:fusion_reactor_port",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/rotational_complex.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/advanced",
+    "#c:ingots/steel",
+    "#mekanism:alloys/infused"
+   ],
+   "result": "mekanismgenerators:rotational_complex",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/saturating_condenser.json": {
+   "complete": true,
+   "refs": [
+    "#c:buckets/empty",
+    "#c:ingots/steel",
+    "#c:ingots/tin"
+   ],
+   "result": "mekanismgenerators:saturating_condenser",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/solar_panel.json": {
+   "complete": true,
+   "refs": [
+    "#c:dusts/redstone",
+    "#c:glass_panes",
+    "#c:ingots/osmium",
+    "#mekanism:alloys/infused"
+   ],
+   "result": "mekanismgenerators:solar_panel",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/solar_recharging_unit.json": {
+   "complete": false,
+   "refs": [
+    "#c:alloys/elite",
+    "#c:pellets/polonium",
+    "mekanism:module_base",
+    "mekanismgenerators:advanced_solar_generator"
+   ],
+   "result": "mekanism:module",
+   "result_components": [
+    "mekanism:module_type",
+    "minecraft:rarity"
+   ],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/turbine/blade.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/steel",
+    "#mekanism:alloys/infused"
+   ],
+   "result": "mekanismgenerators:turbine_blade",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/turbine/casing.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/osmium",
+    "#c:ingots/steel"
+   ],
+   "result": "mekanismgenerators:turbine_casing",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/turbine/rotor.json": {
+   "complete": true,
+   "refs": [
+    "#c:ingots/steel",
+    "#mekanism:alloys/infused"
+   ],
+   "result": "mekanismgenerators:turbine_rotor",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/turbine/valve.json": {
+   "complete": true,
+   "refs": [
+    "#c:circuits/advanced",
+    "mekanismgenerators:turbine_casing"
+   ],
+   "result": "mekanismgenerators:turbine_valve",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  },
+  "mekanismgenerators/recipe/turbine/vent.json": {
+   "complete": true,
+   "refs": [
+    "#c:bars",
+    "mekanismgenerators:turbine_casing"
+   ],
+   "result": "mekanismgenerators:turbine_vent",
+   "result_components": [],
+   "type": "minecraft:crafting_shaped"
+  }
+ },
+ "tags": {
+  "c/tags/item/buckets/bioethanol.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:bioethanol_bucket"
+   ]
+  },
+  "c/tags/item/buckets/deuterium.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:deuterium_bucket"
+   ]
+  },
+  "c/tags/item/buckets/fusion_fuel.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:fusion_fuel_bucket"
+   ]
+  },
+  "c/tags/item/buckets/tritium.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:tritium_bucket"
+   ]
+  },
+  "mekanism/tags/block/structures.json": {
+   "missing": [
+    "#mekanismgenerators:structures/turbine",
+    "#mekanismgenerators:structures/reactors"
+   ],
+   "pending": true,
+   "values": [
+    "#mekanismgenerators:structures/turbine",
+    "#mekanismgenerators:structures/reactors"
+   ]
+  },
+  "mekanism/tags/block/structures/common.json": {
+   "missing": [
+    "mekanismgenerators:reactor_glass"
+   ],
+   "pending": true,
+   "values": [
+    "mekanismgenerators:reactor_glass"
+   ]
+  },
+  "mekanism/tags/item/structures.json": {
+   "missing": [
+    "#mekanismgenerators:structures/turbine",
+    "#mekanismgenerators:structures/reactors"
+   ],
+   "pending": true,
+   "values": [
+    "#mekanismgenerators:structures/turbine",
+    "#mekanismgenerators:structures/reactors"
+   ]
+  },
+  "mekanism/tags/item/structures/common.json": {
+   "missing": [
+    "mekanismgenerators:reactor_glass"
+   ],
+   "pending": true,
+   "values": [
+    "mekanismgenerators:reactor_glass"
+   ]
+  },
+  "mekanismgenerators/tags/block/structures/reactors.json": {
+   "missing": [],
+   "values": [
+    "#mekanismgenerators:structures/reactors/fission",
+    "#mekanismgenerators:structures/reactors/fusion"
+   ]
+  },
+  "mekanismgenerators/tags/block/structures/reactors/fission.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:reactor_glass",
+    "mekanismgenerators:fission_reactor_casing",
+    "mekanismgenerators:fission_reactor_port",
+    "mekanismgenerators:fission_reactor_logic_adapter",
+    "mekanismgenerators:fission_fuel_assembly",
+    "mekanismgenerators:control_rod_assembly"
+   ]
+  },
+  "mekanismgenerators/tags/block/structures/reactors/fusion.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:reactor_glass",
+    "mekanismgenerators:fusion_reactor_controller",
+    "mekanismgenerators:fusion_reactor_frame",
+    "mekanismgenerators:fusion_reactor_port",
+    "mekanismgenerators:fusion_reactor_logic_adapter",
+    "mekanismgenerators:laser_focus_matrix"
+   ]
+  },
+  "mekanismgenerators/tags/block/structures/turbine.json": {
+   "missing": [
+    "mekanism:pressure_disperser",
+    "#mekanism:structures/common"
+   ],
+   "values": [
+    "mekanism:pressure_disperser",
+    "mekanismgenerators:turbine_rotor",
+    "mekanismgenerators:rotational_complex",
+    "mekanismgenerators:electromagnetic_coil",
+    "mekanismgenerators:turbine_casing",
+    "mekanismgenerators:turbine_valve",
+    "mekanismgenerators:turbine_vent",
+    "mekanismgenerators:saturating_condenser",
+    "#mekanism:structures/common"
+   ]
+  },
+  "mekanismgenerators/tags/item/structures/reactors.json": {
+   "missing": [],
+   "values": [
+    "#mekanismgenerators:structures/reactors/fission",
+    "#mekanismgenerators:structures/reactors/fusion"
+   ]
+  },
+  "mekanismgenerators/tags/item/structures/reactors/fission.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:reactor_glass",
+    "mekanismgenerators:fission_reactor_casing",
+    "mekanismgenerators:fission_reactor_port",
+    "mekanismgenerators:fission_reactor_logic_adapter",
+    "mekanismgenerators:fission_fuel_assembly",
+    "mekanismgenerators:control_rod_assembly"
+   ]
+  },
+  "mekanismgenerators/tags/item/structures/reactors/fusion.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:reactor_glass",
+    "mekanismgenerators:fusion_reactor_controller",
+    "mekanismgenerators:fusion_reactor_frame",
+    "mekanismgenerators:fusion_reactor_port",
+    "mekanismgenerators:fusion_reactor_logic_adapter",
+    "mekanismgenerators:laser_focus_matrix"
+   ]
+  },
+  "mekanismgenerators/tags/item/structures/turbine.json": {
+   "missing": [
+    "mekanism:pressure_disperser",
+    "#mekanism:structures/common"
+   ],
+   "values": [
+    "mekanism:pressure_disperser",
+    "mekanismgenerators:turbine_rotor",
+    "mekanismgenerators:rotational_complex",
+    "mekanismgenerators:electromagnetic_coil",
+    "mekanismgenerators:turbine_casing",
+    "mekanismgenerators:turbine_valve",
+    "mekanismgenerators:turbine_vent",
+    "mekanismgenerators:saturating_condenser",
+    "#mekanism:structures/common"
+   ]
+  },
+  "minecraft/tags/block/blocks_motion_no_leaves.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:heat_generator",
+    "mekanismgenerators:solar_generator",
+    "mekanismgenerators:advanced_solar_generator",
+    "mekanismgenerators:gas_burning_generator",
+    "mekanismgenerators:bio_generator",
+    "mekanismgenerators:wind_generator"
+   ]
+  },
+  "minecraft/tags/block/dangerous_for_teleportation.json": {
+   "missing": [],
+   "values": [
+    "#mekanismgenerators:structures/reactors"
+   ]
+  },
+  "minecraft/tags/block/impermeable.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:reactor_glass"
+   ]
+  },
+  "minecraft/tags/block/mineable/pickaxe.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:heat_generator",
+    "mekanismgenerators:solar_generator",
+    "mekanismgenerators:advanced_solar_generator",
+    "mekanismgenerators:gas_burning_generator",
+    "mekanismgenerators:bio_generator",
+    "mekanismgenerators:wind_generator"
+   ]
+  },
+  "minecraft/tags/block/replaceable.json": {
+   "missing": [],
+   "values": [
+    "mekanismgenerators:bioethanol",
+    "mekanismgenerators:deuterium",
+    "mekanismgenerators:fusion_fuel",
+    "mekanismgenerators:tritium"
+   ]
+  }
+ }
+}
