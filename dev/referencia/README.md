@@ -378,3 +378,15 @@ reflexão, sem módulos) para cada peça do traje e cada combinação de peças 
 descarte (o `automaticCulling` do OBJ dá `cull` ao que cai no limite do bloco; a entidade os desenha todos). `cenas/equip_vestida.txt` é o roteiro (18 etapas); `oficial_equipamento.sh` copia os prints e o
 `armor_groups.jsonl`. No port, `horizon2/h2_armadura_vestida.py CENA PASTA [NOME ...]` (`H_NAME=horizon`) repete as mesmas etapas pelo `horizon-ctl` (F5 para a câmera, `item replace` nas três figuras, o mesmo
 chão e a mesma parede). `mods/mekanism/tests/worn_gear.rs` confere a tabela `mekanism_rules::worn_gear` contra esses rastros e contra o OBJ.
+
+**Brilho de encantamento no equipamento vestido, o fogo do mob num fluido de mod (medido: nada a corrigir) e a luz dos blocos de mod (frente `acabamento-conteudo`, 2026-11-09).** `armadura_rastros.py` grava também o `foil` de
+`rastros/armor_gear.json`: o tipo de desenho que o original usa para o brilho de cada família (o MekaSuit, `armorCutoutNoCullGlint`, textura da armadura, escala 0,16; o jetpack, o tanque e as botas,
+`itemCutoutGlint`, textura do item, escala 8), lido do texto de `MekaSuitArmor`, `FreeRunnerArmor`, `ChestArmor`, `BaseModelCache`, `RenderTypes`, `TextureTransform` e `Sheets`, com a mesma regra de uma ocorrência
+exata. `testes/CenaEquip.java` ganhou `encantado=1` (toda peça vestida com `unbreaking`; `cenas/equip_vestida.txt` tem as sete etapas) e, ao abrir o mundo, põe `glintSpeed` em 0 (o brilho anda com o relógio: parado, os
+dois jogos o mostram no mesmo ponto; o port roda com `glintSpeed:0.0` no `options.txt`, que o `estado_horizon.sh` guarda e devolve) e grava `armor_atlas.json` (`rastros/armor_atlas.json`: o retângulo de UV
+de cada sprite do Mekanism no atlas de itens do original, de que `mekanism_rules::worn_gear::ATLAS_SPRITES` é a cópia que `tests/worn_gear.rs` confere). `testes/CenaLuz.java` (`cenas/luz.txt`: os blocos, um por linha;
+`oficial_luz.sh`, no desktop com a `mekanism-ref.lock`) grava `rastros/lighting_enhanced.jsonl`: para cada quad com AO de cada bloco, a cor e a luz dos quatro vértices pelo `BlockModelLighter` do vanilla e pelo
+`EnhancedBlockModelLighter` do NeoForge, mais as 27 células em volta do bloco (a luz, o brilho de sombra, se deixa a luz passar), na ordem em que o `ModelBlockRenderer` chama o lighter.
+`mods/machinery_basis/core/tests/enhanced_lighting_module.rs` compila `enhanced_lighting.rs` (o módulo do mesher) como está e o confere com esse rastro, quad a quad. `oficial_blocos.sh` aceita `LUZ_MELHORADA=0`
+(desliga `enhancedLighting` no `neoforge-client.toml` do cliente do original, e o devolve ao fim) e `cenas/blocos_avulsos.json` é o roteiro só do tiro `avulsos`; no port, `horizon2/h2_blocos.py cena PASTA [TIRO ...]` roda
+só os tiros nomeados. `horizon2/h2_fogo_mob.py [brine|water]` põe um zumbi sem IA em chamas no fundo de uma coluna de 4 células do fluido e lê `Fire` e a vida a cada meio segundo.

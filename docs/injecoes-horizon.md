@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 116 | |
+| `[[injection]]` no total | 117 | |
 | Hook do catálogo, usado só com o contrato dele | 37 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 36 | sim |
-| Injeção crua (`target = ...`) | 43 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 26 | sim |
+| Injeção crua (`target = ...`) | 44 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 27 | sim |
 
-37 + 36 + 43 = 116. Os 26 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-79 injeções e 26 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+37 + 36 + 44 = 117. Os 27 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+80 injeções e 27 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 43 | 26 | 36 |
+| Em uso | 44 | 27 | 36 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -54,6 +54,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H9 `screen_layout` | hook | módulo `windows` em `native_hooks.rs`, escrita em `mod_screen` | em uso (módulo) |
 | H10 `screen_slot_at` | hook | `slot_at` (RETURN) | em uso |
 | H55 `mob_layer` v2 e as partes do modelo do mob | hook | `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `worn_arm`, `worn_cape` e os módulos `worn-gear` e `worn-hides` | em uso (6 cruas, 2 módulos) |
+| H70 o sombreamento de vértice dos modelos de bloco (`EnhancedBlockModelLighter`) | hook | `enhanced_ao` (cru, RETURN de `lighting::ambient_occlusion`) e o módulo `enhanced-lighting` | em uso (1 cru, 1 módulo) |
 | H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | em uso |
 | H12 `menu_hide_slots` | helper | uso de `lan.hub` em `net_from_client` | em uso |
 | H13 `block_entity_save` | hook | `save_level` | spike |
@@ -143,18 +144,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 52 | 24 | 28 | 18 |
+| `mods/machinery_basis/horizon-mixin.toml` | 53 | 24 | 29 | 19 |
 | `mods/mekanism/native/horizon-mixin.toml` | 40 | 29 | 11 | 4 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 24 | 20 | 4 | 4 |
-| Total | 116 | 73 | 43 | 26 |
+| Total | 117 | 73 | 44 | 27 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`). Quinze das 43 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`). Quinze das 44 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 73 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (43)
+## Injeções cruas em uso (44)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -219,14 +220,14 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 - **Alvo:** `horizon_client_lib::motion::fluids::FluidResources::fluid`, `kind = "RETURN"`, helper `fluid_state.rs`, e o módulo `water-like` (`water_like.rs`, em `motion.rs`).
 - **Por que é necessária:** a física de entidade (jogador, itens, flechas) lê o fluido de cada estado de uma tabela só de água e lava. O RETURN dá a um estado de bloco de líquido de mod o `FluidState` da água, só nesta consulta (o mesher não a usa), para o fluxo empurrar, o item subir e o ar acabar como no original (`FluidType`: `canSwim`, `canDrown`, `canPushEntity`, `motionScale`).
 - **Hook mais próximo:** nenhum; H47 pede o fluido de mod no motor.
-- **Risco:** depende do nome e da assinatura de `FluidResources::fluid`. Não dá ao bloco o resto da água (fonte, hidratar), mas o que o motor faz por `was_touching_water` (som de respingo, partículas azuis de água) vale também, e a entidade em chamas que não é o jogador apaga.
+- **Risco:** depende do nome e da assinatura de `FluidResources::fluid`. Não dá ao bloco o resto da água (fonte, hidratar), mas o que o motor faz por `was_touching_water` (som de respingo, partículas azuis de água) vale também, e a entidade em chamas que não é o jogador (o mob, o item solto e o armor stand) também não apaga: eles leem o fluido do bloco pela tabela de fatos, que não dá água ao bloco de mod (e por isso o mob também não nada nem se afoga num fluido de mod: ele atravessa como ar).
 
 ### `fire_before` (machinery_basis)
 
 - **Alvo:** `horizon_client_lib::motion::environment::MotionWorld<'_,'_,'_>::tick_remaining_fire`, `kind = "HEAD"`, helper `fire_before.rs` (a forma `<'_,'_,'_>` sem espaços é a que o `horizon-mixins` acha; `RETURN` não serve, porque o corpo tem `?`).
 - **Por que é necessária:** o `tick_remaining_fire` zera o fogo do jogador se `was_touching_water`, e o `fluid_state` faz o bloco de líquido de mod valer água nessa conta. O `FluidType` do original tem `canExtinguish` falso. O HEAD desliga `was_touching_water` para o jogador cujo pé ou olho está num bloco de líquido de mod; `update_fluids` o refaz no tick seguinte.
 - **Hook mais próximo:** nenhum; H47.
-- **Risco:** depende do nome e da assinatura de `tick_remaining_fire` e do campo `fluids.was_touching_water`. Não cobre os mobs (`mobs/ai.rs`, `splash_water`).
+- **Risco:** depende do nome e da assinatura de `tick_remaining_fire` e do campo `fluids.was_touching_water`. Não cobre nem precisa cobrir os mobs: o `MobWorld::fluids` (`mobs/living.rs`) lê o fluido pela tabela de fatos do bloco, que não dá água ao bloco de mod, então um mob em chamas dentro de um fluido de mod segue queimando sem injeção (medido em jogo em 2026-11-09, decisão 18).
 
 ### `logged-fluid-row` (machinery_basis)
 
@@ -596,6 +597,16 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
   `Game::baked_model_vertices` (privado de `minecarts.rs`), `Game::{armor, player_model, armor_stand_assets, pack, res}` e `Resources::player_arm`; o módulo `worn-hides` exige que `anim.rs` não tenha `use ...::*` de topo.
   Os dois `matches!` de `anim::setup` fazem o planejador recusar o RETURN dele; um RETURN de `player_model_visibility` precisa do valor como primeiro argumento (o corpo é um laço que usa `p`).
 - **Conferido em jogo** (2026-11-09, `horizon`): ver "Armadura vestida" no inventário do plano.
+
+### `enhanced_ao` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-09. **Alvo:** `horizon_client_render::mesher::lighting::ambient_occlusion` (`mesher/lighting.rs:319`, `pub(super)`), `kind = "RETURN"` (o corpo não tem `?`), helper `enhanced_lighting_ao.rs`, com o módulo `enhanced-lighting` (`enhanced_lighting.rs`, em `mesher.rs`, `visibility = "pub"`). **Proposta:** H70.
+- **Por que é necessária:** o NeoForge troca o `BlockModelLighter` do vanilla pelo `EnhancedBlockModelLighter` (`enhancedLighting`, ligado por padrão em `NeoForgeClientConfig`) em todo bloco: o quad de face inteira recebe os consertos do NeoForge (o canto sem os dois lados claros usa o lado vizinho, a luz de dentro vem sempre do ponto de amostra, a mistura de luz ignora o bloco que não deixa a luz passar, a interpolação não supõe a ordem dos vértices) e o quad que não é de face inteira (um elemento girado) combina o AO das faces que a normal toca, pelo quadrado de cada componente. O mesher do Horizon só tem o do vanilla (`lighting::ambient_occlusion`, sem hook), e a diferença aparece: a caixa de papelão aberta tem as abas giradas 22,5 graus, e o original as sombreia pela normal (a aba da esquerda quase preta, a da direita mais clara que no port). Provado: com `enhancedLighting = false` no cliente do original o print da cena `avulsos` fica igual ao do port, pixel a pixel nos pontos medidos.
+- **O que faz:** para um quad de bloco de mod (`machinery_enhanced::uses(estado)`, a tabela de estados de nome fora de `minecraft:` que o `Game` refaz a cada carga de dados em `server_data_loaded`), o RETURN troca o brilho e a luz que o vanilla deu pelos do NeoForge (`machinery_enhanced::ambient_occlusion`, código puro, conferido quad a quad contra o NeoForge: `rastros/lighting_enhanced.jsonl`, `tests/enhanced_lighting_module.rs`) e devolve o brilho antes do sombreamento direcional (`before_directional`), porque o mesher o multiplica depois e o NeoForge já o tem dentro do brilho. Os blocos do vanilla ficam com o `BlockModelLighter` do vanilla (decisão 35 do plano).
+- **Java:** `EnhancedBlockModelLighter.java`, `FullFaceCalculator.java`, `AoFace.java` e `BakedNormals.java` (`net.neoforged.neoforge.client.model.ao`), `BlockModelLighter.java`, `ModelBlockRenderer.java`.
+- **Hook mais próximo:** nenhum. **Hook proposto:** H70, abaixo.
+- **Risco:** renomear `ambient_occlusion` ou mudar a lista de argumentos (`pad`, `info`, `own`, `pos`, `positions`, `face`), os tipos privados `Padded` e `Info` (`full`, `shade`, `permeable`, `solid`) ou as funções `state`, `coords`, `cardinal` de `lighting.rs`; o módulo exige que `mesher.rs` não tenha `use ...::*` de topo. Diferenças que ficam: o `CardinalLighting` do Nether (o helper supõe o do Overworld, e o mesher multiplica pelo do Nether), o quad de modelo sem AO que a luz do bloco manda para o caminho plano (`prepareQuadFlat` do NeoForge pesa a luz direcional pela normal, e o do Horizon pela face mais próxima: o elemento girado de um bloco que emite luz ainda sai como no vanilla), o `shadeDirectionOverride` (nenhum modelo do Mekanism usa `shade: false`, mas 41 quads de 4 blocos têm `shade_direction_override: up`, e o helper dá o resultado limpo) e o cache de faces do NeoForge, que guarda as faces num `int` de bits e indexa até 83 (`1 << índice` passa de 31): um quad com sombra forçada pode receber de volta o resultado velho ou zerado de outra configuração, o que depende do que a thread de malha calculou antes e não se reproduz (no rastro, 7 de 41).
+- **Conferido em jogo** (2026-11-09, `horizon`, a cena `avulsos`): na região da caixa de papelão aberta os pixels diferentes do original caem de 217 para 0,6 (`-fuzz 3%`), e a aba da esquerda passa de 51,40,28 a 18,14,10 e a da direita de 157,125,86 a 187,149,102, os valores do original (prints em `~/.cache/rust-mekanism/wa/acabamento-conteudo/luz/`).
 
 ### `animate_tick` (machinery_basis)
 
@@ -1342,7 +1353,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Por que:** o motor só conhece água e lava. `FluidKind` (`horizon-world/src/fluid.rs`) é uma enumeração de cinco valores (`Empty`, `FlowingWater`, `Water`, `FlowingLava`, `Lava`), a máscara de tipos é `1 << kind` em `u8`, e `FluidState::from_block` decide pelo nome `minecraft:water` ou `minecraft:lava` ou pela propriedade `waterlogged`. Nada do que um mod declara chega aí: o hook `block_entity_fluids` guarda mB num tanque, sem bloco nem balde, e `docs/native-mods.md` ("A mod's own fluids in tanks") diz que o mundo só tem os fluidos do vanilla. Uma injeção não troca uma enumeração (os hooks acertam funções, e o tipo está em 30 arquivos), e disfarçar o fluido de água ou de lava daria a física dela (nadar, apagar fogo, virar fonte).
 - **O que o original dá a um fluido de mod** (`FluidDeferredRegister`): o fluido parado e o que corre (`BaseFlowingFluid`), o `FluidType` (temperatura, densidade, viscosidade, luz, sons, `canSwim`, `canPushEntity`, `canDrown`, `motionScale`), o `LiquidBlock`, o balde, as tags de fluido (`c:` e `minecraft:`), o modelo de fluido com a tinta (`FluidTintSources.constant`) e a textura de sobreposição, a névoa e a sobreposição de dentro do fluido.
 - **O que o port faz hoje:** um bloco de líquido por fluido (a propriedade `level` do `LiquidBlock` e a `up`), o `FlowingFluid` portado em `machinery_basis_core::liquid` e ligado por ticks agendados do bloco, o balde (pôr e pegar a fonte), o dispensador, a recusa da água e da lava do vanilla de lado (`block_spread`), e a física de entidade pela água (o RETURN `fluid_state` dá aos estados do bloco de líquido o `FluidState` da água só em `FluidResources::fluid`, que o jogador, as entidades e as flechas leem, e o mesher não). O fluxo é igual ao original tick a tick (13 cenários do Java no simulador, `flat` e `waterfall` em jogo), o desenho é um cubo por célula na altura do fluido, sem a superfície inclinada do mesher.
-- **O que o port não faz, com o que o original mostra** (`rastros/fluids_entity.jsonl`): o jogador e o porco dentro do fluido ficam parados, sem gravidade, e perdem o ar sem nadar (o 26.3 não aplica a física de fluido a um tipo que não é água nem lava); no port eles afundam a 0,025 por tick e se afogam como na água, e o jogador em chamas não apaga (a injeção `fire_before` desliga `was_touching_water` dentro de um bloco de líquido de mod, como o `canExtinguish` falso do `FluidType`; as outras entidades em chamas apagam). Tampouco: a névoa e a sobreposição de dentro do fluido, as tags de fluido (as 23 `c:` da datagen não entram: só citariam ids que ninguém registra como fluido), a luz do balde (`applyFluidLuminosity` dos três fluidos de luz 15), as partículas e o som de dentro.
+- **O que o port não faz, com o que o original mostra** (`rastros/fluids_entity.jsonl`): o jogador e o porco dentro do fluido ficam parados, sem gravidade, e perdem o ar sem nadar (o 26.3 não aplica a física de fluido a um tipo que não é água nem lava); no port eles afundam a 0,025 por tick e se afogam como na água, e o jogador em chamas não apaga (a injeção `fire_before` desliga `was_touching_water` dentro de um bloco de líquido de mod, como o `canExtinguish` falso do `FluidType`; o mob em chamas também não apaga, sem injeção, porque ele não está na água: o `MobWorld::fluids` lê a tabela de fatos do bloco, e o mob atravessa o fluido de mod como ar). Tampouco: a névoa e a sobreposição de dentro do fluido, as tags de fluido (as 23 `c:` da datagen não entram: só citariam ids que ninguém registra como fluido), a luz do balde (`applyFluidLuminosity` dos três fluidos de luz 15), as partículas e o som de dentro.
 - **O que pedir:** `FluidKind` aberto a ids de mod (um registro de fluidos com o par parado e corrente, o tipo e o bloco), o mesher de fluido lendo o modelo e a tinta do fluido, a física de entidade lendo o `FluidType`, as tags de fluido lidas pelo motor, e o dispensador e o balde pelos mesmos caminhos da água.
 - **Risco do que existe hoje:** o módulo lê campos privados de `GameLevel` e `Game` (`behaviours`, `registry`, `world`, `audio`, `rules`, `events`) e o tick agendado é por bloco, e não por fluido (um tick de fonte e um de corrente na mesma célula contam como um só); o RETURN `fluid_state` depende de `FluidResources::fluid`. Cair em quase todo commit do Horizon que mexa nesses campos.
 
@@ -1418,6 +1429,13 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
   cancelável (`showCape = false`), e `native_render_hand` com um `draw` para o braço que o mod desenha no lugar do do vanilla (`RenderArmEvent`, hoje só esconde).
 - **Hoje:** as seis injeções e os dois módulos da ficha "O equipamento vestido".
 - **Exemplo:** `fn mob_layer(&self, mob: &NativeMobRender<'_>, who: Option<&NativePlayerRender<'_>>, draw: &mut BlockEntityDraw)` com `mob.part("body") -> Option<Mat4>` e `mob.worn(slot) -> Option<&str>`.
+- **Risco do que existe hoje:** os nomes da ficha.
+
+### H70 o sombreamento de vértice dos modelos de bloco (`EnhancedBlockModelLighter`)
+
+- **Lado:** cliente. **Tipo:** hook (uma troca do cálculo, `replace`), ou uma opção do renderer.
+- **O que faz:** o renderer do Horizon dá aos quads de um modelo de bloco o AO e a luz suave do `BlockModelLighter` do vanilla. O NeoForge troca esse cálculo pelo `EnhancedBlockModelLighter` (a opção `enhancedLighting`, ligada por padrão), e os mods feitos para ele (o Mekanism entre eles) saem com o sombreamento dele. O pedido é um hook `native_block_lighter` que decide, por bloco, qual cálculo vale (o do vanilla ou o do NeoForge), ou o cálculo do NeoForge como opção do renderer, ligada para os blocos de mod.
+- **Hoje:** a injeção `enhanced_ao` e o módulo `enhanced-lighting` da ficha acima.
 - **Risco do que existe hoje:** os nomes da ficha.
 
 ## Correções pedidas ao renderer do Horizon

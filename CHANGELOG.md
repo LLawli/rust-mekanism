@@ -6,6 +6,12 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O brilho de encantamento no equipamento vestido (`stack.hasFoil()`): o MekaSuit leva o brilho da armadura (`armorCutoutNoCullGlint`, a textura `enchanted_glint_armor` em escala 0,16, em toda peça, opaca, brilhante e translúcida) e o jetpack, o tanque de
+  mergulho e as Free Runners o brilho do item (`itemCutoutGlint`, `enchanted_glint_item` em escala 8), no jogador, no armor stand e nos mobs. O original amostra a textura do brilho com a UV0 do quad no atlas de itens, então onde cada sprite cai
+  no atlas decide que parte da peça brilha: o port usa o retângulo de cada sprite no atlas do original (`rastros/armor_atlas.json`). Os tipos de desenho e as escalas saem do texto do Java e do Minecraft (`rastros/armor_gear.json`, `foil`).
+- O sombreamento de vértice do NeoForge (`EnhancedBlockModelLighter`, `enhancedLighting`, ligado por padrão) nos blocos de mod: o quad que não é de face inteira (um elemento girado, como as abas da caixa de papelão aberta) é sombreado pela normal, e os de
+  face inteira recebem os consertos da luz e dos cantos. O algoritmo é um módulo de código puro (`machinery_basis/enhanced_lighting.rs`) conferido quad a quad contra o NeoForge em 1.044 quads de 15 blocos (`rastros/lighting_enhanced.jsonl`),
+  aplicado pela injeção `enhanced_ao` (H70); os blocos do vanilla ficam com o do vanilla (decisão 35).
 - O conteúdo do Mekanism Generators, sem função (`GeneratorsBlocks`, `GeneratorsItems`, `GeneratorsCreativeTabs`): os 23 blocos que o port ainda não tinha (`solar_generator`,
   `advanced_solar_generator`, `wind_generator`, `bio_generator`, `gas_burning_generator`, os sete da turbina, o `reactor_glass`, os cinco da fissão e os cinco da fusão) e os três itens (`solar_panel`,
   `hohlraum`, `turbine_blade`), cada um com o que o original dá: as propriedades de registro e de estado (`active`, `facing`, `fluid_logged`, `mode`) e os 148 estados do original, a forma
@@ -279,6 +285,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- A caixa de papelão aberta (e os outros blocos de elemento girado: o barril radioativo, a mesa de segurança, o vibrador sísmico, o ativador de nêutrons, a estação de modificação, o entangloporter, o minerador digital) tem o sombreamento do original: a aba da
+  esquerda quase preta e a da direita mais clara, antes marrom escuro e mais escura (os pixels diferentes do original na tampa da caixa caem de 217 para menos de 1).
 - O cabo de energia pega o `fluid_logged` pela água, lava ou ar do lugar ao ser posto por um jogador (`state_for_placement` devolvia o estado dos lados antes de olhar a regra de colocação), como os outros blocos.
 - O índice de componentes exatos guarda só a primeira receita `strict` de cada item, como `ComponentSensitiveInputCache.addComponentInputCache` do original (a segunda cai num mapa local e se perde).
 - Duas receitas complexas (ingrediente `neoforge:components` sem `strict`, por exemplo) que casam a mesma entrada seguem a ordem de um `HashSet` com o hash de identidade da chave do id, como o `HashSet<RecipeHolder>` do original, e não a ordem da lista: o vencedor é sorteado entre as que casam, fixo durante a execução. Decisão 11 do plano.
