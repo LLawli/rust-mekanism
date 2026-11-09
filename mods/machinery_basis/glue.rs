@@ -20,6 +20,7 @@ use machinery_basis_core::fluid_logged;
 use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
+use machinery_basis_core::liquid_data;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::neighbors::{OUTPUT_SIGNAL_ORDER, PendingPower};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
@@ -41,6 +42,7 @@ const TAGS_LISTENER: &str = "machinery_basis:resource_tags";
 const ENERGY_LISTENER: &str = "machinery_basis:energy";
 const UPGRADES_LISTENER: &str = "machinery_basis:upgrades";
 const UPGRADE_TAGS_LISTENER: &str = "machinery_basis:upgrade_tags";
+const LIQUIDS_LISTENER: &str = "machinery_basis:liquids";
 const HOPPER: &str = "minecraft:hopper";
 const SAVED: &str = "machinery_basis";
 const ENERGY: &str = "energy";
@@ -222,7 +224,12 @@ pub(in crate::game) fn use_item_on(
 
 /// O mesmo clique ainda chega como uso do item, já com o balde cheio na mão: sem isto, ele despeja
 /// a lava que acabou de sair do bloco.
-pub(in crate::game) fn use_item(game: &Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+    // O balde de um fluido de mod esvazia, e o balde vazio pega a fonte de um (`machinery_liquid`).
+    crate::game::machinery_liquid::use_item(game, stack, claimed);
+    if *claimed {
+        return;
+    }
     let since_swap = game.world.game_time - LAST_BUCKET_SWAP.load(Ordering::Relaxed);
     if &*stack.item == fluid_logged::LAVA_BUCKET && (0..=BUCKET_SWAP_TICKS).contains(&since_swap) {
         *claimed = true;
@@ -302,6 +309,10 @@ pub(in crate::game) fn update_shape(
     around: BlockStateId,
     new: &mut Option<BlockStateId>,
 ) {
+    crate::game::machinery_liquid::update_shape(level, ticks, pos, state, direction, around, new);
+    if new.is_some() {
+        return;
+    }
     let energy = network::current();
     if is_transmitter_state(level, &energy, state) {
         let side = face_of(direction);
@@ -326,6 +337,7 @@ pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener
     listeners.push(NativeReloadListener::json(ENERGY_LISTENER, network::ENERGY_FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADES_LISTENER, upgrade::TYPES_FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADE_TAGS_LISTENER, upgrade::TAGS_FOLDER));
+    listeners.push(NativeReloadListener::json(LIQUIDS_LISTENER, liquid_data::FOLDER));
 }
 
 pub(in crate::game) fn reload_apply(
@@ -338,6 +350,15 @@ pub(in crate::game) fn reload_apply(
     }
     if listener.id == ENERGY_LISTENER {
         network::set_current(EnergyBlocks::load(files));
+        return;
+    }
+    if listener.id == LIQUIDS_LISTENER {
+        let (liquids, errors) = liquid_data::Liquids::load(files);
+        for (id, error) in errors {
+            eprintln!("machinery_basis: fluido {id} recusado: {error}");
+        }
+        eprintln!("machinery_basis: {} fluidos", liquids.len());
+        liquid_data::set_source(BASIS_SOURCE, liquids);
         return;
     }
     if listener.id == UPGRADE_TAGS_LISTENER {
@@ -2098,6 +2119,7 @@ pub(in crate::game) fn neighbor_changed(
     pos: BlockPos,
     state: BlockStateId,
 ) {
+    crate::game::machinery_liquid::note(level, dimension, pos, state);
     if level.native_state_block(state).is_some_and(takes_redstone) {
         NOTIFIED
             .lock()
@@ -2110,6 +2132,7 @@ pub(in crate::game) fn neighbor_changed(
 /// mundo (`Game::flush_spill`, o último passo de `with_level`) e antes de o dono ler o `redstone`, então o valor é o do mundo no fim da
 /// operação que avisou, e não o de um tick depois. Um aviso de outra dimensão espera a vez dela.
 pub(in crate::game) fn flush_neighbor_signals(game: &mut Game<'_>) {
+    crate::game::machinery_liquid::flush(game);
     let notified = std::mem::take(&mut *NOTIFIED.lock().unwrap_or_else(|e| e.into_inner()));
     if notified.is_empty() {
         return;

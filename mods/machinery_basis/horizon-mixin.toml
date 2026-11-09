@@ -21,6 +21,14 @@ source = "glue.rs"
 
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
+# Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos
+# métodos privados que a cola da lib.
+[[module]]
+id = "liquid-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_liquid"
+source = "liquid_glue.rs"
+
 [[module]]
 id = "windows"
 file = "crates/horizon-client/src/game/native_hooks.rs"
@@ -130,7 +138,7 @@ hook_version = 1
 kind = "HEAD"
 helper = "use_item.rs"
 bindings = [
-  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
   { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
 ]
@@ -613,4 +621,51 @@ bindings = [
   { name = "ctx", ty = "&AnimateContext<'_>", value = "ctx" },
   { name = "state", ty = "BlockStateId", value = "state" },
   { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
+# Um tick agendado de um bloco de líquido (`ServerLevel.tickFluid`): o `FlowingFluid.tick` do fluido de mod. Hook do catálogo (`tick_block`),
+# usado com estrutura privada (`GameLevel::behaviours`, o registro e a tabela de formas).
+[[injection]]
+id = "tick_block"
+hook = "tick_block"
+hook_version = 1
+kind = "HEAD"
+helper = "tick_block.rs"
+bindings = [
+  { name = "level", ty = "&mut GameLevel<'_>", value = "&mut *self" },
+  { name = "ticks", ty = "&mut Ticks", value = "&mut *ticks" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "handled", ty = "&mut bool", value = "&mut *handled" },
+]
+
+# `DispenserBlock` com o balde de um fluido de mod (`FluidDeferredRegister.BUCKET_DISPENSE_BEHAVIOR`). Hook do catálogo (`dispense_item`).
+[[injection]]
+id = "dispense_item"
+hook = "dispense_item"
+hook_version = 1
+kind = "HEAD"
+helper = "dispense_item.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "facing", ty = "Direction", value = "facing" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "answer", ty = "&mut Option<horizon_client::mod_api::NativeDispensed>", value = "&mut *answer" },
+]
+
+# `LiquidBlock.onPlace`: um bloco de líquido entrou no mundo; o tick agenda no fim da operação (o gancho só tem `&GameLevel`). Hook do
+# catálogo (`block_changed`).
+[[injection]]
+id = "block_changed"
+hook = "block_changed"
+hook_version = 1
+kind = "HEAD"
+helper = "block_changed.rs"
+bindings = [
+  { name = "level", ty = "&GameLevel<'_>", value = "self" },
+  { name = "dimension", ty = "LevelDimension", value = "dimension" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "new", ty = "BlockStateId", value = "new" },
 ]

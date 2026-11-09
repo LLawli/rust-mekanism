@@ -24,6 +24,8 @@ pub mod item_chemical_constant_recipe;
 pub mod item_handler;
 pub mod java_random;
 pub mod last_energy;
+pub mod liquid;
+pub mod liquid_data;
 pub mod machine_sync;
 pub mod menu_source;
 pub mod name;
