@@ -156,8 +156,7 @@ fn run(lines: &[Value]) -> usize {
         // `begin`: a composteira nova no lado, a saída só nele, o ejetor ligado e o item na saída.
         let level = phase[0]["composter"].as_i64().unwrap() as i32;
         block.place(level);
-        machine.ejector_mut().set_ejecting(true);
-        machine.ejector_mut().set_sides(0, vec![side]);
+        common::eject_to(&mut machine, side);
         let output = phase[0]["output"].as_array().unwrap();
         machine.output().set_contents(
             Some(common::item(output[0].as_str().unwrap())),

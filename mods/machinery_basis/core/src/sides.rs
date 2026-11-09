@@ -88,12 +88,12 @@ impl Face {
 }
 
 /// Os slots que uma face alcança.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FaceSlots {
     /// Onde um item que entra pode cair, na ordem de preferência.
-    pub inputs: &'static [usize],
+    pub inputs: Vec<usize>,
     /// De onde um item pode sair.
-    pub outputs: &'static [usize],
+    pub outputs: Vec<usize>,
 }
 
 /// Por quais faces uma máquina aceita entrada e entrega saída.
@@ -104,6 +104,18 @@ pub struct Sides {
 }
 
 impl Sides {
+    /// Para um hopper: recebe por tudo que tem slot de entrada, e entrega por onde há slot que se tira. Um hopper só puxa do bloco
+    /// acima dele, então da saída só a base vale.
+    pub fn of_slots(slots: &dyn Fn(Face) -> FaceSlots) -> Self {
+        let mut sides = Sides::default();
+        for face in Face::ALL {
+            let reached = slots(face);
+            sides.input[face as usize] = !reached.inputs.is_empty();
+            sides.output[face as usize] = !reached.outputs.is_empty();
+        }
+        sides
+    }
+
     pub fn accepts_input(&self, face: Face) -> bool {
         self.input[face as usize]
     }

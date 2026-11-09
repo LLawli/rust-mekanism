@@ -20,7 +20,7 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
-use mekanism_rules::{ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, electric_item_slots, item_slots, sides};
+use mekanism_rules::{ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, item_sides, item_slots};
 use serde_json::Value;
 use std::path::Path;
 
@@ -169,11 +169,7 @@ fn phases(name: &str) -> (Face, Vec<Value>) {
 }
 
 fn reached(name: &str, front: Face, at: Face) -> machinery_basis_core::sides::FaceSlots {
-    if name == "metallurgic_infuser" {
-        item_slots(front, at)
-    } else {
-        electric_item_slots(front, at)
-    }
+    item_slots(name == "metallurgic_infuser", front, at)
 }
 
 /// Os itens que um hopper em `at` não consegue pôr na máquina, na ordem do hopper, pelas regras do port: só entra pelo slot que a
@@ -262,14 +258,7 @@ fn the_hopper_below_gets_what_the_original_gives_it() {
                 _ => ("", "empty:0"),
             };
             let slots = reached(name, front, Face::Down);
-            let declared = sides(
-                front,
-                if name == "metallurgic_infuser" {
-                    item_slots
-                } else {
-                    electric_item_slots
-                },
-            );
+            let declared = item_sides(name == "metallurgic_infuser", front);
             assert_eq!(declared.gives_output(Face::Down), !slots.outputs.is_empty());
             // A base das máquinas elétricas é `DataType.INPUT`: o hopper de baixo não leva nada, nem a entrada nem a saída.
             assert!(

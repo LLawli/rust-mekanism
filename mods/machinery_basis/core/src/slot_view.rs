@@ -1,20 +1,7 @@
 //! Que moldura um slot de máquina tem na tela: `GuiMekanism.addSlots` escolhe pelo papel que a configuração de lados dá ao slot
 //! (`findDataType`) e, sem ele, pelo tipo do slot no contêiner. Só a escolha: os ids dos sprites são de quem desenha.
 
-/// `DataType`: o papel de um slot ou tanque numa configuração de lados.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DataType {
-    None,
-    Input,
-    Input1,
-    Input2,
-    Output,
-    Output1,
-    Output2,
-    InputOutput,
-    Energy,
-    Extra,
-}
+pub use crate::side_config::DataType;
 
 /// `ContainerSlotType`: o que o slot é para o contêiner, quando a configuração de lados não o diz.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

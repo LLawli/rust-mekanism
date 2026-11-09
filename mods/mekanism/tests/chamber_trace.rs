@@ -7,6 +7,7 @@ use machinery_basis_core::item_handler::{
     ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer,
 };
 use machinery_basis_core::operation_tracker::RecipeError;
+use machinery_basis_core::side_config::TransmissionType;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::{SimBlockEntity, SimWorld};
 use machinery_basis_core::tile::{ProgressMachine, RedstoneControl};
@@ -294,9 +295,7 @@ fn apply(scene: &mut Scene, scenario: &str, action: &str) {
         ["signal", "off"] => world.set_signal(false),
         // `ejectEast`: a saída vai para o lado do baú, e o ejetor liga.
         ["eject", "on"] => {
-            let ejector = machine.ejector_mut();
-            ejector.set_sides(0, vec![Face::East]);
-            ejector.set_ejecting(true);
+            common::eject_to(machine, Face::East);
         }
         ["chest", "room", "2"] => {
             fill_chest(&scene.chest, "stone", 64);
@@ -783,7 +782,11 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
         machine.input().set_contents(Some(item("clay")), 3, None);
         machine.tile_mut().set_control_type(RedstoneControl::High);
         machine.tile_mut().update_power(true);
-        machine.ejector_mut().set_ejecting(true);
+        machine
+            .side_config_mut()
+            .config_mut(TransmissionType::Item)
+            .unwrap()
+            .set_ejecting(true);
     }
     // Uma operação inteira (200 ticks) e mais um pouco da seguinte.
     for _ in 0..230 {
@@ -791,7 +794,7 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
     }
     let saved = before.block_entity.0.saved_state();
     assert_eq!(saved.control_type, RedstoneControl::High);
-    assert!(saved.redstone && saved.active && saved.ejecting);
+    assert!(saved.redstone && saved.active);
     assert!(saved.progress > 0 && saved.progress < 200);
     assert_eq!(
         saved.recipes_used.get("mekanism:enriching/clay_ball"),
@@ -805,6 +808,22 @@ fn the_saved_state_round_trips_everything_the_java_persists() {
 
     let mut reborn = chamber();
     reborn.block_entity.0.restore(&saved, true);
+    // A configuração e o ejetor são componentes à parte (`component_config`, `component_ejector`).
+    let config = before.block_entity.0.side_config().serialize();
+    reborn
+        .block_entity
+        .0
+        .restore_side_config(Some(&config), None, false);
+    assert_eq!(reborn.block_entity.0.side_config().serialize(), config);
+    assert!(
+        reborn
+            .block_entity
+            .0
+            .side_config()
+            .config(TransmissionType::Item)
+            .unwrap()
+            .is_ejecting()
+    );
     assert_eq!(reborn.block_entity.0.saved_state(), saved);
     assert!(reborn.block_entity.0.tile().block_active());
 }

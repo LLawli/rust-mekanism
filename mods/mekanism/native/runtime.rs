@@ -16,6 +16,9 @@ use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
 use machinery_basis_core::settings::{self, ConfigValue, MachineSettings};
+use machinery_basis_core::side_config::{
+    AttachedSideConfig, LightConfigInfo, RelativeSide, TileComponentConfig, TransmissionType,
+};
 use machinery_basis_core::sides::{Face, FaceSlots, Sides};
 use machinery_basis_core::slot_view::{
     ContainerSlotType, DataType, ItemConfig, SlotOverlay, SlotSpec, SlotType, slot_type,
@@ -23,7 +26,7 @@ use machinery_basis_core::slot_view::{
 use machinery_basis_core::sound::SoundConfig;
 use machinery_basis_core::tile::{
     ChemicalMachineConfig, ElectricMachineConfig, MachineConfig, ProgressMachine, RedstoneControl,
-    RedstoneSync, UpgradeConfig, machine_energy_slot_accepts,
+    RedstoneSync, SideConfigSpec, UpgradeConfig, machine_energy_slot_accepts,
 };
 use machinery_basis_core::tile_trackers::{
     EnergyTrackers, TileTrackers, position_of, progress_machine_trackers, recipe_machine_trackers,
@@ -1227,6 +1230,7 @@ fn machine_config(
     tracked_errors: &[RecipeError],
     check_offset: u64,
     upgrades: Rc<UpgradeData>,
+    side_config: SideConfigSpec,
 ) -> MachineConfig {
     MachineConfig {
         energy_per_tick,
@@ -1243,6 +1247,7 @@ fn machine_config(
         },
         tracked_errors: tracked_errors.to_vec(),
         check_offset,
+        side_config,
     }
 }
 
@@ -1260,6 +1265,7 @@ pub fn electric_config(
             &ELECTRIC_TRACKED_ERRORS,
             check_offset,
             upgrades,
+            electric_side_config(),
         ),
         recipes,
         energy_conversion: no_energy_conversion(),
@@ -1299,6 +1305,7 @@ pub fn infuser_config(
             &INFUSER_TRACKED_ERRORS,
             check_offset,
             upgrades,
+            infuser_side_config(),
         ),
         recipes,
         conversions,
@@ -1583,73 +1590,137 @@ const fn window_type(
     }
 }
 
-const INPUT_SLOTS: &[usize] = &[INPUT_SLOT];
-const INFUSION_SLOTS: &[usize] = &[INFUSION_SLOT];
-const ELECTRIC_INPUT_SLOTS: &[usize] = &[ELECTRIC_INPUT_SLOT];
-const ENERGY_SLOTS: &[usize] = &[ENERGY_SLOT];
-const ELECTRIC_ENERGY_SLOTS: &[usize] = &[ELECTRIC_ENERGY_SLOT];
-
 /// Quanto o cabo guarda, se o bloco for um cabo.
 pub fn cable_capacity(block: &str) -> Option<i32> {
     let cable = UNIVERSAL_CABLES.iter().find(|(id, _)| *id == block);
     cable.map(|&(_, capacity)| capacity)
 }
 
-/// `LightConfigInfo.EXTRA_MACHINE`: a direita é saída, a base é o slot extra, as costas são o slot
-/// de energia e o resto é entrada. As costas são `DataType.ENERGY` (`InventorySlotInfo(true, true, ..)`): põem e tiram pela regra
-/// do slot de energia (`EnergyInventorySlot.fillOrConvert`). A base é `DataType.EXTRA`
-/// (`InventorySlotInfo(true, true, ..)`), então quem a alcança pode também tirar o que a regra do
-/// slot de infusão deixa tirar (`ChemicalInventorySlot.fillOrConvert`: o que ele não converte).
-pub fn item_slots(front: Face, face: Face) -> FaceSlots {
-    if face == front.opposite() {
-        FaceSlots {
-            inputs: ENERGY_SLOTS,
-            outputs: ENERGY_SLOTS,
-        }
-    } else if face == front.right_of() {
-        FaceSlots::default()
-    } else if face == Face::Down {
-        FaceSlots {
-            inputs: INFUSION_SLOTS,
-            outputs: INFUSION_SLOTS,
-        }
-    } else {
-        FaceSlots {
-            inputs: INPUT_SLOTS,
-            outputs: &[],
-        }
+/// `MekanismDataComponents.SIDE_CONFIG` e `EJECTOR`: os componentes do item que guardam a configuração de lados e o ejetor.
+pub const SIDE_CONFIG_COMPONENT: &str = "mekanism:side_config";
+pub const EJECTOR_COMPONENT: &str = "mekanism:ejector";
+
+/// `LightConfigInfo.MACHINE`: tudo entrada, a direita saída e as costas a energia. Não ejeta.
+pub fn light_machine() -> LightConfigInfo {
+    LightConfigInfo::create(
+        Some(RelativeSide::Right),
+        None,
+        Some(RelativeSide::Back),
+        false,
+    )
+}
+
+/// `LightConfigInfo.EXTRA_MACHINE`: como a `MACHINE`, mais a base como o slot extra.
+pub fn light_extra_machine() -> LightConfigInfo {
+    LightConfigInfo::create(
+        Some(RelativeSide::Right),
+        Some(RelativeSide::Bottom),
+        Some(RelativeSide::Back),
+        false,
+    )
+}
+
+/// `LightConfigInfo.INPUT_ONLY`: tudo entrada.
+pub fn light_input_only() -> LightConfigInfo {
+    LightConfigInfo::create(None, None, None, false)
+}
+
+/// `LightConfigInfo.OUT_NO_EJECT`: tudo entrada e a direita saída, sem ejetar.
+pub fn light_out_no_eject() -> LightConfigInfo {
+    LightConfigInfo::create(Some(RelativeSide::Right), None, None, false)
+}
+
+/// `AttachedSideConfig.ELECTRIC_MACHINE`, o padrão do item da Enrichment Chamber, do Crusher e do Energized Smelter.
+pub fn electric_machine_default() -> AttachedSideConfig {
+    AttachedSideConfig::new(&[
+        (TransmissionType::Item, light_machine()),
+        (TransmissionType::Energy, light_input_only()),
+    ])
+}
+
+/// `AttachedSideConfig.ADVANCED_MACHINE`, o padrão do item do Metallurgic Infuser: o slot extra na base, e o químico sai pela direita.
+pub fn advanced_machine_default() -> AttachedSideConfig {
+    AttachedSideConfig::new(&[
+        (TransmissionType::Item, light_extra_machine()),
+        (TransmissionType::Chemical, light_out_no_eject()),
+        (TransmissionType::Energy, light_input_only()),
+    ])
+}
+
+/// `TileEntityElectricMachine`: `AttributeSideConfig.ELECTRIC_MACHINE` (itens e energia), `setupItemIOConfig(input, output, energy)`,
+/// `setupInputConfig(ENERGY, energyContainer)` e `ejectorComponent.setOutputData(config, ITEM)`.
+pub fn electric_side_config() -> SideConfigSpec {
+    SideConfigSpec {
+        types: vec![TransmissionType::Item, TransmissionType::Energy],
+        setup: |config| {
+            config.setup_item_io_config(
+                &[ELECTRIC_INPUT_SLOT],
+                &[ELECTRIC_OUTPUT_SLOT],
+                ELECTRIC_ENERGY_SLOT,
+                false,
+            );
+            config.setup_input_config(TransmissionType::Energy, 0);
+        },
+        eject: vec![TransmissionType::Item],
     }
 }
 
-/// `LightConfigInfo.MACHINE`: a direita é saída, as costas são o slot de energia, e o resto entrada.
-/// Todas as faces de entrada são `DataType.INPUT`, `InventorySlotInfo(true, false, ..)`: quem está de fora põe e não tira. As costas
-/// são `DataType.ENERGY`, `InventorySlotInfo(true, true, ..)`, e decidem pela regra do slot de energia.
-pub fn electric_item_slots(front: Face, face: Face) -> FaceSlots {
-    if face == front.opposite() {
-        FaceSlots {
-            inputs: ELECTRIC_ENERGY_SLOTS,
-            outputs: ELECTRIC_ENERGY_SLOTS,
-        }
-    } else if face == front.right_of() {
-        FaceSlots::default()
-    } else {
-        FaceSlots {
-            inputs: ELECTRIC_INPUT_SLOTS,
-            outputs: &[],
-        }
+/// `TileEntityMetallurgicInfuser`: `ADVANCED_ELECTRIC_MACHINE` (itens, químico e energia), `setupItemIOExtraConfig`,
+/// `setupInputConfig(ENERGY)`, `setupIOConfig(CHEMICAL, infusionTank).setCanEject(false)` e o ejetor só de itens.
+pub fn infuser_side_config() -> SideConfigSpec {
+    SideConfigSpec {
+        types: vec![
+            TransmissionType::Item,
+            TransmissionType::Chemical,
+            TransmissionType::Energy,
+        ],
+        setup: |config| {
+            config.setup_item_io_extra_config(INPUT_SLOT, OUTPUT_SLOT, INFUSION_SLOT, ENERGY_SLOT);
+            config.setup_input_config(TransmissionType::Energy, 0);
+            config.setup_io_config(TransmissionType::Chemical, 0, false);
+            if let Some(chemical) = config.config_mut(TransmissionType::Chemical) {
+                chemical.set_can_eject(false);
+            }
+        },
+        eject: vec![TransmissionType::Item],
     }
 }
 
-/// Para um hopper: recebe por tudo que tem slot de entrada, e entrega por onde há slot que se tira. A saída
-/// (`DataType.OUTPUT`) fica à direita, e um hopper só puxa do bloco acima dele, então só a base vale.
-pub fn sides(front: Face, slots: fn(Face, Face) -> FaceSlots) -> Sides {
-    let mut sides = Sides::default();
-    for face in Face::ALL {
-        let reached = slots(front, face);
-        sides.input[face as usize] = !reached.inputs.is_empty();
-        sides.output[face as usize] = !reached.outputs.is_empty();
-    }
-    sides
+/// Os slots de itens de cada máquina, na ordem de `getInventorySlots`: o que `ConfigHolder` devolve quando não há configuração.
+pub const ELECTRIC_ALL_SLOTS: [usize; 3] = [
+    ELECTRIC_INPUT_SLOT,
+    ELECTRIC_OUTPUT_SLOT,
+    ELECTRIC_ENERGY_SLOT,
+];
+pub const INFUSER_ALL_SLOTS: [usize; 4] = [INFUSION_SLOT, INPUT_SLOT, OUTPUT_SLOT, ENERGY_SLOT];
+
+/// Uma máquina com o padrão do item aplicado, só a configuração (sem o resto do tile): o que o rastro dos hoppers e os testes de
+/// face usam. `infuser` escolhe o Metallurgic Infuser.
+pub fn item_placed_config(infuser: bool) -> TileComponentConfig {
+    let (spec, default) = if infuser {
+        (infuser_side_config(), advanced_machine_default())
+    } else {
+        (electric_side_config(), electric_machine_default())
+    };
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    config.apply_implicit_components(Some(&default), Face::North, false);
+    config
+}
+
+/// Os slots que a face alcança numa máquina posta por um item (`ConfigHolder`): a regra que o hopper vizinho segue.
+pub fn item_slots(infuser: bool, front: Face, face: Face) -> FaceSlots {
+    let all: &[usize] = if infuser {
+        &INFUSER_ALL_SLOTS
+    } else {
+        &ELECTRIC_ALL_SLOTS
+    };
+    item_placed_config(infuser).item_face(front, face, all)
+}
+
+/// Para um hopper, de uma máquina posta por um item.
+pub fn item_sides(infuser: bool, front: Face) -> Sides {
+    Sides::of_slots(&|face| item_slots(infuser, front, face))
 }
 
 /// As pastas do original: `data/<ns>/mekanism/chemical` e as outras, para datapacks do Mekanism valerem aqui.
@@ -2356,31 +2427,48 @@ mod tests {
     fn items_enter_by_the_front_the_left_and_the_top() {
         let front = Face::North;
         for face in [Face::North, front.left_of(), Face::Up] {
-            assert_eq!(item_slots(front, face).inputs, [INPUT_SLOT], "{face:?}");
+            assert_eq!(
+                item_slots(true, front, face).inputs,
+                [INPUT_SLOT],
+                "{face:?}"
+            );
         }
     }
 
     #[test]
     fn the_base_feeds_the_infusion_slot() {
-        assert_eq!(item_slots(Face::East, Face::Down).inputs, [INFUSION_SLOT]);
+        assert_eq!(
+            item_slots(true, Face::East, Face::Down).inputs,
+            [INFUSION_SLOT]
+        );
     }
 
     #[test]
-    fn the_right_takes_nothing_and_the_back_only_the_energy_slot() {
+    fn the_right_gives_only_the_output_and_the_back_only_the_energy_slot() {
         for front in [Face::North, Face::South, Face::East, Face::West] {
-            assert!(item_slots(front, front.right_of()).inputs.is_empty());
-            assert!(item_slots(front, front.right_of()).outputs.is_empty());
-            assert_eq!(item_slots(front, front.opposite()).inputs, [ENERGY_SLOT]);
-            assert_eq!(item_slots(front, front.opposite()).outputs, [ENERGY_SLOT]);
-            assert!(sides(front, item_slots).accepts_input(front));
+            let right = item_slots(true, front, front.right_of());
+            assert!(right.inputs.is_empty());
+            assert_eq!(right.outputs, [OUTPUT_SLOT]);
+            assert_eq!(
+                item_slots(true, front, front.opposite()).inputs,
+                [ENERGY_SLOT]
+            );
+            assert_eq!(
+                item_slots(true, front, front.opposite()).outputs,
+                [ENERGY_SLOT]
+            );
+            assert!(item_sides(true, front).accepts_input(front));
         }
     }
 
     #[test]
     fn a_hopper_below_the_infuser_gets_the_infusion_slot_and_no_other_face_can_be_below() {
-        let sides = sides(Face::North, item_slots);
+        let sides = item_sides(true, Face::North);
         assert!(sides.gives_output(Face::Down));
-        assert_eq!(item_slots(Face::North, Face::Down).outputs, [INFUSION_SLOT]);
+        assert_eq!(
+            item_slots(true, Face::North, Face::Down).outputs,
+            [INFUSION_SLOT]
+        );
         // O back (`ENERGY`) também entrega, mas um hopper só puxa do bloco de cima: ele não está embaixo de nenhuma face lateral.
         assert!(sides.gives_output(Face::South));
         assert!(!sides.gives_output(Face::North));
@@ -2390,7 +2478,7 @@ mod tests {
 
     #[test]
     fn a_hopper_below_an_electric_machine_gets_nothing() {
-        let sides = sides(Face::North, electric_item_slots);
+        let sides = item_sides(false, Face::North);
         assert!(!sides.gives_output(Face::Down));
         assert!(sides.gives_output(Face::South));
     }
@@ -2399,18 +2487,46 @@ mod tests {
     fn an_electric_machine_also_takes_by_the_base() {
         let front = Face::North;
         for face in [Face::North, front.left_of(), Face::Up, Face::Down] {
-            let slots = electric_item_slots(front, face);
+            let slots = item_slots(false, front, face);
             assert_eq!(slots.inputs, [ELECTRIC_INPUT_SLOT], "{face:?}");
         }
-        assert!(
-            electric_item_slots(front, front.right_of())
-                .inputs
-                .is_empty()
-        );
+        assert!(item_slots(false, front, front.right_of()).inputs.is_empty());
         assert_eq!(
-            electric_item_slots(front, front.opposite()).inputs,
+            item_slots(false, front, front.opposite()).inputs,
             [ELECTRIC_ENERGY_SLOT]
         );
+    }
+
+    #[test]
+    fn a_machine_placed_without_the_item_reaches_nothing() {
+        for infuser in [false, true] {
+            let spec = if infuser {
+                infuser_side_config()
+            } else {
+                electric_side_config()
+            };
+            let mut config = TileComponentConfig::new(&spec.types);
+            (spec.setup)(&mut config);
+            for face in Face::ALL {
+                assert_eq!(
+                    config.item_face(Face::North, face, &[0, 1, 2, 3]),
+                    FaceSlots::default()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_screen_item_config_is_the_one_the_component_builds() {
+        for (infuser, screen) in [(false, &ELECTRIC_ITEM_CONFIG), (true, &INFUSER_ITEM_CONFIG)] {
+            let config = item_placed_config(infuser);
+            let items = config.config(TransmissionType::Item).unwrap();
+            for (data_type, slots) in screen.entries {
+                let info = items.slot_info_of(*data_type).unwrap();
+                assert_eq!(&info.containers[..], *slots, "{data_type:?}");
+            }
+            assert_eq!(items.supported_data_types().len() - 1, screen.entries.len());
+        }
     }
 
     #[test]

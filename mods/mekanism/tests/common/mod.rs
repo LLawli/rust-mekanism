@@ -590,3 +590,22 @@ fn opened_mirror(spec: &ScreenSpec, source: &dyn TrackedSource) -> Mirror {
     }
     mirror
 }
+
+/// O ejetor de itens ligado e a saída só no lado `face` do mundo: o que o rastro antigo chamava de `ejectEast`. A configuração de lados
+/// nasce em `NONE` (uma máquina posta por `setBlock`), então o lado de saída é o único com um `DataType`.
+pub fn eject_to(machine: &mut ProgressMachine, face: machinery_basis_core::sides::Face) {
+    use machinery_basis_core::side_config::{DataType, RelativeSide, TransmissionType};
+    let facing = machine.facing();
+    let info = machine
+        .side_config_mut()
+        .config_mut(TransmissionType::Item)
+        .expect("a máquina configura itens");
+    for side in RelativeSide::VALUES {
+        info.set_data_type(DataType::None, side);
+    }
+    info.set_data_type(
+        DataType::Output,
+        RelativeSide::from_directions(facing, face),
+    );
+    info.set_ejecting(true);
+}

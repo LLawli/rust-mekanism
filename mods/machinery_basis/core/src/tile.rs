@@ -12,7 +12,7 @@ use crate::containers::{
     Access, AutomationType, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks,
     redstone_signal,
 };
-use crate::ejector::{EjectGroup, ItemEjector};
+use crate::ejector::{AttachedEjector, EjectorData, NoOtherEject, TileComponentEjector};
 use crate::energy_conversion::{EnergyConversionCache, fill_container_or_convert};
 use crate::experience::ExperienceDrop;
 use crate::item_chemical_constant_recipe::{
@@ -26,6 +26,8 @@ use crate::recipe_monitor::{
     Awarded, MonitorFlags, RecipeCacheLookupMonitor, RecipeId, RecipeLookupHandler, UsedHandle,
 };
 use crate::settings::ConfigValue;
+use crate::side_config::{AttachedSideConfig, ConfigData, TileComponentConfig, TransmissionType};
+use crate::sides::Face;
 use crate::transaction::Callback;
 use crate::two_input_recipe::{
     ItemChemicalCache, ItemChemicalToItemRecipe, TwoInputItemChemicalRecipe,
@@ -134,8 +136,6 @@ pub struct SavedState {
     pub last_recipe_amount: i32,
     /// `RecipeCacheLookupMonitor.hadContainment` (`HAS_CONTAINMENT`).
     pub had_containment: bool,
-    /// `ConfigInfo.isEjecting` dos itens.
-    pub ejecting: bool,
     /// `TileComponentUpgrade.serialize`: os upgrades instalados e os dois slots.
     pub upgrades: UpgradeSaved,
 }
@@ -346,6 +346,27 @@ pub struct MachineConfig {
     pub tracked_errors: Vec<RecipeError>,
     /// O sorteio de `shouldRecheckAllErrors`, de 0 a [`RECIPE_CHECK_FREQUENCY`].
     pub check_offset: u64,
+    /// `TileComponentConfig` e `TileComponentEjector` da máquina: o que ela expõe em cada tipo de transmissão.
+    pub side_config: SideConfigSpec,
+}
+
+/// Os dados de `TileEntityConfigurableMachine` que cada máquina traz: os tipos que a configuração tem (`AttributeSideConfig`), como os
+/// `ConfigInfo` são montados (`configComponent.setup*` no construtor) e de quais tipos o ejetor lê (`ejectorComponent.setOutputData`).
+/// Os contêineres são índices: os slots na ordem de `getInitialInventory`, e um por tipo para o resto.
+#[derive(Clone, Debug)]
+pub struct SideConfigSpec {
+    pub types: Vec<TransmissionType>,
+    pub setup: fn(&mut TileComponentConfig),
+    pub eject: Vec<TransmissionType>,
+}
+
+/// O que `writeConfigurationData` grava e `setConfigurationData` lê: o modo de redstone (`writeSustainedData`), `component_config` e
+/// `component_ejector` (que some se o ejetor está no padrão). O Configurator e o cartão de configuração usam este par.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ConfigurationData {
+    pub control_type: Option<RedstoneControl>,
+    pub config: Option<ConfigData>,
+    pub ejector: Option<EjectorData>,
 }
 
 /// `TileEntityElectricMachine`: um item vira um item. `recipes` é o `getInputCache` do tipo de receita, que todas as máquinas do
@@ -709,6 +730,7 @@ struct Parts {
     energy_slot: InventorySlot,
     energy_conversion: Rc<EnergyConversionCache>,
     upgrades: UpgradeComponent,
+    side_config: SideConfigSpec,
 }
 
 impl Parts {
@@ -809,6 +831,7 @@ impl Parts {
             energy_slot,
             energy_conversion,
             upgrades,
+            side_config: config.side_config.clone(),
         }
     }
 }
@@ -825,7 +848,10 @@ pub struct ProgressMachine {
     /// `getInventorySlots`, na ordem do Java: é a média deles que dá o nível do comparador.
     inventory_slots: Vec<InventorySlot>,
     monitor: Box<dyn MonitorOps>,
-    ejector: ItemEjector,
+    config: TileComponentConfig,
+    ejector: TileComponentEjector,
+    /// `getDirection`: a frente do bloco, que o jogo diz a cada tick.
+    facing: Face,
     upgrades: UpgradeComponent,
     /// `LastEnergyTracker`: o que a capability de energia entregou no tick anterior (`lastEnergyReceived`).
     last_energy: LastEnergyTracker,
@@ -977,11 +1003,13 @@ impl ProgressMachine {
         inventory_slots: Vec<InventorySlot>,
         monitor: Box<dyn MonitorOps>,
     ) -> Self {
-        // O ejetor de itens sai pelo slot de saída, em nenhuma face até a configuração mandar.
-        let ejector = ItemEjector::new(vec![EjectGroup::new(
-            vec![parts.output.clone()],
-            Vec::new(),
-        )]);
+        // `TileEntityConfigurableMachine`: a configuração nasce em `NONE` (só `applyImplicitComponents` aplica o padrão do item), e o
+        // ejetor lê dela os tipos que a máquina manda.
+        let spec = &parts.side_config;
+        let mut config = TileComponentConfig::new(&spec.types);
+        (spec.setup)(&mut config);
+        let mut ejector = TileComponentEjector::new();
+        ejector.set_output_data(&config, &spec.eject);
         Self {
             shared: parts.shared,
             energy: parts.energy,
@@ -992,7 +1020,9 @@ impl ProgressMachine {
             chemical,
             inventory_slots,
             monitor,
+            config,
             ejector,
+            facing: Face::North,
             upgrades: parts.upgrades,
             last_energy: LastEnergyTracker::default(),
         }
@@ -1027,12 +1057,98 @@ impl ProgressMachine {
         self.chemical.as_ref()
     }
 
-    pub fn ejector(&self) -> &ItemEjector {
+    /// `configComponent`.
+    pub fn side_config(&self) -> &TileComponentConfig {
+        &self.config
+    }
+
+    pub fn side_config_mut(&mut self) -> &mut TileComponentConfig {
+        &mut self.config
+    }
+
+    /// `ejectorComponent`.
+    pub fn ejector(&self) -> &TileComponentEjector {
         &self.ejector
     }
 
-    pub fn ejector_mut(&mut self) -> &mut ItemEjector {
+    pub fn ejector_mut(&mut self) -> &mut TileComponentEjector {
         &mut self.ejector
+    }
+
+    /// `getInventorySlots`: a tabela de contêineres de itens que a configuração de lados indexa.
+    pub fn inventory_slots(&self) -> &[InventorySlot] {
+        &self.inventory_slots
+    }
+
+    /// `getDirection`.
+    pub fn facing(&self) -> Face {
+        self.facing
+    }
+
+    /// A frente do bloco no mundo, relida a cada tick.
+    pub fn set_facing(&mut self, facing: Face) {
+        self.facing = facing;
+    }
+
+    /// `applyImplicitComponents` da configuração e do ejetor: o padrão do item (`AttachedSideConfig`, `AttachedEjector`), ou o que o
+    /// item trazia. `loaded` é `tile.hasLevel()`: avisa as faces que mudaram. Quem põe a máquina por `setBlock` não passa por aqui.
+    pub fn apply_item_side_config(
+        &mut self,
+        side_config: Option<&AttachedSideConfig>,
+        ejector: Option<&AttachedEjector>,
+        loaded: bool,
+    ) {
+        self.config
+            .apply_implicit_components(side_config, self.facing, loaded);
+        self.ejector.apply_implicit_components(ejector);
+    }
+
+    /// `collectImplicitComponents` da configuração e do ejetor: o que o item solto leva.
+    pub fn collect_item_side_config(&self) -> (AttachedSideConfig, AttachedEjector) {
+        (
+            self.config.collect_implicit_components(),
+            self.ejector.collect_implicit_components(),
+        )
+    }
+
+    /// `deserialize` de `component_config` e de `component_ejector` (`loadAdditional`). O que o NBT não traz fica.
+    pub fn restore_side_config(
+        &mut self,
+        config: Option<&ConfigData>,
+        ejector: Option<&EjectorData>,
+        loaded: bool,
+    ) {
+        if let Some(config) = config {
+            self.config.deserialize(config, self.facing, loaded);
+        }
+        if let Some(ejector) = ejector {
+            self.ejector.deserialize(ejector);
+        }
+    }
+
+    /// `TileEntityConfigurableMachine.writeConfigurationData`: o modo de redstone, a configuração e o ejetor.
+    pub fn write_configuration_data(&self) -> ConfigurationData {
+        let ejector = self.ejector.serialize();
+        ConfigurationData {
+            control_type: Some(self.shared.tile.borrow().control_type()),
+            config: Some(self.config.serialize()),
+            ejector: (!ejector.is_empty()).then_some(ejector),
+        }
+    }
+
+    /// `TileEntityConfigurableMachine.setConfigurationData`: o modo de redstone volta a `DISABLED` se faltava, e os componentes só
+    /// leem o filho que veio (`ITileComponent.read` é `readChild`).
+    pub fn set_configuration_data(&mut self, data: &ConfigurationData) {
+        self.shared
+            .tile
+            .borrow_mut()
+            .set_control_type(data.control_type.unwrap_or_default());
+        self.restore_side_config(data.config.as_ref(), data.ejector.as_ref(), true);
+    }
+
+    /// Quem foi mudando na configuração desde a última chamada.
+    pub fn take_side_changes(&mut self) -> Vec<crate::side_config::SideChange> {
+        self.config.take_changes()
     }
 
     pub fn ticks_required(&self) -> i32 {
@@ -1076,7 +1192,6 @@ impl ProgressMachine {
             last_recipe_used: None,
             last_recipe_amount: 0,
             had_containment: self.shared.used.had_containment(),
-            ejecting: self.ejector.is_ejecting(),
             upgrades: UpgradeSaved::default(),
         }
     }
@@ -1114,7 +1229,6 @@ impl ProgressMachine {
             saved.last_recipe_amount,
         );
         self.shared.used.set_had_containment(saved.had_containment);
-        self.ejector.set_ejecting(saved.ejecting);
     }
 
     /// `TileEntityMekanism.applyImplicitComponents`, com o `UPGRADES` do item (o padrão do item de bloco é `UpgradeAware.EMPTY`):
@@ -1266,7 +1380,13 @@ impl ProgressMachine {
         self.upgrades.tick_server();
         self.shared.tile.borrow_mut().tick_delay();
         // `onUpdateServer`: o ejetor, do `TileEntityConfigurableMachine`, o slot de energia, o que enche o tanque e depois a receita.
-        self.ejector.tick_server(neighbours);
+        self.ejector.tick_server(
+            &self.config,
+            self.facing,
+            &self.inventory_slots,
+            neighbours,
+            &mut NoOtherEject,
+        );
         fill_container_or_convert(
             &self.energy_slot,
             &self.energy,
