@@ -1,0 +1,29 @@
+{
+  "template": "minecraft:lodestone",
+  "properties": {
+    "hardness": 3.5,
+    "requires_tool": true,
+    "map_color": 59,
+    "sounds": "minecraft:stone",
+    "explosion_resistance": 4.8,
+    "occludes": false,
+    "render_shape": "INVISIBLE"
+  },
+  "state_properties": {
+    "fluid_logged": {
+      "type": "enum",
+      "values": [
+        "empty",
+        "water",
+        "lava"
+      ]
+    }
+  },
+  "default_state": {
+    "fluid_logged": "empty"
+  },
+  "item": false,
+  "shapes": {
+    "default": []
+  }
+}

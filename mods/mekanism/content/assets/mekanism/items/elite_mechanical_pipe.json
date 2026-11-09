@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "mekanism:block/transmitter_port/elite_mechanical_pipe_center"
+  }
+}

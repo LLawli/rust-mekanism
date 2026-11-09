@@ -1,0 +1,23 @@
+{
+  "template": "minecraft:lodestone",
+  "properties": {
+    "hardness": 5.0,
+    "requires_tool": true,
+    "map_color": 59,
+    "sounds": "minecraft:stone",
+    "explosion_resistance": 9.0
+  },
+  "state_properties": {
+    "mode": {
+      "type": "enum",
+      "values": [
+        "input",
+        "output_steam",
+        "output_coolant"
+      ]
+    }
+  },
+  "default_state": {
+    "mode": "input"
+  }
+}

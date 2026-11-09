@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gera o conteúdo dos blocos de máquina e dos blocos avulsos com tile (frente `blocos-maquinas`), sem função.
+"""Gera o conteúdo dos blocos de máquina, dos blocos avulsos com tile (frente `blocos-maquinas`) e dos de armazenamento, indução, multibloco e transmissores (frente `blocos-estrutura`), sem função.
 
 Uso: blocos_conteudo.py [CHECKOUT_DO_MEKANISM]
 
@@ -42,8 +42,33 @@ MACHINES = (
 FACTORY_TYPES = "combining compressing crushing enriching infusing injecting purifying sawing smelting".split()
 TIERS = "basic advanced elite ultimate".split()
 FACTORIES = [f"{t}_{k}_factory" for t in TIERS for k in FACTORY_TYPES]
-SCOPE = MACHINES + FACTORIES
+# A frente `blocos-estrutura`: os blocos de `MekanismBlocks` que sobravam. Por tier (os quatro e o criativo onde o original o tem): o depósito, o tanque de fluido, o tanque de
+# químico e o cubo de energia; a indução; as partes de multibloco; e os transmissores (os quatro tiers de cada, mais o restritivo e o desviador).
+TIERS5 = TIERS + ["creative"]
+STORAGE = [f"{t}_{k}" for k in ("bin", "fluid_tank", "chemical_tank", "energy_cube") for t in TIERS5]
+INDUCTION = [f"{t}_induction_{k}" for k in ("cell", "provider") for t in TIERS] + ["induction_casing", "induction_port"]
+MULTIBLOCK = (
+    "boiler_casing boiler_valve dynamic_tank dynamic_valve sps_casing sps_port thermal_evaporation_block thermal_evaporation_controller thermal_evaporation_valve "
+    "structural_glass supercharged_coil superheating_element pressure_disperser"
+).split()
+# Família, tamanho (`BlockSmallTransmitter` ou `BlockLargeTransmitter`) e a tag de bloco dos transmissores que se juntam (`mekanism:transmitters/<tag>`, da datagen).
+TRANSMITTER_KINDS = {
+    "universal_cable": ("small", None),
+    "pressurized_tube": ("small", "chemical"),
+    "thermodynamic_conductor": ("small", "heat"),
+    "mechanical_pipe": ("large", "fluid"),
+    "logistical_transporter": ("large", "items"),
+}
+CABLES = [f"{t}_universal_cable" for t in TIERS]
+TRANSMITTERS = [f"{t}_{k}" for k in TRANSMITTER_KINDS if k != "universal_cable" for t in TIERS] + ["restrictive_transporter", "diversion_transporter"]
+STRUCTURE = STORAGE + INDUCTION + MULTIBLOCK + TRANSMITTERS + ["bounding_block"]
+SCOPE = MACHINES + FACTORIES + STRUCTURE
+# O que a tabela de linhas leva: o escopo e os quatro cabos, que a frente anterior deixou com a linha do gabarito do chorus plant.
+ROWS_SCOPE = SCOPE + CABLES
+ENERGY_CUBES = [f"{t}_energy_cube" for t in TIERS5]
+FLUID_TANKS = [f"{t}_fluid_tank" for t in TIERS5]
 TEMPLATE = "minecraft:lodestone"
+CHORUS = "minecraft:chorus_plant"
 MAX_BOXES = 16
 
 
@@ -187,11 +212,54 @@ SOUND_BLOCKS = {"minecraft:block.stone.break": "minecraft:stone", "minecraft:blo
 
 def sound_block(row):
     sounds = {s["sound"] for s in row["states"]}
+    # `DEFAULT` do `SoundType` é a pedra (`BlockBehaviour.Properties`); só o vidro estrutural troca o som (`BlockStructuralGlass`: `SoundType.GLASS`).
     assert len(sounds) == 1 and sounds <= set(SOUND_BLOCKS), (row["id"], sounds)
     return SOUND_BLOCKS[sounds.pop()]
 
 
+def transmitter_kind(block):
+    """A família de um transmissor (`mechanical_pipe`, `restrictive_transporter`...) e o tamanho; None se o bloco não for um."""
+    for kind, (size, _) in TRANSMITTER_KINDS.items():
+        if block.endswith("_" + kind):
+            return kind
+    if block in ("restrictive_transporter", "diversion_transporter"):
+        return block
+    return None
+
+
+def transmitter_size(block):
+    kind = transmitter_kind(block)
+    return TRANSMITTER_KINDS[kind][0] if kind in TRANSMITTER_KINDS else "large"
+
+
+def transmitter_tag(block):
+    kind = transmitter_kind(block)
+    if kind == "universal_cable":
+        return "mekanism:energy_connects"
+    # Os transportadores logísticos, o restritivo e o desviador se juntam entre si (`#mekanism:transmitters/items`).
+    return f"mekanism:transmitters/{TRANSMITTER_KINDS[kind][1] if kind in TRANSMITTER_KINDS else 'items'}"
+
+
+def transmitter_declaration(row):
+    """Um transmissor: o bloco que conecta do Horizon (o chorus plant sem as regras dele, `connects_to` e `thickness`), com a dureza, a resistência, a cor e o som do original.
+    O estado por lado do original (a conexão vem da block entity) e a rede são das Fases 3 e 4; `fluid_logged` espera (decisão 26)."""
+    first = row["states"][0]
+    block = row["id"].split(":")[1]
+    assert not first["solid_render"] and row["hardness"] == 1.0 and row["resistance"] == 6.0 and not row["requires_tool"], block
+    assert row["explosion_state"] == row["resistance"], block
+    assert sound_block(row) == "minecraft:stone", block
+    return {
+        "template": CHORUS,
+        "connects_to": "#" + transmitter_tag(block),
+        "thickness": 6 if transmitter_size(block) == "small" else 8,
+        "properties": {"hardness": row["hardness"], "explosion_resistance": row["explosion_state"], "requires_tool": False, "map_color": first["map_color"], "sounds": "minecraft:stone"},
+    }
+
+
 def block_declaration(row, template=TEMPLATE):
+    block = row["id"].split(":")[1]
+    if block in CABLES or block in TRANSMITTERS:
+        return transmitter_declaration(row)
     first = row["states"][0]
     properties = {"hardness": row["hardness"], "requires_tool": row["requires_tool"], "map_color": first["map_color"], "sounds": sound_block(row)}
     # `Properties.strength` e o arquivo do Horizon aceitam 0 ou mais; a resistência -1 do `AttributeCustomResistance` (o cofre, o barril e a mesa de segurança) vai pela
@@ -203,6 +271,9 @@ def block_declaration(row, template=TEMPLATE):
     # gabarito (o cubo cheio do `lodestone`), e pelo `can_occlude` de `render-definitions.json`; `occludes: false` põe o segundo falso (decisão 22): sem isso o chão sob a máquina perde a face de cima.
     if not row["states"][0]["solid_render"]:
         properties["occludes"] = False
+    # `RenderShape.INVISIBLE` (o `bounding_block`: `BlockBounding.getRenderShape`) não desenha o bloco.
+    if first["render_shape"] != "MODEL":
+        properties["render_shape"] = first["render_shape"]
     static_light = [s["light"] for s in row["states"] if s["props"].get("active") in (None, "false") and s["props"].get("fluid_logged") in (None, "empty")]
     if row["id"].endswith("teleporter"):
         properties["light"] = max(static_light)
@@ -217,9 +288,18 @@ def block_declaration(row, template=TEMPLATE):
     if state_properties:
         declaration["state_properties"] = dict(sorted(state_properties.items()))
         declaration["default_state"] = dict(sorted(row["default"].items()))
+    components = {}
     if row["item"]["max_stack"] != 64:
-        declaration["components"] = {"minecraft:max_stack_size": row["item"]["max_stack"]}
-    assert row["item"]["rarity"] == "COMMON"
+        components["minecraft:max_stack_size"] = row["item"]["max_stack"]
+    # A raridade do item (`Rarity` do `Item.Properties`): o SPS e a bobina supercarregada são épicos, o resto comum.
+    assert row["item"]["rarity"] in ("COMMON", "EPIC"), block
+    if row["item"]["rarity"] == "EPIC":
+        components["minecraft:rarity"] = "epic"
+    if components:
+        declaration["components"] = components
+    # O `bounding_block` é só bloco (`BlockRegistryObject` sem item): o Horizon faz um item com o mesmo id, a menos que o arquivo diga que não.
+    if row["item"]["id"] == "minecraft:air":
+        declaration["item"] = False
     outline = shapes_of(row, "outline")
     collision = shapes_of(row, "collision")
     if outline:
@@ -232,6 +312,9 @@ def block_declaration(row, template=TEMPLATE):
 
 
 def placement_declaration(row):
+    # Os transmissores do port não têm `fluid_logged` (o chorus plant do Horizon não aceita o estado do original, decisão 26).
+    if row["id"].split(":")[1] in CABLES + TRANSMITTERS:
+        return None
     out = {}
     facing = [p for p in row["properties"] if p["name"] == "facing"]
     if facing:
@@ -257,7 +340,7 @@ def row_facts(row):
     dry = groups[False].copy().pop()
     wet = groups.get(True, groups[False]).copy().pop()
     push, can_occlude, solid_render, dampening, skylight_down, render_shape, random_ticks = dry
-    assert render_shape == "MODEL" and not random_ticks
+    assert render_shape in ("MODEL", "INVISIBLE") and not random_ticks
     assert can_occlude or not solid_render
     assert wet[:3] == dry[:3], (row["id"], dry, wet)
     active_light = max([s["light"] for s in states if s["props"].get("active") == "true" and s["props"].get("fluid_logged") in (None, "empty")] or [0])
@@ -379,6 +462,142 @@ def model_source(name):
     return None
 
 
+# O que o port escreve em vez de copiar, porque o Horizon não carrega o que o original usa (decisão 26): o modelo de transmissor é um OBJ próprio do Mekanism
+# (`mekanism:special/transmitter`, `.obj.mek`), o do cubo de energia um carregador de modelo (`mekanism:energy_cube_sided`, `mekanism:energy_cube`) e o item do tanque de
+# fluido e do cubo de energia um desenhista especial (`minecraft:special` com `mekanism:fluid_tank` e `mekanism:energy_cube`, que o Horizon troca pelo modelo base, e o base
+# dos dois só tem `display`).
+GENERATED_BLOCKSTATES = TRANSMITTERS + ENERGY_CUBES
+GENERATED_ITEMS = TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
+DIRECTIONS = (("north", {}), ("east", {"y": 90}), ("south", {"y": 180}), ("west", {"y": 270}), ("up", {"x": 270}), ("down", {"x": 90}))
+# `RelativeSide.VALUES`: a ordem em que o `EnergyCubeModel` junta as partes.
+RELATIVE_SIDES = ("front", "left", "right", "back", "top", "bottom")
+
+
+def read_json(path):
+    with open(path) as handle:
+        return json.load(handle)
+
+
+def transmitter_textures(block):
+    """As texturas do centro e do braço de um transmissor: as do modelo do original (`transmitter/<tamanho>/<família>/<tier>.json`), nas variantes `opaque` como o cabo que o port
+    já tinha (o braço recortado e o centro animado são da Fase 4)."""
+    kind = transmitter_kind(block)
+    size = transmitter_size(block)
+    if kind in TRANSMITTER_KINDS:
+        tier = block[: -len(kind) - 1]
+        path = f"{RES}/assets/mekanism/models/block/transmitter/{size}/{kind}/{tier}.json"
+    else:
+        path = f"{RES}/assets/mekanism/models/block/transmitter/large/{block}.json"
+    textures = read_json(path)["textures"]
+    return textures["center_opaque"], textures["side_opaque"]
+
+
+def box_faces(texture, faces):
+    return {face: {"uv": [0, 0, 16, 16], "texture": texture} for face in faces}
+
+
+def transmitter_assets(block):
+    """O blockstate (as seis conexões do chorus plant), o modelo do centro e o do braço de um transmissor, e o item (o centro, como o do cabo). O corpo do centro é o cubo de 6 ou 8 pixels
+    (`transmitter_small.obj.mek` e `transmitter_large.obj.mek`: 0,3125 a 0,6875 e 0,25 a 0,75) e o braço vai da borda até ele, com as quatro faces laterais (a da ponta é escondida)."""
+    size = transmitter_size(block)
+    center_texture, side_texture = transmitter_textures(block)
+    lo, hi = (5, 11) if size == "small" else (4, 12)
+    center = {
+        "parent": "minecraft:block/block",
+        "textures": {"particle": "#center", "center": center_texture},
+        "elements": [{"from": [lo, lo, lo], "to": [hi, hi, hi], "faces": box_faces("#center", ("north", "south", "east", "west", "up", "down"))}],
+    }
+    # O braço do cabo mapeia a faixa vertical da textura em 13,33 de 16 para os 5 pixels de comprimento (v de 1,33 a 14,67); o do tamanho grande tem 4.
+    v0, v1 = (1.33, 14.67) if size == "small" else (2.67, 13.33)
+    arm_faces = {
+        "up": {"uv": [0, v0, 16, v1], "texture": "#side"},
+        "down": {"uv": [0, v0, 16, v1], "texture": "#side"},
+        "east": {"uv": [0, v0, 16, v1], "rotation": 90, "texture": "#side"},
+        "west": {"uv": [0, v0, 16, v1], "rotation": 90, "texture": "#side"},
+    }
+    side = {
+        "parent": "minecraft:block/block",
+        "textures": {"particle": "#side", "side": side_texture},
+        "elements": [{"from": [lo, lo, 0], "to": [hi, hi, lo], "faces": arm_faces}],
+    }
+    multipart = [{"apply": {"model": f"mekanism:block/transmitter_port/{block}_center"}}]
+    for name, rotation in DIRECTIONS:
+        multipart.append({"when": {name: "true"}, "apply": {"model": f"mekanism:block/transmitter_port/{block}_side", **rotation}})
+    return {
+        f"assets/mekanism/blockstates/{block}.json": {"multipart": multipart},
+        f"assets/mekanism/items/{block}.json": {"model": {"type": "minecraft:model", "model": f"mekanism:block/transmitter_port/{block}_center"}},
+        f"assets/mekanism/models/block/transmitter_port/{block}_center.json": center,
+        f"assets/mekanism/models/block/transmitter_port/{block}_side.json": side,
+    }, {center_texture, side_texture}
+
+
+def lit_led(element, shift):
+    """O LED aceso (`EnergyCubeBaseGeometry.remapLedUVs`): as mesmas caixas com o uv deslocado e a luz do bloco em 15."""
+    lit = json.loads(json.dumps(element))
+    for face in lit["faces"].values():
+        if "uv" in face:
+            face["uv"] = [face["uv"][0] + shift[0], face["uv"][1] + shift[1], face["uv"][2] + shift[0], face["uv"][3] + shift[1]]
+    lit["light_emission"] = 15
+    return lit
+
+
+def energy_cube_model(tier, item):
+    """O modelo do cubo de energia sem os dados de lado: o `EnergyCubeModel` junta o quadro e, por lado, o LED (e a porta, se o lado não for `INACTIVE`). Sem block entity todo lado é
+    `INACTIVE` (o bloco posto); o item sai com a configuração de lados do item (`ItemBlockEnergyCube.SIDE_CONFIG`: saída só na frente, `FRONT_OUT_EJECT`), o lado de saída aceso e com a porta."""
+    base = read_json(f"{RES}/assets/mekanism/models/block/energy_cube/base.json")
+    corner = read_json(f"{RES}/assets/mekanism/models/block/energy_cube/{tier}.json")
+    assert corner["parent"] == "mekanism:block/energy_cube/base", tier
+    shift = base["leds"]["lit_uv_shift"]
+    elements = list(base["frame"])
+    for side in RELATIVE_SIDES:
+        if item and side == "front":
+            elements += [lit_led(e, shift) for e in base["leds"][side]] + list(base["ports"][side])
+        else:
+            elements += list(base["leds"][side])
+    return {"parent": "minecraft:block/block", "textures": {**base["textures"], **corner["textures"]}, "elements": elements}
+
+
+def energy_cube_assets(block):
+    tier = block[: -len("_energy_cube")]
+    # O original lista os seis `facing` em ordem alfabética (`down`, `east`, `north`, `south`, `up`, `west`).
+    states = {f"facing={f}": {"model": f"mekanism:block/energy_cube/{tier}_static", **dict(DIRECTIONS)[f]} for f in sorted(dict(DIRECTIONS))}
+    display = read_json(f"{RES}/assets/mekanism/models/item/{block}.json")["display"]
+    files = {
+        f"assets/mekanism/blockstates/{block}.json": {"variants": states},
+        f"assets/mekanism/items/{block}.json": {"model": {"type": "minecraft:model", "model": f"mekanism:item/{block}_port"}},
+        f"assets/mekanism/models/block/energy_cube/{tier}_static.json": energy_cube_model(tier, False),
+        f"assets/mekanism/models/block/energy_cube/{tier}_item.json": energy_cube_model(tier, True),
+        f"assets/mekanism/models/item/{block}_port.json": {"parent": f"mekanism:block/energy_cube/{tier}_item", "display": display},
+    }
+    textures = set(files[f"assets/mekanism/models/block/energy_cube/{tier}_static.json"]["textures"].values())
+    return files, textures
+
+
+def fluid_tank_item(block):
+    """O item do tanque de fluido sem fluido: o desenhista (`RenderFluidTankItem`) põe o modelo do estado padrão do bloco; o `display` é o do modelo base do item."""
+    display = read_json(f"{RES}/assets/mekanism/models/item/{block}.json")["display"]
+    return {
+        f"assets/mekanism/items/{block}.json": {"model": {"type": "minecraft:model", "model": f"mekanism:item/{block}_port"}},
+        f"assets/mekanism/models/item/{block}_port.json": {"parent": "mekanism:block/fluid_tank", "display": display},
+    }
+
+
+def generated_assets():
+    """Os arquivos que o port escreve (JSON) e as texturas que eles citam."""
+    files, textures = {}, set()
+    for block in TRANSMITTERS:
+        more, tex = transmitter_assets(block)
+        files.update(more)
+        textures |= tex
+    for block in ENERGY_CUBES:
+        more, tex = energy_cube_assets(block)
+        files.update(more)
+        textures |= tex
+    for block in FLUID_TANKS:
+        files.update(fluid_tank_item(block))
+    return files, textures
+
+
 def assets_plan():
     files = {}
     models, textures = {}, set()
@@ -396,14 +615,22 @@ def assets_plan():
             visit(item)
 
     for block in SCOPE:
-        state = blockstate_source(block)
-        files[f"assets/mekanism/blockstates/{block}.json"] = state
-        item = f"{GEN}/assets/mekanism/items/{block}.json"
-        files[f"assets/mekanism/items/{block}.json"] = item
-        for source in (state, item):
+        sources = []
+        if block not in GENERATED_BLOCKSTATES:
+            state = blockstate_source(block)
+            files[f"assets/mekanism/blockstates/{block}.json"] = state
+            sources.append(state)
+        if block not in GENERATED_ITEMS and block != "bounding_block":
+            item = f"{GEN}/assets/mekanism/items/{block}.json"
+            files[f"assets/mekanism/items/{block}.json"] = item
+            sources.append(item)
+        for source in sources:
             more, _ = refs(source)
             for name in more:
                 visit(name)
+    # O `display` do item de cada tanque vem do modelo base (`models/item/<tanque>.json`); o modelo do estado do bloco já entra pelo blockstate.
+    generated, extra = generated_assets()
+    textures |= extra
     for name, source in models.items():
         files[f"assets/mekanism/models/{name.split(':')[1]}.json"] = source
     for texture in sorted(textures):
@@ -416,7 +643,7 @@ def assets_plan():
         files[f"assets/mekanism/textures/{path}.png"] = png
         if os.path.exists(png + ".mcmeta"):
             files[f"assets/mekanism/textures/{path}.png.mcmeta"] = png + ".mcmeta"
-    return files
+    return files, generated
 
 
 # Os blockstates que o port adapta: o `qio_redstone_adapter` tem, no estado ativo, uma variante `mekanism:special/qio_redstone_adapter` (`QIORedstoneAdapterModel`) que escolhe
@@ -434,7 +661,9 @@ def adapt_blockstate(text):
 
 
 def copy_assets():
-    files = assets_plan()
+    files, generated = assets_plan()
+    for relative, value in sorted(generated.items()):
+        write_json(os.path.join(CONTENT, relative), value, indent=2)
     copied = 0
     for relative, source in sorted(files.items()):
         target = os.path.join(CONTENT, relative)
@@ -450,13 +679,15 @@ def copy_assets():
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copyfile(source, target)
         copied += 1
-    print(f"assets: {len(files)} arquivos, {copied} novos")
+    print(f"assets: {len(files)} copiados ({copied} novos), {len(generated)} escritos")
 
 
 def copy_loot():
-    for block in SCOPE:
+    # O `bounding_block` não tem tabela de drop na datagen: não solta nada (o bloco de apoio some com a máquina que o pôs).
+    blocks = [b for b in SCOPE if b != "bounding_block"]
+    for block in blocks:
         shutil.copyfile(f"{GEN}/data/mekanism/loot_table/blocks/{block}.json", os.path.join(CONTENT, f"data/mekanism/loot_table/blocks/{block}.json"))
-    print(f"loot_table: {len(SCOPE)}")
+    print(f"loot_table: {len(blocks)}")
 
 
 def lang(rows_by_id):
@@ -504,8 +735,16 @@ def vanilla_tabs(by_id, order):
     cabo de energia (`BlockTransmitter` com `AttributeTier` que não é de transporte), e depois o transporte desviador."""
     have = ported("block")
     functional = [b for b in order if by_id[b]["functional_tab"] and b in have] + [b for b in FUNCTIONAL_EXTRA if b in have]
-    redstone = ["industrial_alarm"] + [b for b in order if (by_id[b]["redstone_tab"] or b.endswith("_universal_cable")) and b in have and b != "industrial_alarm"]
+    redstone = ["industrial_alarm"] + [b for b in order if (by_id[b]["redstone_tab"] or redstone_transmitter(by_id[b])) and b in have and b != "industrial_alarm"]
+    if "diversion_transporter" in have:
+        redstone.append("diversion_transporter")
     return functional, redstone
+
+
+def redstone_transmitter(row):
+    """`BlockTransmitter` com `AttributeTier` cujo tier não é o do transportador (`MekanismCreativeTabs.java:107-112`): os cabos, os tubos, os canos e os condutores."""
+    tiered = "AttributeTier" in row["attributes"] and not any(c.startswith("mekanism:tier/transporter=") for c in row["item"]["components"])
+    return row["class"] in ("BlockSmallTransmitter", "BlockLargeTransmitter") and tiered
 
 
 def creative(by_id):
@@ -518,6 +757,13 @@ def creative(by_id):
     path = os.path.join(CONTENT, "data/mekanism/horizon/creative_tab/mekanism.json")
     tab = json.load(open(path))
     tab["items"] = [f"mekanism:{i}" for i in items + order if i in have and i != "module"]
+    # `addToDisplay(MekanismFluids.FLUIDS, ..)` vem depois dos blocos: os baldes dos fluidos do Mekanism, na ordem do registro (`rastros/fluids.jsonl`, frente `fluidos`).
+    with open(os.path.join(HERE, "rastros/fluids.jsonl")) as handle:
+        for line in handle:
+            if line.strip():
+                fluid = json.loads(line)
+                if fluid["mod"] == "mekanism":
+                    tab["items"].append(fluid["bucket"]["id"])
     write_json(path, tab)
     functional, redstone = vanilla_tabs(by_id, order)
     table = os.path.join(NATIVE, "creative_tabs_table.rs")
@@ -676,11 +922,11 @@ def sync_recipes():
 
 def main():
     by_id = rows()
-    missing = [b for b in SCOPE if b not in by_id]
+    missing = [b for b in ROWS_SCOPE if b not in by_id]
     if missing:
         raise SystemExit(f"o rastro não tem {missing}")
     facts = []
-    for block in SCOPE:
+    for block in ROWS_SCOPE:
         row = by_id[block]
         write_json(os.path.join(CONTENT, f"data/mekanism/horizon/block/{block}.json"), block_declaration(row))
         placement = placement_declaration(row)
@@ -692,7 +938,7 @@ def main():
         facts.append(row_facts(row))
     with open(os.path.join(NATIVE, "block_rows_table.rs"), "w") as handle:
         handle.write(rows_table(facts))
-    print(f"blocos: {len(SCOPE)}")
+    print(f"blocos: {len(SCOPE)} e {len(CABLES)} cabos")
     copy_assets()
     copy_loot()
     lang(by_id)

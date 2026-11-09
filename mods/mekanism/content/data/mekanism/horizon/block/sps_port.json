@@ -1,0 +1,21 @@
+{
+  "template": "minecraft:lodestone",
+  "properties": {
+    "hardness": 5.0,
+    "requires_tool": true,
+    "map_color": 22,
+    "sounds": "minecraft:stone",
+    "explosion_resistance": 9.0
+  },
+  "state_properties": {
+    "active": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "active": "false"
+  },
+  "components": {
+    "minecraft:rarity": "epic"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "template": "minecraft:chorus_plant",
+  "connects_to": "#mekanism:transmitters/items",
+  "thickness": 8,
+  "properties": {
+    "hardness": 1.0,
+    "explosion_resistance": 6.0,
+    "requires_tool": false,
+    "map_color": 59,
+    "sounds": "minecraft:stone"
+  }
+}

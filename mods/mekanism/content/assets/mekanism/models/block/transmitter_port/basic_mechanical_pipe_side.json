@@ -1,0 +1,61 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "#side",
+    "side": "mekanism:block/models/multipart/opaque/basic_mechanical_pipe_vertical"
+  },
+  "elements": [
+    {
+      "from": [
+        4,
+        4,
+        0
+      ],
+      "to": [
+        12,
+        12,
+        4
+      ],
+      "faces": {
+        "up": {
+          "uv": [
+            0,
+            2.67,
+            16,
+            13.33
+          ],
+          "texture": "#side"
+        },
+        "down": {
+          "uv": [
+            0,
+            2.67,
+            16,
+            13.33
+          ],
+          "texture": "#side"
+        },
+        "east": {
+          "uv": [
+            0,
+            2.67,
+            16,
+            13.33
+          ],
+          "rotation": 90,
+          "texture": "#side"
+        },
+        "west": {
+          "uv": [
+            0,
+            2.67,
+            16,
+            13.33
+          ],
+          "rotation": 90,
+          "texture": "#side"
+        }
+      }
+    }
+  ]
+}
