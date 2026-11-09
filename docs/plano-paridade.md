@@ -199,6 +199,22 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
 
 Respondida ponto a ponto pelo usuário em 2026-11-08: ver a decisão 14. O que dela é trabalho da Fase 1 (as partículas pela injeção no cliente, a configuração de servidor, a pasta do arquivo de cliente, os testes com dois clientes e a forma de onda do som do original, todos fechados em 2026-11-08) está no estado da Fase 1, em "Fases". A diferença de 0,045 % do som por causa da reamostragem do Horizon foi respondida em 2026-11-09 (decisão 16). Nada mais espera o usuário nesta fase.
 
+### Esperando decisão do usuário (fim da Fase 2)
+
+O usuário pediu (2026-11-08) que as decisões que as frentes da Fase 2 tomam sozinhas lhe sejam perguntadas ponto a ponto ao fim da fase. Cada uma está fechada provisoriamente e tem as opções medidas no seu número, em "Decisões":
+
+- 17, o instrumento do bloco de nota do sal e do bloco de bio fuel;
+- 18, o fluido de mod sem fluido no motor: o jogador afunda devagar em vez de ficar parado, o ar cai cerca de 0,6 por tick, a taxa do Horizon, contra 1 por tick no original, e o mob atravessa o fluido de mod como ar, enquanto o original o segura parado;
+- 19, as tags `c:` do NeoForge;
+- 20 a 23, as formas de mais de 16 caixas, o `fluid_logged`, o gabarito dos blocos de máquina com `occludes: false`, e o blockstate do QIO Redstone Adapter;
+- 26, os modelos que o Horizon não carrega (cubo de energia, transmissores, item do tanque), a tinta do tanque de fluido e o gabarito do vidro estrutural;
+- 27, o `fluid_logged` dos transmissores;
+- 30, o vidro do reator e a matriz de foco do laser com o gabarito do vidro;
+- 35, a iluminação do NeoForge só nos blocos de mod (escolhida) ou em todos;
+- 45, as faces de item por instância, com a máquina imitando o hopper.
+
+A 31 (o `transform` do modelo) fechou igual ao original pela injeção e não espera mais o usuário.
+
 ### Spike de validação (2026-11-05)
 
 Rodado em jogo, no pin `f319701`, numa mudança descartável. Comparado com o original pela cena de `dev/referencia/testes/CenaCabo.java`.
