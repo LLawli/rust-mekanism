@@ -1848,7 +1848,7 @@ pub fn name_color(item: &str) -> Option<u32> {
 /// O desenho vestido do MekaSuit, do jetpack, das botas e do tanque de mergulho: o que o `IClientItemExtensions` deles (`ISpecialGear.gearModel`) faz no original
 /// (`client/render/armor`), como tabela para `machinery_basis_core::worn_gear`. Os números saem do Java (`rastros/armor_gear.json`, que `tests/worn_gear.rs` confere).
 pub mod worn_gear {
-    use machinery_basis_core::worn_gear::{Attachment, Foil, Gear, Op, Slot};
+    use machinery_basis_core::worn_gear::{Attachment, Foil, Gear, Op, Slot, SpriteRect};
 
     /// `OBJModelData.modelState`: a rotação de PI em Z que o original põe em todo quad do OBJ do MekaSuit ao assar (`Transformation(matrix.rotate(Axis.ZP.rotation(PI)))`, em volta do
     /// centro do bloco): o ponto (x, y, z) vira (1 - x, 1 - y, z). Como passos da pose, `translate(1, 1, 0)` e `scale(-1, -1, 1)`: o Horizon assa o OBJ sem ela.
@@ -2299,6 +2299,39 @@ pub mod worn_gear {
             Foil::Item,
             &FREE_RUNNERS_ARMORED_PARTS,
         ),
+    ];
+
+    /// Onde o atlas de itens do original põe cada sprite dos modelos vestidos (`rastros/armor_atlas.json`, do `CenaEquip`): o brilho de encantamento amostra a textura do brilho com a UV0 do quad
+    /// no atlas, e o atlas do Horizon põe os sprites em outro lugar.
+    pub const ATLAS_SPRITES: [SpriteRect; 7] = [
+        SpriteRect {
+            name: "entity/armor/mekasuit_armor_body",
+            rect: [0.06542969, 0.25585938, 0.09667969, 0.31835938],
+        },
+        SpriteRect {
+            name: "entity/armor/mekasuit_armor_exoskeleton",
+            rect: [0.06542969, 0.38476562, 0.09667969, 0.44726562],
+        },
+        SpriteRect {
+            name: "entity/armor/mekasuit_armor_helmet",
+            rect: [0.12792969, 0.13085938, 0.15917969, 0.19335938],
+        },
+        SpriteRect {
+            name: "entity/armor/mekasuit_player",
+            rect: [0.12792969, 0.39648438, 0.15917969, 0.45898438],
+        },
+        SpriteRect {
+            name: "item/free_runners",
+            rect: [0.19238281, 0.26757812, 0.22363281, 0.33007812],
+        },
+        SpriteRect {
+            name: "item/jetpack",
+            rect: [0.0009765625, 0.25585938, 0.06347656, 0.38085938],
+        },
+        SpriteRect {
+            name: "item/scuba_tank",
+            rect: [0.25097656, 0.40039062, 0.28222656, 0.46289062],
+        },
     ];
 
     /// Os modelos avulsos que o jogo tem de assar (`MekanismModelCache`: `MEKASUIT`, as quatro botas) e os que as peças citam: o que `native_standalone_models` recebe.

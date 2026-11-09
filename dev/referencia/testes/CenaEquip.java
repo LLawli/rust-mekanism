@@ -118,6 +118,31 @@ public class CenaEquip {
     }
 
 
+    /// Onde o atlas de itens do original põe cada sprite do Mekanism (`armor_atlas.json`: o retângulo de UV de cada um): o brilho de encantamento amostra a textura do brilho com a UV0 do
+    /// quad no atlas (`ARMOR_ENTITY_GLINT_TEXTURING` e `GLINT_TEXTURING` sobre a UV0), então onde o sprite está no atlas decide que parte da textura do brilho cada peça mostra.
+    private static void atlasDoOriginal(Minecraft minecraft) {
+        try {
+            var atlas = minecraft.getAtlasManager().getAtlasOrThrow(net.minecraft.data.AtlasIds.ITEMS);
+            var out = new com.google.gson.JsonObject();
+            for (var entry : atlas.getTextures().entrySet()) {
+                if (!entry.getKey().getNamespace().equals("mekanism")) {
+                    continue;
+                }
+                var sprite = entry.getValue();
+                var rect = new com.google.gson.JsonArray();
+                rect.add(sprite.getU0());
+                rect.add(sprite.getV0());
+                rect.add(sprite.getU1());
+                rect.add(sprite.getV1());
+                out.add(entry.getKey().toString(), rect);
+            }
+            Files.writeString(Path.of("armor_atlas.json"), out.toString());
+            Mekanism.logger.info("cena: atlas de itens com {} sprites do Mekanism", out.size());
+        } catch (IOException e) {
+            Mekanism.logger.error("cena-equip: atlas", e);
+        }
+    }
+
     /// Os grupos de peças que `MekaSuitArmor.createQuads` monta para cada peça do traje e cada combinação de peças vestidas, sem módulos: para cada posição do corpo, quantos quads
     /// opacos, brilhantes e translúcidos (`PartData`). Grava `armor_groups.jsonl` (uma linha por peça, combinação e posição). É a referência de `tests/worn_gear.rs` para o filtro de peça,
     /// as peças `excl_` e `shared_` e a classe de cada objeto do OBJ.
@@ -194,6 +219,7 @@ public class CenaEquip {
             minecraft.options.getSoundSourceOptionInstance(SoundSource.AMBIENT).set(0.0);
             // O brilho de encantamento anda com o relógio: parado (velocidade 0), os dois jogos o mostram no mesmo ponto do ciclo.
             minecraft.options.glintSpeed().set(0.0);
+            atlasDoOriginal(minecraft);
         }
         if (ticks == 20) {
             server.execute(() -> run(server, "difficulty easy"));

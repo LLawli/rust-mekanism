@@ -72,6 +72,32 @@ pub struct Attachment {
     pub needs_visible_part: bool,
 }
 
+/// Onde o atlas de itens do original põe um sprite: o retângulo de UV (`[u0, v0, u1, v1]`, de 0 a 1 no atlas). O brilho de encantamento amostra a textura do brilho com a UV0 do quad no atlas, então
+/// onde o sprite está no atlas decide que parte da textura do brilho cada peça mostra; o atlas do Horizon põe os sprites em outro lugar, e o brilho usa o lugar do original.
+#[derive(Clone, Copy, Debug)]
+pub struct SpriteRect {
+    /// O sprite sem o espaço de nomes (`item/jetpack`).
+    pub name: &'static str,
+    pub rect: [f32; 4],
+}
+
+/// O retângulo do original para o sprite `name` (com ou sem espaço de nomes).
+pub fn sprite_rect(table: &[SpriteRect], name: &str) -> Option<[f32; 4]> {
+    let bare = name.rsplit_once(':').map_or(name, |(_, rest)| rest);
+    table
+        .iter()
+        .find(|sprite| sprite.name == bare)
+        .map(|sprite| sprite.rect)
+}
+
+/// A UV0 do original para um ponto do sprite, dado em coordenadas do sprite (0 a 1): `TextureAtlasSprite.getU` e `getV`.
+pub fn original_uv(rect: [f32; 4], unit: [f32; 2]) -> [f32; 2] {
+    [
+        rect[0] + unit[0] * (rect[2] - rect[0]),
+        rect[1] + unit[1] * (rect[3] - rect[1]),
+    ]
+}
+
 /// Como o item vestido recebe o brilho de encantamento (`stack.hasFoil()`): é o tipo de desenho do original que decide a textura do brilho e a escala dela.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Foil {
@@ -343,6 +369,27 @@ mod tests {
         let table = [SUIT_BOOT, OTHER_PANTS];
         let worn = [None, None, Some("t:other_pants"), Some("t:boot")];
         assert_eq!(visible_attachments(&table, &worn).len(), 1);
+    }
+
+    #[test]
+    fn the_glint_reads_the_atlas_uv_of_the_original() {
+        let table = [SpriteRect {
+            name: "item/jetpack",
+            rect: [0.25, 0.5, 0.375, 0.625],
+        }];
+        assert_eq!(
+            sprite_rect(&table, "mekanism:item/jetpack"),
+            Some([0.25, 0.5, 0.375, 0.625])
+        );
+        assert_eq!(
+            sprite_rect(&table, "item/jetpack"),
+            Some([0.25, 0.5, 0.375, 0.625])
+        );
+        assert_eq!(sprite_rect(&table, "mekanism:item/scuba_tank"), None);
+        let rect = table[0].rect;
+        assert_eq!(original_uv(rect, [0.0, 0.0]), [0.25, 0.5]);
+        assert_eq!(original_uv(rect, [1.0, 1.0]), [0.375, 0.625]);
+        assert_eq!(original_uv(rect, [0.5, 0.25]), [0.3125, 0.53125]);
     }
 
     #[test]

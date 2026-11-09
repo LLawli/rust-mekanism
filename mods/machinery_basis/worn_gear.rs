@@ -10,12 +10,14 @@ use horizon_client::mesher::Vertex;
 use horizon_client::mobs::anim::Poses;
 use horizon_client::mobs::render::ARMOR_GLINT;
 use horizon_client::mobs::{Mob, Part, render};
-use machinery_basis_core::worn_gear::{self as worn, Attachment, Foil, Gear, Worn};
+use machinery_basis_core::worn_gear::{self as worn, Attachment, Foil, Gear, SpriteRect, Worn};
 use std::ops::ControlFlow;
 use std::sync::RwLock;
 
 /// As tabelas que os mods registraram (`register`), uma por mod.
 static TABLES: RwLock<Vec<&'static [Gear]>> = RwLock::new(Vec::new());
+/// Onde o atlas do original põe os sprites dos modelos (`register`), uma tabela por mod.
+static SPRITES: RwLock<Vec<&'static [SpriteRect]>> = RwLock::new(Vec::new());
 
 /// Luz cheia (céu e bloco 15), a dos LEDs: `RenderTypes.eyes` ignora o mapa de luz.
 const FULL_BRIGHT: u32 = 240 | 240 << 8;
@@ -30,8 +32,8 @@ const RIGHT_ARM_REST: [f32; 3] = [-5.0, 2.0, 0.0];
 const LEFT_ARM_REST: [f32; 3] = [5.0, 2.0, 0.0];
 
 /// O mod entrega a tabela dos seus itens: os modelos avulsos dela entram na lista que o jogo assa (`native_standalone_models`), e as partes do corpo que cada item esconde
-/// vão para a pose do mob (`anim::setup`). Pode ser chamada de novo: a mesma tabela não entra duas vezes.
-pub(in crate::game) fn register(table: &'static [Gear], models: &mut Vec<String>) {
+/// vão para a pose do mob (`anim::setup`). `sprites` diz onde o atlas do original põe os sprites dos modelos, para o brilho de encantamento. Pode ser chamada de novo: a mesma tabela não entra duas vezes.
+pub(in crate::game) fn register(table: &'static [Gear], sprites: &'static [SpriteRect], models: &mut Vec<String>) {
     for gear in table {
         for attachment in gear.attachments {
             if !models.iter().any(|model| model == attachment.model) {
@@ -42,6 +44,11 @@ pub(in crate::game) fn register(table: &'static [Gear], models: &mut Vec<String>
             horizon_client::mobs::anim::machinery_basis_worn::hide_when_worn(gear.slot.index(), gear.item, gear.hides);
         }
     }
+    let mut known = SPRITES.write().unwrap_or_else(|error| error.into_inner());
+    if !known.iter().any(|other| std::ptr::eq(*other, sprites)) {
+        known.push(sprites);
+    }
+    drop(known);
     let mut tables = TABLES.write().unwrap_or_else(|error| error.into_inner());
     let first = table.first().map(|gear| gear.item);
     if !tables.iter().any(|known| known.first().map(|gear| gear.item) == first) {
@@ -204,23 +211,51 @@ fn draw(game: &Game<'_>, attachment: &Attachment, foil: Option<Foil>, pose: Mat4
             vertex.color = 0xFFFF_FFFF;
         }
     }
+    let Some(foil) = foil else {
+        return;
+    };
+    let uvs = original_uvs(game, model, &out[start..]);
     match foil {
-        // `armorCutoutNoCullGlint`: o shader embaralha a UV do modelo (`ARMOR_ENTITY_GLINT_TEXTURING`, escala 0,16), então o vértice só leva a UV0.
-        Some(Foil::Armor) => {
-            for vertex in &mut out[start..] {
+        // `armorCutoutNoCullGlint`: o shader embaralha a UV0 (`ARMOR_ENTITY_GLINT_TEXTURING`, escala 0,16), então o vértice só leva a UV0 do original.
+        Foil::Armor => {
+            for (vertex, uv) in out[start..].iter_mut().zip(uvs) {
                 vertex.layer = ARMOR_GLINT;
-                vertex.glint_uv = vertex.uv;
+                vertex.glint_uv = uv;
             }
         }
-        // `itemCutoutGlint`: `GLINT_TEXTURING` (escala 8) sobre a UV0, calculada aqui como o `WorldSink` faz.
-        Some(Foil::Item) => {
+        // `itemCutoutGlint`: `GLINT_TEXTURING` (escala 8) sobre a UV0 do original, calculada aqui como o `WorldSink` faz.
+        Foil::Item => {
             if let Some(glint) = game.glint_frame.glint(ITEM_GLINT_SCALE) {
-                for vertex in &mut out[start..] {
+                for (vertex, uv) in out[start..].iter_mut().zip(uvs) {
                     vertex.layer = ITEM_GLINT_OVERLAY;
-                    vertex.glint_uv = glint.uv(vertex.uv);
+                    vertex.glint_uv = glint.uv(uv);
                 }
             }
         }
-        None => {}
     }
+}
+
+/// A UV0 que o original dá a cada vértice de `vertices` (os que `baked_model_vertices` fez para `model`, quatro por face, as faces sem sprite puladas): a do sprite no atlas do original, na posição
+/// que o quad tem dentro do sprite. Um sprite que a tabela não tem fica com a UV do Horizon.
+fn original_uvs(game: &Game<'_>, model: &horizon_client::models::catalog::BakedModel, vertices: &[Vertex]) -> Vec<[f32; 2]> {
+    let sprites = SPRITES.read().unwrap_or_else(|error| error.into_inner());
+    let mut out: Vec<[f32; 2]> = vertices.iter().map(|vertex| vertex.uv).collect();
+    let mut next = 0;
+    for face in &model.faces {
+        let Some(name) = game.pack.layer_names.get(&face.layer) else {
+            continue;
+        };
+        if !game.gui.atlas.sprites.contains_key(name) {
+            continue;
+        }
+        if let Some(rect) = sprites.iter().find_map(|table| worn::sprite_rect(table, name)) {
+            for (corner, uv) in face.quad.uv.iter().enumerate() {
+                if let Some(slot) = out.get_mut(next + corner) {
+                    *slot = worn::original_uv(rect, *uv);
+                }
+            }
+        }
+        next += 4;
+    }
+    out
 }

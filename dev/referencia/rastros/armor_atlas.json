@@ -1,0 +1,1340 @@
+{
+ "mekanism:entity/armor/blank": [
+  0.06542969,
+  0.32226562,
+  0.08105469,
+  0.35351562
+ ],
+ "mekanism:entity/armor/mekasuit_armor_body": [
+  0.06542969,
+  0.25585938,
+  0.09667969,
+  0.31835938
+ ],
+ "mekanism:entity/armor/mekasuit_armor_exoskeleton": [
+  0.06542969,
+  0.38476562,
+  0.09667969,
+  0.44726562
+ ],
+ "mekanism:entity/armor/mekasuit_armor_helmet": [
+  0.12792969,
+  0.13085938,
+  0.15917969,
+  0.19335938
+ ],
+ "mekanism:entity/armor/mekasuit_armor_modules": [
+  0.12792969,
+  0.19726562,
+  0.15917969,
+  0.25976562
+ ],
+ "mekanism:entity/armor/mekasuit_elytra": [
+  0.12792969,
+  0.26367188,
+  0.15917969,
+  0.32617188
+ ],
+ "mekanism:entity/armor/mekasuit_gravitational_modulator": [
+  0.12792969,
+  0.33007812,
+  0.15917969,
+  0.39257812
+ ],
+ "mekanism:entity/armor/mekasuit_player": [
+  0.12792969,
+  0.39648438,
+  0.15917969,
+  0.45898438
+ ],
+ "mekanism:entity/armor/mekatool": [
+  0.19238281,
+  0.001953125,
+  0.22363281,
+  0.064453125
+ ],
+ "mekanism:item/advanced_control_circuit": [
+  0.036132812,
+  0.45117188,
+  0.051757812,
+  0.48242188
+ ],
+ "mekanism:item/advanced_tier_installer": [
+  0.053710938,
+  0.45117188,
+  0.06933594,
+  0.48242188
+ ],
+ "mekanism:item/alloy_atomic": [
+  0.08886719,
+  0.45117188,
+  0.10449219,
+  0.48242188
+ ],
+ "mekanism:item/alloy_infused": [
+  0.10644531,
+  0.45117188,
+  0.12207031,
+  0.48242188
+ ],
+ "mekanism:item/alloy_reinforced": [
+  0.12792969,
+  0.46289062,
+  0.14355469,
+  0.49414062
+ ],
+ "mekanism:item/atomic_disassembler": [
+  0.0009765625,
+  0.38476562,
+  0.06347656,
+  0.44726562
+ ],
+ "mekanism:item/basic_control_circuit": [
+  0.2841797,
+  0.46679688,
+  0.2998047,
+  0.49804688
+ ],
+ "mekanism:item/basic_tier_installer": [
+  0.3173828,
+  0.40039062,
+  0.3330078,
+  0.43164062
+ ],
+ "mekanism:item/bio_fuel": [
+  0.35058594,
+  0.21289062,
+  0.36621094,
+  0.24414062
+ ],
+ "mekanism:item/canteen": [
+  0.4560547,
+  0.001953125,
+  0.4716797,
+  0.033203125
+ ],
+ "mekanism:item/clump": [
+  0.018554688,
+  0.5722656,
+  0.034179688,
+  0.6035156
+ ],
+ "mekanism:item/clump_copper": [
+  0.036132812,
+  0.5722656,
+  0.051757812,
+  0.6035156
+ ],
+ "mekanism:item/clump_gold": [
+  0.053710938,
+  0.5722656,
+  0.06933594,
+  0.6035156
+ ],
+ "mekanism:item/clump_iron": [
+  0.07128906,
+  0.5722656,
+  0.08691406,
+  0.6035156
+ ],
+ "mekanism:item/clump_lead": [
+  0.08886719,
+  0.5722656,
+  0.10449219,
+  0.6035156
+ ],
+ "mekanism:item/clump_osmium": [
+  0.10644531,
+  0.5722656,
+  0.12207031,
+  0.6035156
+ ],
+ "mekanism:item/clump_overlay": [
+  0.12402344,
+  0.5722656,
+  0.13964844,
+  0.6035156
+ ],
+ "mekanism:item/clump_tin": [
+  0.14160156,
+  0.5722656,
+  0.15722656,
+  0.6035156
+ ],
+ "mekanism:item/clump_uranium": [
+  0.15917969,
+  0.5722656,
+  0.17480469,
+  0.6035156
+ ],
+ "mekanism:item/configuration_card": [
+  0.3876953,
+  0.6074219,
+  0.4033203,
+  0.6386719
+ ],
+ "mekanism:item/configuration_card_encoded": [
+  0.40527344,
+  0.6074219,
+  0.42089844,
+  0.6386719
+ ],
+ "mekanism:item/configurator_config": [
+  0.42285156,
+  0.6074219,
+  0.43847656,
+  0.6386719
+ ],
+ "mekanism:item/configurator_empty": [
+  0.4404297,
+  0.6074219,
+  0.4560547,
+  0.6386719
+ ],
+ "mekanism:item/configurator_rotate": [
+  0.4580078,
+  0.6074219,
+  0.4736328,
+  0.6386719
+ ],
+ "mekanism:item/configurator_wrench": [
+  0.47558594,
+  0.6074219,
+  0.49121094,
+  0.6386719
+ ],
+ "mekanism:item/crafting_formula": [
+  0.0009765625,
+  0.6777344,
+  0.016601562,
+  0.7089844
+ ],
+ "mekanism:item/crafting_formula_encoded": [
+  0.018554688,
+  0.6777344,
+  0.034179688,
+  0.7089844
+ ],
+ "mekanism:item/crafting_formula_invalid": [
+  0.036132812,
+  0.6777344,
+  0.051757812,
+  0.7089844
+ ],
+ "mekanism:item/crystal": [
+  0.26464844,
+  0.6777344,
+  0.28027344,
+  0.7089844
+ ],
+ "mekanism:item/crystal_copper": [
+  0.28222656,
+  0.6777344,
+  0.29785156,
+  0.7089844
+ ],
+ "mekanism:item/crystal_gold": [
+  0.2998047,
+  0.6777344,
+  0.3154297,
+  0.7089844
+ ],
+ "mekanism:item/crystal_iron": [
+  0.3173828,
+  0.6777344,
+  0.3330078,
+  0.7089844
+ ],
+ "mekanism:item/crystal_lead": [
+  0.33496094,
+  0.6777344,
+  0.35058594,
+  0.7089844
+ ],
+ "mekanism:item/crystal_osmium": [
+  0.35253906,
+  0.6777344,
+  0.36816406,
+  0.7089844
+ ],
+ "mekanism:item/crystal_overlay": [
+  0.3701172,
+  0.6777344,
+  0.3857422,
+  0.7089844
+ ],
+ "mekanism:item/crystal_tin": [
+  0.3876953,
+  0.6777344,
+  0.4033203,
+  0.7089844
+ ],
+ "mekanism:item/crystal_uranium": [
+  0.40527344,
+  0.6777344,
+  0.42089844,
+  0.7089844
+ ],
+ "mekanism:item/dictionary": [
+  0.4404297,
+  0.7128906,
+  0.4560547,
+  0.7441406
+ ],
+ "mekanism:item/dirty_dust": [
+  0.4580078,
+  0.7128906,
+  0.4736328,
+  0.7441406
+ ],
+ "mekanism:item/dirty_dust_copper": [
+  0.47558594,
+  0.7128906,
+  0.49121094,
+  0.7441406
+ ],
+ "mekanism:item/dirty_dust_gold": [
+  0.0009765625,
+  0.7480469,
+  0.016601562,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_iron": [
+  0.018554688,
+  0.7480469,
+  0.034179688,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_lead": [
+  0.036132812,
+  0.7480469,
+  0.051757812,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_osmium": [
+  0.053710938,
+  0.7480469,
+  0.06933594,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_overlay": [
+  0.07128906,
+  0.7480469,
+  0.08691406,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_tin": [
+  0.08886719,
+  0.7480469,
+  0.10449219,
+  0.7792969
+ ],
+ "mekanism:item/dirty_dust_uranium": [
+  0.10644531,
+  0.7480469,
+  0.12207031,
+  0.7792969
+ ],
+ "mekanism:item/dirty_netherite_scrap": [
+  0.12402344,
+  0.7480469,
+  0.13964844,
+  0.7792969
+ ],
+ "mekanism:item/dosimeter": [
+  0.19433594,
+  0.7480469,
+  0.20996094,
+  0.7792969
+ ],
+ "mekanism:item/dust": [
+  0.28222656,
+  0.7480469,
+  0.29785156,
+  0.7792969
+ ],
+ "mekanism:item/dust_bronze": [
+  0.2998047,
+  0.7480469,
+  0.3154297,
+  0.7792969
+ ],
+ "mekanism:item/dust_charcoal": [
+  0.3173828,
+  0.7480469,
+  0.3330078,
+  0.7792969
+ ],
+ "mekanism:item/dust_coal": [
+  0.33496094,
+  0.7480469,
+  0.35058594,
+  0.7792969
+ ],
+ "mekanism:item/dust_copper": [
+  0.35253906,
+  0.7480469,
+  0.36816406,
+  0.7792969
+ ],
+ "mekanism:item/dust_diamond": [
+  0.3701172,
+  0.7480469,
+  0.3857422,
+  0.7792969
+ ],
+ "mekanism:item/dust_emerald": [
+  0.3876953,
+  0.7480469,
+  0.4033203,
+  0.7792969
+ ],
+ "mekanism:item/dust_fluorite": [
+  0.40527344,
+  0.7480469,
+  0.42089844,
+  0.7792969
+ ],
+ "mekanism:item/dust_gold": [
+  0.42285156,
+  0.7480469,
+  0.43847656,
+  0.7792969
+ ],
+ "mekanism:item/dust_iron": [
+  0.4404297,
+  0.7480469,
+  0.4560547,
+  0.7792969
+ ],
+ "mekanism:item/dust_lapis_lazuli": [
+  0.4580078,
+  0.7480469,
+  0.4736328,
+  0.7792969
+ ],
+ "mekanism:item/dust_lead": [
+  0.47558594,
+  0.7480469,
+  0.49121094,
+  0.7792969
+ ],
+ "mekanism:item/dust_lithium": [
+  0.0009765625,
+  0.7832031,
+  0.016601562,
+  0.8144531
+ ],
+ "mekanism:item/dust_netherite": [
+  0.018554688,
+  0.7832031,
+  0.034179688,
+  0.8144531
+ ],
+ "mekanism:item/dust_obsidian": [
+  0.036132812,
+  0.7832031,
+  0.051757812,
+  0.8144531
+ ],
+ "mekanism:item/dust_osmium": [
+  0.053710938,
+  0.7832031,
+  0.06933594,
+  0.8144531
+ ],
+ "mekanism:item/dust_quartz": [
+  0.07128906,
+  0.7832031,
+  0.08691406,
+  0.8144531
+ ],
+ "mekanism:item/dust_refined_obsidian": [
+  0.08886719,
+  0.7832031,
+  0.10449219,
+  0.8144531
+ ],
+ "mekanism:item/dust_steel": [
+  0.10644531,
+  0.7832031,
+  0.12207031,
+  0.8144531
+ ],
+ "mekanism:item/dust_sulfur": [
+  0.12402344,
+  0.7832031,
+  0.13964844,
+  0.8144531
+ ],
+ "mekanism:item/dust_tin": [
+  0.14160156,
+  0.7832031,
+  0.15722656,
+  0.8144531
+ ],
+ "mekanism:item/dust_uranium": [
+  0.15917969,
+  0.7832031,
+  0.17480469,
+  0.8144531
+ ],
+ "mekanism:item/dye_base": [
+  0.17675781,
+  0.7832031,
+  0.19238281,
+  0.8144531
+ ],
+ "mekanism:item/electric_bow": [
+  0.24707031,
+  0.7832031,
+  0.2626953,
+  0.8144531
+ ],
+ "mekanism:item/electric_bow_pulling_0": [
+  0.26464844,
+  0.7832031,
+  0.28027344,
+  0.8144531
+ ],
+ "mekanism:item/electric_bow_pulling_1": [
+  0.28222656,
+  0.7832031,
+  0.29785156,
+  0.8144531
+ ],
+ "mekanism:item/electric_bow_pulling_2": [
+  0.2998047,
+  0.7832031,
+  0.3154297,
+  0.8144531
+ ],
+ "mekanism:item/electrolytic_core": [
+  0.3173828,
+  0.7832031,
+  0.3330078,
+  0.8144531
+ ],
+ "mekanism:item/elite_control_circuit": [
+  0.33496094,
+  0.7832031,
+  0.35058594,
+  0.8144531
+ ],
+ "mekanism:item/elite_tier_installer": [
+  0.35253906,
+  0.7832031,
+  0.36816406,
+  0.8144531
+ ],
+ "mekanism:item/empty": [
+  0.42285156,
+  0.7832031,
+  0.43847656,
+  0.8144531
+ ],
+ "mekanism:item/energy_tablet": [
+  0.07128906,
+  0.8183594,
+  0.08691406,
+  0.8496094
+ ],
+ "mekanism:item/enriched_carbon": [
+  0.08886719,
+  0.8183594,
+  0.10449219,
+  0.8496094
+ ],
+ "mekanism:item/enriched_diamond": [
+  0.10644531,
+  0.8183594,
+  0.12207031,
+  0.8496094
+ ],
+ "mekanism:item/enriched_gold": [
+  0.12402344,
+  0.8183594,
+  0.13964844,
+  0.8496094
+ ],
+ "mekanism:item/enriched_iron": [
+  0.14160156,
+  0.8183594,
+  0.15722656,
+  0.8496094
+ ],
+ "mekanism:item/enriched_redstone": [
+  0.15917969,
+  0.8183594,
+  0.17480469,
+  0.8496094
+ ],
+ "mekanism:item/enriched_refined_obsidian": [
+  0.17675781,
+  0.8183594,
+  0.19238281,
+  0.8496094
+ ],
+ "mekanism:item/enriched_tin": [
+  0.19433594,
+  0.8183594,
+  0.20996094,
+  0.8496094
+ ],
+ "mekanism:item/flamethrower": [
+  0.0009765625,
+  0.001953125,
+  0.12597656,
+  0.25195312
+ ],
+ "mekanism:item/fluorite_gem": [
+  0.15917969,
+  0.8535156,
+  0.17480469,
+  0.8847656
+ ],
+ "mekanism:item/free_runners": [
+  0.19238281,
+  0.26757812,
+  0.22363281,
+  0.33007812
+ ],
+ "mekanism:item/gauge_dropper": [
+  0.24707031,
+  0.8535156,
+  0.2626953,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_0": [
+  0.26464844,
+  0.8535156,
+  0.28027344,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_1": [
+  0.28222656,
+  0.8535156,
+  0.29785156,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_2": [
+  0.2998047,
+  0.8535156,
+  0.3154297,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_3": [
+  0.3173828,
+  0.8535156,
+  0.3330078,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_4": [
+  0.33496094,
+  0.8535156,
+  0.35058594,
+  0.8847656
+ ],
+ "mekanism:item/geiger_counter_5": [
+  0.35253906,
+  0.8535156,
+  0.36816406,
+  0.8847656
+ ],
+ "mekanism:item/hazmat_boots": [
+  0.22949219,
+  0.9238281,
+  0.24511719,
+  0.9550781
+ ],
+ "mekanism:item/hazmat_gown": [
+  0.24707031,
+  0.9238281,
+  0.2626953,
+  0.9550781
+ ],
+ "mekanism:item/hazmat_mask": [
+  0.26464844,
+  0.9238281,
+  0.28027344,
+  0.9550781
+ ],
+ "mekanism:item/hazmat_pants": [
+  0.28222656,
+  0.9238281,
+  0.29785156,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_elytra": [
+  0.2998047,
+  0.9238281,
+  0.3154297,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_elytra_broken": [
+  0.3173828,
+  0.9238281,
+  0.3330078,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_pellet": [
+  0.33496094,
+  0.9238281,
+  0.35058594,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_rod": [
+  0.35253906,
+  0.9238281,
+  0.36816406,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_sheet": [
+  0.3701172,
+  0.9238281,
+  0.3857422,
+  0.9550781
+ ],
+ "mekanism:item/hdpe_stick": [
+  0.3876953,
+  0.9238281,
+  0.4033203,
+  0.9550781
+ ],
+ "mekanism:item/ingot": [
+  0.14160156,
+  0.9589844,
+  0.15722656,
+  0.9902344
+ ],
+ "mekanism:item/ingot_bronze": [
+  0.15917969,
+  0.9589844,
+  0.17480469,
+  0.9902344
+ ],
+ "mekanism:item/ingot_lead": [
+  0.17675781,
+  0.9589844,
+  0.19238281,
+  0.9902344
+ ],
+ "mekanism:item/ingot_osmium": [
+  0.19433594,
+  0.9589844,
+  0.20996094,
+  0.9902344
+ ],
+ "mekanism:item/ingot_refined_glowstone": [
+  0.21191406,
+  0.9589844,
+  0.22753906,
+  0.9902344
+ ],
+ "mekanism:item/ingot_refined_obsidian": [
+  0.22949219,
+  0.9589844,
+  0.24511719,
+  0.9902344
+ ],
+ "mekanism:item/ingot_steel": [
+  0.24707031,
+  0.9589844,
+  0.2626953,
+  0.9902344
+ ],
+ "mekanism:item/ingot_tin": [
+  0.26464844,
+  0.9589844,
+  0.28027344,
+  0.9902344
+ ],
+ "mekanism:item/ingot_uranium": [
+  0.28222656,
+  0.9589844,
+  0.29785156,
+  0.9902344
+ ],
+ "mekanism:item/jetpack": [
+  0.0009765625,
+  0.25585938,
+  0.06347656,
+  0.38085938
+ ],
+ "mekanism:item/leds": [
+  0.5185547,
+  0.6347656,
+  0.5341797,
+  0.6660156
+ ],
+ "mekanism:item/mekasuit_bodyarmor": [
+  0.55371094,
+  0.8105469,
+  0.56933594,
+  0.8417969
+ ],
+ "mekanism:item/mekasuit_bodyarmor_tint_layer": [
+  0.55371094,
+  0.8457031,
+  0.56933594,
+  0.8769531
+ ],
+ "mekanism:item/mekasuit_boots": [
+  0.55371094,
+  0.8808594,
+  0.56933594,
+  0.9121094
+ ],
+ "mekanism:item/mekasuit_boots_tint_layer": [
+  0.55371094,
+  0.9160156,
+  0.56933594,
+  0.9472656
+ ],
+ "mekanism:item/mekasuit_helmet": [
+  0.55371094,
+  0.9511719,
+  0.56933594,
+  0.9824219
+ ],
+ "mekanism:item/mekasuit_helmet_tint_layer": [
+  0.57128906,
+  0.001953125,
+  0.58691406,
+  0.033203125
+ ],
+ "mekanism:item/mekasuit_pants": [
+  0.57128906,
+  0.037109375,
+  0.58691406,
+  0.068359375
+ ],
+ "mekanism:item/mekasuit_pants_tint_layer": [
+  0.57128906,
+  0.072265625,
+  0.58691406,
+  0.103515625
+ ],
+ "mekanism:item/module/attack_amplification_unit": [
+  0.57128906,
+  0.28320312,
+  0.58691406,
+  0.31445312
+ ],
+ "mekanism:item/module/blasting_unit": [
+  0.57128906,
+  0.31835938,
+  0.58691406,
+  0.34960938
+ ],
+ "mekanism:item/module/charge_distribution_unit": [
+  0.57128906,
+  0.35351562,
+  0.58691406,
+  0.38476562
+ ],
+ "mekanism:item/module/color_modulation_unit": [
+  0.57128906,
+  0.38867188,
+  0.58691406,
+  0.41992188
+ ],
+ "mekanism:item/module/dosimeter_unit": [
+  0.57128906,
+  0.42382812,
+  0.58691406,
+  0.45507812
+ ],
+ "mekanism:item/module/electrolytic_breathing_unit": [
+  0.57128906,
+  0.45898438,
+  0.58691406,
+  0.49023438
+ ],
+ "mekanism:item/module/elytra_unit": [
+  0.57128906,
+  0.49414062,
+  0.58691406,
+  0.5253906
+ ],
+ "mekanism:item/module/energy_unit": [
+  0.57128906,
+  0.5292969,
+  0.58691406,
+  0.5605469
+ ],
+ "mekanism:item/module/excavation_escalation_unit": [
+  0.57128906,
+  0.5644531,
+  0.58691406,
+  0.5957031
+ ],
+ "mekanism:item/module/farming_unit": [
+  0.57128906,
+  0.5996094,
+  0.58691406,
+  0.6308594
+ ],
+ "mekanism:item/module/fortune_unit": [
+  0.57128906,
+  0.6347656,
+  0.58691406,
+  0.6660156
+ ],
+ "mekanism:item/module/frost_walker_unit": [
+  0.57128906,
+  0.6699219,
+  0.58691406,
+  0.7011719
+ ],
+ "mekanism:item/module/geiger_unit": [
+  0.57128906,
+  0.7050781,
+  0.58691406,
+  0.7363281
+ ],
+ "mekanism:item/module/generic_unit": [
+  0.57128906,
+  0.7402344,
+  0.58691406,
+  0.7714844
+ ],
+ "mekanism:item/module/gravitational_modulating_unit": [
+  0.57128906,
+  0.8105469,
+  0.58691406,
+  0.8417969
+ ],
+ "mekanism:item/module/gyroscopic_stabilization_unit": [
+  0.57128906,
+  0.8457031,
+  0.58691406,
+  0.8769531
+ ],
+ "mekanism:item/module/hydraulic_propulsion_unit": [
+  0.57128906,
+  0.8808594,
+  0.58691406,
+  0.9121094
+ ],
+ "mekanism:item/module/hydrostatic_repulsor_unit": [
+  0.57128906,
+  0.9160156,
+  0.58691406,
+  0.9472656
+ ],
+ "mekanism:item/module/inhalation_purification_unit": [
+  0.57128906,
+  0.9511719,
+  0.58691406,
+  0.9824219
+ ],
+ "mekanism:item/module/jetpack_unit": [
+  0.5888672,
+  0.001953125,
+  0.6044922,
+  0.033203125
+ ],
+ "mekanism:item/module/laser_dissipation_unit": [
+  0.5888672,
+  0.037109375,
+  0.6044922,
+  0.068359375
+ ],
+ "mekanism:item/module/locomotive_boosting_unit": [
+  0.5888672,
+  0.072265625,
+  0.6044922,
+  0.103515625
+ ],
+ "mekanism:item/module/magnetic_attraction_unit": [
+  0.5888672,
+  0.107421875,
+  0.6044922,
+  0.13867188
+ ],
+ "mekanism:item/module/motorized_servo_unit": [
+  0.5888672,
+  0.14257812,
+  0.6044922,
+  0.17382812
+ ],
+ "mekanism:item/module/nutritional_injection_unit": [
+  0.5888672,
+  0.17773438,
+  0.6044922,
+  0.20898438
+ ],
+ "mekanism:item/module/radiation_shielding_unit": [
+  0.5888672,
+  0.21289062,
+  0.6044922,
+  0.24414062
+ ],
+ "mekanism:item/module/shearing_unit": [
+  0.5888672,
+  0.24804688,
+  0.6044922,
+  0.27929688
+ ],
+ "mekanism:item/module/silk_touch_unit": [
+  0.5888672,
+  0.28320312,
+  0.6044922,
+  0.31445312
+ ],
+ "mekanism:item/module/soul_surfer_unit": [
+  0.5888672,
+  0.35351562,
+  0.6044922,
+  0.38476562
+ ],
+ "mekanism:item/module/teleportation_unit": [
+  0.5888672,
+  0.38867188,
+  0.6044922,
+  0.41992188
+ ],
+ "mekanism:item/module/vein_mining_unit": [
+  0.5888672,
+  0.42382812,
+  0.6044922,
+  0.45507812
+ ],
+ "mekanism:item/module/vision_enhancement_unit": [
+  0.5888672,
+  0.45898438,
+  0.6044922,
+  0.49023438
+ ],
+ "mekanism:item/module_base": [
+  0.5888672,
+  0.49414062,
+  0.6044922,
+  0.5253906
+ ],
+ "mekanism:item/network_reader": [
+  0.62402344,
+  0.35351562,
+  0.63964844,
+  0.38476562
+ ],
+ "mekanism:item/nugget": [
+  0.62402344,
+  0.38867188,
+  0.63964844,
+  0.41992188
+ ],
+ "mekanism:item/nugget_bronze": [
+  0.62402344,
+  0.42382812,
+  0.63964844,
+  0.45507812
+ ],
+ "mekanism:item/nugget_lead": [
+  0.62402344,
+  0.45898438,
+  0.63964844,
+  0.49023438
+ ],
+ "mekanism:item/nugget_osmium": [
+  0.62402344,
+  0.49414062,
+  0.63964844,
+  0.5253906
+ ],
+ "mekanism:item/nugget_refined_glowstone": [
+  0.62402344,
+  0.5292969,
+  0.63964844,
+  0.5605469
+ ],
+ "mekanism:item/nugget_refined_obsidian": [
+  0.62402344,
+  0.5644531,
+  0.63964844,
+  0.5957031
+ ],
+ "mekanism:item/nugget_steel": [
+  0.62402344,
+  0.5996094,
+  0.63964844,
+  0.6308594
+ ],
+ "mekanism:item/nugget_tin": [
+  0.62402344,
+  0.6347656,
+  0.63964844,
+  0.6660156
+ ],
+ "mekanism:item/nugget_uranium": [
+  0.62402344,
+  0.6699219,
+  0.63964844,
+  0.7011719
+ ],
+ "mekanism:item/pellet_antimatter": [
+  0.6591797,
+  0.21289062,
+  0.6748047,
+  0.24414062
+ ],
+ "mekanism:item/pellet_plutonium": [
+  0.6591797,
+  0.24804688,
+  0.6748047,
+  0.27929688
+ ],
+ "mekanism:item/pellet_polonium": [
+  0.6591797,
+  0.28320312,
+  0.6748047,
+  0.31445312
+ ],
+ "mekanism:item/portable_qio_dashboard": [
+  0.6767578,
+  0.35351562,
+  0.6923828,
+  0.38476562
+ ],
+ "mekanism:item/portable_qio_dashboard_tint_led": [
+  0.6767578,
+  0.38867188,
+  0.6923828,
+  0.41992188
+ ],
+ "mekanism:item/portable_teleporter": [
+  0.6767578,
+  0.42382812,
+  0.6923828,
+  0.45507812
+ ],
+ "mekanism:item/qio_drive_base": [
+  0.69433594,
+  0.14257812,
+  0.70996094,
+  0.17382812
+ ],
+ "mekanism:item/qio_drive_hyper_dense": [
+  0.69433594,
+  0.17773438,
+  0.70996094,
+  0.20898438
+ ],
+ "mekanism:item/qio_drive_supermassive": [
+  0.69433594,
+  0.21289062,
+  0.70996094,
+  0.24414062
+ ],
+ "mekanism:item/qio_drive_time_dilating": [
+  0.69433594,
+  0.24804688,
+  0.70996094,
+  0.27929688
+ ],
+ "mekanism:item/raw_lead": [
+  0.69433594,
+  0.6699219,
+  0.70996094,
+  0.7011719
+ ],
+ "mekanism:item/raw_osmium": [
+  0.69433594,
+  0.7050781,
+  0.70996094,
+  0.7363281
+ ],
+ "mekanism:item/raw_tin": [
+  0.69433594,
+  0.7402344,
+  0.70996094,
+  0.7714844
+ ],
+ "mekanism:item/raw_uranium": [
+  0.69433594,
+  0.7753906,
+  0.70996094,
+  0.8066406
+ ],
+ "mekanism:item/reprocessed_fissile_fragment": [
+  0.7470703,
+  0.21289062,
+  0.7626953,
+  0.24414062
+ ],
+ "mekanism:item/robit_particle": [
+  0.7470703,
+  0.35351562,
+  0.7626953,
+  0.38476562
+ ],
+ "mekanism:item/salt": [
+  0.7470703,
+  0.5644531,
+  0.7626953,
+  0.5957031
+ ],
+ "mekanism:item/sawdust": [
+  0.7470703,
+  0.6347656,
+  0.7626953,
+  0.6660156
+ ],
+ "mekanism:item/scuba_glass": [
+  0.25097656,
+  0.33398438,
+  0.28222656,
+  0.39648438
+ ],
+ "mekanism:item/scuba_mask": [
+  0.12792969,
+  0.001953125,
+  0.19042969,
+  0.12695312
+ ],
+ "mekanism:item/scuba_tank": [
+  0.25097656,
+  0.40039062,
+  0.28222656,
+  0.46289062
+ ],
+ "mekanism:item/seismic_reader": [
+  0.7470703,
+  0.7753906,
+  0.7626953,
+  0.8066406
+ ],
+ "mekanism:item/shard": [
+  0.7470703,
+  0.8808594,
+  0.7626953,
+  0.9121094
+ ],
+ "mekanism:item/shard_copper": [
+  0.7470703,
+  0.9160156,
+  0.7626953,
+  0.9472656
+ ],
+ "mekanism:item/shard_gold": [
+  0.7470703,
+  0.9511719,
+  0.7626953,
+  0.9824219
+ ],
+ "mekanism:item/shard_iron": [
+  0.76464844,
+  0.001953125,
+  0.78027344,
+  0.033203125
+ ],
+ "mekanism:item/shard_lead": [
+  0.76464844,
+  0.037109375,
+  0.78027344,
+  0.068359375
+ ],
+ "mekanism:item/shard_osmium": [
+  0.76464844,
+  0.072265625,
+  0.78027344,
+  0.103515625
+ ],
+ "mekanism:item/shard_overlay": [
+  0.76464844,
+  0.107421875,
+  0.78027344,
+  0.13867188
+ ],
+ "mekanism:item/shard_tin": [
+  0.76464844,
+  0.14257812,
+  0.78027344,
+  0.17382812
+ ],
+ "mekanism:item/shard_uranium": [
+  0.76464844,
+  0.17773438,
+  0.78027344,
+  0.20898438
+ ],
+ "mekanism:item/substrate": [
+  0.7998047,
+  0.38867188,
+  0.8154297,
+  0.41992188
+ ],
+ "mekanism:item/teleportation_core": [
+  0.7998047,
+  0.8105469,
+  0.8154297,
+  0.8417969
+ ],
+ "mekanism:item/ultimate_control_circuit": [
+  0.8173828,
+  0.45898438,
+  0.8330078,
+  0.49023438
+ ],
+ "mekanism:item/ultimate_tier_installer": [
+  0.8173828,
+  0.49414062,
+  0.8330078,
+  0.5253906
+ ],
+ "mekanism:item/upgrade/anchor": [
+  0.8173828,
+  0.5292969,
+  0.8330078,
+  0.5605469
+ ],
+ "mekanism:item/upgrade/chemical": [
+  0.8173828,
+  0.5644531,
+  0.8330078,
+  0.5957031
+ ],
+ "mekanism:item/upgrade/energy": [
+  0.8173828,
+  0.5996094,
+  0.8330078,
+  0.6308594
+ ],
+ "mekanism:item/upgrade/filter": [
+  0.8173828,
+  0.6347656,
+  0.8330078,
+  0.6660156
+ ],
+ "mekanism:item/upgrade/muffling": [
+  0.8173828,
+  0.6699219,
+  0.8330078,
+  0.7011719
+ ],
+ "mekanism:item/upgrade/speed": [
+  0.8173828,
+  0.7050781,
+  0.8330078,
+  0.7363281
+ ],
+ "mekanism:item/upgrade/stone_generator": [
+  0.8173828,
+  0.7402344,
+  0.8330078,
+  0.7714844
+ ],
+ "mekanism:item/upgrade/xp_containment": [
+  0.8173828,
+  0.7753906,
+  0.8330078,
+  0.8066406
+ ],
+ "mekanism:item/yellow_cake_uranium": [
+  0.85253906,
+  0.5644531,
+  0.86816406,
+  0.5957031
+ ]
+}

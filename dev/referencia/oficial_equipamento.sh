@@ -13,14 +13,17 @@ R=$HOME/.local/share/jogo-isolado/mekanism-ref/src/runs/client
 N=$HOME/.local/share/jogo-isolado/mekanism-ref/src/src/gameTest/java/mekanism/common/tests/network
 C=$HOME/.cache/rust-mekanism
 LOCK=$C/mekanism-ref.lock
-until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
-echo "$DONO" > "$LOCK/dono"
-echo "TRAVA $(date +%T)"
+# JA_COM_TRAVA=1: quem chamou já tem a `mekanism-ref.lock` (um script que roda mais de uma cena sob a mesma trava): este não a pega nem a solta.
+if [ "${JA_COM_TRAVA:-}" != 1 ]; then
+  until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
+  echo "$DONO" > "$LOCK/dono"
+  echo "TRAVA $(date +%T)"
+fi
 restore() {
-  rm -f "$N/CenaEquip.java" "$R/cena-equip" "$R/armor_groups.jsonl" "$R"/screenshots/equip_oficial_*.png
+  rm -f "$N/CenaEquip.java" "$R/cena-equip" "$R/armor_groups.jsonl" "$R/armor_atlas.json" "$R"/screenshots/equip_oficial_*.png
   [ -e "$C/cena-cabo.antes-equip" ] && mv "$C/cena-cabo.antes-equip" "$R/cena-cabo"
   [ -e "$C/options.txt.antes-equip" ] && cp "$C/options.txt.antes-equip" "$R/options.txt" && rm -f "$C/options.txt.antes-equip"
-  rm -rf "$LOCK"
+  [ "${JA_COM_TRAVA:-}" = 1 ] || rm -rf "$LOCK"
   echo "RESTAURADO $(date +%T)"
 }
 trap restore EXIT
@@ -36,5 +39,5 @@ cp "$CENA" "$R/cena-equip"
 JANELA="-W 1920 -H 1080 -w 1920 -h 1080"
 "$C/lim-build" env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
 echo "EXIT $?"
-mkdir -p "$PRINTS"; cp "$R"/screenshots/equip_oficial_*.png "$R/armor_groups.jsonl" "$PRINTS"/ 2>/dev/null
+mkdir -p "$PRINTS"; cp "$R"/screenshots/equip_oficial_*.png "$R/armor_groups.jsonl" "$R/armor_atlas.json" "$PRINTS"/ 2>/dev/null
 ls "$PRINTS"

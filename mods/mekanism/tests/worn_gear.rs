@@ -8,7 +8,7 @@ use machinery_basis_core::worn_gear::{
     Attachment, Foil, Gear, Op, Slot, compose, foil_of, hidden_parts, hides_cape, transform_point,
     visible_attachments,
 };
-use mekanism_rules::worn_gear::{WORN_GEAR, models};
+use mekanism_rules::worn_gear::{ATLAS_SPRITES, WORN_GEAR, models};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -481,6 +481,89 @@ fn the_enchantment_glint_of_each_item_is_the_render_type_of_the_original() {
         enchanted[gear.slot.index()] = true;
         assert_eq!(foil_of(gear, &enchanted), Some(style(family)), "{id}");
     }
+}
+
+/// Os sprites que os modelos vestidos usam (as texturas do OBJ do MekaSuit, do jetpack, do tanque e das botas, seguindo `parent` e `children`), um a um.
+fn model_textures() -> BTreeSet<String> {
+    fn take(node: &Value, textures: &mut BTreeSet<String>) {
+        for value in node["textures"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(_, v)| v)
+        {
+            if let Some(text) = value.as_str().filter(|t| !t.starts_with('#')) {
+                textures.insert(text.to_owned());
+            }
+        }
+    }
+    fn walk(reference: &str, seen: &mut BTreeSet<String>, textures: &mut BTreeSet<String>) {
+        if !seen.insert(reference.to_owned()) {
+            return;
+        }
+        let path = assets().join("models").join(format!(
+            "{}.json",
+            reference.trim_start_matches("mekanism:")
+        ));
+        let model: Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+        )
+        .unwrap();
+        take(&model, textures);
+        for child in model["children"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(_, v)| v)
+        {
+            take(child, textures);
+            if let Some(parent) = child["parent"].as_str() {
+                walk(parent, seen, textures);
+            }
+        }
+        if let Some(parent) = model["parent"].as_str() {
+            walk(parent, seen, textures);
+        }
+    }
+    let mut textures = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    for model in models() {
+        walk(model, &mut seen, &mut textures);
+    }
+    textures
+}
+
+/// O brilho de encantamento amostra a textura do brilho com a UV0 do quad no atlas de itens do original, então a tabela guarda onde o original põe cada sprite
+/// (`rastros/armor_atlas.json`, do `CenaEquip`): cada entrada é a do rastro, e todo sprite que um modelo vestido usa está na tabela.
+#[test]
+fn the_atlas_sprites_are_where_the_original_puts_them() {
+    let atlas = rastro("armor_atlas.json");
+    for sprite in &ATLAS_SPRITES {
+        let rect: Vec<f32> = atlas[format!("mekanism:{}", sprite.name)]
+            .as_array()
+            .unwrap_or_else(|| panic!("{} fora do rastro", sprite.name))
+            .iter()
+            .map(number)
+            .collect();
+        assert_eq!(rect, sprite.rect, "{}", sprite.name);
+    }
+    let named: BTreeSet<&str> = ATLAS_SPRITES.iter().map(|sprite| sprite.name).collect();
+    assert_eq!(named.len(), ATLAS_SPRITES.len(), "um sprite duas vezes");
+    for texture in model_textures() {
+        let bare = texture.trim_start_matches("mekanism:");
+        assert!(
+            named.contains(bare),
+            "{texture} usa o atlas do original e a tabela não o tem"
+        );
+    }
+    // O atlas de itens do original tem 1024 pixels de lado: o retângulo do jetpack (64 por 128) cai em múltiplos de 1/1024.
+    let jetpack = ATLAS_SPRITES
+        .iter()
+        .find(|sprite| sprite.name == "item/jetpack")
+        .unwrap()
+        .rect;
+    assert_eq!(((jetpack[2] - jetpack[0]) * 1024.0).round(), 64.0);
+    assert_eq!(((jetpack[3] - jetpack[1]) * 1024.0).round(), 128.0);
 }
 
 #[test]
