@@ -47,6 +47,13 @@ import net.neoforged.neoforge.transfer.item.ItemResource;
 public class CenaSomMedida {
 
     private static final Path ATIVA = Path.of("cena-som-medida");
+    /// Gravação de áudio (`oficial_som_audio.sh`): com `som-audio-espera` ao lado, o volume mestre fica em 0 até `som-audio-ok` aparecer (o stream do jogo já está no sink nulo e
+    /// o gravador de pé), e `som-audio-mudo` o leva de volta a 0 na hora. Sem `som-audio-espera` a cena não mexe no volume mestre.
+    private static final Path ESPERA_AUDIO = Path.of("som-audio-espera");
+    private static final Path AUDIO_OK = Path.of("som-audio-ok");
+    private static final Path AUDIO_MUDO = Path.of("som-audio-mudo");
+    private static boolean audioLiberado;
+    private static int esperaAudio;
     private static final Path SAIDA = Path.of("som-medido.jsonl");
     private static final int X = 300;
     private static final int Y = -60;
@@ -312,6 +319,27 @@ public class CenaSomMedida {
         if (ticks < 40) {
             return;
         }
+        if (Files.exists(ESPERA_AUDIO)) {
+            if (Files.exists(AUDIO_MUDO)) {
+                minecraft.options.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
+                audioLiberado = false;
+            } else if (!audioLiberado) {
+                if (!Files.exists(AUDIO_OK)) {
+                    // Cinco minutos sem o sink nulo: desiste sem tocar nada.
+                    if (++esperaAudio > 20 * 300) {
+                        escreve("{\"e\":\"fim\",\"erro\":\"sem sink nulo\"}");
+                        done = true;
+                        minecraft.stop();
+                    }
+                    return;
+                }
+                minecraft.options.getSoundSourceOptionInstance(SoundSource.MASTER).set(1.0);
+                audioLiberado = true;
+            }
+            if (!audioLiberado) {
+                return;
+            }
+        }
         if (atual == null) {
             if (pausa > 0) {
                 pausa--;
@@ -321,6 +349,7 @@ public class CenaSomMedida {
             if (indice >= cenarios.size()) {
                 done = true;
                 escreve("{\"e\":\"fim\"}");
+                minecraft.options.getSoundSourceOptionInstance(SoundSource.MASTER).set(0.0);
                 minecraft.stop();
                 return;
             }

@@ -291,3 +291,20 @@ rodado dentro do container). Um aviso que custou tempo: `chatVisibility` oculto 
 o anfitrião (maestro: abre a LAN, monta as máquinas, dá os passos do servidor e manda comandos ao convidado por `dois-sync/comandos.txt`) e o convidado (um segundo processo do `runGameTestClient`, com a linha de comando do
 primeiro e outra pasta de jogo, que clica, lê e tira prints). `oficial_dois.sh CenaDois.java cenas/dois_tudo.txt SAIDA` pega a trava do `mekanism-ref`, sobe os dois e devolve a árvore como estava; `comparar_dois.py` compara os
 prints do convidado nos dois jogos.
+
+### As partículas da máquina acesa e a forma de onda do som
+
+`testes/CenaParticulas.java` (cena de cliente, no `mekanism-ref`; arquivo `cena-particulas` ao lado, uma linha por etapa: `cenas/particulas.txt`) tem duas etapas. `rastro` chama o `animateTick` do bloco direto (`BlockTile.animateTick`,
+`BlockTile.java:80-103`), com uma `RandomSource.create(12345)` por (máquina, direção, bloco ativo ou não, `machineEffects` ligado ou não), seis vezes seguidas, para as quatro máquinas e o Heat Generator, e grava cada partícula que o
+`ClientLevel.addParticle` entregou ao `ParticleEngine` (a classe e a posição, lidas da fila `particlesToAdd`): `rastros/particulas_rastro.jsonl` (480 linhas, as de `ativo` e `efeitos` ligados são as que levam 2 partículas).
+`taxa` põe a máquina acesa de verdade, com o jogador a 3 blocos da face onde caem as partículas, deixa o cliente sortear sozinho (`ClientLevel.animateTick`) e conta, tick a tick, as partículas novas por classe (as de `age` zero); o gerador
+esvazia a energia a cada 5 ticks (cheia, ele pára). `prints=T,...` tira prints pelo próprio jogo. `oficial_particulas.sh` copia a cena, pega a `mekanism-ref.lock`, roda o gradle pelo `lim-build` num gamescope headless com o volume mestre em 0
+e devolve a árvore como estava; a saída das etapas de taxa está em `rastros/particulas_taxa_oficial.jsonl` (linhas `segundo`, e `resumo` com `ativos` e `totais`).
+`mods/mekanism/tests/particles_trace.rs` e `mods/mekanismgenerators/tests/particles_trace.rs` repetem o rastro com o `java.util.Random` da mesma semente (e a conta de `BitRandomSource.nextDouble`, em `float`), exatos para a fumaça e o pó e a
+menos de 0,05 para a chama (o construtor de `FlameParticle` desloca a posição com o gerador do jogo). No port, `horizon2/h2_particulas.py` roda as mesmas etapas no `horizon` (`H_NAME=horizon`; os fontes saem de `enviar_fontes.sh`, que liga `FX_TRACE` em `glue.rs`:
+o jogo escreve `MEKFX gt=<tick> ...` no stderr a cada chamada que solta partículas), `horizon2/estado_horizon.sh` guarda e devolve `options.txt`, as configurações de gráficos e de jogador, o `client.toml` e o mundo de teste, e
+`particulas_taxa.py` compara os dois jogos com a esperança do sorteio (667 posições a 16 e 667 a 32 blocos por tick; `test_particulas_taxa.py` a confere por enumeração).
+
+`horizon2/h2_som_audio.py` e `oficial_som_audio.sh` gravam o áudio dos dois jogos **só pelo sink nulo** (`audio_nulo.sh`): o jogo sobe com o volume mestre em 0, o stream é achado por `application.process.host` (o hostname do container; o `mekanism-ref` toca como `java`, com
+`target.object` fixo nas caixas, e a primeira versão do script, que procurava `client.config.name` no nó, nunca o achava), movido para o sink nulo por metadata (`pw-metadata ... target.object`), conferido (`audio_nulo.sh verificar`: todo link de saída vai para `som_nulo`), e só então o volume sobe
+(no original, a cena `CenaSomMedida` espera o arquivo `som-audio-ok`; no port, o script usa `options-set`). Um vigia confere a cada segundo e, se o stream sair do sink nulo, volta o volume a 0. `som_onda.py` compara os dois WAV (RMS, pico, razões de volume e a correlação da forma de onda) e desenha o gráfico.

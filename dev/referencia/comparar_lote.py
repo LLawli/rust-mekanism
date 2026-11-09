@@ -107,10 +107,11 @@ PREFIXOS_RESIDUO = ("canto", ICONE_DA_LISTA, "tooltip_canto")
 # acesas, 13 com o Heat Generator aceso. Medido no lote, com a injeção `container_dim` no lugar (`docs/plano-paridade.md`, "Tetos"); o controle com fonte vanilla
 # (`minecraft:light` de nível 4, 8, 12 e 15, máquina parada) deu 1 por canal em todos os níveis, com o escurecimento refeito: o que sobra é a iluminação do Horizon (H30) e o arredondamento do H22.
 LIMITE_MUNDO_POR_LUZ = {0: 1, 8: 1, 13: 1}
-# O que o port ainda não faz, e que aparece no relatório como diferença conhecida (não conta como resíduo do Horizon nem fica calada): nome e causa.
+# O que difere entre os dois jogos por construção, e que aparece no relatório como diferença conhecida (não conta como resíduo do Horizon nem fica calada): nome e causa.
 DIFERENCAS_CONHECIDAS = {
     "particulas_da_maquina": "partículas da máquina acesa (AttributeParticleFX em Machine.java:23: fumaça e poeira de redstone na face da frente, a cada "
-                             "animateTick ativo), não portadas; também as que a máquina do caso anterior deixou no ar",
+                             "animateTick ativo): portadas (injeção animate_tick, taxa e posição conferidas à parte), mas cada jogo sorteia as suas com um gerador sem semente "
+                             "(ClientLevel.animateTick), então onde cai cada uma difere entre os dois prints por construção; também as que a máquina do caso anterior deixou no ar",
 }
 # Onde essas partículas caem no print (1920 por 1080, a vista de frente do `CenaTelas`, igual em todo guiScale): a face da frente da máquina (x 705 a 960, y 660
 # a 955 nos prints medidos), com folga. Só nos estados em que a máquina está acesa ou o caso anterior estava (`com_particulas`).
@@ -244,13 +245,13 @@ def texto_das_nao_explicadas(nao_explicadas, resultado):
 
 
 def conhecidas_de(dados):
-    """Tira de `dados` as diferenças conhecidas (`DIFERENCAS_CONHECIDAS`: o que o port ainda não faz) e as devolve, `{nome: pixels}`. Elas não são resíduo
+    """Tira de `dados` as diferenças conhecidas (`DIFERENCAS_CONHECIDAS`: o que difere por construção) e as devolve, `{nome: pixels}`. Elas não são resíduo
     do Horizon, e não ficam caladas: o relatório as conta e diz a causa."""
     return {n: dados.pop(n)["diferentes"] for n in list(dados) if n in DIFERENCAS_CONHECIDAS}
 
 
 def texto_das_conhecidas(conhecidas):
-    return " | CONHECIDA, não portada: " + "; ".join(f"{n} {px} px ({DIFERENCAS_CONHECIDAS[n]})" for n, px in conhecidas.items()) if conhecidas else ""
+    return " | CONHECIDA, sorteada por cada jogo: " + "; ".join(f"{n} {px} px ({DIFERENCAS_CONHECIDAS[n]})" for n, px in conhecidas.items()) if conhecidas else ""
 
 
 # O sprite do químico é uma tira animada, e o original e o port contam a animação por conta própria (o original por tick do cliente, o port por
@@ -442,7 +443,7 @@ def principal(argv):
     with open(os.path.join(saida, "resultado.json"), "w") as arquivo:
         json.dump(resultados, arquivo, indent=1, ensure_ascii=False)
     total = sum(r["diferentes"] for r in resultados)
-    print(f"{len(resultados)} estados, {faltam} sem print, {realmente} com diferença fora dos resíduos, {com_conhecidas} com diferença conhecida (não portada), {com_nao_explicadas} só com o mundo atrás da tela diferente e sem causa provada (NE), "
+    print(f"{len(resultados)} estados, {faltam} sem print, {realmente} com diferença fora dos resíduos, {com_conhecidas} com diferença conhecida (sorteada por cada jogo), {com_nao_explicadas} só com o mundo atrás da tela diferente e sem causa provada (NE), "
           f"{falhas - faltam} com algum pixel diferente, {total} pixels diferentes no total; o mundo atrás da tela difere até {mundo_max} por canal "
           f"(limite por luz {LIMITE_MUNDO_POR_LUZ})")
     return 1 if realmente or faltam else 0

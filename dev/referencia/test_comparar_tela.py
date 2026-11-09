@@ -773,9 +773,9 @@ class Lote(unittest.TestCase):
         linhas = {l.split()[1]: l for l in texto.getvalue().splitlines() if l.startswith(("DIF", "ok "))}
         self.assertTrue(linhas["m_aba_energia_parada_e2"].startswith("DIF"), linhas)
         self.assertTrue(linhas["m_aba_energia_acesa_e2"].startswith("ok "), linhas)
-        self.assertIn("CONHECIDA, não portada: particulas_da_maquina 1 px", linhas["m_aba_energia_acesa_e2"])
+        self.assertIn("CONHECIDA, sorteada por cada jogo: particulas_da_maquina 1 px", linhas["m_aba_energia_acesa_e2"])
         self.assertIn("Machine.java:23", linhas["m_aba_energia_acesa_e2"])
-        self.assertIn("1 com diferença conhecida (não portada)", texto.getvalue())
+        self.assertIn("1 com diferença conhecida (sorteada por cada jogo)", texto.getvalue())
         self.assertEqual(codigo, 1)  # a parada tem diferença de verdade
 
     def test_os_controles_da_luz_so_rodam_quando_pedidos_pelo_nome(self):

@@ -1,0 +1,6 @@
+# As etapas da CenaParticulas: o rastro com semente fixa e a taxa de partículas por máquina (jogador a 5 blocos da frente, olhando para a máquina).
+# O gerador esvazia a energia a cada 5 ticks (cheia, ele pára); a taxa de cada etapa é o `resumo` dividido pelos `ativos`.
+rastro semente=12345 chamadas=6
+taxa nome=chamber maquina=chamber facing=south jogador=0,-0.5,3 giro=180,20 ticks=2400 prints=200,203,206,209,212,215
+taxa nome=heat maquina=heat facing=south jogador=0,-0.5,-3 giro=0,20 ticks=1200 prints=200,203,206,209,212,215
+taxa nome=chamber_sem_efeitos maquina=chamber facing=south jogador=0,-0.5,3 giro=180,20 ticks=300 efeitos=false

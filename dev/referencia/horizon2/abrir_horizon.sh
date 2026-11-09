@@ -1,10 +1,10 @@
 #!/bin/bash
 # Roda no desktop. Abre o jogo no container `horizon` SEM janela (gamescope headless) e SEM som (o volume mestre vai a 0 no options.txt, que o chamador restaura), com o mundo MUNDO
-# e o conteúdo dos dois mods (`--dev-mod`). Uso: abrir_horizon.sh MUNDO. O pid do processo `horizon` fica em ~/.cache/rust-mekanism/restos/game.pid.
+# e o conteúdo dos dois mods (`--dev-mod`). Uso: abrir_horizon.sh MUNDO. O pid do processo `horizon` fica em `game.pid`, e o stderr em `game.log`, na pasta `PASTA` (padrão ~/.cache/rust-mekanism/restos).
 set -eu
 MUNDO=$1
 D=$HOME/.local/share/jogo-isolado/horizon/data/horizon
-C=$HOME/.cache/rust-mekanism/restos
+C=${PASTA:-$HOME/.cache/rust-mekanism/restos}
 M=$HOME/Games/Horizon/mods
 sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$D/options.txt"
 cd "$C"

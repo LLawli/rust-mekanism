@@ -17,7 +17,7 @@ until mkdir "$LOCK" 2>/dev/null; do sleep 60; done
 echo "$DONO" > "$LOCK/dono"
 echo "TRAVA $(date +%T)"
 restore() {
-  rm -f "$N/CenaSomMedida.java" "$R/cena-som-medida" "$R/som-medido.jsonl"
+  rm -f "$N/CenaSomMedida.java" "$R/cena-som-medida" "$R/som-medido.jsonl" "$R/som-audio-espera" "$R/som-audio-ok" "$R/som-audio-mudo"
   [ -e "$C/cena-cabo.antes-som" ] && mv "$C/cena-cabo.antes-som" "$R/cena-cabo"
   [ -e "$C/options.txt.antes-som" ] && cp "$C/options.txt.antes-som" "$R/options.txt" && rm -f "$C/options.txt.antes-som"
   rm -rf "$LOCK"
@@ -34,6 +34,9 @@ cp "$R/options.txt" "$C/options.txt.antes-som"
 sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$R/options.txt"
 [ -e "$R/cena-cabo" ] && mv "$R/cena-cabo" "$C/cena-cabo.antes-som"
 rm -f "$R/som-medido.jsonl"
+# AUDIO=1 (`oficial_som_audio.sh`): o volume mestre fica em 0 até a cena ver `som-audio-ok`, que só aparece com o stream do jogo já no sink nulo.
+rm -f "$R/som-audio-ok" "$R/som-audio-mudo"
+[ "${AUDIO:-}" = 1 ] && touch "$R/som-audio-espera"
 cp "$JAVA" "$N/CenaSomMedida.java"
 cp "$CENA" "$R/cena-som-medida"
 LARGURA=${LARGURA:-1920}; ALTURA=${ALTURA:-1080}; JANELA="-W $LARGURA -H $ALTURA -w $LARGURA -h $ALTURA"
