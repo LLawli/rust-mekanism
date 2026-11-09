@@ -8,6 +8,7 @@
 #   audio_nulo.sh ligar CONTAINER          cria o sink se faltar e manda os streams do CONTAINER para ele (metadata `target.object`, o que o `pactl move-sink-input` faz, e tira o link
 #                                           que já houver para outro sink); imprime quantos moveu. Repita até o stream existir
 #   audio_nulo.sh verificar CONTAINER      imprime `ok N` se há ao menos um stream do CONTAINER e todos os links de saída dele vão só para o sink nulo; senão `ruim ...` e sai com 1
+#   audio_nulo.sh info CONTAINER           imprime as propriedades dos streams do CONTAINER (aplicação, taxa, formato, latência, destino) e as do sink nulo: a configuração de áudio de cada jogo
 #   audio_nulo.sh gravar ARQUIVO.wav [PID] grava o sink nulo até receber SIGINT/SIGTERM (o pid do gravador vai para o arquivo PID, se dado)
 #   audio_nulo.sh remover                  apaga o sink nulo
 set -u
@@ -62,6 +63,22 @@ if streams and destinos and all(d == sink for d in destinos):
 else:
     print(f"ruim streams={streams} destinos={destinos}")
     sys.exit(1)
+PY
+    ;;
+  info)
+    python3 - "$(host_de "$2")" "$SINK" <<'PY'
+import json, subprocess, sys
+host, sink = sys.argv[1], sys.argv[2]
+dump = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True).stdout)
+chaves = ("application.name", "application.process.binary", "node.name", "media.class", "node.rate", "node.latency", "node.target", "target.object", "audio.rate", "audio.channels", "audio.format", "audio.position", "stream.is-live", "media.name", "resample.quality")
+for o in dump:
+    if o.get("type") != "PipeWire:Interface:Node":
+        continue
+    p = o["info"]["props"]
+    if (p.get("media.class") == "Stream/Output/Audio" and host and p.get("application.process.host") == host) or p.get("node.name") == sink:
+        print("id", o["id"], {k: p[k] for k in chaves if k in p})
+        for par in o["info"].get("params", {}).get("Format", []):
+            print("  Format", par)
 PY
     ;;
   gravar)

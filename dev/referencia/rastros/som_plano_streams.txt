@@ -1,0 +1,11 @@
+# O stream de cada jogo no PipeWire (audio_nulo.sh info), 2026-11-08
+## original (mekanism-ref)
+id 88 {'node.name': 'som_nulo', 'media.class': 'Audio/Sink', 'audio.position': '[FL FR]'}
+  Format {'mediaType': 'audio', 'mediaSubtype': 'raw', 'format': 'F32P', 'rate': 48000, 'channels': 2, 'position': ['FL', 'FR']}
+id 107 {'application.name': 'java', 'application.process.binary': 'java', 'node.name': 'java', 'media.class': 'Stream/Output/Audio', 'node.rate': '1/48000', 'node.latency': '512/48000', 'target.object': 'alsa_output.usb-XiiSound_Technology_Corporation_Fuxi-H3-00.analog-stereo', 'stream.is-live': True, 'media.name': 'Playback Stream'}
+  Format {'mediaType': 'audio', 'mediaSubtype': 'raw', 'format': 'F32LE', 'rate': 48000, 'channels': 2, 'position': ['FL', 'FR']}
+## port (horizon)
+id 88 {'application.name': 'ALSA plug-in [horizon-client]', 'application.process.binary': 'horizon-client', 'node.name': 'ALSA plug-in [horizon-client]', 'media.class': 'Stream/Output/Audio', 'node.rate': '1/44100', 'node.latency': '256/44100', 'stream.is-live': True, 'media.name': 'ALSA Playback'}
+  Format {'mediaType': 'audio', 'mediaSubtype': 'raw', 'format': 'F32LE', 'rate': 44100, 'channels': 2, 'position': ['FL', 'FR']}
+id 79 {'node.name': 'som_nulo', 'media.class': 'Audio/Sink', 'audio.position': '[FL FR]'}
+  Format {'mediaType': 'audio', 'mediaSubtype': 'raw', 'format': 'F32P', 'rate': 48000, 'channels': 2, 'position': ['FL', 'FR']}

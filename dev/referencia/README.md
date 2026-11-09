@@ -201,6 +201,24 @@ escolhe a máquina, os upgrades de silêncio, a configuração, onde ficam os P�
 `tile_sound.rs` (o repositório fica com `false`), `horizon2/construir_horizon.sh` pega a `horizon.lock` e faz o `native-build`, e `horizon2/h2_som_medida.py` roda os mesmos cenários pelo `horizon-ctl` e recorta as linhas `MEKSOUND`
 do stderr; `som_comparar.py` e `som_grafico.py` põem os dois lado a lado (texto e PNG). `audio_nulo.sh` tira o som de um container das caixas do usuário (sink nulo do PipeWire) e o grava.
 
+### O som medido de novo em condições controladas
+
+A gravação de `particulas` (a forma de onda do som, acima) deixou o port 0,5 a 1,7 % mais alto e atribuiu isso, sem medir, à distância do ouvinte. A frente `som-plano` mediu de novo com o mundo, a máquina e o jogador fixos nos dois jogos:
+
+- `cenas/som_plano.txt` é o roteiro dos dois jogos: a linha `mundo` (semente, a máquina, o `facing`, os PÉS do jogador, yaw, pitch e a hora) e os cenários da gravação de antes (`baseVolume` 1, 0,5 e 2 e o silêncio que entra no tick 100), duas vezes na mesma partida
+  (8 trechos por gravação). `cenas/som_plano_lado.txt` é a variante com o jogador de lado (a geometria da gravação de antes: fonte a 90 graus, onde a panorâmica satura).
+- No original, `testes/CenaSomPlano.java` (cena de cliente do `runGameTestClient`, arquivo `cena-som-plano`) **cria o mundo** quando o `GameTestWorld` não existe (`WorldOpenFlows.createFreshLevel`, `WorldPresets.FLAT`, a semente da cena, sem estruturas, criativo, pacífico), fixa
+  `advance_time`, `advance_weather` e `spawn_mobs`, a hora e o tempo, deixa só a categoria `block` ligada, põe a máquina por `fill` com `facing` explícito, o jogador por `tp` (coordenada, yaw e pitch) e escreve `som-plano.jsonl`: a cada tick os olhos do jogador e o OUVINTE do motor
+  (`SoundManager.getListenerTransform`) e a distância ao centro da máquina. O `modo` do cenário escolhe como a máquina nasce: `fill_apply` (o padrão: depois do `fill`, `applyComponents` vazio, que é o que o item faz ao ser posto; a capacidade vai de 20 a 1.000), `fill` (só o `fill`: a capacidade
+  fica em 20 e a câmara apaga 4 ticks depois de ligar, por isso a primeira gravação saiu quase muda) ou `set_apply`; `depura=1` loga a energia, a capacidade, o consumo e a entrada a cada tick.
+- `oficial_som_plano.sh CenaSomPlano.java cenas/som_plano.txt PREFIXO N` (no desktop) roda N partidas novas do jogo, cada uma gravada pelo sink nulo (como `oficial_som_audio.sh`: mestre em 0 até o stream estar no sink e conferido, vigia a cada segundo), com a trava `mekanism-ref.lock`, e devolve a árvore
+  como estava (o `GameTestWorld` antigo é guardado e volta, o mundo novo some, o `options.txt` volta). `audio_nulo.sh info CONTAINER` guarda a configuração do stream de cada jogo (taxa, formato, latência): `rastros/som_plano_streams.txt`.
+- No port, `horizon2/h2_mundo_plano.py NOME [SEMENTE]` cria o mundo pela tela de criar mundo (a partir do título: `horizon2/abrir_som_plano.sh titulo`; `abrir_som_plano.sh MUNDO` reabre), `horizon2/h2_som_plano.py CENA SAIDA.jsonl WAV` grava os cenários (a máquina por `fill`, o jogador por `tp`, a energia e o carvão por `data merge`;
+  loga a posição real dos olhos por `horizon-ctl state` e `data get entity @s Pos`), e `horizon2/h2_som_plano_rodadas.sh` repete em jogos novos (fecha, reabre o mundo, grava). `construir_horizon.sh` e `enviar_fontes.sh sem-trace` montam o build de teste.
+- `som_plano_analise.py` (com `test_som_plano_analise.py` no gate) lê os WAV: o RMS de duas voltas inteiras do laço (4,075 s: não depende da fase em que a janela começa), da janela de 0,5 a 3,5 s depois do começo (a que vale no `silencio_depois`, onde o som cai de 4 a 6 s depois do começo) e do corpo inteiro (a medida de antes,
+  que no silêncio mede o instante da queda sorteado), média e desvio por jogo, a razão port/original com o intervalo de 95 % (Welch), as razões contra o padrão e as esperadas pela conta do motor, a razão por bloco de 0,5 s, o envelope, a variante de lado, e com `--ogg` a razão por faixa de frequência e a simulação do reamostrador (ffmpeg).
+  Resultado, tabela e gráfico: `rastros/som_plano_analise.txt`, `rastros/som_plano_mundo.jsonl` (o mundo, os olhos e o ouvinte de cada jogo) e o plano ("Som da máquina"): 1,00045 nos três volumes e nas duas posições, a causa dos 0,045 % que sobram é a reamostragem do Horizon (decisão 16).
+
 ### A configuração: texto, correção e cópia
 
 `rastros/mekanism_{client,general,machine_usage,tiers,generators,generator_storage,local}.toml` são os arquivos que o cliente oficial escreveu sozinho (`runs/client/config/Mekanism/`, `runs/gameTestServer/config/Mekanism/` tem os mesmos): o texto do

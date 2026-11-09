@@ -1,0 +1,82 @@
+orig_1.wav: 118.6 s, 8 trechos (esperados 8)
+orig_2.wav: 113.9 s, 8 trechos (esperados 8)
+orig_3.wav: 113.7 s, 8 trechos (esperados 8)
+port_1.wav: 170.5 s, 8 trechos (esperados 8)
+port_2.wav: 174.2 s, 8 trechos (esperados 8)
+port_3.wav: 170.4 s, 8 trechos (esperados 8)
+orig_lado_1.wav: 64.4 s, 4 trechos (esperados 4)
+port_lado_1.wav: 87.4 s, 4 trechos (esperados 4)
+
+distância ouvinte-máquina: original 3.2022, port 3.2022 blocos; ganho esperado do padrão (1 - d/16): original 0.7999, port 0.7999
+RMS esperado do padrão sem a elevação (RMS do .ogg 869.7 x 0,5957 x ganho): original 414.4, port 414.4; com a elevação de -20,5 graus (0,5 + 0,0957 x cos) o modelo dá 410.2
+
+RMS de 2 voltas do laço (escala de 16 bits)
+cenário          n_o  original média  desvio    cv% n_p  port média  desvio    cv% port/orig    dif%    ±95%  dentro da variação
+padrao             6         409.963   0.000  0.000   6     410.147   0.002  0.000   1.00045   0.045 0.00000                 não
+base_0_5           6         204.982   0.000  0.000   6     205.074   0.001  0.001   1.00045   0.045 0.00001                 não
+base_2             6         461.254   0.000  0.000   6     461.461   0.002  0.001   1.00045   0.045 0.00001                 não
+
+RMS da janela 0,5 a 3,5 s (escala de 16 bits)
+cenário          n_o  original média  desvio    cv% n_p  port média  desvio    cv% port/orig    dif%    ±95%  dentro da variação
+padrao             6         411.181   0.008  0.002   6     411.375   0.008  0.002   1.00047   0.047 0.00002                 não
+base_0_5           6         205.592   0.005  0.002   6     205.690   0.004  0.002   1.00048   0.048 0.00003                 não
+base_2             6         462.626   0.011  0.002   6     462.849   0.010  0.002   1.00048   0.048 0.00003                 não
+silencio_depois    6         411.184   0.010  0.002   6     411.384   0.008  0.002   1.00049   0.049 0.00003                 não
+
+RMS do corpo (0,5 s ao fim) (escala de 16 bits)
+cenário          n_o  original média  desvio    cv% n_p  port média  desvio    cv% port/orig    dif%    ±95%  dentro da variação
+padrao             6         406.800   0.086  0.021   6     406.967   0.173  0.042   1.00041   0.041 0.00046                 sim
+base_0_5           6         203.442   0.073  0.036   6     203.717   0.465  0.228   1.00135   0.135 0.00243                 sim
+base_2             6         457.699   0.216  0.047   6     457.899   0.148  0.032   1.00044   0.044 0.00053                 sim
+silencio_depois    6         408.455   2.997  0.734   6     404.511   3.294  0.814   0.99034  -0.966 0.00987                 sim
+
+razão contra o cenário padrão (laco2; média de cada jogo)
+cenário           original      port  esperado orig  esperado port
+padrao              1.0000    1.0000         1.0000         1.0000
+base_0_5            0.5000    0.5000         0.5000         0.5000
+base_2              1.1251    1.1251         1.1251         1.1251
+
+razão port/original por bloco de 0,5 s (média das repetições; o mesmo bloco do laço nos dois jogos)
+padrao            1.0004  1.0006  1.0005  1.0005  1.0004  1.0005   média 1.0005
+base_0_5          1.0005  1.0004  1.0007  1.0004  1.0004  1.0005   média 1.0005
+base_2            1.0005  1.0004  1.0008  1.0004  1.0004  1.0005   média 1.0005
+silencio_depois   1.0005  1.0003  1.0010  1.0003  1.0004  1.0006   média 1.0005
+
+duração do trecho (s): o `silencio_depois` cai a 4 a 6 s depois do começo (o intervalo de 20 a 39 ticks é sorteado por instância nos dois jogos)
+padrao           original   8.99 (min 8.98, máx 9.01)   port   9.00 (min 8.94, máx 9.02)
+base_0_5         original   9.01 (min 9.00, máx 9.02)   port   9.04 (min 8.93, máx 9.28)
+base_2           original   9.00 (min 8.94, máx 9.03)   port   9.01 (min 8.94, máx 9.07)
+silencio_depois  original   5.15 (min 4.49, máx 5.75)   port   5.80 (min 5.41, máx 6.14)
+
+envelope de RMS de 20 ms (média das repetições alinhadas no começo do som)
+padrao           correlação 0.9943 (atraso +0 ms); razão das médias do envelope 1.0002
+base_0_5         correlação 0.9941 (atraso +0 ms); razão das médias do envelope 1.0002
+base_2           correlação 0.9941 (atraso +0 ms); razão das médias do envelope 1.0002
+
+jogador de lado (`cenas/som_plano_lado.txt`: pés a 3 blocos a leste, pitch 12; a média dos canais de uma fonte saturada vale 0,5 do ganho, sem depender da elevação)
+cenário           original laco2  port laco2 port/orig  original janela  port janela port/orig
+padrao                   347.651     347.805   1.00045          348.678      348.844   1.00048
+base_0_5                 173.825     173.904   1.00046          174.347      174.429   1.00047
+base_2                   391.145     391.322   1.00045          392.320      392.499   1.00045
+silencio_depois                                                 348.696      348.844   1.00043
+razão port/original por faixa de frequência (primeiro `padrao`, duas voltas do laço; ffmpeg)
+    faixa (Hz)   original       port  port/orig
+     0 a   500    378.222    378.381     1.0004
+   500 a  1000     40.565     40.584     1.0005
+  1000 a  2000     41.372     41.373     1.0000
+  2000 a  4000     29.436     29.443     1.0002
+  4000 a  8000      4.903      4.921     1.0037
+  8000 a 12000      1.409      1.533     1.0880
+ 12000 a 16000      1.064      1.282     1.2040
+ 16000 a 20000      0.379      0.490     1.2920
+
+simulação no mesmo .ogg (44,1 para 48 kHz): razão do som exato contra o reamostrado, por faixa
+    faixa (Hz)  exato/linear  exato/cúbico
+     0 a   500        1.0001        1.0000
+   500 a  1000        1.0009        1.0000
+  1000 a  2000        1.0042        1.0000
+  2000 a  4000        1.0085        1.0002
+  4000 a  8000        1.0238        1.0024
+  8000 a 12000        1.2399        1.0664
+ 12000 a 16000        1.4196        1.1564
+ 16000 a 20000        1.4269        1.1762

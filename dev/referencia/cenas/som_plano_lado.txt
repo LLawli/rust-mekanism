@@ -1,0 +1,8 @@
+# A variante da cena controlada com o jogador de lado: os pés 3 blocos a leste da máquina (a mesma distância de 3,2022 blocos até o centro) e pitch 12, como a gravação de 2026-11-08 de antes
+# (`jogador=3,-0.5,0`, `tp ... 0 12`). A fonte fica a 90 graus à direita do ouvinte, onde a panorâmica do OpenAL Soft satura, e o ganho de cada canal depende da elevação (do pitch).
+# O mundo, a máquina e a hora são os de `som_plano.txt`.
+mundo seed=20261108 maquina=4,-60,4 facing=south pes=7.5,-60,4.5 yaw=0 pitch=12 hora=6000
+nome=padrao
+nome=base_0_5 base=0.5
+nome=base_2 base=2
+nome=silencio_depois muffling=0 ev=100:muffling:1

@@ -1,0 +1,13 @@
+# O roteiro do som em condições controladas (frente som-plano, 2026-11-08): o mesmo arquivo nos dois jogos (`testes/CenaSomPlano.java` no original, `horizon2/h2_som_plano.py` no port).
+# `mundo`: a semente do mundo superplano novo; a Enrichment Chamber em (4, -60, 4), `facing=south` (o bloco ocupa y de -60 a -59, o centro do som é (4,5, -59,5, 4,5));
+# os PÉS do jogador em (4,5, -60, 1,5), yaw 0 (sul, +Z: a máquina fica de frente e no meio, o que centra o som nos dois canais) e pitch 0; hora 6000.
+# Quatro cenários da gravação de antes (baseVolume 1, 0,5 e 2, e o silêncio que entra no tick 100), repetidos duas vezes na mesma partida: a gravação tem 8 trechos, na ordem daqui.
+mundo seed=20261108 maquina=4,-60,4 facing=south pes=4.5,-60,1.5 yaw=0 pitch=0 hora=6000
+nome=padrao
+nome=base_0_5 base=0.5
+nome=base_2 base=2
+nome=silencio_depois muffling=0 ev=100:muffling:1
+nome=padrao
+nome=base_0_5 base=0.5
+nome=base_2 base=2
+nome=silencio_depois muffling=0 ev=100:muffling:1
