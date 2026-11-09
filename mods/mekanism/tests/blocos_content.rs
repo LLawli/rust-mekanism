@@ -35,6 +35,8 @@ fn scope() -> Vec<String> {
     out
 }
 
+const ADAPTED: &str = "assets/mekanism/blockstates/qio_redstone_adapter.json";
+
 fn manifest() -> BTreeSet<String> {
     rastro("craft_datagen.json")
         .as_object()
@@ -50,11 +52,17 @@ fn references(value: &Value, models: &mut BTreeSet<String>, textures: &mut BTree
         Value::Object(object) => {
             for (key, child) in object {
                 match (key.as_str(), child) {
-                    ("model" | "parent", Value::String(name)) if name.contains(':') => {
+                    ("model" | "parent" | "lit" | "unlit", Value::String(name))
+                        if name.contains(':') =>
+                    {
                         models.insert(name.clone());
                     }
                     ("holidays", Value::Object(holidays)) => {
-                        models.extend(holidays.values().filter_map(|v| v.as_str().map(str::to_owned)));
+                        models.extend(
+                            holidays
+                                .values()
+                                .filter_map(|v| v.as_str().map(str::to_owned)),
+                        );
                     }
                     ("textures", Value::Object(map)) => {
                         textures.extend(
@@ -69,7 +77,9 @@ fn references(value: &Value, models: &mut BTreeSet<String>, textures: &mut BTree
                 references(child, models, textures);
             }
         }
-        Value::Array(list) => list.iter().for_each(|child| references(child, models, textures)),
+        Value::Array(list) => list
+            .iter()
+            .for_each(|child| references(child, models, textures)),
         _ => {}
     }
 }
@@ -88,13 +98,14 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
             format!("data/mekanism/loot_table/blocks/{id}.json"),
         ] {
             assert!(content().join(&relative).is_file(), "falta {relative}");
-            assert!(files.contains(&relative), "{relative} não é o do original");
+            // O blockstate do QIO Redstone Adapter é o do original com `model` nas variantes especiais (teste abaixo).
+            assert!(
+                files.contains(&relative) || relative == ADAPTED,
+                "{relative} não é o do original"
+            );
             seen.insert(relative);
         }
-        for relative in [
-            format!("blockstates/{id}.json"),
-            format!("items/{id}.json"),
-        ] {
+        for relative in [format!("blockstates/{id}.json"), format!("items/{id}.json")] {
             references(&json(&assets.join(relative)), &mut models, &mut textures);
         }
     }
@@ -118,7 +129,10 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
             continue;
         };
         let relative = format!("assets/mekanism/textures/{path}.png");
-        assert!(content().join(&relative).is_file(), "falta a textura {texture}");
+        assert!(
+            content().join(&relative).is_file(),
+            "falta a textura {texture}"
+        );
         assert!(files.contains(&relative), "{relative} não é a do original");
         let animation = content().join(format!("{relative}.mcmeta"));
         if animation.is_file() {
@@ -177,7 +191,9 @@ fn members(kind: &str, namespace: &str, path: &str, out: &mut BTreeSet<String>, 
         return;
     }
     for entry in json(&file)["values"].as_array().unwrap() {
-        let entry = entry.as_str().map_or_else(|| entry["id"].as_str().unwrap(), |s| s);
+        let entry = entry
+            .as_str()
+            .map_or_else(|| entry["id"].as_str().unwrap(), |s| s);
         if let Some(tag) = entry.strip_prefix('#') {
             let (namespace, path) = tag.split_once(':').unwrap();
             members(kind, namespace, path, out, depth + 1);
@@ -190,7 +206,11 @@ fn members(kind: &str, namespace: &str, path: &str, out: &mut BTreeSet<String>, 
 fn tag_files(kind: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for namespace in ["c", "minecraft", "mekanism"] {
-        let root = content().join("data").join(namespace).join("tags").join(kind);
+        let root = content()
+            .join("data")
+            .join(namespace)
+            .join("tags")
+            .join(kind);
         if !root.is_dir() {
             continue;
         }
@@ -223,7 +243,12 @@ fn tag_files(kind: &str) -> Vec<(String, String)> {
 #[test]
 fn every_block_and_item_is_in_the_tags_the_original_puts_it_in() {
     let datagen = rastro("craft_tags.json");
-    let datagen: BTreeSet<&str> = datagen.as_object().unwrap().keys().map(String::as_str).collect();
+    let datagen: BTreeSet<&str> = datagen
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
     let rows: BTreeMap<String, Value> = blocos()
         .into_iter()
         .map(|row| (row["id"].as_str().unwrap().to_owned(), row))
@@ -254,7 +279,10 @@ fn every_block_and_item_is_in_the_tags_the_original_puts_it_in() {
                     continue;
                 }
                 let lists = port.get(tag).is_some_and(|ids| ids.contains(&full));
-                assert!(lists, "{kind} {full}: o original o põe em #{tag} e o port não");
+                assert!(
+                    lists,
+                    "{kind} {full}: o original o põe em #{tag} e o port não"
+                );
                 checked += 1;
             }
             for (tag, ids) in &port {
@@ -268,4 +296,36 @@ fn every_block_and_item_is_in_the_tags_the_original_puts_it_in() {
         }
     }
     assert!(checked >= 300, "{checked}");
+}
+
+/// O `qio_redstone_adapter` do original tem, no estado ativo, uma variante `mekanism:special/qio_redstone_adapter` sem `model` (`QIORedstoneAdapterModel` escolhe `lit` ou
+/// `unlit` pelo dado do modelo da block entity, `EMITTING`), e o Horizon recusa o blockstate inteiro por isso. O port põe `model` com o modelo `unlit`, o que o adaptador
+/// sem block entity (que nunca emite) mostra; as chaves do original ficam, e a variante apagada (`active=false`) é a do original.
+#[test]
+fn the_redstone_adapter_blockstate_is_the_original_plus_the_unlit_model() {
+    let state = json(&content().join(ADAPTED));
+    let variants = state["variants"].as_object().unwrap();
+    assert_eq!(variants.len(), 12);
+    let (mut special, mut plain) = (0, 0);
+    for (key, variant) in variants {
+        if let Some(kind) = variant.get("type") {
+            assert_eq!(kind, "mekanism:special/qio_redstone_adapter", "{key}");
+            assert!(key.starts_with("active=true"), "{key}");
+            assert_eq!(variant["model"], variant["unlit"], "{key}");
+            assert_eq!(
+                variant["unlit"],
+                "mekanism:block/qio_redstone_adapter_unlit"
+            );
+            assert_eq!(variant["lit"], "mekanism:block/qio_redstone_adapter_lit");
+            special += 1;
+        } else {
+            assert!(key.starts_with("active=false"), "{key}");
+            assert_eq!(
+                variant["model"],
+                "mekanism:block/qio_redstone_adapter_offline"
+            );
+            plain += 1;
+        }
+    }
+    assert_eq!((special, plain), (6, 6));
 }

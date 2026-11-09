@@ -83,12 +83,10 @@ impl FacingRule {
                 }
                 chosen
             }
-            Mode::SelectedFace => {
-                match canonical(face) {
-                    Some(face) if self.supports(face) => face,
-                    _ => NORTH,
-                }
-            }
+            Mode::SelectedFace => match canonical(face) {
+                Some(face) if self.supports(face) => face,
+                _ => NORTH,
+            },
         };
         self.supports(chosen).then_some(chosen)
     }

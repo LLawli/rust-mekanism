@@ -36,6 +36,36 @@ def comparar(original, port):
     return contados, total, (xmin, ymin, xmax, ymax), diff
 
 
+def regioes(diff, folga=12, minimo=40):
+    """Agrupa os pixels que diferem em regiões (vizinhos a até `folga` pixels): para cada uma, a caixa e quantos pixels. Devolve as maiores, para dizer a causa de cada resíduo olhando o mapa."""
+    altura = len(diff) // (LARGURA * 4)
+    pontos = {(x // folga, y // folga) for y in range(altura) for x in range(LARGURA) if diff[(y * LARGURA + x) * 4] == 0xFF}
+    grupos = []
+    vistos = set()
+    for p in sorted(pontos):
+        if p in vistos:
+            continue
+        pilha, grupo = [p], []
+        vistos.add(p)
+        while pilha:
+            gx, gy = pilha.pop()
+            grupo.append((gx, gy))
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    q = (gx + dx, gy + dy)
+                    if q in pontos and q not in vistos:
+                        vistos.add(q)
+                        pilha.append(q)
+        grupos.append(grupo)
+    saida = []
+    for grupo in grupos:
+        xs = [g[0] * folga for g in grupo]
+        ys = [g[1] * folga + FAIXA[0] for g in grupo]
+        saida.append(((min(xs), min(ys), max(xs) + folga, max(ys) + folga), sum(1 for _ in grupo)))
+    saida.sort(key=lambda r: -r[1])
+    return [r for r in saida if r[1] >= minimo // 10][:6]
+
+
 def empilhar(original, port, diff, saida):
     altura = FAIXA[1] - FAIXA[0]
     folga = 6
@@ -61,6 +91,9 @@ def main():
         contados, total, caixa, diff = comparar(o, p)
         empilhar(o, p, diff, os.path.join(saida, f"lado_{nome}.png"))
         print(f"{nome}: {contados} de {total} pixels ({100 * contados / total:.3f} %), caixa {caixa if contados else None}")
+        if contados > total // 1000:
+            for caixa_regiao, celulas in regioes(diff):
+                print(f"    região {caixa_regiao}: {celulas} células de 12 por 12")
 
 
 if __name__ == "__main__":

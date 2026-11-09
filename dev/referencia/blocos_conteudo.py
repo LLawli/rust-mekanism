@@ -194,6 +194,10 @@ def block_declaration(row):
     if row["explosion_state"] >= 0:
         properties["explosion_resistance"] = row["explosion_state"]
         assert row["explosion_state"] == row["resistance"], row["id"]
+    # Um bloco de forma menor que o cubo (`isSolidRender` falso) não esconde a face do vizinho. O Horizon esconde pela forma de oclusão da tabela `occlusion.nbt`, que um bloco de mod copia do
+    # gabarito (o cubo cheio do `lodestone`), e pelo `can_occlude` de `render-definitions.json`; `occludes: false` põe o segundo falso (decisão 22): sem isso o chão sob a máquina perde a face de cima.
+    if not row["states"][0]["solid_render"]:
+        properties["occludes"] = False
     static_light = [s["light"] for s in row["states"] if s["props"].get("active") in (None, "false") and s["props"].get("fluid_logged") in (None, "empty")]
     if row["id"].endswith("teleporter"):
         properties["light"] = max(static_light)
@@ -249,12 +253,17 @@ def row_facts(row):
     wet = groups.get(True, groups[False]).copy().pop()
     push, can_occlude, solid_render, dampening, skylight_down, render_shape, random_ticks = dry
     assert render_shape == "MODEL" and not random_ticks
+    assert can_occlude or not solid_render
     assert wet[:3] == dry[:3], (row["id"], dry, wet)
     active_light = max([s["light"] for s in states if s["props"].get("active") == "true" and s["props"].get("fluid_logged") in (None, "empty")] or [0])
     static_light = max([s["light"] for s in states if s["props"].get("active") in (None, "false") and s["props"].get("fluid_logged") in (None, "empty")] or [0])
     for s in states:
         want = max(static_light, active_light if s["props"].get("active") == "true" else 0, 15 if s["props"].get("fluid_logged") == "lava" else 0)
         assert s["light"] == want, (row["id"], s["props"], s["light"], want)
+    # O original dá `canOcclude` verdadeiro a todo bloco menos o do `noOcclusion`, e o `Block.shouldRenderFace` do vanilla esconde a face do vizinho pela forma de oclusão. O mesher do Horizon
+    # esconde pelo `can_occlude` sozinho (um bloco de forma menor com `can_occlude` verdadeiro deixa um buraco na face do vizinho: visto em jogo, a grama sob a máquina some). Então a
+    # linha do port diz `can_occlude` igual ao `solid_render`: verdadeiro só no cubo cheio (decisão 22, H49).
+    can_occlude = solid_render
     return {"id": row["id"], "active_light": active_light if active_light != static_light else 0, "push": push, "can_occlude": can_occlude, "solid_render": solid_render,
             "dampening": dampening, "skylight_down": skylight_down, "wet_dampening": wet[3], "wet_skylight_down": wet[4],
             "explosion": row["explosion_state"] if row["explosion_state"] < 0 else None}
@@ -342,7 +351,7 @@ def refs(path):
     def walk(x):
         if isinstance(x, dict):
             for key, value in x.items():
-                if key in ("model", "parent") and isinstance(value, str) and ":" in value:
+                if key in ("model", "parent", "lit", "unlit") and isinstance(value, str) and ":" in value:
                     models.add(value)
                 if key == "holidays":
                     models.update(value.values())
@@ -405,11 +414,30 @@ def assets_plan():
     return files
 
 
+# Os blockstates que o port adapta: o `qio_redstone_adapter` tem, no estado ativo, uma variante `mekanism:special/qio_redstone_adapter` (`QIORedstoneAdapterModel`) que escolhe
+# o modelo aceso ou apagado pelo dado do modelo da block entity (`EMITTING`) e não tem `model`: o Horizon recusa o arquivo inteiro ("missing model"). Sem block entity o
+# adaptador não emite, então a variante ganha `model` com o modelo apagado (`unlit`), e o resto (`type`, `lit`, `unlit`) fica como o original o escreveu.
+ADAPTED_BLOCKSTATES = ["assets/mekanism/blockstates/qio_redstone_adapter.json"]
+
+
+def adapt_blockstate(text):
+    data = json.loads(text)
+    for variant in data["variants"].values():
+        if "type" in variant and "model" not in variant:
+            variant["model"] = variant["unlit"]
+    return json.dumps(data, indent=2) + "\n"
+
+
 def copy_assets():
     files = assets_plan()
     copied = 0
     for relative, source in sorted(files.items()):
         target = os.path.join(CONTENT, relative)
+        if relative in ADAPTED_BLOCKSTATES:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w") as handle:
+                handle.write(adapt_blockstate(open(source).read()))
+            continue
         if os.path.exists(target):
             if open(target, "rb").read() != open(source, "rb").read():
                 raise SystemExit(f"{relative} já existe e difere do original")
@@ -584,9 +612,9 @@ def sync_tags():
 
 NEOFORGE_JAR = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/neoforge-26.3.0.100-sources.jar"
 # As tags de item `c:` do NeoForge (o jar `neoforge-26.3.0.100`) que as receitas de mesa dos blocos de máquina citam e o port ainda não tinha, e a do Mekanism que o
-# Combiner cita. As de balde, baú e barril (Electric Pump, Osmium Compressor, Personal Chest e Barrel, Formulaic Assemblicator, Modification Station) são das frentes de
-# fluidos e de itens de equipamento.
-NEOFORGE_TAGS = ["glass_panes", "glass_panes/colorless", "storage_blocks/diamond", "clumps/resin"]
+# Combiner cita. O balde vazio, o baú e o barril de madeira (Electric Pump, Osmium Compressor, Personal Chest e Barrel, Formulaic Assemblicator, Modification Station e Oredictionificator) também são do NeoForge, como as da
+# decisão 19: o arquivo é o do jar, byte a byte.
+NEOFORGE_TAGS = ["glass_panes", "glass_panes/colorless", "storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden"]
 DATAGEN_TAGS = ["mekanism/tags/item/stone_crafting_materials.json"]
 
 

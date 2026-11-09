@@ -251,9 +251,17 @@ fn every_block_is_declared_as_the_original_registers_it() {
         // A resistência: a que as explosões leem (`getExplosionResistance(state, ...)`). `AttributeCustomResistance(-1)` não cabe no arquivo e vai pela tabela de linhas.
         let blast = row["explosion_state"].as_f64().unwrap();
         if blast >= 0.0 {
-            assert_eq!(properties["explosion_resistance"], row["explosion_state"], "{id}");
+            assert_eq!(
+                properties["explosion_resistance"], row["explosion_state"],
+                "{id}"
+            );
             assert_eq!(row["explosion_state"], row["resistance"], "{id}");
-            assert!(rows::facts(&format!("mekanism:{id}")).unwrap().explosion.is_none());
+            assert!(
+                rows::facts(&format!("mekanism:{id}"))
+                    .unwrap()
+                    .explosion
+                    .is_none()
+            );
         } else {
             assert!(properties.get("explosion_resistance").is_none(), "{id}");
             assert_eq!(
@@ -262,6 +270,14 @@ fn every_block_is_declared_as_the_original_registers_it() {
                 "{id}"
             );
         }
+        // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
+        // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
+        let solid = row["states"].as_array().unwrap().iter().all(|s| s["solid_render"] == true);
+        assert_eq!(
+            properties.get("occludes").and_then(Value::as_bool),
+            if solid { None } else { Some(false) },
+            "{id}: occludes"
+        );
         // A luz fixa (só o Teleporter): `AttributeLight(3)`. A do estado ativo e a da lava vêm da tabela.
         let fixed: Vec<u64> = row["states"]
             .as_array()
@@ -269,9 +285,7 @@ fn every_block_is_declared_as_the_original_registers_it() {
             .iter()
             .filter(|s| {
                 s["props"].get("active").is_none_or(|a| a == "false")
-                    && s["props"]
-                        .get("fluid_logged")
-                        .is_none_or(|f| f == "empty")
+                    && s["props"].get("fluid_logged").is_none_or(|f| f == "empty")
             })
             .map(|s| s["light"].as_u64().unwrap())
             .collect();
@@ -308,7 +322,10 @@ fn every_block_is_declared_as_the_original_registers_it() {
                 got_properties.insert(name.clone(), values);
             }
         }
-        assert_eq!(got_properties, want_properties, "{id}: propriedades de estado");
+        assert_eq!(
+            got_properties, want_properties,
+            "{id}: propriedades de estado"
+        );
         let default = declaration
             .get("default_state")
             .cloned()
@@ -327,7 +344,11 @@ fn every_block_is_declared_as_the_original_registers_it() {
         let stack = declaration["components"]["minecraft:max_stack_size"]
             .as_u64()
             .unwrap_or(64);
-        assert_eq!(stack, row["item"]["max_stack"].as_u64().unwrap(), "{id}: pilha");
+        assert_eq!(
+            stack,
+            row["item"]["max_stack"].as_u64().unwrap(),
+            "{id}: pilha"
+        );
     }
 }
 
@@ -357,17 +378,37 @@ fn the_rows_table_gives_every_state_what_the_original_gave() {
                 .any(|(k, v)| k == "fluid_logged" && v != "empty");
             // A luz de `properties.light` vale em todo estado e a injeção roda antes dela; o resultado é o maior dos dois.
             let light = rows::light(facts, &combo, 0).max(base);
-            assert_eq!(u64::from(light), state["light"].as_u64().unwrap(), "{id} {:?}", state["props"]);
+            assert_eq!(
+                u64::from(light),
+                state["light"].as_u64().unwrap(),
+                "{id} {:?}",
+                state["props"]
+            );
             assert_eq!(facts.push, state["push"], "{id}");
-            assert_eq!(facts.can_occlude, state["can_occlude"], "{id}");
+            // O original dá `canOcclude` verdadeiro (menos no Nutritional Liquifier) e o Horizon esconde a face do vizinho por ele, sem olhar a forma: a linha do port o dá só ao cubo
+            // cheio (`solid_render`), senão a grama sob a máquina some (decisão 22). O resto do original está na linha.
+            assert_eq!(facts.can_occlude, state["solid_render"], "{id}");
+            assert!(
+                state["can_occlude"] == true || state["solid_render"] == false,
+                "{id}"
+            );
             assert_eq!(facts.solid_render, state["solid_render"], "{id}");
             let (dampening, skylight) = if wet {
                 (facts.wet_dampening, facts.wet_skylight_down)
             } else {
                 (facts.dampening, facts.skylight_down)
             };
-            assert_eq!(u64::from(dampening), state["dampening"].as_u64().unwrap(), "{id} {:?}", state["props"]);
-            assert_eq!(skylight, state["skylight_down"], "{id} {:?}", state["props"]);
+            assert_eq!(
+                u64::from(dampening),
+                state["dampening"].as_u64().unwrap(),
+                "{id} {:?}",
+                state["props"]
+            );
+            assert_eq!(
+                skylight, state["skylight_down"],
+                "{id} {:?}",
+                state["props"]
+            );
             states += 1;
         }
     }

@@ -34,7 +34,9 @@ fn rastro() -> Vec<Value> {
 /// Se o bloco está no port: o rastro tem todos os blocos do original, inclusive os das frentes que ainda não chegaram.
 fn ported(block: &str) -> bool {
     root()
-        .join(format!("mods/mekanism/content/data/mekanism/horizon/block/{block}.json"))
+        .join(format!(
+            "mods/mekanism/content/data/mekanism/horizon/block/{block}.json"
+        ))
         .is_file()
 }
 
@@ -70,7 +72,10 @@ fn the_facing_is_the_one_the_original_gives_at_every_yaw_pitch_and_face() {
             );
             continue;
         };
-        let facing = rule.facing.as_ref().unwrap_or_else(|| panic!("{id}: sem facing na regra"));
+        let facing = rule
+            .facing
+            .as_ref()
+            .unwrap_or_else(|| panic!("{id}: sem facing na regra"));
         let from = placement["yaw_from"].as_i64().unwrap();
         let step = placement["yaw_step"].as_i64().unwrap();
         for (index, want) in placement["yaw"].as_array().unwrap().iter().enumerate() {
@@ -134,5 +139,8 @@ fn the_fluid_logged_value_is_the_one_the_original_gives() {
 #[test]
 fn the_yaw_zero_faces_the_block_north() {
     let rule = rule("combiner").unwrap();
-    assert_eq!(rule.facing.unwrap().direction(0.0, 0.0, "up"), Some("north"));
+    assert_eq!(
+        rule.facing.unwrap().direction(0.0, 0.0, "up"),
+        Some("north")
+    );
 }

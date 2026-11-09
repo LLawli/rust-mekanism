@@ -121,9 +121,29 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
     // "transmissor ou `Machine`" e `redstone_tab` é "tem `AttributeComparator`", ambos na ordem do registro; depois a lista fixa de cada aba.
     let blocks = blocos();
     let have = port_ids();
-    let ported = |row: &&Value| have.contains(row["id"].as_str().unwrap().strip_prefix("mekanism:").unwrap());
-    let id = |row: &Value| row["id"].as_str().unwrap().strip_prefix("mekanism:").unwrap().to_owned();
-    let mut machines: Vec<String> = blocks.iter().filter(ported).filter(|r| r["functional_tab"] == true).map(|r| id(r)).collect();
+    let ported = |row: &&Value| {
+        have.contains(
+            row["id"]
+                .as_str()
+                .unwrap()
+                .strip_prefix("mekanism:")
+                .unwrap(),
+        )
+    };
+    let id = |row: &Value| {
+        row["id"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("mekanism:")
+            .unwrap()
+            .to_owned()
+    };
+    let mut machines: Vec<String> = blocks
+        .iter()
+        .filter(ported)
+        .filter(|r| r["functional_tab"] == true)
+        .map(&id)
+        .collect();
     machines.extend(
         [
             "security_desk",
@@ -152,11 +172,20 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         blocks
             .iter()
             .filter(ported)
-            .filter(|r| (r["redstone_tab"] == true || r["class"] == "BlockSmallTransmitter") && id(r) != "industrial_alarm")
-            .map(|r| id(r)),
+            .filter(|r| {
+                (r["redstone_tab"] == true || r["class"] == "BlockSmallTransmitter")
+                    && id(r) != "industrial_alarm"
+            })
+            .map(id),
     );
-    let machines: Vec<&'static str> = machines.into_iter().map(|id| &*Box::leak(id.into_boxed_str())).collect();
-    let redstone: Vec<&'static str> = redstone.into_iter().map(|id| &*Box::leak(id.into_boxed_str())).collect();
+    let machines: Vec<&'static str> = machines
+        .into_iter()
+        .map(|id| &*Box::leak(id.into_boxed_str()))
+        .collect();
+    let redstone: Vec<&'static str> = redstone
+        .into_iter()
+        .map(|id| &*Box::leak(id.into_boxed_str()))
+        .collect();
     // `INGREDIENTS`: a lista de `MekanismCreativeTabs.java:132-145` e depois `PROCESSED_RESOURCES.values()` (por tipo, depois por recurso, na ordem de registro).
     let mut ingredients = vec![
         "module_base",

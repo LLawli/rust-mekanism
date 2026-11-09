@@ -234,33 +234,37 @@ def virados():
 
 
 def luz():
-    """A luz de cada estado (`ctl light` na célula do bloco): a do `active`, a da lava e a fixa do Teleporter, contra o original (`rastros/blocos.jsonl`)."""
-    ok, total, bad = True, 0, []
-    h.command("fill 52 -60 52 123 -52 90 minecraft:air")
-    for i, (name, row) in enumerate(sorted(scope().items())):
+    """A luz de cada estado (`ctl light` na célula do bloco), contra o original (`rastros/blocos.jsonl`), num mundo limpo (superplano novo, sem teste anterior): as luzes se medem em duas
+    levas. Os estados sem luz (nenhuma fonte no mundo) ficam todos postos de uma vez, uma célula cada, e se leem depois; os com luz ficam a 16 blocos um do outro (a luz de 15 chega a 15
+    blocos), postos de uma vez e lidos depois. Nada é apagado: não há resto de luz para ler. Estados com água ou lava dentro ficam de fora (a lava dá 15 em volta)."""
+    rows = scope()
+    dark, lit = [], []
+    for name, row in sorted(rows.items()):
         seen = set()
         for state in row["states"]:
-            props = state["props"]
-            if props.get("fluid_logged") in ("water", "lava"):
-                continue
-            key = (props.get("active"), state["light"])
-            if key in seen:
+            # Um estado por (`active`, luz): a luz só depende do `active` e do fluido (a tabela de linhas é por bloco).
+            key = (state["props"].get("active"), state["light"])
+            if state["props"].get("fluid_logged") in ("water", "lava") or key in seen:
                 continue
             seen.add(key)
-            # Uma célula por bloco, longe das outras (a luz de uma fonte apagada leva alguns ticks para sumir), e uma pausa antes de ler.
-            pos = (56 + (i % 12) * 7, -60, 56 + (i // 12) * 7)
+            (lit if state["light"] > 0 else dark).append((name, state["props"], state["light"]))
+    h.command("tick unfreeze")
+    bad = []
+
+    def medir(casos, posicoes):
+        for (name, props, _), pos in zip(casos, posicoes):
             h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} mekanism:{name}{state_text(props)}")
-            time.sleep(0.5)
+        time.sleep(3.0)
+        for (name, props, want), pos in zip(casos, posicoes):
             got = json.loads(h.ctl("light", *map(str, pos), *map(str, pos)))["block"]
-            total += 1
-            if int(got, 16) != state["light"]:
-                bad.append((name, props, state["light"], got))
-            h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
-            time.sleep(0.5)
-    # A luz de uma fonte apagada leva um tempo para sumir no Horizon (um bloco sem luz lido logo depois do apagar lê o resto); só a diferença com a luz do original acesa conta.
-    lit = [b for b in bad if b[2] > 0]
-    print(f"luz: {total} estados, {len(bad)} diferentes ({len(lit)} com luz esperada)", bad)
-    return not lit
+            if int(got, 16) != want:
+                bad.append((name, props, want, got))
+
+    # A leva sem luz: uma grade de 4 em 4 blocos, 30 por fileira; a com luz, longe dela, de 16 em 16, 8 por fileira.
+    medir(dark, [(40 + (i % 30) * 4, -60, 40 + (i // 30) * 4) for i in range(len(dark))])
+    medir(lit, [(40 + (i % 8) * 16, -60, 200 + (i // 8) * 16) for i in range(len(lit))])
+    print(f"luz: {len(dark)} estados sem luz e {len(lit)} com luz, {len(bad)} diferentes", bad)
+    return not bad
 
 
 def cena(out):

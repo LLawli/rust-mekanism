@@ -35,11 +35,21 @@ pub fn blocos() -> Vec<Value> {
     }
     let shapes: std::collections::BTreeMap<String, Value> = lines("blocos_formas.jsonl")
         .into_iter()
-        .map(|row| (row["id"].as_str().unwrap().to_owned(), row["shapes"].clone()))
+        .map(|row| {
+            (
+                row["id"].as_str().unwrap().to_owned(),
+                row["shapes"].clone(),
+            )
+        })
         .collect();
     let placement: std::collections::BTreeMap<String, Value> = lines("blocos_colocacao.jsonl")
         .into_iter()
-        .map(|row| (row["id"].as_str().unwrap().to_owned(), row["placement"].clone()))
+        .map(|row| {
+            (
+                row["id"].as_str().unwrap().to_owned(),
+                row["placement"].clone(),
+            )
+        })
         .collect();
     lines("blocos.jsonl")
         .into_iter()

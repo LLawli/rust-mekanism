@@ -30,39 +30,45 @@
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
       "unlit": "mekanism:block/qio_redstone_adapter_unlit",
-      "x": 180
+      "x": 180,
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     },
     "active=true,facing=east": {
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
       "unlit": "mekanism:block/qio_redstone_adapter_unlit",
       "x": 270,
-      "y": 270
+      "y": 270,
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     },
     "active=true,facing=north": {
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
       "unlit": "mekanism:block/qio_redstone_adapter_unlit",
       "x": 270,
-      "y": 180
+      "y": 180,
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     },
     "active=true,facing=south": {
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
       "unlit": "mekanism:block/qio_redstone_adapter_unlit",
-      "x": 270
+      "x": 270,
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     },
     "active=true,facing=up": {
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
-      "unlit": "mekanism:block/qio_redstone_adapter_unlit"
+      "unlit": "mekanism:block/qio_redstone_adapter_unlit",
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     },
     "active=true,facing=west": {
       "type": "mekanism:special/qio_redstone_adapter",
       "lit": "mekanism:block/qio_redstone_adapter_lit",
       "unlit": "mekanism:block/qio_redstone_adapter_unlit",
       "x": 270,
-      "y": 90
+      "y": 90,
+      "model": "mekanism:block/qio_redstone_adapter_unlit"
     }
   }
 }
