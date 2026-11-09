@@ -1,0 +1,27 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "rarity": "rare",
+  "components": {
+    "minecraft:equippable": {
+      "slot": "feet",
+      "asset_id": "mekanism:armored_free_runners"
+    },
+    "minecraft:attribute_modifiers": [
+      {
+        "type": "minecraft:armor",
+        "id": "minecraft:armor.boots",
+        "amount": 3,
+        "operation": "add_value",
+        "slot": "feet"
+      },
+      {
+        "type": "minecraft:armor_toughness",
+        "id": "minecraft:armor.boots",
+        "amount": 2.0,
+        "operation": "add_value",
+        "slot": "feet"
+      }
+    ]
+  }
+}

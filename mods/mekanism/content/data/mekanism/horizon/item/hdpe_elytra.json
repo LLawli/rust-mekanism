@@ -1,0 +1,16 @@
+{
+  "template": "minecraft:elytra",
+  "rarity": "epic",
+  "components": {
+    "minecraft:max_damage": 648,
+    "minecraft:equippable": {
+      "slot": "chest",
+      "equip_sound": "minecraft:item.armor.equip_elytra",
+      "asset_id": "mekanism:hdpe_elytra",
+      "damage_on_hurt": false
+    },
+    "minecraft:repairable": {
+      "items": "mekanism:hdpe_sheet"
+    }
+  }
+}

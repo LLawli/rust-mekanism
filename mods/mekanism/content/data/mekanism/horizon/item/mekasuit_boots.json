@@ -1,0 +1,41 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "rarity": "epic",
+  "components": {
+    "minecraft:damage_resistant": {
+      "types": "#minecraft:is_fire"
+    },
+    "minecraft:attribute_modifiers": [
+      {
+        "type": "minecraft:armor",
+        "id": "minecraft:armor.boots",
+        "amount": 3,
+        "operation": "add_value",
+        "slot": "feet"
+      },
+      {
+        "type": "minecraft:armor_toughness",
+        "id": "minecraft:armor.boots",
+        "amount": 3.0,
+        "operation": "add_value",
+        "slot": "feet"
+      },
+      {
+        "type": "minecraft:knockback_resistance",
+        "id": "minecraft:armor.boots",
+        "amount": 0.10000000149011612,
+        "operation": "add_value",
+        "slot": "feet"
+      }
+    ],
+    "minecraft:equippable": {
+      "slot": "feet",
+      "asset_id": "mekanism:mekasuit"
+    },
+    "minecraft:mob_visibility": {
+      "targeting_entity_types": "#mekanism:mekasuit_reduced_visibility",
+      "visibility": 0.9
+    }
+  }
+}

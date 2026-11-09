@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:item_name": {
+      "translate": "item.mekanism.elite_tier_installer",
+      "color": "#4BF8FF"
+    }
+  }
+}

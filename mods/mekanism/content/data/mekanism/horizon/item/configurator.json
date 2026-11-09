@@ -1,0 +1,11 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "rarity": "uncommon",
+  "components": {
+    "minecraft:item_name": {
+      "translate": "item.mekanism.configurator",
+      "color": "#30FFF9"
+    }
+  }
+}

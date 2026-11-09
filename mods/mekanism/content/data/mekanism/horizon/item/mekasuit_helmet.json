@@ -1,0 +1,41 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "rarity": "epic",
+  "components": {
+    "minecraft:damage_resistant": {
+      "types": "#minecraft:is_fire"
+    },
+    "minecraft:attribute_modifiers": [
+      {
+        "type": "minecraft:armor",
+        "id": "minecraft:armor.helmet",
+        "amount": 3,
+        "operation": "add_value",
+        "slot": "head"
+      },
+      {
+        "type": "minecraft:armor_toughness",
+        "id": "minecraft:armor.helmet",
+        "amount": 3.0,
+        "operation": "add_value",
+        "slot": "head"
+      },
+      {
+        "type": "minecraft:knockback_resistance",
+        "id": "minecraft:armor.helmet",
+        "amount": 0.10000000149011612,
+        "operation": "add_value",
+        "slot": "head"
+      }
+    ],
+    "minecraft:equippable": {
+      "slot": "head",
+      "asset_id": "mekanism:mekasuit"
+    },
+    "minecraft:mob_visibility": {
+      "targeting_entity_types": "#mekanism:mekasuit_reduced_visibility",
+      "visibility": 0.9
+    }
+  }
+}
