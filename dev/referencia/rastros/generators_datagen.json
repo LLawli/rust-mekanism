@@ -67,6 +67,28 @@
    ]
   }
  },
+ "derived": {
+  "assets/mekanismgenerators/models/block/wind_generator.obj": {
+   "source": "e71f3b1e02d33801:9174",
+   "source_bbox": [
+    -0.30457925797067276,
+    0.11923036833290461,
+    -0.30447842214676735,
+    0.3045790523555961,
+    4.71875,
+    0.49866019864446065,
+    64
+   ],
+   "translation": [
+    0.5,
+    0.0,
+    0.5
+   ]
+  }
+ },
+ "derived_hash": {
+  "assets/mekanismgenerators/models/block/wind_generator.obj": "75b498338c91e4ea:9051"
+ },
  "files": {
   "assets/mekanismgenerators/blockstates/advanced_solar_generator.json": "0bf6a05d0ac875cc:343",
   "assets/mekanismgenerators/blockstates/bio_generator.json": "9cb998642c127bd9:305",
@@ -145,7 +167,6 @@
   "assets/mekanismgenerators/models/block/turbine/vent.json": "4d72ac13714faab5:86",
   "assets/mekanismgenerators/models/block/wind_generator.json": "40f0f12d21f071d7:3141",
   "assets/mekanismgenerators/models/block/wind_generator.mtl": "ae07b18c92c806ad:95",
-  "assets/mekanismgenerators/models/block/wind_generator.obj": "e71f3b1e02d33801:9174",
   "assets/mekanismgenerators/models/block/wind_generator_blades.json": "d75cf2131306a879:264",
   "assets/mekanismgenerators/models/block/wind_generator_blades.mtl": "ae07b18c92c806ad:95",
   "assets/mekanismgenerators/models/block/wind_generator_blades.obj": "5c40befc05a6e4b8:11389",
