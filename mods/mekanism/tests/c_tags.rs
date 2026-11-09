@@ -107,7 +107,7 @@ fn every_c_tag_names_only_what_the_content_has() {
     }
     let mut files = Vec::new();
     files_in(&c_tags(), &mut files);
-    assert!(files.len() >= 92, "só {} tags em data/c/tags", files.len());
+    assert!(files.len() >= 179, "só {} tags em data/c/tags", files.len());
     for file in files {
         let relative = file.strip_prefix(c_tags()).unwrap();
         let kind = relative.components().next().unwrap().as_os_str();
@@ -228,4 +228,27 @@ fn the_crusher_has_one_recipe_for_a_melon_slice_as_the_original_does() {
         .collect();
     assert_eq!(original, ["crushing/biofuel/melon_slice"]);
     assert_eq!(crushing_recipes_matching("minecraft:melon_slice"), original);
+}
+
+/// As tags `c:` da datagen que citam os itens e blocos de craft e de recurso (`craft_data.rs` as confere uma a uma contra o rastro do original) e as três do NeoForge que
+/// as receitas completas pedem (`c:ender_pearls`, `c:buckets/water` e `c:rods/wooden`, do jar `neoforge-26.3.0.100`) existem.
+#[test]
+fn the_tags_the_craft_recipes_need_exist() {
+    for path in [
+        "item/ender_pearls.json",
+        "item/buckets/water.json",
+        "item/rods/wooden.json",
+        "item/storage_blocks/steel.json",
+        "item/ingots/tin.json",
+        "item/nuggets/refined_glowstone.json",
+        "item/dusts/salt.json",
+        "item/fuels/block/bio.json",
+        "block/ores/uranium.json",
+        "block/storage_blocks/raw_tin.json",
+    ] {
+        assert!(c_tags().join(path).is_file(), "falta data/c/tags/{path}");
+    }
+    assert_eq!(values(&c_tags().join("item/ender_pearls.json")), ["minecraft:ender_pearl"]);
+    assert_eq!(values(&c_tags().join("item/buckets/water.json")), ["minecraft:water_bucket"]);
+    assert_eq!(values(&c_tags().join("item/rods/wooden.json")), ["minecraft:stick"]);
 }

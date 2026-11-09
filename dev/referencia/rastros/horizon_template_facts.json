@@ -1,0 +1,92 @@
+{
+ "minecraft:lapis_block": {
+  "instrument": "HARP",
+  "push": "PUSH_PULL",
+  "hardness": 3.0,
+  "explosion_resistance": 3.0,
+  "requires_tool": true,
+  "map_color": 4882687,
+  "emission": 0,
+  "sound": "minecraft:block.stone.break"
+ },
+ "minecraft:raw_iron_block": {
+  "instrument": "BASEDRUM",
+  "push": "PUSH_PULL",
+  "hardness": 5.0,
+  "explosion_resistance": 6.0,
+  "requires_tool": true,
+  "map_color": 14200723,
+  "emission": 0,
+  "sound": "minecraft:block.stone.break"
+ },
+ "minecraft:obsidian": {
+  "instrument": "BASEDRUM",
+  "push": "IMMOVEABLE",
+  "hardness": 50.0,
+  "explosion_resistance": 1200.0,
+  "requires_tool": true,
+  "map_color": 1644825,
+  "emission": 0,
+  "sound": "minecraft:block.stone.break"
+ },
+ "minecraft:iron_ore": {
+  "instrument": "BASEDRUM",
+  "push": "PUSH_PULL",
+  "hardness": 3.0,
+  "explosion_resistance": 3.0,
+  "requires_tool": true,
+  "map_color": 7368816,
+  "emission": 0,
+  "sound": "minecraft:block.stone.break"
+ },
+ "minecraft:deepslate_iron_ore": {
+  "instrument": "BASEDRUM",
+  "push": "PUSH_PULL",
+  "hardness": 4.5,
+  "explosion_resistance": 3.0,
+  "requires_tool": true,
+  "map_color": 6579300,
+  "emission": 0,
+  "sound": "minecraft:block.deepslate.break"
+ },
+ "minecraft:iron_block": {
+  "instrument": "IRON_XYLOPHONE",
+  "push": "PUSH_PULL",
+  "hardness": 5.0,
+  "explosion_resistance": 6.0,
+  "requires_tool": true,
+  "map_color": 10987431,
+  "emission": 0,
+  "sound": "minecraft:block.iron.break"
+ },
+ "minecraft:hay_block": {
+  "instrument": "BANJO",
+  "push": "PUSH_PULL",
+  "hardness": 0.5,
+  "explosion_resistance": 0.5,
+  "requires_tool": false,
+  "map_color": 15066419,
+  "emission": 0,
+  "sound": "minecraft:block.grass.break"
+ },
+ "minecraft:sand": {
+  "instrument": "SNARE",
+  "push": "PUSH_PULL",
+  "hardness": 0.5,
+  "explosion_resistance": 0.5,
+  "requires_tool": false,
+  "map_color": 16247203,
+  "emission": 0,
+  "sound": "minecraft:block.sand.break"
+ },
+ "minecraft:stone": {
+  "instrument": "BASEDRUM",
+  "push": "PUSH_PULL",
+  "hardness": 1.5,
+  "explosion_resistance": 6.0,
+  "requires_tool": true,
+  "map_color": 7368816,
+  "emission": 0,
+  "sound": "minecraft:block.stone.break"
+ }
+}

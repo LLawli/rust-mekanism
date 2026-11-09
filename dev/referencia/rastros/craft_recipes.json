@@ -1,0 +1,2518 @@
+{
+"mekanism/recipe/antiprotonic_nucleosynthesizer.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/antimatter",
+"mekanism:alloy_atomic",
+"mekanism:steel_casing"
+],
+"result": "mekanism:antiprotonic_nucleosynthesizer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/attack_amplification_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:hdpe_sheet",
+"mekanism:module_base",
+"minecraft:iron_sword"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/bin/basic.json": {
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/basic",
+"#mekanism:stone_crafting_materials"
+],
+"result": "mekanism:basic_bin",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/bio_fuel.json": {
+"refs": [
+"mekanism:block_bio_fuel"
+],
+"result": "mekanism:bio_fuel",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/blasting_unit.json": {
+"refs": [
+"#c:alloys/ultimate",
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:module_base",
+"minecraft:tnt"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/boiler_casing.json": {
+"refs": [
+"#c:ingots/iron",
+"#c:ingots/steel"
+],
+"result": "mekanism:boiler_casing",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/boiler_valve.json": {
+"refs": [
+"#c:circuits/advanced",
+"mekanism:boiler_casing"
+],
+"result": "mekanism:boiler_valve",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/canteen.json": {
+"refs": [
+"#c:ingots/tin",
+"minecraft:bowl"
+],
+"result": "mekanism:canteen",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/cardboard_box.json": {
+"refs": [
+"#c:clumps/resin",
+"#c:dusts/wood"
+],
+"result": "mekanism:cardboard_box",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/charcoal.json": {
+"refs": [
+"mekanism:block_charcoal"
+],
+"result": "minecraft:charcoal",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/charge_distribution_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:basic_induction_provider",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/chemical_crystallizer.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/fluorite",
+"#c:ingots/refined_obsidian",
+"mekanism:steel_casing"
+],
+"result": "mekanism:chemical_crystallizer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/chemical_tank/basic.json": {
+"refs": [
+"#c:ingots/osmium",
+"#mekanism:alloys/basic"
+],
+"result": "mekanism:basic_chemical_tank",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/color_modulation_unit.json": {
+"refs": [
+"mekanism:hdpe_sheet",
+"mekanism:laser",
+"mekanism:module_base",
+"mekanism:painting_machine",
+"mekanism:pigment_mixer"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/combiner.json": {
+"refs": [
+"#c:circuits/elite",
+"#mekanism:alloys/reinforced",
+"#mekanism:stone_crafting_materials",
+"mekanism:steel_casing"
+],
+"result": "mekanism:combiner",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/configuration_card.json": {
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:configuration_card",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/configurator.json": {
+"refs": [
+"#c:ingots/iron",
+"#c:ingots/osmium",
+"#c:ingots/steel"
+],
+"result": "mekanism:configurator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/control_circuit/advanced.json": {
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:advanced_control_circuit",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/control_circuit/elite.json": {
+"refs": [
+"#c:circuits/advanced",
+"#mekanism:alloys/reinforced"
+],
+"result": "mekanism:elite_control_circuit",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/control_circuit/ultimate.json": {
+"refs": [
+"#c:circuits/elite",
+"#mekanism:alloys/atomic"
+],
+"result": "mekanism:ultimate_control_circuit",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/crafting_formula.json": {
+"refs": [
+"#c:circuits/basic",
+"minecraft:paper"
+],
+"result": "mekanism:crafting_formula",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/crusher.json": {
+"refs": [
+"#c:buckets/lava",
+"#c:circuits/basic",
+"#c:dusts/redstone",
+"mekanism:steel_casing"
+],
+"result": "mekanism:crusher",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dictionary.json": {
+"refs": [
+"#c:circuits/basic",
+"minecraft:book"
+],
+"result": "mekanism:dictionary",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dimensional_stabilizer.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/refined_obsidian",
+"#c:storage_blocks/diamond",
+"#mekanism:alloys/atomic"
+],
+"result": "mekanism:dimensional_stabilizer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dosimeter.json": {
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/lead"
+],
+"result": "mekanism:dosimeter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dosimeter_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:dosimeter",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dye_base.json": {
+"refs": [
+"#c:dusts/wood",
+"minecraft:clay_ball"
+],
+"result": "mekanism:dye_base",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/dynamic_tank.json": {
+"refs": [
+"#c:buckets/empty",
+"#c:ingots/steel"
+],
+"result": "mekanism:dynamic_tank",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/dynamic_valve.json": {
+"refs": [
+"#c:circuits/basic",
+"mekanism:dynamic_tank"
+],
+"result": "mekanism:dynamic_valve",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/electric_pump.json": {
+"refs": [
+"#c:buckets/empty",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:steel_casing"
+],
+"result": "mekanism:electric_pump",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/electrolytic_breathing_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:electrolytic_core",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/electrolytic_core.json": {
+"refs": [
+"#c:dusts/gold",
+"#c:dusts/iron",
+"#c:dusts/osmium",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:electrolytic_core",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/electrolytic_separator.json": {
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/iron",
+"#mekanism:alloys/infused",
+"mekanism:electrolytic_core"
+],
+"result": "mekanism:electrolytic_separator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/elytra_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/antimatter",
+"#c:pellets/polonium",
+"mekanism:hdpe_elytra",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/energized_smelter.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/basic",
+"mekanism:steel_casing"
+],
+"result": "mekanism:energized_smelter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/energy_tablet.json": {
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/gold",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:energy_tablet",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/energy_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:basic_induction_cell",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/enrichment_chamber.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:steel_casing"
+],
+"result": "mekanism:enrichment_chamber",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/excavation_escalation_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:hdpe_sheet",
+"mekanism:module_base",
+"minecraft:iron_pickaxe"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/farming_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:hdpe_sheet",
+"mekanism:module_base",
+"minecraft:iron_hoe"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/fluid_tank/basic.json": {
+"refs": [
+"#c:ingots/iron",
+"#mekanism:alloys/basic"
+],
+"result": "mekanism:basic_fluid_tank",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/formulaic_assemblicator.json": {
+"refs": [
+"#c:chests/wooden",
+"#c:circuits/basic",
+"#c:ingots/steel",
+"mekanism:steel_casing",
+"minecraft:crafter"
+],
+"result": "mekanism:formulaic_assemblicator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/fortune_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"#c:storage_blocks/diamond",
+"#c:storage_blocks/refined_glowstone",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/frost_walker_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:hydrogen_bucket",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/fuelwood_heater.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/steel",
+"#c:player_workstations/furnaces",
+"mekanism:steel_casing"
+],
+"result": "mekanism:fuelwood_heater",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/gauge_dropper.json": {
+"refs": [
+"#c:glass_panes",
+"#c:ingots/osmium"
+],
+"result": "mekanism:gauge_dropper",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/geiger_counter.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/lead"
+],
+"result": "mekanism:geiger_counter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/geiger_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:geiger_counter",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/gravitational_modulating_unit.json": {
+"refs": [
+"#c:alloys/ultimate",
+"#c:nether_stars",
+"#c:pellets/antimatter",
+"mekanism:module_base",
+"mekanism:ultimate_induction_provider"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/gyroscopic_stabilization_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:obsidians/normal",
+"#c:pellets/polonium",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hazmat_boots.json": {
+"refs": [
+"#c:dyes/black",
+"#c:ingots/lead"
+],
+"result": "mekanism:hazmat_boots",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hazmat_gown.json": {
+"refs": [
+"#c:dyes/orange",
+"#c:ingots/lead"
+],
+"result": "mekanism:hazmat_gown",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hazmat_mask.json": {
+"refs": [
+"#c:dyes/orange",
+"#c:ingots/lead"
+],
+"result": "mekanism:hazmat_mask",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hazmat_pants.json": {
+"refs": [
+"#c:dyes/orange",
+"#c:ingots/lead"
+],
+"result": "mekanism:hazmat_pants",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hdpe_elytra.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:hdpe_sheet",
+"minecraft:elytra"
+],
+"result": "mekanism:hdpe_elytra",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hdpe_rod.json": {
+"refs": [
+"mekanism:hdpe_pellet"
+],
+"result": "mekanism:hdpe_rod",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hdpe_stick.json": {
+"refs": [
+"mekanism:hdpe_rod"
+],
+"result": "mekanism:hdpe_stick",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hydraulic_propulsion_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:energy_tablet",
+"mekanism:free_runners",
+"mekanism:free_runners_armored",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/hydrostatic_repulsor_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:module_base",
+"minecraft:lightning_rod"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/casing.json": {
+"refs": [
+"#c:ingots/steel",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:induction_casing",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/port.json": {
+"refs": [
+"#c:circuits/elite",
+"mekanism:induction_casing"
+],
+"result": "mekanism:induction_port",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/provider/advanced.json": {
+"refs": [
+"#c:circuits/advanced",
+"mekanism:advanced_energy_cube",
+"mekanism:basic_induction_provider"
+],
+"result": "mekanism:advanced_induction_provider",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/provider/basic.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:dusts/lithium",
+"mekanism:basic_energy_cube"
+],
+"result": "mekanism:basic_induction_provider",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/provider/elite.json": {
+"refs": [
+"#c:circuits/elite",
+"mekanism:advanced_induction_provider",
+"mekanism:elite_energy_cube"
+],
+"result": "mekanism:elite_induction_provider",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/induction/provider/ultimate.json": {
+"refs": [
+"#c:circuits/ultimate",
+"mekanism:elite_induction_provider",
+"mekanism:ultimate_energy_cube"
+],
+"result": "mekanism:ultimate_induction_provider",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/industrial_alarm.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/lead",
+"minecraft:redstone_lamp"
+],
+"result": "mekanism:industrial_alarm",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/inhalation_purification_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:hazmat_mask",
+"mekanism:module_base",
+"mekanism:scuba_mask"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/jetpack_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:jetpack",
+"mekanism:jetpack_armored",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/laser_dissipation_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"mekanism:hdpe_sheet",
+"mekanism:laser_amplifier",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/locomotive_boosting_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:energy_tablet",
+"mekanism:module_base",
+"minecraft:diamond_leggings"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/logistical_sorter.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"minecraft:piston"
+],
+"result": "mekanism:logistical_sorter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/magnetic_attraction_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:bars/iron",
+"#c:circuits/elite",
+"#c:pellets/polonium",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/meka_tool.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:atomic_disassembler",
+"mekanism:basic_induction_cell",
+"mekanism:configurator",
+"mekanism:hdpe_sheet"
+],
+"result": "mekanism:meka_tool",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/mekasuit_bodyarmor.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:basic_induction_cell",
+"mekanism:hdpe_sheet",
+"minecraft:netherite_chestplate"
+],
+"result": "mekanism:mekasuit_bodyarmor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/mekasuit_boots.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:basic_induction_cell",
+"mekanism:hdpe_sheet",
+"minecraft:netherite_boots"
+],
+"result": "mekanism:mekasuit_boots",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/mekasuit_helmet.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:basic_induction_cell",
+"mekanism:hdpe_sheet",
+"minecraft:netherite_helmet"
+],
+"result": "mekanism:mekasuit_helmet",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/mekasuit_pants.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:basic_induction_cell",
+"mekanism:hdpe_sheet",
+"minecraft:netherite_leggings"
+],
+"result": "mekanism:mekasuit_pants",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/metallurgic_infuser.json": {
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/iron",
+"#c:ingots/osmium",
+"#c:player_workstations/furnaces"
+],
+"result": "mekanism:metallurgic_infuser",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/modification_station.json": {
+"refs": [
+"#c:chests/wooden",
+"#c:circuits/ultimate",
+"#c:pellets/polonium",
+"mekanism:hdpe_sheet",
+"mekanism:steel_casing"
+],
+"result": "mekanism:modification_station",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/module_base.json": {
+"refs": [
+"#c:ingots/tin",
+"#c:nuggets/bronze",
+"mekanism:hdpe_sheet"
+],
+"result": "mekanism:module_base",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/motorized_servo_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:circuits/elite",
+"#c:pellets/polonium",
+"mekanism:module_base",
+"minecraft:blue_ice"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/nuggets/bronze.json": {
+"refs": [
+"mekanism:ingot_bronze"
+],
+"result": "mekanism:nugget_bronze",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/nuggets/refined_glowstone.json": {
+"refs": [
+"mekanism:ingot_refined_glowstone"
+],
+"result": "mekanism:nugget_refined_glowstone",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/nuggets/refined_obsidian.json": {
+"refs": [
+"mekanism:ingot_refined_obsidian"
+],
+"result": "mekanism:nugget_refined_obsidian",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/nuggets/steel.json": {
+"refs": [
+"mekanism:ingot_steel"
+],
+"result": "mekanism:nugget_steel",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/nutritional_injection_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:canteen",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/nutritional_liquifier.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:dusts/redstone",
+"mekanism:steel_casing",
+"minecraft:bowl"
+],
+"result": "mekanism:nutritional_liquifier",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/oredictionificator.json": {
+"refs": [
+"#c:chests/wooden",
+"#c:circuits/basic",
+"#c:glass_panes",
+"#c:ingots/steel",
+"mekanism:dictionary"
+],
+"result": "mekanism:oredictionificator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/osmium_compressor.json": {
+"refs": [
+"#c:buckets/empty",
+"#c:circuits/advanced",
+"#mekanism:alloys/infused",
+"mekanism:steel_casing"
+],
+"result": "mekanism:osmium_compressor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/painting_machine.json": {
+"refs": [
+"#c:circuits/advanced",
+"#mekanism:alloys/infused",
+"mekanism:dye_base",
+"mekanism:steel_casing"
+],
+"result": "mekanism:painting_machine",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/paper.json": {
+"refs": [
+"#c:dusts/wood"
+],
+"result": "minecraft:paper",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/personal_barrel.json": {
+"refs": [
+"#c:barrels/wooden",
+"#c:circuits/basic",
+"#c:glass_blocks/cheap",
+"#c:ingots/steel"
+],
+"result": "mekanism:personal_barrel",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/personal_chest.json": {
+"refs": [
+"#c:chests/wooden",
+"#c:circuits/basic",
+"#c:glass_blocks/cheap",
+"#c:ingots/steel"
+],
+"result": "mekanism:personal_chest",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/pigment_extractor.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:dusts/redstone",
+"mekanism:steel_casing",
+"minecraft:flint"
+],
+"result": "mekanism:pigment_extractor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/pigment_mixer.json": {
+"refs": [
+"#c:circuits/elite",
+"#mekanism:alloys/reinforced",
+"mekanism:hdpe_rod",
+"mekanism:steel_casing"
+],
+"result": "mekanism:pigment_mixer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/portable_qio_dashboard.json": {
+"refs": [
+"#c:pellets/polonium",
+"mekanism:qio_dashboard",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:portable_qio_dashboard",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/precision_sawmill.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/infused",
+"mekanism:steel_casing"
+],
+"result": "mekanism:precision_sawmill",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/pressure_disperser.json": {
+"refs": [
+"#c:bars",
+"#c:ingots/steel",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:pressure_disperser",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/bronze/ingot/from_block.json": {
+"refs": [
+"mekanism:block_bronze"
+],
+"result": "mekanism:ingot_bronze",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/bronze/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_bronze"
+],
+"result": "mekanism:ingot_bronze",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/bronze/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_bronze"
+],
+"result": "mekanism:ingot_bronze",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/bronze/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/bronze",
+"mekanism:nugget_bronze"
+],
+"result": "mekanism:ingot_bronze",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/copper/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_copper"
+],
+"result": "minecraft:copper_ingot",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/copper/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_copper"
+],
+"result": "minecraft:copper_ingot",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/fluorite/from_block.json": {
+"refs": [
+"mekanism:block_fluorite"
+],
+"result": "mekanism:fluorite_gem",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/fluorite/from_deepslate_ore_blasting.json": {
+"refs": [
+"mekanism:deepslate_fluorite_ore"
+],
+"result": "mekanism:fluorite_gem",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/fluorite/from_deepslate_ore_smelting.json": {
+"refs": [
+"mekanism:deepslate_fluorite_ore"
+],
+"result": "mekanism:fluorite_gem",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/fluorite/from_ore_blasting.json": {
+"refs": [
+"mekanism:fluorite_ore"
+],
+"result": "mekanism:fluorite_gem",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/fluorite/from_ore_smelting.json": {
+"refs": [
+"mekanism:fluorite_ore"
+],
+"result": "mekanism:fluorite_gem",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/gold/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_gold"
+],
+"result": "minecraft:gold_ingot",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/gold/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_gold"
+],
+"result": "minecraft:gold_ingot",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/iron/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_iron"
+],
+"result": "minecraft:iron_ingot",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/iron/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_iron"
+],
+"result": "minecraft:iron_ingot",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/lead/ingot/from_block.json": {
+"refs": [
+"mekanism:block_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/lead/ingot/from_deepslate_ore_blasting.json": {
+"refs": [
+"mekanism:deepslate_lead_ore"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/lead/ingot/from_deepslate_ore_smelting.json": {
+"refs": [
+"mekanism:deepslate_lead_ore"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/lead/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/lead/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/lead/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/lead",
+"mekanism:nugget_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/lead/ingot/from_ore_blasting.json": {
+"refs": [
+"mekanism:lead_ore"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/lead/ingot/from_ore_smelting.json": {
+"refs": [
+"mekanism:lead_ore"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/lead/ingot/from_raw_blasting.json": {
+"refs": [
+"mekanism:raw_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/lead/ingot/from_raw_smelting.json": {
+"refs": [
+"mekanism:raw_lead"
+],
+"result": "mekanism:ingot_lead",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/lead/nugget/from_ingot.json": {
+"refs": [
+"mekanism:ingot_lead"
+],
+"result": "mekanism:nugget_lead",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/lead/raw/from_raw_block.json": {
+"refs": [
+"mekanism:block_raw_lead"
+],
+"result": "mekanism:raw_lead",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/lead/raw_storage_blocks/from_raw.json": {
+"refs": [
+"#c:raw_materials/lead",
+"mekanism:raw_lead"
+],
+"result": "mekanism:block_raw_lead",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/lead/storage_blocks/from_ingots.json": {
+"refs": [
+"#c:ingots/lead",
+"mekanism:ingot_lead"
+],
+"result": "mekanism:block_lead",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/netherite/ingot_from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_netherite"
+],
+"result": "minecraft:netherite_ingot",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/netherite/ingot_from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_netherite"
+],
+"result": "minecraft:netherite_ingot",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_block.json": {
+"refs": [
+"mekanism:block_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/osmium/ingot/from_deepslate_ore_blasting.json": {
+"refs": [
+"mekanism:deepslate_osmium_ore"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_deepslate_ore_smelting.json": {
+"refs": [
+"mekanism:deepslate_osmium_ore"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/osmium",
+"mekanism:nugget_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/osmium/ingot/from_ore_blasting.json": {
+"refs": [
+"mekanism:osmium_ore"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_ore_smelting.json": {
+"refs": [
+"mekanism:osmium_ore"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_raw_blasting.json": {
+"refs": [
+"mekanism:raw_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/osmium/ingot/from_raw_smelting.json": {
+"refs": [
+"mekanism:raw_osmium"
+],
+"result": "mekanism:ingot_osmium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/osmium/nugget/from_ingot.json": {
+"refs": [
+"mekanism:ingot_osmium"
+],
+"result": "mekanism:nugget_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/osmium/raw/from_raw_block.json": {
+"refs": [
+"mekanism:block_raw_osmium"
+],
+"result": "mekanism:raw_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/osmium/raw_storage_blocks/from_raw.json": {
+"refs": [
+"#c:raw_materials/osmium",
+"mekanism:raw_osmium"
+],
+"result": "mekanism:block_raw_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/osmium/storage_blocks/from_ingots.json": {
+"refs": [
+"#c:ingots/osmium",
+"mekanism:ingot_osmium"
+],
+"result": "mekanism:block_osmium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/refined_glowstone/ingot/from_block.json": {
+"refs": [
+"mekanism:block_refined_glowstone"
+],
+"result": "mekanism:ingot_refined_glowstone",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/refined_glowstone/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/refined_glowstone",
+"mekanism:nugget_refined_glowstone"
+],
+"result": "mekanism:ingot_refined_glowstone",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/refined_obsidian/ingot/from_block.json": {
+"refs": [
+"mekanism:block_refined_obsidian"
+],
+"result": "mekanism:ingot_refined_obsidian",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/refined_obsidian/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/refined_obsidian",
+"mekanism:nugget_refined_obsidian"
+],
+"result": "mekanism:ingot_refined_obsidian",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/steel/ingot/from_block.json": {
+"refs": [
+"mekanism:block_steel"
+],
+"result": "mekanism:ingot_steel",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/steel/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_steel"
+],
+"result": "mekanism:ingot_steel",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/steel/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_steel"
+],
+"result": "mekanism:ingot_steel",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/steel/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/steel",
+"mekanism:nugget_steel"
+],
+"result": "mekanism:ingot_steel",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/tin/ingot/from_block.json": {
+"refs": [
+"mekanism:block_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/tin/ingot/from_deepslate_ore_blasting.json": {
+"refs": [
+"mekanism:deepslate_tin_ore"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/tin/ingot/from_deepslate_ore_smelting.json": {
+"refs": [
+"mekanism:deepslate_tin_ore"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/tin/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/tin/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/tin/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/tin",
+"mekanism:nugget_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/tin/ingot/from_ore_blasting.json": {
+"refs": [
+"mekanism:tin_ore"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/tin/ingot/from_ore_smelting.json": {
+"refs": [
+"mekanism:tin_ore"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/tin/ingot/from_raw_blasting.json": {
+"refs": [
+"mekanism:raw_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/tin/ingot/from_raw_smelting.json": {
+"refs": [
+"mekanism:raw_tin"
+],
+"result": "mekanism:ingot_tin",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/tin/nugget/from_ingot.json": {
+"refs": [
+"mekanism:ingot_tin"
+],
+"result": "mekanism:nugget_tin",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/tin/raw/from_raw_block.json": {
+"refs": [
+"mekanism:block_raw_tin"
+],
+"result": "mekanism:raw_tin",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/tin/raw_storage_blocks/from_raw.json": {
+"refs": [
+"#c:raw_materials/tin",
+"mekanism:raw_tin"
+],
+"result": "mekanism:block_raw_tin",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/tin/storage_blocks/from_ingots.json": {
+"refs": [
+"#c:ingots/tin",
+"mekanism:ingot_tin"
+],
+"result": "mekanism:block_tin",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/uranium/ingot/from_block.json": {
+"refs": [
+"mekanism:block_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/uranium/ingot/from_deepslate_ore_blasting.json": {
+"refs": [
+"mekanism:deepslate_uranium_ore"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_deepslate_ore_smelting.json": {
+"refs": [
+"mekanism:deepslate_uranium_ore"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_dust_blasting.json": {
+"refs": [
+"mekanism:dust_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_dust_smelting.json": {
+"refs": [
+"mekanism:dust_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_nuggets.json": {
+"refs": [
+"#c:nuggets/uranium",
+"mekanism:nugget_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/uranium/ingot/from_ore_blasting.json": {
+"refs": [
+"mekanism:uranium_ore"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_ore_smelting.json": {
+"refs": [
+"mekanism:uranium_ore"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_raw_blasting.json": {
+"refs": [
+"mekanism:raw_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:blasting"
+},
+"mekanism/recipe/processing/uranium/ingot/from_raw_smelting.json": {
+"refs": [
+"mekanism:raw_uranium"
+],
+"result": "mekanism:ingot_uranium",
+"result_components": [],
+"type": "minecraft:smelting"
+},
+"mekanism/recipe/processing/uranium/nugget/from_ingot.json": {
+"refs": [
+"mekanism:ingot_uranium"
+],
+"result": "mekanism:nugget_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/uranium/raw/from_raw_block.json": {
+"refs": [
+"mekanism:block_raw_uranium"
+],
+"result": "mekanism:raw_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/processing/uranium/raw_storage_blocks/from_raw.json": {
+"refs": [
+"#c:raw_materials/uranium",
+"mekanism:raw_uranium"
+],
+"result": "mekanism:block_raw_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/processing/uranium/storage_blocks/from_ingots.json": {
+"refs": [
+"#c:ingots/uranium",
+"mekanism:ingot_uranium"
+],
+"result": "mekanism:block_uranium",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/qio_dashboard.json": {
+"refs": [
+"#c:ender_pearls",
+"#c:glass_panes",
+"#c:ingots/lead",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:qio_dashboard",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/qio_drive_base.json": {
+"refs": [
+"#c:ender_pearls",
+"#c:ingots/lead",
+"mekanism:ultimate_control_circuit"
+],
+"result": "mekanism:qio_drive_base",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/qio_exporter.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:ender_pearls",
+"#c:ingots/lead",
+"mekanism:teleportation_core",
+"minecraft:piston"
+],
+"result": "mekanism:qio_exporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/qio_importer.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:ender_pearls",
+"#c:ingots/lead",
+"mekanism:teleportation_core",
+"minecraft:sticky_piston"
+],
+"result": "mekanism:qio_importer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/qio_redstone_adapter.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:dusts/redstone",
+"#c:ender_pearls",
+"mekanism:teleportation_core",
+"minecraft:redstone_torch"
+],
+"result": "mekanism:qio_redstone_adapter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/quantum_entangloporter.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/refined_obsidian",
+"#mekanism:alloys/atomic",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:quantum_entangloporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/radiation_shielding_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"#c:storage_blocks/lead",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/radioactive_waste_barrel.json": {
+"refs": [
+"#c:ingots/lead",
+"#c:ingots/steel"
+],
+"result": "mekanism:radioactive_waste_barrel",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/rails.json": {
+"refs": [
+"#c:ingots/osmium",
+"#c:rods/wooden"
+],
+"result": "minecraft:rail",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/scuba_mask.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:glass_blocks/cheap",
+"#c:ingots/steel"
+],
+"result": "mekanism:scuba_mask",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/security_desk.json": {
+"refs": [
+"#c:circuits/elite",
+"#c:glass_blocks/cheap",
+"#c:ingots/steel",
+"mekanism:network_reader",
+"mekanism:steel_casing"
+],
+"result": "mekanism:security_desk",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/seismic_vibrator.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:gems/lapis",
+"#c:ingots/tin",
+"mekanism:steel_casing"
+],
+"result": "mekanism:seismic_vibrator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/shearing_unit.json": {
+"refs": [
+"#c:alloys/advanced",
+"#c:tools/shear",
+"mekanism:hdpe_sheet",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/silk_touch_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"#c:storage_blocks/refined_glowstone",
+"mekanism:module_base",
+"minecraft:diamond_pickaxe"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/solar_neutron_activator.json": {
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/bronze",
+"#mekanism:alloys/reinforced",
+"mekanism:hdpe_sheet",
+"mekanism:steel_casing"
+],
+"result": "mekanism:solar_neutron_activator",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/soul_surfer_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"#minecraft:soul_fire_base_blocks",
+"mekanism:free_runners",
+"mekanism:free_runners_armored",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/sps_casing.json": {
+"refs": [
+"#c:pellets/plutonium",
+"#c:pellets/polonium",
+"mekanism:hdpe_sheet"
+],
+"result": "mekanism:sps_casing",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/sps_port.json": {
+"refs": [
+"#c:circuits/ultimate",
+"mekanism:sps_casing"
+],
+"result": "mekanism:sps_port",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/steel_casing.json": {
+"refs": [
+"#c:glass_blocks/cheap",
+"#c:ingots/osmium",
+"#c:ingots/steel"
+],
+"result": "mekanism:steel_casing",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/bio_fuel.json": {
+"refs": [
+"#c:fuels/bio",
+"mekanism:bio_fuel"
+],
+"result": "mekanism:block_bio_fuel",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/bronze.json": {
+"refs": [
+"#c:ingots/bronze",
+"mekanism:ingot_bronze"
+],
+"result": "mekanism:block_bronze",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/charcoal.json": {
+"refs": [
+"minecraft:charcoal"
+],
+"result": "mekanism:block_charcoal",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/fluorite.json": {
+"refs": [
+"#c:gems/fluorite",
+"mekanism:fluorite_gem"
+],
+"result": "mekanism:block_fluorite",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/refined_glowstone.json": {
+"refs": [
+"#c:ingots/refined_glowstone",
+"mekanism:ingot_refined_glowstone"
+],
+"result": "mekanism:block_refined_glowstone",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/refined_obsidian.json": {
+"refs": [
+"#c:ingots/refined_obsidian",
+"mekanism:ingot_refined_obsidian"
+],
+"result": "mekanism:block_refined_obsidian",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/salt.json": {
+"refs": [
+"#c:dusts/salt"
+],
+"result": "mekanism:block_salt",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/storage_blocks/steel.json": {
+"refs": [
+"#c:ingots/steel",
+"mekanism:ingot_steel"
+],
+"result": "mekanism:block_steel",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/structural_glass.json": {
+"refs": [
+"#c:glass_blocks/cheap",
+"#c:ingots/steel"
+],
+"result": "mekanism:structural_glass",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/sulfur_dye.json": {
+"refs": [
+"mekanism:dust_sulfur"
+],
+"result": "minecraft:yellow_dye",
+"result_components": [],
+"type": "minecraft:crafting_shapeless"
+},
+"mekanism/recipe/supercharged_coil.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/copper",
+"#c:pellets/polonium",
+"mekanism:laser"
+],
+"result": "mekanism:supercharged_coil",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/superheating_element.json": {
+"refs": [
+"#mekanism:alloys/basic",
+"mekanism:steel_casing",
+"minecraft:copper_chain"
+],
+"result": "mekanism:superheating_element",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/teleportation_core.json": {
+"refs": [
+"#c:ender_pearls",
+"#c:gems/diamond",
+"#c:ingots/gold",
+"#mekanism:alloys/atomic"
+],
+"result": "mekanism:teleportation_core",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/teleportation_unit.json": {
+"refs": [
+"#c:alloys/ultimate",
+"#c:pellets/antimatter",
+"mekanism:module_base",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/teleporter.json": {
+"refs": [
+"#c:circuits/basic",
+"mekanism:steel_casing",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:teleporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/teleporter_frame.json": {
+"refs": [
+"#c:ingots/refined_glowstone",
+"#c:ingots/refined_obsidian"
+],
+"result": "mekanism:teleporter_frame",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/thermal_evaporation/block.json": {
+"refs": [
+"#c:ingots/copper",
+"#c:ingots/steel"
+],
+"result": "mekanism:thermal_evaporation_block",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/thermal_evaporation/controller.json": {
+"refs": [
+"#c:buckets/empty",
+"#c:circuits/advanced",
+"#c:glass_panes",
+"mekanism:thermal_evaporation_block"
+],
+"result": "mekanism:thermal_evaporation_controller",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/thermal_evaporation/valve.json": {
+"refs": [
+"#c:circuits/advanced",
+"mekanism:thermal_evaporation_block"
+],
+"result": "mekanism:thermal_evaporation_valve",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/tier_installer/advanced.json": {
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"#minecraft:planks"
+],
+"result": "mekanism:advanced_tier_installer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/tier_installer/basic.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"#minecraft:planks"
+],
+"result": "mekanism:basic_tier_installer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/tier_installer/elite.json": {
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"#minecraft:planks"
+],
+"result": "mekanism:elite_tier_installer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/tier_installer/ultimate.json": {
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"#minecraft:planks"
+],
+"result": "mekanism:ultimate_tier_installer",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/diversion_transporter.json": {
+"refs": [
+"#c:bars",
+"#c:dusts/redstone",
+"#c:ingots/steel"
+],
+"result": "mekanism:diversion_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/logistical_transporter/advanced.json": {
+"refs": [
+"#mekanism:alloys/infused",
+"mekanism:basic_logistical_transporter"
+],
+"result": "mekanism:advanced_logistical_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/logistical_transporter/basic.json": {
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/steel"
+],
+"result": "mekanism:basic_logistical_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/logistical_transporter/elite.json": {
+"refs": [
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_logistical_transporter"
+],
+"result": "mekanism:elite_logistical_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/logistical_transporter/ultimate.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:elite_logistical_transporter"
+],
+"result": "mekanism:ultimate_logistical_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/mechanical_pipe/advanced.json": {
+"refs": [
+"#mekanism:alloys/infused",
+"mekanism:basic_mechanical_pipe"
+],
+"result": "mekanism:advanced_mechanical_pipe",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/mechanical_pipe/basic.json": {
+"refs": [
+"#c:buckets/empty",
+"#c:ingots/steel"
+],
+"result": "mekanism:basic_mechanical_pipe",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/mechanical_pipe/elite.json": {
+"refs": [
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_mechanical_pipe"
+],
+"result": "mekanism:elite_mechanical_pipe",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/mechanical_pipe/ultimate.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:elite_mechanical_pipe"
+],
+"result": "mekanism:ultimate_mechanical_pipe",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/pressurized_tube/advanced.json": {
+"refs": [
+"#mekanism:alloys/infused",
+"mekanism:basic_pressurized_tube"
+],
+"result": "mekanism:advanced_pressurized_tube",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/pressurized_tube/basic.json": {
+"refs": [
+"#c:glass_blocks/cheap",
+"#c:ingots/steel"
+],
+"result": "mekanism:basic_pressurized_tube",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/pressurized_tube/elite.json": {
+"refs": [
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_pressurized_tube"
+],
+"result": "mekanism:elite_pressurized_tube",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/pressurized_tube/ultimate.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:elite_pressurized_tube"
+],
+"result": "mekanism:ultimate_pressurized_tube",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/restrictive_transporter.json": {
+"refs": [
+"#c:bars",
+"#c:ingots/steel"
+],
+"result": "mekanism:restrictive_transporter",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/thermodynamic_conductor/advanced.json": {
+"refs": [
+"#mekanism:alloys/infused",
+"mekanism:basic_thermodynamic_conductor"
+],
+"result": "mekanism:advanced_thermodynamic_conductor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/thermodynamic_conductor/basic.json": {
+"refs": [
+"#c:ingots/copper",
+"#c:ingots/steel"
+],
+"result": "mekanism:basic_thermodynamic_conductor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/thermodynamic_conductor/elite.json": {
+"refs": [
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_thermodynamic_conductor"
+],
+"result": "mekanism:elite_thermodynamic_conductor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/thermodynamic_conductor/ultimate.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:elite_thermodynamic_conductor"
+],
+"result": "mekanism:ultimate_thermodynamic_conductor",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/universal_cable/advanced.json": {
+"refs": [
+"#mekanism:alloys/infused",
+"mekanism:basic_universal_cable"
+],
+"result": "mekanism:advanced_universal_cable",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/universal_cable/basic.json": {
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/steel"
+],
+"result": "mekanism:basic_universal_cable",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/universal_cable/elite.json": {
+"refs": [
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_universal_cable"
+],
+"result": "mekanism:elite_universal_cable",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/transmitter/universal_cable/ultimate.json": {
+"refs": [
+"#mekanism:alloys/atomic",
+"mekanism:elite_universal_cable"
+],
+"result": "mekanism:ultimate_universal_cable",
+"result_components": [],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/anchor.json": {
+"refs": [
+"#c:dusts/diamond",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/chemical.json": {
+"refs": [
+"#c:dusts/iron",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/energy.json": {
+"refs": [
+"#c:dusts/gold",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/filter.json": {
+"refs": [
+"#c:dusts/tin",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/muffling.json": {
+"refs": [
+"#mekanism:muffling_center",
+"#minecraft:wool"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/speed.json": {
+"refs": [
+"#c:dusts/osmium",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/stone_generator.json": {
+"refs": [
+"#c:buckets/lava",
+"#c:buckets/water",
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/upgrade/xp_containment.json": {
+"refs": [
+"#c:glass_blocks/cheap",
+"#mekanism:alloys/infused",
+"minecraft:experience_bottle"
+],
+"result": "mekanism:upgrade",
+"result_components": [
+"mekanism:upgrade_type"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/vein_mining_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:pellets/polonium",
+"mekanism:module_base",
+"minecraft:diamond_axe",
+"minecraft:diamond_pickaxe",
+"minecraft:diamond_shovel"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+},
+"mekanism/recipe/vision_enhancement_unit.json": {
+"refs": [
+"#c:alloys/elite",
+"#c:gems/emerald",
+"#c:pellets/polonium",
+"mekanism:module_base"
+],
+"result": "mekanism:module",
+"result_components": [
+"mekanism:module_type",
+"minecraft:rarity"
+],
+"type": "minecraft:crafting_shaped"
+}
+}

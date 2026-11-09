@@ -2,6 +2,7 @@
 //! usa uma parte.
 #![allow(dead_code)]
 pub mod burn_time;
+pub mod craft;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource};
 use machinery_basis_core::containers::ItemResource;
