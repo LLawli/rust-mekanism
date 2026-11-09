@@ -35,6 +35,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   table, o nome, a chave `description.*`, as tags de bloco e de item, as 31 receitas de mesa (com as tags `c:` do NeoForge `buckets/empty`, `chests/wooden`, `barrels/wooden`, `storage_blocks/diamond` e `clumps/resin`, iguais às do jar), e o lugar na aba criativa do Mekanism e nas de blocos funcionais, redstone e
   ferramentas do vanilla. O original em jogo (`BlocosTraceTest`) é a referência: `rastros/blocos.jsonl`, `blocos_formas.jsonl` e `blocos_colocacao.jsonl`, que `tests/blocos_registry.rs`
   e `tests/blocos_content.rs` conferem estado a estado.
+  O chão sob as máquinas de forma menor que o cubo aparece como no original (`properties.occludes: false` nos 67 blocos de `isSolidRender` falso: antes a face de cima do chão sumia e o céu aparecia numa faixa sob o `laser`, o `qio_exporter`,
+  o `logistical_sorter` e o `quantum_entangloporter`); em jogo, os 84 ids, 405 estados, 67 posições e a luz de 159 estados batem com o original, e os prints lado a lado ficam em 0,16 a 0,42 % de pixels diferentes nos blocos apagados.
 - O bloco posto como o original o põe (`machinery_basis/placement`): o `facing` vem da guinada do jogador e, nos blocos que viram para cima e para baixo, da inclinação (`AttributeStateFacing`,
   `PLAYER_LOCATION`), ou da face clicada (`SELECTED_FACE`), e o `fluid_logged` do fluido que estava no lugar (`BlockStateHelper.getStateForPlacement`). Confere com o original a cada guinada de
   -720 a 720 graus, a cada inclinação de -90 a 90 e a cada face (`machinery_basis/core/tests/placement_reference.rs`) e em jogo (64 casos).
