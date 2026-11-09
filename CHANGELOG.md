@@ -33,6 +33,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   itens do Mekanism, e a aba "Mekanism" fica com 180 entradas na ordem do original. Os arquivos copiados e as propriedades são conferidos contra o Java e a datagen (`rastros/equipment_items.json`,
   `tests/equipment_content.rs`). O uso (energia, modos, tanques, módulos, ferramenta e arma, a roupa especial do MekaSuit, do jetpack, das botas e do tanque, o desenho do Robit) fica para as fases de cada um.
   O arquivo do item do Configurator, que escolhe o modelo por um componente do mod, carrega por uma injeção nova (`item_component_type`, H5).
+- O MekaSuit, o jetpack (e o blindado), as Free Runners (e as blindadas) e o tanque de mergulho são desenhados no corpo, como no original (`client/render/armor`: `MekaSuitArmor`,
+  `ChestArmor`, `FreeRunnerArmor`): no jogador (em terceira pessoa, na tela do inventário e o braço em primeira pessoa), nos outros jogadores, nos mobs de modelo humanoide (zumbi, husk,
+  esqueleto) e no armor stand, na pose das partes do corpo (agachar, nadar, voar, o balanço das pernas), com o bebê escalado como o original (`scaleBaby`). O traje é o OBJ do original
+  (`mekasuit.obj`, 126 objetos) em 22 modelos avulsos, um por grupo que `MekaSuitArmor.createQuads` monta (peça, posição do corpo, brilho, as peças `excl_` e `shared_`), com os LEDs
+  (`_led`) sem luz do mundo; o corpo, os braços, as pernas e a cabeça do jogador somem enquanto o traje os cobre, e a capa some com o peito do MekaSuit, o jetpack e o tanque. A mecânica
+  é genérica (`machinery_basis_core::worn_gear`, uma tabela de itens com os modelos, as partes e os passos de cada um; `glue`: o desenho) e o Mekanism só dá a tabela
+  (`mekanism_rules::worn_gear`). Seis injeções cruas novas e dois módulos (H55). Em teste: os quads de cada peça e de cada combinação de peças vestidas conferem com o
+  `MekaSuitArmor.createQuads` rodado no cliente do original (`rastros/armor_groups.jsonl`, 72 linhas), e os números de pose com o texto do Java (`rastros/armor_gear.json`).
 - As tags `c:dyes/black`, `c:dyes/orange`, `c:glass_panes` e `c:glass_panes/colorless` do NeoForge (o Horizon não tem tag `c:`), que as receitas do traje de hazmat e do conta-gotas citam (decisão 19).
 - As quatro máquinas acesas soltam a fumaça e o pó de redstone na face da frente (`Machine.java:23`), e o Heat Generator aceso a fumaça e a chama pela de trás (`GeneratorsBlockTypes.java:69`), como o `BlockTile.animateTick` do original: o cliente sorteia as posições em volta do jogador a cada tick (667 a 16 blocos e 667 a 32, no
   `ClientLevel.animateTick` do Horizon) e cada bloco aceso sorteado solta uma partícula por entrada, girada pelo `facing`. A chave `machineEffects` (`rendering.particle` do `config/Mekanism/client.toml`, ligada por padrão) as desliga. Uma injeção nova na `machinery_basis` (`animate_tick`, mais um módulo que guarda os animadores dos mods) leva o sorteio do Horizon até o

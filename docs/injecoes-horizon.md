@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois da frente `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos) e da frente `itens-equipamento`, que acrescentou 1 injeção crua, a `item_component_type`, sobre a das `itens-craft`: 2 injeções cruas e 1 módulo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois da frente `armadura-vestida`, que acrescentou 6 injeções cruas, o hook `standalone_models` e 2 módulos, e da frente `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos) e da frente `itens-equipamento`, que acrescentou 1 injeção crua, a `item_component_type`, sobre a das `itens-craft`: 2 injeções cruas e 1 módulo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 106 | |
-| Hook do catálogo, usado só com o contrato dele | 36 | não |
+| `[[injection]]` no total | 113 | |
+| Hook do catálogo, usado só com o contrato dele | 37 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 36 | sim |
-| Injeção crua (`target = ...`) | 34 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 21 | sim |
+| Injeção crua (`target = ...`) | 40 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 23 | sim |
 
-36 + 36 + 34 = 106. Os 21 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-70 injeções e 21 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+37 + 36 + 40 = 113. Os 23 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+76 injeções e 23 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 34 | 21 | 36 |
+| Em uso | 40 | 23 | 36 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -53,6 +53,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H8 helpers de leitura e escrita | helpers | 7 hooks com estrutura privada, os módulos `glue` | em uso (7) |
 | H9 `screen_layout` | hook | módulo `windows` em `native_hooks.rs`, escrita em `mod_screen` | em uso (módulo) |
 | H10 `screen_slot_at` | hook | `slot_at` (RETURN) | em uso |
+| H55 `mob_layer` v2 e as partes do modelo do mob | hook | `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `worn_arm`, `worn_cape` e os módulos `worn-gear` e `worn-hides` | em uso (6 cruas, 2 módulos) |
 | H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | em uso |
 | H12 `menu_hide_slots` | helper | uso de `lan.hub` em `net_from_client` | em uso |
 | H13 `block_entity_save` | hook | `save_level` | spike |
@@ -136,18 +137,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 46 | 24 | 22 | 16 |
-| `mods/mekanism/native/horizon-mixin.toml` | 38 | 28 | 10 | 3 |
+| `mods/machinery_basis/horizon-mixin.toml` | 52 | 24 | 28 | 18 |
+| `mods/mekanism/native/horizon-mixin.toml` | 39 | 29 | 10 | 3 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 22 | 20 | 2 | 2 |
-| Total | 106 | 72 | 34 | 21 |
+| Total | 113 | 73 | 40 | 23 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `creative_tabs` e `fluorite_experience` (`RETURN`). Doze das 32 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; e a `item_component_type`, de 2026-11-09); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `animate_tick`, `creative_tabs` e `fluorite_experience`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `creative_tabs`, `fluorite_experience` e `worn_hide_player` (`RETURN`). Doze das 32 cruas de antes são `cancellable = true`, e a `worn_arm` e a `worn_cape` (de 2026-11-09) também (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; e a `item_component_type`, de 2026-11-09); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `animate_tick`, `creative_tabs` e `fluorite_experience`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
-Dos 72 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 73 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (34)
+## Injeções cruas em uso (40)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -525,6 +526,37 @@ e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08,
 - **Risco:** renomear `creative_tabs`, mudar o formato da linha da aba (`id` e `items` em SNBT de pilha) ou a aba de busca (que continua só com o `upgrade` sem tipo) quebra o build ou deixa a aba sem as pilhas, sem erro.
 - **Conferido em jogo** (2026-11-09, `horizon`): a aba "Mekanism" mostra as oito pilhas de upgrade com os ícones de tipo, e a aba Ingredients do vanilla termina com os itens do Mekanism na ordem do original (prints em `~/.cache/rust-mekanism/wa/itens-craft/`).
 
+### O equipamento vestido (machinery_basis, 6 injeções e 2 módulos)
+
+- **Estado:** em uso desde 2026-11-09. Seis injeções e dois módulos (`worn-gear` e `worn-hides`), mais o hook `standalone_models` do `mekanism` (limpo). **Proposta:** H55.
+  - `worn_mob`: HEAD de `horizon_client::game::mob_blocks::Game<'_>::head_item_geometry` (o `CustomHeadLayer`: o jogador da janela em terceira pessoa, os outros jogadores, os mobs e o jogador da
+    tela do inventário passam por ela, depois do modelo e da armadura do vanilla). Desenha os modelos do equipamento vestido na pose da parte do corpo.
+  - `worn_stand`: HEAD de `horizon_client::game::armor_stands::Game<'_>::armor_stand_vertices` (`ArmorStandRenderer`: o armor stand tem o desenho próprio, fora do caminho dos mobs). Mesma coisa na pose do stand.
+  - `worn_arm`: HEAD cancelável de `horizon_client::game::Game<'_>::first_person_arm` (`renderPlayerHand`): com o peito do MekaSuit o braço do vanilla não se desenha e o traje desenha o dele (`RenderArmEvent`).
+  - `worn_cape`: HEAD cancelável de `horizon_client::game::perspective::Game<'_>::player_cape_geometry`: a capa some com o peito do MekaSuit, o jetpack e o tanque (`avatarState.showCape = false`).
+  - `worn_hide`: HEAD de `horizon_client_lib::mobs::anim::setup` e `worn_hide_player`: RETURN de `horizon_client_lib::mobs::anim::player_model_visibility`. As partes do corpo que o equipamento esconde
+    (`overrideModelPartVisibility`: o MekaSuit esconde a cabeça, o corpo, os braços e as pernas do modelo) saem por `Poses::visible(parte, false)`. O jogador mostra de novo o corpo, os braços e as pernas ao montar a
+    visibilidade do modelo, depois de `setup` ter começado, então o fim de `player_model_visibility` esconde de novo (uma lista numa variável da thread, que `setup` enche). Um RETURN de `setup` não serve: o corpo dele tem
+    `matches!` e o planejador exige o caminho absoluto de `std` no macro.
+- **Helpers:** `mods/machinery_basis/worn_gear_mob.rs`, `worn_gear_stand.rs`, `worn_gear_arm.rs`, `worn_gear_cape.rs`, `worn_gear_hide.rs` e `worn_gear_hide_player.rs`, que chamam o módulo `worn-gear`
+  (`crate::game::machinery_basis_gear`, `worn_gear.rs`, enxertado em `game.rs`) e o módulo `worn-hides` (`crate::mobs::anim::machinery_basis_worn`, `worn_hides.rs`, enxertado em `mobs/anim.rs` com
+  `visibility = "pub"`, porque quem diz o que cada item esconde é o crate do jogo e quem esconde é o crate de baixo). O mod entrega a tabela (`mekanism_rules::worn_gear::WORN_GEAR`, dados e passos de
+  pose, em `machinery_basis_core::worn_gear`) pelo hook `standalone_models` (`machinery_basis_gear::register`), que também devolve ao Horizon os ids dos modelos avulsos que ele tem de assar (`native_draw_model`
+  e `native_standalone_models` são o contrato que o hook usa).
+- **Por que são necessárias:** o `MekanismArmorLayer` do original (`HumanoidArmorLayer` com o `ICustomArmor` de cada item, `client/render/armor`) pede o modelo de cada peça na pose da PARTE do modelo
+  (`baseModel.body.translateAndRotate`, `leftLeg`...), no jogador, no armor stand, em qualquer mob humanoide, na tela do inventário e, para o braço, na primeira pessoa, e pede as partes do modelo do vanilla escondidas
+  (`registerRenderStateModifiers`). O hook `mob_layer` do Horizon (`native_mob_layer`, API 149) dá o quadro do mob (giro do corpo, da cabeça, o passo), não as partes do modelo (agachar, nadar, voar não estão nele), e
+  não roda para o armor stand, nem para o jogador da tela do inventário, nem na primeira pessoa; `native_render_hand` só esconde o braço; nenhum hook esconde uma parte do modelo nem a capa.
+- **Java:** `MekaSuitArmor.java` (`ModelPos`, `createQuads`, `PartData.render`), `ChestArmor.java:33-57`, `FreeRunnerArmor.java:33-55`, `ClientRegistration.registerRenderStateModifiers` (`ClientRegistration.java:322-399`),
+  `MekanismArmorLayer.java`, `RenderTickHandler.renderArm` (`RenderTickHandler.java:131-142`), `BaseModelCache.OBJModelData` (a rotação de PI em Z do estado do modelo, `:127-129`).
+- **Hook mais próximo:** `mob_layer` (API 149) e `native_draw_model` (API 151): o desenho do modelo avulso, a lista dos modelos e a luz dos LEDs usam o que o Horizon dá, sem injeção; o que falta é o que as seis cobrem.
+- **Hook proposto:** H55, abaixo.
+- **Risco:** renomear `head_item_geometry` (o que a chama passa `mob, camera, alpha, light, lit, out`), `armor_stand_vertices` (`a, base, packed, skin, out`), `first_person_arm` (`left, m, light, out`),
+  `player_cape_geometry` (`m, ...`), `anim::setup` (`m, s, p, w_anims`) ou `player_model_visibility` (`p, hidden, spectator`); `render::part_transform`/`part_matrix`, `Poses::{visible, new, get, has}`,
+  `Game::baked_model_vertices` (privado de `minecarts.rs`), `Game::{armor, player_model, armor_stand_assets, pack, res}` e `Resources::player_arm`; o módulo `worn-hides` exige que `anim.rs` não tenha `use ...::*` de topo.
+  Os dois `matches!` de `anim::setup` fazem o planejador recusar o RETURN dele; um RETURN de `player_model_visibility` precisa do valor como primeiro argumento (o corpo é um laço que usa `p`).
+- **Conferido em jogo** (2026-11-09, `horizon`): ver "Armadura vestida" no inventário do plano.
+
 ### `animate_tick` (machinery_basis)
 
 - **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client_lib::animate_tick::block_animate_tick` (`animate_tick.rs:819`, função livre privada), HEAD, não cancelável. **Proposta:** H39.
@@ -651,7 +683,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (21)
+## Módulos (23)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -676,6 +708,8 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `liquid-glue` (machinery_basis) | `game.rs` | os fluidos de mod como bloco de líquido: o `FlowingFluid` (`machinery_basis_core::liquid`) ligado ao tick agendado, ao balde (pôr e pegar a fonte, com o raio do balde vazio), ao dispensador e à recusa da água do vanilla; lê o mundo pelos métodos privados de `GameLevel` e `Game` | H47 |
 | `water-like` (machinery_basis) | `motion.rs` (crate `horizon_client_lib`, `pub`) | a tabela dos estados de bloco de líquido de mod por número de estado, que o `Game` escreve e o RETURN `fluid_state` lê (a biblioteca não vê a `machinery-basis-core`) | H47 |
 | `animate-registry` (machinery_basis) | `animate_tick.rs` (crate `horizon_client_lib`, `pub`) | os animadores que os mods registram para o `animateTick` dos blocos de mod, que a injeção `animate_tick` chama: o crate do jogo registra, o de baixo chama | H39 |
+| `worn-gear` (machinery_basis) | `game.rs` | o desenho do equipamento vestido com modelo próprio: a pose da parte do corpo de um mob (`render::part_transform`) ou de um armor stand (`render::part_matrix`), `baked_model_vertices` (privado de `minecarts.rs`), `model_catalog.standalone`, `armor_stand_assets`, `armor`, `player_model` e `res.player_arm` | H55 |
+| `worn-hides` (machinery_basis) | `mobs/anim.rs` (crate `horizon_client_lib`, `pub`) | as partes do modelo que o equipamento vestido esconde (`Poses::visible`), que as injeções `worn_hide` e `worn_hide_player` aplicam: o crate do jogo diz o que cada item esconde, o de baixo aplica | H55 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 
@@ -1286,6 +1320,18 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Exemplo:** `fn block_animate_tick(&mut self, state: BlockState, pos: [i32; 3], player: [i32; 3], particles: &mut Particles)`, com `Particles::random()` e `Particles::add(options, pos, velocity)`.
 - **Risco do que existe hoje:** `block_animate_tick`, `AnimateContext::registry` e `ParticleEngine::{random, add}`.
 
+### H55 `mob_layer` v2 e as partes do modelo do mob
+
+- **Lado:** cliente. **Tipo:** hook, `listen`, mais um pedido de dado e dois de cancelamento.
+- **O que faz:** (a) `native_mob_layer` roda também para o armor stand, para o jogador da tela do inventário (e a do smithing) e para cada mão da primeira pessoa, com a pose de cada parte do modelo do mob
+  (`part(nome) -> Mat4`: `head`, `body`, `left_arm`, `right_arm`, `left_leg`, `right_leg`, já com o agachar, o nado, o voo e o passo), a escala do bebê (`age_scale`) e o que ele veste em cada slot, para o mod desenhar
+  um modelo avulso na pose de uma parte, como o `ICustomArmor` do original (`baseModel.<parte>.translateAndRotate`). (b) `native_mob_part_visible(mob, parte, &mut visivel)`: o mod esconde uma parte do modelo
+  (`HumanoidModel.head.visible`, `PartNames.BODY`: a parte e as filhas, o chapéu, a jaqueta, as mangas) enquanto veste algo, como o `overrideModelPartVisibility` do `registerRenderStateModifiers`. (c) a capa do jogador
+  cancelável (`showCape = false`), e `native_render_hand` com um `draw` para o braço que o mod desenha no lugar do do vanilla (`RenderArmEvent`, hoje só esconde).
+- **Hoje:** as seis injeções e os dois módulos da ficha "O equipamento vestido".
+- **Exemplo:** `fn mob_layer(&self, mob: &NativeMobRender<'_>, who: Option<&NativePlayerRender<'_>>, draw: &mut BlockEntityDraw)` com `mob.part("body") -> Option<Mat4>` e `mob.worn(slot) -> Option<&str>`.
+- **Risco do que existe hoje:** os nomes da ficha.
+
 ## Correções pedidas ao renderer do Horizon
 
 Estas não são injeções. São diferenças de pixel que vêm do próprio renderer do Horizon, então afetam o jogo inteiro, não só o
@@ -1415,8 +1461,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=99 hook=67 target=32 module=19 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 36 + 31 tem de somar `hook`.
+   Hoje: `injection=113 hook=73 target=40 module=23 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 37 + 36 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 
