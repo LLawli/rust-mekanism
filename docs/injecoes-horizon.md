@@ -96,7 +96,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H67 `transform` do modelo (translação do modelo e do filho do `composite`) | dado | nenhuma (o `.obj` do Wind Generator leva a translação nos vértices; o painel do Advanced Solar Generator fica um bloco abaixo) | proposta |
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
 | H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e `fire_before` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade pela água) | em uso (2 módulos, 2 cruas, 4 hooks) |
-| H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor) | pedido |
+| H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
+| H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -342,10 +343,10 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 
 ### `active_light` (mekanism)
 
-- **Estado:** em uso desde 2026-11-07; ampliada em 2026-11-09 (frente `blocos-maquinas`). **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD
+- **Estado:** em uso desde 2026-11-07; ampliada em 2026-11-09 (frente `blocos-maquinas`) e outra vez (frente `blocos-estrutura`, só a tabela). **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD
   (`mod_content.rs:1319`, método privado do plano de conteúdo, que recebe o `NewBlock`, a combinação das propriedades de estado próprias `combo` e a linha `J` da tabela de jogo de cada estado).
 - **Helper:** `mods/mekanism/native/active_light.rs`. Dois usos. (1) O Crusher, a Enrichment Chamber, o Energized Smelter e o Metallurgic Infuser, e só nos estados em que a linha já emite luz (o `lit=true` do gabarito `minecraft:furnace`, 13): troca por 8.
-  (2) Os 84 blocos de máquina e blocos avulsos com tile (gabarito `minecraft:lodestone`, estados `active` e `fluid_logged` próprios): a tabela `mekanism_rows` (módulo `block-rows`, `native/block_rows_table.rs`, gerada de `rastros/blocos.jsonl`, o original em jogo, por `dev/referencia/blocos_conteudo.py`, e conferida
+  (2) Os 84 blocos de máquina e blocos avulsos com tile e os 62 de armazenamento, indução, multibloco e transmissores (gabarito `minecraft:lodestone`, estados `active` e `fluid_logged` próprios, ou o `minecraft:chorus_plant` dos 18 transmissores novos e dos 4 cabos, sem estado próprio): a tabela `mekanism_rows` (módulo `block-rows`, `native/block_rows_table.rs`, gerada de `rastros/blocos.jsonl`, o original em jogo, por `dev/referencia/blocos_conteudo.py`, e conferida
   estado a estado por `tests/blocos_registry.rs`) diz a luz do `active` (8, 13 ou 15), a da lava (15), a reação ao pistão, `can_occlude`, `solid_render`, `dampening`, `skylight_down` (com a oclusão do estado com fluido dentro) e a resistência negativa dos três blocos de `AttributeCustomResistance(-1)`, que a injeção escreve na linha de cada estado.
 - **Por que é necessária:** as quatro são `Machine` (`Machine.java:26`), com `Attributes.ACTIVE_LIGHT`, `AttributeStateActive(8)`
   (`Attributes.java:27`): luz 8 quando ativas e 0 quando não (`AttributeStateActive.java:49-51`, que soma ao 0 do bloco pela
@@ -1349,7 +1350,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 
 - **Lado:** cliente. **Tipo:** dado (`tint` num elemento do modelo, ou uma tinta por bloco no arquivo do bloco).
 - **O que faz:** um modelo de bloco de mod multiplica a cor de uma face por uma constante, como o `FluidTintSources.constant` e o `BlockTintSources` do original. O mesher só tem fontes de cor por nome de bloco (grama, folhagem, água, redstone).
-- **Hoje:** os 19 fluidos coloridos têm uma cópia da textura de líquido com a cor multiplicada no pixel (`scripts/gerar_fluidos.py`), e a água pesada, que tinge a água do vanilla, não tem a cor, porque o port não pode trazer a textura da Mojang.
+- **Hoje:** os 19 fluidos coloridos têm uma cópia da textura de líquido com a cor multiplicada no pixel (`scripts/gerar_fluidos.py`), e a água pesada, que tinge a água do vanilla, não tem a cor, porque o port não pode trazer a textura da Mojang. O vidro do tanque de fluido (`ClientRegistration.registerBlockColorHandlers`, a cor de cada tier lida de `colormap/tiers.png`) também: dez cópias (`fluid_tank_side_off` e `_on` por tier) e um modelo por tier (`dev/referencia/blocos_conteudo.py`, decisão 26).
 - **Risco do que existe hoje:** nenhum: são arquivos de conteúdo.
 
 ### H49 propriedades de linha do bloco
@@ -1357,8 +1358,15 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Lado:** servidor e cliente (o pistão, a luz, o mob, o fluido). **Tipo:** dado nas `properties` do bloco (e, para o que depende de estado, aceitando a condição de `random_ticks`).
 - **O que faz:** diz as colunas da linha de jogo que `BlockProperties` não tem: a reação ao pistão (`pushReaction`: `BlockMekanism.getPistonPushReaction` dá `IMMOVEABLE` a todo bloco com bloco de entidade), `canOcclude` e `isSolidRender` por separado (hoje `occludes: false` põe os dois falsos, e o original dá `canOcclude` verdadeiro e `isSolidRender` falso nas formas menores que o cubo),
   o amortecimento de luz e `propagatesSkylightDown`, a forma de oclusão (o mesher do Horizon esconde a face do vizinho pela forma da tabela `occlusion.nbt`, que um bloco de mod copia do gabarito, e pelo `can_occlude` de `render-definitions.json`; o port usa `occludes: false`, que desenha todas as faces, e o original esconde pela forma real), a luz condicional ao estado (H18), a resistência a explosões negativa (`AttributeCustomResistance(-1)`: o arquivo recusa), `canBeReplaced(state, fluid)` falso (`BlockMekanism.java`: um fluido não substitui a máquina) e `isPathfindable` falso (`BlockBase.isPathfindable`: a forma própria não deixa o mob passar).
-- **Hoje:** `active_light` (mekanism) e `block_rows` (mekanismgenerators) (crus, HEAD de `Plan::override_gameplay`) com a tabela do módulo `block-rows` de cada um, para as colunas da linha; `canBeReplaced` e `isPathfindable` não têm injeção.
+- **Hoje:** `active_light` (mekanism) e `block_rows` (mekanismgenerators) (crus, HEAD de `Plan::override_gameplay`) com a tabela do módulo `block-rows` de cada um (a do Mekanism com 150 blocos: os 84 de máquina, os 62 da frente `blocos-estrutura` e os quatro cabos, que o chorus plant deixa com a reação normal ao pistão), para as colunas da linha; `canBeReplaced` e `isPathfindable` não têm injeção.
 - **Risco do que existe hoje:** ver a ficha da injeção.
+
+### H60 variante de blockstate de mod com modelo de reserva e item especial de mod
+
+- **Lado:** cliente. **Tipo:** dado.
+- **O que faz:** o Mekanism escreve três coisas que o Horizon não lê: uma variante de blockstate de tipo próprio (`mekanism:energy_cube_sided`, `mekanism:special/transmitter`, `mekanism:special/qio_redstone_adapter`), que o Horizon recusa inteira quando a variante não tem `model` ("blockstate definition of mekanism:basic_energy_cube not loaded: missing model", visto no log e no print, o cubo sai como o modelo ausente), um modelo com carregador de mod (`loader: mekanism:energy_cube`, com `frame`, `leds` e `ports` no lugar de `elements`, e o OBJ `.obj.mek` dos transmissores) e um item `minecraft:special` com desenhista de mod (`mekanism:fluid_tank`, `mekanism:energy_cube`), que o Horizon troca pelo modelo base. O pedido é aceitar a variante de tipo desconhecido quando ela traz um `model` (ou um `fallback`) e desenhar com ele, e o item especial desconhecido com o modelo do `base`.
+- **Hoje:** nenhuma injeção: o gerador escreve o modelo comum equivalente (o quadro e os LEDs apagados do cubo de energia, o centro e o braço dos transmissores, o modelo do estado padrão no item do tanque de fluido), conferido contra o original, e o blockstate do QIO Redstone Adapter ganha o `model` (decisão 23). O que o desenhista faz com o conteúdo (o fluido, o núcleo de energia, as portas ativas) é a função de cada bloco.
+- **Risco do que existe hoje:** nenhum: são arquivos de conteúdo.
 
 ### H50 limite de caixas por forma
 
