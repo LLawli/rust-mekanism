@@ -1,0 +1,275 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 120 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "fabricas_basic",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_smelting_factory[facing=north]",
+    "setblock 61 -60 82 mekanism:basic_enriching_factory[facing=north]",
+    "setblock 62 -60 82 mekanism:basic_crushing_factory[facing=north]",
+    "setblock 63 -60 82 mekanism:basic_compressing_factory[facing=north]",
+    "setblock 64 -60 82 mekanism:basic_combining_factory[facing=north]",
+    "setblock 65 -60 82 mekanism:basic_purifying_factory[facing=north]",
+    "setblock 66 -60 82 mekanism:basic_injecting_factory[facing=north]",
+    "setblock 67 -60 82 mekanism:basic_infusing_factory[facing=north]",
+    "setblock 68 -60 82 mekanism:basic_sawing_factory[facing=north]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "fabricas_basic_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_smelting_factory[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:basic_enriching_factory[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:basic_crushing_factory[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:basic_compressing_factory[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:basic_combining_factory[facing=north,active=true]",
+    "setblock 65 -60 82 mekanism:basic_purifying_factory[facing=north,active=true]",
+    "setblock 66 -60 82 mekanism:basic_injecting_factory[facing=north,active=true]",
+    "setblock 67 -60 82 mekanism:basic_infusing_factory[facing=north,active=true]",
+    "setblock 68 -60 82 mekanism:basic_sawing_factory[facing=north,active=true]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "fabricas_ultimate",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:ultimate_smelting_factory[facing=north]",
+    "setblock 61 -60 82 mekanism:ultimate_enriching_factory[facing=north]",
+    "setblock 62 -60 82 mekanism:ultimate_crushing_factory[facing=north]",
+    "setblock 63 -60 82 mekanism:ultimate_compressing_factory[facing=north]",
+    "setblock 64 -60 82 mekanism:ultimate_combining_factory[facing=north]",
+    "setblock 65 -60 82 mekanism:ultimate_purifying_factory[facing=north]",
+    "setblock 66 -60 82 mekanism:ultimate_injecting_factory[facing=north]",
+    "setblock 67 -60 82 mekanism:ultimate_infusing_factory[facing=north]",
+    "setblock 68 -60 82 mekanism:ultimate_sawing_factory[facing=north]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "fabricas_ultimate_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:ultimate_smelting_factory[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:ultimate_enriching_factory[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:ultimate_crushing_factory[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:ultimate_compressing_factory[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:ultimate_combining_factory[facing=north,active=true]",
+    "setblock 65 -60 82 mekanism:ultimate_purifying_factory[facing=north,active=true]",
+    "setblock 66 -60 82 mekanism:ultimate_injecting_factory[facing=north,active=true]",
+    "setblock 67 -60 82 mekanism:ultimate_infusing_factory[facing=north,active=true]",
+    "setblock 68 -60 82 mekanism:ultimate_sawing_factory[facing=north,active=true]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "fabricas_tiers",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_enriching_factory[facing=north]",
+    "setblock 61 -60 82 mekanism:advanced_enriching_factory[facing=north]",
+    "setblock 62 -60 82 mekanism:elite_enriching_factory[facing=north]",
+    "setblock 63 -60 82 mekanism:ultimate_enriching_factory[facing=north]",
+    "setblock 64 -60 82 mekanism:basic_infusing_factory[facing=north]",
+    "setblock 65 -60 82 mekanism:advanced_infusing_factory[facing=north]",
+    "setblock 66 -60 82 mekanism:elite_infusing_factory[facing=north]",
+    "setblock 67 -60 82 mekanism:ultimate_infusing_factory[facing=north]"
+   ],
+   "tp": "64.0 -58.38 76.35 0 10.2"
+  },
+  {
+   "name": "fabricas_tiers_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_enriching_factory[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:advanced_enriching_factory[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:elite_enriching_factory[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:ultimate_enriching_factory[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:basic_infusing_factory[facing=north,active=true]",
+    "setblock 65 -60 82 mekanism:advanced_infusing_factory[facing=north,active=true]",
+    "setblock 66 -60 82 mekanism:elite_infusing_factory[facing=north,active=true]",
+    "setblock 67 -60 82 mekanism:ultimate_infusing_factory[facing=north,active=true]"
+   ],
+   "tp": "64.0 -58.38 76.35 0 10.2"
+  },
+  {
+   "name": "cubos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:combiner[facing=north]",
+    "setblock 61 -60 82 mekanism:osmium_compressor[facing=north]",
+    "setblock 62 -60 82 mekanism:purification_chamber[facing=north]",
+    "setblock 63 -60 82 mekanism:chemical_injection_chamber[facing=north]",
+    "setblock 64 -60 82 mekanism:precision_sawmill[facing=north]",
+    "setblock 65 -60 82 mekanism:painting_machine[facing=north]",
+    "setblock 66 -60 82 mekanism:pigment_extractor[facing=north]",
+    "setblock 67 -60 82 mekanism:formulaic_assemblicator[facing=north]",
+    "setblock 68 -60 82 mekanism:fuelwood_heater[facing=north]",
+    "setblock 69 -60 82 mekanism:oredictionificator[facing=north]",
+    "setblock 70 -60 82 mekanism:dimensional_stabilizer",
+    "setblock 71 -60 82 mekanism:teleporter"
+   ],
+   "tp": "66.0 -58.38 74.55 0 7.8"
+  },
+  {
+   "name": "cubos_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:combiner[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:osmium_compressor[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:purification_chamber[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:chemical_injection_chamber[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:precision_sawmill[facing=north,active=true]",
+    "setblock 65 -60 82 mekanism:painting_machine[facing=north,active=true]",
+    "setblock 66 -60 82 mekanism:pigment_extractor[facing=north,active=true]",
+    "setblock 67 -60 82 mekanism:formulaic_assemblicator[facing=north,active=true]",
+    "setblock 68 -60 82 mekanism:fuelwood_heater[facing=north,active=true]",
+    "setblock 69 -60 82 mekanism:oredictionificator[facing=north,active=true]",
+    "setblock 70 -60 82 mekanism:dimensional_stabilizer[active=true]",
+    "setblock 71 -60 82 mekanism:teleporter"
+   ],
+   "tp": "66.0 -58.38 74.55 0 7.8"
+  },
+  {
+   "name": "quimica",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chemical_oxidizer[facing=north]",
+    "setblock 62 -60 82 mekanism:chemical_infuser[facing=north]",
+    "setblock 64 -60 82 mekanism:chemical_dissolution_chamber[facing=north]",
+    "setblock 66 -60 82 mekanism:chemical_washer[facing=north]",
+    "setblock 68 -60 82 mekanism:chemical_crystallizer[facing=north]",
+    "setblock 70 -60 82 mekanism:electrolytic_separator[facing=north]",
+    "setblock 72 -60 82 mekanism:rotary_condensentrator[facing=north]",
+    "setblock 74 -60 82 mekanism:pressurized_reaction_chamber[facing=north]",
+    "setblock 76 -60 82 mekanism:isotopic_centrifuge[facing=north]",
+    "setblock 78 -60 82 mekanism:nutritional_liquifier[facing=north]",
+    "setblock 80 -60 82 mekanism:antiprotonic_nucleosynthesizer[facing=north]"
+   ],
+   "tp": "70.5 -58.38 70.5 0 5.1"
+  },
+  {
+   "name": "quimica_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chemical_oxidizer[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:chemical_infuser[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:chemical_dissolution_chamber[facing=north,active=true]",
+    "setblock 66 -60 82 mekanism:chemical_washer[facing=north,active=true]",
+    "setblock 68 -60 82 mekanism:chemical_crystallizer[facing=north,active=true]",
+    "setblock 70 -60 82 mekanism:electrolytic_separator[facing=north,active=true]",
+    "setblock 72 -60 82 mekanism:rotary_condensentrator[facing=north,active=true]",
+    "setblock 74 -60 82 mekanism:pressurized_reaction_chamber[facing=north,active=true]",
+    "setblock 76 -60 82 mekanism:isotopic_centrifuge[facing=north,active=true]",
+    "setblock 78 -60 82 mekanism:nutritional_liquifier[facing=north,active=true]",
+    "setblock 80 -60 82 mekanism:antiprotonic_nucleosynthesizer[facing=north,active=true]"
+   ],
+   "tp": "70.5 -58.38 70.5 0 5.1"
+  },
+  {
+   "name": "grandes",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:digital_miner[facing=north]",
+    "setblock 64 -60 82 mekanism:modification_station[facing=north]",
+    "setblock 68 -60 82 mekanism:security_desk[facing=north]",
+    "setblock 72 -60 82 mekanism:seismic_vibrator[facing=north]",
+    "setblock 76 -60 82 mekanism:solar_neutron_activator[facing=north]",
+    "setblock 80 -60 82 mekanism:pigment_mixer[facing=north]",
+    "setblock 84 -60 82 mekanism:resistive_heater[facing=north]",
+    "setblock 88 -60 82 mekanism:electric_pump[facing=north]",
+    "setblock 92 -60 82 mekanism:fluidic_plenisher[facing=north]"
+   ],
+   "tp": "76.5 -58.38 65.1 0 0.1"
+  },
+  {
+   "name": "grandes_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:digital_miner[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:modification_station[facing=north]",
+    "setblock 68 -60 82 mekanism:security_desk[facing=north]",
+    "setblock 72 -60 82 mekanism:seismic_vibrator[facing=north,active=true]",
+    "setblock 76 -60 82 mekanism:solar_neutron_activator[facing=north,active=true]",
+    "setblock 80 -60 82 mekanism:pigment_mixer[facing=north,active=true]",
+    "setblock 84 -60 82 mekanism:resistive_heater[facing=north,active=true]",
+    "setblock 88 -60 82 mekanism:electric_pump[facing=north,active=true]",
+    "setblock 92 -60 82 mekanism:fluidic_plenisher[facing=north,active=true]"
+   ],
+   "tp": "76.5 -58.38 65.1 0 0.1"
+  },
+  {
+   "name": "lasers_qio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:laser[facing=up]",
+    "setblock 62 -60 82 mekanism:laser_amplifier[facing=up]",
+    "setblock 64 -60 82 mekanism:laser_tractor_beam[facing=up]",
+    "setblock 66 -60 82 mekanism:logistical_sorter[facing=up]",
+    "setblock 68 -60 82 mekanism:quantum_entangloporter[facing=north]",
+    "setblock 70 -60 82 mekanism:qio_dashboard[facing=up]",
+    "setblock 72 -60 82 mekanism:qio_drive_array[facing=north]",
+    "setblock 74 -60 82 mekanism:qio_exporter[facing=up]",
+    "setblock 76 -60 82 mekanism:qio_importer[facing=up]",
+    "setblock 78 -60 82 mekanism:qio_redstone_adapter[facing=up]"
+   ],
+   "tp": "69.5 -58.38 71.4 0 0.1"
+  },
+  {
+   "name": "lasers_qio_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:laser[facing=up,active=true]",
+    "setblock 62 -60 82 mekanism:laser_amplifier[facing=up]",
+    "setblock 64 -60 82 mekanism:laser_tractor_beam[facing=up]",
+    "setblock 66 -60 82 mekanism:logistical_sorter[facing=up,active=true]",
+    "setblock 68 -60 82 mekanism:quantum_entangloporter[facing=north]",
+    "setblock 70 -60 82 mekanism:qio_dashboard[facing=up,active=true]",
+    "setblock 72 -60 82 mekanism:qio_drive_array[facing=north,active=true]",
+    "setblock 74 -60 82 mekanism:qio_exporter[facing=up,active=true]",
+    "setblock 76 -60 82 mekanism:qio_importer[facing=up,active=true]",
+    "setblock 78 -60 82 mekanism:qio_redstone_adapter[facing=up,active=true]"
+   ],
+   "tp": "69.5 -58.38 71.4 0 0.1"
+  },
+  {
+   "name": "avulsos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chargepad[facing=north]",
+    "setblock 61 -60 82 mekanism:industrial_alarm[facing=up]",
+    "setblock 62 -60 82 mekanism:radioactive_waste_barrel[facing=north]",
+    "setblock 63 -60 82 mekanism:personal_barrel[facing=north]",
+    "setblock 64 -60 82 mekanism:personal_chest[facing=north]",
+    "setblock 65 -60 82 mekanism:cardboard_box"
+   ],
+   "tp": "63.0 -58.38 77.25 0 12.1"
+  },
+  {
+   "name": "avulsos_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chargepad[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:industrial_alarm[facing=up,active=true]",
+    "setblock 62 -60 82 mekanism:radioactive_waste_barrel[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:personal_barrel[facing=north]",
+    "setblock 64 -60 82 mekanism:personal_chest[facing=north]",
+    "setblock 65 -60 82 mekanism:cardboard_box"
+   ],
+   "tp": "63.0 -58.38 77.25 0 12.1"
+  },
+  {
+   "name": "quimica_lava",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chemical_oxidizer[facing=north,active=true,fluid_logged=lava]",
+    "setblock 62 -60 82 mekanism:chemical_infuser[facing=north,active=true,fluid_logged=lava]",
+    "setblock 64 -60 82 mekanism:chemical_dissolution_chamber[facing=north,active=true,fluid_logged=lava]",
+    "setblock 66 -60 82 mekanism:chemical_washer[facing=north,active=true,fluid_logged=lava]",
+    "setblock 68 -60 82 mekanism:chemical_crystallizer[facing=north,active=true,fluid_logged=lava]",
+    "setblock 70 -60 82 mekanism:electrolytic_separator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 72 -60 82 mekanism:rotary_condensentrator[facing=north,active=true,fluid_logged=lava]",
+    "setblock 74 -60 82 mekanism:pressurized_reaction_chamber[facing=north,active=true,fluid_logged=lava]",
+    "setblock 76 -60 82 mekanism:isotopic_centrifuge[facing=north,active=true,fluid_logged=lava]",
+    "setblock 78 -60 82 mekanism:nutritional_liquifier[facing=north,active=true]",
+    "setblock 80 -60 82 mekanism:antiprotonic_nucleosynthesizer[facing=north,active=true,fluid_logged=lava]"
+   ],
+   "tp": "70.5 -58.38 70.5 0 5.1"
+  }
+ ]
+}
