@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 117 | |
+| `[[injection]]` no total | 119 | |
 | Hook do catálogo, usado só com o contrato dele | 37 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 36 | sim |
-| Injeção crua (`target = ...`) | 44 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 27 | sim |
+| Injeção crua (`target = ...`) | 46 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 28 | sim |
 
-37 + 36 + 44 = 117. Os 27 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-80 injeções e 27 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+37 + 36 + 46 = 119. Os 28 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+82 injeções e 28 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 44 | 27 | 36 |
+| Em uso | 46 | 28 | 36 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -94,7 +94,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H50 limite de caixas por forma | dado | `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`) | em uso (1) |
 | H65 tags de um mod que é dependência | dado | nenhuma (as quatro tags `mekanism:structures` que a datagen do Generators acrescenta ficam para o arquivo do Mekanism) | proposta |
 | H66 tags de mod no comando `execute if block #tag` | dado | nenhuma (só a conferência em jogo é afetada) | proposta |
-| H67 `transform` do modelo (translação do modelo e do filho do `composite`) | dado | nenhuma (o `.obj` do Wind Generator leva a translação nos vértices; o painel do Advanced Solar Generator fica um bloco abaixo) | proposta |
+| H67 `transform` do modelo (translação, rotação, escala e origem, na raiz e no filho do `composite`) | dado | as injeções `model_transform_decode` e `model_transform_bake` e o módulo `model-transform` (o `CuboidModel` ganha o campo e o cozimento junta a transformação ao `ModelState`) | em uso (2 cruas, 1 módulo) |
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
 | H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e `fire_before` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade pela água) | em uso (2 módulos, 2 cruas, 4 hooks) |
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
@@ -144,18 +144,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 53 | 24 | 29 | 19 |
+| `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
 | `mods/mekanism/native/horizon-mixin.toml` | 40 | 29 | 11 | 4 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 24 | 20 | 4 | 4 |
-| Total | 117 | 73 | 44 | 27 |
+| Total | 119 | 73 | 46 | 28 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`). Quinze das 44 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 73 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (44)
+## Injeções cruas em uso (46)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -608,6 +608,30 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 - **Risco:** renomear `ambient_occlusion` ou mudar a lista de argumentos (`pad`, `info`, `own`, `pos`, `positions`, `face`), os tipos privados `Padded` e `Info` (`full`, `shade`, `permeable`, `solid`) ou as funções `state`, `coords`, `cardinal` de `lighting.rs`; o módulo exige que `mesher.rs` não tenha `use ...::*` de topo. Diferenças que ficam: o `CardinalLighting` do Nether (o helper supõe o do Overworld, e o mesher multiplica pelo do Nether), o quad de modelo sem AO que a luz do bloco manda para o caminho plano (`prepareQuadFlat` do NeoForge pesa a luz direcional pela normal, e o do Horizon pela face mais próxima: o elemento girado de um bloco que emite luz ainda sai como no vanilla), o `shadeDirectionOverride` (nenhum modelo do Mekanism usa `shade: false`, mas 41 quads de 4 blocos têm `shade_direction_override: up`, e o helper dá o resultado limpo) e o cache de faces do NeoForge, que guarda as faces num `int` de bits e indexa até 83 (`1 << índice` passa de 31): um quad com sombra forçada pode receber de volta o resultado velho ou zerado de outra configuração, o que depende do que a thread de malha calculou antes e não se reproduz (no rastro, 7 de 41).
 - **Conferido em jogo** (2026-11-09, `horizon`, a cena `avulsos`): na região da caixa de papelão aberta os pixels diferentes do original caem de 217 para 0,6 (`-fuzz 3%`), e a aba da esquerda passa de 51,40,28 a 18,14,10 e a da direita de 157,125,86 a 187,149,102, os valores do original (prints em `~/.cache/rust-mekanism/wa/acabamento-conteudo/luz/`).
 
+### O `transform` do modelo (machinery_basis, 2 injeções e 1 módulo)
+
+- **Estado:** em uso desde 2026-11-09 (frente `transform-modelo`). Duas injeções cruas e um módulo. **Proposta:** H67.
+  - `model_transform_decode`: MODIFY_VARIABLE (o `STORE` do `let mut textures` de `horizon_assets::model::CuboidModel::decode`). Só lê o JSON que cita `"transform"`: lê a chave `transform` da raiz como o
+    `TransformationHelper.Deserializer` do NeoForge e guarda a matriz no espaço de textura `\u{1}neoforge_transform` do modelo (o `CuboidModel` não tem campo para ela). Cada filho de um `composite` passa por aqui na
+    própria `decode`. Um `transform` que o NeoForge recusa (o modelo não carrega) fica sem efeito, com um aviso no log: o valor de uma variável não devolve o erro. Um HEAD cancelável de `decode` não serve: o
+    planejador pede um tipo de retorno concreto e `Result<Self>` não é.
+  - `model_transform_bake`: HEAD cancelável de `horizon_assets::bake::bake_into`, o ponto por onde passam o bloco, o item e a detecção de cubo. Para o modelo que tem o espaço, deixa a original cozinhar (elementos,
+    filhos do `composite` e `.obj`, com a rotação do blockstate; a injeção volta a si mesma com o mesmo modelo, e uma marca na thread a faz seguir para o corpo original) e move os vértices que ela acrescentou pela
+    matriz do modelo, conjugada pela rotação do blockstate (`R M R^-1`, em volta do centro): é o `pai.compose(raiz)` do NeoForge. Um filho que só herdou o espaço do `composite` (o mesmo id) não o aplica de novo; o
+    filho com o próprio soma o dele por dentro do do `composite`. Quando a matriz muda a direção das faces (rotação ou escala), a direção do quad e a face de corte são recalculadas (`Direction.rotate`).
+- **Helpers:** `mods/machinery_basis/model_transform_decode.rs` e `model_transform_bake.rs`, que chamam o módulo `model-transform` (`crate::math::machinery_model_transform`, `model_transform.rs`, enxertado em `math.rs`).
+- **Por que são necessárias:** o `CuboidModel` do Horizon não tem o campo, o `Loader::Obj` não o lê e o cozimento só conhece a rotação do blockstate. O limite de -16 a 32 do `Element::decode` não atrapalha: o vanilla o checa nos
+  elementos antes da transformação, e os elementos do painel solar avançado já cabem.
+- **Java:** `NeoForgeModelProperties.java` (`TRANSFORM`, `deserializeRootTransform`, `fillRootTransformProperty`), `TransformationHelper.java` (`Deserializer`, `parseRotation`, `TransformOrigin`), `ITransformationExtension.applyOrigin`,
+  `UnbakedElementsHelper.java:163-171` (`composeRootTransformIntoModelState`), `ComposedModelState.java`, `UnbakedCuboidGeometry.bake`, `CompositeUnbakedGeometry.java:30-33`, `ObjGeometry.java:520-521` e `makeQuad`,
+  `FaceBakery.java:134-136` e `rotateVertexBy`. Os modelos: `generators/resources/assets/mekanismgenerators/models/block/wind_generator.json:109` e `advanced_solar_generator.json:10`.
+- **Hook mais próximo:** nenhum; o Horizon não tem o campo.
+- **Hook proposto:** H67.
+- **Risco:** os da ficha H67. Diferenças que ficam: o `FaceBakery` do original não reordena os vértices de um elemento sem rotação quando há `transform` (`mayApplyArbitraryRotation`), e o Horizon os reordena; só a ordem dos
+  quatro vértices de um quad muda, não a geometria. Com o blockstate girado a conta tem 1 ulp de diferença do original (o Horizon soma 0,5 depois de girar).
+- **Conferido contra o original:** `core/tests/model_transform.rs` contra `rastros/model_transform.jsonl` (as classes do NeoForge no `runGameTestServer`), `dev/referencia/transform_horizon_assets.py` contra o `horizon-assets` do pin,
+  o `horizon-mixins plan` e `apply` contra o pin, e em jogo (2026-11-09, `horizon`): ver "Conteúdo do Generators" no inventário do plano.
+
 ### `animate_tick` (machinery_basis)
 
 - **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client_lib::animate_tick::block_animate_tick` (`animate_tick.rs:819`, função livre privada), HEAD, não cancelável. **Proposta:** H39.
@@ -734,7 +758,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (24)
+## Módulos (28)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -754,6 +778,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `container-dim` (machinery_basis) | `horizon-client-render/src/hud.rs` | o estado "a tela aberta é de uma máquina nossa" (`machinery_container_dim`), que o HEAD de `HudBatch::fill` lê e o `Game` escreve | H22 |
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `armor-bar` (machinery_basis) | `game.rs` | a barra de armadura do lado do cliente: a lista de slots, a posição, o "fora" da tela e o mapa dos índices do menu | H31, H32 |
+| `model-transform` (machinery_basis) | `math.rs` do `horizon-assets` | a conta do `transform` do modelo do NeoForge (o JSON de `TransformationHelper`, `applyOrigin`, a rotação do blockstate, `Direction.rotate`) em código puro, sem tipos do Horizon, para as injeções `model_transform_decode` e `model_transform_bake`; `core/tests/model_transform.rs` o compila como está | H67 |
 | `bar-menu` (machinery_basis) | `menu.rs` (crate `horizon_client_lib`, `pub`) | os cinco slots no fim do menu de um tipo com barra, e o registro dele, que o crate de baixo enxerga (a `machinery-basis-core` só liga ao `horizon-client`) | H31 |
 | `bar-machine` (machinery_basis) | `game/lan_crafting.rs` | deixa pronto o menu da conexão com os cinco slots antes do clique (`Menu::new` devolve `Self`) | H31 |
 | `bar-hub` (machinery_basis) | `lan/containers.rs` | `Hub::machinery_sync_bar`: a armadura e a mão que o clique mudou vão ao cliente com a resposta dele | H31 |
@@ -1404,10 +1429,11 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 
 ### H67 `transform` do modelo
 
-- **Lado:** cliente (o desenho). **Tipo:** dado: o arquivo de modelo aceitar o `transform` do NeoForge (`translation`, `rotation`, `scale`) na raiz do modelo e em cada filho de um `neoforge:composite`, como o NeoForge o aplica depois dos elementos.
-- **O que faz:** o `wind_generator` leva `"transform": {"translation": [0.5, 0, 0.5]}` no filho `.obj` e o `advanced_solar_generator` leva `[0, 1, 0]` no modelo inteiro (os elementos vão de -16 a 32 pixels, o limite do Horizon em `model.rs:396`, e o modelo sobe um bloco: sem a translação o painel de 3 blocos de altura não cabe). Hoje o Horizon só lê `model`, `flip_v`, `shade_quads` e `mtl_override` do `neoforge:obj` e nada de `transform`.
-- **Hoje:** o `.obj` do Wind Generator leva a translação nos vértices (`generators_conteudo.py`, `DERIVED_OBJ`, decisão 31 do plano); o Advanced Solar Generator fica um bloco abaixo do lugar. Uma injeção no cozimento (`horizon_assets::bake`, estrutura privada) não foi tentada.
-- **Risco do que existe hoje:** quando o Horizon ler o `transform`, o `.obj` do Wind Generator desloca duas vezes: voltar à cópia do original.
+- **Lado:** cliente (o desenho). **Tipo:** dado: o arquivo de modelo aceitar o `transform` do NeoForge (`translation`, `rotation` ou `left_rotation`, `scale`, `right_rotation` ou `post-rotation`, `origin`, ou `matrix`) na raiz do modelo e em cada filho de um `neoforge:composite`, e o cozimento juntá-lo à rotação do blockstate como o NeoForge faz (`NeoForgeModelProperties.TRANSFORM`, `UnbakedElementsHelper.composeRootTransformIntoModelState`).
+- **O que faz:** o `wind_generator` leva `"transform": {"translation": [0.5, 0, 0.5]}` no filho `.obj` (o `.obj` está centrado na origem) e o `advanced_solar_generator` leva `[0, 1, 0]` no modelo inteiro (os elementos vão de -16 a 32 pixels, o limite do Horizon em `model.rs:396`, e o modelo sobe um bloco). Hoje o Horizon só lê `model`, `flip_v`, `shade_quads` e `mtl_override` do `neoforge:obj` e nada de `transform`. O NeoForge guarda a transformação por modelo (o mais perto da folha vence, `fillRootTransformProperty`), junta a do `composite` à de cada filho e aplica o resultado em volta do centro do bloco depois da rotação do blockstate (`pai.compose(raiz)`, com `applyOrigin(-0,5)` na raiz; a origem padrão do JSON é o canto oposto, `(1, 1, 1)`).
+- **Hoje:** as duas injeções e o módulo da ficha "O `transform` do modelo", desde 2026-11-09. A opção D da decisão 31 (a injeção) deu o 1:1, e o `.obj` do Wind Generator é a cópia do original; as opções A e B saíram.
+- **Hook proposto:** `CuboidModel` com o campo `transform: Option<Transformation>` (lido em `decode`, herdado como o `render_type`, o mais perto da folha vence), `ResolvedCuboidModel::root_transform()` e `bake_into` juntando-o ao `BlockModelTransform` (que hoje só guarda a rotação do blockstate): então as duas injeções e o módulo saem.
+- **Risco do que existe hoje:** o local `textures` de `CuboidModel::decode` (o MODIFY_VARIABLE o acha pelo nome) e o campo público `textures`, o espaço `\u{1}neoforge_transform` que carrega a matriz (o `resolve_chain` o herda do pai e do `composite` como qualquer espaço, e a pré-carga de sprites o ignora porque o espaço de nomes `neoforge_transform` não existe), `bake_into(model, transform, skip_flat, output)`, `BlockModelTransform::matrix_rows`, `ModelQuad.{positions, facing, cull}` e `Direction::ALL`; o módulo `model-transform` exige que `math.rs` não tenha `use ...::*` de topo. Se o Horizon ler o `transform` sozinho, o vértice desloca duas vezes: tirar as injeções.
 
 ### H39 `block_animate_tick`
 
@@ -1567,7 +1593,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=113 hook=73 target=40 module=23 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=119 hook=73 target=46 module=28 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 37 + 36 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
