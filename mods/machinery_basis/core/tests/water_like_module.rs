@@ -39,11 +39,9 @@ fn a_burning_mob_in_a_mod_fluid_leaves_the_water_until_it_is_restored() {
 fn only_a_burning_mob_in_a_mod_fluid_and_in_the_water_is_flipped() {
     table();
     // Sem fogo, fora do fluido de mod (a água do vanilla apaga) ou já fora da água: nada muda e nada a devolver.
-    for (burning, feet, eye, start) in [
-        (false, 4, 4, true),
-        (true, 0, 0, true),
-        (true, 4, 4, false),
-    ] {
+    for (burning, feet, eye, start) in
+        [(false, 4, 4, true), (true, 0, 0, true), (true, 4, 4, false)]
+    {
         let mut in_water = start;
         mob_flip(9, burning, feet, eye, &mut in_water);
         assert_eq!(in_water, start, "{burning} {feet} {eye} {start}");

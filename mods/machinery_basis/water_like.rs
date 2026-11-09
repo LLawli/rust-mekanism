@@ -14,7 +14,11 @@ pub fn set(table: Vec<u8>) {
 
 /// O nível (0 a 15) do estado `state`, se ele é de um bloco de líquido de mod.
 pub fn get(state: u32) -> Option<u8> {
-    match TABLE.read().unwrap_or_else(|e| e.into_inner()).get(state as usize) {
+    match TABLE
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(state as usize)
+    {
         Some(&entry) if entry > 0 => Some(entry - 1),
         _ => None,
     }

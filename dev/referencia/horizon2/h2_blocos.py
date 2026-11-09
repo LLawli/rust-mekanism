@@ -5,7 +5,7 @@ Uso: H_NAME=horizon h2_blocos.py give|estados|cena [PASTA_DOS_PRINTS]
 - give: todo id responde ao `give`;
 - estados: (colunas em y -52) cada bloco, em até cinco estados do original (o primeiro, o último, `active=true`, cada `facing`), é posto por `setblock` e lido de volta por `block`;
 - conexoes: os transmissores novos, postos lado a lado, ligam-se a quem é da família (a tag `connects_to`) e não a quem é de outra;
-- cena: o roteiro `cenas/blocos.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`, na pasta de dados do jogo; `scp` os traz).
+- cena [PASTA_DOS_PRINTS [TIRO ...]]: o roteiro `cenas/blocos.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`, na pasta de dados do jogo; `scp` os traz); com nomes de tiro, só esses.
 Supõe o jogo aberto num mundo plano (o chão em y -61) com o jogador criativo, e a janela de 1920 por 1080.
 """
 import json, os, subprocess, sys, time
@@ -332,8 +332,10 @@ def luz():
     return not bad
 
 
-def cena(out):
+def cena(out, nomes=()):
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas/blocos.json")))
+    if nomes:
+        spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
     h.command("tick unfreeze")
     # Só do port: o mundo novo nasce com mobs (queimam à luz do dia e entram no print); o original não tem nenhum.
@@ -358,7 +360,7 @@ def cena(out):
 def main():
     mode = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else SHOTS
-    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "conexoes": conexoes, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out))()
+    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "conexoes": conexoes, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out, sys.argv[3:]))()
     sys.exit(0 if ok in (True, None) else 1)
 
 

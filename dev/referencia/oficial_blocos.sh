@@ -2,6 +2,7 @@
 # Roda a `CenaBlocos` no cliente oficial (`runGameTestClient`, sem janela, sem som) com o roteiro `cenas/blocos.json` e devolve a árvore como estava: o `cena-cabo` volta, o
 # `options.txt` volta, e a `CenaBlocos.java` e o `cena-blocos.json` saem. Roda no desktop, com a `mekanism-ref.lock` na mão. Os prints ficam em SAIDA (uma pasta):
 # `oficial_<tiro>.png`, de 1920 por 1080. Uso: oficial_blocos.sh CenaBlocos.java blocos.json SAIDA
+# LUZ_MELHORADA=0 desliga `enhancedLighting` no `config/neoforge-client.toml` do cliente (o NeoForge troca o `BlockModelLighter` do vanilla pelo `EnhancedBlockModelLighter`; o arquivo volta ao fim).
 # O volume mestre vai a 0 no `options.txt` do cliente (que volta ao fim): o jogo de teste nunca toca pelas caixas do usuário.
 set -u
 JAVA=$(readlink -f "$1")
@@ -20,7 +21,13 @@ restore() {
   cp "$C/options.txt.antes-blocos" "$R/options.txt" && rm -f "$C/options.txt.antes-blocos"
   echo RESTAURADO
 }
-trap restore EXIT
+CONFIG=$R/config/neoforge-client.toml
+if [ "${LUZ_MELHORADA:-1}" = 0 ]; then
+  cp "$CONFIG" "$C/neoforge-client.toml.antes-blocos"
+  sed -i 's/^enhancedLighting = .*/enhancedLighting = false/' "$CONFIG"
+  grep -c '^enhancedLighting = false' "$CONFIG"
+fi
+trap 'restore; [ -e "$C/neoforge-client.toml.antes-blocos" ] && mv "$C/neoforge-client.toml.antes-blocos" "$CONFIG"' EXIT
 sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$R/options.txt"
 cp "$JAVA" "$N/CenaBlocos.java"
 cp "$CENA" "$R/cena-blocos.json"

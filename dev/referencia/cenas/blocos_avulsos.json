@@ -1,0 +1,26 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 120 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "avulsos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:chargepad[facing=north]",
+    "setblock 61 -60 82 mekanism:industrial_alarm[facing=up]",
+    "setblock 62 -60 82 mekanism:radioactive_waste_barrel[facing=north]",
+    "setblock 63 -60 82 mekanism:personal_barrel[facing=north]",
+    "setblock 64 -60 82 mekanism:personal_chest[facing=north]",
+    "setblock 65 -60 82 mekanism:cardboard_box"
+   ],
+   "tp": "63.0 -58.38 77.25 0 12.1"
+  }
+ ]
+}
