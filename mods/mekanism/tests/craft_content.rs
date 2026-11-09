@@ -175,10 +175,14 @@ fn the_front_declares_every_item_and_block() {
     assert_eq!(ITEMS.len(), ITEMS.iter().collect::<BTreeSet<_>>().len());
     // Tudo o que o port declara de craft e de recurso está na lista (o que não está tem outra frente: máquinas, cabos, `upgrade`).
     let listed: BTreeSet<&str> = ITEMS.iter().copied().collect();
-    // Os de equipamento têm a lista e os testes da frente `itens-equipamento` (`equipment_content.rs`).
+    // Os de equipamento têm a lista e os testes da frente `itens-equipamento` (`equipment_content.rs`), e os baldes dos fluidos os da frente `fluidos` (`fluids.rs`).
     let extra: Vec<_> = items
         .iter()
-        .filter(|id| !listed.contains(id.as_str()) && !EQUIPMENT_ITEMS.contains(&id.as_str()))
+        .filter(|id| {
+            !listed.contains(id.as_str())
+                && !EQUIPMENT_ITEMS.contains(&id.as_str())
+                && !id.ends_with("_bucket")
+        })
         .collect();
     assert_eq!(
         extra,
@@ -459,7 +463,15 @@ fn the_names_are_the_originals() {
     let lang = json(&assets().join("lang/en_us.json"));
     let ours = lang.as_object().unwrap();
     assert!(ours.len() >= 240, "{}", ours.len());
+    // Os nomes dos fluidos e dos baldes são da frente `fluidos`, conferidos em `fluids.rs` contra a datagen deles.
+    let fluids = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/fluidos/lang.json"),
+    );
     for (key, value) in ours {
+        if fluids.get(key).is_some() {
+            continue;
+        }
         assert_eq!(original.get(key), Some(value), "{key}");
     }
     for key in original.as_object().unwrap().keys() {

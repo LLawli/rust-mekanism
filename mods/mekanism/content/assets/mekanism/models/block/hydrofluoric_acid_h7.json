@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h7",
+  "textures": {
+    "still": "mekanism:mek_liquid/hydrofluoric_acid",
+    "flow": "mekanism:mek_liquid/hydrofluoric_acid_flow"
+  }
+}

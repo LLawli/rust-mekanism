@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h1",
+  "textures": {
+    "still": "mekanism:mek_liquid/nutritional_paste",
+    "flow": "mekanism:mek_liquid/nutritional_paste_flow"
+  }
+}

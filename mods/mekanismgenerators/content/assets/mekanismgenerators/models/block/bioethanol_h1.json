@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h1",
+  "textures": {
+    "still": "mekanismgenerators:mek_liquid/bioethanol",
+    "flow": "mekanismgenerators:mek_liquid/bioethanol_flow"
+  }
+}

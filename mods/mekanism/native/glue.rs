@@ -1811,6 +1811,23 @@ fn sound_config() -> machinery_basis_core::sound::SoundConfig {
 /// configuração geral (`blockDeactivationDelay` e `maxUpgradeMultiplier`) fica na `machinery_basis`, que as máquinas de qualquer mod leem. O processo tem a janela e a
 /// thread do servidor integrado, então a tabela é do processo; um convidado de LAN não a recebe do anfitrião (o original sincroniza).
 static SERVER_CONFIG: std::sync::RwLock<rules::ServerConfig> = std::sync::RwLock::new(rules::ServerConfig::DEFAULT);
+/// `nutritionalPasteMBPerFood` e `nutritionalPasteSaturation` de `general.toml`, lidos a cada uso como o original lê o `CachedIntValue`.
+static PASTE: std::sync::RwLock<rules::PasteSettings> = std::sync::RwLock::new(rules::PasteSettings::DEFAULT);
+
+/// `PasteBucketConsumption.onConsume`: o balde de pasta nutritiva bebido dá `BUCKET_VOLUME / nutritionalPasteMBPerFood` de fome e a saturação da
+/// configuração (`FoodData.eat`). O som de beber e o arroto são do `minecraft:food` do balde (nutrição 0), que o Horizon já toca como o
+/// `FoodProperties.onConsume` do original, que é no que a `PasteBucketConsumption` se baseia.
+pub(in crate::game) fn paste_consumed(game: &mut Game<'_>, kind: &str) {
+    if kind != "mekanism:paste" {
+        return;
+    }
+    let paste = *PASTE.read().unwrap_or_else(|error| error.into_inner());
+    if let Some(player) = game.player.as_mut() {
+        let food = &mut player.health.food;
+        food.food = (food.food + paste.nutrition).clamp(0, 20);
+        food.saturation = (food.saturation + paste.saturation).clamp(0.0, food.food as f32);
+    }
+}
 
 fn server_config() -> rules::ServerConfig {
     *SERVER_CONFIG.read().unwrap_or_else(|error| error.into_inner())
@@ -1847,6 +1864,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
         rules::GENERAL_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::GENERAL_CONFIG, None);
             machinery_basis_core::settings::set_machine_settings(rules::machine_settings(&loaded));
+            *PASTE.write().unwrap_or_else(|error| error.into_inner()) = rules::paste_settings(&loaded);
         }
         rules::USAGE_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::USAGE_CONFIG, None);

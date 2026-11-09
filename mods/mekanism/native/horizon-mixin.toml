@@ -486,3 +486,17 @@ bindings = [
   { name = "name", ty = "&str", value = "name" },
   { name = "value", ty = "u32", value = "$value" },
 ]
+
+# `PasteBucketConsumption.onConsume`: o efeito de consumo `mekanism:paste` do balde de pasta nutritiva dá a fome e a saturação da configuração
+# (`nutritionalPasteMBPerFood`, `nutritionalPasteSaturation`). Hook do catálogo (`consume_effect`), usado com estrutura privada (`Game::player`,
+# o estado de fome do jogador).
+[[injection]]
+id = "consume_effect"
+hook = "consume_effect"
+hook_version = 1
+kind = "HEAD"
+helper = "consume_effect.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "kind", ty = "&str", value = "kind" },
+]

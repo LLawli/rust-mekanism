@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h6",
+  "textures": {
+    "still": "mekanism:mek_liquid/chlorine",
+    "flow": "mekanism:mek_liquid/chlorine_flow"
+  }
+}

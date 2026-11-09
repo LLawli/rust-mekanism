@@ -1,0 +1,16 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "mekanismgenerators:item/fusion_fuel_bucket",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": 16777215
+      },
+      {
+        "type": "minecraft:constant",
+        "value": 8257661
+      }
+    ]
+  }
+}

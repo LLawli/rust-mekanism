@@ -1,0 +1,12 @@
+{
+  "block": "mekanism:lithium",
+  "bucket": "mekanism:lithium_bucket",
+  "tick_delay": 5,
+  "slope_find_distance": 4,
+  "drop_off": 1,
+  "can_convert_to_source": false,
+  "light": 0,
+  "color": 15442944,
+  "fill_sound": "minecraft:item.bucket.fill",
+  "empty_sound": "minecraft:item.bucket.empty"
+}

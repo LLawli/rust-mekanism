@@ -289,31 +289,91 @@ pub const TIERS_CONFIG_FILE: &str = "Mekanism/tiers.toml";
 /// `GeneralConfig`: `blockDeactivationDelay` (`:126-127`, `defineInRange(.., 3 * TICKS_PER_SECOND, 0, TICKS_PER_MINUTE)`) e `maxUpgradeMultiplier` (`:133-134`,
 /// `defineInRange(.., 10, 1, Integer.MAX_VALUE)`), as duas de fora de qualquer seção. O resto do arquivo entra com a fase que o lê.
 pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
-    sections: &[ClientSection {
-        name: "",
-        comment: "",
-        entries: &[
-            ClientEntry {
-                key: "blockDeactivationDelay",
-                comment: "How many ticks must pass until a block's active state is synced with the client when the block stops being active. This prevents rapid state changes that can cause lag. Note: Mekanism's blocks always sync immediately when they go from inactive to active; this only controls the time it takes to go from active to inactive.",
-                setting: ClientSetting::Int {
-                    default: 60,
-                    min: 0,
-                    max: 1_200,
+    sections: &[
+        ClientSection {
+            name: "",
+            comment: "",
+            entries: &[
+                ClientEntry {
+                    key: "blockDeactivationDelay",
+                    comment: "How many ticks must pass until a block's active state is synced with the client when the block stops being active. This prevents rapid state changes that can cause lag. Note: Mekanism's blocks always sync immediately when they go from inactive to active; this only controls the time it takes to go from active to inactive.",
+                    setting: ClientSetting::Int {
+                        default: 60,
+                        min: 0,
+                        max: 1_200,
+                    },
                 },
-            },
-            ClientEntry {
-                key: "maxUpgradeMultiplier",
-                comment: "Base factor for working out machine performance with upgrades - UpgradeModifier * (UpgradesInstalled/UpgradesPossible).",
-                setting: ClientSetting::Int {
-                    default: 10,
-                    min: 1,
-                    max: i32::MAX,
+                ClientEntry {
+                    key: "maxUpgradeMultiplier",
+                    comment: "Base factor for working out machine performance with upgrades - UpgradeModifier * (UpgradesInstalled/UpgradesPossible).",
+                    setting: ClientSetting::Int {
+                        default: 10,
+                        min: 1,
+                        max: i32::MAX,
+                    },
                 },
-            },
-        ],
-    }],
+            ],
+        },
+        // `GeneralConfig.java:262-267`: a seção `nutritional_paste` (`MekanismConfigTranslations.GENERAL_PASTE`), depois da `security`, que o port ainda não tem.
+        ClientSection {
+            name: "nutritional_paste",
+            comment: "Settings for configuring Nutritional Paste",
+            entries: &[
+                ClientEntry {
+                    key: "saturation",
+                    comment: "Saturation level of Nutritional Paste when eaten.",
+                    setting: ClientSetting::Float {
+                        default: 0.8,
+                        min: 0.0,
+                        max: 100.0,
+                    },
+                },
+                ClientEntry {
+                    key: "mbPerFood",
+                    comment: "How much mB of Nutritional Paste equates to one 'half-food'.",
+                    setting: ClientSetting::Int {
+                        default: 50,
+                        min: 1,
+                        max: PASTE_MB_PER_FOOD_MAX,
+                    },
+                },
+            ],
+        },
+    ],
 };
+
+/// `Integer.MAX_VALUE / FoodConstants.MAX_FOOD` (20): o limite de `nutritionalPasteMBPerFood`.
+const PASTE_MB_PER_FOOD_MAX: i32 = i32::MAX / 20;
+/// `FluidType.BUCKET_VOLUME`.
+const BUCKET_VOLUME: i32 = 1000;
+
+/// O que `PasteBucketConsumption.onConsume` dá a quem bebe o balde: `FluidType.BUCKET_VOLUME / nutritionalPasteMBPerFood` de fome (divisão inteira) e
+/// `nutritionalPasteSaturation` de saturação, de `GeneralConfig`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PasteSettings {
+    pub nutrition: i32,
+    pub saturation: f32,
+}
+
+impl PasteSettings {
+    pub const DEFAULT: Self = Self {
+        nutrition: BUCKET_VOLUME / 50,
+        saturation: 0.8,
+    };
+}
+
+/// `nutritionalPasteMBPerFood` e `nutritionalPasteSaturation` de um arquivo lido.
+pub fn paste_settings(loaded: &ClientLoaded) -> PasteSettings {
+    let per_food = loaded
+        .int(&GENERAL_CONFIG, "nutritional_paste", "mbPerFood")
+        .unwrap_or(50);
+    PasteSettings {
+        nutrition: BUCKET_VOLUME / per_food,
+        saturation: loaded
+            .float(&GENERAL_CONFIG, "nutritional_paste", "saturation")
+            .map_or(PasteSettings::DEFAULT.saturation, |v| v as f32),
+    }
+}
 
 /// `GeneralConfig.blockDeactivationDelay` e `maxUpgradeMultiplier` de um arquivo lido.
 pub fn machine_settings(loaded: &ClientLoaded) -> MachineSettings {

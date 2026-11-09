@@ -1,0 +1,43 @@
+{
+  "template": "minecraft:structure_void",
+  "item": false,
+  "properties": {
+    "hardness": 100.0,
+    "explosion_resistance": 100.0,
+    "render_shape": "MODEL",
+    "occludes": false,
+    "map_color": 20
+  },
+  "state_properties": {
+    "level": {
+      "type": "enum",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ]
+    },
+    "up": {
+      "type": "boolean"
+    }
+  },
+  "shapes": {
+    "default": []
+  },
+  "collision_shapes": {
+    "default": []
+  }
+}

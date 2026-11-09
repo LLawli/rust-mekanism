@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h2",
+  "textures": {
+    "still": "mekanism:mek_liquid/sulfur_trioxide",
+    "flow": "mekanism:mek_liquid/sulfur_trioxide_flow"
+  }
+}

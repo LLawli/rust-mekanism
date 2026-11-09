@@ -32,6 +32,19 @@ fn the_mod_tab_lists_the_registration_order_of_the_original() {
             }
         }
     }
+    // `CreativeTabDeferredRegister.addToDisplay(MekanismFluids.FLUIDS, ..)` vem depois dos blocos: os baldes dos 18 fluidos do Mekanism, na ordem de registro
+    // (`rastros/fluids.jsonl`, da frente `fluidos`).
+    let fluids = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/rastros/fluids.jsonl"),
+    )
+    .unwrap();
+    for line in fluids.lines().filter(|line| !line.trim().is_empty()) {
+        let row: serde_json::Value = serde_json::from_str(line).unwrap();
+        if row["mod"] == "mekanism" {
+            expected.push(row["bucket"]["id"].as_str().unwrap().to_owned());
+        }
+    }
     let tab = json(&content().join("data/mekanism/horizon/creative_tab/mekanism.json"));
     let ours: Vec<String> = tab["items"]
         .as_array()
@@ -54,6 +67,27 @@ fn the_mod_tab_lists_the_registration_order_of_the_original() {
 }
 
 /// O que `addToExistingTabs` põe nas abas do vanilla, com o que o port tem, na ordem do original (`MekanismCreativeTabs.java:80-150`). Os nomes do Java por aba.
+const FLUID_BUCKETS: [&str; 18] = [
+    "hydrogen_bucket",
+    "oxygen_bucket",
+    "chlorine_bucket",
+    "sulfur_dioxide_bucket",
+    "sulfur_trioxide_bucket",
+    "sulfuric_acid_bucket",
+    "hydrogen_chloride_bucket",
+    "hydrofluoric_acid_bucket",
+    "uranium_oxide_bucket",
+    "uranium_hexafluoride_bucket",
+    "ethene_bucket",
+    "sodium_bucket",
+    "superheated_sodium_bucket",
+    "brine_bucket",
+    "lithium_bucket",
+    "steam_bucket",
+    "heavy_water_bucket",
+    "nutritional_paste_bucket",
+];
+
 fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
     // `BUILDING_BLOCKS`: o sal, o bronze, o aço, o carvão vegetal, o obsidiano e o glowstone refinados, e o bloco de cada `PrimaryResource` com `resourceBlockInfo`.
     let building = vec![
@@ -176,7 +210,7 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
     ingredients.extend(processed);
     // `TOOLS_AND_UTILITIES` (`MekanismCreativeTabs.java:120-132`): as ferramentas, as armaduras de uso geral, o upgrade (que a injeção troca por uma pilha por tipo) e os
     // instaladores. A caixa de papelão, os tanques de fluido e os fluidos não têm id no port ainda.
-    let tools = vec![
+    let mut tools = vec![
         "configurator",
         "network_reader",
         "dosimeter",
@@ -205,6 +239,8 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         "elite_tier_installer",
         "ultimate_tier_installer",
     ];
+    // `addToDisplay(MekanismFluids.FLUIDS, event)` (`MekanismCreativeTabs.java:136`): os baldes do Mekanism, depois dos instaladores (e dos tanques, que o port não tem).
+    tools.extend(FLUID_BUCKETS);
     // `COMBAT` (`MekanismCreativeTabs.java:138-141`).
     let combat = vec![
         "atomic_disassembler",
@@ -305,12 +341,24 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     // As ferramentas: 26 itens e, no lugar do upgrade, uma pilha por tipo.
     let mut tools = Vec::new();
     assert!(table::edit_tab("minecraft:tools_and_utilities", &mut tools));
-    assert_eq!(tools.len(), 26 + table::UPGRADE_TYPES.len());
+    assert_eq!(
+        tools.len(),
+        26 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
+    );
     assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
     assert_eq!(tools[22], table::upgrade_stack("anchor"));
     assert_eq!(
         tools[30],
         table::plain_stack("mekanism:basic_tier_installer")
+    );
+    // Os 18 baldes dos fluidos do Mekanism, depois dos instaladores.
+    assert_eq!(
+        tools[table::UPGRADE_TYPES.len() + 26 - 1],
+        table::plain_stack("mekanism:ultimate_tier_installer")
+    );
+    assert_eq!(
+        tools.last().unwrap(),
+        &table::plain_stack("mekanism:nutritional_paste_bucket")
     );
     let mut combat = vec![table::plain_stack("minecraft:bow")];
     assert!(table::edit_tab("minecraft:combat", &mut combat));

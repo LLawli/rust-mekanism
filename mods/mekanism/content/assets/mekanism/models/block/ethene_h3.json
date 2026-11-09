@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h3",
+  "textures": {
+    "still": "mekanism:mek_liquid/ethene",
+    "flow": "mekanism:mek_liquid/ethene_flow"
+  }
+}

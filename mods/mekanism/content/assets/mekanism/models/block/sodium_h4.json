@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h4",
+  "textures": {
+    "still": "mekanism:mek_liquid/sodium",
+    "flow": "mekanism:mek_liquid/sodium_flow"
+  }
+}

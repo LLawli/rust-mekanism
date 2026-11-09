@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h8",
+  "textures": {
+    "still": "mekanismgenerators:mek_liquid/tritium",
+    "flow": "mekanismgenerators:mek_liquid/tritium_flow"
+  }
+}

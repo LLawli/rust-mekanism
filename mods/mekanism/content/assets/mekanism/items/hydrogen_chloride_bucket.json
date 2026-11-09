@@ -1,0 +1,16 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "mekanism:item/hydrogen_chloride_bucket",
+    "tints": [
+      {
+        "type": "minecraft:constant",
+        "value": 16777215
+      },
+      {
+        "type": "minecraft:constant",
+        "value": 11071977
+      }
+    ]
+  }
+}

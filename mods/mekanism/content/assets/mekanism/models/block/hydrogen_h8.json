@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h8",
+  "textures": {
+    "still": "mekanism:mek_liquid/liquid",
+    "flow": "mekanism:mek_liquid/liquid_flow"
+  }
+}

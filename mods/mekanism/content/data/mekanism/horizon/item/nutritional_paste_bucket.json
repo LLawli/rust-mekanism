@@ -1,0 +1,24 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "crafting_remainder": "minecraft:bucket",
+  "components": {
+    "minecraft:food": {
+      "nutrition": 0,
+      "saturation": 0.0
+    },
+    "minecraft:consumable": {
+      "animation": "drink",
+      "sound": "minecraft:entity.generic.drink",
+      "has_consume_particles": false,
+      "on_consume_effects": [
+        {
+          "type": "mekanism:paste"
+        }
+      ]
+    },
+    "minecraft:use_remainder": {
+      "id": "minecraft:bucket"
+    }
+  }
+}

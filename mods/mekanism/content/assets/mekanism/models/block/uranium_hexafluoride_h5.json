@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h5",
+  "textures": {
+    "still": "mekanism:mek_liquid/uranium_hexafluoride",
+    "flow": "mekanism:mek_liquid/uranium_hexafluoride_flow"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "block": "mekanism:hydrofluoric_acid",
+  "bucket": "mekanism:hydrofluoric_acid_bucket",
+  "tick_delay": 5,
+  "slope_find_distance": 4,
+  "drop_off": 1,
+  "can_convert_to_source": false,
+  "light": 0,
+  "color": 13027261,
+  "fill_sound": "minecraft:item.bucket.fill",
+  "empty_sound": "minecraft:item.bucket.empty"
+}

@@ -1,5 +1,13 @@
 {
   "block.mekanismgenerators.heat_generator": "Heat Generator",
   "container.mekanismgenerators.heat_generator": "Heat Generator",
-  "gui.mekanismgenerators.producing.amount": "Producing: %1$s/t"
+  "gui.mekanismgenerators.producing.amount": "Producing: %1$s/t",
+  "block.mekanismgenerators.bioethanol": "Bioethanol",
+  "item.mekanismgenerators.bioethanol_bucket": "Bioethanol Bucket",
+  "block.mekanismgenerators.deuterium": "Liquid Deuterium",
+  "item.mekanismgenerators.deuterium_bucket": "Liquid Deuterium Bucket",
+  "block.mekanismgenerators.fusion_fuel": "Liquid D-T Fuel",
+  "item.mekanismgenerators.fusion_fuel_bucket": "Liquid D-T Fuel Bucket",
+  "block.mekanismgenerators.tritium": "Liquid Tritium",
+  "item.mekanismgenerators.tritium_bucket": "Liquid Tritium Bucket"
 }

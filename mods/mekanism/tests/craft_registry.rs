@@ -580,7 +580,8 @@ fn expected_item(id: &str) -> Item {
 fn every_item_has_the_properties_of_the_original() {
     let mut checked = 0;
     for id in declared("item") {
-        if id == "upgrade" || EQUIPMENT_ITEMS.contains(&id.as_str()) {
+        // Os baldes são da frente `fluidos` (`fluids.rs`).
+        if id == "upgrade" || EQUIPMENT_ITEMS.contains(&id.as_str()) || id.ends_with("_bucket") {
             continue;
         }
         let declaration = json(

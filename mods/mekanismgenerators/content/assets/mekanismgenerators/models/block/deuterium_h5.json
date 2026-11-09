@@ -1,0 +1,7 @@
+{
+  "parent": "mekanism:block/liquid_h5",
+  "textures": {
+    "still": "mekanismgenerators:mek_liquid/deuterium",
+    "flow": "mekanismgenerators:mek_liquid/deuterium_flow"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "block": "mekanism:nutritional_paste",
+  "bucket": "mekanism:nutritional_paste_bucket",
+  "tick_delay": 5,
+  "slope_find_distance": 4,
+  "drop_off": 1,
+  "can_convert_to_source": false,
+  "light": 0,
+  "color": 15428771,
+  "fill_sound": "minecraft:item.bucket.fill",
+  "empty_sound": "minecraft:item.bucket.empty",
+  "drink_when_hungry": true
+}
