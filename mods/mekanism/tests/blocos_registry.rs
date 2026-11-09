@@ -272,7 +272,11 @@ fn every_block_is_declared_as_the_original_registers_it() {
         }
         // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
         // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
-        let solid = row["states"].as_array().unwrap().iter().all(|s| s["solid_render"] == true);
+        let solid = row["states"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["solid_render"] == true);
         assert_eq!(
             properties.get("occludes").and_then(Value::as_bool),
             if solid { None } else { Some(false) },
