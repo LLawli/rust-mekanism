@@ -1,1 +1,8 @@
-{ "template": "minecraft:iron_ingot" }
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:damage_resistant": {
+      "types": "#minecraft:is_fire"
+    }
+  }
+}

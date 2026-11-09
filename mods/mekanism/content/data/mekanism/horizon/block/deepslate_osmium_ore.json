@@ -1,1 +1,9 @@
-{ "template": "minecraft:deepslate_iron_ore", "properties": { "hardness": 4.5, "explosion_resistance": 3.0, "requires_tool": true } }
+{
+  "template": "minecraft:deepslate_iron_ore",
+  "properties": {
+    "hardness": 4.5,
+    "explosion_resistance": 3.0,
+    "requires_tool": true,
+    "map_color": 59
+  }
+}

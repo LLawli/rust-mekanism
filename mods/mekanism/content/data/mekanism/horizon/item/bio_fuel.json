@@ -1,5 +1,5 @@
 {
-  "template": "minecraft:iron_ingot",
+  "template": "minecraft:iron_nugget",
   "components": {
     "minecraft:cooking_fuel": {
       "burn_time": {

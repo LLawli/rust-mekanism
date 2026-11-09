@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:lapis_block",
+  "properties": {
+    "hardness": 7.5,
+    "explosion_resistance": 12.0,
+    "requires_tool": true,
+    "map_color": 23
+  }
+}

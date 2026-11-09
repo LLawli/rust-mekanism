@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:provides_trim_material": "mekanism:antimatter",
+    "minecraft:item_name": {
+      "translate": "item.mekanism.pellet_antimatter",
+      "color": "#A460D9"
+    }
+  }
+}

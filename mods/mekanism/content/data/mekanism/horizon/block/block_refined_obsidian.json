@@ -1,0 +1,15 @@
+{
+  "template": "minecraft:obsidian",
+  "properties": {
+    "hardness": 50.0,
+    "explosion_resistance": 2400.0,
+    "requires_tool": true,
+    "map_color": 24,
+    "light": 8
+  },
+  "components": {
+    "minecraft:damage_resistant": {
+      "types": "#minecraft:is_fire"
+    }
+  }
+}

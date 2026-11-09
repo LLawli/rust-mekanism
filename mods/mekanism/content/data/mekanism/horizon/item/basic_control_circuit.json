@@ -1,1 +1,9 @@
-{ "template": "minecraft:iron_ingot" }
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:item_name": {
+      "translate": "item.mekanism.basic_control_circuit",
+      "color": "#5FFFB8"
+    }
+  }
+}

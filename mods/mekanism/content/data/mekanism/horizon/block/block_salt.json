@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:lapis_block",
+  "properties": {
+    "hardness": 0.5,
+    "explosion_resistance": 0.5,
+    "requires_tool": false,
+    "map_color": 0,
+    "sounds": "minecraft:sand"
+  }
+}

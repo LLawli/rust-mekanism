@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:provides_trim_material": "mekanism:plutonium",
+    "minecraft:item_name": {
+      "translate": "item.mekanism.pellet_plutonium",
+      "color": "#CFCFCF"
+    }
+  }
+}

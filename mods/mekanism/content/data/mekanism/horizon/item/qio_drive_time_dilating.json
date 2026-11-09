@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:iron_nugget",
+  "max_stack_size": 1,
+  "components": {
+    "minecraft:item_name": {
+      "translate": "item.mekanism.qio_drive_time_dilating",
+      "color": "#4BF8FF"
+    }
+  }
+}

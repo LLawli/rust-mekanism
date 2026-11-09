@@ -1,0 +1,9 @@
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:provides_trim_material": "mekanism:refined_obsidian",
+    "minecraft:damage_resistant": {
+      "types": "#minecraft:is_fire"
+    }
+  }
+}

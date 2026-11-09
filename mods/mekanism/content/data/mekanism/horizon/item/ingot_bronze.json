@@ -1,0 +1,6 @@
+{
+  "template": "minecraft:iron_nugget",
+  "components": {
+    "minecraft:provides_trim_material": "mekanism:bronze"
+  }
+}

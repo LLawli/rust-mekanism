@@ -1,0 +1,24 @@
+{
+  "template": "minecraft:raw_iron_block",
+  "properties": {
+    "hardness": 5.0,
+    "explosion_resistance": 6.0,
+    "requires_tool": true,
+    "map_color": 29
+  },
+  "components": {
+    "minecraft:cooking_fuel": {
+      "burn_time": {
+        "type": "minecraft:div",
+        "left": 16000,
+        "right": {
+          "type": "minecraft:conditional",
+          "condition": "minecraft:block/fast_cooking",
+          "on_false": "minecraft:cooking/normal_burn_time_reduction_factor",
+          "on_true": "minecraft:cooking/fast_burn_time_reduction_factor"
+        }
+      },
+      "speed_multiplier": "minecraft:cooking/speed_default"
+    }
+  }
+}
