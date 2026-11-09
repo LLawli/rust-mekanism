@@ -16,11 +16,22 @@ struct Known {
 
 fn known() -> Known {
     let vanilla = rastro("horizon_vanilla_ids.json");
-    let strings = |key: &str| -> BTreeSet<String> { vanilla[key].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect() };
+    let strings = |key: &str| -> BTreeSet<String> {
+        vanilla[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    };
     Known {
         vanilla_items: strings("items"),
         vanilla_tags: strings("item_tags"),
-        own: declared("item").into_iter().chain(declared("block")).map(|id| format!("mekanism:{id}")).collect(),
+        own: declared("item")
+            .into_iter()
+            .chain(declared("block"))
+            .map(|id| format!("mekanism:{id}"))
+            .collect(),
     }
 }
 
@@ -39,17 +50,27 @@ impl Known {
         if namespace == "minecraft" {
             return self.vanilla_tags.contains(tag);
         }
-        let file = content().join("data").join(namespace).join("tags/item").join(format!("{path}.json"));
+        let file = content()
+            .join("data")
+            .join(namespace)
+            .join("tags/item")
+            .join(format!("{path}.json"));
         if !file.is_file() || depth > 8 {
             return false;
         }
-        json(&file)["values"].as_array().unwrap().iter().any(|entry| {
-            let entry = entry.as_str().unwrap_or_else(|| entry["id"].as_str().unwrap());
-            match entry.strip_prefix('#') {
-                Some(nested) => self.tag(nested, depth + 1),
-                None => self.item(entry),
-            }
-        })
+        json(&file)["values"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| {
+                let entry = entry
+                    .as_str()
+                    .unwrap_or_else(|| entry["id"].as_str().unwrap());
+                match entry.strip_prefix('#') {
+                    Some(nested) => self.tag(nested, depth + 1),
+                    None => self.item(entry),
+                }
+            })
     }
 }
 
@@ -75,18 +96,29 @@ fn ingredient(value: &Value, out: &mut Vec<String>) {
 fn references(recipe: &Value) -> (Vec<String>, Vec<String>) {
     let (mut inputs, mut outputs) = (Vec::new(), Vec::new());
     let result = |value: &Value, outputs: &mut Vec<String>| {
-        outputs.push(value.as_str().map_or_else(|| value["id"].as_str().unwrap().to_owned(), str::to_owned));
+        outputs.push(
+            value
+                .as_str()
+                .map_or_else(|| value["id"].as_str().unwrap().to_owned(), str::to_owned),
+        );
     };
     match recipe["type"].as_str().unwrap() {
         "minecraft:crafting_shaped" => {
-            recipe["key"].as_object().unwrap().values().for_each(|v| ingredient(v, &mut inputs));
+            recipe["key"]
+                .as_object()
+                .unwrap()
+                .values()
+                .for_each(|v| ingredient(v, &mut inputs));
             result(&recipe["result"], &mut outputs);
         }
         "minecraft:crafting_shapeless" => {
             ingredient(&recipe["ingredients"], &mut inputs);
             result(&recipe["result"], &mut outputs);
         }
-        "minecraft:smelting" | "minecraft:blasting" | "minecraft:smoking" | "minecraft:campfire_cooking" => {
+        "minecraft:smelting"
+        | "minecraft:blasting"
+        | "minecraft:smoking"
+        | "minecraft:campfire_cooking" => {
             ingredient(&recipe["ingredient"], &mut inputs);
             result(&recipe["result"], &mut outputs);
         }
@@ -98,7 +130,9 @@ fn references(recipe: &Value) -> (Vec<String>, Vec<String>) {
             ingredient(&recipe["item_input"]["ingredient"], &mut inputs);
             result(&recipe["output"], &mut outputs);
         }
-        "mekanism:chemical_conversion" | "mekanism:energy_conversion" => ingredient(&recipe["input"]["ingredient"], &mut inputs),
+        "mekanism:chemical_conversion" | "mekanism:energy_conversion" => {
+            ingredient(&recipe["input"]["ingredient"], &mut inputs)
+        }
         other => panic!("tipo de receita {other} sem regra neste teste"),
     }
     (inputs, outputs)
@@ -119,7 +153,16 @@ fn no_recipe_of_the_content_cites_what_the_horizon_would_drop() {
             continue;
         };
         // As receitas de outras máquinas do original (injeção, purificação...) não são lidas pelo port.
-        let supported = kind.starts_with("minecraft:") || ["enriching", "crushing", "metallurgic_infusing", "chemical_conversion", "energy_conversion"].iter().any(|t| kind == format!("mekanism:{t}"));
+        let supported = kind.starts_with("minecraft:")
+            || [
+                "enriching",
+                "crushing",
+                "metallurgic_infusing",
+                "chemical_conversion",
+                "energy_conversion",
+            ]
+            .iter()
+            .any(|t| kind == format!("mekanism:{t}"));
         if !supported {
             continue;
         }

@@ -13,14 +13,16 @@ pub fn rastro(name: &str) -> Value {
         .join("../../dev/referencia/rastros")
         .join(name);
     serde_json::from_str(
-        &std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display())),
+        &std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display())),
     )
     .unwrap()
 }
 
 pub fn json(path: &Path) -> Value {
     serde_json::from_str(
-        &std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{}: {error}", path.display())),
+        &std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display())),
     )
     .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
@@ -37,8 +39,12 @@ pub fn fnv(data: &[u8]) -> String {
 /// O hash de um arquivo do conteúdo: o JSON pelo texto canônico (chaves em ordem, sem espaço), o resto pelos bytes.
 pub fn digest(path: &Path) -> String {
     let bytes = std::fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    if path.extension().is_some_and(|extension| extension == "json") {
-        let value: Value = serde_json::from_slice(&bytes).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    if path
+        .extension()
+        .is_some_and(|extension| extension == "json")
+    {
+        let value: Value = serde_json::from_slice(&bytes)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
         fnv(serde_json::to_string(&value).unwrap().as_bytes())
     } else {
         fnv(&bytes)
@@ -59,13 +65,23 @@ pub fn declared(kind: &str) -> BTreeSet<String> {
 /// Os arquivos `.json` de uma pasta, recursivamente, com o caminho relativo a ela.
 pub fn files_in(root: &Path) -> Vec<(String, PathBuf)> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) {
-        let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().path()).collect();
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
         entries.sort();
         for path in entries {
             if path.is_dir() {
                 walk(root, &path, out);
             } else {
-                out.push((path.strip_prefix(root).unwrap().to_str().unwrap().to_owned(), path));
+                out.push((
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned(),
+                    path,
+                ));
             }
         }
     }

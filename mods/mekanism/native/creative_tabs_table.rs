@@ -25,7 +25,9 @@ pub const UPGRADE_TYPES: [&str; 8] = [
 
 /// A pilha do item de upgrade de um tipo (`IUpgradeHelper.asStack`): o componente `mekanism:upgrade_type`.
 pub fn upgrade_stack(kind: &str) -> String {
-    format!("{{count:1,id:\"mekanism:upgrade\",components:{{\"mekanism:upgrade_type\":\"mekanism:{kind}\"}}}}")
+    format!(
+        "{{count:1,id:\"mekanism:upgrade\",components:{{\"mekanism:upgrade_type\":\"mekanism:{kind}\"}}}}"
+    )
 }
 
 /// Os itens do mod que o original acrescenta a cada aba do vanilla, com os ids que o port tem, na ordem da lista do original (`addToExistingTabs`).
@@ -222,7 +224,10 @@ pub fn edit_mod_tab(items: &mut Vec<String>) -> bool {
     let Some(at) = items.iter().position(|item| *item == plain) else {
         return false;
     };
-    items.splice(at..=at, UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)));
+    items.splice(
+        at..=at,
+        UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)),
+    );
     true
 }
 

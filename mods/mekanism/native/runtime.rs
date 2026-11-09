@@ -1743,6 +1743,38 @@ impl IncompleteScanner {
     }
 }
 
+/// A experiência que o minério dá ao quebrar (`BlockOre.getExpDrop`, `BlockOre.java`): `Mth.nextInt(random, minExp, maxExp)` com o `minExp` e o `maxExp` do
+/// `OreType` (`OreType.java`). Só a fluorita dá (1 a 4: `FLUORITE(MiscResource.FLUORITE, 1, 4, 0.7F, ...)`); estanho, ósmio, urânio e chumbo têm 0 e 0 e não sorteiam
+/// nada. O Horizon só dá experiência aos minérios do vanilla pelo nome (`break_experience`), então o que o mod acrescenta passa por esta função. `Mth.nextInt` não
+/// sorteia quando `min >= max`.
+pub fn ore_experience(block: &str, mut next_int_bound: impl FnMut(i32) -> i32) -> Option<u32> {
+    let (min, max) = match block {
+        "mekanism:fluorite_ore" | "mekanism:deepslate_fluorite_ore" => (1, 4),
+        _ => return None,
+    };
+    Some(if min >= max {
+        min as u32
+    } else {
+        (next_int_bound(max - min + 1) + min) as u32
+    })
+}
+
+/// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
+/// circuitos e os quatro discos do QIO (`BaseTier.getTextColor`, `BaseTier.java:22-25`) e os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`).
+/// O Horizon lê o `item_name` só do dado de cada pilha, não do componente padrão do item, então a cor vai pelo hook do tooltip (`glue::tooltip`).
+pub fn name_color(item: &str) -> Option<u32> {
+    match item {
+        "mekanism:basic_control_circuit" | "mekanism:qio_drive_base" => Some(0x5FFFB8),
+        "mekanism:advanced_control_circuit" | "mekanism:qio_drive_hyper_dense" => Some(0xFF806A),
+        "mekanism:elite_control_circuit" | "mekanism:qio_drive_time_dilating" => Some(0x4BF8FF),
+        "mekanism:ultimate_control_circuit" | "mekanism:qio_drive_supermassive" => Some(0xF787FF),
+        "mekanism:pellet_antimatter" => Some(0xA460D9),
+        "mekanism:pellet_plutonium" => Some(0xCFCFCF),
+        "mekanism:pellet_polonium" => Some(0x559EFF),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1825,37 +1857,5 @@ mod tests {
     fn the_buffer_holds_four_ticks() {
         assert_eq!(energy_capacity(INFUSER_USAGE), 20);
         assert_eq!(energy_capacity(CRUSHER_USAGE), 32);
-    }
-}
-
-/// A experiência que o minério dá ao quebrar (`BlockOre.getExpDrop`, `BlockOre.java`): `Mth.nextInt(random, minExp, maxExp)` com o `minExp` e o `maxExp` do
-/// `OreType` (`OreType.java`). Só a fluorita dá (1 a 4: `FLUORITE(MiscResource.FLUORITE, 1, 4, 0.7F, ...)`); estanho, ósmio, urânio e chumbo têm 0 e 0 e não sorteiam
-/// nada. O Horizon só dá experiência aos minérios do vanilla pelo nome (`break_experience`), então o que o mod acrescenta passa por esta função. `Mth.nextInt` não
-/// sorteia quando `min >= max`.
-pub fn ore_experience(block: &str, mut next_int_bound: impl FnMut(i32) -> i32) -> Option<u32> {
-    let (min, max) = match block {
-        "mekanism:fluorite_ore" | "mekanism:deepslate_fluorite_ore" => (1, 4),
-        _ => return None,
-    };
-    Some(if min >= max {
-        min as u32
-    } else {
-        (next_int_bound(max - min + 1) + min) as u32
-    })
-}
-
-/// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
-/// circuitos e os quatro discos do QIO (`BaseTier.getTextColor`, `BaseTier.java:22-25`) e os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`).
-/// O Horizon lê o `item_name` só do dado de cada pilha, não do componente padrão do item, então a cor vai pelo hook do tooltip (`glue::tooltip`).
-pub fn name_color(item: &str) -> Option<u32> {
-    match item {
-        "mekanism:basic_control_circuit" | "mekanism:qio_drive_base" => Some(0x5FFFB8),
-        "mekanism:advanced_control_circuit" | "mekanism:qio_drive_hyper_dense" => Some(0xFF806A),
-        "mekanism:elite_control_circuit" | "mekanism:qio_drive_time_dilating" => Some(0x4BF8FF),
-        "mekanism:ultimate_control_circuit" | "mekanism:qio_drive_supermassive" => Some(0xF787FF),
-        "mekanism:pellet_antimatter" => Some(0xA460D9),
-        "mekanism:pellet_plutonium" => Some(0xCFCFCF),
-        "mekanism:pellet_polonium" => Some(0x559EFF),
-        _ => None,
     }
 }

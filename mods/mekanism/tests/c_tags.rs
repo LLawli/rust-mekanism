@@ -248,7 +248,16 @@ fn the_tags_the_craft_recipes_need_exist() {
     ] {
         assert!(c_tags().join(path).is_file(), "falta data/c/tags/{path}");
     }
-    assert_eq!(values(&c_tags().join("item/ender_pearls.json")), ["minecraft:ender_pearl"]);
-    assert_eq!(values(&c_tags().join("item/buckets/water.json")), ["minecraft:water_bucket"]);
-    assert_eq!(values(&c_tags().join("item/rods/wooden.json")), ["minecraft:stick"]);
+    assert_eq!(
+        values(&c_tags().join("item/ender_pearls.json")),
+        ["minecraft:ender_pearl"]
+    );
+    assert_eq!(
+        values(&c_tags().join("item/buckets/water.json")),
+        ["minecraft:water_bucket"]
+    );
+    assert_eq!(
+        values(&c_tags().join("item/rods/wooden.json")),
+        ["minecraft:stick"]
+    );
 }
