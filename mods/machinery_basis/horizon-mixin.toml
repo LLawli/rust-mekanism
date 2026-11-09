@@ -669,3 +669,39 @@ bindings = [
   { name = "pos", ty = "BlockPos", value = "pos" },
   { name = "new", ty = "BlockStateId", value = "new" },
 ]
+
+# `FlowingFluid.canBeReplacedWith` do bloco de líquido de mod: a água e a lava do vanilla só o trocam vindas de cima. Hook do catálogo (`block_spread`),
+# usado com estrutura privada (`GameLevel::registry`, o nome e o nível do bloco de destino).
+[[injection]]
+id = "block_spread"
+hook = "block_spread"
+hook_version = 1
+kind = "HEAD"
+helper = "block_spread.rs"
+bindings = [
+  { name = "level", ty = "&GameLevel<'_>", value = "self" },
+  { name = "kind", ty = "&str", value = "kind" },
+  { name = "from", ty = "BlockPos", value = "from" },
+  { name = "to", ty = "BlockPos", value = "to" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+# A física de entidade do Horizon lê o fluido de cada estado de uma tabela só de água e lava (`FluidResources::fluid`, usada pelo jogador, pelas entidades e pelas
+# flechas, não pelo mesher). O RETURN dá a um estado de bloco de líquido de mod a água no movimento, no afogamento e na correnteza (o original move e afoga a
+# entidade em um fluido de mod, `canSwim`, `canDrown`, `canPushEntity` e `motionScale` do `FluidType`), sem dar ao bloco o resto da água. Alvo cru, H47.
+[[module]]
+id = "water-like"
+file = "crates/horizon-client/src/motion.rs"
+name = "machinery_water_like"
+source = "water_like.rs"
+visibility = "pub"
+
+[[injection]]
+id = "fluid_state"
+target = "horizon_client_lib::motion::fluids::FluidResources::fluid"
+kind = "RETURN"
+helper = "fluid_state.rs"
+bindings = [
+  { name = "state", ty = "BlockStateId", value = "state" },
+  { name = "found", ty = "FluidState", value = "$value" },
+]

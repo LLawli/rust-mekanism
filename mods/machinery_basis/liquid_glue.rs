@@ -5,7 +5,8 @@ use crate::game::{Game, GameLevel};
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::{Axis, Direction};
 use horizon_core::position::BlockPos;
-use horizon_world::level::{LevelAccess, Ticks};
+use crate::game::LevelDimension;
+use horizon_world::level::{LevelAccess, LevelEvent, Ticks};
 use horizon_world::registry::BlockStateId;
 use machinery_basis_core::liquid::flow;
 use machinery_basis_core::liquid::shape::{OcclusionCache, PixelShape};
@@ -38,6 +39,33 @@ fn face_of(direction: Direction) -> Face {
         Direction::South => Face::South,
         Direction::West => Face::West,
         Direction::East => Face::East,
+    }
+}
+
+fn dimension_of(dimension: LevelDimension) -> &'static str {
+    match dimension {
+        LevelDimension::Overworld => "minecraft:overworld",
+        LevelDimension::Nether => "minecraft:the_nether",
+        LevelDimension::End => "minecraft:the_end",
+    }
+}
+
+/// `FlowingFluid.canBeReplacedWith` do fluido de mod (`BaseFlowingFluid`: `direction == Direction.DOWN && !isSame`): a água ou a lava do vanilla só
+/// entra numa célula de líquido de mod vinda de cima. O motor da água não conhece o bloco e o trocaria de qualquer lado.
+pub(in crate::game) fn block_spread(
+    level: &GameLevel<'_>,
+    kind: &str,
+    from: BlockPos,
+    to: BlockPos,
+    canceled: &mut bool,
+) {
+    if kind != "fluid" {
+        return;
+    }
+    let liquids = liquid_data::current();
+    let state = level.block_state(to);
+    if liquid_of(level, &liquids, state).is_some() && from.y != to.y + 1 {
+        *canceled = true;
     }
 }
 
@@ -276,10 +304,12 @@ impl LiquidWorld for LevelLiquids<'_, '_> {
         self.level.native_schedule_block_tick(&mut *self.ticks, [pos.x, pos.y, pos.z], &spec.block, delay);
     }
 
-    fn drop_resources(&mut self, pos: machinery_basis_core::liquid::BlockPos, _state: &BlockView) {
-        // `BaseFlowingFluid.beforeDestroyingBlock`: `Block.dropResources`. O motor só solta ao quebrar o bloco.
-        let b = self.level.behaviours;
-        b.destroy_block(&mut *self.level, &mut *self.ticks, game_pos(pos), true);
+    fn drop_resources(&mut self, pos: machinery_basis_core::liquid::BlockPos, state: &BlockView) {
+        // `BaseFlowingFluid.beforeDestroyingBlock`: `Block.dropResources`, sem o evento de quebra (2001: partículas e som) que o `destroyBlock`
+        // acrescenta. É o mesmo evento `DropResources` que `Sim::drop_resources` põe na fila do nível, com a regra `block_drops`.
+        if self.level.rules.block_drops {
+            self.level.events.push(LevelEvent::DropResources { pos: game_pos(pos), state: BlockStateId(state.state_id) });
+        }
     }
 }
 
@@ -321,10 +351,11 @@ pub(in crate::game) fn update_shape(
         None => false,
     };
     if own.is_source() || neighbour_is_source {
-        if let Some(spec) = liquids.iter().nth(index) {
-            level.native_schedule_block_tick(ticks, [pos.x, pos.y, pos.z], &spec.block, spec.tick_delay);
-        }
+        // Na fila, na ordem em que o jogo avisa: `onPlace`, as formas dos vizinhos e `neighborChanged` agendam nesta ordem no original, e a ordem
+        // do agendamento é a dos ticks do mesmo instante (`subTickOrder`).
+        PENDING.lock().unwrap_or_else(|e| e.into_inner()).push((dimension_of(level.dimension), [pos.x, pos.y, pos.z]));
     }
+    let _ = &ticks;
     if direction == Direction::Up {
         let same = liquid_of(level, &liquids, neighbour).is_some_and(|(other, _)| other == index);
         if let Some(changed) = level.native_state_with_property(state, UP_PROPERTY, if same { "true" } else { "false" }) {
@@ -559,4 +590,24 @@ pub(in crate::game) fn dispense(
     } else {
         *answer = Some((game.native_dispense_default(dimension, pos, facing, stack.clone()), 1000));
     }
+}
+
+/// A tabela dos estados de líquido de mod por número de estado, para a física de entidade (`FluidResources::fluid`, H47): o nível mais 1 nos
+/// estados de um bloco de líquido declarado. Refeita a cada carga de dados.
+pub(in crate::game) fn index_states(game: &Game<'_>) {
+    let liquids = liquid_data::current();
+    let registry = game.pack.assets.registry;
+    let mut table = vec![0u8; registry.len()];
+    for (index, entry) in table.iter_mut().enumerate() {
+        let Some(state) = registry.state(BlockStateId(index as u32)) else {
+            continue;
+        };
+        if liquids.by_block(&state.name).is_none() {
+            continue;
+        }
+        if let Some(level) = state.properties.get(LEVEL_PROPERTY).and_then(|v| v.parse::<u8>().ok()) {
+            *entry = level.min(MAX_LEGACY_LEVEL) + 1;
+        }
+    }
+    horizon_client::motion::machinery_water_like::set(table);
 }
