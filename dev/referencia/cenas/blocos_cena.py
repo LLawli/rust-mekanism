@@ -100,7 +100,10 @@ def main():
     spec = {
         "setup": ["difficulty peaceful", "time set 6000", "weather clear", "gamemode creative"]
         # `fill` aceita até 32.768 blocos: a área da cena em três fatias.
-        + [f"fill {X0 - 8 + 24 * i} {Y} {Z - 30} {X0 + 15 + 24 * i} {Y + 8} {Z + 8} minecraft:air" for i in range(3)],
+        + [f"fill {X0 - 8 + 24 * i} {Y} {Z - 30} {X0 + 15 + 24 * i} {Y + 8} {Z + 8} minecraft:air" for i in range(3)]
+        # O cliente do original sobe com o que os testes de jogo dele deixam no mundo (estruturas de teste: pedras, uma máquina, uma caixa) ao longe, atrás da fileira, e entram em todo
+        # print como uma diferença que não é de bloco. A faixa de trás, até 120 blocos, em fatias de `fill` (no máximo 32.768 blocos).
+        + [f"fill {X0 - 40} {Y} {Z + 9 + 20 * i} {X0 + 100} {Y + 10} {Z + 28 + 20 * i} minecraft:air" for i in range(6)],
         "clear": f"fill {X0 - 8} {Y} {Z - 4} {X0 + 60} {Y + 8} {Z + 8} minecraft:air",
         "shots": shots,
     }

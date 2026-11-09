@@ -16,11 +16,21 @@ FAIXA = (330, 760)  # as linhas onde ficam os blocos, abaixo das nuvens e acima 
 LIMITE = int(sys.argv[4]) if len(sys.argv) > 4 else 24
 
 
+def terra(a, b, i):
+    """Se o pixel é de terra nua (marrom: vermelho acima do verde acima do azul) em qualquer um dos dois: a grama morre sob os blocos das tomadas anteriores, ao acaso, e o mundo de cada jogo
+    tem as suas manchas, que não são de bloco."""
+    for img in (a, b):
+        if img[i] > img[i + 1] + 12 and img[i + 1] > img[i + 2] + 12:
+            return True
+    return False
+
+
 def comparar(original, port):
     (lo, _, a), (lp, _, b) = original, port
     assert lo == lp == LARGURA
     diff = bytearray(b"\x00\x00\x00\xff" * (LARGURA * (FAIXA[1] - FAIXA[0])))
     contados = total = 0
+    sem_terra = 0
     xmin = ymin = 10**9
     xmax = ymax = -1
     for y in range(*FAIXA):
@@ -30,10 +40,11 @@ def comparar(original, port):
             total += 1
             if d > LIMITE:
                 contados += 1
+                sem_terra += not terra(a, b, i)
                 xmin, xmax, ymin, ymax = min(xmin, x), max(xmax, x), min(ymin, y), max(ymax, y)
                 j = ((y - FAIXA[0]) * LARGURA + x) * 4
                 diff[j : j + 3] = b"\xff\x40\x40"
-    return contados, total, (xmin, ymin, xmax, ymax), diff
+    return contados, total, (xmin, ymin, xmax, ymax), diff, sem_terra
 
 
 def regioes(diff, folga=12, minimo=40):
@@ -88,9 +99,9 @@ def main():
     for nome in nomes:
         o = ct.ler_png(os.path.join(pasta_o, f"oficial_{nome}.png"))
         p = ct.ler_png(os.path.join(pasta_p, f"porte_{nome}.png"))
-        contados, total, caixa, diff = comparar(o, p)
+        contados, total, caixa, diff, sem_terra = comparar(o, p)
         empilhar(o, p, diff, os.path.join(saida, f"lado_{nome}.png"))
-        print(f"{nome}: {contados} de {total} pixels ({100 * contados / total:.3f} %), caixa {caixa if contados else None}")
+        print(f"{nome}: {contados} de {total} pixels ({100 * contados / total:.3f} %), sem as manchas de terra {sem_terra} ({100 * sem_terra / total:.3f} %), caixa {caixa if contados else None}")
         if contados > total // 1000:
             for caixa_regiao, celulas in regioes(diff):
                 print(f"    região {caixa_regiao}: {celulas} células de 12 por 12")

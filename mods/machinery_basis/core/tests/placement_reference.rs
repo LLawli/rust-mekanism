@@ -6,32 +6,13 @@ use machinery_basis_core::placement::{self, Rule};
 use serde_json::Value;
 use std::path::PathBuf;
 
-/// Os blocos que o port tinha antes dos blocos de máquina: as quatro máquinas usam o gabarito do forno, que se vira sozinho, e os cabos ligam os lados pela energia.
-const EARLIER: [&str; 8] = [
+/// Os blocos que o port tinha antes dos blocos de máquina: as quatro máquinas usam o gabarito do forno, que se vira sozinho.
+const EARLIER: [&str; 4] = [
     "enrichment_chamber",
     "crusher",
     "energized_smelter",
     "metallurgic_infuser",
-    "basic_universal_cable",
-    "advanced_universal_cable",
-    "elite_universal_cable",
-    "ultimate_universal_cable",
 ];
-
-/// Os transmissores da frente `blocos-estrutura` (canos, tubos, condutores, transportadores): o bloco que conecta do Horizon não tem o estado `fluid_logged` do original (decisão 27), então
-/// não têm regra de colocação.
-fn transmitter(block: &str) -> bool {
-    [
-        "mechanical_pipe",
-        "pressurized_tube",
-        "thermodynamic_conductor",
-        "logistical_transporter",
-        "restrictive_transporter",
-        "diversion_transporter",
-    ]
-    .iter()
-    .any(|kind| block.ends_with(kind))
-}
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -132,7 +113,7 @@ fn the_fluid_logged_value_is_the_one_the_original_gives() {
         }
         let Some(rule) = rule(name) else {
             assert!(
-                EARLIER.contains(&name) || transmitter(name),
+                EARLIER.contains(&name),
                 "{id} tem fluido no original e não tem regra de colocação"
             );
             continue;

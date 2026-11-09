@@ -390,13 +390,23 @@ fn every_block_is_declared_as_the_original_registers_it() {
             "{id}"
         );
         if is_transmitter(&id) {
-            // O bloco que conecta do Horizon (o chorus plant sem as regras dele): a espessura, a tag da família, nenhuma propriedade de estado (o estado do original, `fluid_logged`, e a
-            // conexão por block entity esperam as Fases 3 e 4, decisão 26) e nenhuma oclusão declarada (o centro nunca é um cubo).
+            // O bloco que conecta do Horizon (o chorus plant sem as regras dele): a espessura, a tag da família, os seis lados por estado (a conexão do original vem da block entity, Fases 3
+            // e 4), o `fluid_logged` do original com os mesmos valores e o mesmo padrão (decisão 27) e nenhuma oclusão declarada (o centro nunca é um cubo).
             let (thickness, tag) = transmitter_facts(&id);
             assert_eq!(declaration["template"], "minecraft:chorus_plant", "{id}");
             assert_eq!(declaration["thickness"], thickness, "{id}");
             assert_eq!(declaration["connects_to"], format!("#{tag}"), "{id}");
-            assert!(declaration.get("state_properties").is_none(), "{id}");
+            assert_eq!(
+                declaration["state_properties"],
+                serde_json::json!({"fluid_logged": {"type": "enum", "values": ["empty", "water", "lava"]}}),
+                "{id}"
+            );
+            assert_eq!(declaration["default_state"], row["default"], "{id}");
+            assert_eq!(
+                row["default"],
+                serde_json::json!({"fluid_logged": "empty"}),
+                "{id}"
+            );
             assert!(properties.get("occludes").is_none(), "{id}");
             assert_eq!(properties["requires_tool"], false, "{id}");
             let names: Vec<&str> = row["properties"]
@@ -412,8 +422,18 @@ fn every_block_is_declared_as_the_original_registers_it() {
             );
             continue;
         }
-        // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas).
-        assert_eq!(declaration["template"], "minecraft:lodestone", "{id}");
+        // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas). O vidro estrutural (`BlockTileGlass`: sem oclusão,
+        // sombra 1, sem a face entre dois vidros, forma visual vazia, som e instrumento do vidro) é o `minecraft:glass`, que dá tudo isso (decisão 26).
+        let glass = id == "structural_glass";
+        assert_eq!(
+            declaration["template"],
+            if glass {
+                "minecraft:glass"
+            } else {
+                "minecraft:lodestone"
+            },
+            "{id}"
+        );
         // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
         // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
         let solid = row["states"]
@@ -423,7 +443,7 @@ fn every_block_is_declared_as_the_original_registers_it() {
             .all(|s| s["solid_render"] == true);
         assert_eq!(
             properties.get("occludes").and_then(Value::as_bool),
-            if solid { None } else { Some(false) },
+            if solid || glass { None } else { Some(false) },
             "{id}: occludes"
         );
         // A luz fixa (só o Teleporter): `AttributeLight(3)`. A do estado ativo e a da lava vêm da tabela.

@@ -3,7 +3,7 @@
 
 Uso: H_NAME=horizon h2_blocos.py give|estados|cena [PASTA_DOS_PRINTS]
 - give: todo id responde ao `give`;
-- estados: cada bloco, em até cinco estados do original (o primeiro, o último, `active=true`, cada `facing`), é posto por `setblock` e lido de volta por `block`;
+- estados: (colunas em y -52) cada bloco, em até cinco estados do original (o primeiro, o último, `active=true`, cada `facing`), é posto por `setblock` e lido de volta por `block`;
 - conexoes: os transmissores novos, postos lado a lado, ligam-se a quem é da família (a tag `connects_to`) e não a quem é de outra;
 - cena: o roteiro `cenas/blocos.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`, na pasta de dados do jogo; `scp` os traz).
 Supõe o jogo aberto num mundo plano (o chão em y -61) com o jogador criativo, e a janela de 1920 por 1080.
@@ -36,9 +36,6 @@ def scope():
         row = json.loads(line)
         name = row["id"].split(":")[1]
         if name in ported and name not in EARLIER and not name.startswith("block_") and not name.endswith("_ore"):
-            if connects(name):
-                # O bloco que conecta do Horizon tem os seis lados por estado, não o `fluid_logged` do original (decisão 26): só o estado sem conexão se compara.
-                row = dict(row, states=[{"props": {}, "light": 0}])
             rows[name] = row
     return rows
 
@@ -49,7 +46,9 @@ def give():
     for name in rows:
         chat = h.command(f"give @s mekanism:{name} 1")
         text = " ".join(chat) if isinstance(chat, list) else str(chat)
-        if "Unknown" in text or "No item" in text or "error" in text.lower():
+        refused = "Unknown" in text or "No item" in text or "error" in text.lower()
+        # O bloco de apoio não tem item: o `give` o recusa, como o original.
+        if refused != (name == "bounding_block"):
             bad.append((name, text[:120]))
     print(f"give: {len(rows)} ids, {len(bad)} recusados {bad}")
     return not bad
@@ -66,20 +65,26 @@ def state_text(props):
 def estados():
     """Põe e lê de volta cinco estados de cada bloco. Os blocos vão para y -52, no ar, em colunas separadas."""
     h.command("tick unfreeze")
+    # As colunas vão de 56 a 113 em x e de 70 a 91 em z, em y -52: o jogador vai ao meio e espera os chunks.
+    h.ctl("tp", "84", "-50", "80")
+    h.ctl("wait-ready")
     bad, total = [], 0
     for i, (name, row) in enumerate(sorted(scope().items())):
         picks = [row["states"][0]["props"], row["states"][-1]["props"]]
         picks += [s["props"] for s in row["states"] if s["props"].get("active") == "true"][:1]
         picks += [s["props"] for s in row["states"] if s["props"].get("facing") in ("east", "west")][:2]
-        pos = (56 + (i % 20) * 3, -52 - (i // 20) * 3, 70)
+        pos = (56 + (i % 20) * 3, -52, 70 + (i // 20) * 3)
         for props in picks:
             text = state_text(props)
             h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} mekanism:{name}{text}")
             got = block_state(pos)
             want = f"mekanism:{name}{text}"
             total += 1
-            # Um transmissor volta com os seis lados falsos no estado: o prefixo é o id.
-            if got != want and not (connects(name) and got.split("[")[0] == want):
+            # Um transmissor volta com os seis lados (`north` a `down`, a conexão do chorus plant do Horizon) além das propriedades do original (decisão 27): sem eles é o que se pôs.
+            if connects(name) and "[" in got:
+                kept = sorted(p for p in got[got.index("[") + 1 : -1].split(",") if p.split("=")[0] not in ("north", "east", "south", "west", "up", "down"))
+                got = got[: got.index("[")] + ("[" + ",".join(kept) + "]" if kept else "")
+            if got != want:
                 bad.append((want, got))
     print(f"estados: {total} lidos, {len(bad)} diferentes", bad[:5])
     return not bad
@@ -113,6 +118,9 @@ def tag_items(tag):
     namespace, path = tag.split(":")
     file = os.path.join(ROOT, f"mods/mekanism/content/data/{namespace}/tags/item/{path}.json")
     out = []
+    if not os.path.exists(file):
+        # Uma tag aninhada do vanilla (`#minecraft:bars`): o conteúdo do mod não a tem, o jogo sim.
+        return out
     for value in json.load(open(file))["values"]:
         out += tag_items(value[1:]) if value.startswith("#") else [value]
     return out
@@ -134,6 +142,9 @@ def mesa(name):
     order = list(needs)
     for item in order:
         h.command(f"give @s {item} {needs[item]}")
+    # O chunk da mesa tem de estar carregado (depois de outro modo o jogador pode estar longe): vai para perto e espera.
+    h.ctl("tp", "72", "-58", "58")
+    h.ctl("wait-ready")
     h.command("setblock 72 -60 60 minecraft:crafting_table")
     h.ctl("tp", "72", "-60", "58")
     time.sleep(0.6)
@@ -194,7 +205,9 @@ def colocar():
     stands = [("east", (82.5, -60, 80.5)), ("west", (77.5, -60, 80.5)), ("south", (80.5, -60, 82.5)), ("north", (80.5, -60, 77.5)),
               ("up", (82.5, -60, 82.5)), ("up", (77.5, -60, 82.5)), ("up", (77.5, -60, 77.5)), ("up", (82.5, -60, 77.5))]
     side = {"east": (81, -60, 80), "west": (79, -60, 80), "south": (80, -60, 81), "north": (80, -60, 79), "up": (80, -59, 80)}
-    for name in ["combiner", "personal_barrel", "laser", "logistical_sorter", "chemical_infuser", "quantum_entangloporter", "chargepad", "qio_importer"]:
+    for name in ["combiner", "personal_barrel", "laser", "logistical_sorter", "chemical_infuser", "quantum_entangloporter", "chargepad", "qio_importer",
+                 "basic_bin", "ultimate_energy_cube", "creative_chemical_tank", "supercharged_coil", "thermal_evaporation_controller",
+                 "basic_mechanical_pipe", "ultimate_universal_cable"]:
         rule = json.load(open(os.path.join(ROOT, f"mods/mekanism/content/data/mekanism/machinery_basis/placement/{name}.json")))
         h.command("clear @s")
         h.command(f"give @s mekanism:{name} 1")
@@ -209,6 +222,14 @@ def colocar():
             pos = side[face]
             state = block_state(pos)
             now = status()
+            if "facing" not in rule:
+                # Um transmissor não tem `facing`: só se confere que o bloco foi posto.
+                total += 1
+                ok &= state.startswith(f"mekanism:{name}")
+                h.command("clear @s")
+                h.command(f"give @s mekanism:{name} 1")
+                h.ctl("select", "1")
+                continue
             want = expected_facing(rule["facing"], now["yaw"], now["pitch"], face)
             got = state.split("facing=")[1].split(",")[0].split("]")[0] if "facing=" in state else None
             total += 1
@@ -218,23 +239,24 @@ def colocar():
             h.command("clear @s")
             h.command(f"give @s mekanism:{name} 1")
             h.ctl("select", "1")
-    # O fluido do lugar: a água (fonte) enche o bloco, a lava também, o ar não.
-    for fluid, want in (("water", "water"), ("lava", "lava"), ("air", "empty")):
-        h.command("fill 70 -60 70 90 -52 90 minecraft:air")
-        h.command("setblock 80 -60 80 minecraft:stone")
-        h.command(f"setblock 81 -60 80 minecraft:{fluid}")
-        h.command("clear @s")
-        h.command("give @s mekanism:chemical_infuser 1")
-        h.ctl("select", "1")
-        h.ctl("tp", "82.5", "-60", "80.5")
-        h.ctl("look-at", "80.5", "-59.5", "80.5")
-        h.ctl("interact", "80", "-60", "80", "east")
-        time.sleep(0.3)
-        state = block_state((81, -60, 80))
-        got = state.split("fluid_logged=")[1].rstrip("]") if "fluid_logged=" in state else state
-        total += 1
-        ok &= got == want
-        print(f"chemical_infuser com {fluid} no lugar: {state} (esperado fluid_logged={want})")
+    # O fluido do lugar: a água (fonte) enche o bloco, a lava também, o ar não. Numa máquina e num cano.
+    for name in ("chemical_infuser", "basic_mechanical_pipe", "ultimate_universal_cable"):
+        for fluid, want in (("water", "water"), ("lava", "lava"), ("air", "empty")):
+            h.command("fill 70 -60 70 90 -52 90 minecraft:air")
+            h.command("setblock 80 -60 80 minecraft:stone")
+            h.command(f"setblock 81 -60 80 minecraft:{fluid}")
+            h.command("clear @s")
+            h.command(f"give @s mekanism:{name} 1")
+            h.ctl("select", "1")
+            h.ctl("tp", "82.5", "-60", "80.5")
+            h.ctl("look-at", "80.5", "-59.5", "80.5")
+            h.ctl("interact", "80", "-60", "80", "east")
+            time.sleep(0.3)
+            state = block_state((81, -60, 80))
+            got = state.split("fluid_logged=")[1].split(",")[0].rstrip("]") if "fluid_logged=" in state else state
+            total += 1
+            ok &= got == want
+            print(f"{name} com {fluid} no lugar: {state} (esperado fluid_logged={want})")
     h.command("fill 70 -60 70 90 -52 90 minecraft:air")
     print(f"colocar: {total} casos")
     return ok

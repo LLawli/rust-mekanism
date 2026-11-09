@@ -4132,6 +4132,33 @@
 }
 }
 },
+"tier_colors": {
+"advanced": [
+255,
+128,
+106
+],
+"basic": [
+95,
+255,
+184
+],
+"creative": [
+88,
+88,
+88
+],
+"elite": [
+75,
+248,
+255
+],
+"ultimate": [
+247,
+135,
+255
+]
+},
 "transmitters": {
 "advanced_logistical_transporter": {
 "center": "mekanism:block/models/multipart/opaque/advanced_logistical_transporter",

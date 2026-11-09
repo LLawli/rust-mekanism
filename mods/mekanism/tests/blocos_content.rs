@@ -44,19 +44,24 @@ fn fluid_tanks() -> Vec<String> {
     TIERS5.map(|tier| format!("{tier}_fluid_tank")).to_vec()
 }
 
-/// Os arquivos que o port escreve em vez de copiar (decisão 26): o blockstate e o item dos transmissores e do cubo de energia, o item do tanque de fluido, e os modelos que eles citam.
+/// Os arquivos que o port escreve em vez de copiar (decisão 26): o blockstate e o item dos transmissores, do cubo de energia e do tanque de fluido (o vidro tingido de cada tier), e os modelos
+/// e as texturas que eles citam.
 fn generated(relative: &str) -> bool {
     let id = relative
         .rsplit('/')
         .next()
         .unwrap()
-        .trim_end_matches(".json");
+        .trim_end_matches(".json")
+        .trim_end_matches(".png");
     let in_set = |ids: Vec<String>| ids.iter().any(|candidate| candidate == id);
     (relative.starts_with("assets/mekanism/blockstates/")
-        && (in_set(transmitters()) || in_set(energy_cubes())))
+        && (in_set(transmitters()) || in_set(energy_cubes()) || in_set(fluid_tanks())))
         || (relative.starts_with("assets/mekanism/items/")
             && (in_set(transmitters()) || in_set(energy_cubes()) || in_set(fluid_tanks())))
         || relative.starts_with("assets/mekanism/models/block/transmitter_port/")
+        || relative.starts_with("assets/mekanism/models/block/fluid_tank/")
+        || (relative.starts_with("assets/mekanism/textures/block/models/fluid_tank_side_")
+            && TIERS5.iter().any(|tier| id.ends_with(&format!("_{tier}"))))
         || (relative.starts_with("assets/mekanism/models/block/energy_cube/")
             && (id.ends_with("_static") || id.ends_with("_item")))
         || (relative.starts_with("assets/mekanism/models/item/") && id.ends_with("_port"))
@@ -175,7 +180,10 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
             content().join(&relative).is_file(),
             "falta a textura {texture}"
         );
-        assert!(files.contains(&relative), "{relative} não é a do original");
+        assert!(
+            files.contains(&relative) || generated(&relative),
+            "{relative} não é a do original"
+        );
         let animation = content().join(format!("{relative}.mcmeta"));
         if animation.is_file() {
             assert!(files.contains(&format!("{relative}.mcmeta")));
@@ -601,11 +609,17 @@ fn the_energy_cubes_are_drawn_with_the_frame_the_leds_and_the_ports_of_the_origi
     }
 }
 
-/// O tanque de fluido sem fluido: o item é o modelo do estado padrão do bloco (`RenderFluidTankItem` desenha o `blockRenderState`) com o `display` do modelo base do original.
+/// O tanque de fluido de cada tier: o blockstate e os dois modelos (parado e ativo) usam o vidro já multiplicado pela cor do tier (`ClientRegistration.registerBlockColorHandlers`, a cor de
+/// `colormap/tiers.png`), que o Horizon não tinge; o item sem fluido (`RenderFluidTankItem` desenha o modelo do estado padrão) é o modelo parado com o `display` do modelo base do original.
 #[test]
-fn the_fluid_tank_items_show_the_block_model_with_the_display_of_the_original() {
+fn the_fluid_tanks_use_the_glass_of_their_tier_and_the_items_show_the_block_model() {
     let rastro = rastro("estrutura_modelos.json");
+    let colors = rastro["tier_colors"].as_object().unwrap();
+    assert_eq!(colors.len(), 5);
+    let mut seen = std::collections::BTreeSet::new();
     for tier in TIERS5 {
+        // As cores dos cinco tiers são distintas: um tier sem cor própria deixaria o vidro de dois tanques igual.
+        assert!(seen.insert(colors[tier].to_string()), "{tier}");
         let block = format!("{tier}_fluid_tank");
         let definition = json(&content().join(format!("assets/mekanism/items/{block}.json")));
         assert_eq!(definition["model"]["type"], "minecraft:model", "{block}");
@@ -613,22 +627,50 @@ fn the_fluid_tank_items_show_the_block_model_with_the_display_of_the_original() 
             definition["model"]["model"],
             format!("mekanism:item/{block}_port")
         );
-        let model = json(&content().join(format!("assets/mekanism/models/item/{block}_port.json")));
-        assert_eq!(model["parent"], "mekanism:block/fluid_tank", "{block}");
+        let item = json(&content().join(format!("assets/mekanism/models/item/{block}_port.json")));
         assert_eq!(
-            numbers(&model["display"]),
+            item["parent"],
+            format!("mekanism:block/fluid_tank/{tier}"),
+            "{block}"
+        );
+        assert_eq!(
+            numbers(&item["display"]),
             numbers(&rastro["fluid_tank_display"][tier]),
             "{block}"
         );
-        // O estado desligado usa esse mesmo modelo, e o ligado o `fluid_tank_active` (o blockstate do original).
         let state = json(&content().join(format!("assets/mekanism/blockstates/{block}.json")));
         assert_eq!(
             state["variants"]["active=false"]["model"],
-            "mekanism:block/fluid_tank"
+            format!("mekanism:block/fluid_tank/{tier}")
         );
         assert_eq!(
             state["variants"]["active=true"]["model"],
-            "mekanism:block/fluid_tank_active"
+            format!("mekanism:block/fluid_tank/{tier}_active")
         );
+        for (suffix, parent, glass) in [
+            ("", "mekanism:block/fluid_tank", "off"),
+            ("_active", "mekanism:block/fluid_tank_active", "on"),
+        ] {
+            let model = json(&content().join(format!(
+                "assets/mekanism/models/block/fluid_tank/{tier}{suffix}.json"
+            )));
+            assert_eq!(model["parent"], parent, "{block}");
+            let texture = format!("mekanism:block/models/fluid_tank_side_{glass}_{tier}");
+            assert_eq!(model["textures"]["glass"], texture, "{block}");
+            // A textura do tier existe e tem o tamanho da do original (o IHDR do PNG: largura e altura nos bytes 16 a 24); os pixels são conferidos por `test_blocos_conteudo.py`.
+            let baked = std::fs::read(content().join(format!(
+                "assets/mekanism/textures/block/models/fluid_tank_side_{glass}_{tier}.png"
+            )))
+            .unwrap();
+            let original = std::fs::read(content().join(format!(
+                "assets/mekanism/textures/block/models/fluid_tank_side_{glass}.png"
+            )))
+            .unwrap();
+            assert_eq!(baked[16..24], original[16..24], "{block}");
+            assert_ne!(
+                baked, original,
+                "{block}: a textura do tier é a do original multiplicada pela cor"
+            );
+        }
     }
 }
