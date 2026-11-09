@@ -345,6 +345,16 @@ bindings = [
   { name = "m", ty = "&Map<String, Value>", value = "m" },
 ]
 
+# O arquivo do item do Configurator é o do original e escolhe o modelo pelo componente `mekanism:configurator_mode` (`minecraft:select` com `minecraft:component`); o Horizon só
+# aceita aí os componentes do vanilla e descarta o arquivo inteiro. H5 (a lista de componentes de mod valer também para o `select`) elimina esta injeção.
+[[injection]]
+id = "item_component_type"
+target = "horizon_assets::item_model::component_type"
+kind = "HEAD"
+cancellable = true
+helper = "item_component_type.rs"
+bindings = [{ name = "v", ty = "&Value", value = "v" }]
+
 [[injection]]
 id = "command_components"
 target = "horizon_command::item::ItemState<'_,'_>::component_type"

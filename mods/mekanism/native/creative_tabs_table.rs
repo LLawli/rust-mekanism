@@ -32,7 +32,7 @@ pub fn upgrade_stack(kind: &str) -> String {
 
 /// Os itens do mod que o original acrescenta a cada aba do vanilla, com os ids que o port tem, na ordem da lista do original (`addToExistingTabs`).
 /// `mekanism:upgrade` marca onde entram as pilhas de upgrade.
-pub const VANILLA_TABS: [(&str, &[&str]); 6] = [
+pub const VANILLA_TABS: [(&str, &[&str]); 7] = [
     (
         "minecraft:building_blocks",
         &[
@@ -90,7 +90,53 @@ pub const VANILLA_TABS: [(&str, &[&str]); 6] = [
             "mekanism:ultimate_universal_cable",
         ],
     ),
-    ("minecraft:tools_and_utilities", &["mekanism:upgrade"]),
+    (
+        "minecraft:tools_and_utilities",
+        &[
+            "mekanism:configurator",
+            "mekanism:network_reader",
+            "mekanism:dosimeter",
+            "mekanism:geiger_counter",
+            "mekanism:dictionary",
+            "mekanism:configuration_card",
+            "mekanism:gauge_dropper",
+            "mekanism:crafting_formula",
+            "mekanism:portable_qio_dashboard",
+            "mekanism:atomic_disassembler",
+            "mekanism:meka_tool",
+            "mekanism:scuba_mask",
+            "mekanism:scuba_tank",
+            "mekanism:free_runners",
+            "mekanism:free_runners_armored",
+            "mekanism:jetpack",
+            "mekanism:jetpack_armored",
+            "mekanism:hdpe_elytra",
+            "mekanism:hazmat_mask",
+            "mekanism:hazmat_gown",
+            "mekanism:hazmat_pants",
+            "mekanism:hazmat_boots",
+            "mekanism:upgrade",
+            "mekanism:basic_tier_installer",
+            "mekanism:advanced_tier_installer",
+            "mekanism:elite_tier_installer",
+            "mekanism:ultimate_tier_installer",
+        ],
+    ),
+    (
+        "minecraft:combat",
+        &[
+            "mekanism:atomic_disassembler",
+            "mekanism:flamethrower",
+            "mekanism:electric_bow",
+            "mekanism:meka_tool",
+            "mekanism:mekasuit_helmet",
+            "mekanism:mekasuit_bodyarmor",
+            "mekanism:mekasuit_pants",
+            "mekanism:mekasuit_boots",
+            "mekanism:free_runners_armored",
+            "mekanism:jetpack_armored",
+        ],
+    ),
     (
         "minecraft:ingredients",
         &[

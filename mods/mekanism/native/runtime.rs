@@ -1760,14 +1760,24 @@ pub fn ore_experience(block: &str, mut next_int_bound: impl FnMut(i32) -> i32) -
 }
 
 /// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
-/// circuitos e os quatro discos do QIO (`BaseTier.getTextColor`, `BaseTier.java:22-25`) e os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`).
+/// circuitos, os quatro discos do QIO e os quatro instaladores de tier (`BaseTier.getTextColor`, `BaseTier.java:22-25`; o instalador pela cor do tier de destino,
+/// `registerInstaller`, `MekanismItems.java:299-302`), os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`) e o Configurator (`EnumColor.AQUA`, `MekanismItems.java:93-94`).
 /// O Horizon lê o `item_name` só do dado de cada pilha, não do componente padrão do item, então a cor vai pelo hook do tooltip (`glue::tooltip`).
 pub fn name_color(item: &str) -> Option<u32> {
     match item {
-        "mekanism:basic_control_circuit" | "mekanism:qio_drive_base" => Some(0x5FFFB8),
-        "mekanism:advanced_control_circuit" | "mekanism:qio_drive_hyper_dense" => Some(0xFF806A),
-        "mekanism:elite_control_circuit" | "mekanism:qio_drive_time_dilating" => Some(0x4BF8FF),
-        "mekanism:ultimate_control_circuit" | "mekanism:qio_drive_supermassive" => Some(0xF787FF),
+        "mekanism:basic_control_circuit"
+        | "mekanism:qio_drive_base"
+        | "mekanism:basic_tier_installer" => Some(0x5FFFB8),
+        "mekanism:advanced_control_circuit"
+        | "mekanism:qio_drive_hyper_dense"
+        | "mekanism:advanced_tier_installer" => Some(0xFF806A),
+        "mekanism:elite_control_circuit"
+        | "mekanism:qio_drive_time_dilating"
+        | "mekanism:elite_tier_installer" => Some(0x4BF8FF),
+        "mekanism:ultimate_control_circuit"
+        | "mekanism:qio_drive_supermassive"
+        | "mekanism:ultimate_tier_installer" => Some(0xF787FF),
+        "mekanism:configurator" => Some(0x30FFF9),
         "mekanism:pellet_antimatter" => Some(0xA460D9),
         "mekanism:pellet_plutonium" => Some(0xCFCFCF),
         "mekanism:pellet_polonium" => Some(0x559EFF),
