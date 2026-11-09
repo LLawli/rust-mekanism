@@ -1845,6 +1845,458 @@ pub fn name_color(item: &str) -> Option<u32> {
     }
 }
 
+/// O desenho vestido do MekaSuit, do jetpack, das botas e do tanque de mergulho: o que o `IClientItemExtensions` deles (`ISpecialGear.gearModel`) faz no original
+/// (`client/render/armor`), como tabela para `machinery_basis_core::worn_gear`. Os números saem do Java (`rastros/armor_gear.json`, que `tests/worn_gear.rs` confere).
+pub mod worn_gear {
+    use machinery_basis_core::worn_gear::{Attachment, Gear, Op, Slot};
+
+    /// `OBJModelData.modelState`: a rotação de PI em Z que o original põe em todo quad do OBJ do MekaSuit ao assar (`Transformation(matrix.rotate(Axis.ZP.rotation(PI)))`, em volta do
+    /// centro do bloco): o ponto (x, y, z) vira (1 - x, 1 - y, z). Como passos da pose, `translate(1, 1, 0)` e `scale(-1, -1, 1)`: o Horizon assa o OBJ sem ela.
+    const OBJ_STATE: [Op; 2] = [Op::Translate([1.0, 1.0, 0.0]), Op::Scale([-1.0, -1.0, 1.0])];
+
+    /// Uma posição do corpo do `MekaSuitArmor.ModelPos`: a parte, a translação `BASE_TRANSLATION + deslocamento` (`translateModel`) e a do bebê (`scaleBaby`).
+    struct Position {
+        part: &'static str,
+        ops: &'static [Op],
+        baby_ops: &'static [Op],
+    }
+
+    const HEAD: Position = Position {
+        part: "head",
+        ops: &[Op::Translate([-1.0, 0.5, 0.0]), OBJ_STATE[0], OBJ_STATE[1]],
+        // A cabeça do bebê não muda de escala nem de lugar (`if (this != HEAD) scale`, sem `case HEAD`).
+        baby_ops: &[Op::Translate([-1.0, 0.5, 0.0]), OBJ_STATE[0], OBJ_STATE[1]],
+    };
+    const BODY: Position = Position {
+        part: "body",
+        ops: &[Op::Translate([-1.0, 0.5, 0.0]), OBJ_STATE[0], OBJ_STATE[1]],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([0.0, -0.55, 0.0]),
+            Op::Translate([-1.0, 0.5, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+    };
+    const LEFT_ARM: Position = Position {
+        part: "left_arm",
+        ops: &[
+            Op::Translate([-1.3125, 0.375, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([-0.15625, 0.0, 0.0]),
+            Op::Translate([-1.3125, 0.375, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+    };
+    const RIGHT_ARM: Position = Position {
+        part: "right_arm",
+        ops: &[
+            Op::Translate([-0.6875, 0.375, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([0.15625, 0.0, 0.0]),
+            Op::Translate([-0.6875, 0.375, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+    };
+    const LEFT_LEG: Position = Position {
+        part: "left_leg",
+        ops: &[
+            Op::Translate([-1.125, -0.25, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([-0.0625, -0.25, 0.0]),
+            Op::Translate([-1.125, -0.25, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+    };
+    const RIGHT_LEG: Position = Position {
+        part: "right_leg",
+        ops: &[
+            Op::Translate([-0.875, -0.25, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([0.0625, -0.25, 0.0]),
+            Op::Translate([-0.875, -0.25, 0.0]),
+            OBJ_STATE[0],
+            OBJ_STATE[1],
+        ],
+    };
+
+    /// Um grupo de objetos do OBJ numa posição (`mekanism:entity/mekasuit/<peça>_<posição>_<classe>[_<etiqueta>]`). Sem luz nos LEDs (`_led`: `RenderTypes.eyes`). O MekaSuit esconde
+    /// as partes do corpo e desenha mesmo assim, então não pede a parte visível.
+    const fn suit(
+        position: Position,
+        model: &'static str,
+        unlit: bool,
+        hidden_if_worn: Option<Slot>,
+    ) -> Attachment {
+        Attachment {
+            part: position.part,
+            model,
+            ops: position.ops,
+            baby_ops: position.baby_ops,
+            unlit,
+            hidden_if_worn,
+            needs_visible_part: false,
+        }
+    }
+
+    /// `ICustomArmor` do jetpack (`ChestArmor.JETPACK`): o modelo do item no corpo, `translate(0, 0.3, 0)` (adulto) ou `scale(ageScale)` e `translate(0, -0.05, 0)` (bebê), depois
+    /// `translate(0, 0, 0.145)` e `scale(1.02, -1.02, -1.02)`.
+    const fn jetpack(model: &'static str) -> Attachment {
+        Attachment {
+            part: "body",
+            model,
+            ops: &[
+                Op::Translate([0.0, 0.3, 0.0]),
+                Op::Translate([0.0, 0.0, 0.145]),
+                Op::Scale([1.02, -1.02, -1.02]),
+            ],
+            baby_ops: &[
+                Op::AgeScale,
+                Op::Translate([0.0, -0.05, 0.0]),
+                Op::Translate([0.0, 0.0, 0.145]),
+                Op::Scale([1.02, -1.02, -1.02]),
+            ],
+            unlit: false,
+            hidden_if_worn: None,
+            needs_visible_part: true,
+        }
+    }
+
+    /// `ChestArmor.SCUBA_TANK`: `translate(0, 0.41, 0)` (o bebê só escala por `ageScale`), depois `translate(0, 0, 0.28)` e `scale(1, -1, -1)`.
+    const SCUBA_TANK_MODEL: Attachment = Attachment {
+        part: "body",
+        model: "mekanism:item/scuba_tank",
+        ops: &[
+            Op::Translate([0.0, 0.41, 0.0]),
+            Op::Translate([0.0, 0.0, 0.28]),
+            Op::Scale([1.0, -1.0, -1.0]),
+        ],
+        baby_ops: &[
+            Op::AgeScale,
+            Op::Translate([0.0, 0.0, 0.28]),
+            Op::Scale([1.0, -1.0, -1.0]),
+        ],
+        unlit: false,
+        hidden_if_worn: None,
+        needs_visible_part: true,
+    };
+
+    /// `FreeRunnerArmor.applyTransforms`: a perna, `scale(ageScale)` e `translate(0, -0.2, 0)` no bebê, depois `translate(xo, 1, 0.525)` e `scale(1.02, -1.02, -1.02)`.
+    macro_rules! runner {
+        ($part:literal, $model:literal, $xo:literal) => {
+            Attachment {
+                part: $part,
+                model: $model,
+                ops: &[
+                    Op::Translate([$xo, 1.0, 0.525]),
+                    Op::Scale([1.02, -1.02, -1.02]),
+                ],
+                baby_ops: &[
+                    Op::AgeScale,
+                    Op::Translate([0.0, -0.2, 0.0]),
+                    Op::Translate([$xo, 1.0, 0.525]),
+                    Op::Scale([1.02, -1.02, -1.02]),
+                ],
+                unlit: false,
+                hidden_if_worn: None,
+                needs_visible_part: true,
+            }
+        };
+    }
+
+    /// A família do traje: `ItemMekaSuitArmor` (as peças `wornParts` de `MekaSuitArmor.key`).
+    const SUIT: &str = "mekasuit";
+    const SUIT_HIDES_HEAD: &[&str] = &["head"];
+    const SUIT_HIDES_CHEST: &[&str] = &["body", "left_arm", "right_arm"];
+    const SUIT_HIDES_LEGS: &[&str] = &["left_leg", "right_leg"];
+
+    // `MekaSuitArmor.HELMET`: o vizinho é o peito. `shared_` e `excl_` valem quando o vizinho veste uma peça do traje (o `shared_` só se o vizinho vem depois na ordem
+    // de `EquipmentSlot`: cabeça 5, peito 4, pernas 3, pés 2): o peito (vizinho cabeça, 5 > 4) esconde as suas peças compartilhadas com a cabeça vestida (o que parece um
+    // engano do original, porque as compartilhadas são entre peito e pernas), as pernas (vizinho pés, 2 > 3 é falso) nunca, os pés (vizinho pernas, 3 > 2) com as pernas vestidas.
+    const HELMET_PARTS: [Attachment; 2] = [
+        suit(
+            HEAD,
+            "mekanism:entity/mekasuit/head_head_opaque",
+            false,
+            None,
+        ),
+        suit(
+            HEAD,
+            "mekanism:entity/mekasuit/head_head_emissive",
+            true,
+            None,
+        ),
+    ];
+    const BODYARMOR_PARTS: [Attachment; 7] = [
+        suit(
+            BODY,
+            "mekanism:entity/mekasuit/chest_body_opaque",
+            false,
+            None,
+        ),
+        suit(
+            BODY,
+            "mekanism:entity/mekasuit/chest_body_opaque_shared",
+            false,
+            Some(Slot::Head),
+        ),
+        suit(
+            BODY,
+            "mekanism:entity/mekasuit/chest_body_emissive",
+            true,
+            None,
+        ),
+        suit(
+            LEFT_ARM,
+            "mekanism:entity/mekasuit/chest_left_arm_opaque",
+            false,
+            None,
+        ),
+        suit(
+            LEFT_ARM,
+            "mekanism:entity/mekasuit/chest_left_arm_emissive",
+            true,
+            None,
+        ),
+        suit(
+            RIGHT_ARM,
+            "mekanism:entity/mekasuit/chest_right_arm_opaque",
+            false,
+            None,
+        ),
+        suit(
+            RIGHT_ARM,
+            "mekanism:entity/mekasuit/chest_right_arm_emissive",
+            true,
+            None,
+        ),
+    ];
+    const PANTS_PARTS: [Attachment; 7] = [
+        suit(
+            BODY,
+            "mekanism:entity/mekasuit/legs_body_opaque_shared",
+            false,
+            None,
+        ),
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/legs_left_leg_opaque",
+            false,
+            None,
+        ),
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/legs_left_leg_opaque_shared",
+            false,
+            None,
+        ),
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/legs_left_leg_emissive",
+            true,
+            None,
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/legs_right_leg_opaque",
+            false,
+            None,
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/legs_right_leg_opaque_shared",
+            false,
+            None,
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/legs_right_leg_emissive",
+            true,
+            None,
+        ),
+    ];
+    const BOOTS_PARTS: [Attachment; 6] = [
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/feet_left_leg_opaque",
+            false,
+            None,
+        ),
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/feet_left_leg_opaque_excl",
+            false,
+            Some(Slot::Legs),
+        ),
+        suit(
+            LEFT_LEG,
+            "mekanism:entity/mekasuit/feet_left_leg_opaque_shared",
+            false,
+            Some(Slot::Legs),
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/feet_right_leg_opaque",
+            false,
+            None,
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/feet_right_leg_opaque_excl",
+            false,
+            Some(Slot::Legs),
+        ),
+        suit(
+            RIGHT_LEG,
+            "mekanism:entity/mekasuit/feet_right_leg_opaque_shared",
+            false,
+            Some(Slot::Legs),
+        ),
+    ];
+
+    const JETPACK_PARTS: [Attachment; 1] = [jetpack("mekanism:item/jetpack")];
+    const JETPACK_ARMORED_PARTS: [Attachment; 1] = [jetpack("mekanism:item/jetpack_armored")];
+    const SCUBA_TANK_PARTS: [Attachment; 1] = [SCUBA_TANK_MODEL];
+    const FREE_RUNNERS_PARTS: [Attachment; 2] = [
+        runner!("left_leg", "mekanism:item/left_free_runner", -0.65),
+        runner!("right_leg", "mekanism:item/right_free_runner", -0.375),
+    ];
+    const FREE_RUNNERS_ARMORED_PARTS: [Attachment; 2] = [
+        runner!("left_leg", "mekanism:item/left_free_runner_armored", -0.65),
+        runner!(
+            "right_leg",
+            "mekanism:item/right_free_runner_armored",
+            -0.375
+        ),
+    ];
+
+    const fn gear(
+        item: &'static str,
+        family: &'static str,
+        slot: Slot,
+        hides: &'static [&'static str],
+        hides_cape: bool,
+        attachments: &'static [Attachment],
+    ) -> Gear {
+        Gear {
+            item,
+            family,
+            slot,
+            hides,
+            hides_cape,
+            attachments,
+        }
+    }
+
+    /// Os itens vestidos que o Mekanism desenha por código. A capa some com o peito do MekaSuit, o jetpack e o tanque (`avatarState.showCape = false`).
+    pub const WORN_GEAR: [Gear; 9] = [
+        gear(
+            "mekanism:mekasuit_helmet",
+            SUIT,
+            Slot::Head,
+            SUIT_HIDES_HEAD,
+            false,
+            &HELMET_PARTS,
+        ),
+        gear(
+            "mekanism:mekasuit_bodyarmor",
+            SUIT,
+            Slot::Chest,
+            SUIT_HIDES_CHEST,
+            true,
+            &BODYARMOR_PARTS,
+        ),
+        gear(
+            "mekanism:mekasuit_pants",
+            SUIT,
+            Slot::Legs,
+            SUIT_HIDES_LEGS,
+            false,
+            &PANTS_PARTS,
+        ),
+        gear(
+            "mekanism:mekasuit_boots",
+            SUIT,
+            Slot::Feet,
+            &[],
+            false,
+            &BOOTS_PARTS,
+        ),
+        gear(
+            "mekanism:jetpack",
+            "jetpack",
+            Slot::Chest,
+            &[],
+            true,
+            &JETPACK_PARTS,
+        ),
+        gear(
+            "mekanism:jetpack_armored",
+            "jetpack",
+            Slot::Chest,
+            &[],
+            true,
+            &JETPACK_ARMORED_PARTS,
+        ),
+        gear(
+            "mekanism:scuba_tank",
+            "scuba",
+            Slot::Chest,
+            &[],
+            true,
+            &SCUBA_TANK_PARTS,
+        ),
+        gear(
+            "mekanism:free_runners",
+            "free_runners",
+            Slot::Feet,
+            &[],
+            false,
+            &FREE_RUNNERS_PARTS,
+        ),
+        gear(
+            "mekanism:free_runners_armored",
+            "free_runners",
+            Slot::Feet,
+            &[],
+            false,
+            &FREE_RUNNERS_ARMORED_PARTS,
+        ),
+    ];
+
+    /// Os modelos avulsos que o jogo tem de assar (`MekanismModelCache`: `MEKASUIT`, as quatro botas) e os que as peças citam: o que `native_standalone_models` recebe.
+    pub fn models() -> Vec<&'static str> {
+        let mut models: Vec<&'static str> = Vec::new();
+        for gear in &WORN_GEAR {
+            for attachment in gear.attachments {
+                if !models.contains(&attachment.model) {
+                    models.push(attachment.model);
+                }
+            }
+        }
+        models
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -500,3 +500,15 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "kind", ty = "&str", value = "kind" },
 ]
+
+# Os modelos avulsos do equipamento vestido (`MekanismModelCache`: o OBJ do MekaSuit em 22 grupos, os modelos das botas, do jetpack e do tanque): o Horizon os assa uma vez no
+# começo (`native_standalone_models`, API 151, `ModelEvent.RegisterStandalone`) e o mod entrega a tabela de `worn_gear` à `machinery_basis`, que desenha.
+[[injection]]
+id = "standalone_models"
+hook = "standalone_models"
+hook_version = 1
+kind = "HEAD"
+helper = "standalone_models.rs"
+bindings = [
+  { name = "models", ty = "&mut Vec<String>", value = "&mut *models" },
+]
