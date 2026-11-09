@@ -1,0 +1,20 @@
+# Os blocos de `testes/CenaLuz.java` (um por linha): os que têm elemento girado ou invertido no modelo (a caixa de papelão, o barril radioativo, a mesa de segurança, o vibrador
+# sísmico, o ativador de nêutrons solar, a estação de modificação, o entangloporter, o minerador digital), dois cubos de controle (o aço e o chargepad) e blocos do vanilla (a pedra, a escada,
+# a tocha, a papoula, a folha de carvalho, o forno), para ver o que o NeoForge muda neles.
+mekanism:cardboard_box
+mekanism:cardboard_box[storage=true]
+mekanism:radioactive_waste_barrel
+mekanism:security_desk
+mekanism:seismic_vibrator
+mekanism:solar_neutron_activator
+mekanism:modification_station
+mekanism:quantum_entangloporter
+mekanism:digital_miner
+mekanism:steel_casing
+mekanism:chargepad
+minecraft:stone
+minecraft:oak_stairs
+minecraft:torch
+minecraft:poppy
+minecraft:oak_leaves
+minecraft:furnace

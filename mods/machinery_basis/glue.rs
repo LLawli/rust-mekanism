@@ -439,6 +439,16 @@ pub(in crate::game) fn data_loaded() {
     NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
+/// A tabela dos estados que levam o sombreamento do NeoForge (`EnhancedBlockModelLighter`, `enhanced_lighting.rs`): os de bloco de mod. O NeoForge o dá a todo bloco; o mesher do Horizon o dá só aos
+/// de mod, e o dos blocos do vanilla segue o `BlockModelLighter` do vanilla. Refeita a cada carga de dados.
+pub(in crate::game) fn index_lighting_states(game: &Game<'_>) {
+    let registry = game.pack.assets.registry;
+    let table: Vec<bool> = (0..registry.len())
+        .map(|index| registry.state(BlockStateId(index as u32)).is_some_and(|state| !state.name.starts_with("minecraft:")))
+        .collect();
+    horizon_client::mesher::machinery_enhanced::set(table);
+}
+
 /// Se a entrada de chave de componentes `patch_key` passa no ingrediente `tree`: o patch dela é o que `PATCHES` guarda para a chave.
 pub(in crate::game) fn tree_accepts(tree: &Tree, item: &str, patch_key: Option<&str>) -> bool {
     let patch = patch_key

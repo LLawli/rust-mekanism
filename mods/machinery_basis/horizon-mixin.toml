@@ -836,3 +836,29 @@ helper = "worn_gear_cape.rs"
 bindings = [
   { name = "m", ty = "&horizon_client::mobs::Mob", value = "m" },
 ]
+
+# O sombreamento de vértice dos blocos de mod (a luz suave e o AO): o NeoForge troca o `BlockModelLighter` do vanilla pelo `EnhancedBlockModelLighter` (`enhancedLighting`, ligado por padrão), que
+# trata o quad que não é de face inteira (um elemento girado, as abas da caixa de papelão) pela normal dele e dá aos de face inteira os consertos da luz e dos cantos; o mesher do Horizon só
+# conhece o do vanilla (`lighting::ambient_occlusion`, sem hook). O módulo guarda o algoritmo (código puro, testado contra o NeoForge) e a tabela dos estados de bloco de mod; o RETURN de
+# `ambient_occlusion` troca o resultado dos quads deles. Alvo cru, H70.
+[[module]]
+id = "enhanced-lighting"
+file = "crates/horizon-client-render/src/mesher.rs"
+name = "machinery_enhanced"
+source = "enhanced_lighting.rs"
+visibility = "pub"
+
+[[injection]]
+id = "enhanced_ao"
+target = "horizon_client_render::mesher::lighting::ambient_occlusion"
+kind = "RETURN"
+helper = "enhanced_lighting_ao.rs"
+bindings = [
+  { name = "value", ty = "([f32; 4], [u32; 4])", value = "$value" },
+  { name = "pad", ty = "&Padded", value = "pad" },
+  { name = "info", ty = "&[Info]", value = "info" },
+  { name = "own", ty = "&Info", value = "own" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "positions", ty = "&[[f32; 3]; 4]", value = "positions" },
+  { name = "face", ty = "D", value = "face" },
+]
