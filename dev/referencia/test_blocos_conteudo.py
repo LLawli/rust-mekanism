@@ -1,10 +1,10 @@
 """O vidro dos tanques de fluido (`blocos_conteudo.py`): cada textura de tier é a do original com o RGB multiplicado pela cor do tier (`rastros/estrutura_modelos.json`) e o alfa intacto."""
+import json
 import os
 import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import json
 
 from comparar_tela import ler_png
 
@@ -14,7 +14,8 @@ TEXTURAS = os.path.join(HERE, "..", "..", "mods/mekanism/content/assets/mekanism
 
 class VidroDoTanque(unittest.TestCase):
     def test_cada_tier_multiplica_o_vidro_pela_cor_dele(self):
-        cores = json.load(open(os.path.join(HERE, "rastros/estrutura_modelos.json")))["tier_colors"]
+        with open(os.path.join(HERE, "rastros/estrutura_modelos.json")) as arquivo:
+            cores = json.load(arquivo)["tier_colors"]
         self.assertEqual(sorted(cores), ["advanced", "basic", "creative", "elite", "ultimate"])
         comparados = 0
         for estado in ("off", "on"):
