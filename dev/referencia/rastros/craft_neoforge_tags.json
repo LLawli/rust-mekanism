@@ -1,4 +1,17 @@
 {
+"c/tags/item/barrels/wooden.json": [
+"minecraft:barrel"
+],
+"c/tags/item/buckets/empty.json": [
+"minecraft:bucket"
+],
+"c/tags/item/chests/wooden.json": [
+"minecraft:chest",
+"minecraft:trapped_chest"
+],
+"c/tags/item/clumps/resin.json": [
+"minecraft:resin_clump"
+],
 "c/tags/item/dyes/black.json": [
 "minecraft:black_dye"
 ],
@@ -26,5 +39,8 @@
 ],
 "c/tags/item/glass_panes/colorless.json": [
 "minecraft:glass_pane"
+],
+"c/tags/item/storage_blocks/diamond.json": [
+"minecraft:diamond_block"
 ]
 }

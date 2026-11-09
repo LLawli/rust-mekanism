@@ -32,7 +32,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   `open`, `storage`), com os mesmos nomes (`/setblock mekanism:laser[facing=up,active=true]` vale nos dois jogos); a forma de seleção e a de colisão de cada estado (a união das caixas do
   original: o limite de 16 caixas por forma do Horizon sai pela injeção `shape_limit`, H50); a luz do estado ativo (8, 13 ou 15), a da lava (15) e a fixa do Teleporter; a reação ao pistão e a
   oclusão do original (a tabela `block_rows_table.rs`, pela injeção `active_light`, H49); o estado de bloco, a definição do item, 173 modelos e 253 texturas (e 12 `.mcmeta` animados) copiados do original, a loot
-  table, o nome, a chave `description.*`, as tags de bloco e de item, as receitas de mesa que ficaram completas, e o lugar na aba criativa do Mekanism e nas de blocos funcionais, redstone e
+  table, o nome, a chave `description.*`, as tags de bloco e de item, as 31 receitas de mesa (com as tags `c:` do NeoForge `buckets/empty`, `chests/wooden`, `barrels/wooden`, `storage_blocks/diamond` e `clumps/resin`, iguais às do jar), e o lugar na aba criativa do Mekanism e nas de blocos funcionais, redstone e
   ferramentas do vanilla. O original em jogo (`BlocosTraceTest`) é a referência: `rastros/blocos.jsonl`, `blocos_formas.jsonl` e `blocos_colocacao.jsonl`, que `tests/blocos_registry.rs`
   e `tests/blocos_content.rs` conferem estado a estado.
 - O bloco posto como o original o põe (`machinery_basis/placement`): o `facing` vem da guinada do jogador e, nos blocos que viram para cima e para baixo, da inclinação (`AttributeStateFacing`,

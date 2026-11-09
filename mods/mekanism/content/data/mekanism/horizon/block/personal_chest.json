@@ -4,7 +4,8 @@
     "hardness": 3.5,
     "requires_tool": true,
     "map_color": 21,
-    "sounds": "minecraft:stone"
+    "sounds": "minecraft:stone",
+    "occludes": false
   },
   "state_properties": {
     "facing": {

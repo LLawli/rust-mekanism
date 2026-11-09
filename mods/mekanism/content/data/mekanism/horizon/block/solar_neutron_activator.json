@@ -5,7 +5,8 @@
     "requires_tool": true,
     "map_color": 25,
     "sounds": "minecraft:stone",
-    "explosion_resistance": 16.0
+    "explosion_resistance": 16.0,
+    "occludes": false
   },
   "state_properties": {
     "active": {

@@ -241,6 +241,8 @@ def creative_order():
 # As tags `c:` de item que o NeoForge define (o original as tem, o Horizon não) e que receitas da datagen citam: as dos tintes e dos painéis de vidro das receitas do traje
 # de hazmat e do conta-gotas (`hazmat_*`, `gauge_dropper`), com as tags aninhadas delas.
 NEOFORGE_TAGS = ["dyes/black", "dyes/orange", "glass_panes", "glass_panes/colorless"]
+# E as das receitas de mesa dos blocos de máquina (frente `blocos-maquinas`): o diamante, o resíduo de resina, o balde vazio, o baú e o barril de madeira.
+NEOFORGE_TAGS += ["storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden"]
 
 
 def neoforge_tags_rastro():
