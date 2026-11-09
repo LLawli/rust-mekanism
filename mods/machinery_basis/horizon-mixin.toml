@@ -839,3 +839,43 @@ bindings = [
   { name = "positions", ty = "&[[f32; 3]; 4]", value = "positions" },
   { name = "face", ty = "D", value = "face" },
 ]
+
+# O `transform` do modelo (H67): `translation`, `rotation`, `scale` e `origin` na raiz de um modelo e em cada filho de um `neoforge:composite`, que o Horizon não lê (o
+# `neoforge:obj` só lê `model`, `flip_v`, `shade_quads` e `mtl_override`). O original põe o `wind_generator` (translação do `.obj` do filho) e o `advanced_solar_generator`
+# (o modelo inteiro sobe um bloco) pelo `transform`. Duas injeções cruas e um módulo: a conta (JSON do NeoForge, `applyOrigin`, a rotação do blockstate) é o módulo, em
+# `math.rs` do `horizon-assets`, e `core/tests/model_transform.rs` a compila como está.
+[[module]]
+id = "model-transform"
+file = "crates/horizon-assets/src/math.rs"
+name = "machinery_model_transform"
+source = "model_transform.rs"
+
+# Lê o `transform` na `CuboidModel::decode`, a de cada filho também, e o guarda no espaço de textura `SLOT` do modelo (o `CuboidModel` não tem campo para ele): o valor do `textures`
+# local, que a `decode` monta e põe no modelo. Alvo cru.
+[[injection]]
+id = "model_transform_decode"
+target = "horizon_assets::model::CuboidModel::decode"
+kind = "MODIFY_VARIABLE"
+variable = { name = "textures", ordinal = 0, at = "STORE" }
+require = 1
+ordinal = 0
+helper = "model_transform_decode.rs"
+bindings = [
+  { name = "raw", ty = "&RawValue", value = "raw" },
+  { name = "value", ty = "BTreeMap<String, TextureSlot>", value = "$value" },
+]
+
+# Aplica a transformação ao cozinhar: o `bake_into` de cada modelo (e de cada filho de `composite`) é o ponto onde o `ModelState` do NeoForge ganha a transformação de raiz.
+# Alvo cru.
+[[injection]]
+id = "model_transform_bake"
+target = "horizon_assets::bake::bake_into"
+kind = "HEAD"
+cancellable = true
+helper = "model_transform_bake.rs"
+bindings = [
+  { name = "model", ty = "&ResolvedCuboidModel", value = "model" },
+  { name = "transform", ty = "BlockModelTransform", value = "transform" },
+  { name = "skip_flat", ty = "bool", value = "skip_flat" },
+  { name = "output", ty = "&mut Vec<ModelQuad>", value = "&mut *output" },
+]
