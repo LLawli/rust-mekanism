@@ -4,6 +4,7 @@
 Uso: H_NAME=horizon h2_blocos.py give|estados|cena [PASTA_DOS_PRINTS]
 - give: todo id responde ao `give`;
 - estados: cada bloco, em até cinco estados do original (o primeiro, o último, `active=true`, cada `facing`), é posto por `setblock` e lido de volta por `block`;
+- conexoes: os transmissores novos, postos lado a lado, ligam-se a quem é da família (a tag `connects_to`) e não a quem é de outra;
 - cena: o roteiro `cenas/blocos.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`, na pasta de dados do jogo; `scp` os traz).
 Supõe o jogo aberto num mundo plano (o chão em y -61) com o jogador criativo, e a janela de 1920 por 1080.
 """
@@ -23,6 +24,11 @@ EARLIER = {"enrichment_chamber", "crusher", "energized_smelter", "metallurgic_in
     f"{t}_universal_cable" for t in ("basic", "advanced", "elite", "ultimate")}
 
 
+def connects(name):
+    """A tag que o bloco declara em `connects_to` (os transmissores), ou None."""
+    return json.load(open(os.path.join(SCOPE, f"{name}.json"))).get("connects_to")
+
+
 def scope():
     ported = {f[:-5] for f in os.listdir(SCOPE)}
     rows = {}
@@ -30,6 +36,9 @@ def scope():
         row = json.loads(line)
         name = row["id"].split(":")[1]
         if name in ported and name not in EARLIER and not name.startswith("block_") and not name.endswith("_ore"):
+            if connects(name):
+                # O bloco que conecta do Horizon tem os seis lados por estado, não o `fluid_logged` do original (decisão 26): só o estado sem conexão se compara.
+                row = dict(row, states=[{"props": {}, "light": 0}])
             rows[name] = row
     return rows
 
@@ -69,10 +78,32 @@ def estados():
             got = block_state(pos)
             want = f"mekanism:{name}{text}"
             total += 1
-            if got != want:
+            # Um transmissor volta com os seis lados falsos no estado: o prefixo é o id.
+            if got != want and not (connects(name) and got.split("[")[0] == want):
                 bad.append((want, got))
     print(f"estados: {total} lidos, {len(bad)} diferentes", bad[:5])
     return not bad
+
+
+def conexoes():
+    """Os transmissores novos, postos por `setblock` lado a lado: dois da mesma família ligam-se (`east=true` no da esquerda e `west=true` no da direita), um de outra família não."""
+    h.command("tick unfreeze")
+    ok = True
+    pairs = [("basic_mechanical_pipe", "ultimate_mechanical_pipe", True), ("basic_pressurized_tube", "elite_pressurized_tube", True),
+             ("advanced_thermodynamic_conductor", "basic_thermodynamic_conductor", True), ("basic_logistical_transporter", "restrictive_transporter", True),
+             ("diversion_transporter", "ultimate_logistical_transporter", True), ("basic_mechanical_pipe", "basic_pressurized_tube", False),
+             ("basic_universal_cable", "basic_mechanical_pipe", False), ("basic_thermodynamic_conductor", "basic_logistical_transporter", False)]
+    for i, (left, right, joined) in enumerate(pairs):
+        pos = (60 + 4 * i, -58, 100)
+        h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
+        h.command(f"setblock {pos[0] + 1} {pos[1]} {pos[2]} minecraft:air")
+        h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} mekanism:{left}")
+        h.command(f"setblock {pos[0] + 1} {pos[1]} {pos[2]} mekanism:{right}")
+        a, b = block_state(pos), block_state((pos[0] + 1, pos[1], pos[2]))
+        got = ("east=true" in a) and ("west=true" in b)
+        print(f"{left} + {right}: {a} | {b} (esperado ligado={joined})")
+        ok &= got == joined
+    return ok
 
 
 def tag_items(tag):
@@ -303,7 +334,7 @@ def cena(out):
 def main():
     mode = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else SHOTS
-    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out))()
+    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "conexoes": conexoes, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out))()
     sys.exit(0 if ok in (True, None) else 1)
 
 

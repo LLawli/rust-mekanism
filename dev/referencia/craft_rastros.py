@@ -13,6 +13,7 @@ O que sai, em `dev/referencia/rastros/`:
 - `craft_recipes.json`: as receitas `minecraft:*` da datagen que a frente leva (todos os ingredientes e o resultado existem) e as que ficam de fora, com o motivo;
 - `craft_creative_order.json`: a ordem de registro de `MekanismItems` e de `MekanismBlocks`, que é a ordem da aba criativa;
 - `craft_neoforge_tags.json` (frente `itens-equipamento`): os valores das tags `c:` do NeoForge (`NEOFORGE_TAGS`) que receitas da datagen citam e que o Horizon não traz;
+- `estrutura_modelos.json` (frente `blocos-estrutura`): do original, o que o port reescreve porque o Horizon não carrega o modelo dele: as texturas do modelo de cada transmissor, o modelo base do cubo de energia (quadro, LEDs, portas, o deslocamento do LED aceso) com as texturas de cada tier, e o `display` do item do cubo de energia e do tanque de fluido;
 - `equipment_items.json` (frente `itens-equipamento`): o registro de cada item de equipamento lido do Java (pilha, raridade, resistência ao fogo, durabilidade, encantável, recarga de uso, slot e ativo do `Equippable`, atributos de armadura) e os números de armadura da configuração de inicialização e do `ArmorMaterials.NETHERITE`.
 O Rust não lê o checkout do original: lê estes arquivos.
 """
@@ -378,6 +379,28 @@ def equipment_rastro():
 MC = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/mc"
 
 
+def estrutura_modelos():
+    """O que o port reescreve em vez de copiar (`blocos_conteudo.py`, decisão 26), lido do original: `tests/blocos_content.rs` confere os arquivos do port contra isto."""
+    tiers = "basic advanced elite ultimate".split()
+    kinds = {"universal_cable": "small", "pressurized_tube": "small", "thermodynamic_conductor": "small", "mechanical_pipe": "large", "logistical_transporter": "large"}
+    transmitters = {}
+    for kind, size in kinds.items():
+        for tier in tiers:
+            model = json.load(open(f"{RES}/models/block/transmitter/{size}/{kind}/{tier}.json"))
+            transmitters[f"{tier}_{kind}"] = {"size": size, "center": model["textures"]["center_opaque"], "side": model["textures"]["side_opaque"]}
+    for kind in ("restrictive_transporter", "diversion_transporter"):
+        model = json.load(open(f"{RES}/models/block/transmitter/large/{kind}.json"))
+        transmitters[kind] = {"size": "large", "center": model["textures"]["center_opaque"], "side": model["textures"]["side_opaque"]}
+    base = json.load(open(f"{RES}/models/block/energy_cube/base.json"))
+    cube = {"textures": base["textures"], "frame": base["frame"], "leds": base["leds"], "ports": base["ports"], "tiers": {}, "display": {}}
+    for tier in tiers + ["creative"]:
+        cube["tiers"][tier] = json.load(open(f"{RES}/models/block/energy_cube/{tier}.json"))
+        cube["display"][tier] = json.load(open(f"{RES}/models/item/{tier}_energy_cube.json"))["display"]
+    tanks = {tier: json.load(open(f"{RES}/models/item/{tier}_fluid_tank.json"))["display"] for tier in tiers + ["creative"]}
+    json.dump({"transmitters": transmitters, "energy_cube": cube, "fluid_tank_display": tanks}, open(f"{OUT}/estrutura_modelos.json", "w"), indent=0, sort_keys=True)
+    print("estrutura_modelos.json:", len(transmitters))
+
+
 def main():
     equipment_rastro()
     neoforge_tags_rastro()
@@ -386,6 +409,7 @@ def main():
     lang_rastro()
     worldgen_rastro()
     creative_order()
+    estrutura_modelos()
     manifest = {}
     for path in sorted(walk(CONTENT)):
         rel = os.path.relpath(path, CONTENT)

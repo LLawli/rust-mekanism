@@ -241,3 +241,70 @@ pub fn check_model(reference: &str, seen: &mut BTreeSet<String>) {
         }
     }
 }
+
+/// Os tiers de cada família (`basic` a `ultimate`) e, onde o original tem, o criativo.
+pub const TIERS: [&str; 4] = ["basic", "advanced", "elite", "ultimate"];
+pub const TIERS5: [&str; 5] = ["basic", "advanced", "elite", "ultimate", "creative"];
+/// As famílias de transmissor tiered que a frente `blocos-estrutura` traz (o cabo de energia já existia).
+pub const TRANSMITTER_FAMILIES: [&str; 4] = [
+    "pressurized_tube",
+    "thermodynamic_conductor",
+    "mechanical_pipe",
+    "logistical_transporter",
+];
+
+/// As partes de multibloco e a indução sem tier, na ordem de `MekanismBlocks` que o gerador usa.
+pub const MULTIBLOCK: [&str; 13] = [
+    "boiler_casing",
+    "boiler_valve",
+    "dynamic_tank",
+    "dynamic_valve",
+    "sps_casing",
+    "sps_port",
+    "thermal_evaporation_block",
+    "thermal_evaporation_controller",
+    "thermal_evaporation_valve",
+    "structural_glass",
+    "supercharged_coil",
+    "superheating_element",
+    "pressure_disperser",
+];
+
+/// Os quatro cabos de energia: a frente `blocos-maquinas` os trouxe; a tabela de linhas e as propriedades de registro passam a ser as do original.
+pub fn cables() -> Vec<String> {
+    TIERS.map(|tier| format!("{tier}_universal_cable")).to_vec()
+}
+
+/// Os transmissores novos: quatro tiers de tubo, condutor, cano e transportador, o restritivo e o desviador.
+pub fn transmitters() -> Vec<String> {
+    let mut out = Vec::new();
+    for kind in TRANSMITTER_FAMILIES {
+        for tier in TIERS {
+            out.push(format!("{tier}_{kind}"));
+        }
+    }
+    out.push("restrictive_transporter".to_owned());
+    out.push("diversion_transporter".to_owned());
+    out
+}
+
+/// Os blocos da frente `blocos-estrutura`: depósitos, tanques, cubos de energia, indução, partes de multibloco, transmissores e o bloco de apoio.
+pub fn structure_scope() -> Vec<String> {
+    let mut out = Vec::new();
+    for kind in ["bin", "fluid_tank", "chemical_tank", "energy_cube"] {
+        for tier in TIERS5 {
+            out.push(format!("{tier}_{kind}"));
+        }
+    }
+    for kind in ["cell", "provider"] {
+        for tier in TIERS {
+            out.push(format!("{tier}_induction_{kind}"));
+        }
+    }
+    out.push("induction_casing".to_owned());
+    out.push("induction_port".to_owned());
+    out.extend(MULTIBLOCK.map(str::to_owned));
+    out.extend(transmitters());
+    out.push("bounding_block".to_owned());
+    out
+}

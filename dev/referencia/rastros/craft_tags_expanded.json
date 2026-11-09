@@ -8,6 +8,9 @@
 "c/tags/block/chests/personal.json": [
 "mekanism:personal_chest"
 ],
+"c/tags/block/hidden_from_recipe_viewers.json": [
+"mekanism:bounding_block"
+],
 "c/tags/block/ore_rates/dense.json": [
 "mekanism:fluorite_ore",
 "mekanism:deepslate_fluorite_ore"
@@ -106,6 +109,60 @@
 ],
 "c/tags/item/alloys/ultimate.json": [
 "mekanism:alloy_atomic"
+],
+"c/tags/item/buckets/brine.json": [
+"mekanism:brine_bucket"
+],
+"c/tags/item/buckets/chlorine.json": [
+"mekanism:chlorine_bucket"
+],
+"c/tags/item/buckets/ethene.json": [
+"mekanism:ethene_bucket"
+],
+"c/tags/item/buckets/heavy_water.json": [
+"mekanism:heavy_water_bucket"
+],
+"c/tags/item/buckets/hydrofluoric_acid.json": [
+"mekanism:hydrofluoric_acid_bucket"
+],
+"c/tags/item/buckets/hydrogen.json": [
+"mekanism:hydrogen_bucket"
+],
+"c/tags/item/buckets/hydrogen_chloride.json": [
+"mekanism:hydrogen_chloride_bucket"
+],
+"c/tags/item/buckets/lithium.json": [
+"mekanism:lithium_bucket"
+],
+"c/tags/item/buckets/nutritional_paste.json": [
+"mekanism:nutritional_paste_bucket"
+],
+"c/tags/item/buckets/oxygen.json": [
+"mekanism:oxygen_bucket"
+],
+"c/tags/item/buckets/sodium.json": [
+"mekanism:sodium_bucket"
+],
+"c/tags/item/buckets/steam.json": [
+"mekanism:steam_bucket"
+],
+"c/tags/item/buckets/sulfur_dioxide.json": [
+"mekanism:sulfur_dioxide_bucket"
+],
+"c/tags/item/buckets/sulfur_trioxide.json": [
+"mekanism:sulfur_trioxide_bucket"
+],
+"c/tags/item/buckets/sulfuric_acid.json": [
+"mekanism:sulfuric_acid_bucket"
+],
+"c/tags/item/buckets/superheated_sodium.json": [
+"mekanism:superheated_sodium_bucket"
+],
+"c/tags/item/buckets/uranium_hexafluoride.json": [
+"mekanism:uranium_hexafluoride_bucket"
+],
+"c/tags/item/buckets/uranium_oxide.json": [
+"mekanism:uranium_oxide_bucket"
 ],
 "c/tags/item/circuits/advanced.json": [
 "mekanism:advanced_control_circuit"
@@ -372,6 +429,13 @@
 "c/tags/item/tools/wrench.json": [
 "mekanism:configurator"
 ],
+"mekanism/tags/block/bins.json": [
+"mekanism:basic_bin",
+"mekanism:advanced_bin",
+"mekanism:elite_bin",
+"mekanism:ultimate_bin",
+"mekanism:creative_bin"
+],
 "mekanism/tags/block/cardboard_blacklist.json": [
 "mekanism:basic_universal_cable",
 "mekanism:advanced_universal_cable",
@@ -388,6 +452,20 @@
 "mekanism:cardboard_box",
 "minecraft:trial_spawner",
 "minecraft:vault"
+],
+"mekanism/tags/block/chemical_tanks.json": [
+"mekanism:basic_chemical_tank",
+"mekanism:advanced_chemical_tank",
+"mekanism:elite_chemical_tank",
+"mekanism:ultimate_chemical_tank",
+"mekanism:creative_chemical_tank"
+],
+"mekanism/tags/block/energy_cubes.json": [
+"mekanism:basic_energy_cube",
+"mekanism:advanced_energy_cube",
+"mekanism:elite_energy_cube",
+"mekanism:ultimate_energy_cube",
+"mekanism:creative_energy_cube"
 ],
 "mekanism/tags/block/factories/combining.json": [
 "mekanism:basic_combining_factory",
@@ -506,15 +584,120 @@
 "mekanism:elite_smelting_factory",
 "mekanism:ultimate_smelting_factory"
 ],
+"mekanism/tags/block/fluid_tanks.json": [
+"mekanism:basic_fluid_tank",
+"mekanism:advanced_fluid_tank",
+"mekanism:elite_fluid_tank",
+"mekanism:ultimate_fluid_tank",
+"mekanism:creative_fluid_tank"
+],
 "mekanism/tags/block/heaters.json": [
 "mekanism:fuelwood_heater",
 "mekanism:resistive_heater"
+],
+"mekanism/tags/block/induction_cells.json": [
+"mekanism:basic_induction_cell",
+"mekanism:advanced_induction_cell",
+"mekanism:elite_induction_cell",
+"mekanism:ultimate_induction_cell"
+],
+"mekanism/tags/block/induction_providers.json": [
+"mekanism:basic_induction_provider",
+"mekanism:advanced_induction_provider",
+"mekanism:elite_induction_provider",
+"mekanism:ultimate_induction_provider"
+],
+"mekanism/tags/block/structures/boiler.json": [
+"mekanism:superheating_element",
+"mekanism:pressure_disperser",
+"mekanism:boiler_casing",
+"mekanism:boiler_valve",
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/structures/common.json": [
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/structures/evaporation.json": [
+"mekanism:thermal_evaporation_controller",
+"mekanism:thermal_evaporation_valve",
+"mekanism:thermal_evaporation_block",
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/structures/matrix.json": [
+"mekanism:induction_casing",
+"mekanism:induction_port",
+"mekanism:basic_induction_cell",
+"mekanism:advanced_induction_cell",
+"mekanism:elite_induction_cell",
+"mekanism:ultimate_induction_cell",
+"mekanism:basic_induction_provider",
+"mekanism:advanced_induction_provider",
+"mekanism:elite_induction_provider",
+"mekanism:ultimate_induction_provider",
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/structures/sps.json": [
+"mekanism:sps_casing",
+"mekanism:sps_port",
+"mekanism:supercharged_coil",
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/structures/tank.json": [
+"mekanism:dynamic_tank",
+"mekanism:dynamic_valve",
+"mekanism:structural_glass"
+],
+"mekanism/tags/block/transmitters/chemical.json": [
+"mekanism:basic_pressurized_tube",
+"mekanism:advanced_pressurized_tube",
+"mekanism:elite_pressurized_tube",
+"mekanism:ultimate_pressurized_tube"
 ],
 "mekanism/tags/block/transmitters/energy.json": [
 "mekanism:basic_universal_cable",
 "mekanism:advanced_universal_cable",
 "mekanism:elite_universal_cable",
 "mekanism:ultimate_universal_cable"
+],
+"mekanism/tags/block/transmitters/fluid.json": [
+"mekanism:basic_mechanical_pipe",
+"mekanism:advanced_mechanical_pipe",
+"mekanism:elite_mechanical_pipe",
+"mekanism:ultimate_mechanical_pipe"
+],
+"mekanism/tags/block/transmitters/heat.json": [
+"mekanism:basic_thermodynamic_conductor",
+"mekanism:advanced_thermodynamic_conductor",
+"mekanism:elite_thermodynamic_conductor",
+"mekanism:ultimate_thermodynamic_conductor"
+],
+"mekanism/tags/block/transmitters/items.json": [
+"mekanism:basic_logistical_transporter",
+"mekanism:advanced_logistical_transporter",
+"mekanism:elite_logistical_transporter",
+"mekanism:ultimate_logistical_transporter",
+"mekanism:diversion_transporter",
+"mekanism:restrictive_transporter"
+],
+"mekanism/tags/block/transmitters/items/tiered.json": [
+"mekanism:basic_logistical_transporter",
+"mekanism:advanced_logistical_transporter",
+"mekanism:elite_logistical_transporter",
+"mekanism:ultimate_logistical_transporter"
+],
+"mekanism/tags/item/bins.json": [
+"mekanism:basic_bin",
+"mekanism:advanced_bin",
+"mekanism:elite_bin",
+"mekanism:ultimate_bin",
+"mekanism:creative_bin"
+],
+"mekanism/tags/item/chemical_tanks.json": [
+"mekanism:basic_chemical_tank",
+"mekanism:advanced_chemical_tank",
+"mekanism:elite_chemical_tank",
+"mekanism:ultimate_chemical_tank",
+"mekanism:creative_chemical_tank"
 ],
 "mekanism/tags/item/clumps/copper.json": [
 "mekanism:clump_copper"
@@ -578,6 +761,13 @@
 ],
 "mekanism/tags/item/dirty_dusts/uranium.json": [
 "mekanism:dirty_dust_uranium"
+],
+"mekanism/tags/item/energy_cubes.json": [
+"mekanism:basic_energy_cube",
+"mekanism:advanced_energy_cube",
+"mekanism:elite_energy_cube",
+"mekanism:ultimate_energy_cube",
+"mekanism:creative_energy_cube"
 ],
 "mekanism/tags/item/enriched/carbon.json": [
 "mekanism:enriched_carbon"
@@ -714,9 +904,28 @@
 "mekanism:elite_smelting_factory",
 "mekanism:ultimate_smelting_factory"
 ],
+"mekanism/tags/item/fluid_tanks.json": [
+"mekanism:basic_fluid_tank",
+"mekanism:advanced_fluid_tank",
+"mekanism:elite_fluid_tank",
+"mekanism:ultimate_fluid_tank",
+"mekanism:creative_fluid_tank"
+],
 "mekanism/tags/item/heaters.json": [
 "mekanism:fuelwood_heater",
 "mekanism:resistive_heater"
+],
+"mekanism/tags/item/induction_cells.json": [
+"mekanism:basic_induction_cell",
+"mekanism:advanced_induction_cell",
+"mekanism:elite_induction_cell",
+"mekanism:ultimate_induction_cell"
+],
+"mekanism/tags/item/induction_providers.json": [
+"mekanism:basic_induction_provider",
+"mekanism:advanced_induction_provider",
+"mekanism:elite_induction_provider",
+"mekanism:ultimate_induction_provider"
 ],
 "mekanism/tags/item/module_containers/armor/boots.json": [
 "mekanism:mekasuit_boots"
@@ -764,11 +973,83 @@
 "mekanism/tags/item/shards/uranium.json": [
 "mekanism:shard_uranium"
 ],
+"mekanism/tags/item/structures/boiler.json": [
+"mekanism:superheating_element",
+"mekanism:pressure_disperser",
+"mekanism:boiler_casing",
+"mekanism:boiler_valve",
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/structures/common.json": [
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/structures/evaporation.json": [
+"mekanism:thermal_evaporation_controller",
+"mekanism:thermal_evaporation_valve",
+"mekanism:thermal_evaporation_block",
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/structures/matrix.json": [
+"mekanism:induction_casing",
+"mekanism:induction_port",
+"mekanism:basic_induction_cell",
+"mekanism:advanced_induction_cell",
+"mekanism:elite_induction_cell",
+"mekanism:ultimate_induction_cell",
+"mekanism:basic_induction_provider",
+"mekanism:advanced_induction_provider",
+"mekanism:elite_induction_provider",
+"mekanism:ultimate_induction_provider",
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/structures/sps.json": [
+"mekanism:sps_casing",
+"mekanism:sps_port",
+"mekanism:supercharged_coil",
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/structures/tank.json": [
+"mekanism:dynamic_tank",
+"mekanism:dynamic_valve",
+"mekanism:structural_glass"
+],
+"mekanism/tags/item/transmitters/chemical.json": [
+"mekanism:basic_pressurized_tube",
+"mekanism:advanced_pressurized_tube",
+"mekanism:elite_pressurized_tube",
+"mekanism:ultimate_pressurized_tube"
+],
 "mekanism/tags/item/transmitters/energy.json": [
 "mekanism:basic_universal_cable",
 "mekanism:advanced_universal_cable",
 "mekanism:elite_universal_cable",
 "mekanism:ultimate_universal_cable"
+],
+"mekanism/tags/item/transmitters/fluid.json": [
+"mekanism:basic_mechanical_pipe",
+"mekanism:advanced_mechanical_pipe",
+"mekanism:elite_mechanical_pipe",
+"mekanism:ultimate_mechanical_pipe"
+],
+"mekanism/tags/item/transmitters/heat.json": [
+"mekanism:basic_thermodynamic_conductor",
+"mekanism:advanced_thermodynamic_conductor",
+"mekanism:elite_thermodynamic_conductor",
+"mekanism:ultimate_thermodynamic_conductor"
+],
+"mekanism/tags/item/transmitters/items.json": [
+"mekanism:basic_logistical_transporter",
+"mekanism:advanced_logistical_transporter",
+"mekanism:elite_logistical_transporter",
+"mekanism:ultimate_logistical_transporter",
+"mekanism:diversion_transporter",
+"mekanism:restrictive_transporter"
+],
+"mekanism/tags/item/transmitters/items/tiered.json": [
+"mekanism:basic_logistical_transporter",
+"mekanism:advanced_logistical_transporter",
+"mekanism:elite_logistical_transporter",
+"mekanism:ultimate_logistical_transporter"
 ],
 "minecraft/tags/block/axolotls_spawnable_on.json": [
 "mekanism:block_salt"
@@ -981,6 +1262,9 @@
 "minecraft/tags/block/hoglin_repellents.json": [
 "mekanism:teleporter",
 "mekanism:quantum_entangloporter"
+],
+"minecraft/tags/block/impermeable.json": [
+"mekanism:structural_glass"
 ],
 "minecraft/tags/block/mineable/pickaxe.json": [
 "mekanism:fuelwood_heater",
@@ -1198,6 +1482,26 @@
 ],
 "minecraft/tags/block/nether_portal_frame.json": [
 "mekanism:block_refined_obsidian"
+],
+"minecraft/tags/block/replaceable.json": [
+"mekanism:hydrogen",
+"mekanism:oxygen",
+"mekanism:chlorine",
+"mekanism:sulfur_dioxide",
+"mekanism:sulfur_trioxide",
+"mekanism:sulfuric_acid",
+"mekanism:hydrogen_chloride",
+"mekanism:hydrofluoric_acid",
+"mekanism:uranium_oxide",
+"mekanism:uranium_hexafluoride",
+"mekanism:ethene",
+"mekanism:sodium",
+"mekanism:superheated_sodium",
+"mekanism:brine",
+"mekanism:lithium",
+"mekanism:steam",
+"mekanism:heavy_water",
+"mekanism:nutritional_paste"
 ],
 "minecraft/tags/block/sculk_replaceable.json": [
 "mekanism:block_salt"

@@ -166,18 +166,28 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         ]
         .map(str::to_owned),
     );
-    // O alarme primeiro; depois cada bloco com comparador e cada cabo de energia (`BlockTransmitter` com `AttributeTier` que não é de transporte).
+    // O alarme primeiro; depois cada bloco com comparador e cada transmissor com `AttributeTier` que não é o do transportador (`MekanismCreativeTabs.java:107-112`: cabos,
+    // tubos, canos e condutores), na ordem do registro; e no fim o desviador.
+    let tiered = |r: &Value| {
+        let attributes = r["attributes"].as_array().unwrap();
+        let transporter = r["item"]["components"].as_array().unwrap().iter().any(|c| {
+            c.as_str()
+                .unwrap()
+                .starts_with("mekanism:tier/transporter=")
+        });
+        ["BlockSmallTransmitter", "BlockLargeTransmitter"].contains(&r["class"].as_str().unwrap())
+            && attributes.iter().any(|a| a == "AttributeTier")
+            && !transporter
+    };
     let mut redstone = vec!["industrial_alarm".to_owned()];
     redstone.extend(
         blocks
             .iter()
             .filter(ported)
-            .filter(|r| {
-                (r["redstone_tab"] == true || r["class"] == "BlockSmallTransmitter")
-                    && id(r) != "industrial_alarm"
-            })
+            .filter(|r| (r["redstone_tab"] == true || tiered(r)) && id(r) != "industrial_alarm")
             .map(id),
     );
+    redstone.push("diversion_transporter".to_owned());
     let machines: Vec<&'static str> = machines
         .into_iter()
         .map(|id| &*Box::leak(id.into_boxed_str()))
@@ -268,7 +278,7 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         .collect();
     ingredients.extend(processed);
     // `TOOLS_AND_UTILITIES` (`MekanismCreativeTabs.java:120-132`): as ferramentas, as armaduras de uso geral, o upgrade (que a injeção troca por uma pilha por tipo) e os
-    // instaladores. Os tanques de fluido não têm id no port ainda.
+    // instaladores, e os cinco tanques de fluido (`:132-135`).
     let mut tools = vec![
         "configurator",
         "network_reader",
@@ -298,8 +308,13 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         "advanced_tier_installer",
         "elite_tier_installer",
         "ultimate_tier_installer",
+        "basic_fluid_tank",
+        "advanced_fluid_tank",
+        "elite_fluid_tank",
+        "ultimate_fluid_tank",
+        "creative_fluid_tank",
     ];
-    // `addToDisplay(MekanismFluids.FLUIDS, event)` (`MekanismCreativeTabs.java:136`): os baldes do Mekanism, depois dos instaladores (e dos tanques, que o port não tem).
+    // `addToDisplay(MekanismFluids.FLUIDS, event)` (`MekanismCreativeTabs.java:136`): os baldes do Mekanism, depois dos instaladores e dos tanques.
     tools.extend(FLUID_BUCKETS);
     // `COMBAT` (`MekanismCreativeTabs.java:138-141`).
     let combat = vec![
@@ -404,7 +419,7 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     // O Cardboard Box vem antes do item de upgrade (`MekanismCreativeTabs.java:128`).
     assert_eq!(
         tools.len(),
-        27 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
+        27 + 5 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
     );
     assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
     assert_eq!(tools[22], table::plain_stack("mekanism:cardboard_box"));
@@ -413,10 +428,22 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
         tools[31],
         table::plain_stack("mekanism:basic_tier_installer")
     );
-    // O último instalador, e os 18 baldes dos fluidos do Mekanism depois dele.
+    // O último instalador, os cinco tanques de fluido e os 18 baldes dos fluidos do Mekanism depois deles.
     assert_eq!(
         tools[table::UPGRADE_TYPES.len() + 27 - 1],
         table::plain_stack("mekanism:ultimate_tier_installer")
+    );
+    assert_eq!(
+        tools[table::UPGRADE_TYPES.len() + 27],
+        table::plain_stack("mekanism:basic_fluid_tank")
+    );
+    assert_eq!(
+        tools[table::UPGRADE_TYPES.len() + 27 + 4],
+        table::plain_stack("mekanism:creative_fluid_tank")
+    );
+    assert_eq!(
+        tools[table::UPGRADE_TYPES.len() + 27 + 5],
+        table::plain_stack("mekanism:hydrogen_bucket")
     );
     assert_eq!(
         tools.last().unwrap(),

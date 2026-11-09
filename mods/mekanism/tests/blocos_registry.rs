@@ -1,4 +1,4 @@
-//! Os blocos de máquina e os blocos avulsos com tile do original (`MekanismBlocks`, `MekanismBlockTypes`, `BlockShapes`), sem função: as propriedades, os estados, as formas de
+//! Os blocos de máquina, os blocos avulsos com tile, os de armazenamento, indução, multibloco e os transmissores do original (`MekanismBlocks`, `MekanismBlockTypes`, `BlockShapes`), sem função: as propriedades, os estados, as formas de
 //! cada estado, a luz, a reação ao pistão e a oclusão que o port declara, contra o que o original deu em jogo (`rastros/blocos.jsonl`, `testes/BlocosTraceTest.java`).
 //! `native/block_rows_table.rs`, que a injeção `active_light` aplica às linhas de jogo, é compilado aqui.
 mod common;
@@ -6,7 +6,9 @@ mod common;
 #[path = "../native/block_rows_table.rs"]
 mod rows;
 
-use common::craft::{blocos, content, declared, json};
+use common::craft::{
+    TIERS, blocos, cables, content, declared, json, structure_scope, transmitters,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -60,7 +62,13 @@ const MACHINES: [&str; 48] = [
     "personal_chest",
     "cardboard_box",
 ];
-const TIERS: [&str; 4] = ["basic", "advanced", "elite", "ultimate"];
+/// A espessura do bloco que conecta de cada família de transmissor tiered (6 pixels o centro pequeno, 8 o grande) e a tag que a junta.
+const TRANSMITTER_KINDS: [(&str, u32, &str); 4] = [
+    ("pressurized_tube", 6, "chemical"),
+    ("thermodynamic_conductor", 6, "heat"),
+    ("mechanical_pipe", 8, "fluid"),
+    ("logistical_transporter", 8, "items"),
+];
 const FACTORIES: [&str; 9] = [
     "combining",
     "compressing",
@@ -73,8 +81,8 @@ const FACTORIES: [&str; 9] = [
     "smelting",
 ];
 
-/// Os 84 blocos da frente, na ordem em que o conteúdo os lista.
-fn scope() -> Vec<String> {
+/// Os 84 blocos da frente `blocos-maquinas`, na ordem em que o conteúdo os lista.
+fn machine_scope() -> Vec<String> {
     let mut out: Vec<String> = MACHINES.iter().map(|id| (*id).to_owned()).collect();
     for tier in TIERS {
         for kind in FACTORIES {
@@ -82,6 +90,23 @@ fn scope() -> Vec<String> {
         }
     }
     out
+}
+
+fn scope() -> Vec<String> {
+    let mut out = machine_scope();
+    out.extend(structure_scope());
+    out
+}
+
+/// O que a tabela de linhas leva: o escopo e os cabos.
+fn rows_scope() -> Vec<String> {
+    let mut out = scope();
+    out.extend(cables());
+    out
+}
+
+fn is_transmitter(id: &str) -> bool {
+    cables().iter().any(|c| c == id) || transmitters().iter().any(|t| t == id)
 }
 
 /// O original em jogo, por id sem namespace.
@@ -178,9 +203,37 @@ fn every_state_has_the_shape_the_original_gives() {
     let rastro = original();
     let mut over = BTreeSet::new();
     let mut compared = 0;
-    for id in scope() {
+    for id in rows_scope() {
         let row = &rastro[&id];
         let declaration = declaration(&id);
+        if is_transmitter(&id) {
+            // Um transmissor sem block entity tem só o centro (`BlockTransmitter.getShape` sem conexões): o cubo de 6 pixels (cabo, tubo, condutor) ou de 8 (cano, transportador),
+            // que o `thickness` do bloco que conecta dá ao Horizon. Nenhuma forma própria.
+            assert!(
+                declaration.get("shapes").is_none()
+                    && declaration.get("collision_shapes").is_none(),
+                "{id}"
+            );
+            let thickness = declaration["thickness"].as_f64().unwrap();
+            let half = thickness / 32.0;
+            let center = [
+                0.5 - half,
+                0.5 - half,
+                0.5 - half,
+                0.5 + half,
+                0.5 + half,
+                0.5 + half,
+            ];
+            for state in row["states"].as_array().unwrap() {
+                for kind in ["outline", "collision"] {
+                    let want =
+                        boxes(&row["shapes"][state["shape"].as_u64().unwrap() as usize][kind]);
+                    assert_eq!(want, vec![center], "{id} {kind}");
+                    compared += 1;
+                }
+            }
+            continue;
+        }
         for state in row["states"].as_array().unwrap() {
             let facing = state["props"].get("facing").and_then(Value::as_str);
             for (kind, key) in [("outline", "shapes"), ("collision", "collision_shapes")] {
@@ -208,15 +261,19 @@ fn every_state_has_the_shape_the_original_gives() {
         over.iter().map(String::as_str).collect::<Vec<_>>(),
         OVER_THE_LIMIT
     );
-    assert!(compared >= 1_600, "{compared}");
+    assert!(compared >= 2_000, "{compared}");
 }
 
-/// Os blocos cuja forma, coberta por caixas que podem se sobrepor, passa de 16 caixas.
-const OVER_THE_LIMIT: [&str; 12] = [
+/// Os blocos cuja forma, coberta por caixas que podem se sobrepor, passa de 16 caixas (os cinco cubos de energia entraram com a frente `blocos-estrutura`).
+const OVER_THE_LIMIT: [&str; 17] = [
+    "advanced_energy_cube",
+    "basic_energy_cube",
     "chemical_infuser",
     "chemical_washer",
+    "creative_energy_cube",
     "digital_miner",
     "electrolytic_separator",
+    "elite_energy_cube",
     "isotopic_centrifuge",
     "logistical_sorter",
     "modification_station",
@@ -225,27 +282,56 @@ const OVER_THE_LIMIT: [&str; 12] = [
     "rotary_condensentrator",
     "seismic_vibrator",
     "solar_neutron_activator",
+    "ultimate_energy_cube",
 ];
+
+/// A espessura do bloco que conecta de cada transmissor, a tag que junta a família e a cor do mapa que o original dá.
+fn transmitter_facts(id: &str) -> (u32, String) {
+    if id.ends_with("_universal_cable") {
+        return (6, "mekanism:energy_connects".to_owned());
+    }
+    for (kind, thickness, tag) in TRANSMITTER_KINDS {
+        if id.ends_with(kind) {
+            return (thickness, format!("mekanism:transmitters/{tag}"));
+        }
+    }
+    (8, "mekanism:transmitters/items".to_owned())
+}
+
+/// Os blocos que o original põe como `BlockMekanism` simples de bloco de entidade levam o gabarito `lodestone`; o vidro estrutural tem o som do vidro.
+fn expected_sound(id: &str) -> &'static str {
+    if id == "structural_glass" {
+        "minecraft:glass"
+    } else {
+        "minecraft:stone"
+    }
+}
 
 /// As propriedades de registro, as de estado e o item de cada bloco.
 #[test]
 fn every_block_is_declared_as_the_original_registers_it() {
     let rastro = original();
     let declared_blocks = declared("block");
-    for id in scope() {
+    for id in rows_scope() {
         assert!(declared_blocks.contains(&id), "falta o bloco {id}");
         let row = &rastro[&id];
         let declaration = declaration(&id);
-        // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas).
-        assert_eq!(declaration["template"], "minecraft:lodestone", "{id}");
         let properties = &declaration["properties"];
         let first = &row["states"][0];
         assert_eq!(properties["hardness"], row["hardness"], "{id}: dureza");
         assert_eq!(properties["requires_tool"], row["requires_tool"], "{id}");
         assert_eq!(properties["map_color"], first["map_color"], "{id}: cor");
-        // `DEFAULT` do `SoundType` é a pedra (`BlockBehaviour.Properties`): nenhum bloco troca o som.
-        assert_eq!(first["sound"], "minecraft:block.stone.break", "{id}");
-        assert_eq!(properties["sounds"], "minecraft:stone", "{id}");
+        // O som: `DEFAULT` do `SoundType` é a pedra (`BlockBehaviour.Properties`); só o vidro estrutural troca (`SoundType.GLASS`).
+        let want_sound = expected_sound(&id);
+        assert_eq!(
+            first["sound"],
+            format!(
+                "minecraft:block.{}.break",
+                want_sound.strip_prefix("minecraft:").unwrap()
+            ),
+            "{id}"
+        );
+        assert_eq!(properties["sounds"], want_sound, "{id}");
         assert_eq!(row["friction"], 0.6, "{id}");
         assert!(properties.get("friction").is_none(), "{id}");
         // A resistência: a que as explosões leem (`getExplosionResistance(state, ...)`). `AttributeCustomResistance(-1)` não cabe no arquivo e vai pela tabela de linhas.
@@ -270,6 +356,64 @@ fn every_block_is_declared_as_the_original_registers_it() {
                 "{id}"
             );
         }
+        // O item: a raridade (o SPS e a bobina supercarregada são épicos) e a pilha do original (16 no Cardboard Box); o `bounding_block` não tem item.
+        let rarity = declaration["components"]["minecraft:rarity"].as_str();
+        assert_eq!(
+            row["item"]["rarity"],
+            match rarity {
+                Some("epic") => "EPIC",
+                None => "COMMON",
+                other => panic!("{id}: {other:?}"),
+            },
+            "{id}"
+        );
+        let stack = declaration["components"]["minecraft:max_stack_size"]
+            .as_u64()
+            .unwrap_or(64);
+        assert_eq!(
+            stack,
+            row["item"]["max_stack"].as_u64().unwrap(),
+            "{id}: pilha"
+        );
+        assert_eq!(
+            declaration.get("item").and_then(Value::as_bool) == Some(false),
+            row["item"]["id"] == "minecraft:air",
+            "{id}: só o bloco de apoio não tem item"
+        );
+        // O desenho: só o `bounding_block` é invisível (`RenderShape.INVISIBLE`).
+        assert_eq!(
+            properties
+                .get("render_shape")
+                .and_then(Value::as_str)
+                .unwrap_or("MODEL"),
+            first["render_shape"],
+            "{id}"
+        );
+        if is_transmitter(&id) {
+            // O bloco que conecta do Horizon (o chorus plant sem as regras dele): a espessura, a tag da família, nenhuma propriedade de estado (o estado do original, `fluid_logged`, e a
+            // conexão por block entity esperam as Fases 3 e 4, decisão 26) e nenhuma oclusão declarada (o centro nunca é um cubo).
+            let (thickness, tag) = transmitter_facts(&id);
+            assert_eq!(declaration["template"], "minecraft:chorus_plant", "{id}");
+            assert_eq!(declaration["thickness"], thickness, "{id}");
+            assert_eq!(declaration["connects_to"], format!("#{tag}"), "{id}");
+            assert!(declaration.get("state_properties").is_none(), "{id}");
+            assert!(properties.get("occludes").is_none(), "{id}");
+            assert_eq!(properties["requires_tool"], false, "{id}");
+            let names: Vec<&str> = row["properties"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| p["name"].as_str().unwrap())
+                .collect();
+            assert_eq!(names, ["fluid_logged"], "{id}");
+            assert!(
+                first["solid_render"] == false,
+                "{id}: o centro não é um cubo"
+            );
+            continue;
+        }
+        // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas).
+        assert_eq!(declaration["template"], "minecraft:lodestone", "{id}");
         // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
         // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
         let solid = row["states"]
@@ -343,16 +487,6 @@ fn every_block_is_declared_as_the_original_registers_it() {
                 .product::<usize>(),
             "{id}: quantidade de estados"
         );
-        // O item: a raridade é a comum e a pilha é a do original (16 no Cardboard Box).
-        assert_eq!(row["item"]["rarity"], "COMMON", "{id}");
-        let stack = declaration["components"]["minecraft:max_stack_size"]
-            .as_u64()
-            .unwrap_or(64);
-        assert_eq!(
-            stack,
-            row["item"]["max_stack"].as_u64().unwrap(),
-            "{id}: pilha"
-        );
     }
 }
 
@@ -361,7 +495,7 @@ fn every_block_is_declared_as_the_original_registers_it() {
 fn the_rows_table_gives_every_state_what_the_original_gave() {
     let rastro = original();
     let mut states = 0;
-    for id in scope() {
+    for id in rows_scope() {
         let row = &rastro[&id];
         let declaration = declaration(&id);
         let full = format!("mekanism:{id}");
@@ -416,9 +550,12 @@ fn the_rows_table_gives_every_state_what_the_original_gave() {
             states += 1;
         }
     }
-    assert!(states >= 1_700, "{states}");
+    assert!(states >= 2_100, "{states}");
     // Nenhum bloco de fora entra na tabela.
-    let ids: BTreeSet<String> = scope().iter().map(|id| format!("mekanism:{id}")).collect();
+    let ids: BTreeSet<String> = rows_scope()
+        .iter()
+        .map(|id| format!("mekanism:{id}"))
+        .collect();
     assert_eq!(
         rows::BLOCKS
             .iter()

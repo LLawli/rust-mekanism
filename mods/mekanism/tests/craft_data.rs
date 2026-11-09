@@ -194,7 +194,7 @@ fn every_complete_crafting_and_smelting_recipe_is_in_the_content() {
         }
     }
     assert!(present >= 120, "{present}");
-    assert!(absent.len() >= 60, "{}", absent.len());
+    assert!(absent.len() >= 25, "{}", absent.len());
     // Cada uma é a do original (o hash do rastro de arquivos cobre os bytes; aqui o tipo e o resultado).
     for (relative, recipe) in recipes.as_object().unwrap() {
         let path = content().join("data").join(relative);

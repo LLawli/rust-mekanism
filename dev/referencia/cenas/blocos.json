@@ -255,6 +255,196 @@
    "tp": "63.0 -58.38 77.25 0 12.1"
   },
   {
+   "name": "depositos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_bin[facing=north]",
+    "setblock 61 -60 82 mekanism:advanced_bin[facing=north]",
+    "setblock 62 -60 82 mekanism:elite_bin[facing=north]",
+    "setblock 63 -60 82 mekanism:ultimate_bin[facing=north]",
+    "setblock 64 -60 82 mekanism:creative_bin[facing=north]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "depositos_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_bin[facing=north,active=true]",
+    "setblock 61 -60 82 mekanism:advanced_bin[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:elite_bin[facing=north,active=true]",
+    "setblock 63 -60 82 mekanism:ultimate_bin[facing=north,active=true]",
+    "setblock 64 -60 82 mekanism:creative_bin[facing=north,active=true]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "tanques_fluido",
+   "cmds": [
+    "fill 59 -60 85 65 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:basic_fluid_tank",
+    "setblock 61 -60 82 mekanism:advanced_fluid_tank",
+    "setblock 62 -60 82 mekanism:elite_fluid_tank",
+    "setblock 63 -60 82 mekanism:ultimate_fluid_tank",
+    "setblock 64 -60 82 mekanism:creative_fluid_tank"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "tanques_fluido_ativos",
+   "cmds": [
+    "fill 59 -60 85 65 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:basic_fluid_tank[active=true]",
+    "setblock 61 -60 82 mekanism:advanced_fluid_tank[active=true]",
+    "setblock 62 -60 82 mekanism:elite_fluid_tank[active=true]",
+    "setblock 63 -60 82 mekanism:ultimate_fluid_tank[active=true]",
+    "setblock 64 -60 82 mekanism:creative_fluid_tank[active=true]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "tanques_quimico",
+   "cmds": [
+    "fill 59 -60 85 65 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:basic_chemical_tank[facing=north]",
+    "setblock 61 -60 82 mekanism:advanced_chemical_tank[facing=north]",
+    "setblock 62 -60 82 mekanism:elite_chemical_tank[facing=north]",
+    "setblock 63 -60 82 mekanism:ultimate_chemical_tank[facing=north]",
+    "setblock 64 -60 82 mekanism:creative_chemical_tank[facing=north]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "cubos_energia",
+   "cmds": [
+    "fill 59 -60 85 65 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
+    "setblock 61 -60 82 mekanism:advanced_energy_cube[facing=north]",
+    "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north]",
+    "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north]",
+    "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "inducao",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_induction_cell",
+    "setblock 61 -60 82 mekanism:advanced_induction_cell",
+    "setblock 62 -60 82 mekanism:elite_induction_cell",
+    "setblock 63 -60 82 mekanism:ultimate_induction_cell",
+    "setblock 64 -60 82 mekanism:basic_induction_provider",
+    "setblock 65 -60 82 mekanism:advanced_induction_provider",
+    "setblock 66 -60 82 mekanism:elite_induction_provider",
+    "setblock 67 -60 82 mekanism:ultimate_induction_provider",
+    "setblock 68 -60 82 mekanism:induction_casing",
+    "setblock 69 -60 82 mekanism:induction_port"
+   ],
+   "tp": "65.0 -58.38 75.45 0 8.9"
+  },
+  {
+   "name": "inducao_ativos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_induction_cell",
+    "setblock 61 -60 82 mekanism:advanced_induction_cell",
+    "setblock 62 -60 82 mekanism:elite_induction_cell",
+    "setblock 63 -60 82 mekanism:ultimate_induction_cell",
+    "setblock 64 -60 82 mekanism:basic_induction_provider",
+    "setblock 65 -60 82 mekanism:advanced_induction_provider",
+    "setblock 66 -60 82 mekanism:elite_induction_provider",
+    "setblock 67 -60 82 mekanism:ultimate_induction_provider",
+    "setblock 68 -60 82 mekanism:induction_casing",
+    "setblock 69 -60 82 mekanism:induction_port[active=true]"
+   ],
+   "tp": "65.0 -58.38 75.45 0 8.9"
+  },
+  {
+   "name": "multibloco_caldeira_sps",
+   "cmds": [
+    "fill 59 -60 85 69 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:boiler_casing",
+    "setblock 61 -60 82 mekanism:boiler_valve",
+    "setblock 62 -60 82 mekanism:dynamic_tank",
+    "setblock 63 -60 82 mekanism:dynamic_valve",
+    "setblock 64 -60 82 mekanism:sps_casing",
+    "setblock 65 -60 82 mekanism:sps_port",
+    "setblock 66 -60 82 mekanism:superheating_element",
+    "setblock 67 -60 82 mekanism:pressure_disperser",
+    "setblock 68 -60 82 mekanism:supercharged_coil[facing=up]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "multibloco_caldeira_sps_ativos",
+   "cmds": [
+    "fill 59 -60 85 69 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:boiler_casing",
+    "setblock 61 -60 82 mekanism:boiler_valve",
+    "setblock 62 -60 82 mekanism:dynamic_tank",
+    "setblock 63 -60 82 mekanism:dynamic_valve",
+    "setblock 64 -60 82 mekanism:sps_casing",
+    "setblock 65 -60 82 mekanism:sps_port[active=true]",
+    "setblock 66 -60 82 mekanism:superheating_element[active=true]",
+    "setblock 67 -60 82 mekanism:pressure_disperser",
+    "setblock 68 -60 82 mekanism:supercharged_coil[facing=up]"
+   ],
+   "tp": "64.5 -58.38 75.9 0 9.5"
+  },
+  {
+   "name": "multibloco_evaporacao",
+   "cmds": [
+    "fill 59 -60 85 64 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:thermal_evaporation_block",
+    "setblock 61 -60 82 mekanism:thermal_evaporation_controller[facing=north]",
+    "setblock 62 -60 82 mekanism:thermal_evaporation_valve",
+    "setblock 63 -60 82 mekanism:structural_glass"
+   ],
+   "tp": "62.0 -58.38 78.15 0 14.8"
+  },
+  {
+   "name": "multibloco_evaporacao_ativos",
+   "cmds": [
+    "fill 59 -60 85 64 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:thermal_evaporation_block",
+    "setblock 61 -60 82 mekanism:thermal_evaporation_controller[facing=north,active=true]",
+    "setblock 62 -60 82 mekanism:thermal_evaporation_valve",
+    "setblock 63 -60 82 mekanism:structural_glass"
+   ],
+   "tp": "62.0 -58.38 78.15 0 14.8"
+  },
+  {
+   "name": "transmissores_pequenos",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_universal_cable",
+    "setblock 61 -60 82 mekanism:advanced_universal_cable",
+    "setblock 62 -60 82 mekanism:elite_universal_cable",
+    "setblock 63 -60 82 mekanism:ultimate_universal_cable",
+    "setblock 64 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 65 -60 82 mekanism:advanced_pressurized_tube",
+    "setblock 66 -60 82 mekanism:elite_pressurized_tube",
+    "setblock 67 -60 82 mekanism:ultimate_pressurized_tube",
+    "setblock 68 -60 82 mekanism:basic_thermodynamic_conductor",
+    "setblock 69 -60 82 mekanism:advanced_thermodynamic_conductor",
+    "setblock 70 -60 82 mekanism:elite_thermodynamic_conductor",
+    "setblock 71 -60 82 mekanism:ultimate_thermodynamic_conductor"
+   ],
+   "tp": "66.0 -58.38 74.55 0 7.8"
+  },
+  {
+   "name": "transmissores_grandes",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:advanced_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:elite_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:ultimate_mechanical_pipe",
+    "setblock 64 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 65 -60 82 mekanism:advanced_logistical_transporter",
+    "setblock 66 -60 82 mekanism:elite_logistical_transporter",
+    "setblock 67 -60 82 mekanism:ultimate_logistical_transporter",
+    "setblock 68 -60 82 mekanism:restrictive_transporter",
+    "setblock 69 -60 82 mekanism:diversion_transporter"
+   ],
+   "tp": "65.0 -58.38 75.45 0 8.9"
+  },
+  {
    "name": "quimica_lava",
    "cmds": [
     "setblock 60 -60 82 mekanism:chemical_oxidizer[facing=north,active=true,fluid_logged=lava]",
@@ -270,6 +460,41 @@
     "setblock 80 -60 82 mekanism:antiprotonic_nucleosynthesizer[facing=north,active=true,fluid_logged=lava]"
    ],
    "tp": "70.5 -58.38 70.5 0 5.1"
+  },
+  {
+   "name": "tanques_fluido_lava",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_fluid_tank[active=true,fluid_logged=lava]",
+    "setblock 61 -60 82 mekanism:advanced_fluid_tank[active=true,fluid_logged=lava]",
+    "setblock 62 -60 82 mekanism:elite_fluid_tank[active=true,fluid_logged=lava]",
+    "setblock 63 -60 82 mekanism:ultimate_fluid_tank[active=true,fluid_logged=lava]",
+    "setblock 64 -60 82 mekanism:creative_fluid_tank[active=true,fluid_logged=lava]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "cubos_energia_lava",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north,fluid_logged=lava]",
+    "setblock 61 -60 82 mekanism:advanced_energy_cube[facing=north,fluid_logged=lava]",
+    "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north,fluid_logged=lava]",
+    "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north,fluid_logged=lava]",
+    "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north,fluid_logged=lava]"
+   ],
+   "tp": "62.5 -58.38 77.7 0 13.3"
+  },
+  {
+   "name": "vidro_fila",
+   "cmds": [
+    "fill 59 -60 85 66 -56 85 minecraft:stone",
+    "setblock 60 -60 82 mekanism:structural_glass",
+    "setblock 61 -60 82 mekanism:structural_glass",
+    "setblock 62 -60 82 mekanism:structural_glass",
+    "setblock 63 -60 82 mekanism:dynamic_tank",
+    "setblock 64 -60 82 mekanism:structural_glass",
+    "setblock 65 -60 82 mekanism:structural_glass"
+   ],
+   "tp": "63.0 -58.38 77.25 0 12.1"
   }
  ]
 }

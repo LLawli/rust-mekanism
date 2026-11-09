@@ -25,7 +25,23 @@ FAMILIES = {
     "lasers_qio": "laser laser_amplifier laser_tractor_beam logistical_sorter quantum_entangloporter qio_dashboard qio_drive_array qio_exporter qio_importer "
                   "qio_redstone_adapter".split(),
     "avulsos": "chargepad industrial_alarm radioactive_waste_barrel personal_barrel personal_chest cardboard_box".split(),
+    # A frente `blocos-estrutura`: depósitos, tanques, cubos de energia, indução, multibloco e transmissores.
+    "depositos": [f"{t}_bin" for t in "basic advanced elite ultimate creative".split()],
+    "tanques_fluido": [f"{t}_fluid_tank" for t in "basic advanced elite ultimate creative".split()],
+    "tanques_quimico": [f"{t}_chemical_tank" for t in "basic advanced elite ultimate creative".split()],
+    "cubos_energia": [f"{t}_energy_cube" for t in "basic advanced elite ultimate creative".split()],
+    "inducao": [f"{t}_induction_cell" for t in "basic advanced elite ultimate".split()] + [f"{t}_induction_provider" for t in "basic advanced elite ultimate".split()]
+               + ["induction_casing", "induction_port"],
+    "multibloco_caldeira_sps": "boiler_casing boiler_valve dynamic_tank dynamic_valve sps_casing sps_port superheating_element pressure_disperser supercharged_coil".split(),
+    "multibloco_evaporacao": "thermal_evaporation_block thermal_evaporation_controller thermal_evaporation_valve structural_glass".split(),
+    "transmissores_pequenos": [f"{t}_{k}" for k in "universal_cable pressurized_tube thermodynamic_conductor".split() for t in "basic advanced elite ultimate".split()],
+    "transmissores_grandes": [f"{t}_{k}" for k in "mechanical_pipe logistical_transporter".split() for t in "basic advanced elite ultimate".split()]
+                             + ["restrictive_transporter", "diversion_transporter"],
 }
+# Os transmissores não têm `active` nem `fluid_logged` no port (decisão 26): sem a fileira acesa nem a de lava. O `bounding_block` é invisível: fica só na leitura de estados.
+NO_ACTIVE = {"transmissores_pequenos", "transmissores_grandes", "cubos_energia", "tanques_quimico"}
+# O vidro estrutural contra uma parede de pedra e sobre o chão, de frente, três em fila (a camada translúcida e o corte das faces entre blocos iguais).
+GLASS_WALL = "structural_glass"
 # A fileira com `active=true` (e a lava dentro, nos que a têm): o estado aceso e o fluido de dentro.
 GRANDES_SPACING = {"grandes": 4, "quimica": 2, "lasers_qio": 2, "lasers": 2}
 
@@ -51,9 +67,13 @@ def state(row, active, lava=False):
     return "[" + ",".join(chosen) + "]" if chosen else ""
 
 
-def shot(name, blocks, by_id, active=False, lava=False):
+def shot(name, blocks, by_id, active=False, lava=False, backdrop=False):
     spacing = GRANDES_SPACING.get(name.split("_ativos")[0].split("_lava")[0], 1)
-    cmds = [f"setblock {X0 + i * spacing} {Y} {Z} mekanism:{block}{state(by_id[block], active, lava)}" for i, block in enumerate(blocks)]
+    cmds = []
+    if backdrop:
+        # Uma parede de pedra atrás da fileira e uma de vidro estrutural em cima de uma pilha de dois, para ver o que passa por cada bloco translúcido.
+        cmds.append(f"fill {X0 - 1} {Y} {Z + 3} {X0 + len(blocks) * spacing} {Y + 4} {Z + 3} minecraft:stone")
+    cmds += [f"setblock {X0 + i * spacing} {Y} {Z} mekanism:{block}{state(by_id[block], active, lava)}" for i, block in enumerate(blocks)]
     width = (len(blocks) - 1) * spacing
     cx = X0 + width / 2 + 0.5
     # A câmera olha o meio da fileira, de frente: com o campo de visão padrão (70 graus na vertical, 16:9) a fileira de `width` blocos cabe a uma distância de
@@ -68,9 +88,15 @@ def main():
     by_id = rows()
     shots = []
     for family, blocks in FAMILIES.items():
-        shots.append(shot(family, blocks, by_id))
-        shots.append(shot(family + "_ativos", blocks, by_id, active=True))
+        translucent = family in ("tanques_fluido", "tanques_quimico", "cubos_energia", "multibloco_evaporacao", "multibloco_caldeira_sps")
+        shots.append(shot(family, blocks, by_id, backdrop=translucent))
+        if family not in NO_ACTIVE:
+            shots.append(shot(family + "_ativos", blocks, by_id, active=True, backdrop=translucent))
     shots.append(shot("quimica_lava", FAMILIES["quimica"], by_id, active=True, lava=True))
+    shots.append(shot("tanques_fluido_lava", FAMILIES["tanques_fluido"], by_id, active=True, lava=True))
+    shots.append(shot("cubos_energia_lava", FAMILIES["cubos_energia"], by_id, lava=True))
+    # Um vidro estrutural em fila de três e um tanque de fluido atrás de outro: a mesma cena nos dois jogos mostra a camada de desenho e as faces entre blocos iguais.
+    shots.append(shot("vidro_fila", [GLASS_WALL] * 3 + ["dynamic_tank"] + [GLASS_WALL] * 2, by_id, backdrop=True))
     spec = {
         "setup": ["difficulty peaceful", "time set 6000", "weather clear", "gamemode creative"]
         # `fill` aceita até 32.768 blocos: a área da cena em três fatias.

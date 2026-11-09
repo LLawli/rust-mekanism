@@ -1,9 +1,9 @@
-//! Os arquivos, o texto e as tags dos blocos de máquina e dos blocos avulsos com tile: o estado de bloco, a definição do item, os modelos, as texturas e a tabela de drop são os
+//! Os arquivos, o texto e as tags dos blocos de máquina, dos blocos avulsos com tile e dos de armazenamento, indução, multibloco e transmissores: o estado de bloco, a definição do item, os modelos, as texturas e a tabela de drop são os
 //! do original (o hash de `rastros/craft_datagen.json` cobre os bytes), nada que eles citam falta, o nome e a descrição são os da datagen, e cada bloco e item está nas tags
 //! em que o original o pôs (`BlockStateBase.is`/`Holder.tags()` em jogo, `rastros/blocos.jsonl`).
 mod common;
 
-use common::craft::{blocos, content, json, rastro};
+use common::craft::{TIERS5, blocos, content, json, rastro, structure_scope, transmitters};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -32,7 +32,34 @@ fn scope() -> Vec<String> {
             out.push(format!("{tier}_{kind}_factory"));
         }
     }
+    out.extend(structure_scope());
     out
+}
+
+fn energy_cubes() -> Vec<String> {
+    TIERS5.map(|tier| format!("{tier}_energy_cube")).to_vec()
+}
+
+fn fluid_tanks() -> Vec<String> {
+    TIERS5.map(|tier| format!("{tier}_fluid_tank")).to_vec()
+}
+
+/// Os arquivos que o port escreve em vez de copiar (decisão 26): o blockstate e o item dos transmissores e do cubo de energia, o item do tanque de fluido, e os modelos que eles citam.
+fn generated(relative: &str) -> bool {
+    let id = relative
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .trim_end_matches(".json");
+    let in_set = |ids: Vec<String>| ids.iter().any(|candidate| candidate == id);
+    (relative.starts_with("assets/mekanism/blockstates/")
+        && (in_set(transmitters()) || in_set(energy_cubes())))
+        || (relative.starts_with("assets/mekanism/items/")
+            && (in_set(transmitters()) || in_set(energy_cubes()) || in_set(fluid_tanks())))
+        || relative.starts_with("assets/mekanism/models/block/transmitter_port/")
+        || (relative.starts_with("assets/mekanism/models/block/energy_cube/")
+            && (id.ends_with("_static") || id.ends_with("_item")))
+        || (relative.starts_with("assets/mekanism/models/item/") && id.ends_with("_port"))
 }
 
 const ADAPTED: &str = "assets/mekanism/blockstates/qio_redstone_adapter.json";
@@ -92,20 +119,32 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
     let mut models = BTreeSet::new();
     let mut textures = BTreeSet::new();
     for id in scope() {
-        for relative in [
-            format!("assets/mekanism/blockstates/{id}.json"),
-            format!("assets/mekanism/items/{id}.json"),
-            format!("data/mekanism/loot_table/blocks/{id}.json"),
-        ] {
+        // O `bounding_block` é só bloco, sem item nem tabela de drop (a datagen não tem nenhuma).
+        let mut wanted = vec![format!("assets/mekanism/blockstates/{id}.json")];
+        if id != "bounding_block" {
+            wanted.push(format!("assets/mekanism/items/{id}.json"));
+            wanted.push(format!("data/mekanism/loot_table/blocks/{id}.json"));
+        } else {
+            for relative in [
+                "assets/mekanism/items/bounding_block.json",
+                "data/mekanism/loot_table/blocks/bounding_block.json",
+            ] {
+                assert!(!content().join(relative).exists(), "{relative}");
+            }
+        }
+        for relative in wanted {
             assert!(content().join(&relative).is_file(), "falta {relative}");
-            // O blockstate do QIO Redstone Adapter é o do original com `model` nas variantes especiais (teste abaixo).
+            // O blockstate do QIO Redstone Adapter é o do original com `model` nas variantes especiais (teste abaixo); o que o port escreve tem o seu teste.
             assert!(
-                files.contains(&relative) || relative == ADAPTED,
+                files.contains(&relative) || relative == ADAPTED || generated(&relative),
                 "{relative} não é o do original"
             );
             seen.insert(relative);
         }
         for relative in [format!("blockstates/{id}.json"), format!("items/{id}.json")] {
+            if id == "bounding_block" && relative.starts_with("items") {
+                continue;
+            }
             references(&json(&assets.join(relative)), &mut models, &mut textures);
         }
     }
@@ -119,7 +158,10 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
         }
         let relative = format!("assets/mekanism/models/{path}.json");
         assert!(content().join(&relative).is_file(), "falta o modelo {name}");
-        assert!(files.contains(&relative), "{relative} não é o do original");
+        assert!(
+            files.contains(&relative) || generated(&relative),
+            "{relative} não é o do original"
+        );
         let mut more = BTreeSet::new();
         references(&json(&content().join(&relative)), &mut more, &mut textures);
         pending.extend(more);
@@ -139,8 +181,8 @@ fn the_files_of_every_block_are_the_originals_and_nothing_they_cite_is_missing()
             assert!(files.contains(&format!("{relative}.mcmeta")));
         }
     }
-    assert!(done.len() >= 150, "{} modelos", done.len());
-    assert!(textures.len() >= 200, "{} texturas", textures.len());
+    assert!(done.len() >= 250, "{} modelos", done.len());
+    assert!(textures.len() >= 300, "{} texturas", textures.len());
 }
 
 #[test]
@@ -155,7 +197,7 @@ fn every_block_has_the_name_and_the_description_of_the_datagen() {
         let name = format!("block.mekanism.{id}");
         assert!(lang.get(&name).is_some(), "falta {name}");
         assert_eq!(lang[&name], original[&name], "{name}");
-        // A chave `description.*` está no componente `mekanism:description` do item do original (o Cardboard Box não tem).
+        // A chave `description.*` está no componente `mekanism:description` do item do original (o Cardboard Box e o bloco de apoio não têm).
         let components = rows[&format!("mekanism:{id}")]["item"]["components"]
             .as_array()
             .unwrap();
@@ -164,7 +206,7 @@ fn every_block_has_the_name_and_the_description_of_the_datagen() {
             .filter_map(Value::as_str)
             .filter(|c| c.starts_with("mekanism:description="))
             .collect();
-        if id == "cardboard_box" {
+        if id == "cardboard_box" || id == "bounding_block" {
             assert!(description.is_empty());
             continue;
         }
@@ -328,4 +370,265 @@ fn the_redstone_adapter_blockstate_is_the_original_plus_the_unlit_model() {
         }
     }
     assert_eq!((special, plain), (6, 6));
+}
+
+/// O mesmo JSON com todo número como `f64`: `5` e `5.0` são o mesmo pixel, e o Python escreve um ou outro conforme a conta.
+fn numbers(value: &Value) -> Value {
+    match value {
+        Value::Number(n) => serde_json::json!(n.as_f64().unwrap()),
+        Value::Array(list) => Value::Array(list.iter().map(numbers).collect()),
+        Value::Object(map) => {
+            Value::Object(map.iter().map(|(k, v)| (k.clone(), numbers(v))).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// O blockstate, o item e os dois modelos de cada transmissor novo: o corpo é o cubo de 6 pixels (os pequenos) ou 8 (os grandes) e o braço vai da borda até ele, com as texturas do
+/// modelo do original (`center_opaque` e `side_opaque`), uma conexão por lado do chorus plant do Horizon e o item é o modelo do centro, como o do cabo.
+#[test]
+fn the_transmitters_are_drawn_with_the_textures_of_the_original() {
+    let rastro = rastro("estrutura_modelos.json");
+    let models = content().join("assets/mekanism/models/block/transmitter_port");
+    let directions = [
+        ("north", None, None),
+        ("east", Some(90), None),
+        ("south", Some(180), None),
+        ("west", Some(270), None),
+        ("up", None, Some(270)),
+        ("down", None, Some(90)),
+    ];
+    for id in transmitters() {
+        let want = &rastro["transmitters"][&id];
+        let (lo, hi) = if want["size"] == "small" {
+            (5.0, 11.0)
+        } else {
+            (4.0, 12.0)
+        };
+        let center = json(&models.join(format!("{id}_center.json")));
+        assert_eq!(center["textures"]["center"], want["center"], "{id}");
+        let element = &center["elements"][0];
+        assert_eq!(
+            numbers(&element["from"]),
+            serde_json::json!([lo, lo, lo]),
+            "{id}"
+        );
+        assert_eq!(
+            numbers(&element["to"]),
+            serde_json::json!([hi, hi, hi]),
+            "{id}"
+        );
+        assert_eq!(element["faces"].as_object().unwrap().len(), 6, "{id}");
+        let side = json(&models.join(format!("{id}_side.json")));
+        assert_eq!(side["textures"]["side"], want["side"], "{id}");
+        let arm = &side["elements"][0];
+        assert_eq!(
+            numbers(&arm["from"]),
+            serde_json::json!([lo, lo, 0.0]),
+            "{id}"
+        );
+        assert_eq!(numbers(&arm["to"]), serde_json::json!([hi, hi, lo]), "{id}");
+        // Os dois lados do braço que se veem são os de cima, de baixo, leste e oeste: a ponta fica contra o vizinho.
+        let mut faces: Vec<&str> = arm["faces"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        faces.sort_unstable();
+        assert_eq!(faces, ["down", "east", "up", "west"], "{id}");
+        // O blockstate: o centro sempre e o braço girado para cada lado ligado.
+        let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
+        let parts = state["multipart"].as_array().unwrap();
+        assert_eq!(parts.len(), 7, "{id}");
+        assert_eq!(
+            parts[0],
+            serde_json::json!({"apply": {"model": format!("mekanism:block/transmitter_port/{id}_center")}}),
+            "{id}"
+        );
+        for ((name, y, x), part) in directions.iter().zip(&parts[1..]) {
+            assert_eq!(part["when"][name], "true", "{id}");
+            let apply = &part["apply"];
+            assert_eq!(
+                apply["model"],
+                format!("mekanism:block/transmitter_port/{id}_side"),
+                "{id}"
+            );
+            assert_eq!(
+                apply.get("y").and_then(Value::as_i64),
+                y.map(i64::from),
+                "{id} {name}"
+            );
+            assert_eq!(
+                apply.get("x").and_then(Value::as_i64),
+                x.map(i64::from),
+                "{id} {name}"
+            );
+        }
+        let item = json(&content().join(format!("assets/mekanism/items/{id}.json")));
+        assert_eq!(
+            item["model"]["model"],
+            format!("mekanism:block/transmitter_port/{id}_center"),
+            "{id}"
+        );
+    }
+}
+
+/// O cubo de energia: o `EnergyCubeModel` junta o quadro e, por lado, o LED apagado (sem block entity todo lado é `INACTIVE`); o item (`RenderEnergyCubeItem`) usa a configuração de
+/// lados do item, só a frente com saída (`FRONT_OUT_EJECT`): o LED aceso (as mesmas caixas com o uv deslocado e a luz em 15) e a porta. O blockstate gira o modelo como o original.
+#[test]
+fn the_energy_cubes_are_drawn_with_the_frame_the_leds_and_the_ports_of_the_original() {
+    let rastro = rastro("estrutura_modelos.json");
+    let cube = &rastro["energy_cube"];
+    let sides = ["front", "left", "right", "back", "top", "bottom"];
+    let shift: Vec<f64> = cube["leds"]["lit_uv_shift"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
+    for tier in TIERS5 {
+        let block = format!("{tier}_energy_cube");
+        let mut textures = cube["textures"].as_object().unwrap().clone();
+        textures.extend(cube["tiers"][tier]["textures"].as_object().unwrap().clone());
+        let mut resting: Vec<Value> = cube["frame"].as_array().unwrap().clone();
+        let mut carried = resting.clone();
+        for side in sides {
+            resting.extend(cube["leds"][side].as_array().unwrap().clone());
+            if side == "front" {
+                for led in cube["leds"][side].as_array().unwrap() {
+                    let mut lit = led.clone();
+                    for face in lit["faces"].as_object_mut().unwrap().values_mut() {
+                        if let Some(uv) = face.get_mut("uv") {
+                            let values: Vec<f64> = uv
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|v| v.as_f64().unwrap())
+                                .collect();
+                            *uv = serde_json::json!([
+                                values[0] + shift[0],
+                                values[1] + shift[1],
+                                values[2] + shift[0],
+                                values[3] + shift[1]
+                            ]);
+                        }
+                    }
+                    lit["light_emission"] = 15.into();
+                    carried.push(lit);
+                }
+                carried.extend(cube["ports"][side].as_array().unwrap().clone());
+            } else {
+                carried.extend(cube["leds"][side].as_array().unwrap().clone());
+            }
+        }
+        let models = content().join("assets/mekanism/models");
+        let at_rest = json(&models.join(format!("block/energy_cube/{tier}_static.json")));
+        assert_eq!(
+            numbers(&at_rest["elements"]),
+            numbers(&Value::Array(resting)),
+            "{block}"
+        );
+        assert_eq!(
+            at_rest["textures"],
+            Value::Object(textures.clone()),
+            "{block}"
+        );
+        let held = json(&models.join(format!("block/energy_cube/{tier}_item.json")));
+        assert_eq!(
+            numbers(&held["elements"]),
+            numbers(&Value::Array(carried)),
+            "{block}"
+        );
+        assert_eq!(held["textures"], Value::Object(textures), "{block}");
+        // O item: o modelo da mão com o `display` do modelo base do original.
+        let item = json(&models.join(format!("item/{block}_port.json")));
+        assert_eq!(
+            item["parent"],
+            format!("mekanism:block/energy_cube/{tier}_item")
+        );
+        assert_eq!(
+            numbers(&item["display"]),
+            numbers(&cube["display"][tier]),
+            "{block}"
+        );
+        let definition = json(&content().join(format!("assets/mekanism/items/{block}.json")));
+        assert_eq!(definition["model"]["type"], "minecraft:model");
+        assert_eq!(
+            definition["model"]["model"],
+            format!("mekanism:item/{block}_port")
+        );
+        // O blockstate: o modelo parado girado para cada `facing`, na ordem alfabética do original.
+        let state = json(&content().join(format!("assets/mekanism/blockstates/{block}.json")));
+        let variants = state["variants"].as_object().unwrap();
+        let keys: Vec<&str> = variants.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            [
+                "facing=down",
+                "facing=east",
+                "facing=north",
+                "facing=south",
+                "facing=up",
+                "facing=west"
+            ]
+        );
+        let rotations = [
+            ("down", 0, 90),
+            ("east", 90, 0),
+            ("north", 0, 0),
+            ("south", 180, 0),
+            ("up", 0, 270),
+            ("west", 270, 0),
+        ];
+        for (facing, y, x) in rotations {
+            let variant = &variants[&format!("facing={facing}")];
+            assert_eq!(
+                variant["model"],
+                format!("mekanism:block/energy_cube/{tier}_static")
+            );
+            assert_eq!(
+                variant.get("y").and_then(Value::as_i64).unwrap_or(0),
+                y,
+                "{block} {facing}"
+            );
+            assert_eq!(
+                variant.get("x").and_then(Value::as_i64).unwrap_or(0),
+                x,
+                "{block} {facing}"
+            );
+        }
+    }
+}
+
+/// O tanque de fluido sem fluido: o item é o modelo do estado padrão do bloco (`RenderFluidTankItem` desenha o `blockRenderState`) com o `display` do modelo base do original.
+#[test]
+fn the_fluid_tank_items_show_the_block_model_with_the_display_of_the_original() {
+    let rastro = rastro("estrutura_modelos.json");
+    for tier in TIERS5 {
+        let block = format!("{tier}_fluid_tank");
+        let definition = json(&content().join(format!("assets/mekanism/items/{block}.json")));
+        assert_eq!(definition["model"]["type"], "minecraft:model", "{block}");
+        assert_eq!(
+            definition["model"]["model"],
+            format!("mekanism:item/{block}_port")
+        );
+        let model = json(&content().join(format!("assets/mekanism/models/item/{block}_port.json")));
+        assert_eq!(model["parent"], "mekanism:block/fluid_tank", "{block}");
+        assert_eq!(
+            numbers(&model["display"]),
+            numbers(&rastro["fluid_tank_display"][tier]),
+            "{block}"
+        );
+        // O estado desligado usa esse mesmo modelo, e o ligado o `fluid_tank_active` (o blockstate do original).
+        let state = json(&content().join(format!("assets/mekanism/blockstates/{block}.json")));
+        assert_eq!(
+            state["variants"]["active=false"]["model"],
+            "mekanism:block/fluid_tank"
+        );
+        assert_eq!(
+            state["variants"]["active=true"]["model"],
+            "mekanism:block/fluid_tank_active"
+        );
+    }
 }
