@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-08 (depois da frente da configuração de servidor), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-08 (depois da frente das partículas da Fase 1), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 94 | |
-| Hook do catálogo, usado só com o contrato dele | 35 | não |
+| `[[injection]]` no total | 96 | |
+| Hook do catálogo, usado só com o contrato dele | 36 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 31 | sim |
-| Injeção crua (`target = ...`) | 28 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 17 | sim |
+| Injeção crua (`target = ...`) | 29 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 18 | sim |
 
-35 + 31 + 28 = 94. Os 17 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-59 injeções e 17 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+36 + 31 + 29 = 96. Os 18 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+60 injeções e 18 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 28 | 17 | 31 |
+| Em uso | 29 | 18 | 31 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -81,6 +81,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H36 `NativeConfigKind::Synced` | tipo de configuração | nenhuma (diferença de comportamento, sem injeção) | pedido |
 | H36 `mod_container_viewers` v2 | hook | nenhuma injeção: o `server_tick` da `machinery_basis` faz a conta com o que lê de `hub.guests` (o proposto dá a lista de jogadores com o menu, espectadores marcados) | pedido |
 | H37 `block_entity_energy_inserted` | hook | `energy_store` (cru, HEAD de `Game::native_energy_store`) | em uso (1) |
+| H39 `block_animate_tick` | hook | `animate_tick` (cru, HEAD de `block_animate_tick`) e o módulo `animate-registry` | em uso (1 cru, 1 módulo) |
 | H38 `ingredient` v2 | hook | `components-ingredient-stash` (cru, HEAD de `Ingredient::parse_object`), o hook `ingredient` v1 `components-ingredient-items` e o módulo `components-ingredient` | em uso (1 cru, 1 hook, 1 módulo) |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
@@ -127,18 +128,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 39 | 20 | 19 | 13 |
+| `mods/machinery_basis/horizon-mixin.toml` | 40 | 20 | 20 | 14 |
 | `mods/mekanism/native/horizon-mixin.toml` | 34 | 27 | 7 | 2 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 21 | 19 | 2 | 2 |
-| Total | 94 | 66 | 28 | 17 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 22 | 20 | 2 | 2 |
+| Total | 96 | 67 | 29 | 18 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 28 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click` e `bar_resend_menu`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
-`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 61 linhas `hook =`: 17 nomes se repetem em dois mods, 61 - 17 = 44; a contagem anterior, 45, estava velha) existem no catálogo do pin, na versão 1.
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots` e `bar_slot_count` (`RETURN`). Onze das 29 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu` e `animate_tick`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+`impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
-Dos 66 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 35 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 19, 6 e 13; 15 + 10 + 6 = 31 e 5 + 17 + 13 = 35, e o total dos três arquivos fecha em 66; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 13 em `mekanismgenerators` (um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 67 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (28)
+## Injeções cruas em uso (29)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -467,6 +468,28 @@ e 35 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08,
 - **Risco:** renomear `native_energy_store` ou fazer outro caminho gravar `energy` sem passar por ele (ainda não existe) deixa o `lastEnergyReceived` em zero, sem erro.
 - **Conferido em jogo** (2026-11-08, `horizon`): ver o item `MekanismContainer` do plano.
 
+### `animate_tick` (machinery_basis)
+
+- **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client_lib::animate_tick::block_animate_tick` (`animate_tick.rs:819`, função livre privada), HEAD, não cancelável. **Proposta:** H39.
+- **Helper:** `mods/machinery_basis/animate_tick.rs` chama `machinery_animate::animate(engine, ctx, state, pos)`, do módulo `animate-registry` (`animate_registry.rs`, enxertado em
+  `animate_tick.rs` como `pub mod machinery_animate`, com `visibility = "pub"`). O módulo guarda os animadores que os mods registram (`register(dono, animador)`, uma vez por mod:
+  o `client_tick` do Mekanism e o `client_tick` do Heat Generator, este um hook `tick` só com o contrato dele, chamam no primeiro tick) e os chama, na ordem, para cada posição
+  sorteada. O animador do mod é do crate do jogo (`machine_animator` em `mekanism_glue`, `heat_generator_animator` em `mekanismgenerators_glue`), que usa
+  `machinery_basis::animate_active_block`.
+- **Por que é necessária:** `ClientLevel.animateTick` sorteia 667 posições a 16 blocos e 667 a 32 em volta do jogador, a cada tick, e chama `Block.animateTick` (`BlockTile.animateTick`,
+  `BlockTile.java:80-103`: `AttributeParticleFX`, `Machine.java:23` e `GeneratorsBlockTypes.java:69`) do bloco de cada uma. O Horizon faz esse sorteio (`animate_tick`, `do_animate_tick`) mas
+  só anima os blocos do vanilla, por nome (`classify`, uma tabela `Animate` fechada), e não tem hook para o bloco de mod: o bloco do Mekanism cai em `Animate::None`. O sorteio fica no
+  cliente, no mesmo gerador do `ParticleEngine`, e a posição sorteada vai ao animador.
+- **Por que o módulo e não uma chamada direta:** `animate_tick.rs` é do crate `horizon_client_lib`, que o `horizon-client` (onde moram o `glue` e o `machinery-basis-core`) depende, então o helper
+  não pode chamar o `glue`. O animador entra por registro, como o `machinery_sprite_ties` (H26) faz no sentido contrário.
+- **Java:** `ClientLevel.animateTick` e `doAnimateTick` (667 vezes, a 16 e a 32), `BlockTile.animateTick`.
+- **Hook mais próximo:** nenhum. `native_block_highlight` e `native_visuals` não são por bloco sorteado.
+- **Hook proposto:** H39 `block_animate_tick`: `engine`, o estado, a posição e o jogador, chamado por `do_animate_tick` com o bloco sorteado, que dispensa a injeção e o módulo.
+- **Risco:** renomear `block_animate_tick`, mudar a lista de argumentos (`tables`, `engine`, `ctx`, `state`, `pos`, `player`), ou `AnimateContext::registry`; o módulo exige que `animate_tick.rs` não
+  tenha `use ...::*` de topo (o planejador recusa). O `next_double` do `LegacyRandom` do Horizon faz a conta em `double` (2^-53) e o jogo em `float` (`BitRandomSource.nextDouble`,
+  `long * 1.110223E-16F`): a posição sorteada de cada partícula difere até 1,8e-8 (o glue refaz a conta do jogo a partir de `next_int_bound(1 << 26)` e `(1 << 27)`, que são um passo do gerador cada).
+- **Conferido em jogo** (2026-11-08, `horizon`): taxa de partículas por segundo e prints contra o original, ver o item "Partículas da máquina acesa" do plano.
+
 ### `components-ingredient` (machinery_basis)
 
 - **Estado:** em uso desde 2026-11-08. **Alvo cru:** `horizon_client_lib::crafting::Ingredient::parse_object` (`crafting.rs`), HEAD, com o `o` (o JSON do objeto) e o `items` (`&Items`). **Hook:** `ingredient` v1 (`native_ingredient`, HEAD, só o contrato). **Módulo:** `components-ingredient`, em `crafting.rs`. **Proposta:** H38.
@@ -566,7 +589,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (17)
+## Módulos (18)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -587,6 +610,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `bar-hub` (machinery_basis) | `lan/containers.rs` | `Hub::machinery_sync_bar`: a armadura e a mão que o clique mudou vão ao cliente com a resposta dele | H31 |
 | `bar-quick-move` (machinery_basis) | `game/native_quick_move.rs` | o shift-clique que parte de um slot da barra, com as guardas de `lan_mod_quick_move` e o `mayPickup` | H31 |
 | `components-ingredient` (machinery_basis) | `crafting.rs` | o `Ingredient::parse_object` guarda as tags de item e o hook `ingredient` as resolve, para o `neoforge:components` do cozimento (H38; ficha em [`components-ingredient`](#components-ingredient-machinery_basis)) | H38 |
+| `animate-registry` (machinery_basis) | `animate_tick.rs` (crate `horizon_client_lib`, `pub`) | os animadores que os mods registram para o `animateTick` dos blocos de mod, que a injeção `animate_tick` chama: o crate do jogo registra, o de baixo chama | H39 |
 | `rules` (mekanism) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 | `rules` (mekanismgenerators) | `game.rs` | regras puras, sem tipo do jogo | nada do Horizon |
 
@@ -1127,6 +1151,16 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Exemplo:** `NativeConfigKind::Synced`, com o `native_config_loading` do convidado chamado com o texto do anfitrião (`NativeConfigFile` com `kind = Synced`).
 - **Risco do que existe hoje:** nenhum: usa só o hook do catálogo.
 
+### H39 `block_animate_tick`
+
+- **Lado:** cliente. **Tipo:** hook, `listen`, por posição sorteada do `ClientLevel.animateTick`.
+- **O que faz:** para cada posição que o sorteio de 667 + 667 por tick escolhe em volta do jogador (16 e 32 blocos), chama o mod dono do bloco com o estado, a posição, o jogador e o
+  motor de partículas (o gerador do sorteio e `add`), depois de o Horizon tratar os blocos do vanilla. É o `Block.animateTick(state, level, pos, random)` de um bloco de mod: o Mekanism solta
+  a fumaça e o pó de redstone da máquina acesa e o Heat Generator a fumaça e a chama (`BlockTile.animateTick`).
+- **Hoje:** `animate_tick` (cru, HEAD de `block_animate_tick`) mais o módulo `animate-registry`, pelas razões da ficha de `animate_tick`.
+- **Exemplo:** `fn block_animate_tick(&mut self, state: BlockState, pos: [i32; 3], player: [i32; 3], particles: &mut Particles)`, com `Particles::random()` e `Particles::add(options, pos, velocity)`.
+- **Risco do que existe hoje:** `block_animate_tick`, `AnimateContext::registry` e `ParticleEngine::{random, add}`.
+
 ## Correções pedidas ao renderer do Horizon
 
 Estas não são injeções. São diferenças de pixel que vêm do próprio renderer do Horizon, então afetam o jogo inteiro, não só o
@@ -1256,8 +1290,8 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=94 hook=66 target=28 module=17 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
-   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 35 + 31 tem de somar `hook`.
+   Hoje: `injection=96 hook=67 target=29 module=18 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 36 + 31 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
 

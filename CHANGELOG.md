@@ -6,6 +6,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- As quatro máquinas acesas soltam a fumaça e o pó de redstone na face da frente (`Machine.java:23`), e o Heat Generator aceso a fumaça e a chama pela de trás (`GeneratorsBlockTypes.java:69`), como o `BlockTile.animateTick` do original: o cliente sorteia as posições em volta do jogador a cada tick (667 a 16 blocos e 667 a 32, no
+  `ClientLevel.animateTick` do Horizon) e cada bloco aceso sorteado solta uma partícula por entrada, girada pelo `facing`. A chave `machineEffects` (`rendering.particle` do `config/Mekanism/client.toml`, ligada por padrão) as desliga. Uma injeção nova na `machinery_basis` (`animate_tick`, mais um módulo que guarda os animadores dos mods) leva o sorteio do Horizon até o
+  bloco de mod; as regras (`machinery_basis_core::active_fx`) repetem um rastro do original com semente fixa, bit a bit para a fumaça e o pó, e em jogo a taxa por segundo fica a menos de 2 desvios da esperança do sorteio nos dois jogos (3,0 por segundo de cada tipo a 3 blocos).
 - O `bio_fuel` queima: o item tem o componente `minecraft:cooking_fuel` do original (`cookingFuel(COOKING_TIME_BIO_FUEL)`, `MekanismItems.java:182`), com o provider de 100 ticks (50 num bloco de cozimento rápido) escrito por extenso no JSON do item, igual
   ao arquivo que a datagen do original escreve. O forno, o alto-forno e o slot de combustível do Heat Generator o aceitam e o queimam: o forno e o alto-forno dão os 469 e 269 ticks do rastro do Java, e o Heat Generator converte cada item em 5 mB de
   lava (`1000 * 100 / 20000`), tick a tick como o original (`furnace_bio_fuel`, `blast_furnace_bio_fuel`, `heat_generator_bio_fuel_run`).
