@@ -22,6 +22,9 @@ import shutil
 import sys
 from fractions import Fraction
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scripts"))
+from gerar_fluidos import gravar_png, ler_png, tingir  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 ORIGINAL = sys.argv[1] if len(sys.argv) > 1 else "/mnt/dados/caches/rust-mekanism-ref/mekanism"
@@ -241,18 +244,22 @@ def transmitter_tag(block):
 
 
 def transmitter_declaration(row):
-    """Um transmissor: o bloco que conecta do Horizon (o chorus plant sem as regras dele, `connects_to` e `thickness`), com a dureza, a resistência, a cor e o som do original.
-    O estado por lado do original (a conexão vem da block entity) e a rede são das Fases 3 e 4; `fluid_logged` espera (decisão 26)."""
+    """Um transmissor: o bloco que conecta do Horizon (o chorus plant sem as regras dele, `connects_to` e `thickness`, com os seis lados por estado), com a dureza, a resistência, a cor e o som
+    do original e o `fluid_logged` dele (`empty`, `water` e `lava`: o chorus plant aceita um estado próprio, medido em jogo, decisão 27). A conexão por block entity e a rede são das Fases 3 e 4."""
     first = row["states"][0]
     block = row["id"].split(":")[1]
     assert not first["solid_render"] and row["hardness"] == 1.0 and row["resistance"] == 6.0 and not row["requires_tool"], block
     assert row["explosion_state"] == row["resistance"], block
     assert sound_block(row) == "minecraft:stone", block
+    logged = [p for p in row["properties"] if p["name"] == "fluid_logged"]
+    assert [p["name"] for p in row["properties"]] == ["fluid_logged"], block
     return {
         "template": CHORUS,
         "connects_to": "#" + transmitter_tag(block),
         "thickness": 6 if transmitter_size(block) == "small" else 8,
         "properties": {"hardness": row["hardness"], "explosion_resistance": row["explosion_state"], "requires_tool": False, "map_color": first["map_color"], "sounds": "minecraft:stone"},
+        "state_properties": {"fluid_logged": {"type": "enum", "values": logged[0]["values"]}},
+        "default_state": {"fluid_logged": row["default"]["fluid_logged"]},
     }
 
 
@@ -262,6 +269,7 @@ def block_declaration(row, template=TEMPLATE):
         return transmitter_declaration(row)
     first = row["states"][0]
     properties = {"hardness": row["hardness"], "requires_tool": row["requires_tool"], "map_color": first["map_color"], "sounds": sound_block(row)}
+    glass = block == "structural_glass"
     # `Properties.strength` e o arquivo do Horizon aceitam 0 ou mais; a resistência -1 do `AttributeCustomResistance` (o cofre, o barril e a mesa de segurança) vai pela
     # tabela de linhas (`block_rows_table.rs`).
     if row["explosion_state"] >= 0:
@@ -269,7 +277,7 @@ def block_declaration(row, template=TEMPLATE):
         assert row["explosion_state"] == row["resistance"], row["id"]
     # Um bloco de forma menor que o cubo (`isSolidRender` falso) não esconde a face do vizinho. O Horizon esconde pela forma de oclusão da tabela `occlusion.nbt`, que um bloco de mod copia do
     # gabarito (o cubo cheio do `lodestone`), e pelo `can_occlude` de `render-definitions.json`; `occludes: false` põe o segundo falso (decisão 22): sem isso o chão sob a máquina perde a face de cima.
-    if not row["states"][0]["solid_render"]:
+    if not row["states"][0]["solid_render"] and not glass:
         properties["occludes"] = False
     # `RenderShape.INVISIBLE` (o `bounding_block`: `BlockBounding.getRenderShape`) não desenha o bloco.
     if first["render_shape"] != "MODEL":
@@ -277,7 +285,9 @@ def block_declaration(row, template=TEMPLATE):
     static_light = [s["light"] for s in row["states"] if s["props"].get("active") in (None, "false") and s["props"].get("fluid_logged") in (None, "empty")]
     if row["id"].endswith("teleporter"):
         properties["light"] = max(static_light)
-    declaration = {"template": template, "properties": properties}
+    # `BlockTileGlass` (o vidro estrutural) é um bloco de vidro: `noOcclusion`, `getShadeBrightness` 1, `skipRendering` entre blocos iguais, `getVisualShape` vazio, o som do vidro e o
+    # instrumento `HAT`; o gabarito `minecraft:glass` (`TransparentBlock`) dá tudo isso, e o `lodestone` escurecia o chão sob ele e desenhava as faces entre dois vidros (decisão 26).
+    declaration = {"template": "minecraft:glass" if glass else template, "properties": properties}
     state_properties = {}
     for prop in row["properties"]:
         values = prop["values"]
@@ -312,9 +322,6 @@ def block_declaration(row, template=TEMPLATE):
 
 
 def placement_declaration(row):
-    # Os transmissores do port não têm `fluid_logged` (o chorus plant do Horizon não aceita o estado do original, decisão 26).
-    if row["id"].split(":")[1] in CABLES + TRANSMITTERS:
-        return None
     out = {}
     facing = [p for p in row["properties"] if p["name"] == "facing"]
     if facing:
@@ -466,7 +473,7 @@ def model_source(name):
 # (`mekanism:special/transmitter`, `.obj.mek`), o do cubo de energia um carregador de modelo (`mekanism:energy_cube_sided`, `mekanism:energy_cube`) e o item do tanque de
 # fluido e do cubo de energia um desenhista especial (`minecraft:special` com `mekanism:fluid_tank` e `mekanism:energy_cube`, que o Horizon troca pelo modelo base, e o base
 # dos dois só tem `display`).
-GENERATED_BLOCKSTATES = TRANSMITTERS + ENERGY_CUBES
+GENERATED_BLOCKSTATES = TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
 GENERATED_ITEMS = TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
 DIRECTIONS = (("north", {}), ("east", {"y": 90}), ("south", {"y": 180}), ("west", {"y": 270}), ("up", {"x": 270}), ("down", {"x": 90}))
 # `RelativeSide.VALUES`: a ordem em que o `EnergyCubeModel` junta as partes.
@@ -573,13 +580,47 @@ def energy_cube_assets(block):
     return files, textures
 
 
-def fluid_tank_item(block):
-    """O item do tanque de fluido sem fluido: o desenhista (`RenderFluidTankItem`) põe o modelo do estado padrão do bloco; o `display` é o do modelo base do item."""
+TANK_GLASS = "assets/mekanism/textures/block/models/fluid_tank_side_{}.png"
+
+
+def tier_color(tier):
+    """A cor do tier (`BaseTier.getPackedColor`): o pixel do `textures/colormap/tiers.png` que `MekanismRenderer.parseColorAtlas` lê (`BaseTier.VALUES`: basic a creative, um pixel cada)."""
+    index = ("basic", "advanced", "elite", "ultimate", "creative").index(tier)
+    width, _, rgba = ler_png(f"{RES}/assets/mekanism/textures/colormap/tiers.png")
+    i = (index % 16 + (index // 16) * width) * 4
+    return rgba[i] << 16 | rgba[i + 1] << 8 | rgba[i + 2]
+
+
+def fluid_tank_assets(block):
+    """O tanque de fluido de um tier: o `ClientRegistration.registerBlockColorHandlers` tinge as quatro faces `#glass` do modelo (`tintindex` 0) com a cor do tier, e o Horizon não tem fonte de
+    tinta de bloco: o modelo de cada tier usa a textura do vidro já multiplicada pela cor (como as texturas dos fluidos, que a frente `fluidos` assou). O item sem fluido (`RenderFluidTankItem`
+    desenha o `blockRenderState`, o modelo do estado padrão do bloco) é esse mesmo modelo com o `display` do modelo base do item."""
+    tier = block[: -len("_fluid_tank")]
     display = read_json(f"{RES}/assets/mekanism/models/item/{block}.json")["display"]
+    off, on = f"mekanism:block/models/fluid_tank_side_off_{tier}", f"mekanism:block/models/fluid_tank_side_on_{tier}"
     return {
+        f"assets/mekanism/blockstates/{block}.json": {
+            "variants": {
+                "active=false": {"model": f"mekanism:block/fluid_tank/{tier}"},
+                "active=true": {"model": f"mekanism:block/fluid_tank/{tier}_active"},
+            }
+        },
         f"assets/mekanism/items/{block}.json": {"model": {"type": "minecraft:model", "model": f"mekanism:item/{block}_port"}},
-        f"assets/mekanism/models/item/{block}_port.json": {"parent": "mekanism:block/fluid_tank", "display": display},
+        f"assets/mekanism/models/block/fluid_tank/{tier}.json": {"parent": "mekanism:block/fluid_tank", "textures": {"glass": off}},
+        f"assets/mekanism/models/block/fluid_tank/{tier}_active.json": {"parent": "mekanism:block/fluid_tank_active", "textures": {"glass": on}},
+        f"assets/mekanism/models/item/{block}_port.json": {"parent": f"mekanism:block/fluid_tank/{tier}", "display": display},
     }
+
+
+def baked_textures():
+    """O vidro do tanque (`fluid_tank_side_off` e `_on`) multiplicado pela cor de cada tier: o RGB de cada pixel vezes a cor, o alfa fica."""
+    out = {}
+    for tier in ("basic", "advanced", "elite", "ultimate", "creative"):
+        color = tier_color(tier)
+        for state in ("off", "on"):
+            width, height, rgba = ler_png(f"{RES}/assets/mekanism/textures/block/models/fluid_tank_side_{state}.png")
+            out[TANK_GLASS.format(f"{state}_{tier}")] = (width, height, tingir(rgba, color))
+    return out
 
 
 def generated_assets():
@@ -594,7 +635,7 @@ def generated_assets():
         files.update(more)
         textures |= tex
     for block in FLUID_TANKS:
-        files.update(fluid_tank_item(block))
+        files.update(fluid_tank_assets(block))
     return files, textures
 
 
@@ -628,7 +669,9 @@ def assets_plan():
             more, _ = refs(source)
             for name in more:
                 visit(name)
-    # O `display` do item de cada tanque vem do modelo base (`models/item/<tanque>.json`); o modelo do estado do bloco já entra pelo blockstate.
+    # Os dois modelos do tanque de fluido que os de cada tier herdam (o blockstate de cada tier é escrito, não copiado).
+    for name in ("mekanism:block/fluid_tank", "mekanism:block/fluid_tank_active"):
+        visit(name)
     generated, extra = generated_assets()
     textures |= extra
     for name, source in models.items():
@@ -664,6 +707,8 @@ def copy_assets():
     files, generated = assets_plan()
     for relative, value in sorted(generated.items()):
         write_json(os.path.join(CONTENT, relative), value, indent=2)
+    for relative, (width, height, rgba) in sorted(baked_textures().items()):
+        gravar_png(os.path.join(CONTENT, relative), width, height, rgba)
     copied = 0
     for relative, source in sorted(files.items()):
         target = os.path.join(CONTENT, relative)

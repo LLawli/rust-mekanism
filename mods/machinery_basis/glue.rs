@@ -294,17 +294,20 @@ pub(in crate::game) fn state_for_placement(
 ) {
     let pos = context.pos;
     let energy = network::current();
+    let rules = placement::current();
+    let rule = level.native_state_block(state).and_then(|block| rules.get(block));
     if is_transmitter_state(level, &energy, state) {
         let placed = Face::ALL.iter().fold(state, |placed, &side| {
             let [x, y, z] = neighbour([pos.x, pos.y, pos.z], side);
             let joined = joins(level, &energy, level.world.block(x, y, z), side.opposite());
             with_side(level, placed, side, joined)
         });
+        // O cabo tem o `fluid_logged` do original (a regra de colocação só diz esse, o cabo não tem `facing`).
+        let placed = rule.map_or(placed, |rule| with_fluid(level, placed, rule, fluid));
         *answer = Some(Some(placed));
         return;
     }
-    let rules = placement::current();
-    let Some(rule) = level.native_state_block(state).and_then(|block| rules.get(block)) else {
+    let Some(rule) = rule else {
         return;
     };
     let mut placed = state;
@@ -313,15 +316,20 @@ pub(in crate::game) fn state_for_placement(
     {
         placed = level.native_state_with_property(placed, &facing.property, direction).unwrap_or(placed);
     }
-    if let Some(property) = &rule.fluid_logged {
-        let value = placement::fluid_logged_value(match fluid.kind() {
-            FluidKind::Water => "water",
-            FluidKind::Lava => "lava",
-            _ => "empty",
-        });
-        placed = level.native_state_with_property(placed, property, value).unwrap_or(placed);
-    }
-    *answer = Some(Some(placed));
+    *answer = Some(Some(with_fluid(level, placed, rule, fluid)));
+}
+
+/// O `fluid_logged` do estado pelo fluido do lugar (a fonte de água dá `water`, a de lava `lava`, o resto `empty`), se a regra tem a propriedade.
+fn with_fluid(level: &GameLevel<'_>, state: BlockStateId, rule: &placement::Rule, fluid: FluidState) -> BlockStateId {
+    let Some(property) = &rule.fluid_logged else {
+        return state;
+    };
+    let value = placement::fluid_logged_value(match fluid.kind() {
+        FluidKind::Water => "water",
+        FluidKind::Lava => "lava",
+        _ => "empty",
+    });
+    level.native_state_with_property(state, property, value).unwrap_or(state)
 }
 
 /// Um vizinho mudou: o transmissor refaz a ligação daquele lado, e a lava do bloco olha de novo

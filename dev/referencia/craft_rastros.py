@@ -399,7 +399,13 @@ def estrutura_modelos():
         cube["tiers"][tier] = json.load(open(f"{RES}/models/block/energy_cube/{tier}.json"))
         cube["display"][tier] = json.load(open(f"{RES}/models/item/{tier}_energy_cube.json"))["display"]
     tanks = {tier: json.load(open(f"{RES}/models/item/{tier}_fluid_tank.json"))["display"] for tier in tiers + ["creative"]}
-    json.dump({"transmitters": transmitters, "energy_cube": cube, "fluid_tank_display": tanks}, open(f"{OUT}/estrutura_modelos.json", "w"), indent=0, sort_keys=True)
+    # A cor de cada tier (`BaseTier.getPackedColor`, o pixel de `colormap/tiers.png` que `MekanismRenderer.parseColorAtlas` lê) que tinge o vidro do tanque de fluido.
+    sys.path.insert(0, HERE)
+    from comparar_tela import ler_png
+
+    width, _, rgba = ler_png(f"{RES}/textures/colormap/tiers.png")
+    colors = {tier: [rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]] for i, tier in enumerate(tiers + ["creative"])}
+    json.dump({"transmitters": transmitters, "energy_cube": cube, "fluid_tank_display": tanks, "tier_colors": colors}, open(f"{OUT}/estrutura_modelos.json", "w"), indent=0, sort_keys=True)
     print("estrutura_modelos.json:", len(transmitters))
 
 

@@ -1,5 +1,5 @@
 {
-  "parent": "mekanism:block/fluid_tank",
+  "parent": "mekanism:block/fluid_tank/creative",
   "display": {
     "gui": {
       "rotation": [

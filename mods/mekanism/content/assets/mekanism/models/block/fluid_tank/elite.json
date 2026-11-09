@@ -1,0 +1,6 @@
+{
+  "parent": "mekanism:block/fluid_tank",
+  "textures": {
+    "glass": "mekanism:block/models/fluid_tank_side_off_elite"
+  }
+}

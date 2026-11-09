@@ -8,5 +8,18 @@
     "requires_tool": false,
     "map_color": 19,
     "sounds": "minecraft:stone"
+  },
+  "state_properties": {
+    "fluid_logged": {
+      "type": "enum",
+      "values": [
+        "empty",
+        "water",
+        "lava"
+      ]
+    }
+  },
+  "default_state": {
+    "fluid_logged": "empty"
   }
 }
