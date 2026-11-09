@@ -48,11 +48,6 @@ FLUID_BUCKETS = ["bioethanol_bucket", "deuterium_bucket", "fusion_fuel_bucket", 
 GLASS = {"reactor_glass", "laser_focus_matrix"}
 EXTRA_MODELS = [f"{NS}:block/wind_generator_blades"]
 EXTRA_FILES = ["render/turbine.png"]
-# O modelo `wind_generator.json` é um `neoforge:composite` cujo filho `main` (o `.obj`) leva `"transform": {"translation": [0.5, 0, 0.5]}` ("this exists because the model is offset so that
-# the item rotates appropriately on the ground"). O Horizon ignora o `transform` (`Loader::Obj` só lê `model`, `flip_v`, `shade_quads` e `mtl_override`), e a torre sairia meio bloco
-# fora do lugar. O `.obj` do port é o do original com essa translação já nos vértices (o `.json` fica igual, com o `transform`, que o Horizon não lê); H67. Quando o Horizon honrar o
-# `transform`, o `.obj` volta a ser a cópia do original.
-DERIVED_OBJ = {"models/block/wind_generator.obj": (0.5, 0.0, 0.5)}
 TEMPLATE_GLASS = "minecraft:glass"
 PROPS_ITEM = {"template": "minecraft:iron_nugget"}
 
@@ -257,26 +252,6 @@ def assets_plan(scope):
     return files
 
 
-DERIVED = {}
-
-
-def obj_bbox(text):
-    """A caixa dos vértices (`v x y z`) de um `.obj` e quantos são: [xmin, ymin, zmin, xmax, ymax, zmax, quantos]."""
-    vertices = [[float(c) for c in line.split()[1:4]] for line in text.splitlines() if line.startswith("v ")]
-    return [min(v[i] for v in vertices) for i in range(3)] + [max(v[i] for v in vertices) for i in range(3)] + [len(vertices)]
-
-
-def translated_obj(source, translation):
-    """O `.obj` com `translation` somada a cada vértice (`v x y z`); o resto das linhas fica como está."""
-    out = []
-    for line in open(source).read().split("\n"):
-        if line.startswith("v "):
-            x, y, z = (float(c) for c in line.split()[1:4])
-            line = f"v {x + translation[0]!r} {y + translation[1]!r} {z + translation[2]!r}"
-        out.append(line)
-    return "\n".join(out)
-
-
 def copy_assets(scope):
     plan = assets_plan(scope)
     copied = missing_other = 0
@@ -293,15 +268,6 @@ def copy_assets(scope):
                 continue
             if open(target, "rb").read() != open(source, "rb").read():
                 raise SystemExit(f"assets/{namespace}/{relative} no Mekanism difere do original")
-            continue
-        if relative in DERIVED_OBJ:
-            text = translated_obj(source, DERIVED_OBJ[relative])
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            if not os.path.exists(target) or open(target).read() != text:
-                with open(target, "w") as handle:
-                    handle.write(text)
-                copied += 1
-            DERIVED[os.path.relpath(target, CONTENT)] = {"source": digest(source), "translation": list(DERIVED_OBJ[relative]), "source_bbox": obj_bbox(open(source).read())}
             continue
         if os.path.exists(target):
             if open(target, "rb").read() != open(source, "rb").read():
@@ -645,8 +611,6 @@ def main():
     rastro = {
         "files": manifest,
         "neoforge_tags": neoforge,
-        "derived": DERIVED,
-        "derived_hash": {rel: digest(os.path.join(CONTENT, rel)) for rel in DERIVED},
         "tags": tags,
         "recipes": recipes,
         "lang": add,

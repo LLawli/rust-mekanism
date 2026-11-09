@@ -122,7 +122,10 @@ fn the_files_of_every_block_and_item_are_the_originals_and_nothing_they_cite_is_
         }
     }
     assert_eq!(done.len(), 35);
-    let derived = datagen["derived"].as_object().unwrap();
+    assert!(
+        datagen.get("derived").is_none(),
+        "a opção B da decisão 31 saiu: nenhum arquivo é derivado"
+    );
     for (namespace, path) in &objs {
         // `models/block/x.obj` está em `assets/<ns>/models/block/x.obj`; o `.mtl` ao lado.
         for file in [path.clone(), path.replace(".obj", ".mtl")] {
@@ -132,60 +135,20 @@ fn the_files_of_every_block_and_item_are_the_originals_and_nothing_they_cite_is_
                 continue;
             }
             let relative = format!("assets/{NS}/{file}");
-            if let Some(info) = derived.get(&relative) {
-                // O `.obj` do Wind Generator é o do original com a translação do `transform` do modelo (o Horizon não o lê) somada aos vértices.
-                assert_eq!(
-                    datagen["derived_hash"][&relative].as_str(),
-                    Some(digest(&found).as_str()),
-                    "{file}"
-                );
-                let text = std::fs::read_to_string(&found).unwrap();
-                let vertices: Vec<[f64; 3]> = text
-                    .lines()
-                    .filter(|line| line.starts_with("v "))
-                    .map(|line| {
-                        let mut parts = line.split_whitespace().skip(1);
-                        std::array::from_fn(|_| parts.next().unwrap().parse().unwrap())
-                    })
-                    .collect();
-                let from: Vec<f64> = info["source_bbox"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_f64().unwrap())
-                    .collect();
-                let shift: Vec<f64> = info["translation"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_f64().unwrap())
-                    .collect();
-                assert_eq!(vertices.len() as f64, from[6], "{file}: vértices");
-                for axis in 0..3 {
-                    let low = vertices.iter().map(|v| v[axis]).fold(f64::MAX, f64::min);
-                    let high = vertices.iter().map(|v| v[axis]).fold(f64::MIN, f64::max);
-                    assert!((low - (from[axis] + shift[axis])).abs() < 1e-9, "{file}");
-                    assert!(
-                        (high - (from[axis + 3] + shift[axis])).abs() < 1e-9,
-                        "{file}"
-                    );
-                }
-                // O modelo ainda diz a translação (o `transform` do `composite`), para voltar ao original quando o Horizon a ler.
-                let model =
-                    json(&content().join(format!("assets/{NS}/models/block/wind_generator.json")));
-                assert_eq!(
-                    model["children"]["main"]["transform"]["translation"],
-                    serde_json::json!([0.5, 0, 0.5])
-                );
-            } else {
-                assert_eq!(
-                    manifest.get(&relative).and_then(Value::as_str),
-                    Some(digest(&found).as_str()),
-                    "{file}"
-                );
-            }
+            // O `.obj` e o `.mtl` são a cópia do original: o `transform` do modelo (a translação do `wind_generator`) quem aplica é a injeção `model_transform_*`.
+            assert_eq!(
+                manifest.get(&relative).and_then(Value::as_str),
+                Some(digest(&found).as_str()),
+                "{file}"
+            );
         }
     }
+    // O modelo diz a translação, como o original (o Horizon a aplica pela injeção).
+    let model = json(&content().join(format!("assets/{NS}/models/block/wind_generator.json")));
+    assert_eq!(
+        model["children"]["main"]["transform"]["translation"],
+        serde_json::json!([0.5, 0, 0.5])
+    );
     assert_eq!(objs.len(), 2, "o wind_generator cita dois .obj");
     for texture in &textures {
         let (namespace, path) = texture.split_once(':').unwrap();
