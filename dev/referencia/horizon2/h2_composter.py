@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Repete no horizon2 o rastro composter_enrichment_chamber.jsonl, tick a tick (`tick freeze` e `tick step 1`).
 
-A Enrichment Chamber em (70,-60,60) ejeta pela face da fase (`mekanism_eject_face`), e a composteira está nesse lado, no nível da fase.
+A Enrichment Chamber em (70,-60,60) ejeta pela face da fase (`component_config`), e a composteira está nesse lado, no nível da fase.
 Compara a cada tick o nível da composteira e a saída da máquina com o rastro do original.
 """
 import json, re, subprocess, sys, time
@@ -12,6 +12,9 @@ TRACE = os.path.join(TOOLS, "..", "rastros", "composter_enrichment_chamber.jsonl
 POS = (70, -60, 60)
 DURATIONS = [60, 70, 40, 40, 40, 40, 40, 40]
 SIDES = {"below": ((0, -1, 0), "down"), "above": ((0, 1, 0), "up"), "east": ((1, 0, 0), "east")}
+# A máquina é posta por `setblock`, virada para o norte: a configuração de lados nasce em NONE, então o lado de saída (DataType 4,
+# OUTPUT) vai no NBT, na ordem de `RelativeSide.VALUES` (frente, esquerda, direita, costas, alto, base). Norte: leste é a esquerda.
+OUTPUT_SIDE = {"down": [0, 0, 0, 0, 0, 4], "up": [0, 0, 0, 0, 4, 0], "east": [0, 4, 0, 0, 0, 0]}
 
 
 def ctl(*args):
@@ -66,7 +69,8 @@ def main():
         out = first["output"]
         command(
             f"data merge block {POS[0]} {POS[1]} {POS[2]} "
-            f"{{Items:[{{Slot:1b,id:\"minecraft:{out[0]}\",count:{out[3]}}}],mekanism_eject:1b,mekanism_eject_face:\"{face}\"}}"
+            f"{{Items:[{{Slot:1b,id:\"minecraft:{out[0]}\",count:{out[3]}}}],"
+            f"component_config:{{eject3:1b,config3:[I;{','.join(map(str, OUTPUT_SIDE[face]))}]}}}}"
         )
         for t in range(0, duration + 1):
             if t > 0:

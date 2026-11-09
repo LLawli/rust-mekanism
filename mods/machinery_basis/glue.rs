@@ -1136,8 +1136,18 @@ pub(in crate::game) fn set_stored_energy(entity: &mut ModBlockEntity, stored: i3
 /// A capacidade de energia de cada máquina em jogo, por instância: o `ModEnergyBuffer` do bloco é um só para todos, e a
 /// capacidade de uma máquina muda com os upgrades (`MachineEnergyContainer.setMaxEnergy`). O valor guarda o id do bloco, para
 /// uma capacidade velha não valer para outro bloco que tome o lugar.
-static ENERGY_CAPACITIES: Mutex<BTreeMap<(&'static str, [i32; 3]), (String, i32)>> =
+static ENERGY_CAPACITIES: Mutex<BTreeMap<(&'static str, [i32; 3]), InstanceEnergy>> =
     Mutex::new(BTreeMap::new());
+
+/// O que a energia de uma máquina tem de próprio: o id do bloco (para uma entrada velha não valer para outro bloco que tome o
+/// lugar), a capacidade e as faces por onde ela deixa entrar e sair (`ConfigHolder`: o `DataType` do lado, pela frente de agora).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InstanceEnergy {
+    block: String,
+    capacity: i32,
+    insert_faces: [bool; 6],
+    extract_faces: [bool; 6],
+}
 
 /// O arquivo de configuração que o jogo leu, como o `ModConfigSpec` o lê (`acceptConfig`): um valor errado vai para o limite ou para o padrão, e o arquivo é
 /// escrito de novo, no lugar de onde foi lido (o do mundo, se um do mundo trocou o de `config/`), com as chaves que a especificação não tem como estavam. O
@@ -1172,15 +1182,21 @@ pub(in crate::game) fn energy_as_int(value: i64, what: &str) -> i32 {
     }
 }
 
-/// Dá à máquina em `pos` a capacidade que ela tem agora. Quem faz a máquina andar chama quando ela muda.
+/// Dá à máquina em `pos` a capacidade e as faces de energia que ela tem agora (H1, por instância). Quem faz a máquina andar chama
+/// quando uma delas muda: os upgrades, a configuração de lados ou a frente do bloco.
 pub(in crate::game) fn set_energy_capacity(
     dimension: &'static str,
     pos: [i32; 3],
     block: &str,
     capacity: i32,
+    insert_faces: [bool; 6],
+    extract_faces: [bool; 6],
 ) {
     let mut capacities = ENERGY_CAPACITIES.lock().unwrap_or_else(|e| e.into_inner());
-    capacities.insert((dimension, pos), (block.to_owned(), capacity));
+    capacities.insert(
+        (dimension, pos),
+        InstanceEnergy { block: block.to_owned(), capacity, insert_faces, extract_faces },
+    );
 }
 
 /// Esquece as capacidades das máquinas que já não andam: a tabela não cresce com os blocos quebrados.
@@ -1198,7 +1214,7 @@ pub(in crate::game) fn energy_capacity(
     use horizon_client::containers::{BlockEntity, ModEnergyBuffer};
     use std::ops::ControlFlow::{Break, Continue};
     let key = (pos[0], pos[1], pos[2]);
-    let Some((block, capacity)) = ENERGY_CAPACITIES
+    let Some(InstanceEnergy { block, capacity, insert_faces, extract_faces }) = ENERGY_CAPACITIES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .get(&(game.native_dimension(), pos))
@@ -1219,6 +1235,8 @@ pub(in crate::game) fn energy_capacity(
     let resized = ModEnergyBuffer {
         capacity,
         max_insert: capacity,
+        insert_faces,
+        extract_faces,
         ..**buffer
     };
     Break(Some((Arc::new(resized), stored_energy(entity))))
@@ -1463,10 +1481,10 @@ pub(in crate::game) fn tick_hoppers(
                 let slots = slots(face);
                 let moved = match hopper::transfer(face, neighbour, sides) {
                     Some(Transfer::Give) => {
-                        give_one(game, hopper_pos, entity, slots.outputs, can_give)
+                        give_one(game, hopper_pos, entity, &slots.outputs, can_give)
                     }
                     Some(Transfer::Take) => {
-                        take_one(game, hopper_pos, face, entity, slots.inputs, accepts)
+                        take_one(game, hopper_pos, face, entity, &slots.inputs, accepts)
                     }
                     None => false,
                 };
@@ -2345,5 +2363,359 @@ pub(in crate::game) fn animate_active_block(
     animate_tick(fx, facing, center_of(pos), active, effects, &mut FxLevel(engine));
     if FX_TRACE && active && effects {
         eprintln!("MEKFX gt={} block={} pos={pos:?} facing={facing:?} n={}", ctx.world.game_time, row.name, fx.len());
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A configuração de lados de um tile (`TileComponentConfig` e `TileComponentEjector`): o NBT do tile, os componentes do item e a
+// colocação e a quebra do bloco.
+
+/// `SerializationConstants.COMPONENT_CONFIG` e `COMPONENT_EJECTOR`: os filhos do NBT do tile.
+const COMPONENT_CONFIG: &str = "component_config";
+const COMPONENT_EJECTOR: &str = "component_ejector";
+/// `EJECT` e `CONFIG`, mais o `ordinal` do tipo de transmissão.
+const EJECT_PREFIX: &str = "eject";
+const CONFIG_PREFIX: &str = "config";
+/// `STRICT_INPUT`, `COLOR` e `INPUT_COLOR` do ejetor.
+const STRICT_INPUT: &str = "strict_input";
+const EJECTOR_COLOR: &str = "color";
+const INPUT_COLOR: &str = "input_color";
+
+/// O que o NBT de um tile guarda da configuração de lados e do ejetor. O ejetor some do NBT quando está no padrão
+/// (`ITileComponent.write` descarta o filho vazio).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(in crate::game) struct SideNbt {
+    pub config: Option<machinery_basis_core::side_config::ConfigData>,
+    pub ejector: Option<machinery_basis_core::ejector::EjectorData>,
+}
+
+impl SideNbt {
+    /// O que os dois componentes gravam: o ejetor no padrão não deixa filho.
+    pub fn of(config: machinery_basis_core::side_config::ConfigData, ejector: machinery_basis_core::ejector::EjectorData) -> Self {
+        Self { config: Some(config), ejector: (!ejector.is_empty()).then_some(ejector) }
+    }
+}
+
+fn nbt_flag(tag: Option<&Tag>) -> Option<bool> {
+    match tag? {
+        Tag::Byte(value) => Some(*value != 0),
+        Tag::Int(value) => Some(*value != 0),
+        _ => None,
+    }
+}
+
+fn child<'a>(nbt: &'a Compound, key: &str) -> Option<&'a Compound> {
+    match nbt.get(&JavaString::from(key)) {
+        Some(Tag::Compound(compound)) => Some(compound),
+        _ => None,
+    }
+}
+
+/// `component_config` e `component_ejector` do tile, como estão agora.
+pub(in crate::game) fn read_side_nbt(entity: &ModBlockEntity) -> SideNbt {
+    side_nbt_from(&entity.nbt)
+}
+
+/// `component_config` e `component_ejector` de um compound: o do tile, ou o que `writeConfigurationData` entrega.
+pub(in crate::game) fn side_nbt_from(nbt: &Compound) -> SideNbt {
+    use machinery_basis_core::side_config::{ConfigData, ENUM_COLOR_NAMES, TransmissionType};
+    let config = child(nbt, COMPONENT_CONFIG).map(|compound| {
+        let mut data = ConfigData::default();
+        for kind in TransmissionType::VALUES {
+            let ordinal = kind.ordinal();
+            data.eject[ordinal] = nbt_flag(compound.get(&JavaString::from(format!("{EJECT_PREFIX}{ordinal}"))));
+            if let Some(Tag::IntArray(sides)) = compound.get(&JavaString::from(format!("{CONFIG_PREFIX}{ordinal}"))) {
+                data.config[ordinal] = Some(sides.clone());
+            }
+        }
+        data
+    });
+    let ejector = child(nbt, COMPONENT_EJECTOR).map(|compound| {
+        let color = match compound.get(&JavaString::from(EJECTOR_COLOR)) {
+            Some(Tag::String(name)) => {
+                let name = name.to_string_lossy();
+                ENUM_COLOR_NAMES.iter().position(|known| *known == name).map(|index| index as u8)
+            }
+            _ => None,
+        };
+        machinery_basis_core::ejector::EjectorData {
+            strict_input: nbt_flag(compound.get(&JavaString::from(STRICT_INPUT))),
+            color,
+            input_color: match compound.get(&JavaString::from(INPUT_COLOR)) {
+                Some(Tag::IntArray(colors)) => Some(colors.clone()),
+                _ => None,
+            },
+        }
+    });
+    SideNbt { config, ejector }
+}
+
+/// Grava a configuração e o ejetor no NBT do tile, como `TileComponentConfig.write` e `TileComponentEjector.write`: o ejetor vazio
+/// apaga o filho.
+pub(in crate::game) fn write_side_nbt(entity: &mut ModBlockEntity, side: &SideNbt) {
+    side_nbt_into(&mut entity.nbt, side);
+}
+
+/// O mesmo, num compound qualquer.
+pub(in crate::game) fn side_nbt_into(nbt: &mut Compound, side: &SideNbt) {
+    use machinery_basis_core::side_config::{ENUM_COLOR_NAMES, TransmissionType};
+    let mut compound = Compound::default();
+    if let Some(data) = &side.config {
+        for kind in TransmissionType::VALUES {
+            let ordinal = kind.ordinal();
+            if let Some(ejecting) = data.eject[ordinal] {
+                compound.insert(JavaString::from(format!("{EJECT_PREFIX}{ordinal}")), Tag::Byte(i8::from(ejecting)));
+            }
+            if let Some(sides) = &data.config[ordinal] {
+                compound.insert(JavaString::from(format!("{CONFIG_PREFIX}{ordinal}")), Tag::IntArray(sides.clone()));
+            }
+        }
+        nbt.insert(JavaString::from(COMPONENT_CONFIG), Tag::Compound(compound));
+    }
+    match &side.ejector {
+        Some(data) if !data.is_empty() => {
+            let mut compound = Compound::default();
+            if let Some(strict) = data.strict_input {
+                compound.insert(JavaString::from(STRICT_INPUT), Tag::Byte(i8::from(strict)));
+            }
+            if let Some(color) = data.color {
+                let name = ENUM_COLOR_NAMES[usize::from(color).min(ENUM_COLOR_NAMES.len() - 1)];
+                compound.insert(JavaString::from(EJECTOR_COLOR), Tag::String(JavaString::from(name)));
+            }
+            if let Some(colors) = &data.input_color {
+                compound.insert(JavaString::from(INPUT_COLOR), Tag::IntArray(colors.clone()));
+            }
+            nbt.insert(JavaString::from(COMPONENT_EJECTOR), Tag::Compound(compound));
+        }
+        _ => {
+            nbt.remove(&JavaString::from(COMPONENT_EJECTOR));
+        }
+    }
+}
+
+/// Os componentes do item que carregam a configuração: `AttachedSideConfig` e `AttachedEjector`.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct SideComponents {
+    pub side_config: &'static str,
+    pub ejector: &'static str,
+}
+
+/// O que uma máquina tem de próprio nesta configuração: como o componente é montado e o padrão do item de bloco
+/// (`ItemBlock...component(SIDE_CONFIG, ...)`).
+pub(in crate::game) struct SideSpec {
+    pub spec: machinery_basis_core::tile::SideConfigSpec,
+    pub default_side_config: machinery_basis_core::side_config::AttachedSideConfig,
+}
+
+fn data_type_tag(data_type: machinery_basis_core::side_config::DataType) -> Tag {
+    Tag::String(JavaString::from(data_type.serialized_name()))
+}
+
+/// `AttachedSideConfig.CODEC` como NBT: `{config: {<tipo>: {side: {<lado>: <datatype>}, eject: <bool>}}}`. O `eject` só vai quando
+/// verdadeiro (`optionalFieldOf("eject", false)`).
+pub(in crate::game) fn side_config_to_tag(attached: &machinery_basis_core::side_config::AttachedSideConfig) -> Tag {
+    let mut types = Compound::default();
+    for (kind, light) in &attached.config_info {
+        let mut sides = Compound::default();
+        for (side, data_type) in &light.side_config {
+            sides.insert(JavaString::from(side.serialized_name()), data_type_tag(*data_type));
+        }
+        let mut info = Compound::default();
+        info.insert(JavaString::from("side"), Tag::Compound(sides));
+        if light.ejecting {
+            info.insert(JavaString::from("eject"), Tag::Byte(1));
+        }
+        types.insert(JavaString::from(kind.serialized_name()), Tag::Compound(info));
+    }
+    let mut root = Compound::default();
+    root.insert(JavaString::from("config"), Tag::Compound(types));
+    Tag::Compound(root)
+}
+
+/// O inverso. Tipo ou lado que a lib não conhece é ignorado, e o `DataType` desconhecido vira `NONE`.
+pub(in crate::game) fn side_config_from_tag(tag: &Tag) -> Option<machinery_basis_core::side_config::AttachedSideConfig> {
+    use machinery_basis_core::side_config::{
+        AttachedSideConfig, DataType, LightConfigInfo, RelativeSide, TransmissionType,
+    };
+    let Tag::Compound(root) = tag else {
+        return None;
+    };
+    let Some(Tag::Compound(types)) = root.get(&JavaString::from("config")) else {
+        return None;
+    };
+    let mut attached = AttachedSideConfig::default();
+    for (name, info) in types {
+        let (Some(kind), Tag::Compound(info)) = (TransmissionType::from_serialized_name(&name.to_string_lossy()), info) else {
+            continue;
+        };
+        let mut light = LightConfigInfo { ejecting: nbt_flag(info.get(&JavaString::from("eject"))).unwrap_or(false), ..Default::default() };
+        if let Some(Tag::Compound(sides)) = info.get(&JavaString::from("side")) {
+            for (side, data_type) in sides {
+                let Some(side) = RelativeSide::from_serialized_name(&side.to_string_lossy()) else {
+                    continue;
+                };
+                let data_type = match data_type {
+                    Tag::String(name) => DataType::from_serialized_name(&name.to_string_lossy()).unwrap_or(DataType::None),
+                    _ => DataType::None,
+                };
+                light.side_config.insert(side, data_type);
+            }
+        }
+        attached.config_info.insert(kind, light);
+    }
+    Some(attached)
+}
+
+/// `AttachedEjector.CODEC` como NBT: `input_color` (uma entrada por lado: o nome da cor, ou um compound vazio), `strict_input` e `color`
+/// (a cor de saída, só quando há).
+pub(in crate::game) fn ejector_to_tag(attached: &machinery_basis_core::ejector::AttachedEjector) -> Tag {
+    use machinery_basis_core::side_config::ENUM_COLOR_NAMES;
+    let colors = attached
+        .input_colors
+        .iter()
+        .map(|color| match color {
+            Some(color) => Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(*color).min(17)])),
+            None => Tag::Compound(Compound::default()),
+        })
+        .collect();
+    let mut root = Compound::default();
+    root.insert(JavaString::from(INPUT_COLOR), Tag::List(colors));
+    root.insert(JavaString::from(STRICT_INPUT), Tag::Byte(i8::from(attached.strict_input)));
+    if let Some(color) = attached.output_color {
+        root.insert(JavaString::from(EJECTOR_COLOR), Tag::String(JavaString::from(ENUM_COLOR_NAMES[usize::from(color).min(17)])));
+    }
+    Tag::Compound(root)
+}
+
+pub(in crate::game) fn ejector_from_tag(tag: &Tag) -> Option<machinery_basis_core::ejector::AttachedEjector> {
+    use machinery_basis_core::side_config::ENUM_COLOR_NAMES;
+    let Tag::Compound(root) = tag else {
+        return None;
+    };
+    let color_of = |tag: &Tag| match tag {
+        Tag::String(name) => ENUM_COLOR_NAMES.iter().position(|known| *known == name.to_string_lossy()).map(|i| i as u8),
+        _ => None,
+    };
+    let mut attached = machinery_basis_core::ejector::AttachedEjector::DEFAULT;
+    if let Some(Tag::List(colors)) = root.get(&JavaString::from(INPUT_COLOR)) {
+        for (slot, color) in attached.input_colors.iter_mut().zip(colors.iter()) {
+            *slot = color_of(color);
+        }
+    }
+    attached.strict_input = nbt_flag(root.get(&JavaString::from(STRICT_INPUT))).unwrap_or(false);
+    attached.output_color = root.get(&JavaString::from(EJECTOR_COLOR)).and_then(color_of);
+    Some(attached)
+}
+
+thread_local! {
+    /// O que o item que acabou de ser colocado traz de configuração, para o tile que o Horizon ainda não criou.
+    static PENDING_SIDES: std::cell::RefCell<HashMap<[i32; 3], SideNbt>> = std::cell::RefCell::new(HashMap::new());
+    /// A configuração do tile que o jogador está quebrando, guardada antes de o Horizon tirá-lo do mundo.
+    static BROKEN_SIDES: std::cell::RefCell<Option<([i32; 3], Option<SideNbt>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `applyImplicitComponents` da configuração e do ejetor: o item colocado traz `side_config` e `ejector`, e sem eles vale o padrão do
+/// item de bloco. A configuração do tile novo nasce daí e vai para o NBT dele no primeiro tick ([`side_apply_pending`]). Quem põe
+/// a máquina por `setBlock` não passa por aqui e fica com tudo em `NONE`.
+pub(in crate::game) fn side_placed(
+    game: &mut Game<'_>,
+    stack: &ItemStack,
+    pos: [i32; 3],
+    components: SideComponents,
+    spec_of: &dyn Fn(&str) -> Option<SideSpec>,
+) {
+    let Some(side) = spec_of(&game.native_block(pos)) else {
+        return;
+    };
+    let of_item = |id: &str| game.native_component(stack, id).ok().flatten();
+    let attached = of_item(components.side_config)
+        .and_then(side_config_from_tag)
+        .unwrap_or(side.default_side_config);
+    let ejector = of_item(components.ejector).and_then(ejector_from_tag).unwrap_or_default();
+    let mut config = machinery_basis_core::side_config::TileComponentConfig::new(&side.spec.types);
+    (side.spec.setup)(&mut config);
+    let mut ejecting = machinery_basis_core::ejector::TileComponentEjector::new();
+    ejecting.apply_implicit_components(Some(&ejector));
+    config.apply_implicit_components(Some(&attached), front(game, pos), false);
+    let nbt = SideNbt { config: Some(config.serialize()), ejector: Some(ejecting.serialize()) };
+    // O tile já existe quando o jogo avisa a colocação: a configuração entra nele agora, e quem lê a capacidade e as faces de energia
+    // desde a colocação (`placed_capacity`) já as vê. Sem tile, ela espera o primeiro tick.
+    if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        write_side_nbt(entity, &nbt);
+        game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        return;
+    }
+    PENDING_SIDES.with_borrow_mut(|sides| sides.insert(pos, nbt));
+}
+
+/// O tile nasceu: a configuração do item que o colocou entra no NBT dele.
+pub(in crate::game) fn side_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3]) {
+    if let Some(side) = PENDING_SIDES.with_borrow_mut(|sides| sides.remove(&pos)) {
+        write_side_nbt(entity, &side);
+    }
+}
+
+/// O que o item solto leva (`collectImplicitComponents`): a configuração e o ejetor do tile em `pos`, lidos do NBT dele. Só o que
+/// difere do padrão do item vira componente (`AttachedSideConfig` e `AttachedEjector` iguais ao padrão não fazem retalho).
+fn side_components_of(
+    nbt: &SideNbt,
+    side: &SideSpec,
+    facing: Face,
+) -> (machinery_basis_core::side_config::AttachedSideConfig, machinery_basis_core::ejector::AttachedEjector) {
+    let mut config = machinery_basis_core::side_config::TileComponentConfig::new(&side.spec.types);
+    (side.spec.setup)(&mut config);
+    let mut ejector = machinery_basis_core::ejector::TileComponentEjector::new();
+    config.deserialize(&nbt.config.clone().unwrap_or_default(), facing, false);
+    ejector.deserialize(&nbt.ejector.clone().unwrap_or_default());
+    (config.collect_implicit_components(), ejector.collect_implicit_components())
+}
+
+/// O jogador vai quebrar o tile em `pos`: o Horizon o tira do mundo antes de rolar a tabela de loot, e a configuração que o item
+/// solto leva (`copy_components`) é guardada aqui.
+pub(in crate::game) fn side_destroying(game: &Game<'_>, pos: [i32; 3], spec_of: &dyn Fn(&str) -> Option<SideSpec>) {
+    use horizon_client::containers::BlockEntity;
+    let nbt = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if spec_of(&entity.id).is_some() => Some(read_side_nbt(entity)),
+        _ => None,
+    };
+    BROKEN_SIDES.with_borrow_mut(|slot| *slot = Some((pos, nbt)));
+}
+
+/// `copy_components` da tabela de loot: o item solto leva `side_config` e `ejector` do tile, os que não são o padrão. Um tile ainda
+/// no mundo dá o que ele tem; o que foi quebrado, o que [`side_destroying`] guardou.
+pub(in crate::game) fn side_loot(
+    game: &Game<'_>,
+    context: &horizon_client::mod_api::NativeLootDrops<'_>,
+    drops: &mut [ItemStack],
+    components: SideComponents,
+    spec_of: &dyn Fn(&str) -> Option<SideSpec>,
+) {
+    use horizon_client::containers::BlockEntity;
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    let kept = BROKEN_SIDES.with_borrow_mut(|slot| match slot {
+        Some((at, _)) if *at == pos => slot.take().and_then(|(_, nbt)| nbt),
+        _ => None,
+    });
+    let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if spec_of(&entity.id).is_some() => Some(read_side_nbt(entity)),
+        _ => None,
+    };
+    let Some(nbt) = live.or(kept) else {
+        return;
+    };
+    let facing = front(game, pos);
+    for stack in drops.iter_mut() {
+        let Some(side) = spec_of(&stack.item) else {
+            continue;
+        };
+        let (attached, ejector) = side_components_of(&nbt, &side, facing);
+        if attached != side.default_side_config {
+            let _ = game.native_set_component(stack, components.side_config, side_config_to_tag(&attached));
+        }
+        if ejector != machinery_basis_core::ejector::AttachedEjector::DEFAULT {
+            let _ = game.native_set_component(stack, components.ejector, ejector_to_tag(&ejector));
+        }
     }
 }

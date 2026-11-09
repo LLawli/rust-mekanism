@@ -63,24 +63,41 @@ serve a outros mods.
 
 ### Lados configuráveis
 
-A máquina declara `inputs` e `outputs` vazios, então hopper nenhum a enxerga. Quem age é ela, imitando o hopper e
-respeitando as faces configuradas. Assim a regra vale por instância e acompanha a rotação.
+A configuração de lados é um componente por instância, portado de `TileComponentConfig`: `side_config` (o `RelativeSide`, o `DataType`,
+o `TransmissionType`, o `SlotInfo`, o `ConfigInfo`, o `AttachedSideConfig` do item) e `ejector` (o `TileComponentEjector`: o modo de ejetar
+de cada tipo, os lados de saída, as cores do filtro e `strictInput`). A lib só conhece o mecanismo. O que é de cada máquina entra como
+dado, num `SideConfigSpec` (os tipos de transmissão, quem monta os `ConfigInfo`, de quais tipos o ejetor lê): os contêineres são
+índices na tabela de cada tipo (os slots, na ordem de `getInitialInventory`), e o padrão do item (`LightConfigInfo.MACHINE` e as outras)
+é do mod. A configuração nasce em `NONE`, como o `ConfigInfo` do original: só o item aplica o padrão (`apply_item_side_config`), e a
+máquina posta por `setBlock` não alcança nada por face nenhuma.
+
+Salvo no NBT do tile com as chaves do original, `component_config` (`eject<ordinal>` e `config<ordinal>`) e `component_ejector`
+(`strict_input`, `color`, `input_color`, que some se o ejetor está no padrão), e no item pelos componentes `side_config` e `ejector`. O tick
+da máquina relê o NBT e aplica o que mudou de fora (um comando, o cartão de configuração): é o mesmo que `deserialize`. O par
+`write_configuration_data`/`set_configuration_data` é o `writeConfigurationData`/`setConfigurationData` do `TileEntityConfigurableMachine`,
+que o Configurator e o cartão de configuração vão usar.
+
+As capabilities por face seguem a instância. Itens: a máquina declara `inputs` e `outputs` vazios, então hopper nenhum a enxerga, e quem
+age é ela, imitando o hopper com as faces que o `DataType` de cada lado dá (`TileComponentConfig::item_face`, o `ConfigHolder`), pela
+frente de agora. Assim a regra vale por instância e acompanha a rotação. Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
+`energy_capacity` (H1) responde pela instância, com a capacidade e as faces que entram e saem (`ConfigHolder.canInsert/canExtract` do
+`DataType` do lado).
 
 | Situação | O que a máquina faz |
 |---|---|
-| Hopper logo abaixo, com a face de baixo como saída | Entrega um item, mesmo com o push desligado, porque um hopper puxa do bloco acima |
+| Hopper logo abaixo, com a face de baixo num `DataType` que sai | Entrega um item, mesmo com o ejetor desligado, porque um hopper puxa do bloco acima |
 | Hopper em outra face | Não entrega: hopper só puxa de cima |
-| Hopper apontando para a máquina, com aquela face como entrada | Recebe um item, como se ele entregasse |
+| Hopper apontando para a máquina, com aquela face num `DataType` que entra | Recebe um item, como se ele entregasse |
 | Hopper apontando para outro lugar | Ignora |
 | Hopper travado por redstone (`enabled=false`) | Ignora |
 
-O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O push ligado na configuração é outra coisa:
-entrega ativa a qualquer inventário que aceite entrada, pelas faces de saída, hopper incluído, como um dropper atirando
-num hopper. O ritmo é o do ejetor do Mekanism: dispara a cada 11 ticks, tenha saído algo ou não.
+O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O ejetor é outra coisa: entrega ativa a qualquer
+inventário que aceite entrada, pelos lados de saída, hopper incluído, como um dropper atirando num hopper, a cada 11 ticks (o `tickDelay` de 10 conta, e o disparo é o seguinte).
 
-Limites: outros mods que automatizam pelas faces do Horizon também não enxergam a máquina, e fluido ou energia vindos
-deles seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem
-sincronizar com o cooldown interno do hopper, que os helpers não expõem.
+Limites: outros mods que automatizam pelas faces do Horizon (dropper, o ejetor de uma máquina vizinha, um cano) também não enxergam a
+máquina, porque o contêiner do bloco é um só (H2, ver `docs/injecoes-horizon.md`), e fluido ou químico vindos deles seguem as faces fixas
+do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem sincronizar com o cooldown interno do
+hopper, que os helpers não expõem.
 
 ### Fluido dentro do bloco
 
@@ -178,7 +195,7 @@ por caminho (`native-crates/machinery_basis/core`), o mesmo `[[crate]]` dos mód
 
 A base de máquina é uma cópia literal do Java: `Transaction` com gerenciador por thread, contêineres (`EnergyContainer`,
 `InventorySlot`) como `Rc` que se registram sozinhos na transação, listeners como closures que disparam no commit da raiz, e
-`CachedRecipe` guardando as closures do tile. O ejetor de itens (`ItemEjector`) abre uma raiz por envio, cobrindo a saída da
+`CachedRecipe` guardando as closures do tile. O ejetor de itens (`TileComponentEjector`) abre uma raiz por envio, cobrindo a saída da
 máquina e o inventário do vizinho.
 
 No Horizon o objeto de uma máquina é um cache da `ModBlockEntity`. Mora numa tabela por thread, chave (dimensão, posição), em

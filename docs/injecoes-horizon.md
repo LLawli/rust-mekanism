@@ -211,6 +211,10 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 - **Hook mais próximo:** `block_entity_energy` (`replace`, servidor). Recebe `block: &str` e devolve o buffer do tipo: sem posição,
   sem a block entity. Falta a instância.
 - **Hook proposto:** H1.
+- **Faces por instância (desde 2026-11-09, frente `config-lados`):** a mesma injeção devolve, além da capacidade, as faces por onde a
+  energia entra e sai (`insert_faces` e `extract_faces` do buffer), do `DataType` que a configuração de lados dá à face (`ConfigHolder.canInsert`
+  e `canExtract`, pela frente de agora). O buffer do bloco sai com todas as faces fechadas: uma máquina sem configuração (posta por
+  `setBlock`) não aceita energia por face nenhuma, como o original, e a que um item pôs publica as dela na colocação. Nenhuma injeção nova.
 - **Risco:** a função é privada, dentro de um `impl` com `#[allow(dead_code)]` (o comentário diz "Native mods use these; nothing
   in Horizon does"), e `native_energy_transfer`, `native_energy` e `native_energy_insert` dependem dela. Renomear, mudar a
   assinatura ou deixar de passar por ela quebra o build ou, pior, faz a capacidade voltar à do bloco sem aviso.
@@ -318,8 +322,9 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 
 - **Estado:** em uso. **Alvo:** `horizon_command::item::ItemState<'_,'_>::component_type`, HEAD, cancelável (`item.rs:160`).
 - **Helper:** `mods/mekanism/native/command_components.rs`.
-- **Por que é necessária:** o componente `mekanism:upgrade_type` (`MekanismDataComponents.java:226`) é persistente e vale em
-  `/give mekanism:upgrade[mekanism:upgrade_type=...]`. `component_type` só aceita o que está em `reg.persistent_components`, a lista
+- **Por que é necessária:** os componentes `mekanism:upgrade_type` (`MekanismDataComponents.java:226`), `mekanism:side_config` e
+  `mekanism:ejector` (a configuração de lados e o ejetor, desde 2026-11-09, frente `config-lados`) são persistentes e valem em
+  `/give mekanism:upgrade[mekanism:upgrade_type=...]` e no item de uma máquina. `component_type` só aceita o que está em `reg.persistent_components`, a lista
   que o jogo exporta, e o hook `component_types` não entra nela.
 - **Hook mais próximo:** `component_types` (`collect`, `types: &mut Vec<String>`). Registra o tipo para a pilha e o NBT, mas o
   comando, `minecraft:select` e `has_component` só olham a lista vanilla.
@@ -951,6 +956,15 @@ fn block_entity_container_instance(&self, _host: &dyn Host, event: &mut BlockEnt
 
 - **Nota:** `block_entity_container` v1 continua declarando o tipo de bloco, e H2 afina por instância, como `energy_instance` faz com
   `block_entity_energy`. É o que a Fase 2 (`TileComponentConfig`, `ConfigInfo`, `DataType`) precisa: lados coloridos por instância.
+- **Por que a frente `config-lados` (2026-11-09) não o usou:** o hopper vizinho, o único consumidor de contêiner que a máquina tem hoje, é emulado
+  pela própria máquina (`tick_hoppers`), com as faces do `DataType` da instância, e o rastro dos hoppers (`slots_*`, `identity_*`) já
+  confere essa emulação com o original. Expor as faces pelo `ModContainer` ligaria os dois caminhos ao mesmo tempo (o hopper do Horizon
+  e o da máquina), e três coisas faltam para o resto: (1) `Containers::can_take` e `can_place` não olham a face (`outputs` e `inputs` são
+  uma lista só), (2) `can_take` não consulta a regra do slot (`isValidForExtraction` de quem está de fora: o slot de entrada não
+  deixa tirar, o de infusão só o que o tanque não converte), e (3) não há como o `ModContainer` mudar por instância. O dropper, o
+  dispenser e o ejetor de outra máquina que apontam para uma máquina não a alcançam (nem antes), e a Fase 3 (os canos de item) é a
+  que vai precisar. A ficha segue **prevista**, com estes três pontos como o que o hook tem de resolver (o terceiro é o H2; os dois
+  primeiros acrescentam a face e a regra do slot ao `can_take`).
 
 ### H3 `block_fluid`
 

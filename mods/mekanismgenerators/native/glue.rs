@@ -738,11 +738,11 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         .as_ref()
         .is_some_and(|stack| &*stack.item == EMPTY_BUCKET);
     let slots = FaceSlots {
-        inputs: FUEL_SLOTS,
-        outputs: if empty_bucket { FUEL_SLOTS } else { &[] },
+        inputs: FUEL_SLOTS.to_vec(),
+        outputs: if empty_bucket { FUEL_SLOTS.to_vec() } else { Vec::new() },
     };
     let accepts = |game: &Game<'_>, _: usize, stack: &ItemStack| is_fuel(game, stack);
-    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots, &accepts, &|_, _, _| true);
+    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots.clone(), &accepts, &|_, _, _| true);
     // O bloco só muda quando o tile manda: o atraso de `blockDeactivationDelay` o segura aceso depois que o gerador para.
     let lit = state.tile.block_active();
     if lit != block_active {

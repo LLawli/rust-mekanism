@@ -18,7 +18,8 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::gui;
 use machinery_basis_core::menu_source;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
-use machinery_basis_core::sides::Face;
+use machinery_basis_core::side_config::TransmissionType;
+use machinery_basis_core::sides::{Face, Sides};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::resource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
@@ -291,11 +292,11 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
         return;
     };
     let usage = machine.energy_per_tick();
-    // `LightConfigInfo.INPUT_ONLY`: energia entra por todas as faces.
+    // As faces são da instância (H1): um tile ainda sem a configuração de lados (`ConfigInfo` nasce em `NONE`) não tem capability de
+    // energia em nenhuma face, e `placed_capacity` e o tick publicam as da máquina.
     *energy = Some(ModEnergyBuffer {
         capacity: rules::energy_capacity(usage),
         max_insert: rules::energy_capacity(usage),
-        insert_faces: [true; 6],
         ..Default::default()
     });
 }
@@ -489,13 +490,6 @@ const LAST_RECIPE_USED: &str = "last_recipe_used";
 const LAST_RECIPE_AMOUNT: &str = "last_recipe_amount";
 /// `SerializationConstants.HAS_CONTAINMENT`: se o upgrade de contenção de xp estava instalado.
 const HAS_CONTAINMENT: &str = "has_containment";
-/// `SerializationConstants.EJECT + TransmissionType.ITEM.ordinal()`: ENERGY, FLUID, CHEMICAL, ITEM.
-const EJECT_ITEM: &str = "eject3";
-/// A chave que liga o ejetor por comando: `/data merge block x y z {mekanism_eject:1}`.
-const EJECT_SWITCH: &str = "mekanism_eject";
-/// A face de saída do ejetor, enquanto a configuração de lados (Fase 2) não existe: `/data merge block x y z
-/// {mekanism_eject_face:"down"}` (`up`, `down`, ou o nome de uma face horizontal). Sem a chave sai pela direita, como o item posto.
-const EJECT_FACE: &str = "mekanism_eject_face";
 const COMPOSTER: &str = "minecraft:composter";
 const BONE_MEAL: &str = "minecraft:bone_meal";
 /// `ChemicalContainerType.getTag()` e o que `IListContainerType.saveTo` e `LargeResourceStack.codec` gravam: uma lista de
@@ -523,15 +517,16 @@ struct Live {
     lit: Option<bool>,
     /// Quantos jogadores o objeto sabe que têm a tela aberta (`playersUsing`): a diferença para as sessões vira `open()` e `close()`.
     players: usize,
-    /// A face de saída do ejetor, a direita da frente.
-    eject_side: Option<Face>,
+    /// O que `component_config` e `component_ejector` têm no NBT, para só escrever quando muda e para ver o que mudou de fora (um
+    /// comando de dados).
+    side_nbt: basis::SideNbt,
     /// Os tipos e as tags de upgrade de onde os dados da máquina saíram: uma carga nova de dados os troca.
     upgrade_types: Arc<UpgradeTypes>,
     upgrade_tags: Arc<UpgradeTags>,
     /// Quando os upgrades e os slots mudam, o NBT é escrito de novo.
     upgrades_version: Option<u32>,
-    /// A capacidade que o Horizon já sabe desta máquina.
-    energy_capacity: Option<i32>,
+    /// A capacidade e as faces de energia que o Horizon já sabe desta máquina (H1).
+    energy_capacity: Option<(i32, [bool; 6], [bool; 6])>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
     /// O que o servidor e o cliente sabem da contagem de upgrades de silêncio.
     muffling: machinery_basis_core::sound::MufflingSync,
@@ -874,7 +869,6 @@ fn read_saved(game: &Game<'_>, entity: &ModBlockEntity) -> SavedState {
         last_recipe_used: nbt_string(entity, LAST_RECIPE_USED),
         last_recipe_amount: nbt_int(entity, LAST_RECIPE_AMOUNT),
         had_containment: nbt_bool(entity, HAS_CONTAINMENT),
-        ejecting: nbt_bool(entity, EJECT_ITEM),
         upgrades: basis::read_upgrades(game, entity),
     }
 }
@@ -913,9 +907,6 @@ fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &Sa
     }
     if with_used_so_far && changed(|a, b| a.used_so_far == b.used_so_far) {
         put(entity, USED_SO_FAR, Tag::Int(new.used_so_far));
-    }
-    if changed(|a, b| a.ejecting == b.ejecting) {
-        put(entity, EJECT_ITEM, Tag::Byte(i8::from(new.ejecting)));
     }
 }
 
@@ -1057,6 +1048,11 @@ fn born(
     // `loadAdditional` só com o que o mundo guardou. Um tile novo não lê nada, e o de um item recalcula os upgrades
     // (`applyImplicitComponents`): uma máquina de `setBlock` fica com a capacidade do construtor, quatro ticks de consumo.
     progress.restore(&read_saved(game, entity), block_active);
+    // `loadAdditional` dos dois componentes de `TileEntityConfigurableMachine`: o que o NBT traz. Uma máquina posta por `setBlock` não
+    // traz nada e fica com tudo em `NONE`; a de um item recebeu a configuração dele em [`basis::side_apply_pending`].
+    progress.set_facing(basis::front(game, pos));
+    let side = basis::read_side_nbt(entity);
+    progress.restore_side_config(side.config.as_ref(), side.ejector.as_ref(), false);
     if (origin.placed && !has_saved(entity)) || (origin.recalculated_before && !progress.capacity_recalculated()) {
         progress.apply_item_components(&UpgradeSaved::default());
     }
@@ -1074,7 +1070,7 @@ fn born(
         used_version: None,
         lit: None,
         players,
-        eject_side: None,
+        side_nbt: basis::read_side_nbt(entity),
         upgrade_types,
         upgrade_tags,
         upgrades_version: None,
@@ -1368,14 +1364,6 @@ fn chest_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], face: Face)
         .collect()
 }
 
-/// A face por onde o ejetor sai: a direita da frente, ou a que `mekanism_eject_face` manda.
-fn eject_face(entity: &ModBlockEntity, front: Face) -> Face {
-    match entity.nbt.get(&JavaString::from(EJECT_FACE)) {
-        Some(Tag::String(name)) => Face::from_property(&name.to_string_lossy()).unwrap_or(front.right_of()),
-        _ => front.right_of(),
-    }
-}
-
 /// Um tick de uma máquina de progresso sobre o objeto vivo.
 fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, spec: &Machine) {
     let now = game.world.game_time;
@@ -1394,6 +1382,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     flush_deferred_awards(game);
     result_take_after(game, pos, entity, spec);
     basis::name_apply_pending(entity, pos);
+    basis::side_apply_pending(entity, pos);
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     // O tile é o mesmo se o Horizon ainda guarda a marca que o tick anterior pôs (um tile lido do disco nasce sem ela).
     let continuing = (!entity.data.is_empty())
@@ -1464,22 +1453,14 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if let Some(powered) = basis::take_power(game, pos) {
         live.machine.tile_mut().update_power(powered);
     }
-    // O ejetor liga e desliga por `mekanism_eject`; sai pela direita da frente.
-    let switch = match entity.nbt.get(&JavaString::from(EJECT_SWITCH)) {
-        Some(Tag::Byte(on)) => Some(*on != 0),
-        Some(Tag::Int(on)) => Some(*on != 0),
-        _ => None,
-    };
-    if let Some(on) = switch
-        && live.machine.ejector().is_ejecting() != on
-    {
-        live.machine.ejector_mut().set_ejecting(on);
-    }
+    // `TileEntityConfigurableMachine`: a frente de agora (o bloco pode ter girado), e a configuração e o ejetor que o NBT tem. Uma
+    // mudança que não foi nossa (um comando de dados, o cartão de configuração) entra como `deserialize`, e avisa as faces.
     let front = basis::front(game, pos);
-    let side = eject_face(entity, front);
-    if live.machine.ejector().is_ejecting() && live.eject_side != Some(side) {
-        live.machine.ejector_mut().set_sides(0, vec![side]);
-        live.eject_side = Some(side);
+    live.machine.set_facing(front);
+    let in_nbt = basis::read_side_nbt(entity);
+    if in_nbt != live.side_nbt {
+        live.machine.restore_side_config(in_nbt.config.as_ref(), in_nbt.ejector.as_ref(), true);
+        live.side_nbt = in_nbt;
     }
 
     let offered = live.machine.output().resource().and_then(|resource| {
@@ -1526,11 +1507,20 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if basis::stored_energy(entity) != energy {
         basis::set_stored_energy(entity, energy);
     }
-    // A capacidade segue os upgrades instalados, e o Horizon só a sabe por instância se dissermos.
+    // A configuração e o ejetor que o tick deixou vão para o NBT (`saveAdditional` dos dois componentes), só quando mudam.
+    let side_now = basis::SideNbt::of(machine.side_config().serialize(), machine.ejector().serialize());
+    if side_now != live.side_nbt {
+        basis::write_side_nbt(entity, &side_now);
+        live.side_nbt = basis::read_side_nbt(entity);
+    }
+    // A capacidade segue os upgrades instalados e as faces seguem a configuração de lados e a frente (`ConfigHolder`), e o Horizon só
+    // sabe isso por instância se dissermos (H1).
     let capacity = basis::energy_as_int(machine.energy().capacity(), "a capacidade de energia");
-    if live.energy_capacity != Some(capacity) {
-        basis::set_energy_capacity(dimension, pos, &entity.id, capacity);
-        live.energy_capacity = Some(capacity);
+    let (insert_faces, extract_faces) = energy_faces(machine);
+    let energy_state = (capacity, insert_faces, extract_faces);
+    if live.energy_capacity != Some(energy_state) {
+        basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
+        live.energy_capacity = Some(energy_state);
     }
     let scalars = machine.saved_scalars();
     if live.saved.as_ref() != Some(&scalars) {
@@ -1551,9 +1541,10 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     if let Some(started) = started {
         basis::bench_record(now, u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX));
         let chest = machine
-            .ejector()
-            .is_ejecting()
-            .then(|| chest_of(game, dimension, pos, side));
+            .side_config()
+            .config(TransmissionType::Item)
+            .is_some_and(|info| info.is_ejecting())
+            .then(|| chest_of(game, dimension, pos, front.right_of()));
         basis::trace(&rules::trace_line(now, machine, chest.as_deref(), true));
     }
 
@@ -1573,46 +1564,23 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         entity.data = vec![TILE_TICKED];
     }
 
-    match live.machine.chemical_side() {
-        None => {
-            let held = Held { chemical: None, input: None };
-            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
-                slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held)
-            };
-            let slots = |face| rules::electric_item_slots(front, face);
-            let sides = rules::sides(front, rules::electric_item_slots);
-            // `DataType.INPUT` não deixa tirar: a base não entrega, e as costas (`DataType.ENERGY`) entregam só o que o slot de
-            // energia deixa tirar de quem está de fora (`!external || !canFillOrConvert`).
-            let energy_slot = spec.slots.energy;
-            let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
-                slot == energy_slot
-                    && machine.energy_slot().is_valid_for_extraction(&typed_item(stack), AutomationType::External)
-            };
-            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
-        }
-        Some(side) => {
-            let held = Held { chemical: side.tank.resource(), input: machine.input().resource() };
-            let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
-                slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held)
-            };
-            let slots = |face| rules::item_slots(front, face);
-            let sides = rules::sides(front, rules::item_slots);
-            // `ChemicalInventorySlot.fillOrConvert`, `canExtract`: um hopper (`EXTERNAL`) só tira do slot de infusão o que o
-            // tanque não aceita nem converte.
-            let (infusion_slot, energy_slot) = (spec.slots.infusion, spec.slots.energy);
-            let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
-                let held = if Some(slot) == infusion_slot {
-                    &side.slot
-                } else if slot == energy_slot {
-                    machine.energy_slot()
-                } else {
-                    return false;
-                };
-                held.is_valid_for_extraction(&typed_item(stack), AutomationType::External)
-            };
-            basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
-        }
-    }
+    // As faces dos hoppers vizinhos seguem a configuração de itens da instância (`ConfigHolder`): o `DataType` de cada lado, pela
+    // frente de agora. Quem tira de um slot de fora (`EXTERNAL`) obedece à regra do slot (`isValidForExtraction`).
+    let machine = &live.machine;
+    let held = Held {
+        chemical: machine.chemical_side().and_then(|side| side.tank.resource()),
+        input: machine.input().resource(),
+    };
+    let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held);
+    let slots = |face| machine.side_config().item_face(front, face, &[]);
+    let sides = Sides::of_slots(&slots);
+    let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
+        machine
+            .inventory_slots()
+            .get(slot)
+            .is_some_and(|held| held.is_valid_for_extraction(&typed_item(stack), AutomationType::External))
+    };
+    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
 
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
@@ -1634,6 +1602,18 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     });
 }
 
+/// As faces por onde a capability de energia deixa entrar e sair (`ConfigHolder.canInsert`/`canExtract` do `DataType` do lado).
+fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [bool; 6]) {
+    let (mut insert, mut extract) = ([false; 6], [false; 6]);
+    for face in Face::ALL {
+        if let Some(info) = machine.side_config().slot_info(TransmissionType::Energy, machine.facing(), Some(face)) {
+            insert[face as usize] = info.can_input;
+            extract[face as usize] = info.can_output;
+        }
+    }
+    (insert, extract)
+}
+
 /// O nível que `getAnalogOutputSignal` devolve (`currentRedstoneLevel`) e, quando `tickServer` o mudou, `notifyComparatorChange`
 /// (`Level.updateNeighbourForOutputSignal`): os comparadores em volta releem, e as máquinas vizinhas recebem o `onNeighborChange` do
 /// NeoForge (`updatePower`). O objeto vivo está fora da tabela durante o próprio tick (e o Horizon tira o tile do mundo), e um
@@ -1649,6 +1629,8 @@ fn publish_comparator(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3
 /// `NativeComponentTypes`: o componente que guarda o tipo do upgrade no item (`MekanismDataComponents.UPGRADE_TYPE`).
 pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::UPGRADE_TYPE_COMPONENT.to_owned());
+    types.push(rules::SIDE_CONFIG_COMPONENT.to_owned());
+    types.push(rules::EJECTOR_COMPONENT.to_owned());
 }
 
 /// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:
@@ -1986,6 +1968,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
         return;
     }
     basis::name_destroying(game, pos, &is_machine_id);
+    basis::side_destroying(game, pos, &side_spec);
     let key = (game.native_dimension(), pos);
     let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
     if let Some(drops) = drops {
@@ -2205,8 +2188,79 @@ fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client:
     basis::screen_title(game, container_description)
 }
 
+/// Os componentes do item que carregam a configuração de lados e o ejetor (`MekanismDataComponents.SIDE_CONFIG` e `EJECTOR`).
+const SIDE_COMPONENTS: basis::SideComponents = basis::SideComponents {
+    side_config: rules::SIDE_CONFIG_COMPONENT,
+    ejector: rules::EJECTOR_COMPONENT,
+};
+
+/// Como a configuração de lados de uma máquina é montada e o padrão do item dela.
+fn side_spec(block: &str) -> Option<basis::SideSpec> {
+    let machine = machine_of(block)?;
+    Some(if machine.slots.infusion.is_some() {
+        basis::SideSpec { spec: rules::infuser_side_config(), default_side_config: rules::advanced_machine_default() }
+    } else {
+        basis::SideSpec { spec: rules::electric_side_config(), default_side_config: rules::electric_machine_default() }
+    })
+}
+
+/// `TileEntityConfigurableMachine.writeConfigurationData`: o que o cartão de configuração e o Configurator copiam de uma máquina, o modo de
+/// redstone (`control_type`), `component_config` e `component_ejector` (que falta se o ejetor está no padrão). Lê o objeto vivo, ou o NBT
+/// de uma máquina que ainda não andou. Quem usa vem nas frentes do Configurator e do cartão.
+#[allow(dead_code)]
+pub(in crate::game) fn write_configuration_data(game: &Game<'_>, pos: [i32; 3]) -> Option<Compound> {
+    let key = (game.native_dimension(), pos);
+    let data = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.write_configuration_data()))?;
+    let mut out = Compound::default();
+    if let Some(control) = data.control_type {
+        put_compound(&mut out, CONTROL_TYPE, Tag::String(JavaString::from(control.serialized_name())));
+    }
+    basis::side_nbt_into(&mut out, &basis::SideNbt { config: data.config, ejector: data.ejector });
+    Some(out)
+}
+
+fn put_compound(compound: &mut Compound, key: &str, tag: Tag) {
+    compound.insert(JavaString::from(key), tag);
+}
+
+/// `TileEntityConfigurableMachine.setConfigurationData`: o modo de redstone volta a `DISABLED` se faltava, e a configuração e o ejetor só
+/// mudam se vieram. O objeto vivo e o NBT mudam juntos, e o tick seguinte já os acha iguais.
+#[allow(dead_code)]
+pub(in crate::game) fn set_configuration_data(game: &mut Game<'_>, pos: [i32; 3], input: &Compound) -> bool {
+    let key = (game.native_dimension(), pos);
+    let side = basis::side_nbt_from(input);
+    let control_type = match input.get(&JavaString::from(CONTROL_TYPE)) {
+        Some(Tag::String(name)) => Some(RedstoneControl::from_serialized_name(&name.to_string_lossy())),
+        _ => None,
+    };
+    let data = machinery_basis_core::tile::ConfigurationData { control_type, config: side.config.clone(), ejector: side.ejector.clone() };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return false;
+    };
+    let applied = LIVE_MACHINES.with_borrow_mut(|machines| {
+        let live = machines.get_mut(&key)?;
+        live.machine.set_configuration_data(&data);
+        Some(basis::SideNbt::of(live.machine.side_config().serialize(), live.machine.ejector().serialize()))
+    });
+    match applied {
+        Some(now) => {
+            basis::write_side_nbt(entity, &now);
+            let seen = basis::read_side_nbt(entity);
+            LIVE_MACHINES.with_borrow_mut(|machines| {
+                if let Some(live) = machines.get_mut(&key) {
+                    live.side_nbt = seen;
+                }
+            });
+        }
+        None => basis::write_side_nbt(entity, &side),
+    }
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+    true
+}
+
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_machine_id);
+    basis::side_placed(game, stack, pos, SIDE_COMPONENTS, &side_spec);
     let block = game.native_block(pos);
     if is_machine_id(&block) {
         note_placed(game, pos);
@@ -2229,13 +2283,15 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) {
     let origin = Origin { placed: true, recalculated_before: false };
     let live = born(game, pos, entity, spec, &indexes_of(game, spec), origin);
     let capacity = basis::energy_as_int(live.machine.energy().capacity(), "a capacidade de energia");
-    basis::set_energy_capacity(game.native_dimension(), pos, &entity.id, capacity);
+    let (insert_faces, extract_faces) = energy_faces(&live.machine);
+    basis::set_energy_capacity(game.native_dimension(), pos, &entity.id, capacity, insert_faces, extract_faces);
     // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de uma máquina que esteve ali antes.
     COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), live.machine.tile().current_redstone_level()));
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_machine_id);
+    basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
