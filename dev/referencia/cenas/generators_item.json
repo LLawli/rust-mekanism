@@ -1,0 +1,40 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air",
+  "gamerule spawn_mobs false",
+  "kill @e[type=!minecraft:player]",
+  "fill 40 -61 40 140 -61 100 minecraft:grass_block"
+ ],
+ "clear": "fill 52 -60 78 120 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "item_solar_mao",
+   "cmds": [
+    "item replace entity @a weapon.mainhand with mekanismgenerators:advanced_solar_generator"
+   ],
+   "tp": "62.5 -58.38 73 0 0"
+  },
+  {
+   "name": "item_solar_mao_baixo",
+   "cmds": [
+    "item replace entity @a weapon.mainhand with mekanismgenerators:advanced_solar_generator"
+   ],
+   "tp": "62.5 -58.38 73 0 40"
+  },
+  {
+   "name": "item_solar_mao_esquerda",
+   "cmds": [
+    "item replace entity @a weapon.mainhand with minecraft:air",
+    "item replace entity @a weapon.offhand with mekanismgenerators:advanced_solar_generator"
+   ],
+   "tp": "62.5 -58.38 73 0 20"
+  }
+ ],
+ "hud": true
+}

@@ -67,7 +67,10 @@ public class CenaBlocos {
             actions.add(new Action(at++, () -> run(server, command.getAsString())));
         }
         at += 30;
-        actions.add(new Action(at, () -> KeyMapping.click(minecraft.options.keyToggleGui.getKey())));
+        // `"hud": true` no roteiro deixa a tela ligada (a mão com o item e a barra de atalhos aparecem; o F1 esconde a mão).
+        if (!spec.has("hud") || !spec.get("hud").getAsBoolean()) {
+            actions.add(new Action(at, () -> KeyMapping.click(minecraft.options.keyToggleGui.getKey())));
+        }
         at += 30;
         String clear = spec.get("clear").getAsString();
         for (JsonElement element : spec.getAsJsonArray("shots")) {

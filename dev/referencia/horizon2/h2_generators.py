@@ -9,7 +9,7 @@ Uso: H_NAME=horizon h2_generators.py give|estados|luz|colocar|tags|mesa NOME|tab
 - tags: as tags do vanilla que a datagen do Generators amplia valem em jogo (`execute if block ... #tag`; o comando não conhece as tags de mod);
 - mesa NOME: a receita de mesa `data/mekanismgenerators/recipe/NOME.json`, posta na grade como um jogador;
 - tab: prints da aba do Generators e do fim das abas do vanilla em que ele acrescenta itens;
-- cena: o roteiro `cenas/generators.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`).
+- cena: o roteiro `cenas/generators.json` (ou o `CENA=arquivo` de `cenas/`, como `generators_item.json`: o painel solar avançado na mão), o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`).
 Supõe o jogo aberto num mundo plano (o chão em y -61) com o jogador criativo, e a janela de 1920 por 1080.
 """
 import json, os, subprocess, sys, time
@@ -284,7 +284,7 @@ def tab(page, x, y):
 
 
 def cena(out):
-    spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas/generators.json")))
+    spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", os.environ.get("CENA", "generators.json"))))
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
     h.command("tick unfreeze")
     # Só do port: o mundo novo nasce com mobs (queimam à luz do dia e entram no print); o original não tem nenhum.
@@ -294,7 +294,9 @@ def cena(out):
         h.command(cmd)
     h.command("kill @e[type=!minecraft:player]")
     time.sleep(1.0)
-    h.ctl("key", "f1", "tap")
+    hud = bool(spec.get("hud"))
+    if not hud:
+        h.ctl("key", "f1", "tap")
     for s in spec["shots"]:
         h.command(spec["clear"])
         for cmd in s["cmds"]:
@@ -303,7 +305,8 @@ def cena(out):
         time.sleep(2.5)
         h.ctl("screenshot", f"{out}/porte_{s['name']}.png")
         print("print", s["name"])
-    h.ctl("key", "f1", "tap")
+    if not hud:
+        h.ctl("key", "f1", "tap")
 
 
 def main():
