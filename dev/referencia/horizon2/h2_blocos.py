@@ -88,6 +88,8 @@ def estados():
 def conexoes():
     """Os transmissores novos, postos por `setblock` lado a lado: dois da mesma família ligam-se (`east=true` no da esquerda e `west=true` no da direita), um de outra família não."""
     h.command("tick unfreeze")
+    h.ctl("tp", "64", "-58", "98")
+    h.ctl("wait-ready")
     ok = True
     pairs = [("basic_mechanical_pipe", "ultimate_mechanical_pipe", True), ("basic_pressurized_tube", "elite_pressurized_tube", True),
              ("advanced_thermodynamic_conductor", "basic_thermodynamic_conductor", True), ("basic_logistical_transporter", "restrictive_transporter", True),

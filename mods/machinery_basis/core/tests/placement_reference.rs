@@ -18,6 +18,21 @@ const EARLIER: [&str; 8] = [
     "ultimate_universal_cable",
 ];
 
+/// Os transmissores da frente `blocos-estrutura` (canos, tubos, condutores, transportadores): o bloco que conecta do Horizon não tem o estado `fluid_logged` do original (decisão 27), então
+/// não têm regra de colocação.
+fn transmitter(block: &str) -> bool {
+    [
+        "mechanical_pipe",
+        "pressurized_tube",
+        "thermodynamic_conductor",
+        "logistical_transporter",
+        "restrictive_transporter",
+        "diversion_transporter",
+    ]
+    .iter()
+    .any(|kind| block.ends_with(kind))
+}
+
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
@@ -117,7 +132,7 @@ fn the_fluid_logged_value_is_the_one_the_original_gives() {
         }
         let Some(rule) = rule(name) else {
             assert!(
-                EARLIER.contains(&name),
+                EARLIER.contains(&name) || transmitter(name),
                 "{id} tem fluido no original e não tem regra de colocação"
             );
             continue;
