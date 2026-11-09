@@ -78,11 +78,12 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H33 `menu_data_sync` | hook | `server_tick` (fase `ServerTickStart`) da `machinery_basis`, que entra em cada nível por `enter_level` para ler o valor vivo e mandar o pacote do menu | em uso (1) |
 | H34 `neighbor_changed` v2 | hook | `flush_signals` (cru, HEAD de `Game::flush_spill`) | em uso (1) |
 | H35 `block_entity_changed` | hook | `container_changed` (cru, HEAD de `Game::container_changed`) | em uso (1) |
-| H36 `NativeConfigKind::Synced` | tipo de configuração | nenhuma (diferença de comportamento, sem injeção) | pedido |
 | H36 `mod_container_viewers` v2 | hook | nenhuma injeção: o `server_tick` da `machinery_basis` faz a conta com o que lê de `hub.guests` (o proposto dá a lista de jogadores com o menu, espectadores marcados) | pedido |
 | H37 `block_entity_energy_inserted` | hook | `energy_store` (cru, HEAD de `Game::native_energy_store`) | em uso (1) |
 | H39 `block_animate_tick` | hook | `animate_tick` (cru, HEAD de `block_animate_tick`) e o módulo `animate-registry` | em uso (1 cru, 1 módulo) |
 | H38 `ingredient` v2 | hook | `components-ingredient-stash` (cru, HEAD de `Ingredient::parse_object`), o hook `ingredient` v1 `components-ingredient-items` e o módulo `components-ingredient` | em uso (1 cru, 1 hook, 1 módulo) |
+| H40 `NativeConfigKind::Synced` | tipo de configuração | nenhuma (diferença de comportamento, sem injeção) | pedido |
+| H41 saída de áudio a 48.000 Hz | correção do mixer | nenhuma (diferença de 0,045 % do RMS, sem injeção) | pedido |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -1141,7 +1142,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Exemplo:** `fn block_entity_changed(&mut self, dimension: &str, pos: [i32; 3], block_entity: &str, removed: bool)`.
 - **Risco do que existe hoje:** `Game::container_changed`, `Game::chest_other_half` e `world.block_entities`.
 
-### H36 `NativeConfigKind::Synced` (pedido, sem injeção)
+### H40 `NativeConfigKind::Synced` (pedido, sem injeção)
 
 - **Lado:** servidor e cliente. **Tipo:** variante de `NativeConfigKind` (API 397).
 - **O que faz:** o `ModConfig.Type.SYNCED` do NeoForge 26.3: o arquivo vive em `config/`, é lido quando o servidor de um mundo vai começar e solto quando ele para (como o `Server` de hoje), pode ser trocado por uma cópia em `<mundo>/syncedconfig/<arquivo>` (a
@@ -1150,6 +1151,14 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
   anfitrião (o texto do efeito dos upgrades, que o cliente calcula, usa os padrões). Decisão 15 do plano.
 - **Exemplo:** `NativeConfigKind::Synced`, com o `native_config_loading` do convidado chamado com o texto do anfitrião (`NativeConfigFile` com `kind = Synced`).
 - **Risco do que existe hoje:** nenhum: usa só o hook do catálogo.
+
+### H41 saída de áudio a 48.000 Hz (pedido, sem injeção)
+
+- **Lado:** cliente. **Tipo:** correção do mixer (`audio.rs`), sem hook.
+- **O que faz:** o cliente do original deixa o OpenAL Soft abrir a saída a 48.000 Hz e reamostrar cada som (os `.ogg` são de 44.100 Hz) no próprio motor. O Horizon abre o dispositivo a 44.100 Hz, mixa com passo 1 (`audio.rs::mix`) e deixa o PipeWire converter.
+- **Hoje:** o som da máquina sai 0,045 % mais alto no port (0,004 dB), com a razão port/original de 1,0004 abaixo de 500 Hz subindo a 1,09 (8 a 12 kHz) e 1,29 (16 a 20 kHz), medido num mundo e em posições controlados (frente `som-plano`, decisão 16 do plano). O reamostrador exato do original não foi identificado: pela simulação no mesmo `.ogg`, fica entre o linear e o cúbico.
+- **Exemplo:** abrir a saída na taxa do dispositivo (48.000 Hz) e reamostrar no mixer como o OpenAL Soft do cliente.
+- **Risco do que existe hoje:** nenhum: não há injeção.
 
 ### H39 `block_animate_tick`
 
