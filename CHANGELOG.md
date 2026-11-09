@@ -23,6 +23,21 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   (`ResizableDiskFeature`: raio de 2 a 3, meia-altura 1, duas por chunk). A fluorita dá de 1 a 4 de experiência ao ser quebrada (`BlockOre.getExpDrop`, injeção `fluorite_experience`, H42).
 - A aba criativa "Mekanism" (`MekanismCreativeTabs`), com os 143 itens e blocos que o port tem na ordem de registro do original e as oito pilhas de upgrade por tipo; o Mekanism também acrescenta
   os itens ao fim das abas de construção, natureza, funcionais, redstone, ferramentas e ingredientes do vanilla (`addToExistingTabs`), pela injeção `creative_tabs` (H43).
+- Os 84 blocos de máquina e blocos avulsos com tile do original, sem função (`MekanismBlocks`): 48 máquinas e blocos avulsos (`antiprotonic_nucleosynthesizer`, `chemical_*`, `combiner`,
+  `digital_miner`, `dimensional_stabilizer`, `electric_pump`, `electrolytic_separator`, `fluidic_plenisher`, `formulaic_assemblicator`, `fuelwood_heater`, `isotopic_centrifuge`, `laser` e o
+  amplificador e o raio trator, `logistical_sorter`, `modification_station`, `nutritional_liquifier`, `oredictionificator`, `osmium_compressor`, `painting_machine`, `pigment_*`,
+  `precision_sawmill`, `pressurized_reaction_chamber`, `purification_chamber`, os cinco `qio_*`, `quantum_entangloporter`, `resistive_heater`, `rotary_condensentrator`, `security_desk`,
+  `seismic_vibrator`, `solar_neutron_activator`, `teleporter`, `chargepad`, `industrial_alarm`, `radioactive_waste_barrel`, `personal_barrel`, `personal_chest` e `cardboard_box`) e as 36
+  fábricas, nos quatro tiers. Cada bloco tem o que o original dá a ele: dureza, resistência, ferramenta, cor do mapa e som; os estados do original (`facing`, `active`, `fluid_logged`,
+  `open`, `storage`), com os mesmos nomes (`/setblock mekanism:laser[facing=up,active=true]` vale nos dois jogos); a forma de seleção e a de colisão de cada estado (a união das caixas do
+  original: o limite de 16 caixas por forma do Horizon sai pela injeção `shape_limit`, H50); a luz do estado ativo (8, 13 ou 15), a da lava (15) e a fixa do Teleporter; a reação ao pistão e a
+  oclusão do original (a tabela `block_rows_table.rs`, pela injeção `active_light`, H49); o estado de bloco, a definição do item, 173 modelos e 253 texturas (e 12 `.mcmeta` animados) copiados do original, a loot
+  table, o nome, a chave `description.*`, as tags de bloco e de item, as receitas de mesa que ficaram completas, e o lugar na aba criativa do Mekanism e nas de blocos funcionais, redstone e
+  ferramentas do vanilla. O original em jogo (`BlocosTraceTest`) é a referência: `rastros/blocos.jsonl`, `blocos_formas.jsonl` e `blocos_colocacao.jsonl`, que `tests/blocos_registry.rs`
+  e `tests/blocos_content.rs` conferem estado a estado.
+- O bloco posto como o original o põe (`machinery_basis/placement`): o `facing` vem da guinada do jogador e, nos blocos que viram para cima e para baixo, da inclinação (`AttributeStateFacing`,
+  `PLAYER_LOCATION`), ou da face clicada (`SELECTED_FACE`), e o `fluid_logged` do fluido que estava no lugar (`BlockStateHelper.getStateForPlacement`). Confere com o original a cada guinada de
+  -720 a 720 graus, a cada inclinação de -90 a 90 e a cada face (`machinery_basis/core/tests/placement_reference.rs`) e em jogo (64 casos).
 - Os 37 itens de equipamento do original, sem função (`MekanismItems`): `atomic_disassembler`, `canteen`, `configuration_card`, `configurator`, `crafting_formula`, `dictionary`, `dosimeter`, `electric_bow`, `energy_tablet`,
   `flamethrower`, `free_runners` e a blindada, `gauge_dropper`, `geiger_counter`, os quatro `hazmat_*`, `hdpe_elytra`, `jetpack` e o blindado, os quatro `mekasuit_*`, `meka_tool`, `network_reader`,
   `portable_qio_dashboard`, `portable_teleporter`, `robit`, `scuba_mask`, `scuba_tank`, `seismic_reader` e os quatro instaladores de tier. Cada um tem o que o original dá como conteúdo: raridade, pilha, resistência

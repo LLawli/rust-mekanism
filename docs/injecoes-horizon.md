@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois da frente `armadura-vestida`, que acrescentou 6 injeções cruas, o hook `standalone_models` e 2 módulos, e da frente `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos) e da frente `itens-equipamento`, que acrescentou 1 injeção crua, a `item_component_type`, sobre a das `itens-craft`: 2 injeções cruas e 1 módulo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 113 | |
+| `[[injection]]` no total | 114 | |
 | Hook do catálogo, usado só com o contrato dele | 37 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 36 | sim |
-| Injeção crua (`target = ...`) | 40 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 23 | sim |
+| Injeção crua (`target = ...`) | 41 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 24 | sim |
 
-37 + 36 + 40 = 113. Os 23 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-76 injeções e 23 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+37 + 36 + 41 = 114. Os 24 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+77 injeções e 24 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 40 | 23 | 36 |
+| Em uso | 41 | 24 | 36 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -61,7 +61,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H15 `visuals` v2 | hook | `native_frame_visuals` | spike |
 | H16 leitura do `Kd` do `.mtl` | correção | `obj_quad` (RETURN) | spike |
 | H17 ordenação da camada translúcida | correção | `outline_fill` | spike |
-| H18 `properties.light` condicional | dado | `active_light` (mekanism) | em uso |
+| H18 `properties.light` condicional | dado | `active_light` (mekanism), só a luz | em uso |
 | H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
 | H27 `menu_result_taken` | hook | `result_take_before` (cru) | em uso |
 | H20 `menu_slot_rules` v2 | hook | o contexto de clique de `result_take_before` e `menu_click_before` | prevista |
@@ -89,6 +89,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H43 abas criativas: pilhas e abas do vanilla | dado + hook | `creative_tabs` (cru, RETURN de `Plan::creative_tabs`) e o módulo `creative-tabs-table` | em uso (1 injeção, 1 módulo) |
 | H44 `properties.instrument` | dado | nenhuma (diferença do instrumento do bloco de nota do sal e do bio fuel, decisão 17 do plano) | pedido |
 | H45 `item_name` padrão do item | correção | nenhuma (a cor do nome vai pelo hook `tooltip`, só na primeira linha) | pedido |
+| H49 propriedades de linha do bloco (reação ao pistão, oclusão, resistência negativa, `canBeReplaced`, `isPathfindable`) | dado | `active_light` (mekanism), o resto que não é luz, e o módulo `block-rows` | em uso (1 injeção, 1 módulo) |
+| H50 limite de caixas por forma | dado | `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`) | em uso (1) |
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
 | H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e `fire_before` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade pela água) | em uso (2 módulos, 2 cruas, 4 hooks) |
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor) | pedido |
@@ -138,17 +140,17 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 52 | 24 | 28 | 18 |
-| `mods/mekanism/native/horizon-mixin.toml` | 39 | 29 | 10 | 3 |
+| `mods/mekanism/native/horizon-mixin.toml` | 40 | 29 | 11 | 4 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 22 | 20 | 2 | 2 |
-| Total | 113 | 73 | 40 | 23 |
+| Total | 114 | 73 | 41 | 24 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `creative_tabs`, `fluorite_experience` e `worn_hide_player` (`RETURN`). Doze das 32 cruas de antes são `cancellable = true`, e a `worn_arm` e a `worn_cape` (de 2026-11-09) também (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; e a `item_component_type`, de 2026-11-09); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `animate_tick`, `creative_tabs` e `fluorite_experience`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `worn_hide_player`, `creative_tabs` e `fluorite_experience` (`RETURN`). Quinze das 41 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 73 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (40)
+## Injeções cruas em uso (41)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -337,22 +339,33 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 
 ### `active_light` (mekanism)
 
-- **Estado:** em uso desde 2026-11-07. **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD
-  (`mod_content.rs:1319`, método privado do plano de conteúdo, que recebe o `NewBlock` e a linha `J` da tabela de jogo de cada estado).
-- **Helper:** `mods/mekanism/native/active_light.rs`. Só age no Crusher, na Enrichment Chamber, no Energized Smelter e no Metallurgic
-  Infuser, e só nos estados em que a linha já emite luz (o `lit=true` do gabarito `minecraft:furnace`, 13): troca por 8.
+- **Estado:** em uso desde 2026-11-07; ampliada em 2026-11-09 (frente `blocos-maquinas`). **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD
+  (`mod_content.rs:1319`, método privado do plano de conteúdo, que recebe o `NewBlock`, a combinação das propriedades de estado próprias `combo` e a linha `J` da tabela de jogo de cada estado).
+- **Helper:** `mods/mekanism/native/active_light.rs`. Dois usos. (1) O Crusher, a Enrichment Chamber, o Energized Smelter e o Metallurgic Infuser, e só nos estados em que a linha já emite luz (o `lit=true` do gabarito `minecraft:furnace`, 13): troca por 8.
+  (2) Os 84 blocos de máquina e blocos avulsos com tile (gabarito `minecraft:lodestone`, estados `active` e `fluid_logged` próprios): a tabela `mekanism_rows` (módulo `block-rows`, `native/block_rows_table.rs`, gerada de `rastros/blocos.jsonl`, o original em jogo, por `dev/referencia/blocos_conteudo.py`, e conferida
+  estado a estado por `tests/blocos_registry.rs`) diz a luz do `active` (8, 13 ou 15), a da lava (15), a reação ao pistão, `can_occlude`, `solid_render`, `dampening`, `skylight_down` (com a oclusão do estado com fluido dentro) e a resistência negativa dos três blocos de `AttributeCustomResistance(-1)`, que a injeção escreve na linha de cada estado.
 - **Por que é necessária:** as quatro são `Machine` (`Machine.java:26`), com `Attributes.ACTIVE_LIGHT`, `AttributeStateActive(8)`
   (`Attributes.java:27`): luz 8 quando ativas e 0 quando não (`AttributeStateActive.java:49-51`, que soma ao 0 do bloco pela
   `BlockStateHelper.applyLightLevelAdjustments`, `BlockStateHelper.java:83-94`). O gabarito dá 13 ao estado aceso, e
   `properties.light` é um inteiro só, aplicado a todos os estados (`mod_content.rs:1345`): com `light: 8`, a máquina desligada
   também ficaria acesa. O Heat Generator usa `ACTIVE_MELT_LIGHT`, 13 (`GeneratorsBlockTypes.java:68`), o mesmo do gabarito, e não
-  passa por aqui.
+  passa por aqui. Os blocos novos: a luz tem a mesma causa; a reação ao pistão (`BlockMekanism.getPistonPushReaction`, `IMMOVEABLE` com bloco de entidade) e a oclusão de uma forma menor que o cubo (`isSolidRender` falso, `getLightDampening` 0, `propagatesSkylightDown`) são colunas da linha de jogo que `properties` não alcança
+  (`BlockProperties` só tem `hardness`, `explosion_resistance`, `light`, `requires_tool`, `friction`, `map_color`, `sounds`, `random_ticks`, `render_shape` e `occludes`, e `occludes: false` põe `can_occlude` falso, que o original não tem), e a resistência negativa o arquivo recusa (`content.rs`, `explosion_resistance is 0 or more`).
 - **Hook mais próximo:** nenhum. `random_ticks` já aceita condição por estado, `light` não.
-- **Hook proposto:** H18 (dado, sem hook).
-- **Risco:** depende de `NewBlock` (`decl.id`) e do formato de linha (`J`, chave `emission`), privados de `mod_content.rs`. Renomear
+- **Hook proposto:** H18 (a luz) e H49 (o resto), dados sem hook.
+- **Risco:** depende de `NewBlock` (`decl.id`), do `combo` e do formato de linha (`J`, chaves `emission`, `push`, `can_occlude`, `solid_render`, `dampening`, `skylight_down` e `explosion_resistance`), privados de `mod_content.rs`. Renomear
   o método ou a chave quebra o build, ou deixa a máquina com a luz do gabarito, sem erro.
 - **Conferido em jogo** (2026-11-07, `horizon`, `horizon-ctl light` no bloco e no vizinho): as quatro máquinas acesas dão 8 e 7, a
-  Enrichment Chamber apagada 0 e 0, o Heat Generator aceso 13 e 12, e o `minecraft:furnace` aceso 13 e 12.
+  Enrichment Chamber apagada 0 e 0, o Heat Generator aceso 13 e 12, e o `minecraft:furnace` aceso 13 e 12. Os blocos novos (2026-11-09, `horizon`, `horizon-ctl light` na célula do bloco): 159 estados, todos os que acendem no original dão a luz dele (o `combiner` ativo 8, o `resistive_heater` 13, o `industrial_alarm` 15, o `teleporter` 3); o bloco que não acende lê o resto de luz de um vizinho apagado pouco antes, que some com o tempo (`tests/blocos_registry.rs` confere as 1.775 linhas sem o jogo).
+
+### `shape_limit` (mekanism)
+
+- **Estado:** em uso desde 2026-11-09 (frente `blocos-maquinas`). **Alvo:** `horizon_mods::content::BlockShapes::check` (`horizon-mods/src/content.rs:165-195`), HEAD cancelável, no crate `horizon-mods`, que o launcher e o cliente compartilham (o mixin o alcançou: compilou à primeira).
+- **Helper:** `mods/mekanism/native/shape_limit.rs`. Só entra quando uma forma passa de 16 caixas; abaixo disso devolve `Continue` e o Horizon confere como sempre. Passando, refaz as outras regras de `check` (propriedades distintas, uma por valor, caixas finitas e ordenadas) e devolve `Break(Ok(()))` ou o erro.
+- **Por que é necessária:** `check` recusa mais de 16 caixas por forma (`boxes.len() > 16`), e o arquivo de bloco que a tem é pulado inteiro. O original tem blocos de máquina com formas de até 47 caixas, depois de cobertas por poucas caixas que se sobrepõem (o `digital_miner`): doze blocos, decisão 20 do plano. `Plan::states` e `shape_edges` somam as caixas que vierem, sem limite.
+- **Hook mais próximo:** nenhum. **Hook proposto:** H50.
+- **Risco:** depende de `BlockShapes::check` e dos campos públicos `property`, `properties`, `values` e `default`. Renomear o método ou mudar o limite quebra o build ou deixa a injeção sem efeito, sem erro (o bloco passaria de 16 e seria recusado pelo Horizon).
+- **Conferido em jogo** (2026-11-09, `horizon`): os doze blocos carregam, e a forma de cada estado é a do original (`tests/blocos_registry.rs`, célula a célula contra o `VoxelShape.toAabbs()` do original).
 
 ### `result_take_before` (mekanism)
 
@@ -598,7 +611,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
 |---|---|---|---|
 | `update_shape` (basis) | `update_shape` | `level.registry.state(state).properties` (lê `fluid_logged`) | H8: `state_property(state, key)` no `GameLevel` |
-| `state_for_placement` (basis) | `state_for_placement` | `level.world.block(x, y, z)` (o vizinho) | H8: `block_state_at(dimension, pos)` só leitura, no `GameLevel` |
+| `state_for_placement` (basis) | `state_for_placement` | `level.world.block(x, y, z)` (o vizinho; desde 2026-11-09 o hook também recebe `fluid` e usa `context.yaw`, `pitch` e `face`, públicos, para o `facing` e o `fluid_logged` dos blocos com regra em `machinery_basis/placement`) | H8: `block_state_at(dimension, pos)` só leitura, no `GameLevel` |
 | `use_item_on` (basis) | `use_item_on` | `game.world.game_time`, `game.with_level(...)` para agendar o tick do fluido, e, para o `ItemUpgrade.useOn` (que o Mekanism e o Heat Generator usam por aqui), `game.held_mut()` e, nas funções de cada mod, `game.world.block_entities.get/get_mut` e `game.world.modified.insert` | `level_game_time` já existe; H8: `schedule_fluid_tick` no `Game`, `mod_block_entity`, `change_mod_block_entity`, `consume_held` |
 | `tick_block` (basis) | `tick_block` | `GameLevel::behaviours` (`facts`, `collision_shape`, `tag`, `set_block`, `destroy_block`) e o registro de estados, para o `FlowingFluid` de um fluido de mod (módulo `liquid-glue`) | H47 |
 | `dispense_item` (basis) | `dispense_item` | `Game::with_level`, `Game::audio` e o registro, para o balde de um fluido de mod no dispensador | H47 |
@@ -683,7 +696,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (23)
+## Módulos (24)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -692,6 +705,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (machinery_basis) | `game.rs` | liga a lib ao jogo: tudo `pub(in crate::game)`. `Game::mb_in_levels` (2026-11-08) roda uma ação em cada nível ticado com o nível no lugar, para o `ServerTickStart`: usa `levels_to_tick`, `enter_level` e `Dim`, privados de `levels.rs` e `game.rs` | H8, H33 e o que está em [Dependências a vigiar](#dependências-a-vigiar) |
 | `glue` (mekanism) | `game.rs` | liga as máquinas e a tela: 2.691 linhas em 2026-11-08 | idem |
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 1.143 linhas em 2026-11-08 | idem |
+| `block-rows` (mekanism) | `mod_content.rs` | a tabela das linhas de jogo dos blocos de máquina (luz do `active` e da lava, reação ao pistão, oclusão, resistência), gerada do original em jogo, para a injeção `active_light` | H18, H49 |
 | `creative-tabs-table` (mekanism) | `mod_content.rs` | a tabela e a conta das pilhas da aba criativa (código puro, sem tipos do jogo), para a injeção `creative_tabs` | H43 |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
@@ -1309,6 +1323,21 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **O que faz:** um modelo de bloco de mod multiplica a cor de uma face por uma constante, como o `FluidTintSources.constant` e o `BlockTintSources` do original. O mesher só tem fontes de cor por nome de bloco (grama, folhagem, água, redstone).
 - **Hoje:** os 19 fluidos coloridos têm uma cópia da textura de líquido com a cor multiplicada no pixel (`scripts/gerar_fluidos.py`), e a água pesada, que tinge a água do vanilla, não tem a cor, porque o port não pode trazer a textura da Mojang.
 - **Risco do que existe hoje:** nenhum: são arquivos de conteúdo.
+
+### H49 propriedades de linha do bloco
+
+- **Lado:** servidor e cliente (o pistão, a luz, o mob, o fluido). **Tipo:** dado nas `properties` do bloco (e, para o que depende de estado, aceitando a condição de `random_ticks`).
+- **O que faz:** diz as colunas da linha de jogo que `BlockProperties` não tem: a reação ao pistão (`pushReaction`: `BlockMekanism.getPistonPushReaction` dá `IMMOVEABLE` a todo bloco com bloco de entidade), `canOcclude` e `isSolidRender` por separado (hoje `occludes: false` põe os dois falsos, e o original dá `canOcclude` verdadeiro e `isSolidRender` falso nas formas menores que o cubo),
+  o amortecimento de luz e `propagatesSkylightDown`, o `canOcclude` verdadeiro numa forma menor que o cubo (o mesher do Horizon esconde a face do vizinho pelo `can_occlude`, sem olhar a forma, e o port o põe falso fora do cubo cheio: o original esconde pela forma), a luz condicional ao estado (H18), a resistência a explosões negativa (`AttributeCustomResistance(-1)`: o arquivo recusa), `canBeReplaced(state, fluid)` falso (`BlockMekanism.java`: um fluido não substitui a máquina) e `isPathfindable` falso (`BlockBase.isPathfindable`: a forma própria não deixa o mob passar).
+- **Hoje:** `active_light` (cru, HEAD de `Plan::override_gameplay`) com a tabela do módulo `block-rows`, para as colunas da linha; `canBeReplaced` e `isPathfindable` não têm injeção.
+- **Risco do que existe hoje:** ver a ficha da injeção.
+
+### H50 limite de caixas por forma
+
+- **Lado:** servidor e cliente (a seleção e a colisão). **Tipo:** dado: o arquivo de bloco aceitar mais de 16 caixas por forma de `shapes` e `collision_shapes`.
+- **O que faz:** o original tem formas de até 47 caixas depois de cobertas (o Digital Miner), e `Plan::states` e `shape_edges` já somam as caixas que vierem. O pedido é subir o limite de `BlockShapes::check` (por exemplo 256) ou tirá-lo.
+- **Hoje:** `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`).
+- **Risco do que existe hoje:** ver a ficha da injeção.
 
 ### H39 `block_animate_tick`
 
