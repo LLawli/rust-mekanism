@@ -3,7 +3,7 @@
 //! (`rastros/horizon_template_facts.json`: dureza, resistência, cor, instrumento do bloco de nota e reação a pistão que o gabarito traz).
 mod common;
 
-use common::craft::{content, declared, json, rastro};
+use common::craft::{EQUIPMENT_ITEMS, content, declared, json, rastro};
 use mekanism_rules::{name_color, ore_experience};
 use serde_json::{Value, json};
 
@@ -580,7 +580,7 @@ fn expected_item(id: &str) -> Item {
 fn every_item_has_the_properties_of_the_original() {
     let mut checked = 0;
     for id in declared("item") {
-        if id == "upgrade" {
+        if id == "upgrade" || EQUIPMENT_ITEMS.contains(&id.as_str()) {
             continue;
         }
         let declaration = json(

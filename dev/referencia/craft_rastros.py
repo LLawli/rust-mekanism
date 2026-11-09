@@ -10,7 +10,9 @@ O que sai, em `dev/referencia/rastros/`:
 - `craft_lang.json`: o texto da datagen para cada chave do `en_us.json` do port;
 - `craft_worldgen.json`: os arquivos de worldgen da datagen (`worldgen/feature`, `placed_feature`, `neoforge/biome_modifier`) dos minérios e do sal;
 - `craft_recipes.json`: as receitas `minecraft:*` da datagen que a frente leva (todos os ingredientes e o resultado existem) e as que ficam de fora, com o motivo;
-- `craft_creative_order.json`: a ordem de registro de `MekanismItems` e de `MekanismBlocks`, que é a ordem da aba criativa.
+- `craft_creative_order.json`: a ordem de registro de `MekanismItems` e de `MekanismBlocks`, que é a ordem da aba criativa;
+- `craft_neoforge_tags.json` (frente `itens-equipamento`): os valores das tags `c:` do NeoForge (`NEOFORGE_TAGS`) que receitas da datagen citam e que o Horizon não traz;
+- `equipment_items.json` (frente `itens-equipamento`): o registro de cada item de equipamento lido do Java (pilha, raridade, resistência ao fogo, durabilidade, encantável, recarga de uso, slot e ativo do `Equippable`, atributos de armadura) e os números de armadura da configuração de inicialização e do `ArmorMaterials.NETHERITE`.
 O Rust não lê o checkout do original: lê estes arquivos.
 """
 import json
@@ -26,6 +28,7 @@ OUT = os.path.join(HERE, "rastros")
 GEN = f"{ORIGINAL}/src/datagen/generated/mekanism"
 RES = f"{ORIGINAL}/src/main/resources/assets/mekanism"
 JAVA = f"{ORIGINAL}/src/main/java/mekanism/common/registries"
+NEOFORGE = sys.argv[3] if len(sys.argv) > 3 else "/mnt/dados/caches/rust-mekanism-ref/mc-sources/nf"
 
 
 def fnv(data: bytes) -> str:
@@ -217,7 +220,147 @@ def creative_order():
     print("craft_creative_order.json:", len(order), len(blocks))
 
 
+# As tags `c:` de item que o NeoForge define (o original as tem, o Horizon não) e que receitas da datagen citam: as dos tintes e dos painéis de vidro das receitas do traje
+# de hazmat e do conta-gotas (`hazmat_*`, `gauge_dropper`), com as tags aninhadas delas.
+NEOFORGE_TAGS = ["dyes/black", "dyes/orange", "glass_panes", "glass_panes/colorless"]
+
+
+def neoforge_tags_rastro():
+    out = {}
+    for name in NEOFORGE_TAGS:
+        out[f"c/tags/item/{name}.json"] = json.load(open(f"{NEOFORGE}/data/c/tags/item/{name}.json"))["values"]
+    json.dump(out, open(f"{OUT}/craft_neoforge_tags.json", "w"), indent=0, sort_keys=True)
+    print("craft_neoforge_tags.json:", len(out))
+
+
+EQUIPMENT_IDS = [
+    "atomic_disassembler", "canteen", "configuration_card", "configurator", "crafting_formula", "dictionary", "dosimeter", "electric_bow", "energy_tablet", "flamethrower",
+    "free_runners", "free_runners_armored", "gauge_dropper", "geiger_counter", "hazmat_mask", "hazmat_gown", "hazmat_pants", "hazmat_boots", "hdpe_elytra", "jetpack",
+    "jetpack_armored", "mekasuit_helmet", "mekasuit_bodyarmor", "mekasuit_pants", "mekasuit_boots", "meka_tool", "network_reader", "portable_qio_dashboard",
+    "portable_teleporter", "robit", "scuba_mask", "scuba_tank", "seismic_reader", "basic_tier_installer", "advanced_tier_installer", "elite_tier_installer",
+    "ultimate_tier_installer",
+]
+ITEM_DIR = f"{ORIGINAL}/src/main/java/mekanism/common/item"
+
+
+def balanced(text, start):
+    """O texto entre o parêntese que abre em `start` e o que o fecha."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1 : i]
+    raise SystemExit("parêntese sem par")
+
+
+def java_class(name):
+    for dp, _, files in os.walk(ITEM_DIR):
+        if f"{name}.java" in files:
+            return open(os.path.join(dp, f"{name}.java")).read()
+    return None
+
+
+def constructor_chain(cls):
+    """O corpo do `super(...)` do construtor de `cls` e, subindo, o das classes de item de que ela herda (`ItemChemicalArmor` dá a pilha e a raridade do jetpack)."""
+    out = []
+    while cls:
+        text = java_class(cls)
+        if text is None:
+            break
+        m = re.search(rf"\b{cls}\([^)]*\)\s*\{{\s*super\(", text)
+        if m:
+            out.append(balanced(text, m.end() - 1))
+        sup = re.search(rf"class {cls}(?:<[^>]*>)?\s+extends\s+(\w+)", text)
+        cls = sup.group(1) if sup else None
+    return out
+
+
+def equipment_rastro():
+    """Para cada item de equipamento, o que `MekanismItems` e o construtor da classe dele dão às propriedades (`Item.Properties`), lido do texto do Java."""
+    registry = open(f"{JAVA}/MekanismItems.java").read()
+    statements = re.split(r";\n\s*(?://[^\n]*\n\s*)*(?=public static final|static \{|private static)", registry)
+    startup = open(f"{ORIGINAL}/src/main/java/mekanism/common/config/MekanismStartupConfig.java").read()
+
+    def default(name):
+        m = re.search(rf'{name} = Cached\w+Value\.wrap\(this, [^;]*?defineInRange\("(\w+)", ([^;]*?)\)\);', startup, re.S)
+        if not m:
+            raise SystemExit(f"configuração {name} não achada")
+        return m.group(2).split(",")[0].strip()
+
+    items = {}
+    for ident in EQUIPMENT_IDS:
+        if ident.endswith("_tier_installer"):
+            tier = ident.split("_")[0].upper()
+            reg = next(s for s in statements if f"{tier}_TIER_INSTALLER" in s.split("=")[0])
+            cls = "ItemTierInstaller"
+            chain = constructor_chain(cls)
+            entry = {"class": cls, "tier": tier.lower()}
+        else:
+            reg = next(s for s in statements if re.search(rf'"{ident}"', s) and "ITEMS." in s)
+            cls = (re.search(r"new (Item\w+)\(", reg) or re.search(r"(Item\w+)::new", reg) or re.search(r"registerItem\(\"%s\", (Item\w+)" % ident, reg) or [None, None])[1]
+            chain = constructor_chain(cls) if cls else []
+            entry = {"class": cls}
+        text = reg + " " + " ".join(chain)
+        arg_type = re.search(r"ArmorType\.(\w+)", reg)
+        stack = re.findall(r"stacksTo\((\d+)\)", text)
+        rarity = re.findall(r"Rarity\.(\w+)", text)
+        entry["stack"] = int(stack[-1]) if stack else None
+        entry["rarity"] = rarity[-1].lower() if rarity else None
+        entry["fire_resistant"] = "fireResistant" in text
+        entry["enchantable"] = int(m.group(1)) if (m := re.search(r"\.enchantable\((\d+)\)", text)) else None
+        entry["use_cooldown"] = float(m.group(1)) if (m := re.search(r"useCooldown\(([\d.]+)F\)", text)) else None
+        entry["durability"] = int(m.group(1)) if (m := re.search(r"\.durability\((\d+)\)", text)) else None
+        slot = re.search(r"Equippable\.builder\(EquipmentSlot\.(\w+)\)", text) or re.search(r"\.equippable\(EquipmentSlot\.(\w+)\)", text)
+        if slot:
+            entry["slot"] = slot.group(1).lower()
+        elif "Equippable.builder(armorType.getSlot())" in text and arg_type:
+            entry["slot"] = {"HELMET": "head", "CHESTPLATE": "chest", "LEGGINGS": "legs", "BOOTS": "feet"}[arg_type.group(1)]
+        asset = re.search(r"setAsset\(MekanismEquipmentAssets\.(\w+)\)", text)
+        if asset:
+            entry["asset"] = asset.group(1).lower()
+        elif "setAsset(markerAsset)" in text or "setAsset(MekanismEquipmentAssets" in text:
+            entry["asset"] = re.search(r"MekanismEquipmentAssets\.(\w+)", reg).group(1).lower()
+        if m := re.search(r"attributes\(MekanismArmorMaterials\.(\w+)\(", text):
+            entry["attributes"] = m.group(1)
+        entry["damage_on_hurt"] = not re.search(r"setDamageOnHurt\(false\)", text)
+        entry["mob_visibility"] = None
+        if m := re.search(r"new MobVisibility\([^,]*,\s*([\d.]+)F\)", text):
+            entry["mob_visibility"] = float(m.group(1))
+        repair = re.search(r"\.repairable\((\w+)\.value\(\)\)", text)
+        entry["repairable"] = repair.group(1).lower() if repair else None
+        entry["glider"] = "DataComponents.GLIDER" in text
+        entry["equip_sound"] = re.search(r"setEquipSound\(SoundEvents\.(\w+)\)", text).group(1).lower() if re.search(r"setEquipSound", text) else None
+        items[ident] = entry
+    nether = open(next(os.path.join(dp, "ArmorMaterials.java") for dp, _, fs in os.walk(MC) if "ArmorMaterials.java" in fs)).read()
+    m = re.search(r"ArmorMaterial NETHERITE = new ArmorMaterial\(\s*\d+, makeDefense\((\d+), (\d+), (\d+), (\d+), \d+\), \d+, [\w.]+, ([\d.]+)F, ([\d.]+)F", nether)
+    boots, legs, chest, helmet, toughness, knockback = m.groups()
+    armor = {
+        "netherite": {"boots": int(boots), "leggings": int(legs), "chestplate": int(chest), "helmet": int(helmet), "toughness": float(toughness), "knockback": float(knockback)},
+        "armored_free_runners": {"armor": int(default("armoredFreeRunnerArmor")), "toughness": float(default("armoredFreeRunnerToughness")), "knockback": float(default("armoredFreeRunnerKnockbackResistance"))},
+        "armored_jetpack": {"armor": int(default("armoredJetpackArmor")), "toughness": float(default("armoredJetpackToughness")), "knockback": float(default("armoredJetpackKnockbackResistance"))},
+        "mekasuit_uses_netherite_defaults": all(f"ArmorMaterials.NETHERITE.{x}" in startup for x in ("defense().get(ArmorType.HELMET)", "toughness()", "knockbackResistance()")),
+    }
+    # As receitas da datagen que dão um item de equipamento, com o tipo: o teste confere as de mesa (completas ou com a falta registrada) e os tipos que o port não lê.
+    recipes = {}
+    for path in sorted(walk(f"{GEN}/data/mekanism/recipe")):
+        recipe = json.load(open(path))
+        result = recipe.get("result")
+        rid = result["id"] if isinstance(result, dict) else result
+        if isinstance(rid, str) and rid.startswith("mekanism:") and rid[9:] in EQUIPMENT_IDS:
+            recipes[os.path.relpath(path, f"{GEN}/data")] = recipe["type"]
+    json.dump({"items": items, "armor": armor, "recipes": recipes}, open(f"{OUT}/equipment_items.json", "w"), indent=0, sort_keys=True)
+    print("equipment_items.json:", len(items))
+
+
+MC = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/mc"
+
+
 def main():
+    equipment_rastro()
+    neoforge_tags_rastro()
     tags_rastro()
     recipes_rastro()
     lang_rastro()

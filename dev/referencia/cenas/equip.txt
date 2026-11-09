@@ -1,0 +1,6 @@
+# As etapas da CenaEquip: a armadura vestida, de frente.
+vestir nome=mekasuit pecas=head:mekasuit_helmet,chest:mekasuit_bodyarmor,legs:mekasuit_pants,feet:mekasuit_boots
+vestir nome=jetpack pecas=chest:jetpack,feet:free_runners
+vestir nome=scuba pecas=head:scuba_mask,chest:scuba_tank
+vestir nome=hazmat pecas=head:hazmat_mask,chest:hazmat_gown,legs:hazmat_pants,feet:hazmat_boots
+vestir nome=elytra pecas=chest:hdpe_elytra

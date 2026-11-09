@@ -174,12 +174,57 @@ fn java_tabs() -> Vec<(&'static str, Vec<&'static str>)> {
         .map(|id| &*Box::leak(id.into_boxed_str()))
         .collect();
     ingredients.extend(processed);
+    // `TOOLS_AND_UTILITIES` (`MekanismCreativeTabs.java:120-132`): as ferramentas, as armaduras de uso geral, o upgrade (que a injeção troca por uma pilha por tipo) e os
+    // instaladores. A caixa de papelão, os tanques de fluido e os fluidos não têm id no port ainda.
+    let tools = vec![
+        "configurator",
+        "network_reader",
+        "dosimeter",
+        "geiger_counter",
+        "dictionary",
+        "configuration_card",
+        "gauge_dropper",
+        "crafting_formula",
+        "portable_qio_dashboard",
+        "atomic_disassembler",
+        "meka_tool",
+        "scuba_mask",
+        "scuba_tank",
+        "free_runners",
+        "free_runners_armored",
+        "jetpack",
+        "jetpack_armored",
+        "hdpe_elytra",
+        "hazmat_mask",
+        "hazmat_gown",
+        "hazmat_pants",
+        "hazmat_boots",
+        "upgrade",
+        "basic_tier_installer",
+        "advanced_tier_installer",
+        "elite_tier_installer",
+        "ultimate_tier_installer",
+    ];
+    // `COMBAT` (`MekanismCreativeTabs.java:138-141`).
+    let combat = vec![
+        "atomic_disassembler",
+        "flamethrower",
+        "electric_bow",
+        "meka_tool",
+        "mekasuit_helmet",
+        "mekasuit_bodyarmor",
+        "mekasuit_pants",
+        "mekasuit_boots",
+        "free_runners_armored",
+        "jetpack_armored",
+    ];
     vec![
         ("minecraft:building_blocks", building),
         ("minecraft:natural_blocks", natural),
         ("minecraft:functional_blocks", machines.clone()),
         ("minecraft:redstone_blocks", machines),
-        ("minecraft:tools_and_utilities", vec!["upgrade"]),
+        ("minecraft:tools_and_utilities", tools),
+        ("minecraft:combat", combat),
         ("minecraft:ingredients", ingredients),
     ]
 }
@@ -255,9 +300,20 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     assert!(items.len() > 100);
     let mut search = vec![table::plain_stack("minecraft:coal")];
     assert!(!table::edit_tab("minecraft:search", &mut search));
-    assert!(!table::edit_tab("minecraft:combat", &mut search));
+    assert!(!table::edit_tab("minecraft:spawn_eggs", &mut search));
     assert_eq!(search.len(), 1);
+    // As ferramentas: 26 itens e, no lugar do upgrade, uma pilha por tipo.
     let mut tools = Vec::new();
     assert!(table::edit_tab("minecraft:tools_and_utilities", &mut tools));
-    assert_eq!(tools.len(), table::UPGRADE_TYPES.len());
+    assert_eq!(tools.len(), 26 + table::UPGRADE_TYPES.len());
+    assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
+    assert_eq!(tools[22], table::upgrade_stack("anchor"));
+    assert_eq!(
+        tools[30],
+        table::plain_stack("mekanism:basic_tier_installer")
+    );
+    let mut combat = vec![table::plain_stack("minecraft:bow")];
+    assert!(table::edit_tab("minecraft:combat", &mut combat));
+    assert_eq!(combat.len(), 11);
+    assert_eq!(combat[10], table::plain_stack("mekanism:jetpack_armored"));
 }

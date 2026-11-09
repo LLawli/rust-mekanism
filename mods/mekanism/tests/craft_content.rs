@@ -3,7 +3,9 @@
 //! contra o hash que `dev/referencia/craft_rastros.py` tirou do checkout dele (`rastros/craft_datagen.json`); os ids da frente vêm da lista abaixo, e um que falte falha.
 mod common;
 
-use common::craft::{content, declared, digest, json, rastro};
+use common::craft::{
+    EQUIPMENT_ITEMS, assets, check_model, content, declared, digest, json, rastro,
+};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -154,10 +156,6 @@ const BLOCKS: [&str; 28] = [
 /// Os 74 itens e 25 blocos que o port não tinha (a lista `itens-faltando` da frente).
 const NEW_COUNT: usize = 99;
 
-fn assets() -> std::path::PathBuf {
-    content().join("assets/mekanism")
-}
-
 #[test]
 fn the_front_declares_every_item_and_block() {
     let items = declared("item");
@@ -177,9 +175,10 @@ fn the_front_declares_every_item_and_block() {
     assert_eq!(ITEMS.len(), ITEMS.iter().collect::<BTreeSet<_>>().len());
     // Tudo o que o port declara de craft e de recurso está na lista (o que não está tem outra frente: máquinas, cabos, `upgrade`).
     let listed: BTreeSet<&str> = ITEMS.iter().copied().collect();
+    // Os de equipamento têm a lista e os testes da frente `itens-equipamento` (`equipment_content.rs`).
     let extra: Vec<_> = items
         .iter()
-        .filter(|id| !listed.contains(id.as_str()))
+        .filter(|id| !listed.contains(id.as_str()) && !EQUIPMENT_ITEMS.contains(&id.as_str()))
         .collect();
     assert_eq!(
         extra,
@@ -187,35 +186,6 @@ fn the_front_declares_every_item_and_block() {
         "itens declarados fora da lista da frente"
     );
     assert!(NEW_COUNT <= ITEMS.len() + BLOCKS.len());
-}
-
-/// O arquivo de modelo (`mekanism:item/x` → `models/item/x.json`) e as texturas que ele cita, seguindo os `parent` do `mekanism:`.
-fn check_model(reference: &str, seen: &mut BTreeSet<String>) {
-    let Some(path) = reference.strip_prefix("mekanism:") else {
-        return;
-    };
-    if !seen.insert(path.to_owned()) {
-        return;
-    }
-    let file = assets().join("models").join(format!("{path}.json"));
-    assert!(file.is_file(), "falta o modelo {reference}");
-    let model = json(&file);
-    if let Some(parent) = model["parent"].as_str() {
-        check_model(parent, seen);
-    }
-    if let Some(textures) = model["textures"].as_object() {
-        for texture in textures.values().filter_map(Value::as_str) {
-            if let Some(path) = texture.strip_prefix("mekanism:") {
-                assert!(
-                    assets()
-                        .join("textures")
-                        .join(format!("{path}.png"))
-                        .is_file(),
-                    "falta a textura {texture} (modelo {reference})"
-                );
-            }
-        }
-    }
 }
 
 fn model_of_item(id: &str) -> String {

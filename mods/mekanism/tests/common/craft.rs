@@ -89,3 +89,105 @@ pub fn files_in(root: &Path) -> Vec<(String, PathBuf)> {
     walk(root, root, &mut out);
     out
 }
+
+/// Os itens da frente `itens-equipamento` (`MekanismItems`: ferramentas, armaduras, leitores, instaladores, o Robit), declarados sem função; em ordem alfabética.
+pub const EQUIPMENT_ITEMS: [&str; 37] = [
+    "advanced_tier_installer",
+    "atomic_disassembler",
+    "basic_tier_installer",
+    "canteen",
+    "configuration_card",
+    "configurator",
+    "crafting_formula",
+    "dictionary",
+    "dosimeter",
+    "electric_bow",
+    "elite_tier_installer",
+    "energy_tablet",
+    "flamethrower",
+    "free_runners",
+    "free_runners_armored",
+    "gauge_dropper",
+    "geiger_counter",
+    "hazmat_boots",
+    "hazmat_gown",
+    "hazmat_mask",
+    "hazmat_pants",
+    "hdpe_elytra",
+    "jetpack",
+    "jetpack_armored",
+    "meka_tool",
+    "mekasuit_bodyarmor",
+    "mekasuit_boots",
+    "mekasuit_helmet",
+    "mekasuit_pants",
+    "network_reader",
+    "portable_qio_dashboard",
+    "portable_teleporter",
+    "robit",
+    "scuba_mask",
+    "scuba_tank",
+    "seismic_reader",
+    "ultimate_tier_installer",
+];
+
+pub fn assets() -> PathBuf {
+    content().join("assets/mekanism")
+}
+
+/// O arquivo de modelo (`mekanism:item/x` → `models/item/x.json`) e o que ele cita, seguindo o `parent` e os `children` do `mekanism:`: as texturas (`.png`), e, num modelo
+/// `neoforge:obj`, o `.obj` e o `.mtl` dele.
+pub fn check_model(reference: &str, seen: &mut BTreeSet<String>) {
+    let Some(path) = reference.strip_prefix("mekanism:") else {
+        return;
+    };
+    if !seen.insert(path.to_owned()) {
+        return;
+    }
+    let file = assets().join("models").join(format!("{path}.json"));
+    assert!(file.is_file(), "falta o modelo {reference}");
+    let model = json(&file);
+    if let Some(parent) = model["parent"].as_str() {
+        check_model(parent, seen);
+    }
+    let mut textures: Vec<&Value> = model["textures"]
+        .as_object()
+        .into_iter()
+        .flat_map(|textures| textures.values())
+        .collect();
+    for child in model["children"]
+        .as_object()
+        .into_iter()
+        .flat_map(|children| children.values())
+    {
+        if let Some(parent) = child["parent"].as_str() {
+            check_model(parent, seen);
+        }
+        textures.extend(
+            child["textures"]
+                .as_object()
+                .into_iter()
+                .flat_map(|textures| textures.values()),
+        );
+    }
+    for texture in textures.into_iter().filter_map(Value::as_str) {
+        if let Some(path) = texture.strip_prefix("mekanism:") {
+            assert!(
+                assets()
+                    .join("textures")
+                    .join(format!("{path}.png"))
+                    .is_file(),
+                "falta a textura {texture} (modelo {reference})"
+            );
+        }
+    }
+    if model["loader"] == "neoforge:obj" {
+        let obj = model["model"]
+            .as_str()
+            .and_then(|m| m.strip_prefix("mekanism:"))
+            .unwrap_or_else(|| panic!("{reference}: modelo obj sem arquivo"));
+        for file in [obj.to_owned(), obj.replace(".obj", ".mtl")] {
+            assert!(assets().join(&file).is_file(), "falta {file} ({reference})");
+        }
+    }
+}

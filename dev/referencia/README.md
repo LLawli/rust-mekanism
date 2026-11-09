@@ -336,3 +336,9 @@ de item e 300 de bloco do Horizon, de `.horizon-cache/mod-content/items.json` e 
 instrumento do bloco de nota e reação a pistão dos gabaritos de bloco que o port usa, de `block-behaviours.json` e `gameplay-facts.json` do mesmo cache) vêm do jogo, não do original. Em jogo, `horizon2/h2_craft.py`
 (`H_NAME=horizon`) repete `items` (o `give` de cada id), `mining` (os minérios quebrados com fortuna III e a experiência da fluorita), `table` (a mesa de trabalho), `furnace` (o forno), `machine` (o Enrichment
 Chamber e o Crusher com os itens novos) e `worldgen` (os minérios e o sal num mundo novo, por `find-block`).
+
+`craft_rastros.py` também gera, para a frente `itens-equipamento`, `rastros/equipment_items.json` (o registro dos 37 itens de equipamento lido do texto do Java: `MekanismItems.java`, o construtor de cada classe de item e as das que ela herda, a
+configuração de inicialização da armadura e o `ArmorMaterials.NETHERITE`, mais as receitas da datagen que dão esses itens e o tipo de cada uma) e `rastros/craft_neoforge_tags.json` (as quatro tags `c:` do NeoForge que as receitas do traje
+de hazmat e do conta-gotas citam). `mods/mekanism/tests/equipment_content.rs` os repete contra o conteúdo do port. `testes/CenaEquip.java` põe o jogador de frente para a câmera do cliente oficial com as peças de armadura de cada etapa
+(`cenas/equip.txt`: `vestir nome=... pecas=slot:item,...`) e tira um print por etapa; `oficial_equipamento.sh CenaEquip.java cenas/equip.txt PASTA` (no desktop, com a `mekanism-ref.lock`, `lim-build` e o gamescope headless e mudo) a roda e
+devolve a árvore como estava. No port, `horizon2/h2_equipamento.py items|tab|armor|table|configurator` (`H_NAME=horizon`) dá os 37 itens, tira os prints das abas criativas e da armadura vestida e confere duas receitas de mesa do traje de hazmat.
