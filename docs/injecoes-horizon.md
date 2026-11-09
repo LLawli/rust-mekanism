@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 114 | |
+| `[[injection]]` no total | 116 | |
 | Hook do catálogo, usado só com o contrato dele | 37 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 36 | sim |
-| Injeção crua (`target = ...`) | 41 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 24 | sim |
+| Injeção crua (`target = ...`) | 43 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 26 | sim |
 
-37 + 36 + 41 = 114. Os 24 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-77 injeções e 24 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+37 + 36 + 43 = 116. Os 26 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+79 injeções e 26 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 41 | 24 | 36 |
+| Em uso | 43 | 26 | 36 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -61,7 +61,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H15 `visuals` v2 | hook | `native_frame_visuals` | spike |
 | H16 leitura do `Kd` do `.mtl` | correção | `obj_quad` (RETURN) | spike |
 | H17 ordenação da camada translúcida | correção | `outline_fill` | spike |
-| H18 `properties.light` condicional | dado | `active_light` (mekanism), só a luz | em uso |
+| H18 `properties.light` condicional | dado | `active_light` (mekanism) e `block_rows` (mekanismgenerators), só a luz | em uso |
 | H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
 | H27 `menu_result_taken` | hook | `result_take_before` (cru) | em uso |
 | H20 `menu_slot_rules` v2 | hook | o contexto de clique de `result_take_before` e `menu_click_before` | prevista |
@@ -86,11 +86,14 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H40 `NativeConfigKind::Synced` | tipo de configuração | nenhuma (diferença de comportamento, sem injeção) | pedido |
 | H41 saída de áudio a 48.000 Hz | correção do mixer | nenhuma (diferença de 0,045 % do RMS, sem injeção) | pedido |
 | H42 `properties.experience` | dado | `fluorite_experience` (cru, RETURN de `Game::block_experience`) | em uso (1) |
-| H43 abas criativas: pilhas e abas do vanilla | dado + hook | `creative_tabs` (cru, RETURN de `Plan::creative_tabs`) e o módulo `creative-tabs-table` | em uso (1 injeção, 1 módulo) |
+| H43 abas criativas: pilhas e abas do vanilla | dado + hook | `creative_tabs` (cru, RETURN de `Plan::creative_tabs`; uma do Mekanism e uma do Generators) e o módulo `creative-tabs-table` (um de cada) | em uso (2 injeções, 2 módulos) |
 | H44 `properties.instrument` | dado | nenhuma (diferença do instrumento do bloco de nota do sal e do bio fuel, decisão 17 do plano) | pedido |
 | H45 `item_name` padrão do item | correção | nenhuma (a cor do nome vai pelo hook `tooltip`, só na primeira linha) | pedido |
-| H49 propriedades de linha do bloco (reação ao pistão, oclusão, resistência negativa, `canBeReplaced`, `isPathfindable`) | dado | `active_light` (mekanism), o resto que não é luz, e o módulo `block-rows` | em uso (1 injeção, 1 módulo) |
+| H49 propriedades de linha do bloco (reação ao pistão, oclusão, resistência negativa, `canBeReplaced`, `isPathfindable`) | dado | `active_light` (mekanism) e `block_rows` (mekanismgenerators), o resto que não é luz, e o módulo `block-rows` (um de cada) | em uso (2 injeções, 2 módulos) |
 | H50 limite de caixas por forma | dado | `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`) | em uso (1) |
+| H65 tags de um mod que é dependência | dado | nenhuma (as quatro tags `mekanism:structures` que a datagen do Generators acrescenta ficam para o arquivo do Mekanism) | proposta |
+| H66 tags de mod no comando `execute if block #tag` | dado | nenhuma (só a conferência em jogo é afetada) | proposta |
+| H67 `transform` do modelo (translação do modelo e do filho do `composite`) | dado | nenhuma (o `.obj` do Wind Generator leva a translação nos vértices; o painel do Advanced Solar Generator fica um bloco abaixo) | proposta |
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
 | H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e `fire_before` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade pela água) | em uso (2 módulos, 2 cruas, 4 hooks) |
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor) | pedido |
@@ -141,16 +144,16 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 52 | 24 | 28 | 18 |
 | `mods/mekanism/native/horizon-mixin.toml` | 40 | 29 | 11 | 4 |
-| `mods/mekanismgenerators/native/horizon-mixin.toml` | 22 | 20 | 2 | 2 |
-| Total | 114 | 73 | 41 | 24 |
+| `mods/mekanismgenerators/native/horizon-mixin.toml` | 24 | 20 | 4 | 4 |
+| Total | 116 | 73 | 43 | 26 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `worn_hide_player`, `creative_tabs` e `fluorite_experience` (`RETURN`). Quinze das 41 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`). Quinze das 43 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 73 hooks, 36 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (41)
+## Injeções cruas em uso (43)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -529,6 +532,29 @@ e 37 não (o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jo
 - **Risco:** renomear `block_experience` ou mudar o retorno quebra o build; o sorteio é o `Math.random()` do Java (`java_random::math_random`) porque o gerador do nível está emprestado dentro do corpo (o `return` do spawner), o que dá a distribuição do original e outro fluxo de números. Só vale a quebra do jogador: a de máquina (`removal::break_experience`, genérica no gerador, que o `horizon-mixins` recusa como alvo) não passa por aqui.
 - **Conferido em jogo** (2026-11-09, `horizon`, `h2_craft.py mining`): a fluorita e a de deepslate dão de 1 a 4 de experiência em 8 quebras cada (1, 3, 1, 3, 1, 2, 4, 2 e 1, 2, 1, 4, 3, 2, 4, 1) e os cinco metais 0.
 
+### `block_rows` (mekanismgenerators)
+
+- **Estado:** em uso desde 2026-11-09 (frente `generators-conteudo`). **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::override_gameplay`, HEAD (o mesmo da `active_light`, `mod_content.rs:1319`).
+- **Helper:** `mods/mekanismgenerators/native/block_rows.rs`: a `mekanism_active_light` do Mekanism com a tabela `mekanismgenerators_rows` (módulo `block-rows`, `native/block_rows_table.rs`, gerada de `rastros/blocos_generators.jsonl`, o original em jogo,
+  por `dev/referencia/generators_conteudo.py` e conferida estado a estado por `tests/generators_registry.rs`, 148 estados). Escreve na linha de cada estado dos 23 blocos a luz do `active` (13 no Bio-Generator e no Gas-Burning Generator, 8 no Wind Generator) e a da lava (15), a reação ao pistão
+  (`IMMOVEABLE`), `can_occlude`, `solid_render`, `dampening` e `skylight_down` (com a oclusão do estado com fluido dentro).
+- **Por que é necessária:** a mesma da `active_light`: `properties` não alcança a luz condicional, a reação ao pistão (`BlockMekanism.getPistonPushReaction`) nem a oclusão de uma forma menor que o cubo. O Generators é outro mod e dois mods não dividem namespace nem injeção por id: o `mekanism_active_light` só olha ids `mekanism:`.
+- **Hook mais próximo:** nenhum. **Hook proposto:** H18 (a luz) e H49 (o resto), dados sem hook.
+- **Risco:** o do `active_light`: depende de `NewBlock` (`decl.id`), do `combo` e do formato de linha (`J`, chaves `emission`, `push`, `can_occlude`, `solid_render`, `dampening`, `skylight_down` e `explosion_resistance`). As duas são HEAD do mesmo método e o Horizon as põe em sequência.
+- **Conferido em jogo** (2026-11-09, `horizon`, `h2_generators.py luz`): os 30 estados que a leitura alcança (27 sem luz e 3 com: os acesos do Bio-Generator, do Gas-Burning Generator e do Wind Generator) dão a luz do original; os 148 estados pela tabela em `tests/generators_registry.rs`.
+
+### `creative_tabs` (mekanismgenerators)
+
+- **Estado:** em uso desde 2026-11-09 (frente `generators-conteudo`). **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::creative_tabs`, RETURN (o mesmo da `creative_tabs` do Mekanism, H43), com o módulo `creative-tabs-table` do Generators.
+- **Helper:** `mods/mekanismgenerators/native/creative_tabs.rs` percorre as linhas de aba e, para cada uma, chama `mekanismgenerators_tabs::edit_tab(id, itens)` (módulo `creative-tabs-table`, `native/creative_tabs_table.rs`, gerado de `rastros/blocos_generators.jsonl`, testado em `tests/generators_creative_tabs.rs`): acrescenta ao fim das abas do vanilla
+  o que `GeneratorsCreativeTabs.addToExistingTabs` acrescenta (os seis geradores nos blocos funcionais, os sete blocos com comparador na redstone, os quatro baldes nas ferramentas, o hohlraum e o painel solar nos ingredientes).
+- **Por que é necessária:** a do Mekanism: o Horizon só deixa o mod declarar a aba própria (`creative_tab/mekanismgenerators.json`, só ids), e não acrescenta às abas do vanilla.
+- **Detalhe que quebrou o build:** as duas injeções são RETURN do mesmo método, e o Horizon aninha a segunda em volta da primeira (`helper_b(&mut *doc, helper_a(&mut *doc, resultado))`): com `doc` antes de `result` nos `bindings`, o segundo `&mut *doc` é um segundo empréstimo mutável (`E0499`).
+  Com `result` primeiro (`helper_b(helper_a(..), &mut *doc)`) o interno acaba antes. Por isso os `bindings` do Generators trazem `result` antes de `doc`, e o do Mekanism segue com `doc` antes: se a ordem das duas se inverter, o build quebra (alto), não passa em silêncio.
+- **Hook mais próximo:** nenhum. **Hook proposto:** H43.
+- **Risco:** o da do Mekanism, mais a ordem de aninhamento das duas.
+- **Conferido em jogo** (2026-11-09, `horizon`, prints `porte_aba_*` em `~/.cache/rust-mekanism/wa/generators-conteudo/`): a aba "Mekanism: Generators" aparece depois da "Mekanism", com os 31 itens na ordem do original; os seis geradores estão no fim dos blocos funcionais (depois dos do Mekanism, o do vento sem desenho: o item é `minecraft:special`), o hohlraum e o painel solar no fim dos ingredientes.
+
 ### `creative_tabs` (mekanism)
 
 - **Estado:** em uso desde 2026-11-09. **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::creative_tabs` (`mod_content.rs:1704`), RETURN (o corpo não tem `?`), com o módulo `creative-tabs-table`. **Proposta:** H43.
@@ -707,6 +733,8 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 1.143 linhas em 2026-11-08 | idem |
 | `block-rows` (mekanism) | `mod_content.rs` | a tabela das linhas de jogo dos blocos de máquina (luz do `active` e da lava, reação ao pistão, oclusão, resistência), gerada do original em jogo, para a injeção `active_light` | H18, H49 |
 | `creative-tabs-table` (mekanism) | `mod_content.rs` | a tabela e a conta das pilhas da aba criativa (código puro, sem tipos do jogo), para a injeção `creative_tabs` | H43 |
+| `block-rows` (mekanismgenerators) | `mod_content.rs` | a tabela das linhas de jogo dos 23 blocos do Generators (luz do `active` e da lava, reação ao pistão, oclusão), gerada do original em jogo, para a injeção `block_rows` | H18, H49 |
+| `creative-tabs-table` (mekanismgenerators) | `mod_content.rs` | o que o Generators acrescenta às abas do vanilla (`addToExistingTabs`), gerado do original em jogo, para a injeção `creative_tabs` do Generators | H43 |
 | `windows` (machinery_basis) | `game/native_hooks.rs` | a mecânica de janela e a janela de upgrades: `OpenNativeScreen` tem campos privados de lá | H9 |
 | `slot-accepts` (machinery_basis) | `game/machines/native_items.rs` | `isValid` por slot, privado de `machines` | H7 |
 | `tile-sound` (machinery_basis) | `game.rs` | o som contínuo de um tile (`updateSound` e `TileTickableSound`): usa `Game.audio` (`play_instance`, `stop_and_release`, `instance_mut`), `Game.clock` e `native_player` (os pés do jogador local), privados | H19 |
@@ -1130,7 +1158,7 @@ quads translúcidos das block entities por distância (`VertexSorting.DISTANCE_T
 
 O Horizon já aceita condição por estado em `random_ticks` (`ticks.applies(combo)`), mas `properties.light` é um inteiro por bloco
 (`mod_content.rs:1345`). O Java dá luz por estado (`BlockStateHelper.applyLightLevelAdjustments`, `BlockStateHelper.java:83-94`).
-O pedido é aceitar em `light` a mesma condição de `random_ticks`. Elimina `active_light` (mekanism).
+O pedido é aceitar em `light` a mesma condição de `random_ticks`. Elimina `active_light` (mekanism) e `block_rows` (mekanismgenerators).
 
 ### H19 `looping_sound`
 
@@ -1283,7 +1311,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 
 - **Lado:** cliente (e o servidor que valida a aba). **Tipo:** dado no `creative_tab/*.json`.
 - **O que faz:** o item de uma aba pode ser uma pilha completa (SNBT com `components`, como o `upgrade` com o tipo, o balde cheio ou o tanque preenchido), e um mod pode acrescentar itens ao fim de uma aba do vanilla (o `BuildCreativeModeTabContentsEvent` do NeoForge). Hoje só ids e só a aba do próprio mod.
-- **Hoje:** `creative_tabs` (cru, RETURN de `Plan::creative_tabs`) e o módulo `creative-tabs-table`.
+- **Hoje:** `creative_tabs` (cru, RETURN de `Plan::creative_tabs`; do Mekanism e do Generators) e o módulo `creative-tabs-table` (um de cada).
 - **Risco do que existe hoje:** ver a ficha da injeção.
 
 ### H44 `properties.instrument`
@@ -1329,7 +1357,7 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Lado:** servidor e cliente (o pistão, a luz, o mob, o fluido). **Tipo:** dado nas `properties` do bloco (e, para o que depende de estado, aceitando a condição de `random_ticks`).
 - **O que faz:** diz as colunas da linha de jogo que `BlockProperties` não tem: a reação ao pistão (`pushReaction`: `BlockMekanism.getPistonPushReaction` dá `IMMOVEABLE` a todo bloco com bloco de entidade), `canOcclude` e `isSolidRender` por separado (hoje `occludes: false` põe os dois falsos, e o original dá `canOcclude` verdadeiro e `isSolidRender` falso nas formas menores que o cubo),
   o amortecimento de luz e `propagatesSkylightDown`, a forma de oclusão (o mesher do Horizon esconde a face do vizinho pela forma da tabela `occlusion.nbt`, que um bloco de mod copia do gabarito, e pelo `can_occlude` de `render-definitions.json`; o port usa `occludes: false`, que desenha todas as faces, e o original esconde pela forma real), a luz condicional ao estado (H18), a resistência a explosões negativa (`AttributeCustomResistance(-1)`: o arquivo recusa), `canBeReplaced(state, fluid)` falso (`BlockMekanism.java`: um fluido não substitui a máquina) e `isPathfindable` falso (`BlockBase.isPathfindable`: a forma própria não deixa o mob passar).
-- **Hoje:** `active_light` (cru, HEAD de `Plan::override_gameplay`) com a tabela do módulo `block-rows`, para as colunas da linha; `canBeReplaced` e `isPathfindable` não têm injeção.
+- **Hoje:** `active_light` (mekanism) e `block_rows` (mekanismgenerators) (crus, HEAD de `Plan::override_gameplay`) com a tabela do módulo `block-rows` de cada um, para as colunas da linha; `canBeReplaced` e `isPathfindable` não têm injeção.
 - **Risco do que existe hoje:** ver a ficha da injeção.
 
 ### H50 limite de caixas por forma
@@ -1338,6 +1366,29 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **O que faz:** o original tem formas de até 47 caixas depois de cobertas (o Digital Miner), e `Plan::states` e `shape_edges` já somam as caixas que vierem. O pedido é subir o limite de `BlockShapes::check` (por exemplo 256) ou tirá-lo.
 - **Hoje:** `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`).
 - **Risco do que existe hoje:** ver a ficha da injeção.
+
+### H65 tags de um mod que é dependência
+
+- **Lado:** servidor e cliente. **Tipo:** dado: um mod de conteúdo poder acrescentar valores a uma tag de outro mod de que depende (como já pode às de `minecraft` e de `c`).
+- **O que faz:** a datagen do Generators acrescenta o conteúdo dele a duas tags do Mekanism (`mekanism:structures` e `mekanism:structures/common`, de bloco e de item, que o Mekanism lê para as estruturas de multibloco). No Horizon o arquivo `data/mekanism/tags/block/structures.json` num mod que não é o Mekanism recusa o mod inteiro
+  (`a mod adds files in its own namespaces (data/mekanismgenerators/ and those listed in namespaces), to vanilla and convention (c) tags`; visto no log de 2026-11-09: todo o conteúdo do Generators ficou de fora até o arquivo sair), e `namespaces` não serve (dois mods não dividem namespace: `content::clash`). O pedido é aceitar tags de qualquer mod
+  que o manifesto declare como dependência.
+- **Hoje:** nada: os quatro arquivos não entram no Generators; o Mekanism os leva com as entradas do Generators como `{"id": "#mekanismgenerators:...", "required": false}` quando a frente `blocos-estrutura` criar as tags dele (ver o plano, "Conteúdo do Generators").
+- **Risco do que existe hoje:** nenhum.
+
+### H66 tags de mod no comando `execute if block #tag`
+
+- **Lado:** servidor. **Tipo:** dado: o comando aceitar as tags de bloco e de item que os mods de conteúdo carregam.
+- **O que faz:** em jogo, `execute if block X Y Z #mekanism:factories`, `#c:storage_blocks/osmium` (do Mekanism, já existentes) e `#mekanismgenerators:structures/turbine` dão `Unknown block tag`, e só as do vanilla respondem. As tags do mod valem para as receitas e para o que o mod lê, mas não dá para conferi-las por comando.
+- **Hoje:** nada; a conferência das tags de mod é `tests/generators_content.rs` e `tests/blocos_content.rs`, contra o `Holder.tags()` do original em jogo.
+- **Risco do que existe hoje:** nenhum.
+
+### H67 `transform` do modelo
+
+- **Lado:** cliente (o desenho). **Tipo:** dado: o arquivo de modelo aceitar o `transform` do NeoForge (`translation`, `rotation`, `scale`) na raiz do modelo e em cada filho de um `neoforge:composite`, como o NeoForge o aplica depois dos elementos.
+- **O que faz:** o `wind_generator` leva `"transform": {"translation": [0.5, 0, 0.5]}` no filho `.obj` e o `advanced_solar_generator` leva `[0, 1, 0]` no modelo inteiro (os elementos vão de -16 a 32 pixels, o limite do Horizon em `model.rs:396`, e o modelo sobe um bloco: sem a translação o painel de 3 blocos de altura não cabe). Hoje o Horizon só lê `model`, `flip_v`, `shade_quads` e `mtl_override` do `neoforge:obj` e nada de `transform`.
+- **Hoje:** o `.obj` do Wind Generator leva a translação nos vértices (`generators_conteudo.py`, `DERIVED_OBJ`, decisão 31 do plano); o Advanced Solar Generator fica um bloco abaixo do lugar. Uma injeção no cozimento (`horizon_assets::bake`, estrutura privada) não foi tentada.
+- **Risco do que existe hoje:** quando o Horizon ler o `transform`, o `.obj` do Wind Generator desloca duas vezes: voltar à cópia do original.
 
 ### H39 `block_animate_tick`
 
