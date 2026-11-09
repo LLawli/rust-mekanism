@@ -252,13 +252,23 @@ def luz():
     bad = []
 
     def medir(casos, posicoes):
-        for (name, props, _), pos in zip(casos, posicoes):
-            h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} mekanism:{name}{state_text(props)}")
-        time.sleep(3.0)
-        for (name, props, want), pos in zip(casos, posicoes):
-            got = json.loads(h.ctl("light", *map(str, pos), *map(str, pos)))["block"]
-            if int(got, 16) != want:
-                bad.append((name, props, want, got))
+        """Em levas de uma fileira da grade: o jogador vai para o meio dela (fora da distância de carga o `setblock` não pega e a luz lê `.`), os blocos se põem, e a luz se lê depois."""
+        itens = list(zip(casos, posicoes))
+        fileiras = {}
+        for item in itens:
+            fileiras.setdefault(item[1][2], []).append(item)
+        for z, fila in sorted(fileiras.items()):
+            meio = sum(pos[0] for _, pos in fila) // len(fila)
+            h.ctl("tp", str(meio), "-58", str(z))
+            h.ctl("wait-ready")
+            time.sleep(1.5)
+            for (name, props, _), pos in fila:
+                h.command(f"setblock {pos[0]} {pos[1]} {pos[2]} mekanism:{name}{state_text(props)}")
+            time.sleep(3.0)
+            for (name, props, want), pos in fila:
+                got = json.loads(h.ctl("light", *map(str, pos), *map(str, pos)))["block"]
+                if got == "." or int(got, 16) != want:
+                    bad.append((name, props, want, got))
 
     # A leva sem luz: uma grade de 4 em 4 blocos, 30 por fileira; a com luz, longe dela, de 16 em 16, 8 por fileira.
     medir(dark, [(40 + (i % 30) * 4, -60, 40 + (i // 30) * 4) for i in range(len(dark))])
@@ -271,8 +281,12 @@ def cena(out):
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas/blocos.json")))
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
     h.command("tick unfreeze")
+    # Só do port: o mundo novo nasce com mobs (queimam à luz do dia e entram no print); o original não tem nenhum.
+    for cmd in ("gamerule spawn_mobs false", "gamerule advance_time false", "gamerule advance_weather false", "kill @e[type=!minecraft:player]"):
+        h.command(cmd)
     for cmd in spec["setup"]:
         h.command(cmd)
+    h.command("kill @e[type=!minecraft:player]")
     time.sleep(1.0)
     h.ctl("key", "f1", "tap")
     for shot in spec["shots"]:
