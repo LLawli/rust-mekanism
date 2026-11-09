@@ -366,6 +366,8 @@ fn the_chest_and_boot_poses_are_the_ones_of_the_code() {
             Op::Translate(vector(&numbers["adult"])),
             Op::Translate(vector(&numbers["translate"])),
             Op::Scale(vector(&numbers["scale"])),
+            // O modelo de item sai com o centro do bloco na origem (medido contra o print do original, `jetpack_costas`: sem isto o jetpack sobe meio bloco).
+            Op::Translate([-0.5, -0.5, -0.5]),
         ];
         assert_eq!(attachment.ops, ops, "{id}");
         ops.remove(0);

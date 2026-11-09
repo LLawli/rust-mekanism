@@ -1854,6 +1854,9 @@ pub mod worn_gear {
     /// centro do bloco): o ponto (x, y, z) vira (1 - x, 1 - y, z). Como passos da pose, `translate(1, 1, 0)` e `scale(-1, -1, 1)`: o Horizon assa o OBJ sem ela.
     const OBJ_STATE: [Op; 2] = [Op::Translate([1.0, 1.0, 0.0]), Op::Scale([-1.0, -1.0, 1.0])];
 
+    /// O modelo de um item (`ItemStackRenderState`, o do jetpack e o do tanque) é desenhado com o centro do bloco na origem da pose; o modelo avulso do Horizon parte do canto.
+    const ITEM_CENTER: Op = Op::Translate([-0.5, -0.5, -0.5]);
+
     /// Uma posição do corpo do `MekaSuitArmor.ModelPos`: a parte, a translação `BASE_TRANSLATION + deslocamento` (`translateModel`) e a do bebê (`scaleBaby`).
     struct Position {
         part: &'static str,
@@ -1968,12 +1971,14 @@ pub mod worn_gear {
                 Op::Translate([0.0, 0.3, 0.0]),
                 Op::Translate([0.0, 0.0, 0.145]),
                 Op::Scale([1.02, -1.02, -1.02]),
+                ITEM_CENTER,
             ],
             baby_ops: &[
                 Op::AgeScale,
                 Op::Translate([0.0, -0.05, 0.0]),
                 Op::Translate([0.0, 0.0, 0.145]),
                 Op::Scale([1.02, -1.02, -1.02]),
+                ITEM_CENTER,
             ],
             unlit: false,
             hidden_if_worn: None,
@@ -1989,11 +1994,13 @@ pub mod worn_gear {
             Op::Translate([0.0, 0.41, 0.0]),
             Op::Translate([0.0, 0.0, 0.28]),
             Op::Scale([1.0, -1.0, -1.0]),
+            ITEM_CENTER,
         ],
         baby_ops: &[
             Op::AgeScale,
             Op::Translate([0.0, 0.0, 0.28]),
             Op::Scale([1.0, -1.0, -1.0]),
+            ITEM_CENTER,
         ],
         unlit: false,
         hidden_if_worn: None,

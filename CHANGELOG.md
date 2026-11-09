@@ -31,11 +31,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   texturas, os ativos de equipamento `hazmat` e `hdpe_elytra` (o traje e o élitro vestidos saem como no original), nomes, 23 tags (`head_armor` e as outras de armadura, `c:tools/*`, `module_containers/*`, `enchantable/*`)
   e 19 receitas de mesa (o traje de hazmat, o conta-gotas, o instalador de tier, o configurador, a canteen, a máscara de mergulho, o élitro de HDPE e outras). As abas de ferramentas e de combate do vanilla ganham os
   itens do Mekanism, e a aba "Mekanism" fica com 180 entradas na ordem do original. Os arquivos copiados e as propriedades são conferidos contra o Java e a datagen (`rastros/equipment_items.json`,
-  `tests/equipment_content.rs`). O uso (energia, modos, tanques, módulos, ferramenta e arma, a roupa especial do MekaSuit, do jetpack, das botas e do tanque, o desenho do Robit) fica para as fases de cada um.
+  `tests/equipment_content.rs`). O uso (energia, modos, tanques, módulos, ferramenta e arma, o desenho do Robit) fica para as fases de cada um.
   O arquivo do item do Configurator, que escolhe o modelo por um componente do mod, carrega por uma injeção nova (`item_component_type`, H5).
 - O MekaSuit, o jetpack (e o blindado), as Free Runners (e as blindadas) e o tanque de mergulho são desenhados no corpo, como no original (`client/render/armor`: `MekaSuitArmor`,
-  `ChestArmor`, `FreeRunnerArmor`): no jogador (em terceira pessoa, na tela do inventário e o braço em primeira pessoa), nos outros jogadores, nos mobs de modelo humanoide (zumbi, husk,
-  esqueleto) e no armor stand, na pose das partes do corpo (agachar, nadar, voar, o balanço das pernas), com o bebê escalado como o original (`scaleBaby`). O traje é o OBJ do original
+  `ChestArmor`, `FreeRunnerArmor`): no jogador (em terceira pessoa, na tela do inventário e o braço em primeira pessoa), nos outros jogadores, nos mobs de modelo humanoide (testado no husk)
+  e no armor stand, na pose das partes do corpo (agachar, nadar, voar, o balanço das pernas), com o bebê escalado como o original (`scaleBaby`). O traje é o OBJ do original
   (`mekasuit.obj`, 126 objetos) em 22 modelos avulsos, um por grupo que `MekaSuitArmor.createQuads` monta (peça, posição do corpo, brilho, as peças `excl_` e `shared_`), com os LEDs
   (`_led`) sem luz do mundo; o corpo, os braços, as pernas e a cabeça do jogador somem enquanto o traje os cobre, e a capa some com o peito do MekaSuit, o jetpack e o tanque. A mecânica
   é genérica (`machinery_basis_core::worn_gear`, uma tabela de itens com os modelos, as partes e os passos de cada um; `glue`: o desenho) e o Mekanism só dá a tabela

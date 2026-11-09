@@ -27,6 +27,8 @@ def etapas(arquivo):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith("grupos"):
+            continue
         campos = {"nome": "x", "pecas": "", "camera": "front", "entidades": "0", "giro": "0", "bebe": "0", "parede": "0"}
         for word in line.split()[1:]:
             k, _, v = word.partition("=")
