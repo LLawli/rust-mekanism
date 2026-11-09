@@ -62,3 +62,4 @@ pub mod upgrade_window;
 pub mod warning;
 pub mod window;
 pub mod window_session;
+pub mod worn_gear;

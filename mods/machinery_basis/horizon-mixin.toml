@@ -717,3 +717,98 @@ helper = "fire_before.rs"
 bindings = [
   { name = "world", ty = "&mut MotionWorld<'_, '_, '_>", value = "&mut *self" },
 ]
+
+# O equipamento vestido que o mod desenha por código (H55): o `MekanismArmorLayer` do original (`HumanoidArmorLayer` com o `ICustomArmor` de cada item) pede o modelo de cada peça na
+# pose da parte do corpo, e o hook `mob_layer` do Horizon (`native_mob_layer`) só dá o quadro do mob (giro, cabeça, passo), sem as partes do modelo, sem o armor stand, sem a tela do
+# inventário e sem a primeira pessoa. Sete injeções e dois módulos: as regras são `machinery_basis_core::worn_gear`, e o mod diz a tabela dele por `standalone_models`.
+[[module]]
+id = "worn-gear"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_basis_gear"
+source = "worn_gear.rs"
+
+[[module]]
+id = "worn-hides"
+file = "crates/horizon-client/src/mobs/anim.rs"
+name = "machinery_basis_worn"
+source = "worn_hides.rs"
+visibility = "pub"
+
+# `ModelPart.visible = false` das partes que o equipamento esconde: a pose de todo mob e jogador sai de `anim::setup`, e o jogador mostra de novo o corpo, os braços e as pernas
+# na visibilidade do modelo (`player_model_visibility`), então o fim dela esconde de novo. O RETURN de `setup` não serve: `matches!` no corpo dele (o planejador exige
+# um caminho absoluto de `std` no macro). Dois alvos crus.
+[[injection]]
+id = "worn_hide"
+target = "horizon_client_lib::mobs::anim::setup"
+kind = "HEAD"
+helper = "worn_gear_hide.rs"
+bindings = [
+  { name = "m", ty = "&crate::mobs::Mob", value = "m" },
+  { name = "p", ty = "&mut crate::mobs::anim::Poses", value = "&mut *p" },
+]
+
+[[injection]]
+id = "worn_hide_player"
+target = "horizon_client_lib::mobs::anim::player_model_visibility"
+kind = "RETURN"
+helper = "worn_gear_hide_player.rs"
+bindings = [
+  { name = "value", ty = "()", value = "$value" },
+  { name = "p", ty = "&mut crate::mobs::anim::Poses", value = "&mut *p" },
+]
+
+# Os modelos do equipamento vestido do jogador (a janela e os outros), dos mobs e da tela do inventário: o `head_item_geometry` roda para todos eles, depois do modelo e da armadura
+# (`CustomHeadLayer`). Alvo cru.
+[[injection]]
+id = "worn_mob"
+target = "horizon_client::game::mob_blocks::Game<'_>::head_item_geometry"
+kind = "HEAD"
+helper = "worn_gear_mob.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "mob", ty = "&horizon_client::mobs::Mob", value = "mob" },
+  { name = "camera", ty = "glam::DVec3", value = "camera" },
+  { name = "alpha", ty = "f64", value = "alpha" },
+  { name = "light", ty = "u32", value = "light" },
+  { name = "out", ty = "&mut Vec<horizon_client::mesher::Vertex>", value = "&mut *out" },
+]
+
+# O armor stand tem o desenho dele (`ArmorStandRenderer`), fora do caminho dos mobs. Alvo cru.
+[[injection]]
+id = "worn_stand"
+target = "horizon_client::game::armor_stands::Game<'_>::armor_stand_vertices"
+kind = "HEAD"
+helper = "worn_gear_stand.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "a", ty = "&horizon_client::entities::ArmorStand", value = "a" },
+  { name = "base", ty = "glam::Mat4", value = "base" },
+  { name = "packed", ty = "u32", value = "packed" },
+  { name = "out", ty = "&mut Vec<horizon_client::mesher::Vertex>", value = "&mut *out" },
+]
+
+# O braço de primeira pessoa (`RenderArmEvent`): `native_render_hand` só esconde, não deixa desenhar um braço no lugar. Alvo cru.
+[[injection]]
+id = "worn_arm"
+target = "horizon_client::game::Game<'_>::first_person_arm"
+kind = "HEAD"
+cancellable = true
+helper = "worn_gear_arm.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "left", ty = "bool", value = "left" },
+  { name = "m", ty = "glam::Mat4", value = "m" },
+  { name = "light", ty = "u32", value = "light" },
+  { name = "out", ty = "&mut Vec<horizon_client::mesher::Vertex>", value = "&mut *out" },
+]
+
+# A capa que o equipamento esconde (`avatarState.showCape = false`): `native_player_submit` só deixa esconder o jogador inteiro. Alvo cru.
+[[injection]]
+id = "worn_cape"
+target = "horizon_client::game::perspective::Game<'_>::player_cape_geometry"
+kind = "HEAD"
+cancellable = true
+helper = "worn_gear_cape.rs"
+bindings = [
+  { name = "m", ty = "&horizon_client::mobs::Mob", value = "m" },
+]
