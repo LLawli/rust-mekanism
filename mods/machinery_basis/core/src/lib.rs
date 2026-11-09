@@ -32,6 +32,7 @@ pub mod name;
 pub mod neighbors;
 pub mod network;
 pub mod operation_tracker;
+pub mod placement;
 pub mod quick_move;
 pub mod recipe;
 pub mod recipe_cache;

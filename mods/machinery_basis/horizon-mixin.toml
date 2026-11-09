@@ -115,6 +115,7 @@ bindings = [
   { name = "level", ty = "&GameLevel<'_>", value = "self" },
   { name = "state", ty = "BlockStateId", value = "state" },
   { name = "context", ty = "&PlacementContext", value = "context" },
+  { name = "fluid", ty = "FluidState", value = "fluid" },
   { name = "answer", ty = "&mut Option<Option<BlockStateId>>", value = "&mut *answer" },
 ]
 

@@ -2,7 +2,8 @@ fn machinery_basis_state_for_placement(
     level: &GameLevel<'_>,
     state: BlockStateId,
     context: &PlacementContext,
+    fluid: FluidState,
     answer: &mut Option<Option<BlockStateId>>,
 ) {
-    crate::game::machinery_basis::state_for_placement(level, state, context.pos, answer);
+    crate::game::machinery_basis::state_for_placement(level, state, context, fluid, answer);
 }

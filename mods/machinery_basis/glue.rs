@@ -8,7 +8,8 @@ use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Direction;
 use horizon_core::position::BlockPos;
-use horizon_world::level::Ticks;
+use horizon_world::fluid::{FluidKind, FluidState};
+use horizon_world::level::{PlacementContext, Ticks};
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
 use horizon_client::item_data::{StackData, canon_tag, decode_components, encode_components};
@@ -24,6 +25,7 @@ use machinery_basis_core::liquid_data;
 use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::neighbors::{OUTPUT_SIGNAL_ORDER, PendingPower};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
+use machinery_basis_core::placement::{self, Rules as PlacementRules};
 use machinery_basis_core::recipe::{
     Conversion, ConversionFields, EnergyConversionData, MachineRecipeData, RecipeFields, ResourceInput,
 };
@@ -40,6 +42,7 @@ use std::time::Instant;
 const LISTENER: &str = "machinery_basis:resources";
 const TAGS_LISTENER: &str = "machinery_basis:resource_tags";
 const ENERGY_LISTENER: &str = "machinery_basis:energy";
+const PLACEMENT_LISTENER: &str = "machinery_basis:placement";
 const UPGRADES_LISTENER: &str = "machinery_basis:upgrades";
 const UPGRADE_TAGS_LISTENER: &str = "machinery_basis:upgrade_tags";
 const LIQUIDS_LISTENER: &str = "machinery_basis:liquids";
@@ -279,22 +282,45 @@ fn is_transmitter_state(level: &GameLevel<'_>, energy: &EnergyBlocks, state: Blo
     level.native_state_block(state).is_some_and(|block| energy.is_transmitter(block))
 }
 
-/// O transmissor sendo colocado: cada lado se liga só ao que troca energia por aquela face.
+/// O bloco sendo colocado. Um transmissor liga cada lado só ao que troca energia por aquela face. Um bloco com regra de colocação (`machinery_basis/placement`) escolhe
+/// o `facing` pelo jogador ou pela face clicada e o `fluid_logged` pelo fluido que estava no lugar (`AttributeStateFacing.getStateForPlacement`, `BlockStateHelper.
+/// getStateForPlacement`).
 pub(in crate::game) fn state_for_placement(
     level: &GameLevel<'_>,
     state: BlockStateId,
-    pos: BlockPos,
+    context: &PlacementContext,
+    fluid: FluidState,
     answer: &mut Option<Option<BlockStateId>>,
 ) {
+    let pos = context.pos;
     let energy = network::current();
-    if !is_transmitter_state(level, &energy, state) {
+    if is_transmitter_state(level, &energy, state) {
+        let placed = Face::ALL.iter().fold(state, |placed, &side| {
+            let [x, y, z] = neighbour([pos.x, pos.y, pos.z], side);
+            let joined = joins(level, &energy, level.world.block(x, y, z), side.opposite());
+            with_side(level, placed, side, joined)
+        });
+        *answer = Some(Some(placed));
         return;
     }
-    let placed = Face::ALL.iter().fold(state, |placed, &side| {
-        let [x, y, z] = neighbour([pos.x, pos.y, pos.z], side);
-        let joined = joins(level, &energy, level.world.block(x, y, z), side.opposite());
-        with_side(level, placed, side, joined)
-    });
+    let rules = placement::current();
+    let Some(rule) = level.native_state_block(state).and_then(|block| rules.get(block)) else {
+        return;
+    };
+    let mut placed = state;
+    if let Some(facing) = &rule.facing
+        && let Some(direction) = facing.direction(context.yaw, context.pitch, face_of(context.face).name())
+    {
+        placed = level.native_state_with_property(placed, &facing.property, direction).unwrap_or(placed);
+    }
+    if let Some(property) = &rule.fluid_logged {
+        let value = placement::fluid_logged_value(match fluid.kind() {
+            FluidKind::Water => "water",
+            FluidKind::Lava => "lava",
+            _ => "empty",
+        });
+        placed = level.native_state_with_property(placed, property, value).unwrap_or(placed);
+    }
     *answer = Some(Some(placed));
 }
 
@@ -335,6 +361,7 @@ pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener
     listeners.push(NativeReloadListener::json(LISTENER, resource::DATA_FOLDER));
     listeners.push(NativeReloadListener::json(TAGS_LISTENER, resource::TAGS_FOLDER));
     listeners.push(NativeReloadListener::json(ENERGY_LISTENER, network::ENERGY_FOLDER));
+    listeners.push(NativeReloadListener::json(PLACEMENT_LISTENER, placement::FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADES_LISTENER, upgrade::TYPES_FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADE_TAGS_LISTENER, upgrade::TAGS_FOLDER));
     listeners.push(NativeReloadListener::json(LIQUIDS_LISTENER, liquid_data::FOLDER));
@@ -359,6 +386,10 @@ pub(in crate::game) fn reload_apply(
         }
         eprintln!("machinery_basis: {} fluidos", liquids.len());
         liquid_data::set_source(BASIS_SOURCE, liquids);
+        return;
+    }
+    if listener.id == PLACEMENT_LISTENER {
+        placement::set_current(PlacementRules::load(files));
         return;
     }
     if listener.id == UPGRADE_TAGS_LISTENER {
