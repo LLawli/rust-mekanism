@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-09 (depois da frente `itens-craft`, que acrescentou 2 injeções cruas e 1 módulo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-09 (depois da frente `itens-equipamento`, que acrescentou 1 injeção crua, a `item_component_type`, sobre a das `itens-craft`: 2 injeções cruas e 1 módulo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 98 | |
+| `[[injection]]` no total | 99 | |
 | Hook do catálogo, usado só com o contrato dele | 36 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 31 | sim |
-| Injeção crua (`target = ...`) | 31 | sim |
+| Injeção crua (`target = ...`) | 32 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 19 | sim |
 
-36 + 31 + 31 = 98. Os 19 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-62 injeções e 19 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+36 + 31 + 32 = 99. Os 19 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+63 injeções e 19 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 31 | 19 | 31 |
+| Em uso | 32 | 19 | 31 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -47,7 +47,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H2 `block_entity_container_instance` | hook | `Containers::view`, `can_take`, `native_container_accepts`, `native_fluid_at` | prevista (4) |
 | H3 `block_fluid` | hook | `logged-fluid-row` | em uso |
 | H4 `screen_tooltip` v2 | hook | `widget_tooltip` (mekanism e mekanismgenerators) | em uso (2) |
-| H5 `component_types` v2 | hook | `command_components` | em uso |
+| H5 `component_types` v2 | hook | `command_components` e `item_component_type` | em uso (2) |
 | H6 `item_model_node` | hook | `component_item_model` | em uso |
 | H7 `item_container_accepts` | helper | módulo `slot-accepts` | em uso |
 | H8 helpers de leitura e escrita | helpers | 7 hooks com estrutura privada, os módulos `glue` | em uso (7) |
@@ -135,17 +135,17 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 40 | 20 | 20 | 14 |
-| `mods/mekanism/native/horizon-mixin.toml` | 36 | 27 | 9 | 3 |
+| `mods/mekanism/native/horizon-mixin.toml` | 37 | 27 | 10 | 3 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 22 | 20 | 2 | 2 |
-| Total | 98 | 67 | 31 | 19 |
+| Total | 99 | 67 | 32 | 19 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `creative_tabs` e `fluorite_experience` (`RETURN`). Onze das 31 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `animate_tick`, `creative_tabs` e `fluorite_experience`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `creative_tabs` e `fluorite_experience` (`RETURN`). Doze das 32 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; e a `item_component_type`, de 2026-11-09); as que não são: `energy_store`, `container_dim_flag`, `logged-fluid-row`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `flush_signals`, `container_changed`, `result_take_before`, `menu_click_before`, `active_light`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `animate_tick`, `creative_tabs` e `fluorite_experience`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 67 hooks, 31 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (31)
+## Injeções cruas em uso (32)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -274,6 +274,21 @@ e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08,
 - **Hook proposto:** H6, e H5 para o `select` aceitar o componente do mod.
 - **Risco:** a assinatura de `decode_node` e o enum `ItemModelNode` (`Select`, `SelectProperty::Component`, `ModelLeaf`) são
   internos. A injeção constrói os nós à mão: um campo novo em `ModelLeaf` quebra o build.
+
+### `item_component_type` (mekanism)
+
+- **Estado:** em uso desde 2026-11-09. **Alvo:** `horizon_assets::item_model::component_type`, HEAD, cancelável (`item_model.rs:277`, função livre que valida o `component` de um `select`).
+- **Helper:** `mods/mekanism/native/item_component_type.rs`: um id `mekanism:*` passa, qualquer outro volta ao caminho normal.
+- **Por que é necessária:** o item do Configurator escolhe o modelo pelo componente `mekanism:configurator_mode` (`items/configurator.json` da datagen: `minecraft:select`
+  com a propriedade `minecraft:component`, os casos `empty`, `rotate` e `wrench` e o `fallback` do modo padrão). `component_type` só aceita os 122 componentes do vanilla
+  (`DATA_COMPONENT_TYPES`), então o Horizon descartava o arquivo do item inteiro (`item definition mekanism:configurator not loaded: unknown data component type`) e o item aparecia
+  sem modelo no inventário e na aba criativa. Com a injeção o arquivo é o do original; enquanto o port não tem o componente (função do Configurator, Fase 2), nenhuma pilha o traz,
+  nenhum caso bate e vale o `fallback`, que é o modelo do modo padrão, como no original.
+- **Hook mais próximo:** `component_types` (H5) registra o tipo para a pilha e o NBT, mas o `select` do arquivo de item e o `has_component` só olham a lista vanilla; o `item_model_property`
+  só dá uma condição booleana.
+- **Hook proposto:** H5 (a lista de componentes de mod valer também nos arquivos de item), a mesma que elimina `command_components`.
+- **Risco:** renomear ou mudar a assinatura de `component_type` quebra o build. Trocar o `select` por outro nó que valide o componente em outro ponto deixa o item sem modelo outra vez, sem erro.
+- **Conferido em jogo** (2026-11-09, `horizon`): o log perde a linha `item definition mekanism:configurator not loaded`, e o item aparece com o modelo `mekanism:item/configurator` na aba criativa (prints em `~/.cache/rust-mekanism/wa/itens-equipamento/`).
 
 ### `command_components` (mekanism)
 
@@ -488,7 +503,7 @@ e 36 não (a divisão foi inferida pela frente do som e conferida em 2026-11-08,
 
 - **Estado:** em uso desde 2026-11-09. **Alvo:** `horizon_client_lib::mod_content::Plan<'_>::creative_tabs` (`mod_content.rs:1704`), RETURN (o corpo não tem `?`), com o módulo `creative-tabs-table`. **Proposta:** H43.
 - **Helper:** `mods/mekanism/native/creative_tabs.rs` percorre as linhas de aba que o Horizon montou (`doc.at("tabs")`) e, para cada uma, chama `mekanism_tabs::edit_tab(id, itens)` (módulo `creative-tabs-table`, `creative_tabs_table.rs`, código puro testado em `tests/creative_tabs.rs`): na aba `mekanism:mekanism` troca o item `mekanism:upgrade` por uma pilha por tipo (`{count:1,id:"mekanism:upgrade",components:{"mekanism:upgrade_type":"mekanism:<tipo>"}}`), e no fim de cada aba do vanilla acrescenta o que o evento `BuildCreativeModeTabContentsEvent` do original acrescenta.
-- **Por que é necessária:** `MekanismCreativeTabs.addToExistingTabs` põe os itens do Mekanism nas abas do vanilla (construção, natureza, funcionais, redstone, ferramentas e ingredientes), e `ItemUpgrade` (`ICustomCreativeTabContents`, `addDefault` falso) entra nas abas só pelas pilhas de cada tipo. O Horizon só deixa o mod declarar a aba própria, com ids de item (`creative_tab/*.json`, `stack(id)` em `Plan::creative_tabs`): não acrescenta a abas do vanilla e não escreve componente na pilha.
+- **Por que é necessária:** `MekanismCreativeTabs.addToExistingTabs` põe os itens do Mekanism nas abas do vanilla (construção, natureza, funcionais, redstone, ferramentas, combate e ingredientes), e `ItemUpgrade` (`ICustomCreativeTabContents`, `addDefault` falso) entra nas abas só pelas pilhas de cada tipo. O Horizon só deixa o mod declarar a aba própria, com ids de item (`creative_tab/*.json`, `stack(id)` em `Plan::creative_tabs`): não acrescenta a abas do vanilla e não escreve componente na pilha.
 - **Hook mais próximo:** nenhum.
 - **Hook proposto:** H43: o arquivo `creative_tab` aceitar uma pilha completa (SNBT com `components`) nos itens e um `extends` (uma aba do vanilla e a lista a acrescentar ao fim dela).
 - **Risco:** renomear `creative_tabs`, mudar o formato da linha da aba (`id` e `items` em SNBT de pilha) ou a aba de busca (que continua só com o `upgrade` sem tipo) quebra o build ou deixa a aba sem as pilhas, sem erro.
@@ -1360,7 +1375,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=98 hook=67 target=31 module=19 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=99 hook=67 target=32 module=19 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 36 + 31 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.
