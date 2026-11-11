@@ -1,0 +1,1866 @@
+{
+"mekanism/recipe/atomic_disassembler.json": {
+"group": null,
+"key": [
+"#",
+"A",
+"E",
+"I"
+],
+"pattern": [
+"AEA",
+"A#A",
+" I "
+],
+"refs": [
+"#c:ingots/refined_obsidian",
+"#mekanism:alloys/atomic",
+"#mekanism:alloys/infused",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:atomic_disassembler",
+"result_components": []
+},
+"mekanism/recipe/bin/advanced.json": {
+"group": "mekanism:bin",
+"key": [
+"A",
+"C",
+"P",
+"_"
+],
+"pattern": [
+"_C_",
+"APA",
+"___"
+],
+"refs": [
+"#c:circuits/advanced",
+"#mekanism:alloys/infused",
+"#mekanism:stone_crafting_materials",
+"mekanism:basic_bin"
+],
+"result": "mekanism:advanced_bin",
+"result_components": []
+},
+"mekanism/recipe/bin/elite.json": {
+"group": "mekanism:bin",
+"key": [
+"A",
+"C",
+"P",
+"_"
+],
+"pattern": [
+"_C_",
+"APA",
+"___"
+],
+"refs": [
+"#c:circuits/elite",
+"#mekanism:alloys/reinforced",
+"#mekanism:stone_crafting_materials",
+"mekanism:advanced_bin"
+],
+"result": "mekanism:elite_bin",
+"result_components": []
+},
+"mekanism/recipe/bin/ultimate.json": {
+"group": "mekanism:bin",
+"key": [
+"A",
+"C",
+"P",
+"_"
+],
+"pattern": [
+"_C_",
+"APA",
+"___"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#mekanism:alloys/atomic",
+"#mekanism:stone_crafting_materials",
+"mekanism:elite_bin"
+],
+"result": "mekanism:ultimate_bin",
+"result_components": []
+},
+"mekanism/recipe/chargepad.json": {
+"group": null,
+"key": [
+"#",
+"E",
+"S"
+],
+"pattern": [
+"###",
+"SES"
+],
+"refs": [
+"#c:ingots/steel",
+"mekanism:energy_tablet",
+"minecraft:polished_blackstone_pressure_plate"
+],
+"result": "mekanism:chargepad",
+"result_components": []
+},
+"mekanism/recipe/chemical_dissolution_chamber.json": {
+"group": null,
+"key": [
+"C",
+"I",
+"T",
+"X"
+],
+"pattern": [
+"ITI",
+"CXC",
+"ITI"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/refined_obsidian",
+"mekanism:basic_chemical_tank",
+"mekanism:steel_casing"
+],
+"result": "mekanism:chemical_dissolution_chamber",
+"result_components": []
+},
+"mekanism/recipe/chemical_infuser.json": {
+"group": null,
+"key": [
+"A",
+"C",
+"T",
+"X"
+],
+"pattern": [
+"ACA",
+"TXT",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/infused",
+"mekanism:basic_chemical_tank",
+"mekanism:steel_casing"
+],
+"result": "mekanism:chemical_infuser",
+"result_components": []
+},
+"mekanism/recipe/chemical_injection_chamber.json": {
+"group": "mekanism:injecting",
+"key": [
+"#",
+"A",
+"C",
+"I"
+],
+"pattern": [
+"ACA",
+"I#I",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:purification_chamber"
+],
+"result": "mekanism:chemical_injection_chamber",
+"result_components": []
+},
+"mekanism/recipe/chemical_oxidizer.json": {
+"group": null,
+"key": [
+"#",
+"A",
+"C",
+"P",
+"T"
+],
+"pattern": [
+"ACA",
+"P#T",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/infused",
+"#mekanism:personal_storage",
+"mekanism:basic_chemical_tank",
+"mekanism:dynamic_tank"
+],
+"result": "mekanism:chemical_oxidizer",
+"result_components": []
+},
+"mekanism/recipe/chemical_tank/advanced.json": {
+"group": "mekanism:chemical_tank",
+"key": [
+"A",
+"O",
+"P"
+],
+"pattern": [
+"AOA",
+"OPO",
+"AOA"
+],
+"refs": [
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_chemical_tank"
+],
+"result": "mekanism:advanced_chemical_tank",
+"result_components": []
+},
+"mekanism/recipe/chemical_tank/elite.json": {
+"group": "mekanism:chemical_tank",
+"key": [
+"A",
+"O",
+"P"
+],
+"pattern": [
+"AOA",
+"OPO",
+"AOA"
+],
+"refs": [
+"#c:ingots/osmium",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_chemical_tank"
+],
+"result": "mekanism:elite_chemical_tank",
+"result_components": []
+},
+"mekanism/recipe/chemical_tank/ultimate.json": {
+"group": "mekanism:chemical_tank",
+"key": [
+"A",
+"O",
+"P"
+],
+"pattern": [
+"AOA",
+"OPO",
+"AOA"
+],
+"refs": [
+"#c:ingots/osmium",
+"#mekanism:alloys/atomic",
+"mekanism:elite_chemical_tank"
+],
+"result": "mekanism:ultimate_chemical_tank",
+"result_components": []
+},
+"mekanism/recipe/chemical_washer.json": {
+"group": null,
+"key": [
+"B",
+"C",
+"I",
+"T",
+"X"
+],
+"pattern": [
+"IBI",
+"CXC",
+"ITI"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/refined_obsidian",
+"mekanism:basic_chemical_tank",
+"mekanism:basic_fluid_tank",
+"mekanism:steel_casing"
+],
+"result": "mekanism:chemical_washer",
+"result_components": []
+},
+"mekanism/recipe/digital_miner.json": {
+"group": null,
+"key": [
+"A",
+"C",
+"R",
+"S",
+"T",
+"X"
+],
+"pattern": [
+"ACA",
+"SRS",
+"TXT"
+],
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/atomic",
+"mekanism:logistical_sorter",
+"mekanism:robit",
+"mekanism:steel_casing",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:digital_miner",
+"result_components": []
+},
+"mekanism/recipe/electric_bow.json": {
+"group": null,
+"key": [
+"#",
+"A",
+"E"
+],
+"pattern": [
+"#A ",
+"# E",
+"#A "
+],
+"refs": [
+"#c:strings",
+"#mekanism:alloys/infused",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:electric_bow",
+"result_components": []
+},
+"mekanism/recipe/energy_cube/advanced.json": {
+"group": "mekanism:energy_cube",
+"key": [
+"A",
+"E",
+"I",
+"P"
+],
+"pattern": [
+"AEA",
+"IPI",
+"AEA"
+],
+"refs": [
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_energy_cube",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:advanced_energy_cube",
+"result_components": []
+},
+"mekanism/recipe/energy_cube/basic.json": {
+"group": "mekanism:energy_cube",
+"key": [
+"A",
+"E",
+"I",
+"P"
+],
+"pattern": [
+"AEA",
+"IPI",
+"AEA"
+],
+"refs": [
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:energy_tablet",
+"mekanism:steel_casing"
+],
+"result": "mekanism:basic_energy_cube",
+"result_components": []
+},
+"mekanism/recipe/energy_cube/elite.json": {
+"group": "mekanism:energy_cube",
+"key": [
+"A",
+"E",
+"I",
+"P"
+],
+"pattern": [
+"AEA",
+"IPI",
+"AEA"
+],
+"refs": [
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_energy_cube",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:elite_energy_cube",
+"result_components": []
+},
+"mekanism/recipe/energy_cube/ultimate.json": {
+"group": "mekanism:energy_cube",
+"key": [
+"A",
+"E",
+"I",
+"P"
+],
+"pattern": [
+"AEA",
+"IPI",
+"AEA"
+],
+"refs": [
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_energy_cube",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:ultimate_energy_cube",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/combining.json": {
+"group": "mekanism:combining",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_combining_factory"
+],
+"result": "mekanism:advanced_combining_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/compressing.json": {
+"group": "mekanism:compressing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_compressing_factory"
+],
+"result": "mekanism:advanced_compressing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/crushing.json": {
+"group": "mekanism:crushing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_crushing_factory"
+],
+"result": "mekanism:advanced_crushing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/enriching.json": {
+"group": "mekanism:enriching",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_enriching_factory"
+],
+"result": "mekanism:advanced_enriching_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/infusing.json": {
+"group": "mekanism:infusing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_infusing_factory"
+],
+"result": "mekanism:advanced_infusing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/injecting.json": {
+"group": "mekanism:injecting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_injecting_factory"
+],
+"result": "mekanism:advanced_injecting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/purifying.json": {
+"group": "mekanism:purifying",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_purifying_factory"
+],
+"result": "mekanism:advanced_purifying_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/sawing.json": {
+"group": "mekanism:sawing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_sawing_factory"
+],
+"result": "mekanism:advanced_sawing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/advanced/smelting.json": {
+"group": "mekanism:smelting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:basic_smelting_factory"
+],
+"result": "mekanism:advanced_smelting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/combining.json": {
+"group": "mekanism:combining",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:combiner"
+],
+"result": "mekanism:basic_combining_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/compressing.json": {
+"group": "mekanism:compressing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:osmium_compressor"
+],
+"result": "mekanism:basic_compressing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/crushing.json": {
+"group": "mekanism:crushing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:crusher"
+],
+"result": "mekanism:basic_crushing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/enriching.json": {
+"group": "mekanism:enriching",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:enrichment_chamber"
+],
+"result": "mekanism:basic_enriching_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/infusing.json": {
+"group": "mekanism:infusing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:metallurgic_infuser"
+],
+"result": "mekanism:basic_infusing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/injecting.json": {
+"group": "mekanism:injecting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:chemical_injection_chamber"
+],
+"result": "mekanism:basic_injecting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/purifying.json": {
+"group": "mekanism:purifying",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:purification_chamber"
+],
+"result": "mekanism:basic_purifying_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/sawing.json": {
+"group": "mekanism:sawing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:precision_sawmill"
+],
+"result": "mekanism:basic_sawing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/basic/smelting.json": {
+"group": "mekanism:smelting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/iron",
+"#mekanism:alloys/basic",
+"mekanism:energized_smelter"
+],
+"result": "mekanism:basic_smelting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/combining.json": {
+"group": "mekanism:combining",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_combining_factory"
+],
+"result": "mekanism:elite_combining_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/compressing.json": {
+"group": "mekanism:compressing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_compressing_factory"
+],
+"result": "mekanism:elite_compressing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/crushing.json": {
+"group": "mekanism:crushing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_crushing_factory"
+],
+"result": "mekanism:elite_crushing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/enriching.json": {
+"group": "mekanism:enriching",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_enriching_factory"
+],
+"result": "mekanism:elite_enriching_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/infusing.json": {
+"group": "mekanism:infusing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_infusing_factory"
+],
+"result": "mekanism:elite_infusing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/injecting.json": {
+"group": "mekanism:injecting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_injecting_factory"
+],
+"result": "mekanism:elite_injecting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/purifying.json": {
+"group": "mekanism:purifying",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_purifying_factory"
+],
+"result": "mekanism:elite_purifying_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/sawing.json": {
+"group": "mekanism:sawing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_sawing_factory"
+],
+"result": "mekanism:elite_sawing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/elite/smelting.json": {
+"group": "mekanism:smelting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/elite",
+"#c:ingots/gold",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_smelting_factory"
+],
+"result": "mekanism:elite_smelting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/combining.json": {
+"group": "mekanism:combining",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_combining_factory"
+],
+"result": "mekanism:ultimate_combining_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/compressing.json": {
+"group": "mekanism:compressing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_compressing_factory"
+],
+"result": "mekanism:ultimate_compressing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/crushing.json": {
+"group": "mekanism:crushing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_crushing_factory"
+],
+"result": "mekanism:ultimate_crushing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/enriching.json": {
+"group": "mekanism:enriching",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_enriching_factory"
+],
+"result": "mekanism:ultimate_enriching_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/infusing.json": {
+"group": "mekanism:infusing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_infusing_factory"
+],
+"result": "mekanism:ultimate_infusing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/injecting.json": {
+"group": "mekanism:injecting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_injecting_factory"
+],
+"result": "mekanism:ultimate_injecting_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/purifying.json": {
+"group": "mekanism:purifying",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_purifying_factory"
+],
+"result": "mekanism:ultimate_purifying_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/sawing.json": {
+"group": "mekanism:sawing",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_sawing_factory"
+],
+"result": "mekanism:ultimate_sawing_factory",
+"result_components": []
+},
+"mekanism/recipe/factory/ultimate/smelting.json": {
+"group": "mekanism:smelting",
+"key": [
+"A",
+"C",
+"I",
+"P"
+],
+"pattern": [
+"ACA",
+"IPI",
+"ACA"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:gems/diamond",
+"#mekanism:alloys/atomic",
+"mekanism:elite_smelting_factory"
+],
+"result": "mekanism:ultimate_smelting_factory",
+"result_components": []
+},
+"mekanism/recipe/flamethrower.json": {
+"group": null,
+"key": [
+"#",
+"C",
+"I",
+"S",
+"T"
+],
+"pattern": [
+"III",
+"ITS",
+"#C#"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/bronze",
+"#c:ingots/tin",
+"#c:tools/igniter",
+"mekanism:basic_chemical_tank"
+],
+"result": "mekanism:flamethrower",
+"result_components": []
+},
+"mekanism/recipe/fluid_tank/advanced.json": {
+"group": "mekanism:fluid_tank",
+"key": [
+"A",
+"I",
+"P"
+],
+"pattern": [
+"AIA",
+"IPI",
+"AIA"
+],
+"refs": [
+"#c:ingots/iron",
+"#mekanism:alloys/infused",
+"mekanism:basic_fluid_tank"
+],
+"result": "mekanism:advanced_fluid_tank",
+"result_components": []
+},
+"mekanism/recipe/fluid_tank/elite.json": {
+"group": "mekanism:fluid_tank",
+"key": [
+"A",
+"I",
+"P"
+],
+"pattern": [
+"AIA",
+"IPI",
+"AIA"
+],
+"refs": [
+"#c:ingots/iron",
+"#mekanism:alloys/reinforced",
+"mekanism:advanced_fluid_tank"
+],
+"result": "mekanism:elite_fluid_tank",
+"result_components": []
+},
+"mekanism/recipe/fluid_tank/ultimate.json": {
+"group": "mekanism:fluid_tank",
+"key": [
+"A",
+"I",
+"P"
+],
+"pattern": [
+"AIA",
+"IPI",
+"AIA"
+],
+"refs": [
+"#c:ingots/iron",
+"#mekanism:alloys/atomic",
+"mekanism:elite_fluid_tank"
+],
+"result": "mekanism:ultimate_fluid_tank",
+"result_components": []
+},
+"mekanism/recipe/fluidic_plenisher.json": {
+"group": null,
+"key": [
+"C",
+"I",
+"P"
+],
+"pattern": [
+"III",
+"CPC",
+"III"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/tin",
+"mekanism:electric_pump"
+],
+"result": "mekanism:fluidic_plenisher",
+"result_components": []
+},
+"mekanism/recipe/free_runners.json": {
+"group": null,
+"key": [
+"A",
+"C",
+"E"
+],
+"pattern": [
+"C C",
+"A A",
+"E E"
+],
+"refs": [
+"#c:circuits/basic",
+"#mekanism:alloys/infused",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:free_runners",
+"result_components": []
+},
+"mekanism/recipe/free_runners_armored.json": {
+"group": null,
+"key": [
+"#",
+"I",
+"P",
+"S"
+],
+"pattern": [
+" S ",
+"#P#",
+"I I"
+],
+"refs": [
+"#c:dusts/diamond",
+"#c:ingots/bronze",
+"#c:storage_blocks/steel",
+"mekanism:free_runners"
+],
+"result": "mekanism:free_runners_armored",
+"result_components": []
+},
+"mekanism/recipe/induction/cell/advanced.json": {
+"group": "mekanism:induction_cell",
+"key": [
+"#",
+"E",
+"P"
+],
+"pattern": [
+"EPE",
+"P#P",
+"EPE"
+],
+"refs": [
+"mekanism:advanced_energy_cube",
+"mekanism:basic_induction_cell",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:advanced_induction_cell",
+"result_components": []
+},
+"mekanism/recipe/induction/cell/basic.json": {
+"group": "mekanism:induction_cell",
+"key": [
+"#",
+"E",
+"L"
+],
+"pattern": [
+"LEL",
+"E#E",
+"LEL"
+],
+"refs": [
+"#c:dusts/lithium",
+"mekanism:basic_energy_cube",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:basic_induction_cell",
+"result_components": []
+},
+"mekanism/recipe/induction/cell/elite.json": {
+"group": "mekanism:induction_cell",
+"key": [
+"#",
+"E",
+"P"
+],
+"pattern": [
+"EPE",
+"P#P",
+"EPE"
+],
+"refs": [
+"mekanism:advanced_induction_cell",
+"mekanism:elite_energy_cube",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:elite_induction_cell",
+"result_components": []
+},
+"mekanism/recipe/induction/cell/ultimate.json": {
+"group": "mekanism:induction_cell",
+"key": [
+"#",
+"E",
+"P"
+],
+"pattern": [
+"EPE",
+"P#P",
+"EPE"
+],
+"refs": [
+"mekanism:elite_induction_cell",
+"mekanism:energy_tablet",
+"mekanism:ultimate_energy_cube"
+],
+"result": "mekanism:ultimate_induction_cell",
+"result_components": []
+},
+"mekanism/recipe/isotopic_centrifuge.json": {
+"group": null,
+"key": [
+"C",
+"I",
+"T"
+],
+"pattern": [
+"III",
+"CTC",
+"III"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:ingots/lead",
+"mekanism:basic_chemical_tank"
+],
+"result": "mekanism:isotopic_centrifuge",
+"result_components": []
+},
+"mekanism/recipe/jetpack.json": {
+"group": null,
+"key": [
+"C",
+"I",
+"S",
+"T"
+],
+"pattern": [
+"SCS",
+"ITI",
+" I "
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/steel",
+"#c:ingots/tin",
+"mekanism:basic_chemical_tank"
+],
+"result": "mekanism:jetpack",
+"result_components": []
+},
+"mekanism/recipe/jetpack_armored.json": {
+"group": null,
+"key": [
+"#",
+"I",
+"P",
+"S"
+],
+"pattern": [
+"# #",
+"ISI",
+" P "
+],
+"refs": [
+"#c:dusts/diamond",
+"#c:ingots/bronze",
+"#c:storage_blocks/steel",
+"mekanism:jetpack"
+],
+"result": "mekanism:jetpack_armored",
+"result_components": []
+},
+"mekanism/recipe/laser.json": {
+"group": null,
+"key": [
+"#",
+"A",
+"E",
+"X"
+],
+"pattern": [
+"AE ",
+"AX#",
+"AE "
+],
+"refs": [
+"#c:gems/diamond",
+"#mekanism:alloys/reinforced",
+"mekanism:energy_tablet",
+"mekanism:steel_casing"
+],
+"result": "mekanism:laser",
+"result_components": []
+},
+"mekanism/recipe/laser_amplifier.json": {
+"group": null,
+"key": [
+"#",
+"E",
+"S"
+],
+"pattern": [
+"SSS",
+"SE#",
+"SSS"
+],
+"refs": [
+"#c:gems/diamond",
+"#c:ingots/steel",
+"mekanism:basic_energy_cube"
+],
+"result": "mekanism:laser_amplifier",
+"result_components": []
+},
+"mekanism/recipe/laser_tractor_beam.json": {
+"group": null,
+"key": [
+"#",
+"P"
+],
+"pattern": [
+"P",
+"#"
+],
+"refs": [
+"#mekanism:personal_storage",
+"mekanism:laser_amplifier"
+],
+"result": "mekanism:laser_tractor_beam",
+"result_components": []
+},
+"mekanism/recipe/network_reader.json": {
+"group": null,
+"key": [
+"A",
+"E",
+"G",
+"S"
+],
+"pattern": [
+" G ",
+"AEA",
+" S "
+],
+"refs": [
+"#c:glass_blocks/cheap",
+"#c:ingots/steel",
+"#mekanism:alloys/infused",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:network_reader",
+"result_components": []
+},
+"mekanism/recipe/portable_teleporter.json": {
+"group": null,
+"key": [
+"C",
+"E",
+"T"
+],
+"pattern": [
+" E ",
+"CTC",
+" E "
+],
+"refs": [
+"#c:circuits/basic",
+"mekanism:energy_tablet",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:portable_teleporter",
+"result_components": []
+},
+"mekanism/recipe/pressurized_reaction_chamber.json": {
+"group": null,
+"key": [
+"#",
+"A",
+"C",
+"P",
+"S",
+"T"
+],
+"pattern": [
+"SAS",
+"CPC",
+"T#T"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/steel",
+"#mekanism:alloys/infused",
+"mekanism:basic_chemical_tank",
+"mekanism:dynamic_tank",
+"mekanism:enrichment_chamber"
+],
+"result": "mekanism:pressurized_reaction_chamber",
+"result_components": []
+},
+"mekanism/recipe/purification_chamber.json": {
+"group": "mekanism:purifying",
+"key": [
+"A",
+"C",
+"O",
+"P"
+],
+"pattern": [
+"ACA",
+"OPO",
+"ACA"
+],
+"refs": [
+"#c:circuits/advanced",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:enrichment_chamber"
+],
+"result": "mekanism:purification_chamber",
+"result_components": []
+},
+"mekanism/recipe/qio_drive_array.json": {
+"group": null,
+"key": [
+"#",
+"C",
+"G",
+"I",
+"T"
+],
+"pattern": [
+"TGT",
+"C#C",
+"TIT"
+],
+"refs": [
+"#c:circuits/ultimate",
+"#c:ender_pearls",
+"#c:glass_panes",
+"#mekanism:personal_storage",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:qio_drive_array",
+"result_components": []
+},
+"mekanism/recipe/qio_drive_hyper_dense.json": {
+"group": "mekanism:qio_drive",
+"key": [
+"#",
+"I",
+"P"
+],
+"pattern": [
+"IPI",
+"P#P",
+"IPI"
+],
+"refs": [
+"#c:pellets/plutonium",
+"mekanism:qio_drive_base",
+"mekanism:teleportation_core"
+],
+"result": "mekanism:qio_drive_hyper_dense",
+"result_components": []
+},
+"mekanism/recipe/qio_drive_supermassive.json": {
+"group": "mekanism:qio_drive",
+"key": [
+"#",
+"I",
+"P"
+],
+"pattern": [
+"IPI",
+"P#P",
+"IPI"
+],
+"refs": [
+"#c:pellets/antimatter",
+"#c:pellets/polonium",
+"mekanism:qio_drive_time_dilating"
+],
+"result": "mekanism:qio_drive_supermassive",
+"result_components": []
+},
+"mekanism/recipe/qio_drive_time_dilating.json": {
+"group": "mekanism:qio_drive",
+"key": [
+"#",
+"I",
+"P"
+],
+"pattern": [
+"IPI",
+"P#P",
+"IPI"
+],
+"refs": [
+"#c:pellets/plutonium",
+"#c:pellets/polonium",
+"mekanism:qio_drive_hyper_dense"
+],
+"result": "mekanism:qio_drive_time_dilating",
+"result_components": []
+},
+"mekanism/recipe/resistive_heater.json": {
+"group": null,
+"key": [
+"E",
+"I",
+"R",
+"X"
+],
+"pattern": [
+"IRI",
+"RXR",
+"IEI"
+],
+"refs": [
+"#c:dusts/redstone",
+"#c:ingots/tin",
+"mekanism:energy_tablet",
+"mekanism:steel_casing"
+],
+"result": "mekanism:resistive_heater",
+"result_components": []
+},
+"mekanism/recipe/robit.json": {
+"group": null,
+"key": [
+"A",
+"E",
+"I",
+"P",
+"S"
+],
+"pattern": [
+" S ",
+"EAE",
+"IPI"
+],
+"refs": [
+"#c:ingots/refined_obsidian",
+"#c:ingots/steel",
+"#mekanism:alloys/atomic",
+"#mekanism:personal_storage",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:robit",
+"result_components": []
+},
+"mekanism/recipe/rotary_condensentrator.json": {
+"group": null,
+"key": [
+"#",
+"C",
+"E",
+"G",
+"T"
+],
+"pattern": [
+"GCG",
+"TE#",
+"GCG"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:glass_blocks/cheap",
+"mekanism:basic_chemical_tank",
+"mekanism:basic_fluid_tank",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:rotary_condensentrator",
+"result_components": []
+},
+"mekanism/recipe/scuba_tank.json": {
+"group": null,
+"key": [
+"A",
+"C",
+"S",
+"T"
+],
+"pattern": [
+" C ",
+"ATA",
+"SSS"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/steel",
+"#mekanism:alloys/infused",
+"mekanism:basic_chemical_tank"
+],
+"result": "mekanism:scuba_tank",
+"result_components": []
+},
+"mekanism/recipe/seismic_reader.json": {
+"group": null,
+"key": [
+"#",
+"E",
+"S"
+],
+"pattern": [
+"S#S",
+"SES",
+"SSS"
+],
+"refs": [
+"#c:gems/lapis",
+"#c:ingots/steel",
+"mekanism:energy_tablet"
+],
+"result": "mekanism:seismic_reader",
+"result_components": []
+},
+"mekanismgenerators/recipe/generator/wind.json": {
+"group": null,
+"key": [
+"A",
+"C",
+"E",
+"O"
+],
+"pattern": [
+" O ",
+"OAO",
+"ECE"
+],
+"refs": [
+"#c:circuits/basic",
+"#c:ingots/osmium",
+"#mekanism:alloys/infused",
+"mekanism:energy_tablet"
+],
+"result": "mekanismgenerators:wind_generator",
+"result_components": []
+}
+}

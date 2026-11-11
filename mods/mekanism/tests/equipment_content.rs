@@ -497,8 +497,9 @@ fn the_tags_list_the_equipment_the_original_lists() {
 fn the_neoforge_tags_the_recipes_need_are_the_neoforge_ones() {
     let neoforge = rastro("craft_neoforge_tags.json");
     let neoforge = neoforge.as_object().unwrap();
-    // As quatro do traje de hazmat e do conta-gotas, as cinco das receitas de mesa dos blocos de máquina e as três das barras (disperso de pressão e transportadores especiais).
-    assert_eq!(neoforge.len(), 12);
+    // As quatro do traje de hazmat e do conta-gotas, as cinco das receitas de mesa dos blocos de máquina, as três das barras (disperso de pressão e transportadores especiais)
+    // e as duas das receitas `mek_data` do arco elétrico e do lança-chamas (a linha e o isqueiro).
+    assert_eq!(neoforge.len(), 14);
     for (relative, values) in neoforge {
         let ours = json(&content().join("data").join(relative));
         assert_eq!(&ours["values"], values, "{relative}");
@@ -524,7 +525,7 @@ fn the_neoforge_tags_the_recipes_need_are_the_neoforge_ones() {
 }
 
 /// As receitas que dão um item de equipamento. As de mesa estão no port quando tudo o que citam existe (`craft_data.rs` confere a regra para todas), e as de tipo `mekanism:mek_data`
-/// (a receita que copia os dados do item, como a energia e os módulos) esperam o tipo.
+/// (a receita que copia os dados do item, como a energia e os módulos) estão desde 2026-11-11 (frente `mek-data`, `mek_data.rs` confere as 86).
 #[test]
 fn the_recipes_of_the_equipment_are_in_or_wait_for_a_known_cause() {
     let java = rastro("equipment_items.json");
@@ -536,7 +537,12 @@ fn the_recipes_of_the_equipment_are_in_or_wait_for_a_known_cause() {
         let present = content().join("data").join(relative).is_file();
         match kind.as_str().unwrap() {
             "mekanism:mek_data" => {
-                assert!(!present, "{relative}");
+                assert!(present, "{relative}");
+                assert_eq!(
+                    json(&content().join("data").join(relative))["type"],
+                    "mekanism:mek_data",
+                    "{relative}"
+                );
                 mek_data.insert(relative.as_str());
             }
             "minecraft:crafting_shaped" | "minecraft:crafting_shapeless" => {

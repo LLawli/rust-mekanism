@@ -180,6 +180,30 @@ def recipes_rastro():
     print("craft_recipes.json:", len(out))
 
 
+def mek_data_rastro():
+    """As receitas `mekanism:mek_data` da datagen (a do Mekanism e a do Generators): o resultado, o formato e o que citam. Elas esperam o tipo no Horizon (a injeção `mek_data_alias`)."""
+    out = {}
+    for namespace, root in (("mekanism", GEN), ("mekanismgenerators", GEN + "generators")):
+        base = f"{root}/data/{namespace}/recipe"
+        for path in sorted(walk(base)):
+            recipe = json.load(open(path))
+            if recipe["type"] != "mekanism:mek_data":
+                continue
+            refs = []
+            for v in recipe["key"].values():
+                ingredient_refs(v, refs)
+            out[f"{namespace}/recipe/{os.path.relpath(path, base)}"] = {
+                "result": recipe["result"]["id"],
+                "result_components": sorted(recipe["result"].get("components", {})),
+                "pattern": recipe["pattern"],
+                "key": sorted(recipe["key"]),
+                "refs": sorted(set(refs)),
+                "group": recipe.get("group"),
+            }
+    json.dump(out, open(f"{OUT}/mek_data_recipes.json", "w"), indent=0, sort_keys=True)
+    print("mek_data_recipes.json:", len(out))
+
+
 def lang_rastro():
     """O texto que a datagen do original dá a cada chave de `lang/en_us.json` que o port tem (o port tem um subconjunto, nos textos do original)."""
     original = json.load(open(f"{GEN}/assets/mekanism/lang/en_us.json"))
@@ -246,6 +270,8 @@ NEOFORGE_TAGS = ["dyes/black", "dyes/orange", "glass_panes", "glass_panes/colorl
 NEOFORGE_TAGS += ["storage_blocks/diamond", "clumps/resin", "buckets/empty", "chests/wooden", "barrels/wooden"]
 # E as das receitas do disperso de pressão e dos dois transportadores especiais (frente `blocos-estrutura`): as barras, com as de cobre e de ferro (a aninhada `#minecraft:bars` o Horizon tem).
 NEOFORGE_TAGS += ["bars", "bars/copper", "bars/iron"]
+# E as das receitas `mekanism:mek_data` do arco elétrico e do lança-chamas (frente `mek-data`): a linha e o isqueiro.
+NEOFORGE_TAGS += ["strings", "tools/igniter"]
 
 
 def neoforge_tags_rastro():
@@ -414,6 +440,7 @@ def main():
     neoforge_tags_rastro()
     tags_rastro()
     recipes_rastro()
+    mek_data_rastro()
     lang_rastro()
     worldgen_rastro()
     creative_order()

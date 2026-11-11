@@ -355,6 +355,15 @@ cancellable = true
 helper = "item_component_type.rs"
 bindings = [{ name = "v", ty = "&Value", value = "v" }]
 
+# O tipo `mekanism:mek_data` das receitas de mesa de 85 blocos e itens do Mekanism e do vento do Generators: o Horizon manda o tipo de mod para a tabela `custom`, que a mesa não lê.
+# O HEAD de `Recipes::from_sources` o troca por `minecraft:crafting_shaped` antes da carga. Alvo cru, H79.
+[[injection]]
+id = "mek_data_alias"
+target = "horizon_client_lib::crafting::Recipes::from_sources"
+kind = "HEAD"
+helper = "mek_data_alias.rs"
+bindings = [{ name = "sources", ty = "&mut Vec<(String, Value)>", value = "&mut sources" }]
+
 [[injection]]
 id = "command_components"
 target = "horizon_command::item::ItemState<'_,'_>::component_type"

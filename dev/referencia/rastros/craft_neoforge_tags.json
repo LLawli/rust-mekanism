@@ -60,5 +60,11 @@
 ],
 "c/tags/item/storage_blocks/diamond.json": [
 "minecraft:diamond_block"
+],
+"c/tags/item/strings.json": [
+"minecraft:string"
+],
+"c/tags/item/tools/igniter.json": [
+"minecraft:flint_and_steel"
 ]
 }
