@@ -100,9 +100,8 @@ pub fn scale_towards(prev_scale: f32, target: f32, empty: bool, full: bool) -> f
     let difference = (prev_scale - target).abs();
     if f64::from(difference) > 0.01 {
         return (9.0 * prev_scale + target) / 10.0;
-    } else if !empty && full && difference > 0.0 {
-        return target;
-    } else if !empty && prev_scale == 0.0 {
+    } else if !empty && ((full && difference > 0.0) || prev_scale == 0.0) {
+        // Cheio com a diferença abaixo de 0,01 (leva a escala até o alvo, em vez de deixá-la um pouco abaixo), ou com algo dentro e a escala em zero (para aparecer).
         return target;
     }
     if empty && f64::from(prev_scale) < 0.01 {
