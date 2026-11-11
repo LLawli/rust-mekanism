@@ -53,11 +53,10 @@ Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repet
   ou roda com o som desligado. Nunca pelas caixas do usuário.
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
-- Desktop: até 8 núcleos e 8 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que pega a vaga e põe `CARGO_BUILD_JOBS=8`,
-  com `--max-workers=8` no gradle. O jogo também ocupa a vaga: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`,
+- Desktop: a vaga tem 4 núcleos e 6 GB, para build e para jogo. Use `~/.cache/rust-mekanism/lim-build <comando>`, que pega a vaga e põe
+  `CARGO_BUILD_JOBS=4`, com `--max-workers=4` no gradle. O jogo também ocupa a vaga: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`,
   espere `jogo-<nome>.ativo` ganhar o número da vaga, e apague esse arquivo ao fechar o jogo. O container nasce com 6 CPUs e 12 GB: antes do
-  `native-build`, rode `docker update --cpus 8 --memory 8g --memory-swap 8g <container>`, e antes do jogo
-  `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
+  `native-build` e do jogo, rode `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
   compartilham `native/target` e `cargo` por bind mount. Nunca crie outro `target` nem copie esses diretórios.
 - Build de debug é apagado quando deixa de ser usado: ao integrar um workspace, remova o workspace e sua pasta de rascunho; a cada `native-build`,
