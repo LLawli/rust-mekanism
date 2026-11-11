@@ -1,0 +1,20 @@
+# Os efeitos de tela do Configurator: uma etapa por linha (`chave=valor`), a mesma para o original (`testes/CenaConfigurator.java`) e para o port (`horizon2/h2_efeitos.py`).
+# A câmara de enriquecimento fica em (300, -60, 0) virada para o norte; `tp` é `x,y,z,yaw,pitch` do jogador (olhos a 1,62 dos pés); `config` são os `DataType` (ordinal) por
+# `RelativeSide` (frente, esquerda, direita, costas, topo, base) do tipo itens.
+nome=aquece efeito=hud modo=configurate_items espera=80 tp=300.5,-61,-1.5,180,0
+nome=overlay_costas efeito=overlay modo=configurate_items tp=300.5,-61,3.5,180,24 config=1,4,7,3,5,9
+nome=overlay_lado efeito=overlay modo=configurate_items tp=303.5,-61,0.5,90,24 config=1,4,7,3,5,9
+nome=overlay_topo_sul efeito=overlay modo=configurate_items tp=300.5,-61,-1.5,0,17 config=1,4,7,3,5,9
+nome=overlay_topo_oeste efeito=overlay modo=configurate_items tp=303,-61,0.5,90,14 config=1,4,7,3,5,9
+nome=overlay_energia efeito=overlay modo=configurate_energy tp=300.5,-61,3.5,180,24 config=1,4,7,3,5,9
+nome=sem_overlay_fluidos efeito=overlay modo=configurate_fluids tp=300.5,-61,3.5,180,24 config=1,4,7,3,5,9
+nome=sem_overlay_girar efeito=overlay modo=rotate tp=300.5,-61,3.5,180,24 config=1,4,7,3,5,9
+nome=status_criativo efeito=status modo=wrench espera=30 tp=300.5,-61,-1.5,180,0
+nome=status_sobrevivencia efeito=status modo=configurate_chemicals espera=60 sobrevivencia=1 tp=300.5,-61,-1.5,180,0
+nome=status_apagando efeito=status modo=rotate espera=90 tp=300.5,-61,-1.5,180,0
+nome=hud efeito=hud modo=configurate_heat tp=300.5,-61,-1.5,180,0
+nome=hud_sobrevivencia efeito=hud modo=empty sobrevivencia=1 tp=300.5,-61,-1.5,180,0
+nome=radial_centro efeito=radial modo=configurate_fluids mouse=0,0 tp=300.5,-61,-1.5,180,0
+nome=radial_cima efeito=radial modo=configurate_items mouse=0,-70 tp=300.5,-61,-1.5,180,0
+nome=radial_direita efeito=radial modo=wrench mouse=70,0 tp=300.5,-61,-1.5,180,0
+nome=radial_baixo_esquerda efeito=radial modo=rotate mouse=-50,50 tp=300.5,-61,-1.5,180,0

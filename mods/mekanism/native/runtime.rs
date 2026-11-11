@@ -3602,6 +3602,75 @@ pub fn overlay_sprite(kind: TransmissionType) -> String {
     format!("{SPRITES}/overlay/{}_overlay", kind.serialized_name())
 }
 
+/// `MekanismLang.GENERIC_WITH_PARENTHESIS.translateColored(color, dataType, color.getName())`: `"Input (Red)"`, na cor do tipo.
+fn data_type_with_color(data_type: DataType) -> Chat {
+    let color = data_type.color();
+    Chat::new(
+        "generic.mekanism.with_parenthesis",
+        vec![
+            Chat::plain(
+                &format!("side_data.mekanism.{}", data_type.serialized_name()),
+                Some(color),
+            ),
+            Chat::new(
+                &format!(
+                    "color.mekanism.{}",
+                    machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(color)]
+                ),
+                Vec::new(),
+                None,
+            ),
+        ],
+        Some(enum_color_rgb(color)),
+    )
+}
+
+/// `GuiSlot.updateTooltip` com o Configurator no cursor: sobre um slot de inventário da máquina, o primeiro `DataType` (na ordem do `ordinal`) cujo `SlotInfo` tem o slot,
+/// com o nome da cor. `None` quando nenhum tem (o tooltip do slot segue o caminho normal).
+pub fn configurator_slot_tooltip(config: &TileComponentConfig, container: usize) -> Option<Chat> {
+    let info = config.config(TransmissionType::Item)?;
+    info.supported_data_types()
+        .into_iter()
+        .find(|data_type| {
+            info.slot_info_of(*data_type)
+                .is_some_and(|slot| slot.containers.contains(&container))
+        })
+        .map(data_type_with_color)
+}
+
+/// `GuiGauge.updateTooltip` com o Configurator no cursor, num medidor de cor `color` (o `ordinal` do `EnumColor`, o `getGaugeColor().getColor()`) e tipo `kind`: o
+/// `DataType` do tipo cuja cor é a do medidor, ou só o nome da cor entre parênteses se não há. Sem a configuração da máquina (a tela não é de uma máquina configurável) ou sem
+/// tipo, o tooltip fica vazio.
+pub fn configurator_gauge_tooltip(
+    config: Option<&TileComponentConfig>,
+    kind: Option<TransmissionType>,
+    color: u8,
+) -> Vec<Chat> {
+    let (Some(config), Some(kind)) = (config, kind) else {
+        return Vec::new();
+    };
+    let found = config.config(kind).and_then(|info| {
+        info.supported_data_types()
+            .into_iter()
+            .find(|data_type| data_type.color() == color)
+    });
+    vec![match found {
+        Some(data_type) => data_type_with_color(data_type),
+        None => Chat::new(
+            "generic.mekanism.parenthesis",
+            vec![Chat::new(
+                &format!(
+                    "color.mekanism.{}",
+                    machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(color)]
+                ),
+                Vec::new(),
+                None,
+            )],
+            Some(enum_color_rgb(color)),
+        ),
+    }]
+}
+
 /// A configuração de cliente que os efeitos leem (`MekanismConfig.client`): `allowModeScroll` e `whiteRadialText` (seção `accessibility`), `enabled`, `scale` e
 /// `reverse` (seção `hud`).
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -53,7 +53,10 @@ pub fn vertices(face: Face, y_rot: f64) -> [Vertex; 4] {
     let rotation = matches!(face, Face::Up | Face::Down)
         .then(|| top_bottom_rotation(camera_facing(y_rot)))
         .flatten();
-    let mut out = [Vertex { position: [0.0; 3], uv: [0.0; 2] }; 4];
+    let mut out = [Vertex {
+        position: [0.0; 3],
+        uv: [0.0; 2],
+    }; 4];
     for (vertex, extent) in face_info(face).iter().enumerate() {
         let mut position = [
             extent[0] + step[0] as f32 * OFFSET,
@@ -80,7 +83,11 @@ fn rotate_about_y(position: [f32; 3], degrees: f32, pivot: [f32; 3]) -> [f32; 3]
     let angle = degrees * crate::mth::DEG_TO_RAD;
     let half = angle * 0.5;
     let (sin, cos) = (half.sin(), half.cos());
-    let (x, y, z) = (position[0] - pivot[0], position[1] - pivot[1], position[2] - pivot[2]);
+    let (x, y, z) = (
+        position[0] - pivot[0],
+        position[1] - pivot[1],
+        position[2] - pivot[2],
+    );
     // Rotação do vetor pelo quaternion (0, s, 0, c) em torno de Y.
     let rx = x * (cos * cos - sin * sin) + z * (2.0 * sin * cos);
     let rz = -x * (2.0 * sin * cos) + z * (cos * cos - sin * sin);

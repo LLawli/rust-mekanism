@@ -42,7 +42,9 @@ fn original_accessibility_section() -> String {
 /// A seção `hud` do arquivo do original, com as três chaves que os efeitos leem (`enabled`, `scale` e `reverse`): o resto é do HUD do MekaSuit.
 fn original_hud_section() -> String {
     let text = original();
-    let start = text.find("#Settings for configuring Mekanism's HUD").unwrap();
+    let start = text
+        .find("#Settings for configuring Mekanism's HUD")
+        .unwrap();
     let end = text[start..].find("\n\n").unwrap() + start + 1;
     let mut kept = Vec::new();
     let mut keys = 0;

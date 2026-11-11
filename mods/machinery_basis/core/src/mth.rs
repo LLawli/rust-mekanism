@@ -21,7 +21,9 @@ struct Tables {
 fn tables() -> &'static Tables {
     static TABLES: OnceLock<Tables> = OnceLock::new();
     TABLES.get_or_init(|| {
-        let sin = (0..65536).map(|i| (f64::from(i) / SIN_SCALE).sin() as f32).collect();
+        let sin = (0..65536)
+            .map(|i| (f64::from(i) / SIN_SCALE).sin() as f32)
+            .collect();
         let mut asin = [0.0; LUT_SIZE];
         let mut cos = [0.0; LUT_SIZE];
         for index in 0..LUT_SIZE {

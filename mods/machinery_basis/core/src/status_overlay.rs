@@ -40,7 +40,10 @@ pub struct Draw {
 
 impl StatusOverlay {
     pub const fn new() -> Self {
-        Self { timer: 0, last_tick: 0 }
+        Self {
+            timer: 0,
+            last_tick: 0,
+        }
     }
 
     /// `setTimer`.
@@ -130,15 +133,24 @@ mod tests {
         overlay.set_timer();
         let mut creative = around(1);
         creative.can_hurt = false;
-        assert_eq!(overlay.render(&creative, Some(10)).unwrap().y, 270 - (59 - 14 + 13));
+        assert_eq!(
+            overlay.render(&creative, Some(10)).unwrap().y,
+            270 - (59 - 14 + 13)
+        );
         let mut message = around(2);
         message.overlay_message = true;
-        assert_eq!(overlay.render(&message, Some(10)).unwrap().y, 270 - (59 + 14 + 13));
+        assert_eq!(
+            overlay.render(&message, Some(10)).unwrap().y,
+            270 - (59 + 14 + 13)
+        );
         // Em criativo a barra de ação não conta (`else if`).
         let mut both = around(3);
         both.can_hurt = false;
         both.overlay_message = true;
-        assert_eq!(overlay.render(&both, Some(10)).unwrap().y, 270 - (59 - 14 + 13));
+        assert_eq!(
+            overlay.render(&both, Some(10)).unwrap().y,
+            270 - (59 - 14 + 13)
+        );
     }
 
     #[test]

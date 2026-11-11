@@ -320,6 +320,8 @@
   "gui.mekanism.needed": "Needed: %1$s",
   "gui.mekanism.empty": "Empty",
   "generic.mekanism.fraction": "%1$s/%2$s",
+  "generic.mekanism.parenthesis": "(%1$s)",
+  "generic.mekanism.with_parenthesis": "%1$s (%2$s)",
   "generic.mekanism.stored.mb": "%1$s: %2$s mB",
   "energy.mekanism.forge.short": "FE",
   "temperature.mekanism.short": "Temp: %1$s",

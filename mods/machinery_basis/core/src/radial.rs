@@ -198,9 +198,9 @@ pub fn scrolled(modes: usize, current: Option<usize>, shift: i32) -> Scroll {
         return Scroll::Consumed;
     }
     match current {
-        Some(index) if modes > 0 => Scroll::Select(
-            (index as i64 + i64::from(shift)).rem_euclid(modes as i64) as usize,
-        ),
+        Some(index) if modes > 0 => {
+            Scroll::Select((index as i64 + i64::from(shift)).rem_euclid(modes as i64) as usize)
+        }
         _ => Scroll::Passed,
     }
 }
@@ -357,6 +357,14 @@ mod tests {
         assert_eq!(scroll.scroll(0.5, 14), 0);
         assert_eq!(scroll.scroll(0.0, 36), 0);
         assert_eq!(scroll.scroll(0.6, 37), 0);
+        // Meio passo e, passados 22 tiques, outro meio: não soma.
+        let mut late = ScrollIncrementer::default();
+        assert_eq!(late.scroll(0.6, 100), 0);
+        assert_eq!(late.scroll(0.6, 122), 0);
+        // Dentro do segundo soma.
+        let mut quick = ScrollIncrementer::default();
+        assert_eq!(quick.scroll(0.6, 100), 0);
+        assert_eq!(quick.scroll(0.6, 120), 1);
     }
 
     #[test]
@@ -369,9 +377,18 @@ mod tests {
 
     #[test]
     fn the_tick_opens_with_the_key_and_closes_without_it() {
-        assert_eq!(tick(true, true, true, false, false), Tick::Open(Slot::MainHand));
-        assert_eq!(tick(true, true, false, true, false), Tick::Open(Slot::OffHand));
-        assert_eq!(tick(true, true, true, true, true), Tick::Open(Slot::MainHand));
+        assert_eq!(
+            tick(true, true, true, false, false),
+            Tick::Open(Slot::MainHand)
+        );
+        assert_eq!(
+            tick(true, true, false, true, false),
+            Tick::Open(Slot::OffHand)
+        );
+        assert_eq!(
+            tick(true, true, true, true, true),
+            Tick::Open(Slot::MainHand)
+        );
         // Sem a tecla, ou sem item de rádio, a tela do menu fecha.
         assert_eq!(tick(true, false, true, false, true), Tick::Close);
         assert_eq!(tick(true, true, false, false, true), Tick::Close);

@@ -2,7 +2,7 @@
 """O Configurator e o cartão de configuração em jogo (`H_NAME=horizon` ou `horizon2`, mundo plano), contra o rastro do original (`rastros/configurator_*.jsonl`).
 
 Etapas (uma por chamada, ou `all`):
-  modos     a tecla N troca o modo (para trás agachado) e a rolagem agachado também; o componente na pilha e o tooltip
+  modos     a rolagem agachado troca o modo (a tecla N só abre o menu radial); o componente na pilha e o tooltip
   lados     agachado em configurar muda o DataType da face (item e energia), sem agachar a tela da máquina abre; a mensagem sai no overlay
   girar     ROTATE: sem agachar o bloco gira (norte vira leste, sem abrir a tela); agachado fica para a face oposta
   esvaziar  EMPTY agachado solta os itens dos slots
@@ -23,6 +23,13 @@ MODE_COMPONENT = "mekanism:configurator_mode"
 
 def state():
     return json.loads(h.ctl("state"))
+
+
+def mode_now():
+    comps = (held() or {}).get("components") or {}
+    if isinstance(comps, str):
+        comps = json.loads(comps)
+    return comps.get(MODE_COMPONENT, "configurate_items")
 
 
 def held():
@@ -72,19 +79,21 @@ def survival():
 
 
 def modos():
+    """A tecla N com o Configurator só abre o menu radial (`isModeItem(.., false)` é falso), então o modo troca pela rolagem agachado (`allowModeScroll`)."""
     ok = True
     give_configurator()
-    for shift, key_count, want in [(False, 1, "configurate_fluids"), (False, 7, "configurate_items"), (True, 1, "wrench")]:
-        for _ in range(key_count):
-            if shift:
-                h.ctl("key", "shift", "down")
-            h.ctl("key", "n", "tap")
-            if shift:
-                h.ctl("key", "shift", "up")
-            h.ctl("wait", "6")
-        stack = held() or {}
-        got = (stack.get("components") or {}).get(MODE_COMPONENT, "configurate_items")
-        ok &= report(got == want, f"tecla N {'agachado ' if shift else ''}x{key_count}: {got} (original {want})")
+    for steps, want in [(1, "configurate_fluids"), (7, "configurate_items"), (-1, "wrench")]:
+        h.ctl("key", "shift", "down")
+        for _ in range(abs(steps)):
+            h.ctl("scroll-at", "240", "135", "1" if steps > 0 else "-1")
+            h.ctl("wait", "24")
+        h.ctl("key", "shift", "up")
+        got = mode_now()
+        ok &= report(got == want, f"rolagem agachado x{steps}: {got} (original {want})")
+    h.ctl("key", "n", "tap")
+    h.ctl("wait", "10")
+    got = mode_now()
+    ok &= report(got == "wrench", f"a tecla N sozinha não troca o modo: {got}")
     print(json.dumps(held())[:300])
     return ok
 

@@ -1517,6 +1517,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         basis::write_side_nbt(entity, &side_now);
         live.side_nbt = basis::read_side_nbt(entity);
     }
+    publish_side_config(game.native_dimension(), pos, &live);
     // A capacidade segue os upgrades instalados e as faces seguem a configuração de lados e a frente (`ConfigHolder`), e o Horizon só
     // sabe isso por instância se dissermos (H1).
     let capacity = basis::energy_as_int(machine.energy().capacity(), "a capacidade de energia");
@@ -1689,46 +1690,38 @@ pub(in crate::game) fn with_machine<R>(game: &mut Game<'_>, pos: [i32; 3], act: 
         live.energy_capacity = Some((capacity, insert_faces, extract_faces));
     }
     game.world.modified.insert((at.0 >> 4, at.2 >> 4));
+    publish_side_config(dimension, pos, &live);
     if was_alive {
         LIVE_MACHINES.with_borrow_mut(|machines| machines.insert(key, live));
     }
     Some(result)
 }
 
-thread_local! {
-    /// A configuração de lados que `peek_side_config` montou por último: a máquina, o que o NBT tinha na hora (`component_config`) e o resultado. Um quadro
-    /// com o Configurator na mão pergunta a mesma máquina de novo, e montar a máquina inteira (`born`) a cada quadro seria caro.
-    static PEEKED: RefCell<Option<(&'static str, [i32; 3], basis::SideNbt, machinery_basis_core::side_config::TileComponentConfig)>> = const { RefCell::new(None) };
+/// A configuração de lados de cada máquina viva, como o servidor a deixou (com o NBT de que saiu, para só trocar quando muda). O cliente não tem o objeto vivo, e o NBT do
+/// tile que ele vê não recebe as mudanças (um comando de dados, o Configurator): o original sincroniza `TileComponentConfig` pelo `getUpdateTag`. Enquanto esse envio não
+/// existe, o cliente que roda junto do servidor (um mundo de um jogador, ou o anfitrião de LAN) lê daqui, que é do processo; um convidado de LAN não tem o servidor e não vê a
+/// sobreposição do Configurator (pendência no plano).
+static PUBLISHED_SIDES: std::sync::Mutex<Vec<(&'static str, [i32; 3], basis::SideNbt, machinery_basis_core::side_config::TileComponentConfig)>> = std::sync::Mutex::new(Vec::new());
+
+/// Guarda a configuração do objeto vivo se o NBT dela mudou desde a última vez.
+fn publish_side_config(dimension: &'static str, pos: [i32; 3], live: &Live) {
+    let mut published = PUBLISHED_SIDES.lock().unwrap_or_else(|error| error.into_inner());
+    let found = published.iter().position(|(d, p, ..)| *d == dimension && *p == pos);
+    match found {
+        Some(index) if published[index].2 == live.side_nbt => {}
+        Some(index) => published[index] = (dimension, pos, live.side_nbt.clone(), live.machine.side_config().clone()),
+        None => published.push((dimension, pos, live.side_nbt.clone(), live.machine.side_config().clone())),
+    }
 }
 
-/// A `TileComponentConfig` da máquina em `pos`, só para ler (o desenho da sobreposição do Configurator pergunta a cada quadro): a do objeto vivo, ou a montada do NBT
-/// e guardada enquanto o NBT não mudar. Não grava nada no mundo (`with_machine` grava e marca o chunk).
+/// A `TileComponentConfig` da máquina em `pos`, só para ler (o desenho da sobreposição do Configurator pergunta a cada quadro): a que o servidor publicou. Não grava nada
+/// no mundo (`with_machine` grava e marca o chunk).
 pub(in crate::game) fn peek_side_config(game: &Game<'_>, pos: [i32; 3]) -> Option<machinery_basis_core::side_config::TileComponentConfig> {
     let block = game.native_block(pos);
-    let spec = machine_of(&block)?;
-    let key = (game.native_dimension(), pos);
-    if let Some(config) = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.side_config().clone())) {
-        return Some(config);
-    }
-    let at = (pos[0], pos[1], pos[2]);
-    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
-        return None;
-    };
-    let side = basis::read_side_nbt(entity);
-    let cached = PEEKED.with_borrow(|peeked| {
-        peeked
-            .as_ref()
-            .filter(|(name, at, nbt, _)| *name == spec.block && *at == pos && *nbt == side)
-            .map(|(.., config)| config.clone())
-    });
-    if cached.is_some() {
-        return cached;
-    }
-    let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
-    let live = born(game, pos, entity, spec, &indexes_of(game, spec), origin);
-    let config = live.machine.side_config().clone();
-    PEEKED.with_borrow_mut(|peeked| *peeked = Some((spec.block, pos, side, config.clone())));
-    Some(config)
+    machine_of(&block)?;
+    let dimension = game.native_dimension();
+    let published = PUBLISHED_SIDES.lock().unwrap_or_else(|error| error.into_inner());
+    published.iter().find(|(d, p, ..)| *d == dimension && *p == pos).map(|(.., config)| config.clone())
 }
 
 /// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:

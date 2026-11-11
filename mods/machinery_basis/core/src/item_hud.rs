@@ -102,7 +102,15 @@ mod tests {
     fn one_line_sits_at_the_bottom_left_with_two_pixels_of_margin() {
         // Escala 0,6 (`float`): 270 / 0,6F = 449,99997, e o `(int)` fica em 449 (não 450).
         let layout = layout(&[vec![90]], 480, 270, 0.6, false, true);
-        assert_eq!(layout.lines, vec![Line { group: 0, index: 0, x: 2, y: 449 - (2 + 9) }]);
+        assert_eq!(
+            layout.lines,
+            vec![Line {
+                group: 0,
+                index: 0,
+                x: 2,
+                y: 449 - (2 + 9)
+            }]
+        );
         assert_eq!(layout.max_text_height, 262);
     }
 
@@ -113,7 +121,12 @@ mod tests {
         let height = 262;
         assert_eq!(
             layout.backdrop,
-            Some(Backdrop { x0: 0, y0: y - 2, x1: 2 + 90 + 2, y1: y + height + 2 })
+            Some(Backdrop {
+                x0: 0,
+                y0: y - 2,
+                x1: 2 + 90 + 2,
+                y1: y + height + 2
+            })
         );
     }
 

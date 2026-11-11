@@ -3,7 +3,8 @@
 # o `config/mekanism/client.toml`, e o mundo de teste, que é uma cópia do mundo MODELO (`antes`) apagada no `depois`. Um arquivo que não existia antes some no `depois`.
 # Uso: estado_horizon.sh antes|depois PASTA MUNDO [MODELO]   (PASTA: onde ficam as cópias; MUNDO: o nome do mundo de teste; MODELO: o mundo copiado, `spike` por padrão)
 set -eu
-D=$HOME/.local/share/jogo-isolado/horizon/data/horizon
+HZ=${HZ:-horizon}
+D=$HOME/.local/share/jogo-isolado/$HZ/data/horizon
 ARQ="options.txt horizon-graphics.txt horizon-player.txt config/mekanism/client.toml"
 P=$2/backup; MUNDO=$3; MODELO=${4:-spike}
 case "$1" in
