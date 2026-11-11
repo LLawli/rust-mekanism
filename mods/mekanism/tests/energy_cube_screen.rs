@@ -147,3 +147,22 @@ fn the_screen_text_is_in_the_language_file() {
         assert!(lang.contains(&format!("\"{key}\"")), "falta {key}");
     }
 }
+
+/// O Horizon só abre o menu de um bloco de mod que tem o arquivo do tipo de menu: os cinco cubos, com os dois slots (o de descarga e o de carga) e sem slots virtuais.
+#[test]
+fn every_cube_declares_its_menu_type() {
+    for tier in ["basic", "advanced", "elite", "ultimate", "creative"] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "content/data/mekanism/horizon/menu/{tier}_energy_cube.json"
+        ));
+        let menu: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+        )
+        .unwrap();
+        assert_eq!(menu["slots"], 2, "{tier}");
+        assert!(
+            menu.get("results").is_none(),
+            "{tier}: nenhum slot é de resultado"
+        );
+    }
+}

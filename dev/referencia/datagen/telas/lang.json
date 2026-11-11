@@ -23,5 +23,12 @@
   "side.mekanism.front": "Front",
   "side.mekanism.left": "Left",
   "side.mekanism.right": "Right",
-  "side.mekanism.top": "Top"
+  "side.mekanism.top": "Top",
+  "gui.mekanism.max_output": "Max Output: %1$s/t",
+  "matrix.mekanism.input_rate": "Input: %1$s/t",
+  "container.mekanism.basic_energy_cube": "Basic Energy Cube",
+  "container.mekanism.advanced_energy_cube": "Advanced Energy Cube",
+  "container.mekanism.elite_energy_cube": "Elite Energy Cube",
+  "container.mekanism.ultimate_energy_cube": "Ultimate Energy Cube",
+  "container.mekanism.creative_energy_cube": "Creative Energy Cube"
 }
