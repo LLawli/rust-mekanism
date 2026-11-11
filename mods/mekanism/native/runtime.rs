@@ -2419,6 +2419,321 @@ pub mod worn_gear {
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// O Configurator (`ItemConfigurator`) e o cartão de configuração (`ItemConfigurationCard`).
+
+/// `MekanismItems.CONFIGURATOR` e `CONFIGURATION_CARD`.
+pub const CONFIGURATOR_ITEM: &str = "mekanism:configurator";
+pub const CONFIGURATION_CARD_ITEM: &str = "mekanism:configuration_card";
+/// `MekanismDataComponents.CONFIGURATOR_MODE` (o nome serializado do `ConfiguratorMode`) e `CONFIGURATION_DATA` (o `CompoundTag` do cartão).
+pub const CONFIGURATOR_MODE_COMPONENT: &str = "mekanism:configurator_mode";
+pub const CONFIGURATION_DATA_COMPONENT: &str = "mekanism:configuration_data";
+
+/// `EnumColor`, o RGB da cor primária de cada uma na ordem do `ordinal` (`EnumColor.java:27-46`); os nomes estão em `side_config::ENUM_COLOR_NAMES`.
+pub const ENUM_COLOR_RGB: [u32; 18] = [
+    0x40_40_40, 0x36_6B_D0, 0x59_C1_5F, 0x00_F3_D0, 0xC9_07_1F, 0xA4_60_D9, 0xFF_A1_60, 0xCF_CF_CF, 0x7A_7A_7A, 0x55_9E_FF, 0x75_FF_89, 0x30_FF_F9,
+    0xFF_38_3C, 0xD5_5E_CB, 0xFF_DD_4F, 0xFF_FF_FF, 0xA1_76_49, 0xFF_BC_C4,
+];
+/// Os `ordinal` de `EnumColor` que o Configurator usa: `BRIGHT_GREEN`, `DARK_RED`, `YELLOW`, `PINK` e a cor do texto de `GRAY`.
+pub const COLOR_BRIGHT_GREEN: u8 = 10;
+pub const COLOR_DARK_RED: u8 = 4;
+pub const COLOR_YELLOW: u8 = 14;
+pub const COLOR_PINK: u8 = 13;
+pub const COLOR_GRAY: u8 = 7;
+
+/// `ItemConfigurator.ConfiguratorMode`, na ordem do `ordinal`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ConfiguratorMode {
+    ConfigurateItems,
+    ConfigurateFluids,
+    ConfigurateChemicals,
+    ConfigurateEnergy,
+    ConfigurateHeat,
+    Empty,
+    Rotate,
+    Wrench,
+}
+
+impl ConfiguratorMode {
+    /// `VALUES`.
+    pub const VALUES: [ConfiguratorMode; 8] = [
+        ConfiguratorMode::ConfigurateItems,
+        ConfiguratorMode::ConfigurateFluids,
+        ConfiguratorMode::ConfigurateChemicals,
+        ConfiguratorMode::ConfigurateEnergy,
+        ConfiguratorMode::ConfigurateHeat,
+        ConfiguratorMode::Empty,
+        ConfiguratorMode::Rotate,
+        ConfiguratorMode::Wrench,
+    ];
+    /// `getDefaultMode`.
+    pub const DEFAULT: ConfiguratorMode = ConfiguratorMode::ConfigurateItems;
+
+    pub fn ordinal(self) -> usize {
+        self as usize
+    }
+
+    /// `getSerializedName`: `name().toLowerCase(Locale.ROOT)`.
+    pub fn serialized_name(self) -> &'static str {
+        match self {
+            ConfiguratorMode::ConfigurateItems => "configurate_items",
+            ConfiguratorMode::ConfigurateFluids => "configurate_fluids",
+            ConfiguratorMode::ConfigurateChemicals => "configurate_chemicals",
+            ConfiguratorMode::ConfigurateEnergy => "configurate_energy",
+            ConfiguratorMode::ConfigurateHeat => "configurate_heat",
+            ConfiguratorMode::Empty => "empty",
+            ConfiguratorMode::Rotate => "rotate",
+            ConfiguratorMode::Wrench => "wrench",
+        }
+    }
+
+    /// `CODEC`: um nome que não existe não decodifica.
+    pub fn from_serialized_name(name: &str) -> Option<ConfiguratorMode> {
+        Self::VALUES.into_iter().find(|mode| mode.serialized_name() == name)
+    }
+
+    /// `isConfigurating`.
+    pub fn is_configurating(self) -> bool {
+        self.transmission().is_some()
+    }
+
+    /// `getTransmission`.
+    pub fn transmission(self) -> Option<TransmissionType> {
+        match self {
+            ConfiguratorMode::ConfigurateItems => Some(TransmissionType::Item),
+            ConfiguratorMode::ConfigurateFluids => Some(TransmissionType::Fluid),
+            ConfiguratorMode::ConfigurateChemicals => Some(TransmissionType::Chemical),
+            ConfiguratorMode::ConfigurateEnergy => Some(TransmissionType::Energy),
+            ConfiguratorMode::ConfigurateHeat => Some(TransmissionType::Heat),
+            ConfiguratorMode::Empty | ConfiguratorMode::Rotate | ConfiguratorMode::Wrench => None,
+        }
+    }
+
+    /// `color()`: o `ordinal` do `EnumColor`.
+    pub fn color(self) -> u8 {
+        match self {
+            ConfiguratorMode::Empty => COLOR_DARK_RED,
+            ConfiguratorMode::Rotate => COLOR_YELLOW,
+            ConfiguratorMode::Wrench => COLOR_PINK,
+            _ => COLOR_BRIGHT_GREEN,
+        }
+    }
+
+    /// `ItemConfigurator.canPerformAction`: as nove `MekanismItemAbilities` (pelo nome em minúsculas) que a pilha neste modo responde.
+    pub fn abilities(self) -> std::collections::BTreeMap<&'static str, bool> {
+        let configures = |kind: TransmissionType| self.transmission() == Some(kind);
+        std::collections::BTreeMap::from([
+            ("wrench_configure", self.is_configurating()),
+            ("wrench_configure_chemicals", configures(TransmissionType::Chemical)),
+            ("wrench_configure_energy", configures(TransmissionType::Energy)),
+            ("wrench_configure_fluids", configures(TransmissionType::Fluid)),
+            ("wrench_configure_heat", configures(TransmissionType::Heat)),
+            ("wrench_configure_items", configures(TransmissionType::Item)),
+            ("wrench_dismantle", self == ConfiguratorMode::Wrench),
+            ("wrench_empty", self == ConfiguratorMode::Empty),
+            ("wrench_rotate", self == ConfiguratorMode::Rotate),
+        ])
+    }
+
+    /// `doesSneakBypassUse`: só a chave inglesa deixa o bloco agir com o jogador agachado.
+    pub fn sneak_bypasses_use(self) -> bool {
+        self == ConfiguratorMode::Wrench
+    }
+
+    /// `IIncrementalEnum.adjust`: `byIndexWrapping(ordinal() + shift)`, e o próprio modo se o deslocamento é 0.
+    pub fn adjust(self, shift: i32) -> ConfiguratorMode {
+        if shift == 0 {
+            return self;
+        }
+        let count = Self::VALUES.len() as i64;
+        Self::VALUES[(self.ordinal() as i64 + i64::from(shift)).rem_euclid(count) as usize]
+    }
+}
+
+/// Um `Component` de tradução com argumentos e a cor do estilo: o que as mensagens e o tooltip do Configurator e do cartão levam, no formato que o
+/// `ComponentSerialization.CODEC` grava (`translate`, `with`, `color`). `color` é o RGB, sem alfa.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Chat {
+    pub translate: String,
+    pub with: Vec<Chat>,
+    pub color: Option<u32>,
+}
+
+impl Chat {
+    fn new(translate: &str, with: Vec<Chat>, color: Option<u32>) -> Chat {
+        Chat { translate: translate.to_owned(), with, color }
+    }
+
+    /// `translate` sem argumentos, na cor `color` (o `ordinal` de `EnumColor`).
+    fn plain(translate: &str, color: Option<u8>) -> Chat {
+        Chat::new(translate, Vec::new(), color.map(enum_color_rgb))
+    }
+
+    /// O JSON de componente, como o Java o grava.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut json = serde_json::json!({ "translate": self.translate });
+        if !self.with.is_empty() {
+            json["with"] = serde_json::Value::Array(self.with.iter().map(Chat::to_json).collect());
+        }
+        if let Some(color) = self.color {
+            json["color"] = serde_json::Value::String(format!("#{color:06X}"));
+        }
+        json
+    }
+}
+
+/// `EnumColor.getRgb` pelo `ordinal`.
+pub fn enum_color_rgb(color: u8) -> u32 {
+    ENUM_COLOR_RGB[usize::from(color)]
+}
+
+/// `EnumColor.getColoredName`: `color.mekanism.<prefixo>` na própria cor.
+fn colored_name(color: u8) -> Chat {
+    Chat::plain(&format!("color.mekanism.{}", machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(color)]), Some(color))
+}
+
+/// `TransmissionType.getLangEntry`: `transmission.mekanism.<transmission>`.
+fn transmission_name(kind: TransmissionType) -> Chat {
+    Chat::new(&format!("transmission.mekanism.{}", kind.serialized_name()), Vec::new(), None)
+}
+
+impl ConfiguratorMode {
+    /// `getTextComponent`: o nome do modo na cor dele; o de configurar leva o tipo de transmissão como argumento.
+    pub fn text(self) -> Chat {
+        let color = Some(enum_color_rgb(self.color()));
+        match self.transmission() {
+            Some(kind) => Chat::new("configurator.mekanism.configurate", vec![transmission_name(kind)], color),
+            None => Chat::new(
+                match self {
+                    ConfiguratorMode::Empty => "configurator.mekanism.empty",
+                    ConfiguratorMode::Rotate => "configurator.mekanism.rotate",
+                    _ => "configurator.mekanism.wrench",
+                },
+                Vec::new(),
+                color,
+            ),
+        }
+    }
+
+    /// `addToTooltip` (o appender de `CONFIGURATOR_MODE`): `MekanismLang.STATE.translateColored(EnumColor.PINK, this)`.
+    pub fn tooltip_line(self) -> Chat {
+        Chat::new("configurator.mekanism.state", vec![self.text()], Some(enum_color_rgb(COLOR_PINK)))
+    }
+
+    /// `changeMode` -> `DisplayChange.sendMessage`: `MekanismLang.CONFIGURE_STATE.translate(newMode)`, sem cor própria.
+    pub fn configure_state_message(self) -> Chat {
+        Chat::new("configurator.mekanism.configure_state", vec![self.text()], None)
+    }
+}
+
+/// `CONFIGURATOR_VIEW_MODE` (sem agachar) e `CONFIGURATOR_TOGGLE_MODE` (agachado): `translateColored(GRAY, transmissionType, dataType.getColor(),
+/// dataType, dataType.getColor().getColoredName())`, a cor do tipo de dado valendo para os dois últimos argumentos.
+pub fn configurator_side_message(toggled: bool, kind: TransmissionType, data_type: DataType) -> Chat {
+    let color = data_type.color();
+    let data = Chat::plain(&format!("side_data.mekanism.{}", data_type.serialized_name()), Some(color));
+    Chat::new(
+        if toggled { "configurator.mekanism.toggle_mode" } else { "configurator.mekanism.view_mode" },
+        vec![transmission_name(kind), data, colored_name(color)],
+        Some(enum_color_rgb(COLOR_GRAY)),
+    )
+}
+
+/// `ItemConfigurator.useOn` -> `MekanismUtils.rotate(orientation, supportY)`.
+pub fn rotate_facing(facing: Face, support_y: bool) -> Face {
+    if support_y {
+        return match facing {
+            Face::Up => Face::North,
+            Face::Down => Face::South,
+            Face::North => Face::East,
+            Face::South => Face::West,
+            Face::West => Face::Up,
+            Face::East => Face::Down,
+        };
+    }
+    match facing {
+        Face::North => Face::East,
+        Face::East => Face::South,
+        Face::South => Face::West,
+        Face::West => Face::North,
+        other => other,
+    }
+}
+
+/// `IModeItem.DisplayChange`: o que acontece depois de trocar o modo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisplayChange {
+    None,
+    /// `displayModeChange`: o jogador recebe `showModeChange` e o cliente mostra o texto do modo sobre a barra.
+    MainHand,
+    /// `player.sendOverlayMessage(CONFIGURE_STATE)`.
+    Other,
+}
+
+/// O que `ItemConfigurator.changeMode` faz: o modo novo, se mudou (e então o componente é escrito), a mensagem de overlay e se o cliente mostra o
+/// texto do modo.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModeChange {
+    pub mode: ConfiguratorMode,
+    pub changed: bool,
+    pub overlay: Option<Chat>,
+    pub show: bool,
+}
+
+/// `changeMode(player, itemAccess, shift, displayChange, transaction)`.
+pub fn change_mode(mode: ConfiguratorMode, shift: i32, display: DisplayChange) -> ModeChange {
+    let new = mode.adjust(shift);
+    let changed = new != mode;
+    ModeChange {
+        mode: new,
+        changed,
+        overlay: (changed && display == DisplayChange::Other).then(|| new.configure_state_message()),
+        show: changed && display == DisplayChange::MainHand,
+    }
+}
+
+/// `SerializationConstants.DATA_NAME`, `DATA_TYPE` e `CONFIG`: as chaves do compound do cartão.
+pub const CARD_DATA_NAME: &str = "data_name";
+pub const CARD_DATA_TYPE: &str = "data_type";
+pub const CARD_CONFIG: &str = "config";
+
+/// A tradução do nome de um bloco (`Block.getDescriptionId`): `block.<namespace>.<path>`.
+pub fn block_description_id(block: &str) -> String {
+    let (namespace, path) = block.split_once(':').unwrap_or(("minecraft", block));
+    format!("block.{namespace}.{}", path.replace('/', "."))
+}
+
+/// `INDIGO`, a cor dos nomes nas mensagens do cartão.
+pub const COLOR_INDIGO: u8 = 9;
+
+/// O nome de um bloco na cor `INDIGO`, ou `gui.mekanism.none` quando o cartão não tem nome (`MekanismLang.NONE`).
+fn card_name(name_key: Option<&str>) -> Chat {
+    Chat::plain(name_key.unwrap_or("gui.mekanism.none"), Some(COLOR_INDIGO))
+}
+
+/// `CONFIG_CARD_GOT`, `SET`: `translate(EnumColor.INDIGO, name)`; a cor vale só para o argumento, e a mensagem não tem cor própria.
+pub fn card_got_message(name_key: &str) -> Chat {
+    Chat::new("configuration_card.mekanism.got", vec![card_name(Some(name_key))], None)
+}
+
+pub fn card_set_message(name_key: Option<&str>) -> Chat {
+    Chat::new("configuration_card.mekanism.set", vec![card_name(name_key)], None)
+}
+
+/// `CONFIG_CARD_UNEQUAL.translateColored(EnumColor.RED)`.
+pub fn card_unequal_message() -> Chat {
+    Chat::plain("configuration_card.mekanism.unequal", Some(12))
+}
+
+/// `CONFIG_CARD_CLEARED.translate()`.
+pub fn card_cleared_message() -> Chat {
+    Chat::plain("configuration_card.mekanism.cleared", None)
+}
+
+/// `ConfigurationData.addToTooltip`: `CONFIG_CARD_HAS_DATA.translateColored(GRAY, INDIGO, name)`.
+pub fn card_tooltip_line(name_key: Option<&str>) -> Chat {
+    Chat::new("configuration_card.mekanism.has_data", vec![card_name(name_key)], Some(enum_color_rgb(COLOR_GRAY)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

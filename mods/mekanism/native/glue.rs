@@ -1631,6 +1631,63 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::UPGRADE_TYPE_COMPONENT.to_owned());
     types.push(rules::SIDE_CONFIG_COMPONENT.to_owned());
     types.push(rules::EJECTOR_COMPONENT.to_owned());
+    types.push(rules::CONFIGURATOR_MODE_COMPONENT.to_owned());
+    types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
+}
+
+/// `getInventorySlots` da máquina: a entrada, a saída, a energia e o slot do químico (os dois slots de upgrade são virtuais).
+pub(in crate::game) fn inventory_slots(block: &str) -> Vec<usize> {
+    let Some(machine) = machine_of(block) else {
+        return Vec::new();
+    };
+    let mut slots = vec![machine.slots.input, machine.slots.output, machine.slots.energy];
+    slots.extend(machine.slots.infusion);
+    slots
+}
+
+/// Se o bloco é uma máquina daqui (a que tem `ISideConfiguration` e a capability do cartão).
+pub(in crate::game) fn is_machine_block(block: &str) -> bool {
+    machine_of(block).is_some()
+}
+
+/// Corre `act` na máquina em `pos`: o objeto vivo, ou um feito do NBT que não fica na tabela. O que `act` mudou na configuração de lados e no
+/// ejetor vai ao NBT na hora (o tick seguinte já os acha iguais) e as faces de energia são avisadas ao Horizon (H1), como o `sideChanged`
+/// invalida as capabilities. Quem usa: o Configurator e o cartão de configuração.
+pub(in crate::game) fn with_machine<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&mut ProgressMachine) -> R) -> Option<R> {
+    let block = game.native_block(pos);
+    let spec = machine_of(&block)?;
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    let at = (pos[0], pos[1], pos[2]);
+    let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
+    let was_alive = alive.is_some();
+    let mut live = match alive {
+        Some(live) => live,
+        None => {
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+                return None;
+            };
+            let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
+            born(game, pos, entity, spec, &indexes_of(game, spec), origin)
+        }
+    };
+    let result = act(&mut live.machine);
+    // As faces que mudaram já foram avisadas por dentro (`sideChanged`); aqui só se esvazia a fila.
+    live.machine.take_side_changes();
+    let now = basis::SideNbt::of(live.machine.side_config().serialize(), live.machine.ejector().serialize());
+    let capacity = basis::energy_as_int(live.machine.energy().capacity(), "a capacidade de energia");
+    let (insert_faces, extract_faces) = energy_faces(&live.machine);
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
+        basis::write_side_nbt(entity, &now);
+        live.side_nbt = basis::read_side_nbt(entity);
+        basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
+        live.energy_capacity = Some((capacity, insert_faces, extract_faces));
+    }
+    game.world.modified.insert((at.0 >> 4, at.2 >> 4));
+    if was_alive {
+        LIVE_MACHINES.with_borrow_mut(|machines| machines.insert(key, live));
+    }
+    Some(result)
 }
 
 /// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:
@@ -2207,10 +2264,21 @@ fn side_spec(block: &str) -> Option<basis::SideSpec> {
 /// `TileEntityConfigurableMachine.writeConfigurationData`: o que o cartão de configuração e o Configurator copiam de uma máquina, o modo de
 /// redstone (`control_type`), `component_config` e `component_ejector` (que falta se o ejetor está no padrão). Lê o objeto vivo, ou o NBT
 /// de uma máquina que ainda não andou. Quem usa vem nas frentes do Configurator e do cartão.
-#[allow(dead_code)]
 pub(in crate::game) fn write_configuration_data(game: &Game<'_>, pos: [i32; 3]) -> Option<Compound> {
     let key = (game.native_dimension(), pos);
-    let data = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.write_configuration_data()))?;
+    let live = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.write_configuration_data()));
+    let data = match live {
+        Some(data) => data,
+        // Uma máquina que ainda não andou nasce do NBT só para ser lida.
+        None => {
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+                return None;
+            };
+            let spec = machine_of(&entity.id)?;
+            let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
+            born(game, pos, entity, spec, &indexes_of(game, spec), origin).machine.write_configuration_data()
+        }
+    };
     let mut out = Compound::default();
     if let Some(control) = data.control_type {
         put_compound(&mut out, CONTROL_TYPE, Tag::String(JavaString::from(control.serialized_name())));
@@ -2225,7 +2293,6 @@ fn put_compound(compound: &mut Compound, key: &str, tag: Tag) {
 
 /// `TileEntityConfigurableMachine.setConfigurationData`: o modo de redstone volta a `DISABLED` se faltava, e a configuração e o ejetor só
 /// mudam se vieram. O objeto vivo e o NBT mudam juntos, e o tick seguinte já os acha iguais.
-#[allow(dead_code)]
 pub(in crate::game) fn set_configuration_data(game: &mut Game<'_>, pos: [i32; 3], input: &Compound) -> bool {
     let key = (game.native_dimension(), pos);
     let side = basis::side_nbt_from(input);
@@ -2316,6 +2383,12 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
             paint(&mut name.0, rgb);
             name.1 = rgba(rgb);
         }
+        // O Configurator e o cartão ganham a linha do appender do componente (`MekanismDataComponents.registerComponentAppender*`).
+        crate::game::mekanism_configurator::tooltip(game, stack, lines);
+        return;
+    }
+    if &*stack.item == rules::CONFIGURATION_CARD_ITEM {
+        crate::game::mekanism_configurator::tooltip(game, stack, lines);
         return;
     }
     if &*stack.item != rules::UPGRADE_ITEM {

@@ -578,6 +578,15 @@ pub struct SideChange {
     pub direction: Face,
 }
 
+/// O resultado do clique do Configurator numa face (`TileComponentConfig::configurator_click`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SideClick {
+    /// Sem agachar: o `DataType` da face, só para a mensagem.
+    View(DataType),
+    /// Agachado: o `DataType` de antes e o de depois (iguais quando o tipo só tem um valor válido).
+    Toggled { old: DataType, new: DataType },
+}
+
 /// O que `serialize` grava e `deserialize` lê de `component_config`: `eject<ordinal>` (booleano) e `config<ordinal>` (`int[]` de
 /// `RelativeSide.VALUES`, o `ordinal` do `DataType`). Na leitura, o que falta não muda nada.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -887,6 +896,27 @@ impl TileComponentConfig {
             return true;
         }
         false
+    }
+
+    /// `ItemConfigurator.useOn`, o ramo de configurar: o clique do Configurator numa face de um bloco que tem `ISideConfiguration`. Devolve `None`
+    /// se a máquina não suporta o tipo (`config.getConfig().supports(type)`), e então o Configurator segue para a capability `IConfigurable`. Sem
+    /// agachar só olha o `DataType` da face; agachado faz `incrementDataType` e `sideChanged`, que só avisa quando o tipo mudou.
+    pub fn configurator_click(
+        &mut self,
+        kind: TransmissionType,
+        facing: Face,
+        face: Face,
+        sneaking: bool,
+    ) -> Option<SideClick> {
+        let side = RelativeSide::from_directions(facing, face);
+        let old = self.config_info.get(&kind)?.data_type(side);
+        if !sneaking {
+            return Some(SideClick::View(old));
+        }
+        let changed = self.increment_mode(kind, side, facing);
+        let new = self.config_info.get(&kind)?.data_type(side);
+        debug_assert_eq!(changed, new != old);
+        Some(SideClick::Toggled { old, new })
     }
 
     /// `decrementMode`.
