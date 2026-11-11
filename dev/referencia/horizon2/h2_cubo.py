@@ -200,5 +200,47 @@ def cena():
 
 STAGES = {"checar": checar, "fotos": lambda: fotos(sys.argv[2]), "cena": cena}
 
+
+
+def quebra():
+    """O drop por quebra com o mouse de verdade (olhar o bloco e segurar o ataque, em sobrevivência): a energia e a configuração vão no item que cai e voltam ao repor."""
+    cmd("tick unfreeze")
+    prep()
+    clear_area()
+    p = at(0, 0, 0)
+    cmd("gamemode survival")
+    cmd("clear @s")
+    cmd("item replace entity @s hotbar.0 with minecraft:diamond_pickaxe")
+    cmd("item replace entity @s hotbar.1 with mekanism:basic_energy_cube[mekanism:energy=1234567L]")
+    cmd(f"tp @s {p[0] + 0.5} {p[1]} {p[2] - 2.5} 0 0")
+    h.ctl("select", "2")
+    out = json.loads(h.ctl("place", *map(str, p), "--item", "mekanism:basic_energy_cube"))
+    time.sleep(1.5)
+    expect("posto pelo jogador", "error" not in out, True)
+    expect("a energia do item entrou no tile", energy(p), 1234567)
+    cmd(f"data merge block {text(p)} " + config([4, 4, 0, 1, 1, 1], DEFAULT_ITEM, True))
+    time.sleep(0.5)
+    h.ctl("select", "1")
+    h.ctl("look-at-block", *map(str, p))
+    time.sleep(0.5)
+    h.ctl("mouse", "left", "down")
+    for _ in range(60):
+        time.sleep(0.25)
+        if "air" in cmd(f"data get block {text(p)}") or "not a block entity" in cmd(f"data get block {text(p)}"):
+            break
+    h.ctl("mouse", "left", "up")
+    time.sleep(2.0)
+    raw = cmd("data get entity @e[type=minecraft:item,limit=1,sort=nearest,nbt={Item:{id:\"mekanism:basic_energy_cube\"}}] Item")
+    print("item que caiu:", raw[-420:])
+    expect("o item solto leva a energia", "1234567" in raw, True)
+    expect("o item solto leva a configuração de lados", "mekanism:side_config" in raw, True)
+    cmd("gamemode creative")
+    for text_ in ["gamerule advance_time true", "gamerule advance_weather true"]:
+        print(text_, "->", h.command(text_))
+    print("TUDO IGUAL" if not failures else "HÁ DIFERENÇAS: " + ", ".join(failures))
+    return not failures
+
+
+STAGES["quebra"] = quebra
 if __name__ == "__main__":
     sys.exit(0 if STAGES[sys.argv[1]]() in (True, None) else 1)
