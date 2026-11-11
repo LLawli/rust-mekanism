@@ -155,7 +155,10 @@ pub enum ConfigPacket {
     /// `PacketEjectColor`.
     EjectColor { click: ClickType },
     /// `PacketInputColor`.
-    InputColor { click: ClickType, side: RelativeSide },
+    InputColor {
+        click: ClickType,
+        side: RelativeSide,
+    },
     /// `GuiInteraction.STRICT_INPUT`.
     StrictInput,
 }
@@ -326,16 +329,28 @@ pub fn encode_snapshot(config: &TileComponentConfig, ejector: &TileComponentEjec
             continue;
         };
         out.push(u8::from(info.is_ejecting()));
-        out.extend(RelativeSide::VALUES.iter().map(|&side| info.data_type(side).ordinal() as u8));
+        out.extend(
+            RelativeSide::VALUES
+                .iter()
+                .map(|&side| info.data_type(side).ordinal() as u8),
+        );
     }
     out.push(u8::from(ejector.has_strict_input()));
     out.push(ejector.output_color().unwrap_or(255));
-    out.extend(RelativeSide::VALUES.iter().map(|&side| ejector.input_color(side).unwrap_or(255)));
+    out.extend(
+        RelativeSide::VALUES
+            .iter()
+            .map(|&side| ejector.input_color(side).unwrap_or(255)),
+    );
     out
 }
 
 /// O inverso de [`encode_snapshot`], sobre a configuração e o ejetor que o cliente montou da máquina. Falso se o tamanho não bate.
-pub fn apply_snapshot(bytes: &[u8], config: &mut TileComponentConfig, ejector: &mut TileComponentEjector) -> bool {
+pub fn apply_snapshot(
+    bytes: &[u8],
+    config: &mut TileComponentConfig,
+    ejector: &mut TileComponentEjector,
+) -> bool {
     let kinds = config.transmissions().to_vec();
     if bytes.len() != kinds.len() * 7 + 8 {
         return false;
@@ -492,7 +507,8 @@ mod tests {
     use crate::side_config::TileComponentConfig;
 
     fn config() -> TileComponentConfig {
-        let mut config = TileComponentConfig::new(&[TransmissionType::Item, TransmissionType::Energy]);
+        let mut config =
+            TileComponentConfig::new(&[TransmissionType::Item, TransmissionType::Energy]);
         config.setup_item_io_config(&[0], &[1], 2, false);
         config.setup_input_config(TransmissionType::Energy, 0);
         config
@@ -672,11 +688,22 @@ mod tests {
         let mut from = config();
         let mut ejector = TileComponentEjector::new();
         let packets = [
-            ConfigPacket::SideData { click: ClickType::Left, side: RelativeSide::Front, transmission: TransmissionType::Item },
-            ConfigPacket::Eject { transmission: TransmissionType::Item },
+            ConfigPacket::SideData {
+                click: ClickType::Left,
+                side: RelativeSide::Front,
+                transmission: TransmissionType::Item,
+            },
+            ConfigPacket::Eject {
+                transmission: TransmissionType::Item,
+            },
             ConfigPacket::StrictInput,
-            ConfigPacket::EjectColor { click: ClickType::Left },
-            ConfigPacket::InputColor { click: ClickType::Right, side: RelativeSide::Left },
+            ConfigPacket::EjectColor {
+                click: ClickType::Left,
+            },
+            ConfigPacket::InputColor {
+                click: ClickType::Right,
+                side: RelativeSide::Left,
+            },
         ];
         for packet in packets {
             packet.apply(&mut from, &mut ejector, Face::North);
@@ -695,7 +722,9 @@ mod tests {
     fn the_button_tint_lightens_and_desaturates() {
         // Cinza sem matiz: só o valor sobe 0,1 (64 + 25,5 = 89,5 arredonda para 90 ou 89 conforme o ponto flutuante).
         let grey = button_tint(0x40_40_40);
-        assert!((0xFF59_5959..=0xFF5A_5A5A).contains(&grey) && (grey & 0xFF) == ((grey >> 8) & 0xFF));
+        assert!(
+            (0xFF59_5959..=0xFF5A_5A5A).contains(&grey) && (grey & 0xFF) == ((grey >> 8) & 0xFF)
+        );
         // Branco fica branco.
         assert_eq!(button_tint(0xFF_FF_FF), 0xFFFF_FFFF);
     }

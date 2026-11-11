@@ -468,8 +468,16 @@ fn the_names_are_the_originals() {
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../dev/referencia/datagen/fluidos/lang.json"),
     );
+    // Os das janelas de configuração de lados (a frente `tela-lados`), conferidos aqui contra a datagen deles.
+    let screens = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/telas/lang.json"),
+    );
+    for (key, value) in screens.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
-        if fluids.get(key).is_some() {
+        if fluids.get(key).is_some() || screens.get(key).is_some() {
             continue;
         }
         assert_eq!(original.get(key), Some(value), "{key}");

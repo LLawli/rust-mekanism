@@ -249,7 +249,12 @@ pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
 /// texto do NightConfig. O original escreve as seis seções e as onze janelas; o port, só o que lê (decisão 12, revista pela 14).
 pub fn client_default_text() -> String {
     use machinery_basis_core::window::WindowPositions;
-    let windows = WindowPositions::defaults_for(&[SIDE_CONFIG_WINDOW, TRANSPORTER_CONFIG_WINDOW, UPGRADE_WINDOW]).to_toml(&WINDOW_TYPES);
+    let windows = WindowPositions::defaults_for(&[
+        SIDE_CONFIG_WINDOW,
+        TRANSPORTER_CONFIG_WINDOW,
+        UPGRADE_WINDOW,
+    ])
+    .to_toml(&WINDOW_TYPES);
     machinery_basis_core::client_config::replace_sections(
         &CLIENT_CONFIG.default_text(),
         "window",

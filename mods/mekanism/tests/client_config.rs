@@ -275,9 +275,9 @@ fn the_default_file_is_the_original_without_what_the_port_does_not_read() {
     let original = original();
     let original_window = &original[original.find("#Stores the last position").unwrap()..];
     let upgrade = &original_window[original_window
-        .find("\t#The last position the Upgrade")
+        .find("\t#The last position the Side")
         .unwrap()..];
-    // O padrão tem só a janela de upgrades, com x e y por gravar; o original tem a que o jogo gravou em (-11, 15).
+    // O padrão tem só as janelas de lados, de transporte e de upgrades, com x e y por gravar; o original tem a de upgrades que o jogo gravou em (-11, 15).
     let header = &original_window[..original_window
         .find("\t#The last position the Color")
         .unwrap()];
