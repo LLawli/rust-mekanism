@@ -155,6 +155,20 @@ fn expected_components(id: &str, java: &Value, armor: &Value) -> Map<String, Val
             json!({"items": format!("mekanism:{repair}")}),
         );
     }
+    // O protótipo do item: `ItemConfigurator` e `ItemConfigurationCard` declaram o componente de modo e o de dados no construtor
+    // (`properties.component(CONFIGURATOR_MODE, CONFIGURATE_ITEMS)`, `component(CONFIGURATION_DATA, ConfigurationData.NONE)`).
+    match id {
+        "configurator" => {
+            components.insert(
+                "mekanism:configurator_mode".into(),
+                json!("configurate_items"),
+            );
+        }
+        "configuration_card" => {
+            components.insert("mekanism:configuration_data".into(), json!({}));
+        }
+        _ => {}
+    }
     if let Some(rgb) = name_color(&format!("mekanism:{id}")) {
         components.insert(
             "minecraft:item_name".into(),
