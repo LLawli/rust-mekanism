@@ -48,7 +48,13 @@ pub fn side_config_spec() -> SideConfigSpec {
     SideConfigSpec {
         types: vec![TransmissionType::Energy, TransmissionType::Item],
         setup: |config| {
-            config.setup_io_config_two(TransmissionType::Item, CHARGE_SLOT, DISCHARGE_SLOT, true, true);
+            config.setup_io_config_two(
+                TransmissionType::Item,
+                CHARGE_SLOT,
+                DISCHARGE_SLOT,
+                true,
+                true,
+            );
             if let Some(info) = config.config_mut(TransmissionType::Item) {
                 info.set_can_eject(false);
             }
@@ -304,7 +310,12 @@ impl CubeEnergy {
         fire(callbacks);
     }
 
-    fn insert_basic(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+    fn insert_basic(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
         if amount == 0 {
             return 0;
         }
@@ -323,7 +334,12 @@ impl CubeEnergy {
         to_add
     }
 
-    fn extract_basic(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+    fn extract_basic(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
         let stored = self.amount();
         if stored == 0 || amount == 0 {
             return 0;
@@ -338,7 +354,12 @@ impl CubeEnergy {
     }
 
     /// `insert`: o criativo só diz o que aceitaria (a transação de dentro nunca commita).
-    pub fn insert(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+    pub fn insert(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
         if self.creative {
             let simulation = Transaction::open(Some(transaction));
             return self.insert_basic(amount, &simulation, automation);
@@ -347,7 +368,12 @@ impl CubeEnergy {
     }
 
     /// `extract`, com o mesmo cuidado do criativo.
-    pub fn extract(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+    pub fn extract(
+        &self,
+        amount: i32,
+        transaction: &Transaction,
+        automation: AutomationType,
+    ) -> i32 {
         if self.creative {
             let simulation = Transaction::open(Some(transaction));
             return self.extract_basic(amount, &simulation, automation);
@@ -644,9 +670,17 @@ impl SplitInfo {
             amount_per_changed: false,
             to_split_among: total_targets,
             amount_to_split,
-            amount_per_target: if total_targets == 0 { 0 } else { amount_to_split / total_targets },
+            amount_per_target: if total_targets == 0 {
+                0
+            } else {
+                amount_to_split / total_targets
+            },
             sent_so_far: 0,
-            remainder: if total_targets == 0 { 0 } else { amount_to_split % total_targets },
+            remainder: if total_targets == 0 {
+                0
+            } else {
+                amount_to_split % total_targets
+            },
         }
     }
 
@@ -1105,7 +1139,11 @@ impl EnergyCube {
             .drain_container_into_slot(&self.charge_slot, &self.energy, None);
         self.items
             .fill_container_or_convert(&self.discharge_slot, &self.energy, None);
-        let new_scale = get_scale(self.prev_scale, self.energy.amount(), self.energy.capacity());
+        let new_scale = get_scale(
+            self.prev_scale,
+            self.energy.amount(),
+            self.energy.capacity(),
+        );
         let mut scale_update = false;
         if scale_changed(new_scale, self.prev_scale) {
             self.prev_scale = new_scale;
@@ -1169,17 +1207,42 @@ mod tests {
         let mut config = TileComponentConfig::new(&spec.types);
         (spec.setup)(&mut config);
         let attached = AttachedSideConfig::new(&[
-            (TransmissionType::Item, LightConfigInfo::create(Some(RelativeSide::Front), None, None, false)),
-            (TransmissionType::Energy, LightConfigInfo::create(Some(RelativeSide::Front), None, None, true)),
+            (
+                TransmissionType::Item,
+                LightConfigInfo::create(Some(RelativeSide::Front), None, None, false),
+            ),
+            (
+                TransmissionType::Energy,
+                LightConfigInfo::create(Some(RelativeSide::Front), None, None, true),
+            ),
         ]);
         config.apply_implicit_components(Some(&attached), Face::North, false);
         let states = side_states(&config);
-        assert_eq!(states[RelativeSide::Front.ordinal()], CubeSideState::ActiveLit);
-        for side in [RelativeSide::Left, RelativeSide::Right, RelativeSide::Back, RelativeSide::Top, RelativeSide::Bottom] {
-            assert_eq!(states[side.ordinal()], CubeSideState::ActiveUnlit, "{side:?}");
+        assert_eq!(
+            states[RelativeSide::Front.ordinal()],
+            CubeSideState::ActiveLit
+        );
+        for side in [
+            RelativeSide::Left,
+            RelativeSide::Right,
+            RelativeSide::Back,
+            RelativeSide::Top,
+            RelativeSide::Bottom,
+        ] {
+            assert_eq!(
+                states[side.ordinal()],
+                CubeSideState::ActiveUnlit,
+                "{side:?}"
+            );
         }
-        config.config_mut(TransmissionType::Energy).unwrap().set_data_type(DataType::None, RelativeSide::Top);
-        assert_eq!(side_states(&config)[RelativeSide::Top.ordinal()], CubeSideState::Inactive);
+        config
+            .config_mut(TransmissionType::Energy)
+            .unwrap()
+            .set_data_type(DataType::None, RelativeSide::Top);
+        assert_eq!(
+            side_states(&config)[RelativeSide::Top.ordinal()],
+            CubeSideState::Inactive
+        );
     }
 
     struct Receivers(RefCell<Vec<(Face, i64, i64)>>);
@@ -1211,10 +1274,17 @@ mod tests {
             (Face::West, 0, 10_000),
             (Face::East, 0, 10_000),
         ]));
-        let sent = send_to_acceptors(&receivers, &[Face::North, Face::South, Face::West, Face::East], 1000);
+        let sent = send_to_acceptors(
+            &receivers,
+            &[Face::North, Face::South, Face::West, Face::East],
+            1000,
+        );
         assert_eq!(sent, 1000);
         let all = receivers.0.borrow();
-        assert_eq!(all.iter().map(|(_, stored, _)| *stored).collect::<Vec<_>>(), vec![100, 300, 300, 300]);
+        assert_eq!(
+            all.iter().map(|(_, stored, _)| *stored).collect::<Vec<_>>(),
+            vec![100, 300, 300, 300]
+        );
     }
 
     #[test]

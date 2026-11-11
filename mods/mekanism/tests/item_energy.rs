@@ -349,16 +349,33 @@ fn the_creative_cube_enters_the_tab_as_the_empty_and_the_full_stack_with_the_sid
         .collect();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0]["energy"], 0);
-    assert_eq!(rows[0]["patch"], serde_json::json!(["mekanism:side_config"]));
+    assert_eq!(
+        rows[0]["patch"],
+        serde_json::json!(["mekanism:side_config"])
+    );
     assert_eq!(rows[1]["energy"], i64::MAX);
-    assert_eq!(rows[1]["patch"], serde_json::json!(["mekanism:energy", "mekanism:side_config"]));
+    assert_eq!(
+        rows[1]["patch"],
+        serde_json::json!(["mekanism:energy", "mekanism:side_config"])
+    );
     let [empty, full] = table::creative_cube_stacks();
     assert!(empty.contains("\"mekanism:side_config\"") && !empty.contains("\"mekanism:energy\""));
     assert!(full.contains("\"mekanism:energy\":9223372036854775807L") && full.contains("eject:1b"));
     // Entra no lugar do item simples, na aba do mod e nas do vanilla.
-    let mut tab = vec![table::plain_stack("mekanism:basic_energy_cube"), table::plain_stack("mekanism:creative_energy_cube"), table::plain_stack("mekanism:salt")];
+    let mut tab = vec![
+        table::plain_stack("mekanism:basic_energy_cube"),
+        table::plain_stack("mekanism:creative_energy_cube"),
+        table::plain_stack("mekanism:salt"),
+    ];
     assert!(table::edit_tab(table::MEKANISM_TAB, &mut tab));
-    assert_eq!(tab[2..5], [empty.clone(), full.clone(), table::plain_stack("mekanism:salt")]);
+    assert_eq!(
+        tab[2..5],
+        [
+            empty.clone(),
+            full.clone(),
+            table::plain_stack("mekanism:salt")
+        ]
+    );
     let added = table::additions("minecraft:functional_blocks");
     let at = added.iter().position(|stack| *stack == empty).unwrap();
     assert_eq!(added[at + 1], full);

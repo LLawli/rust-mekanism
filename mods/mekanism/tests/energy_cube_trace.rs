@@ -276,7 +276,11 @@ fn run(name: &str) -> usize {
         let scale_ok = expected["scale"].as_f64().unwrap() as f32 == cube.energy_scale();
         if !scale_ok {
             differences += 1;
-            eprintln!("{name} t={index} scale: rust {} java {}", cube.energy_scale(), expected["scale"]);
+            eprintln!(
+                "{name} t={index} scale: rust {} java {}",
+                cube.energy_scale(),
+                expected["scale"]
+            );
         }
         let mut check = |what: &str, got: Value| {
             if got != expected[what] {
@@ -323,7 +327,10 @@ fn run(name: &str) -> usize {
 fn run_receive() -> usize {
     let lines = read("energy_cube_receive.jsonl");
     let meta = lines[0]["meta"].clone();
-    let subject = Rc::new(RefCell::new(new_cube(meta["tier"].as_u64().unwrap() as usize, &meta)));
+    let subject = Rc::new(RefCell::new(new_cube(
+        meta["tier"].as_u64().unwrap() as usize,
+        &meta,
+    )));
     let mut source = new_cube(meta["source_tier"].as_u64().unwrap() as usize, &meta);
     source.set_facing(Face::South);
     let mut differences = 0;
@@ -333,37 +340,59 @@ fn run_receive() -> usize {
             let parts: Vec<&str> = mark.as_str().unwrap().split_whitespace().collect();
             let mut cube = subject.borrow_mut();
             match parts.as_slice() {
-                ["eject", on] => cube.side_config_mut().config_mut(TransmissionType::Energy).unwrap().set_ejecting(*on == "true"),
+                ["eject", on] => cube
+                    .side_config_mut()
+                    .config_mut(TransmissionType::Energy)
+                    .unwrap()
+                    .set_ejecting(*on == "true"),
                 ["mode", side, kind] => {
                     cube.side_config_mut()
                         .config_mut(TransmissionType::Energy)
                         .unwrap()
-                        .set_data_type(DataType::from_serialized_name(kind).unwrap(), RelativeSide::from_serialized_name(side).unwrap());
+                        .set_data_type(
+                            DataType::from_serialized_name(kind).unwrap(),
+                            RelativeSide::from_serialized_name(side).unwrap(),
+                        );
                 }
                 ["src", value] => source.energy().set_energy(value.parse().unwrap(), None),
                 other => panic!("marca desconhecida: {other:?}"),
             }
         }
         let time = 100 + tick;
-        subject.borrow_mut().tick_server(time, &machinery_basis_core::energy_cube::NoEnergyNeighbours);
+        subject
+            .borrow_mut()
+            .tick_server(time, &machinery_basis_core::energy_cube::NoEnergyNeighbours);
         // O tempo que o receptor vê quando o emissor empurra é o do tick.
-        let neighbours = Neighbours { receivers: RefCell::new(BTreeMap::new()), cube: Some((Face::South, subject.clone(), time as i64)) };
+        let neighbours = Neighbours {
+            receivers: RefCell::new(BTreeMap::new()),
+            cube: Some((Face::South, subject.clone(), time as i64)),
+        };
         source.tick_server(time, &neighbours);
         let expected = &line["cube"];
         let cube = subject.borrow();
         for (what, got) in [
             ("energy", serde_json::json!(cube.energy().amount())),
             ("input_rate", serde_json::json!(cube.last_energy_received())),
-            ("comparator", serde_json::json!(cube.tile().current_redstone_level())),
+            (
+                "comparator",
+                serde_json::json!(cube.tile().current_redstone_level()),
+            ),
         ] {
             if got != expected[what] {
                 differences += 1;
-                eprintln!("receive t={index} {what}: rust {got} java {}", expected[what]);
+                eprintln!(
+                    "receive t={index} {what}: rust {got} java {}",
+                    expected[what]
+                );
             }
         }
         if serde_json::json!(source.energy().amount()) != line["src"] {
             differences += 1;
-            eprintln!("receive t={index} src: rust {} java {}", source.energy().amount(), line["src"]);
+            eprintln!(
+                "receive t={index} src: rust {} java {}",
+                source.energy().amount(),
+                line["src"]
+            );
         }
     }
     differences

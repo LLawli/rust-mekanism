@@ -40,7 +40,9 @@ pub const CREATIVE_CUBE: &str = "mekanism:creative_energy_cube";
 
 fn creative_cube_config(all_output: bool) -> String {
     let kind = if all_output { "output" } else { "input" };
-    let sides = ["front", "left", "right", "back", "top", "bottom"].map(|side| format!("{side}:\"{kind}\"")).join(",");
+    let sides = ["front", "left", "right", "back", "top", "bottom"]
+        .map(|side| format!("{side}:\"{kind}\""))
+        .join(",");
     let eject = if all_output { ",eject:1b" } else { "" };
     // `ItemBlockEnergyCube.sideConfig`: os itens são sempre `FRONT_OUT_NO_EJECT`, a frente saída e o resto entrada.
     let item = "front:\"output\",left:\"input\",right:\"input\",back:\"input\",top:\"input\",bottom:\"input\"";
@@ -50,7 +52,10 @@ fn creative_cube_config(all_output: bool) -> String {
 /// As duas pilhas do cubo criativo na aba: vazio com a energia toda de entrada, e cheio com a toda de saída.
 pub fn creative_cube_stacks() -> [String; 2] {
     [
-        format!("{{count:1,id:\"{CREATIVE_CUBE}\",components:{{\"mekanism:side_config\":{}}}}}", creative_cube_config(false)),
+        format!(
+            "{{count:1,id:\"{CREATIVE_CUBE}\",components:{{\"mekanism:side_config\":{}}}}}",
+            creative_cube_config(false)
+        ),
         format!(
             "{{count:1,id:\"{CREATIVE_CUBE}\",components:{{\"mekanism:energy\":{}L,\"mekanism:side_config\":{}}}}}",
             i64::MAX,

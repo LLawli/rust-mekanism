@@ -152,7 +152,11 @@ impl TileComponentEjector {
 
     /// `isEjecting(info, type)`.
     pub fn is_ejecting(&self, info: &ConfigInfo, kind: TransmissionType) -> bool {
-        info.is_ejecting() && self.can_eject.as_ref().is_none_or(|can_eject| can_eject(kind))
+        info.is_ejecting()
+            && self
+                .can_eject
+                .as_ref()
+                .is_none_or(|can_eject| can_eject(kind))
     }
 
     /// `tickServer`: os tipos na ordem de `TransmissionType.VALUES`; o item espera o `tickDelay`, os outros (menos o calor) ejetam

@@ -10,8 +10,8 @@ use machinery_basis_core::client_config::{
 use machinery_basis_core::components::Components;
 use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked};
 use machinery_basis_core::containers::{Access, InventorySlot, ItemResource};
-use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
+use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
@@ -1211,7 +1211,11 @@ pub fn item_energy_spec(item: &str, amount: i64, config: &ServerConfig) -> Optio
             capacity: gear.capacity,
             rate: gear.rate,
             // O Energy Tablet é o único que deixa tirar de fora (`basicCreator(alwaysTrue, alwaysTrue, ..)`); o resto do equipamento é `manualOnly`.
-            can_extract: if item == "mekanism:energy_tablet" { Access::Any } else { Access::ManualOnly },
+            can_extract: if item == "mekanism:energy_tablet" {
+                Access::Any
+            } else {
+                Access::ManualOnly
+            },
             can_insert: Access::Any,
             creative: false,
         });
@@ -1228,7 +1232,11 @@ pub fn item_energy_spec(item: &str, amount: i64, config: &ServerConfig) -> Optio
 }
 
 /// O `TileEntityEnergyCube` de um tier: a capacidade e a taxa do arquivo, e o handler de energia dos itens.
-pub fn energy_cube_config(tier: usize, config: &ServerConfig, items: ItemEnergy) -> EnergyCubeConfig {
+pub fn energy_cube_config(
+    tier: usize,
+    config: &ServerConfig,
+    items: ItemEnergy,
+) -> EnergyCubeConfig {
     EnergyCubeConfig {
         tier,
         capacity: config.cubes[tier],
@@ -2338,11 +2346,21 @@ pub fn energy_cube_default() -> AttachedSideConfig {
 
 /// `ItemBlockEnergyCube.ALL_INPUT` e `ALL_OUTPUT`, as duas pilhas do cubo criativo na aba criativa: a energia toda de entrada, sem ejetar, ou toda de saída, ejetando.
 pub fn energy_cube_creative_default(all_output: bool) -> AttachedSideConfig {
-    let kind = if all_output { machinery_basis_core::side_config::DataType::Output } else { machinery_basis_core::side_config::DataType::Input };
-    let sides: Vec<_> = RelativeSide::VALUES.iter().map(|side| (*side, kind)).collect();
+    let kind = if all_output {
+        machinery_basis_core::side_config::DataType::Output
+    } else {
+        machinery_basis_core::side_config::DataType::Input
+    };
+    let sides: Vec<_> = RelativeSide::VALUES
+        .iter()
+        .map(|side| (*side, kind))
+        .collect();
     AttachedSideConfig::new(&[
         (TransmissionType::Item, light_front_out(false)),
-        (TransmissionType::Energy, LightConfigInfo::new(&sides, all_output)),
+        (
+            TransmissionType::Energy,
+            LightConfigInfo::new(&sides, all_output),
+        ),
     ])
 }
 
