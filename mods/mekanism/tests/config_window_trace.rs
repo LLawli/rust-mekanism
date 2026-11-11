@@ -12,7 +12,8 @@ use serde_json::Value;
 use std::path::Path;
 
 fn trace() -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros/config_pacotes.jsonl");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/config_pacotes.jsonl");
     std::fs::read_to_string(path)
         .unwrap()
         .lines()
@@ -42,13 +43,20 @@ fn packet_of(json: &Value) -> ConfigPacket {
             side: side(text("side")),
             transmission: kind_of(text("transmission")),
         },
-        "eject" => ConfigPacket::Eject { transmission: kind_of(text("transmission")) },
+        "eject" => ConfigPacket::Eject {
+            transmission: kind_of(text("transmission")),
+        },
         "batch" => ConfigPacket::Batch {
             transmission: (!text("transmission").is_empty()).then(|| kind_of(text("transmission"))),
             target: DataType::from_serialized_name(text("target")).unwrap(),
         },
-        "eject_color" => ConfigPacket::EjectColor { click: click(text("click")) },
-        "input_color" => ConfigPacket::InputColor { click: click(text("click")), side: side(text("side")) },
+        "eject_color" => ConfigPacket::EjectColor {
+            click: click(text("click")),
+        },
+        "input_color" => ConfigPacket::InputColor {
+            click: click(text("click")),
+            side: side(text("side")),
+        },
         "strict_input" => ConfigPacket::StrictInput,
         other => panic!("pacote {other}"),
     }
@@ -57,7 +65,11 @@ fn packet_of(json: &Value) -> ConfigPacket {
 fn placed(name: &str) -> ProgressMachine {
     let mut machine = born(name);
     machine.set_facing(Face::East);
-    machine.apply_item_side_config(Some(&default_of(name)), Some(&AttachedEjector::DEFAULT), false);
+    machine.apply_item_side_config(
+        Some(&default_of(name)),
+        Some(&AttachedEjector::DEFAULT),
+        false,
+    );
     machine
 }
 
@@ -65,22 +77,33 @@ fn placed(name: &str) -> ProgressMachine {
 fn every_packet_leaves_the_state_the_original_leaves() {
     let lines = trace();
     assert!(lines.len() > 1000, "{}", lines.len());
-    let mut machines: std::collections::HashMap<String, ProgressMachine> = std::collections::HashMap::new();
+    let mut machines: std::collections::HashMap<String, ProgressMachine> =
+        std::collections::HashMap::new();
     let mut checked = 0;
     for line in &lines {
         let name = line["machine"].as_str().unwrap();
-        let machine = machines.entry(name.to_owned()).or_insert_with(|| placed(name));
+        let machine = machines
+            .entry(name.to_owned())
+            .or_insert_with(|| placed(name));
         let facing = machine.facing();
         let (config, ejector) = machine.side_parts_mut();
         packet_of(&line["packet"]).apply(config, ejector, facing);
         let ours = state_of(machine);
         let step = &line["step"];
         for key in ["config", "ejecting"] {
-            assert_eq!(ours[key], line[key], "{name} passo {step}: {key} ({})", line["packet"]);
+            assert_eq!(
+                ours[key], line[key],
+                "{name} passo {step}: {key} ({})",
+                line["packet"]
+            );
         }
         // O rastro grava a cor pelo nome de `getSerializedName`; a lib a guarda pelo `ordinal`.
         for field in ["strict_input", "output_color", "input_colors"] {
-            assert_eq!(ours["ejector"][field], line["ejector"][field], "{name} passo {step}: {field} ({})", line["packet"]);
+            assert_eq!(
+                ours["ejector"][field], line["ejector"][field],
+                "{name} passo {step}: {field} ({})",
+                line["packet"]
+            );
         }
         checked += 1;
     }

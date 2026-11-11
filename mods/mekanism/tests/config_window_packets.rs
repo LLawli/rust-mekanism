@@ -36,10 +36,26 @@ fn data(machine: &ProgressMachine, side: RelativeSide) -> DataType {
 #[test]
 fn each_side_change_tells_the_world_face() {
     let mut machine = placed();
-    let click = |click, side| ConfigPacket::SideData { click, side, transmission: TransmissionType::Item };
-    assert!(send(&mut machine, click(ClickType::Left, RelativeSide::Front)));
-    assert!(send(&mut machine, click(ClickType::Right, RelativeSide::Back)));
-    assert!(send(&mut machine, ConfigPacket::Batch { transmission: Some(TransmissionType::Item), target: DataType::None }));
+    let click = |click, side| ConfigPacket::SideData {
+        click,
+        side,
+        transmission: TransmissionType::Item,
+    };
+    assert!(send(
+        &mut machine,
+        click(ClickType::Left, RelativeSide::Front)
+    ));
+    assert!(send(
+        &mut machine,
+        click(ClickType::Right, RelativeSide::Back)
+    ));
+    assert!(send(
+        &mut machine,
+        ConfigPacket::Batch {
+            transmission: Some(TransmissionType::Item),
+            target: DataType::None
+        }
+    ));
     let changes = machine.take_side_changes();
     // Uma da frente, uma das costas e as quatro faces que o lote mudou além das duas já mudadas... o lote muda o que ainda não era NONE.
     assert!(changes.len() >= 3);
