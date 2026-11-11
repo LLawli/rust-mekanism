@@ -172,6 +172,8 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     if is_generator(&game.native_block(pos)) {
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
+        // `applyImplicitComponents` -> `copyToTile`: o item traz a energia, limitada à capacidade do gerador.
+        basis::energy_placed(game, stack, pos, rules::ENERGY_COMPONENT, heat_config().energy_capacity);
         // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de um gerador que esteve ali antes.
         COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), 0));
     }
@@ -179,6 +181,28 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_generator_id);
+    basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_generator_id);
+}
+
+/// A linha `STORED_ENERGY` do tooltip do Heat Generator (`ContainerType.ENERGY`, a capacidade de `generator-storage.heatGenerator`).
+pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
+    if &*stack.item != rules::HEAT_GENERATOR {
+        return;
+    }
+    lines.push(basis::stored_energy_line(
+        game,
+        stack,
+        heat_config().energy_capacity,
+        &basis::StoredEnergyLine {
+            component: rules::ENERGY_COMPONENT,
+            label: rules::STORED_ENERGY_LANG,
+            label_color: rules::STORED_ENERGY_COLOR,
+            arg_color: rules::STORED_ENERGY_ARG_COLOR,
+            unit: rules::ENERGY_UNIT_LANG,
+            fraction: rules::FRACTION_LANG,
+            infinite: rules::INFINITE_LANG,
+        },
+    ));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
@@ -194,6 +218,7 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
 pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
     if !canceled && is_generator(&game.native_block(pos)) {
         basis::name_destroying(game, pos, &is_generator_id);
+        basis::energy_destroying(game, pos, &is_generator_id);
     }
 }
 
@@ -686,6 +711,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         return;
     }
     basis::name_apply_pending(entity, pos);
+    basis::energy_apply_pending(entity, pos, heat_config().energy_capacity);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);
     let mut tanks = basis::load_tanks(entity, &lava_tank());

@@ -326,6 +326,19 @@ bindings = [
   { name = "lines", ty = "&mut Vec<(horizon_client::mod_api::Text, u32)>", value = "&mut *lines" },
 ]
 
+# A barra de durabilidade de energia dos itens que guardam energia (`ItemEnergized.isBarVisible`, `getBarWidth` e `getBarColor`): o hook troca ou esconde a barra que o vanilla escolheu.
+[[injection]]
+id = "item_bar"
+hook = "item_bar"
+hook_version = 1
+kind = "HEAD"
+helper = "item_bar.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "bar", ty = "&mut Option<(i32, u32)>", value = "&mut *bar" },
+]
+
 # O componente que guarda o tipo do upgrade no item.
 [[injection]]
 id = "component_types"
@@ -363,6 +376,34 @@ bindings = [{ name = "v", ty = "&Value", value = "v" }]
 
 # O tipo `mekanism:mek_data` das receitas de mesa de 85 blocos e itens do Mekanism e do vento do Generators: o Horizon manda o tipo de mod para a tabela `custom`, que a mesa não lê.
 # O HEAD de `Recipes::from_sources` o troca por `minecraft:crafting_shaped` antes da carga. Alvo cru, H79.
+# Os dois HEAD de `find_with` rodam na ordem alfabética do id (medido: o arquivo não manda): `mek_data_energy_grid` guarda a grade antes de `mek_data_energy_use` a ler.
+# A energia que a `assemble` de `mekanism:mek_data` copia das entradas: o módulo mora em `crafting.rs` (a `mek_data_alias` anota nele o nome de cada receita do tipo, e o glue diz a
+# capacidade de cada item que guarda energia), e o HEAD cancelável de `Recipes::find_with` age quando a grade tem energia (roda a própria `find_with` por dentro, uma vez, e completa o resultado dela com o nome da receita e a grade). Alvo cru, H79.
+[[module]]
+id = "mek-data-energy"
+file = "crates/horizon-client/src/crafting.rs"
+name = "mekanism_mek_data"
+source = "mek_data_energy.rs"
+visibility = "pub"
+
+[[injection]]
+id = "mek_data_energy_use"
+target = "horizon_client_lib::crafting::Recipes::find_with"
+kind = "HEAD"
+cancellable = true
+helper = "mek_data_energy_hook.rs"
+bindings = [
+  { name = "recipes", ty = "&Recipes", value = "&*self" },
+  { name = "size", ty = "usize", value = "size" },
+]
+
+[[injection]]
+id = "mek_data_energy_grid"
+target = "horizon_client_lib::crafting::Recipes::find_with"
+kind = "HEAD"
+helper = "mek_data_energy_stash.rs"
+bindings = [{ name = "grid", ty = "&[Option<ItemStack>]", value = "grid" }]
+
 [[injection]]
 id = "mek_data_alias"
 target = "horizon_client_lib::crafting::Recipes::from_sources"

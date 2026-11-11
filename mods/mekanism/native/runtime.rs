@@ -223,7 +223,15 @@ pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
         ClientSection {
             name: "rendering",
             comment: "Settings for adjusting how Mekanism renders certain blocks and how many particles Mekanism adds.",
-            entries: &[],
+            // `ClientConfig.java:84-85`: `energyColor` (`define("energyColor", 0x3CFE9A)`, sem faixa) vem antes de `berRange`, que o port ainda não lê.
+            entries: &[ClientEntry {
+                key: "energyColor",
+                comment: "The color of energy when displayed as the durability bar on items.",
+                setting: ClientSetting::IntWhere {
+                    default: ENERGY_COLOR,
+                    valid: |_, _| true,
+                },
+            }],
         },
         ClientSection {
             name: "rendering.particle",
@@ -250,6 +258,16 @@ pub fn client_default_text() -> String {
 }
 
 /// `MekanismConfig.client.machineEffects`: as máquinas acesas soltam partículas (`BlockTile.animateTick`).
+/// `ClientConfig.energyColor`: o padrão, `0x3CFE9A`.
+pub const ENERGY_COLOR: i32 = 0x3C_FE_9A;
+
+/// `MekanismConfig.client.energyColor`: a cor da barra de energia dos itens.
+pub fn energy_color(loaded: &ClientLoaded) -> i32 {
+    loaded
+        .int(&CLIENT_CONFIG, "rendering", "energyColor")
+        .unwrap_or(ENERGY_COLOR)
+}
+
 pub fn machine_effects(loaded: &ClientLoaded) -> bool {
     loaded
         .bool(&CLIENT_CONFIG, "rendering.particle", "machineEffects")
@@ -471,6 +489,147 @@ impl Usage {
 /// Long.MAX_VALUE)`, nas seções `transmitters` e `transmitters.energy`, com o texto de `TierTranslations.create(CableTier)`.
 pub const TIERS_CONFIG: ClientSpec = ClientSpec {
     sections: &[
+        // `TierConfig.addEnergyCubeCategory` (`:38-49`): a capacidade e a taxa de saída de cada tier (`defineInRange(<tier>Capacity, getBaseCapacity(), 1, Long.MAX_VALUE)` e
+        // `<tier>Output`, `1..Integer.MAX_VALUE`), com o texto de `TierTranslations.create(EnergyCubeTier)`. A seção vem antes de `transmitters`, como no original.
+        ClientSection {
+            name: "energy_cubes",
+            comment: "Settings for configuring Energy Cubes",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic energy cubes.",
+                    setting: ClientSetting::Long {
+                        default: 4_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicOutput",
+                    comment: "Output rate of Basic energy cubes.",
+                    setting: ClientSetting::Int {
+                        default: 4_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced energy cubes.",
+                    setting: ClientSetting::Long {
+                        default: 16_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedOutput",
+                    comment: "Output rate of Advanced energy cubes.",
+                    setting: ClientSetting::Int {
+                        default: 16_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite energy cubes.",
+                    setting: ClientSetting::Long {
+                        default: 64_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteOutput",
+                    comment: "Output rate of Elite energy cubes.",
+                    setting: ClientSetting::Int {
+                        default: 64_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate energy cubes.",
+                    setting: ClientSetting::Long {
+                        default: 256_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateOutput",
+                    comment: "Output rate of Ultimate energy cubes.",
+                    setting: ClientSetting::Int {
+                        default: 256_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeCapacity",
+                    comment: "Capacity of Creative energy cubes.",
+                    setting: ClientSetting::Long {
+                        default: i64::MAX,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeOutput",
+                    comment: "Output rate of Creative energy cubes.",
+                    setting: ClientSetting::Int {
+                        default: i32::MAX,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        // `TierConfig.addInductionCategory` (`:92-108`): a capacidade de cada célula (`<tier>Capacity`, `1..Long.MAX_VALUE`); a saída dos provedores, que vem depois, espera o provedor.
+        ClientSection {
+            name: "induction",
+            comment: "Settings for configuring Induction Cells and Providers",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Maximum energy Basic induction cells can store.",
+                    setting: ClientSetting::Long {
+                        default: 8_000_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Maximum energy Advanced induction cells can store.",
+                    setting: ClientSetting::Long {
+                        default: 64_000_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Maximum energy Elite induction cells can store.",
+                    setting: ClientSetting::Long {
+                        default: 512_000_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Maximum energy Ultimate induction cells can store.",
+                    setting: ClientSetting::Long {
+                        default: 4_000_000_000_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+            ],
+        },
         ClientSection {
             name: "transmitters",
             comment: "Settings for configuring Transmitters",
@@ -546,13 +705,448 @@ pub const DEFAULT_CABLE_CAPACITIES: [i64; 4] = [8_000, 128_000, 1_024_000, 8_192
 pub struct ServerConfig {
     pub usage: Usage,
     pub cables: [i64; 4],
+    pub cubes: [i64; 5],
+    pub cells: [i64; 4],
+    pub gear: Gear,
 }
 
 impl ServerConfig {
     pub const DEFAULT: Self = Self {
         usage: Usage::DEFAULT,
         cables: DEFAULT_CABLE_CAPACITIES,
+        cubes: DEFAULT_CUBE_CAPACITIES,
+        cells: DEFAULT_CELL_CAPACITIES,
+        gear: Gear::DEFAULT,
     };
+}
+
+/// `GearConfig` (`gear.toml`): a energia máxima e a taxa de carga de cada item que guarda energia (`definePositive` de `long`, de 0 a `Long.MAX_VALUE`, e `defineInRange(.., 0, Integer.MAX_VALUE)`
+/// de `int`), nas seções do original e na ordem dele (`GearConfig.java:117-259`). O Meka-Tool e o MekaSuit levam `baseEnergyCapacity`, a capacidade sem módulos. O resto do arquivo
+/// (uso de energia, dano, módulos...) entra com a fase que o lê.
+pub const GEAR_CONFIG_FILE: &str = "Mekanism/gear.toml";
+pub const GEAR_CONFIG: ClientSpec = ClientSpec {
+    sections: &[
+        ClientSection {
+            name: "atomic_disassembler",
+            comment: "Settings for configuring the Atomic Disassembler",
+            entries: &[
+                ClientEntry {
+                    key: "maxEnergy",
+                    comment: "Maximum amount of energy the Atomic Disassembler can contain.",
+                    setting: ClientSetting::Long {
+                        default: 1_000_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Atomic Disassembler can accept per tick.",
+                    setting: ClientSetting::Int {
+                        default: 5_000,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "electric_bow",
+            comment: "Settings for configuring the Electric Bow",
+            entries: &[
+                ClientEntry {
+                    key: "maxEnergy",
+                    comment: "Maximum amount of energy the Electric Bow can contain.",
+                    setting: ClientSetting::Long {
+                        default: 120_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Electric Bow can accept per tick.",
+                    setting: ClientSetting::Int {
+                        default: 600,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "energy_tablet",
+            comment: "Settings for configuring Energy Tablets",
+            entries: &[
+                ClientEntry {
+                    key: "maxEnergy",
+                    comment: "Maximum amount of energy the Energy Tablet can contain.",
+                    setting: ClientSetting::Long {
+                        default: 1_000_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Energy Tablet can accept per tick.",
+                    setting: ClientSetting::Int {
+                        default: 5_000,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "free_runner",
+            comment: "Settings for configuring Free Runners",
+            entries: &[
+                ClientEntry {
+                    key: "maxEnergy",
+                    comment: "Maximum amount of energy Free Runners can contain.",
+                    setting: ClientSetting::Long {
+                        default: 64_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Free Runners can accept per tick.",
+                    setting: ClientSetting::Int {
+                        default: 320,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "portable_teleporter",
+            comment: "Settings for configuring the Portable Teleporter",
+            entries: &[
+                ClientEntry {
+                    key: "maxEnergy",
+                    comment: "Maximum amount of energy the Portable Teleporter can contain.",
+                    setting: ClientSetting::Long {
+                        default: 1_000_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Portable Teleporter can accept per tick.",
+                    setting: ClientSetting::Int {
+                        default: 5_000,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "mekatool",
+            comment: "Settings for configuring the Meka-Tool",
+            entries: &[
+                ClientEntry {
+                    key: "baseEnergyCapacity",
+                    comment: "Energy capacity of the Meka-Tool without any installed upgrades. Quadratically scaled by upgrades.",
+                    setting: ClientSetting::Long {
+                        default: 16_000_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the Meka-Tool can accept per tick. Quadratically scaled by upgrades.",
+                    setting: ClientSetting::Int {
+                        default: 100_000,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        ClientSection {
+            name: "mekasuit",
+            comment: "Settings for configuring the MekaSuit",
+            entries: &[
+                ClientEntry {
+                    key: "baseEnergyCapacity",
+                    comment: "Energy capacity of MekaSuit items without any installed upgrades. Quadratically scaled by upgrades.",
+                    setting: ClientSetting::Long {
+                        default: 16_000_000,
+                        min: 0,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "chargeRate",
+                    comment: "Amount of energy the MekaSuit can accept per tick. Quadratically scaled by upgrades.",
+                    setting: ClientSetting::Int {
+                        default: 100_000,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+    ],
+};
+
+/// A capacidade e a taxa de carga de um item que guarda energia.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EnergyItem {
+    pub capacity: i64,
+    pub rate: i32,
+}
+
+/// `MekanismConfig.gear`, na parte da energia dos itens.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Gear {
+    pub disassembler: EnergyItem,
+    pub bow: EnergyItem,
+    pub tablet: EnergyItem,
+    pub free_runners: EnergyItem,
+    pub teleporter: EnergyItem,
+    pub meka_tool: EnergyItem,
+    pub meka_suit: EnergyItem,
+}
+
+impl Gear {
+    pub const DEFAULT: Self = Self {
+        disassembler: EnergyItem {
+            capacity: 1_000_000,
+            rate: 5_000,
+        },
+        bow: EnergyItem {
+            capacity: 120_000,
+            rate: 600,
+        },
+        tablet: EnergyItem {
+            capacity: 1_000_000,
+            rate: 5_000,
+        },
+        free_runners: EnergyItem {
+            capacity: 64_000,
+            rate: 320,
+        },
+        teleporter: EnergyItem {
+            capacity: 1_000_000,
+            rate: 5_000,
+        },
+        meka_tool: EnergyItem {
+            capacity: 16_000_000,
+            rate: 100_000,
+        },
+        meka_suit: EnergyItem {
+            capacity: 16_000_000,
+            rate: 100_000,
+        },
+    };
+
+    pub fn of(loaded: &ClientLoaded) -> Self {
+        let read = |section: &str, max: &str, default: EnergyItem| EnergyItem {
+            capacity: loaded
+                .long(&GEAR_CONFIG, section, max)
+                .unwrap_or(default.capacity),
+            rate: loaded
+                .int(&GEAR_CONFIG, section, "chargeRate")
+                .unwrap_or(default.rate),
+        };
+        let default = Self::DEFAULT;
+        Self {
+            disassembler: read("atomic_disassembler", "maxEnergy", default.disassembler),
+            bow: read("electric_bow", "maxEnergy", default.bow),
+            tablet: read("energy_tablet", "maxEnergy", default.tablet),
+            free_runners: read("free_runner", "maxEnergy", default.free_runners),
+            teleporter: read("portable_teleporter", "maxEnergy", default.teleporter),
+            meka_tool: read("mekatool", "baseEnergyCapacity", default.meka_tool),
+            meka_suit: read("mekasuit", "baseEnergyCapacity", default.meka_suit),
+        }
+    }
+}
+
+/// `EnergyCubeTier.getBaseCapacity`, na ordem de [`CUBE_TIERS`] (o criativo é `Long.MAX_VALUE`).
+pub const DEFAULT_CUBE_CAPACITIES: [i64; 5] =
+    [4_000_000, 16_000_000, 64_000_000, 256_000_000, i64::MAX];
+/// `EnergyCubeTier.getBaseTransferRate`, na mesma ordem (o criativo é `Integer.MAX_VALUE`).
+pub const DEFAULT_CUBE_RATES: [i32; 5] = [4_000, 16_000, 64_000, 256_000, i32::MAX];
+/// Os itens dos cubos de energia, um por tier (`EnergyCubeTier.VALUES`).
+pub const CUBE_TIERS: [&str; 5] = [
+    "mekanism:basic_energy_cube",
+    "mekanism:advanced_energy_cube",
+    "mekanism:elite_energy_cube",
+    "mekanism:ultimate_energy_cube",
+    "mekanism:creative_energy_cube",
+];
+
+/// As capacidades dos cinco cubos de energia (`EnergyCubeTier.getCapacity`: o valor do arquivo, ou o padrão sem ele).
+pub fn cube_capacities(loaded: &ClientLoaded) -> [i64; 5] {
+    const KEYS: [&str; 5] = [
+        "basicCapacity",
+        "advancedCapacity",
+        "eliteCapacity",
+        "ultimateCapacity",
+        "creativeCapacity",
+    ];
+    let mut out = DEFAULT_CUBE_CAPACITIES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .long(&TIERS_CONFIG, "energy_cubes", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// `InductionCellTier.getBaseMaxEnergy`, na ordem de [`CELL_TIERS`].
+pub const DEFAULT_CELL_CAPACITIES: [i64; 4] = [
+    8_000_000_000,
+    64_000_000_000,
+    512_000_000_000,
+    4_000_000_000_000,
+];
+/// Os itens das células de indução, um por tier (`InductionCellTier.VALUES`).
+pub const CELL_TIERS: [&str; 4] = [
+    "mekanism:basic_induction_cell",
+    "mekanism:advanced_induction_cell",
+    "mekanism:elite_induction_cell",
+    "mekanism:ultimate_induction_cell",
+];
+
+/// As capacidades das quatro células de indução (`InductionCellTier.getMaxEnergy`: o valor do arquivo, ou o padrão sem ele).
+pub fn cell_capacities(loaded: &ClientLoaded) -> [i64; 4] {
+    const KEYS: [&str; 4] = [
+        "basicCapacity",
+        "advancedCapacity",
+        "eliteCapacity",
+        "ultimateCapacity",
+    ];
+    let mut out = DEFAULT_CELL_CAPACITIES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .long(&TIERS_CONFIG, "induction", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// A célula de indução que o item é, na ordem de [`CELL_TIERS`].
+pub fn cell_tier(item: &str) -> Option<usize> {
+    CELL_TIERS.iter().position(|id| *id == item)
+}
+
+/// As taxas de saída dos cinco cubos (`EnergyCubeTier.getTransferRate`: o valor do arquivo, ou o padrão sem ele).
+pub fn cube_rates(loaded: &ClientLoaded) -> [i32; 5] {
+    const KEYS: [&str; 5] = [
+        "basicOutput",
+        "advancedOutput",
+        "eliteOutput",
+        "ultimateOutput",
+        "creativeOutput",
+    ];
+    let mut out = DEFAULT_CUBE_RATES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .int(&TIERS_CONFIG, "energy_cubes", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// `EntityRobit.MAX_ENERGY`.
+pub const ROBIT_MAX_ENERGY: i64 = 100_000;
+/// O componente que guarda a energia do item (`MekanismDataComponents.ATTACHED_ENERGY`, um `long`).
+pub const ENERGY_COMPONENT: &str = "mekanism:energy";
+/// `MekanismLang.STORED_ENERGY` e `INFINITE`.
+pub const STORED_ENERGY_LANG: &str = "tooltip.mekanism.stored_energy";
+pub const INFINITE_LANG: &str = "gui.mekanism.infinite";
+
+/// `EnumColor.BRIGHT_GREEN` e `EnumColor.GRAY`: o rótulo e o argumento da linha `STORED_ENERGY.translateColored(BRIGHT_GREEN, GRAY, ..)`.
+pub const STORED_ENERGY_COLOR: u32 = 0x75_FF_89;
+pub const STORED_ENERGY_ARG_COLOR: u32 = 0xCF_CF_CF;
+
+/// Se o item tem a barra de durabilidade de energia: `ItemEnergized`, `ItemBlockEnergyCube`, `ItemFreeRunners`, `ItemElectricBow`, `ItemMekaSuitArmor`, `ItemRobit` e os outros que a
+/// sobrescrevem (`isBarVisible` -> `ContainerType.ENERGY.isBarVisible`). As máquinas e as células guardam energia sem a barra (o rastro dá `bar_visible` falso para elas).
+pub fn shows_energy_bar(item: &str) -> bool {
+    gear_energy(item, &Gear::DEFAULT).is_some() || cube_tier(item).is_some()
+}
+
+/// `MekanismUtils.calculateUsage`: `max(1, (int) (0.005 * capacity))` com o corte em `int`.
+pub fn calculate_usage(capacity: i64) -> i32 {
+    let usage = 0.005 * (capacity as f64);
+    let clamped = if usage >= f64::from(i32::MAX) {
+        i32::MAX
+    } else {
+        usage as i32
+    };
+    clamped.max(1)
+}
+
+/// Os itens que não são de bloco e guardam energia (`addAttachedContainerCapabilities(ContainerType.ENERGY, ..)` de `MekanismItems`): a capacidade e a taxa pela configuração.
+/// O Meka-Tool e o MekaSuit sem módulos (`ModuleEnergyUnit`: o módulo de energia multiplica por 2 elevado ao número instalado, e os módulos são de outra fase). O Configurator não
+/// guarda energia no 26.3 (`MekanismItems.CONFIGURATOR` não tem contêiner).
+pub fn gear_energy(item: &str, gear: &Gear) -> Option<EnergyItem> {
+    Some(match item {
+        "mekanism:energy_tablet" => gear.tablet,
+        "mekanism:atomic_disassembler" => gear.disassembler,
+        "mekanism:electric_bow" => gear.bow,
+        "mekanism:portable_teleporter" => gear.teleporter,
+        "mekanism:free_runners" | "mekanism:free_runners_armored" => gear.free_runners,
+        "mekanism:meka_tool" => gear.meka_tool,
+        "mekanism:mekasuit_helmet"
+        | "mekanism:mekasuit_bodyarmor"
+        | "mekanism:mekasuit_pants"
+        | "mekanism:mekasuit_boots" => gear.meka_suit,
+        "mekanism:robit" => EnergyItem {
+            capacity: ROBIT_MAX_ENERGY,
+            rate: calculate_usage(ROBIT_MAX_ENERGY),
+        },
+        _ => return None,
+    })
+}
+
+/// Os ids dos itens de equipamento que guardam energia (os que [`gear_energy`] responde).
+pub const GEAR_ITEMS: [&str; 12] = [
+    "mekanism:energy_tablet",
+    "mekanism:atomic_disassembler",
+    "mekanism:electric_bow",
+    "mekanism:portable_teleporter",
+    "mekanism:free_runners",
+    "mekanism:free_runners_armored",
+    "mekanism:meka_tool",
+    "mekanism:mekasuit_helmet",
+    "mekanism:mekasuit_bodyarmor",
+    "mekanism:mekasuit_pants",
+    "mekanism:mekasuit_boots",
+    "mekanism:robit",
+];
+
+/// A energia da pilha cheia de um item que a aba criativa mostra vazio e cheio (`ContainerType.ENERGY.getFilledVariant`: a capacidade que o item tem agora, pela configuração),
+/// ou `None` se a aba não o mostra assim: o equipamento e o Robit e os quatro cubos que não são o criativo (o criativo vai em duas pilhas com a configuração de lados, do tile do cubo).
+pub fn filled_variant_energy(item: &str, config: &ServerConfig) -> Option<i64> {
+    if GEAR_ITEMS.contains(&item) {
+        return gear_energy(item, &config.gear).map(|gear| gear.capacity);
+    }
+    cube_tier(item)
+        .filter(|tier| *tier < 4)
+        .map(|tier| config.cubes[tier])
+}
+
+/// O cubo de energia que o item é, na ordem de [`CUBE_TIERS`].
+pub fn cube_tier(item: &str) -> Option<usize> {
+    CUBE_TIERS.iter().position(|id| *id == item)
+}
+
+/// A capacidade e a taxa de um cubo de energia (`ComponentBackedEnergyCubeContainer`: `tier::getCapacity` e `tier::getTransferRate`, os do arquivo `tiers.toml`).
+pub fn cube_energy(tier: usize, capacities: &[i64; 5], rates: &[i32; 5]) -> EnergyItem {
+    EnergyItem {
+        capacity: capacities[tier],
+        rate: rates[tier],
+    }
 }
 
 /// Qual cabo é o bloco, na ordem de [`UNIVERSAL_CABLES`].

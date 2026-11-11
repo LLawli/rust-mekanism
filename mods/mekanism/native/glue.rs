@@ -1444,6 +1444,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
             side.tank.set_contents(contents.resource, contents.amount, None);
         }
     }
+    basis::energy_apply_pending(entity, pos, machine.energy().capacity());
     let stored = i64::from(basis::stored_energy(entity));
     if machine.energy().amount() != stored {
         machine.energy().set_energy(stored, None);
@@ -1633,6 +1634,7 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::EJECTOR_COMPONENT.to_owned());
     types.push(rules::CONFIGURATOR_MODE_COMPONENT.to_owned());
     types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
+    types.push(rules::ENERGY_COMPONENT.to_owned());
 }
 
 /// `getInventorySlots` da máquina: a entrada, a saída, a energia e o slot do químico (os dois slots de upgrade são virtuais).
@@ -1838,6 +1840,8 @@ fn sync_muffling(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], li
 /// `MekanismConfig.client`, como o último `Mekanism/client.toml` lido o deixou (`ModConfigEvent.Loading` e `Reloading`, que limpam o
 /// cache dos `CachedValue`). Antes do primeiro arquivo valem os padrões. O carregamento e o `tick` do cliente rodam na mesma janela, mas o
 /// processo também tem a thread do servidor integrado, então a tabela é do processo.
+/// `MekanismConfig.client.energyColor`, o que o cliente leu de `client.toml`.
+static ENERGY_COLOR: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(rules::ENERGY_COLOR);
 static CLIENT_CONFIG: std::sync::Mutex<Option<machinery_basis_core::client_config::Loaded>> = std::sync::Mutex::new(None);
 
 /// O que o som lê da configuração de cliente: `enableMachineSounds` e `baseSoundVolume`.
@@ -1882,6 +1886,7 @@ pub(in crate::game) fn register_configs(configs: &mut Vec<NativeConfig>) {
         (rules::GENERAL_CONFIG_FILE, &rules::GENERAL_CONFIG),
         (rules::USAGE_CONFIG_FILE, &rules::USAGE_CONFIG),
         (rules::TIERS_CONFIG_FILE, &rules::TIERS_CONFIG),
+        (rules::GEAR_CONFIG_FILE, &rules::GEAR_CONFIG),
     ] {
         configs.push(NativeConfig::new("mekanism", NativeConfigKind::Server, &spec.default_text()).file(file));
     }
@@ -1898,6 +1903,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
         rules::CLIENT_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::CLIENT_CONFIG, None);
             basis::set_machine_effects(rules::machine_effects(&loaded));
+            ENERGY_COLOR.store(rules::energy_color(&loaded), std::sync::atomic::Ordering::Relaxed);
             *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
         }
         rules::GENERAL_CONFIG_FILE => {
@@ -1911,9 +1917,19 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
         }
         rules::TIERS_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::TIERS_CONFIG, None);
-            SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner()).cables = rules::cable_capacities(&loaded);
+            let mut server = SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner());
+            server.cables = rules::cable_capacities(&loaded);
+            server.cubes = rules::cube_capacities(&loaded);
+            server.cells = rules::cell_capacities(&loaded);
+        }
+        rules::GEAR_CONFIG_FILE => {
+            let loaded = basis::read_config(config, &rules::GEAR_CONFIG, None);
+            SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner()).gear = rules::Gear::of(&loaded);
         }
         _ => {}
+    }
+    if matches!(config.file.as_str(), rules::USAGE_CONFIG_FILE | rules::TIERS_CONFIG_FILE | rules::GEAR_CONFIG_FILE) {
+        refresh_item_capacities();
     }
 }
 
@@ -1982,8 +1998,32 @@ pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
 
 /// `TileEntityMekanism.tickClient` → `updateSound` de cada máquina que o cliente vê: o som em laço de quem está ligado. O cliente
 /// não tem o objeto vivo: vê o bloco (`lit`), os tipos de upgrade que o servidor mandou e quantos de silêncio o tile tem.
+/// O item cheio da aba criativa leva a capacidade de agora (`getFilledVariant` lê `gear.toml` e `tiers.toml`), mas a aba é montada ao carregar o conteúdo, com os valores padrão: a cada
+/// tick as pilhas cheias das abas (`creative_screen.tabs`) que não valem a capacidade de agora a recebem, e a grade guardada é esquecida. Uma reconstrução das abas (a permissão de
+/// operador mudou) volta aos valores padrão, e o tick seguinte os corrige de novo.
+fn sync_creative_energy(game: &mut Game<'_>) {
+    let config = server_config();
+    let mut tabs = std::mem::take(&mut game.creative_screen.tabs);
+    let mut changed = false;
+    for stack in tabs.iter_mut().flat_map(|tab| tab.items.iter_mut()) {
+        let Some(want) = rules::filled_variant_energy(&stack.item, &config) else {
+            continue;
+        };
+        let have = basis::item_energy_of(game, stack, rules::ENERGY_COMPONENT);
+        if have > 0 && have != want {
+            basis::set_item_energy(game, stack, rules::ENERGY_COMPONENT, want);
+            changed = true;
+        }
+    }
+    game.creative_screen.tabs = tabs;
+    if changed {
+        game.creative_screen.forget_items();
+    }
+}
+
 pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
     horizon_client::animate_tick::machinery_animate::register("mekanism", machine_animator);
+    sync_creative_energy(game);
     if !game.native_window() {
         return;
     }
@@ -2026,6 +2066,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     }
     basis::name_destroying(game, pos, &is_machine_id);
     basis::side_destroying(game, pos, &side_spec);
+    basis::energy_destroying(game, pos, &is_machine_id);
     let key = (game.native_dimension(), pos);
     let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
     if let Some(drops) = drops {
@@ -2333,32 +2374,35 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
-        placed_capacity(game, pos, &block);
+        let capacity = placed_capacity(game, pos, &block);
+        // `applyImplicitComponents` -> `copyToTile`: o item traz a energia, limitada à capacidade do tile de agora. Sem o tile no mundo, ela espera o primeiro tick.
+        basis::energy_placed(game, stack, pos, rules::ENERGY_COMPONENT, capacity.unwrap_or(i64::MAX));
     }
 }
 
 /// `TileEntityMekanism.applyImplicitComponents` (de `setPlacedBy`) -> `recalculateUpgrades` -> `MachineEnergyContainer.updateMaxEnergy`: a
 /// capacidade do item (1.000, ou o que os upgrades dão) vale desde a colocação, e não só desde o primeiro tick da máquina. Um gerador ou um
 /// cabo que encha a máquina nesse tick lê a capacidade nova, e não os quatro ticks de consumo do construtor.
-fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) {
-    let Some(spec) = machine_of(block) else {
-        return;
-    };
+fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
+    let spec = machine_of(block)?;
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
-        return;
+        return None;
     };
     let origin = Origin { placed: true, recalculated_before: false };
     let live = born(game, pos, entity, spec, &indexes_of(game, spec), origin);
-    let capacity = basis::energy_as_int(live.machine.energy().capacity(), "a capacidade de energia");
+    let live_capacity = live.machine.energy().capacity();
+    let capacity = basis::energy_as_int(live_capacity, "a capacidade de energia");
     let (insert_faces, extract_faces) = energy_faces(&live.machine);
     basis::set_energy_capacity(game.native_dimension(), pos, &entity.id, capacity, insert_faces, extract_faces);
     // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de uma máquina que esteve ali antes.
     COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), live.machine.tile().current_redstone_level()));
+    Some(live_capacity)
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
+    basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_machine_id);
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
@@ -2375,6 +2419,10 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
 /// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
     use horizon_client::mod_api::Text;
+    // `ATTACHED_ENERGY` (`registerComponentAppenderAfter`): `STORED_ENERGY.translateColored(BRIGHT_GREEN, GRAY, EnergyDisplay.of(handler))`, a energia e a capacidade do item.
+    if let Some(capacity) = item_energy_capacity(&stack.item) {
+        lines.push(basis::stored_energy_line(game, stack, capacity, &STORED_ENERGY_LINE));
+    }
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {
         if let Some(name) = lines.first_mut() {
@@ -2421,6 +2469,69 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         }
         lines.push((text, u32::MAX));
     }
+}
+
+/// Diz à receita `mekanism:mek_data` (`mek_data_energy.rs`, o módulo de `crafting.rs`) quais itens guardam energia e quanto: a configuração mudou, ou ainda não tinha sido lida.
+fn refresh_item_capacities() {
+    use horizon_client::crafting::mekanism_mek_data::set_capacity;
+    let config = server_config();
+    for item in rules::GEAR_ITEMS {
+        if let Some(gear) = rules::gear_energy(item, &config.gear) {
+            set_capacity(item, gear.capacity);
+        }
+    }
+    for (item, capacity) in rules::CUBE_TIERS.iter().zip(config.cubes) {
+        set_capacity(item, capacity);
+    }
+    for (item, capacity) in rules::CELL_TIERS.iter().zip(config.cells) {
+        set_capacity(item, capacity);
+    }
+    for machine in MACHINES.iter() {
+        set_capacity(machine.block, i64::from(rules::energy_capacity(machine.energy_per_tick())));
+    }
+}
+
+/// A linha `STORED_ENERGY` do tooltip: o rótulo `BRIGHT_GREEN` e o argumento `GRAY`.
+const STORED_ENERGY_LINE: basis::StoredEnergyLine<'static> = basis::StoredEnergyLine {
+    component: rules::ENERGY_COMPONENT,
+    label: rules::STORED_ENERGY_LANG,
+    label_color: rules::STORED_ENERGY_COLOR,
+    arg_color: rules::STORED_ENERGY_ARG_COLOR,
+    unit: rules::ENERGY_UNIT_LANG,
+    fraction: rules::FRACTION_LANG,
+    infinite: rules::INFINITE_LANG,
+};
+
+/// A capacidade de energia do item, ou `None` se ele não guarda energia (`ContainerType.ENERGY.supports(item)`): os itens de equipamento e os cubos e as células, pela configuração, e as
+/// máquinas portadas, que guardam quatro ticks do uso (`AttributeEnergy.getStorage`, a conta de [`rules::energy_capacity`]).
+fn item_energy_capacity(item: &str) -> Option<i64> {
+    let config = server_config();
+    if let Some(gear) = rules::gear_energy(item, &config.gear) {
+        return Some(gear.capacity);
+    }
+    if let Some(tier) = rules::cube_tier(item) {
+        return Some(config.cubes[tier]);
+    }
+    if let Some(tier) = rules::cell_tier(item) {
+        return Some(config.cells[tier]);
+    }
+    machine_of(item).map(|machine| i64::from(rules::energy_capacity(machine.energy_per_tick())))
+}
+
+/// `ItemEnergized.isBarVisible`, `getBarWidth` e `getBarColor` (e os mesmos dos cubos, do Free Runners, do arco, do MekaSuit, do Robit...): a barra do item é a da energia, e some
+/// com a pilha de mais de um item ou sem nada guardado. As máquinas e as células guardam energia sem barra (`ItemBlockTooltip` não sobrescreve `isBarVisible`).
+pub(in crate::game) fn item_bar(game: &Game<'_>, stack: &ItemStack, bar: &mut Option<(i32, u32)>) {
+    if !rules::shows_energy_bar(&stack.item) {
+        return;
+    }
+    let Some(capacity) = item_energy_capacity(&stack.item) else {
+        return;
+    };
+    let stored = basis::item_energy_of(game, stack, rules::ENERGY_COMPONENT);
+    *bar = machinery_basis_core::item_energy::is_bar_visible(i32::try_from(stack.count).unwrap_or(i32::MAX), stored).then(|| {
+        let color = ENERGY_COLOR.load(std::sync::atomic::Ordering::Relaxed);
+        (machinery_basis_core::item_energy::item_bar_width(stored, capacity), color as u32)
+    });
 }
 
 /// A cor `rgb` em todos os pedaços do texto.

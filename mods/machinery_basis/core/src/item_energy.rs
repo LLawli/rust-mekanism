@@ -54,7 +54,11 @@ pub fn energy_display(energy: i64, max: i64, unit: &str, fraction: &str, infinit
     if max == 0 {
         return stored;
     }
-    let capacity = if max == i64::MAX { infinite.to_owned() } else { crate::units::compact_display(max as u64, unit) };
+    let capacity = if max == i64::MAX {
+        infinite.to_owned()
+    } else {
+        crate::units::compact_display(max as u64, unit)
+    };
     crate::units::format_lang(fraction, &[&stored, &capacity])
 }
 
@@ -101,10 +105,22 @@ mod tests {
     #[test]
     fn the_display_is_a_fraction_unless_the_capacity_is_zero_or_the_energy_infinite() {
         let fraction = "%1$s/%2$s";
-        assert_eq!(energy_display(500, 1_000, "FE", fraction, "Infinite"), "500 FE/1 kFE");
+        assert_eq!(
+            energy_display(500, 1_000, "FE", fraction, "Infinite"),
+            "500 FE/1 kFE"
+        );
         assert_eq!(energy_display(500, 0, "FE", fraction, "Infinite"), "500 FE");
-        assert_eq!(energy_display(i64::MAX, i64::MAX, "FE", fraction, "Infinite"), "Infinite");
-        assert_eq!(energy_display(10, i64::MAX, "FE", fraction, "Infinite"), "10 FE/Infinite");
-        assert_eq!(energy_display(-5, 100, "FE", fraction, "Infinite"), "0 FE/100 FE");
+        assert_eq!(
+            energy_display(i64::MAX, i64::MAX, "FE", fraction, "Infinite"),
+            "Infinite"
+        );
+        assert_eq!(
+            energy_display(10, i64::MAX, "FE", fraction, "Infinite"),
+            "10 FE/Infinite"
+        );
+        assert_eq!(
+            energy_display(-5, 100, "FE", fraction, "Infinite"),
+            "0 FE/100 FE"
+        );
     }
 }

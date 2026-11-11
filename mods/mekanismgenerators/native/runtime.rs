@@ -254,6 +254,13 @@ pub const FRACTION_LANG: &str = "generic.mekanism.fraction";
 pub const STORED_MB_LANG: &str = "generic.mekanism.stored.mb";
 pub const EMPTY_LANG: &str = "gui.mekanism.empty";
 pub const ENERGY_UNIT_LANG: &str = "energy.mekanism.forge.short";
+/// O componente que guarda a energia do item (`MekanismDataComponents.ATTACHED_ENERGY`, registrado pelo Mekanism) e a linha `STORED_ENERGY` do tooltip.
+pub const ENERGY_COMPONENT: &str = "mekanism:energy";
+pub const STORED_ENERGY_LANG: &str = "tooltip.mekanism.stored_energy";
+pub const INFINITE_LANG: &str = "gui.mekanism.infinite";
+/// `EnumColor.BRIGHT_GREEN` e `EnumColor.GRAY`.
+pub const STORED_ENERGY_COLOR: u32 = 0x75_FF_89;
+pub const STORED_ENERGY_ARG_COLOR: u32 = 0xCF_CF_CF;
 pub const LAVA_NAME_LANG: &str = "block.minecraft.lava";
 
 /// O tooltip de `GuiVerticalPowerBar`: a energia sobre a capacidade, em FE.

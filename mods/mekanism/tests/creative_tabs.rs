@@ -416,33 +416,34 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     // As ferramentas: 26 itens e, no lugar do upgrade, uma pilha por tipo.
     let mut tools = Vec::new();
     assert!(table::edit_tab("minecraft:tools_and_utilities", &mut tools));
-    // O Cardboard Box vem antes do item de upgrade (`MekanismCreativeTabs.java:128`).
+    // O Cardboard Box vem antes do item de upgrade (`MekanismCreativeTabs.java:128`). Os quatro itens que guardam energia (o Atomic Disassembler, o Meka-Tool e os dois Free Runners)
+    // levam o cheio depois do vazio (`addToDisplay(event, ..)` chama o `addItems` do `ICustomCreativeTabContents`).
     assert_eq!(
         tools.len(),
-        27 + 5 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len()
+        27 + 5 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len() + 4
     );
     assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
-    assert_eq!(tools[22], table::plain_stack("mekanism:cardboard_box"));
-    assert_eq!(tools[23], table::upgrade_stack("anchor"));
+    assert_eq!(tools[22 + 4], table::plain_stack("mekanism:cardboard_box"));
+    assert_eq!(tools[23 + 4], table::upgrade_stack("anchor"));
     assert_eq!(
-        tools[31],
+        tools[31 + 4],
         table::plain_stack("mekanism:basic_tier_installer")
     );
     // O último instalador, os cinco tanques de fluido e os 18 baldes dos fluidos do Mekanism depois deles.
     assert_eq!(
-        tools[table::UPGRADE_TYPES.len() + 27 - 1],
+        tools[table::UPGRADE_TYPES.len() + 27 - 1 + 4],
         table::plain_stack("mekanism:ultimate_tier_installer")
     );
     assert_eq!(
-        tools[table::UPGRADE_TYPES.len() + 27],
+        tools[table::UPGRADE_TYPES.len() + 27 + 4],
         table::plain_stack("mekanism:basic_fluid_tank")
     );
     assert_eq!(
-        tools[table::UPGRADE_TYPES.len() + 27 + 4],
+        tools[table::UPGRADE_TYPES.len() + 27 + 8],
         table::plain_stack("mekanism:creative_fluid_tank")
     );
     assert_eq!(
-        tools[table::UPGRADE_TYPES.len() + 27 + 5],
+        tools[table::UPGRADE_TYPES.len() + 27 + 9],
         table::plain_stack("mekanism:hydrogen_bucket")
     );
     assert_eq!(
@@ -451,6 +452,10 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     );
     let mut combat = vec![table::plain_stack("minecraft:bow")];
     assert!(table::edit_tab("minecraft:combat", &mut combat));
-    assert_eq!(combat.len(), 11);
-    assert_eq!(combat[10], table::plain_stack("mekanism:jetpack_armored"));
+    // Os oito itens de energia da aba (o Atomic Disassembler, o arco, o Meka-Tool, as quatro peças do MekaSuit e o Free Runners blindado) levam o cheio depois do vazio.
+    assert_eq!(combat.len(), 11 + 8);
+    assert_eq!(
+        combat[10 + 8],
+        table::plain_stack("mekanism:jetpack_armored")
+    );
 }

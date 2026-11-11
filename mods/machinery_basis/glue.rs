@@ -2751,3 +2751,142 @@ pub(in crate::game) fn side_loot(
         }
     }
 }
+
+thread_local! {
+    /// A energia que o item que o jogador acabou de pôr traz, para o tile que o Horizon ainda não criou.
+    static PENDING_ENERGY: std::cell::RefCell<HashMap<[i32; 3], i64>> = std::cell::RefCell::new(HashMap::new());
+    /// A energia do tile que o jogador está quebrando, guardada antes de o Horizon tirá-lo do mundo.
+    static BROKEN_ENERGY: std::cell::RefCell<Option<([i32; 3], Option<i32>)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// O valor do componente de energia de uma pilha (`ContainerType.ENERGY.getOrZero`): o `long` do componente, ou zero sem ele. O componente do item é um `long`; um valor de outro
+/// tipo inteiro (um comando que escreveu `1000` sem o sufixo `L`) vale como o número que é.
+pub(in crate::game) fn item_energy_of(game: &Game<'_>, stack: &ItemStack, component: &str) -> i64 {
+    match game.native_component(stack, component) {
+        Ok(Some(Tag::Long(value))) => (*value).max(0),
+        Ok(Some(Tag::Int(value))) => i64::from(*value).max(0),
+        Ok(Some(Tag::Short(value))) => i64::from(*value).max(0),
+        Ok(Some(Tag::Byte(value))) => i64::from(*value).max(0),
+        _ => 0,
+    }
+}
+
+/// Grava a energia no componente da pilha (`ContainerType.ENERGY.attachCopyToStack`). O zero é o valor do item (`addDefault` põe `0L`), então volta ao padrão e a pilha empilha com a nova.
+pub(in crate::game) fn set_item_energy(game: &Game<'_>, stack: &mut ItemStack, component: &str, energy: i64) {
+    let result = if energy == 0 {
+        game.native_remove_component(stack, component)
+    } else {
+        game.native_set_component(stack, component, Tag::Long(energy))
+    };
+    if let Err(error) = result {
+        eprintln!("machinery_basis: o item solto não leva {component}: {error}");
+    }
+}
+
+/// `TileEntityMekanism.applyImplicitComponents` -> `EnergyContainerType.copyToTile`: o item posto traz a energia, e o tile a guarda limitada à capacidade dele
+/// (`copyToContainer`). Com o tile já no mundo a energia entra nele agora; sem ele espera o primeiro tick ([`energy_apply_pending`]). Um item sem o componente não muda nada: o tile
+/// nasce vazio.
+pub(in crate::game) fn energy_placed(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], component: &str, capacity: i64) {
+    let carried = item_energy_of(game, stack, component);
+    if carried == 0 {
+        PENDING_ENERGY.with_borrow_mut(|pending| pending.remove(&pos));
+        return;
+    }
+    if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        let stored = machinery_basis_core::item_energy::copy_to_container(carried, capacity);
+        set_stored_energy(entity, energy_as_int(stored, "a energia do item posto"));
+        game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        return;
+    }
+    PENDING_ENERGY.with_borrow_mut(|pending| pending.insert(pos, carried));
+}
+
+/// O tile nasceu: a energia do item que o colocou entra nele, limitada à capacidade que a máquina tem agora.
+pub(in crate::game) fn energy_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3], capacity: i64) {
+    if let Some(carried) = PENDING_ENERGY.with_borrow_mut(|pending| pending.remove(&pos)) {
+        let stored = machinery_basis_core::item_energy::copy_to_container(carried, capacity);
+        set_stored_energy(entity, energy_as_int(stored, "a energia do item posto"));
+    }
+}
+
+/// O jogador (ou uma explosão que passa pelo hook) vai quebrar o tile em `pos`: o Horizon o tira do mundo antes de rolar a tabela de loot, e a energia que o item solto leva
+/// (`copy_components` com `mekanism:energy`) é guardada aqui, enquanto o tile ainda existe.
+pub(in crate::game) fn energy_destroying(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
+    use horizon_client::containers::BlockEntity;
+    let energy = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy(entity)),
+        _ => None,
+    };
+    BROKEN_ENERGY.with_borrow_mut(|slot| *slot = Some((pos, energy)));
+}
+
+/// `copy_components` da tabela de loot: o item solto leva a energia do tile (`collectImplicitComponents` -> `copyFromTile` -> `attachedCopyOf`, sem limitar à capacidade do item). Um tile
+/// ainda no mundo dá a que ele tem; o que foi quebrado, a que [`energy_destroying`] guardou.
+pub(in crate::game) fn energy_loot(
+    game: &Game<'_>,
+    context: &horizon_client::mod_api::NativeLootDrops<'_>,
+    drops: &mut [ItemStack],
+    component: &str,
+    is_ours: &dyn Fn(&str) -> bool,
+) {
+    use horizon_client::containers::BlockEntity;
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    // Cada mod com energia chama isto: o valor guardado só sai para quem tem o item entre os que caíram (os outros mods o veem depois).
+    if !drops.iter().any(|stack| is_ours(&stack.item)) {
+        return;
+    }
+    let kept = BROKEN_ENERGY.with_borrow_mut(|slot| match slot {
+        Some((at, _)) if *at == pos => slot.take().and_then(|(_, energy)| energy),
+        _ => None,
+    });
+    let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy(entity)),
+        _ => None,
+    };
+    let Some(energy) = live.or(kept) else {
+        return;
+    };
+    for stack in drops.iter_mut().filter(|stack| is_ours(&stack.item)) {
+        set_item_energy(game, stack, component, i64::from(energy));
+    }
+}
+
+/// Os textos e as cores da linha que um item com energia ganha no tooltip (`STORED_ENERGY.translateColored(BRIGHT_GREEN, GRAY, EnergyDisplay.of(handler))`).
+pub(in crate::game) struct StoredEnergyLine<'a> {
+    pub component: &'a str,
+    pub label: &'a str,
+    pub label_color: u32,
+    pub arg_color: u32,
+    pub unit: &'a str,
+    pub fraction: &'a str,
+    pub infinite: &'a str,
+}
+
+/// A linha do tooltip de um item que guarda `capacity` de energia: o rótulo com a energia e a capacidade (`EnergyDisplay.of(handler)`), cada cor no seu pedaço, e a cor do
+/// rótulo e do argumento nos pedaços de texto.
+pub(in crate::game) fn stored_energy_line(
+    game: &Game<'_>,
+    stack: &ItemStack,
+    capacity: i64,
+    line: &StoredEnergyLine<'_>,
+) -> (horizon_client::mod_api::Text, u32) {
+    use horizon_client::mod_api::Text;
+    let stored = item_energy_of(game, stack, line.component);
+    let display = machinery_basis_core::item_energy::energy_display(
+        stored,
+        capacity,
+        &horizon_client::lang::get(line.unit).to_string(),
+        &horizon_client::lang::get(line.fraction).to_string(),
+        &horizon_client::lang::get(line.infinite).to_string(),
+    );
+    // O rótulo (`BRIGHT_GREEN`) e a energia (`GRAY`) são pedaços de texto com a própria cor, e `u32::MAX` deixa o hook mantê-las (a cor da linha do hook não é `rgba` de `0xRRGGBBAA`).
+    let template = horizon_client::lang::get(line.label).to_string();
+    let (head, tail) = template.split_once("%1$s").unwrap_or((template.as_str(), ""));
+    let mut text = Text::colored(head, line.label_color).append(Text::colored(display, line.arg_color));
+    if !tail.is_empty() {
+        text = text.append(Text::colored(tail, line.label_color));
+    }
+    (text, u32::MAX)
+}

@@ -11,6 +11,42 @@ pub fn plain_stack(id: &str) -> String {
     format!("{{count:1,id:\"{id}\"}}")
 }
 
+/// Os itens que a aba mostra vazios e cheios (`ICustomCreativeTabContents.addItems` -> `ContainerType.ENERGY.getFilledVariant`, na aba do mod e em cada aba do vanilla a que
+/// `addToExistingTabs` os acrescenta), com a capacidade padrão (`gear.toml` e `tiers.toml`): a aba é montada antes de o servidor ler os arquivos, e o glue (`sync_creative_energy`) troca
+/// pela capacidade de agora a cada tick (decisão 58). O cubo criativo fica de fora: o original o põe em duas pilhas com a configuração de lados do cubo (`ItemBlockEnergyCube.addItems`),
+/// que espera o tile do cubo.
+pub const FILLED_VARIANTS: [(&str, i64); 16] = [
+    ("mekanism:robit", 100_000),
+    ("mekanism:energy_tablet", 1_000_000),
+    ("mekanism:portable_teleporter", 1_000_000),
+    ("mekanism:mekasuit_helmet", 16_000_000),
+    ("mekanism:mekasuit_bodyarmor", 16_000_000),
+    ("mekanism:mekasuit_pants", 16_000_000),
+    ("mekanism:mekasuit_boots", 16_000_000),
+    ("mekanism:atomic_disassembler", 1_000_000),
+    ("mekanism:electric_bow", 120_000),
+    ("mekanism:meka_tool", 16_000_000),
+    ("mekanism:free_runners", 64_000),
+    ("mekanism:free_runners_armored", 64_000),
+    ("mekanism:basic_energy_cube", 4_000_000),
+    ("mekanism:advanced_energy_cube", 16_000_000),
+    ("mekanism:elite_energy_cube", 64_000_000),
+    ("mekanism:ultimate_energy_cube", 256_000_000),
+];
+
+/// A pilha de um item cheio: o componente `mekanism:energy` é um `long` (`ExtraCodecs.NON_NEGATIVE_LONG`), escrito com o sufixo `L`.
+pub fn filled_stack(id: &str, energy: i64) -> String {
+    format!("{{count:1,id:\"{id}\",components:{{\"mekanism:energy\":{energy}L}}}}")
+}
+
+/// A energia da pilha cheia de um item, se a aba o mostra vazio e cheio.
+pub fn filled_energy(id: &str) -> Option<i64> {
+    FILLED_VARIANTS
+        .iter()
+        .find(|(item, _)| *item == id)
+        .map(|(_, energy)| *energy)
+}
+
 /// Os tipos de upgrade na ordem do registro (`data/mekanism/mekanism/upgrade`, ordem do nome do arquivo).
 pub const UPGRADE_TYPES: [&str; 8] = [
     "anchor",
@@ -510,24 +546,40 @@ pub fn additions(tab: &str) -> Vec<String> {
                 stacks.extend(UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)));
             } else {
                 stacks.push(plain_stack(item));
+                if let Some(energy) = filled_energy(item) {
+                    stacks.push(filled_stack(item, energy));
+                }
             }
         }
     }
     stacks
 }
 
-/// A aba do mod: o item `mekanism:upgrade` vira as pilhas dos tipos, no mesmo lugar (`ICustomCreativeTabContents.addItems`; o item sem tipo não entra).
-/// Devolve se mudou.
+/// A aba do mod: o item `mekanism:upgrade` vira as pilhas dos tipos, no mesmo lugar (`ICustomCreativeTabContents.addItems`; o item sem tipo não entra), e cada item que guarda
+/// energia ganha o cheio logo depois do vazio ([`FILLED_VARIANTS`]). Devolve se mudou.
 pub fn edit_mod_tab(items: &mut Vec<String>) -> bool {
-    let plain = plain_stack("mekanism:upgrade");
-    let Some(at) = items.iter().position(|item| *item == plain) else {
-        return false;
-    };
-    items.splice(
-        at..=at,
-        UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)),
-    );
-    true
+    let upgrade = plain_stack("mekanism:upgrade");
+    let mut edited = Vec::with_capacity(items.len() + FILLED_VARIANTS.len() + UPGRADE_TYPES.len());
+    for item in items.iter() {
+        if *item == upgrade {
+            edited.extend(UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)));
+            continue;
+        }
+        edited.push(item.clone());
+        if let Some(energy) = FILLED_VARIANTS
+            .iter()
+            .find(|(id, _)| plain_stack(id) == *item)
+            .map(|(_, energy)| *energy)
+        {
+            let id = item
+                .trim_start_matches("{count:1,id:\"")
+                .trim_end_matches("\"}");
+            edited.push(filled_stack(id, energy));
+        }
+    }
+    let changed = edited != *items;
+    *items = edited;
+    changed
 }
 
 /// Uma aba do jogo (`id`) com os itens que o Horizon escreveu (`items`): o fim dela ganha o que o original acrescenta (a aba do mod troca o upgrade pelas pilhas).

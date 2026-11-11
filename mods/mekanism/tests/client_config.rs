@@ -50,7 +50,12 @@ fn original_rendering_section() -> String {
     let start = text
         .find("#Settings for adjusting how Mekanism renders certain blocks")
         .unwrap();
-    let header: Vec<&str> = text[start..].lines().take(2).collect();
+    // `energyColor` é a primeira chave de `[rendering]` (o comentário e a chave, sem faixa), e o port a lê (a barra de energia dos itens).
+    let header: Vec<&str> = text[start..].lines().take(4).collect();
+    assert!(
+        header[3].trim_start().starts_with("energyColor"),
+        "{header:?}"
+    );
     let nested_start = text
         .find("\t#Settings for configuring Mekanism's Particles")
         .unwrap();

@@ -9,8 +9,23 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+#[path = "common/crafting_stub.rs"]
+mod items;
+
+/// O módulo `mek_data_energy.rs`, como mora em `crafting.rs` (`mekanism_mek_data`): o `horizon_world::nbt::Tag` que ele importa é o do brinquedo.
+#[allow(dead_code)]
+mod mekanism_mek_data {
+    pub mod horizon_world {
+        pub mod nbt {
+            pub use crate::items::Tag;
+        }
+    }
+    include!("../native/mek_data_energy.rs");
+}
+
 #[allow(clippy::ptr_arg)]
 mod alias {
+    use super::mekanism_mek_data;
     use serde_json::Value;
     include!("../native/mek_data_alias.rs");
     pub fn run(sources: &mut Vec<(String, Value)>) {
