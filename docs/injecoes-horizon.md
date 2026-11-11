@@ -18,18 +18,18 @@ Contagem em 2026-11-11 (depois das frentes `armadura-vestida` (6 injeções crua
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 133 | |
-| Hook do catálogo, usado só com o contrato dele | 41 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 42 | sim |
-| Injeção crua (`target = ...`) | 50 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 30 | sim |
+| `[[injection]]` no total | 140 | |
+| Hook do catálogo, usado só com o contrato dele | 44 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 45 | sim |
+| Injeção crua (`target = ...`) | 51 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 31 | sim |
 
-41 + 42 + 50 = 133. Os 30 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-92 injeções e 30 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+44 + 45 + 51 = 140. Os 31 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+96 injeções e 31 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 50 | 30 | 42 |
+| Em uso | 51 | 31 | 45 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -59,6 +59,10 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H71 `block_shape_context` | hook | `context_outline` (mekanism) | em uso |
 | H72 `item_use_first` | hook | o uso de `right_click_block` para o Configurator e o cartão passarem à frente da tela do bloco | em uso (hook com estrutura privada) |
 | H73 `key_mappings` | hook | o `native_mod_key` sem entrada na tela de Controles (a tecla `N` do modo) | prevista |
+| H87 `PrimitiveShape::TexturedQuad` | dado | `world_overlay` (cru, HEAD cancelável de `world_primitive_geometry`) e o módulo `world-overlay` (a sobreposição colorida da face do Configurator) | em uso (1 cru, 1 módulo) |
+| H88 estado do HUD para um mod | helper | os campos privados que `gui_layer_post` lê (`health_hud`, `titles`, `mode`, `armor`, `inventory`, `ui.hide_gui`, `settings`) | em uso (hook com estrutura privada) |
+| H89 o alvo do olhar e a guinada da câmera para um mod | helper | `Game::pick`, `may_build`, `yaw` e `basis::front` na sobreposição do Configurator | em uso (hook com estrutura privada) |
+| H90 envio ao servidor dos ganchos de tela (`&self`) | hook | a fila `pending` de `configurator.rs` que o `client_tick` esvazia | em uso (contorno) |
 | H11 `screen_draw_over_slots` | hook | `draw_inventory_slots` (HEAD, cancelável) | em uso |
 | H12 `menu_hide_slots` | helper | uso de `lan.hub` em `net_from_client` | em uso |
 | H13 `block_entity_save` | hook | `save_level` | spike |
@@ -149,17 +153,17 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
-| `mods/mekanism/native/horizon-mixin.toml` | 53 | 38 | 15 | 6 |
+| `mods/mekanism/native/horizon-mixin.toml` | 60 | 44 | 16 | 7 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 25 | 21 | 4 | 4 |
-| Total | 133 | 83 | 50 | 30 |
+| Total | 140 | 89 | 51 | 31 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
-Dos 83 hooks, 42 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 41 não (o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 89 hooks, 45 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 44 não (os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (48)
+## Injeções cruas em uso (51)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -400,6 +404,14 @@ e 41 não (o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 
 - **Por que é necessária:** `BlockTransmitter.getShape` (`BlockTransmitter.java:84-103`) devolve, com o Configurator na mão, só o pedaço do transmissor que o jogador olha (`MultipartUtils.collisionRayTrace` sobre `TileEntityTransmitter.getCollisionBoxes`), para o Configurator poder escolher um lado. O Horizon usa `context_outline` para as formas que dependem do contexto (a luz e o andaime com o próprio item na mão, o shulker), e o contorno e o raio de seleção (`outline_boxes`) leem a mesma caixa, então a injeção cobre o desenho e a mira, como o `getShape` do original.
 - **Hook mais próximo:** `block_highlight` só cancela o contorno; `visuals` v1 só desenha o contorno de uma forma. **Hook proposto:** H71 `block_shape_context` (uma caixa ou lista de caixas por jogador e bloco, lida pelo contorno e pelo raio).
 - **Risco:** renomear `context_outline` ou mudar o tipo `Option<[f64; 6]>`. Uma caixa só por seleção: com PUSH e PULL (Fase 3, `ConnectionType`) o grupo tem três caixas, e a forma delas pede a lista (H71).
+
+### `world_overlay` (mekanism)
+
+- **Estado:** em uso desde 2026-11-11 (frente `efeitos-configurator`, decisão 62). **Alvo:** `horizon_client::game::world_primitives::Game<'_>::world_primitive_geometry`, HEAD cancelável, mais o módulo `world-overlay` (`overlay_quads.rs`, enxertado em `game/world_primitives.rs`, alcança os campos privados de `PrimitiveGeometry`).
+- **Helper:** `mods/mekanism/native/world_overlay.rs` chama `mekanism_overlay::geometry`: com o Configurator numa das mãos, num modo de configurar, olhando para uma máquina que aceita o tipo e tem o lado ligado (`mekanism_configurator::overlay_request`), devolve os primitivos do quadro com um quadrilátero (o sprite `mekanism:gui/sprites/overlay/<tipo>_overlay`, a cor do `DataType` a 60 % de opacidade, a face deslocada 0,01 para fora, com a rotação do `ConfiguratorOverlayHandler` nas faces de cima e de baixo); qualquer outro caso devolve `Continue`. Se outro mod desenhou primitivos no quadro, também `Continue` (o jogo vence, sem sobreposição naquele quadro).
+- **Por que é necessária:** `ConfiguratorOverlayHandler` (`RenderTickHandler.onBlockHover`, `RenderTypes.eyes`) desenha na face que o olhar toca um quadrilátero com textura, com teste de profundidade, translúcido e sem escrever profundidade. Os primitivos do mundo do Horizon (`PrimitiveShape`) só têm linha, caixa, caixa cheia, feixe e texto; um quadrilátero com textura não cabe em nenhum.
+- **Hook mais próximo:** `native_world_primitives` (os primitivos) sem forma de quadrilátero; `world_drawn` (um passe próprio do wgpu) serviria, mas pede um pipeline inteiro por um quadrilátero. **Hook proposto:** H87, `PrimitiveShape::TexturedQuad { corners, sprite, color }`.
+- **Risco:** renomear `world_primitive_geometry` ou mudar o `PrimitiveGeometry` (`quads: [Vec<Vertex>; 2]`) ou o `Vertex`. O corpo tem `return`, então RETURN não serve: o HEAD cancelável substitui o conjunto do quadro só nos quadros em que a sobreposição aparece.
 
 ### `shape_limit` (mekanism)
 
@@ -705,7 +717,7 @@ e 41 não (o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 
 
 ## Hooks do catálogo com estrutura privada
 
-Os 42 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
+Os 45 abaixo usam hooks do catálogo, mas o helper alcança o que não é API. Nenhum é injeção crua, e todos ficam de pé enquanto o
 Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e escrita (H8), não de hooks novos.
 
 | Injeção (mod) | Hook | O que toca de privado | O que o resolve |
@@ -716,8 +728,11 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `use_item_on` (mekanism) | `use_item_on` | o módulo `configurator`: `game.held_mut()`, `swing_arm`, `spawn_item`, `game.world.block_entities`, `loot_block_entity`, `block_loot_at`, `pending` e `with_level` (a chave inglesa que desmonta, o esvaziar, o cartão) | H8: `set_held`, `drop_item`, `dismantle_block` |
 | `use_item` (mekanism) | `use_item` | `game.held_mut()` (o cartão que se esvazia no ar) | H8: `set_held` |
 | `right_click_block` (mekanism) | `right_click_block` | `game.hand`, `game.held()`, `swing_arm`, `game.world` (o Configurator em `ROTATE` e o cartão agem antes da tela abrir) | H72: ver a ficha |
-| `key` (mekanism) | `key` | `game.held()` (o item de modo na mão) | H8: `held` |
-| `mouse_scrolling` (mekanism) | `mouse_scrolling` | `game.held()`, `game.visual_ticks()` | H8: `held` |
+| `key` (mekanism) | `key` | `game.inventory`, `game.selected` (o item de modo na mão principal) | H8: `held` |
+| `mouse_scrolling` (mekanism) | `mouse_scrolling` | `game.inventory`, `game.selected`, `game.visual_ticks()` | H8: `held` |
+| `gui_layer_post` (mekanism) | `gui_layer_post` | o texto do modo sobre a barra e o texto do HUD: `game.health_hud` (`left_height`, `right_height`), `game.titles.overlay_time`, `game.mode`, `game.creative`, `game.player`, `game.ui.hide_gui`, `game.armor`, `game.offhand`, `game.inventory`, `game.settings.text_background`, `game.gui.atlas`, `game.visual_ticks()` | H88 |
+| `screen_render_post` (mekanism) | `screen_render_post` | o menu radial: `game.gui.atlas` (o desenho do anel, dos ícones e dos nomes), `game.visual_ticks()` | H88 |
+| `screen_mouse_scrolled` (mekanism) | `screen_mouse_scrolled_pre` | `game.visual_ticks()` (o `ScrollIncrementer` do menu) | H88 |
 | `net_from_client` (mekanism) | `net_from_client` | `game.lan.take()` e `game.as_guest`, `game.held_mut()` (o `PacketModeChange` troca o modo da pilha na mão de quem mandou) | H12, H8 |
 | `tick_block` (basis) | `tick_block` | `GameLevel::behaviours` (`facts`, `collision_shape`, `tag`, `set_block`, `destroy_block`) e o registro de estados, para o `FlowingFluid` de um fluido de mod (módulo `liquid-glue`) | H47 |
 | `dispense_item` (basis) | `dispense_item` | `Game::with_level`, `Game::audio` e o registro, para o balde de um fluido de mod no dispensador | H47 |
@@ -802,7 +817,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (29)
+## Módulos (31)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -812,6 +827,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (mekanism) | `game.rs` | liga as máquinas e a tela: 2.691 linhas em 2026-11-08 | idem |
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 1.143 linhas em 2026-11-08 | idem |
 | `configurator` (mekanism) | `game.rs` | o Configurator e o cartão de configuração: o clique do item e do bloco (`use_item_on`, `right_click_block`), o componente da pilha, a cópia e a colagem do cartão, a troca de modo (tecla, rolagem, pacote), a seleção parcial dos transmissores. Usa `Game::held`, `held_mut`, `offhand`, `hand`, `aim`, `reach`, `swing_arm`, `spawn_item`, `loot_block_entity`, `block_loot_at`, `pending` e `with_level(player_destroy_block)` | H8, H71, H72 |
+| `world-overlay` (mekanism) | `game/world_primitives.rs` | o quadrilátero da sobreposição da face do Configurator no formato dos primitivos do mundo (`PrimitiveGeometry.quads`, privado de lá), para a injeção `world_overlay` | H87 |
 | `block-rows` (mekanism) | `mod_content.rs` | a tabela das linhas de jogo dos blocos de máquina (luz do `active` e da lava, reação ao pistão, oclusão, resistência), gerada do original em jogo, para a injeção `active_light` | H18, H49 |
 | `creative-tabs-table` (mekanism) | `mod_content.rs` | a tabela e a conta das pilhas da aba criativa (código puro, sem tipos do jogo), para a injeção `creative_tabs` | H43 |
 | `block-rows` (mekanismgenerators) | `mod_content.rs` | a tabela das linhas de jogo dos 23 blocos do Generators (luz do `active` e da lava, reação ao pistão, oclusão), gerada do original em jogo, para a injeção `block_rows` | H18, H49 |
@@ -1547,6 +1563,28 @@ entre parênteses.
 ### H73 `key_mappings`
 
 - **Lado:** cliente. **Contrato:** `collect`. **Quando dispara:** ao montar a tela de Controles: o mod entrega `(mod_id, nome, tecla padrão, categoria, texto)` e a tela lista, deixa trocar e avisa conflito, como o `KeyMapping` do NeoForge. Hoje `native_mod_key` lê a tecla que o jogador escolheu, mas nada a deixa escolher na tela.
+
+### H87 `PrimitiveShape::TexturedQuad`
+
+- **Lado:** cliente. **Tipo:** dado (uma forma nova de `PrimitiveShape`, que já é `non_exhaustive`). **Quando dispara:** com o resto dos primitivos, em `native_world_primitives`.
+- **Assinatura:** `TexturedQuad { corners: [[f64; 3]; 4], sprite: &str, uv: [[f32; 2]; 4], color: u32 }`: um quadrilátero em coordenadas do mundo com um sprite do atlas de telas (`mod:gui/sprites/...`), a cor multiplicada (o alfa vale), com o teste de profundidade do primitivo e sem escrever profundidade.
+- **Elimina:** a injeção `world_overlay` e o módulo `world-overlay` (a sobreposição colorida da face do Configurator, `ConfiguratorOverlayHandler`); qualquer mod que queira marcar uma face de bloco usa.
+- **Risco do que existe hoje:** `world_primitive_geometry`, `PrimitiveGeometry` e `Vertex`.
+
+### H88 estado do HUD para um mod
+
+- **Lado:** cliente. **Tipo:** helper (leitura). **O que dá:** `native_hud_state() -> HudState { left_height, right_height, can_hurt, overlay_message, gui_ticks, game_mode, main_hand, offhand, armor, hidden, text_background }`, o que `MekanismStatusOverlay` e `MekanismHUD` leem do `Minecraft.gui` e do jogador.
+- **Elimina:** os campos privados que o `gui_layer_post` do Mekanism lê (a linha da tabela de estrutura privada).
+
+### H89 o alvo do olhar e a guinada da câmera para um mod
+
+- **Lado:** cliente. **Tipo:** helper (leitura). **O que dá:** `native_block_target() -> Option<(pos, face)>` com as mesmas portas do contorno (sem F1; pode construir ou aventura) e `native_camera_yaw()`.
+- **Elimina:** `Game::pick`, `may_build` e `yaw` na sobreposição do Configurator (`RenderTickHandler.onBlockHover` olha o `HitResult` do contorno).
+
+### H90 envio ao servidor dos ganchos de tela
+
+- **Lado:** cliente. **Tipo:** helper. **O que dá:** `native_net_send_to_server` chamável dos ganchos de tela (`&self`), ou um contexto de envio no gancho. Hoje o menu radial põe o modo escolhido numa fila (`pending`) e o `client_tick` a esvazia no tique seguinte, o que atrasa o pacote até 50 ms.
+- **Elimina:** a fila e a espera de um tique.
 
 ### H26 mistura de sprites animados na GPU, em float (correção, sem hook)
 
