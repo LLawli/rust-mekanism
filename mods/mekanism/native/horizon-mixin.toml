@@ -25,6 +25,12 @@ name = "mekanism_glue"
 source = "glue.rs"
 
 [[module]]
+id = "cube"
+file = "crates/horizon-client/src/game.rs"
+name = "mekanism_cube"
+source = "energy_cube.rs"
+
+[[module]]
 id = "configurator"
 file = "crates/horizon-client/src/game.rs"
 name = "mekanism_configurator"
@@ -796,4 +802,29 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "camera", ty = "glam::DVec3", value = "camera" },
   { name = "alpha", ty = "f64", value = "alpha" },
+]
+
+# O desenho do Energy Cube: as portas e os LEDs de cada lado (`EnergyCubeModel`) e o núcleo que gira (`RenderEnergyCube`). Um hook do catálogo, como o da `machinery_basis`.
+[[injection]]
+id = "block_entity_submit"
+hook = "block_entity_submit"
+hook_version = 1
+kind = "HEAD"
+helper = "block_entity_submit.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "draw", ty = "&mut crate::game::native_block_entity_draw::BlockEntityDraw", value = "&mut *draw" },
+]
+
+# O cliente só tem a block entity do cubo (e então a desenha) se o servidor mandar uma cópia. O que o desenho precisa (a escala e os lados) vai por um canal próprio da `machinery_basis`.
+[[injection]]
+id = "block_entity_update_tag"
+hook = "block_entity_update_tag"
+hook_version = 1
+kind = "HEAD"
+helper = "block_entity_update_tag.rs"
+bindings = [
+  { name = "entity", ty = "&horizon_client::containers::ModBlockEntity", value = "entity" },
+  { name = "tag", ty = "&mut Option<horizon_world::nbt::Compound>", value = "&mut *tag" },
 ]

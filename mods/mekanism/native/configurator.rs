@@ -1,6 +1,7 @@
 // O Configurator (`ItemConfigurator`) e o cartão de configuração (`ItemConfigurationCard`) no jogo. As regras (os modos, as mensagens, o que o clique faz
 // numa face) são de `mekanism_rules` e da `machinery_basis`; aqui fica a cola: ler e escrever o componente da pilha, achar a máquina, e o que o jogo
 // expõe (o clique, o bloco, a rede, o teclado). Cada função cita o Java.
+use crate::game::mekanism_cube as cube;
 use crate::game::mekanism_glue as glue;
 use crate::game::mekanism_rules as rules;
 use crate::game::mekanism_rules::{ConfiguratorMode, DisplayChange};
@@ -76,12 +77,18 @@ fn set_mode(game: &Game<'_>, stack: &mut ItemStack, mode: ConfiguratorMode) {
 
 /// Um `TileEntityMekanism` daqui: a máquina de progresso ou o Heat Generator.
 fn is_mekanism_tile(block: &str) -> bool {
-    glue::is_machine_block(block) || block == HEAT_GENERATOR
+    glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block)
 }
 
 /// `TileEntityMekanism.hasInventory` e os slots de `getInventorySlots`.
 fn inventory_slots(block: &str) -> Vec<usize> {
-    if block == HEAT_GENERATOR { HEAT_SLOTS.to_vec() } else { glue::inventory_slots(block) }
+    if block == HEAT_GENERATOR {
+        HEAT_SLOTS.to_vec()
+    } else if cube::is_cube(block) {
+        vec![machinery_basis_core::energy_cube::DISCHARGE_SLOT, machinery_basis_core::energy_cube::CHARGE_SLOT]
+    } else {
+        glue::inventory_slots(block)
+    }
 }
 
 fn held_item(game: &Game<'_>) -> Option<(ItemStack, bool)> {
@@ -125,6 +132,26 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     let sneaking = game.native_sneaking();
     let block = game.native_block(pos);
     if let Some(kind) = mode.transmission() {
+        if cube::is_cube(&block) {
+            let click = cube::with_cube(game, pos, |cube| {
+                let facing = cube.facing();
+                cube.side_config_mut().configurator_click(kind, facing, face, sneaking)
+            })
+            .flatten();
+            return match click {
+                Some(SideClick::View(data_type)) => {
+                    overlay(game, &rules::configurator_side_message(false, kind, data_type));
+                    true
+                }
+                Some(SideClick::Toggled { old, new }) => {
+                    if old != new {
+                        overlay(game, &rules::configurator_side_message(true, kind, new));
+                    }
+                    true
+                }
+                None => false,
+            };
+        }
         if !glue::is_machine_block(&block) {
             // `IConfigurable`: nenhum bloco daqui a expõe (a lixeira, o tanque e a bomba não existem ainda), então o clique passa.
             return false;
@@ -184,6 +211,8 @@ fn set_facing(game: &mut Game<'_>, pos: [i32; 3], block: &str, facing: Face) {
     game.native_set_block_property(pos, "facing", facing.name());
     if glue::is_machine_block(block) {
         glue::with_machine(game, pos, |machine| machine.set_facing(facing));
+    } else if cube::is_cube(block) {
+        cube::with_cube(game, pos, |cube| cube.set_facing(facing));
     }
 }
 
@@ -324,6 +353,9 @@ fn card_write(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<Compound> {
         out.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control.as_str())));
         return Some(out);
     }
+    if cube::is_cube(block) {
+        return cube::write_configuration_data(game, pos);
+    }
     glue::write_configuration_data(game, pos)
 }
 
@@ -335,6 +367,11 @@ fn card_read(game: &mut Game<'_>, pos: [i32; 3], block: &str, input: &Compound) 
             entity.nbt.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control.as_str())));
         }
         game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        return;
+    }
+    if cube::is_cube(block) {
+        cube::set_configuration_data(game, pos, input);
+        cube::with_cube(game, pos, |_| ());
         return;
     }
     glue::set_configuration_data(game, pos, input);

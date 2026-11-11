@@ -257,6 +257,7 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 }
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
+    crate::game::mekanism_cube::block_entity(block, entity);
     if is_machine(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
         basis::watch_redstone(REDSTONE_OWNER, is_machine);
@@ -274,12 +275,14 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
+    crate::game::mekanism_cube::ticks(block, ticks);
     if is_machine(block) || is_cable(block) {
         *ticks = true;
     }
 }
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
+    crate::game::mekanism_cube::energy(block, energy);
     if let Some(tier) = rules::cable_tier(block) {
         // `CableTier.getCableCapacity`: a capacidade do arquivo `tiers.toml` (o `ModEnergyBuffer` do Horizon é `i32`).
         let capacity = basis::energy_as_int(server_config().cables[tier], "a capacidade do cabo");
@@ -305,6 +308,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 }
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
+    crate::game::mekanism_cube::container(block, container);
     let slots = match machine_of(block) {
         Some(machine) if machine.slots.infusion.is_some() => rules::MENU_SLOTS,
         Some(_) => rules::ELECTRIC_MENU_SLOTS,
@@ -769,6 +773,22 @@ thread_local! {
     static BOOKS: RefCell<Books> = RefCell::new(Books::default());
 }
 
+/// O índice de `ENERGY_CONVERSION` que o slot de energia de qualquer bloco consulta (o mesmo das máquinas).
+pub(in crate::game) fn energy_index(game: &Game<'_>) -> Rc<EnergyConversionCache> {
+    BOOKS.with_borrow_mut(|books| {
+        books
+            .energy
+            .get_or_insert_with(|| Book::new(|source| EnergyConversion::cache(source)))
+            .current(
+                |cache| cache.clear(),
+                || {
+                    let loaded = basis::energy_conversions(game, rules::ENERGY_CONVERSION, &rules::CONVERSION_FIELDS);
+                    core_energy_conversions(&loaded)
+                },
+            )
+    })
+}
+
 fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
     BOOKS.with_borrow_mut(|books| {
         let energy = books
@@ -826,22 +846,22 @@ fn slot_accepts(indexes: &Indexes, slots: &Slots, slot: usize, item: &ItemResour
     rules::slot_accepts(indexes, &slots.rule_slots(), slot, item, held)
 }
 
-fn has_saved(entity: &ModBlockEntity) -> bool {
+pub(in crate::game) fn has_saved(entity: &ModBlockEntity) -> bool {
     entity.nbt.contains_key(&JavaString::from(REDSTONE))
 }
 
-fn nbt_int(entity: &ModBlockEntity, key: &str) -> i32 {
+pub(in crate::game) fn nbt_int(entity: &ModBlockEntity, key: &str) -> i32 {
     match entity.nbt.get(&JavaString::from(key)) {
         Some(Tag::Int(value)) => *value,
         _ => 0,
     }
 }
 
-fn nbt_bool(entity: &ModBlockEntity, key: &str) -> bool {
+pub(in crate::game) fn nbt_bool(entity: &ModBlockEntity, key: &str) -> bool {
     matches!(entity.nbt.get(&JavaString::from(key)), Some(Tag::Byte(value)) if *value != 0)
 }
 
-fn nbt_string(entity: &ModBlockEntity, key: &str) -> Option<String> {
+pub(in crate::game) fn nbt_string(entity: &ModBlockEntity, key: &str) -> Option<String> {
     match entity.nbt.get(&JavaString::from(key)) {
         Some(Tag::String(value)) => Some(value.to_string_lossy()),
         _ => None,
@@ -882,7 +902,7 @@ fn upgrade_data(game: &Game<'_>, types: &UpgradeTypes, tags: &UpgradeTags) -> Rc
     rules::upgrade_data(types, tags, stack)
 }
 
-fn put(entity: &mut ModBlockEntity, key: &str, tag: Tag) {
+pub(in crate::game) fn put(entity: &mut ModBlockEntity, key: &str, tag: Tag) {
     entity.nbt.insert(JavaString::from(key), tag);
 }
 
@@ -1085,7 +1105,7 @@ fn born(
 
 /// O que a `ModBlockEntity` mudou fora do tick vira `setContents` no slot, que dispara os listeners como o Java. O slot guarda um
 /// recurso, o item e os componentes: o mesmo item com outro nome é outro recurso.
-fn slot_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
+pub(in crate::game) fn slot_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
     match stack {
         None => slot.set_contents(None, 0, None),
         Some(stack) => {
@@ -1602,13 +1622,13 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
                 SWEPT.with_borrow_mut(|swept| swept.insert(key, recalculated));
             }
             COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.retain(|key, _| machines.contains_key(key)));
-            basis::retain_energy_capacities(|dimension, pos| machines.contains_key(&(dimension, pos)));
+            basis::retain_energy_capacities(|dimension, pos| machines.contains_key(&(dimension, pos)) || crate::game::mekanism_cube::is_live(dimension, pos));
         }
     });
 }
 
 /// As faces por onde a capability de energia deixa entrar e sair (`ConfigHolder.canInsert`/`canExtract` do `DataType` do lado).
-fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [bool; 6]) {
+pub(in crate::game) fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [bool; 6]) {
     let (mut insert, mut extract) = ([false; 6], [false; 6]);
     for face in Face::ALL {
         if let Some(info) = machine.side_config().slot_info(TransmissionType::Energy, machine.facing(), Some(face)) {
@@ -1623,7 +1643,7 @@ fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [bool; 6]) {
 /// (`Level.updateNeighbourForOutputSignal`): os comparadores em volta releem, e as máquinas vizinhas recebem o `onNeighborChange` do
 /// NeoForge (`updatePower`). O objeto vivo está fora da tabela durante o próprio tick (e o Horizon tira o tile do mundo), e um
 /// comparador pode perguntar nessa hora, por isso o nível fica numa tabela à parte, posta antes do aviso.
-fn publish_comparator(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], level: i32, changed: bool) {
+pub(in crate::game) fn publish_comparator(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], level: i32, changed: bool) {
     COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((dimension, pos), level));
     if changed {
         game.native_update_output_neighbors(dimension, pos);
@@ -1652,6 +1672,11 @@ pub(in crate::game) fn inventory_slots(block: &str) -> Vec<usize> {
 }
 
 /// Se o bloco é uma máquina daqui (a que tem `ISideConfiguration` e a capability do cartão).
+/// Se há um objeto vivo de máquina em `pos` (a varredura do cubo não pode apagar a capacidade dela).
+pub(in crate::game) fn has_live_machine(dimension: &'static str, pos: [i32; 3]) -> bool {
+    LIVE_MACHINES.with(|machines| machines.try_borrow().map_or(true, |machines| machines.contains_key(&(dimension, pos))))
+}
+
 pub(in crate::game) fn is_machine_block(block: &str) -> bool {
     machine_of(block).is_some()
 }
@@ -1764,7 +1789,7 @@ fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i3
 
 /// `hasAnalogOutputSignal`: toda máquina do mod tem `AttributeComparator`.
 pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
-    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some()) {
+    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some() || crate::game::mekanism_cube::is_cube(block)) {
         *output = true;
     }
 }
@@ -1784,6 +1809,10 @@ pub(in crate::game) fn energy_stored(game: &Game<'_>, pos: [i32; 3], energy: i32
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
         return;
     };
+    if crate::game::mekanism_cube::is_cube(&entity.id) {
+        crate::game::mekanism_cube::energy_stored(game, pos, energy);
+        return;
+    }
     if machine_of(&entity.id).is_none() {
         return;
     }
@@ -1910,7 +1939,7 @@ pub(in crate::game) fn paste_consumed(game: &mut Game<'_>, kind: &str) {
     }
 }
 
-fn server_config() -> rules::ServerConfig {
+pub(in crate::game) fn server_config() -> rules::ServerConfig {
     *SERVER_CONFIG.read().unwrap_or_else(|error| error.into_inner())
 }
 
@@ -1958,6 +1987,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             let mut server = SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner());
             server.cables = rules::cable_capacities(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
+            server.cube_rates = rules::cube_rates(&loaded);
             server.cells = rules::cell_capacities(&loaded);
         }
         rules::GEAR_CONFIG_FILE => {
@@ -2099,6 +2129,12 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
 
 /// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.
 pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
+    if !canceled && crate::game::mekanism_cube::is_cube(&game.native_block(pos)) {
+        basis::name_destroying(game, pos, &is_machine_id);
+        basis::side_destroying(game, pos, &side_spec);
+        basis::energy_destroying(game, pos, &is_machine_id);
+        return;
+    }
     if canceled || machine_of(&game.native_block(pos)).is_none() {
         return;
     }
@@ -2317,7 +2353,7 @@ fn flush_deferred_awards(game: &mut Game<'_>) {
 
 /// O nome do tile é o da `machinery_basis` (`basis::name_*`): o componente inteiro, só para os blocos das máquinas daqui.
 fn is_machine_id(id: &str) -> bool {
-    machine_of(id).is_some()
+    machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id)
 }
 
 fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client::text::Text {
@@ -2332,6 +2368,9 @@ const SIDE_COMPONENTS: basis::SideComponents = basis::SideComponents {
 
 /// Como a configuração de lados de uma máquina é montada e o padrão do item dela.
 fn side_spec(block: &str) -> Option<basis::SideSpec> {
+    if let Some(spec) = crate::game::mekanism_cube::side_spec(block) {
+        return Some(spec);
+    }
     let machine = machine_of(block)?;
     Some(if machine.slots.infusion.is_some() {
         basis::SideSpec { spec: rules::infuser_side_config(), default_side_config: rules::advanced_machine_default() }
@@ -2442,7 +2481,7 @@ fn config_apply(game: &mut Game<'_>, pos: [i32; 3], packet: machinery_basis_core
     game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
 }
 
-fn put_compound(compound: &mut Compound, key: &str, tag: Tag) {
+pub(in crate::game) fn put_compound(compound: &mut Compound, key: &str, tag: Tag) {
     compound.insert(JavaString::from(key), tag);
 }
 
@@ -2484,6 +2523,10 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     basis::name_placed(game, stack, pos, &is_machine_id);
     basis::side_placed(game, stack, pos, SIDE_COMPONENTS, &side_spec);
     let block = game.native_block(pos);
+    if crate::game::mekanism_cube::is_cube(&block) {
+        crate::game::mekanism_cube::place_block(game, stack, pos);
+        return;
+    }
     if is_machine_id(&block) {
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
@@ -2524,7 +2567,7 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
     // `MekanismTileContainer.openInventory`: o jogador entra no `playersUsing` e recebe os dados do menu.
     if let Some(pos) = pos {
         let block = game.native_block(pos);
-        if is_machine(&block) {
+        if is_machine(&block) || crate::game::mekanism_cube::is_cube(&block) {
             game.mb_container_open(player, pos, &block);
         }
     }
@@ -2698,6 +2741,8 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if is_cable(&entity.id) {
         basis::transmit_energy(game, pos, entity);
+    } else if crate::game::mekanism_cube::is_cube(&entity.id) {
+        crate::game::mekanism_cube::tick(game, pos, entity);
     } else if let Some(machine) = machine_of(&entity.id) {
         tick_machine(game, pos, entity, machine);
     }

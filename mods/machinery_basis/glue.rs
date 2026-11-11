@@ -1133,6 +1133,27 @@ pub(in crate::game) fn set_stored_energy(entity: &mut ModBlockEntity, stored: i3
     entity.nbt.insert(JavaString::from(ENERGY), Tag::Int(stored));
 }
 
+/// A chave da energia exata de um tile que passa do `i32` do Horizon (o Energy Cube criativo, `Long.MAX_VALUE`): o `energy` inteiro fica no teto para o Horizon e esta guarda o valor.
+pub(in crate::game) const ENERGY_AMOUNT: &str = "energy_amount";
+
+/// A energia do tile em `i64`: a exata, se o tile guarda uma, ou a do `energy` inteiro.
+pub(in crate::game) fn stored_energy_long(entity: &ModBlockEntity) -> i64 {
+    match entity.nbt.get(&JavaString::from(ENERGY_AMOUNT)) {
+        Some(Tag::Long(stored)) => *stored,
+        _ => i64::from(stored_energy(entity)),
+    }
+}
+
+/// Grava a energia em `i64`: o `energy` inteiro satura sem aviso (o valor exato fica em [`ENERGY_AMOUNT`] quando passa do `i32`).
+pub(in crate::game) fn set_stored_energy_long(entity: &mut ModBlockEntity, stored: i64) {
+    set_stored_energy(entity, i32::try_from(stored).unwrap_or(i32::MAX));
+    if stored > i64::from(i32::MAX) {
+        entity.nbt.insert(JavaString::from(ENERGY_AMOUNT), Tag::Long(stored));
+    } else {
+        entity.nbt.remove(&JavaString::from(ENERGY_AMOUNT));
+    }
+}
+
 /// A capacidade de energia de cada máquina em jogo, por instância: o `ModEnergyBuffer` do bloco é um só para todos, e a
 /// capacidade de uma máquina muda com os upgrades (`MachineEnergyContainer.setMaxEnergy`). O valor guarda o id do bloco, para
 /// uma capacidade velha não valer para outro bloco que tome o lugar.
@@ -1203,6 +1224,16 @@ pub(in crate::game) fn set_energy_capacity(
 pub(in crate::game) fn retain_energy_capacities(keep: impl Fn(&'static str, [i32; 3]) -> bool) {
     let mut capacities = ENERGY_CAPACITIES.lock().unwrap_or_else(|e| e.into_inner());
     capacities.retain(|(dimension, pos), _| keep(*dimension, *pos));
+}
+
+/// As faces de energia que a instância em `pos` declarou (entrar e sair), ou `None` se ela não declarou: o que o ejetor de um vizinho precisa para saber se há
+/// capability do outro lado (`BlockCapabilityCache.getCapability` não nulo).
+pub(in crate::game) fn instance_energy_faces(dimension: &'static str, pos: [i32; 3]) -> Option<([bool; 6], [bool; 6])> {
+    ENERGY_CAPACITIES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&(dimension, pos))
+        .map(|energy| (energy.insert_faces, energy.extract_faces))
 }
 
 /// Capacidade por instância: a máquina com uma capacidade guardada responde com ela no lugar da do bloco. Sem uma, ou com outro
@@ -2756,7 +2787,7 @@ thread_local! {
     /// A energia que o item que o jogador acabou de pôr traz, para o tile que o Horizon ainda não criou.
     static PENDING_ENERGY: std::cell::RefCell<HashMap<[i32; 3], i64>> = std::cell::RefCell::new(HashMap::new());
     /// A energia do tile que o jogador está quebrando, guardada antes de o Horizon tirá-lo do mundo.
-    static BROKEN_ENERGY: std::cell::RefCell<Option<([i32; 3], Option<i32>)>> = const { std::cell::RefCell::new(None) };
+    static BROKEN_ENERGY: std::cell::RefCell<Option<([i32; 3], Option<i64>)>> = const { std::cell::RefCell::new(None) };
 }
 
 /// O valor do componente de energia de uma pilha (`ContainerType.ENERGY.getOrZero`): o `long` do componente, ou zero sem ele. O componente do item é um `long`; um valor de outro
@@ -2794,7 +2825,7 @@ pub(in crate::game) fn energy_placed(game: &mut Game<'_>, stack: &ItemStack, pos
     }
     if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
         let stored = machinery_basis_core::item_energy::copy_to_container(carried, capacity);
-        set_stored_energy(entity, energy_as_int(stored, "a energia do item posto"));
+        set_stored_energy_long(entity, stored);
         game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         return;
     }
@@ -2805,7 +2836,7 @@ pub(in crate::game) fn energy_placed(game: &mut Game<'_>, stack: &ItemStack, pos
 pub(in crate::game) fn energy_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3], capacity: i64) {
     if let Some(carried) = PENDING_ENERGY.with_borrow_mut(|pending| pending.remove(&pos)) {
         let stored = machinery_basis_core::item_energy::copy_to_container(carried, capacity);
-        set_stored_energy(entity, energy_as_int(stored, "a energia do item posto"));
+        set_stored_energy_long(entity, stored);
     }
 }
 
@@ -2814,7 +2845,7 @@ pub(in crate::game) fn energy_apply_pending(entity: &mut ModBlockEntity, pos: [i
 pub(in crate::game) fn energy_destroying(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
     use horizon_client::containers::BlockEntity;
     let energy = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy(entity)),
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy_long(entity)),
         _ => None,
     };
     BROKEN_ENERGY.with_borrow_mut(|slot| *slot = Some((pos, energy)));
@@ -2842,14 +2873,14 @@ pub(in crate::game) fn energy_loot(
         _ => None,
     });
     let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy(entity)),
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy_long(entity)),
         _ => None,
     };
     let Some(energy) = live.or(kept) else {
         return;
     };
     for stack in drops.iter_mut().filter(|stack| is_ours(&stack.item)) {
-        set_item_energy(game, stack, component, i64::from(energy));
+        set_item_energy(game, stack, component, energy);
     }
 }
 

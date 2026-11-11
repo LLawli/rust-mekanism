@@ -34,6 +34,31 @@ pub const FILLED_VARIANTS: [(&str, i64); 16] = [
     ("mekanism:ultimate_energy_cube", 256_000_000),
 ];
 
+/// O cubo de energia criativo (`ItemBlockEnergyCube.addItems`, `addDefault` falso): o item não entra sozinho, entram duas pilhas com a configuração de lados do cubo, a energia toda
+/// de entrada e o item vazio, e a energia toda de saída (ejetando) e o item cheio (`Long.MAX_VALUE`).
+pub const CREATIVE_CUBE: &str = "mekanism:creative_energy_cube";
+
+fn creative_cube_config(all_output: bool) -> String {
+    let kind = if all_output { "output" } else { "input" };
+    let sides = ["front", "left", "right", "back", "top", "bottom"].map(|side| format!("{side}:\"{kind}\"")).join(",");
+    let eject = if all_output { ",eject:1b" } else { "" };
+    // `ItemBlockEnergyCube.sideConfig`: os itens são sempre `FRONT_OUT_NO_EJECT`, a frente saída e o resto entrada.
+    let item = "front:\"output\",left:\"input\",right:\"input\",back:\"input\",top:\"input\",bottom:\"input\"";
+    format!("{{config:{{energy:{{side:{{{sides}}}{eject}}},item:{{side:{{{item}}}}}}}}}")
+}
+
+/// As duas pilhas do cubo criativo na aba: vazio com a energia toda de entrada, e cheio com a toda de saída.
+pub fn creative_cube_stacks() -> [String; 2] {
+    [
+        format!("{{count:1,id:\"{CREATIVE_CUBE}\",components:{{\"mekanism:side_config\":{}}}}}", creative_cube_config(false)),
+        format!(
+            "{{count:1,id:\"{CREATIVE_CUBE}\",components:{{\"mekanism:energy\":{}L,\"mekanism:side_config\":{}}}}}",
+            i64::MAX,
+            creative_cube_config(true)
+        ),
+    ]
+}
+
 /// A pilha de um item cheio: o componente `mekanism:energy` é um `long` (`ExtraCodecs.NON_NEGATIVE_LONG`), escrito com o sufixo `L`.
 pub fn filled_stack(id: &str, energy: i64) -> String {
     format!("{{count:1,id:\"{id}\",components:{{\"mekanism:energy\":{energy}L}}}}")
@@ -544,6 +569,8 @@ pub fn additions(tab: &str) -> Vec<String> {
         for item in items {
             if *item == "mekanism:upgrade" {
                 stacks.extend(UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)));
+            } else if *item == CREATIVE_CUBE {
+                stacks.extend(creative_cube_stacks());
             } else {
                 stacks.push(plain_stack(item));
                 if let Some(energy) = filled_energy(item) {
@@ -563,6 +590,10 @@ pub fn edit_mod_tab(items: &mut Vec<String>) -> bool {
     for item in items.iter() {
         if *item == upgrade {
             edited.extend(UPGRADE_TYPES.iter().map(|kind| upgrade_stack(kind)));
+            continue;
+        }
+        if *item == plain_stack(CREATIVE_CUBE) {
+            edited.extend(creative_cube_stacks());
             continue;
         }
         edited.push(item.clone());

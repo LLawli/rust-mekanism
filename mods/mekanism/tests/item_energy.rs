@@ -340,6 +340,31 @@ fn the_creative_tab_shows_the_empty_and_the_filled_item_side_by_side() {
     }
 }
 
+#[test]
+fn the_creative_cube_enters_the_tab_as_the_empty_and_the_full_stack_with_the_side_config() {
+    // O original o põe em duas pilhas (`ItemBlockEnergyCube.addItems`, `addDefault` falso): a energia toda de entrada e o item vazio, e a toda de saída e o item cheio.
+    let rows: Vec<Value> = lines("item_energy_creative.jsonl")
+        .into_iter()
+        .filter(|row| row["tab"] == "mekanism" && row["item"] == "mekanism:creative_energy_cube")
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["energy"], 0);
+    assert_eq!(rows[0]["patch"], serde_json::json!(["mekanism:side_config"]));
+    assert_eq!(rows[1]["energy"], i64::MAX);
+    assert_eq!(rows[1]["patch"], serde_json::json!(["mekanism:energy", "mekanism:side_config"]));
+    let [empty, full] = table::creative_cube_stacks();
+    assert!(empty.contains("\"mekanism:side_config\"") && !empty.contains("\"mekanism:energy\""));
+    assert!(full.contains("\"mekanism:energy\":9223372036854775807L") && full.contains("eject:1b"));
+    // Entra no lugar do item simples, na aba do mod e nas do vanilla.
+    let mut tab = vec![table::plain_stack("mekanism:basic_energy_cube"), table::plain_stack("mekanism:creative_energy_cube"), table::plain_stack("mekanism:salt")];
+    assert!(table::edit_tab(table::MEKANISM_TAB, &mut tab));
+    assert_eq!(tab[2..5], [empty.clone(), full.clone(), table::plain_stack("mekanism:salt")]);
+    let added = table::additions("minecraft:functional_blocks");
+    let at = added.iter().position(|stack| *stack == empty).unwrap();
+    assert_eq!(added[at + 1], full);
+    assert!(!added.contains(&table::plain_stack("mekanism:creative_energy_cube")));
+}
+
 fn stack(item: &str, energy: i64) -> items::ItemStack {
     let mut stack = items::ItemStack::new(item, 1);
     if energy > 0 {

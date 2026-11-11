@@ -1,0 +1,737 @@
+// Os cubos de energia no jogo (`TileEntityEnergyCube`). As regras ficam em machinery_basis_core::energy_cube, e o que é genérico (nome, configuração de lados, energia do item,
+// hoppers) em machinery_basis.
+use crate::game::mekanism_glue as glue;
+use crate::game::mekanism_rules as rules;
+use crate::game::{Game, machinery_basis as basis};
+use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
+use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
+use horizon_client::items::ItemStack;
+use horizon_world::nbt::{JavaString, Tag};
+use machinery_basis_core::components::Components;
+use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
+use machinery_basis_core::energy_cube::{self, CubeSideState, EnergyCube, EnergyNeighbours, ItemEnergy};
+use machinery_basis_core::network;
+use machinery_basis_core::side_config::TransmissionType;
+use machinery_basis_core::sides::{Face, Sides};
+use machinery_basis_core::tile::RedstoneControl;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+/// Os slots do menu do cubo, na ordem de `getInitialInventory`: o de descarga e o de carga.
+const SLOTS: usize = 2;
+const REDSTONE_OWNER: &str = "mekanism_cube";
+const REDSTONE: &str = "redstone";
+const CONTROL_TYPE: &str = "control_type";
+const CURRENT_REDSTONE: &str = "current_redstone";
+/// Um objeto vivo que não anda por tantos ticks sai da tabela (o bloco foi quebrado ou o chunk descarregado).
+const STALE_TICKS: i64 = 100;
+const SWEEP_TICKS: i64 = 200;
+
+/// O objeto vivo de um cubo. O Horizon só guarda a `ModBlockEntity`; o que o Java guarda no objeto (os contêineres, o ejetor, a escala) fica aqui, entre os ticks, e o NBT leva o que o
+/// Java salva.
+struct LiveCube {
+    cube: EnergyCube,
+    last_seen: i64,
+    /// O que a configuração de lados e o ejetor tinham no NBT na última vez que este objeto os viu ou escreveu.
+    side_nbt: basis::SideNbt,
+    /// A capacidade e as faces de energia que o Horizon já recebeu.
+    energy_state: Option<(i32, [bool; 6], [bool; 6])>,
+    /// `redstone`, o modo de controle e o nível do comparador que o NBT já tem.
+    scalars: Option<(bool, RedstoneControl, i32)>,
+    /// A energia que o NBT tem (`energy_amount`, só o criativo), para saber se alguém a mexeu de fora.
+    nbt_amount: i64,
+    /// O que o cliente já recebeu do desenho: a escala e o `CubeSideState` de cada lado.
+    published: Option<(f32, [CubeSideState; 6])>,
+}
+
+thread_local! {
+    static LIVE_CUBES: RefCell<HashMap<(&'static str, [i32; 3]), LiveCube>> = RefCell::new(HashMap::new());
+    static LAST_SWEEP: std::cell::Cell<i64> = const { std::cell::Cell::new(i64::MIN) };
+    /// A energia de cada conjunto de componentes que passou por um slot do cubo: o handler de energia de um item lê dela, porque o texto do componente é do Horizon.
+    static ENERGY_BY_KEY: RefCell<HashMap<String, i64>> = RefCell::new(HashMap::new());
+}
+
+pub(in crate::game) fn tier_of(block: &str) -> Option<usize> {
+    rules::cube_tier(block)
+}
+
+pub(in crate::game) fn is_cube(block: &str) -> bool {
+    tier_of(block).is_some()
+}
+
+/// Como a configuração de lados do cubo é montada e o padrão do item dele (`ItemBlockEnergyCube.SIDE_CONFIG`).
+pub(in crate::game) fn side_spec(block: &str) -> Option<basis::SideSpec> {
+    is_cube(block).then(|| basis::SideSpec { spec: energy_cube::side_config_spec(), default_side_config: rules::energy_cube_default() })
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O handler de energia dos itens.
+
+/// A energia que a pilha guarda, e o recurso dela com a conta registrada.
+fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
+    let resource = basis::item_resource(game, stack);
+    if !resource.components.is_empty() {
+        let energy = basis::item_energy_of(game, stack, rules::ENERGY_COMPONENT);
+        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(resource.components.key().to_owned(), energy));
+    }
+    resource
+}
+
+fn energy_of(resource: &ItemResource) -> i64 {
+    if let Some(known) = ENERGY_BY_KEY.with_borrow(|table| table.get(resource.components.key()).copied()) {
+        return known;
+    }
+    resource
+        .components
+        .get(rules::ENERGY_COMPONENT)
+        .and_then(|text| text.trim_end_matches(['L', 'l']).parse().ok())
+        .unwrap_or(0)
+}
+
+/// O mesmo item com a energia nova: os componentes que ele tinha e o da energia (ou sem ele, se zero).
+fn with_energy(resource: &ItemResource, energy: i64) -> ItemResource {
+    let text = energy.to_string();
+    let mut entries: Vec<(&str, &str)> = resource.components.iter().filter(|(id, _)| *id != rules::ENERGY_COMPONENT).collect();
+    if energy != 0 {
+        entries.push((rules::ENERGY_COMPONENT, text.as_str()));
+    }
+    let made = ItemResource::with_components(&resource.id, resource.max_stack_size, Components::new(entries));
+    if energy != 0 {
+        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(made.components.key().to_owned(), energy));
+    }
+    made
+}
+
+fn items(game: &Game<'_>) -> ItemEnergy {
+    let config = glue::server_config();
+    ItemEnergy {
+        lookup: Rc::new(move |resource: &ItemResource| rules::item_energy_spec(&resource.id, energy_of(resource), &config)),
+        write: Rc::new(|resource: &ItemResource, energy: i64| Some(with_energy(resource, energy))),
+        conversions: glue::energy_index(game),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O NBT.
+
+fn read_scalars(entity: &ModBlockEntity) -> (bool, RedstoneControl, i32) {
+    (
+        glue::nbt_bool(entity, REDSTONE),
+        RedstoneControl::from_serialized_name(&glue::nbt_string(entity, CONTROL_TYPE).unwrap_or_default()),
+        glue::nbt_int(entity, CURRENT_REDSTONE),
+    )
+}
+
+fn write_scalars(entity: &mut ModBlockEntity, scalars: (bool, RedstoneControl, i32)) {
+    glue::put(entity, REDSTONE, Tag::Byte(i8::from(scalars.0)));
+    glue::put(entity, CONTROL_TYPE, Tag::String(JavaString::from(scalars.1.serialized_name())));
+    glue::put(entity, CURRENT_REDSTONE, Tag::Int(scalars.2));
+}
+
+/// `Cube` nova do que a `ModBlockEntity` guarda.
+fn born(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, tier: usize) -> LiveCube {
+    let config = glue::server_config();
+    let mut cube = EnergyCube::new(rules::energy_cube_config(tier, &config, items(game)));
+    let scalars = read_scalars(entity);
+    let mut tile = cube.tile_mut();
+    tile.restore(
+        &machinery_basis_core::tile::SavedState { redstone: scalars.0, control_type: scalars.1, current_redstone: scalars.2, ..Default::default() },
+        false,
+    );
+    drop(tile);
+    cube.set_facing(basis::front(game, pos));
+    let side = basis::read_side_nbt(entity);
+    cube.restore_side_config(side.config.as_ref(), side.ejector.as_ref(), false);
+    // O criativo guarda o valor exato fora do `i32` do Horizon; os outros guardam o `energy`.
+    let stored = if tier == energy_cube::CREATIVE { creative_amount(entity) } else { i64::from(basis::stored_energy(entity)) };
+    cube.energy().set_energy(stored, None);
+    LiveCube { cube, last_seen: i64::MIN, side_nbt: side, energy_state: None, scalars: None, nbt_amount: stored, published: None }
+}
+
+/// A energia do cubo criativo no NBT: o valor exato, ou o `energy` inteiro cheio como `Long.MAX_VALUE` (o item cheio do criativo, que o Horizon grava no teto).
+fn creative_amount(entity: &ModBlockEntity) -> i64 {
+    let stored = basis::stored_energy_long(entity);
+    if stored == i64::from(i32::MAX) { i64::MAX } else { stored }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O que o Horizon deixa ver.
+
+pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, horizon_world::nbt::Compound)>) {
+    if is_cube(block) {
+        // `AttributeRedstone`: o jogo avisa o bloco quando um vizinho muda.
+        basis::watch_redstone(REDSTONE_OWNER, is_cube);
+        if entity.is_none() {
+            *entity = Some((block.to_owned(), horizon_world::nbt::Compound::default()));
+        }
+    }
+}
+
+pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
+    if is_cube(block) {
+        *ticks = true;
+    }
+}
+
+pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
+    let Some(tier) = tier_of(block) else {
+        return;
+    };
+    // O `ModEnergyBuffer` do Horizon é `i32`: o criativo fica no teto. As faces são da instância (H1), e um tile ainda sem configuração não tem capability em nenhuma.
+    let capacity = i32::try_from(glue::server_config().cubes[tier]).unwrap_or(i32::MAX);
+    *energy = Some(ModEnergyBuffer { capacity, max_insert: capacity, max_extract: capacity, ..Default::default() });
+}
+
+pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
+    if is_cube(block) {
+        // Sem interface vanilla: hoppers passam pela regra da machinery_basis. A tela (`GuiEnergyCube`) é da Fase 5 e espera as abas de lados: sem menu, o clique direito não abre nada.
+        *container = Some(ModContainer { slots: SLOTS, menu: None, ..Default::default() });
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os slots entre o menu e o objeto.
+
+fn slot_from_entity(game: &Game<'_>, slot: &InventorySlot, stack: Option<&ItemStack>) {
+    match stack {
+        None => slot.set_contents(None, 0, None),
+        Some(stack) => {
+            let resource = resource_of(game, stack);
+            if slot.resource().as_ref() != Some(&resource) || slot.amount() != stack.count {
+                slot.set_contents(Some(resource), stack.count, None);
+            }
+        }
+    }
+}
+
+/// O que o tick mudou volta para a `ModBlockEntity`. Um recurso feito pelo handler de energia (a energia nova do item) não passou por uma pilha do jogo: a pilha dele é a que o slot
+/// tinha, com a energia nova.
+fn slot_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, slot: &InventorySlot) {
+    let contents = slot.contents();
+    let current = entity.items[index].as_ref();
+    let same = match (&contents.resource, current) {
+        (None, None) => true,
+        (Some(resource), Some(stack)) => *resource == resource_of(game, stack) && contents.amount == stack.count,
+        _ => false,
+    };
+    if same {
+        return;
+    }
+    let new = contents.resource.map(|resource| {
+        let mut stack = match current {
+            Some(old) if resource_of(game, old) == resource => old.clone(),
+            _ => match basis::stack_of_resource(&resource, contents.amount) {
+                Some(stack) => stack,
+                None => {
+                    let mut base = match current {
+                        Some(old) if *old.item == *resource.id => old.clone(),
+                        _ => ItemStack::new(&resource.id, contents.amount),
+                    };
+                    basis::set_item_energy(game, &mut base, rules::ENERGY_COMPONENT, energy_of(&resource));
+                    base
+                }
+            },
+        };
+        stack.count = contents.amount;
+        stack
+    });
+    entity.items[index] = new;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os vizinhos de energia.
+
+struct GameEnergy<'a, 'g> {
+    game: RefCell<&'a mut Game<'g>>,
+    dimension: &'static str,
+    pos: [i32; 3],
+}
+
+impl GameEnergy<'_, '_> {
+    fn at(&self, face: Face) -> [i32; 3] {
+        let [x, y, z] = face.offset();
+        [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z]
+    }
+}
+
+impl EnergyNeighbours for GameEnergy<'_, '_> {
+    /// `BlockCapabilityCache.getCapability` não nulo: um vizinho com configuração de lados tem capability onde a face deixa entrar ou sair; os outros blocos de energia,
+    /// onde a regra deles manda.
+    fn has_handler(&self, face: Face) -> bool {
+        let at = self.at(face);
+        let reached = face.opposite();
+        if let Some((insert, extract)) = basis::instance_energy_faces(self.dimension, at) {
+            return insert[reached as usize] || extract[reached as usize];
+        }
+        let game = self.game.borrow();
+        let state = game.world.block(at[0], at[1], at[2]);
+        if game.world.block_entities.mod_energy(state.0).is_none() {
+            return false;
+        }
+        let block = game.native_block(at);
+        network::current().receives(&block, basis::front(&game, at), reached)
+    }
+
+    fn insert(&self, face: Face, amount: i32, simulate: bool) -> i32 {
+        let at = self.at(face);
+        let mut game = self.game.borrow_mut();
+        game.native_energy_insert(at, basis::direction(face.opposite()), amount, simulate)
+    }
+}
+
+/// As faces por onde a capability de energia deixa entrar e sair (`ConfigHolder.canInsert`/`canExtract` do `DataType` do lado).
+fn energy_faces(cube: &EnergyCube) -> ([bool; 6], [bool; 6]) {
+    let (mut insert, mut extract) = ([false; 6], [false; 6]);
+    for face in Face::ALL {
+        if let Some(info) = cube.side_config().slot_info(TransmissionType::Energy, cube.facing(), Some(face)) {
+            insert[face as usize] = info.can_input;
+            extract[face as usize] = info.can_output;
+        }
+    }
+    (insert, extract)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O tick.
+
+pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
+    let Some(tier) = tier_of(&entity.id) else {
+        return;
+    };
+    let now = game.world.game_time;
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    if entity.items.len() < SLOTS {
+        entity.items.resize(SLOTS, None);
+    }
+    basis::name_apply_pending(entity, pos);
+    basis::side_apply_pending(entity, pos);
+    let alive = LIVE_CUBES.with_borrow_mut(|cubes| cubes.remove(&key));
+    let mut live = match alive {
+        Some(live) if live.last_seen + 1 == now && glue::has_saved(entity) => live,
+        _ => born(game, pos, entity, tier),
+    };
+    let creative = tier == energy_cube::CREATIVE;
+    slot_from_entity(game, live.cube.discharge_slot(), entity.items[energy_cube::DISCHARGE_SLOT].as_ref());
+    slot_from_entity(game, live.cube.charge_slot(), entity.items[energy_cube::CHARGE_SLOT].as_ref());
+    basis::energy_apply_pending(entity, pos, live.cube.energy().capacity());
+    if creative {
+        // Quem mexeu no valor exato por fora (um comando de dados, o item posto) muda o contêiner.
+        let in_nbt = basis::stored_energy_long(entity);
+        if in_nbt != live.nbt_amount {
+            let stored = if in_nbt == i64::from(i32::MAX) { i64::MAX } else { in_nbt };
+            live.cube.energy().set_energy(stored, None);
+        }
+    } else {
+        let stored = i64::from(basis::stored_energy(entity));
+        if live.cube.energy().amount() != stored {
+            live.cube.energy().set_energy(stored, None);
+        }
+    }
+    if let Some(powered) = basis::take_power(game, pos) {
+        live.cube.tile_mut().update_power(powered);
+    }
+    live.cube.set_facing(basis::front(game, pos));
+    let in_nbt = basis::read_side_nbt(entity);
+    if in_nbt != live.side_nbt {
+        live.cube.restore_side_config(in_nbt.config.as_ref(), in_nbt.ejector.as_ref(), true);
+        live.side_nbt = in_nbt;
+    }
+
+    let result = {
+        let neighbours = GameEnergy { game: RefCell::new(&mut *game), dimension, pos };
+        live.cube.tick_server(now as u64, &neighbours)
+    };
+    glue::publish_comparator(game, dimension, pos, live.cube.tile().current_redstone_level(), result.comparator_changed);
+
+    slot_to_entity(game, entity, energy_cube::DISCHARGE_SLOT, live.cube.discharge_slot());
+    slot_to_entity(game, entity, energy_cube::CHARGE_SLOT, live.cube.charge_slot());
+    let amount = live.cube.energy().amount();
+    if creative {
+        // O Horizon vê um buffer vazio que aceita tudo (o criativo aceita sem guardar); o valor exato fica em `energy_amount`.
+        basis::set_stored_energy(entity, 0);
+        entity.nbt.insert(JavaString::from(basis::ENERGY_AMOUNT), Tag::Long(amount));
+        live.nbt_amount = amount;
+    } else if basis::stored_energy(entity) != basis::energy_as_int(amount, "a energia guardada") {
+        basis::set_stored_energy(entity, basis::energy_as_int(amount, "a energia guardada"));
+    }
+    let side_now = basis::SideNbt::of(live.cube.side_config().serialize(), live.cube.ejector().serialize());
+    if side_now != live.side_nbt {
+        basis::write_side_nbt(entity, &side_now);
+        live.side_nbt = basis::read_side_nbt(entity);
+    }
+    let capacity = i32::try_from(live.cube.energy().capacity()).unwrap_or(i32::MAX);
+    let (insert_faces, extract_faces) = energy_faces(&live.cube);
+    let energy_state = (capacity, insert_faces, extract_faces);
+    if live.energy_state != Some(energy_state) {
+        basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
+        live.energy_state = Some(energy_state);
+    }
+    let scalars = {
+        let tile = live.cube.tile();
+        (tile.is_powered(), tile.control_type(), tile.current_redstone_level())
+    };
+    if live.scalars != Some(scalars) {
+        write_scalars(entity, scalars);
+        live.scalars = Some(scalars);
+    }
+    let drawn = (live.cube.energy_scale(), live.cube.side_states());
+    if live.published != Some(drawn) {
+        game.mb_view_changed(dimension, pos, drawn.0, drawn.1.map(|state| state as u8));
+        live.published = Some(drawn);
+    }
+    if entity.data.is_empty() {
+        entity.data = vec![1];
+    }
+
+    // As faces dos hoppers vizinhos seguem a configuração de itens da instância: o `DataType` de cada lado, pela frente de agora. Quem tira de um slot de fora (`EXTERNAL`) obedece
+    // à regra do slot.
+    let cube = &live.cube;
+    let front = cube.facing();
+    let accepts = |game: &Game<'_>, slot: usize, stack: &ItemStack| {
+        cube.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource_of(game, stack), AutomationType::External))
+    };
+    let can_give = |game: &Game<'_>, slot: usize, stack: &ItemStack| {
+        cube.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_extraction(&resource_of(game, stack), AutomationType::External))
+    };
+    let slots = |face| cube.side_config().item_face(front, face, &[]);
+    let sides = Sides::of_slots(&slots);
+    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
+
+    live.last_seen = now;
+    LIVE_CUBES.with_borrow_mut(|cubes| {
+        cubes.insert(key, live);
+        if now.saturating_sub(LAST_SWEEP.get()) >= SWEEP_TICKS {
+            LAST_SWEEP.set(now);
+            cubes.retain(|_, live| now - live.last_seen <= STALE_TICKS);
+            basis::retain_energy_capacities(|dimension, pos| cubes.contains_key(&(dimension, pos)) || glue::has_live_machine(dimension, pos));
+        }
+    });
+}
+
+/// `TrackingEnergyHandler.insert` → `LastEnergyTracker.received`: o buffer do cubo em `pos` passou a guardar `energy`.
+pub(in crate::game) fn energy_stored(game: &Game<'_>, pos: [i32; 3], energy: i32) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    if !is_cube(&entity.id) {
+        return;
+    }
+    let before = basis::stored_energy(entity);
+    let Some(received) = energy.checked_sub(before).filter(|received| *received > 0) else {
+        return;
+    };
+    let key = (game.native_dimension(), pos);
+    LIVE_CUBES.with(|cubes| {
+        if let Ok(cubes) = cubes.try_borrow()
+            && let Some(live) = cubes.get(&key)
+        {
+            live.cube.energy_received(i64::from(received), game.world.game_time as u64);
+        }
+    });
+}
+
+/// `TileEntityEnergyCube.writeConfigurationData`: o que o cartão de configuração e o Configurator copiam do cubo.
+pub(in crate::game) fn write_configuration_data(game: &Game<'_>, pos: [i32; 3]) -> Option<horizon_world::nbt::Compound> {
+    let key = (game.native_dimension(), pos);
+    let live = LIVE_CUBES.with_borrow(|cubes| cubes.get(&key).map(|live| live.cube.write_configuration_data()));
+    let data = match live {
+        Some(data) => data,
+        None => {
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+                return None;
+            };
+            let tier = tier_of(&entity.id)?;
+            born(game, pos, entity, tier).cube.write_configuration_data()
+        }
+    };
+    let mut out = horizon_world::nbt::Compound::default();
+    if let Some(control) = data.control_type {
+        glue::put_compound(&mut out, CONTROL_TYPE, Tag::String(JavaString::from(control.serialized_name())));
+    }
+    basis::side_nbt_into(&mut out, &basis::SideNbt { config: data.config, ejector: data.ejector });
+    Some(out)
+}
+
+/// `TileEntityEnergyCube.setConfigurationData`.
+pub(in crate::game) fn set_configuration_data(game: &mut Game<'_>, pos: [i32; 3], input: &horizon_world::nbt::Compound) -> bool {
+    let key = (game.native_dimension(), pos);
+    let side = basis::side_nbt_from(input);
+    let control_type = match input.get(&JavaString::from(CONTROL_TYPE)) {
+        Some(Tag::String(name)) => Some(RedstoneControl::from_serialized_name(&name.to_string_lossy())),
+        _ => None,
+    };
+    let data = machinery_basis_core::tile::ConfigurationData { control_type, config: side.config.clone(), ejector: side.ejector.clone() };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return false;
+    };
+    let applied = LIVE_CUBES.with_borrow_mut(|cubes| {
+        let live = cubes.get_mut(&key)?;
+        live.cube.set_configuration_data(&data);
+        Some(basis::SideNbt::of(live.cube.side_config().serialize(), live.cube.ejector().serialize()))
+    });
+    match applied {
+        Some(now) => {
+            basis::write_side_nbt(entity, &now);
+            let seen = basis::read_side_nbt(entity);
+            LIVE_CUBES.with_borrow_mut(|cubes| {
+                if let Some(live) = cubes.get_mut(&key) {
+                    live.side_nbt = seen;
+                }
+            });
+        }
+        None => basis::write_side_nbt(entity, &side),
+    }
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+    true
+}
+
+/// Se há um cubo vivo em `pos` (a varredura das capacidades de energia não pode apagar a dele).
+pub(in crate::game) fn is_live(dimension: &'static str, pos: [i32; 3]) -> bool {
+    LIVE_CUBES.with(|cubes| cubes.try_borrow().map_or(true, |cubes| cubes.contains_key(&(dimension, pos))))
+}
+
+/// Corre `act` no cubo em `pos`: o objeto vivo, ou um feito do NBT que não fica na tabela. O que `act` mudou na configuração de lados e no ejetor vai ao NBT na hora, e as faces de energia
+/// são avisadas ao Horizon (H1). Quem usa: o Configurator e o cartão de configuração.
+pub(in crate::game) fn with_cube<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&mut EnergyCube) -> R) -> Option<R> {
+    let block = game.native_block(pos);
+    let tier = tier_of(&block)?;
+    let dimension = game.native_dimension();
+    let key = (dimension, pos);
+    let at = (pos[0], pos[1], pos[2]);
+    let alive = LIVE_CUBES.with_borrow_mut(|cubes| cubes.remove(&key));
+    let was_alive = alive.is_some();
+    let mut live = match alive {
+        Some(live) => live,
+        None => {
+            let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+                return None;
+            };
+            born(game, pos, entity, tier)
+        }
+    };
+    let result = act(&mut live.cube);
+    live.cube.take_side_changes();
+    let now = basis::SideNbt::of(live.cube.side_config().serialize(), live.cube.ejector().serialize());
+    let capacity = i32::try_from(live.cube.energy().capacity()).unwrap_or(i32::MAX);
+    let (insert_faces, extract_faces) = energy_faces(&live.cube);
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
+        basis::write_side_nbt(entity, &now);
+        live.side_nbt = basis::read_side_nbt(entity);
+        basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
+        live.energy_state = Some((capacity, insert_faces, extract_faces));
+    }
+    game.world.modified.insert((at.0 >> 4, at.2 >> 4));
+    if was_alive {
+        LIVE_CUBES.with_borrow_mut(|cubes| cubes.insert(key, live));
+    }
+    Some(result)
+}
+
+/// O nome do tile, a configuração de lados e a energia do item que o coloca (`setPlacedBy`/`applyImplicitComponents`) e do que ele solta (`collectImplicitComponents`).
+pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
+    let block = game.native_block(pos);
+    if !is_cube(&block) {
+        return;
+    }
+    // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`.
+    basis::on_added(game, pos);
+    let tier = tier_of(&block).unwrap_or_default();
+    let capacity = glue::server_config().cubes[tier];
+    // `copyToTile`: o item traz a energia, limitada à capacidade do cubo.
+    basis::energy_placed(game, stack, pos, rules::ENERGY_COMPONENT, capacity);
+    let dimension = game.native_dimension();
+    let published = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) => {
+            let live = born(game, pos, entity, tier);
+            let capacity = i32::try_from(live.cube.energy().capacity()).unwrap_or(i32::MAX);
+            let (insert_faces, extract_faces) = energy_faces(&live.cube);
+            basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
+            true
+        }
+        _ => false,
+    };
+    if published {
+        // O tile novo guarda `currentRedstoneLevel = 0`.
+        glue::publish_comparator(game, dimension, pos, 0, false);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O desenho: `EnergyCubeModel` (as portas e os LEDs de cada lado, pelo `CubeSideState`) e `RenderEnergyCube` (o núcleo que gira). O modelo estático do bloco é o quadro e os LEDs
+// apagados (o bloco sem block entity, decisão 26); o desenho do tile põe por cima as portas dos lados ativos e o LED aceso dos que saem.
+
+// Gerado de `models/block/energy_cube/base.json` do original: as peças de cada lado (`ports` e `leds`), na ordem de `RelativeSide` (frente, esquerda, direita, costas, alto, base).
+/// Uma peça do modelo: a caixa em texels, e por face (`Direction`: baixo, cima, norte, sul, oeste, leste) o sprite (0 a 3: `energy_cube`, `ports`, `ports_led`, `leds`) e o `uv`.
+struct Part {
+    from: [f32; 3],
+    to: [f32; 3],
+    faces: [Option<(usize, [f32; 4])>; 6],
+    emissive: bool,
+}
+
+const PORTS: [&[Part]; 6] = [
+    &[
+        Part { from: [3.0, 5.0, 1.0], to: [13.0, 11.0, 2.0], faces: [Some((0, [10.0, 5.0, 0.0, 6.0])), Some((0, [10.0, 1.0, 0.0, 0.0])), Some((0, [0.0, 0.0, 10.0, 6.0])), Some((0, [0.0, 0.0, 10.0, 6.0])), None, None], emissive: false },
+        Part { from: [4.0, 4.0, 0.0], to: [12.0, 12.0, 1.0], faces: [Some((1, [0.0, 7.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 1.0])), Some((1, [0.0, 0.0, 8.0, 8.0])), Some((1, [8.0, 0.0, 16.0, 8.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0]))], emissive: false },
+        Part { from: [4.0, 4.0, 0.0], to: [12.0, 12.0, 0.0], faces: [None, None, Some((2, [8.0, 8.0, 16.0, 16.0])), None, None, None], emissive: true },
+    ],
+    &[
+        Part { from: [14.0, 5.0, 3.0], to: [15.0, 11.0, 13.0], faces: [Some((0, [10.0, 5.0, 0.0, 6.0])), Some((0, [10.0, 1.0, 0.0, 0.0])), None, None, Some((0, [0.0, 0.0, 10.0, 6.0])), Some((0, [0.0, 0.0, 10.0, 6.0]))], emissive: false },
+        Part { from: [15.0, 4.0, 4.0], to: [16.0, 12.0, 12.0], faces: [Some((1, [0.0, 7.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 1.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0])), Some((1, [8.0, 0.0, 16.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 8.0]))], emissive: false },
+        Part { from: [16.0, 4.0, 4.0], to: [16.0, 12.0, 12.0], faces: [None, None, None, None, None, Some((2, [8.0, 8.0, 16.0, 16.0]))], emissive: true },
+    ],
+    &[
+        Part { from: [1.0, 5.0, 3.0], to: [2.0, 11.0, 13.0], faces: [Some((0, [10.0, 5.0, 0.0, 6.0])), Some((0, [10.0, 1.0, 0.0, 0.0])), None, None, Some((0, [0.0, 0.0, 10.0, 6.0])), Some((0, [0.0, 0.0, 10.0, 6.0]))], emissive: false },
+        Part { from: [0.0, 4.0, 4.0], to: [1.0, 12.0, 12.0], faces: [Some((1, [0.0, 7.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 1.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 8.0])), Some((1, [8.0, 0.0, 16.0, 8.0]))], emissive: false },
+        Part { from: [0.0, 4.0, 4.0], to: [0.0, 12.0, 12.0], faces: [None, None, None, None, Some((2, [8.0, 8.0, 16.0, 16.0])), None], emissive: true },
+    ],
+    &[
+        Part { from: [3.0, 5.0, 14.0], to: [13.0, 11.0, 15.0], faces: [Some((0, [10.0, 5.0, 0.0, 6.0])), Some((0, [10.0, 1.0, 0.0, 0.0])), Some((0, [0.0, 0.0, 10.0, 6.0])), Some((0, [0.0, 0.0, 10.0, 6.0])), None, None], emissive: false },
+        Part { from: [4.0, 4.0, 15.0], to: [12.0, 12.0, 16.0], faces: [Some((1, [8.0, 8.0, 0.0, 7.0])), Some((1, [8.0, 1.0, 0.0, 0.0])), Some((1, [8.0, 0.0, 16.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0]))], emissive: false },
+        Part { from: [4.0, 4.0, 16.0], to: [12.0, 12.0, 16.0], faces: [None, None, None, Some((2, [8.0, 8.0, 16.0, 16.0])), None, None], emissive: true },
+    ],
+    &[
+        Part { from: [3.0, 14.0, 5.0], to: [13.0, 15.0, 11.0], faces: [Some((0, [10.0, 0.0, 0.0, 6.0])), Some((0, [10.0, 6.0, 0.0, 0.0])), Some((0, [0.0, 0.0, 10.0, 1.0])), Some((0, [0.0, 5.0, 10.0, 6.0])), None, None], emissive: false },
+        Part { from: [4.0, 15.0, 4.0], to: [12.0, 16.0, 12.0], faces: [Some((1, [8.0, 0.0, 16.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 1.0])), Some((1, [0.0, 7.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0]))], emissive: false },
+        Part { from: [4.0, 16.0, 4.0], to: [12.0, 16.0, 12.0], faces: [None, Some((2, [8.0, 8.0, 16.0, 16.0])), None, None, None, None], emissive: true },
+    ],
+    &[
+        Part { from: [3.0, 1.0, 5.0], to: [13.0, 2.0, 11.0], faces: [Some((0, [10.0, 0.0, 0.0, 6.0])), Some((0, [10.0, 6.0, 0.0, 0.0])), Some((0, [0.0, 0.0, 10.0, 1.0])), Some((0, [0.0, 5.0, 10.0, 6.0])), None, None], emissive: false },
+        Part { from: [4.0, 0.0, 4.0], to: [12.0, 1.0, 12.0], faces: [Some((1, [0.0, 0.0, 8.0, 8.0])), Some((1, [8.0, 0.0, 16.0, 8.0])), Some((1, [0.0, 0.0, 8.0, 1.0])), Some((1, [0.0, 7.0, 8.0, 8.0])), Some((1, [0.0, 0.0, 1.0, 8.0])), Some((1, [7.0, 0.0, 8.0, 8.0]))], emissive: false },
+        Part { from: [4.0, 0.0, 4.0], to: [12.0, 0.0, 12.0], faces: [Some((2, [8.0, 8.0, 16.0, 16.0])), None, None, None, None, None], emissive: true },
+    ],
+];
+
+const LEDS: [&[Part]; 6] = [
+    &[
+        Part { from: [3.0, 7.5, 0.1], to: [3.5, 8.5, 1.0], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), None, Some((3, [2.0, 0.0, 2.9, 1.0]))], emissive: false },
+        Part { from: [12.5, 7.5, 0.1], to: [13.0, 8.5, 1.0], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.9, 1.0])), None], emissive: false },
+    ],
+    &[
+        Part { from: [15.0, 7.5, 3.0], to: [15.9, 8.5, 3.5], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), None, Some((3, [2.0, 0.0, 2.9, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0]))], emissive: false },
+        Part { from: [15.0, 7.5, 12.5], to: [15.9, 8.5, 13.0], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.9, 1.0])), None, Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0]))], emissive: false },
+    ],
+    &[
+        Part { from: [0.1, 7.5, 3.0], to: [1.0, 8.5, 3.5], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), None, Some((3, [2.0, 0.0, 2.9, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0]))], emissive: false },
+        Part { from: [0.1, 7.5, 12.5], to: [1.0, 8.5, 13.0], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.9, 1.0])), None, Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0]))], emissive: false },
+    ],
+    &[
+        Part { from: [3.0, 7.5, 15.0], to: [3.5, 8.5, 15.9], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), None, Some((3, [2.0, 0.0, 2.9, 1.0]))], emissive: false },
+        Part { from: [12.5, 7.5, 15.0], to: [13.0, 8.5, 15.9], faces: [Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.9, 1.0])), None], emissive: false },
+    ],
+    &[
+        Part { from: [3.0, 15.0, 7.5], to: [3.5, 15.9, 8.5], faces: [Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), None, Some((3, [2.0, 0.0, 2.9, 1.0]))], emissive: false },
+        Part { from: [12.5, 15.0, 7.5], to: [13.0, 15.9, 8.5], faces: [Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.9, 1.0])), None], emissive: false },
+    ],
+    &[
+        Part { from: [3.0, 0.1, 7.5], to: [3.5, 1.0, 8.5], faces: [Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), None, Some((3, [2.0, 0.0, 2.9, 1.0]))], emissive: false },
+        Part { from: [12.5, 0.1, 7.5], to: [13.0, 1.0, 8.5], faces: [Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 1.0])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.5, 0.9])), Some((3, [2.0, 0.0, 2.9, 1.0])), None], emissive: false },
+    ],
+];
+
+/// Os sprites das peças (`#1` a `#4` do modelo): o quadro, as portas, o LED das portas e os LEDs.
+const SPRITES: [&str; 4] = [
+    "mekanism:block/models/energy_cube",
+    "mekanism:block/models/ports",
+    "mekanism:block/models/ports_led",
+    "mekanism:block/models/leds",
+];
+/// `lit_uv_shift` do modelo: o LED aceso é a mesma face com o uv deslocado dois texels.
+const LIT_UV_SHIFT: f32 = -2.0;
+/// O quanto o LED aceso sai da caixa do apagado, em texels, para não brigar com ele na profundidade.
+const LIT_GROW: f32 = 0.02;
+/// `LightCoordsUtil.FULL_BRIGHT`, em 16 vezes o céu (bits 0 a 8) e o bloco (bits 8 a 16).
+const FULL_BRIGHT: u32 = 0xF0F0;
+/// O modelo do núcleo (`MekanismModelCache.ENERGY_CORE`).
+const CORE_MODEL: &str = "mekanism:block/energy_core";
+/// `BaseTier.getPackedColor` (o pixel de `colormap/tiers.png`) de cada tier.
+const TIER_COLORS: [u32; 5] = [0x5F_FF_B8, 0xFF_80_6A, 0x4B_F8_FF, 0xF7_87_FF, 0x58_58_58];
+
+/// Os modelos avulsos que o jogo tem de assar para este bloco.
+pub(in crate::game) fn standalone_models(models: &mut Vec<String>) {
+    if !models.iter().any(|model| model == CORE_MODEL) {
+        models.push(CORE_MODEL.to_owned());
+    }
+}
+
+fn draw_part(game: &Game<'_>, draw: &mut BlockEntityDraw, part: &Part, shift: f32, grow: f32) {
+    let faces: [Option<CubeFace<'_>>; 6] = part.faces.map(|face| {
+        face.map(|(sprite, uv)| CubeFace { sprite: SPRITES[sprite], uv: Some([uv[0] + shift, uv[1], uv[2] + shift, uv[3]]) })
+    });
+    let from = part.from.map(|value| value - grow);
+    let to = part.to.map(|value| value + grow);
+    game.native_draw_cube(draw, from, to, faces, 0xFF_FF_FF);
+}
+
+/// O bloco virado como o `blockstate` o vira (as variantes `x` e `y` do modelo, que está de frente para o norte).
+fn face_the_front(draw: &mut BlockEntityDraw, facing: Face) {
+    const CENTER: [f32; 3] = [0.5, 0.5, 0.5];
+    match facing {
+        Face::North => {}
+        Face::East => draw.rotate_about([0.0, 1.0, 0.0], -90.0, CENTER),
+        Face::South => draw.rotate_about([0.0, 1.0, 0.0], 180.0, CENTER),
+        Face::West => draw.rotate_about([0.0, 1.0, 0.0], 90.0, CENTER),
+        Face::Up => draw.rotate_about([1.0, 0.0, 0.0], 90.0, CENTER),
+        Face::Down => draw.rotate_about([1.0, 0.0, 0.0], -90.0, CENTER),
+    }
+}
+
+/// `BlockEntityRenderer.submit` do cubo (`block_entity_submit`).
+pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEntityDraw) {
+    let block = game.native_block(pos);
+    let Some(tier) = tier_of(&block) else {
+        return;
+    };
+    let (scale, sides) = crate::game::machinery_tile_sound::tile_view(game.native_dimension(), pos).unwrap_or((0.0, [0; 6]));
+    let light = draw.light;
+    draw.push();
+    face_the_front(draw, basis::front(game, pos));
+    for (side, state) in sides.iter().enumerate() {
+        if *state == CubeSideState::Inactive as u8 {
+            continue;
+        }
+        for part in PORTS[side] {
+            draw.light = if part.emissive { FULL_BRIGHT } else { light };
+            draw_part(game, draw, part, 0.0, 0.0);
+        }
+        if *state == CubeSideState::ActiveLit as u8 {
+            draw.light = FULL_BRIGHT;
+            for part in LEDS[side] {
+                draw_part(game, draw, part, LIT_UV_SHIFT, LIT_GROW);
+            }
+        }
+    }
+    draw.light = light;
+    draw.pop();
+    // `RenderEnergyCube.shouldRender`: o núcleo só aparece com energia.
+    if scale > 0.0 {
+        let time = draw.game_time as f32 + draw.partial;
+        draw.push();
+        draw.translate([0.5, 0.5, 0.5]);
+        draw.scale([0.4, 0.4, 0.4]);
+        draw.translate([0.0, (3.0 * time).to_radians().sin() / 7.0, 0.0]);
+        let scaled = 4.0 * time;
+        draw.rotate_about([0.0, 1.0, 0.0], scaled, [0.0; 3]);
+        draw.rotate_about([0.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2], 36.0 + scaled, [0.0; 3]);
+        draw.light = FULL_BRIGHT;
+        let start = draw.vertices_mut().len();
+        if game.native_draw_model(draw, CORE_MODEL, TIER_COLORS[tier]) {
+            // O núcleo é translúcido: a tinta leva a escala no canal alfa (`ARGB.as8BitChannel(getEnergyScale())`).
+            let alpha = ((scale.clamp(0.0, 1.0) * 255.0).round() as u32) << 24;
+            for vertex in &mut draw.vertices_mut()[start..] {
+                vertex.color = alpha | (vertex.color & 0x00FF_FFFF);
+            }
+        }
+        draw.light = light;
+        draw.pop();
+    }
+}
+
+/// O cliente só tem a block entity do cubo, e então a desenha, se o servidor mandar uma cópia.
+pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<horizon_world::nbt::Compound>) {
+    if is_cube(&entity.id) {
+        *tag = Some(horizon_world::nbt::Compound::default());
+    }
+}

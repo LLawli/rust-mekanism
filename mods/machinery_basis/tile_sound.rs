@@ -46,6 +46,58 @@ static MUFFLING_SERVER: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), i32>
 
 const MUFFLING_CHANNEL: &str = "machinery_basis:muffling";
 
+/// O que o desenho de um tile precisa saber e só o servidor sabe (`getUpdateTag`/`ModelData` do Java): um número de 0 a 1 (a escala do núcleo do Energy Cube) e um valor por lado
+/// (o `CubeSideState`). O servidor manda a cada mudança e a quem entra; no anfitrião os dois lados dividem a tabela.
+static VIEWS: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), (f32, [u8; 6])>>> = std::sync::Mutex::new(None);
+static VIEWS_SERVER: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), (f32, [u8; 6])>>> = std::sync::Mutex::new(None);
+
+const VIEW_CHANNEL: &str = "machinery_basis:view";
+
+fn view_table<R>(f: impl FnOnce(&mut HashMap<(String, [i32; 3]), (f32, [u8; 6])>) -> R) -> R {
+    let mut guard = VIEWS.lock().unwrap_or_else(|error| error.into_inner());
+    f(guard.get_or_insert_with(HashMap::new))
+}
+
+/// O que o cliente sabe do desenho do tile em `pos`.
+pub(in crate::game) fn tile_view(dimension: &str, pos: [i32; 3]) -> Option<(f32, [u8; 6])> {
+    view_table(|table| table.get(&(dimension.to_owned(), pos)).copied())
+}
+
+fn encode_view(dimension: &str, pos: [i32; 3], view: (f32, [u8; 6])) -> Vec<u8> {
+    let mut bytes = vec![dimension.len() as u8];
+    bytes.extend_from_slice(dimension.as_bytes());
+    for value in pos {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    bytes.extend_from_slice(&view.0.to_be_bytes());
+    bytes.extend_from_slice(&view.1);
+    bytes
+}
+
+fn decode_view(bytes: &[u8]) -> Option<(String, [i32; 3], (f32, [u8; 6]))> {
+    let (&length, rest) = bytes.split_first()?;
+    let (dimension, rest) = rest.split_at_checked(usize::from(length))?;
+    let dimension = std::str::from_utf8(dimension).ok()?.to_owned();
+    let (position, rest) = rest.split_at_checked(12)?;
+    let mut values = position.chunks_exact(4).map(|chunk| i32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    let pos = [values.next()?, values.next()?, values.next()?];
+    let (scale, sides) = rest.split_at_checked(4)?;
+    let scale = f32::from_be_bytes([scale[0], scale[1], scale[2], scale[3]]);
+    let sides: [u8; 6] = sides.try_into().ok()?;
+    Some((dimension, pos, (scale, sides)))
+}
+
+/// `NativeNetFromServer`: o cliente guarda o desenho que o servidor mandou.
+pub(in crate::game) fn view_from_server(channel: &str, data: &[u8]) -> bool {
+    if channel != VIEW_CHANNEL {
+        return false;
+    }
+    if let Some((dimension, pos, view)) = decode_view(data) {
+        view_table(|table| table.insert((dimension, pos), view));
+    }
+    true
+}
+
 fn muffling_table<R>(f: impl FnOnce(&mut HashMap<(String, [i32; 3]), i32>) -> R) -> R {
     let mut guard = MUFFLING.lock().unwrap_or_else(|error| error.into_inner());
     f(guard.get_or_insert_with(HashMap::new))
@@ -284,6 +336,32 @@ impl Game<'_> {
             table.remove(&(dimension.to_owned(), pos));
         } else {
             table.insert((dimension.to_owned(), pos), count);
+        }
+    }
+
+    /// O tile em `pos` mudou o que o desenho precisa (a escala e os lados): o servidor avisa os jogadores.
+    pub(in crate::game) fn mb_view_changed(&mut self, dimension: &str, pos: [i32; 3], scale: f32, sides: [u8; 6]) {
+        view_table(|table| table.insert((dimension.to_owned(), pos), (scale, sides)));
+        VIEWS_SERVER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get_or_insert_with(HashMap::new)
+            .insert((dimension.to_owned(), pos), (scale, sides));
+        let bytes = encode_view(dimension, pos, (scale, sides));
+        let players: Vec<u128> = self.native_server_players().iter().map(|player| player.uuid).collect();
+        for player in players {
+            let _ = self.native_net_send_to_player(player, VIEW_CHANNEL, &bytes);
+        }
+    }
+
+    /// Quem entrou depois recebe o desenho que o servidor tem.
+    pub(in crate::game) fn mb_view_player_in(&mut self, player: u128) {
+        let entries: Vec<(String, [i32; 3], (f32, [u8; 6]))> = {
+            let mut guard = VIEWS_SERVER.lock().unwrap_or_else(|error| error.into_inner());
+            guard.get_or_insert_with(HashMap::new).iter().map(|((dimension, pos), view)| (dimension.clone(), *pos, *view)).collect()
+        };
+        for (dimension, pos, view) in entries {
+            let _ = self.native_net_send_to_player(player, VIEW_CHANNEL, &encode_view(&dimension, pos, view));
         }
     }
 

@@ -2386,6 +2386,7 @@ fn send_types(game: &mut Game<'_>, player: u128) {
 pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
     send_types(game, player);
     game.mb_muffling_player_in(player);
+    game.mb_view_player_in(player);
 }
 
 /// `native_server_data_loaded`: os dados mudaram (um `/reload`), então todos os que estão no servidor recebem de novo.
@@ -2400,6 +2401,7 @@ pub(in crate::game) fn data_reloaded(game: &mut Game<'_>) {
 pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
     if crate::game::machinery_tile_sound::muffling_from_server(channel, data)
         || crate::game::machinery_tile_sound::name_from_server(channel, data)
+        || crate::game::machinery_tile_sound::view_from_server(channel, data)
     {
         return;
     }
