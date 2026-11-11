@@ -753,6 +753,20 @@ pub(in crate::game) fn mouse_pressed(
     let mut guard = client();
     let state = &mut *guard;
     let shift = modifiers & 1 != 0;
+    // As abas dos tipos são filhas da janela de lados e ficam fora dela: o clique nelas é da janela.
+    if button == 0
+        && let Some(view) = config.as_ref()
+    {
+        let rel = [mouse[0] - f64::from(screen.left), mouse[1] - f64::from(screen.top)];
+        if let Some((index, tab)) = type_tab_at(state, view, rel) {
+            state.windows[index].current = tab;
+            let open = state.windows.remove(index);
+            state.windows.insert(0, open);
+            state.click_sound = true;
+            *canceled = true;
+            return;
+        }
+    }
     // `GuiMekanism.mouseClicked`: as janelas, da do topo para baixo; a primeira que trata o clique vai para o topo.
     let mut hit = None;
     for index in 0..state.windows.len() {
@@ -914,6 +928,23 @@ fn press_config(
         }
         Kind::Upgrade => {}
     }
+}
+
+/// A aba de tipo (`GuiConfigTypeTab`, filha da janela de lados e fora dela) que o ponto `at` (relativo ao canto da tela) acerta: o índice da
+/// janela na pilha e o do tipo. Só valem as abas visíveis (a do tipo atual fica escondida).
+fn type_tab_at(state: &Client, view: &ConfigView, at: [f64; 2]) -> Option<(usize, usize)> {
+    for (index, open) in state.windows.iter().enumerate() {
+        if open.kind != Kind::Side {
+            continue;
+        }
+        let rel = [at[0] - f64::from(open.window.relative_x), at[1] - f64::from(open.window.relative_y)];
+        for tab in 0..view.config.transmissions().len() {
+            if tab != open.current && in_rect(inset_rect(tab, open), rel) {
+                return Some((index, tab));
+            }
+        }
+    }
+    None
 }
 
 /// O botão de dentro da aba do tipo `index` da janela de lados, relativo à janela.
@@ -1088,7 +1119,13 @@ pub(in crate::game) fn over_element(game: &Game<'_>, at: [f32; 2]) -> bool {
     let Some(spec) = open_spec(game) else {
         return false;
     };
-    covers(at) || tab_hit(&client(), spec, [f64::from(at[0]), f64::from(at[1])]).is_some()
+    let point = [f64::from(at[0]), f64::from(at[1])];
+    if covers(at) || tab_hit(&client(), spec, point).is_some() {
+        return true;
+    }
+    // As abas dos tipos da janela de lados são elementos dela, fora dos limites.
+    let has_side = client().windows.iter().any(|open| open.kind == Kind::Side);
+    has_side && config_view(game, spec).is_some_and(|view| type_tab_at(&client(), &view, point).is_some())
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1636,7 +1673,7 @@ fn draw_config_window(
                         [wx, wy],
                         transmission_tint(*kind),
                         &icon,
-                        machinery_basis_core::side_tab::ButtonLook::of(true, hov(button)),
+                        machinery_basis_core::side_tab::ButtonLook::of(true, hovering(button, mouse) && (under.is_none() || under == own)),
                     );
                 }
                 // O botão de ejetar e o de limpar.
@@ -1673,7 +1710,7 @@ fn draw_config_window(
                 }
                 let strict = at(cw::STRICT_BUTTON);
                 button_background(game, batch, spec, strict, true, hov(strict));
-                plain(game, batch, spec, "button/exclamation", [14.0, 14.0], strict);
+                plain(game, batch, spec, "button/exclamation", [16.0, 16.0], strict);
                 for side in RelativeSide::VALUES {
                     let [x, y] = cw::transporter_button(side);
                     let enabled = TileComponentEjector::is_input_side_enabled(&view.config, side);
@@ -1899,6 +1936,15 @@ pub(in crate::game) fn tooltip(
                 lines.push((lang::get(key), None));
                 let [bx, by, bw, bh] = tab.button();
                 rect = [origin[0] + bx, origin[1] + by, bw, bh];
+            } else if let Some(view) = config.as_ref()
+                && let Some((index, tab)) = type_tab_at(&state, view, [f64::from(at[0]), f64::from(at[1])])
+            {
+                let open = &state.windows[index];
+                let kind = view.config.transmissions()[tab];
+                lines.push((transmission_label(kind), None));
+                let r = inset_rect(tab, open);
+                rect = [origin[0] + (open.window.relative_x + r[0]) as f32, origin[1] + (open.window.relative_y + r[1]) as f32, r[2] as f32, r[3] as f32];
+                flat = true;
             } else {
                 return false;
             }
