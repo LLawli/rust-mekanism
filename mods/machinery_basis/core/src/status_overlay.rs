@@ -39,6 +39,10 @@ pub struct Draw {
 }
 
 impl StatusOverlay {
+    pub const fn new() -> Self {
+        Self { timer: 0, last_tick: 0 }
+    }
+
     /// `setTimer`.
     pub fn set_timer(&mut self) {
         self.timer = BASE_TIMER;

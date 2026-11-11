@@ -1695,6 +1695,42 @@ pub(in crate::game) fn with_machine<R>(game: &mut Game<'_>, pos: [i32; 3], act: 
     Some(result)
 }
 
+thread_local! {
+    /// A configuração de lados que `peek_side_config` montou por último: a máquina, o que o NBT tinha na hora (`component_config`) e o resultado. Um quadro
+    /// com o Configurator na mão pergunta a mesma máquina de novo, e montar a máquina inteira (`born`) a cada quadro seria caro.
+    static PEEKED: RefCell<Option<(&'static str, [i32; 3], basis::SideNbt, machinery_basis_core::side_config::TileComponentConfig)>> = const { RefCell::new(None) };
+}
+
+/// A `TileComponentConfig` da máquina em `pos`, só para ler (o desenho da sobreposição do Configurator pergunta a cada quadro): a do objeto vivo, ou a montada do NBT
+/// e guardada enquanto o NBT não mudar. Não grava nada no mundo (`with_machine` grava e marca o chunk).
+pub(in crate::game) fn peek_side_config(game: &Game<'_>, pos: [i32; 3]) -> Option<machinery_basis_core::side_config::TileComponentConfig> {
+    let block = game.native_block(pos);
+    let spec = machine_of(&block)?;
+    let key = (game.native_dimension(), pos);
+    if let Some(config) = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.side_config().clone())) {
+        return Some(config);
+    }
+    let at = (pos[0], pos[1], pos[2]);
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+        return None;
+    };
+    let side = basis::read_side_nbt(entity);
+    let cached = PEEKED.with_borrow(|peeked| {
+        peeked
+            .as_ref()
+            .filter(|(name, at, nbt, _)| *name == spec.block && *at == pos && *nbt == side)
+            .map(|(.., config)| config.clone())
+    });
+    if cached.is_some() {
+        return cached;
+    }
+    let origin = Origin { placed: placed_here(game, pos, false), recalculated_before: false };
+    let live = born(game, pos, entity, spec, &indexes_of(game, spec), origin);
+    let config = live.machine.side_config().clone();
+    PEEKED.with_borrow_mut(|peeked| *peeked = Some((spec.block, pos, side, config.clone())));
+    Some(config)
+}
+
 /// `TileComponentUpgrade.addUpgrades`, que `ItemUpgrade.useOn` (na `machinery_basis`) chama depois de conferir o suporte e o shift:
 /// quantos upgrades do tipo entraram na máquina em `pos`, de até `available`.
 fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i32) -> i32 {
@@ -1851,6 +1887,12 @@ static CLIENT_CONFIG: std::sync::Mutex<Option<machinery_basis_core::client_confi
 fn sound_config() -> machinery_basis_core::sound::SoundConfig {
     let guard = CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner());
     guard.as_ref().map_or_else(Default::default, rules::sound_config)
+}
+
+/// O que os efeitos de tela dos itens de modo leem da configuração de cliente: `allowModeScroll`, `whiteRadialText` e a seção `hud`.
+pub(in crate::game) fn effects_config() -> rules::EffectsConfig {
+    let guard = CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner());
+    guard.as_ref().map_or_else(Default::default, rules::effects_config)
 }
 
 /// `MekanismConfig` dos arquivos de servidor (`SYNCED`), como o último `Mekanism/*.toml` lido os deixou: o uso das máquinas e as capacidades dos cabos. A

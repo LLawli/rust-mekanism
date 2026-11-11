@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.List;
 import mekanism.api.MekanismItemAbilities;
 import mekanism.api.RelativeSide;
+import mekanism.api.radial.RadialData;
 import mekanism.api.security.IItemSecurityUtils;
 import mekanism.api.text.EnumColor;
 import mekanism.common.block.attribute.Attribute;
@@ -613,9 +614,11 @@ public class ConfiguratorTraceTest {
               "case=mode lines: mode (getSerializedName), ordinal, transmission (TransmissionType serialized name or null), color {name (EnumColor serialized), rgb [r,g,b] (getRgbCode), packed (getPackedColor)}, "
                     + "is_configurating, text_component (getTextComponent, ComponentSerialization.CODEC JSON), slice_name (sliceName), add_to_tooltip (the lines ConfiguratorMode.addToTooltip emits, Component JSON), "
                     + "item_tooltip (ItemStack.getTooltipLines of a Configurator stack holding the mode, TooltipFlag.NORMAL, no player: the name line and the appenders), "
-                    + "scroll_text (ItemConfigurator.getScrollTextComponent), adjust {shift -9..9 as string key: serialized name of IIncrementalEnum.adjust(shift)}, "
+                    + "scroll_text (ItemConfigurator.getScrollTextComponent), icon (IRadialMode.icon), hud_strings (ItemConfigurator.addHUDStrings in the main hand, Component JSON), "
+                    + "is_mode_item and is_mode_item_without_radial (IModeItem.isModeItem with allowRadial true and false), adjust {shift -9..9 as string key: serialized name of IIncrementalEnum.adjust(shift)}, "
                     + "abilities {WRENCH_CONFIGURE, WRENCH_CONFIGURE_CHEMICALS, WRENCH_CONFIGURE_ENERGY, WRENCH_CONFIGURE_FLUIDS, WRENCH_CONFIGURE_HEAT, WRENCH_CONFIGURE_ITEMS, WRENCH_DISMANTLE, WRENCH_EMPTY, WRENCH_ROTATE: "
                     + "ItemStack.canPerformAction on a Configurator stack in the mode}, sneak_bypass_use (ItemStack.doesSneakBypassUse), patch (component patch keys of the stack; the default mode ITEMS leaves the patch empty). "
+                    + "case=radial: the RadialData of the item: id, modes (count), default_mode, network_representation and index (per mode, in order), same_data_every_call. "
                     + "case=fresh: a new Configurator stack with no component set (the item prototype brings CONFIGURATOR_MODE=configurate_items): mode_component, item_tooltip, patch. "
                     + "case=removed: the same stack after remove(CONFIGURATOR_MODE): mode_component (null), item_tooltip, patch, get_mode (the mode ItemConfigurator.getMode answers: the default), abilities, sneak_bypass_use.");
         ItemConfigurator item = MekanismItems.CONFIGURATOR.get();
@@ -644,6 +647,16 @@ public class ConfiguratorTraceTest {
             line.add("add_to_tooltip", added);
             line.add("item_tooltip", tooltip(e, stack));
             line.add("scroll_text", component(item.getScrollTextComponent(stack)));
+            line.addProperty("icon", mode.icon().toString());
+            List<Component> hud = new ArrayList<>();
+            item.addHUDStrings(hud, e.player, stack, EquipmentSlot.MAINHAND);
+            JsonArray hudStrings = new JsonArray();
+            for (Component c : hud) {
+                hudStrings.add(component(c));
+            }
+            line.add("hud_strings", hudStrings);
+            line.addProperty("is_mode_item", IModeItem.isModeItem(stack, EquipmentSlot.MAINHAND));
+            line.addProperty("is_mode_item_without_radial", IModeItem.isModeItem(stack, EquipmentSlot.MAINHAND, false));
             JsonObject adjust = new JsonObject();
             for (int shift = -9; shift <= 9; shift++) {
                 adjust.addProperty(String.valueOf(shift), mode.adjust(shift).getSerializedName());
@@ -654,6 +667,22 @@ public class ConfiguratorTraceTest {
             line.add("patch", patchKeys(stack));
             out.add(line);
         }
+        JsonObject radialLine = new JsonObject();
+        radialLine.addProperty("case", "radial");
+        RadialData<ConfiguratorMode> radial = item.getRadialData(configurator(ConfiguratorMode.CONFIGURATE_ITEMS));
+        radialLine.addProperty("id", radial.getIdentifier().toString());
+        radialLine.addProperty("modes", radial.getModes().size());
+        radialLine.addProperty("default_mode", radial.getDefaultMode(radial.getModes()).getSerializedName());
+        JsonArray networkRepresentations = new JsonArray();
+        JsonArray indexes = new JsonArray();
+        for (ConfiguratorMode mode : radial.getModes()) {
+            networkRepresentations.add(radial.getNetworkRepresentation(mode));
+            indexes.add(radial.index(radial.getModes(), mode));
+        }
+        radialLine.add("network_representation", networkRepresentations);
+        radialLine.add("index", indexes);
+        radialLine.addProperty("same_data_every_call", radial == item.getRadialData(configurator(ConfiguratorMode.WRENCH)));
+        out.add(radialLine);
         ItemStack fresh = new ItemStack(MekanismItems.CONFIGURATOR.asItem());
         JsonObject freshLine = new JsonObject();
         freshLine.addProperty("case", "fresh");

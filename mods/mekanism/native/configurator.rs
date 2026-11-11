@@ -7,12 +7,14 @@ use crate::game::mekanism_rules::{ConfiguratorMode, DisplayChange};
 use crate::game::{Game, machinery_basis as basis};
 use horizon_client::containers::BlockEntity;
 use horizon_client::first_person::Hand;
+use horizon_client::hud::HudBatch;
 use horizon_core::random::RandomSource;
 use horizon_client::items::ItemStack;
 use horizon_client::mod_api::Text;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::side_config::SideClick;
 use machinery_basis_core::sides::Face;
+use machinery_basis_core::{face_overlay, item_hud, radial, status_overlay};
 
 /// O Heat Generator não é uma máquina de progresso daqui, mas é um `TileEntityMekanism` direcional, com inventário e com o cartão (só o modo de
 /// redstone). O estado dele vive no NBT do bloco (o gerador é refeito dele a cada tick).
@@ -23,6 +25,11 @@ const CONTROL_TYPE: &str = "control_type";
 /// O canal do `PacketModeChange` (cliente para servidor) e o do `showModeChange` (servidor para cliente).
 const MODE_CHANNEL: &str = "mekanism:mode";
 const SHOW_CHANNEL: &str = "mekanism:show_mode_change";
+/// O canal do `PacketRadialModeChange` (cliente para servidor): o slot, a quantidade de nomes do caminho (sempre 0: nenhum modo portado é aninhado) e a representação
+/// de rede do modo (o `ordinal`).
+const RADIAL_CHANNEL: &str = "mekanism:radial_mode";
+/// O id do mod nas telas que ele abre (`native_mod_screen_open`).
+const MOD_ID: &str = "mekanism";
 /// `Mekanism.rl("mode")`: a tecla `N` (`MekanismKeyHandler.handModeSwitchKey`), que o jogador pode trocar.
 const MODE_KEY_NAME: &str = "mode";
 const MODE_KEY_DEFAULT: &str = "key.keyboard.n";
@@ -429,9 +436,19 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
 // ---------------------------------------------------------------------------------------------------------------------------
 // A troca de modo (`IModeItem`): a tecla, a rolagem agachado e o pacote.
 
-/// Se a pilha é um item de modo na mão principal (`IModeItem.isModeItem`).
-fn is_mode_item(stack: &ItemStack) -> bool {
+/// `IModeItem.isModeItem(instance, slotType, allowRadial)`: o Configurator é um item de modo, e tem menu radial (`getRadialData` não é nulo).
+fn is_mode_item(stack: &ItemStack, allow_radial: bool) -> bool {
+    &*stack.item == rules::CONFIGURATOR_ITEM && (allow_radial || !has_radial(stack))
+}
+
+/// `IGenericRadialModeItem.getRadialData(instance) != null`.
+fn has_radial(stack: &ItemStack) -> bool {
     &*stack.item == rules::CONFIGURATOR_ITEM
+}
+
+/// `player.getMainHandItem()`: o slot selecionado da barra.
+fn main_hand<'a>(game: &'a Game<'_>) -> Option<&'a ItemStack> {
+    game.inventory.get(game.selected)?.as_ref()
 }
 
 fn send_mode(game: &mut Game<'_>, shift: i32, display: DisplayChange) {
@@ -444,39 +461,30 @@ fn send_mode(game: &mut Game<'_>, shift: i32, display: DisplayChange) {
     let _ = game.native_net_send_to_server(MODE_CHANNEL, &body);
 }
 
-/// `MekanismKeyHandler.handModeSwitchKey`: a tecla troca o modo (para trás com o jogador agachado) e mostra o texto.
+/// `MekanismKeyHandler.handModeSwitchKey`: a tecla do modo é também a do menu radial (`MekKeyHandler.isRadialPressed`), então o estado dela vale sempre; o
+/// `onKeyDown` só manda a troca de modo para um item sem menu radial (`IModeItem.isModeItem(player, MAINHAND, false)`), e o Configurator tem um: a tecla só abre o menu.
 pub(in crate::game) fn key(game: &mut Game<'_>, key: &str, pressed: bool) {
-    if !pressed || !game.native_playing() || key != game.native_mod_key("mekanism", MODE_KEY_NAME, MODE_KEY_DEFAULT) {
+    if key != game.native_mod_key("mekanism", MODE_KEY_NAME, MODE_KEY_DEFAULT) {
         return;
     }
-    if !game.held().is_some_and(is_mode_item) {
+    effects().key_held = pressed;
+    if !pressed || !game.native_playing() {
+        return;
+    }
+    if !main_hand(game).is_some_and(|stack| is_mode_item(stack, false)) {
         return;
     }
     let shift = if game.native_sneaking() { -1 } else { 1 };
     send_mode(game, shift, DisplayChange::MainHand);
 }
 
-thread_local! {
-    /// `ScrollIncrementer`: o quanto da rolagem ainda não virou um passo, e o tique do último passo.
-    static SCROLL: std::cell::Cell<(f64, i64)> = const { std::cell::Cell::new((0.0, -1)) };
-}
-
 /// `ClientTickHandler.onMouseEvent`: agachado, a rolagem com um item de modo na mão troca o modo (`allowModeScroll`, padrão ligado) em vez de trocar o
 /// slot da barra.
 pub(in crate::game) fn scroll(game: &mut Game<'_>, delta: [f64; 2], canceled: &mut bool) {
-    if !game.native_sneaking() || delta[1] == 0.0 || !game.held().is_some_and(is_mode_item) {
+    if !glue::effects_config().allow_mode_scroll || !game.native_sneaking() || delta[1] == 0.0 || !main_hand(game).is_some_and(|stack| is_mode_item(stack, true)) {
         return;
     }
-    let tick = game.visual_ticks() as i64;
-    let (mut sum, last) = SCROLL.get();
-    if last >= 0 && tick - last > 20 {
-        sum = 0.0;
-    }
-    sum += delta[1];
-    let whole = sum.trunc();
-    sum -= whole;
-    SCROLL.set((sum, tick));
-    let shift = (whole as i32).clamp(-1, 1);
+    let shift = effects().mode_scroll.scroll(delta[1], game.visual_ticks() as i64);
     if shift != 0 {
         send_mode(game, shift, DisplayChange::None);
         mode_timer_start();
@@ -486,6 +494,9 @@ pub(in crate::game) fn scroll(game: &mut Game<'_>, delta: [f64; 2], canceled: &m
 
 /// `PacketModeChange.handle`: o servidor troca o modo da pilha na mão do jogador, e conforme o `DisplayChange` avisa.
 pub(in crate::game) fn net_from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]) {
+    if channel == RADIAL_CHANNEL {
+        return radial_net_from_client(game, player, data);
+    }
     if channel != MODE_CHANNEL || data.len() != 6 {
         return;
     }
@@ -509,7 +520,7 @@ fn change_mode(game: &mut Game<'_>, player: u128, shift: i32, display: DisplayCh
     let Some(stack) = game.held().cloned() else {
         return;
     };
-    if !is_mode_item(&stack) {
+    if !is_mode_item(&stack, true) {
         return;
     }
     let change = rules::change_mode(mode_of(game, &stack), shift, display);
@@ -534,14 +545,9 @@ pub(in crate::game) fn net_from_server(channel: &str) {
     }
 }
 
-/// `MekanismStatusOverlay.BASE_TIMER`: cinco segundos de tiques.
-const MODE_TIMER_TICKS: i32 = 100;
-
-static MODE_TIMER: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
 /// `MekanismStatusOverlay.setTimer`.
 fn mode_timer_start() {
-    MODE_TIMER.store(MODE_TIMER_TICKS, std::sync::atomic::Ordering::Relaxed);
+    effects().status.set_timer();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -590,4 +596,437 @@ fn card_just_used(game: &Game<'_>) -> bool {
         return false;
     };
     CARD_USE.get().is_some_and(|(uuid, tick)| uuid == player.uuid && game.world.game_time - tick <= 2)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os efeitos de tela (decisão 48): o texto do modo sobre a barra (`MekanismStatusOverlay`), o texto do HUD (`MekanismHUD`), o menu radial (`GuiRadialSelector`) e a
+// sobreposição da face (`ConfiguratorOverlayHandler`). As contas são da `machinery_basis_core`; aqui ficam o estado e o que o jogo expõe.
+
+/// O que os efeitos guardam de um quadro para o outro. O `Game` do cliente e o do servidor integrado correm em threads diferentes e os ganchos de tela só leem o `Game`
+/// (`&self`), então o estado é do processo, como o contador do modo era.
+struct Effects {
+    /// `MekanismStatusOverlay.INSTANCE`.
+    status: status_overlay::StatusOverlay,
+    /// `ClientTickHandler.scrollIncrementer` (`new ScrollIncrementer(true)`).
+    mode_scroll: radial::ScrollIncrementer,
+    /// A tecla do modo está apertada (`MekKeyHandler.isRadialPressed`).
+    key_held: bool,
+    /// O menu radial aberto (`minecraft.gui.screen() instanceof GuiRadialSelector`).
+    radial: Option<RadialUi>,
+    /// Os modos que o menu escolheu, a mandar no próximo tique (os ganchos de tela não têm o `Game` mutável).
+    pending: Vec<(radial::Slot, usize)>,
+    /// O bloco que a sobreposição cobre neste quadro, para o contorno padrão sair (`showingConfiguratorOverlay`).
+    overlay: Option<[i32; 3]>,
+}
+
+/// `GuiRadialSelector`: o slot do item e a fatia sob o mouse no último quadro.
+struct RadialUi {
+    slot: radial::Slot,
+    selection: Option<usize>,
+    /// `GuiRadialSelector.scrollIncrementer` (`new ScrollIncrementer(true)`).
+    scroll: radial::ScrollIncrementer,
+}
+
+static EFFECTS: std::sync::Mutex<Effects> = std::sync::Mutex::new(Effects {
+    status: status_overlay::StatusOverlay::new(),
+    mode_scroll: radial::ScrollIncrementer::new(),
+    key_held: false,
+    radial: None,
+    pending: Vec::new(),
+    overlay: None,
+});
+
+fn effects() -> std::sync::MutexGuard<'static, Effects> {
+    EFFECTS.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// `ARGB` do Java para a cor de vértice do HUD do Horizon.
+fn hud_color(argb: u32) -> u32 {
+    horizon_client::hud::rgba((argb >> 16) as u8, (argb >> 8) as u8, argb as u8, (argb >> 24) as u8)
+}
+
+/// `ARGB.multiplyAlpha(color, multiplier)`.
+fn multiply_alpha(color: u32, multiplier: f32) -> u32 {
+    if color == 0 || multiplier <= 0.0 {
+        0
+    } else if multiplier >= 1.0 {
+        color
+    } else {
+        let alpha = (color >> 24) as f32 / 255.0 * multiplier;
+        (((alpha * 255.0).floor() as u32) << 24) | (color & 0x00FF_FFFF)
+    }
+}
+
+/// `EnumColor.getColor(i)`: o canal do RGB em `[0, 1]`.
+fn color_channels(color: u8) -> [f32; 3] {
+    let rgb = rules::enum_color_rgb(color);
+    [(rgb >> 16 & 0xFF) as f32 / 255.0, (rgb >> 8 & 0xFF) as f32 / 255.0, (rgb & 0xFF) as f32 / 255.0]
+}
+
+fn is_spectator(game: &Game<'_>) -> bool {
+    matches!(game.mode, horizon_client::command::args::GameMode::Spectator)
+}
+
+/// `Hud.leftHeight` e `rightHeight` depois das camadas de vida: no criativo e no espectador elas não rodam e ficam em 39.
+fn bar_heights(game: &Game<'_>) -> (i32, i32) {
+    if game.creative || is_spectator(game) { (39, 39) } else { (game.health_hud.left_height, game.health_hud.right_height) }
+}
+
+/// As camadas do `RegisterGuiLayersEvent` (`ClientRegistration.registerOverlays`): o status sobre a camada do nome do item selecionado e o HUD sobre a das legendas.
+pub(in crate::game) fn gui_layer_post(game: &mut Game<'_>, layer: &str, batch: &mut HudBatch) {
+    match layer {
+        "minecraft:selected_item_name" => draw_status(game, batch),
+        "minecraft:subtitle_overlay" => draw_hud(game, batch),
+        _ => {}
+    }
+}
+
+/// `MekanismStatusOverlay.render`.
+fn draw_status(game: &mut Game<'_>, batch: &mut HudBatch) {
+    use horizon_client::command::args::GameMode;
+    let (left_height, right_height) = bar_heights(game);
+    let around = status_overlay::Surroundings {
+        gui_width: batch.width as i32,
+        gui_height: batch.height as i32,
+        left_height,
+        right_height,
+        can_hurt: matches!(game.mode, GameMode::Survival | GameMode::Adventure),
+        overlay_message: game.titles.overlay_time > 0,
+        gui_ticks: game.visual_ticks() as i32,
+        active: game.player.is_some() && !is_spectator(game) && !game.ui.hide_gui,
+    };
+    // `IModeItem.isModeItem(stack, MAINHAND)` e `getScrollTextComponent`.
+    let scroll_text = main_hand(game).filter(|stack| is_mode_item(stack, true)).map(|stack| text(&mode_of(game, stack).scroll_text()));
+    let width = scroll_text.as_ref().map(|text| game.gui.atlas.font.width_text(text) as i32);
+    let Some(draw) = effects().status.render(&around, width) else {
+        return;
+    };
+    let Some(scroll_text) = scroll_text else {
+        return;
+    };
+    // `GuiUtils.drawBackdrop(.., 0, 0, componentWidth, color.af())`: `options.getBackgroundColor(0.0F)` com o alfa do texto.
+    let background = multiply_alpha(game.settings.text_background(0.0), draw.alpha);
+    if background != 0 {
+        batch.fill(&game.gui.atlas, draw.x - 2.0, draw.y as f32 - 2.0, draw.width as f32 + 4.0, 13.0, hud_color(background));
+    }
+    let argb = (u32::from(status_overlay::alpha_byte(draw.alpha)) << 24) | 0x00FF_FFFF;
+    batch.text_styled(&game.gui.atlas, &scroll_text, draw.x, draw.y as f32, hud_color(argb), true);
+}
+
+/// `IItemHUDProvider.addHUDStrings` do item numa pilha: o Configurator dá o modo.
+fn hud_strings(game: &Game<'_>, stack: &ItemStack) -> Vec<rules::Chat> {
+    if &*stack.item == rules::CONFIGURATOR_ITEM {
+        return vec![mode_of(game, stack).hud_line()];
+    }
+    Vec::new()
+}
+
+/// `MekanismHUD.render`, a parte do texto.
+fn draw_hud(game: &mut Game<'_>, batch: &mut HudBatch) {
+    let config = glue::effects_config();
+    if game.player.is_none() || is_spectator(game) || game.ui.hide_gui || !config.hud_enabled {
+        return;
+    }
+    // `EQUIPMENT_ORDER`: a mão secundária, a principal, a cabeça, o peito, as pernas e os pés.
+    let stacks: [Option<&ItemStack>; 6] = [game.offhand.as_ref(), main_hand(game), game.armor[0].as_ref(), game.armor[1].as_ref(), game.armor[2].as_ref(), game.armor[3].as_ref()];
+    let groups: Vec<Vec<Text>> = stacks
+        .into_iter()
+        .flatten()
+        .map(|stack| hud_strings(game, stack).iter().map(text).collect::<Vec<Text>>())
+        .filter(|lines| !lines.is_empty())
+        .collect();
+    let widths: Vec<Vec<i32>> = groups.iter().map(|lines| lines.iter().map(|line| game.gui.atlas.font.width_text(line) as i32).collect()).collect();
+    let background = game.settings.text_background(0.0);
+    let layout = item_hud::layout(&widths, batch.width as i32, batch.height as i32, config.hud_scale, config.hud_reverse, background != 0);
+    if layout.lines.is_empty() {
+        return;
+    }
+    let start = batch.vertices.len();
+    if let Some(backdrop) = layout.backdrop {
+        batch.fill(
+            &game.gui.atlas,
+            backdrop.x0 as f32,
+            backdrop.y0 as f32,
+            (backdrop.x1 - backdrop.x0) as f32,
+            (backdrop.y1 - backdrop.y0) as f32,
+            hud_color(background),
+        );
+    }
+    for line in &layout.lines {
+        batch.text_styled(&game.gui.atlas, &groups[line.group][line.index], line.x as f32, line.y as f32, hud_color(item_hud::TEXT_ARGB), true);
+    }
+    // `pose.scale(hudScale, hudScale)` a partir do canto de cima à esquerda.
+    batch.scale_since(start, 0.0, 0.0, layout.scale, layout.scale);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O menu radial.
+
+/// `IGenericRadialModeItem` no slot: o Configurator.
+fn radial_stack<'a>(game: &'a Game<'_>, slot: radial::Slot) -> Option<&'a ItemStack> {
+    match slot {
+        radial::Slot::MainHand => main_hand(game),
+        radial::Slot::OffHand => game.offhand.as_ref(),
+    }
+    .filter(|stack| has_radial(stack))
+}
+
+/// `ClientTickHandler.tickEnd`, a parte do menu radial: abre com a tecla apertada e um item com menu, fecha sem ela.
+pub(in crate::game) fn tick(game: &mut Game<'_>) {
+    if !game.native_window() {
+        return;
+    }
+    use crate::game::Screen;
+    let ours = game.native_mod_screen() == Some(MOD_ID);
+    // O menu fechou por fora (a tecla de sair da tela): `removed()`.
+    let closed_outside = !ours && effects().radial.is_some();
+    if closed_outside {
+        radial_removed();
+    }
+    let no_screen = game.screen == Screen::Playing && game.native_playing();
+    let key_held = effects().key_held;
+    let tick = radial::tick(
+        no_screen || ours,
+        key_held,
+        radial_stack(game, radial::Slot::MainHand).is_some(),
+        radial_stack(game, radial::Slot::OffHand).is_some(),
+        ours,
+    );
+    match tick {
+        radial::Tick::Idle => {}
+        radial::Tick::Open(slot) => {
+            let same = ours && effects().radial.as_ref().is_some_and(|ui| ui.slot == slot);
+            if !same && game.native_mod_screen_open(MOD_ID) {
+                effects().radial = Some(RadialUi { slot, selection: None, scroll: radial::ScrollIncrementer::new() });
+            }
+        }
+        radial::Tick::Close => {
+            game.native_mod_screen_close(MOD_ID);
+            radial_removed();
+        }
+    }
+    flush_pending(game);
+}
+
+/// `GuiRadialSelector.removed`: o modo sob o mouse na hora de fechar é o escolhido.
+fn radial_removed() {
+    let mut effects = effects();
+    if let Some(ui) = effects.radial.take()
+        && let Some(index) = ui.selection
+    {
+        effects.pending.push((ui.slot, index));
+    }
+}
+
+/// Manda os modos que o menu escolheu (`updateSelection`): um que difere do atual (`selection_to_send` já conferiu na hora de pôr na fila).
+fn flush_pending(game: &mut Game<'_>) {
+    let pending = std::mem::take(&mut effects().pending);
+    for (slot, index) in pending {
+        let current = radial_stack(game, slot).map(|stack| mode_of(game, stack).ordinal());
+        if radial::selection_to_send(Some(index), current).is_none() {
+            continue;
+        }
+        let mut body = vec![match slot {
+            radial::Slot::MainHand => 0u8,
+            radial::Slot::OffHand => 1,
+        }];
+        body.push(0);
+        body.extend_from_slice(&(index as i32).to_be_bytes());
+        let _ = game.native_net_send_to_server(RADIAL_CHANNEL, &body);
+    }
+}
+
+/// `PacketRadialModeChange.handle`: o servidor põe o modo do menu (`fromNetworkRepresentation`, por módulo) no item do slot, sem mensagem.
+fn radial_net_from_client(game: &mut Game<'_>, player: u128, data: &[u8]) {
+    if data.len() != 6 || data[1] != 0 {
+        return;
+    }
+    let slot = if data[0] == 0 { radial::Slot::MainHand } else { radial::Slot::OffHand };
+    let representation = i32::from_be_bytes([data[2], data[3], data[4], data[5]]);
+    let Some(mut host) = game.lan.take() else {
+        return;
+    };
+    let conn = host.hub.guests.iter().find(|guest| guest.uuid == player).map(|guest| guest.conn);
+    if let Some(conn) = conn {
+        game.as_guest(&mut host, conn, |game| {
+            let Some(mut stack) = (match slot {
+                radial::Slot::MainHand => game.held().cloned(),
+                radial::Slot::OffHand => game.offhand.clone(),
+            }) else {
+                return;
+            };
+            if !has_radial(&stack) {
+                return;
+            }
+            let mode = ConfiguratorMode::VALUES[(i64::from(representation)).rem_euclid(ConfiguratorMode::VALUES.len() as i64) as usize];
+            set_mode(game, &mut stack, mode);
+            match slot {
+                radial::Slot::MainHand => *game.held_mut() = Some(stack),
+                radial::Slot::OffHand => game.offhand = Some(stack),
+            }
+        });
+    }
+    game.lan = Some(host);
+}
+
+/// `GuiRadialSelector.extractRenderState`, no gancho de pós-desenho da tela do mod.
+pub(in crate::game) fn screen_render_post(game: &Game<'_>, batch: &mut HudBatch) {
+    if game.native_mod_screen() != Some(MOD_ID) {
+        return;
+    }
+    let mut effects = effects();
+    let Some(ui) = effects.radial.as_mut() else {
+        return;
+    };
+    let Some(stack) = radial_stack(game, ui.slot) else {
+        return;
+    };
+    let current = mode_of(game, stack);
+    let center = [batch.width / 2.0, batch.height / 2.0];
+    let cursor = game.native_cursor();
+    let frame = radial::frame([cursor[0] as i32, cursor[1] as i32], center, ConfiguratorMode::VALUES.len(), Some(current.ordinal()), Some(color_channels(current.color())));
+    ui.selection = frame.selection;
+    drop(effects);
+    let atlas = &game.gui.atlas;
+    for torus in &frame.toruses {
+        let channel = |value: f32| (value * 255.0).floor() as u8;
+        let color = horizon_client::hud::rgba(channel(torus.rgba[0]), channel(torus.rgba[1]), channel(torus.rgba[2]), channel(torus.rgba[3]));
+        let pairs = radial::torus_pairs(center, torus);
+        for pair in pairs.windows(2) {
+            let ((o0, i0), (o1, i1)) = (pair[0], pair[1]);
+            batch.fill_quad(atlas, [o0, i0, i1, o1], color);
+        }
+    }
+    for (mode, slice) in ConfiguratorMode::VALUES.iter().zip(&frame.slices) {
+        batch.sprite_scaled(
+            atlas,
+            &mode.radial_icon(),
+            center[0] + slice.icon[0] as f32,
+            center[1] + slice.icon[1] as f32,
+            radial::ICON_SIZE as f32,
+            radial::ICON_SIZE as f32,
+            u32::MAX,
+        );
+    }
+    for (mode, slice) in ConfiguratorMode::VALUES.iter().zip(&frame.slices) {
+        let mut name = mode.slice_name();
+        if glue::effects_config().white_radial_text {
+            name.color = None;
+        }
+        let label = text(&name);
+        let (pivot_x, pivot_y) = (center[0] + slice.label[0], center[1] + slice.label[1]);
+        let start = batch.vertices.len();
+        let left = (-(atlas.font.width_text(&label) as f32) / 2.0) as i32;
+        batch.text_styled(atlas, &label, pivot_x + left as f32, pivot_y + radial::LABEL_DOWN as f32, hud_color(radial::LABEL_ARGB), true);
+        batch.scale_since(start, pivot_x, pivot_y, radial::LABEL_SCALE, radial::LABEL_SCALE);
+    }
+}
+
+/// Se a tela aberta é o menu radial.
+fn radial_open(game: &Game<'_>) -> bool {
+    game.native_mod_screen() == Some(MOD_ID) && effects().radial.is_some()
+}
+
+/// `GuiRadialSelector.keyPressed`: o menu consome toda tecla.
+pub(in crate::game) fn screen_key_pressed(game: &Game<'_>, canceled: &mut bool) {
+    if radial_open(game) {
+        *canceled = true;
+    }
+}
+
+/// `GuiRadialSelector.mouseClicked`: o clique escolhe o modo sob o mouse.
+pub(in crate::game) fn screen_mouse_pressed(game: &Game<'_>, canceled: &mut bool) {
+    if !radial_open(game) {
+        return;
+    }
+    let mut effects = effects();
+    if let Some(ui) = effects.radial.as_ref()
+        && let Some(index) = ui.selection
+    {
+        let slot = ui.slot;
+        effects.pending.push((slot, index));
+    }
+    *canceled = true;
+}
+
+/// `GuiRadialSelector.mouseScrolled`: a rolagem anda uma fatia a partir do modo atual e já o escolhe.
+pub(in crate::game) fn screen_mouse_scrolled(game: &Game<'_>, scroll: [f64; 2], canceled: &mut bool) {
+    if !radial_open(game) || scroll[1] == 0.0 {
+        return;
+    }
+    let ticks = game.visual_ticks() as i64;
+    let mut effects = effects();
+    let Some(ui) = effects.radial.as_mut() else {
+        return;
+    };
+    let shift = ui.scroll.scroll(scroll[1], ticks);
+    let slot = ui.slot;
+    let current = radial_stack(game, slot).map(|stack| mode_of(game, stack).ordinal());
+    match radial::scrolled(ConfiguratorMode::VALUES.len(), current, shift) {
+        radial::Scroll::Consumed => *canceled = true,
+        radial::Scroll::Select(index) => {
+            if let Some(ui) = effects.radial.as_mut() {
+                ui.selection = Some(index);
+            }
+            effects.pending.push((slot, index));
+            *canceled = true;
+        }
+        radial::Scroll::Passed => {}
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A sobreposição da face (`RenderTickHandler.onBlockHover` + `ConfiguratorOverlayHandler`).
+
+/// O que a sobreposição de um quadro precisa: o bloco, a face, o sprite, a cor e a rotação da câmera.
+pub(in crate::game) struct OverlayRequest {
+    pub pos: [i32; 3],
+    pub face: Face,
+    pub sprite: String,
+    pub argb: u32,
+    pub y_rot: f64,
+}
+
+/// `RenderTickHandler.onBlockHover`: com o Configurator na mão principal (ou na secundária), num modo de configurar, olhando para uma máquina que aceita o tipo e tem
+/// o lado ligado. Guarda o bloco para o contorno padrão sair.
+pub(in crate::game) fn overlay_request(game: &Game<'_>) -> Option<OverlayRequest> {
+    let found = overlay_find(game);
+    effects().overlay = found.as_ref().map(|request| request.pos);
+    found
+}
+
+fn overlay_find(game: &Game<'_>) -> Option<OverlayRequest> {
+    use horizon_client::command::args::GameMode;
+    let stack = main_hand(game).filter(|stack| &*stack.item == rules::CONFIGURATOR_ITEM).or_else(|| game.offhand.as_ref().filter(|stack| &*stack.item == rules::CONFIGURATOR_ITEM))?;
+    // As portas do contorno do bloco: sem F1, e o jogador pode construir (ou está em aventura).
+    if game.ui.hide_gui || !(game.may_build() || game.mode == GameMode::Adventure) {
+        return None;
+    }
+    let mode = mode_of(game, stack);
+    let hit = game.pick()?;
+    let config = glue::peek_side_config(game, hit.pos)?;
+    let face = face_of(hit.face);
+    let (kind, data_type) = rules::configurator_overlay(mode, &config, basis::front(game, hit.pos), face)?;
+    Some(OverlayRequest { pos: hit.pos, face, sprite: rules::overlay_sprite(kind), argb: rules::overlay_argb(data_type), y_rot: f64::from(game.yaw) })
+}
+
+/// Os vértices da sobreposição, relativos à câmera, no formato dos primitivos do mundo: um quadrilátero do sprite, com a cor do tipo de dado.
+pub(in crate::game) fn overlay_vertices(game: &Game<'_>, request: &OverlayRequest, camera: [f64; 3]) -> Option<[[f32; 3]; 4]> {
+    let _ = game.gui.atlas.sprites.get(request.sprite.as_str())?;
+    let corners = face_overlay::vertices(request.face, request.y_rot);
+    Some(std::array::from_fn(|index| {
+        let position = corners[index].position;
+        [
+            (f64::from(request.pos[0]) - camera[0]) as f32 + position[0],
+            (f64::from(request.pos[1]) - camera[1]) as f32 + position[1],
+            (f64::from(request.pos[2]) - camera[2]) as f32 + position[2],
+        ]
+    }))
+}
+
+/// `RenderPipelines.EYES`: o contorno padrão não sai enquanto a sobreposição está na tela.
+pub(in crate::game) fn block_highlight(pos: [i32; 3], canceled: &mut bool) {
+    if effects().overlay == Some(pos) {
+        *canceled = true;
+    }
 }

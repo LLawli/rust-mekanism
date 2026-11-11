@@ -198,6 +198,23 @@ pub const LOCAL_CONFIG_NAMESPACE: &str = "Mekanism";
 /// `WindowPositions`.
 pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
     sections: &[
+        // `ClientConfig.java:61-71`: `accessibility`. O original traz também `opaqueTransmitters` (os transmissores ainda não têm conteúdo para mostrar).
+        ClientSection {
+            name: "accessibility",
+            comment: "Settings for configuring Accessibility settings provided by Mekanism. Note: Some settings such as HUD scale, may be located throughout the rest of this config.",
+            entries: &[
+                ClientEntry {
+                    key: "whiteRadialText",
+                    comment: "Tries to force all text rendered as part of radial menus to be white instead of the color of the slice's mode.",
+                    setting: ClientSetting::Bool { default: false },
+                },
+                ClientEntry {
+                    key: "allowModeScroll",
+                    comment: "Allows changing the mode of held items by holding sneak and using the scroll wheel.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+            ],
+        },
         ClientSection {
             name: "sounds",
             comment: "Settings for configuring Mekanism's Sounds",
@@ -241,6 +258,32 @@ pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
                 comment: "Show particles when machines active.",
                 setting: ClientSetting::Bool { default: true },
             }],
+        },
+        // `ClientConfig.java:105-111`: `hud`. O resto da seção (opacidade, cores, tremor, bússola, legendas e a barra de energia) é do HUD do MekaSuit.
+        ClientSection {
+            name: "hud",
+            comment: "Settings for configuring Mekanism's HUD",
+            entries: &[
+                ClientEntry {
+                    key: "enabled",
+                    comment: "Enable a HUD that displays information about equipped Mekanism items, and displays additional information when wearing a MekaSuit Helmet.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+                ClientEntry {
+                    key: "scale",
+                    comment: "Scale of the text displayed on the HUD.",
+                    setting: ClientSetting::Float {
+                        default: 0.6,
+                        min: 0.25,
+                        max: 1.0,
+                    },
+                },
+                ClientEntry {
+                    key: "reverse",
+                    comment: "Reverses the HUD's text alignment and compass rendering to the right side of the screen, and moves the MekaSuit module rendering to the left side. Warning: This may cause subtitles to overlap parts of the HUD such as the compass.",
+                    setting: ClientSetting::Bool { default: false },
+                },
+            ],
         },
     ],
 };
@@ -3480,6 +3523,128 @@ pub fn card_tooltip_line(name_key: Option<&str>) -> Chat {
         vec![card_name(name_key)],
         Some(enum_color_rgb(COLOR_GRAY)),
     )
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os efeitos de tela do Configurator e dos itens de modo (decisão 48): a sobreposição da face, o texto do modo sobre a barra, o menu radial e o texto do
+// HUD. A conta de cada um (posição, tempo, geometria) é da `machinery_basis_core`; aqui ficam os dados do Mekanism.
+
+/// `ItemConfigurator.LAZY_RADIAL_DATA`: `Mekanism.rl("configurator_mode")`.
+pub const CONFIGURATOR_RADIAL_ID: &str = "mekanism:configurator_mode";
+
+/// Onde cada textura que os efeitos desenham fica no atlas de telas do Horizon: `gui/sprites/...` do conteúdo do mod.
+const SPRITES: &str = "mekanism:gui/sprites";
+
+impl ConfiguratorMode {
+    /// `sliceName`: o nome do tipo de transmissão na cor do modo para os de configurar, e o texto do modo para os outros.
+    pub fn slice_name(self) -> Chat {
+        match self.transmission() {
+            Some(kind) if self.is_configurating() => {
+                let mut name = transmission_name(kind);
+                name.color = Some(enum_color_rgb(self.color()));
+                name
+            }
+            _ => self.text(),
+        }
+    }
+
+    /// `icon`: o sprite do tipo de transmissão (`TransmissionType.guiTexture`) ou `radial/<modo>`.
+    pub fn radial_icon(self) -> String {
+        match self.transmission() {
+            Some(kind) => format!("{SPRITES}/transmission/{}", kind.serialized_name()),
+            None => format!("{SPRITES}/radial/{}", self.serialized_name()),
+        }
+    }
+
+    /// `getScrollTextComponent`: o texto do modo.
+    pub fn scroll_text(self) -> Chat {
+        self.text()
+    }
+
+    /// `ItemConfigurator.addHUDStrings`: `MekanismLang.MODE.translateColored(EnumColor.PINK, getMode(instance))`.
+    pub fn hud_line(self) -> Chat {
+        Chat::new(
+            "tooltip.mekanism.mode",
+            vec![self.text()],
+            Some(enum_color_rgb(COLOR_PINK)),
+        )
+    }
+}
+
+/// `RenderTickHandler.onBlockHover`, o ramo do Configurator: com um modo de configurar, uma máquina que aceita o tipo e o lado ligado, a face que o olhar toca
+/// recebe a sobreposição do tipo de transmissão na cor do `DataType` do lado. Devolve o tipo e o `DataType`.
+pub fn configurator_overlay(
+    mode: ConfiguratorMode,
+    config: &TileComponentConfig,
+    facing: Face,
+    face: Face,
+) -> Option<(TransmissionType, DataType)> {
+    if !mode.is_configurating() {
+        return None;
+    }
+    let kind = mode.transmission()?;
+    if !config.supports(kind) {
+        return None;
+    }
+    let info = config.config(kind)?;
+    let side = RelativeSide::from_directions(facing, face);
+    info.is_side_enabled(side)
+        .then(|| (kind, info.data_type(side)))
+}
+
+/// `MekanismRenderer.getColorARGB(dataType.getColor(), 0.6F)`: a cor do `EnumColor` com o alfa de 60 % (`ARGB.color(float, int)`, `floor(0,6F * 255F)` = 153).
+pub fn overlay_argb(data_type: DataType) -> u32 {
+    (153_u32 << 24) | enum_color_rgb(data_type.color())
+}
+
+/// `MekanismRenderer.overlays`: o sprite `block/overlay/<transmissão>_overlay`.
+pub fn overlay_sprite(kind: TransmissionType) -> String {
+    format!("{SPRITES}/overlay/{}_overlay", kind.serialized_name())
+}
+
+/// A configuração de cliente que os efeitos leem (`MekanismConfig.client`): `allowModeScroll` e `whiteRadialText` (seção `accessibility`), `enabled`, `scale` e
+/// `reverse` (seção `hud`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EffectsConfig {
+    pub allow_mode_scroll: bool,
+    pub white_radial_text: bool,
+    pub hud_enabled: bool,
+    pub hud_scale: f32,
+    pub hud_reverse: bool,
+}
+
+impl Default for EffectsConfig {
+    fn default() -> Self {
+        Self {
+            allow_mode_scroll: true,
+            white_radial_text: false,
+            hud_enabled: true,
+            hud_scale: 0.6,
+            hud_reverse: false,
+        }
+    }
+}
+
+/// `ClientConfig.java:61-71` (`accessibility`) e `:105-111` (`hud`); `CachedFloatValue` guarda o `double` do arquivo como `float`.
+pub fn effects_config(loaded: &ClientLoaded) -> EffectsConfig {
+    let defaults = EffectsConfig::default();
+    EffectsConfig {
+        allow_mode_scroll: loaded
+            .bool(&CLIENT_CONFIG, "accessibility", "allowModeScroll")
+            .unwrap_or(defaults.allow_mode_scroll),
+        white_radial_text: loaded
+            .bool(&CLIENT_CONFIG, "accessibility", "whiteRadialText")
+            .unwrap_or(defaults.white_radial_text),
+        hud_enabled: loaded
+            .bool(&CLIENT_CONFIG, "hud", "enabled")
+            .unwrap_or(defaults.hud_enabled),
+        hud_scale: loaded
+            .float(&CLIENT_CONFIG, "hud", "scale")
+            .map_or(defaults.hud_scale, |scale| scale as f32),
+        hud_reverse: loaded
+            .bool(&CLIENT_CONFIG, "hud", "reverse")
+            .unwrap_or(defaults.hud_reverse),
+    }
 }
 
 #[cfg(test)]

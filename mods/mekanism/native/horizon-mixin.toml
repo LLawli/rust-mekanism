@@ -705,3 +705,95 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "state", ty = "horizon_world::registry::BlockStateId", value = "state" },
 ]
+
+# Os efeitos de tela dos itens de modo (decisão 48). O texto do modo sobre a barra e o texto do HUD (`RegisterGuiLayersEvent`: o primeiro sobre `selected_item_name`, o
+# segundo sobre `subtitle_overlay`) são as camadas `gui_layer_post`; o menu radial (`GuiRadialSelector`) é a tela do mod e seus ganchos de tela; a sobreposição da face
+# cancela o contorno padrão (`block_highlight`) e entra nos primitivos do mundo (`world_overlay`, alvo cru, H87).
+[[injection]]
+id = "gui_layer_post"
+hook = "gui_layer_post"
+hook_version = 1
+kind = "HEAD"
+helper = "gui_layer_post.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "layer", ty = "&str", value = "layer" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]
+
+[[injection]]
+id = "screen_render_post"
+hook = "screen_render_post"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_render_post.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]
+
+[[injection]]
+id = "screen_key_pressed"
+hook = "screen_key_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_key_pressed.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "screen_mouse_pressed"
+hook = "screen_mouse_button_pressed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_mouse_pressed.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "screen_mouse_scrolled"
+hook = "screen_mouse_scrolled_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "screen_mouse_scrolled.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "scroll", ty = "[f64; 2]", value = "scroll" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+[[injection]]
+id = "block_highlight"
+hook = "block_highlight"
+hook_version = 1
+kind = "HEAD"
+helper = "block_highlight.rs"
+bindings = [
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
+# A sobreposição da face (`ConfiguratorOverlayHandler`): um quadrilátero com o sprite do tipo de transmissão, em coordenadas do mundo, com teste de profundidade. Os
+# primitivos do mundo do Horizon (`native_world_primitives`) não têm um quadrilátero com textura, então o HEAD cancelável de `world_primitive_geometry` devolve o
+# conjunto do quadro com o quadrilátero, só nos quadros em que ele aparece (o corpo tem `return` e `?`: RETURN não serve). Alvo cru, H87.
+[[module]]
+id = "world-overlay"
+file = "crates/horizon-client/src/game/world_primitives.rs"
+name = "mekanism_overlay"
+source = "overlay_quads.rs"
+
+[[injection]]
+id = "world_overlay"
+target = "horizon_client::game::world_primitives::Game<'_>::world_primitive_geometry"
+kind = "HEAD"
+cancellable = true
+helper = "world_overlay.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "camera", ty = "glam::DVec3", value = "camera" },
+  { name = "alpha", ty = "f64", value = "alpha" },
+]

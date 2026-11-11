@@ -19,6 +19,50 @@ fn original() -> String {
     .unwrap()
 }
 
+/// A seção `accessibility` do arquivo do original, sem `opaqueTransmitters` (os transmissores ainda não têm o que mostrar no lugar do conteúdo).
+fn original_accessibility_section() -> String {
+    let text = original();
+    let start = text
+        .find("#Settings for configuring Accessibility settings")
+        .unwrap();
+    let end = text[start..].find("\n\n").unwrap() + start + 1;
+    let mut kept = Vec::new();
+    let mut lines = text[start..end].lines().peekable();
+    while let Some(line) = lines.next() {
+        if line.trim_start().starts_with("#If true, renders sides for") {
+            // O comentário e a chave `opaqueTransmitters` vão juntos.
+            lines.next();
+            continue;
+        }
+        kept.push(line);
+    }
+    kept.join("\n") + "\n"
+}
+
+/// A seção `hud` do arquivo do original, com as três chaves que os efeitos leem (`enabled`, `scale` e `reverse`): o resto é do HUD do MekaSuit.
+fn original_hud_section() -> String {
+    let text = original();
+    let start = text.find("#Settings for configuring Mekanism's HUD").unwrap();
+    let end = text[start..].find("\n\n").unwrap() + start + 1;
+    let mut kept = Vec::new();
+    let mut keys = 0;
+    for line in text[start..end].lines() {
+        let is_key = line.starts_with('\t') && !line.trim_start().starts_with('#');
+        if is_key {
+            keys += 1;
+        }
+        // Cada chave tem os comentários na frente: ficam os das três primeiras.
+        if keys >= 3 && !is_key && line.starts_with('\t') {
+            continue;
+        }
+        if keys > 3 {
+            continue;
+        }
+        kept.push(line);
+    }
+    kept.join("\n") + "\n"
+}
+
 /// A seção `sounds` do arquivo do original, sem `enablePlayer` (o port não tem os sons de jogador).
 fn original_sounds_section() -> String {
     let text = original();
@@ -82,9 +126,11 @@ fn the_default_text_is_the_sounds_and_rendering_sections_of_the_file_the_origina
     assert_eq!(
         CLIENT_CONFIG.default_text(),
         format!(
-            "{}\n{}",
+            "{}\n{}\n{}\n{}",
+            original_accessibility_section(),
             original_sounds_section(),
-            original_rendering_section()
+            original_rendering_section(),
+            original_hud_section()
         )
     );
 }
@@ -270,7 +316,14 @@ fn the_window_block_is_the_one_the_original_writes() {
 fn the_default_file_is_the_original_without_what_the_port_does_not_read() {
     use machinery_basis_core::window::WindowPositions;
     let text = client_default_text();
-    assert!(text.starts_with(&original_sounds_section()), "{text}");
+    assert!(
+        text.starts_with(&format!(
+            "{}\n{}",
+            original_accessibility_section(),
+            original_sounds_section()
+        )),
+        "{text}"
+    );
     let window = &text[text.find("#Stores the last position").unwrap()..];
     let original = original();
     let original_window = &original[original.find("#Stores the last position").unwrap()..];

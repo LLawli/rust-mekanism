@@ -166,14 +166,18 @@ pub struct ScrollIncrementer {
 
 impl Default for ScrollIncrementer {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ScrollIncrementer {
+    pub const fn new() -> Self {
         Self {
             last_scroll_time: -1,
             scroll_delta: 0.0,
         }
     }
-}
 
-impl ScrollIncrementer {
     /// `scroll(double delta)` no tique `gui_ticks` (`discrete`).
     pub fn scroll(&mut self, delta: f64, gui_ticks: i64) -> i32 {
         if gui_ticks - self.last_scroll_time > 20 {
