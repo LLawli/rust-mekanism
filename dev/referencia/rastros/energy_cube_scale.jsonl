@@ -1,0 +1,101 @@
+{"meta":{"commit":"b2d04e166","date":"2026-11-11","file":"energy_cube_scale.jsonl","scenario":"Elite cube with ejecting off. The energy goes 0, 32000000 (tick 5), 64000000 (40), 1 (70), 0 (75), 63999999 (80); the sides go INPUT_OUTPUT, INPUT, NONE... between 10 and 30.","tier":2,"capacity":64000000,"transfer_rate":64000,"tablet_capacity":1000000,"tablet_rate":5000,"receivers":[],"fields":"t; marks (the actions of the tick, run in ServerTickEvent.Pre); cube: energy, scale (getEnergyScale), comparator (getCurrentRedstoneLevel), input_rate, charge and discharge as [item path, count, energy of the stack], sides (CubeSideState ordinal per RelativeSide, in RelativeSide.VALUES order), ejecting; receivers {face: energy}; source energy under src."}}
+{"t":0,"marks":["eject false"],"cube":{"energy":0,"scale":0.0,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":1,"marks":[],"cube":{"energy":0,"scale":0.0,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":2,"marks":[],"cube":{"energy":0,"scale":0.0,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":3,"marks":[],"cube":{"energy":0,"scale":0.0,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":4,"marks":[],"cube":{"energy":0,"scale":0.0,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":5,"marks":["energy 32000000"],"cube":{"energy":32000000,"scale":0.05,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":6,"marks":[],"cube":{"energy":32000000,"scale":0.095000006,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":7,"marks":[],"cube":{"energy":32000000,"scale":0.1355,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":8,"marks":[],"cube":{"energy":32000000,"scale":0.17195,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":9,"marks":[],"cube":{"energy":32000000,"scale":0.204755,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":10,"marks":["mode front input_output"],"cube":{"energy":32000000,"scale":0.23427948,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":11,"marks":[],"cube":{"energy":32000000,"scale":0.26085153,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":12,"marks":["mode back input"],"cube":{"energy":32000000,"scale":0.28476638,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":13,"marks":[],"cube":{"energy":32000000,"scale":0.30628973,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,2,2],"ejecting":false},"receivers":{}}
+{"t":14,"marks":["mode top none"],"cube":{"energy":32000000,"scale":0.32566077,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":15,"marks":[],"cube":{"energy":32000000,"scale":0.34309468,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,2,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":16,"marks":["mode left output"],"cube":{"energy":32000000,"scale":0.3587852,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":17,"marks":[],"cube":{"energy":32000000,"scale":0.37290668,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":18,"marks":["mode right input"],"cube":{"energy":32000000,"scale":0.385616,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":19,"marks":[],"cube":{"energy":32000000,"scale":0.3970544,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,2],"ejecting":false},"receivers":{}}
+{"t":20,"marks":["mode bottom input_output"],"cube":{"energy":32000000,"scale":0.40734896,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":21,"marks":[],"cube":{"energy":32000000,"scale":0.41661406,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":22,"marks":[],"cube":{"energy":32000000,"scale":0.42495266,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":23,"marks":[],"cube":{"energy":32000000,"scale":0.4324574,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":24,"marks":[],"cube":{"energy":32000000,"scale":0.43921167,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":25,"marks":[],"cube":{"energy":32000000,"scale":0.44529048,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":26,"marks":[],"cube":{"energy":32000000,"scale":0.4507614,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":27,"marks":[],"cube":{"energy":32000000,"scale":0.4556853,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":28,"marks":[],"cube":{"energy":32000000,"scale":0.46011677,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":29,"marks":[],"cube":{"energy":32000000,"scale":0.46410507,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":30,"marks":[],"cube":{"energy":32000000,"scale":0.46769458,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":31,"marks":[],"cube":{"energy":32000000,"scale":0.47092515,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":32,"marks":[],"cube":{"energy":32000000,"scale":0.47383267,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":33,"marks":[],"cube":{"energy":32000000,"scale":0.4764494,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":34,"marks":[],"cube":{"energy":32000000,"scale":0.47880444,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":35,"marks":[],"cube":{"energy":32000000,"scale":0.48092398,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":36,"marks":[],"cube":{"energy":32000000,"scale":0.48283157,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":37,"marks":[],"cube":{"energy":32000000,"scale":0.48454842,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":38,"marks":[],"cube":{"energy":32000000,"scale":0.48609358,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":39,"marks":[],"cube":{"energy":32000000,"scale":0.48748422,"comparator":8,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":40,"marks":["energy 64000000"],"cube":{"energy":64000000,"scale":0.53873575,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":41,"marks":[],"cube":{"energy":64000000,"scale":0.5848622,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":42,"marks":[],"cube":{"energy":64000000,"scale":0.626376,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":43,"marks":[],"cube":{"energy":64000000,"scale":0.66373837,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":44,"marks":[],"cube":{"energy":64000000,"scale":0.6973645,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":45,"marks":[],"cube":{"energy":64000000,"scale":0.72762805,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":46,"marks":[],"cube":{"energy":64000000,"scale":0.7548653,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":47,"marks":[],"cube":{"energy":64000000,"scale":0.7793788,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":48,"marks":[],"cube":{"energy":64000000,"scale":0.8014409,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":49,"marks":[],"cube":{"energy":64000000,"scale":0.8212968,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":50,"marks":[],"cube":{"energy":64000000,"scale":0.8391671,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":51,"marks":[],"cube":{"energy":64000000,"scale":0.85525036,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":52,"marks":[],"cube":{"energy":64000000,"scale":0.86972535,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":53,"marks":[],"cube":{"energy":64000000,"scale":0.8827528,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":54,"marks":[],"cube":{"energy":64000000,"scale":0.8944775,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":55,"marks":[],"cube":{"energy":64000000,"scale":0.9050298,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":56,"marks":[],"cube":{"energy":64000000,"scale":0.91452676,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":57,"marks":[],"cube":{"energy":64000000,"scale":0.92307407,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":58,"marks":[],"cube":{"energy":64000000,"scale":0.9307667,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":59,"marks":[],"cube":{"energy":64000000,"scale":0.9376901,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":60,"marks":[],"cube":{"energy":64000000,"scale":0.9439211,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":61,"marks":[],"cube":{"energy":64000000,"scale":0.949529,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":62,"marks":[],"cube":{"energy":64000000,"scale":0.95457613,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":63,"marks":[],"cube":{"energy":64000000,"scale":0.95911855,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":64,"marks":[],"cube":{"energy":64000000,"scale":0.96320665,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":65,"marks":[],"cube":{"energy":64000000,"scale":0.9668859,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":66,"marks":[],"cube":{"energy":64000000,"scale":0.9701973,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":67,"marks":[],"cube":{"energy":64000000,"scale":0.9731776,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":68,"marks":[],"cube":{"energy":64000000,"scale":0.9758598,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":69,"marks":[],"cube":{"energy":64000000,"scale":0.97827387,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":70,"marks":["energy 1"],"cube":{"energy":1,"scale":0.88044643,"comparator":1,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":71,"marks":[],"cube":{"energy":1,"scale":0.7924018,"comparator":1,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":72,"marks":[],"cube":{"energy":1,"scale":0.7131616,"comparator":1,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":73,"marks":[],"cube":{"energy":1,"scale":0.6418454,"comparator":1,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":74,"marks":[],"cube":{"energy":1,"scale":0.57766086,"comparator":1,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":75,"marks":["energy 0"],"cube":{"energy":0,"scale":0.5198948,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":76,"marks":[],"cube":{"energy":0,"scale":0.46790528,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":77,"marks":[],"cube":{"energy":0,"scale":0.42111474,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":78,"marks":[],"cube":{"energy":0,"scale":0.37900326,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":79,"marks":[],"cube":{"energy":0,"scale":0.34110293,"comparator":0,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":80,"marks":["energy 63999999"],"cube":{"energy":63999999,"scale":0.4069926,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":81,"marks":[],"cube":{"energy":63999999,"scale":0.46629333,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":82,"marks":[],"cube":{"energy":63999999,"scale":0.519664,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":83,"marks":[],"cube":{"energy":63999999,"scale":0.5676976,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":84,"marks":[],"cube":{"energy":63999999,"scale":0.6109278,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":85,"marks":[],"cube":{"energy":63999999,"scale":0.649835,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":86,"marks":[],"cube":{"energy":63999999,"scale":0.6848515,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":87,"marks":[],"cube":{"energy":63999999,"scale":0.7163664,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":88,"marks":[],"cube":{"energy":63999999,"scale":0.74472976,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":89,"marks":[],"cube":{"energy":63999999,"scale":0.7702568,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":90,"marks":[],"cube":{"energy":63999999,"scale":0.7932311,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":91,"marks":[],"cube":{"energy":63999999,"scale":0.813908,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":92,"marks":[],"cube":{"energy":63999999,"scale":0.83251727,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":93,"marks":[],"cube":{"energy":63999999,"scale":0.84926546,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":94,"marks":[],"cube":{"energy":63999999,"scale":0.8643389,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":95,"marks":[],"cube":{"energy":63999999,"scale":0.877905,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":96,"marks":[],"cube":{"energy":63999999,"scale":0.8901145,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":97,"marks":[],"cube":{"energy":63999999,"scale":0.901103,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":98,"marks":[],"cube":{"energy":63999999,"scale":0.91099274,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
+{"t":99,"marks":[],"cube":{"energy":63999999,"scale":0.91989344,"comparator":15,"input_rate":0,"charge":["",0,0],"discharge":["",0,0],"sides":[1,1,2,2,0,1],"ejecting":false},"receivers":{}}
