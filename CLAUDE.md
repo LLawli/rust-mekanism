@@ -44,17 +44,17 @@ manual em mundo fica para o que só o jogo mostra, como visual e som.
 
 Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
 
-- No máximo 1 build por vez no notebook e 1 no desktop. Jogo só no desktop, num container de teste só, o `horizon`: não suba o `horizon2`, e
-  um cliente de jogo por vez. (O usuário voltou a usar o desktop em 2026-11-07; os limites só sobem quando ele disser.)
+- No máximo 1 build por vez no notebook e 2 no desktop. Jogo só no desktop, em dois containers de teste, o `horizon` e o `horizon2`, com um
+  cliente de jogo por container. (O usuário liberou o desktop em 2026-11-11; os limites voltam a descer quando ele disser.)
 - O jogo é sempre headless: `gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080`, sem `-f`. Nunca `--backend wayland` nem nada que abra
   janela no desktop, que o usuário está usando. Prints e vídeo saem pelo `horizon-ctl`. Nunca mate um gamescope que não seja do teste.
 - O jogo de teste também é mudo: todo cliente, do port e do original, manda o áudio para um sink nulo do PipeWire (criado antes, removido ao fim)
   ou roda com o som desligado. Nunca pelas caixas do usuário.
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
-- Desktop: até 4 núcleos e 6 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 1 vaga e põe `CARGO_BUILD_JOBS=4`, com
+- Desktop: até 4 núcleos e 4 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 2 vagas e põe `CARGO_BUILD_JOBS=4`, com
   `--max-workers=4` no gradle. O container nasce com 6 CPUs e 12 GB: antes do `native-build`, rode
-  `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
+  `docker update --cpus 4 --memory 4g --memory-swap 4g <container>`, e antes do jogo `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
   compartilham `native/target` e `cargo` por bind mount. Nunca crie outro `target` nem copie esses diretórios.
 - Build de debug é apagado quando deixa de ser usado: ao integrar um workspace, remova o workspace e sua pasta de rascunho; a cada `native-build`,
