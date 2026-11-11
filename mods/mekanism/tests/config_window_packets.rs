@@ -1,6 +1,4 @@
-//! Os pacotes das janelas de configuração de lados e de transporte sobre uma máquina de verdade (a Enrichment Chamber com o padrão do
-//! item): o que `PacketSideData`, `PacketEjectConfiguration`, `PacketBatchConfiguration`, `PacketEjectColor`, `PacketInputColor` e o
-//! `STRICT_INPUT` fazem, e o que eles deixam no NBT (`serialize`) que a tela relê.
+//! O que as janelas de configuração fazem fora do que o rastro `config_pacotes` grava (`config_window_trace.rs`): o aviso da face, e a vista que o cliente monta do NBT.
 mod common;
 
 use machinery_basis_core::config_window::{ClickType, ConfigPacket};
@@ -34,134 +32,20 @@ fn data(machine: &ProgressMachine, side: RelativeSide) -> DataType {
         .unwrap()
 }
 
+/// O que o rastro `config_pacotes` não grava: cada mudança de lado avisa a face do mundo (a frente é leste).
 #[test]
-fn the_left_click_walks_the_supported_types_and_the_right_click_walks_back() {
+fn each_side_change_tells_the_world_face() {
     let mut machine = placed();
-    // O padrão do item: a frente é entrada, a direita é saída.
-    assert_eq!(data(&machine, RelativeSide::Front), DataType::Input);
-    assert_eq!(data(&machine, RelativeSide::Right), DataType::Output);
-    let click = |click, side| ConfigPacket::SideData {
-        click,
-        side,
-        transmission: TransmissionType::Item,
-    };
-    assert!(send(
-        &mut machine,
-        click(ClickType::Left, RelativeSide::Front)
-    ));
-    assert_eq!(data(&machine, RelativeSide::Front), DataType::Output);
-    assert!(send(
-        &mut machine,
-        click(ClickType::Left, RelativeSide::Front)
-    ));
-    assert_eq!(data(&machine, RelativeSide::Front), DataType::InputOutput);
-    assert!(send(
-        &mut machine,
-        click(ClickType::Right, RelativeSide::Front)
-    ));
-    assert_eq!(data(&machine, RelativeSide::Front), DataType::Output);
-    assert!(send(
-        &mut machine,
-        click(ClickType::ShiftLeft, RelativeSide::Front)
-    ));
-    assert_eq!(data(&machine, RelativeSide::Front), DataType::None);
-    // Shift em um lado que já é NONE não muda nada.
-    assert!(!send(
-        &mut machine,
-        click(ClickType::ShiftLeft, RelativeSide::Front)
-    ));
-    // Cada mudança avisou a face do mundo (a frente é leste).
+    let click = |click, side| ConfigPacket::SideData { click, side, transmission: TransmissionType::Item };
+    assert!(send(&mut machine, click(ClickType::Left, RelativeSide::Front)));
+    assert!(send(&mut machine, click(ClickType::Right, RelativeSide::Back)));
+    assert!(send(&mut machine, ConfigPacket::Batch { transmission: Some(TransmissionType::Item), target: DataType::None }));
     let changes = machine.take_side_changes();
-    assert_eq!(changes.len(), 4);
-    assert!(changes.iter().all(|change| change.direction == Face::East));
-}
-
-#[test]
-fn the_batch_sets_every_side_of_the_type_or_of_all_types() {
-    let mut machine = placed();
-    let batch = |transmission, target| ConfigPacket::Batch {
-        transmission,
-        target,
-    };
-    assert!(send(
-        &mut machine,
-        batch(Some(TransmissionType::Item), DataType::None)
-    ));
-    for side in RelativeSide::VALUES {
-        assert_eq!(data(&machine, side), DataType::None);
-    }
-    // Energia: o tipo da energia ficou como estava.
-    assert_eq!(
-        machine
-            .side_config()
-            .data_type(TransmissionType::Energy, RelativeSide::Back),
-        Some(DataType::Input)
-    );
-    assert!(send(&mut machine, batch(None, DataType::None)));
-    assert_eq!(
-        machine
-            .side_config()
-            .data_type(TransmissionType::Energy, RelativeSide::Back),
-        Some(DataType::None)
-    );
-    // Um DataType que o tipo não suporta (ENERGY na lista de itens... é suportado só em itens que o têm).
-    assert!(!send(
-        &mut machine,
-        batch(Some(TransmissionType::Energy), DataType::Extra)
-    ));
-}
-
-#[test]
-fn eject_and_strict_input_toggle_and_the_colors_cycle() {
-    let mut machine = placed();
-    let eject = ConfigPacket::Eject {
-        transmission: TransmissionType::Item,
-    };
-    send(&mut machine, eject);
-    assert!(
-        machine
-            .side_config()
-            .config(TransmissionType::Item)
-            .unwrap()
-            .is_ejecting()
-    );
-    send(&mut machine, eject);
-    assert!(
-        !machine
-            .side_config()
-            .config(TransmissionType::Item)
-            .unwrap()
-            .is_ejecting()
-    );
-
-    send(&mut machine, ConfigPacket::StrictInput);
-    assert!(machine.ejector().has_strict_input());
-    assert_eq!(machine.ejector().serialize().strict_input, Some(true));
-    send(&mut machine, ConfigPacket::StrictInput);
-    assert!(!machine.ejector().has_strict_input());
-    send(&mut machine, ConfigPacket::StrictInput);
-
-    let color = |click| ConfigPacket::EjectColor { click };
-    send(&mut machine, color(ClickType::Right));
-    assert_eq!(machine.ejector().output_color(), Some(17));
-    send(&mut machine, color(ClickType::Left));
-    assert_eq!(machine.ejector().output_color(), None);
-    send(&mut machine, color(ClickType::Left));
-    assert_eq!(machine.ejector().output_color(), Some(0));
-    send(&mut machine, color(ClickType::ShiftLeft));
-    assert_eq!(machine.ejector().output_color(), None);
-
-    let input = ConfigPacket::InputColor {
-        click: ClickType::Left,
-        side: RelativeSide::Left,
-    };
-    send(&mut machine, input);
-    send(&mut machine, input);
-    assert_eq!(machine.ejector().input_color(RelativeSide::Left), Some(1));
-    assert_eq!(
-        machine.ejector().serialize().input_color.unwrap()[RelativeSide::Left.ordinal()],
-        1
-    );
+    // Uma da frente, uma das costas e as quatro faces que o lote mudou além das duas já mudadas... o lote muda o que ainda não era NONE.
+    assert!(changes.len() >= 3);
+    assert_eq!(changes[0].direction, Face::East);
+    assert_eq!(changes[1].direction, Face::West);
+    let _ = data(&machine, RelativeSide::Front);
 }
 
 #[test]

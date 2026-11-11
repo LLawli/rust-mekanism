@@ -27,6 +27,15 @@ import mekanism.common.component.ConfigurationData;
 import mekanism.common.component.component.AttachedEjector;
 import mekanism.common.component.component.AttachedSideConfig;
 import mekanism.common.lib.transmitter.TransmissionType;
+import mekanism.common.network.MekClickType;
+import mekanism.common.network.to_server.PacketGuiInteract;
+import mekanism.common.network.to_server.PacketGuiInteract.GuiInteraction;
+import mekanism.common.network.to_server.configuration_update.PacketBatchConfiguration;
+import mekanism.common.network.to_server.configuration_update.PacketEjectColor;
+import mekanism.common.network.to_server.configuration_update.PacketEjectConfiguration;
+import mekanism.common.network.to_server.configuration_update.PacketInputColor;
+import mekanism.common.network.to_server.configuration_update.PacketSideData;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismDataComponents;
 import mekanism.common.registries.MekanismItems;
@@ -244,6 +253,118 @@ public class ConfigLadosTraceTest {
         scene.refillOutput(0, 20, 40, 60);
         scene.itemEjecting(40, true);
         run(test, scene);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_config_lados")
+    @TestHolder(description = "Records the state after each packet of the side configuration and transporter windows: PacketSideData, PacketEjectConfiguration, PacketBatchConfiguration, PacketEjectColor, PacketInputColor and STRICT_INPUT.")
+    public static void packets(final DynamicTest test) {
+        template(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> packetsAll(new Env(helper)))
+              .thenSucceed());
+    }
+
+    private static IPayloadContext context(Player who) {
+        return (IPayloadContext) java.lang.reflect.Proxy.newProxyInstance(IPayloadContext.class.getClassLoader(), new Class<?>[]{IPayloadContext.class},
+              (proxy, method, args) -> {
+                  if (method.getName().equals("player")) {
+                      return who;
+                  }
+                  throw new UnsupportedOperationException(method.getName());
+              });
+    }
+
+    /// Cada pacote que as janelas mandam, tratado pelo `handle` do original sobre uma máquina posta por um jogador: a linha diz o pacote e o estado depois dele.
+    private static void packetsAll(Env e) {
+        Out out = new Out("config_pacotes", "State after each configuration packet", "machine, step, packet, config, ejecting, ejector");
+        for (Spec spec : MACHINES) {
+            TileEntityMekanism placed = e.useOn(spec, P1, Direction.EAST);
+            TileEntityConfigurableMachine machine = (TileEntityConfigurableMachine) placed;
+            BlockPos pos = e.abs(P1);
+            IPayloadContext context = context(e.player);
+            int[] step = {0};
+            java.util.function.BiConsumer<JsonObject, Runnable> record = (packet, send) -> {
+                send.run();
+                JsonObject line = new JsonObject();
+                line.addProperty("machine", spec.name);
+                line.addProperty("step", step[0]++);
+                line.add("packet", packet);
+                line.add("config", configJson(machine));
+                line.add("ejecting", ejectingJson(machine));
+                line.add("ejector", ejectorJson(machine));
+                out.add(line);
+            };
+            List<TransmissionType> types = machine.getConfig().getTransmissions();
+            MekClickType[] clicks = {MekClickType.LEFT, MekClickType.LEFT, MekClickType.LEFT, MekClickType.LEFT, MekClickType.LEFT, MekClickType.RIGHT, MekClickType.RIGHT,
+                                     MekClickType.SHIFT_LEFT, MekClickType.SHIFT_LEFT, MekClickType.RIGHT, MekClickType.RIGHT, MekClickType.LEFT};
+            for (TransmissionType type : types) {
+                for (RelativeSide side : RelativeSide.VALUES) {
+                    for (MekClickType click : clicks) {
+                        JsonObject packet = new JsonObject();
+                        packet.addProperty("kind", "side_data");
+                        packet.addProperty("click", click.name());
+                        packet.addProperty("side", side.getSerializedName());
+                        packet.addProperty("transmission", type.getSerializedName());
+                        record.accept(packet, () -> new PacketSideData(pos, click, side, type).handle(context));
+                    }
+                }
+                for (int i = 0; i < 2; i++) {
+                    JsonObject packet = new JsonObject();
+                    packet.addProperty("kind", "eject");
+                    packet.addProperty("transmission", type.getSerializedName());
+                    record.accept(packet, () -> new PacketEjectConfiguration(pos, type).handle(context));
+                }
+                for (DataType target : DataType.VALUES) {
+                    JsonObject packet = new JsonObject();
+                    packet.addProperty("kind", "batch");
+                    packet.addProperty("transmission", type.getSerializedName());
+                    packet.addProperty("target", target.getSerializedName());
+                    record.accept(packet, () -> new PacketBatchConfiguration(pos, type, target).handle(context));
+                }
+            }
+            for (DataType target : new DataType[]{DataType.INPUT, DataType.NONE, DataType.OUTPUT}) {
+                JsonObject packet = new JsonObject();
+                packet.addProperty("kind", "batch");
+                packet.addProperty("transmission", "");
+                packet.addProperty("target", target.getSerializedName());
+                record.accept(packet, () -> new PacketBatchConfiguration(pos, null, target).handle(context));
+            }
+            MekClickType[] colorClicks = {MekClickType.RIGHT, MekClickType.LEFT, MekClickType.LEFT, MekClickType.SHIFT_LEFT, MekClickType.LEFT, MekClickType.RIGHT, MekClickType.RIGHT};
+            for (int i = 0; i < 20; i++) {
+                JsonObject packet = new JsonObject();
+                packet.addProperty("kind", "eject_color");
+                packet.addProperty("click", MekClickType.LEFT.name());
+                record.accept(packet, () -> new PacketEjectColor(pos, MekClickType.LEFT).handle(context));
+            }
+            for (MekClickType click : colorClicks) {
+                JsonObject packet = new JsonObject();
+                packet.addProperty("kind", "eject_color");
+                packet.addProperty("click", click.name());
+                record.accept(packet, () -> new PacketEjectColor(pos, click).handle(context));
+            }
+            for (RelativeSide side : RelativeSide.VALUES) {
+                for (int i = 0; i < 20; i++) {
+                    JsonObject packet = new JsonObject();
+                    packet.addProperty("kind", "input_color");
+                    packet.addProperty("click", MekClickType.LEFT.name());
+                    packet.addProperty("side", side.getSerializedName());
+                    record.accept(packet, () -> new PacketInputColor(pos, MekClickType.LEFT, side).handle(context));
+                }
+                for (MekClickType click : colorClicks) {
+                    JsonObject packet = new JsonObject();
+                    packet.addProperty("kind", "input_color");
+                    packet.addProperty("click", click.name());
+                    packet.addProperty("side", side.getSerializedName());
+                    record.accept(packet, () -> new PacketInputColor(pos, click, side).handle(context));
+                }
+            }
+            for (int i = 0; i < 2; i++) {
+                JsonObject packet = new JsonObject();
+                packet.addProperty("kind", "strict_input");
+                record.accept(packet, () -> new PacketGuiInteract(GuiInteraction.STRICT_INPUT, machine).handle(context));
+            }
+        }
+        out.write();
     }
 
     private static void run(DynamicTest test, Eject scene) {

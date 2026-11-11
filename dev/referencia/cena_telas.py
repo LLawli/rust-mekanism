@@ -369,8 +369,90 @@ def casos_infuser_entrada():
     ]
 
 
+# As abas de configuração de lados e de transporte (`GuiConfigurableTile`) e as duas janelas: o centro do botão de dentro de cada aba (-21, 10) e (-21, 38),
+# 18 por 18, em pixels de GUI relativos ao canto da tela. As janelas abrem em ((176 - 156) / 2, 15) = (10, 15).
+ABA_LADOS = (-12, 19)
+ABA_TRANSPORTE = (-12, 47)
+JANELA = (10, 15)
+ORDEM_DOS_LADOS = ("front", "left", "right", "back", "top", "bottom")
+DATA_TYPE = {"none": 0, "input": 1, "input_1": 2, "input_2": 3, "output": 4, "output_1": 5, "output_2": 6, "input_output": 7, "energy": 8, "extra": 9}
+TIPOS = {"energy": 0, "fluids": 1, "chemicals": 2, "items": 3, "heat": 4}
+CORES = {"black": 0, "blue": 1, "green": 2, "cyan": 3, "dark_red": 4, "purple": 5, "orange": 6, "light_gray": 7, "gray": 8, "light_blue": 9, "lime": 10,
+         "aqua": 11, "red": 12, "magenta": 13, "yellow": 14, "white": 15, "brown": 16, "pink": 17}
+
+
+def lados(**tipos):
+    """`lados=items:front=output,...;energy:...`: cada tipo com os seis lados, na ordem de `RelativeSide`."""
+    return ";".join(f"{tipo}:" + ",".join(f"{lado}={valor}" for lado, valor in zip(ORDEM_DOS_LADOS, valores)) for tipo, valores in tipos.items())
+
+
+def na_janela(x, y):
+    """Um ponto relativo à janela (10, 15), em pixels de GUI relativos à tela."""
+    return (JANELA[0] + x, JANELA[1] + y)
+
+
+def casos_config():
+    out = []
+    for m in ("chamber", "crusher", "smelter", "infuser"):
+        padrao = dict(items=("input", "input", "output", "energy", "input", "input"), energy=("input",) * 6)
+        variado = dict(items=("output", "input_output", "energy", "none", "input", "output"), energy=("none", "input", "none", "input", "none", "input"))
+        if m == "infuser":
+            padrao["chemicals"] = ("input", "input", "output", "input", "input", "input")
+            variado["chemicals"] = ("input", "none", "output", "input_output", "none", "output")
+        indice_energia = len(padrao) - 1
+        aba_energia = (JANELA[0] - 12, JANELA[1] + 15 + 28 * indice_energia)
+        ejetar = dict(ejetar="items")
+        transporte = dict(strict="1", cor_saida="red", cor_entrada="front:blue,left:yellow,top:dark_red")
+        out += [
+            caso(f"{m}_lados_padrao", m, energia="0", lados=lados(**padrao), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}"),
+            caso(f"{m}_lados_variado", m, energia="0", lados=lados(**variado), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}", **ejetar),
+            caso(f"{m}_lados_energia", m, energia="0", lados=lados(**variado), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]};{aba_energia[0]},{aba_energia[1]}", **ejetar),
+            caso(f"{m}_lados_hover_botao", m, energia="0", lados=lados(**variado), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}", hover=na_janela(101, 80), **ejetar),
+            caso(f"{m}_lados_hover_limpar", m, energia="0", lados=lados(**variado), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}", hover=na_janela(143, 102), **ejetar),
+            caso(f"{m}_transporte", m, energia="0", lados=lados(**variado), clicar=f"{ABA_TRANSPORTE[0]},{ABA_TRANSPORTE[1]}", **transporte),
+            caso(f"{m}_transporte_hover_cor", m, energia="0", lados=lados(**variado), clicar=f"{ABA_TRANSPORTE[0]},{ABA_TRANSPORTE[1]}",
+                 hover=na_janela(120, 57), **transporte),
+            caso(f"{m}_duas_janelas", m, energia="0", lados=lados(**variado), clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]};{ABA_TRANSPORTE[0]},{ABA_TRANSPORTE[1]}",
+                 **ejetar, **transporte),
+        ]
+    out.append(caso("infuser_lados_quimico", "infuser", energia="0",
+                    lados=lados(items=("output", "input_output", "energy", "none", "input", "output"), chemicals=("input", "none", "output", "input_output", "none", "output"),
+                                energy=("none", "input", "none", "input", "none", "input")),
+                    clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]};{JANELA[0] - 12},{JANELA[1] + 15 + 28}"))
+    return out
+
+
+def nbt_da_configuracao(c):
+    """O `component_config` e o `component_ejector` que o port recebe no lugar do que o `CenaTelas` põe com `configuracao`."""
+    a = c["args"]
+    if "lados" not in a:
+        return []
+    ejetando = set(a.get("ejetar", "").split(",")) - {""}
+    partes = []
+    for grupo in a["lados"].split(";"):
+        tipo, entradas = grupo.split(":", 1)
+        ids = [str(DATA_TYPE[e.split("=")[1]]) for e in entradas.split(",")]
+        partes.append(f"config{TIPOS[tipo]}:[I;{','.join(ids)}]")
+        partes.append(f"eject{TIPOS[tipo]}:{1 if tipo in ejetando else 0}b")
+    saida = [f"component_config:{{{','.join(partes)}}}"]
+    ejetor = []
+    if "strict" in a:
+        ejetor.append("strict_input:1b")
+    if "cor_saida" in a:
+        ejetor.append(f'color:"{a["cor_saida"]}"')
+    if "cor_entrada" in a:
+        cores = [-1] * 6
+        for entrada in a["cor_entrada"].split(","):
+            lado, cor = entrada.split(":")
+            cores[ORDEM_DOS_LADOS.index(lado)] = CORES[cor]
+        ejetor.append(f"input_color:[I;{','.join(str(v) for v in cores)}]")
+    if ejetor:
+        saida.append(f"component_ejector:{{{','.join(ejetor)}}}")
+    return saida
+
+
 def todos_os_casos():
-    return casos() + casos_aba() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada()
+    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada()
 
 
 def casos_do_roteiro(so=None):
@@ -539,6 +621,7 @@ def monta_port(c, x, escala):
         nbt.append(f'chemical_tanks:[{{container:0b,stored:{{type:"mekanism:{tipo}",amount:{n}L}}}}]')
     if "lava" in c["args"]:
         nbt.append(f'machinery_basis:{{v:1,tanks:[{{resource:"minecraft:lava",amount:{c["args"]["lava"]}L}}]}}')
+    nbt += nbt_da_configuracao(c)
     if "nome" in c["args"]:
         # O `CustomName` do tile é o componente em NBT (`ComponentSerialization`): o JSON sem espaços é também SNBT.
         nbt.append("CustomName:" + c["args"]["nome"])

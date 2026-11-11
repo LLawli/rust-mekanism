@@ -252,6 +252,53 @@ public class CenaTelas {
               net.minecraft.core.component.DataComponentPatch.EMPTY);
     }
 
+    /// A configuração de lados e o ejetor (as janelas de lados e de transporte): `lados=items:front=output,top=none;energy:back=input` (um tipo, seguido de
+    /// lado=DataType, com os nomes serializados), `ejetar=items,chemicals`, `strict=1`, `cor_saida=red` e `cor_entrada=front:blue,top:yellow`. Como a máquina da cena
+    /// não é posta por um item, cada lado que a cena quer fica dito aqui. `sideChanged` avisa o cliente (o pacote de atualização do tile).
+    private static void configuracao(TileEntityMekanism tile, Caso caso) {
+        if (!(tile instanceof mekanism.common.tile.prefab.TileEntityConfigurableMachine machine)) {
+            return;
+        }
+        var config = machine.getConfig();
+        if (caso.args().containsKey("lados")) {
+            for (String group : caso.args().get("lados").split(";")) {
+                String[] parts = group.split(":", 2);
+                var type = config.getTransmissions().stream().filter(t -> t.getSerializedName().equals(parts[0])).findFirst().orElseThrow();
+                var info = config.getConfig(type);
+                for (String entry : parts[1].split(",")) {
+                    String[] pair = entry.split("=");
+                    var side = mekanism.api.RelativeSide.valueOf(pair[0].toUpperCase());
+                    var dataType = java.util.Arrays.stream(mekanism.common.tile.component.config.DataType.values()).filter(d -> d.getSerializedName().equals(pair[1])).findFirst().orElseThrow();
+                    info.setDataType(dataType, side);
+                    config.sideChanged(type, side);
+                }
+            }
+        }
+        if (caso.args().containsKey("ejetar")) {
+            for (String name : caso.args().get("ejetar").split(",")) {
+                config.getTransmissions().stream().filter(t -> t.getSerializedName().equals(name)).forEach(t -> config.getConfig(t).setEjecting(true));
+            }
+        }
+        var ejector = machine.getEjector();
+        if (caso.args().containsKey("strict")) {
+            ejector.setStrictInput(true);
+        }
+        if (caso.args().containsKey("cor_saida")) {
+            ejector.setOutputColor(color(caso.args().get("cor_saida")));
+        }
+        if (caso.args().containsKey("cor_entrada")) {
+            for (String entry : caso.args().get("cor_entrada").split(",")) {
+                String[] pair = entry.split(":");
+                ejector.setInputColor(mekanism.api.RelativeSide.valueOf(pair[0].toUpperCase()), color(pair[1]));
+            }
+        }
+        machine.markForSave();
+    }
+
+    private static mekanism.api.text.EnumColor color(String name) {
+        return mekanism.api.text.EnumColor.VALUES.stream().filter(c -> c.getSerializedName().equals(name)).findFirst().orElseThrow();
+    }
+
     /// O que o jogo faz ao descarregar e carregar o chunk: grava o tile e cria outro do NBT (`BlockEntity.loadStatic`, que chama o `loadAdditional`), como o
     /// `ConstantUsageTraceTest.reload`. O tile novo ainda não tickou.
     private static void reopen(MinecraftServer server, Caso caso) {
@@ -310,6 +357,7 @@ public class CenaTelas {
             generator.lavaTank.setContents(FluidResource.of(Fluids.LAVA), Long.parseLong(caso.args().get("lava")), null);
         }
         upgrades(server, tile, caso);
+        configuracao(tile, caso);
         if (caso.args().containsKey("nome")) {
             // `nome=` é um componente em JSON, sem espaços: o texto, a cor e o negrito que o título da tela mostra.
             tile.setCustomName(net.minecraft.network.chat.ComponentSerialization.CODEC
@@ -404,7 +452,7 @@ public class CenaTelas {
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
     }
 
-    /// O port ainda não tem as abas de configuração, transporte, cadeado, livro e redstone: no original da cena elas ficam invisíveis, para a
+    /// O port ainda não tem as abas de cadeado, livro e redstone (as de configuração e de transporte ficam visíveis desde 2026-11-11): no original da cena elas ficam invisíveis, para a
     /// imagem mostrar o que o port tem. A aba de avisos, a de upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a
     /// posição e a visibilidade que o original dá. O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(-26, 6, 98)`, `isArmorHolder`)
     /// também fica visível desde 2026-11-07, quando o port o desenhou: antes ficava oculto, e o comparador só via os slots.
@@ -438,6 +486,8 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.window.GuiSideConfigurationTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.window.GuiTransporterConfigTab)
                       && !isArmorHolder(screen, element)
                       && element instanceof mekanism.client.gui.element.GuiSideHolder) {
                     element.visible = false;

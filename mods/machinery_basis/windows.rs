@@ -233,6 +233,8 @@ struct Open {
     selected_ms: i64,
     /// A janela de lados: o `currentType`, por índice em `getTransmissions()`.
     current: usize,
+    /// `SideDataButton.otherBlockItem`: o item do bloco vizinho de cada lado, tirado quando a janela abre (o construtor do botão o lê uma vez).
+    neighbours: [Option<ItemStack>; 6],
 }
 
 struct Client {
@@ -246,6 +248,8 @@ struct Client {
     pending: Vec<Action>,
     /// A seleção que o servidor já sabe, para só mandar a mudança.
     sent_selection: Option<Option<SelectedWindow>>,
+    /// Um botão foi clicado neste quadro (`AbstractWidget.playDownSound`).
+    click_sound: bool,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
@@ -255,6 +259,7 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
     windows: Vec::new(),
     pending: Vec::new(),
     sent_selection: None,
+    click_sound: false,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -484,6 +489,10 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
         Kind::Side => ([(rect as i32 - cw::SIDE_SIZE[0]) / 2, 15], cw::SIDE_SIZE),
         Kind::Transporter => ([(rect as i32 - cw::TRANSPORTER_SIZE[0]) / 2, 15], cw::TRANSPORTER_SIZE),
     };
+    let neighbours: [Option<ItemStack>; 6] = match (kind, config_view(game, spec)) {
+        (Kind::Side | Kind::Transporter, Some(view)) => RelativeSide::VALUES.map(|side| neighbour_item(game, &view, side)),
+        _ => Default::default(),
+    };
     let mut guard = client();
     let state = &mut *guard;
     let positions = state.positions.get_or_insert_with(|| load_positions(spec));
@@ -501,6 +510,7 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             opened_ms: now,
             selected_ms: now,
             current: 0,
+            neighbours,
         },
     );
     let first_config = kind != Kind::Upgrade && state.windows.iter().filter(|open| open.kind != Kind::Upgrade).count() == 1;
@@ -648,6 +658,10 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
     }
     sync_selection(game, spec);
     place_virtual_slots(game, spec);
+    // `MekanismButton`, `GuiInsetElement` e `GuiCloseButton` tocam `UI_BUTTON_CLICK` (volume 0,25) ao clicar.
+    if std::mem::take(&mut client().click_sound) {
+        game.audio.play_button_click();
+    }
 }
 
 /// Os slots virtuais ficam na posição que a janela dá a eles, ou somem (`None`) sem janela.
@@ -754,6 +768,7 @@ pub(in crate::game) fn mouse_pressed(
             && let Some(kind) = tab_hit(state, spec, rel)
         {
             state.pending.push(Action::Open(kind));
+            state.click_sound = true;
             *canceled = true;
         }
         return;
@@ -775,11 +790,14 @@ pub(in crate::game) fn mouse_pressed(
             if left_or_right && open.selected.is_some() && in_rect(UNINSTALL, rel) {
                 if let Some(index) = open.selected.and_then(|n| u16::try_from(n).ok()) {
                     state.pending.push(Action::Remove { index, all: shift });
+                    state.click_sound = true;
                 }
             } else if left_or_right && in_rect(PIN, rel) {
                 open.window.toggle_pinned();
+                state.click_sound = true;
             } else if left_or_right && in_rect(CLOSE, rel) {
                 state.pending.push(Action::Close(Kind::Upgrade));
+                state.click_sound = true;
             } else if button == 0 {
                 let installed = sync.installed();
                 if open.list.press_thumb(rel, installed.len()) {
@@ -796,7 +814,13 @@ pub(in crate::game) fn mouse_pressed(
         Kind::Side | Kind::Transporter => {
             *canceled = true;
             let mut actions = Vec::new();
+            let before = state.windows[index].current;
+            let pinned = state.windows[index].window.pinned;
             press_config(&mut state.windows[index], rel, button, shift, config.as_ref(), &mut actions);
+            // Um botão tratou o clique: uma ação, a troca da aba de tipo ou o fixar.
+            if !actions.is_empty() || state.windows[index].current != before || state.windows[index].window.pinned != pinned {
+                state.click_sound = true;
+            }
             state.pending.extend(actions);
         }
     }
@@ -1507,11 +1531,8 @@ fn neighbour_item(game: &Game<'_>, view: &ConfigView, side: RelativeSide) -> Opt
     let pos = game.mb_open_screen_pos()?;
     let offset = side.direction(view.facing).offset();
     let at = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
-    let block = game.native_block(at);
-    if block.is_empty() || block.ends_with("air") {
-        return None;
-    }
-    Some(ItemStack::new(&block, 1))
+    // `BlockState.getCloneItemStack(pos, level, false, player)`: o item do Pick Block, sem os dados do tile. Ar não tem.
+    game.picked_stack(at, false)
 }
 
 /// O nome do item para o tooltip (`ItemStack.getHoverName`).
@@ -1631,7 +1652,7 @@ fn draw_config_window(
                     let data_type = info.map(|info| info.data_type(side));
                     let enabled = info.is_some_and(|info| info.is_side_enabled(side));
                     let tint = data_type.map_or(WHITE, |kind| cw::button_tint(cw::ENUM_COLOR_RGB[usize::from(kind.color())]));
-                    side_button(game, batch, spec, view, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
+                    side_button(game, batch, spec, open, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
                 }
                 texts.push(([wx + 4.0, wy + 120.0, wx + w - 4.0, wy + 129.0], true, SUBHEADING_COLOR, lang::get("configuration.mekanism.slots")));
             }
@@ -1660,7 +1681,7 @@ fn draw_config_window(
                         .ejector
                         .input_color(side)
                         .map_or(WHITE, |color| cw::button_tint(cw::ENUM_COLOR_RGB[usize::from(color)]));
-                    side_button(game, batch, spec, view, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
+                    side_button(game, batch, spec, open, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
                 }
                 texts.push(([wx + 18.0, wy + 105.0, wx + 18.0 + 68.0, wy + 114.0], true, SUBHEADING_COLOR, lang::get("boolean.mekanism.input")));
                 texts.push((
@@ -1687,7 +1708,7 @@ fn side_button(
     game: &Game<'_>,
     batch: &mut HudBatch,
     spec: &UpgradeWindowSpec,
-    view: &ConfigView,
+    open: &Open,
     side: RelativeSide,
     rect: [f32; 4],
     active: bool,
@@ -1695,8 +1716,8 @@ fn side_button(
     tint: u32,
 ) {
     button_tinted(game, batch, spec, rect, active, active && hov(rect), tint);
-    if let Some(stack) = neighbour_item(game, view, side) {
-        game.native_item_stack(batch, &stack, [rect[0] + 3.0, rect[1] + 3.0], 16.0);
+    if let Some(stack) = &open.neighbours[side.ordinal()] {
+        game.native_item_stack(batch, stack, [rect[0] + 3.0, rect[1] + 3.0], 16.0);
     }
 }
 
@@ -1722,8 +1743,8 @@ fn config_tooltip(
     };
     let side_lines = |side: RelativeSide, second: String, color: Option<u32>| {
         let mut lines = vec![(side_label(side), None), (second, color)];
-        if let Some(stack) = neighbour_item(game, view, side) {
-            lines.push((item_name(&stack), None));
+        if let Some(stack) = &open.neighbours[side.ordinal()] {
+            lines.push((item_name(stack), None));
         }
         lines
     };
