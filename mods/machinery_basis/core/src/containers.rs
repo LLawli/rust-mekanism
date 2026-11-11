@@ -683,7 +683,7 @@ pub fn redstone_signal_of_container(amount: u64, capacity: u64) -> i32 {
 }
 
 /// `Mth.lerpDiscrete(proportion, SIGNAL_NONE, SIGNAL_MAX)`.
-fn lerp_discrete(proportion: f32) -> i32 {
+pub fn lerp_discrete(proportion: f32) -> i32 {
     const SIGNAL_MAX: i32 = 15;
     (proportion * (SIGNAL_MAX - 1) as f32).floor() as i32 + i32::from(proportion > 0.0)
 }

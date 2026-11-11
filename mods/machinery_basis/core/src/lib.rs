@@ -14,6 +14,7 @@ pub mod container_sync;
 pub mod containers;
 pub mod ejector;
 pub mod energy_conversion;
+pub mod energy_cube;
 pub mod experience;
 pub mod face_overlay;
 pub mod fluid;

@@ -109,7 +109,7 @@ fn read_color(index: i32) -> Option<u8> {
 pub struct TileComponentEjector {
     /// `setOutputData`: os tipos de que o ejetor lê o `ConfigInfo` na configuração.
     output_types: Vec<TransmissionType>,
-    can_eject: Option<fn(TransmissionType) -> bool>,
+    can_eject: Option<Rc<dyn Fn(TransmissionType) -> bool>>,
     strict_input: bool,
     output_color: Option<u8>,
     input_colors: [Option<u8>; 6],
@@ -146,13 +146,13 @@ impl TileComponentEjector {
     }
 
     /// `setCanEject(predicate)`.
-    pub fn set_can_eject(&mut self, can_eject: fn(TransmissionType) -> bool) {
-        self.can_eject = Some(can_eject);
+    pub fn set_can_eject(&mut self, can_eject: impl Fn(TransmissionType) -> bool + 'static) {
+        self.can_eject = Some(Rc::new(can_eject));
     }
 
     /// `isEjecting(info, type)`.
     pub fn is_ejecting(&self, info: &ConfigInfo, kind: TransmissionType) -> bool {
-        info.is_ejecting() && self.can_eject.is_none_or(|can_eject| can_eject(kind))
+        info.is_ejecting() && self.can_eject.as_ref().is_none_or(|can_eject| can_eject(kind))
     }
 
     /// `tickServer`: os tipos na ordem de `TransmissionType.VALUES`; o item espera o `tickDelay`, os outros (menos o calor) ejetam
