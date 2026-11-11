@@ -1,7 +1,7 @@
 // Os comandos só aceitam os componentes da lista que o jogo exporta, e o do mod não está nela. Qualquer outro id volta o cursor
 // e segue o caminho normal.
 fn mekanism_command_component(state: &mut ItemState<'_, '_>) -> core::ops::ControlFlow<CmdResult<String>> {
-    const COMPONENTS: [&str; 3] = ["mekanism:upgrade_type", "mekanism:side_config", "mekanism:ejector"];
+    const COMPONENTS: [&str; 5] = ["mekanism:upgrade_type", "mekanism:side_config", "mekanism:ejector", "mekanism:configurator_mode", "mekanism:configuration_data"];
     let cursor = state.reader.cursor;
     if let Ok(id) = super::args::read_identifier(state.reader)
         && COMPONENTS.contains(&id.as_str())

@@ -2431,8 +2431,9 @@ pub const CONFIGURATION_DATA_COMPONENT: &str = "mekanism:configuration_data";
 
 /// `EnumColor`, o RGB da cor primária de cada uma na ordem do `ordinal` (`EnumColor.java:27-46`); os nomes estão em `side_config::ENUM_COLOR_NAMES`.
 pub const ENUM_COLOR_RGB: [u32; 18] = [
-    0x40_40_40, 0x36_6B_D0, 0x59_C1_5F, 0x00_F3_D0, 0xC9_07_1F, 0xA4_60_D9, 0xFF_A1_60, 0xCF_CF_CF, 0x7A_7A_7A, 0x55_9E_FF, 0x75_FF_89, 0x30_FF_F9,
-    0xFF_38_3C, 0xD5_5E_CB, 0xFF_DD_4F, 0xFF_FF_FF, 0xA1_76_49, 0xFF_BC_C4,
+    0x40_40_40, 0x36_6B_D0, 0x59_C1_5F, 0x00_F3_D0, 0xC9_07_1F, 0xA4_60_D9, 0xFF_A1_60, 0xCF_CF_CF,
+    0x7A_7A_7A, 0x55_9E_FF, 0x75_FF_89, 0x30_FF_F9, 0xFF_38_3C, 0xD5_5E_CB, 0xFF_DD_4F, 0xFF_FF_FF,
+    0xA1_76_49, 0xFF_BC_C4,
 ];
 /// Os `ordinal` de `EnumColor` que o Configurator usa: `BRIGHT_GREEN`, `DARK_RED`, `YELLOW`, `PINK` e a cor do texto de `GRAY`.
 pub const COLOR_BRIGHT_GREEN: u8 = 10;
@@ -2489,7 +2490,9 @@ impl ConfiguratorMode {
 
     /// `CODEC`: um nome que não existe não decodifica.
     pub fn from_serialized_name(name: &str) -> Option<ConfiguratorMode> {
-        Self::VALUES.into_iter().find(|mode| mode.serialized_name() == name)
+        Self::VALUES
+            .into_iter()
+            .find(|mode| mode.serialized_name() == name)
     }
 
     /// `isConfigurating`.
@@ -2524,9 +2527,18 @@ impl ConfiguratorMode {
         let configures = |kind: TransmissionType| self.transmission() == Some(kind);
         std::collections::BTreeMap::from([
             ("wrench_configure", self.is_configurating()),
-            ("wrench_configure_chemicals", configures(TransmissionType::Chemical)),
-            ("wrench_configure_energy", configures(TransmissionType::Energy)),
-            ("wrench_configure_fluids", configures(TransmissionType::Fluid)),
+            (
+                "wrench_configure_chemicals",
+                configures(TransmissionType::Chemical),
+            ),
+            (
+                "wrench_configure_energy",
+                configures(TransmissionType::Energy),
+            ),
+            (
+                "wrench_configure_fluids",
+                configures(TransmissionType::Fluid),
+            ),
             ("wrench_configure_heat", configures(TransmissionType::Heat)),
             ("wrench_configure_items", configures(TransmissionType::Item)),
             ("wrench_dismantle", self == ConfiguratorMode::Wrench),
@@ -2561,7 +2573,11 @@ pub struct Chat {
 
 impl Chat {
     fn new(translate: &str, with: Vec<Chat>, color: Option<u32>) -> Chat {
-        Chat { translate: translate.to_owned(), with, color }
+        Chat {
+            translate: translate.to_owned(),
+            with,
+            color,
+        }
     }
 
     /// `translate` sem argumentos, na cor `color` (o `ordinal` de `EnumColor`).
@@ -2589,12 +2605,22 @@ pub fn enum_color_rgb(color: u8) -> u32 {
 
 /// `EnumColor.getColoredName`: `color.mekanism.<prefixo>` na própria cor.
 fn colored_name(color: u8) -> Chat {
-    Chat::plain(&format!("color.mekanism.{}", machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(color)]), Some(color))
+    Chat::plain(
+        &format!(
+            "color.mekanism.{}",
+            machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(color)]
+        ),
+        Some(color),
+    )
 }
 
 /// `TransmissionType.getLangEntry`: `transmission.mekanism.<transmission>`.
 fn transmission_name(kind: TransmissionType) -> Chat {
-    Chat::new(&format!("transmission.mekanism.{}", kind.serialized_name()), Vec::new(), None)
+    Chat::new(
+        &format!("transmission.mekanism.{}", kind.serialized_name()),
+        Vec::new(),
+        None,
+    )
 }
 
 impl ConfiguratorMode {
@@ -2602,7 +2628,11 @@ impl ConfiguratorMode {
     pub fn text(self) -> Chat {
         let color = Some(enum_color_rgb(self.color()));
         match self.transmission() {
-            Some(kind) => Chat::new("configurator.mekanism.configurate", vec![transmission_name(kind)], color),
+            Some(kind) => Chat::new(
+                "configurator.mekanism.configurate",
+                vec![transmission_name(kind)],
+                color,
+            ),
             None => Chat::new(
                 match self {
                     ConfiguratorMode::Empty => "configurator.mekanism.empty",
@@ -2617,22 +2647,41 @@ impl ConfiguratorMode {
 
     /// `addToTooltip` (o appender de `CONFIGURATOR_MODE`): `MekanismLang.STATE.translateColored(EnumColor.PINK, this)`.
     pub fn tooltip_line(self) -> Chat {
-        Chat::new("configurator.mekanism.state", vec![self.text()], Some(enum_color_rgb(COLOR_PINK)))
+        Chat::new(
+            "configurator.mekanism.state",
+            vec![self.text()],
+            Some(enum_color_rgb(COLOR_PINK)),
+        )
     }
 
     /// `changeMode` -> `DisplayChange.sendMessage`: `MekanismLang.CONFIGURE_STATE.translate(newMode)`, sem cor própria.
     pub fn configure_state_message(self) -> Chat {
-        Chat::new("configurator.mekanism.configure_state", vec![self.text()], None)
+        Chat::new(
+            "configurator.mekanism.configure_state",
+            vec![self.text()],
+            None,
+        )
     }
 }
 
 /// `CONFIGURATOR_VIEW_MODE` (sem agachar) e `CONFIGURATOR_TOGGLE_MODE` (agachado): `translateColored(GRAY, transmissionType, dataType.getColor(),
 /// dataType, dataType.getColor().getColoredName())`, a cor do tipo de dado valendo para os dois últimos argumentos.
-pub fn configurator_side_message(toggled: bool, kind: TransmissionType, data_type: DataType) -> Chat {
+pub fn configurator_side_message(
+    toggled: bool,
+    kind: TransmissionType,
+    data_type: DataType,
+) -> Chat {
     let color = data_type.color();
-    let data = Chat::plain(&format!("side_data.mekanism.{}", data_type.serialized_name()), Some(color));
+    let data = Chat::plain(
+        &format!("side_data.mekanism.{}", data_type.serialized_name()),
+        Some(color),
+    );
     Chat::new(
-        if toggled { "configurator.mekanism.toggle_mode" } else { "configurator.mekanism.view_mode" },
+        if toggled {
+            "configurator.mekanism.toggle_mode"
+        } else {
+            "configurator.mekanism.view_mode"
+        },
         vec![transmission_name(kind), data, colored_name(color)],
         Some(enum_color_rgb(COLOR_GRAY)),
     )
@@ -2686,9 +2735,94 @@ pub fn change_mode(mode: ConfiguratorMode, shift: i32, display: DisplayChange) -
     ModeChange {
         mode: new,
         changed,
-        overlay: (changed && display == DisplayChange::Other).then(|| new.configure_state_message()),
+        overlay: (changed && display == DisplayChange::Other)
+            .then(|| new.configure_state_message()),
         show: changed && display == DisplayChange::MainHand,
     }
+}
+
+/// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.
+pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
+    let name = block.strip_prefix("mekanism:")?;
+    let small = [
+        "universal_cable",
+        "pressurized_tube",
+        "thermodynamic_conductor",
+    ]
+    .iter()
+    .any(|kind| name.ends_with(kind));
+    let large = [
+        "mechanical_pipe",
+        "logistical_transporter",
+        "restrictive_transporter",
+        "diversion_transporter",
+    ]
+    .iter()
+    .any(|kind| name.ends_with(kind));
+    if small {
+        Some([
+            5.0 / 16.0,
+            5.0 / 16.0,
+            5.0 / 16.0,
+            11.0 / 16.0,
+            11.0 / 16.0,
+            11.0 / 16.0,
+        ])
+    } else if large {
+        Some([
+            4.0 / 16.0,
+            4.0 / 16.0,
+            4.0 / 16.0,
+            12.0 / 16.0,
+            12.0 / 16.0,
+            12.0 / 16.0,
+        ])
+    } else {
+        None
+    }
+}
+
+/// `VoxelShape.clip` de uma caixa: a distância (como fração do raio) até a caixa, se o raio de `origin` a `end` a atravessa.
+pub fn clip_box(origin: [f64; 3], end: [f64; 3], bounds: &[f64; 6]) -> Option<f64> {
+    let (mut near, mut far) = (0.0f64, 1.0f64);
+    for axis in 0..3 {
+        let delta = end[axis] - origin[axis];
+        if delta.abs() < 1.0e-12 {
+            if origin[axis] < bounds[axis] || origin[axis] > bounds[axis + 3] {
+                return None;
+            }
+            continue;
+        }
+        let (a, b) = (
+            (bounds[axis] - origin[axis]) / delta,
+            (bounds[axis + 3] - origin[axis]) / delta,
+        );
+        near = near.max(a.min(b));
+        far = far.min(a.max(b));
+        if near > far {
+            return None;
+        }
+    }
+    Some(near)
+}
+
+/// `MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`: a caixa mais perto que o raio atravessa (a primeira em empate), e o centro se nenhuma
+/// (`BlockTransmitter.getShape`: "if we failed to figure it out somehow, just fall back to the center").
+pub fn select_box(
+    boxes: &[[f64; 6]],
+    origin: [f64; 3],
+    end: [f64; 3],
+    center: [f64; 6],
+) -> [f64; 6] {
+    let mut best: Option<(f64, [f64; 6])> = None;
+    for bounds in boxes {
+        if let Some(distance) = clip_box(origin, end, bounds)
+            && best.is_none_or(|(nearest, _)| distance < nearest)
+        {
+            best = Some((distance, *bounds));
+        }
+    }
+    best.map_or(center, |(_, bounds)| bounds)
 }
 
 /// `SerializationConstants.DATA_NAME`, `DATA_TYPE` e `CONFIG`: as chaves do compound do cartão.
@@ -2712,11 +2846,19 @@ fn card_name(name_key: Option<&str>) -> Chat {
 
 /// `CONFIG_CARD_GOT`, `SET`: `translate(EnumColor.INDIGO, name)`; a cor vale só para o argumento, e a mensagem não tem cor própria.
 pub fn card_got_message(name_key: &str) -> Chat {
-    Chat::new("configuration_card.mekanism.got", vec![card_name(Some(name_key))], None)
+    Chat::new(
+        "configuration_card.mekanism.got",
+        vec![card_name(Some(name_key))],
+        None,
+    )
 }
 
 pub fn card_set_message(name_key: Option<&str>) -> Chat {
-    Chat::new("configuration_card.mekanism.set", vec![card_name(name_key)], None)
+    Chat::new(
+        "configuration_card.mekanism.set",
+        vec![card_name(name_key)],
+        None,
+    )
 }
 
 /// `CONFIG_CARD_UNEQUAL.translateColored(EnumColor.RED)`.
@@ -2731,7 +2873,11 @@ pub fn card_cleared_message() -> Chat {
 
 /// `ConfigurationData.addToTooltip`: `CONFIG_CARD_HAS_DATA.translateColored(GRAY, INDIGO, name)`.
 pub fn card_tooltip_line(name_key: Option<&str>) -> Chat {
-    Chat::new("configuration_card.mekanism.has_data", vec![card_name(name_key)], Some(enum_color_rgb(COLOR_GRAY)))
+    Chat::new(
+        "configuration_card.mekanism.has_data",
+        vec![card_name(name_key)],
+        Some(enum_color_rgb(COLOR_GRAY)),
+    )
 }
 
 #[cfg(test)]

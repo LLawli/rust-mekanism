@@ -100,7 +100,13 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     let face = face_of(face);
     let result = match &*stack.item {
         rules::CONFIGURATOR_ITEM => configurator_use_on(game, stack, pos, face),
-        rules::CONFIGURATION_CARD_ITEM => card_use_on(game, stack, pos),
+        rules::CONFIGURATION_CARD_ITEM => {
+            let used = card_use_on(game, stack, pos);
+            if used {
+                note_card_use(game);
+            }
+            used
+        }
         _ => return,
     };
     *claimed = result;
@@ -228,7 +234,7 @@ fn dismantle(game: &mut Game<'_>, pos: [i32; 3]) {
     }
     let drops = game.block_loot_at(pos, state, held.as_ref(), loot_entity);
     let removed = game.with_level(|b, level, ticks| {
-        b.player_destroy_block(level, ticks, horizon_world::level::BlockPos::new(pos[0], pos[1], pos[2]), true, true)
+        b.player_destroy_block(level, ticks, horizon_core::position::BlockPos::new(pos[0], pos[1], pos[2]), true, true)
     });
     let _ = removed;
     let player = game.native_acting_player().map(|player| player.uuid);
@@ -294,7 +300,7 @@ fn card_data(game: &Game<'_>, stack: &ItemStack) -> Option<Compound> {
 
 fn string_of(compound: &Compound, key: &str) -> Option<String> {
     match compound.get(&JavaString::from(key)) {
-        Some(Tag::String(value)) => Some(value.to_string_lossy().into_owned()),
+        Some(Tag::String(value)) => Some(value.to_string_lossy()),
         _ => None,
     }
 }
@@ -308,7 +314,7 @@ fn card_write(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<Compound> {
         };
         let mut out = Compound::default();
         let control = string_of(&entity.nbt, CONTROL_TYPE).unwrap_or_else(|| "disabled".to_owned());
-        out.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control)));
+        out.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control.as_str())));
         return Some(out);
     }
     glue::write_configuration_data(game, pos)
@@ -319,7 +325,7 @@ fn card_read(game: &mut Game<'_>, pos: [i32; 3], block: &str, input: &Compound) 
         // `TileEntityMekanism.setConfigurationData` -> `readSustainedData`: o modo de redstone volta a `DISABLED` se faltava.
         let control = string_of(input, CONTROL_TYPE).unwrap_or_else(|| "disabled".to_owned());
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
-            entity.nbt.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control)));
+            entity.nbt.insert(JavaString::from(CONTROL_TYPE), Tag::String(JavaString::from(control.as_str())));
         }
         game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         return;
@@ -348,7 +354,9 @@ fn card_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
             data.insert(JavaString::from(rules::CARD_CONFIG), Tag::Compound(config));
         }
         let mut card = stack.clone();
-        let _ = game.native_set_component(&mut card, rules::CONFIGURATION_DATA_COMPONENT, Tag::Compound(data));
+        if let Err(error) = game.native_set_component(&mut card, rules::CONFIGURATION_DATA_COMPONENT, Tag::Compound(data)) {
+            eprintln!("mekanism: o cartão não guardou os dados: {error}");
+        }
         *game.held_mut() = Some(card);
         overlay(game, &rules::card_got_message(&name));
         return true;
@@ -375,7 +383,7 @@ fn card_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
 
 /// `ItemConfigurationCard.use`: agachado no ar (ou sobre um bloco que não age), o cartão esvazia.
 pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
-    if *claimed || &*stack.item != rules::CONFIGURATION_CARD_ITEM || !game.native_sneaking() {
+    if *claimed || &*stack.item != rules::CONFIGURATION_CARD_ITEM || !game.native_sneaking() || card_just_used(game) {
         return;
     }
     let mut card = stack.clone();
@@ -400,7 +408,6 @@ pub(in crate::game) fn item_model_property(property: &str, stack: &horizon_asset
 
 /// As linhas dos appenders de `CONFIGURATOR_MODE` e `CONFIGURATION_DATA`, depois do nome.
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(Text, u32)>) {
-    let rgba = |rgb: u32| (rgb << 8) | 0xFF;
     match &*stack.item {
         rules::CONFIGURATOR_ITEM => {
             // O appender só roda com o componente: uma pilha nova o traz, e uma a que se tirou o componente não.
@@ -417,7 +424,6 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         }
         _ => {}
     }
-    let _ = rgba;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -536,4 +542,52 @@ static MODE_TIMER: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::
 /// `MekanismStatusOverlay.setTimer`.
 fn mode_timer_start() {
     MODE_TIMER.store(MODE_TIMER_TICKS, std::sync::atomic::Ordering::Relaxed);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A seleção parcial dos transmissores com o Configurator na mão (decisão 1).
+
+/// `BlockTransmitter.getShape` com o Configurator em uma das mãos (`CollisionContext.isHoldingItem`): a caixa que o olhar toca
+/// (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), e o centro se nenhuma. Sem o Configurator, ou em outro bloco, o
+/// Horizonte segue com a forma inteira. As caixas são as da forma do estado, em coordenadas do bloco.
+pub(in crate::game) fn partial_outline(
+    game: &Game<'_>,
+    pos: [i32; 3],
+    state: horizon_world::registry::BlockStateId,
+) -> core::ops::ControlFlow<Option<[f64; 6]>> {
+    let holding = [game.held(), game.offhand.as_ref()].into_iter().flatten().any(|stack| &*stack.item == rules::CONFIGURATOR_ITEM);
+    if !holding {
+        return core::ops::ControlFlow::Continue(());
+    }
+    let facts = game.res.facts().get(state);
+    let Some(center) = rules::transmitter_center(&facts.name) else {
+        return core::ops::ControlFlow::Continue(());
+    };
+    let Some((origin, direction)) = game.aim() else {
+        return core::ops::ControlFlow::Break(Some(center));
+    };
+    let reach = game.reach();
+    let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
+    let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
+    core::ops::ControlFlow::Break(Some(rules::select_box(&facts.outline, local, end, center)))
+}
+
+thread_local! {
+    /// O jogador e o tique do último clique do cartão que agiu sobre um bloco (`useOn` devolveu `SUCCESS_SERVER`).
+    static CARD_USE: std::cell::Cell<Option<(u128, i64)>> = const { std::cell::Cell::new(None) };
+}
+
+fn note_card_use(game: &Game<'_>) {
+    if let Some(player) = game.native_acting_player() {
+        CARD_USE.set(Some((player.uuid, game.world.game_time)));
+    }
+}
+
+/// No original o cliente já sabe que o clique foi do cartão (`SUCCESS_SERVER` conta como consumido) e não manda o uso no ar do mesmo clique. O cliente do
+/// Horizon manda os dois, então o `use` que chega no mesmo clique, logo depois de um `useOn` do cartão, é descartado (H72).
+fn card_just_used(game: &Game<'_>) -> bool {
+    let Some(player) = game.native_acting_player() else {
+        return false;
+    };
+    CARD_USE.get().is_some_and(|(uuid, tick)| uuid == player.uuid && game.world.game_time - tick <= 2)
 }

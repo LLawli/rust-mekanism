@@ -6,6 +6,7 @@
     "minecraft:item_name": {
       "translate": "item.mekanism.configurator",
       "color": "#30FFF9"
-    }
+    },
+    "mekanism:configurator_mode": "configurate_items"
   }
 }

@@ -2375,13 +2375,12 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
 /// `MekanismDataComponents.UPGRADE_TYPE`: as linhas que o item de upgrade ganha no tooltip, depois do nome.
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
     use horizon_client::mod_api::Text;
-    // `u32::MAX` mantém a cor do próprio texto; a cor de `rgba` vem com o alfa embaixo.
-    let rgba = |rgb: u32| (rgb << 8) | 0xFF;
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {
         if let Some(name) = lines.first_mut() {
             paint(&mut name.0, rgb);
-            name.1 = rgba(rgb);
+            // A cor da linha é ARGB: com o alfa de `rgba(rgb)` o nome saía a 19 % de opacidade (o Configurator) e o resto a 37 %; `u32::MAX` deixa o texto na cor que o estilo já tem.
+            name.1 = u32::MAX;
         }
         // O Configurator e o cartão ganham a linha do appender do componente (`MekanismDataComponents.registerComponentAppender*`).
         crate::game::mekanism_configurator::tooltip(game, stack, lines);
@@ -2415,7 +2414,12 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
                 rules::TooltipArg::Number { value, color } => Text::colored(value.to_string(), *color),
             })
             .collect();
-        lines.push((Text::translate(&line.translate, &args), line.color.map_or(u32::MAX, rgba)));
+        // A cor da linha vai no estilo do texto (os argumentos guardam a deles); o `u32` da linha é ARGB e `u32::MAX` deixa a cor do estilo.
+        let mut text = Text::translate(&line.translate, &args);
+        if let Some(rgb) = line.color {
+            text = text.with_style(&horizon_client::text::Style::color(rgb));
+        }
+        lines.push((text, u32::MAX));
     }
 }
 

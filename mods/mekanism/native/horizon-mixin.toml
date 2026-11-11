@@ -649,3 +649,18 @@ helper = "net_from_server.rs"
 bindings = [
   { name = "channel", ty = "&str", value = "channel" },
 ]
+
+# A seleção parcial do Configurator (decisão 1): `BlockTransmitter.getShape` devolve, com o Configurator em uma das mãos, só a caixa que o olhar toca. O Horizon já tem
+# `context_outline` para as formas que dependem do contexto (a luz e o andaime com o próprio item na mão, a caixa de shulker): a injeção responde por ele nos
+# transmissores, e o contorno e o raio de seleção (`outline_boxes`) leem a mesma caixa, como o `getShape` do original. Alvo cru, H71.
+[[injection]]
+id = "context_outline"
+target = "horizon_client::game::Game<'_>::context_outline"
+kind = "HEAD"
+cancellable = true
+helper = "context_outline.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "state", ty = "horizon_world::registry::BlockStateId", value = "state" },
+]

@@ -7,16 +7,23 @@ use machinery_basis_core::side_config::{DataType, RelativeSide, SideClick, Trans
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use mekanism_rules::{
-    ConfiguratorMode, DisplayChange, advanced_machine_default, card_cleared_message, card_got_message, card_set_message, card_tooltip_line,
-    card_unequal_message, change_mode, configurator_side_message, electric_machine_default, rotate_facing,
+    ConfiguratorMode, DisplayChange, advanced_machine_default, card_cleared_message,
+    card_got_message, card_set_message, card_tooltip_line, card_unequal_message, change_mode,
+    configurator_side_message, electric_machine_default, rotate_facing,
 };
 use serde_json::Value;
 use std::path::Path;
 
 fn rows(file: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros").join(file);
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-    text.lines().map(|line| serde_json::from_str(line).unwrap()).filter(|row: &Value| row.get("meta").is_none()).collect()
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros")
+        .join(file);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    text.lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .filter(|row: &Value| row.get("meta").is_none())
+        .collect()
 }
 
 fn mode_of(name: &str) -> ConfiguratorMode {
@@ -40,24 +47,58 @@ fn the_eight_modes_are_the_originals() {
         }
         let mode = mode_of(row["mode"].as_str().unwrap());
         assert_eq!(mode.ordinal() as i64, row["ordinal"].as_i64().unwrap());
-        assert_eq!(mode.transmission().map(|kind| kind.serialized_name()), row["transmission"].as_str());
-        assert_eq!(mode.is_configurating(), row["is_configurating"].as_bool().unwrap());
-        let rgb: Vec<u32> = row["color"]["rgb"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u32).collect();
-        assert_eq!(mekanism_rules::enum_color_rgb(mode.color()), rgb[0] << 16 | rgb[1] << 8 | rgb[2], "{mode:?}");
-        assert_eq!(machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(mode.color())], row["color"]["name"].as_str().unwrap());
+        assert_eq!(
+            mode.transmission().map(|kind| kind.serialized_name()),
+            row["transmission"].as_str()
+        );
+        assert_eq!(
+            mode.is_configurating(),
+            row["is_configurating"].as_bool().unwrap()
+        );
+        let rgb: Vec<u32> = row["color"]["rgb"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u32)
+            .collect();
+        assert_eq!(
+            mekanism_rules::enum_color_rgb(mode.color()),
+            rgb[0] << 16 | rgb[1] << 8 | rgb[2],
+            "{mode:?}"
+        );
+        assert_eq!(
+            machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(mode.color())],
+            row["color"]["name"].as_str().unwrap()
+        );
         assert_eq!(mode.text().to_json(), row["text_component"], "{mode:?}");
         assert_eq!(mode.text().to_json(), row["scroll_text"], "{mode:?}");
-        assert_eq!(vec![mode.tooltip_line().to_json()], *row["add_to_tooltip"].as_array().unwrap(), "{mode:?}");
+        assert_eq!(
+            vec![mode.tooltip_line().to_json()],
+            *row["add_to_tooltip"].as_array().unwrap(),
+            "{mode:?}"
+        );
         // As linhas do tooltip da pilha: o nome (o jogo) e a do appender.
         assert_eq!(row["item_tooltip"][1], mode.tooltip_line().to_json());
         for (shift, expected) in row["adjust"].as_object().unwrap() {
-            assert_eq!(mode.adjust(shift.parse().unwrap()).serialized_name(), expected.as_str().unwrap(), "{mode:?} {shift}");
+            assert_eq!(
+                mode.adjust(shift.parse().unwrap()).serialized_name(),
+                expected.as_str().unwrap(),
+                "{mode:?} {shift}"
+            );
         }
         let abilities = mode.abilities();
         for (name, expected) in row["abilities"].as_object().unwrap() {
-            assert_eq!(abilities.get(name.as_str()), expected.as_bool().as_ref(), "{mode:?} {name}");
+            assert_eq!(
+                abilities.get(name.as_str()),
+                expected.as_bool().as_ref(),
+                "{mode:?} {name}"
+            );
         }
-        assert_eq!(mode == ConfiguratorMode::Wrench, row["sneak_bypass_use"].as_bool().unwrap(), "{mode:?}");
+        assert_eq!(
+            mode.sneak_bypasses_use(),
+            row["sneak_bypass_use"].as_bool().unwrap(),
+            "{mode:?}"
+        );
         checked += 1;
     }
     assert_eq!(checked, 8);
@@ -71,8 +112,14 @@ fn a_stack_without_the_component_is_the_default_mode() {
     for row in rows("configurator_modes.jsonl") {
         match row["case"].as_str().unwrap() {
             "fresh" => {
-                assert_eq!(row["mode_component"], ConfiguratorMode::DEFAULT.serialized_name());
-                assert_eq!(row["item_tooltip"][1], ConfiguratorMode::DEFAULT.tooltip_line().to_json());
+                assert_eq!(
+                    row["mode_component"],
+                    ConfiguratorMode::DEFAULT.serialized_name()
+                );
+                assert_eq!(
+                    row["item_tooltip"][1],
+                    ConfiguratorMode::DEFAULT.tooltip_line().to_json()
+                );
                 seen += 1;
             }
             "removed" => {
@@ -92,14 +139,23 @@ fn machine(name: &str) -> ProgressMachine {
         _ => common::chamber("clay"),
     };
     machine.set_facing(Face::North);
-    let default = if name == "metallurgic_infuser" { advanced_machine_default() } else { electric_machine_default() };
+    let default = if name == "metallurgic_infuser" {
+        advanced_machine_default()
+    } else {
+        electric_machine_default()
+    };
     machine.apply_item_side_config(Some(&default), Some(&AttachedEjector::DEFAULT), false);
     machine
 }
 
 fn config_names(machine: &ProgressMachine, kind: TransmissionType) -> Option<Vec<&'static str>> {
     let info = machine.side_config().config(kind)?;
-    Some(RelativeSide::VALUES.iter().map(|side| info.data_type(*side).serialized_name()).collect())
+    Some(
+        RelativeSide::VALUES
+            .iter()
+            .map(|side| info.data_type(*side).serialized_name())
+            .collect(),
+    )
 }
 
 /// O ciclo de `incrementDataType` com doze cliques agachados na mesma face, e a mensagem de cada um.
@@ -112,27 +168,66 @@ fn twelve_sneaking_clicks_walk_the_data_types_with_the_messages_of_the_original(
         let name = row["machine"].as_str().unwrap();
         let mode = mode_of(row["mode"].as_str().unwrap());
         let face = face_of(row["face"].as_str().unwrap());
-        let key = (name.to_owned(), row["mode"].as_str().unwrap().to_owned(), row["face"].as_str().unwrap().to_owned());
+        let key = (
+            name.to_owned(),
+            row["mode"].as_str().unwrap().to_owned(),
+            row["face"].as_str().unwrap().to_owned(),
+        );
         if started.insert(key) {
             current = Some(machine(name));
         }
         let machine = current.as_mut().unwrap();
         let kind = mode.transmission().unwrap();
-        let click = machine.side_config_mut().configurator_click(kind, Face::North, face, true);
-        assert_eq!(click.is_some(), row["supported"].as_bool().unwrap(), "{:?}", row["marks"]);
+        let click = machine
+            .side_config_mut()
+            .configurator_click(kind, Face::North, face, true);
+        assert_eq!(
+            click.is_some(),
+            row["supported"].as_bool().unwrap(),
+            "{:?}",
+            row["marks"]
+        );
         match click {
-            None => assert!(row["overlay"].as_array().unwrap().is_empty() && row["result"]["class"] == "Pass", "{:?}", row["marks"]),
+            None => assert!(
+                row["overlay"].as_array().unwrap().is_empty() && row["result"]["class"] == "Pass",
+                "{:?}",
+                row["marks"]
+            ),
             Some(SideClick::Toggled { old, new }) => {
-                assert_eq!(data_type_of(row["data_type"].as_str().unwrap()), new, "{:?}", row["marks"]);
+                assert_eq!(
+                    data_type_of(row["data_type"].as_str().unwrap()),
+                    new,
+                    "{:?}",
+                    row["marks"]
+                );
                 if new == old {
-                    assert!(row["overlay"].as_array().unwrap().is_empty(), "{:?}", row["marks"]);
+                    assert!(
+                        row["overlay"].as_array().unwrap().is_empty(),
+                        "{:?}",
+                        row["marks"]
+                    );
                 } else {
-                    assert_eq!(vec![configurator_side_message(true, kind, new).to_json()], *row["overlay"].as_array().unwrap(), "{:?}", row["marks"]);
+                    assert_eq!(
+                        vec![configurator_side_message(true, kind, new).to_json()],
+                        *row["overlay"].as_array().unwrap(),
+                        "{:?}",
+                        row["marks"]
+                    );
                 }
                 for (type_name, expected) in row["config_after"].as_object().unwrap() {
                     let kind = TransmissionType::from_serialized_name(type_name).unwrap();
-                    let expected: Vec<&str> = expected.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
-                    assert_eq!(config_names(machine, kind).unwrap(), expected, "{:?} {type_name}", row["marks"]);
+                    let expected: Vec<&str> = expected
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|v| v.as_str().unwrap())
+                        .collect();
+                    assert_eq!(
+                        config_names(machine, kind).unwrap(),
+                        expected,
+                        "{:?} {type_name}",
+                        row["marks"]
+                    );
                 }
             }
             Some(SideClick::View(_)) => panic!("agachado não só olha"),
@@ -148,7 +243,12 @@ fn twelve_sneaking_clicks_walk_the_data_types_with_the_messages_of_the_original(
 fn a_click_without_sneaking_only_views_the_side() {
     let mut machine = machine("enrichment_chamber");
     let before = config_names(&machine, TransmissionType::Item);
-    let click = machine.side_config_mut().configurator_click(TransmissionType::Item, Face::North, Face::West, false);
+    let click = machine.side_config_mut().configurator_click(
+        TransmissionType::Item,
+        Face::North,
+        Face::West,
+        false,
+    );
     assert_eq!(click, Some(SideClick::View(DataType::Output)));
     assert_eq!(config_names(&machine, TransmissionType::Item), before);
     assert!(machine.take_side_changes().is_empty());
@@ -162,15 +262,29 @@ fn a_click_without_sneaking_only_views_the_side() {
 #[test]
 fn a_type_the_machine_lacks_is_not_a_side_click() {
     let mut machine = machine("enrichment_chamber");
-    for kind in [TransmissionType::Fluid, TransmissionType::Heat, TransmissionType::Chemical] {
-        assert_eq!(machine.side_config_mut().configurator_click(kind, Face::North, Face::North, true), None);
+    for kind in [
+        TransmissionType::Fluid,
+        TransmissionType::Heat,
+        TransmissionType::Chemical,
+    ] {
+        assert_eq!(
+            machine
+                .side_config_mut()
+                .configurator_click(kind, Face::North, Face::North, true),
+            None
+        );
     }
 }
 
 #[test]
 fn rotating_follows_the_original() {
     let mut checked = 0;
-    for file in ["configurator_click_enrichment_chamber.jsonl", "configurator_click_metallurgic_infuser.jsonl", "configurator_click_crusher.jsonl", "configurator_click_heat_generator.jsonl"] {
+    for file in [
+        "configurator_click_enrichment_chamber.jsonl",
+        "configurator_click_metallurgic_infuser.jsonl",
+        "configurator_click_crusher.jsonl",
+        "configurator_click_heat_generator.jsonl",
+    ] {
         for row in rows(file) {
             if row["mode"] != "rotate" || row["before"]["facing"].is_null() {
                 continue;
@@ -178,8 +292,17 @@ fn rotating_follows_the_original() {
             let from = face_of(row["before"]["facing"].as_str().unwrap());
             let side = face_of(row["face"].as_str().unwrap());
             // Agachado vai o item (`setFacing(side.getOpposite())`); sem agachar o bloco gira (`MekanismUtils.rotate`, com o Y).
-            let want = if row["sneak"].as_bool().unwrap() { side.opposite() } else { rotate_facing(from, true) };
-            assert_eq!(want, face_of(row["after"]["facing"].as_str().unwrap()), "{:?}", row["marks"]);
+            let want = if row["sneak"].as_bool().unwrap() {
+                side.opposite()
+            } else {
+                rotate_facing(from, true)
+            };
+            assert_eq!(
+                want,
+                face_of(row["after"]["facing"].as_str().unwrap()),
+                "{:?}",
+                row["marks"]
+            );
             checked += 1;
         }
     }
@@ -193,37 +316,66 @@ fn the_card_says_what_the_original_says() {
     for row in &rows {
         let step = row["marks"][0].as_str().unwrap();
         let machine_block = |name: &str| {
-            let namespace = if name == "heat_generator" { "mekanismgenerators" } else { "mekanism" };
+            let namespace = if name == "heat_generator" {
+                "mekanismgenerators"
+            } else {
+                "mekanism"
+            };
             mekanism_rules::block_description_id(&format!("{namespace}:{name}"))
         };
         match step {
             "read" | "read_overwrite" => {
                 let key = machine_block(row["marks"][1].as_str().unwrap());
-                assert_eq!(vec![card_got_message(&key).to_json()], *row["overlay"].as_array().unwrap());
-                assert_eq!(row["card_after"]["configuration_json"]["data_name"], key.as_str());
+                assert_eq!(
+                    vec![card_got_message(&key).to_json()],
+                    *row["overlay"].as_array().unwrap()
+                );
+                assert_eq!(
+                    row["card_after"]["configuration_json"]["data_name"],
+                    key.as_str()
+                );
                 checked += 1;
             }
             "apply" if row["marks"][5] == "sneak" => {
                 // Agachado o cartão lê outra vez, mesmo com dados.
                 let key = machine_block(row["marks"][1].as_str().unwrap());
-                assert_eq!(vec![card_got_message(&key).to_json()], *row["overlay"].as_array().unwrap());
+                assert_eq!(
+                    vec![card_got_message(&key).to_json()],
+                    *row["overlay"].as_array().unwrap()
+                );
                 checked += 1;
             }
             "apply" => {
                 let from = row["marks"][1].as_str().unwrap();
                 let to = row["marks"][3].as_str().unwrap();
-                let message = if from == to { card_set_message(Some(&machine_block(from))) } else { card_unequal_message() };
-                assert_eq!(vec![message.to_json()], *row["overlay"].as_array().unwrap(), "{:?}", row["marks"]);
+                let message = if from == to {
+                    card_set_message(Some(&machine_block(from)))
+                } else {
+                    card_unequal_message()
+                };
+                assert_eq!(
+                    vec![message.to_json()],
+                    *row["overlay"].as_array().unwrap(),
+                    "{:?}",
+                    row["marks"]
+                );
                 checked += 1;
             }
             "use_air" if row["sneak"].as_bool().unwrap() => {
-                assert_eq!(vec![card_cleared_message().to_json()], *row["overlay"].as_array().unwrap());
+                assert_eq!(
+                    vec![card_cleared_message().to_json()],
+                    *row["overlay"].as_array().unwrap()
+                );
                 checked += 1;
             }
             "tooltip" => {
                 let name = row["marks"][1].as_str().unwrap();
                 let key = (name != "empty").then(|| machine_block(name));
-                assert_eq!(row["tooltip"][1], card_tooltip_line(key.as_deref()).to_json(), "{name}");
+                assert_eq!(
+                    row["tooltip"][1],
+                    card_tooltip_line(key.as_deref()).to_json(),
+                    "{name}"
+                );
                 checked += 1;
             }
             _ => {}
@@ -243,12 +395,89 @@ fn changing_the_mode_follows_the_original() {
             _ => DisplayChange::Other,
         };
         let change = change_mode(mode, row["shift"].as_i64().unwrap() as i32, display);
-        assert_eq!(change.mode.serialized_name(), row["after"].as_str().unwrap(), "{row}");
+        assert_eq!(
+            change.mode.serialized_name(),
+            row["after"].as_str().unwrap(),
+            "{row}"
+        );
         assert_eq!(change.changed, row["changed"].as_bool().unwrap(), "{row}");
-        assert_eq!(change.show, row["show_mode_change"].as_bool().unwrap(), "{row}");
+        assert_eq!(
+            change.show,
+            row["show_mode_change"].as_bool().unwrap(),
+            "{row}"
+        );
         let overlay: Vec<Value> = change.overlay.iter().map(|chat| chat.to_json()).collect();
         assert_eq!(overlay, *row["overlay"].as_array().unwrap(), "{row}");
         checked += 1;
     }
     assert_eq!(checked, 168);
+}
+
+/// `MekanismUtils.rotate` (`MekanismUtils.java:234-246`), nas seis direções de partida: o rastro só gira a partir do norte.
+#[test]
+fn rotate_walks_the_cycle_of_the_original_from_every_face() {
+    for (from, with_y, without_y) in [
+        (Face::Up, Face::North, Face::Up),
+        (Face::Down, Face::South, Face::Down),
+        (Face::North, Face::East, Face::East),
+        (Face::South, Face::West, Face::West),
+        (Face::West, Face::Up, Face::North),
+        (Face::East, Face::Down, Face::South),
+    ] {
+        assert_eq!(rotate_facing(from, true), with_y, "{from:?}");
+        // `Direction.getClockWise` (só as horizontais; as verticais não giram).
+        assert_eq!(rotate_facing(from, false), without_y, "{from:?}");
+    }
+}
+
+/// A seleção parcial (`BlockTransmitter.getShape` com o Configurator): o raio escolhe a caixa mais perto, e o centro vale se nenhuma.
+#[test]
+fn the_ray_picks_the_nearest_box_of_a_transmitter() {
+    use mekanism_rules::{select_box, transmitter_center};
+    let center = transmitter_center("mekanism:basic_universal_cable").unwrap();
+    assert_eq!(
+        center,
+        [
+            5.0 / 16.0,
+            5.0 / 16.0,
+            5.0 / 16.0,
+            11.0 / 16.0,
+            11.0 / 16.0,
+            11.0 / 16.0
+        ]
+    );
+    assert_eq!(
+        transmitter_center("mekanism:ultimate_mechanical_pipe").unwrap()[0],
+        4.0 / 16.0
+    );
+    assert_eq!(
+        transmitter_center("mekanism:diversion_transporter").unwrap()[3],
+        12.0 / 16.0
+    );
+    assert!(transmitter_center("mekanism:enrichment_chamber").is_none());
+    // Centro e braço para leste, o do braço de `box(5, 0, 5, 11, 5, 11)` girado: x de 11 a 16.
+    let east = [
+        11.0 / 16.0,
+        5.0 / 16.0,
+        5.0 / 16.0,
+        1.0,
+        11.0 / 16.0,
+        11.0 / 16.0,
+    ];
+    let boxes = [center, east];
+    // Olhando de leste para oeste: toca o braço antes do centro.
+    assert_eq!(
+        select_box(&boxes, [3.0, 0.5, 0.5], [-1.0, 0.5, 0.5], center),
+        east
+    );
+    // Olhando de oeste para leste: toca o centro primeiro.
+    assert_eq!(
+        select_box(&boxes, [-3.0, 0.5, 0.5], [3.0, 0.5, 0.5], center),
+        center
+    );
+    // Um raio que erra tudo cai no centro, mesmo com outra caixa na frente da lista.
+    assert_eq!(
+        select_box(&[east, center], [0.5, 3.0, 0.5], [0.5, 2.0, 0.5], center),
+        center
+    );
 }
