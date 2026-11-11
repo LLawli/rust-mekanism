@@ -75,6 +75,12 @@ DEFAULT_ENERGY = [4, 1, 1, 1, 1, 1]
 DEFAULT_ITEM = [4, 1, 1, 1, 1, 1]
 
 
+def prep():
+    """Clima limpo e meio-dia, com os ciclos parados (pedido do usuário para toda captura; nesta versão as gamerules são `advance_time` e `advance_weather`)."""
+    for text_ in ["weather clear", "time set noon", "gamerule advance_time false", "gamerule advance_weather false"]:
+        cmd(text_)
+
+
 def clear_area():
     cmd(f"fill {text(at(-8, 0, -10))} {text(at(24, 6, 12))} minecraft:air")
     time.sleep(1.0)
@@ -159,6 +165,7 @@ def shot(path):
 
 def fotos(out):
     cmd("tick unfreeze")
+    prep()
     clear_area()
     os.makedirs(out, exist_ok=True)
     for index, tier in enumerate(TIERS):
@@ -175,6 +182,7 @@ def fotos(out):
 
 def cena():
     cmd("tick unfreeze")
+    prep()
     clear_area()
     cube, gen, chamber = at(0, 0, 1), at(0, 0, 2), at(0, 0, 0)
     setblock(chamber, f"{CHAMBER}[facing=south]")

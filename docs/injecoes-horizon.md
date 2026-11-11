@@ -18,14 +18,14 @@ Contagem em 2026-11-11 (depois das frentes `armadura-vestida` (6 injeções crua
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 140 | |
-| Hook do catálogo, usado só com o contrato dele | 44 | não |
-| Hook do catálogo, usado com estrutura privada do jogo | 45 | sim |
+| `[[injection]]` no total | 142 | |
+| Hook do catálogo, usado só com o contrato dele | 45 | não |
+| Hook do catálogo, usado com estrutura privada do jogo | 46 | sim |
 | Injeção crua (`target = ...`) | 51 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 31 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 32 | sim |
 
-44 + 45 + 51 = 140. Os 31 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-96 injeções e 31 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+45 + 46 + 51 = 142. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+97 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
@@ -59,6 +59,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H71 `block_shape_context` | hook | `context_outline` (mekanism) | em uso |
 | H72 `item_use_first` | hook | o uso de `right_click_block` para o Configurator e o cartão passarem à frente da tela do bloco | em uso (hook com estrutura privada) |
 | H73 `key_mappings` | hook | o `native_mod_key` sem entrada na tela de Controles (a tecla `N` do modo) | prevista |
+| H91 `native_draw_model` com alfa, e `CubeFace` com rotação de uv | helper / dado | `BlockEntityDraw::vertices_mut` (privado) para o alfa do núcleo do cubo (`RenderEnergyCube`: `ARGB.as8BitChannel(getEnergyScale())`), e a rotação de uv de cada face que `native_draw_cube` não aceita (`rotation` de 90 e 270 nas faces finas das portas) | em uso (alfa pela estrutura privada; a rotação de uv diferente do original) |
+| H92 forma de colisão e de seleção por instância | hook | o `BlockEnergyCube.getShape` lê a configuração de lados do tile (`isSideEnabled`: 256 formas, o quadro mais as portas dos lados ativos); o Horizon tem uma forma por estado (as 6 portas sempre) | prevista (não tentada: ver o plano, inventário) |
 | H87 `PrimitiveShape::TexturedQuad` | dado | `world_overlay` (cru, HEAD cancelável de `world_primitive_geometry`) e o módulo `world-overlay` (a sobreposição colorida da face do Configurator) | em uso (1 cru, 1 módulo) |
 | H88 estado do HUD para um mod | helper | os campos privados que `gui_layer_post` lê (`health_hud`, `titles`, `mode`, `armor`, `inventory`, `ui.hide_gui`, `settings`) | em uso (hook com estrutura privada) |
 | H89 o alvo do olhar e a guinada da câmera para um mod | helper | `Game::pick`, `may_build`, `yaw` e `basis::front` na sobreposição do Configurator | em uso (hook com estrutura privada) |
@@ -153,15 +155,15 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
-| `mods/mekanism/native/horizon-mixin.toml` | 60 | 44 | 16 | 7 |
+| `mods/mekanism/native/horizon-mixin.toml` | 62 | 46 | 16 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 25 | 21 | 4 | 4 |
-| Total | 140 | 89 | 51 | 31 |
+| Total | 142 | 91 | 51 | 32 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
-Dos 89 hooks, 45 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
-e 44 não (os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
+Dos 91 hooks, 46 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
+e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
 ## Injeções cruas em uso (51)
 
@@ -746,6 +748,7 @@ Horizon não renomear o campo. O pedido ao Horizon é de helpers de leitura e es
 | `block_entity_tick` (generators) | `block_entity_tick` | `game.res.providers().burn_time(world_items!)`, `game.world.chunks` e `world_biomes!`; a temperatura do ar (módulo `glue` da `machinery_basis`, `ambient_temperature`) lê também `game.streaming.biome_zoom` (o `BiomeManager.getBiome`) e `game.world_flat` (o nível do mar de um mundo plano, -63) | H8: `burn_time(stack)`, `biome_temperature(dimension, pos)`, que devolva a temperatura de `Biome.getTemperature(pos, seaLevel)` do bioma que `Level.getBiome(pos)` dá, com o nível do mar do mundo (o `BiomeInfo::temperature_at` do Horizon fixa 63, 32 e 0 por dimensão) |
 | `window_frame` (basis) | `frame` | `game.mod_screen` (escreve `screen.slots`), `game.renderer`, `game.remote`, `game.world.block_entities` | H9 |
 | `window_key` (basis) | `screen_key_pressed_pre` | `game.mod_screen` (o bloco da tela aberta) | H9 |
+| `block_entity_submit` (mekanism) | `block_entity_submit` | o módulo `cube`: `game.native_block`, `basis::tile_view`, `BlockEntityDraw::{push, pop, translate, scale, rotate_about, vertices_mut}`, `native_draw_cube`, `native_draw_model` | H91 |
 | `window_press` (basis) | `screen_mouse_button_pressed_pre` | `game.mod_screen`, `game.renderer` (o tamanho da tela em pixels de GUI) | H9 |
 | `window_release` (basis) | `screen_mouse_button_released_pre` | `game.mod_screen` | H9 |
 | `window_drag` (basis) | `screen_mouse_dragged_pre` | `game.mod_screen`, `game.renderer` | H9 |
@@ -817,7 +820,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (31)
+## Módulos (32)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -826,6 +829,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `glue` (machinery_basis) | `game.rs` | liga a lib ao jogo: tudo `pub(in crate::game)`. `Game::mb_in_levels` (2026-11-08) roda uma ação em cada nível ticado com o nível no lugar, para o `ServerTickStart`: usa `levels_to_tick`, `enter_level` e `Dim`, privados de `levels.rs` e `game.rs` | H8, H33 e o que está em [Dependências a vigiar](#dependências-a-vigiar) |
 | `glue` (mekanism) | `game.rs` | liga as máquinas e a tela: 2.691 linhas em 2026-11-08 | idem |
 | `glue` (mekanismgenerators) | `game.rs` | liga o Heat Generator: 1.143 linhas em 2026-11-08 | idem |
+| `cube` (mekanism) | `game.rs` | os cubos de energia no jogo (`TileEntityEnergyCube`, 2026-11-11, frente `cubo-energia`): o objeto vivo `EnergyCube` entre os ticks, o NBT (`energy`, `energy_amount` do criativo), os slots de carga e descarga contra a energia dos itens, o ejetor para os vizinhos (`native_energy_insert`), as faces de energia por instância (H1), o comparador, o Configurator e o cartão, o item posto e solto, e o desenho da block entity (`block_entity_submit`: as portas e os LEDs de cada lado, o núcleo translúcido que gira). Usa `BlockEntityDraw::vertices_mut` (`pub(super)`) para pôr o alfa no núcleo | idem, H91 |
 | `configurator` (mekanism) | `game.rs` | o Configurator e o cartão de configuração: o clique do item e do bloco (`use_item_on`, `right_click_block`), o componente da pilha, a cópia e a colagem do cartão, a troca de modo (tecla, rolagem, pacote), a seleção parcial dos transmissores. Usa `Game::held`, `held_mut`, `offhand`, `hand`, `aim`, `reach`, `swing_arm`, `spawn_item`, `loot_block_entity`, `block_loot_at`, `pending` e `with_level(player_destroy_block)` | H8, H71, H72 |
 | `world-overlay` (mekanism) | `game/world_primitives.rs` | o quadrilátero da sobreposição da face do Configurator no formato dos primitivos do mundo (`PrimitiveGeometry.quads`, privado de lá), para a injeção `world_overlay` | H87 |
 | `block-rows` (mekanism) | `mod_content.rs` | a tabela das linhas de jogo dos blocos de máquina (luz do `active` e da lava, reação ao pistão, oclusão, resistência), gerada do original em jogo, para a injeção `active_light` | H18, H49 |
