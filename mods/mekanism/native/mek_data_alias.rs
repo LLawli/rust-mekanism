@@ -3,8 +3,7 @@
 // Generators) nunca apareceriam na mesa. O HEAD de `Recipes::from_sources` troca o tipo delas antes da carga, e a mesa as casa como casa as outras. O que a `assemble` do original
 // copia da entrada (`RecipeUpgradeData`: energia, tanques, upgrades, segurança...) o port ainda não guarda no item, então não há o que copiar; a configuração de lados não é
 // copiada pelo original (`RecipeUpgradeData.getSupportedTypes`, o TODO dele). Alvo cru, H79.
-// O tipo do binding é o `Vec` do parâmetro de `from_sources`.
-#[allow(clippy::ptr_arg)]
+// O tipo do binding é o `Vec` do parâmetro de `from_sources` (o helper não aceita atributo: o `allow` do clippy fica no `mod` do teste que o inclui).
 fn mekanism_mek_data_alias(sources: &mut Vec<(String, Value)>) {
     for (_, recipe) in sources.iter_mut() {
         if let Some(object) = recipe.as_object_mut()

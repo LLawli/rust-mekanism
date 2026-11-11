@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+#[allow(clippy::ptr_arg)]
 mod alias {
     use serde_json::Value;
     include!("../native/mek_data_alias.rs");
