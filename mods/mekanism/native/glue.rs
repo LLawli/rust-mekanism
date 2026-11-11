@@ -223,7 +223,12 @@ fn slot_sprite(slot: SlotType) -> &'static str {
 
 /// O sprite que vai por cima da moldura (`SlotOverlay.texture`). Só o do slot de energia tem arquivo.
 fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
-    (overlay == SlotOverlay::Power).then_some("mekanism:gui/sprites/slot/overlay/power")
+    match overlay {
+        SlotOverlay::Power => Some("mekanism:gui/sprites/slot/overlay/power"),
+        SlotOverlay::Plus => Some("mekanism:gui/sprites/slot/overlay/plus"),
+        SlotOverlay::Minus => Some("mekanism:gui/sprites/slot/overlay/minus"),
+        _ => None,
+    }
 }
 
 fn is_infuser(block: &str) -> bool {
@@ -338,6 +343,23 @@ fn native_screen(machine: &Machine) -> NativeScreen {
 }
 
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
+    if crate::game::mekanism_cube::is_cube(block) {
+        // `GuiEnergyCube`: a barra de armadura à direita e a aba de energia. Os dois slots do cubo; sem slots virtuais (o cubo não tem upgrades).
+        crate::game::machinery_armor_bar::declare(block, rules::cube_armor_bar_declaration);
+        machinery_basis_core::screen_elements::declare_once(block, || {
+            vec![machinery_basis_core::screen_elements::Element::always(rules::ENERGY_TAB.rect)]
+        });
+        *screen = Some(NativeScreen {
+            width: WIDTH,
+            height: HEIGHT,
+            slots: rules::CUBE_SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect(),
+            inventory_y: 84.0,
+            inventory_x: 8.0,
+            own_labels: true,
+            own_background: true,
+        });
+        return;
+    }
     if let Some(machine) = machine_of(block) {
         *screen = Some(native_screen(machine));
         // O cliente pergunta a cada clique se ele cai sobre uma aba (`GuiMekanism.hasClickedOutside`), com os data slots de agora.
@@ -349,6 +371,7 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
 const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Vec<Tracked>) -> UpgradeWindowSpec {
     UpgradeWindowSpec {
         block,
+        upgrades: true,
         virtual_slots: [slots.upgrade, slots.upgrade_output],
         trackers,
         window_trackers: rules::upgrade_window_data,
@@ -365,7 +388,7 @@ const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Ve
     }
 }
 
-fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
+pub(in crate::game) fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
     rules::upgrade_data(&upgrade::current_types(), &upgrade::current_tags(), UNKNOWN_STACK)
 }
 
@@ -2223,6 +2246,10 @@ fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
     let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
         return;
     };
+    if crate::game::mekanism_cube::is_cube(&entity.id) {
+        crate::game::mekanism_cube::publish_slot_rules(game, pos, RULES_OWNER);
+        return;
+    }
     let Some(machine) = machine_of(&entity.id) else {
         return;
     };
@@ -3002,6 +3029,9 @@ pub(in crate::game) fn widget_tooltip(
     at: [f32; 2],
     cursor: (f32, f32),
 ) -> bool {
+    if let Some(tier) = rules::cube_tier(block) {
+        return cube_tooltip(game, batch, block, tier, at, cursor);
+    }
     let Some(machine) = machine_of(block) else {
         return false;
     };
@@ -3215,6 +3245,10 @@ pub(in crate::game) fn screen_draw(
     batch: &mut HudBatch,
     origin: [f32; 2],
 ) {
+    if let Some(tier) = rules::cube_tier(block) {
+        draw_cube(game, block, tier, batch, origin);
+        return;
+    }
     if let Some(machine) = machine_of(block) {
         let mirror = game.mb_mirror(block);
         if is_infuser(block) {
@@ -3230,4 +3264,79 @@ pub(in crate::game) fn screen_draw(
 /// `Game::block_experience`, onde o gerador do nível está emprestado, e a distribuição é a mesma, uniforme de 1 a 4.
 pub(in crate::game) fn block_experience(name: &str, value: u32) -> u32 {
     rules::ore_experience(name, |bound| (machinery_basis_core::java_random::math_random() * f64::from(bound)) as i32).unwrap_or(value)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela do cubo de energia (`GuiEnergyCube`).
+
+/// `GaugeType.WIDE` com `GaugeInfo.STANDARD`: a moldura `gauge/normal` e o overlay `gauge/overlay/wide`.
+const CUBE_GAUGE_STYLE: basis::GaugeStyle = basis::GaugeStyle {
+    frame: "mekanism:gui/sprites/gauge/normal",
+    frame_slice: rules::GAUGE_FRAME_SLICE,
+    overlay: "mekanism:gui/sprites/gauge/overlay/wide",
+};
+
+/// A capacidade do cubo no cliente: o contêiner dele nasce com a do tier (`tiers.toml`), e o criativo é `Long.MAX_VALUE`.
+fn cube_capacity(tier: usize) -> i64 {
+    server_config().cubes[tier]
+}
+
+/// A ordem dos `addRenderableWidget` de `GuiEnergyCube`: o suporte da armadura, os slots (com as molduras do papel de cada um na configuração de itens), as abas de lados e de
+/// transporte, o medidor largo e a aba de energia.
+fn draw_cube(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, origin: [f32; 2]) {
+    let [x, y] = origin;
+    let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
+    let read = rules::CubeScreenData::read(&game.mb_mirror(block));
+    let title = screen_title(game, &format!("container.mekanism.{}", block.trim_start_matches("mekanism:")));
+    basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
+    let [holder_x, holder_y, width, height] = rules::CUBE_ARMOR_HOLDER;
+    for cell in gui::nine_slice_cells(machinery_basis_core::side_tab::HOLDER_SLICE, [x + holder_x, y + holder_y, width, height]) {
+        basis::sprite_tinted(game, batch, rules::CUBE_ARMOR_HOLDER_SPRITE, cell.src, cell.dst, 0xFF_FF_FF_FF);
+    }
+    for slot in machinery_basis_core::armor_bar::slots(block) {
+        basis::slot(game, batch, origin, [slot.x as f32, slot.y as f32], Some(SLOT), None);
+    }
+    for (index, slot) in rules::CUBE_SLOTS_SPEC.iter().enumerate() {
+        let frame = machinery_basis_core::slot_view::slot_type(Some(&rules::CUBE_ITEM_CONFIG), index, slot.container).map(slot_sprite);
+        basis::slot(game, batch, origin, slot.item, frame, slot.overlay.and_then(overlay_sprite));
+    }
+    game.mb_window_draw_tab(batch, block, origin);
+    let capacity = cube_capacity(tier);
+    let gauge = rules::CUBE_GAUGE;
+    let scaled = rules::cube_gauge_level(read.energy, capacity, gauge[3] as i32);
+    let fill = (scaled > 0).then_some((rules::CUBE_ENERGY_SPRITE, rules::CUBE_ENERGY_FRAME, 0xFF_FF_FF_FFu32));
+    basis::gauge(game, batch, &CUBE_GAUGE_STYLE, at(gauge), scaled, fill);
+    draw_energy_tab(game, batch, origin);
+}
+
+/// Os tooltips de `GuiEnergyCube`: as janelas e as abas de lados, a aba de energia e o medidor. Devolve se desenhou.
+fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize, at: [f32; 2], cursor: (f32, f32)) -> bool {
+    if game.mb_window_tooltip(batch, block, at, cursor) {
+        return true;
+    }
+    let read = rules::CubeScreenData::read(&game.mb_mirror(block));
+    let translate = |key: &str| lang::get(key);
+    let wrap = |lines: Vec<String>| -> Vec<(String, Option<u32>)> {
+        lines
+            .iter()
+            .flat_map(|line| machinery_basis_core::upgrade_window::wrap_lines(line, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)))
+            .map(|line| (line, None))
+            .collect()
+    };
+    // `GuiEnergyTab.updateTooltip`: `Tooltip.create` quebra cada linha em 170 pixels.
+    if rules::ENERGY_TAB.is_mouse_over(at, game.mb_window_covers(at)) {
+        let rate = i64::from(server_config().cube_rates[tier]);
+        let lines = wrap(rules::cube_energy_tab_tooltip(read.input_rate, rate, &translate));
+        let [x, y, w, h] = rules::ENERGY_TAB.rect;
+        basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+        return true;
+    }
+    let gauge = rules::CUBE_GAUGE;
+    if gui::contains(gauge, at) && !game.mb_window_covers(at) {
+        let text = rules::cube_gauge_tooltip(read.energy, cube_capacity(tier), &translate);
+        let [x, y, w, h] = gauge;
+        basis::menu_tooltip(game, batch, &[(text, None)], cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+        return true;
+    }
+    false
 }

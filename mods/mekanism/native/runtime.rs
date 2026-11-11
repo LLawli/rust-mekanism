@@ -1269,6 +1269,167 @@ pub const ENERGY_TAB: machinery_basis_core::side_tab::InfoTab =
         rect: [-26.0, 137.0, 26.0, 26.0],
     };
 pub const ENERGY_TAB_SPRITE: &str = "mekanism:gui/sprites/tab/energy_info";
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela do cubo de energia (`GuiEnergyCube`).
+
+/// `GuiEnergyCube`: a tela tem o tamanho padrão (176 por 166) e `dynamicSlots`.
+/// Os dois slots do menu, na ordem de `getInitialInventory`: o de descarga (`EnergyInventorySlot.fillOrConvert`, `SlotOverlay.MINUS`) em (17, 35) e o
+/// de carga (`EnergyInventorySlot.drain`, `SlotOverlay.PLUS`) em (143, 35). Ambos nascem `POWER`, e a moldura vem do papel que a configuração de itens dá
+/// ao slot (`CUBE_ITEM_CONFIG`).
+pub const CUBE_SLOTS_SPEC: [SlotSpec; 2] = [
+    SlotSpec {
+        item: [17.0, 35.0],
+        container: ContainerSlotType::Power,
+        overlay: Some(SlotOverlay::Minus),
+    },
+    SlotSpec {
+        item: [143.0, 35.0],
+        container: ContainerSlotType::Power,
+        overlay: Some(SlotOverlay::Plus),
+    },
+];
+
+/// `setupIOConfig(ITEM, chargeSlot, dischargeSlot, true)`: a entrada é o slot de carga, a saída o de descarga, e os dois juntos.
+pub const CUBE_ITEM_CONFIG: ItemConfig = ItemConfig {
+    entries: &[
+        (DataType::Input, &[energy_cube::CHARGE_SLOT]),
+        (DataType::Output, &[energy_cube::DISCHARGE_SLOT]),
+        (
+            DataType::InputOutput,
+            &[energy_cube::CHARGE_SLOT, energy_cube::DISCHARGE_SLOT],
+        ),
+    ],
+};
+
+/// `GuiEnergyGauge(.., GaugeType.WIDE, this, 55, 18)`: o medidor de 64 por 48 mais a moldura de um pixel de cada lado.
+pub const CUBE_GAUGE: [f32; 4] = [55.0, 18.0, 66.0, 50.0];
+/// `GuiSideHolder.create(this, imageWidth, 36, 98, false, true, TAB_ARMOR_SLOTS)`: o suporte da armadura, à direita.
+pub const CUBE_ARMOR_HOLDER: machinery_basis_core::gui::Rect = [176.0, 36.0, 26.0, 98.0];
+pub const CUBE_ARMOR_HOLDER_SPRITE: &str = "mekanism:gui/sprites/holder_right";
+pub const CUBE_ENERGY_SPRITE: &str = "mekanism:mek_liquid/energy";
+/// `MekanismRenderer.energyIcon`: cada quadro da animação tem 16 por 16.
+pub const CUBE_ENERGY_FRAME: [f32; 2] = [16.0, 16.0];
+/// `MekanismLang.MATRIX_INPUT_RATE`, `MAX_OUTPUT`, `EMPTY` e `INFINITE`.
+pub const MATRIX_INPUT_RATE_LANG: &str = "matrix.mekanism.input_rate";
+pub const MAX_OUTPUT_LANG: &str = "gui.mekanism.max_output";
+
+pub fn cube_armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
+    machinery_basis_core::armor_bar::Declaration {
+        x: 180,
+        y: 41,
+        offhand_offset: 0,
+    }
+}
+
+/// A frente do menu do cubo: o que `TileEntityMekanism.addContainerTrackers` sincroniza (a segurança, a redstone, o último recebido e a energia). O cubo não tem
+/// upgrades, então o consumo e a capacidade não vão antes da energia.
+pub fn cube_trackers() -> Vec<Tracked> {
+    TileTrackers {
+        security: true,
+        redstone: true,
+        energy: Some(EnergyTrackers {
+            last_energy: true,
+            adjustable: false,
+        }),
+        ..TileTrackers::default()
+    }
+    .trackers()
+}
+
+static CUBE_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
+    let list = cube_trackers();
+    (
+        position_of(&list, source::LAST_ENERGY_RECEIVED),
+        position_of(&list, source::ENERGY),
+    )
+});
+
+/// O que o cliente lê do espelho do menu do cubo.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CubeScreenData {
+    pub energy: i64,
+    pub input_rate: i64,
+}
+
+impl CubeScreenData {
+    pub fn read(mirror: &Mirror) -> Self {
+        let (input_rate, energy) = *CUBE_INDEXES;
+        Self {
+            energy: mirror.long(energy),
+            input_rate: mirror.long(input_rate),
+        }
+    }
+}
+
+/// `GuiEnergyGauge.getScaledLevel` com `height - 2` de área útil.
+pub fn cube_gauge_level(energy: i64, capacity: i64, height: i32) -> i32 {
+    if energy == 0 {
+        0
+    } else if energy == i64::MAX {
+        height - 2
+    } else {
+        std::cmp::max(
+            1,
+            ((height - 2) as f64
+                * machinery_basis_core::gui::divide_to_level(energy as f64, capacity as f64))
+                as i32,
+        )
+    }
+}
+
+/// `EnergyDisplay.of(energy, max).getTextComponent()`: `Infinite` para `Long.MAX_VALUE`, e a fração, com `Infinite` no máximo do cubo criativo.
+pub fn cube_energy_text(energy: i64, max: i64, translate: &dyn Fn(&str) -> String) -> String {
+    let (energy, max) = (energy.max(0), max.max(0));
+    if energy == i64::MAX {
+        return translate(INFINITE_LANG);
+    }
+    let unit = translate(ENERGY_UNIT_LANG);
+    let stored = machinery_basis_core::units::compact_display(energy as u64, &unit);
+    if max == 0 {
+        return stored;
+    }
+    let capacity = if max == i64::MAX {
+        translate(INFINITE_LANG)
+    } else {
+        machinery_basis_core::units::compact_display(max as u64, &unit)
+    };
+    machinery_basis_core::units::format_lang(&translate(FRACTION_LANG), &[&stored, &capacity])
+}
+
+/// O tooltip do medidor (`GuiEnergyGauge.getTooltipText`): `Empty`, ou a energia e a capacidade.
+pub fn cube_gauge_tooltip(
+    energy: i64,
+    capacity: i64,
+    translate: &dyn Fn(&str) -> String,
+) -> String {
+    if energy == 0 {
+        translate(EMPTY_LANG)
+    } else {
+        cube_energy_text(energy, capacity, translate)
+    }
+}
+
+/// `GuiEnergyTab` do cubo: `MATRIX_INPUT_RATE` com o último recebido, `MAX_OUTPUT` com a taxa do tier, e a unidade.
+pub fn cube_energy_tab_tooltip(
+    input_rate: i64,
+    transfer_rate: i64,
+    translate: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let unit = translate(ENERGY_UNIT_LANG);
+    let show = |value: i64| cube_energy_text(value, 0, translate);
+    vec![
+        machinery_basis_core::units::format_lang(
+            &translate(MATRIX_INPUT_RATE_LANG),
+            &[&show(input_rate)],
+        ),
+        machinery_basis_core::units::format_lang(
+            &translate(MAX_OUTPUT_LANG),
+            &[&show(transfer_rate)],
+        ),
+        machinery_basis_core::units::format_lang(&translate(UNIT_LANG), &[&unit]),
+    ]
+}
+
 /// `MekanismLang.USING`, `NEEDED` e `UNIT`.
 pub const USING_LANG: &str = "gui.mekanism.using";
 pub const NEEDED_LANG: &str = "gui.mekanism.needed";

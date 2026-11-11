@@ -423,6 +423,7 @@ const STALE_TICKS: i64 = 100;
 /// A janela de upgrades do gerador: só dados. A mecânica (aba, janela, slots virtuais, o item de upgrade na mão) é da machinery_basis.
 static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
     block: rules::HEAT_GENERATOR,
+    upgrades: true,
     virtual_slots: [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT],
     trackers: rules::heat_generator_trackers,
     window_trackers: rules::upgrade_window_data,

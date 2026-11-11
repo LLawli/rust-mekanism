@@ -8,10 +8,17 @@ use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModE
 use horizon_client::items::ItemStack;
 use horizon_world::nbt::{JavaString, Tag};
 use machinery_basis_core::components::Components;
+use machinery_basis_core::config_window::{self, ConfigPacket, ConfigView};
+use machinery_basis_core::container_sync::{TrackedSource, Value};
+use machinery_basis_core::ejector::TileComponentEjector;
+use machinery_basis_core::menu_source;
+use machinery_basis_core::slot_rules;
+use machinery_basis_core::tile_trackers::source;
+use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::energy_cube::{self, CubeSideState, EnergyCube, EnergyNeighbours, ItemEnergy};
 use machinery_basis_core::network;
-use machinery_basis_core::side_config::TransmissionType;
+use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
 use machinery_basis_core::sides::{Face, Sides};
 use machinery_basis_core::tile::RedstoneControl;
 use std::cell::RefCell;
@@ -162,6 +169,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, ho
     if is_cube(block) {
         // `AttributeRedstone`: o jogo avisa o bloco quando um vizinho muda.
         basis::watch_redstone(REDSTONE_OWNER, is_cube);
+        register_windows(block);
         if entity.is_none() {
             *entity = Some((block.to_owned(), horizon_world::nbt::Compound::default()));
         }
@@ -185,8 +193,8 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     if is_cube(block) {
-        // Sem interface vanilla: hoppers passam pela regra da machinery_basis. A tela (`GuiEnergyCube`) é da Fase 5 e espera as abas de lados: sem menu, o clique direito não abre nada.
-        *container = Some(ModContainer { slots: SLOTS, menu: None, ..Default::default() });
+        // Sem interface vanilla: hoppers passam pela regra da machinery_basis. O menu é a tela `GuiEnergyCube` (`screen` do glue).
+        *container = Some(ModContainer { slots: SLOTS, menu: Some(block.to_owned()), ..Default::default() });
     }
 }
 
@@ -734,4 +742,178 @@ pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<hori
     if is_cube(&entity.id) {
         *tag = Some(horizon_world::nbt::Compound::default());
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela (`GuiEnergyCube`): o menu, as abas de lados e de transporte e os pacotes delas. O cubo não é `IUpgradeTile`: a janela de upgrades não existe.
+
+/// A janela do cubo: só dados. A mecânica (abas, janelas de configuração, sessões do menu) é da machinery_basis; `upgrades: false` tira a aba e os slots virtuais.
+const fn window_spec_of(block: &'static str) -> UpgradeWindowSpec {
+    UpgradeWindowSpec {
+        block,
+        upgrades: false,
+        virtual_slots: [SLOTS, SLOTS + 1],
+        trackers: rules::cube_trackers,
+        window_trackers: rules::upgrade_window_data,
+        ns: "mekanism",
+        window_type: rules::UPGRADE_WINDOW,
+        window_types: &rules::WINDOW_TYPES,
+        base_slice: rules::PANEL_SLICE,
+        max_multiplier: machinery_basis_core::settings::max_upgrade_multiplier,
+        client_config: rules::CLIENT_CONFIG_FILE,
+        data: glue::window_upgrade_data,
+        color: rules::enum_color,
+        item: rules::UPGRADE_ITEM,
+        item_component: rules::UPGRADE_TYPE_COMPONENT,
+    }
+}
+
+static WINDOW_SPECS: [UpgradeWindowSpec; 5] = [
+    window_spec_of(rules::CUBE_TIERS[0]),
+    window_spec_of(rules::CUBE_TIERS[1]),
+    window_spec_of(rules::CUBE_TIERS[2]),
+    window_spec_of(rules::CUBE_TIERS[3]),
+    window_spec_of(rules::CUBE_TIERS[4]),
+];
+
+fn register_windows(block: &str) {
+    if let Some(spec) = WINDOW_SPECS.iter().find(|spec| spec.block == block) {
+        Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+        Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
+    }
+}
+
+/// O cubo não tem upgrades: o item de upgrade não entra e nada sai.
+fn remove_upgrade(_: &mut Game<'_>, _: [i32; 3], _: &str, _: bool) {}
+
+fn add_upgrades(_: &mut Game<'_>, _: [i32; 3], _: &str, _: i32) -> i32 {
+    0
+}
+
+/// Os dados do menu do cubo (`addContainerTrackers`), lidos do objeto.
+struct CubeSync<'a> {
+    cube: &'a EnergyCube,
+}
+
+impl TrackedSource for CubeSync<'_> {
+    fn value(&self, id: u16) -> Value {
+        let redstone = self.cube.tile().redstone_sync();
+        match id {
+            // Sem o componente de segurança no port: sem dono, a frequência é `null` e o modo é `PUBLIC`.
+            source::SECURITY_FREQUENCY => Value::Codec { hash: 0, bytes: vec![0] },
+            source::SECURITY_MODE => Value::Enum(0),
+            source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
+            source::POWERED => Value::Boolean(redstone.powered),
+            source::WAS_POWERED => Value::Boolean(redstone.was_powered),
+            source::LAST_ENERGY_RECEIVED => Value::Long(self.cube.last_energy_received()),
+            source::ENERGY => Value::Long(self.cube.energy().amount()),
+            other => panic!("fonte {other} desconhecida"),
+        }
+    }
+}
+
+/// O valor vivo dos dados do menu do cubo em `pos` (`MekanismContainer.broadcastChanges`): o objeto vivo, ou, até o primeiro tick do tile, o que o NBT dá
+/// (`menu_source`). Um aviso de redstone que o tile ainda não leu entra na hora, como o `updatePower` do Java.
+fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
+    let at = (pos[0], pos[1], pos[2]);
+    let ticked = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) if is_cube(&entity.id) => !entity.data.is_empty(),
+        _ => return false,
+    };
+    let power = if ticked { basis::take_power(game, pos) } else { basis::peek_power(game, pos) };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+        return false;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let key = (game.native_dimension(), pos);
+    let mut loaded = None;
+    LIVE_CUBES.with_borrow_mut(|cubes| {
+        let live = cubes.get_mut(&key).map(|live| &mut live.cube);
+        let Some(cube) = menu_source::object(ticked, live, &mut loaded, || born(game, pos, entity, tier).cube) else {
+            return false;
+        };
+        if let Some(powered) = power {
+            cube.tile_mut().update_power(powered);
+        }
+        act(&CubeSync { cube });
+        true
+    })
+}
+
+/// O que as janelas de configuração leem do cubo em `pos`: a configuração e o ejetor do NBT do tile, e a frente de agora.
+fn config_view(game: &Game<'_>, pos: [i32; 3]) -> Option<ConfigView> {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    tier_of(&entity.id)?;
+    let spec = energy_cube::side_config_spec();
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    let mut ejector = TileComponentEjector::new();
+    ejector.set_output_data(&config, &spec.eject);
+    let facing = basis::front(game, pos);
+    let nbt = basis::read_side_nbt(entity);
+    if let Some(data) = &nbt.config {
+        config.deserialize(data, facing, false);
+    }
+    if let Some(data) = &nbt.ejector {
+        ejector.deserialize(data);
+    }
+    Some(ConfigView { config, ejector, facing })
+}
+
+/// O estado vivo da configuração e do ejetor, que o servidor manda a quem tem uma janela de configuração aberta.
+fn config_snapshot(game: &mut Game<'_>, pos: [i32; 3]) -> Option<Vec<u8>> {
+    let key = (game.native_dimension(), pos);
+    let live = LIVE_CUBES.with_borrow(|cubes| cubes.get(&key).map(|live| config_window::encode_snapshot(live.cube.side_config(), live.cube.ejector())));
+    if live.is_some() {
+        return live;
+    }
+    let view = config_view(game, pos)?;
+    Some(config_window::encode_snapshot(&view.config, &view.ejector))
+}
+
+/// O `handle` dos pacotes de configuração no servidor: aplica ao cubo (o objeto vivo, ou um feito do NBT) e grava a configuração no NBT na hora, como `sideChanged`.
+fn config_apply(game: &mut Game<'_>, pos: [i32; 3], packet: ConfigPacket) {
+    let facing = basis::front(game, pos);
+    with_cube(game, pos, |cube| {
+        cube.set_facing(facing);
+        let (config, ejector) = cube.side_parts_mut();
+        packet.apply(config, ejector, facing);
+    });
+}
+
+/// `InventoryContainerSlot.mayPlace` do cubo aberto: o `isValidForInsertion(item, MANUAL)` do slot, com a energia que a pilha do clique guarda. O hook do Horizon
+/// roda dentro do menu, sem o jogo: a regra leva um cubo feito do NBT agora.
+pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner: &'static str) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return;
+    };
+    let cube = born(game, pos, entity, tier).cube;
+    slot_rules::set(
+        owner,
+        &entity.id,
+        Rc::new(move |slot, item, stack| {
+            let energy = stack
+                .downcast_ref::<ItemStack>()
+                .and_then(|stack| stack.data()?.other(rules::ENERGY_COMPONENT).cloned())
+                .map_or(0, |tag| match tag {
+                    Tag::Long(value) => value.max(0),
+                    Tag::Int(value) => i64::from(value).max(0),
+                    _ => 0,
+                });
+            let resource = if energy == 0 {
+                ItemResource::new(item, 64)
+            } else {
+                let text = energy.to_string();
+                ItemResource::with_components(item, 64, Components::new([(rules::ENERGY_COMPONENT, text.as_str())]))
+            };
+            cube.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource, AutomationType::Manual))
+        }),
+    );
 }

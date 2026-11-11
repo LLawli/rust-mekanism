@@ -1012,6 +1012,11 @@ impl EnergyCube {
         &mut self.config
     }
 
+    /// A configuração e o ejetor ao mesmo tempo, para quem aplica um pacote das janelas de configuração.
+    pub fn side_parts_mut(&mut self) -> (&mut TileComponentConfig, &mut TileComponentEjector) {
+        (&mut self.config, &mut self.ejector)
+    }
+
     pub fn ejector(&self) -> &TileComponentEjector {
         &self.ejector
     }

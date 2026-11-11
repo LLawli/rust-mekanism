@@ -30,6 +30,9 @@ const fn slice(width: f32, height: f32, border: f32) -> NineSlice {
 /// O que o mod diz sobre a janela de upgrades de um bloco. São só dados: quem liga ao jogo é a `machinery_basis`.
 pub struct UpgradeWindowSpec {
     pub block: &'static str,
+    /// Se o bloco tem a aba e a janela de upgrades (`IUpgradeTile`). O cubo de energia tem as abas de lados e de transporte e não tem upgrades:
+    /// sem eles não há aba à direita, slots virtuais nem o item de upgrade que entra.
+    pub upgrades: bool,
     /// Os índices dos dois slots virtuais (entrada e saída) no menu do bloco.
     pub virtual_slots: [usize; 2],
     /// Os dados que o contêiner sincroniza ao nascer (`addContainerTrackers`), na ordem do Java.

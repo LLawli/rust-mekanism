@@ -107,7 +107,7 @@ fn adder_of(block: &str, item: &str) -> Option<(&'static UpgradeWindowSpec, AddF
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
     specs
         .iter()
-        .find(|(spec, _)| spec.block == block && spec.item == item)
+        .find(|(spec, _)| spec.upgrades && spec.block == block && spec.item == item)
         .map(|(spec, owner)| (*spec, owner.add))
 }
 
@@ -666,6 +666,9 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
 
 /// Os slots virtuais ficam na posição que a janela dá a eles, ou somem (`None`) sem janela.
 fn place_virtual_slots(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
+    if !spec.upgrades {
+        return;
+    }
     let wanted: [Option<[f32; 2]>; 2] = {
         let state = client();
         match upgrade_open(&state) {
@@ -713,7 +716,7 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
 /// O botão de dentro de uma aba da janela `kind` que o mouse (relativo ao canto da tela) acerta, com a janela fechada.
 fn tab_hit(state: &Client, spec: &UpgradeWindowSpec, rel: [f64; 2]) -> Option<Kind> {
     let hit = |button: [f32; 4]| in_rect([button[0] as i32, button[1] as i32, button[2] as i32, button[3] as i32], rel);
-    if index_of(state, Kind::Upgrade).is_none() && hit(shifted(TAB_BUTTON, 0.0, 0.0)) {
+    if spec.upgrades && index_of(state, Kind::Upgrade).is_none() && hit(shifted(TAB_BUTTON, 0.0, 0.0)) {
         return Some(Kind::Upgrade);
     }
     if has_config(spec) {
@@ -1865,13 +1868,15 @@ pub(in crate::game) fn draw_tab(game: &Game<'_>, batch: &mut HudBatch, block: &s
     let state = client();
     let cursor = game.native_cursor();
     let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
-    let active = index_of(&state, Kind::Upgrade).is_none();
-    let button = shifted(TAB_BUTTON, origin[0], origin[1]);
-    let hovered = active && !covered(&state, at) && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1]));
-    button_background(game, batch, spec, button, active, hovered);
-    nine(game, batch, spec, "holder_right", uw::HOLDER_SLICE, shifted(TAB, origin[0], origin[1]), WHITE);
-    button_background(game, batch, spec, button, active, hovered);
-    plain(game, batch, spec, "button/upgrade", [18.0, 18.0], button);
+    if spec.upgrades {
+        let active = index_of(&state, Kind::Upgrade).is_none();
+        let button = shifted(TAB_BUTTON, origin[0], origin[1]);
+        let hovered = active && !covered(&state, at) && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1]));
+        button_background(game, batch, spec, button, active, hovered);
+        nine(game, batch, spec, "holder_right", uw::HOLDER_SLICE, shifted(TAB, origin[0], origin[1]), WHITE);
+        button_background(game, batch, spec, button, active, hovered);
+        plain(game, batch, spec, "button/upgrade", [18.0, 18.0], button);
+    }
     if !has_config(spec) {
         return;
     }
@@ -1923,7 +1928,7 @@ pub(in crate::game) fn tooltip(
     });
     match hovered_window {
         None => {
-            if index_of(&state, Kind::Upgrade).is_none() && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])) {
+            if spec.upgrades && index_of(&state, Kind::Upgrade).is_none() && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])) {
                 lines.push((lang::get("gui.mekanism.upgrades"), None));
                 rect = shifted(TAB_BUTTON, origin[0], origin[1]);
             } else if let Some((kind, tab)) = [Kind::Side, Kind::Transporter]
@@ -2249,7 +2254,7 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
             if let Some(host) = game.lan.as_mut()
                 && let Some(conn) = host.hub.guests.iter().find(|g| g.uuid == player).map(|g| g.conn)
             {
-                let hidden = if shown { Vec::new() } else { spec.virtual_slots.to_vec() };
+                let hidden = if shown || !spec.upgrades { Vec::new() } else { spec.virtual_slots.to_vec() };
                 host.hub.hide_menu_slots(conn, hidden);
                 if let Some(play) = host.play.get_mut(&conn) {
                     play.crafting.machine = None;
