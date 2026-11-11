@@ -44,7 +44,7 @@ manual em mundo fica para o que só o jogo mostra, como visual e som.
 
 Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
 
-- No máximo 1 build por vez no notebook. No desktop há 2 vagas no total, divididas entre build e jogo: 2 builds, 2 jogos ou 1 de cada.
+- No máximo 1 build por vez no notebook. No desktop há 2 vagas no total: um jogo ocupa uma, e um build (8 núcleos e 8 GB) ocupa as duas.
   Jogo só no desktop, nos containers de teste `horizon` e `horizon2`, um cliente por container. (O usuário liberou o desktop em 2026-11-11;
   os limites voltam a descer quando ele disser.)
 - O jogo é sempre headless: `gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080`, sem `-f`. Nunca `--backend wayland` nem nada que abra
@@ -53,10 +53,11 @@ Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repet
   ou roda com o som desligado. Nunca pelas caixas do usuário.
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
-- Desktop: até 4 núcleos e 4 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que tem 2 vagas e põe `CARGO_BUILD_JOBS=4`, com
-  `--max-workers=4` no gradle. O jogo ocupa uma das mesmas vagas: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`,
-  espere `jogo-<nome>.ativo` ganhar o número da vaga, e apague esse arquivo ao fechar o jogo. O container nasce com 6 CPUs e 12 GB: antes do `native-build`, rode
-  `docker update --cpus 4 --memory 4g --memory-swap 4g <container>`, e antes do jogo `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
+- Desktop: até 8 núcleos e 8 GB por build. Use `~/.cache/rust-mekanism/lim-build <comando>`, que pega as 2 vagas e põe `CARGO_BUILD_JOBS=8`,
+  com `--max-workers=8` no gradle. O jogo ocupa uma vaga: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`, espere
+  `jogo-<nome>.ativo` ganhar o número da vaga, e apague esse arquivo ao fechar o jogo. O container nasce com 6 CPUs e 12 GB: antes do
+  `native-build`, rode `docker update --cpus 8 --memory 8g --memory-swap 8g <container>`, e antes do jogo
+  `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
   compartilham `native/target` e `cargo` por bind mount. Nunca crie outro `target` nem copie esses diretórios.
 - Build de debug é apagado quando deixa de ser usado: ao integrar um workspace, remova o workspace e sua pasta de rascunho; a cada `native-build`,
