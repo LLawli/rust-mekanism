@@ -856,6 +856,11 @@ impl TileComponentConfig {
         });
     }
 
+    /// `sideChanged`: o lado mudou por fora do componente (os pacotes da tela de lados): a face avisa as capabilities e os ouvintes.
+    pub fn side_changed(&mut self, kind: TransmissionType, side: RelativeSide, facing: Face) {
+        self.side_changed_basic(kind, side.direction(facing));
+    }
+
     /// Quem foi mudando desde a última chamada, para a máquina invalidar as capabilities, salvar e avisar o cliente.
     pub fn take_changes(&mut self) -> Vec<SideChange> {
         std::mem::take(&mut self.changes)

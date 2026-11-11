@@ -10,6 +10,8 @@ use crate::upgrade::UpgradeComponent;
 /// `scroll/list_border` e `list/base`, `hovered` e `selected`.
 pub const HOLDER_SLICE: NineSlice = slice(26.0, 9.0, 4.0);
 pub const SHADOW_SLICE: NineSlice = slice(9.0, 9.0, 3.0);
+/// `blur`: o `gui.scaling` do sprite que cobre a janela sem foco.
+pub const BLUR_SLICE: NineSlice = slice(9.0, 9.0, 4.0);
 pub const BUTTON_SLICE: NineSlice = slice(200.0, 20.0, 2.0);
 pub const DIGITAL_SLICE: NineSlice = slice(3.0, 3.0, 1.0);
 pub const ELEMENT_HOLDER_SLICE: NineSlice = slice(16.0, 16.0, 2.0);

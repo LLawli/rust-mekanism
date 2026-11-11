@@ -11,11 +11,16 @@ use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreenView;
 use horizon_world::nbt::{JavaString, Tag};
+use machinery_basis_core::config_window::{self as cw, ConfigPacket, ConfigView};
 use machinery_basis_core::container_sync::{Mirror, Property, TrackedSource, wire};
+use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::machine_sync::read_upgrade_map;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
+use machinery_basis_core::side_config::{DataType, RelativeSide, TileComponentConfig, TransmissionType};
+use machinery_basis_core::side_tab::InsetTab;
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile_trackers::UPGRADE_WINDOW_KEY;
 use machinery_basis_core::upgrade::{self, UpgradeData};
 use machinery_basis_core::upgrade_window::{self as uw, SupportedLayout, UpgradeSync, UpgradeWindowSpec};
@@ -39,6 +44,12 @@ const OP_SELECT: u8 = 0;
 const OP_TRACK: u8 = 1;
 const OP_STOP: u8 = 2;
 const OP_REMOVE: u8 = 3;
+/// Um pacote de configuração de lados ou de transporte (`ConfigPacket`).
+const OP_CONFIG: u8 = 4;
+/// O cliente abriu (1) ou fechou (0) a última janela de configuração: o servidor passa a mandar, ou para de mandar, o estado dela.
+const OP_CONFIG_TRACK: u8 = 5;
+/// O canal em que o servidor leva ao cliente a configuração de lados e o ejetor (`encode_snapshot`), depois da posição do bloco.
+const CONFIG_CHANNEL: &str = "machinery_basis:config";
 
 /// O canal do `PacketUpdateContainer`: o servidor manda a cada jogador, por tick, os dados sujos do menu dele (`machinery_basis_core::container_sync::wire`).
 const CONTAINER_CHANNEL: &str = "machinery_basis:container";
@@ -106,6 +117,36 @@ fn is_upgrade_item(item: &str) -> bool {
     specs.iter().any(|(spec, _)| spec.item == item)
 }
 
+/// Lê o `ConfigView` do bloco em `pos`.
+pub(in crate::game) type ViewFn = fn(&Game<'_>, [i32; 3]) -> Option<ConfigView>;
+/// O `handle` de um `ConfigPacket` no servidor, sobre o tile vivo em `pos`.
+pub(in crate::game) type ApplyFn = fn(&mut Game<'_>, [i32; 3], ConfigPacket);
+/// O estado vivo da configuração e do ejetor em `pos` (`encode_snapshot`), que o servidor manda a quem tem a janela aberta.
+pub(in crate::game) type SnapshotFn = fn(&mut Game<'_>, [i32; 3]) -> Option<Vec<u8>>;
+
+#[derive(Clone, Copy)]
+struct ConfigOwner {
+    view: ViewFn,
+    apply: ApplyFn,
+    snapshot: SnapshotFn,
+}
+
+static CONFIG_OWNERS: Mutex<Vec<(&'static str, ConfigOwner)>> = Mutex::new(Vec::new());
+
+/// O mod diz que o bloco tem as abas de configuração e de transporte (`ISideConfiguration`), como o cliente lê a configuração dele e como o
+/// servidor aplica os pacotes. Pode repetir.
+fn register_config(block: &'static str, view: ViewFn, apply: ApplyFn, snapshot: SnapshotFn) {
+    let mut owners = CONFIG_OWNERS.lock().unwrap_or_else(|e| e.into_inner());
+    if !owners.iter().any(|(known, _)| *known == block) {
+        owners.push((block, ConfigOwner { view, apply, snapshot }));
+    }
+}
+
+fn config_owner(block: &str) -> Option<ConfigOwner> {
+    let owners = CONFIG_OWNERS.lock().unwrap_or_else(|e| e.into_inner());
+    owners.iter().find(|(known, _)| *known == block).map(|(_, owner)| *owner)
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Constantes do desenho (`GuiUpgradeWindow`, `GuiUpgradeWindowTab`).
 
@@ -126,12 +167,16 @@ const TAB_BUTTON: [i32; 4] = [179, 10, 18, 18];
 
 const WHITE: u32 = 0xFF_FF_FF_FF;
 const TITLE_COLOR: u32 = 0xFF_40_40_40;
+/// `SpecialColors.TEXT_SUBHEADING`.
+const SUBHEADING_COLOR: u32 = 0xFF_78_78_78;
 const SCREEN_COLOR: u32 = 0xFF_3C_FE_9A;
 const FADE: u32 = 0x80_78_78_78;
 const SLOT_HOVER: u32 = 0x80_FF_FF_FF;
 const YELLOW: u32 = 0xFF_DD_4F;
 const RED: u32 = 0xFF_38_3C;
 const SHADOW_TINT: u32 = 0xBF_FF_FF_FF;
+/// `ARGB.color(0.3F, WHITE)`.
+const BLUR_TINT: u32 = 0x4C_FF_FF_FF;
 const DIGITAL_HOVER: u32 = 0xFF_3C_FE_9A;
 const DIGITAL_ACTIVE: u32 = 0xFF_30_CB_7B;
 const DIGITAL_INACTIVE: u32 = 0xFF_24_98_5C;
@@ -140,20 +185,54 @@ const LINE_HEIGHT: f32 = 9.0;
 // ---------------------------------------------------------------------------------------------------------------------------
 // Estado do cliente. É um `Mutex` e não um campo do jogo porque os hooks de entrada só têm `&Game`.
 
+/// As janelas desta lib: a de upgrades e as duas de configuração de lados.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    Upgrade,
+    Side,
+    Transporter,
+}
+
+impl Kind {
+    /// A ordem em que `initPinnedWindows` as abre (`GuiMekanismTile.addGenericTabs` põe a aba de upgrades, `GuiConfigurableTile`
+    /// as duas de configuração depois).
+    const ALL: [Kind; 3] = [Kind::Upgrade, Kind::Side, Kind::Transporter];
+
+    fn selection(self, spec: &UpgradeWindowSpec) -> SelectedWindow {
+        SelectedWindow::new(
+            match self {
+                Kind::Upgrade => spec.window_type,
+                Kind::Side => spec.window_types[SIDE_CONFIG_ORDINAL],
+                Kind::Transporter => spec.window_types[TRANSPORTER_CONFIG_ORDINAL],
+            },
+            0,
+        )
+    }
+}
+
+/// `WindowType.SIDE_CONFIG` e `TRANSPORTER_CONFIG`: o `ordinal` no enum, que é o índice na tabela do mod.
+const SIDE_CONFIG_ORDINAL: usize = 7;
+const TRANSPORTER_CONFIG_ORDINAL: usize = 8;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
-    Open,
-    Close,
+    Open(Kind),
+    Close(Kind),
     Remove { index: u16, all: bool },
+    /// O clique em um botão de uma janela de configuração: o pacote vai ao servidor.
+    Config(ConfigPacket),
 }
 
 struct Open {
+    kind: Kind,
     window: Window,
     list: ScrollList,
     /// O tipo escolhido na lista, por índice do registro.
     selected: Option<usize>,
     opened_ms: i64,
     selected_ms: i64,
+    /// A janela de lados: o `currentType`, por índice em `getTransmissions()`.
+    current: usize,
 }
 
 struct Client {
@@ -162,19 +241,20 @@ struct Client {
     /// Onde esse bloco fica: o espelho do menu dele mora ali.
     screen_pos: Option<[i32; 3]>,
     positions: Option<WindowPositions>,
-    window: Option<Open>,
+    /// As janelas abertas, a do topo primeiro (`GuiMekanism.windows`, uma `LRU`).
+    windows: Vec<Open>,
     pending: Vec<Action>,
     /// A seleção que o servidor já sabe, para só mandar a mudança.
-    sent_selected: bool,
+    sent_selection: Option<Option<SelectedWindow>>,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
     screen_block: None,
     screen_pos: None,
     positions: None,
-    window: None,
+    windows: Vec::new(),
     pending: Vec::new(),
-    sent_selected: false,
+    sent_selection: None,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -276,10 +356,6 @@ fn screen_of(view: &NativeScreenView<'_>, game: &Game<'_>) -> Option<Screen> {
     })
 }
 
-fn selection(spec: &UpgradeWindowSpec) -> SelectedWindow {
-    SelectedWindow::new(spec.window_type, 0)
-}
-
 fn mouse_of(view: &NativeScreenView<'_>) -> [f64; 2] {
     [f64::from(view.mouse[0]), f64::from(view.mouse[1])]
 }
@@ -309,21 +385,63 @@ fn send(game: &mut Game<'_>, body: Vec<u8>) {
     }
 }
 
-/// `GuiWindow.close`: tira a janela, grava onde ela estava e avisa o servidor.
-fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, tell_server: bool) {
+/// O índice da janela de `kind` na pilha (0 é o topo).
+fn index_of(state: &Client, kind: Kind) -> Option<usize> {
+    state.windows.iter().position(|open| open.kind == kind)
+}
+
+/// A janela de upgrades aberta, se há.
+fn upgrade_open(state: &Client) -> Option<&Open> {
+    state.windows.iter().find(|open| open.kind == Kind::Upgrade)
+}
+
+/// A seleção de janela que o servidor deve ter: a do topo da pilha (`onFocused` → `setSelectedWindow`), ou nenhuma
+/// (`lastWindowRemoved`).
+fn wanted_selection(state: &Client, spec: &UpgradeWindowSpec) -> Option<SelectedWindow> {
+    state.windows.first().map(|open| open.kind.selection(spec))
+}
+
+/// Manda ao servidor a seleção, quando muda. Roda depois das ações do quadro.
+fn sync_selection(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
+    let (wanted, known) = {
+        let state = client();
+        (wanted_selection(&state, spec), state.sent_selection)
+    };
+    if known != Some(wanted) {
+        let mut body = vec![OP_SELECT];
+        body.extend(window::encode_selection(wanted));
+        send(game, body);
+        client().sent_selection = Some(wanted);
+    }
+}
+
+/// `GuiWindow.close`: tira a janela, grava onde ela estava e, a de upgrades, avisa o servidor que parou de acompanhar os dados.
+fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind, tell_server: bool) {
     let pos = {
         let mut guard = client();
         let state = &mut *guard;
-        let Some(open) = state.window.take() else {
+        let Some(index) = index_of(state, kind) else {
             return;
         };
+        let open = state.windows.remove(index);
         let positions = state.positions.get_or_insert_with(|| load_positions(spec));
         if open.window.close(positions) {
             save_positions(spec, positions);
         }
-        state.sent_selected = false;
-        state.screen_pos
+        (state.screen_pos, kind != Kind::Upgrade && !state.windows.iter().any(|open| open.kind != Kind::Upgrade))
     };
+    let (pos, last_config) = pos;
+    if last_config {
+        if let Some(pos) = pos {
+            config_mirror(|table| table.remove(&pos));
+        }
+        if tell_server {
+            send(game, vec![OP_CONFIG_TRACK, 0]);
+        }
+    }
+    if kind != Kind::Upgrade {
+        return;
+    }
     // `stopTracking`: os dados da janela saem do menu, no cliente e (pelo pedido) no servidor.
     if let Some(pos) = pos {
         mirrors(|table| {
@@ -335,24 +453,17 @@ fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, tell_server: bool
     }
     if tell_server {
         send(game, vec![OP_STOP]);
-        let mut body = vec![OP_SELECT];
-        body.extend(window::encode_selection(None));
-        send(game, body);
     }
 }
 
 /// `GuiWindowCreatorTab.openWindow`.
-fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
+fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
     let Some(size) = gui_size(game) else {
         return;
     };
     let Some(rect) = game.mod_screen.as_ref().map(|screen| screen.screen.width) else {
         return;
     };
-    let types = spec_types(spec);
-    let layout = SupportedLayout::new(game.native_text_width(&lang::get("gui.mekanism.upgrades.supported")) as i32);
-    let rows = layout.needed_rows(types.len());
-    let height = uw::window_height(rows);
     let screen = {
         let origin = game_origin(game);
         Screen {
@@ -362,26 +473,44 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
             scaled_height: size[1],
         }
     };
+    let (default, dimensions) = match kind {
+        Kind::Upgrade => {
+            let types = spec_types(spec);
+            let layout = SupportedLayout::new(game.native_text_width(&lang::get("gui.mekanism.upgrades.supported")) as i32);
+            let rows = layout.needed_rows(types.len());
+            (uw::default_position(rect as i32), [uw::WINDOW_WIDTH, uw::window_height(rows)])
+        }
+        // `GuiSideConfigurationTab.createWindow`: `(getGuiWidth() - 156) / 2` na horizontal e 15 na vertical.
+        Kind::Side => ([(rect as i32 - cw::SIDE_SIZE[0]) / 2, 15], cw::SIDE_SIZE),
+        Kind::Transporter => ([(rect as i32 - cw::TRANSPORTER_SIZE[0]) / 2, 15], cw::TRANSPORTER_SIZE),
+    };
     let mut guard = client();
     let state = &mut *guard;
     let positions = state.positions.get_or_insert_with(|| load_positions(spec));
-    let window = Window::new(
-        selection(spec),
-        positions,
-        screen,
-        uw::default_position(rect as i32),
-        [uw::WINDOW_WIDTH, height],
-    );
+    let window = Window::new(kind.selection(spec), positions, screen, default, dimensions);
     let list = ScrollList::new(LIST[0], LIST[1], LIST[2], LIST[3]);
     let now = now_ms();
-    state.window = Some(Open {
-        window,
-        list,
-        selected: None,
-        opened_ms: now,
-        selected_ms: now,
-    });
+    // `GuiMekanism.addWindow`: a nova fica no topo.
+    state.windows.insert(
+        0,
+        Open {
+            kind,
+            window,
+            list,
+            selected: None,
+            opened_ms: now,
+            selected_ms: now,
+            current: 0,
+        },
+    );
+    let first_config = kind != Kind::Upgrade && state.windows.iter().filter(|open| open.kind != Kind::Upgrade).count() == 1;
     drop(guard);
+    if first_config {
+        send(game, vec![OP_CONFIG_TRACK, 1]);
+    }
+    if kind != Kind::Upgrade {
+        return;
+    }
     // `startTracking`: a janela acrescenta os dados dela ao menu, no cliente e (pelo pedido) no servidor, nas mesmas posições.
     if let Some(pos) = client().screen_pos {
         mirrors(|table| {
@@ -391,11 +520,8 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
             }
         });
     }
-    // O `PacketGuiInteract` do `startTracking`, e `onFocused` que escolhe a janela.
+    // O `PacketGuiInteract` do `startTracking`.
     send(game, vec![OP_TRACK]);
-    let mut body = vec![OP_SELECT];
-    body.extend(window::encode_selection(Some(selection(spec))));
-    send(game, body);
 }
 
 /// O canto da tela do jogo em pixels de GUI, como o último desenho o deixou.
@@ -414,26 +540,65 @@ fn spec_types(spec: &UpgradeWindowSpec) -> Vec<String> {
     (spec.data)().type_ids()
 }
 
+/// O que o servidor mandou da configuração e do ejetor, por bloco, enquanto uma janela de configuração está aberta.
+static CONFIG_MIRROR: Mutex<Option<HashMap<[i32; 3], Vec<u8>>>> = Mutex::new(None);
+
+fn config_mirror<R>(act: impl FnOnce(&mut HashMap<[i32; 3], Vec<u8>>) -> R) -> R {
+    let mut guard = CONFIG_MIRROR.lock().unwrap_or_else(|e| e.into_inner());
+    act(guard.get_or_insert_with(HashMap::new))
+}
+
+/// A configuração de lados e o ejetor do bloco da tela aberta, quando o bloco os tem: o que o tile guarda, e por cima o que o servidor
+/// mandou por último.
+fn config_view(game: &Game<'_>, spec: &UpgradeWindowSpec) -> Option<ConfigView> {
+    let owner = config_owner(spec.block)?;
+    let pos = game.mb_open_screen_pos()?;
+    let mut view = (owner.view)(game, pos)?;
+    if let Some(bytes) = config_mirror(|table| table.get(&pos).cloned()) {
+        let ConfigView { config, ejector, .. } = &mut view;
+        cw::apply_snapshot(&bytes, config, ejector);
+    }
+    Some(view)
+}
+
+/// Se o bloco tem as abas de configuração de lados e de transporte (`ISideConfiguration`).
+fn has_config(spec: &UpgradeWindowSpec) -> bool {
+    config_owner(spec.block).is_some()
+}
+
+/// O suporte da aba que abre a janela `kind` (`GuiSideConfigurationTab` em (-26, 6), `GuiTransporterConfigTab` em (-26, 34), 26 por 26).
+fn left_tab(kind: Kind) -> Option<InsetTab> {
+    let y = match kind {
+        Kind::Side => 6,
+        Kind::Transporter => 34,
+        Kind::Upgrade => return None,
+    };
+    Some(InsetTab { x: -26, y, height: 26, left: true })
+}
+
 /// O hook `frame`: cuida do que a entrada pediu, põe os slots virtuais onde a janela está e esconde-os quando ela fecha.
 pub(in crate::game) fn frame(game: &mut Game<'_>) {
     let Some(spec) = open_spec(game) else {
         // A tela fechou: `GuiMekanism.removed` fecha as janelas e grava a posição, sem precisar avisar o servidor, que larga o menu.
         let had_window = {
             let state = client();
-            state.window.is_some() || state.screen_block.is_some()
+            !state.windows.is_empty() || state.screen_block.is_some()
         };
         if had_window {
             let block = client().screen_block.clone();
             if let Some(spec) = block.and_then(|block| spec_of(&block)) {
-                close_window(game, spec, false);
+                for kind in Kind::ALL {
+                    close_window(game, spec, kind, false);
+                }
             }
             let mut guard = client();
             guard.screen_block = None;
             guard.pending.clear();
-            guard.sent_selected = false;
+            guard.sent_selection = None;
             // `MekanismContainer.removed`: o menu some com a tela.
             if let Some(pos) = guard.screen_pos.take() {
                 mirrors(|table| table.remove(&pos));
+                config_mirror(|table| table.remove(&pos));
             }
         }
         return;
@@ -451,29 +616,37 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             }
             state.screen_block = Some(spec.block.to_owned());
             state.screen_pos = at;
-            state.window = None;
+            state.windows.clear();
             state.pending.clear();
+            // Um menu novo começa sem janela escolhida no servidor.
+            state.sent_selection = Some(None);
             let positions = state.positions.get_or_insert_with(|| load_positions(spec));
-            if positions.was_pinned(selection(spec)) {
-                state.pending.push(Action::Open);
+            for kind in Kind::ALL {
+                if (kind == Kind::Upgrade || has_config(spec)) && positions.was_pinned(kind.selection(spec)) {
+                    state.pending.push(Action::Open(kind));
+                }
             }
         }
     }
     let actions: Vec<Action> = std::mem::take(&mut client().pending);
     for action in actions {
         match action {
-            Action::Open => {
-                let closed = client().window.is_none();
+            Action::Open(kind) => {
+                let closed = index_of(&client(), kind).is_none();
                 if closed {
-                    open_window(game, spec);
+                    open_window(game, spec, kind);
                 }
             }
-            Action::Close => close_window(game, spec, true),
+            Action::Close(kind) => close_window(game, spec, kind, true),
             Action::Remove { index, all } => {
                 send(game, [&[OP_REMOVE][..], &uw::encode_remove(index, all)].concat());
             }
+            Action::Config(packet) => {
+                send(game, [&[OP_CONFIG][..], &packet.encode()].concat());
+            }
         }
     }
+    sync_selection(game, spec);
     place_virtual_slots(game, spec);
 }
 
@@ -481,7 +654,7 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
 fn place_virtual_slots(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
     let wanted: [Option<[f32; 2]>; 2] = {
         let state = client();
-        match &state.window {
+        match upgrade_open(&state) {
             Some(open) => [0, 1].map(|n| {
                 Some([
                     (open.window.relative_x + SLOT_ITEMS[n][0]) as f32,
@@ -508,19 +681,38 @@ fn place_virtual_slots(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // Entrada.
 
-/// `screen_key_pressed_pre`: Esc fecha a janela que não está fixa e consome a tecla; fixa, a tecla segue e a tela fecha.
+/// `screen_key_pressed_pre`: Esc fecha a janela que não está fixa e consome a tecla; fixa, a tecla segue para a de baixo
+/// (`GuiMekanism.keyPressed` oferece a tecla às janelas, da do topo para baixo) e, sem nenhuma, a tela fecha.
 pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bool) {
     if open_spec(game).is_none() || key != "key.keyboard.escape" {
         return;
     }
     let mut guard = client();
     let state = &mut *guard;
-    if let Some(open) = &state.window
-        && open.window.escape()
-    {
-        state.pending.push(Action::Close);
+    if let Some(open) = state.windows.iter().find(|open| open.window.escape()) {
+        let kind = open.kind;
+        state.pending.push(Action::Close(kind));
         *canceled = true;
     }
+}
+
+/// O botão de dentro de uma aba da janela `kind` que o mouse (relativo ao canto da tela) acerta, com a janela fechada.
+fn tab_hit(state: &Client, spec: &UpgradeWindowSpec, rel: [f64; 2]) -> Option<Kind> {
+    let hit = |button: [f32; 4]| in_rect([button[0] as i32, button[1] as i32, button[2] as i32, button[3] as i32], rel);
+    if index_of(state, Kind::Upgrade).is_none() && hit(shifted(TAB_BUTTON, 0.0, 0.0)) {
+        return Some(Kind::Upgrade);
+    }
+    if has_config(spec) {
+        for kind in [Kind::Side, Kind::Transporter] {
+            if index_of(state, kind).is_none()
+                && let Some(tab) = left_tab(kind)
+                && hit(tab.button())
+            {
+                return Some(kind);
+            }
+        }
+    }
+    None
 }
 
 /// `screen_mouse_button_pressed_pre`: a aba abre a janela, e na janela o clique é dela. Fora, a tela o recebe.
@@ -539,22 +731,39 @@ pub(in crate::game) fn mouse_pressed(
     };
     let mouse = mouse_of(view);
     let sync = read_sync(game);
+    let config = if client().windows.iter().any(|open| open.kind != Kind::Upgrade) {
+        config_view(game, spec)
+    } else {
+        None
+    };
     let mut guard = client();
     let state = &mut *guard;
-    let Some(open) = state.window.as_mut() else {
+    let shift = modifiers & 1 != 0;
+    // `GuiMekanism.mouseClicked`: as janelas, da do topo para baixo; a primeira que trata o clique vai para o topo.
+    let mut hit = None;
+    for index in 0..state.windows.len() {
+        if let Click::Inside { .. } = state.windows[index].window.press(screen, mouse) {
+            hit = Some(index);
+            break;
+        }
+    }
+    let Some(index) = hit else {
         // `GuiInsetElement.isMouseOver`: só com a aba ativa e sobre o botão de dentro, e só o botão esquerdo.
         let rel = [mouse[0] - f64::from(screen.left), mouse[1] - f64::from(screen.top)];
-        if button == 0 && in_rect(TAB_BUTTON, rel) {
-            state.pending.push(Action::Open);
+        if button == 0
+            && let Some(kind) = tab_hit(state, spec, rel)
+        {
+            state.pending.push(Action::Open(kind));
             *canceled = true;
         }
         return;
     };
-    match open.window.press(screen, mouse) {
-        Click::Outside => {}
-        Click::Inside { .. } => {
-            let rel = relative(open, screen, mouse);
-            let shift = modifiers & 1 != 0;
+    let rel = relative(&state.windows[index], screen, mouse);
+    let left_or_right = button == 0 || button == 1;
+    let kind = state.windows[index].kind;
+    match kind {
+        Kind::Upgrade => {
+            let open = &mut state.windows[index];
             // Os filhos, do último ao primeiro: os slots virtuais ficam com o clique do jogo (`slotClicked`).
             let on_slot = SLOT_ITEMS
                 .iter()
@@ -563,7 +772,6 @@ pub(in crate::game) fn mouse_pressed(
                 return;
             }
             *canceled = true;
-            let left_or_right = button == 0 || button == 1;
             if left_or_right && open.selected.is_some() && in_rect(UNINSTALL, rel) {
                 if let Some(index) = open.selected.and_then(|n| u16::try_from(n).ok()) {
                     state.pending.push(Action::Remove { index, all: shift });
@@ -571,7 +779,7 @@ pub(in crate::game) fn mouse_pressed(
             } else if left_or_right && in_rect(PIN, rel) {
                 open.window.toggle_pinned();
             } else if left_or_right && in_rect(CLOSE, rel) {
-                state.pending.push(Action::Close);
+                state.pending.push(Action::Close(Kind::Upgrade));
             } else if button == 0 {
                 let installed = sync.installed();
                 if open.list.press_thumb(rel, installed.len()) {
@@ -585,7 +793,109 @@ pub(in crate::game) fn mouse_pressed(
                 }
             }
         }
+        Kind::Side | Kind::Transporter => {
+            *canceled = true;
+            let mut actions = Vec::new();
+            press_config(&mut state.windows[index], rel, button, shift, config.as_ref(), &mut actions);
+            state.pending.extend(actions);
+        }
     }
+    // O clique tratado traz a janela para o topo (`windows.moveUp`), a menos que ela tenha pedido para fechar.
+    if index != 0 && !state.pending.contains(&Action::Close(kind)) {
+        let open = state.windows.remove(index);
+        state.windows.insert(0, open);
+    }
+}
+
+/// O clique `button` (0 esquerdo, 1 direito) em `rel`, na janela de lados ou de transporte, com o que ele manda ao servidor.
+fn press_config(
+    open: &mut Open,
+    rel: [f64; 2],
+    button: i32,
+    shift: bool,
+    view: Option<&ConfigView>,
+    out: &mut Vec<Action>,
+) {
+    let left_or_right = button == 0 || button == 1;
+    if !left_or_right {
+        return;
+    }
+    if in_rect(PIN, rel) {
+        open.window.toggle_pinned();
+        return;
+    }
+    if in_rect(CLOSE, rel) {
+        out.push(Action::Close(open.kind));
+        return;
+    }
+    let Some(view) = view else {
+        return;
+    };
+    let click = if button == 1 { cw::ClickType::Right } else { cw::ClickType::left(shift) };
+    match open.kind {
+        Kind::Side => {
+            let transmissions = view.config.transmissions();
+            let Some(current) = transmissions.get(open.current).copied() else {
+                return;
+            };
+            let info = view.config.config(current);
+            // Os botões de lado, depois o de limpar, o de ejetar, e as abas dos tipos.
+            for side in RelativeSide::VALUES {
+                let [x, y] = cw::side_button(side);
+                let enabled = info.is_some_and(|info| info.is_side_enabled(side));
+                if enabled && in_rect([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE], rel) {
+                    out.push(Action::Config(ConfigPacket::SideData { click, side, transmission: current }));
+                    return;
+                }
+            }
+            if in_rect(cw::CLEAR_BUTTON, rel) {
+                let forward = button == 0;
+                let target = cw::target_type(info, shift, forward);
+                // Com shift o pacote vale para todos os tipos.
+                let transmission = if shift { None } else { Some(current) };
+                out.push(Action::Config(ConfigPacket::Batch { transmission, target }));
+                return;
+            }
+            if info.is_some_and(|info| info.can_eject()) && in_rect(cw::EJECT_BUTTON, rel) {
+                out.push(Action::Config(ConfigPacket::Eject { transmission: current }));
+                return;
+            }
+            if button == 0 {
+                for index in 0..transmissions.len() {
+                    if index != open.current && in_rect(inset_rect(index, open), rel) {
+                        open.current = index;
+                        return;
+                    }
+                }
+            }
+        }
+        Kind::Transporter => {
+            if in_rect(cw::STRICT_BUTTON, rel) {
+                out.push(Action::Config(ConfigPacket::StrictInput));
+                return;
+            }
+            if in_rect(cw::OUTPUT_COLOR_BUTTON, rel) {
+                let click = if button == 1 { cw::ClickType::Right } else { cw::ClickType::left(shift) };
+                out.push(Action::Config(ConfigPacket::EjectColor { click }));
+                return;
+            }
+            for side in RelativeSide::VALUES {
+                let [x, y] = cw::transporter_button(side);
+                let enabled = TileComponentEjector::is_input_side_enabled(&view.config, side);
+                if enabled && in_rect([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE], rel) {
+                    out.push(Action::Config(ConfigPacket::InputColor { click, side }));
+                    return;
+                }
+            }
+        }
+        Kind::Upgrade => {}
+    }
+}
+
+/// O botão de dentro da aba do tipo `index` da janela de lados, relativo à janela.
+fn inset_rect(index: usize, open: &Open) -> [i32; 4] {
+    let tab = cw::type_tab(index, open.window.width);
+    cw::inset_button([tab[0], tab[1]], index < 4)
 }
 
 /// `screen_mouse_button_released_pre`: solta o arrasto da janela e o da barra.
@@ -594,7 +904,7 @@ pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
         return;
     }
     let mut state = client();
-    if let Some(open) = state.window.as_mut() {
+    for open in state.windows.iter_mut() {
         let was_dragging = open.window.dragging() || open.list.dragging();
         open.window.release();
         open.list.release();
@@ -614,17 +924,16 @@ pub(in crate::game) fn mouse_dragged(game: &Game<'_>, view: &NativeScreenView<'_
     };
     let mouse = mouse_of(view);
     let mut state = client();
-    let Some(open) = state.window.as_mut() else {
-        return;
-    };
-    if open.window.dragging() {
-        open.window.drag_to(screen, mouse);
-        *canceled = true;
-    }
-    if open.list.dragging() {
-        let rel = relative(open, screen, mouse);
-        open.list.drag_to(rel[1]);
-        *canceled = true;
+    for open in state.windows.iter_mut() {
+        if open.window.dragging() {
+            open.window.drag_to(screen, mouse);
+            *canceled = true;
+        }
+        if open.list.dragging() {
+            let rel = relative(open, screen, mouse);
+            open.list.drag_to(rel[1]);
+            *canceled = true;
+        }
     }
 }
 
@@ -635,18 +944,22 @@ pub(in crate::game) fn mouse_scrolled(
     scroll: [f64; 2],
     canceled: &mut bool,
 ) {
-    let Some(spec) = open_spec(game) else {
+    if open_spec(game).is_none() {
         return;
-    };
+    }
     let Some(screen) = screen_of(view, game) else {
         return;
     };
     let mouse = mouse_of(view);
     let total = read_sync(game).installed().len();
     let mut state = client();
-    let Some(open) = state.window.as_mut() else {
+    // `GuiMekanism.mouseScrolled` só oferece a roda à janela do topo.
+    let Some(open) = state.windows.first_mut() else {
         return;
     };
+    if open.kind != Kind::Upgrade {
+        return;
+    }
     let rel = relative(open, screen, mouse);
     if open.window.mouse_over(screen, mouse)
         && open.list.contains(rel)
@@ -687,29 +1000,30 @@ pub(in crate::game) fn slot_at(game: &Game<'_>, found: Option<usize>, x: f32, y:
         return found;
     };
     let state = client();
-    let Some(open) = state.window.as_ref() else {
+    if state.windows.is_empty() {
         return found;
-    };
+    }
     let Some(renderer) = game.renderer.as_ref() else {
         return None;
     };
     let batch = HudBatch::new([renderer.config.width, renderer.config.height]);
     let (ox, oy) = game.inventory_origin(&batch);
     let rel = [x - ox, y - oy];
-    for (id, item) in virtual_ids(spec).into_iter().zip(SLOT_ITEMS) {
-        let frame = [
-            (open.window.relative_x + item[0] - 1) as f32,
-            (open.window.relative_y + item[1] - 1) as f32,
-        ];
-        if rel[0] >= frame[0] && rel[0] < frame[0] + 18.0 && rel[1] >= frame[1] && rel[1] < frame[1] + 18.0 {
-            return Some(id);
+    if let Some(open) = upgrade_open(&state) {
+        for (id, item) in virtual_ids(spec).into_iter().zip(SLOT_ITEMS) {
+            let frame = [
+                (open.window.relative_x + item[0] - 1) as f32,
+                (open.window.relative_y + item[1] - 1) as f32,
+            ];
+            if rel[0] >= frame[0] && rel[0] < frame[0] + 18.0 && rel[1] >= frame[1] && rel[1] < frame[1] + 18.0 {
+                return Some(id);
+            }
         }
     }
-    let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
-    let inside = rel[0] >= wx
-        && rel[0] < wx + open.window.width as f32
-        && rel[1] >= wy
-        && rel[1] < wy + open.window.height as f32;
+    let inside = state.windows.iter().any(|open| {
+        let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
+        rel[0] >= wx && rel[0] < wx + open.window.width as f32 && rel[1] >= wy && rel[1] < wy + open.window.height as f32
+    });
     if inside { None } else { found }
 }
 
@@ -719,7 +1033,7 @@ pub(in crate::game) fn draw_slots(game: &mut Game<'_>, batch: &mut HudBatch, ox:
     let Some(spec) = open_spec(game) else {
         return false;
     };
-    if client().window.is_none() {
+    if client().windows.is_empty() {
         return false;
     }
     let virtual_ids = virtual_ids(spec);
@@ -740,17 +1054,17 @@ pub(in crate::game) fn draw_slots(game: &mut Game<'_>, batch: &mut HudBatch, ox:
         let stack = game.slot_view(i);
         game.draw_slot_item(batch, drag.as_ref(), i, &stack, ox + sx, oy + sy);
     }
-    draw_window(game, spec, batch, ox, oy, &virtual_ids);
+    draw_windows(game, spec, batch, ox, oy, &virtual_ids);
     true
 }
 
 /// `GuiMekanism.findElementOver` para o que a lib desenha: a janela de upgrades aberta, ou o botão da aba dela quando não há janela
 /// (`GuiWindow` é ativo, e a aba fica inativa com a janela aberta). O ponto `at` é relativo ao canto da tela.
 pub(in crate::game) fn over_element(game: &Game<'_>, at: [f32; 2]) -> bool {
-    if open_spec(game).is_none() {
+    let Some(spec) = open_spec(game) else {
         return false;
-    }
-    covers(at) || (client().window.is_none() && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])))
+    };
+    covers(at) || tab_hit(&client(), spec, [f64::from(at[0]), f64::from(at[1])]).is_some()
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -878,7 +1192,9 @@ fn type_label(id: &str) -> String {
     uw::translate(&lang::get("gui.mekanism.upgrade"), &[type_name(id)])
 }
 
-fn draw_window(
+/// As janelas abertas, da de baixo para a do topo (`getWindowsDescendingIterator`); a que não está no topo leva o `blur` por cima
+/// (`GuiWindow.renderBlur`: o sprite `blur` com 30% de opacidade).
+fn draw_windows(
     game: &mut Game<'_>,
     spec: &UpgradeWindowSpec,
     batch: &mut HudBatch,
@@ -891,10 +1207,42 @@ fn draw_window(
     let game = &*game;
     // `slot_at` passa pelo filtro desta mesma janela, que toma a trava do estado: pergunta antes de segurá-la.
     let hovered_slot = game.slot_at(batch, game.cursor.0, game.cursor.1);
+    let config = config_view(game, spec);
     let state = client();
-    let Some(open) = state.window.as_ref() else {
-        return;
-    };
+    for (index, open) in state.windows.iter().enumerate().rev() {
+        match open.kind {
+            Kind::Upgrade => draw_upgrade_window(game, spec, batch, open, ox, oy, virtual_ids, hovered_slot, drag),
+            Kind::Side | Kind::Transporter => {
+                draw_config_window(game, spec, batch, &state, open, config.as_ref(), ox, oy);
+            }
+        }
+        if index != 0 {
+            let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
+            nine(
+                game,
+                batch,
+                spec,
+                "blur",
+                uw::BLUR_SLICE,
+                [wx, wy, open.window.width as f32, open.window.height as f32],
+                BLUR_TINT,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_upgrade_window(
+    game: &Game<'_>,
+    spec: &UpgradeWindowSpec,
+    batch: &mut HudBatch,
+    open: &Open,
+    ox: f32,
+    oy: f32,
+    virtual_ids: &[usize; 2],
+    hovered_slot: Option<usize>,
+    drag: Option<&crate::game::DragView>,
+) {
     let data = (spec.data)();
     let order = data.type_ids();
     let types = upgrade::current_types();
@@ -1112,32 +1460,388 @@ fn draw_screen_text(
     }
 }
 
-/// A aba na lateral direita, a cada quadro, na ordem de `GuiSideHolder` e `GuiInsetElement`: o fundo do botão, a aba tingida por
-/// cima dele, o fundo outra vez e o ícone. `origin` é o canto da tela.
+// ---------------------------------------------------------------------------------------------------------------------------
+// As janelas de configuração de lados e de transporte (`GuiSideConfiguration`, `GuiTransporterConfig`).
+
+/// `SpecialColors.TAB_*_CONFIG`: o tom do suporte da aba de cada tipo de transmissão.
+fn transmission_tint(kind: TransmissionType) -> u32 {
+    match kind {
+        TransmissionType::Energy => 0xFF_59_C1_5F,
+        TransmissionType::Fluid => 0xFF_36_6B_D0,
+        TransmissionType::Chemical => 0xFF_FF_DD_4F,
+        TransmissionType::Item => 0xFF_CF_CF_CF,
+        TransmissionType::Heat => 0xFF_FF_A1_60,
+    }
+}
+
+/// O nome do sprite e da chave de tradução de um tipo (`TransmissionType.transmission`).
+fn transmission_name(kind: TransmissionType) -> &'static str {
+    match kind {
+        TransmissionType::Energy => "energy",
+        TransmissionType::Fluid => "fluids",
+        TransmissionType::Chemical => "chemicals",
+        TransmissionType::Item => "items",
+        TransmissionType::Heat => "heat",
+    }
+}
+
+fn transmission_label(kind: TransmissionType) -> String {
+    lang::get(&format!("transmission.mekanism.{}", transmission_name(kind)))
+}
+
+fn side_label(side: RelativeSide) -> String {
+    lang::get(&format!("side.mekanism.{}", side.serialized_name()))
+}
+
+fn data_type_label(data_type: DataType) -> String {
+    lang::get(&format!("side_data.mekanism.{}", data_type.serialized_name()))
+}
+
+fn on_off(value: bool) -> String {
+    lang::get(if value { "boolean.mekanism.on" } else { "boolean.mekanism.off" })
+}
+
+/// O bloco vizinho do lado `side` da máquina em `pos`, como item (`SideDataButton.otherBlockItem`: `getCloneItemStack` do estado vizinho).
+/// Ar não tem.
+fn neighbour_item(game: &Game<'_>, view: &ConfigView, side: RelativeSide) -> Option<ItemStack> {
+    let pos = game.mb_open_screen_pos()?;
+    let offset = side.direction(view.facing).offset();
+    let at = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+    let block = game.native_block(at);
+    if block.is_empty() || block.ends_with("air") {
+        return None;
+    }
+    Some(ItemStack::new(&block, 1))
+}
+
+/// O nome do item para o tooltip (`ItemStack.getHoverName`).
+fn item_name(stack: &ItemStack) -> String {
+    let (ns, path) = stack.item.split_once(':').unwrap_or(("minecraft", &stack.item));
+    let key = format!("block.{ns}.{path}");
+    let name = lang::get(&key);
+    if name == key { lang::get(&format!("item.{ns}.{path}")) } else { name }
+}
+
+/// `GuiElement.drawButton` com o tom do botão (`getButtonBlitColor`).
+fn button_tinted(game: &Game<'_>, batch: &mut HudBatch, spec: &UpgradeWindowSpec, rect: [f32; 4], active: bool, hovered: bool, tint: u32) {
+    let name = if !active {
+        "button_inactive"
+    } else if hovered {
+        "button_focus"
+    } else {
+        "button"
+    };
+    nine(game, batch, spec, name, uw::BUTTON_SLICE, rect, tint);
+}
+
+/// A janela de lados ou de transporte, com o que `GuiWindow` e os filhos desenham: a sombra e o painel, o fechar e o fixar, os botões, e
+/// por último os textos.
+#[allow(clippy::too_many_arguments)]
+fn draw_config_window(
+    game: &Game<'_>,
+    spec: &UpgradeWindowSpec,
+    batch: &mut HudBatch,
+    state: &Client,
+    open: &Open,
+    view: Option<&ConfigView>,
+    ox: f32,
+    oy: f32,
+) {
+    let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
+    let (w, h) = (open.window.width as f32, open.window.height as f32);
+    let cursor = game.native_cursor();
+    let mouse = (cursor[0], cursor[1]);
+    // `isMouseOverCheckWindows`: um filho só reage com o mouse se esta é a janela de cima sob ele.
+    let under = state.windows.iter().position(|other| {
+        let rel = [mouse.0 - ox - other.window.relative_x as f32, mouse.1 - oy - other.window.relative_y as f32];
+        rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < other.window.width as f32 && rel[1] < other.window.height as f32
+    });
+    let own = state.windows.iter().position(|other| std::ptr::eq(other, open));
+    let hover_ok = under.is_some() && under == own;
+    let hov = |rect: [f32; 4]| hover_ok && hovering(rect, mouse);
+    let at = |rect: [i32; 4]| shifted(rect, wx, wy);
+
+    nine(game, batch, spec, "shadow", uw::SHADOW_SLICE, [wx - 3.0, wy - 3.0, w + 6.0, h + 6.0], SHADOW_TINT);
+    nine(game, batch, spec, "base", spec.base_slice, [wx, wy, w, h], WHITE);
+    let close = at(CLOSE);
+    button_background(game, batch, spec, close, true, hov(close));
+    plain(game, batch, spec, "button/close", [12.0, 12.0], close);
+    let pin = at(PIN);
+    button_background(game, batch, spec, pin, true, hov(pin));
+    plain(game, batch, spec, if open.window.pinned { "button/pinned" } else { "button/unpinned" }, [24.0, 12.0], pin);
+
+    let mut title = String::new();
+    let mut texts: Vec<([f32; 4], bool, u32, String)> = Vec::new();
+    if let Some(view) = view {
+        match open.kind {
+            Kind::Side => {
+                let transmissions = view.config.transmissions();
+                let current = transmissions.get(open.current).copied().unwrap_or(TransmissionType::Item);
+                let info = view.config.config(current);
+                title = uw::translate(&lang::get("configuration.mekanism.config_type"), &[transmission_label(current)]);
+                // A tela interna do ejetor.
+                nine(game, batch, spec, "inner_screen", uw::INNER_SCREEN_SLICE, at(cw::SIDE_INNER_SCREEN), WHITE);
+                let can_eject = info.is_some_and(|info| info.can_eject());
+                let line = if can_eject {
+                    uw::translate(&lang::get("gui.mekanism.eject"), &[on_off(info.is_some_and(|info| info.is_ejecting()))])
+                } else {
+                    lang::get("configuration.mekanism.no_eject")
+                };
+                let [ix, iy, iw, _] = cw::SIDE_INNER_SCREEN;
+                texts.push((
+                    [wx + (ix + 5) as f32, wy + (iy + 1) as f32, wx + (ix + iw - 5) as f32, wy + (iy + 11) as f32],
+                    false,
+                    SCREEN_COLOR,
+                    line,
+                ));
+                // As abas dos tipos (a do tipo atual fica escondida).
+                for (index, kind) in transmissions.iter().enumerate() {
+                    if index == open.current {
+                        continue;
+                    }
+                    let tab = cw::type_tab(index, open.window.width);
+                    let holder = InsetTab { x: tab[0], y: tab[1], height: cw::TAB_SIZE, left: index < 4 };
+                    let button = shifted(
+                        [holder.button()[0] as i32, holder.button()[1] as i32, cw::TAB_INNER, cw::TAB_INNER],
+                        wx,
+                        wy,
+                    );
+                    let icon = sprite(spec, &format!("transmission/{}", transmission_name(*kind)));
+                    basis::inset_tab(
+                        game,
+                        batch,
+                        spec.ns,
+                        holder,
+                        [wx, wy],
+                        transmission_tint(*kind),
+                        &icon,
+                        machinery_basis_core::side_tab::ButtonLook::of(true, hov(button)),
+                    );
+                }
+                // O botão de ejetar e o de limpar.
+                let eject = at(cw::EJECT_BUTTON);
+                button_background(game, batch, spec, eject, can_eject, can_eject && hov(eject));
+                plain(game, batch, spec, "button/auto_eject", [14.0, 14.0], eject);
+                let clear = at(cw::CLEAR_BUTTON);
+                button_background(game, batch, spec, clear, true, hov(clear));
+                plain(game, batch, spec, "button/clear_sides", [14.0, 14.0], clear);
+                // Os botões de lado.
+                for side in RelativeSide::VALUES {
+                    let [x, y] = cw::side_button(side);
+                    let data_type = info.map(|info| info.data_type(side));
+                    let enabled = info.is_some_and(|info| info.is_side_enabled(side));
+                    let tint = data_type.map_or(WHITE, |kind| cw::button_tint(cw::ENUM_COLOR_RGB[usize::from(kind.color())]));
+                    side_button(game, batch, spec, view, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
+                }
+                texts.push(([wx + 4.0, wy + 120.0, wx + w - 4.0, wy + 129.0], true, SUBHEADING_COLOR, lang::get("configuration.mekanism.slots")));
+            }
+            Kind::Transporter => {
+                title = lang::get("configuration.mekanism.transporter");
+                nine(game, batch, spec, "inner_screen", uw::INNER_SCREEN_SLICE, at(cw::TRANSPORTER_INNER_SCREEN), WHITE);
+                let [ix, iy, iw, _] = cw::TRANSPORTER_INNER_SCREEN;
+                texts.push((
+                    [wx + (ix + 5) as f32, wy + (iy + 1) as f32, wx + (ix + iw - 5) as f32, wy + (iy + 11) as f32],
+                    false,
+                    SCREEN_COLOR,
+                    uw::translate(&lang::get("configuration.mekanism.strict_input.enabled"), &[on_off(view.ejector.has_strict_input())]),
+                ));
+                // O slot da cor de saída, e o botão de cor dentro dele.
+                plain(game, batch, spec, "slot/normal", [18.0, 18.0], at(cw::OUTPUT_SLOT));
+                if let Some(color) = view.ejector.output_color() {
+                    game.native_fill(batch, at(cw::OUTPUT_COLOR_BUTTON), cw::color_argb(color));
+                }
+                let strict = at(cw::STRICT_BUTTON);
+                button_background(game, batch, spec, strict, true, hov(strict));
+                plain(game, batch, spec, "button/exclamation", [14.0, 14.0], strict);
+                for side in RelativeSide::VALUES {
+                    let [x, y] = cw::transporter_button(side);
+                    let enabled = TileComponentEjector::is_input_side_enabled(&view.config, side);
+                    let tint = view
+                        .ejector
+                        .input_color(side)
+                        .map_or(WHITE, |color| cw::button_tint(cw::ENUM_COLOR_RGB[usize::from(color)]));
+                    side_button(game, batch, spec, view, side, at([x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE]), enabled, hov, tint);
+                }
+                texts.push(([wx + 18.0, wy + 105.0, wx + 18.0 + 68.0, wy + 114.0], true, SUBHEADING_COLOR, lang::get("boolean.mekanism.input")));
+                texts.push((
+                    [wx + 90.0, wy + 68.0, wx + 86.0 + 70.0 - 4.0, wy + 77.0],
+                    true,
+                    SUBHEADING_COLOR,
+                    lang::get("boolean.mekanism.output"),
+                ));
+            }
+            Kind::Upgrade => {}
+        }
+    }
+    // O primeiro plano: o título e os rótulos.
+    scrolling_text(game, batch, &title, [wx + 34.0, wy + 5.0, wx + w - 18.0 - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
+    for (area, center, color, text) in texts {
+        let scale = if color == SCREEN_COLOR { 0.8 } else { 1.0 };
+        scrolling_text(game, batch, &text, area, center, color, scale, open.opened_ms);
+    }
+}
+
+/// `SideDataButton`: o botão de 22 por 22 com o tom da cor e, por cima, o item do bloco vizinho.
+#[allow(clippy::too_many_arguments)]
+fn side_button(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    spec: &UpgradeWindowSpec,
+    view: &ConfigView,
+    side: RelativeSide,
+    rect: [f32; 4],
+    active: bool,
+    hov: impl Fn([f32; 4]) -> bool,
+    tint: u32,
+) {
+    button_tinted(game, batch, spec, rect, active, active && hov(rect), tint);
+    if let Some(stack) = neighbour_item(game, view, side) {
+        game.native_item_stack(batch, &stack, [rect[0] + 3.0, rect[1] + 3.0], 16.0);
+    }
+}
+
+/// O tooltip do botão sob o mouse `rel` (relativo à janela) de uma janela de lados ou de transporte: as linhas, o retângulo do botão
+/// relativo à janela, e se o texto é de `Tooltip.create` (sem título).
+#[allow(clippy::type_complexity)]
+fn config_tooltip(
+    game: &Game<'_>,
+    open: &Open,
+    view: Option<&ConfigView>,
+    rel: [f64; 2],
+) -> Option<(Vec<(String, Option<u32>)>, [i32; 4], bool)> {
+    let one = |text: String, rect: [i32; 4]| Some((vec![(text, None)], rect, true));
+    if in_rect(CLOSE, rel) {
+        return one(lang::get("gui.mekanism.close"), CLOSE);
+    }
+    if in_rect(PIN, rel) {
+        return one(lang::get(if open.window.pinned { "gui.mekanism.unpin" } else { "gui.mekanism.pin" }), PIN);
+    }
+    let view = view?;
+    let wrap = |text: &str| -> Vec<(String, Option<u32>)> {
+        uw::wrap_lines(text, TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)).into_iter().map(|line| (line, None)).collect()
+    };
+    let side_lines = |side: RelativeSide, second: String, color: Option<u32>| {
+        let mut lines = vec![(side_label(side), None), (second, color)];
+        if let Some(stack) = neighbour_item(game, view, side) {
+            lines.push((item_name(&stack), None));
+        }
+        lines
+    };
+    match open.kind {
+        Kind::Side => {
+            let transmissions = view.config.transmissions();
+            let current = transmissions.get(open.current).copied()?;
+            let info = view.config.config(current)?;
+            for side in RelativeSide::VALUES {
+                let [x, y] = cw::side_button(side);
+                let rect = [x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE];
+                if in_rect(rect, rel) && info.is_side_enabled(side) {
+                    let kind = info.data_type(side);
+                    let rgb = cw::ENUM_COLOR_RGB[usize::from(kind.color())];
+                    return Some((side_lines(side, data_type_label(kind), Some(rgb)), rect, true));
+                }
+            }
+            if in_rect(cw::CLEAR_BUTTON, rel) {
+                // `TooltipToggleButton`: com o alvo `NONE` (ou shift) o texto de limpar, senão o de avançar.
+                let clearing = cw::target_type(Some(info), game.has_shift_down(), true) == DataType::None;
+                let mut lines = Vec::new();
+                if clearing {
+                    lines.extend(wrap(&lang::get("configuration.mekanism.side.clear")));
+                    lines.extend(wrap(&lang::get("configuration.mekanism.side.clear.all")));
+                } else {
+                    lines.extend(wrap(&lang::get("configuration.mekanism.side.increment")));
+                }
+                return Some((lines, cw::CLEAR_BUTTON, true));
+            }
+            if in_rect(cw::EJECT_BUTTON, rel) && info.can_eject() {
+                return one(lang::get("auto.mekanism.eject"), cw::EJECT_BUTTON);
+            }
+            if in_rect(cw::SIDE_INNER_SCREEN, rel) && !info.can_eject() {
+                return Some((wrap(&lang::get("configuration.mekanism.no_eject.tooltip")), cw::SIDE_INNER_SCREEN, true));
+            }
+            for (index, kind) in transmissions.iter().enumerate() {
+                let rect = inset_rect(index, open);
+                if index != open.current && in_rect(rect, rel) {
+                    return one(transmission_label(*kind), rect);
+                }
+            }
+            None
+        }
+        Kind::Transporter => {
+            for side in RelativeSide::VALUES {
+                let [x, y] = cw::transporter_button(side);
+                let rect = [x, y, cw::SIDE_BUTTON_SIZE, cw::SIDE_BUTTON_SIZE];
+                if in_rect(rect, rel) && TileComponentEjector::is_input_side_enabled(&view.config, side) {
+                    let (name, rgb) = match view.ejector.input_color(side) {
+                        Some(color) => (lang::get(&cw::color_key(color)), Some(cw::ENUM_COLOR_RGB[usize::from(color)])),
+                        None => (lang::get("gui.mekanism.none"), None),
+                    };
+                    return Some((side_lines(side, name, rgb), rect, true));
+                }
+            }
+            if in_rect(cw::OUTPUT_COLOR_BUTTON, rel) {
+                return Some((
+                    vec![match view.ejector.output_color() {
+                        Some(color) => (lang::get(&cw::color_key(color)), Some(cw::ENUM_COLOR_RGB[usize::from(color)])),
+                        None => (lang::get("gui.mekanism.none"), None),
+                    }],
+                    cw::OUTPUT_COLOR_BUTTON,
+                    true,
+                ));
+            }
+            if in_rect(cw::STRICT_BUTTON, rel) {
+                return one(lang::get("configuration.mekanism.strict_input"), cw::STRICT_BUTTON);
+            }
+            None
+        }
+        Kind::Upgrade => None,
+    }
+}
+
+/// As abas de cada quadro, na ordem de `GuiMekanism.init`: a de upgrades na lateral direita (fundo do botão, a aba tingida por cima dele, o
+/// fundo outra vez e o ícone), e as duas de configuração na esquerda. `origin` é o canto da tela.
 pub(in crate::game) fn draw_tab(game: &Game<'_>, batch: &mut HudBatch, block: &str, origin: [f32; 2]) {
     let Some(spec) = spec_of(block) else {
         return;
     };
-    let active = client().window.is_none();
-    let button = shifted(TAB_BUTTON, origin[0], origin[1]);
+    let state = client();
     let cursor = game.native_cursor();
-    let hovered = active && hovering(button, (cursor[0], cursor[1]));
+    let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
+    let active = index_of(&state, Kind::Upgrade).is_none();
+    let button = shifted(TAB_BUTTON, origin[0], origin[1]);
+    let hovered = active && !covered(&state, at) && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1]));
     button_background(game, batch, spec, button, active, hovered);
     nine(game, batch, spec, "holder_right", uw::HOLDER_SLICE, shifted(TAB, origin[0], origin[1]), WHITE);
     button_background(game, batch, spec, button, active, hovered);
     plain(game, batch, spec, "button/upgrade", [18.0, 18.0], button);
+    if !has_config(spec) {
+        return;
+    }
+    for kind in [Kind::Side, Kind::Transporter] {
+        let Some(tab) = left_tab(kind) else {
+            continue;
+        };
+        let active = index_of(&state, kind).is_none();
+        let hovered = active && !covered(&state, at) && hovering(tab.button(), (at[0], at[1]));
+        let icon = sprite(spec, if kind == Kind::Side { "button/configuration" } else { "button/transporter_config" });
+        basis::inset_tab(game, batch, spec.ns, tab, origin, WHITE, &icon, machinery_basis_core::side_tab::ButtonLook::of(active, hovered));
+    }
 }
 
-/// `GuiElement.isMouseOverCheckWindows`: o ponto `at` (relativo ao canto da tela) está sobre a janela aberta, e então o elemento de baixo
-/// não o recebe.
-pub(in crate::game) fn covers(at: [f32; 2]) -> bool {
-    client().window.as_ref().is_some_and(|open| {
+/// `GuiElement.isMouseOverCheckWindows`: o ponto `at` (relativo ao canto da tela) está sobre alguma janela aberta, e então o elemento de
+/// baixo não o recebe.
+fn covered(state: &Client, at: [f32; 2]) -> bool {
+    state.windows.iter().any(|open| {
         let rel = [at[0] - open.window.relative_x as f32, at[1] - open.window.relative_y as f32];
         rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < open.window.width as f32 && rel[1] < open.window.height as f32
     })
 }
 
-/// Os tooltips da aba e da janela, no mesmo estilo do `WidgetTooltipHolder`. `at` é o mouse relativo ao canto da tela.
+pub(in crate::game) fn covers(at: [f32; 2]) -> bool {
+    covered(&client(), at)
+}
+
+/// Os tooltips das abas e das janelas, no mesmo estilo do `WidgetTooltipHolder`. `at` é o mouse relativo ao canto da tela.
 pub(in crate::game) fn tooltip(
     game: &Game<'_>,
     batch: &mut HudBatch,
@@ -1148,26 +1852,50 @@ pub(in crate::game) fn tooltip(
     let Some(spec) = spec_of(block) else {
         return false;
     };
+    let config = config_view(game, spec);
     let state = client();
     let origin = [cursor.0 - at[0], cursor.1 - at[1]];
     let mut lines: Vec<(String, Option<u32>)> = Vec::new();
     let mut flat = false;
     let rect: [f32; 4];
-    match &state.window {
+    // `GuiMekanism.getWindowHovering`: a primeira janela, do topo para baixo, que está sob o mouse.
+    let hovered_window = state.windows.iter().find(|open| {
+        let rel = [at[0] - open.window.relative_x as f32, at[1] - open.window.relative_y as f32];
+        rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < open.window.width as f32 && rel[1] < open.window.height as f32
+    });
+    match hovered_window {
         None => {
-            if !hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])) {
+            if index_of(&state, Kind::Upgrade).is_none() && hovering(shifted(TAB_BUTTON, 0.0, 0.0), (at[0], at[1])) {
+                lines.push((lang::get("gui.mekanism.upgrades"), None));
+                rect = shifted(TAB_BUTTON, origin[0], origin[1]);
+            } else if let Some((kind, tab)) = [Kind::Side, Kind::Transporter]
+                .into_iter()
+                .filter(|kind| has_config(spec) && index_of(&state, *kind).is_none())
+                .filter_map(|kind| left_tab(kind).map(|tab| (kind, tab)))
+                .find(|(_, tab)| hovering(tab.button(), (at[0], at[1])))
+            {
+                let key = if kind == Kind::Side { "configuration.mekanism.side" } else { "configuration.mekanism.transporter" };
+                lines.push((lang::get(key), None));
+                let [bx, by, bw, bh] = tab.button();
+                rect = [origin[0] + bx, origin[1] + by, bw, bh];
+            } else {
                 return false;
             }
-            lines.push((lang::get("gui.mekanism.upgrades"), None));
-            rect = shifted(TAB_BUTTON, origin[0], origin[1]);
+        }
+        Some(open) if open.kind != Kind::Upgrade => {
+            let rel = [f64::from(at[0] - open.window.relative_x as f32), f64::from(at[1] - open.window.relative_y as f32)];
+            let Some((text, area, is_flat)) = config_tooltip(game, open, config.as_ref(), rel) else {
+                return false;
+            };
+            lines = text;
+            flat = is_flat;
+            let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
+            rect = [origin[0] + wx + area[0] as f32, origin[1] + wy + area[1] as f32, area[2] as f32, area[3] as f32];
         }
         Some(open) => {
             let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
             let rel = [at[0] - wx, at[1] - wy];
             let rel_i = [f64::from(rel[0]), f64::from(rel[1])];
-            if rel[0] < 0.0 || rel[1] < 0.0 || rel[0] >= open.window.width as f32 || rel[1] >= open.window.height as f32 {
-                return false;
-            }
             let win = |r: [i32; 4]| shifted(r, origin[0] + wx, origin[1] + wy);
             let order = spec_types(spec);
             let sync = read_sync(game);
@@ -1348,6 +2076,7 @@ pub(in crate::game) fn container_open(game: &mut Game<'_>, player: u128, pos: [i
 /// block entities), e a cada passada com o servidor parado, porque o jogador continua andando nele.
 pub(in crate::game) fn broadcast(game: &mut Game<'_>) {
     adopt_open_menus(game);
+    send_config_snapshots(game);
     let containers = sessions().as_ref().map(ContainerSessions::containers).unwrap_or_default();
     if containers.is_empty() {
         return;
@@ -1449,7 +2178,7 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
             };
             sessions().get_or_insert_with(Default::default).select(pos, player, selected);
             // O menu do convidado esconde os slots virtuais sem janela, e recomeça do bloco no clique seguinte.
-            let shown = selected == Some(selection(spec));
+            let shown = selected == Some(Kind::Upgrade.selection(spec));
             if let Some(host) = game.lan.as_mut()
                 && let Some(conn) = host.hub.guests.iter().find(|g| g.uuid == player).map(|g| g.conn)
             {
@@ -1485,6 +2214,20 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
                 table.stop_tracking(pos, player, &UPGRADE_WINDOW_KEY);
             }
         }
+        OP_CONFIG_TRACK => {
+            let mut table = config_tracking();
+            if body.first() == Some(&1) {
+                table.insert((player, pos), Vec::new());
+            } else {
+                table.remove(&(player, pos));
+            }
+        }
+        OP_CONFIG => {
+            // Os pacotes de configuração de lados e de transporte (`PacketSideData` e companhia).
+            if let (Some(packet), Some(owner)) = (ConfigPacket::decode(body), config_owner(&block)) {
+                (owner.apply)(game, pos, packet);
+            }
+        }
         OP_REMOVE => {
             let Some((index, all)) = uw::decode_remove(body) else {
                 return;
@@ -1497,6 +2240,65 @@ fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
             }
         }
         _ => {}
+    }
+}
+
+/// Quem tem uma janela de configuração aberta (jogador e bloco) e o último estado que o servidor mandou a ele.
+static CONFIG_TRACKING: Mutex<Option<HashMap<(u128, [i32; 3]), Vec<u8>>>> = Mutex::new(None);
+
+struct ConfigTracking(std::sync::MutexGuard<'static, Option<HashMap<(u128, [i32; 3]), Vec<u8>>>>);
+
+impl std::ops::Deref for ConfigTracking {
+    type Target = HashMap<(u128, [i32; 3]), Vec<u8>>;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("a tabela nasce em config_tracking")
+    }
+}
+
+impl std::ops::DerefMut for ConfigTracking {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("a tabela nasce em config_tracking")
+    }
+}
+
+fn config_tracking() -> ConfigTracking {
+    let mut guard = CONFIG_TRACKING.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get_or_insert_with(HashMap::new);
+    ConfigTracking(guard)
+}
+
+/// A cada passada do servidor, a quem tem a janela aberta vai o estado da configuração e do ejetor, quando mudou (o `broadcastChanges`
+/// dos dados do menu e o pacote de atualização do tile, no original).
+fn send_config_snapshots(game: &mut Game<'_>) {
+    let tracked: Vec<(u128, [i32; 3])> = config_tracking().keys().copied().collect();
+    for (player, pos) in tracked {
+        if open_container(game, player) != Some(pos) {
+            config_tracking().remove(&(player, pos));
+            continue;
+        }
+        let block = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+            Some(BlockEntity::Mod(entity)) => entity.id.clone(),
+            _ => continue,
+        };
+        let Some(owner) = config_owner(&block) else {
+            continue;
+        };
+        let Some(bytes) = (owner.snapshot)(game, pos) else {
+            continue;
+        };
+        let known = config_tracking().get(&(player, pos)).cloned();
+        if known.as_ref() == Some(&bytes) {
+            continue;
+        }
+        let mut body = Vec::with_capacity(12 + bytes.len());
+        for axis in pos {
+            body.extend(axis.to_be_bytes());
+        }
+        body.extend(&bytes);
+        if let Err(error) = game.native_net_send_to_player(player, CONFIG_CHANNEL, &body) {
+            eprintln!("machinery_basis: a configuração não chegou a {player:032x}: {error}");
+        }
+        config_tracking().insert((player, pos), bytes);
     }
 }
 
@@ -1536,6 +2338,13 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
     }
     match channel {
         CONTAINER_CHANNEL => container_from_server(data),
+        CONFIG_CHANNEL => {
+            if data.len() > 12 {
+                let axis = |n: usize| i32::from_be_bytes([data[n * 4], data[n * 4 + 1], data[n * 4 + 2], data[n * 4 + 3]]);
+                let pos = [axis(0), axis(1), axis(2)];
+                config_mirror(|table| table.insert(pos, data[12..].to_vec()));
+            }
+        }
         RESOURCES_CHANNEL => match resource::decode_sync(data) {
             Some(registry) => resource::set_source(SYNC_SOURCE, registry),
             None => eprintln!("machinery_basis: o servidor mandou recursos ilegíveis"),
@@ -1558,6 +2367,11 @@ impl Game<'_> {
     /// O mod registra a janela de um bloco.
     pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn, source: SourceFn) {
         register(spec, remove, add, source);
+    }
+
+    /// O mod diz que o bloco tem as abas de configuração de lados e de transporte.
+    pub(in crate::game) fn mb_config_register(block: &'static str, view: ViewFn, apply: ApplyFn, snapshot: SnapshotFn) {
+        register_config(block, view, apply, snapshot);
     }
 
     /// `ItemUpgrade.useOn`.

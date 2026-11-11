@@ -18,7 +18,8 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::gui;
 use machinery_basis_core::menu_source;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
-use machinery_basis_core::side_config::TransmissionType;
+use machinery_basis_core::ejector::TileComponentEjector;
+use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
 use machinery_basis_core::sides::{Face, Sides};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::resource;
@@ -263,6 +264,8 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
         // de a tela dele abrir: o jogo pergunta por este hook ao criar o tile, antes de qualquer uso do item.
         if let Some(spec) = window_spec(block) {
             Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+            // As abas de configuração de lados e de transporte (`GuiConfigurableTile`): as quatro máquinas são `ISideConfiguration`.
+            Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
         }
     }
     if (is_machine(block) || is_cable(block)) && entity.is_none() {
@@ -2326,6 +2329,82 @@ pub(in crate::game) fn write_configuration_data(game: &Game<'_>, pos: [i32; 3]) 
     }
     basis::side_nbt_into(&mut out, &basis::SideNbt { config: data.config, ejector: data.ejector });
     Some(out)
+}
+
+/// O que as janelas de configuração leem do bloco em `pos`: a configuração e o ejetor que o NBT do tile guarda (`component_config` e
+/// `component_ejector`), montados como a máquina os monta, e a frente de agora.
+fn config_view(game: &Game<'_>, pos: [i32; 3]) -> Option<machinery_basis_core::config_window::ConfigView> {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    let spec = side_spec(&entity.id)?.spec;
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    let mut ejector = TileComponentEjector::new();
+    ejector.set_output_data(&config, &spec.eject);
+    let facing = basis::front(game, pos);
+    let nbt = basis::read_side_nbt(entity);
+    if let Some(data) = &nbt.config {
+        config.deserialize(data, facing, false);
+    }
+    if let Some(data) = &nbt.ejector {
+        ejector.deserialize(data);
+    }
+    Some(machinery_basis_core::config_window::ConfigView { config, ejector, facing })
+}
+
+/// O estado vivo da configuração e do ejetor da máquina em `pos`, que o servidor manda a quem tem a janela de configuração aberta (o objeto
+/// vivo, ou, sem ele, o que o NBT guarda).
+fn config_snapshot(game: &mut Game<'_>, pos: [i32; 3]) -> Option<Vec<u8>> {
+    let key = (game.native_dimension(), pos);
+    let live = LIVE_MACHINES.with_borrow(|machines| {
+        machines
+            .get(&key)
+            .map(|live| machinery_basis_core::config_window::encode_snapshot(live.machine.side_config(), live.machine.ejector()))
+    });
+    if live.is_some() {
+        return live;
+    }
+    let view = config_view(game, pos)?;
+    Some(machinery_basis_core::config_window::encode_snapshot(&view.config, &view.ejector))
+}
+
+/// O `handle` dos pacotes de configuração (`PacketSideData` e companhia) no servidor: aplica ao objeto vivo da máquina (ou, sem ele, à
+/// configuração montada do NBT) e grava o resultado no NBT na hora, como `sideChanged` e `markForSave`.
+fn config_apply(game: &mut Game<'_>, pos: [i32; 3], packet: machinery_basis_core::config_window::ConfigPacket) {
+    let key = (game.native_dimension(), pos);
+    let facing = basis::front(game, pos);
+    let live = LIVE_MACHINES.with_borrow_mut(|machines| {
+        let live = machines.get_mut(&key)?;
+        live.machine.set_facing(facing);
+        let machine = &mut live.machine;
+        let (config, ejector) = machine.side_parts_mut();
+        packet.apply(config, ejector, facing);
+        machine.take_side_changes();
+        Some(basis::SideNbt::of(machine.side_config().serialize(), machine.ejector().serialize()))
+    });
+    let now = match live {
+        Some(now) => now,
+        None => {
+            let Some(mut view) = config_view(game, pos) else {
+                return;
+            };
+            packet.apply(&mut view.config, &mut view.ejector, facing);
+            view.config.take_changes();
+            basis::SideNbt::of(view.config.serialize(), view.ejector.serialize())
+        }
+    };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    basis::write_side_nbt(entity, &now);
+    let seen = basis::read_side_nbt(entity);
+    LIVE_MACHINES.with_borrow_mut(|machines| {
+        if let Some(live) = machines.get_mut(&key) {
+            live.side_nbt = seen;
+        }
+    });
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
 }
 
 fn put_compound(compound: &mut Compound, key: &str, tag: Tag) {

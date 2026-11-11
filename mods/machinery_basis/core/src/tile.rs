@@ -1066,6 +1066,11 @@ impl ProgressMachine {
         &mut self.config
     }
 
+    /// A configuração e o ejetor juntos, para os pacotes da tela de lados que mexem nos dois.
+    pub fn side_parts_mut(&mut self) -> (&mut TileComponentConfig, &mut TileComponentEjector) {
+        (&mut self.config, &mut self.ejector)
+    }
+
     /// `ejectorComponent`.
     pub fn ejector(&self) -> &TileComponentEjector {
         &self.ejector

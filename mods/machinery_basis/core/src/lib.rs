@@ -7,6 +7,7 @@ pub mod cached_recipe;
 pub mod chemical;
 pub mod client_config;
 pub mod components;
+pub mod config_window;
 pub mod components_ingredient;
 pub mod composter;
 pub mod container_sync;

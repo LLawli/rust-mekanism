@@ -1,0 +1,6 @@
+1|Crusher aberto: a aba de lados e a de transporte ficam a esquerda
+2|A janela de lados: o alto esta em INPUT e o hopper enche a entrada (pedras: 15)
+3|Shift-clique no alto: NONE. O hopper nao entrega mais (pedras: 17)
+4|4 s depois o hopper segue parado: nada entra pelo lado desligado (pedras: 17)
+5|Clique esquerdo no alto: volta a INPUT e o hopper enche de novo (pedras: 30)
+6|O botao de ejetar liga o Eject: on do tipo Items
