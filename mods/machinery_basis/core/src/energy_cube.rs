@@ -1203,7 +1203,14 @@ mod tests {
     #[test]
     fn the_core_alpha_floors_like_as_8bit_channel_and_the_pose_follows_the_original() {
         // Valores do Java (`Mth.floor(r * 255.0F)`, `Math.sin(Math.toRadians(3 * t)) / 7`), rodados com o JDK 21.
-        for (ratio, alpha) in [(0.001f32, 0), (0.5, 127), (0.333_333_3, 84), (0.7, 178), (0.999, 254), (1.0, 255)] {
+        for (ratio, alpha) in [
+            (0.001f32, 0),
+            (0.5, 127),
+            (0.333_333_3, 84),
+            (0.7, 178),
+            (0.999, 254),
+            (1.0, 255),
+        ] {
             assert_eq!(core_alpha(ratio), alpha, "{ratio}");
         }
         for (time, bob, yaw, tilt) in [
@@ -1214,7 +1221,11 @@ mod tests {
             (100_000.75, 0.120_818_260_243_417_32, 400_003.0, 400_039.0),
         ] {
             let pose = core_pose(time);
-            assert!((f64::from(pose.bob) - bob).abs() < 1.0e-6, "{time}: {}", pose.bob);
+            assert!(
+                (f64::from(pose.bob) - bob).abs() < 1.0e-6,
+                "{time}: {}",
+                pose.bob
+            );
             assert_eq!((pose.yaw, pose.tilt), (yaw, tilt), "{time}");
         }
     }

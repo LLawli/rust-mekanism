@@ -821,13 +821,13 @@ bindings = [
 # energia guardada, é uma camada a mais no item resolvido. RETURN de `resolve_item_in_hand`, que a barra, a mão, o chão e o quadro chamam a cada quadro. Alvo cru, H99.
 [[injection]]
 id = "energy_cube_item_core"
-target = "horizon_client::game::Game<'_>::resolve_item_in_hand"
+target = "horizon_client::game::item_draw::Game<'_>::resolve_item_in_hand"
 kind = "RETURN"
 helper = "energy_cube_item_core.rs"
 bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
-  { name = "state", ty = "crate::item_render::ItemRenderState", value = "$value" },
+  { name = "state", ty = "ItemRenderState", value = "$value" },
 ]
 
 # O cliente só tem a block entity do cubo (e então a desenha) se o servidor mandar uma cópia. O que o desenho precisa (a escala e os lados) vai por um canal próprio da `machinery_basis`.
