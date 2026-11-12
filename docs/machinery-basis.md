@@ -77,30 +77,19 @@ da máquina relê o NBT e aplica o que mudou de fora (um comando, o cartão de c
 `write_configuration_data`/`set_configuration_data` é o `writeConfigurationData`/`setConfigurationData` do `TileEntityConfigurableMachine`,
 que o Configurator e o cartão de configuração vão usar.
 
-As capabilities por face seguem a instância. Itens: o `ModContainer` de uma máquina com lados coloridos é da instância (H2). A lib calcula, da
-configuração de lados (`TileComponentConfig::item_face`, o `ConfigHolder`) e da frente de agora, o que cada face alcança e deixa fazer
-(`item_instance::InstanceItems`: os slots, `can_input` e `can_output`), e o mod registra em `register_item_instances` quem responde pelos blocos dele
-(as faces, calculadas do NBT do tile, e a regra de saída do slot, `isValidForExtraction` de quem está de fora). Três injeções (`container_instance`,
-`container_take` e `container_accepts`) fazem o Horizon perguntar a ela: o hopper, o dropper, o `native_insert_item` e o ejetor de outra máquina agem pelas faces
-de cada instância, e a regra acompanha a rotação. Antes a máquina declarava `inputs` e `outputs` vazios e imitava o hopper no tick dela (`tick_hoppers`, abaixo), que
-ainda serve a quem não tem `ConfigHolder` de item. Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
+As capabilities por face seguem a instância. Itens: o `ModContainer` de um bloco de mod com faces próprias é da instância (H2). A lib calcula, da
+configuração de lados (`TileComponentConfig::item_face`, o `ConfigHolder`) ou dos lados fixos do bloco e da frente de agora, o que cada face alcança e deixa fazer
+(`item_instance::InstanceItems`: os slots, `can_input` e `can_output`), e o mod registra em `register_item_instances` quem responde pelos blocos dele: as faces
+(calculadas do NBT do tile), a regra de saída do slot (`isValidForExtraction` de quem está de fora) e a de entrada (`isValidForInsertion`). Três injeções
+(`container_instance`, `container_take` e `container_accepts`, todas da lib) fazem o Horizon perguntar a ela: o hopper, o dropper, o `native_insert_item` e o ejetor de
+outra máquina agem pelas faces de cada instância, e a regra acompanha a rotação. É assim nas quatro máquinas configuráveis, no cubo de energia (`SlotRules`: os slots de
+carga e de descarga lendo a energia que o tile guarda) e no Heat Generator (lados fixos, e os slots de combustível e de energia). Não existe uma máquina que imite o
+hopper no tick dela: o Horizon move os itens, no ritmo do próprio hopper (1 item a cada 8 ticks). Quem tem um item com handler de energia (`Capabilities.ENERGY` do item) o
+registra em `register_item_energy`, e o slot de energia de outro bloco o consulta (`item_energy_spec_of`). Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
 `energy_capacity` (H1) responde pela instância, com a capacidade e as faces que entram e saem (`ConfigHolder.canInsert/canExtract` do
 `DataType` do lado).
 
-A tabela é a regra de `tick_hoppers`, que o cubo de energia e o Heat Generator ainda usam; as máquinas configuráveis seguem a mesma regra pelo hopper do Horizon (H2).
-
-| Situação | O que a máquina faz |
-|---|---|
-| Hopper logo abaixo, com a face de baixo num `DataType` que sai | Entrega um item, mesmo com o ejetor desligado, porque um hopper puxa do bloco acima |
-| Hopper em outra face | Não entrega: hopper só puxa de cima |
-| Hopper apontando para a máquina, com aquela face num `DataType` que entra | Recebe um item, como se ele entregasse |
-| Hopper apontando para outro lugar | Ignora |
-| Hopper travado por redstone (`enabled=false`) | Ignora |
-
-O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O ejetor é outra coisa: entrega ativa a qualquer
-inventário que aceite entrada, pelos lados de saída, hopper incluído, como um dropper atirando num hopper, a cada 11 ticks (o `tickDelay` de 10 conta, e o disparo é o seguinte).
-
-Limites: as máquinas com lados coloridos (as quatro configuráveis do Mekanism) não passam mais por esse tick: o `ModContainer` delas é da instância (H2, `register_item_instances`, ver `docs/injecoes-horizon.md`), e o hopper, o dropper e o ejetor de outra máquina do Horizon agem pelas faces de cada uma, no ritmo do próprio hopper. O que ainda usa `tick_hoppers` (o cubo de energia e o Heat Generator) segue com os limites de antes: o dropper e o ejetor de outra máquina não os enxergam, e fluido ou químico vindos de fora seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra.
+Limites: fluido ou químico vindos de fora seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra.
 
 ### Fluido dentro do bloco
 
@@ -431,7 +420,7 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 | Lib real com consumidor separado, em mundo | Energia, hoppers, ejetor, tanque e recursos funcionam; 85 itens entraram e 85 chegaram aos baús |
 | Tanque depois de fechar e reabrir | Preservado, com 100 de hidrogênio |
 | Arquivo de recurso sem cor | Recusado com a mensagem certa, sem afetar os outros |
-| Regra de hoppers em mundo, com a máquina sem interface vanilla | Entrega ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados |
+| Regra de hoppers em mundo, com a máquina sem interface vanilla (a emulação do spike, retirada em 2026-11-12) | Entregava ao hopper de baixo a 1 item por 8,13 ticks; hoppers de lado, com a face bloqueada, apontando para outro lugar ou travados não foram tocados. Hoje o hopper é o do Horizon, pelo contêiner da instância |
 | Máquina de progresso em mundo, com o Metallurgic Infuser (código anterior, já substituído pela base nova) | Progresso sobe 1 por tick; sem energia ou com a saída ocupada espera; sem entrada zera; 3 operações gastam 30 mB; progresso, tanque e receita sobrevivem a reabrir o mundo |
 | Máquina só de itens em mundo, com receitas de tipo próprio e de fornalha (código anterior, já substituído pela base nova) | Enrichment Chamber, Crusher e Energized Smelter usavam a mesma `run_machine`, sem tanque |
 | Rede de energia em mundo | Um gerador alimenta três máquinas; a divisão escassa fica igual; cortar pausa, religar volta em menos de um segundo |
@@ -441,5 +430,5 @@ como o caso do Ars Nouveau, é o teste de que a lib continua genérica.
 
 Lido, não executado: redes, `native_force_chunk` e `native_container_accepts`.
 
-Os ritmos têm teste puro no `core`, sem o jogo: hopper a exatos 8 ticks, ejetor a exatos 11, e o ejetor comparado tick a
-tick com o laço do `TileComponentEjector` por 1.000 ticks.
+Os ritmos têm teste puro no `core`, sem o jogo: o ejetor a exatos 11 ticks, comparado tick a tick com o laço do `TileComponentEjector` por 1.000 ticks. O do hopper é o do
+Horizon, medido em jogo contra um baú (`dev/referencia/horizon2/h2_cubo_gerador.py ritmo`).

@@ -6,6 +6,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 
+- O cubo de energia (os cinco tiers) e o Heat Generator expõem o contêiner de itens por instância e por face, como as quatro máquinas (decisão 94, H2): o hopper, o dropper, o dispenser e o ejetor de outra máquina agem pelas faces do cubo (a configuração de lados, com a regra dos slots de carga e de descarga, que olha a energia guardada e a do item) e do gerador (combustível em todas as faces menos a direita, energia só na direita, `COOKING_FUEL` ou balde de lava na entrada, e só sai o que não é combustível nem balde de lava). O Heat Generator aceita no slot de energia os itens com handler de energia (o Energy Tablet, o equipamento e os cubos), como o `EnergyInventorySlot.drain`. O hook `container_accepts` passou do `mekanism` para a `machinery_basis` e a contagem de injeções segue em 165. Rastro novo do Java (`dropper_energy_cube_basic`, `dropper_energy_cube_creative` e `dropper_heat_generator`: 180 fases de dropper e de dispenser e 72 de saída por bloco) repetido por `dropper_cube_trace.rs` e pelo `dropper_trace.rs` do Generators.
+
 - As quatro máquinas configuráveis (Enrichment Chamber, Crusher, Energized Smelter e Metallurgic Infuser) expõem o contêiner de itens por instância e por face (opção B da decisão 45, H2): o hopper, o dropper e o ejetor de outra máquina agem pelas faces que a configuração de lados dá, e o item que a face ou o slot recusa fica com quem o deu (o dropper o guarda, nada cai no chão), como no original; o dispenser segue só soltando o item. Três injeções cruas (`container_instance` e `container_take` da `machinery_basis`, `container_accepts` do `mekanism`) no lugar da emulação no tick da máquina, que saiu: o ritmo é o do hopper do Horizon, 1 item por 8 ticks. Conferido sem o jogo contra o original (as 810 configurações de capability, as fases de hopper, as sondas dos slots, e as 120 fases de dropper e as 120 de dispenser que o Java gravou em `dropper_*.jsonl`); em jogo, 16 casos iguais e o ritmo medido. O cubo de energia e o Heat Generator seguem pela emulação (decisão 94).
 
 - A água e a lava dentro de um bloco com `fluid_logged` são fluido de verdade, como no original (decisão 21, H3): o mesher as desenha no vão, o fluxo para fora é o do original tick a tick (oito blocos, 71 de 80 conferências; o alarme industrial, que o original derruba, é a diferença), o jogador no vão cai a -0,005 na água e a -0,02 na lava e perde vida, e o balde de água ou de lava enche o bloco (sem agachar) e o esvazia, como `BucketItem.use` (decisão 89; o cabo 24 de 27 casos iguais). Duas injeções cruas novas, `logged_fluid_begin` e `logged_fluid_view`, e o módulo `logged-fluid-view`; o hook `block_entity_submit` da `machinery_basis` e o cubo de lava da block entity saem. O mob e o item solto no vão ainda não sentem o fluido (decisão 88, H3). Testado contra o rastro do Java (`FluidoNoBlocoTraceTest`) e em jogo (`h2_fluido_no_bloco.py`).
@@ -328,6 +330,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   do 26.x, e não o desenho de retângulos do Horizon.
 - O realce da frente do slot sob o cursor, nas telas do Mekanism e do Generators, usa o sprite de trás, como o original
   (`VirtualSlotContainerScreen.extractSlotHighlightFront` chama o `Back`). Uma injeção em `draw_slot_highlight`.
+
+### Removed
+
+- A emulação do hopper (`tick_hoppers`, `eject_items`, `machinery_basis_core::hopper` e `Sides::of_slots`): o Horizon move os itens pelo contêiner da instância, no ritmo do próprio hopper.
 
 ### Fixed
 
