@@ -236,6 +236,115 @@ impl<K: OpenKey, V> OpenHashMap<K, V> {
     pub fn clear(&mut self) {
         *self = Self::new();
     }
+
+    /// `clear()` do fastutil: esvazia a tabela sem encolhê-la (`n` fica), então quem limpa e volta a inserir parte do tamanho que a
+    /// tabela já tinha. [`Self::clear`] recomeça do tamanho inicial, que é o de um objeto novo.
+    pub fn clear_keeping_table(&mut self) {
+        if self.size == 0 {
+            return;
+        }
+        self.size = 0;
+        self.null_value = None;
+        self.keys.iter_mut().for_each(|key| *key = None);
+        self.values.iter_mut().for_each(|value| *value = None);
+    }
+
+    /// `tryCapacity(capacity)`, que o `putAll` e o `addAll` chamam com `size() + outro.size()` (o fator de carga 0,75 é maior que 0,5):
+    /// cresce a tabela para `nextPowerOfTwo(ceil(capacity / 0.75f))` se esse tamanho for maior que o atual, e nunca encolhe.
+    pub fn try_capacity(&mut self, capacity: usize) {
+        let needed = ((capacity as f32 / LOAD_FACTOR).ceil() as usize)
+            .max(2)
+            .next_power_of_two();
+        if needed > self.n() {
+            self.rehash(needed);
+        }
+    }
+
+    /// `putAll`: reserva espaço para `size() + entries.len()` e põe cada entrada, na ordem dada (a do iterador do outro mapa).
+    pub fn put_all(&mut self, entries: impl IntoIterator<Item = (K, V)>) {
+        let entries: Vec<(K, V)> = entries.into_iter().collect();
+        self.try_capacity(self.len() + entries.len());
+        for (key, value) in entries {
+            self.insert(key, value);
+        }
+    }
+
+    /// As entradas na ordem do iterador do fastutil (a de [`Self::keys_in_order`]).
+    pub fn entries_in_order(&self) -> Vec<(K, &V)> {
+        let mut entries = Vec::with_capacity(self.size);
+        if let (Some(key), Some(value)) = (K::NULL_KEY, self.null_value.as_ref()) {
+            entries.push((key, value));
+        }
+        for (key, value) in self.keys.iter().zip(&self.values).rev() {
+            if let (Some(key), Some(value)) = (key, value) {
+                entries.push((*key, value));
+            }
+        }
+        entries
+    }
+}
+
+/// `HashCommon.DEFAULT_LOAD_FACTOR`.
+const LOAD_FACTOR: f32 = 0.75;
+
+/// O `ObjectOpenHashSet` e o `LongOpenHashSet`: o mesmo algoritmo do mapa, sem valores.
+#[derive(Debug, Clone)]
+pub struct OpenHashSet<K: OpenKey> {
+    map: OpenHashMap<K, ()>,
+}
+
+impl<K: OpenKey> Default for OpenHashSet<K> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K: OpenKey> OpenHashSet<K> {
+    pub fn new() -> Self {
+        Self {
+            map: OpenHashMap::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn contains(&self, key: K) -> bool {
+        self.map.contains_key(key)
+    }
+
+    /// `add`: `true` se a chave é nova.
+    pub fn insert(&mut self, key: K) -> bool {
+        self.map.insert(key, ()).is_none()
+    }
+
+    /// `remove`: `true` se a chave estava.
+    pub fn remove(&mut self, key: K) -> bool {
+        self.map.remove(key).is_some()
+    }
+
+    /// `addAll(Collection)`: reserva `size() + c.size()` antes de pôr as chaves, na ordem em que a coleção as devolve.
+    pub fn add_all(&mut self, keys: &[K]) {
+        self.map.try_capacity(self.map.len() + keys.len());
+        for key in keys {
+            self.insert(*key);
+        }
+    }
+
+    /// `clear()`: a tabela não encolhe.
+    pub fn clear(&mut self) {
+        self.map.clear_keeping_table();
+    }
+
+    /// As chaves na ordem do iterador.
+    pub fn in_order(&self) -> Vec<K> {
+        self.map.keys_in_order()
+    }
 }
 
 #[cfg(test)]

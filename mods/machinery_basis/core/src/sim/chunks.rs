@@ -157,6 +157,21 @@ impl BlockPos {
         ChunkPos::new(self.x >> 4, self.z >> 4)
     }
 
+    /// `BlockPos.asLong`: 26 bits de x, 26 de z e 12 de y (`PACKED_HORIZONTAL_LENGTH` 26, `PACKED_Y_LENGTH` 12, `BlockPos.java:47-55`). É a chave
+    /// dos mapas de `long` do Mekanism (`positionedTransmitters`, `newOrphanTransmitters`) e a ordem das árvores deles, com sinal.
+    pub fn as_long(self) -> i64 {
+        const HORIZONTAL_MASK: i64 = (1 << 26) - 1;
+        const Y_MASK: i64 = (1 << 12) - 1;
+        ((i64::from(self.x) & HORIZONTAL_MASK) << 38)
+            | (i64::from(self.y) & Y_MASK)
+            | ((i64::from(self.z) & HORIZONTAL_MASK) << 12)
+    }
+
+    /// `ChunkPos.pack(BlockPos)`: a chave do chunk que contém o bloco.
+    pub fn chunk_key(self) -> i64 {
+        self.chunk().pack()
+    }
+
     /// `BlockPos.relative(direction)`.
     pub fn relative(self, face: Face) -> Self {
         let [x, y, z] = face.offset();
