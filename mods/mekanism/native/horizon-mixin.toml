@@ -912,3 +912,21 @@ helper = "bucket_target.rs"
 bindings = [
   { name = "value", ty = "[i32; 3]", value = "$value" },
 ]
+
+# A categoria de som do bloco de nota: `NoteBlock.triggerEvent` toca em `SoundSource.RECORDS` (`NoteBlock.java:162`) e `settings::sound_source`, que o Horizon usa para dar a categoria de cada evento
+# pelo nome, põe os `block.note_block.*` em `block` (a função tem itens aninhados e o horizon-mixins a recusa). O HEAD cancelável de `Audio::play_seeded` toca esses eventos com o `source_override`
+# em `record` (o mesmo que o `/playsound` usa) e cancela a chamada de fora (decisão 92). Alvo cru.
+[[injection]]
+id = "note_sound_source"
+target = "horizon_client_render::audio::Audio::play_seeded"
+kind = "HEAD"
+cancellable = true
+helper = "note_sound_source.rs"
+bindings = [
+  { name = "audio", ty = "&mut Audio", value = "&mut *self" },
+  { name = "event", ty = "&str", value = "event" },
+  { name = "at", ty = "Option<[f64; 3]>", value = "at" },
+  { name = "volume", ty = "f32", value = "volume" },
+  { name = "pitch", ty = "f32", value = "pitch" },
+  { name = "seed", ty = "i64", value = "seed" },
+]
