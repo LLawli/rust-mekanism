@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-12 (depois da frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-12 (depois da frente `nota-instrumento`, que acrescentou 1 injeção crua, a `note_instrument`, do `mekanism`: o instrumento do bloco de nota do sal e do bio fuel, H44, e antes dela a frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 144 | |
+| `[[injection]]` no total | 145 | |
 | Hook do catálogo, usado só com o contrato dele | 45 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 46 | sim |
-| Injeção crua (`target = ...`) | 53 | sim |
+| Injeção crua (`target = ...`) | 54 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 32 | sim |
 
-45 + 46 + 53 = 144. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-97 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+45 + 46 + 54 = 145. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+98 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 53 | 31 | 45 |
+| Em uso | 54 | 31 | 45 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -99,7 +99,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H41 saída de áudio a 48.000 Hz | correção do mixer | nenhuma (diferença de 0,045 % do RMS, sem injeção) | pedido |
 | H42 `properties.experience` | dado | `fluorite_experience` (cru, RETURN de `Game::block_experience`) | em uso (1) |
 | H43 abas criativas: pilhas e abas do vanilla | dado + hook | `creative_tabs` (cru, RETURN de `Plan::creative_tabs`; uma do Mekanism e uma do Generators) e o módulo `creative-tabs-table` (um de cada) | em uso (2 injeções, 2 módulos) |
-| H44 `properties.instrument` | dado | nenhuma (diferença do instrumento do bloco de nota do sal e do bio fuel, decisão 17 do plano) | pedido |
+| H44 `properties.instrument` | dado | `note_instrument` (cru, RETURN de `J::rename`) | em uso (1) |
 | H45 `item_name` padrão do item | correção | nenhuma (a cor do nome vai pelo hook `tooltip`, só na primeira linha) | pedido |
 | H49 propriedades de linha do bloco (reação ao pistão, oclusão, resistência negativa, `canBeReplaced`, `isPathfindable`) | dado | `active_light` (mekanism) e `block_rows` (mekanismgenerators), o resto que não é luz, e o módulo `block-rows` (um de cada) | em uso (2 injeções, 2 módulos) |
 | H50 limite de caixas por forma | dado | `shape_limit` (cru, HEAD cancelável de `BlockShapes::check`) | em uso (1) |
@@ -159,17 +159,17 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
-| `mods/mekanism/native/horizon-mixin.toml` | 64 | 46 | 18 | 8 |
+| `mods/mekanism/native/horizon-mixin.toml` | 65 | 46 | 19 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 25 | 21 | 4 | 4 |
-| Total | 144 | 91 | 53 | 32 |
+| Total | 145 | 91 | 54 | 32 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience` e `energy_cube_item_core` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core` e `note_instrument` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 91 hooks, 46 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (53)
+## Injeções cruas em uso (54)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -435,6 +435,15 @@ e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cub
 - **Hook mais próximo:** nenhum. **Hook proposto:** H50.
 - **Risco:** depende de `BlockShapes::check` e dos campos públicos `property`, `properties`, `values` e `default`. Renomear o método ou mudar o limite quebra o build ou deixa a injeção sem efeito, sem erro (o bloco passaria de 16 e seria recusado pelo Horizon).
 - **Conferido em jogo** (2026-11-09, `horizon`): os doze blocos carregam, e a forma de cada estado é a do original (`tests/blocos_registry.rs`, célula a célula contra o `VoxelShape.toAabbs()` do original).
+
+### `note_instrument` (mekanism)
+
+- **Estado:** em uso desde 2026-11-12 (frente `nota-instrumento`). **Alvo:** `horizon_client_lib::mod_content::J::rename` (`mod_content.rs:237`, método do JSON do plano de conteúdo, que `Plan::states` chama em cada linha copiada do gabarito: `row.rename(r, ids)`), RETURN, com `$value` do tipo `()` (primeiro binding, porque o corpo é um `match self` que se avalia dentro da chamada: com o `&mut *self` do helper antes, o build dá `E0499`). **Proposta:** H44.
+- **Helper:** `mods/mekanism/native/note_instrument.rs`. Recebe a linha (`&mut J`) e o `Rename` (`r`; um binding só pode ser parâmetro do alvo ou o empréstimo dele, `r.to.as_str()` dá `E_INVALID_BINDING`). Quando `r.to` é `mekanism:block_salt` ou `mekanism:block_bio_fuel` e o nó é uma linha de estado (lista de nove ou mais valores, o primeiro um número) com `HARP` na posição 8, escreve `SNARE` ou `BANJO`. Qualquer outro nó (e o `rename` chama a si mesmo em cada nó do JSON) passa sem mudança.
+- **Por que é necessária:** o original registra `block_salt` com `SNARE` e `block_bio_fuel` com `BANJO` (`MekanismBlocks.java:980-982`) e o Horizon não tem `instrument` em `properties`. O instrumento é a posição 8 da linha do estado de `facts.json` e de `block-behaviours.json` (`StateFacts::instrument`, `horizon-world/src/level/data.rs:882`), copiada do gabarito `lapis_block` (`HARP`). Os outros pontos não dão: `Plan::states` (HEAD cedo demais, RETURN barrado pelo `?`), `override_gameplay` (só a linha de jogo, sem instrumento) e `Sim::note_block_instrument` (`horizon-world/src/level/shapes.rs:1160`, onde o bloco de nota lê o de baixo; impl genérica, o alvo dá `E_TARGET_NOT_FOUND`).
+- **Hook mais próximo:** nenhum. **Hook proposto:** H44 (`properties.instrument`).
+- **Risco:** depende de a posição 8 da linha do estado ser o instrumento, de `Plan::states` renomear a linha com `J::rename` (e não só copiar), de o nome do método e do tipo `Rename` (campo `to`). Mudar qualquer um deixa a injeção sem efeito sem erro (o bloco volta a `HARP`: o teste `the_note_instrument_injection_gives_the_original_instrument` não pega, só o jogo) ou quebra o build. Custo: uma comparação por nó do JSON a cada `rename` na carga do conteúdo.
+- **Conferido em jogo** (2026-11-12, `horizon2`, `h2_nota_instrumento.py medir`): `instrument=snare` e `banjo` nos blocos de nota sobre o sal e o bio fuel (postos por jogador e por troca da base), `harp` sobre o lápis, e o som tocado (`heard`) `block.note_block.snare`, `banjo` e `harp`, como no original e como a areia e o feno do vanilla.
 
 ### `result_take_before` (mekanism)
 
@@ -1447,8 +1456,8 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 
 - **Lado:** servidor e cliente (o bloco de nota). **Tipo:** dado nas `properties` do bloco.
 - **O que faz:** o instrumento do bloco de nota que toca sobre o bloco (`BlockBehaviour.Properties.instrument`): o sal do Mekanism é `SNARE` e o bloco de bio fuel `BANJO`. Hoje o instrumento é o do gabarito: não há como dizê-lo sem um gabarito do vanilla que o tenha e que seja um bloco liso.
-- **Hoje:** nenhuma injeção: o port usa `minecraft:lapis_block` (`HARP`), decisão 17 do plano. `Plan::states` tem `?` no corpo (RETURN barrado) e a linha do estado, onde o instrumento mora (posição 8 de `block-behaviours.json`), não passa pelo `override_gameplay` que o `active_light` alcança.
-- **Risco do que existe hoje:** nenhum: não há injeção.
+- **Hoje:** a injeção crua `note_instrument` (ver a ficha dela em "Injeções cruas em uso"; decisão 17 do plano): o gabarito é `minecraft:lapis_block` (`HARP`) e o RETURN de `J::rename` troca o `HARP` da linha do estado dos dois blocos pelo do original. `Plan::states` tem `?` no corpo (RETURN barrado) e `override_gameplay` só alcança a linha de jogo, que não tem instrumento; `Sim::note_block_instrument`, onde o bloco de nota o lê, é de uma impl genérica que o horizon-mixins não alcança.
+- **Risco do que existe hoje:** o da ficha da `note_instrument`.
 
 ### H45 `item_name` padrão do item
 
