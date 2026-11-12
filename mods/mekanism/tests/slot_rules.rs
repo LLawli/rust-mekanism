@@ -490,3 +490,48 @@ fn the_slot_rules_of_the_instance_follow_the_probes_of_the_original() {
     }
     assert!(seen >= 4 * ENERGY_PROBES + INFUSION_PROBES, "só {seen} sondas");
 }
+
+/// `slot_extractable` e `slot_accepts` (o que o glue usa por instância, sem o objeto vivo) dão o mesmo que os slots de verdade da máquina,
+/// que as sondas do original já conferem: cada slot, cada item, cada estado do tanque e da entrada, com `EXTERNAL`. Cobre o que as sondas não
+/// tocam, o slot de entrada (`InputInventorySlot`, que não deixa o de fora tirar) e o de saída (que não deixa pôr).
+#[test]
+fn the_pure_slot_rules_agree_with_the_slots_of_the_machine() {
+    let items = ["stick", "redstone", "redstone_block", "coal", "diamond", "bio_fuel", "red_mushroom", "dirt", "clay", "cobblestone", "sand"];
+    let mut compared = 0;
+    for name in MACHINES {
+        let (indexes, slots) = (indexes_of(name), slot_indexes(name));
+        // As receitas de cada lado são as mesmas: o Infuser do conteúdo, e a máquina elétrica com a receita da sonda.
+        let machine = if name == "metallurgic_infuser" { common::infuser_from_content_by_type() } else { machine(name) };
+        for tank in ["empty:0", "bio:500", "bio:1000", "fungi:500"] {
+            for input in ["", valid_input(name)] {
+                if name != "metallurgic_infuser" && (tank != "empty:0") {
+                    continue;
+                }
+                if name == "metallurgic_infuser" {
+                    set_state(&machine, tank, input);
+                } else {
+                    machine.input().set_contents((!input.is_empty()).then(|| item(input)), u32::from(!input.is_empty()), None);
+                }
+                let held = held_of(tank, input);
+                for (index, slot) in machine.inventory_slots().iter().enumerate() {
+                    for id in items {
+                        let resource = item(id);
+                        // O slot de saída não aceita nada de fora, e `slot_accepts` o diz pelo índice que não é de nenhum dos três.
+                        assert_eq!(
+                            slot_accepts(&indexes, &slots, index, &resource, &held),
+                            slot.is_valid_for_insertion(&resource, AutomationType::External),
+                            "{name} slot {index} {id} tanque {tank} entrada {input}: entrada"
+                        );
+                        assert_eq!(
+                            slot_extractable(&indexes, &slots, index, &resource, &held),
+                            slot.is_valid_for_extraction(&resource, AutomationType::External),
+                            "{name} slot {index} {id} tanque {tank} entrada {input}: saída"
+                        );
+                        compared += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(compared >= 500, "só {compared} comparações");
+}

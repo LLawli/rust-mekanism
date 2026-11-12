@@ -253,7 +253,7 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEn
     game.native_draw_cube(draw, LOGGED_LAVA_FROM, LOGGED_LAVA_TO, [face; 6], WHITE);
 }
 
-fn face_of(direction: Direction) -> Face {
+pub(in crate::game) fn face_of(direction: Direction) -> Face {
     match direction {
         Direction::Down => Face::Down,
         Direction::Up => Face::Up,
@@ -822,7 +822,12 @@ fn item_components(stack: &ItemStack) -> Components {
 
 /// `ItemResource.of(stack)`: o item, a pilha máxima dele e os componentes que o distinguem.
 pub(in crate::game) fn item_resource(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
-    ItemResource::with_components(&stack.item, stack_limit(game, stack), item_components(stack))
+    item_resource_with_limit(stack, stack_limit(game, stack))
+}
+
+/// O mesmo com o limite de pilha já sabido: para quem não tem o jogo na mão (o `can_take` do Horizon).
+pub(in crate::game) fn item_resource_with_limit(stack: &ItemStack, limit: u32) -> ItemResource {
+    ItemResource::with_components(&stack.item, limit, item_components(stack))
 }
 
 /// O que um slot da lib guarda, de uma pilha do jogo.
@@ -1271,6 +1276,92 @@ pub(in crate::game) fn energy_capacity(
         ..**buffer
     };
     Break(Some((Arc::new(resized), stored_energy(entity))))
+}
+
+/// Quem diz, por instância, o que os slots de itens de um bloco de mod deixam fazer (H2): as faces que a configuração de lados dá, e a
+/// regra do slot para quem tira de fora. O Horizon sabe o `ModContainer` do tipo de bloco; as duas injeções (`container_instance`, no
+/// fim de `Containers::view`, e `container_take`, no começo de `Containers::can_take`) perguntam a quem registrou aqui.
+#[derive(Clone, Copy)]
+pub struct ItemInstances {
+    /// As faces de item da instância: o bloco, o que o tile guarda (o NBT e os itens) e a frente do bloco. `None` se o bloco não é seu.
+    pub faces: fn(&str, &ModBlockEntity, Face) -> Option<machinery_basis_core::item_instance::InstanceItems>,
+    /// `isValidForExtraction(item, EXTERNAL)` do slot: o bloco, o tile, o slot, a pilha dele e o limite de pilha do item.
+    pub extractable: fn(&str, &ModBlockEntity, usize, &ItemStack, u32) -> bool,
+}
+
+static ITEM_INSTANCES: Mutex<Vec<(&'static str, ItemInstances)>> = Mutex::new(Vec::new());
+
+/// Registra (ou troca) quem responde pelos blocos de `owner`.
+pub(in crate::game) fn register_item_instances(owner: &'static str, instances: ItemInstances) {
+    let mut registered = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner());
+    match registered.iter_mut().find(|(name, _)| *name == owner) {
+        Some(entry) => entry.1 = instances,
+        None => registered.push((owner, instances)),
+    }
+}
+
+thread_local! {
+    /// `Containers::view` está rodando por dentro da injeção `container_instance`: a passagem seguinte segue para o corpo original.
+    static IN_VIEW: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Marca a entrada em `view`; falso se já estava marcada (a segunda passagem).
+pub(in crate::game) fn view_enter() -> bool {
+    !IN_VIEW.replace(true)
+}
+
+pub(in crate::game) fn view_leave() {
+    IN_VIEW.set(false);
+}
+
+fn front_of(property: Option<&str>) -> Face {
+    property.and_then(Face::from_property).unwrap_or(Face::North)
+}
+
+/// O fim de `Containers::view` (H2): as faces, as entradas e as saídas da instância no lugar das do bloco. `base` é o contêiner do bloco,
+/// com a contagem de slots e o menu; sem quem responda pelo bloco, ele fica como está.
+pub(in crate::game) fn container_instance(
+    block: &str,
+    entity: &ModBlockEntity,
+    front: Option<&str>,
+    base: Option<&horizon_client::containers::ModContainer>,
+) -> Option<horizon_client::containers::ModContainer> {
+    let front = front_of(front);
+    let providers: Vec<ItemInstances> = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
+    let instance = providers.iter().find_map(|p| (p.faces)(block, entity, front))?;
+    let base = base.cloned().unwrap_or_default();
+    Some(horizon_client::containers::ModContainer {
+        faces: instance.face_slots(),
+        inputs: instance.inputs(),
+        outputs: instance.outputs(),
+        ..base
+    })
+}
+
+/// O começo de `Containers::can_take` (H2): se `stack` pode sair de `slot` pela face `face` (o índice do `Direction`): a face da instância
+/// deixa sair e a regra do slot, para quem está de fora, deixa tirar. `None` se ninguém responde pelo bloco.
+pub(in crate::game) fn container_take(
+    block: &str,
+    entity: &ModBlockEntity,
+    front: Option<&str>,
+    face: usize,
+    slot: usize,
+    stack: &ItemStack,
+    limit: u32,
+) -> Option<bool> {
+    let front = front_of(front);
+    let face = *Face::ALL.get(face)?;
+    let providers: Vec<ItemInstances> = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
+    providers.iter().find_map(|p| {
+        let instance = (p.faces)(block, entity, front)?;
+        Some(instance.releases_through(face, slot) && (p.extractable)(block, entity, slot, stack, limit))
+    })
+}
+
+/// As faces de item da instância de `block`, para o hook `container_accepts` de quem registrou (a regra de entrada é a do mod).
+pub(in crate::game) fn item_instance(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+    let providers: Vec<ItemInstances> = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
+    providers.iter().find_map(|p| (p.faces)(block, entity, front))
 }
 
 pub(in crate::game) fn direction(face: Face) -> Direction {

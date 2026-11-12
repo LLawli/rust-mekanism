@@ -319,12 +319,75 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
         Some(_) => rules::ELECTRIC_MENU_SLOTS,
         None => return,
     };
-    // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
+    // O contêiner do tipo de bloco só diz a contagem de slots e o menu: as faces, as entradas e as saídas são da instância (H2), e quem
+    // responde por elas é `ITEM_INSTANCES`.
+    basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
     *container = Some(ModContainer {
         slots,
         menu: Some(block.to_owned()),
         ..Default::default()
     });
+}
+
+/// Quem responde pelas faces de item das máquinas daqui (H2): a configuração de lados que o tile guarda, com a frente do bloco.
+const ITEM_INSTANCES: basis::ItemInstances = basis::ItemInstances { faces: item_faces, extractable: item_extractable };
+
+/// `ConfigHolder` de uma máquina: o `component_config` do NBT do tile, montado como `config_view` o monta (uma máquina posta por `setBlock`
+/// não traz nada e fica com tudo em `NONE`; a de um item recebeu a configuração dele na colocação).
+fn item_faces(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+    let machine = machine_of(block)?;
+    let spec = side_spec(block)?.spec;
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    if let Some(data) = &basis::read_side_nbt(entity).config {
+        config.deserialize(data, front, false);
+    }
+    Some(rules::item_instance(machine.slots.infusion.is_some(), &config, front))
+}
+
+/// O que o tanque e o slot de entrada guardam no tile, para as regras de slot: o tanque do NBT e a pilha da entrada, com o limite de pilha
+/// que quem pergunta já tem.
+fn held_of_entity(machine: &Machine, entity: &ModBlockEntity, limit: &dyn Fn(&ItemStack) -> ItemResource) -> Held {
+    Held {
+        chemical: machine.slots.infusion.and_then(|_| read_tank(entity).resource),
+        input: entity.items.get(machine.slots.input).and_then(Option::as_ref).map(limit),
+    }
+}
+
+/// `isValidForExtraction(item, EXTERNAL)` do slot da máquina (`slot_extractable`), com os índices de receita da última vez que alguém os pediu.
+fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &ItemStack, limit: u32) -> bool {
+    let Some(machine) = machine_of(block) else {
+        return false;
+    };
+    let held = held_of_entity(machine, entity, &|input| basis::item_resource_with_limit(input, limit));
+    RULE_INDEXES.with_borrow(|rules| {
+        rules
+            .get(machine.block)
+            .is_some_and(|indexes| rules::slot_extractable(indexes, &machine.slots.rule_slots(), slot, &typed_item(stack), &held))
+    })
+}
+
+/// O hook `container_accepts` (`IItemHandler.isItemValid` da capability da face): o Horizon pergunta antes de pôr um item de um hopper, de um
+/// dropper ou de `native_insert_item` num slot que o `ModContainer` deixa encher. A face da instância tem de deixar entrar, e o slot tem de
+/// aceitar o item de quem está de fora (`isValidForInsertion`). Sem face não há capability.
+pub(in crate::game) fn container_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Direction>, cancel: &mut bool) {
+    let Some(machine) = machine_of(&entity.id) else {
+        return;
+    };
+    let Some(face) = face.map(basis::face_of) else {
+        *cancel = true;
+        return;
+    };
+    let front = basis::front(game, pos);
+    let allowed = item_faces(&entity.id, entity, front).is_some_and(|items| items.accepts_through(face, slot));
+    let accepted = allowed && {
+        let indexes = indexes_of(game, machine);
+        let held = held_of_entity(machine, entity, &|input| resource_of(game, input));
+        slot_accepts(&indexes, &machine.slots, slot, &typed_item(stack), &held)
+    };
+    if !accepted {
+        *cancel = true;
+    }
 }
 
 fn native_screen(machine: &Machine) -> NativeScreen {
@@ -812,7 +875,21 @@ pub(in crate::game) fn energy_index(game: &Game<'_>) -> Rc<EnergyConversionCache
     })
 }
 
+thread_local! {
+    /// Os índices de receita da última vez que cada máquina os pediu: a regra de saída do slot (`can_take` do Horizon, H2) não tem o jogo na
+    /// mão. `indexes_of` os repõe a cada tick de máquina e a cada pergunta de entrada, e `server_data_loaded` a cada carga e `/reload`.
+    static RULE_INDEXES: RefCell<HashMap<&'static str, Indexes>> = RefCell::new(HashMap::new());
+}
+
 fn indexes_of(game: &Game<'_>, machine: &Machine) -> Indexes {
+    let indexes = build_indexes(game, machine);
+    RULE_INDEXES.with_borrow_mut(|rules| {
+        rules.insert(machine.block, indexes.clone());
+    });
+    indexes
+}
+
+fn build_indexes(game: &Game<'_>, machine: &Machine) -> Indexes {
     BOOKS.with_borrow_mut(|books| {
         let energy = books
             .energy
@@ -1612,24 +1689,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         entity.data = vec![TILE_TICKED];
     }
 
-    // As faces dos hoppers vizinhos seguem a configuração de itens da instância (`ConfigHolder`): o `DataType` de cada lado, pela
-    // frente de agora. Quem tira de um slot de fora (`EXTERNAL`) obedece à regra do slot (`isValidForExtraction`).
-    let machine = &live.machine;
-    let held = Held {
-        chemical: machine.chemical_side().and_then(|side| side.tank.resource()),
-        input: machine.input().resource(),
-    };
-    let accepts = |_: &Game<'_>, slot: usize, stack: &ItemStack| slot_accepts(&indexes, &spec.slots, slot, &typed_item(stack), &held);
-    let slots = |face| machine.side_config().item_face(front, face, &[]);
-    let sides = Sides::of_slots(&slots);
-    let can_give = |_: &Game<'_>, slot: usize, stack: &ItemStack| {
-        machine
-            .inventory_slots()
-            .get(slot)
-            .is_some_and(|held| held.is_valid_for_extraction(&typed_item(stack), AutomationType::External))
-    };
-    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
-
+    // Os hoppers, o dropper e o ejetor de outra máquina vizinhos agem pelo contêiner da instância (H2, `item_faces` e `container_accepts`): o
+    // Horizon move os itens, e a máquina só os acha nos slots no tick seguinte.
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
         machines.insert(key, live);
@@ -2061,6 +2122,10 @@ fn scan_incomplete_recipes(game: &Game<'_>) -> bool {
 /// `IncompleteRecipeScanner.serverStarted` (a carga de um mundo que abre) e `recipes` sem jogador (o `/reload`): a varredura, e no
 /// `/reload` a mensagem a todos os jogadores que estão no servidor.
 pub(in crate::game) fn server_data_loaded(game: &mut Game<'_>, reload: bool) {
+    // As regras de saída dos slots (H2) leem os índices da última pergunta: com receitas novas, nenhum tick de máquina chegou ainda.
+    for machine in MACHINES.iter() {
+        indexes_of(game, machine);
+    }
     let found = scan_incomplete_recipes(game);
     let everyone = {
         let mut scanner = SCANNER.lock().unwrap_or_else(|error| error.into_inner());

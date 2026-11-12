@@ -179,6 +179,37 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
 ]
 
+# O contêiner de itens por instância (H2). O `ModContainer` de um bloco de mod é o do tipo de bloco, e os hoppers, o dropper e `native_insert_item`
+# leem as faces e os slots dele. Uma máquina com lados coloridos (`ConfigHolder`) tem faces diferentes em cada instância, e a regra do slot de quem está
+# de fora (`isValidForExtraction`) não está no `can_take`. A primeira injeção (HEAD cancelável, porque o corpo de `view` tem `?` e o RETURN não o aceita)
+# chama `view` de novo por dentro e troca o contêiner do `View` pelo da instância; a segunda responde `can_take` com a face e a regra do slot. A entrada
+# (`isValidForInsertion` com a face) já passa pelo hook `container_accepts`, que o mod ouve.
+[[injection]]
+id = "container_instance"
+target = "horizon_client::game::machines::Containers<'_>::view"
+kind = "HEAD"
+cancellable = true
+helper = "container_instance.rs"
+bindings = [
+  { name = "containers", ty = "&Containers<'_>", value = "&*self" },
+  { name = "pos", ty = "Pos", value = "pos" },
+  { name = "blocked_chests", ty = "bool", value = "blocked_chests" },
+]
+
+[[injection]]
+id = "container_take"
+target = "horizon_client::game::machines::Containers<'_>::can_take"
+kind = "HEAD"
+cancellable = true
+helper = "container_take.rs"
+bindings = [
+  { name = "containers", ty = "&Containers<'_>", value = "&*self" },
+  { name = "view", ty = "&View", value = "view" },
+  { name = "slot", ty = "usize", value = "slot" },
+  { name = "stack", ty = "&ItemStack", value = "stack" },
+  { name = "face", ty = "Direction", value = "face" },
+]
+
 # ---- janelas de GUI e a janela de upgrades ----
 # Hooks do catálogo que leem a tela aberta, a janela do jogo e o menu de LAN (estrutura privada).
 [[injection]]
