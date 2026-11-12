@@ -87,6 +87,11 @@ impl<A: Clone> DynamicNetwork<A> {
             .collect()
     }
 
+    /// `acceptorCache.getAcceptorValues()` achatado: os aceitadores na ordem da tabela e, em cada posição, na do `Direction`.
+    pub fn acceptor_values(&self) -> Vec<A> {
+        self.acceptor_cache.acceptor_values()
+    }
+
     /// `getAcceptorCount()`.
     pub fn acceptor_count(&self) -> usize {
         self.acceptor_cache.acceptor_count()
@@ -123,9 +128,9 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
     ) -> NetworkId {
         let uuid = self.next_uuid();
         let network = self.push_network(DynamicNetwork::new(uuid));
-        host.network_event(network, NetworkEvent::Created { uuid });
+        host.network_event(&*self, network, NetworkEvent::Created { uuid });
         self.adopt_all_and_register(host, network, networks);
-        host.network_event(
+        host.network_event(&*self, 
             network,
             NetworkEvent::Merged {
                 from: networks.to_vec(),
@@ -185,7 +190,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         let mine = self.network_mut(into);
         mine.transmitters_to_add.add_all(&to_add);
         mine.acceptor_cache.adopt_acceptors(&acceptors);
-        host.network_event(into, NetworkEvent::Adopted { from });
+        host.network_event(&*self, into, NetworkEvent::Adopted { from });
         transmitters_to_update
     }
 
@@ -206,12 +211,12 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         // Fica na rede até o `commit`, para que órfãos dos dois lados de uma rede existente, que guardam conteúdo, não se juntem se não
         // puderem se ligar.
         network_data.validator = Some(validator);
-        host.network_event(network, NetworkEvent::NewTransmitters);
+        host.network_event(&*self, network, NetworkEvent::NewTransmitters);
     }
 
     /// `commit()`.
     pub fn commit_network(&mut self, host: &mut dyn TransmitterHost<A>, network: NetworkId) {
-        host.network_event(network, NetworkEvent::Committing);
+        host.network_event(&*self, network, NetworkEvent::Committing);
         let to_add = self.network(network).transmitters_to_add();
         if !to_add.is_empty() {
             let mut added_valid_transmitters = false;
@@ -234,12 +239,12 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
                     self.network_mut(network)
                         .positioned
                         .insert(LongKey(host.block_pos(transmitter).as_long()), transmitter);
-                    host.network_event(network, NetworkEvent::TransmitterCommitted(transmitter));
+                    host.network_event(&*self, network, NetworkEvent::TransmitterCommitted(transmitter));
                 }
             }
             self.network_mut(network).transmitters_to_add.clear();
             if added_valid_transmitters {
-                host.network_event(network, NetworkEvent::ValidTransmittersAdded);
+                host.network_event(&*self, network, NetworkEvent::ValidTransmittersAdded);
                 for transmitter in transmitters_to_update {
                     host.request_update(transmitter);
                 }
@@ -247,7 +252,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         }
         self.network_mut(network).acceptor_cache.commit(host);
         self.network_mut(network).validator = None;
-        host.network_event(network, NetworkEvent::Committed);
+        host.network_event(&*self, network, NetworkEvent::Committed);
     }
 
     /// `invalidate(triggerTransmitter)`: tira os inválidos, devolve os válidos como órfãos e desfaz a rede.
@@ -257,13 +262,13 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         network: NetworkId,
         trigger: Option<TransmitterId>,
     ) {
-        host.network_event(network, NetworkEvent::Invalidating(trigger));
+        host.network_event(&*self, network, NetworkEvent::Invalidating(trigger));
         if let Some(trigger) = trigger
             && self.network(network).transmitters_size() == 1
             && !host.is_valid(trigger)
         {
             // Está destruindo o último transmissor da rede (e não só mudando a sensibilidade ao redstone).
-            host.network_event(network, NetworkEvent::LastTransmitterRemoved(trigger));
+            host.network_event(&*self, network, NetworkEvent::LastTransmitterRemoved(trigger));
         }
         // `removeInvalid`: `getTransmitters().removeIf(transmitter -> !transmitter.isValid())`.
         let invalid: Vec<LongKey> = self
@@ -277,7 +282,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         for key in invalid {
             self.network_mut(network).positioned.remove(key);
         }
-        host.network_event(network, NetworkEvent::InvalidRemoved(trigger));
+        host.network_event(&*self, network, NetworkEvent::InvalidRemoved(trigger));
         // Agora os transmissores que sobraram.
         for transmitter in self.network(network).transmitters() {
             if host.is_valid(transmitter) {
@@ -316,7 +321,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         data.acceptor_cache.deregister();
         data.validator = None;
         self.remove_network(network);
-        host.network_event(network, NetworkEvent::Deregistered);
+        host.network_event(&*self, network, NetworkEvent::Deregistered);
     }
 
     /// `addTransmitter(transmitter)`.

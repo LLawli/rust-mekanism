@@ -209,7 +209,12 @@ impl TransmitterHost<Cube> for Ctx<'_> {
         self.st.events.push(Event::NetUpdate(network));
     }
 
-    fn network_event(&mut self, network: NetworkId, event: NetworkEvent) {
+    fn network_event(
+        &mut self,
+        _: &TransmitterNetworkRegistry<Cube>,
+        network: NetworkId,
+        event: NetworkEvent,
+    ) {
         match event {
             NetworkEvent::Created { uuid } => self.st.pending_uuid = Some(uuid),
             NetworkEvent::Merged { from } => {

@@ -1,0 +1,208 @@
+{"t":0,"e":"setup","x":-7019153,"y":5,"z":-936176,"width":14,"depth":4,"xInChunk":15,"tiles":[]}
+{"t":-289,"e":"before_commit","net":4}
+{"t":-289,"e":"before_commit","net":5}
+{"t":0,"e":"state","cables":[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[],"registry":[]}
+{"t":0,"e":"estate","cables":[],"nets":[],"actors":[]}
+{"t":0,"e":"mark","m":"place 0 0 basic"}
+{"t":0,"e":"tile","x":0,"hash":1904578963}
+{"t":0,"e":"mark","m":"place 1 0 basic"}
+{"t":0,"e":"tile","x":1,"hash":1349886802}
+{"t":0,"e":"mark","m":"place 2 0 basic"}
+{"t":0,"e":"tile","x":2,"hash":1124569555}
+{"t":0,"e":"mark","m":"place 3 0 basic"}
+{"t":0,"e":"tile","x":3,"hash":1189156003}
+{"t":0,"e":"mark","m":"place 4 0 basic"}
+{"t":0,"e":"tile","x":4,"hash":1738256776}
+{"t":0,"e":"mark","m":"chamber A 1 0 1 1000 980"}
+{"t":0,"e":"capdiag","name":"A","placed":0,"components":63,"input":63}
+{"t":0,"e":"mark","m":"chamber B 3 0 1 1000 900"}
+{"t":0,"e":"capdiag","name":"B","placed":0,"components":63,"input":63}
+{"t":0,"e":"mark","m":"chamber C 2 1 0 1000 700"}
+{"t":0,"e":"capdiag","name":"C","placed":0,"components":63,"input":63}
+{"t":0,"e":"net_update","net":4}
+{"t":0,"e":"net_update","net":5}
+{"t":0,"e":"state","cables":[{"net":null,"orphan":true,"valid":false,"loaded":false},{"net":null,"orphan":true,"valid":false,"loaded":false},{"net":null,"orphan":true,"valid":false,"loaded":false},{"net":null,"orphan":true,"valid":false,"loaded":false},{"net":null,"orphan":true,"valid":false,"loaded":false},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[],"registry":[]}
+{"t":0,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[],"actors":[{"name":"A","energy":980},{"name":"B","energy":900},{"name":"C","energy":700}]}
+{"t":1,"e":"created","net":6,"hash":-95837161,"from":[]}
+{"t":1,"e":"commit","net":6}
+{"t":1,"e":"update","x":0}
+{"t":1,"e":"update","x":1}
+{"t":1,"e":"update","x":4}
+{"t":1,"e":"update","x":3}
+{"t":1,"e":"update","x":2}
+{"t":1,"e":"net_update","net":4}
+{"t":1,"e":"net_update","net":6}
+{"t":1,"e":"transfer","net":6,"scale":0.0}
+{"t":1,"e":"net_update","net":5}
+{"t":1,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":1,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":980},{"name":"B","energy":900},{"name":"C","energy":700}]}
+{"t":2,"e":"net_update","net":4}
+{"t":2,"e":"net_update","net":6}
+{"t":2,"e":"net_update","net":5}
+{"t":2,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":2,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":980},{"name":"B","energy":900},{"name":"C","energy":700}]}
+{"t":3,"e":"net_update","net":4}
+{"t":3,"e":"net_update","net":6}
+{"t":3,"e":"net_update","net":5}
+{"t":3,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":3,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":980},{"name":"B","energy":900},{"name":"C","energy":700}]}
+{"t":4,"e":"mark","m":"pre push 0 0 100"}
+{"t":4,"e":"contents","net":6,"energy":100}
+{"t":4,"e":"push","x":0,"z":0,"amount":100,"got":100}
+{"t":4,"e":"net_update","net":4}
+{"t":4,"e":"net_update","net":6}
+{"t":4,"e":"transfer","net":6,"scale":0.0025}
+{"t":4,"e":"contents","net":6,"energy":0}
+{"t":4,"e":"net_update","net":5}
+{"t":4,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":4,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0025,"scaleBits":992204554,"prev":100}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":940},{"name":"C","energy":740}]}
+{"t":5,"e":"net_update","net":4}
+{"t":5,"e":"net_update","net":6}
+{"t":5,"e":"transfer","net":6,"scale":0.022499999}
+{"t":5,"e":"net_update","net":5}
+{"t":5,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":5,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.022499999,"scaleBits":1018712555,"prev":0}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":940},{"name":"C","energy":740}]}
+{"t":6,"e":"net_update","net":4}
+{"t":6,"e":"net_update","net":6}
+{"t":6,"e":"transfer","net":6,"scale":0.0024999995}
+{"t":6,"e":"net_update","net":5}
+{"t":6,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":6,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0024999995,"scaleBits":992204552,"prev":0}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":940},{"name":"C","energy":740}]}
+{"t":7,"e":"net_update","net":4}
+{"t":7,"e":"net_update","net":6}
+{"t":7,"e":"transfer","net":6,"scale":0.0}
+{"t":7,"e":"net_update","net":5}
+{"t":7,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":7,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":940},{"name":"C","energy":740}]}
+{"t":8,"e":"mark","m":"pre setenergy A 997"}
+{"t":8,"e":"mark","m":"pre setenergy B 995"}
+{"t":8,"e":"mark","m":"pre setenergy C 990"}
+{"t":8,"e":"net_update","net":4}
+{"t":8,"e":"net_update","net":6}
+{"t":8,"e":"net_update","net":5}
+{"t":8,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":8,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":997},{"name":"B","energy":995},{"name":"C","energy":990}]}
+{"t":9,"e":"mark","m":"pre push 0 0 10"}
+{"t":9,"e":"contents","net":6,"energy":10}
+{"t":9,"e":"push","x":0,"z":0,"amount":10,"got":10}
+{"t":9,"e":"net_update","net":4}
+{"t":9,"e":"net_update","net":6}
+{"t":9,"e":"transfer","net":6,"scale":2.5E-4}
+{"t":9,"e":"contents","net":6,"energy":0}
+{"t":9,"e":"net_update","net":5}
+{"t":9,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":9,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":2.5E-4,"scaleBits":964891247,"prev":10}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":998},{"name":"C","energy":994}]}
+{"t":10,"e":"net_update","net":4}
+{"t":10,"e":"net_update","net":6}
+{"t":10,"e":"transfer","net":6,"scale":0.02025}
+{"t":10,"e":"net_update","net":5}
+{"t":10,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":10,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.02025,"scaleBits":1017504596,"prev":0}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":998},{"name":"C","energy":994}]}
+{"t":11,"e":"net_update","net":4}
+{"t":11,"e":"net_update","net":6}
+{"t":11,"e":"transfer","net":6,"scale":2.500005E-4}
+{"t":11,"e":"net_update","net":5}
+{"t":11,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":11,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":2.500005E-4,"scaleBits":964891264,"prev":0}],"actors":[{"name":"A","energy":1000},{"name":"B","energy":998},{"name":"C","energy":994}]}
+{"t":12,"e":"mark","m":"pre setenergy A 0"}
+{"t":12,"e":"mark","m":"pre setenergy B 0"}
+{"t":12,"e":"mark","m":"pre setenergy C 0"}
+{"t":12,"e":"net_update","net":4}
+{"t":12,"e":"net_update","net":6}
+{"t":12,"e":"transfer","net":6,"scale":0.0}
+{"t":12,"e":"net_update","net":5}
+{"t":12,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":12,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":0},{"name":"B","energy":0},{"name":"C","energy":0}]}
+{"t":13,"e":"mark","m":"pre push 0 0 7"}
+{"t":13,"e":"contents","net":6,"energy":7}
+{"t":13,"e":"push","x":0,"z":0,"amount":7,"got":7}
+{"t":13,"e":"net_update","net":4}
+{"t":13,"e":"net_update","net":6}
+{"t":13,"e":"transfer","net":6,"scale":1.75E-4}
+{"t":13,"e":"contents","net":6,"energy":0}
+{"t":13,"e":"net_update","net":5}
+{"t":13,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":13,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":1.75E-4,"scaleBits":959938612,"prev":7}],"actors":[{"name":"A","energy":3},{"name":"B","energy":2},{"name":"C","energy":2}]}
+{"t":14,"e":"mark","m":"pre push 0 0 1000"}
+{"t":14,"e":"contents","net":6,"energy":1000}
+{"t":14,"e":"push","x":0,"z":0,"amount":1000,"got":1000}
+{"t":14,"e":"net_update","net":4}
+{"t":14,"e":"net_update","net":6}
+{"t":14,"e":"transfer","net":6,"scale":0.045}
+{"t":14,"e":"contents","net":6,"energy":0}
+{"t":14,"e":"net_update","net":5}
+{"t":14,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":14,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.045,"scaleBits":1027101164,"prev":1000}],"actors":[{"name":"A","energy":337},{"name":"B","energy":335},{"name":"C","energy":335}]}
+{"t":15,"e":"mark","m":"pre push 0 0 2"}
+{"t":15,"e":"contents","net":6,"energy":2}
+{"t":15,"e":"push","x":0,"z":0,"amount":2,"got":2}
+{"t":15,"e":"net_update","net":4}
+{"t":15,"e":"net_update","net":6}
+{"t":15,"e":"transfer","net":6,"scale":0.065}
+{"t":15,"e":"contents","net":6,"energy":0}
+{"t":15,"e":"net_update","net":5}
+{"t":15,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":15,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.065,"scaleBits":1032134328,"prev":2}],"actors":[{"name":"A","energy":338},{"name":"B","energy":335},{"name":"C","energy":336}]}
+{"t":16,"e":"mark","m":"pre push 0 0 3"}
+{"t":16,"e":"contents","net":6,"energy":3}
+{"t":16,"e":"push","x":0,"z":0,"amount":3,"got":3}
+{"t":16,"e":"net_update","net":4}
+{"t":16,"e":"net_update","net":6}
+{"t":16,"e":"transfer","net":6,"scale":0.08499999}
+{"t":16,"e":"contents","net":6,"energy":0}
+{"t":16,"e":"net_update","net":5}
+{"t":16,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":16,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.08499999,"scaleBits":1034818682,"prev":3}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":17,"e":"net_update","net":4}
+{"t":17,"e":"net_update","net":6}
+{"t":17,"e":"transfer","net":6,"scale":0.10499999}
+{"t":17,"e":"net_update","net":5}
+{"t":17,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":17,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.10499999,"scaleBits":1037503036,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":18,"e":"net_update","net":4}
+{"t":18,"e":"net_update","net":6}
+{"t":18,"e":"transfer","net":6,"scale":0.08499999}
+{"t":18,"e":"net_update","net":5}
+{"t":18,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":18,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.08499999,"scaleBits":1034818682,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":19,"e":"net_update","net":4}
+{"t":19,"e":"net_update","net":6}
+{"t":19,"e":"transfer","net":6,"scale":0.065}
+{"t":19,"e":"net_update","net":5}
+{"t":19,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":19,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.065,"scaleBits":1032134328,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":20,"e":"net_update","net":4}
+{"t":20,"e":"net_update","net":6}
+{"t":20,"e":"transfer","net":6,"scale":0.044999998}
+{"t":20,"e":"net_update","net":5}
+{"t":20,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":20,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.044999998,"scaleBits":1027101163,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":21,"e":"net_update","net":4}
+{"t":21,"e":"net_update","net":6}
+{"t":21,"e":"transfer","net":6,"scale":0.024999999}
+{"t":21,"e":"net_update","net":5}
+{"t":21,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":21,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.024999999,"scaleBits":1020054732,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":22,"e":"net_update","net":4}
+{"t":22,"e":"net_update","net":6}
+{"t":22,"e":"transfer","net":6,"scale":0.004999999}
+{"t":22,"e":"net_update","net":5}
+{"t":22,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":22,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.004999999,"scaleBits":1000593160,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":23,"e":"net_update","net":4}
+{"t":23,"e":"net_update","net":6}
+{"t":23,"e":"transfer","net":6,"scale":0.0}
+{"t":23,"e":"net_update","net":5}
+{"t":23,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":23,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":24,"e":"net_update","net":4}
+{"t":24,"e":"net_update","net":6}
+{"t":24,"e":"net_update","net":5}
+{"t":24,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":24,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":25,"e":"net_update","net":4}
+{"t":25,"e":"net_update","net":6}
+{"t":25,"e":"net_update","net":5}
+{"t":25,"e":"state","cables":[{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},{"net":6,"orphan":false,"valid":true,"loaded":true},null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],"nets":[{"net":6,"hash":-95837161,"size":5,"acceptors":3,"transmitters":[1,0,3,2,4]}],"registry":[6]}
+{"t":25,"e":"estate","cables":[{"x":0,"buf":0,"share":0,"cap":8000},{"x":1,"buf":0,"share":0,"cap":8000},{"x":2,"buf":0,"share":0,"cap":8000},{"x":3,"buf":0,"share":0,"cap":8000},{"x":4,"buf":0,"share":0,"cap":8000}],"nets":[{"net":6,"energy":0,"capacity":40000,"scale":0.0,"scaleBits":0,"prev":0}],"actors":[{"name":"A","energy":339},{"name":"B","energy":336},{"name":"C","energy":337}]}
+{"t":26,"e":"mark","m":"pre finish"}

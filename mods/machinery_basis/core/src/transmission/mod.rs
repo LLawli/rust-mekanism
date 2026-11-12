@@ -24,11 +24,15 @@
 //! `DimData` guarda os órfãos e os chunks em árvores (`Long2ObjectRBTreeMap`, `Long2BooleanRBTreeMap`, `Long2ObjectAVLTreeMap`), cuja
 //! ordem é a da chave `long` com sinal: determinística.
 pub mod acceptor_cache;
+pub mod buffered_network;
 pub mod connection;
 pub mod dynamic_network;
+pub mod energy_container;
+pub mod energy_network;
 pub mod network_acceptors;
 pub mod registry;
 pub mod transmitter;
+pub mod universal_cable;
 pub mod validator;
 
 use crate::sides::Face;
@@ -204,5 +208,13 @@ pub trait TransmitterHost<A> {
     /// `DynamicNetwork.onUpdate`, no `ServerTickEvent.Post` quando o tick roda normalmente, na ordem do `networks`.
     fn on_update(&mut self, _registry: &mut TransmitterNetworkRegistry<A>, _network: NetworkId) {}
     /// O que uma subclasse acrescenta a um método da rede ([`NetworkEvent`]).
-    fn network_event(&mut self, _network: NetworkId, _event: NetworkEvent) {}
+    ///
+    /// Recebe o registro para ler (os transmissores da rede, em ordem) o que a subclasse lê de `getTransmitters()` ou de `isEmpty()`.
+    fn network_event(
+        &mut self,
+        _registry: &TransmitterNetworkRegistry<A>,
+        _network: NetworkId,
+        _event: NetworkEvent,
+    ) {
+    }
 }

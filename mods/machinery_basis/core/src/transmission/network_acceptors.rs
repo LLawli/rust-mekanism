@@ -216,4 +216,17 @@ impl<A: Clone> NetworkAcceptorCache<A> {
             .map(|(pos, _)| pos.0)
             .collect()
     }
+
+    /// `getAcceptorValues()`: os aceitadores de cada posição na ordem da tabela e, dentro da posição, na ordem do `Direction`.
+    pub fn acceptor_values(&self) -> Vec<A> {
+        let mut values = Vec::new();
+        for (_, sides) in self.cached.entries_in_order() {
+            for side in Face::ALL {
+                if let Some(acceptor) = sides.get(side) {
+                    values.push(acceptor.clone());
+                }
+            }
+        }
+        values
+    }
 }
