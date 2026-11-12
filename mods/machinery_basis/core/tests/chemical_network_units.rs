@@ -51,7 +51,7 @@ fn push(world: &mut World, x: i32, id: &str, amount: i32) -> i32 {
         AutomationType::External,
     );
     transaction.commit();
-    world.level.hooks.state.family.flush_contents();
+    world.family_mut().flush_contents();
     got
 }
 

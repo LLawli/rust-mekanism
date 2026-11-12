@@ -7,7 +7,7 @@
 //! `push` e os tickets. Duas execuções do original têm hashes diferentes e ordens diferentes: as duas saem iguais ao port quando ele recebe os hashes
 //! de cada uma.
 #![allow(dead_code)]
-use crate::resource_world::{Event, Kind, Tank, World};
+use crate::resource_world::{Kind, NetEvent as Event, Tank, World};
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::sides::Face;
@@ -115,7 +115,7 @@ fn port_state<K: Kind>(world: &World<K>, depth: i64, mine: &Mine) -> Value {
     let width = i64::from(world.width);
     let in_line = |network: NetworkId| {
         registry.network(network).transmitters().iter().any(|t| {
-            let pos = world.level.hooks.state.pipes[t.0 as usize].pos;
+            let pos = world.owner().pos_of(*t);
             world.index_of(pos, depth as i32).is_some()
         })
     };
@@ -158,7 +158,7 @@ fn port_state<K: Kind>(world: &World<K>, depth: i64, mine: &Mine) -> Value {
                 "transmitters": network.transmitters().iter()
                     .map(|t| {
                         world
-                            .index_of(world.level.hooks.state.pipes[t.0 as usize].pos, depth as i32)
+                            .index_of(world.owner().pos_of(*t), depth as i32)
                             .unwrap()
                     })
                     .collect::<Vec<_>>(),
@@ -355,7 +355,7 @@ impl<K: Kind> Replay<K> {
             AutomationType::External,
         );
         transaction.commit();
-        self.world.level.hooks.state.family.flush_contents();
+        self.world.family_mut().flush_contents();
         got
     }
 
@@ -435,7 +435,7 @@ impl<K: Kind> Replay<K> {
                     };
                     tank.set_contents(Some(resource), amount, None);
                 }
-                self.world.level.hooks.state.family.flush_contents();
+                self.world.family_mut().flush_contents();
             }
             // `push x z fluido quantidade`
             "push" => {
@@ -463,7 +463,7 @@ impl<K: Kind> Replay<K> {
             // `nbt x`: `MechanicalPipe.write`.
             "nbt" => {
                 let stored = self.world.write_stored(number(1));
-                self.world.level.hooks.state.family.flush_contents();
+                self.world.family_mut().flush_contents();
                 self.nbt.push_back((
                     i64::from(number(1)),
                     stored.resource.as_ref().map_or(String::new(), K::id),
@@ -488,8 +488,8 @@ impl<K: Kind> Replay<K> {
                 let chunk = self.line_chunk(number(1));
                 self.world.level.set_chunk_load_level(chunk, number(2));
             }
-            "freeze" => self.world.level.hooks.state.runs_normally = false,
-            "unfreeze" => self.world.level.hooks.state.runs_normally = true,
+            "freeze" => self.world.level.hooks.runs_normally = false,
+            "unfreeze" => self.world.level.hooks.runs_normally = true,
             "finish" => {}
             other => panic!("ação desconhecida no rastro: {other}"),
         }
@@ -526,7 +526,6 @@ fn resource_id<K: Kind>(contents: &StackContents<K::R>) -> String {
 
 fn port_estate<K: Kind>(replay: &Replay<K>) -> Value {
     let world = &replay.world;
-    let state = &world.level.hooks.state;
     let width = i64::from(world.width);
     let mut cables = Vec::new();
     let mut nets: BTreeMap<u32, ()> = BTreeMap::new();
@@ -535,7 +534,7 @@ fn port_estate<K: Kind>(replay: &Replay<K>) -> Value {
             if let Some(network) = pipe.network {
                 nets.insert(network.0, ());
             }
-            let pipe = state.family.pipe(id);
+            let pipe = world.family().pipe(id);
             let (buf, share) = (pipe.share(), pipe.save_share_contents());
             cables.push(serde_json::json!({
                 "x": x,
@@ -555,7 +554,7 @@ fn port_estate<K: Kind>(replay: &Replay<K>) -> Value {
             .transmitters()
             .iter()
             .any(|t| {
-                let pos = state.pipes[t.0 as usize].pos;
+                let pos = world.owner().pos_of(*t);
                 world.index_of(pos, replay.depth as i32).is_some()
             });
         if in_line {
@@ -565,7 +564,7 @@ fn port_estate<K: Kind>(replay: &Replay<K>) -> Value {
     let nets: Vec<Value> = nets
         .keys()
         .map(|&id| {
-            let network = state.family.network(NetworkId(id)).unwrap();
+            let network = world.family().network(NetworkId(id)).unwrap();
             let buffer = network.buffer();
             serde_json::json!({
                 "net": replay.mine[id as usize],
@@ -722,10 +721,7 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
             .collect();
         let transfers: Vec<(i64, f32, String)> = replay
             .world
-            .level
-            .hooks
-            .state
-            .family
+            .family_mut()
             .take_transfer_events()
             .into_iter()
             .map(|event| {
@@ -753,10 +749,7 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
             .collect();
         let contents: Vec<(i64, String, i64)> = replay
             .world
-            .level
-            .hooks
-            .state
-            .family
+            .family_mut()
             .take_contents_events()
             .into_iter()
             .map(|event| {
@@ -784,10 +777,7 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
             .collect();
         let dispersals: Vec<(i64, String, i64)> = replay
             .world
-            .level
-            .hooks
-            .state
-            .family
+            .family_mut()
             .take_dispersals()
             .into_iter()
             .map(|dispersal| {

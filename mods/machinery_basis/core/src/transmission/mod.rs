@@ -41,6 +41,7 @@ pub mod network_acceptors;
 pub mod owner;
 pub mod pressurized_tube;
 pub mod registry;
+pub mod resource_owner;
 pub mod thermodynamic_conductor;
 pub mod transmitter;
 pub mod universal_cable;
