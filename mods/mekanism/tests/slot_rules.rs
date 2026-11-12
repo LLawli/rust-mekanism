@@ -15,21 +15,22 @@
 mod common;
 
 use common::{item, machine, valid_input};
+use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
+use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::chemical::ChemicalResource;
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
+use machinery_basis_core::item_instance::InstanceItems;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
-use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
-use machinery_basis_core::chemical::ChemicalConversion;
-use machinery_basis_core::item_instance::InstanceItems;
 use mekanism_rules::{
-    ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT, Indexes, SlotIndexes,
-    infusing_cache_of, item_instance, item_placed_config, item_sides, item_slots, slot_accepts, slot_extractable,
+    ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT,
+    Indexes, SlotIndexes, infusing_cache_of, item_instance, item_placed_config, item_sides,
+    item_slots, slot_accepts, slot_extractable,
 };
-use std::rc::Rc;
 use serde_json::Value;
 use std::path::Path;
+use std::rc::Rc;
 
 /// Cada máquina grava 7 itens no slot de energia, e o Infuser mais 4 tanques por 2 entradas por 7 itens no de infusão.
 const ENERGY_PROBES: usize = 7;
@@ -299,9 +300,17 @@ fn the_hopper_below_gets_what_the_original_gives_it() {
 
 fn slot_indexes(name: &str) -> SlotIndexes {
     if name == "metallurgic_infuser" {
-        SlotIndexes { input: INPUT_SLOT, energy: ENERGY_SLOT, infusion: Some(INFUSION_SLOT) }
+        SlotIndexes {
+            input: INPUT_SLOT,
+            energy: ENERGY_SLOT,
+            infusion: Some(INFUSION_SLOT),
+        }
     } else {
-        SlotIndexes { input: ELECTRIC_INPUT_SLOT, energy: ELECTRIC_ENERGY_SLOT, infusion: None }
+        SlotIndexes {
+            input: ELECTRIC_INPUT_SLOT,
+            energy: ELECTRIC_ENERGY_SLOT,
+            infusion: None,
+        }
     }
 }
 
@@ -319,9 +328,15 @@ fn indexes_of(name: &str) -> Indexes {
         id: format!("test/{valid}"),
         input: ItemIngredient::item(valid),
         input_count: 1,
-        output: ItemOutput { resource: item("clay_ball"), count: 1 },
+        output: ItemOutput {
+            resource: item("clay_ball"),
+            count: 1,
+        },
     });
-    Indexes::Electric { recipes: ItemToItemRecipe::cache_of(vec![recipe]), energy: common::energy_conversions() }
+    Indexes::Electric {
+        recipes: ItemToItemRecipe::cache_of(vec![recipe]),
+        energy: common::energy_conversions(),
+    }
 }
 
 fn held_of(tank: &str, input: &str) -> Held {
@@ -340,18 +355,32 @@ fn placed_instance(name: &str, front: Face) -> InstanceItems {
 
 /// O que o hopper do Horizon (`add_item`: os slots da face, na ordem, cada um por `can_place` sem face e pelo hook `container_accepts`
 /// com ela) deixa de fora, na ordem dos itens.
-fn horizon_left_in_the_hopper(name: &str, instance: &InstanceItems, at: Face, held: &Held) -> Vec<String> {
+fn horizon_left_in_the_hopper(
+    name: &str,
+    instance: &InstanceItems,
+    at: Face,
+    held: &Held,
+) -> Vec<String> {
     let (indexes, slots) = (indexes_of(name), slot_indexes(name));
     HOPPER_ITEMS
         .iter()
-        .map(|id| if *id == "VALID" { valid_input(name) } else { id })
+        .map(|id| {
+            if *id == "VALID" {
+                valid_input(name)
+            } else {
+                id
+            }
+        })
         .filter(|id| {
             let resource = item(id);
-            let landing = instance.face_slots()[at as usize].iter().copied().find(|slot| {
-                instance.inputs().contains(slot)
-                    && instance.accepts_through(at, *slot)
-                    && slot_accepts(&indexes, &slots, *slot, &resource, held)
-            });
+            let landing = instance.face_slots()[at as usize]
+                .iter()
+                .copied()
+                .find(|slot| {
+                    instance.inputs().contains(slot)
+                        && instance.accepts_through(at, *slot)
+                        && slot_accepts(&indexes, &slots, *slot, &resource, held)
+                });
             landing.is_none()
         })
         .map(str::to_owned)
@@ -391,8 +420,16 @@ fn the_instance_container_has_what_the_a_emulation_declared() {
         for at in Face::ALL {
             let old = reached(name, front, at);
             let new = &instance.faces[at as usize];
-            assert_eq!(new.can_input, !old.inputs.is_empty(), "{name} {at:?}: entrada");
-            assert_eq!(new.can_output, !old.outputs.is_empty(), "{name} {at:?}: saída");
+            assert_eq!(
+                new.can_input,
+                !old.inputs.is_empty(),
+                "{name} {at:?}: entrada"
+            );
+            assert_eq!(
+                new.can_output,
+                !old.outputs.is_empty(),
+                "{name} {at:?}: saída"
+            );
             if new.can_input {
                 assert_eq!(new.slots, old.inputs, "{name} {at:?}: slots de entrada");
             }
@@ -434,11 +471,13 @@ fn the_horizon_hopper_below_gets_what_the_original_gives_it() {
             if !item_id.is_empty() && name == "metallurgic_infuser" {
                 // O tanque vazio converte o item no mesmo tick: o hopper não chega a ver nada, e o rastro mostra isso.
                 let converted_at_once = tank == "empty:0" && item_id == "bio_fuel";
-                let taken = instance.face_slots()[Face::Down as usize].iter().any(|&slot| {
-                    slot == INFUSION_SLOT
-                        && instance.releases_through(Face::Down, slot)
-                        && slot_extractable(&indexes, &slots, slot, &item(item_id), &held)
-                });
+                let taken = instance.face_slots()[Face::Down as usize]
+                    .iter()
+                    .any(|&slot| {
+                        slot == INFUSION_SLOT
+                            && instance.releases_through(Face::Down, slot)
+                            && slot_extractable(&indexes, &slots, slot, &item(item_id), &held)
+                    });
                 if taken && !converted_at_once {
                     expected = 3;
                 }
@@ -446,7 +485,8 @@ fn the_horizon_hopper_below_gets_what_the_original_gives_it() {
                 // Nenhum slot das elétricas sai pela base, e nada das outras fases (o slot de energia guarda um graveto, que
                 // nem a base alcança): a regra do slot sozinha não basta, a face é que fecha.
                 assert!(
-                    name == "metallurgic_infuser" || !instance.faces[Face::Down as usize].can_output,
+                    name == "metallurgic_infuser"
+                        || !instance.faces[Face::Down as usize].can_output,
                     "{name}"
                 );
             }
@@ -468,11 +508,18 @@ fn the_slot_rules_of_the_instance_follow_the_probes_of_the_original() {
             let Some(probe) = line["probe"].as_str() else {
                 continue;
             };
-            let slot = if probe == "energy" { slots.energy } else { slots.infusion.unwrap() };
+            let slot = if probe == "energy" {
+                slots.energy
+            } else {
+                slots.infusion.unwrap()
+            };
             let held = if probe == "energy" {
                 held_of("empty:0", "")
             } else {
-                held_of(line["tank"].as_str().unwrap(), line["input"].as_str().unwrap())
+                held_of(
+                    line["tank"].as_str().unwrap(),
+                    line["input"].as_str().unwrap(),
+                )
             };
             let resource = item(line["item"].as_str().unwrap());
             assert_eq!(
@@ -488,7 +535,10 @@ fn the_slot_rules_of_the_instance_follow_the_probes_of_the_original() {
             seen += 1;
         }
     }
-    assert!(seen >= 4 * ENERGY_PROBES + INFUSION_PROBES, "só {seen} sondas");
+    assert!(
+        seen >= 4 * ENERGY_PROBES + INFUSION_PROBES,
+        "só {seen} sondas"
+    );
 }
 
 /// `slot_extractable` e `slot_accepts` (o que o glue usa por instância, sem o objeto vivo) dão o mesmo que os slots de verdade da máquina,
@@ -496,12 +546,28 @@ fn the_slot_rules_of_the_instance_follow_the_probes_of_the_original() {
 /// tocam, o slot de entrada (`InputInventorySlot`, que não deixa o de fora tirar) e o de saída (que não deixa pôr).
 #[test]
 fn the_pure_slot_rules_agree_with_the_slots_of_the_machine() {
-    let items = ["stick", "redstone", "redstone_block", "coal", "diamond", "bio_fuel", "red_mushroom", "dirt", "clay", "cobblestone", "sand"];
+    let items = [
+        "stick",
+        "redstone",
+        "redstone_block",
+        "coal",
+        "diamond",
+        "bio_fuel",
+        "red_mushroom",
+        "dirt",
+        "clay",
+        "cobblestone",
+        "sand",
+    ];
     let mut compared = 0;
     for name in MACHINES {
         let (indexes, slots) = (indexes_of(name), slot_indexes(name));
         // As receitas de cada lado são as mesmas: o Infuser do conteúdo, e a máquina elétrica com a receita da sonda.
-        let machine = if name == "metallurgic_infuser" { common::infuser_from_content_by_type() } else { machine(name) };
+        let machine = if name == "metallurgic_infuser" {
+            common::infuser_from_content_by_type()
+        } else {
+            machine(name)
+        };
         for tank in ["empty:0", "bio:500", "bio:1000", "fungi:500"] {
             for input in ["", valid_input(name)] {
                 if name != "metallurgic_infuser" && (tank != "empty:0") {
@@ -510,7 +576,11 @@ fn the_pure_slot_rules_agree_with_the_slots_of_the_machine() {
                 if name == "metallurgic_infuser" {
                     set_state(&machine, tank, input);
                 } else {
-                    machine.input().set_contents((!input.is_empty()).then(|| item(input)), u32::from(!input.is_empty()), None);
+                    machine.input().set_contents(
+                        (!input.is_empty()).then(|| item(input)),
+                        u32::from(!input.is_empty()),
+                        None,
+                    );
                 }
                 let held = held_of(tank, input);
                 for (index, slot) in machine.inventory_slots().iter().enumerate() {

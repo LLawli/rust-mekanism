@@ -32,8 +32,16 @@ impl InstanceItems {
             let can_input = !reached.inputs.is_empty();
             let can_output = !reached.outputs.is_empty();
             // Os dois vêm do mesmo `ISlotInfo`: a lista é a mesma, e só a que a face deixa usar não está vazia.
-            let slots = if can_input { reached.inputs } else { reached.outputs };
-            items.faces[face as usize] = FaceItems { slots, can_input, can_output };
+            let slots = if can_input {
+                reached.inputs
+            } else {
+                reached.outputs
+            };
+            items.faces[face as usize] = FaceItems {
+                slots,
+                can_input,
+                can_output,
+            };
         }
         items
     }
@@ -91,9 +99,21 @@ mod tests {
 
     fn items() -> InstanceItems {
         let mut items = InstanceItems::default();
-        items.faces[Face::Up as usize] = FaceItems { slots: vec![0], can_input: true, can_output: false };
-        items.faces[Face::Down as usize] = FaceItems { slots: vec![1, 2], can_input: false, can_output: true };
-        items.faces[Face::North as usize] = FaceItems { slots: vec![0, 1], can_input: true, can_output: true };
+        items.faces[Face::Up as usize] = FaceItems {
+            slots: vec![0],
+            can_input: true,
+            can_output: false,
+        };
+        items.faces[Face::Down as usize] = FaceItems {
+            slots: vec![1, 2],
+            can_input: false,
+            can_output: true,
+        };
+        items.faces[Face::North as usize] = FaceItems {
+            slots: vec![0, 1],
+            can_input: true,
+            can_output: true,
+        };
         items
     }
 
@@ -105,7 +125,10 @@ mod tests {
         assert!(!items.accepts_through(Face::Down, 1));
         assert!(items.releases_through(Face::Down, 1));
         assert!(items.accepts_through(Face::North, 1) && items.releases_through(Face::North, 1));
-        assert!(!items.accepts_through(Face::South, 0), "uma face sem slot não deixa nada");
+        assert!(
+            !items.accepts_through(Face::South, 0),
+            "uma face sem slot não deixa nada"
+        );
     }
 
     #[test]

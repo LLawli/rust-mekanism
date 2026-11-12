@@ -2347,7 +2347,11 @@ pub fn slot_extractable(
 
 /// As faces de item da instância (H2): o que a configuração de lados dá a uma máquina virada para `front`.
 pub fn item_instance(infuser: bool, config: &TileComponentConfig, front: Face) -> InstanceItems {
-    let all: &[usize] = if infuser { &INFUSER_ALL_SLOTS } else { &ELECTRIC_ALL_SLOTS };
+    let all: &[usize] = if infuser {
+        &INFUSER_ALL_SLOTS
+    } else {
+        &ELECTRIC_ALL_SLOTS
+    };
     InstanceItems::of_config(config, front, all)
 }
 

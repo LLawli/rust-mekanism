@@ -290,8 +290,16 @@ fn the_container_of_the_instance_gives_each_face_what_the_original_gives_it() {
                 .iter()
                 .map(|slot| slot.as_u64().unwrap() as usize)
                 .collect();
-            assert_eq!(instance.is_present(side), want["present"], "{label}: capability em {text}");
-            assert_eq!(instance.face_slots()[side as usize], reached, "{label}: slots em {text}");
+            assert_eq!(
+                instance.is_present(side),
+                want["present"],
+                "{label}: capability em {text}"
+            );
+            assert_eq!(
+                instance.face_slots()[side as usize],
+                reached,
+                "{label}: slots em {text}"
+            );
             for &slot in &reached {
                 assert_eq!(
                     instance.accepts_through(side, slot),
@@ -325,5 +333,8 @@ fn the_container_of_the_instance_gives_each_face_what_the_original_gives_it() {
         cases += 1;
     }
     assert!(cases >= 100, "só {cases} configurações");
-    assert!(faces_with_slots >= 300, "só {faces_with_slots} faces com slot");
+    assert!(
+        faces_with_slots >= 300,
+        "só {faces_with_slots} faces com slot"
+    );
 }

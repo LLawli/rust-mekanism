@@ -13,20 +13,27 @@ use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItem
 use machinery_basis_core::chemical::ChemicalConversion;
 use machinery_basis_core::sides::Face;
 use mekanism_rules::{
-    ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT, Indexes, SlotIndexes, infusing_cache_of,
-    item_instance, item_placed_config, slot_accepts,
+    ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT,
+    Indexes, SlotIndexes, infusing_cache_of, item_instance, item_placed_config, slot_accepts,
 };
 use serde_json::Value;
 use std::path::Path;
 use std::rc::Rc;
 
-const MACHINES: [&str; 4] = ["enrichment_chamber", "crusher", "energized_smelter", "metallurgic_infuser"];
+const MACHINES: [&str; 4] = [
+    "enrichment_chamber",
+    "crusher",
+    "energized_smelter",
+    "metallurgic_infuser",
+];
 const FACES: [&str; 6] = ["down", "up", "north", "south", "west", "east"];
 /// Seis faces por cinco itens por máquina, para o dropper e para o dispenser.
 const PHASES: usize = 2 * 6 * 5;
 
 fn read(path: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros").join(path);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros")
+        .join(path);
     std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
         .lines()
@@ -41,9 +48,17 @@ fn face(name: &str) -> Face {
 
 fn slots_of(name: &str) -> SlotIndexes {
     if name == "metallurgic_infuser" {
-        SlotIndexes { input: INPUT_SLOT, energy: ENERGY_SLOT, infusion: Some(INFUSION_SLOT) }
+        SlotIndexes {
+            input: INPUT_SLOT,
+            energy: ENERGY_SLOT,
+            infusion: Some(INFUSION_SLOT),
+        }
     } else {
-        SlotIndexes { input: ELECTRIC_INPUT_SLOT, energy: ELECTRIC_ENERGY_SLOT, infusion: None }
+        SlotIndexes {
+            input: ELECTRIC_INPUT_SLOT,
+            energy: ELECTRIC_ENERGY_SLOT,
+            infusion: None,
+        }
     }
 }
 
@@ -61,7 +76,10 @@ fn smelting_inputs() -> Vec<String> {
 }
 
 fn indexes_of(name: &str) -> Indexes {
-    let electric = |recipes| Indexes::Electric { recipes: ItemToItemRecipe::cache_of(recipes), energy: common::energy_conversions() };
+    let electric = |recipes| Indexes::Electric {
+        recipes: ItemToItemRecipe::cache_of(recipes),
+        energy: common::energy_conversions(),
+    };
     match name {
         "enrichment_chamber" => electric(common::item_recipes_of_type("mekanism:enriching")),
         "crusher" => electric(common::item_recipes_of_type("mekanism:crushing")),
@@ -73,7 +91,10 @@ fn indexes_of(name: &str) -> Indexes {
                         id: format!("minecraft:smelting/{input}"),
                         input: ItemIngredient::item(input),
                         input_count: 1,
-                        output: ItemOutput { resource: item("stone"), count: 1 },
+                        output: ItemOutput {
+                            resource: item("stone"),
+                            count: 1,
+                        },
                     })
                 })
                 .collect(),
@@ -93,11 +114,19 @@ fn indexes_of(name: &str) -> Indexes {
 fn landing(name: &str, at: Face, front: Face, id: &str, indexes: &Indexes) -> Option<usize> {
     let infuser = name == "metallurgic_infuser";
     let instance = item_instance(infuser, &item_placed_config(infuser), front);
-    let held = Held { chemical: None, input: None };
+    let held = Held {
+        chemical: None,
+        input: None,
+    };
     let (slots, resource) = (slots_of(name), item(id));
-    instance.face_slots()[at as usize].iter().copied().find(|slot| {
-        instance.inputs().contains(slot) && instance.accepts_through(at, *slot) && slot_accepts(indexes, &slots, *slot, &resource, &held)
-    })
+    instance.face_slots()[at as usize]
+        .iter()
+        .copied()
+        .find(|slot| {
+            instance.inputs().contains(slot)
+                && instance.accepts_through(at, *slot)
+                && slot_accepts(indexes, &slots, *slot, &resource, &held)
+        })
 }
 
 #[test]
@@ -116,34 +145,63 @@ fn a_dropper_pointed_at_each_face_puts_in_what_the_original_puts_in() {
             };
             let (side, id) = rest.split_once('_').unwrap();
             assert!(FACES.contains(&side), "{phase}");
-            let id = if id == valid_input(name) { valid_input(name) } else { id };
+            let id = if id == valid_input(name) {
+                valid_input(name)
+            } else {
+                id
+            };
             let left = line["dropper"][0][1].as_u64().unwrap();
             let slots = line["slots"].as_array().unwrap();
             let landed = landing(name, face(side), front, id, &indexes);
             match landed {
                 Some(slot) => {
                     // O dropper deu um item: o original o tem no slot, ou, no slot de infusão, no tanque (a conversão do mesmo tick).
-                    assert_eq!(left, 2, "{name} {phase}: o dropper devia ter dado um item: {line}");
+                    assert_eq!(
+                        left, 2,
+                        "{name} {phase}: o dropper devia ter dado um item: {line}"
+                    );
                     if Some(slot) == slots_of(name).infusion {
-                        assert!(line["tank"][1].as_u64().unwrap() > 0, "{name} {phase}: tanque: {line}");
+                        assert!(
+                            line["tank"][1].as_u64().unwrap() > 0,
+                            "{name} {phase}: tanque: {line}"
+                        );
                     } else {
-                        assert_eq!(slots[slot][1].as_u64().unwrap(), 1, "{name} {phase}: slot {slot}: {line}");
+                        assert_eq!(
+                            slots[slot][1].as_u64().unwrap(),
+                            1,
+                            "{name} {phase}: slot {slot}: {line}"
+                        );
                     }
-                    assert_eq!(slots.iter().filter(|s| s[1].as_u64().unwrap() > 0).count(), usize::from(Some(slot) != slots_of(name).infusion));
+                    assert_eq!(
+                        slots.iter().filter(|s| s[1].as_u64().unwrap() > 0).count(),
+                        usize::from(Some(slot) != slots_of(name).infusion)
+                    );
                     inserted += 1;
                 }
                 None => {
-                    assert_eq!(left, 3, "{name} {phase}: o dropper devia ficar com os 3: {line}");
-                    assert!(slots.iter().all(|s| s[1].as_u64().unwrap() == 0), "{name} {phase}: {line}");
+                    assert_eq!(
+                        left, 3,
+                        "{name} {phase}: o dropper devia ficar com os 3: {line}"
+                    );
+                    assert!(
+                        slots.iter().all(|s| s[1].as_u64().unwrap() == 0),
+                        "{name} {phase}: {line}"
+                    );
                     refused += 1;
                 }
             }
-            assert_eq!(line["dropped"], 0, "{name} {phase}: o dropper não solta no chão o que a máquina recusa");
+            assert_eq!(
+                line["dropped"], 0,
+                "{name} {phase}: o dropper não solta no chão o que a máquina recusa"
+            );
             seen += 1;
         }
         assert_eq!(seen, PHASES / 2, "{name}: faltam fases do dropper");
     }
-    assert!(inserted >= 30 && refused >= 80, "{inserted} entraram, {refused} recusados");
+    assert!(
+        inserted >= 30 && refused >= 80,
+        "{inserted} entraram, {refused} recusados"
+    );
 }
 
 #[test]
@@ -156,9 +214,22 @@ fn a_dispenser_drops_the_item_and_never_inserts() {
             if !phase.starts_with("dispenser_") {
                 continue;
             }
-            assert_eq!(line["dropper"][0][1], 2, "{name} {phase}: o dispenser dá um item: {line}");
-            assert_eq!(line["dropped"], 1, "{name} {phase}: e o solta no chão: {line}");
-            assert!(line["slots"].as_array().unwrap().iter().all(|s| s[1].as_u64().unwrap() == 0), "{name} {phase}: {line}");
+            assert_eq!(
+                line["dropper"][0][1], 2,
+                "{name} {phase}: o dispenser dá um item: {line}"
+            );
+            assert_eq!(
+                line["dropped"], 1,
+                "{name} {phase}: e o solta no chão: {line}"
+            );
+            assert!(
+                line["slots"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|s| s[1].as_u64().unwrap() == 0),
+                "{name} {phase}: {line}"
+            );
             seen += 1;
         }
         assert_eq!(seen, PHASES / 2, "{name}: faltam fases do dispenser");

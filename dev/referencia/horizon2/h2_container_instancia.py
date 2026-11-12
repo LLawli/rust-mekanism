@@ -54,12 +54,12 @@ def clear_scene():
     time.sleep(0.4)
 
 
-def machine(item_sides, *, items="", energy=None):
+def machine(item_sides, *, items="", energy=None, eject=False):
     """O Crusher posto por `setblock` (tudo em NONE) com a configuração dada e os itens dados (na ordem dos slots)."""
     clear_scene()
     c.setblock(O, f"{MACHINE}[facing=north]")
     time.sleep(0.6)
-    merge(O, f"Items:[{items}]," + config(item_sides, energy))
+    merge(O, f"Items:[{items}]," + config(item_sides, energy, eject))
 
 
 def powered():
@@ -132,6 +132,16 @@ def measure():
     time.sleep(0.5)
     c.step(80)
     ok &= c.report("hopper embaixo em INPUT_OUTPUT: leva o cascalho", (True, False), (c.total(under, GRAVEL) > 0, c.total(under, COBBLE) > 0))
+    # O ejetor de outra máquina entra pelo mesmo contêiner (`native_insert_item`): o Crusher da direita (oeste) recebe o cascalho que o primeiro ejeta, pela face que tem INPUT
+    # (a esquerda dele, a leste); sem DataType nessa face, nada entra. Visto em jogo, sem rastro do Java.
+    for name, left, want in (("com a face em INPUT: recebe", 1, True), ("sem DataType: não recebe", 0, False)):
+        machine(sides(right=4), items=f'{{Slot:1b,id:"{GRAVEL}",count:10}}', eject=True)
+        neighbour = at(O, WEST)
+        c.setblock(neighbour, f"{MACHINE}[facing=north]")
+        time.sleep(0.6)
+        merge(neighbour, "Items:[]," + config(sides(left=left)))
+        c.step(60)
+        ok &= c.report(f"ejetor de outra máquina {name}", want, slot_count(neighbour, 0, GRAVEL) > 0)
     print("TUDO IGUAL" if ok else "HÁ DIFERENÇAS")
     return 0 if ok else 1
 
