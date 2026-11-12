@@ -432,22 +432,21 @@ pub(in crate::game) fn update_shape(
     if new.is_some() {
         return;
     }
-    let energy = network::current();
-    if is_transmitter_state(level, &energy, state) {
-        let side = face_of(direction);
-        let joined = joins(level, &energy, around, side.opposite());
-        *new = Some(with_side(level, state, side, joined));
-        return;
-    }
-    // `IStateFluidLoggable.updateFluids`: o fluido guardado agenda o próprio tick a cada atualização de forma.
+    // `IStateFluidLoggable.updateFluids`: o fluido guardado agenda o próprio tick a cada atualização de forma (o transmissor também, `BlockTransmitter.updateShape`).
     let fluid = level
         .registry
         .state(state)
         .and_then(|s| s.properties.get(fluid_logged::PROPERTY))
         .and_then(|value| fluid_of(value));
     if let Some(fluid) = fluid {
-        let delay = tick_delay(fluid, level.dimension() == LevelDimension::Nether);
+        let delay = tick_delay(fluid, matches!(level.dimension, LevelDimension::Nether));
         level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], fluid, delay);
+    }
+    let energy = network::current();
+    if is_transmitter_state(level, &energy, state) {
+        let side = face_of(direction);
+        let joined = joins(level, &energy, around, side.opposite());
+        *new = Some(with_side(level, state, side, joined));
     }
 }
 

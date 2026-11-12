@@ -8,6 +8,7 @@ use horizon_core::position::BlockPos;
 use crate::game::LevelDimension;
 use horizon_world::level::{LevelAccess, LevelEvent, Ticks};
 use horizon_world::registry::BlockStateId;
+use machinery_basis_core::fluid_logged;
 use machinery_basis_core::liquid::flow;
 use machinery_basis_core::liquid::shape::{OcclusionCache, PixelShape};
 use machinery_basis_core::liquid::{
@@ -598,9 +599,15 @@ pub(in crate::game) fn index_states(game: &Game<'_>) {
     let liquids = liquid_data::current();
     let registry = game.pack.assets.registry;
     let mut table = vec![0u8; registry.len()];
+    let mut logged = vec![0u8; registry.len()];
     for (index, entry) in table.iter_mut().enumerate() {
         let Some(state) = registry.state(BlockStateId(index as u32)) else {
             continue;
+        };
+        logged[index] = match state.properties.get(fluid_logged::PROPERTY).map(String::as_str) {
+            Some(fluid_logged::WATER) => 1,
+            Some(fluid_logged::LAVA) => 2,
+            _ => 0,
         };
         if liquids.by_block(&state.name).is_none() {
             continue;
@@ -610,4 +617,5 @@ pub(in crate::game) fn index_states(game: &Game<'_>) {
         }
     }
     horizon_client::motion::machinery_water_like::set(table);
+    horizon_client::motion::machinery_water_like::set_logged(logged);
 }

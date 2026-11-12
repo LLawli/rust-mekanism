@@ -3410,7 +3410,15 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
 /// é sólido). O gancho `fill_bucket` ouve o clique do jogador no bloco que recebe o fluido e, quando esse é um contêiner de água (laje, escada), também no bloco ao lado, que não recebe nada: só o
 /// primeiro é recusado (o `target` que a injeção `bucket_target` anotou), e cancelar deixa o balde cheio e o cabo onde está, como o `InteractionResult.FAIL` do original. Não ouve o dispensador (H110).
 pub(in crate::game) fn fill_bucket(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], canceled: &mut bool) {
-    if !*canceled && rules::bucket_refused_at(&stack.item, &game.native_block(pos), pos, BUCKET_TARGET.with(Cell::get)) {
+    if *canceled || !rules::bucket_refused_at(&stack.item, &game.native_block(pos), pos, BUCKET_TARGET.with(Cell::get)) {
+        return;
+    }
+    // Um transmissor vazio de fluido recebe a água ou a lava dentro dele quando o jogador não está agachado (`IStateFluidLoggable.placeLiquid`, que `canBeReplaced` falso não
+    // impede): quem pergunta é o balde da `machinery_basis`, e só o derrama que trocaria o cabo pelo fluido é recusado.
+    let fills_inside = !game.native_sneaking()
+        && game.native_block_property(pos, "fluid_logged").as_deref() == Some("empty")
+        && matches!(&*stack.item, "minecraft:water_bucket" | "minecraft:lava_bucket");
+    if !fills_inside {
         *canceled = true;
     }
 }

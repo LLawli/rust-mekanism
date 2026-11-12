@@ -6,6 +6,10 @@ fn machinery_basis_fluid_state(state: BlockStateId, found: FluidState) -> FluidS
             1..=7 => FluidState::new(FluidKind::FlowingWater, 8 - level, false),
             _ => FluidState::new(FluidKind::FlowingWater, 8, true),
         },
-        _ => found,
+        // `IStateFluidLoggable.getFluid`: a água ou a lava dentro do bloco é a fonte do fluido do vanilla, com o `FluidType` dele (`machinery_water_like::logged`).
+        _ => match machinery_water_like::logged(state.0) {
+            Some(kind) if found == FluidState::EMPTY => FluidState::new(kind, 8, false),
+            _ => found,
+        },
     }
 }

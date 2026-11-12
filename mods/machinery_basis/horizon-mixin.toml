@@ -89,20 +89,34 @@ bindings = [
   { name = "combo", ty = "&[(String, String)]", value = "combo" },
 ]
 
-# O mesher, a física de entidade, o balde e o motor de fluidos leem o fluido de um estado em `FluidState::from_block`, que só conhece a água, a lava e `waterlogged`. Este
-# MODIFY_EXPRESSION_VALUE (o `Ok(Self::EMPTY)` do braço dos estados sem `waterlogged`) devolve a fonte de água ou de lava a um bloco com `fluid_logged=water` ou `lava`, como
-# `IStateFluidLoggable.getFluid` (`getSource(false)`). Um HEAD cancelável não serve (`Self` no retorno) e um RETURN também não (`?` no corpo). Alvo cru, H3.
+# O mesher lê o fluido de cada estado em `FluidState::from_block(registry.state(id))` dentro de `MeshTables::new`, que só conhece a água, a lava e `waterlogged`, e a função tem
+# `?` e closures (nada além de HEAD e MODIFY_VARIABLE entra nela; o `from_block` tem `Self` no retorno e `?` no corpo). O HEAD de `MeshTables::new` liga, nesta thread, o
+# modo "montando a tabela do mesher"; o RETURN de `BlockRegistry::state` devolve, nesse modo, o estado da fonte de água ou de lava a um bloco com `fluid_logged=water` ou `lava`
+# (`IStateFluidLoggable.getFluid`, `getSource(false)`), e o modo se desliga sozinho no último estado. Fora da montagem o `state` devolve o estado de sempre. Alvos crus, H3.
+[[module]]
+id = "logged-fluid-view"
+file = "crates/horizon-world/src/registry.rs"
+name = "machinery_logged_fluid"
+source = "logged_fluid_view.rs"
+visibility = "pub"
+
 [[injection]]
-id = "logged-fluid-state"
-target = "horizon_world::fluid::FluidState::from_block"
-kind = "MODIFY_EXPRESSION_VALUE"
-selector = "Ok(Self::EMPTY)"
-require = 1
-ordinal = 0
+id = "logged_fluid_begin"
+target = "horizon_client_render::mesher::MeshTables::new"
+kind = "HEAD"
+helper = "logged_fluid_begin.rs"
+bindings = [
+  { name = "facts", ty = "&BlockFacts", value = "facts" },
+]
+
+[[injection]]
+id = "logged_fluid_view"
+target = "horizon_world::registry::BlockRegistry::state"
+kind = "RETURN"
 helper = "logged_fluid_state.rs"
 bindings = [
-  { name = "state", ty = "&BlockState", value = "state" },
-  { name = "value", ty = "std::io::Result<FluidState>", value = "$value" },
+  { name = "value", ty = "Option<&BlockState>", value = "$value" },
+  { name = "id", ty = "BlockStateId", value = "id" },
 ]
 
 [[injection]]

@@ -142,3 +142,19 @@ pub fn set_mob_eye(id: u32, eye: bool) {
 pub fn mob_eye(id: u32) -> bool {
     MOB_EYE.with(|c| c.get() == Some(id))
 }
+
+static LOGGED: RwLock<Vec<u8>> = RwLock::new(Vec::new());
+
+/// Troca a tabela dos estados com `fluid_logged`: 1 para a água e 2 para a lava, 0 no resto. Refeita a cada carga de dados.
+pub fn set_logged(table: Vec<u8>) {
+    *LOGGED.write().unwrap_or_else(|e| e.into_inner()) = table;
+}
+
+/// O fluido que o estado `state` guarda dentro do bloco, se guarda.
+pub fn logged(state: u32) -> Option<horizon_world::fluid::FluidKind> {
+    match LOGGED.read().unwrap_or_else(|e| e.into_inner()).get(state as usize) {
+        Some(1) => Some(horizon_world::fluid::FluidKind::Water),
+        Some(2) => Some(horizon_world::fluid::FluidKind::Lava),
+        _ => None,
+    }
+}
