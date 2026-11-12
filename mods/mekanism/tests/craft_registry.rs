@@ -738,7 +738,12 @@ fn the_note_instrument_injection_gives_the_original_instrument() {
         assert_eq!(row, state_row(original), "{id}");
     }
     // Só eles: outro bloco do Mekanism, o gabarito e um bloco do vanilla ficam como estão.
-    for to in ["mekanism:block_osmium", "mekanism:salt", "minecraft:lapis_block", "mekanism:block_salt_extra"] {
+    for to in [
+        "mekanism:block_osmium",
+        "mekanism:salt",
+        "minecraft:lapis_block",
+        "mekanism:block_salt_extra",
+    ] {
         let mut row = state_row("HARP");
         note_instrument::run(&mut row, to);
         assert_eq!(row, state_row("HARP"), "{to}");
@@ -758,7 +763,15 @@ fn the_note_instrument_injection_gives_the_original_instrument() {
     );
     // Oito valores, um a menos do que a posição do instrumento pede: não há instrumento a trocar nem posição 8 a ler.
     let eight = J::Arr((0..8).map(J::Num).collect());
-    for node in [J::Null, J::Num(8), J::Str("HARP".to_owned()), object, short, names, eight] {
+    for node in [
+        J::Null,
+        J::Num(8),
+        J::Str("HARP".to_owned()),
+        object,
+        short,
+        names,
+        eight,
+    ] {
         let mut copy = node.clone();
         note_instrument::run(&mut copy, "mekanism:block_salt");
         assert_eq!(copy, node);
