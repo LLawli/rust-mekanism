@@ -1,13 +1,13 @@
 // Tudo da lib que fala com o jogo. As regras ficam em machinery_basis_core; este arquivo só as
 // liga ao Horizon. Outros mods chamam daqui como crate::game::machinery_basis.
-use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
-use crate::game::{Game, GameLevel, NativeReloadListener};
+use crate::game::{Game, GameLevel, LevelDimension, NativeReloadListener};
 use horizon_client::containers::ModBlockEntity;
 use horizon_client::crafting::{Cooking, Ingredient, Shape};
 use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Direction;
 use horizon_core::position::BlockPos;
+use horizon_core::random::RandomSource;
 use horizon_world::fluid::{FluidKind, FluidState};
 use horizon_world::level::{PlacementContext, Ticks};
 use horizon_world::nbt::{Compound, JavaString, Tag};
@@ -53,20 +53,20 @@ const DEFAULT_STACK: u32 = 64;
 // Um contador por face, mais um para o ejetor.
 const COOLDOWNS: usize = 7;
 const EJECT_COOLDOWN: usize = 6;
+const WATER: &str = "minecraft:water";
 const LAVA: &str = "minecraft:lava";
-const LAVA_SPRITE: &str = "block/lava_still";
-// A lava dentro do bloco, um pouco para dentro das faces do modelo, na altura de uma fonte. Em
-// unidades de modelo, de 0 a 16.
-const LOGGED_LAVA_FROM: [f32; 3] = [0.03, 0.03, 0.03];
-const LOGGED_LAVA_TO: [f32; 3] = [15.97, 14.2, 15.97];
-const FULL_BRIGHT: u32 = 0xF0F0;
-const WHITE: u32 = 0xFF_FF_FF;
-/// `LavaFluid.getTickDelay` fora do Nether.
+/// `WaterFluid.getTickDelay` e `LavaFluid.getTickDelay` (fora e dentro do Nether).
+const WATER_TICK_DELAY: i32 = 5;
 const LAVA_TICK_DELAY: i32 = 30;
+const LAVA_TICK_DELAY_NETHER: i32 = 10;
+const NETHER: &str = "minecraft:the_nether";
 const CREATIVE: i32 = 1;
-// O tick da última troca de balde, e por quantos ticks o uso do item que vem junto é ignorado.
-const BUCKET_SWAP_TICKS: i64 = 2;
-static LAST_BUCKET_SWAP: AtomicI64 = AtomicI64::new(i64::MIN / 2);
+/// `Block.UPDATE_ALL`, as flags do `setBlock` do balde.
+const BUCKET_SOUND_FILL: &str = "minecraft:item.bucket.fill";
+const BUCKET_SOUND_FILL_LAVA: &str = "minecraft:item.bucket.fill_lava";
+const BUCKET_SOUND_EMPTY: &str = "minecraft:item.bucket.empty";
+const BUCKET_SOUND_EMPTY_LAVA: &str = "minecraft:item.bucket.empty_lava";
+const FIRE_EXTINGUISH: &str = "minecraft:block.fire.extinguish";
 // Os índices de receitas por tipo. Só valem até a próxima carga de dados.
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
@@ -178,79 +178,164 @@ impl RecipeSource {
     }
 }
 
-/// Se o bloco em `pos` guarda lava no estado `fluid_logged`.
-pub(in crate::game) fn has_logged_lava(game: &Game<'_>, pos: [i32; 3]) -> bool {
-    game.native_block_property(pos, fluid_logged::PROPERTY).as_deref() == Some(fluid_logged::LAVA)
+/// O valor de `fluid_logged` do bloco em `pos`, se ele tem a propriedade.
+fn logged_value(game: &Game<'_>, pos: [i32; 3]) -> Option<String> {
+    game.native_block_property(pos, fluid_logged::PROPERTY)
 }
 
-/// Põe ou tira a lava do bloco. Posta, ela começa a correr como a água de um bloco alagado.
-fn set_logged_lava(game: &mut Game<'_>, pos: [i32; 3], logged: bool) {
-    let value = if logged {
-        fluid_logged::LAVA
-    } else {
-        fluid_logged::EMPTY
-    };
-    game.native_set_block_property(pos, fluid_logged::PROPERTY, value);
-    if logged {
-        game.with_level(|_, level, ticks| {
-            level.native_schedule_fluid_tick(ticks, pos, LAVA, LAVA_TICK_DELAY)
-        });
+/// Se o bloco em `pos` guarda lava no estado `fluid_logged`.
+pub(in crate::game) fn has_logged_lava(game: &Game<'_>, pos: [i32; 3]) -> bool {
+    logged_value(game, pos).as_deref() == Some(fluid_logged::LAVA)
+}
+
+/// `Fluid.getTickDelay` de um fluido guardado: a água espera 5 ticks, a lava 30 (10 no Nether).
+fn tick_delay(fluid: &str, nether: bool) -> i32 {
+    match (fluid, nether) {
+        (WATER, _) => WATER_TICK_DELAY,
+        (_, true) => LAVA_TICK_DELAY_NETHER,
+        _ => LAVA_TICK_DELAY,
     }
 }
 
-/// Um balde coloca ou tira a lava de um bloco com `fluid_logged`, como água numa escada, e o item de upgrade com shift entra num bloco
-/// com janela de upgrades. Um bloco com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.
+/// O fluido do vanilla que o valor de `fluid_logged` guarda (`FluidLogType.getFluid`).
+fn fluid_of(value: &str) -> Option<&'static str> {
+    match value {
+        fluid_logged::WATER => Some(WATER),
+        fluid_logged::LAVA => Some(LAVA),
+        _ => None,
+    }
+}
+
+/// `IStateFluidLoggable.isValidFluid` junto de `canPlaceLiquid`: o bloco está vazio e declara o valor (o Heat Generator só tem `empty` e `lava`).
+fn can_place_liquid(game: &mut Game<'_>, pos: [i32; 3], value: &str) -> bool {
+    if logged_value(game, pos).as_deref() != Some(fluid_logged::EMPTY) {
+        return false;
+    }
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    game.with_level(|_, level, _| level.native_state_with_property(state, fluid_logged::PROPERTY, value).is_some())
+}
+
+/// Se o `Fluid.getTickDelay` do fluido guardado vale a do Nether.
+fn in_nether(game: &Game<'_>) -> bool {
+    game.dim.id() == NETHER
+}
+
+fn is_creative(game: &Game<'_>) -> bool {
+    game.native_acting_player().is_some_and(|player| player.game_mode == CREATIVE)
+}
+
+/// `LiquidBlockContainer.placeLiquid` do `IStateFluidLoggable`: o valor entra no estado e o fluido agenda o próprio tick.
+fn place_logged(game: &mut Game<'_>, pos: [i32; 3], value: &str) {
+    game.native_set_block_property(pos, fluid_logged::PROPERTY, value);
+    if let Some(fluid) = fluid_of(value) {
+        let delay = tick_delay(fluid, in_nether(game));
+        game.with_level(|_, level, ticks| level.native_schedule_fluid_tick(ticks, pos, fluid, delay));
+    }
+}
+
+/// O centro do bloco, onde o som do balde toca.
+fn center(pos: [i32; 3]) -> [f64; 3] {
+    pos.map(|v| f64::from(v) + 0.5)
+}
+
+/// `BucketItem.emptyContents` sobre um bloco com `fluid_logged`: a água do Nether evapora (`WATER_EVAPORATES` vem antes do contêiner), e o resto entra no estado.
+/// Devolve se o balde esvaziou.
+fn empty_into(game: &mut Game<'_>, pos: [i32; 3], value: &str) -> bool {
+    if value == fluid_logged::WATER && in_nether(game) {
+        let random = &mut game.world.random;
+        let pitch = 2.6 + (random.next_float() - random.next_float()) * 0.8;
+        game.audio.play(FIRE_EXTINGUISH, Some(center(pos)), 0.5, pitch);
+        return true;
+    }
+    place_logged(game, pos, value);
+    let sound = if value == fluid_logged::LAVA { BUCKET_SOUND_EMPTY_LAVA } else { BUCKET_SOUND_EMPTY };
+    game.audio.play(sound, Some(center(pos)), 1.0, 1.0);
+    game.post_block_game_event("minecraft:fluid_place", pos, Some(horizon_client::mobs::Who::Player), None);
+    true
+}
+
+/// `BucketItem.use` de um balde cheio de água ou de lava sobre um bloco com `fluid_logged` (o raio sem fluido, `canBlockContainFluid`): sem agachar, o fluido entra no bloco;
+/// agachado, `canPlaceFluidInsideBlock` falha e o balde vai para o bloco ao lado, que o jogo trata como o de sempre.
+fn use_filled(game: &mut Game<'_>, stack: &ItemStack, value: &'static str, claimed: &mut bool) {
+    if game.native_sneaking() || !game.may_build() {
+        return;
+    }
+    let Some(hit) = game.pick() else {
+        return;
+    };
+    if !can_place_liquid(game, hit.pos, value) {
+        return;
+    }
+    let mut canceled = false;
+    game.native_fill_bucket(stack, hit.pos, &mut canceled);
+    if canceled || !empty_into(game, hit.pos, value) {
+        return;
+    }
+    game.trigger_block("minecraft:placed_block", hit.pos, stack);
+    game.award_stat("used", &stack.item, 1);
+    if !is_creative(game) && game.native_take_items(&stack.item, 1) == 1 {
+        game.native_give_items(fluid_logged::EMPTY_BUCKET, 1);
+    }
+    *claimed = true;
+}
+
+/// `BucketItem.use` do balde vazio sobre um bloco com fluido guardado (`IStateFluidLoggable.pickupBlock`): o fluido sai do estado e o balde cheio vem no lugar do vazio.
+fn use_empty(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+    if !game.may_build() {
+        return;
+    }
+    let Some(hit) = game.bucket_hit() else {
+        return;
+    };
+    let Some(value) = logged_value(game, hit.pos) else {
+        return;
+    };
+    let Some(bucket) = fluid_logged::bucket_of_value(&value) else {
+        return;
+    };
+    let mut canceled = false;
+    game.native_fill_bucket(stack, hit.pos, &mut canceled);
+    if canceled || !game.native_set_block_property(hit.pos, fluid_logged::PROPERTY, fluid_logged::EMPTY) {
+        return;
+    }
+    game.award_stat("used", &stack.item, 1);
+    let sound = if value == fluid_logged::LAVA { BUCKET_SOUND_FILL_LAVA } else { BUCKET_SOUND_FILL };
+    game.audio.play(sound, Some(center(hit.pos)), 1.0, 1.0);
+    game.post_block_game_event("minecraft:fluid_pickup", hit.pos, Some(horizon_client::mobs::Who::Player), None);
+    if is_creative(game) {
+        // `ItemUtils.createFilledResult`: o criativo ganha o balde cheio se ainda não o tem, e o vazio fica.
+        if game.native_count_items(bucket) == 0 {
+            game.native_give_items(bucket, 1);
+        }
+    } else if game.native_take_items(&stack.item, 1) == 1 {
+        game.native_give_items(bucket, 1);
+    }
+    *claimed = true;
+}
+
+/// O item de upgrade com shift entra num bloco com janela de upgrades. Um bloco com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.
 pub(in crate::game) fn use_item_on(
     game: &mut Game<'_>,
     stack: &ItemStack,
     pos: [i32; 3],
     claimed: &mut bool,
 ) {
-    // `ItemUpgrade.useOn`: o upgrade na mão, com shift, entra no bloco que o aceita. Os itens não se cruzam com o balde.
+    // `ItemUpgrade.useOn`: o upgrade na mão, com shift, entra no bloco que o aceita.
     game.mb_window_use_item_on(stack, pos, claimed);
-    if *claimed || game.native_block_property(pos, fluid_logged::PROPERTY).is_none() {
-        return;
-    }
-    let Some(swap) = fluid_logged::bucket_swap(&stack.item, has_logged_lava(game, pos)) else {
-        return;
-    };
-    set_logged_lava(game, pos, swap.logged);
-    LAST_BUCKET_SWAP.store(game.world.game_time, Ordering::Relaxed);
-    let creative = game
-        .native_acting_player()
-        .is_some_and(|player| player.game_mode == CREATIVE);
-    if !creative && game.native_take_items(swap.take, 1) == 1 {
-        game.native_give_items(swap.give, 1);
-    }
-    *claimed = true;
 }
 
-/// O mesmo clique ainda chega como uso do item, já com o balde cheio na mão: sem isto, ele despeja
-/// a lava que acabou de sair do bloco.
+/// O uso do item na mão. O balde de um fluido de mod esvazia, e o balde vazio pega a fonte de um (`machinery_liquid`). O balde de água ou de lava enche um bloco com
+/// `fluid_logged`, e o vazio o esvazia, como a água de uma escada.
 pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
-    // O balde de um fluido de mod esvazia, e o balde vazio pega a fonte de um (`machinery_liquid`).
     crate::game::machinery_liquid::use_item(game, stack, claimed);
     if *claimed {
         return;
     }
-    let since_swap = game.world.game_time - LAST_BUCKET_SWAP.load(Ordering::Relaxed);
-    if &*stack.item == fluid_logged::LAVA_BUCKET && (0..=BUCKET_SWAP_TICKS).contains(&since_swap) {
-        *claimed = true;
+    if let Some(value) = fluid_logged::value_of_bucket(&stack.item) {
+        use_filled(game, stack, value, claimed);
+    } else if &*stack.item == fluid_logged::EMPTY_BUCKET {
+        use_empty(game, stack, claimed);
     }
-}
-
-/// O mesher lê o fluido de `FluidState::from_block`, que nenhuma injeção alcança nesta versão. Quem
-/// desenha é a block entity, e o bloco precisa mandar uma cópia dela ao cliente.
-pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEntityDraw) {
-    if !has_logged_lava(game, pos) {
-        return;
-    }
-    let face = Some(CubeFace {
-        sprite: LAVA_SPRITE,
-        uv: None,
-    });
-    draw.light = FULL_BRIGHT;
-    game.native_draw_cube(draw, LOGGED_LAVA_FROM, LOGGED_LAVA_TO, [face; 6], WHITE);
 }
 
 pub(in crate::game) fn face_of(direction: Direction) -> Face {
@@ -354,11 +439,15 @@ pub(in crate::game) fn update_shape(
         *new = Some(with_side(level, state, side, joined));
         return;
     }
-    let logged = level.registry.state(state).is_some_and(|s| {
-        s.properties.get(fluid_logged::PROPERTY).map(String::as_str) == Some(fluid_logged::LAVA)
-    });
-    if logged {
-        level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], LAVA, LAVA_TICK_DELAY);
+    // `IStateFluidLoggable.updateFluids`: o fluido guardado agenda o próprio tick a cada atualização de forma.
+    let fluid = level
+        .registry
+        .state(state)
+        .and_then(|s| s.properties.get(fluid_logged::PROPERTY))
+        .and_then(|value| fluid_of(value));
+    if let Some(fluid) = fluid {
+        let delay = tick_delay(fluid, level.dimension() == LevelDimension::Nether);
+        level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], fluid, delay);
     }
 }
 
