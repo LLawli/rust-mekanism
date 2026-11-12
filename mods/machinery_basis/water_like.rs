@@ -150,11 +150,10 @@ pub fn set_logged(table: Vec<u8>) {
     *LOGGED.write().unwrap_or_else(|e| e.into_inner()) = table;
 }
 
-/// O fluido que o estado `state` guarda dentro do bloco, se guarda.
-pub fn logged(state: u32) -> Option<horizon_world::fluid::FluidKind> {
+/// O fluido que o estado `state` guarda dentro do bloco, se guarda: 1 a água e 2 a lava.
+pub fn logged(state: u32) -> Option<u8> {
     match LOGGED.read().unwrap_or_else(|e| e.into_inner()).get(state as usize) {
-        Some(1) => Some(horizon_world::fluid::FluidKind::Water),
-        Some(2) => Some(horizon_world::fluid::FluidKind::Lava),
+        Some(&kind) if kind > 0 => Some(kind),
         _ => None,
     }
 }

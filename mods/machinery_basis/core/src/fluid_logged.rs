@@ -42,7 +42,11 @@ pub fn bucket_swap(item: &str, current: &str) -> Option<BucketSwap> {
         let value = value_of_bucket(item)?;
         return Some(BucketSwap {
             value,
-            take: if value == WATER { WATER_BUCKET } else { LAVA_BUCKET },
+            take: if value == WATER {
+                WATER_BUCKET
+            } else {
+                LAVA_BUCKET
+            },
             give: EMPTY_BUCKET,
         });
     }
@@ -64,17 +68,29 @@ mod tests {
     #[test]
     fn a_full_bucket_fills_an_empty_block() {
         let swap = bucket_swap(LAVA_BUCKET, EMPTY).unwrap();
-        assert_eq!((swap.value, swap.take, swap.give), (LAVA, LAVA_BUCKET, EMPTY_BUCKET));
+        assert_eq!(
+            (swap.value, swap.take, swap.give),
+            (LAVA, LAVA_BUCKET, EMPTY_BUCKET)
+        );
         let swap = bucket_swap(WATER_BUCKET, EMPTY).unwrap();
-        assert_eq!((swap.value, swap.take, swap.give), (WATER, WATER_BUCKET, EMPTY_BUCKET));
+        assert_eq!(
+            (swap.value, swap.take, swap.give),
+            (WATER, WATER_BUCKET, EMPTY_BUCKET)
+        );
     }
 
     #[test]
     fn an_empty_bucket_takes_back_the_fluid_that_is_there() {
         let swap = bucket_swap(EMPTY_BUCKET, LAVA).unwrap();
-        assert_eq!((swap.value, swap.take, swap.give), (EMPTY, EMPTY_BUCKET, LAVA_BUCKET));
+        assert_eq!(
+            (swap.value, swap.take, swap.give),
+            (EMPTY, EMPTY_BUCKET, LAVA_BUCKET)
+        );
         let swap = bucket_swap(EMPTY_BUCKET, WATER).unwrap();
-        assert_eq!((swap.value, swap.take, swap.give), (EMPTY, EMPTY_BUCKET, WATER_BUCKET));
+        assert_eq!(
+            (swap.value, swap.take, swap.give),
+            (EMPTY, EMPTY_BUCKET, WATER_BUCKET)
+        );
     }
 
     #[test]
