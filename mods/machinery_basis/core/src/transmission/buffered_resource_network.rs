@@ -23,7 +23,8 @@
 //! - `DynamicNetwork.invalidate` abre uma transação raiz em volta de todos os `takeShare`; aqui cada `take_share_in_root` abre a sua
 //!   (a mesma diferença da `EnergyFamily`).
 //! - `disperse(trigger, resource, amount)`, o gancho que `updateSaveShares` e `onLastTransmitterRemoved` chamam, é vazio no original
-//!   para o fluido e não é portado; a rede de químico o acrescenta quando chegar.
+//!   para o fluido e despeja radiação no de químico. A família o registra como [`Dispersal`] quando [`ResourceFamily::with_dispersal`] o
+//!   liga (a de químico), e quem a usa lê [`ResourceFamily::take_dispersals`]: a radiação em si não é da lib.
 //! - o cliente (`isClientSide`, `handleContentsUpdateTag`, `getPacketRange`, o pacote em si) e os textos (`getStoredInfo`,
 //!   `getFlowInfo`, `getNeededInfo`): o `TransferEvent` fica numa lista ([`ResourceFamily::take_transfer_events`]) para quem liga ao
 //!   jogo mandar o `PacketNetworkScale`.
@@ -143,6 +144,12 @@ fn java_min(a: f32, b: f32) -> f32 {
     } else {
         a.min(b)
     }
+}
+
+/// `triggerTransmitter != null && sent < toSend` de `updateSaveShares`: o que não coube nas shares dos transmissores e vai para `disperse`
+/// (`toSend - sent`), se há um transmissor que disparou a atualização.
+pub fn unsent(trigger: Option<TransmitterId>, to_send: i64, sent: i64) -> Option<i64> {
+    (trigger.is_some() && sent < to_send).then_some(to_send - sent)
 }
 
 /// O que as redes de recurso expõem aos validadores de órfãos: o contêiner, o `lastType` e o `prevTransferAmount` de cada rede, e o
@@ -422,6 +429,16 @@ pub struct ContentsChanged<R> {
     pub contents: StackContents<R>,
 }
 
+/// `disperse(triggerTransmitter, resource, amount)`: o que a rede de químico despeja como radiação, e onde (a posição do transmissor que
+/// disparou a remoção).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Dispersal<R> {
+    pub transmitter: TransmitterId,
+    pub pos: BlockPos,
+    pub resource: R,
+    pub amount: i64,
+}
+
 /// Um transmissor da família: o estado de buffer e a posição (para o chunk da rede).
 struct Pipe<R: Resource> {
     pos: BlockPos,
@@ -443,6 +460,8 @@ pub struct ResourceFamily<R: Resource, H: ResourceAcceptor<R> + ?Sized> {
     dirty_chunks: Vec<i64>,
     /// `Mekanism.logger.error("Incompatible buffed resource networks merged: ...")`.
     errors: Vec<String>,
+    /// Os `disperse` desde a última chamada, ou `None` se a família não os registra (o `disperse` do fluido é vazio).
+    dispersals: Option<Vec<Dispersal<R>>>,
     _handler: std::marker::PhantomData<fn(&H)>,
 }
 
@@ -463,7 +482,35 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
             contents_events: Vec::new(),
             dirty_chunks: Vec::new(),
             errors: Vec::new(),
+            dispersals: None,
             _handler: std::marker::PhantomData,
+        }
+    }
+
+    /// Liga o registro dos `disperse` (a `ChemicalNetwork` sobrescreve o gancho; a `FluidNetwork` não).
+    pub fn with_dispersal(mut self) -> Self {
+        self.dispersals = Some(Vec::new());
+        self
+    }
+
+    /// Os `disperse` desde a última chamada, na ordem. Vazio se a família não os registra.
+    pub fn take_dispersals(&mut self) -> Vec<Dispersal<R>> {
+        self.dispersals
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    /// `disperse(triggerTransmitter, resource, amount)`.
+    fn disperse(&mut self, trigger: TransmitterId, resource: R, amount: i64) {
+        let pos = self.pipes[&trigger].pos;
+        if let Some(dispersals) = self.dispersals.as_mut() {
+            dispersals.push(Dispersal {
+                transmitter: trigger,
+                pos,
+                resource,
+                amount,
+            });
         }
     }
 
@@ -635,12 +682,17 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
                     net.buffered.deregistered();
                 }
             }
-            // `onLastTransmitterRemoved` só chama `disperse`, que é vazio (veja o topo do módulo).
+            NetworkEvent::LastTransmitterRemoved(trigger) => {
+                // `onLastTransmitterRemoved(trigger)`: o que a rede guarda é despejado.
+                let contents = self.net(network).container.contents();
+                if let Some(resource) = contents.resource {
+                    self.disperse(trigger, resource, contents.amount as i64);
+                }
+            }
             NetworkEvent::Merged { .. }
             | NetworkEvent::Committing
             | NetworkEvent::Invalidating(_)
-            | NetworkEvent::Committed
-            | NetworkEvent::LastTransmitterRemoved(_) => {}
+            | NetworkEvent::Committed => {}
         }
         self.flush_contents();
     }
@@ -704,7 +756,7 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
         &mut self,
         registry: &TransmitterNetworkRegistry<A>,
         network: NetworkId,
-        _trigger: Option<TransmitterId>,
+        trigger: Option<TransmitterId>,
         transaction: &Transaction,
     ) {
         if registry.network(network).is_empty() {
@@ -720,13 +772,11 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
         }
         let contents = self.net(network).container.contents();
         if let Some(resource) = contents.resource.as_ref() {
-            // O que não coube (`sent < toSend`) iria para `disperse`, que é vazio.
-            send_to_acceptors(
-                Some(&mut target),
-                contents.amount as i64,
-                resource,
-                Some(transaction),
-            );
+            let to_send = contents.amount as i64;
+            let sent = send_to_acceptors(Some(&mut target), to_send, resource, Some(transaction));
+            if let (Some(trigger), Some(left)) = (trigger, unsent(trigger, to_send, sent)) {
+                self.disperse(trigger, resource.clone(), left);
+            }
         }
     }
 
@@ -923,6 +973,23 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
             return self.networks[&network].last_type();
         }
         buffer
+    }
+
+    /// `PressurizedTube.getRadiationScale(level)`: se o contêiner do tubo (`getContainer()`) guarda um recurso radioativo (`radioactive`, que
+    /// vem da radioatividade do químico), quanto dele há para a capacidade (`amountAsLong() / (float) capacityAsLong(resource)`), senão 0.
+    pub fn radiation_scale(
+        &self,
+        transmitter: TransmitterId,
+        network: Option<NetworkId>,
+        radioactive: &dyn Fn(&R) -> bool,
+    ) -> f32 {
+        let container = self.container_of(transmitter, network);
+        if let Some(resource) = container.resource()
+            && radioactive(&resource)
+        {
+            return container.amount() as f32 / container.capacity(&resource) as f32;
+        }
+        0.0
     }
 
     /// `BufferedResourceTransmitter.isValidTransmitter(other)`: o recurso do buffer de um e do outro não diferem.
