@@ -292,3 +292,70 @@ impl TransporterManager {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transporter::TransporterStack;
+
+    fn stack(hash: i32) -> StackRef {
+        let mut stack = TransporterStack::new();
+        stack.set_identity_hash(hash);
+        StackRef::new(stack)
+    }
+
+    fn hashes(set: &StackSet) -> Vec<i32> {
+        set.in_order()
+            .iter()
+            .map(|stack| stack.borrow().identity_hash())
+            .collect()
+    }
+
+    /// Dois membros que a tabela de 32 separa e a de 16 junta: o iterador do original segue a tabela, que não encolhe ao remover.
+    #[test]
+    fn the_table_does_not_shrink_and_a_copy_is_sized_for_its_contents() {
+        let mut set = StackSet::default();
+        let crowd: Vec<StackRef> = (0..13).map(|i| stack(100 + i * 16 + 3)).collect();
+        for member in &crowd {
+            set.add(member);
+        }
+        // 13 membros passam do limite de 12 da tabela de 16: ela dobra para 32.
+        let (first, second) = (stack(17), stack(2));
+        set.add(&first);
+        set.add(&second);
+        for member in &crowd {
+            assert!(set.remove(member));
+        }
+        // Tabela de 32: o balde 2 vem antes do 17.
+        assert_eq!(hashes(&set), [2, 17]);
+        // `new HashSet<>(set)`: 16 de capacidade, balde 1 e balde 2.
+        let copy = set.copy();
+        assert_eq!(hashes(&copy), [17, 2]);
+    }
+
+    #[test]
+    fn a_member_is_added_once_and_removed_by_identity() {
+        let mut set = StackSet::default();
+        let (a, b) = (stack(5), stack(5));
+        assert!(set.add(&a));
+        assert!(!set.add(&a));
+        assert!(set.add(&b));
+        assert!(set.remove(&a));
+        assert!(!set.remove(&a));
+        assert_eq!(set.len(), 1);
+    }
+
+    /// Mesmo balde: a ordem de inserção, e a que sai e volta passa para o fim.
+    #[test]
+    fn inside_a_bucket_the_order_is_the_insertion_order() {
+        let mut set = StackSet::default();
+        let (a, b, c) = (stack(1), stack(17), stack(33));
+        set.add(&a);
+        set.add(&b);
+        set.add(&c);
+        assert_eq!(hashes(&set), [1, 17, 33]);
+        set.remove(&a);
+        set.add(&a);
+        assert_eq!(hashes(&set), [17, 33, 1]);
+    }
+}

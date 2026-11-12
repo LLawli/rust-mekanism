@@ -27,7 +27,7 @@ use machinery_basis_core::transporter::movement::{
 };
 use machinery_basis_core::transporter::nbt::to_snbt;
 use machinery_basis_core::transporter::node::{
-    DiversionControl, LogisticalTransporterBase, TransporterKind, TransporterTier,
+    DiversionControl, DiversionNeighbor, LogisticalTransporterBase, TransporterKind, TransporterTier,
 };
 use machinery_basis_core::transporter::pathfinder::PathContext;
 use machinery_basis_core::transporter::stack::write_var_int;
@@ -80,6 +80,7 @@ struct Node {
     hash: i32,
     network: Option<NetworkId>,
     orphan: bool,
+    removed: bool,
 }
 
 struct State {
@@ -121,6 +122,9 @@ impl State {
     /// `refreshConnections()` de todos: as ligações a outros transportadores e a baús, lidas dos vizinhos.
     fn refresh_connections(&mut self) {
         for index in 0..self.nodes.len() {
+            if self.nodes[index].removed {
+                continue;
+            }
             let id = TransmitterId(index as u32);
             let (mut tx_bits, mut acc_bits) = (0u8, 0u8);
             for (side_index, side) in Face::ALL.into_iter().enumerate() {
@@ -158,8 +162,8 @@ impl TransmitterHost<Rc<dyn ItemHandler>> for Host<'_> {
         DIMENSION
     }
 
-    fn is_valid(&self, _: TransmitterId) -> bool {
-        true
+    fn is_valid(&self, transmitter: TransmitterId) -> bool {
+        !self.state.node(transmitter).removed
     }
 
     fn is_orphan(&self, transmitter: TransmitterId) -> bool {
@@ -472,6 +476,7 @@ impl Scenario {
                 hash: 100_003 * (index as i32 + 1),
                 network: None,
                 orphan: true,
+                removed: false,
             });
         }
         state.refresh_connections();
@@ -589,13 +594,109 @@ impl Scenario {
         }
     }
 
-    /// O vizinho do bloco de redstone recebe `neighborChanged` (o desviador).
-    fn neighbor_changed(&mut self, _redstone: &Value) {
-        unimplemented!("o desviador")
+    /// As ligações de cada transportador antes e depois de `refreshConnections()`: as de transportador (e o que isso pede à rede) e as de aceitador.
+    fn refresh_and_notify(&mut self, diverter: Option<usize>) {
+        let bits = |scenario: &Scenario| -> Vec<(u8, u8)> {
+            scenario
+                .shared
+                .state
+                .borrow()
+                .nodes
+                .iter()
+                .map(|node| {
+                    (
+                        node.base.transmitter.current_transmitter_connections,
+                        node.base.transmitter.acceptor_cache.current_acceptor_connections,
+                    )
+                })
+                .collect()
+        };
+        let before = bits(self);
+        self.shared.state.borrow_mut().refresh_connections();
+        let after = bits(self);
+        for index in 0..before.len() {
+            let id = TransmitterId(index as u32);
+            let (tx_changed, acc_changed) = (
+                before[index].0 != after[index].0,
+                before[index].1 != after[index].1,
+            );
+            let mut state = self.shared.state.borrow_mut();
+            let network = state.node(id).network;
+            let mut registry = self.shared.registry.borrow_mut();
+            let host = Host {
+                state: &mut state,
+                cache: &self.shared.cache,
+            };
+            // Os desviadores invalidam a rede por qualquer mudança de ligação (`markDirtyTransmitters`); os outros, só pelas de transportador.
+            let dirty = if diverter == Some(index) {
+                tx_changed || acc_changed
+            } else {
+                tx_changed
+            };
+            if dirty {
+                registry.invalidate_transmitter(&host, id);
+            } else if acc_changed && let Some(network) = network {
+                for (side_index, side) in Face::ALL.into_iter().enumerate() {
+                    if (before[index].1 ^ after[index].1) & (1 << side_index) != 0 {
+                        registry.network_acceptor_changed(&host, network, id, side);
+                    }
+                }
+            }
+        }
     }
 
-    fn break_transporter(&mut self, _p: &Value) {
-        unimplemented!("a quebra")
+    /// O bloco de redstone muda de lugar: o desviador ao lado recebe `neighborChanged`.
+    fn neighbor_changed(&mut self, redstone: &Value) {
+        let at = self.abs_value(redstone);
+        for side in Face::ALL {
+            let neighbor = at.relative(side);
+            let Some(index) = self
+                .shared
+                .state
+                .borrow()
+                .by_pos
+                .get(&neighbor.as_long())
+                .map(|id| id.0 as usize)
+            else {
+                continue;
+            };
+            let step = {
+                let state = self.shared.state.borrow();
+                state.node(TransmitterId(index as u32)).base.diversion_neighbor_change(None)
+            };
+            match step {
+                DiversionNeighbor::PowerChanged | DiversionNeighbor::Refresh(_) => {
+                    self.refresh_and_notify(Some(index));
+                }
+            }
+        }
+    }
+
+    /// `setBlock(AIR)` num transportador: solta o que ele leva, esquece o que estava em voo e a rede o invalida.
+    fn break_transporter(&mut self, p: &Value) {
+        let rel = int3(p);
+        let index = self.relative.iter().position(|r| *r == rel).unwrap();
+        let pos = self.pos_long(index);
+        let drops = &self.drops;
+        self.shared.with_transporter(pos, &mut |base, ctx| {
+            base.pre_remove_side_effects(ctx);
+            drops.borrow_mut().extend(base.take_world_drops());
+            base.remove_transit(ctx.path);
+        });
+        {
+            let mut state = self.shared.state.borrow_mut();
+            let id = TransmitterId(index as u32);
+            state.node_mut(id).removed = true;
+            state.by_pos.remove(&pos);
+            let mut registry = self.shared.registry.borrow_mut();
+            let host = Host {
+                state: &mut state,
+                cache: &self.shared.cache,
+            };
+            registry.untrack_transmitter(&host, id);
+            registry.invalidate_transmitter(&host, id);
+        }
+        self.refresh_and_notify(None);
     }
 
     fn check_row(&mut self, row: &Value) {
@@ -874,6 +975,10 @@ scenarios! {
     full_midway_idle => "full_midway_idle",
     capability => "capability",
     restrictive => "restrictive",
+    lone => "lone",
+    lone_idle => "lone_idle",
+    broken => "broken",
+    diversion => "diversion",
     contested_1 => "contested_1",
     contested_2 => "contested_2",
     contested_3 => "contested_3",

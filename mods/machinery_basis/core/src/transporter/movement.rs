@@ -241,6 +241,21 @@ pub fn stack_position(side: Face, progress: i32, partial: f32) -> [f32; 3] {
     ]
 }
 
+/// O deslocamento do bloco em que `drop` solta a pilha: `Mth.floor` de cada coordenada de `getStackPosition(transporter, stack, 0)`.
+pub fn stack_block_offset(side: Face, progress: i32) -> [i32; 3] {
+    let position = stack_position(side, progress, 0.0);
+    [floor(position[0]), floor(position[1]), floor(position[2])]
+}
+
+/// `LogisticalTransporterUpgradeData`, no que é do movimento: as pilhas em trânsito e pendentes, `nextId`, `delay` e `delayCount`.
+pub struct TransitUpgrade {
+    pub transit: Vec<(i32, StackRef)>,
+    pub needs_sync: Vec<(i32, StackRef)>,
+    pub next_id: i32,
+    pub delay: i32,
+    pub delay_count: i32,
+}
+
 /// `emitStack`: a pilha entra em trânsito com um id novo e o cliente é avisado.
 fn emit_stack(transit: &Rc<RefCell<TransitState>>, stack: StackRef) {
     let mut state = transit.borrow_mut();
@@ -589,8 +604,7 @@ impl LogisticalTransporterBase {
         {
             let state = stack.borrow();
             if state.has_path() {
-                let position = stack_position(state.get_side(self.pos_long()), state.progress, 0.0);
-                offset = [floor(position[0]), floor(position[1]), floor(position[2])];
+                offset = stack_block_offset(state.get_side(self.pos_long()), state.progress);
             }
         }
         let sub = Transaction::open(transaction);
@@ -800,6 +814,39 @@ impl LogisticalTransporterBase {
         self.transit
             .borrow_mut()
             .restore_counters(delay, delay_count, next_id);
+    }
+
+    /// `getUpgradeData()` do `LogisticalTransporter`: o que a troca de nível leva para o transportador novo (as pilhas por referência).
+    pub fn upgrade_transit(&self) -> TransitUpgrade {
+        let state = self.transit.borrow();
+        TransitUpgrade {
+            transit: state.stacks(),
+            needs_sync: state
+                .needs_sync
+                .entries_in_order()
+                .into_iter()
+                .map(|(key, stack)| (key.0, stack.clone()))
+                .collect(),
+            next_id: state.next_id,
+            delay: state.delay,
+            delay_count: state.delay_count,
+        }
+    }
+
+    /// `parseUpgradeData(data, transaction)`: `transit.putAll`, `needsSync.putAll` e os contadores.
+    pub fn parse_upgrade_transit(&self, data: TransitUpgrade) {
+        let mut state = self.transit.borrow_mut();
+        state
+            .transit
+            .put_all(data.transit.into_iter().map(|(id, stack)| (IntKey(id), stack)));
+        state.needs_sync.put_all(
+            data.needs_sync
+                .into_iter()
+                .map(|(id, stack)| (IntKey(id), stack)),
+        );
+        state.next_id = data.next_id;
+        state.delay = data.delay;
+        state.delay_count = data.delay_count;
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
