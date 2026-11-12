@@ -240,7 +240,7 @@ e 46 não (o `fill_bucket` do `mekanism`, de 2026-11-12 (frente `oclusao`), só 
   (`E_HOOK_UNKNOWN`, medido em 2026-11-12): a injeção entra no começo de `native_container_accepts`, a função que o hook cobre. Para `view` e `can_take` não há hook.
 - **Hook proposto:** H2.
 - **Conferido:** as 810 configurações de capability, as fases de hopper, as sondas dos slots e as 120 fases de dropper e de dispenser do original, pelo modelo do hopper do Horizon
-  (`config_lados_caps.rs`, `slot_rules.rs`, `dropper_trace.rs`); em jogo, 14 casos iguais (`h2_container_instancia.py medir`) e o ritmo do hopper em 1 item por 8 ticks (18 em 144), sem dobrar.
+  (`config_lados_caps.rs`, `slot_rules.rs`, `dropper_trace.rs`); em jogo, 16 casos iguais (`h2_container_instancia.py medir`) e o ritmo do hopper em 1 item por 8 ticks (18 em 144), sem dobrar.
 - **Risco:** depende dos três nomes, da forma de `View` (`kind`, `container`, `locate`) e de `Containers::name`, `prop` e `max_stack`. Mudar a marca de reentrada ou o corpo de `view` (um
   `return` novo antes do bloco de mod) deixa a máquina com as faces do tipo de bloco, sem erro. O custo é uma leitura de `thread_local` por `view` e uma leitura de NBT por consulta de uma máquina.
 
