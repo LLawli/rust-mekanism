@@ -127,6 +127,11 @@ pub fn take_early_chunks() -> Vec<[i32; 2]> {
     std::mem::take(&mut *lock(&EARLY_CHUNKS))
 }
 
+/// Um chunk de `take_early_chunks` que o jogo ainda não tem inteiro: espera a passada seguinte.
+pub fn keep_early_chunk(chunk: [i32; 2]) {
+    lock(&EARLY_CHUNKS).push(chunk);
+}
+
 pub fn is_registered(id: &str) -> bool {
     lock(&TRACKER).ids.contains(id)
 }

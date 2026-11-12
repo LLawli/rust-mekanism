@@ -3112,17 +3112,22 @@ pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
     let (mut raws, neighbors) = transmitters::split_neighbors(transmitters::take());
     raws.extend(transmitters::take_held());
     raws.extend(neighbors);
-    if raws.is_empty() || game.remote.is_some() {
+    // Um cliente que só recebe o mundo do servidor não tem dono: a fila esvazia e nada sai.
+    if game.remote.is_some() {
         return;
     }
-    let raws = transmitters_resolve(game, raws);
-    let events = transmitters::translate(game.native_dimension(), raws);
-    transmitters_deliver(game, events);
-    // Os chunks que carregaram antes do registro do primeiro tipo: o `chunk_loaded` deles sai agora, com os block entities já na tabela de carga.
+    if !raws.is_empty() {
+        let raws = transmitters_resolve(game, raws);
+        let events = transmitters::translate(game.native_dimension(), raws);
+        transmitters_deliver(game, events);
+    }
+    // Os chunks que carregaram antes do registro do primeiro tipo: o `chunk_loaded` deles sai quando o chunk está inteiro no jogo, com os block entities já na tabela de carga.
     for chunk in transmitters::take_early_chunks() {
         if game.world.chunks.contains_key(&(chunk[0], chunk[1])) {
             let events = transmitters::chunk_loaded(game.native_dimension(), chunk);
             transmitters_deliver(game, events);
+        } else {
+            transmitters::keep_early_chunk(chunk);
         }
     }
 }
