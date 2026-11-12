@@ -1596,6 +1596,49 @@ pub(in crate::game) fn direction(face: Face) -> Direction {
     }
 }
 
+/// Os vizinhos de energia de um bloco em tick (`BlockCapabilityCache.getCapability` e `EnergyHandler.insert` de cada face), para quem entrega energia pelo `EnergyUtils.emit`:
+/// o cubo de energia e o Heat Generator. O bloco em tick está fora do mundo, então só os vizinhos passam por aqui.
+pub(in crate::game) struct GameEnergy<'a, 'g> {
+    game: RefCell<&'a mut Game<'g>>,
+    dimension: &'static str,
+    pos: [i32; 3],
+}
+
+impl<'a, 'g> GameEnergy<'a, 'g> {
+    pub(in crate::game) fn new(game: &'a mut Game<'g>, dimension: &'static str, pos: [i32; 3]) -> Self {
+        Self { game: RefCell::new(game), dimension, pos }
+    }
+
+    fn at(&self, face: Face) -> [i32; 3] {
+        neighbour(self.pos, face)
+    }
+}
+
+impl EnergyNeighbours for GameEnergy<'_, '_> {
+    /// `BlockCapabilityCache.getCapability` não nulo: um vizinho com configuração de lados tem capability onde a face deixa entrar ou sair; os outros blocos de energia,
+    /// onde a regra deles manda.
+    fn has_handler(&self, face: Face) -> bool {
+        let at = self.at(face);
+        let reached = face.opposite();
+        if let Some((insert, extract)) = instance_energy_faces(self.dimension, at) {
+            return insert[reached as usize] || extract[reached as usize];
+        }
+        let game = self.game.borrow();
+        let state = game.world.block(at[0], at[1], at[2]);
+        if game.world.block_entities.mod_energy(state.0).is_none() {
+            return false;
+        }
+        let block = game.native_block(at);
+        network::current().receives(&block, front(&game, at), reached)
+    }
+
+    fn insert(&self, face: Face, amount: i32, simulate: bool) -> i32 {
+        let at = self.at(face);
+        let mut game = self.game.borrow_mut();
+        game.native_energy_insert(at, direction(face.opposite()), amount, simulate)
+    }
+}
+
 fn neighbour(pos: [i32; 3], face: Face) -> [i32; 3] {
     let [x, y, z] = face.offset();
     [pos[0] + x, pos[1] + y, pos[2] + z]
@@ -1676,33 +1719,6 @@ pub(in crate::game) fn discard_tanks(entity: &mut ModBlockEntity) {
     compound.remove(&JavaString::from("v"));
     compound.remove(&JavaString::from("tanks"));
     entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
-}
-
-/// Empurra a energia do bloco em tick pelas faces de saída que ele declarou, para os vizinhos que
-/// aceitam por aquela face. O bloco em tick está fora do mundo, então lê e grava o próprio NBT em
-/// vez de usar `native_move_energy`.
-pub(in crate::game) fn distribute_energy(
-    game: &mut Game<'_>,
-    pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-) -> i32 {
-    let energy = network::current();
-    let sides = energy.sides(&entity.id, front(game, pos));
-    let start = stored_energy(entity);
-    let mut stored = start;
-    for face in Face::ALL {
-        if stored == 0 {
-            break;
-        }
-        let at = neighbour(pos, face);
-        let block = game.native_block(at);
-        if sides.gives_output(face) && energy.receives(&block, front(game, at), face.opposite()) {
-            let reached = direction(face.opposite());
-            stored -= game.native_energy_insert(at, reached, stored, false);
-        }
-    }
-    set_stored_energy(entity, stored);
-    start - stored
 }
 
 /// O clima do bioma que `Level.getBiome(pos)` dá em `pos`: o `BiomeManager` não lê o quadrado de 4 por 4 que contém o bloco, e sim o
@@ -3262,6 +3278,7 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
 // ---------------------------------------------------------------------------------------------------------------------------
 
 use machinery_basis_core::distribution::EnergyInsert;
+use machinery_basis_core::energy_cube::EnergyNeighbours;
 use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::transmission::connection::ConnectionType;

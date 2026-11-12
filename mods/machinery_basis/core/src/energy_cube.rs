@@ -781,6 +781,25 @@ pub fn emit_energy(
     0
 }
 
+/// `EnergyUtils.emit(caches, container, null)` de um contêiner que é só a energia guardada, o `BasicEnergyContainer.output` de um gerador (`TileEntityGenerator.onUpdateServer`): o
+/// `maxOutput` é tudo o que o buffer guarda, e `extract` de um contêiner `INTERNAL` devolve o que há, então o que se tenta entregar é `stored`; o que os vizinhos aceitam
+/// (`distribution::emit`, o destino único recebe tudo e vários dividem) sai do buffer, e nada sai se nada foi aceito. Devolve o que saiu.
+pub fn emit_stored(neighbours: &dyn EnergyNeighbours, stored: &mut i32, sides: &[Face]) -> i32 {
+    if *stored <= 0 {
+        return 0;
+    }
+    let sent = saturated(distribution::emit(
+        neighbour_handlers(neighbours, sides),
+        i64::from(*stored),
+        None,
+    ));
+    if sent > 0 {
+        *stored -= sent;
+        return sent;
+    }
+    0
+}
+
 /// O ejetor do cubo vê só o contêiner de energia.
 struct CubeEject<'a> {
     energy: &'a CubeEnergy,

@@ -911,16 +911,25 @@ impl EnergyTransmitters {
 
     /// `getContainer().insert(amount, transaction, EXTERNAL)`: o que o vizinho empurrou para o cabo.
     pub fn insert_external(&mut self, pos: BlockPos, amount: i32) -> i32 {
+        let transaction = Transaction::open_root();
+        let accepted = self.insert_external_in(pos, amount, &transaction);
+        transaction.commit();
+        accepted
+    }
+
+    /// O mesmo `insert`, dentro da transação de quem empurra (o `EnergyUtils.emit` de um gerador abre a dele, e só pode haver uma raiz).
+    pub fn insert_external_in(
+        &mut self,
+        pos: BlockPos,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
         let Some(id) = self.st.live(pos) else {
             return 0;
         };
-        let transaction = Transaction::open_root();
-        let accepted = self
-            .st
+        self.st
             .container(id)
-            .insert(amount, &transaction, AutomationType::External);
-        transaction.commit();
-        accepted
+            .insert(amount, transaction, AutomationType::External)
     }
 
     /// O que o cabo guarda no block entity (`TileEntityTransmitter.saveAdditional`, `UniversalCable.write`): a conexão por lado e a parte

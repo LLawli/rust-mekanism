@@ -542,6 +542,32 @@ pub fn step(state: &mut State, around: &Surroundings) -> Produced {
     produced
 }
 
+/// `TileEntityGenerator.onUpdateServer`, que o `TileEntityHeatGenerator.onUpdateServer` chama antes de tudo (`super.onUpdateServer`): com `canFunction()`, `EnergyUtils.emit(outputCaches,
+/// energyContainer, null)` entrega a energia do buffer ao único vizinho que o gerador tem como destino, o da frente (`ENERGY_SIDES` é só `RelativeSide.FRONT`), e tira do buffer o que
+/// o vizinho aceitou. Devolve o que saiu.
+pub fn emit_energy(
+    state: &mut State,
+    neighbours: &dyn machinery_basis_core::energy_cube::EnergyNeighbours,
+    front: machinery_basis_core::sides::Face,
+) -> i32 {
+    if !state.tile.is_redstone_activated() {
+        return 0;
+    }
+    machinery_basis_core::energy_cube::emit_stored(neighbours, &mut state.energy, &[front])
+}
+
+/// O `onUpdateServer` inteiro do ponto de vista da energia: a entrega ([`emit_energy`]) vem antes de [`step`], então o que sai é a energia que o buffer guardava no fim do tick anterior, e a
+/// deste tick só sai no seguinte.
+pub fn step_emitting(
+    state: &mut State,
+    around: &Surroundings,
+    neighbours: &dyn machinery_basis_core::energy_cube::EnergyNeighbours,
+    front: machinery_basis_core::sides::Face,
+) -> Produced {
+    emit_energy(state, neighbours, front);
+    step(state, around)
+}
+
 /// O fim de `TileEntityMekanism.tickServer` do Heat Generator (`:645-655`): o comparador relê o tanque de lava, mas só se alguma coisa o marcou
 /// (`makesComparatorDirty` é só o tanque de fluido, `TileEntityHeatGenerator.java:236-238`), e o nível novo é o do tanque
 /// (`ContainerType.FLUID.getRedstoneSignalFromContainer`). `lava_before` é a lava do começo do tick, antes de o combustível entrar; `lava_seen` é a que o

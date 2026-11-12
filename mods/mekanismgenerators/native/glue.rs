@@ -789,7 +789,11 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     if let Some(powered) = basis::take_power(game, pos) {
         state.tile.update_power(powered);
     }
-    let produced = rules::step(&mut state, &around);
+    // `TileEntityGenerator.onUpdateServer` (o `super` de `TileEntityHeatGenerator.onUpdateServer`): `EnergyUtils.emit` para o vizinho da frente, só com `canFunction()`, antes de
+    // queimar a lava e produzir: sai a energia que o buffer guardava no fim do tick anterior.
+    let dimension = game.native_dimension();
+    let front = basis::front(game, pos);
+    let produced = rules::step_emitting(&mut state, &around, &basis::GameEnergy::new(game, dimension, pos), front);
     if basis::MEDIR {
         let fuel = entity.items[FUEL_SLOT].as_ref().map_or(("", 0), |stack| {
             (stack.item.split_once(':').map_or(&*stack.item, |(_, path)| path), stack.count.max(0) as u64)
@@ -802,7 +806,6 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(heat.heat.to_bits()));
     save_tile(entity, &state.tile);
 
-    basis::distribute_energy(game, pos, entity);
     // O bloco só muda quando o tile manda: o atraso de `blockDeactivationDelay` o segura aceso depois que o gerador para.
     let lit = state.tile.block_active();
     if lit != block_active {

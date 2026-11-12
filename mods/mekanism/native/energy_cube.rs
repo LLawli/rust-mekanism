@@ -20,8 +20,7 @@ use machinery_basis_core::slot_rules;
 use machinery_basis_core::tile_trackers::source;
 use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
-use machinery_basis_core::energy_cube::{self, CubeSideState, EnergyCube, EnergyNeighbours, ItemEnergy};
-use machinery_basis_core::network;
+use machinery_basis_core::energy_cube::{self, CubeSideState, EnergyCube, ItemEnergy};
 use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::RedstoneControl;
@@ -295,45 +294,7 @@ fn slot_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, sl
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// Os vizinhos de energia.
-
-struct GameEnergy<'a, 'g> {
-    game: RefCell<&'a mut Game<'g>>,
-    dimension: &'static str,
-    pos: [i32; 3],
-}
-
-impl GameEnergy<'_, '_> {
-    fn at(&self, face: Face) -> [i32; 3] {
-        let [x, y, z] = face.offset();
-        [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z]
-    }
-}
-
-impl EnergyNeighbours for GameEnergy<'_, '_> {
-    /// `BlockCapabilityCache.getCapability` não nulo: um vizinho com configuração de lados tem capability onde a face deixa entrar ou sair; os outros blocos de energia,
-    /// onde a regra deles manda.
-    fn has_handler(&self, face: Face) -> bool {
-        let at = self.at(face);
-        let reached = face.opposite();
-        if let Some((insert, extract)) = basis::instance_energy_faces(self.dimension, at) {
-            return insert[reached as usize] || extract[reached as usize];
-        }
-        let game = self.game.borrow();
-        let state = game.world.block(at[0], at[1], at[2]);
-        if game.world.block_entities.mod_energy(state.0).is_none() {
-            return false;
-        }
-        let block = game.native_block(at);
-        network::current().receives(&block, basis::front(&game, at), reached)
-    }
-
-    fn insert(&self, face: Face, amount: i32, simulate: bool) -> i32 {
-        let at = self.at(face);
-        let mut game = self.game.borrow_mut();
-        game.native_energy_insert(at, basis::direction(face.opposite()), amount, simulate)
-    }
-}
+// Os vizinhos de energia (`basis::GameEnergy`, que o Heat Generator também usa).
 
 /// As faces por onde a capability de energia deixa entrar e sair (`ConfigHolder.canInsert`/`canExtract` do `DataType` do lado).
 fn energy_faces(cube: &EnergyCube) -> ([bool; 6], [bool; 6]) {
@@ -395,7 +356,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
 
     let result = {
-        let neighbours = GameEnergy { game: RefCell::new(&mut *game), dimension, pos };
+        let neighbours = basis::GameEnergy::new(game, dimension, pos);
         live.cube.tick_server(now as u64, &neighbours)
     };
     glue::publish_comparator(game, dimension, pos, live.cube.tile().current_redstone_level(), result.comparator_changed);
