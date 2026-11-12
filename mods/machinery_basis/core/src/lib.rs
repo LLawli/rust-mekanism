@@ -18,6 +18,7 @@ pub mod energy_cube;
 pub mod experience;
 pub mod face_overlay;
 pub mod fluid;
+pub mod fluid_entity;
 pub mod fluid_logged;
 pub mod gui;
 pub mod heat;
