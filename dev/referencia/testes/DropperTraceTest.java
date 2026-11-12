@@ -159,7 +159,10 @@ public class DropperTraceTest {
                     for (Direction face : FACES) {
                         for (String id : spec.items) {
                             sequence.thenExecuteAfter(1, () -> scene.arm(block, face, id, energy));
-                            sequence.thenExecuteAfter(WAIT, scene::record);
+                            for (int tick = 1; tick < WAIT; tick++) {
+                                sequence.thenExecuteAfter(1, scene::fate);
+                            }
+                            sequence.thenExecuteAfter(1, scene::record);
                         }
                     }
                 }
@@ -181,6 +184,10 @@ public class DropperTraceTest {
     private static final class Scene {
         private final Spec spec;
         private final List<String> lines = new ArrayList<>();
+        /// O destino de cada item solto, tick a tick (`dropper_fate_<máquina>.jsonl`): onde está, se está na lava, e se foi removido e por quê.
+        private final List<String> fates = new ArrayList<>();
+        private final java.util.Map<ItemEntity, Integer> seen = new java.util.IdentityHashMap<>();
+        private int tick;
         private MekGameTestHelper helper;
         private String phase = "";
         private Direction at = Direction.UP;
@@ -280,6 +287,8 @@ public class DropperTraceTest {
             clearAll();
             setEnergy(energy);
             at = face;
+            seen.clear();
+            tick = 0;
             phase = (block == Blocks.DROPPER ? "dropper_" : "dispenser_") + face.getSerializedName() + "_" + id.replace("mekanism:", "") + (energy < 0 ? "" : "@" + energy);
             BlockPos pos = MACHINE.relative(face);
             helper.setBlock(pos, block.defaultBlockState().setValue(DispenserBlock.FACING, face.getOpposite()));
@@ -287,7 +296,27 @@ public class DropperTraceTest {
             helper.setBlock(pos.relative(face), Blocks.REDSTONE_BLOCK.defaultBlockState());
         }
 
+        /// Um tick da espera: cada item solto visto até agora, com a posição relativa à máquina, `isInLava` e o motivo da remoção.
+        void fate() {
+            tick++;
+            for (ItemEntity entity : around()) {
+                seen.putIfAbsent(entity, tick);
+            }
+            BlockPos origin = helper.absolutePos(MACHINE);
+            StringBuilder line = new StringBuilder("{\"phase\":\"").append(phase).append("\",\"t\":").append(tick).append(",\"items\":[");
+            boolean first = true;
+            for (java.util.Map.Entry<ItemEntity, Integer> entry : seen.entrySet()) {
+                ItemEntity entity = entry.getKey();
+                line.append(first ? "" : ",").append("[\"").append(BuiltInRegistries.ITEM.getKey(entity.getItem().getItem()).getPath()).append("\",")
+                      .append(Math.round((entity.getX() - origin.getX()) * 1000) / 1000.0).append(',').append(Math.round((entity.getY() - origin.getY()) * 1000) / 1000.0).append(',')
+                      .append(Math.round((entity.getZ() - origin.getZ()) * 1000) / 1000.0).append(',').append(entity.isInLava()).append(",\"").append(entity.getRemovalReason()).append("\"]");
+                first = false;
+            }
+            fates.add(line.append("]}").toString());
+        }
+
         void record() {
+            fate();
             StringBuilder line = new StringBuilder("{\"machine\":\"").append(spec.name).append("\",\"phase\":\"").append(phase).append("\",\"dropper\":[");
             BlockPos pos = MACHINE.relative(at);
             Container container = (Container) helper.getLevel().getBlockEntity(helper.absolutePos(pos));
@@ -325,6 +354,7 @@ public class DropperTraceTest {
         void finish() {
             clearAll();
             write("dropper_" + spec.name, lines);
+            write("dropper_fate_" + spec.name, fates);
         }
     }
 
