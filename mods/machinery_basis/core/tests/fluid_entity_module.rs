@@ -20,7 +20,10 @@ const NONE: &dyn Fn(i32, i32, i32) -> bool = &|_, _, _| false;
 #[test]
 fn heights_agree_with_the_core_rules() {
     for level in 0..=15u8 {
-        assert_eq!(machinery_water_like::amount(level), fluid_entity::amount(level));
+        assert_eq!(
+            machinery_water_like::amount(level),
+            fluid_entity::amount(level)
+        );
         for same_above in [false, true] {
             assert_eq!(
                 machinery_water_like::height(level, same_above),
@@ -47,7 +50,15 @@ fn a_player_above_the_column_touches_nothing() {
 #[test]
 fn the_top_of_the_fluid_must_reach_the_feet() {
     // A última fonte (y = 6) sem nada em cima vai a 6 + 8/9 = 6,889: os pés em 6,95 não alcançam, em 6,8 alcançam.
-    let reach = |feet: f64| contact([2.2, feet, 2.2], [2.8, feet + 1.8, 2.8], feet + 1.62, &column(3, 6), NONE);
+    let reach = |feet: f64| {
+        contact(
+            [2.2, feet, 2.2],
+            [2.8, feet + 1.8, 2.8],
+            feet + 1.62,
+            &column(3, 6),
+            NONE,
+        )
+    };
     assert!(!reach(6.95).touching && !reach(6.95).feet);
     assert!(reach(6.8).touching && reach(6.8).feet);
     // A célula dos pés (`blockPosition`) é de mod, mas a caixa de pé na fonte mais alta toca a coluna toda.
@@ -57,7 +68,13 @@ fn the_top_of_the_fluid_must_reach_the_feet() {
 #[test]
 fn real_fluid_in_the_box_is_reported_apart() {
     let water_at_feet = |x: i32, y: i32, z: i32| (x, y, z) == (3, 3, 2);
-    let c = contact([2.6, 3.0, 2.2], [3.2, 4.8, 2.8], 4.6, &column(3, 6), &water_at_feet);
+    let c = contact(
+        [2.6, 3.0, 2.2],
+        [3.2, 4.8, 2.8],
+        4.6,
+        &column(3, 6),
+        &water_at_feet,
+    );
     assert!(c.touching && c.real && !c.mod_only());
 }
 

@@ -53,7 +53,7 @@ pub fn height(level: u8, same_above: bool) -> f32 {
 /// interação (`fluidTop < box.minY` pula a célula). `feet_min_y` é o `minY` da caixa da entidade.
 pub fn reaches_box(cell_y: i32, height: f32, feet_min_y: f64) -> bool {
     let top = f64::from(cell_y) + f64::from(height);
-    !(top < feet_min_y + INTERACTION_DEFLATE)
+    top >= feet_min_y + INTERACTION_DEFLATE
 }
 
 /// `LivingEntity.shouldTravelInFluid` seguido de `travelInFluid` para um fluido de mod: a entidade não vai a lugar nenhum quando o

@@ -82,7 +82,7 @@ pub fn contact(
     ];
     let reaches = |x: i32, y: i32, z: i32, level: u8| {
         let top = f64::from(y) + height(level, level_of(x, y + 1, z).is_some());
-        !(top < lo[1])
+        top >= lo[1]
     };
     let mut out = Contact::default();
     for x in lo[0].floor() as i32..=(hi[0].ceil() as i32 - 1) {

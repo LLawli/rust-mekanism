@@ -7,19 +7,26 @@ use serde_json::Value;
 use std::path::Path;
 
 fn read_trace(env: &str, entity: &str, start: &str) -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros/fluids_entity.jsonl");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../dev/referencia/rastros/fluids_entity.jsonl");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let rows: Vec<Value> = text
         .lines()
         .map(|l| serde_json::from_str(l).expect("linha do rastro"))
         .filter(|r: &Value| r["env"] == env && r["entity"] == entity && r["start"] == start)
         .collect();
-    assert!(rows.len() >= 21, "rastro curto: {env} {entity} {start}: {}", rows.len());
+    assert!(
+        rows.len() >= 21,
+        "rastro curto: {env} {entity} {start}: {}",
+        rows.len()
+    );
     rows
 }
 
 fn f(row: &Value, key: &str) -> f64 {
-    row[key].as_f64().unwrap_or_else(|| panic!("{key} em {row}"))
+    row[key]
+        .as_f64()
+        .unwrap_or_else(|| panic!("{key} em {row}"))
 }
 
 /// A coluna de 4 fontes: o jogador e o porco ficam parados, sem gravidade, e perdem 1 de ar por tick dentro do fluido.
@@ -45,7 +52,12 @@ fn player_and_pig_stand_still_in_a_source_column() {
         assert_eq!(air, 300);
         for row in &rows[first_tick..] {
             air -= 1;
-            assert_eq!(f(row, "airSupply") as i32, air, "{entity} tick {}", row["tick"]);
+            assert_eq!(
+                f(row, "airSupply") as i32,
+                air,
+                "{entity} tick {}",
+                row["tick"]
+            );
         }
     }
 }
@@ -64,7 +76,11 @@ fn current_adds_the_motion_scale_to_a_held_entity() {
         let mut velocity = 0.0;
         for row in &rows[1..] {
             velocity += sign * MOTION_SCALE;
-            assert!((f(row, axis) - velocity).abs() < 1e-9, "{env} {entity} tick {}", row["tick"]);
+            assert!(
+                (f(row, axis) - velocity).abs() < 1e-9,
+                "{env} {entity} tick {}",
+                row["tick"]
+            );
             assert_eq!(f(row, "x"), x0);
             assert_eq!(f(row, "z"), z0);
         }
@@ -78,7 +94,11 @@ fn fall_distance_halves_every_tick_in_the_fluid() {
     let mut previous = f(&rows[38], "fallDistance");
     for row in &rows[39..] {
         let expected = fluid_entity::fall_distance_in_fluid(previous);
-        assert!((f(row, "fallDistance") - expected).abs() < 1e-12, "tick {}", row["tick"]);
+        assert!(
+            (f(row, "fallDistance") - expected).abs() < 1e-12,
+            "tick {}",
+            row["tick"]
+        );
         previous = f(row, "fallDistance");
     }
 }
@@ -89,19 +109,32 @@ fn item_rises_in_the_column_like_the_original() {
     for start in ["inside", "above"] {
         let rows = read_trace("brine", "item", start);
         // O item que cai atravessa o fluido (a subida de 5.0E-4 só freia a queda) e pousa no fundo: a subida começa no primeiro tick com `dy > 0`.
-        let first = rows.iter().position(|r| f(r, "dy") > 0.0).expect("o item sobe");
+        let first = rows
+            .iter()
+            .position(|r| f(r, "dy") > 0.0)
+            .expect("o item sobe");
         // A coluna de 4 fontes: o topo do fluido fica 1 acima do centro do último bloco de fonte (`fluidTypeHeight` + `y`).
         let top = f(&rows[first], "y") + f(&rows[first], "fluidTypeHeight");
         let mut y = f(&rows[first - 1], "y");
         let mut vy = f(&rows[first - 1], "dy");
         for row in &rows[first..] {
             let height = (top - y) as f32;
-            let [_, ny, _] = fluid_entity::item_movement(height, [0.0, vy, 0.0]).expect("o item flutua");
+            let [_, ny, _] =
+                fluid_entity::item_movement(height, [0.0, vy, 0.0]).expect("o item flutua");
             y += ny;
             // `move` e depois o arrasto do ar (`getAirDrag`, `0.98F`).
             vy = ny * f64::from(0.98_f32);
-            assert!((f(row, "y") - y).abs() < 1e-5, "{start} tick {}: {} contra {y}", row["tick"], f(row, "y"));
-            assert!((f(row, "dy") - vy).abs() < 1e-9, "{start} tick {}", row["tick"]);
+            assert!(
+                (f(row, "y") - y).abs() < 1e-5,
+                "{start} tick {}: {} contra {y}",
+                row["tick"],
+                f(row, "y")
+            );
+            assert!(
+                (f(row, "dy") - vy).abs() < 1e-9,
+                "{start} tick {}",
+                row["tick"]
+            );
         }
     }
 }
