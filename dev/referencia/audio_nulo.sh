@@ -8,6 +8,8 @@
 #   audio_nulo.sh ligar CONTAINER          cria o sink se faltar e manda os streams do CONTAINER para ele (metadata `target.object`, o que o `pactl move-sink-input` faz, e tira o link
 #                                           que já houver para outro sink); imprime quantos moveu. Repita até o stream existir
 #   audio_nulo.sh verificar CONTAINER      imprime `ok N` se há ao menos um stream do CONTAINER e todos os links de saída dele vão só para o sink nulo; senão `ruim ...` e sai com 1
+#   audio_nulo.sh seguro CONTAINER         imprime `ok N` se nenhum link de saída do CONTAINER vai para um sink que não seja de teste (`som_nulo` ou `som_grav_*`); senão `ruim ...` e sai com 1. Sem stream ou sem link
+#                                           também é `ok` (nada toca). É o vigia de uma gravação com som: `verificar` exige um sink só, e durante o `gravar-jogo rec` o stream troca de `som_nulo` para `som_grav_<nome>` e volta
 #   audio_nulo.sh info CONTAINER           imprime as propriedades dos streams do CONTAINER (aplicação, taxa, formato, latência, destino) e as do sink nulo: a configuração de áudio de cada jogo
 #   audio_nulo.sh gravar ARQUIVO.wav [PID] grava o sink nulo até receber SIGINT/SIGTERM (o pid do gravador vai para o arquivo PID, se dado)
 #   audio_nulo.sh remover                  apaga o sink nulo (só um sink próprio: nunca o `som_nulo` compartilhado, que outra frente pode estar usando)
@@ -64,6 +66,22 @@ if streams and destinos and all(d == sink for d in destinos):
 else:
     print(f"ruim streams={streams} destinos={destinos}")
     sys.exit(1)
+PY
+    ;;
+  seguro)
+    python3 - "$(host_de "$2")" <<'PY'
+import json, subprocess, sys
+host = sys.argv[1]
+dump = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True).stdout)
+nodes = {o["id"]: o["info"]["props"] for o in dump if o.get("type") == "PipeWire:Interface:Node"}
+streams = [i for i, p in nodes.items() if p.get("media.class") == "Stream/Output/Audio" and host and p.get("application.process.host") == host]
+destinos = [nodes.get(o["info"].get("input-node-id"), {}).get("node.name", "?") for o in dump
+            if o.get("type") == "PipeWire:Interface:Link" and o["info"].get("output-node-id") in streams]
+fora = [d for d in destinos if not (d == "som_nulo" or d.startswith("som_grav_"))]
+if fora:
+    print(f"ruim streams={streams} destinos={destinos}")
+    sys.exit(1)
+print(f"ok {len(streams)} streams, {len(destinos)} links")
 PY
     ;;
   info)

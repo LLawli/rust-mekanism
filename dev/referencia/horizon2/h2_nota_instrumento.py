@@ -6,7 +6,8 @@
                                            tocou para o jogador: o jogo de teste é mudo). Uma segunda rodada põe o bloco de nota sobre a pedra (tambor) e troca a base por sal e bio fuel
                                            (a atualização de vizinho recalcula o instrumento). Sai 0 só se todo instrumento e todo som são os do original.
     h2_nota_instrumento.py cena PASTA      a fileira montada, um print
-    h2_nota_instrumento.py video           o roteiro do vídeo (a nota tocando em cada base, da esquerda para a direita, com legenda de som ligada); grave com `gravar-jogo rec` (`MARCA=arquivo`)
+    h2_nota_instrumento.py video           o roteiro do vídeo (a nota tocando em cada base, da esquerda para a direita, com legenda de som ligada), gravado com o som do jogo
+                                           (`NOME=<nome do gravar-jogo start>`; veja `video()`)
 
 Clima limpo e meio-dia com os ciclos parados; as gamerules voltam ao fim.
 """
@@ -14,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -172,26 +174,82 @@ def scene(folder):
     print("print fileira")
 
 
+AUDIO_NULO = os.environ.get("AUDIO_NULO", "~/.cache/rust-mekanism/audio_nulo.sh")
+CONTAINER = os.environ.get("H_NAME", "horizon2")
+GRAVAR = "~/.cache/rust-mekanism/gravar-jogo"
+SOUND_OFF = ("music", "weather", "hostile", "neutral", "player", "ambient", "voice", "ui", "block")
+
+
+def desktop(args):
+    return subprocess.run(["ssh", "desktop", f"{AUDIO_NULO} {args}"], capture_output=True, text=True)
+
+
+def mute():
+    h.ctl("options-set", "soundCategory_master", "0")
+
+
 def video():
-    """A fileira montada, a legenda de som ligada, e a nota tocando em cada base da esquerda para a direita (sal, bio fuel, lápis, areia, feno). O chat some depois
-    de 10 s: com `MARCA=arquivo` o roteiro cria o arquivo quando a nota começa a tocar, e a gravação (`gravar-jogo rec`) abre nessa hora."""
+    """A fileira montada, a legenda de som ligada, e a nota tocando em cada base da esquerda para a direita (sal, bio fuel, lápis, areia, feno), com o som do jogo no vídeo.
+
+    O bloco de nota toca na categoria `record` (Jukebox/Note Blocks): só ela fica ligada, e o volume mestre só sobe depois de o stream do container estar no sink nulo
+    (`audio_nulo.sh ligar` e `verificar`). Uma thread confere a cada meio segundo (`seguro`: nenhum link fora de `som_nulo` e `som_grav_*`) e, se o stream sair, o volume mestre volta a 0
+    na hora. A gravação é a do `gravar-jogo rec <NOME> nota.mp4 <s> <container>` (o container com `JOGO_PW_SOCK`), que grava o som do jogo num sink próprio e o junta ao vídeo.
+    Variáveis: `NOME` (o nome do `gravar-jogo start`), `SEGUNDOS` (padrão 20), `ARQUIVO` (padrão nota.mp4)."""
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "20"), os.environ.get("ARQUIVO", "nota.mp4")
     sky()
     h.command("tick unfreeze")
     build_row()
+    mute()
     h.ctl("options-set", "showSubtitles", "true")
-    time.sleep(12.0)
-    # O chat já sumiu: a gravação começa aqui, quando o arquivo de marca aparece (o chamador a espera e abre o `gravar-jogo rec` na hora).
-    if MARK:
-        open(MARK, "w").write("começa\n")
-        time.sleep(2.0)
-    for i, _ in enumerate(BASES):
-        x = x_of(i)
-        h.ctl("setblock", str(x), str(Y + 1), str(Z + 1), "minecraft:redstone_block")
-        time.sleep(1.2)
-        h.ctl("setblock", str(x), str(Y + 1), str(Z + 1), "minecraft:air")
-        time.sleep(1.4)
-    time.sleep(1.0)
-    clear()
+    h.ctl("options-set", "chatVisibility", "2")
+    for categoria in SOUND_OFF:
+        h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    h.ctl("options-set", "soundCategory_record", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in desktop(f"ligar {CONTAINER}").stdout and desktop(f"verificar {CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    print("stream no sink nulo:", desktop(f"verificar {CONTAINER}").stdout.strip(), flush=True)
+    parar = threading.Event()
+
+    def vigia():
+        while not parar.is_set():
+            if not desktop(f"seguro {CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        h.ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(3.0)
+        if MARK:
+            open(MARK, "w").write("começa\n")
+        rec = subprocess.Popen(["ssh", "desktop", f"{GRAVAR} rec {nome} {arquivo} {segundos} {CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        for i, _ in enumerate(BASES):
+            x = x_of(i)
+            h.ctl("setblock", str(x), str(Y + 1), str(Z + 1), "minecraft:redstone_block")
+            time.sleep(1.2)
+            h.ctl("setblock", str(x), str(Y + 1), str(Z + 1), "minecraft:air")
+            time.sleep(1.4)
+        time.sleep(1.0)
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        clear()
 
 
 if __name__ == "__main__":
