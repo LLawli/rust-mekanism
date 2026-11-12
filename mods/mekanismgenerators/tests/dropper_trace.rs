@@ -137,7 +137,7 @@ fn a_dispenser_drops_the_item_into_the_world_and_never_inserts_into_the_generato
         }
         if !phase.contains("lava_bucket") {
             assert_eq!(line["dropper"][0][1], 2, "{phase}: {line}");
-            // O item solto cai no chão; no caso do tablet com 1.000 de energia o rastro não achou o item solto (causa não investigada, é o dispenser do vanilla), então o que vale é que o dispenser deu um item.
+            // O item solto cai no chão; o rastro varia entre execuções (decisão 99): as fases com balde de lava deixam o gerador com lava, que corre para fora e queima o item que a alcança (o tablet, o graveto e o carvão, ao acaso; `dropper_fate_heat_generator.jsonl`), então o que vale é que o dispenser deu um item e que no máximo um item ficou no chão.
             assert!(line["dropped"].as_u64().unwrap() <= 1, "{phase}: {line}");
         }
         // O balde de lava é do comportamento do dispenser do vanilla (esvazia o balde no bloco que guarda fluido, ou o solta), e depende do fluido que

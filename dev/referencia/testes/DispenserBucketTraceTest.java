@@ -300,4 +300,39 @@ public class DispenserBucketTraceTest {
             sequence.thenSucceed();
         });
     }
+
+    /// Um item parado na célula de um bloco com lava dentro (o Heat Generator e o cabo), tick a tick: `dispenser_lava_item.jsonl`. O item do dispenser atravessa a célula do gerador por dois ticks
+    /// e sobrevive; o da `fluido_no_bloco_entity.jsonl` (pedra parada no cabo) morre no tick 2: aqui o mesmo item parado no gerador e no cabo, e o que o dispenser solta no cabo.
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = BATCH)
+    @TestHolder(description = "Records an item inside a lava-logged cell.")
+    public static void lavaItem(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene();
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            var sequence = helper.startSequence();
+            for (String target : List.of("mekanismgenerators:heat_generator", "mekanism:basic_universal_cable")) {
+                for (String id : List.of("stone", "coal")) {
+                    ItemEntity[] spawned = new ItemEntity[1];
+                    String name = target.substring(target.indexOf(':') + 1) + "_" + id;
+                    sequence.thenExecuteAfter(1, () -> {
+                        scene.reset(helper);
+                        scene.place(target);
+                        scene.fillGenerator();
+                        scene.logFluid("lava");
+                        BlockPos pos = scene.machinePos();
+                        spawned[0] = new ItemEntity(helper.getLevel(), pos.getX() + 0.5, pos.getY() + 0.05, pos.getZ() + 0.5, new ItemStack(item(id)));
+                        spawned[0].setDeltaMovement(0, 0, 0);
+                        helper.getLevel().addFreshEntity(spawned[0]);
+                    });
+                    for (int t = 1; t <= 8; t++) {
+                        int tick = t;
+                        sequence.thenExecuteAfter(1, () -> scene.lines.add("{\"case\":\"" + name + "\",\"t\":" + tick + ",\"removed\":" + spawned[0].isRemoved() + ",\"lava\":" + spawned[0].isInLava()
+                              + ",\"y\":" + rnd(spawned[0].getY() - scene.machinePos().getY()) + ",\"fire\":" + spawned[0].getRemainingFireTicks() + "}"));
+                    }
+                }
+            }
+            sequence.thenExecuteAfter(1, () -> write("dispenser_lava_item", scene.lines));
+            sequence.thenSucceed();
+        });
+    }
 }
