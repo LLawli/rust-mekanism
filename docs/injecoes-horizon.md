@@ -14,23 +14,23 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-12 (depois da frente `oclusao`, que acrescentou 3 injeções cruas, `occlusion_shapes` da `machinery_basis` (a forma de oclusão real, H51) e `glass_ids` e `glass_skip` do `mekanismgenerators` (o corte de face entre os vidros, H51), 1 módulo, o `glass-skip`, e 1 hook do catálogo, o `fill_bucket` do `mekanism`, e antes dela da frente `item-antes-do-bloco`, que trocou o hook `right_click_block` do `mekanism` por 2 injeções cruas, a `use_hand` e a `predict_item_on_block` (H72), e antes dela a frente `nota-instrumento`, que acrescentou 1 injeção crua, a `note_instrument`, do `mekanism`: o instrumento do bloco de nota do sal e do bio fuel, H44, e antes dela a frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-12 (depois da frente `transmissor-obj`, que acrescentou 2 injeções cruas, a `obj_material_parse` e a `obj_material_quads`, e 1 módulo, o `obj-material`, todos da `machinery_basis`: o `Kd` e o `neoforge_TintIndex` do `.mtl`, H16; e antes dela a frente `oclusao`, que acrescentou 3 injeções cruas, `occlusion_shapes` da `machinery_basis` (a forma de oclusão real, H51) e `glass_ids` e `glass_skip` do `mekanismgenerators` (o corte de face entre os vidros, H51), 1 módulo, o `glass-skip`, e 1 hook do catálogo, o `fill_bucket` do `mekanism`, e antes dela da frente `item-antes-do-bloco`, que trocou o hook `right_click_block` do `mekanism` por 2 injeções cruas, a `use_hand` e a `predict_item_on_block` (H72), e antes dela a frente `nota-instrumento`, que acrescentou 1 injeção crua, a `note_instrument`, do `mekanism`: o instrumento do bloco de nota do sal e do bio fuel, H44, e antes dela a frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 157 | |
+| `[[injection]]` no total | 159 | |
 | Hook do catálogo, usado só com o contrato dele | 46 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 45 | sim |
-| Injeção crua (`target = ...`) | 66 | sim |
-| `[[module]]` (fora da contagem de `[[injection]]`) | 33 | sim |
+| Injeção crua (`target = ...`) | 68 | sim |
+| `[[module]]` (fora da contagem de `[[injection]]`) | 34 | sim |
 
-46 + 45 + 66 = 157. Os 33 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-111 injeções e 33 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+46 + 45 + 68 = 159. Os 34 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+113 injeções e 34 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 66 | 32 | 45 |
-| Provada em spike | 5 | 0 | 1 |
+| Em uso | 68 | 33 | 45 |
+| Provada em spike | 4 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
 As provadas em spike não contam `native_energy_at` nem `override_gameplay`, que já estão em uso. As previstas vêm do plano e não foram compiladas.
@@ -71,7 +71,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H13 `block_entity_save` | hook | `save_level` | spike |
 | H14 `block_entity_removed` | hook | `remove_entity` | spike |
 | H15 `visuals` v2 | hook | `native_frame_visuals` | spike |
-| H16 leitura do `Kd` do `.mtl` | correção | `obj_quad` (RETURN) | spike |
+| H16 leitura do `Kd` e do `neoforge_TintIndex` do `.mtl` | correção | as injeções `obj_material_parse` e `obj_material_quads` e o módulo `obj-material` | em uso (2 cruas, 1 módulo) |
 | H17 ordenação da camada translúcida | correção | `outline_fill` | spike |
 | H18 `properties.light` condicional | dado | `active_light` (mekanism) e `block_rows` (mekanismgenerators), só a luz | em uso |
 | H19 `looping_sound` | helpers | módulo `tile-sound` | em uso (módulo) |
@@ -161,18 +161,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 63 | 24 | 39 | 20 |
+| `mods/machinery_basis/horizon-mixin.toml` | 65 | 24 | 41 | 21 |
 | `mods/mekanism/native/horizon-mixin.toml` | 67 | 46 | 21 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 27 | 21 | 6 | 5 |
-| Total | 157 | 91 | 66 | 33 |
+| Total | 159 | 91 | 68 | 34 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core`, `note_instrument` e `fluid_entity_mob_air` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 27 das 63 cruas são `cancellable = true` (as cinco `fluid_entity_*` de 2026-11-12 que cancelam: `fluid_entity_splash`, `fluid_entity_fall`, `fluid_entity_touch`, `fluid_entity_travel` e `fluid_entity_mob_travel`; as outras vinte e duas: a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fluid_entity_update`, `fluid_entity_mob_update`, `fluid_entity_mob_air`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core`, `note_instrument`, `fluid_entity_mob_air`, `obj_material_parse` e `obj_material_quads` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 27 das 63 cruas são `cancellable = true` (as cinco `fluid_entity_*` de 2026-11-12 que cancelam: `fluid_entity_splash`, `fluid_entity_fall`, `fluid_entity_touch`, `fluid_entity_travel` e `fluid_entity_mob_travel`; as outras vinte e duas: a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fluid_entity_update`, `fluid_entity_mob_update`, `fluid_entity_mob_air`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 91 hooks, 45 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 46 não (o `fill_bucket` do `mekanism`, de 2026-11-12 (frente `oclusao`), só usa o contrato: cancelar o clique do balde; (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (66)
+## Injeções cruas em uso (68)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -763,6 +763,26 @@ Todas têm o alvo e o helper abaixo; o risco comum é o nome e a assinatura de c
 - **Conferido contra o original:** `core/tests/model_transform.rs` contra `rastros/model_transform.jsonl` (as classes do NeoForge no `runGameTestServer`), `dev/referencia/transform_horizon_assets.py` contra o `horizon-assets` do pin,
   o `horizon-mixins plan` e `apply` contra o pin, e em jogo (2026-11-09, `horizon`): ver "Conteúdo do Generators" no inventário do plano.
 
+### O `Kd` e o `neoforge_TintIndex` do `.mtl` (machinery_basis, 2 injeções e 1 módulo)
+
+- **Estado:** em uso desde 2026-11-12 (frente `transmissor-obj`). Duas injeções cruas e um módulo. **Proposta:** H16. Faz de verdade o que a `spike_obj_kd` provou em 2026-11-05 (que punha `Kd` 0,8 em todo material do Mekanism).
+  - `obj_material_parse`: RETURN de `horizon_assets::obj::parse_mtl`. O mapa de material para textura que ela devolve não tem lugar para o `Kd` nem para o `neoforge_TintIndex`: cada material do `.mtl` que tem `Kd` diferente de branco ou
+    índice de tinta ganha ali uma entrada extra, de chave `\u{1}mtl:` + nome do material (nenhuma face procura essa chave) e valor `MtlTexture::Slot` com as duas propriedades escritas (`ffcccccc|-1`).
+  - `obj_material_quads`: RETURN de `horizon_assets::bake::bake_obj`. Os quads que ela acabou de acrescentar a `output` são um por face visível do OBJ, na ordem das faces (`obj.faces` sem as partes escondidas pela `visibility`): cada um
+    leva a cor `Kd` do material da face em `color` (o Horizon a multiplica na do vértice, o que o spike mediu) e o `neoforge_TintIndex` em `tint_index`. Sem a entrada o quad fica como o Horizon o assou; um erro de `bake_obj` passa como veio.
+- **Helpers:** `mods/machinery_basis/obj_material_parse.rs` e `obj_material_quads.rs`, que chamam o módulo `obj-material` (`crate::obj::machinery_obj_material`, `obj_material.rs`, enxertado em `obj.rs`). O módulo é só `std`: a conta do
+  `ObjMaterialLibrary` (a última linha de cada material vence, `forge_TintIndex` também vale, `newmtl` repetido recomeça), `ObjGeometry.parseVector4` (de um a quatro números, o quarto vale 1) e a cor do vértice
+  (`VertexConsumer.setColor(float, float, float, float)`: `(int)(x * 255.0F)`, e `ARGB.color` mascara cada canal em 8 bits). `Kd 1 1 1` não gera entrada (é a cor que o quad já tem), então os modelos sem `Kd` útil (MekaSuit, Wind Generator) não mudam.
+- **Por que são necessárias:** o `parse_mtl` do Horizon lê só o `map_Kd`, e `ModelQuad.color` é a cor que o NeoForge multiplica; os materiais dos transmissores têm `Kd 0.8 0.8 0.8` e, sem isso, o corpo sai 20% mais claro que o do original. O
+  `neoforge_TintIndex` (o vidro do transportador logístico e o conteúdo, `transmitter_glass_large.mtl` e `transmitter_contents.mtl`, índice 0) também se perde; os transmissores que o port desenha hoje não o usam (o vidro só se desenha
+  com cor, e a cor é dado da block entity, Fase 3), e o módulo e a injeção já o levam ao quad.
+- **Java:** `ObjMaterialLibrary.java` (`Kd`, `neoforge_TintIndex`, `forge_TintIndex`), `ObjGeometry.java:276-284` (`parseVector4`) e `:314-420` (`makeQuad`: `quadBaker.setTintIndex` e `setColor` com `color * colorTint`),
+  `VertexConsumer.setColor(float, float, float, float)`, `ARGB.color(int, int, int, int)`.
+- **Hook mais próximo:** nenhum. **Hook proposto:** H16, abaixo.
+- **Risco:** renomear `parse_mtl` (o argumento `text`) ou `bake_obj` (`obj`, `hidden`, `output`), mudar o tipo `MtlTexture` (a entrada extra é um `MtlTexture::Slot`), `bake_obj` deixar de acrescentar um quad por face visível, ou o Horizon passar a ler o `Kd`
+  sozinho (a cor sairia multiplicada duas vezes: tirar as duas injeções e o módulo). O módulo exige que `obj.rs` não tenha `use ...::*` de topo.
+- **Conferido contra o original:** `core/tests/obj_material.rs` (o módulo compilado como está, contra os `.mtl` do original que o conteúdo traz e as regras do NeoForge acima); `dev/referencia/obj_horizon_assets.py` (o texto das duas injeções e do módulo posto à mão no `horizon-assets` do pin, como `transform_horizon_assets.py`: as 264 partes dos 22 transmissores cozinham com os quads do objeto do OBJ, a cor `0xFFCCCCCC` em todos e as posições e uv do OBJ; `--sem-injecao` deixa a cor vazia e o teste falha); e em jogo, pixel a pixel contra o original: ver a decisão 26 no plano.
+
 ### `animate_tick` (machinery_basis)
 
 - **Estado:** em uso desde 2026-11-08. **Alvo:** `horizon_client_lib::animate_tick::block_animate_tick` (`animate_tick.rs:819`, função livre privada), HEAD, não cancelável. **Proposta:** H39.
@@ -898,7 +918,7 @@ chega do servidor ao cliente por NBT (`write_network`/`read_network`, no canal `
 devolve `Text::plain()` e o título que o Horizon manda no pacote de abertura (`display_name(custom_name: &str, ...)`, `lan_actions.rs:1280`)
 guarda só o texto do nome (`World::block_names` é `String`).
 
-## Módulos (33)
+## Módulos (34)
 
 Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser filho dele, enxerga o que é privado ali.
 
@@ -923,6 +943,7 @@ Um `[[module]]` enxerta um arquivo nosso em um arquivo do Horizon e, por ser fil
 | `sprite-ties` (machinery_basis) | `horizon-client-render/src/hud.rs` | os retângulos do atlas que as telas de mod desenham, para a injeção `sprite_ties` | H26 |
 | `armor-bar` (machinery_basis) | `game.rs` | a barra de armadura do lado do cliente: a lista de slots, a posição, o "fora" da tela e o mapa dos índices do menu | H31, H32 |
 | `model-transform` (machinery_basis) | `math.rs` do `horizon-assets` | a conta do `transform` do modelo do NeoForge (o JSON de `TransformationHelper`, `applyOrigin`, a rotação do blockstate, `Direction.rotate`) em código puro, sem tipos do Horizon, para as injeções `model_transform_decode` e `model_transform_bake`; `core/tests/model_transform.rs` o compila como está | H67 |
+| `obj-material` (machinery_basis) | `obj.rs` do `horizon-assets` | o `Kd` e o `neoforge_TintIndex` de um `.mtl` (a conta do `ObjMaterialLibrary` e da cor do vértice) em código puro, sem tipos do Horizon, para as injeções `obj_material_parse` e `obj_material_quads` | H16 |
 | `bar-menu` (machinery_basis) | `menu.rs` (crate `horizon_client_lib`, `pub`) | os cinco slots no fim do menu de um tipo com barra, e o registro dele, que o crate de baixo enxerga (a `machinery-basis-core` só liga ao `horizon-client`) | H31 |
 | `bar-machine` (machinery_basis) | `game/lan_crafting.rs` | deixa pronto o menu da conexão com os cinco slots antes do clique (`Menu::new` devolve `Self`) | H31 |
 | `bar-hub` (machinery_basis) | `lan/containers.rs` | `Hub::machinery_sync_bar`: a armadura e a mão que o clique mudou vão ao cliente com a resposta dele | H31 |
@@ -974,7 +995,7 @@ referência: a versão real age só nos blocos do Mekanism. Em cada linha, o alv
 | `spike_remove_entity` | `GameLevel::remove_entity` (`spill.rs:490`), HEAD | lê a block entity antes de ela sair | `TileEntityTransmitter.setRemoved`, `:165` | H14 |
 | `spike_override_gameplay` | `Plan::override_gameplay` (`mod_content.rs:1319`), HEAD | luz 8 só no Crusher, 13 nos demais (em uso desde 2026-11-07 como `active_light`) | `BlockStateHelper.java:83-94`, `Attributes.java:147-157` | H18 |
 | `spike_frame_visuals` | `native_visuals::native_frame_visuals`, HEAD | linhas de várias caixas, só no nosso bloco com a ferramenta | `BlockTransmitter.java:103`, `TileEntityTransmitter.java:234`, `MultipartUtils.java:39` | H15 |
-| `spike_obj_kd` | `horizon_assets::bake::obj_quad`, RETURN | cor do quad vezes o `Kd` do `.mtl` (0,8): sem isso tudo sai 20% mais claro | NeoForge `ObjGeometry.makeQuad` | H16 |
+| `spike_obj_kd` | `horizon_assets::bake::obj_quad`, RETURN | cor do quad vezes o `Kd` do `.mtl` (0,8): sem isso tudo sai 20% mais claro (em uso desde 2026-11-12 como `obj_material_parse` e `obj_material_quads`, que leem o `Kd` e o `neoforge_TintIndex` do arquivo; a `spike_obj_kd` pôs 0,8 em todo material do Mekanism) | NeoForge `ObjGeometry.makeQuad` | H16 |
 | `spike_sort_translucent` | `pvp::Game::outline_fill`, HEAD | ordena os quads de `TRANSLUCENT_ITEM_OVERLAY` do fundo para a frente: manchas sumiram | `MekanismRenderType.java:20,61,69` (`sortOnUpload`) | H17 |
 
 Hooks do catálogo que o spike usou e que são limpos: `standalone_models`, `block_entity_update_tag`. Os que tocam estrutura privada:
@@ -983,8 +1004,8 @@ do spike, com os mesmos campos. Substitutos que já existem: `held`, `block`, `b
 `game.pick()` e `game.aim()`. Se `view_hit` dá o mesmo raio que `pick()` não foi conferido.
 
 Riscos: `spike_energy_at`, `spike_save_level` e `spike_remove_entity` quebram em renomeação. `spike_override_gameplay` depende de
-`NewBlock` e do formato de linha. `spike_obj_kd` e `spike_sort_translucent` são os mais frágeis: alteram a pipeline de render, e
-`spike_sort_translucent` reordena todos os vértices de `outline_fill`, o que muda com qualquer ajuste de camada.
+`NewBlock` e do formato de linha. `spike_sort_translucent` é a mais frágil: altera a pipeline de render, e
+ela reordena todos os vértices de `outline_fill`, o que muda com qualquer ajuste de camada.
 
 ### Aba de upgrades (em uso desde 2026-11-06)
 
@@ -1332,11 +1353,14 @@ fn native_visuals_v2(&self, rims: &mut Vec<NativeBlockRim>, lights: &mut Vec<Nat
 
 - **Exemplo:** com `block_highlight` cancelando o contorno padrão, o mod põe as caixas da parte do cabo que o raio toca.
 
-### H16 leitura do `Kd` do `.mtl` (correção, sem hook)
+### H16 leitura do `Kd` e do `neoforge_TintIndex` do `.mtl` (correção, sem hook)
 
-O NeoForge multiplica a cor do quad pelo `Kd` do material (`ObjGeometry.makeQuad`), e `parse_mtl` do Horizon lê só `map_Kd`. Os
-materiais do cabo têm `Kd 0.8`: sem isso, tudo sai 20% mais claro. O pedido é que o Horizon leia `Kd` (e `neoforge_TintIndex`) ao
-assar um `.obj`. Não é hook porque o dado já está no arquivo: qualquer mod com `.obj` ganha.
+O NeoForge multiplica a cor do quad pelo `Kd` do material (`ObjGeometry.makeQuad`) e dá ao quad o `neoforge_TintIndex` dele, e `parse_mtl` do Horizon lê só `map_Kd`. Os materiais dos transmissores têm `Kd 0.8`: sem isso, tudo sai 20% mais claro; o
+vidro do transportador logístico e o conteúdo têm `neoforge_TintIndex 0`. O pedido é que o Horizon leia `Kd` e `neoforge_TintIndex` ao assar um `.obj` (`MtlTexture` ganha cor e índice de tinta, e `obj_quad` os põe no quad). Não é hook porque o dado já está no arquivo:
+qualquer mod com `.obj` ganha.
+
+- **Hoje:** as injeções `obj_material_parse` e `obj_material_quads` e o módulo `obj-material`, desde 2026-11-12 (ficha "O `Kd` e o `neoforge_TintIndex` do `.mtl`"). Antes era a `spike_obj_kd` do spike.
+- **Risco do que existe hoje:** os da ficha da injeção. Se o Horizon passar a ler o `Kd`, tirar as duas injeções e o módulo.
 
 ### H17 ordenação da camada translúcida (correção, sem hook)
 

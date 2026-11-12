@@ -12,7 +12,9 @@ fn root() -> PathBuf {
 }
 
 fn mtl(name: &str) -> String {
-    let path = root().join("mods/mekanism/content/assets/mekanism/models/block").join(name);
+    let path = root()
+        .join("mods/mekanism/content/assets/mekanism/models/block")
+        .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
@@ -33,7 +35,11 @@ fn kd_of_the_transmitter_materials_is_the_gray_the_original_multiplies() {
 /// O alfa vem do quarto número de `Kd` (`parseVector4` com 4 números), os canais que faltam valem 0, e o que passa de 1 entra mascarado em 8 bits (`ARGB.color`).
 #[test]
 fn the_color_follows_parse_vector4_and_argb() {
-    let one = |line: &str| properties(&format!("newmtl m\n{line}\n")).pop().map(|(_, p)| p.0.unwrap());
+    let one = |line: &str| {
+        properties(&format!("newmtl m\n{line}\n"))
+            .pop()
+            .map(|(_, p)| p.0.unwrap())
+    };
     assert_eq!(one("Kd 0.5"), Some(0xFF7F_0000u32 as i32));
     assert_eq!(one("Kd 0.5 0.25"), Some(0xFF7F_3F00u32 as i32));
     assert_eq!(one("Kd 0.5 0.25 0.1"), Some(0xFF7F_3F19u32 as i32));
@@ -48,12 +54,28 @@ fn the_color_follows_parse_vector4_and_argb() {
 #[test]
 fn the_tint_index_comes_from_neoforge_tint_index() {
     // O primeiro material de `transmitter_glass_large.mtl` do original (o vidro do transportador logístico, que só se desenha com cor), como ele o escreve.
-    let glass = properties("newmtl None\nKa 0.000000 0.000000 0.000000\nneoforge_TintIndex 0\nKd 0.8 0.8 0.8\nd 1\nmap_Kd #side_glass\n");
-    assert_eq!(glass, vec![("None".to_owned(), (Some(0xFFCC_CCCCu32 as i32), 0))]);
+    let glass = properties(
+        "newmtl None\nKa 0.000000 0.000000 0.000000\nneoforge_TintIndex 0\nKd 0.8 0.8 0.8\nd 1\nmap_Kd #side_glass\n",
+    );
+    assert_eq!(
+        glass,
+        vec![("None".to_owned(), (Some(0xFFCC_CCCCu32 as i32), 0))]
+    );
     // O conteúdo (`transmitter_contents.mtl`) escreve o índice depois do `d`.
-    let contents = properties("newmtl Contents\nKa 0.000000 0.000000 0.000000\nKd 0.8 0.8 0.8\nd 1\nneoforge_TintIndex 0\nmap_Kd #contents\n");
-    assert_eq!(contents, glass.iter().map(|(_, p)| ("Contents".to_owned(), *p)).collect::<Vec<_>>());
-    assert_eq!(properties("newmtl a\nforge_TintIndex 2\n"), vec![("a".to_owned(), (None, 2))]);
+    let contents = properties(
+        "newmtl Contents\nKa 0.000000 0.000000 0.000000\nKd 0.8 0.8 0.8\nd 1\nneoforge_TintIndex 0\nmap_Kd #contents\n",
+    );
+    assert_eq!(
+        contents,
+        glass
+            .iter()
+            .map(|(_, p)| ("Contents".to_owned(), *p))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        properties("newmtl a\nforge_TintIndex 2\n"),
+        vec![("a".to_owned(), (None, 2))]
+    );
     let text = "newmtl a\nforge_TintIndex 2\nnewmtl b\nneoforge_TintIndex 1\nneoforge_TintIndex 3\nKd 0.2 0.2 0.2\nnewmtl a\nKd 1 1 1\nnewmtl c\nmap_Kd #x\n";
     let found = properties(text);
     assert_eq!(

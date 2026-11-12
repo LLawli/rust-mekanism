@@ -39,7 +39,7 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
 | Save shares no save | Dá com injeção | HEAD em `Game::save_level`, antes do `modified.drain`. No unload, `chunk_unload` basta |
 | Quad translúcido com alfa por block entity | Dá por hook | Em `block_entity_submit`, desenhar com `native_draw_model` e reescrever os vértices por `vertices_mut`: `color` com alfa e `Kd`, `layer` 32, `SHADED_CULL_W` e `draw.light`. `native_draw_quad` força alfa 255. Precisa de `mek_liquid`, do `atlases/blocks.json` e da ordenação: ver o spike |
 | Camada do modelo | Dá por dados | A faixa do braço é cutout, não translúcida: os `*_vertical.png` têm alfa só 0 ou 255. Basta a textura não opaca |
-| OBJ e partes por visibilidade | Dá por dados | `neoforge:obj` com `visibility` existe. Os dois OBJ têm 24 partes e 270 quads. `.obj.mek` por pasta de conteúdo só tem teste em memória. O `.mtl` perde o `neoforge_TintIndex` |
+| OBJ e partes por visibilidade | Dá por dados | `neoforge:obj` com `visibility` existe. Os dois OBJ têm 24 partes e 270 quads. `.obj.mek` por pasta de conteúdo: feito (2026-11-12, frente `transmissor-obj`, decisão 26): o OBJ e o `.mtl` do original são copiados byte a byte para o conteúdo, e o `Kd` e o `neoforge_TintIndex` que o `.mtl` perdia entram por duas injeções (H16) |
 | Estado por lado | Dá por dados | `state_properties` com template de um estado, não chorus. Quatro valores por lado, 4.096 estados por bloco, porque os `NONE_CONTIGUOUS` derivam dos outros lados. Limite real: 2^20 estados no mundo, e 22 transmissores dão 90.112. Sair do chorus perde `connects_to` |
 | Forma de colisão e seleção | Dá por dados | `shapes` e `collision_shapes` por estado, máximo de 16 caixas por forma: a do Java tem 19, e sobrepondo dá 15 |
 | Seleção parcial com Configurator | Feito (2026-11-11) para as caixas de uma só peça, por injeção | HEAD cancelável em `Game::context_outline` (a injeção `context_outline`, H71): o contorno e o raio de seleção leem a caixa que o olhar toca. PUSH e PULL (três caixas por lado) esperam o `ConnectionType` da Fase 3 e a lista de caixas do H71. Decisão 46 |
@@ -224,7 +224,7 @@ O usuário pediu (2026-11-08) que as decisões que as frentes da Fase 2 tomam so
 
 - **Revisão de 2026-11-12.** O usuário lembrou que a injeção é a regra e não uma pergunta: só lhe vai o que sobra depois de a injeção ser tentada e falhar. Por isso:
   - iguais ao original, nada a perguntar: 19 (tags `c:` byte a byte), 20 (injeção `shape_limit`), 22 (a forma de oclusão real e o `canOcclude`, a injeção `occlusion_shapes`, 2026-11-12; o balde nos transmissores pelo hook `fill_bucket` e o dispensador no H110, decisão 86; `isPathfindable` igual, decisão 87), 30 (o corte de face entre os vidros, as injeções `glass_ids` e `glass_skip`, 0 pixel em volta da matriz, 2026-11-12), 47 (o item age antes do bloco, as injeções `use_hand` e `predict_item_on_block`, 2026-11-12), 27 (os três `fluid_logged` aceitos), 46 (`context_outline`; falta só a lista de PUSH e PULL, Fase 3), 62 (`world_overlay`, 0 pixel), 67 (o que falta é a rede da Fase 3) e 74 (o núcleo do item, 1 pixel ou menos);
-  - injeção a tentar, por frente, sem perguntar: 17 e 18 (fechadas 1:1 em 2026-11-12, frentes `nota-instrumento` e `fluido-entidade`), 21 (água e lava dentro do bloco: `FluidState::from_block`), 26 (só os transmissores: o `.obj.mek` por pasta de conteúdo, que o spike de 2026-11-05 fez funcionar), 45 (o `ModContainer` por instância, H2, antes da Fase 3);
+  - injeção a tentar, por frente, sem perguntar: 17 e 18 (fechadas 1:1 em 2026-11-12, frentes `nota-instrumento` e `fluido-entidade`), 21 (água e lava dentro do bloco: `FluidState::from_block`), 26 (os transmissores: o `.obj.mek` por pasta de conteúdo, que o spike de 2026-11-05 fez funcionar; **feito em 2026-11-12, frente `transmissor-obj`**), 45 (o `ModContainer` por instância, H2, antes da Fase 3);
   - 23 (o QIO Redstone Adapter aceso) espera a block entity dele (Fase 6) e então a injeção (H60 ou o desenho pela block entity);
   - 35, **respondida pelo usuário em 2026-11-12: o sombreamento do NeoForge só nos blocos de mod** (a escolha que já estava). Os blocos do vanilla ficam como no Minecraft puro do Horizon, porque o port não muda o visual do que não é dele.
 
@@ -264,7 +264,7 @@ de água e vidro a imagem bate no print.
 - Não testado: shader pack e `improvedTransparency`. O original troca para `OIT_ITEM` com ela ligada.
 
 O código do spike ficou numa mudança à parte, sem push, para servir de referência às Fases 3 e 4: `spike: validate the critical
-injections`. Na versão real, `Kd` vem do `.mtl`, e as injeções entram com o escopo pedido: só blocos do Mekanism.
+injections`. Na versão real, `Kd` e `neoforge_TintIndex` vêm do `.mtl` (feito em 2026-11-12, frente `transmissor-obj`: as injeções `obj_material_parse` e `obj_material_quads`, que agem em todo `.obj` com `Kd` diferente de branco ou índice de tinta, sem escopo por mod: nenhum outro modelo do port tem), e as outras injeções entram com o escopo pedido: só blocos do Mekanism.
 
 ## Referência e simulador
 

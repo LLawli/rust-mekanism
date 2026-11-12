@@ -21,7 +21,12 @@ pub type Properties = (Option<i32>, i32);
 
 /// `ObjGeometry.parseVector4`: de 1 a 4 números; os que faltam valem 0 e o quarto, 1.
 fn vector4(words: &[&str]) -> [f32; 4] {
-    let number = |i: usize| words.get(i).and_then(|w| w.parse::<f32>().ok()).unwrap_or(0.0);
+    let number = |i: usize| {
+        words
+            .get(i)
+            .and_then(|w| w.parse::<f32>().ok())
+            .unwrap_or(0.0)
+    };
     match words.len() {
         0 => [0.0; 4],
         1 => [number(0), 0.0, 0.0, 1.0],
@@ -69,7 +74,9 @@ pub fn properties(text: &str) -> Vec<(String, Properties)> {
                 }
             }
             "forge_TintIndex" | "neoforge_TintIndex" => {
-                if let (Some(at), Some(index)) = (current, rest.first().and_then(|w| w.parse().ok())) {
+                if let (Some(at), Some(index)) =
+                    (current, rest.first().and_then(|w| w.parse().ok()))
+                {
                     found[at].1.1 = index;
                 }
             }
@@ -96,6 +103,10 @@ pub fn encode((kd, tint): Properties) -> String {
 /// O contrário de [`encode`]; `None` para um texto que não é de um material extra.
 pub fn decode(text: &str) -> Option<Properties> {
     let (kd, tint) = text.split_once('|')?;
-    let kd = if kd.is_empty() { None } else { Some(u32::from_str_radix(kd, 16).ok()? as i32) };
+    let kd = if kd.is_empty() {
+        None
+    } else {
+        Some(u32::from_str_radix(kd, 16).ok()? as i32)
+    };
     Some((kd, tint.parse().ok()?))
 }

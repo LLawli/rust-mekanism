@@ -88,7 +88,8 @@ fn references(value: &Value, models: &mut BTreeSet<String>, textures: &mut BTree
             for (key, child) in object {
                 match (key.as_str(), child) {
                     ("model" | "parent" | "lit" | "unlit", Value::String(name))
-                        if name.contains(':') && !OBJ_SUFFIXES.iter().any(|s| name.ends_with(s)) =>
+                        if name.contains(':')
+                            && !OBJ_SUFFIXES.iter().any(|s| name.ends_with(s)) =>
                     {
                         models.insert(name.clone());
                     }
@@ -408,33 +409,55 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
     assert_eq!(ids.len(), 22);
     for id in ids {
         let want = &rastro["transmitters"][&id];
-        assert!(files.contains(&format!("assets/mekanism/items/{id}.json")), "{id}: o item é o do original");
+        assert!(
+            files.contains(&format!("assets/mekanism/items/{id}.json")),
+            "{id}: o item é o do original"
+        );
         let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
         let parts = state["multipart"].as_array().unwrap();
         assert_eq!(parts.len(), 12, "{id}");
         for (i, side) in sides.iter().enumerate() {
-            for (j, (connected, status)) in [("true", "NORMAL"), ("false", "NONE")].iter().enumerate() {
+            for (j, (connected, status)) in
+                [("true", "NORMAL"), ("false", "NONE")].iter().enumerate()
+            {
                 let part = &parts[i * 2 + j];
-                assert_eq!(part["when"], serde_json::json!({ *side: *connected }), "{id}");
+                assert_eq!(
+                    part["when"],
+                    serde_json::json!({ *side: *connected }),
+                    "{id}"
+                );
                 let name = format!("{side}_{}", status.to_lowercase());
                 assert_eq!(
                     part["apply"],
                     serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/{name}")}),
                     "{id}"
                 );
-                let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/{id}/{name}.json")));
+                let model = json(&content().join(format!(
+                    "assets/mekanism/models/block/transmitter_part/{id}/{name}.json"
+                )));
                 assert_eq!(model["parent"], want["model"], "{id} {name}");
                 let visibility = model["visibility"].as_object().unwrap();
-                assert_eq!(visibility.len(), sides.len() * statuses.len(), "{id} {name}");
+                assert_eq!(
+                    visibility.len(),
+                    sides.len() * statuses.len(),
+                    "{id} {name}"
+                );
                 for (group, shown) in visibility {
-                    assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{status}"), "{id} {name} {group}");
+                    assert_eq!(
+                        shown.as_bool().unwrap(),
+                        *group == format!("{side}{status}"),
+                        "{id} {name} {group}"
+                    );
                 }
             }
         }
         // O corpo herda um modelo `neoforge:obj` do original; o OBJ tem as 24 partes e o `.mtl` que ele nomeia está ao lado.
         let mut model = want["model"].as_str().unwrap().to_owned();
         let obj = loop {
-            let path = format!("assets/mekanism/models/{}.json", model.strip_prefix("mekanism:").unwrap());
+            let path = format!(
+                "assets/mekanism/models/{}.json",
+                model.strip_prefix("mekanism:").unwrap()
+            );
             assert!(files.contains(&path), "{path}");
             let data = json(&content().join(&path));
             if data["loader"] == "neoforge:obj" {
@@ -442,13 +465,30 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
             }
             model = data["parent"].as_str().unwrap().to_owned();
         };
-        let obj_path = format!("assets/mekanism/{}", obj["model"].as_str().unwrap().strip_prefix("mekanism:").unwrap());
+        let obj_path = format!(
+            "assets/mekanism/{}",
+            obj["model"]
+                .as_str()
+                .unwrap()
+                .strip_prefix("mekanism:")
+                .unwrap()
+        );
         assert!(files.contains(&obj_path), "{obj_path}");
         let text = std::fs::read_to_string(content().join(&obj_path)).unwrap();
         let groups: BTreeSet<&str> = text.lines().filter_map(|l| l.strip_prefix("o ")).collect();
-        let expected: BTreeSet<String> = sides.iter().flat_map(|s| statuses.iter().map(move |t| format!("{s}{t}"))).collect();
-        assert_eq!(groups, expected.iter().map(String::as_str).collect::<BTreeSet<_>>(), "{id}");
-        let mtl = text.lines().find_map(|l| l.strip_prefix("mtllib ")).unwrap();
+        let expected: BTreeSet<String> = sides
+            .iter()
+            .flat_map(|s| statuses.iter().map(move |t| format!("{s}{t}")))
+            .collect();
+        assert_eq!(
+            groups,
+            expected.iter().map(String::as_str).collect::<BTreeSet<_>>(),
+            "{id}"
+        );
+        let mtl = text
+            .lines()
+            .find_map(|l| l.strip_prefix("mtllib "))
+            .unwrap();
         let mtl_path = obj_path.rsplit_once('/').unwrap().0.to_owned() + "/" + mtl;
         assert!(files.contains(&mtl_path), "{mtl_path}");
     }
