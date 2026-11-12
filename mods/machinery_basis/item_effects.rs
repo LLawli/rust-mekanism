@@ -90,13 +90,14 @@ pub fn tick(input: Input) -> Outcome {
                 lava_hurt = true;
             }
         }
-        if let Some(damage) = input.fire_damage {
-            if !input.fire_immune {
+        match input.fire_damage {
+            Some(damage) if !input.fire_immune => {
                 fire = fire.max(160);
                 if !input.resists_in_fire {
                     hurts.push(damage);
                 }
             }
+            _ => {}
         }
         if input.cactus && !input.resists_cactus {
             hurts.push(1);

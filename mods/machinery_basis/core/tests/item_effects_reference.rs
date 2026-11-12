@@ -19,9 +19,12 @@ use serde_json::Value;
 use std::path::Path;
 
 fn rows() -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros/fluido_item_parado.jsonl");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../dev/referencia/rastros/fluido_item_parado.jsonl");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    text.lines().map(|line| serde_json::from_str(line).expect("linha do rastro")).collect()
+    text.lines()
+        .map(|line| serde_json::from_str(line).expect("linha do rastro"))
+        .collect()
 }
 
 /// As linhas de cada caso, na ordem do rastro.
@@ -38,15 +41,23 @@ fn cases() -> Vec<(String, Vec<Value>)> {
 }
 
 fn case(name: &str) -> Vec<Value> {
-    cases().into_iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("sem o caso {name}")).1
+    cases()
+        .into_iter()
+        .find(|(n, _)| n == name)
+        .unwrap_or_else(|| panic!("sem o caso {name}"))
+        .1
 }
 
 fn flag(row: &Value, key: &str) -> bool {
-    row[key].as_bool().unwrap_or_else(|| panic!("{key} em {row}"))
+    row[key]
+        .as_bool()
+        .unwrap_or_else(|| panic!("{key} em {row}"))
 }
 
 fn int(row: &Value, key: &str) -> i64 {
-    row[key].as_i64().unwrap_or_else(|| panic!("{key} em {row}"))
+    row[key]
+        .as_i64()
+        .unwrap_or_else(|| panic!("{key} em {row}"))
 }
 
 /// O fogo inicial do caso: o `burning` do nome põe 100.
@@ -78,13 +89,28 @@ fn the_rule_reproduces_every_row_of_the_trace() {
             for hurt in &out.hurts {
                 health -= hurt;
             }
-            assert_eq!(flag(row, "removed"), health <= 0, "{name} t={}: removido", row["t"]);
-            assert_eq!(int(row, "health"), i64::from(health), "{name} t={}: vida", row["t"]);
+            assert_eq!(
+                flag(row, "removed"),
+                health <= 0,
+                "{name} t={}: removido",
+                row["t"]
+            );
+            assert_eq!(
+                int(row, "health"),
+                i64::from(health),
+                "{name} t={}: vida",
+                row["t"]
+            );
             if health <= 0 {
                 break;
             }
             // O `fire` do original é o `remainingFireTicks`: 0 e negativo (o `fireImmuneTicks`) são "sem fogo".
-            assert_eq!(int(row, "fire").max(0), i64::from(fire), "{name} t={}: fogo", row["t"]);
+            assert_eq!(
+                int(row, "fire").max(0),
+                i64::from(fire),
+                "{name} t={}: fogo",
+                row["t"]
+            );
             checked += 1;
         }
     }
@@ -96,13 +122,24 @@ fn the_rule_reproduces_every_row_of_the_trace() {
 fn a_stuck_item_in_lava_stays_alive_and_cold_until_it_leaves() {
     let mut stuck_ticks = 0;
     let mut ignited_after_leaving = 0;
-    for (name, list) in cases().into_iter().filter(|(name, _)| name.starts_with("heat_generator_lava_stone") || name.starts_with("heat_generator_lava_coal")) {
+    for (name, list) in cases().into_iter().filter(|(name, _)| {
+        name.starts_with("heat_generator_lava_stone")
+            || name.starts_with("heat_generator_lava_coal")
+    }) {
         let mut left = false;
         for row in &list {
             let np = flag(row, "np");
             if !left && np {
-                assert_eq!(row["fire"], 0, "{name} t={}: o item com noPhysics pegou fogo", row["t"]);
-                assert_eq!(row["health"], 5, "{name} t={}: o item com noPhysics se feriu", row["t"]);
+                assert_eq!(
+                    row["fire"], 0,
+                    "{name} t={}: o item com noPhysics pegou fogo",
+                    row["t"]
+                );
+                assert_eq!(
+                    row["health"], 5,
+                    "{name} t={}: o item com noPhysics se feriu",
+                    row["t"]
+                );
                 assert!(!flag(row, "removed"));
                 stuck_ticks += 1;
             }
@@ -116,7 +153,10 @@ fn a_stuck_item_in_lava_stays_alive_and_cold_until_it_leaves() {
         }
     }
     assert!(stuck_ticks >= 20, "{stuck_ticks}");
-    assert!(ignited_after_leaving >= 1, "nenhum item pegou fogo ao sair da colisão");
+    assert!(
+        ignited_after_leaving >= 1,
+        "nenhum item pegou fogo ao sair da colisão"
+    );
 }
 
 /// A água não apaga o item com `noPhysics` (`WaterFluid.entityInside` é um efeito de bloco): o fogo só desce 1 por tick, como no ar; ao sair, a água o apaga.
@@ -128,15 +168,28 @@ fn water_does_not_put_out_a_stuck_item() {
     for (index, row) in stuck.iter().enumerate() {
         assert_eq!(int(row, "fire"), 99 - index as i64, "t={}", row["t"]);
     }
-    assert!(list.iter().skip(stuck.len()).any(|row| flag(row, "water") && row["fire"] == 0), "ao sair, a água apaga");
+    assert!(
+        list.iter()
+            .skip(stuck.len())
+            .any(|row| flag(row, "water") && row["fire"] == 0),
+        "ao sair, a água apaga"
+    );
 }
 
 /// O controle do cabo: sem colisão no vão o item não tem `noPhysics`; a água o apaga já no primeiro tick, e só depois de o `baseTick` o ferir em 1.
 #[test]
 fn water_puts_out_a_free_item_after_the_base_tick_hurt_it() {
     let list = case("cable_water_burning");
-    assert!(list.iter().all(|row| !flag(row, "np") && row["fire"] == 0 && row["health"] == 4));
-    let out = tick(Input { fire_ticks: 100, first_tick: true, in_water: true, ..Input::default() });
+    assert!(
+        list.iter()
+            .all(|row| !flag(row, "np") && row["fire"] == 0 && row["health"] == 4)
+    );
+    let out = tick(Input {
+        fire_ticks: 100,
+        first_tick: true,
+        in_water: true,
+        ..Input::default()
+    });
     assert_eq!((out.fire_ticks, out.hurts), (0, vec![1]));
 }
 
@@ -146,10 +199,24 @@ fn a_cactus_does_not_hurt_a_stuck_item() {
     let list = case("cactus_stone");
     let stuck = list.iter().take_while(|row| flag(row, "np")).count();
     assert!(stuck >= 3, "{stuck}");
-    assert!(list.iter().take(stuck).all(|row| !flag(row, "removed") && row["health"] == 5));
-    let touching = Input { cactus: true, ..Input::default() };
+    assert!(
+        list.iter()
+            .take(stuck)
+            .all(|row| !flag(row, "removed") && row["health"] == 5)
+    );
+    let touching = Input {
+        cactus: true,
+        ..Input::default()
+    };
     assert_eq!(tick(touching).hurts, vec![1]);
-    assert!(tick(Input { no_physics: true, ..touching }).hurts.is_empty());
+    assert!(
+        tick(Input {
+            no_physics: true,
+            ..touching
+        })
+        .hurts
+        .is_empty()
+    );
 }
 
 /// O controle do cabo com lava: sem `noPhysics` a lava acende e fere 4 já no primeiro tick (a pedra sobra com 1 de vida e morre no segundo); o item em chamas morre no primeiro, porque
@@ -168,41 +235,152 @@ fn the_cable_cell_has_no_no_physics_and_lava_kills_at_the_second_tick() {
 /// O `baseTick` e os efeitos dos blocos como o original, valor a valor.
 #[test]
 fn tick_follows_the_original() {
-    let burning = Input { fire_ticks: 100, ..Input::default() };
+    let burning = Input {
+        fire_ticks: 100,
+        ..Input::default()
+    };
     // `remainingFireTicks % 20 == 0 && !isInLava`: fere 1 e o fogo desce 1.
     let out = tick(burning);
-    assert_eq!((out.fire_ticks, out.hurts.clone(), out.lava_hurt), (99, vec![1], false));
-    assert!(tick(Input { fire_ticks: 99, ..burning }).hurts.is_empty());
-    assert!(tick(Input { fire_ticks: 90, ..burning }).hurts.is_empty());
-    assert_eq!(tick(Input { fire_ticks: 40, ..burning }).hurts, vec![1]);
+    assert_eq!(
+        (out.fire_ticks, out.hurts.clone(), out.lava_hurt),
+        (99, vec![1], false)
+    );
+    assert!(
+        tick(Input {
+            fire_ticks: 99,
+            ..burning
+        })
+        .hurts
+        .is_empty()
+    );
+    assert!(
+        tick(Input {
+            fire_ticks: 90,
+            ..burning
+        })
+        .hurts
+        .is_empty()
+    );
+    assert_eq!(
+        tick(Input {
+            fire_ticks: 40,
+            ..burning
+        })
+        .hurts,
+        vec![1]
+    );
     // Na lava (e não no primeiro tick) não fere por estar em chamas; a lava acende e fere 4. No primeiro tick fere 1 do fogo e 4 da lava.
-    let lava = Input { in_lava: true, ..burning };
-    assert_eq!((tick(lava).fire_ticks, tick(lava).hurts, tick(lava).lava_hurt), (300, vec![4], true));
-    assert_eq!(tick(Input { first_tick: true, ..lava }).hurts, vec![1, 4]);
+    let lava = Input {
+        in_lava: true,
+        ..burning
+    };
+    assert_eq!(
+        (
+            tick(lava).fire_ticks,
+            tick(lava).hurts,
+            tick(lava).lava_hurt
+        ),
+        (300, vec![4], true)
+    );
+    assert_eq!(
+        tick(Input {
+            first_tick: true,
+            ..lava
+        })
+        .hurts,
+        vec![1, 4]
+    );
     // O item que resiste a `on_fire` não leva o 1; o que resiste a `lava` leva o fogo e não o 4; o imune a fogo apaga e não acende.
-    assert!(tick(Input { resists_on_fire: true, ..burning }).hurts.is_empty());
-    assert_eq!((tick(Input { resists_lava: true, ..lava }).fire_ticks, tick(Input { resists_lava: true, ..lava }).hurts), (300, vec![]));
-    let immune = tick(Input { fire_immune: true, ..lava });
+    assert!(
+        tick(Input {
+            resists_on_fire: true,
+            ..burning
+        })
+        .hurts
+        .is_empty()
+    );
+    assert_eq!(
+        (
+            tick(Input {
+                resists_lava: true,
+                ..lava
+            })
+            .fire_ticks,
+            tick(Input {
+                resists_lava: true,
+                ..lava
+            })
+            .hurts
+        ),
+        (300, vec![])
+    );
+    let immune = tick(Input {
+        fire_immune: true,
+        ..lava
+    });
     assert_eq!((immune.fire_ticks, immune.hurts), (0, vec![]));
     // O fogo de bloco: acende a 160 e fere pelo dano dele; o cacto fere 1; a resistência dele não vale para os outros.
-    let fire = Input { fire_damage: Some(3), ..Input::default() };
+    let fire = Input {
+        fire_damage: Some(3),
+        ..Input::default()
+    };
     let out = tick(fire);
     assert_eq!((out.fire_ticks, out.hurts), (160, vec![3]));
-    assert_eq!(tick(Input { resists_in_fire: true, ..fire }).hurts, Vec::<i32>::new());
-    assert_eq!(tick(Input { cactus: true, resists_cactus: true, ..Input::default() }).hurts, Vec::<i32>::new());
+    assert_eq!(
+        tick(Input {
+            resists_in_fire: true,
+            ..fire
+        })
+        .hurts,
+        Vec::<i32>::new()
+    );
+    assert_eq!(
+        tick(Input {
+            cactus: true,
+            resists_cactus: true,
+            ..Input::default()
+        })
+        .hurts,
+        Vec::<i32>::new()
+    );
     // Sem fogo e sem nada, nada acontece; o fogo negativo (o `fireImmuneTicks`) segue como está.
-    assert_eq!(tick(Input::default()), effects::Outcome { fire_ticks: 0, hurts: vec![], lava_hurt: false });
-    assert_eq!(tick(Input { fire_ticks: -1, ..Input::default() }).fire_ticks, -1);
+    assert_eq!(
+        tick(Input::default()),
+        effects::Outcome {
+            fire_ticks: 0,
+            hurts: vec![],
+            lava_hurt: false
+        }
+    );
+    assert_eq!(
+        tick(Input {
+            fire_ticks: -1,
+            ..Input::default()
+        })
+        .fire_ticks,
+        -1
+    );
     // Com `noPhysics` só o `baseTick` vale: a lava, a água, o fogo e o cacto ficam de fora.
-    let stuck = Input { no_physics: true, in_lava: true, in_water: true, fire_damage: Some(1), cactus: true, ..burning };
+    let stuck = Input {
+        no_physics: true,
+        in_lava: true,
+        in_water: true,
+        fire_damage: Some(1),
+        cactus: true,
+        ..burning
+    };
     let out = tick(stuck);
-    assert_eq!((out.fire_ticks, out.hurts, out.lava_hurt), (99, vec![], false));
+    assert_eq!(
+        (out.fire_ticks, out.hurts, out.lava_hurt),
+        (99, vec![], false)
+    );
 }
 
 /// A linha do Java de cada regra, conferida onde o original está clonado.
 #[test]
 fn the_java_lines_are_the_ones_the_rule_follows() {
-    let java = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/mc/net/minecraft/world/entity/Entity.java";
+    let java =
+        "/mnt/dados/caches/rust-mekanism-ref/mc-sources/mc/net/minecraft/world/entity/Entity.java";
     if let Ok(text) = std::fs::read_to_string(java) {
         assert!(text.contains("return !this.isRemoved() && !this.noPhysics;"));
         assert!(text.contains("if (this.remainingFireTicks % 20 == 0 && !this.isInLava()) {"));
