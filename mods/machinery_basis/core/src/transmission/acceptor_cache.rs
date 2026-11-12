@@ -54,11 +54,7 @@ impl<A: Clone> AcceptorCache<A> {
     }
 
     /// `getCachedAcceptor(side)`: o aceitador, só se o mapa de conexões tem o lado.
-    pub fn get_cached_acceptor(
-        &self,
-        side: Face,
-        lookup: &dyn Fn(Face) -> Option<A>,
-    ) -> Option<A> {
+    pub fn get_cached_acceptor(&self, side: Face, lookup: &dyn Fn(Face) -> Option<A>) -> Option<A> {
         if connection_map_contains_side(self.current_acceptor_connections, side) {
             self.get_connected_acceptor(side, lookup)
         } else {

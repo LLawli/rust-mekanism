@@ -365,7 +365,12 @@ impl<A: Clone> Transmitter<A> {
     }
 
     /// `setConnectionTypeRaw(side, type)`: só mexe, e só avisa o tile (`sideChanged`), se o tipo mudou.
-    pub fn set_connection_type_raw(&mut self, side: Face, kind: ConnectionType, out: &mut Vec<Effect>) {
+    pub fn set_connection_type_raw(
+        &mut self,
+        side: Face,
+        kind: ConnectionType,
+        out: &mut Vec<Effect>,
+    ) {
         let index = face_ordinal(side);
         let old = self.connection_types[index];
         if old != kind {
@@ -445,9 +450,14 @@ impl<A: Clone> Transmitter<A> {
     }
 
     /// `getAcceptor(side)`: o aceitador do lado, se o mapa de conexões o tem.
-    pub fn get_acceptor<W: TransmitterWorld<Acceptor = A>>(&self, side: Face, world: &W) -> Option<A> {
-        self.acceptor_cache
-            .get_cached_acceptor(side, &|s| world.acceptor(relative(self.pos, s), s.opposite()))
+    pub fn get_acceptor<W: TransmitterWorld<Acceptor = A>>(
+        &self,
+        side: Face,
+        world: &W,
+    ) -> Option<A> {
+        self.acceptor_cache.get_cached_acceptor(side, &|s| {
+            world.acceptor(relative(self.pos, s), s.opposite())
+        })
     }
 
     // ---------------------------------------------------------------------------------------
@@ -478,7 +488,11 @@ impl<A: Clone> Transmitter<A> {
     }
 
     /// `recheckRedstone`: relê o sinal e, se mudou, invalida o transmissor e avisa o tile.
-    fn recheck_redstone<W: TransmitterWorld<Acceptor = A>>(&self, world: &W, out: &mut Vec<Effect>) {
+    fn recheck_redstone<W: TransmitterWorld<Acceptor = A>>(
+        &self,
+        world: &W,
+        out: &mut Vec<Effect>,
+    ) {
         if self.handles_redstone {
             let previously_powered = self.redstone_powered.get();
             self.set_redstone_state(world);
@@ -494,7 +508,10 @@ impl<A: Clone> Transmitter<A> {
     // ---------------------------------------------------------------------------------------
 
     /// `getPossibleTransmitterConnections`.
-    pub fn get_possible_transmitter_connections<W: TransmitterWorld<Acceptor = A>>(&self, world: &W) -> u8 {
+    pub fn get_possible_transmitter_connections<W: TransmitterWorld<Acceptor = A>>(
+        &self,
+        world: &W,
+    ) -> u8 {
         let mut connections = 0u8;
         if self.is_redstone_activated(world) {
             return connections;
@@ -522,7 +539,9 @@ impl<A: Clone> Transmitter<A> {
             return false;
         }
         let tile = world.transmitter_at(relative(self.pos, side), side);
-        if self.can_connect_mutual(side, tile.as_ref(), world) && self.is_valid_acceptor(tile.as_ref(), side, world) {
+        if self.can_connect_mutual(side, tile.as_ref(), world)
+            && self.is_valid_acceptor(tile.as_ref(), side, world)
+        {
             return true;
         }
         if mark_dirty {
@@ -532,7 +551,11 @@ impl<A: Clone> Transmitter<A> {
     }
 
     /// `getPossibleTransmitterConnection(side)`.
-    fn get_possible_transmitter_connection<W: TransmitterWorld<Acceptor = A>>(&self, side: Face, world: &W) -> bool {
+    fn get_possible_transmitter_connection<W: TransmitterWorld<Acceptor = A>>(
+        &self,
+        side: Face,
+        world: &W,
+    ) -> bool {
         if self.is_redstone_activated(world) {
             return false;
         }
@@ -595,7 +618,8 @@ impl<A: Clone> Transmitter<A> {
         side: Face,
         world: &W,
     ) -> bool {
-        self.supports_transmission_type(other.supported) && self.can_connect_mutual(side, Some(other), world)
+        self.supports_transmission_type(other.supported)
+            && self.can_connect_mutual(side, Some(other), world)
     }
 
     /// `canConnectToAcceptor(side)`.
@@ -611,11 +635,14 @@ impl<A: Clone> Transmitter<A> {
         side: Face,
         world: &W,
     ) -> bool {
-        let is_transmitter_of_ours = tile.is_some_and(|t| self.supports_transmission_type(t.supported));
+        let is_transmitter_of_ours =
+            tile.is_some_and(|t| self.supports_transmission_type(t.supported));
         if !is_transmitter_of_ours {
             return self
                 .acceptor_cache
-                .get_connected_acceptor(side, &|s| world.acceptor(relative(self.pos, s), s.opposite()))
+                .get_connected_acceptor(side, &|s| {
+                    world.acceptor(relative(self.pos, s), s.opposite())
+                })
                 .is_some();
         }
         false
@@ -682,7 +709,11 @@ impl<A: Clone> Transmitter<A> {
     // ---------------------------------------------------------------------------------------
 
     /// `refreshConnections()`: relê todas as conexões (só no servidor).
-    pub fn refresh_connections<W: TransmitterWorld<Acceptor = A>>(&mut self, world: &W, out: &mut Vec<Effect>) {
+    pub fn refresh_connections<W: TransmitterWorld<Acceptor = A>>(
+        &mut self,
+        world: &W,
+        out: &mut Vec<Effect>,
+    ) {
         if self.client_side {
             return;
         }
@@ -694,7 +725,8 @@ impl<A: Clone> Transmitter<A> {
         if (possible_transmitters | possible_acceptors) != self.get_all_current_connections() {
             send_desc = true;
             if possible_transmitters != self.current_transmitter_connections {
-                newly_enabled_transmitters = possible_transmitters ^ self.current_transmitter_connections;
+                newly_enabled_transmitters =
+                    possible_transmitters ^ self.current_transmitter_connections;
                 newly_enabled_transmitters &= !self.current_transmitter_connections;
             }
         }
@@ -720,9 +752,14 @@ impl<A: Clone> Transmitter<A> {
             return;
         }
         let possible_acceptor = self.get_possible_acceptor_connection(side, false, world, out);
-        if possible_acceptor != connection_map_contains_side(self.acceptor_cache.current_acceptor_connections, side) {
-            self.acceptor_cache.current_acceptor_connections =
-                set_connection_bit(self.acceptor_cache.current_acceptor_connections, possible_acceptor, side);
+        if possible_acceptor
+            != connection_map_contains_side(self.acceptor_cache.current_acceptor_connections, side)
+        {
+            self.acceptor_cache.current_acceptor_connections = set_connection_bit(
+                self.acceptor_cache.current_acceptor_connections,
+                possible_acceptor,
+                side,
+            );
             out.push(Effect::SendUpdatePacket);
         }
     }
@@ -745,14 +782,22 @@ impl<A: Clone> Transmitter<A> {
             != connection_map_contains_side(self.get_all_current_connections(), side)
         {
             send_desc = true;
-            if possible_transmitter != connection_map_contains_side(self.current_transmitter_connections, side) {
+            if possible_transmitter
+                != connection_map_contains_side(self.current_transmitter_connections, side)
+            {
                 transmitter_changed = possible_transmitter;
             }
         }
-        self.current_transmitter_connections =
-            set_connection_bit(self.current_transmitter_connections, possible_transmitter, side);
-        self.acceptor_cache.current_acceptor_connections =
-            set_connection_bit(self.acceptor_cache.current_acceptor_connections, possible_acceptor, side);
+        self.current_transmitter_connections = set_connection_bit(
+            self.current_transmitter_connections,
+            possible_transmitter,
+            side,
+        );
+        self.acceptor_cache.current_acceptor_connections = set_connection_bit(
+            self.acceptor_cache.current_acceptor_connections,
+            possible_acceptor,
+            side,
+        );
         if transmitter_changed {
             out.push(Effect::RecheckConnection(side));
         }
@@ -786,9 +831,15 @@ impl<A: Clone> Transmitter<A> {
     }
 
     /// `onModeChange(side)`.
-    pub fn on_mode_change<W: TransmitterWorld<Acceptor = A>>(&self, side: Face, world: &W, out: &mut Vec<Effect>) {
+    pub fn on_mode_change<W: TransmitterWorld<Acceptor = A>>(
+        &self,
+        side: Face,
+        world: &W,
+        out: &mut Vec<Effect>,
+    ) {
         self.mark_dirty_acceptor(side, out);
-        if self.get_possible_transmitter_connections(world) != self.current_transmitter_connections {
+        if self.get_possible_transmitter_connections(world) != self.current_transmitter_connections
+        {
             self.mark_dirty_transmitters(out);
         }
         out.push(Effect::SetChanged);
@@ -934,7 +985,11 @@ impl<A: Clone> Transmitter<A> {
 
     /// `TileEntityTransmitter.onUpdateServer`, a parte das conexões: com `forceUpdate`, relê tudo
     /// uma vez.
-    pub fn on_update_server<W: TransmitterWorld<Acceptor = A>>(&mut self, world: &W, out: &mut Vec<Effect>) {
+    pub fn on_update_server<W: TransmitterWorld<Acceptor = A>>(
+        &mut self,
+        world: &W,
+        out: &mut Vec<Effect>,
+    ) {
         if self.force_update {
             self.refresh_connections(world, out);
             self.force_update = false;
@@ -955,7 +1010,10 @@ impl<A: Clone> Transmitter<A> {
     /// `write(output)`.
     pub fn write(&self) -> Compound {
         let mut tag = Compound::new();
-        tag.insert(keys::REDSTONE.into(), Tag::Byte(i8::from(self.redstone_reactive)));
+        tag.insert(
+            keys::REDSTONE.into(),
+            Tag::Byte(i8::from(self.redstone_reactive)),
+        );
         tag.insert(
             keys::CURRENT_CONNECTIONS.into(),
             Tag::Byte(self.current_transmitter_connections as i8),
@@ -964,7 +1022,10 @@ impl<A: Clone> Transmitter<A> {
             keys::CURRENT_ACCEPTORS.into(),
             Tag::Byte(self.acceptor_cache.current_acceptor_connections as i8),
         );
-        tag.insert(keys::CONNECTION.into(), Tag::IntArray(self.raw_connections()));
+        tag.insert(
+            keys::CONNECTION.into(),
+            Tag::IntArray(self.raw_connections()),
+        );
         tag
     }
 
@@ -980,7 +1041,10 @@ impl<A: Clone> Transmitter<A> {
             keys::CURRENT_ACCEPTORS.into(),
             Tag::Byte(self.acceptor_cache.current_acceptor_connections as i8),
         );
-        tag.insert(keys::CONNECTION.into(), Tag::IntArray(self.raw_connections()));
+        tag.insert(
+            keys::CONNECTION.into(),
+            Tag::IntArray(self.raw_connections()),
+        );
         if self.has_transmitter_network()
             && let Some(id) = self.network
         {
@@ -1017,8 +1081,11 @@ impl<A: Clone> Transmitter<A> {
     /// `read(input)`.
     pub fn read(&mut self, tag: &Compound, out: &mut Vec<Effect>) {
         self.redstone_reactive = Self::boolean_or(tag, keys::REDSTONE, DEFAULT_REDSTONE_REACTIVE);
-        self.current_transmitter_connections =
-            Self::byte_or(tag, keys::CURRENT_CONNECTIONS, DEFAULT_TRANSMITTER_CONNECTIONS);
+        self.current_transmitter_connections = Self::byte_or(
+            tag,
+            keys::CURRENT_CONNECTIONS,
+            DEFAULT_TRANSMITTER_CONNECTIONS,
+        );
         self.acceptor_cache.current_acceptor_connections = Self::byte_or(
             tag,
             keys::CURRENT_ACCEPTORS,
@@ -1030,9 +1097,15 @@ impl<A: Clone> Transmitter<A> {
     /// `handleUpdateTag(input)`: o pacote de atualização no cliente. Devolve se os dados do modelo
     /// mudaram e o que fazer com a rede.
     pub fn handle_update_tag(&mut self, tag: &Compound, out: &mut Vec<Effect>) -> UpdateTag {
-        let old: Vec<ConnectionType> = Face::ALL.iter().map(|side| self.get_connection_type(*side)).collect();
-        self.current_transmitter_connections =
-            Self::byte_or(tag, keys::CURRENT_CONNECTIONS, DEFAULT_TRANSMITTER_CONNECTIONS);
+        let old: Vec<ConnectionType> = Face::ALL
+            .iter()
+            .map(|side| self.get_connection_type(*side))
+            .collect();
+        self.current_transmitter_connections = Self::byte_or(
+            tag,
+            keys::CURRENT_CONNECTIONS,
+            DEFAULT_TRANSMITTER_CONNECTIONS,
+        );
         self.acceptor_cache.current_acceptor_connections = Self::byte_or(
             tag,
             keys::CURRENT_ACCEPTORS,

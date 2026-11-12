@@ -214,6 +214,8 @@ public class TransmitterConnectionTraceTest {
         final List<String> placeLog = new ArrayList<>();
         MekGameTestHelper helper;
         GameTestPlayer placer;
+        /// O jogador da cena anterior, que sai da frente para nao barrar a colocacao do transmissor.
+        GameTestPlayer clicker;
 
         void reset(MekGameTestHelper helper) {
             this.helper = helper;
@@ -226,6 +228,10 @@ public class TransmitterConnectionTraceTest {
             }
             for (ItemEntity entity : helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(helper.absolutePos(T)).inflate(8))) {
                 entity.discard();
+            }
+            if (clicker != null) {
+                Vec3 away = Vec3.atBottomCenterOf(abs(new BlockPos(2, 1, 12)));
+                clicker.snapTo(away.x, away.y, away.z, 0, 0);
             }
             if (placer == null) {
                 placer = (GameTestPlayer) helper.makeMockPlayerLookingAt(T.below(), Direction.UP);
@@ -594,8 +600,9 @@ public class TransmitterConnectionTraceTest {
         player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(target));
     }
 
-    private static InteractionResult click(Scene scene, GameTestPlayer player, Direction side, boolean sneak) {
-        lookAt(scene, player, side);
+    /// O clique no lado `side` (a face do `BlockHitResult`) com o jogador olhando para o transmissor de `aimFrom`, a celula vizinha do lado de onde ele olha.
+    private static InteractionResult click(Scene scene, GameTestPlayer player, Direction side, Direction aimFrom, boolean sneak) {
+        lookAt(scene, player, aimFrom);
         player.setShiftKeyDown(sneak);
         ItemStack stack = MekanismItems.CONFIGURATOR.asStack();
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
@@ -613,19 +620,23 @@ public class TransmitterConnectionTraceTest {
         test.onGameTest(MekGameTestHelper.class, helper -> {
             var sequence = helper.startSequence();
             sequence.thenExecuteAfter(1, () -> scene.lines.add("{\"meta\":\"commit " + COMMIT + ". One click per line through ServerPlayerGameMode.useItemOn with the Configurator (the default mode, configurate items), a player standing "
-                  + "in the neighbor cell of the clicked side looking at the transmitter. case: transmitter/setup/side/click number/sneak. setup=alone (no neighbors), setup=busy (cable east, machine up facing north, chest north, "
+                  + "in the neighbor cell of the clicked side looking at the transmitter. case: transmitter/setup/side/click number/sneak. setup=alone (no neighbors), setup=arm_east (the busy setup, sneaking only, the player aiming at the transmitter from the east cell while the hit result names the clicked side: the east arm wins when it exists), setup=busy (cable east, machine up facing north, chest north, "
                   + "same type west, and a stone south). result: InteractionResult of useItemOn. overlay: the action bar messages the player received. before and after: the transmitter state right after the click "
                   + "(before is the state before the click), settled: 4 ticks after. changed: the sides whose raw type changed in the click, with from and to.\"}"));
             for (String transmitter : List.of(CABLE, PIPE)) {
-                for (String setup : List.of("alone", "busy")) {
+                for (String setup : List.of("alone", "busy", "arm_east")) {
                     for (Direction side : SIDES) {
                         for (boolean sneak : new boolean[]{true, false}) {
-                            int clicks = sneak ? 5 : 2;
+                            if (setup.equals("arm_east") && !sneak) {
+                                continue;
+                            }
+                            int clicks = setup.equals("arm_east") ? 3 : sneak ? 5 : 2;
+                            Direction aimFrom = setup.equals("arm_east") ? Direction.EAST : side;
                             String base = transmitter.substring(transmitter.indexOf(':') + 1) + "/" + setup + "/" + side.getSerializedName();
                             GameTestPlayer[] player = new GameTestPlayer[1];
                             sequence.thenExecuteAfter(1, () -> {
                                 scene.reset(helper);
-                                if (setup.equals("busy")) {
+                                if (!setup.equals("alone")) {
                                     scene.place(transmitter.equals(CABLE) ? CABLE : PIPE, T.relative(Direction.EAST), Direction.NORTH);
                                     scene.place(MACHINE, T.relative(Direction.UP), Direction.NORTH);
                                     scene.place("chest", T.relative(Direction.NORTH), Direction.NORTH);
@@ -635,6 +646,7 @@ public class TransmitterConnectionTraceTest {
                                 scene.place(transmitter, T, Direction.NORTH);
                                 player[0] = (GameTestPlayer) helper.makeMockPlayerLookingAt(T, side.getOpposite());
                                 player[0].gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+                                scene.clicker = player[0];
                             });
                             sequence.thenExecuteAfter(SETTLE, () -> {
                             });
@@ -643,10 +655,9 @@ public class TransmitterConnectionTraceTest {
                                 JsonObject line = new JsonObject();
                                 sequence.thenExecuteAfter(1, () -> {
                                     JsonObject before = scene.snap(T);
-                                    InteractionResult result = click(scene, player[0], side, sneak);
+                                    InteractionResult result = click(scene, player[0], side, aimFrom, sneak);
                                     line.addProperty("case", base + "/" + number + "/" + (sneak ? "sneak" : "no_sneak"));
                                     line.add("result", result(result));
-                                    line.add("overlay", drainOverlay(player[0]));
                                     JsonObject after = scene.snap(T);
                                     JsonArray changed = new JsonArray();
                                     for (int i = 0; i < 6 && before.has("raw") && after.has("raw"); i++) {
@@ -670,6 +681,7 @@ public class TransmitterConnectionTraceTest {
                                     scene.placeLog.clear();
                                 });
                                 sequence.thenExecuteAfter(4, () -> {
+                                    line.add("overlay", drainOverlay(player[0]));
                                     line.add("settled", scene.snap(T));
                                     scene.lines.add(line.toString());
                                 });
@@ -713,6 +725,7 @@ public class TransmitterConnectionTraceTest {
                             scene.place(transmitter, T, Direction.NORTH);
                             player[0] = (GameTestPlayer) helper.makeMockPlayerLookingAt(T, Direction.NORTH);
                             player[0].gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+                            scene.clicker = player[0];
                             line.addProperty("case", name);
                         });
                         sequence.thenExecuteAfter(SETTLE, () -> record(scene, player[0], steps, "start", null));
@@ -722,7 +735,7 @@ public class TransmitterConnectionTraceTest {
                                 switch (step) {
                                     case "power_on" -> scene.helper.setBlock(T.relative(power), Blocks.REDSTONE_BLOCK.defaultBlockState());
                                     case "power_off" -> scene.helper.setBlock(T.relative(power), Blocks.AIR.defaultBlockState());
-                                    default -> click(scene, player[0], Direction.NORTH, false);
+                                    default -> click(scene, player[0], Direction.NORTH, Direction.NORTH, false);
                                 }
                             });
                             sequence.thenExecuteAfter(4, () -> record(scene, player[0], steps, step, null));

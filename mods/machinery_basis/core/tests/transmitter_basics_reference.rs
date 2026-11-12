@@ -148,7 +148,11 @@ fn every_transmitter_block_is_born_the_same() {
             line["handles_redstone"].as_bool().unwrap(),
         );
         let id = line["id"].as_str().unwrap();
-        assert_eq!(transmitter.handles_redstone(), line["handles_redstone"], "{id}");
+        assert_eq!(
+            transmitter.handles_redstone(),
+            line["handles_redstone"],
+            "{id}"
+        );
         for (index, side) in Face::ALL.iter().enumerate() {
             assert_eq!(
                 transmitter.get_connection_type_raw(*side).serialized_name(),
@@ -235,7 +239,10 @@ fn state_matches(t: &Transmitter<()>, expected: &Value, label: &str) {
             "{label} type {side:?}"
         );
     }
-    assert_eq!(t.redstone_reactive, expected["reactive"], "{label} reactive");
+    assert_eq!(
+        t.redstone_reactive, expected["reactive"],
+        "{label} reactive"
+    );
     assert_eq!(t.has_pull_side(), expected["has_pull"], "{label} has_pull");
     assert_eq!(
         t.has_transmitter_network(),
