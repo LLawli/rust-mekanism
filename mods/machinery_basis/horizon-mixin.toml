@@ -119,6 +119,29 @@ bindings = [
   { name = "id", ty = "BlockStateId", value = "id" },
 ]
 
+# O `StateFacts.fluid` do `horizon-items` (o fluido que o mob, o item solto e o raio do balde leem, em 164 lugares) vem do nome do bloco e de `waterlogged`, calculado em `decode_with_callback`
+# (genérico, que o horizon-mixins recusa), e as cinco entradas de `BlockFacts` devolvem `Self` no resultado (RETURN e HEAD cancelável recusam: `E_UNSUPPORTED_SIGNATURE`). O HEAD cancelável de
+# `gameplay_tables` (`game.rs`, a carga das fatos que o jogo faz) a chama de novo por dentro e dá a fonte de água ou de lava, na tabela já pronta, aos estados com `fluid_logged=water` ou `lava`
+# (decisão 88). Alvo cru, H3.
+[[module]]
+id = "logged-fluid-facts"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_logged_fluid_facts"
+source = "logged_fluid_facts.rs"
+
+[[injection]]
+id = "logged_fluid_facts"
+target = "horizon_client::game::gameplay_tables"
+kind = "HEAD"
+cancellable = true
+helper = "logged_fluid_facts_load.rs"
+bindings = [
+  { name = "root", ty = "&std::path::Path", value = "root" },
+  { name = "assets", ty = "&Assets", value = "assets" },
+  { name = "parallel", ty = "bool", value = "parallel" },
+  { name = "progress", ty = "&Progress", value = "progress" },
+]
+
 [[injection]]
 id = "update-shape"
 hook = "update_shape"

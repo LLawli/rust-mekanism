@@ -6,6 +6,8 @@
                                     `tick step` até cada marca do rastro: o número de blocos de água e de lava no volume e o `fluid_logged` do bloco, contra o original
     h2_fluido_no_bloco.py entity    o jogador numa célula de cabo com água, com lava e sem fluido: o ar, a vida e o fogo, contra o rastro de jogador do original; o
                                     porco e o item (que o Horizon lê pela tabela de fatos do estado) só se medem, sem comparar
+    h2_fluido_no_bloco.py mob       o porco e o item solto na célula de um cabo com água, com lava e sem fluido, tick a tick: o ar, a vida, o fogo, se vive e a altura, contra o rastro de
+                                    porco e de item do original (decisão 88: eles leem o fluido pela tabela de fatos do estado, que `logged_fluid_facts` completa)
     h2_fluido_no_bloco.py bucket    os casos do `fluido_no_bloco_bucket.jsonl` (cabo, fábrica e cubo de energia; vazio, com água e com lava; balde de água, de lava e vazio;
                                     em pé, agachado e no criativo): o estado do bloco e o inventário depois do clique
     h2_fluido_no_bloco.py cena PASTA   o print lado a lado de cada bloco com água e com lava
@@ -265,6 +267,106 @@ def entity():
     return ok
 
 
+MOB_TICKS = 59
+
+
+def read_number(selector, path):
+    """O primeiro número da resposta de `data get entity` (a lista vazia se a entidade não existe mais)."""
+    text = " ".join(cmd(f"data get entity {selector} {path}"))
+    text = text.split("data:")[-1]
+    found = re.findall(r"-?\d+\.?\d*(?:[eE]-?\d+)?", text)
+    return float(found[-1]) if found and "No entity" not in text and "found" not in text.lower() else None
+
+
+def read_pos(selector):
+    text = " ".join(cmd(f"data get entity {selector} Pos"))
+    if "No entity" in text or "found" in text.lower():
+        return None
+    found = re.findall(r"-?\d+\.?\d*(?:[eE]-?\d+)?", text.split("data:")[-1])
+    return [float(n) for n in found[:3]] if len(found) >= 3 else None
+
+
+def mob_want():
+    """Do rastro: por (fluido, tipo) e tick, o que o original deixou."""
+    out = {}
+    for row in rows("entity"):
+        if row["kind"] in ("pig", "item"):
+            out[(row["fluid"], row["kind"], row["tick"])] = row
+    return out
+
+
+def mob():
+    """Um poço de pedra de 1 por 1 com a célula do cabo embaixo (o rastro do original), um porco e um item de pedra em cada: com água, com lava e sem fluido. O servidor fica parado e anda
+    um tick por vez; a cada tick o porco dá o ar, a vida, o fogo e a altura, e o item dá se existe e a altura. Contra o original: a água tira 1 de ar por tick do porco e o item sobe até 1,0625;
+    a lava queima o porco (a vida cai e ele morre no tick 21) e destrói o item no tick 2."""
+    want = mob_want()
+    sky()
+    cmd("tick unfreeze")
+    cmd(f"fill {X0} {Y} {Z0} {X0 + 40} {Y + 8} {Z0 + 40} minecraft:air")
+    cmd(f"fill {X0} {Y - 1} {Z0} {X0 + 40} {Y - 1} {Z0 + 40} minecraft:stone")
+    time.sleep(3)
+    cmd("tick freeze")
+    time.sleep(0.5)
+    wells = []
+    for index, (fluid, kind) in enumerate([(f, k) for f in ("water", "lava", "none") for k in ("pig", "item")]):
+        x, z = X0 + 4 + 4 * index, Z0 + 10
+        for dy in (0, 1):
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                cmd(f"setblock {x + dx} {Y + dy} {z + dz} minecraft:stone")
+        cmd(f"setblock {x} {Y + 2} {z} minecraft:stone")
+        cmd(f"setblock {x} {Y} {z} mekanism:basic_universal_cable[fluid_logged={'empty' if fluid == 'none' else fluid}]")
+        wells.append((fluid, kind, x, z))
+    time.sleep(0.5)
+    for fluid, kind, x, z in wells:
+        if kind == "pig":
+            cmd(f"summon minecraft:pig {x + 0.5} {Y + 0.05} {z + 0.5} {{PersistenceRequired:1b,Silent:1b,NoAI:0b,Health:10f}}")
+        else:
+            cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:cobblestone\",count:1}},Age:-32768s,PickupDelay:32767s}}")
+    time.sleep(0.5)
+
+    def selector(kind, x, z):
+        return f"@e[type=minecraft:{'pig' if kind == 'pig' else 'item'},limit=1,x={x + 0.5},y={Y},z={z + 0.5},distance=..2]"
+
+    ok = True
+    log = {}
+    for tick in range(1, MOB_TICKS + 1):
+        cmd("tick step 1")
+        time.sleep(0.4)
+        for fluid, kind, x, z in wells:
+            sel = selector(kind, x, z)
+            pos = read_pos(sel)
+            row = {"alive": pos is not None, "y": round(pos[1], 4) if pos else None}
+            if kind == "pig" and pos:
+                row["air"] = read_number(sel, "Air")
+                row["health"] = read_number(sel, "Health")
+                row["fire"] = read_number(sel, "Fire")
+            log[(fluid, kind, tick)] = row
+    cmd("tick unfreeze")
+    for fluid, kind, x, z in wells:
+        # Os pontos que o original dá, de ponta a ponta: a vida e o ar do porco, se o porco e o item vivem, e a altura do item no fim.
+        for tick in (1, 2, 5, 10, 21, 30, 59):
+            got = log[(fluid, kind, tick)]
+            ref = want[(fluid, kind, tick)]
+            expected = {"alive": ref["alive"]}
+            if kind == "pig":
+                expected["air"] = float(ref["air"])
+                expected["health"] = float(ref["health"])
+            observed = {"alive": got["alive"]}
+            if kind == "pig" and got["alive"]:
+                observed["air"] = got.get("air")
+                observed["health"] = got.get("health")
+            elif kind == "pig":
+                # Morto no jogo: o `data get` não acha mais a entidade; o original deixa a vida em 0 e o ar onde estava.
+                expected = {"alive": ref["alive"]}
+            ok &= check(f"{kind} {fluid} @{tick}", observed, expected)
+        if kind == "item" and log[(fluid, kind, MOB_TICKS)]["alive"]:
+            ok &= check(f"item {fluid} altura final", log[(fluid, kind, MOB_TICKS)]["y"] - Y, round(want[(fluid, kind, MOB_TICKS)]["pos"][1] - 1, 4))
+    json.dump({f"{a}/{b}/{c}": v for (a, b, c), v in log.items()}, open(os.environ.get("MOB_LOG", "/tmp/fluido_no_bloco_mob.json"), "w"))
+    cmd("kill @e[type=!minecraft:player]")
+    restore()
+    return ok
+
+
 # A cena do print e do vídeo: uma fileira em cima do andar de pedra de y = 149 (a plataforma de `h2_nota_instrumento.py`, com céu), de frente para o norte.
 SCENE_Z = 80
 SCENE = (("mekanism:basic_universal_cable", 66, "empty"), ("mekanism:basic_fluid_tank", 70, "water"), ("mekanism:basic_energy_cube", 74, "lava"))
@@ -360,6 +462,8 @@ def main():
         sys.exit(0 if entity() else 1)
     if what == "bucket":
         sys.exit(0 if bucket() else 1)
+    if what == "mob":
+        sys.exit(0 if mob() else 1)
     print("uso:", __doc__)
 
 
