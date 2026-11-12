@@ -105,6 +105,17 @@ impl<R: Resource> fmt::Debug for ResourceTank<R> {
     }
 }
 
+/// Uma referência fraca a um [`ResourceTank`].
+pub struct WeakTank<R: Resource> {
+    cell: std::rc::Weak<JournalCell<TankState<R>>>,
+}
+
+impl<R: Resource> WeakTank<R> {
+    pub fn upgrade(&self) -> Option<ResourceTank<R>> {
+        self.cell.upgrade().map(|cell| ResourceTank { cell })
+    }
+}
+
 impl<R: Resource> ResourceTank<R> {
     /// `create(capacity, canExtract, canInsert, validator, listener)`.
     pub fn create(
@@ -139,6 +150,19 @@ impl<R: Resource> ResourceTank<R> {
 
     pub fn same_tank(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.cell, &other.cell)
+    }
+
+    /// O valor novo da fonte de capacidade de um contêiner de capacidade variável (`VariableCapacityFluidTank`, que lê
+    /// `capacity.getAsLong()` a cada consulta): quem o guarda chama isto sempre que o valor da fonte muda.
+    pub fn set_capacity(&self, capacity: u64) {
+        self.cell.borrow_mut().capacity = capacity;
+    }
+
+    /// Uma referência fraca ao contêiner, para um ouvinte do próprio contêiner (que o guardaria por inteiro e faria um ciclo).
+    pub fn downgrade(&self) -> WeakTank<R> {
+        WeakTank {
+            cell: Rc::downgrade(&self.cell),
+        }
     }
 
     /// `asStack`.

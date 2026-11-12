@@ -25,13 +25,17 @@
 //! ordem é a da chave `long` com sinal: determinística.
 pub mod acceptor_cache;
 pub mod buffered_network;
+pub mod buffered_resource_network;
+pub mod buffered_resource_transmitter;
 pub mod buffered_transmitter;
 pub mod connection;
 pub mod dynamic_network;
 pub mod energy_container;
 pub mod energy_network;
+pub mod fluid_network;
 pub mod heat_network;
 pub mod inventory_network;
+pub mod mechanical_pipe;
 pub mod network_acceptors;
 pub mod registry;
 pub mod thermodynamic_conductor;
