@@ -9,6 +9,7 @@ O port roda no container `horizon` do desktop (`docker exec horizon`), com o mun
 freeze`) enquanto o estado é montado, como o `CenaTelas`. Os nomes dos casos são os mesmos nos dois lados.
 """
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -38,6 +39,12 @@ HOVER = {
         "medidor_lava": (88, 43),
         "barra_energia": (167, 40),
     },
+    # `GuiEnergyCube`: o medidor largo (`GuiEnergyGauge`, `GaugeType.WIDE`, 66 por 50 em (55, 18)) e os slots de descarga (17, 35) e de carga (143, 35).
+    "cubo": {
+        "medidor": (88, 43),
+        "slot_descarga": (25, 43),
+        "slot_carga": (151, 43),
+    },
 }
 
 # Por máquina: o bloco, a tela (a tabela do comparador), a capacidade de energia de uma máquina colocada por um jogador, que
@@ -49,6 +56,10 @@ MAQUINAS = {
     "smelter": dict(block="mekanism:energized_smelter", tela="electric", cap=1000, entrada="raw_iron", slots=(0, 1), upgrade=(3, 4)),
     "infuser": dict(block="mekanism:metallurgic_infuser", tela="infuser", cap=1000, entrada="clay_ball", slots=(1, 2), upgrade=(4, 5)),
     "generator": dict(block="mekanismgenerators:heat_generator", tela="generator", cap=240, entrada=None, slots=(0, 1), upgrade=(2, 3)),
+    # Os cubos de energia (`EnergyCubeTier`: 4.000.000 no básico e no ultimate 256.000.000, `Long.MAX_VALUE` no criativo): sem upgrades nem receita.
+    "cubo": dict(block="mekanism:basic_energy_cube", tela="cubo", cap=4_000_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    "cubo_ultimate": dict(block="mekanism:ultimate_energy_cube", tela="cubo", cap=256_000_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    "cubo_criativo": dict(block="mekanism:creative_energy_cube", tela="cubo", cap=9223372036854775807, entrada=None, slots=(0, 1), upgrade=(0, 0)),
 }
 
 # O que sai do slot de saída "cheio" e o item que não é o da receita.
@@ -280,6 +291,49 @@ def casos_gerador():
     return out
 
 
+def casos_cubo():
+    """O Energy Cube (frente `cubo-pixel`): vazio, parcial, cheio, o criativo, a aba de energia, as janelas de lados e de transporte e o cursor sobre o medidor.
+    As abas de segurança, redstone e livro ficam como o `CenaTelas` as deixa (as que o port não tem, ocultas)."""
+    items = ("input", "output", "none", "input", "output", "none")
+    energia = ("none", "input", "output", "input", "output", "none")
+    lados_cubo = lados(items=items, energy=energia)
+    transporte = dict(strict="1", cor_saida="red", cor_entrada="front:blue,left:yellow,top:dark_red")
+    aba_energia_cfg = (JANELA[0] - 12, JANELA[1] + 15 + 28)
+    out = [
+        # O medidor é a tira animada `mek_liquid/energy` (32 quadros de 2 ticks): o ciclo de cada nível e do cursor em cima serve de referência (`comparar_lote.CICLO_DA_ENERGIA`).
+        caso("cubo_ciclo_parcial", "cubo", energia="1500000", ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_cheio", "cubo", energia="cap", ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_ultimate", "cubo_ultimate", energia="100000000", ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_criativo", "cubo_criativo", energia="cap", ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_hover_parcial", "cubo", energia="1500000", hover=HOVER["cubo"]["medidor"], ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_hover_cheio", "cubo", energia="cap", hover=HOVER["cubo"]["medidor"], ciclo="40", ciclo_port="64"),
+        caso("cubo_ciclo_hover_criativo", "cubo_criativo", energia="cap", hover=HOVER["cubo"]["medidor"], ciclo="40", ciclo_port="64"),
+        caso("cubo_vazio", "cubo", energia="0"),
+        caso("cubo_parcial", "cubo", energia="1500000"),
+        caso("cubo_cheio", "cubo", energia="cap"),
+        caso("cubo_ultimate_parcial", "cubo_ultimate", energia="100000000"),
+        caso("cubo_criativo", "cubo_criativo", energia="0"),
+        caso("cubo_criativo_cheio", "cubo_criativo", energia="cap"),
+        caso("cubo_hover_medidor_vazio", "cubo", energia="0", hover=HOVER["cubo"]["medidor"]),
+        caso("cubo_hover_medidor", "cubo", energia="1500000", hover=HOVER["cubo"]["medidor"]),
+        caso("cubo_hover_medidor_cheio", "cubo", energia="cap", hover=HOVER["cubo"]["medidor"]),
+        caso("cubo_hover_medidor_criativo", "cubo_criativo", energia="cap", hover=HOVER["cubo"]["medidor"]),
+        caso("cubo_hover_slot_descarga", "cubo", energia="1500000", hover=HOVER["cubo"]["slot_descarga"]),
+        caso("cubo_hover_slot_carga", "cubo", energia="1500000", hover=HOVER["cubo"]["slot_carga"]),
+        caso("cubo_aba_energia", "cubo", energia="1500000"),
+        caso("cubo_aba_energia_hover", "cubo", energia="1500000", hover=ENERGIA_CURSOR),
+        caso("cubo_criativo_aba_energia_hover", "cubo_criativo", energia="cap", hover=ENERGIA_CURSOR),
+        caso("cubo_lados", "cubo", energia="1500000", lados=lados_cubo, clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}"),
+        caso("cubo_lados_energia", "cubo", energia="1500000", lados=lados_cubo,
+             clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]};{aba_energia_cfg[0]},{aba_energia_cfg[1]}"),
+        caso("cubo_lados_hover_botao", "cubo", energia="1500000", lados=lados_cubo, clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}", hover=na_janela(101, 80)),
+        caso("cubo_transporte", "cubo", energia="1500000", lados=lados_cubo, clicar=f"{ABA_TRANSPORTE[0]},{ABA_TRANSPORTE[1]}", **transporte),
+        caso("cubo_transporte_hover_cor", "cubo", energia="1500000", lados=lados_cubo, clicar=f"{ABA_TRANSPORTE[0]},{ABA_TRANSPORTE[1]}",
+             hover=na_janela(120, 57), **transporte),
+    ]
+    return out
+
+
 def casos_controle():
     """O controle da luz do mundo atrás da tela: uma fonte vanilla (`minecraft:light`) de nível 4, 8, 12 e 15 ao lado de uma máquina parada, nos dois
     jogos. Sem nenhum bloco do Mekanism emitindo, a diferença do mundo que sobra é de como o jogo desenha a luz, não da luz do port."""
@@ -452,7 +506,7 @@ def nbt_da_configuracao(c):
 
 
 def todos_os_casos():
-    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada()
+    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo()
 
 
 def casos_do_roteiro(so=None):
@@ -517,8 +571,9 @@ def escreve_oficial(escalas, saida, so=None):
 
 # O Horizon ----------------------------------------------------------------------------------------------------------------------
 
+# `H_NAME=horizon2` roda no outro container (os caminhos de dentro dele são os mesmos).
 CTL = (
-    "docker exec horizon sh -c 'l=$XDG_DATA_HOME/horizon-launcher; "
+    f"docker exec {os.environ.get('H_NAME', 'horizon')} sh -c 'l=$XDG_DATA_HOME/horizon-launcher; "
     "v=$(sed -n \"s/.*\\\"version\\\": *\\\"\\([^\\\"]*\\)\\\".*/\\1/p\" $l/instances.json | head -n 1); "
     'exec $l/versions/$v/horizon-ctl --timeout 60 "$@"\' sh'
 )
@@ -611,7 +666,10 @@ def monta_port(c, x, escala):
     ctl("wait", "4")
     nbt = []
     energia = c["args"].get("energia")
-    if energia is not None:
+    if energia is not None and m == "cubo_criativo":
+        # O criativo guarda o valor exato em `energy_amount` (decisão 67): o Horizon vê um buffer vazio.
+        nbt.append("energy_amount:%dL" % (spec["cap"] if energia == "cap" else int(energia)))
+    elif energia is not None:
         nbt.append("energy:%d" % (spec["cap"] if energia == "cap" else int(energia)))
     itens = nbt_itens(c, m)
     if itens:
@@ -774,6 +832,9 @@ def roda_port(destino, escalas, so=None):
     comando("difficulty peaceful")
     comando("time set 6000")
     comando("weather clear")
+    # Clima limpo e meio-dia com os ciclos parados (as gamerules voltam ao fim).
+    comando("gamerule advance_time false")
+    comando("gamerule advance_weather false")
     # O chat escondido, como o do `CenaTelas`, que não tem chat: as respostas dos comandos da montagem ficam na tela por 10 segundos, e a
     # guiScale 3 as põe dentro da margem das abas, onde contariam como o mundo atrás da tela.
     ctl("options-set", "chatVisibility", "2")
@@ -787,6 +848,8 @@ def roda_port(destino, escalas, so=None):
             tira_port(c, x, escala, destino)
             print(c["nome"], escala, flush=True)
     comando("tick unfreeze")
+    comando("gamerule advance_time true")
+    comando("gamerule advance_weather true")
     ctl("options-set", "chatVisibility", "0")
 
 

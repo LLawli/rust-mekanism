@@ -13,6 +13,8 @@ N=$HOME/.local/share/jogo-isolado/mekanism-ref/src/src/gameTest/java/mekanism/co
 C=$HOME/.cache/rust-mekanism
 if docker ps --format '{{.Names}}' | grep -qx mekanism-ref; then echo OCUPADO; exit 3; fi
 cp "$R/options.txt" "$C/options.txt.antes-cena"
+# Mudo: o jogo de teste nunca toca nas caixas do usuário.
+sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$R/options.txt"
 [ -e "$R/cena-cabo" ] && mv "$R/cena-cabo" "$C/cena-cabo.antes-cena"
 rm -f "$R/fora_rastro.jsonl"
 restore() {

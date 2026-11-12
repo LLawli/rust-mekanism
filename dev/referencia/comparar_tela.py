@@ -69,6 +69,12 @@ TELAS = {
         "medidor_lava": (55, 18, 66, 50),
         "barra_energia": (164, 15, 6, 54),
     },
+    # `GuiEnergyCube`: o medidor largo (`GaugeType.WIDE`, em (55, 18)) e os slots de descarga (17, 35) e de carga (143, 35), com a moldura um pixel antes do item.
+    "cubo": {
+        "medidor": (55, 18, 66, 50),
+        "slot_descarga": (16, 34, 18, 18),
+        "slot_carga": (142, 34, 18, 18),
+    },
 }
 
 # A aba de avisos, que o port tem: à esquerda das máquinas (`GuiWarningTab`, -26,109) e à direita do gerador (`left = false`). Só
@@ -77,6 +83,7 @@ ABA_AVISOS = {
     "electric": (-26, 109, 26, 26),
     "infuser": (-26, 109, 26, 26),
     "generator": (LARGURA, 109, 26, 26),
+    "cubo": (-26, 109, 26, 26),
 }
 
 # A aba de upgrades (`GuiUpgradeWindowTab`: 26 por 26 em `imageWidth`, 6), que as máquinas elétricas e o Infuser têm.
@@ -93,6 +100,10 @@ ABA_CALOR = (-26, 109, 26, 26)
 SUPORTE_ARMADURA = (-26, 6, 26, 98)
 SLOTS_ARMADURA = (-21, 10, 18, 90)
 FUNDOS_ARMADURA = {f"fundo_armadura_{i}": (-20, 11 + 18 * i, 16, 16) for i in range(5)}
+# O mesmo à direita do Energy Cube (`GuiSideHolder.create(this, imageWidth, 36, 98, false, true, ...)` e `armorSideBar(180, 41, 0)`): o suporte é `holder_right`.
+SUPORTE_ARMADURA_DIREITO = (LARGURA, 36, 26, 98)
+SLOTS_ARMADURA_DIREITO = (179, 40, 18, 90)
+FUNDOS_ARMADURA_DIREITO = {f"fundo_armadura_{i}": (180, 41 + 18 * i, 16, 16) for i in range(5)}
 # O que o gerador desenha fora dos 176 por 166 e o recorte tem de incluir sempre, mesmo sem margem: sem isto um caso sem aba não vê a coluna.
 FORA_DA_TELA = ("suporte_armadura",)
 
@@ -307,7 +318,12 @@ def elementos_da_tela(tela):
         elementos["suporte_armadura"] = SUPORTE_ARMADURA
         # O Heat Generator aceita o upgrade de silêncio: a aba de upgrades fica à direita, como nas máquinas.
         elementos["aba_upgrades"] = ABA_UPGRADES
-    if tela != "generator":
+    if tela == "cubo":
+        # O cubo não aceita upgrades (sem aba de upgrades nem de xp) e tem o suporte da armadura à direita.
+        elementos.update(FUNDOS_ARMADURA_DIREITO)
+        elementos["slots_armadura"] = SLOTS_ARMADURA_DIREITO
+        elementos["suporte_armadura"] = SUPORTE_ARMADURA_DIREITO
+    elif tela != "generator":
         elementos["aba_upgrades"] = ABA_UPGRADES
         elementos["aba_xp"] = ABA_XP
     elementos.update(COMUNS)
@@ -372,7 +388,8 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     saida = bytearray(recorte_largura * recorte_altura * 4)
     cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP),
               "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG), "canto_aba_calor": cantos_do_sprite(ABA_CALOR, CALOR_PNG),
-              "canto_suporte_armadura": cantos_do_suporte(SUPORTE_ARMADURA, HOLDER_ESQUERDA)}
+              "canto_suporte_armadura": (cantos_do_suporte(SUPORTE_ARMADURA_DIREITO, HOLDER) if tela == "cubo"
+                                                         else cantos_do_suporte(SUPORTE_ARMADURA, HOLDER_ESQUERDA))}
     contagem = {nome: [0, 0] for nome in list(regioes) + list(elementos) + list(cantos)}  # [pixels comparados, pixels diferentes]
     contagem["fundo"] = [0, 0]
     contagem["mundo_atras"] = [0, 0]
@@ -396,7 +413,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                     # O suporte vindo da prioridade (sob a janela de upgrades) também tem os cantos transparentes, que mostram o mundo atrás.
                     nome = "canto_suporte_armadura"
                 for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR),
-                                  ("canto_suporte_armadura", SUPORTE_ARMADURA)):
+                                  ("canto_suporte_armadura", SUPORTE_ARMADURA_DIREITO if tela == "cubo" else SUPORTE_ARMADURA)):
                     if nome is None and aba[len("canto_"):] in elementos and (gx, gy) in cantos[aba]:
                         nome = aba
                 nome = nome or next((nome for nome, rect in elementos.items() if dentro(rect, gx, gy)), None)

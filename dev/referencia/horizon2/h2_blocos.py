@@ -8,7 +8,7 @@ Uso: H_NAME=horizon h2_blocos.py give|estados|cena [PASTA_DOS_PRINTS]
 - cena [PASTA_DOS_PRINTS [TIRO ...]]: o roteiro `cenas/blocos.json`, o mesmo que `testes/CenaBlocos.java` roda no original, com os prints em PASTA_DOS_PRINTS (padrão `SHOTS`, na pasta de dados do jogo; `scp` os traz); com nomes de tiro, só esses.
 Supõe o jogo aberto num mundo plano (o chão em y -61) com o jogador criativo, e a janela de 1920 por 1080.
 """
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 
 import h2_identity as h
 
@@ -332,8 +332,49 @@ def luz():
     return not bad
 
 
-def cena(out, nomes=()):
-    spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas/blocos.json")))
+CAPACIDADE_DO_CUBO = {"basic": 4_000_000, "advanced": 16_000_000, "elite": 64_000_000, "ultimate": 256_000_000}
+LADOS_DO_CUBO = ("front", "left", "right", "back", "top", "bottom")
+TIPO_DO_LADO = {"none": 0, "input": 1, "output": 4}
+
+
+def comando_do_cubo(texto, cmds):
+    """`#cubo X Y Z FRACAO lado=tipo...` (`testes/CenaBlocos.java`) no port: `data merge block` com a energia e o `component_config` de energia (tipo 0, os seis lados na
+    ordem de `RelativeSide`). O tier sai do `setblock` do mesmo tiro; o criativo guarda o valor exato em `energy_amount` (decisão 67)."""
+    _, x, y, z, fracao, *lados = texto.split()
+    tier = next(c.split("mekanism:")[1].split("_energy_cube")[0] for c in cmds if c.startswith(f"setblock {x} {y} {z} "))
+    nbt = []
+    if tier == "creative":
+        nbt.append("energy_amount:%dL" % int(float(fracao) * 9223372036854775807))
+    else:
+        nbt.append("energy:%d" % int(float(fracao) * CAPACIDADE_DO_CUBO[tier]))
+    if lados:
+        tipos = dict(l.split("=") for l in lados)
+        nbt.append("component_config:{config0:[I;%s]}" % ",".join(str(TIPO_DO_LADO[tipos[l]]) for l in LADOS_DO_CUBO))
+    return f"data merge block {x} {y} {z} {{{','.join(nbt)}}}"
+
+
+PERIODO_DO_NUCLEO = 360  # o núcleo do cubo gira 4 graus por tick e sobe e desce com 3 graus por tick: o mínimo múltiplo de 90 e 120 ticks
+
+
+def alinha_o_tempo(nome):
+    """O núcleo e o item do cubo desenham pelo tempo do jogo (`gameTime`), e o do original no print de `nome` vem do log (`GAMETIME_ORIGINAL`, um JSON `{tiro: tempo}`):
+    com o servidor parado, `tick step` leva o tempo do port à mesma fase do período do núcleo."""
+    arquivo = os.environ.get("GAMETIME_ORIGINAL")
+    if not arquivo:
+        return
+    alvo = json.load(open(arquivo)).get(nome)
+    if alvo is None:
+        return
+    atual = int(re.search(r"\d+", " ".join(h.command("time query gametime"))).group())
+    passos = (alvo - atual) % PERIODO_DO_NUCLEO
+    if passos:
+        h.command(f"tick step {passos}")
+        time.sleep(passos / 20.0 + 1.0)
+    print("tempo", nome, "alvo", alvo, "port", atual, "passos", passos)
+
+
+def cena(out, nomes=(), roteiro="blocos.json"):
+    spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
@@ -345,22 +386,34 @@ def cena(out, nomes=()):
         h.command(cmd)
     h.command("kill @e[type=!minecraft:player]")
     time.sleep(1.0)
-    h.ctl("key", "f1", "tap")
+    # `"hud": true` no roteiro deixa a tela ligada (a mão e a barra de atalhos), como o `CenaBlocos`.
+    if not spec.get("hud"):
+        h.ctl("key", "f1", "tap")
     for shot in spec["shots"]:
         h.command(spec["clear"])
         for cmd in shot["cmds"]:
+            if cmd.startswith("#cubo "):
+                # O bloco precisa ter nascido para receber o NBT.
+                time.sleep(0.5)
+                cmd = comando_do_cubo(cmd, shot["cmds"])
+            if cmd.startswith("#esperar "):
+                time.sleep(int(cmd.split()[1]) / 20.0)
+                continue
             h.command(cmd)
+        alinha_o_tempo(shot["name"])
         h.command("tp @s " + shot["tp"])
         time.sleep(2.5)
         h.ctl("screenshot", f"{out}/porte_{shot['name']}.png")
         print("print", shot["name"])
-    h.ctl("key", "f1", "tap")
+    if not spec.get("hud"):
+        h.ctl("key", "f1", "tap")
+    h.command("tick unfreeze")
 
 
 def main():
     mode = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else SHOTS
-    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "conexoes": conexoes, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out, sys.argv[3:]))()
+    ok = {"give": give, "estados": estados, "colocar": colocar, "luz": luz, "virados": virados, "conexoes": conexoes, "mesa": lambda: mesa(sys.argv[2])}.get(mode, lambda: cena(out, sys.argv[3:], os.environ.get("ROTEIRO", "blocos.json")))()
     sys.exit(0 if ok in (True, None) else 1)
 
 

@@ -76,7 +76,7 @@ def casar_fases(c, escala, original, port):
     n = cena_telas.ciclos(c, "oficial")
     m = cena_telas.ciclos(c, "port")
     tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
-    rect = ct.elementos_da_tela(tela)["barra_quimico" if tela == "infuser" else "medidor_lava"]
+    rect = ct.elementos_da_tela(tela)[animado_da_tela(tela)]
     arquivos = lambda lado, prefixo, total: [os.path.join(lado, f"{prefixo}_{c['nome']}_e{escala}_{k}.png") for k in range(total)]
     ori = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(original, "oficial", n)]
     prt = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(port, "port", m)]
@@ -100,7 +100,7 @@ def regioes_do_caso(c, a, b, escala):
 # `container_dim` já refaz a menos de arredondamento da GPU, e H30 a iluminação do mundo, mais clara no original e crescente com a luz), os cantos transparentes do painel e das abas, a sombra da janela sobre esse mundo, os ícones de item em escala (H25: os
 # de "Supported:" e os das linhas da lista) e a fase do sprite animado do químico (H26, ver `fase_do_quimico`). O mundo vale até `LIMITE_MUNDO_POR_LUZ`:
 # o que passa dele é `alem_*`, diferença de verdade, e o que fica dentro sai no relatório como `NE` (não explicado), não como `ok`.
-RESIDUOS_DO_HORIZON = ("mundo_atras", "janela_fundo", "janela_aceitos", "barra_quimico_fase", "medidor_lava_fase")
+RESIDUOS_DO_HORIZON = ("mundo_atras", "janela_fundo", "janela_aceitos", "barra_quimico_fase", "medidor_lava_fase", "medidor_fase")
 ICONE_DA_LISTA = "janela_lista_icone"
 PREFIXOS_RESIDUO = ("canto", ICONE_DA_LISTA, "tooltip_canto")
 # O que o mundo atrás da tela pode diferir por canal, por nível de luz do bloco (`cena_telas.luz_do_caso`): 0 com a máquina parada, 8 com uma das quatro
@@ -197,6 +197,7 @@ TETO_DO_RESIDUO = {
     "tooltip_canto": {2: (6, 72), 3: (21, 72)},
     "barra_quimico_fase": {2: (192, 1), 3: (342, 1)},
     "medidor_lava_fase": {2: (0, 0), 3: (0, 0)},
+    "medidor_fase": {2: (0, 0), 3: (0, 0)},
 }
 
 
@@ -281,8 +282,22 @@ CICLO_DA_LAVA = {
 }
 
 
+# O medidor de energia do Energy Cube (`mek_liquid/energy`, 32 quadros de 2 ticks) é a mesma tira animada: `(maquina, energia, cursor sobre o medidor)`.
+CICLO_DA_ENERGIA = {
+    ("cubo", "1500000", False): "cubo_ciclo_parcial",
+    ("cubo", "cap", False): "cubo_ciclo_cheio",
+    ("cubo_ultimate", "100000000", False): "cubo_ciclo_ultimate",
+    ("cubo_criativo", "cap", False): "cubo_ciclo_criativo",
+    ("cubo", "1500000", True): "cubo_ciclo_hover_parcial",
+    ("cubo", "cap", True): "cubo_ciclo_hover_cheio",
+    ("cubo_criativo", "cap", True): "cubo_ciclo_hover_criativo",
+}
+
+
 def ciclo_do_caso(c):
     """O caso de ciclo que serve de referência ao tanque de `c` (o de químico do Infuser, ou o medidor de lava do Heat Generator), ou `None`."""
+    if c["maquina"].startswith("cubo"):
+        return CICLO_DA_ENERGIA.get((c["maquina"], c["args"].get("energia"), c["args"].get("hover") == cena_telas.HOVER["cubo"]["medidor"]))
     if "lava" in c["args"]:
         sobre_o_medidor = c["args"].get("hover") == cena_telas.HOVER["generator"]["medidor_lava"]
         return CICLO_DA_LAVA.get((int(c["args"]["lava"]), sobre_o_medidor))
@@ -291,8 +306,8 @@ def ciclo_do_caso(c):
 
 
 def animado_da_tela(tela):
-    """O elemento animado de cada tela: a barra de químico do Infuser, o medidor de lava do Heat Generator."""
-    return "barra_quimico" if tela == "infuser" else "medidor_lava"
+    """O elemento animado de cada tela: a barra de químico do Infuser, o medidor de lava do Heat Generator, o de energia do Energy Cube."""
+    return {"infuser": "barra_quimico", "cubo": "medidor"}.get(tela, "medidor_lava")
 
 
 def maior_diferenca(a, b):
@@ -372,7 +387,7 @@ def principal(argv):
                 falhas += resultado["diferentes"] > 0
                 # O sprite animado de um ciclo é a medida da fase e da mistura H26 (a linha `ciclo` acima): ele é o resíduo, o resto da tela não.
                 dados = {n_: d_ for n_, d_ in resultado["elementos"].items() if d_["diferentes"]}
-                animado = "barra_quimico" if tela == "infuser" else "medidor_lava"
+                animado = animado_da_tela(tela)
                 if animado in dados:
                     dados[animado + "_fase"] = dados.pop(animado)
                 conhecidas = conhecidas_de(dados)
@@ -401,14 +416,14 @@ def principal(argv):
             regioes = regioes_do_caso(c, a, b, escala)
             resultado, diferenca = ct.comparar(
                 a, b, tela, escala, regioes=regioes, mascarar_abas=False,
-                margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] else 0, prioridade=prioridade_do_caso(c, regioes, janela),
+                margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] or c["maquina"].startswith("cubo") else 0, prioridade=prioridade_do_caso(c, regioes, janela),
                 ausentes=ausentes_do_caso(c, visivel), limite_mundo=LIMITE_MUNDO_POR_LUZ[cena_telas.luz_do_caso(c)],
                 particulas=CAIXA_DAS_PARTICULAS if com_particulas(c) else None,
             )
             resultado["caso"] = nome
             mundo_max = max(mundo_max, resultado["maior_do_mundo"])
             dados = {n: d for n, d in resultado["elementos"].items() if d["diferentes"]}
-            if animado_da_tela(tela) in dados and ("quimico" in c["args"] or "lava" in c["args"]):
+            if animado_da_tela(tela) in dados and ("quimico" in c["args"] or "lava" in c["args"] or c["maquina"].startswith("cubo")):
                 try:
                     ok, texto, medida = fase_do_quimico(c, escala, original, port)
                 except FileNotFoundError as erro:

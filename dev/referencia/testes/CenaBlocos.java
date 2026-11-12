@@ -79,6 +79,11 @@ public class CenaBlocos {
             at += 5;
             JsonArray commands = shot.getAsJsonArray("cmds");
             for (JsonElement command : commands) {
+                if (command.getAsString().startsWith("#esperar ")) {
+                    // `#esperar N`: N ticks do cliente sem comando (o servidor anda, e o tile publica o estado antes do `tick freeze`).
+                    at += Integer.parseInt(command.getAsString().substring(9).trim());
+                    continue;
+                }
                 actions.add(new Action(at++, () -> run(server, command.getAsString())));
             }
             actions.add(new Action(at, () -> run(server, "tp @a " + shot.get("tp").getAsString())));
@@ -92,10 +97,37 @@ public class CenaBlocos {
     }
 
     private static void run(MinecraftServer server, String command) {
+        if (command.startsWith("#cubo ")) {
+            server.execute(() -> cube(server, command));
+            return;
+        }
         server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command));
     }
 
+    /// `#cubo X Y Z FRACAO [lado=tipo ...]`: a energia do Energy Cube em `x y z` como fração da capacidade (o núcleo de `RenderEnergyCube` só aparece com energia, e o alfa dele
+    /// é a fração) e a configuração de energia de cada lado (`front`, `left`, `right`, `back`, `top`, `bottom` = `none`, `input` ou `output`), com o `sideChanged` que
+    /// atualiza o `CubeSideState` do modelo. O port faz o mesmo por `data merge block` (`horizon2/h2_blocos.py`).
+    private static void cube(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.TileEntityEnergyCube) server.overworld().getBlockEntity(pos);
+        var container = (mekanism.common.capabilities.energy.BasicEnergyContainer) tile.getEnergyContainer();
+        container.setEnergy((long) (Double.parseDouble(words[4]) * container.getCapacityAsLong()), null);
+        var config = tile.getConfig();
+        var type = config.getTransmissions().stream().filter(t -> t.getSerializedName().equals("energy")).findFirst().orElseThrow();
+        for (int i = 5; i < words.length; i++) {
+            String[] pair = words[i].split("=");
+            var side = mekanism.api.RelativeSide.valueOf(pair[0].toUpperCase());
+            var dataType = java.util.Arrays.stream(mekanism.common.tile.component.config.DataType.values()).filter(d -> d.getSerializedName().equals(pair[1])).findFirst().orElseThrow();
+            config.getConfig(type).setDataType(dataType, side);
+            config.sideChanged(type, side);
+        }
+        tile.markForSave();
+    }
+
     private static void shot(Minecraft minecraft, String name) {
+        // O núcleo do cubo gira com o tempo do jogo (`gameTime + partialTick`): o tempo do print vai no log, e o port o alcança com `tick step` (`h2_blocos.py`).
+        Mekanism.logger.info("cena: {} gametime {}", name, minecraft.level.getGameTime());
         Screenshot.grab(minecraft.gameDirectory, name + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> Mekanism.logger.info("cena: {}", message.getString()));
     }
 }

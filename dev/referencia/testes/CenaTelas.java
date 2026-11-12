@@ -107,6 +107,9 @@ public class CenaTelas {
             case "smelter" -> MekanismBlocks.ENERGIZED_SMELTER.defaultState();
             case "infuser" -> MekanismBlocks.METALLURGIC_INFUSER.defaultState();
             case "generator" -> GeneratorsBlocks.HEAT_GENERATOR.defaultState();
+            case "cubo" -> MekanismBlocks.BASIC_ENERGY_CUBE.defaultState();
+            case "cubo_ultimate" -> MekanismBlocks.ULTIMATE_ENERGY_CUBE.defaultState();
+            case "cubo_criativo" -> MekanismBlocks.CREATIVE_ENERGY_CUBE.defaultState();
             default -> throw new IllegalArgumentException(machine);
         };
     }
@@ -562,6 +565,10 @@ public class CenaTelas {
     /// O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(this, -26, 6, 98, ...)`): o único suporte que o port desenha nessa tela. Os da
     /// segurança e da redstone (também `GuiSideHolder`, à direita) seguem ocultos: o port não tem essas abas.
     private static boolean isArmorHolder(mekanism.client.gui.GuiMekanism<?> screen, mekanism.client.gui.element.GuiElement element) {
+        // O Energy Cube tem o suporte da armadura à direita (`GuiSideHolder.create(this, imageWidth, 36, 98, false, true, ...)`), que o port desenha desde 2026-11-11.
+        if (screen instanceof mekanism.client.gui.GuiEnergyCube) {
+            return element.getX() - screen.getLeftPos() == 176 && element.getY() - screen.getTopPos() == 36;
+        }
         return screen instanceof mekanism.generators.client.gui.GuiHeatGenerator && element.getX() - screen.getLeftPos() == -26
               && element.getY() - screen.getTopPos() == 6;
     }
