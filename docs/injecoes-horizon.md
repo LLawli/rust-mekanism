@@ -14,22 +14,22 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-11 (depois das frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-12 (depois da frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 143 | |
+| `[[injection]]` no total | 144 | |
 | Hook do catálogo, usado só com o contrato dele | 45 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 46 | sim |
-| Injeção crua (`target = ...`) | 52 | sim |
+| Injeção crua (`target = ...`) | 53 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 32 | sim |
 
-45 + 46 + 52 = 143. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+45 + 46 + 53 = 144. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
 97 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 52 | 31 | 45 |
+| Em uso | 53 | 31 | 45 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -111,7 +111,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
 | H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
-| H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | nenhuma (o item usa o modelo gerado de decisão 26, com a porta de todo lado e o LED aceso onde sai, decisão 74; falta só o núcleo) | pedido |
+| H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | `energy_cube_item_core` (cru, RETURN de `Game::resolve_item_in_hand`: uma camada de item a mais, o núcleo) | em uso |
 | ~~H100~~ `BlockEntityDraw::partial` preso com o `tick freeze` | retirado em 2026-11-12 | não procede: o `partial` é 1,0 e o `gameTime` fica parado sob `tick freeze` (medido em jogo) | retirado |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
@@ -159,17 +159,17 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
 | `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
-| `mods/mekanism/native/horizon-mixin.toml` | 63 | 46 | 17 | 8 |
+| `mods/mekanism/native/horizon-mixin.toml` | 64 | 46 | 18 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 25 | 21 | 4 | 4 |
-| Total | 143 | 91 | 52 | 32 |
+| Total | 144 | 91 | 53 | 32 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) e `fluorite_experience` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience` e `energy_cube_item_core` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). Dezesseis das 46 cruas são `cancellable = true` (a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 91 hooks, 46 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (52)
+## Injeções cruas em uso (53)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -574,6 +574,12 @@ e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cub
 - **Hook proposto:** H35 `block_entity_changed` (`listen`): `dimension`, `pos` e o tipo do block entity, chamado no `BlockEntity.setChanged` e em `Level.removeBlockEntity` (`Level.java:686`).
 - **Risco:** renomear `container_changed` ou mudar a posição (`Pos`) quebra o build.
 - **Conferido em jogo** (2026-11-08, `horizon`): `chamber_output_signal` (um baú vizinho que muda, e uma máquina vizinha que muda o comparador) dava 99 diferenças em 226 leituras sem a injeção e 0 com ela; `heat_output_signal` 0.
+
+### `energy_cube_item_core` (mekanism)
+
+- **Estado:** em uso desde 2026-11-12 (frente `cubo-nucleo`). **Alvo:** `horizon_client::game::item_draw::Game<'_>::resolve_item_in_hand` (`item_draw.rs:328`), RETURN, com o binding `$value` do tipo `ItemRenderState` (o tipo escrito como no fonte do Horizon: o `horizon-mixins` recusa `crate::item_render::ItemRenderState`, que é o mesmo tipo). **Proposta:** H99.
+- **Para quê:** `RenderEnergyCubeItem.submit` desenha, depois do quadro, o núcleo translúcido do cubo com energia (`Sheets.translucentBlockItemSheet`, luz máxima, a tinta do tier com o alfa `ARGB.as8BitChannel(ContainerType.ENERGY.getRatio(stack))`, o `gameTime` mais o `partialTick` girando e subindo e descendo como em `RenderEnergyCube`). O Horizon troca o `minecraft:special` do item pelo modelo base (H60), e `resolve_item_in_hand` é por onde a barra, a mão, o chão e o quadro resolvem o item a cada quadro. O helper acrescenta ao `ItemRenderState` uma `LayerRender` com o modelo `mekanism:block/energy_core` assado pelo `ItemRenderer` (as faces com `force_translucent`), a matriz da camada do quadro vezes a pose do núcleo e a tinta com o alfa. A conta da pose e do alfa está em `machinery_basis_core::energy_cube` (`core_pose`, `core_alpha`), a mesma do tile.
+- **Risco:** o nome e o módulo de `resolve_item_in_hand`, o tipo `ItemRenderState` e os campos de `LayerRender` e `LayerGeometry` (privados ao crate), e `Game::clock`, `world.game_time` e `pack.item_renderer`. Muda quando o Horizon mexer no pipeline de item. O hook H99 troca tudo por um callback com a pilha, o `gameTime` e o `partial`.
 
 ### `energy_store` (mekanism)
 
@@ -1601,8 +1607,8 @@ entre parênteses.
 
 - **Lado:** cliente. **Tipo:** hook (o `SpecialModelRenderer` do 26.x).
 - **O que faz:** o `RenderEnergyCubeItem` do original desenha o quadro do cubo com as portas e os LEDs do estado de cada lado (padrão ou guardado no item) e, com energia, o núcleo translúcido girando pelo `gameTime` com o alfa da razão de energia. O pedido é um callback de desenho de item (na barra, na mão e no chão) que receba a pilha com os componentes e o `gameTime` mais o `partial`, e escreva vértices como o `block_entity_submit`.
-- **Hoje:** nenhuma injeção: o item usa o modelo gerado (H60, decisão 26) com a porta de todo lado e o LED aceso onde sai (2026-11-12). Medido em jogo com `comparar_cubo.py`: 49 pixels diferentes na barra e, na mão, 0 pixel sem energia e 128 com energia (o núcleo).
-- **Risco do que existe hoje:** o item do cubo com energia não mostra o núcleo.
+- **Hoje:** a injeção crua `energy_cube_item_core` (ver a ficha dela em "Injeções cruas em uso"): o item usa o modelo gerado (H60, decisão 26) com a porta de todo lado e o LED aceso onde sai, e o núcleo é uma camada a mais no item resolvido. Medido em jogo com `comparar_cubo.py`: a mão com energia difere em 1 pixel ou menos contra o original (era 128) e a barra em 49 (a barra de energia).
+- **Risco do que existe hoje:** o da injeção: o nome e o módulo de `resolve_item_in_hand`, os campos de `LayerRender`.
 
 ### H100 `BlockEntityDraw::partial` preso com o `tick freeze` (retirado)
 
