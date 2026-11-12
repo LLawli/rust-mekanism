@@ -62,6 +62,9 @@ const BUCKET_SOUND_FILL_LAVA: &str = "minecraft:item.bucket.fill_lava";
 const BUCKET_SOUND_EMPTY: &str = "minecraft:item.bucket.empty";
 const BUCKET_SOUND_EMPTY_LAVA: &str = "minecraft:item.bucket.empty_lava";
 const FIRE_EXTINGUISH: &str = "minecraft:block.fire.extinguish";
+/// Os eventos de nível do dispenser: o som padrão (1000) e a animação (2000, com a direção).
+const DISPENSER_CLICK: i32 = 1000;
+const DISPENSER_ANIMATION: i32 = 2000;
 // Os índices de receitas por tipo. Só valem até a próxima carga de dados.
 static MACHINE_RECIPES: Mutex<BTreeMap<String, Arc<Vec<MachineRecipe>>>> = Mutex::new(BTreeMap::new());
 static CONVERSIONS: Mutex<BTreeMap<String, Arc<Vec<ItemConversion>>>> = Mutex::new(BTreeMap::new());
@@ -203,9 +206,11 @@ fn fluid_of(value: &str) -> Option<&'static str> {
 
 /// `IStateFluidLoggable.isValidFluid` junto de `canPlaceLiquid`: o bloco está vazio e declara o valor (o Heat Generator só tem `empty` e `lava`).
 fn can_place_liquid(game: &mut Game<'_>, pos: [i32; 3], value: &str) -> bool {
-    if logged_value(game, pos).as_deref() != Some(fluid_logged::EMPTY) {
-        return false;
-    }
+    logged_value(game, pos).as_deref() == Some(fluid_logged::EMPTY) && declares_value(game, pos, value)
+}
+
+/// Se o bloco em `pos` declara o valor de `fluid_logged` (`IStateFluidLoggable.isValidFluid`: o Heat Generator só tem `empty` e `lava`).
+fn declares_value(game: &mut Game<'_>, pos: [i32; 3], value: &str) -> bool {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.with_level(|_, level, _| level.native_state_with_property(state, fluid_logged::PROPERTY, value).is_some())
 }
@@ -233,19 +238,20 @@ fn center(pos: [i32; 3]) -> [f64; 3] {
     pos.map(|v| f64::from(v) + 0.5)
 }
 
-/// `BucketItem.emptyContents` sobre um bloco com `fluid_logged`: a água do Nether evapora (`WATER_EVAPORATES` vem antes do contêiner), e o resto entra no estado.
-/// Devolve se o balde esvaziou.
-fn empty_into(game: &mut Game<'_>, pos: [i32; 3], value: &str) -> bool {
+/// `BucketItem.emptyContents` sobre um bloco com `fluid_logged`: a água do Nether evapora (`WATER_EVAPORATES` vem antes do contêiner, com a fumaça de `sendParticles`), e o resto entra
+/// no estado. `who` é quem esvazia o balde (o jogador no `use`; ninguém no dispenser, `user` nulo). Devolve se o balde esvaziou.
+fn empty_into(game: &mut Game<'_>, pos: [i32; 3], value: &str, who: Option<horizon_client::mobs::Who>) -> bool {
     if value == fluid_logged::WATER && in_nether(game) {
         let random = &mut game.world.random;
         let pitch = 2.6 + (random.next_float() - random.next_float()) * 0.8;
         game.audio.play(FIRE_EXTINGUISH, Some(center(pos)), 0.5, pitch);
+        game.evaporation_smoke(pos);
         return true;
     }
     place_logged(game, pos, value);
     let sound = if value == fluid_logged::LAVA { BUCKET_SOUND_EMPTY_LAVA } else { BUCKET_SOUND_EMPTY };
     game.audio.play(sound, Some(center(pos)), 1.0, 1.0);
-    game.post_block_game_event("minecraft:fluid_place", pos, Some(horizon_client::mobs::Who::Player), None);
+    game.post_block_game_event("minecraft:fluid_place", pos, who, None);
     true
 }
 
@@ -263,7 +269,7 @@ fn use_filled(game: &mut Game<'_>, stack: &ItemStack, value: &'static str, claim
     }
     let mut canceled = false;
     game.native_fill_bucket(stack, hit.pos, &mut canceled);
-    if canceled || !empty_into(game, hit.pos, value) {
+    if canceled || !empty_into(game, hit.pos, value, Some(horizon_client::mobs::Who::Player)) {
         return;
     }
     game.trigger_block("minecraft:placed_block", hit.pos, stack);
@@ -306,6 +312,95 @@ fn use_empty(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
         game.native_give_items(bucket, 1);
     }
     *claimed = true;
+}
+
+/// `DispenserBlock.getDispenseMethod` dos baldes contra um bloco com `fluid_logged` (`IStateFluidLoggable`, que é `LiquidBlockContainer` e `BucketPickup`): o balde cheio de água ou de
+/// lava enche o bloco vazio (`emptyContents` com `user` e `hitResult` nulos, sem o bloco ao lado), o vazio tira o fluido (`pickupBlock`), e o que não dá solta o item (o
+/// `DefaultDispenseItemBehavior`). Um bloco sem a propriedade fica para o dispenser do Horizon. A decisão é de `fluid_logged::dispense_bucket`.
+pub(in crate::game) fn dispense_item(
+    game: &mut Game<'_>,
+    dimension: &str,
+    pos: [i32; 3],
+    facing: Direction,
+    stack: &ItemStack,
+    answer: &mut Option<horizon_client::mod_api::NativeDispensed>,
+) {
+    let offset = face_of(facing).offset();
+    let target = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+    let current = logged_value(game, target);
+    let outcome = fluid_logged::dispense_bucket(&stack.item, current.as_deref(), |value| declares_value(game, target, value));
+    match outcome {
+        fluid_logged::Dispensed::Pass => {}
+        fluid_logged::Dispensed::Drop => {
+            *answer = Some((game.native_dispense_default(dimension, pos, facing, stack.clone()), DISPENSER_CLICK));
+        }
+        fluid_logged::Dispensed::Fill { value } => {
+            empty_into(game, target, value, None);
+            spawn_bucket_mob(game, target, stack);
+            let empty = ItemStack::new(fluid_logged::EMPTY_BUCKET, 1);
+            *answer = Some((consume_with_remainder(game, dimension, pos, facing, stack.clone(), empty), DISPENSER_CLICK));
+        }
+        fluid_logged::Dispensed::Pickup { value, bucket } => {
+            game.native_set_block_property(target, fluid_logged::PROPERTY, value);
+            game.post_block_game_event("minecraft:fluid_pickup", target, None, None);
+            let filled = ItemStack::new(bucket, 1);
+            *answer = Some((consume_with_remainder(game, dimension, pos, facing, stack.clone(), filled), DISPENSER_CLICK));
+        }
+    }
+}
+
+/// `MobBucketItem.checkExtraContent`: o bicho do balde de peixe, solto no bloco que recebeu a água (com o `ENTITY_PLACE` do jogo).
+fn spawn_bucket_mob(game: &mut Game<'_>, target: [i32; 3], stack: &ItemStack) {
+    let Some((_, _, Some(kind))) = horizon_client::items::bucket_contents(&stack.item) else {
+        return;
+    };
+    if let Some(id) = game.spawn_mob_at(kind, (target[0], target[1], target[2]), true) {
+        if let Some(mob) = game.mobs.iter_mut().find(|m| m.id == id) {
+            horizon_client::entity_nbt::apply_item_components(mob, stack);
+        }
+        let _ = game.mob_placed(id);
+    }
+    game.post_block_game_event("minecraft:entity_place", target, None, None);
+}
+
+/// `DefaultDispenseItemBehavior.consumeWithRemainder`: um item sai do monte e o resto (`remainder`) vai para o primeiro slot livre do dispenser (`insertItem`: os baldes cheios têm
+/// pilha de 1, então nada se junta) ou, sem lugar, sai como item solto com o som e a animação do dispenser.
+fn consume_with_remainder(
+    game: &mut Game<'_>,
+    dimension: &str,
+    pos: [i32; 3],
+    facing: Direction,
+    mut stack: ItemStack,
+    remainder: ItemStack,
+) -> Option<ItemStack> {
+    stack.count -= 1;
+    if stack.count == 0 {
+        return Some(remainder);
+    }
+    let mut rest = Some(remainder);
+    if let Some(entity) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        if let Some(cell) = entity.slots_mut().iter_mut().find(|cell| cell.is_none()) {
+            *cell = rest.take();
+        }
+    }
+    if let Some(rest) = rest {
+        game.native_dispense_default(dimension, pos, facing, rest);
+        game.dispenser_event(DISPENSER_CLICK, (pos[0], pos[1], pos[2]), 0);
+        game.dispenser_event(DISPENSER_ANIMATION, (pos[0], pos[1], pos[2]), facing_data(facing));
+    }
+    Some(stack)
+}
+
+/// `Direction.get3DDataValue`, o dado do evento de animação do dispenser.
+fn facing_data(facing: Direction) -> i32 {
+    match facing {
+        Direction::Down => 0,
+        Direction::Up => 1,
+        Direction::North => 2,
+        Direction::South => 3,
+        Direction::West => 4,
+        Direction::East => 5,
+    }
 }
 
 /// O item de upgrade com shift entra num bloco com janela de upgrades. Um bloco com tela só chega aqui com o jogador agachado: em pé, o clique abre a tela.

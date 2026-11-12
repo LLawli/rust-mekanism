@@ -6,5 +6,8 @@ fn machinery_basis_dispense_item(
     stack: &horizon_client::items::ItemStack,
     answer: &mut Option<horizon_client::mod_api::NativeDispensed>,
 ) {
-    crate::game::machinery_liquid::dispense(game, dimension, pos, facing, stack, answer);
+    crate::game::machinery_basis::dispense_item(game, dimension, pos, facing, stack, answer);
+    if answer.is_none() {
+        crate::game::machinery_liquid::dispense(game, dimension, pos, facing, stack, answer);
+    }
 }

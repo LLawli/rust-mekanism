@@ -86,7 +86,7 @@ fn the_heat_generator_gets_the_original_piston_reaction_and_occlusion() {
         .find(|row| row["id"] == "mekanismgenerators:heat_generator")
         .unwrap();
     for lit in [false, true] {
-        for fluid in ["empty", "lava"] {
+        for fluid in ["empty", "water", "lava"] {
             let state = row["states"]
                 .as_array()
                 .unwrap()

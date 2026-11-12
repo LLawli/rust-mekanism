@@ -546,11 +546,6 @@ fn the_placement_is_the_one_the_original_gives() {
         let name = id.strip_prefix("mekanismgenerators:").unwrap();
         let placement = row["placement"].as_object().unwrap();
         let file = content().join(format!("data/{NS}/machinery_basis/placement/{name}.json"));
-        if name == "heat_generator" {
-            // O gabarito do forno se vira sozinho (Fase 5).
-            assert!(!file.exists());
-            continue;
-        }
         if placement.is_empty() {
             assert!(
                 !file.exists(),
@@ -611,8 +606,8 @@ fn the_placement_is_the_one_the_original_gives() {
             assert!(rule.fluid_logged.is_none(), "{id}");
         }
     }
-    // Os seis geradores têm `facing`; os seis menos o heat (fora), cinco com `facing` e `fluid_logged`, mais as três peças com `fluid_logged` só.
-    assert_eq!(facing_blocks, 5);
-    assert_eq!(logged_blocks, 8);
+    // Os seis geradores têm `facing` e `fluid_logged` (o heat também, desde 2026-11-12), mais as três peças com `fluid_logged` só.
+    assert_eq!(facing_blocks, 6);
+    assert_eq!(logged_blocks, 9);
     assert!(points >= 5 * 500, "{points}");
 }

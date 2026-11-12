@@ -9,6 +9,14 @@ pub const LAVA: &str = "lava";
 pub const WATER_BUCKET: &str = "minecraft:water_bucket";
 pub const LAVA_BUCKET: &str = "minecraft:lava_bucket";
 pub const EMPTY_BUCKET: &str = "minecraft:bucket";
+const COD_BUCKET: &str = "minecraft:cod_bucket";
+const SALMON_BUCKET: &str = "minecraft:salmon_bucket";
+const PUFFERFISH_BUCKET: &str = "minecraft:pufferfish_bucket";
+const TROPICAL_FISH_BUCKET: &str = "minecraft:tropical_fish_bucket";
+const AXOLOTL_BUCKET: &str = "minecraft:axolotl_bucket";
+const TADPOLE_BUCKET: &str = "minecraft:tadpole_bucket";
+const POWDER_SNOW_BUCKET: &str = "minecraft:powder_snow_bucket";
+const SULFUR_CUBE_BUCKET: &str = "minecraft:sulfur_cube_bucket";
 
 /// O que um clique de balde troca: o valor novo da propriedade, e o balde que sai e o que entra.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +67,59 @@ pub fn bucket_swap(item: &str, current: &str) -> Option<BucketSwap> {
         take: EMPTY_BUCKET,
         give: bucket,
     })
+}
+
+/// O que o conteúdo de um balde cheio é para `BucketItem.emptyContents` (`DispensibleContainerItem`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Content {
+    /// Água ou lava, ou um balde de peixe (que guarda água): o fluido entra num bloco que o aceita (`LiquidBlockContainer.placeLiquid`).
+    Fluid(&'static str),
+    /// O que só age num lugar vazio (`SolidBucketItem`, a neve em pó) ou não tem fluido (o balde do cubo de enxofre): num bloco com `fluid_logged` não esvazia.
+    Other,
+}
+
+/// O conteúdo do balde cheio `item` (`DispensibleContainerItem`): nenhum para o que não é balde cheio.
+pub fn content_of(item: &str) -> Option<Content> {
+    match item {
+        WATER_BUCKET | COD_BUCKET | SALMON_BUCKET | PUFFERFISH_BUCKET | TROPICAL_FISH_BUCKET | AXOLOTL_BUCKET | TADPOLE_BUCKET => Some(Content::Fluid(WATER)),
+        LAVA_BUCKET => Some(Content::Fluid(LAVA)),
+        POWDER_SNOW_BUCKET | SULFUR_CUBE_BUCKET => Some(Content::Other),
+        _ => None,
+    }
+}
+
+/// O que um dispenser com um balde faz contra o bloco da frente quando ele tem a propriedade `fluid_logged` (`IStateFluidLoggable`, que é `LiquidBlockContainer` e `BucketPickup`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dispensed {
+    /// O bloco não tem `fluid_logged`: o dispenser do Horizon decide.
+    Pass,
+    /// `emptyContents` pôs o fluido no bloco: o balde cheio vira o vazio (`consumeWithRemainder`).
+    Fill { value: &'static str },
+    /// `pickupBlock` tirou o fluido do bloco: o balde vazio vira o cheio `bucket`.
+    Pickup { value: &'static str, bucket: &'static str },
+    /// Não deu: o dispenser solta o item como o `DefaultDispenseItemBehavior`.
+    Drop,
+}
+
+/// `DispenserBlock.registerBehavior` dos baldes (`DispenseItemBehavior`) contra um bloco com `fluid_logged` (`current` é o valor dele, `None` sem a propriedade; `declares` diz se o bloco
+/// declara um valor, o Heat Generator só tem `empty` e `lava`). O dispenser chama `emptyContents(null, level, pos, null, stack)`: `canBeReplaced(fluid)` é falso nos blocos do
+/// Mekanism (`BlockMekanism.java:79`), então só `canPlaceLiquid` (vazio e fluido válido) deixa o fluido entrar, e `hitResult` nulo impede o balde de ir para o bloco ao lado. O balde
+/// vazio pergunta `instanceof BucketPickup` e `pickupBlock` (vazio sem fluido: solta o balde).
+pub fn dispense_bucket(item: &str, current: Option<&str>, declares: impl Fn(&str) -> bool) -> Dispensed {
+    let Some(current) = current else {
+        return Dispensed::Pass;
+    };
+    if item == EMPTY_BUCKET {
+        return match bucket_of_value(current) {
+            Some(bucket) => Dispensed::Pickup { value: EMPTY, bucket },
+            None => Dispensed::Drop,
+        };
+    }
+    match content_of(item) {
+        Some(Content::Fluid(value)) if current == EMPTY && declares(value) => Dispensed::Fill { value },
+        Some(_) => Dispensed::Drop,
+        None => Dispensed::Pass,
+    }
 }
 
 #[cfg(test)]
