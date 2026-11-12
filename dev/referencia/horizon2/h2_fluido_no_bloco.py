@@ -10,6 +10,7 @@
                                     porco e de item do original (decisão 88: eles leem o fluido pela tabela de fatos do estado, que `logged_fluid_facts` completa)
     h2_fluido_no_bloco.py parado      o item solto parado na célula do Heat Generator (e do cabo) com lava, com água e sem fluido, tick a tick, contra `rastros/fluido_item_parado.jsonl` (decisão 100:
                                     o item com `noPhysics` não é afetado pelos blocos: a lava não o acende, a água não o apaga, o cacto não o fere)
+    h2_fluido_no_bloco.py parado_cena PASTA   os prints do item no gerador com lava (vive) e no cabo com lava (queima), parados no servidor, em quatro momentos
     h2_fluido_no_bloco.py parado_video   o vídeo com som: o item no gerador com lava (vive) e no cabo com lava (queima), lado a lado (`NOME=<gravar-jogo start>`, `SEGUNDOS`, `ARQUIVO`)
     h2_fluido_no_bloco.py mob_video   o vídeo com som: o porco num cabo com água, o porco num cabo com lava (queima e morre) e o item de pedra que a lava destrói, em poços de vidro
                                     (`NOME=<gravar-jogo start>`, `SEGUNDOS`, `ARQUIVO`)
@@ -683,34 +684,85 @@ def mob_video():
         restore()
 
 
+PARADO_GEN_X, PARADO_CABLE_X = 66, 69
+
+
+def parado_reset(item):
+    """O Heat Generator com lava e o cabo com lava, lado a lado, uma fonte de lava ao norte do gerador (para onde o item preso é empurrado) e o mesmo item parado em cada um."""
+    z = SCENE_Z
+    for x in (PARADO_GEN_X, PARADO_CABLE_X):
+        cmd(f"setblock {x} {Y} {z} minecraft:air")
+    cmd(f"setblock {PARADO_GEN_X} {Y} {z - 1} minecraft:air")
+    cmd("kill @e[type=minecraft:item]")
+    cmd(f"setblock {PARADO_GEN_X} {Y} {z - 1} minecraft:lava")
+    cmd(f"setblock {PARADO_GEN_X} {Y} {z} {GEN}[facing=south,fluid_logged=lava]")
+    cmd(f"setblock {PARADO_CABLE_X} {Y} {z} {CABLE}[fluid_logged=lava]")
+    for x in (PARADO_GEN_X, PARADO_CABLE_X):
+        cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:{item}\",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]}}")
+
+
+def parado_linha(titulo, x, cor):
+    """Duas linhas do chat com o estado do item da célula `x`: o título na cor da célula e o `Fire` que o jogo responde ao `data get` (o item some dentro da lava, que é opaca, e quando morre
+    a resposta é "No entity was found")."""
+    sel = f"@e[type=minecraft:item,limit=1,sort=nearest,x={x + 0.5},y={Y},z={SCENE_Z + 0.5},distance=..1.8]"
+    cmd('tellraw @a {"text":"' + titulo + ' (fogo do item):","color":"' + cor + '"}')
+    cmd(f"data get entity {sel} Fire")
+
+
+def parado_cena(folder):
+    """Os prints do item parado, parados no servidor, com uma linha de chat por célula a cada tick (o item some dentro da lava, que é opaca): o gerador (amarelo) e o cabo (vermelho),
+    logo depois de postos, um tick, dois e quatro depois. Clima limpo e meio-dia; as gamerules voltam ao fim."""
+    import subprocess
+    scene_clear()
+    cmd("effect clear @s")
+    cmd("gamerule send_command_feedback true")
+    ctl("options-set", "chatVisibility", "0")
+    cmd("tick freeze")
+    parado_reset("cobblestone")
+    cmd(f"tp @s 67.5 {Y + 1.6} {SCENE_Z + 3.0} 180 24")
+    time.sleep(2.0)
+    os.makedirs(folder, exist_ok=True)
+    done = 0
+    for name, ticks in (("item_parado_0_ticks", 0), ("item_parado_1_tick", 1), ("item_parado_2_ticks", 1), ("item_parado_4_ticks", 2)):
+        if ticks:
+            cmd(f"tick step {ticks}")
+            time.sleep(0.5 + 0.05 * ticks)
+            done += ticks
+        cmd('tellraw @a {"text":"--- depois de ' + str(done) + ' ticks ---","color":"white"}')
+        parado_linha("gerador com lava", PARADO_GEN_X, "yellow")
+        parado_linha("cabo com lava", PARADO_CABLE_X, "red")
+        time.sleep(0.5)
+        ctl("screenshot", f"/tmp/{name}.png")
+        subprocess.run(["ssh", "desktop", f"docker exec {os.environ.get('H_NAME', 'horizon')} cat /tmp/{name}.png"], stdout=open(f"{folder}/{name}.png", "wb"), check=True)
+        print(f"print {name} ({done} ticks)")
+    cmd("kill @e[type=!minecraft:player]")
+    for x in (PARADO_GEN_X, PARADO_CABLE_X):
+        cmd(f"setblock {x} {Y} {SCENE_Z} minecraft:air")
+    cmd(f"setblock {PARADO_GEN_X} {Y} {SCENE_Z - 1} minecraft:air")
+    ctl("options-set", "chatVisibility", "0")
+    cmd("tellraw @a {\"text\":\"\"}")
+    restore()
+
+
 def parado_video():
-    """O roteiro do vídeo com som: o Heat Generator com lava (à esquerda) e o cabo com lava (à direita), lado a lado, e em cada um o mesmo item de pedra ou de carvão parado na célula. O
-    servidor anda em câmera lenta (`tick step 1` um atrás do outro, cerca de dois ticks por segundo): o item do cabo pega fogo no primeiro tick e morre no segundo, com o som da queima; o do
-    gerador, preso na colisão, fica na lava sem pegar fogo e sem som até a colisão o pôr para fora. Cinco rodadas, a lava reposta a cada uma. O som só sobe depois de o stream do jogo
-    estar num sink de teste, e uma thread confere a cada meio segundo (`seguro`) e manda o stream novo para o sink da gravação."""
+    """O roteiro do vídeo com som: o Heat Generator com lava (à esquerda, com uma fonte de lava ao norte) e o cabo com lava (à direita), e em cada um o mesmo item parado na célula. O servidor
+    anda em câmera lenta (um `tick step 1` por vez, com uma linha de chat do fogo e da vida de cada item depois de cada tick: a lava é opaca e o item fica escondido nela): o item do cabo
+    pega fogo no primeiro tick e morre no segundo, com o som da queima; o do gerador, preso na colisão, fica na lava com fogo 0 até ela o pôr para fora, e então, na lava do norte, pega
+    fogo. Rodadas de pedra e de carvão. O som só sobe depois de o stream do jogo estar num sink de teste, e uma thread confere a cada meio segundo (`seguro`) e manda o stream novo para o
+    sink da gravação."""
     import subprocess
     import threading
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import h2_nota_instrumento as n
 
-    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "46"), os.environ.get("ARQUIVO", "item_parado.mp4")
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "50"), os.environ.get("ARQUIVO", "item_parado.mp4")
     scene_clear()
-    cmd("gamerule send_command_feedback false")
-    gen_x, cable_x, z = 66, 69, SCENE_Z
-    ctl("options-set", "chatVisibility", "2")
-
-    def reset(item):
-        for x in (gen_x, cable_x):
-            cmd(f"setblock {x} {Y} {z} minecraft:air")
-        cmd("kill @e[type=minecraft:item]")
-        cmd(f"setblock {gen_x} {Y} {z} {GEN}[facing=south,fluid_logged=lava]")
-        cmd(f"setblock {cable_x} {Y} {z} {CABLE}[fluid_logged=lava]")
-        for x in (gen_x, cable_x):
-            cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:{item}\",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]}}")
-
+    cmd("effect clear @s")
+    cmd("gamerule send_command_feedback true")
+    ctl("options-set", "chatVisibility", "0")
     cmd("tick freeze")
-    reset("cobblestone")
-    cmd(f"tp @s 67.5 {Y + 1.7} {z + 3.2} 180 28")
+    parado_reset("cobblestone")
+    cmd(f"tp @s 67.5 {Y + 1.6} {SCENE_Z + 3.0} 180 24")
     n.mute()
     for categoria in n.SOUND_OFF:
         if categoria != "neutral":
@@ -749,14 +801,17 @@ def parado_video():
         time.sleep(3.0)
         ate[0] = time.time() + int(segundos) - 10
         inicio = time.time()
-        for rodada, item in enumerate(("cobblestone", "coal", "cobblestone", "coal", "cobblestone", "coal", "cobblestone")):
-            if time.time() - inicio > int(segundos) - 12:
+        for rodada, item in enumerate(("cobblestone", "coal", "cobblestone", "coal")):
+            if time.time() - inicio > int(segundos) - 24:
                 break
             if rodada:
-                reset(item)
+                parado_reset(item)
+            cmd('tellraw @a {"text":"--- ' + ("pedra" if item == "cobblestone" else "carvão") + ' parada na célula ---","color":"white"}')
             time.sleep(1.5)
-            for _ in range(12):
+            for tick in range(1, 13):
                 cmd("tick step 1")
+                parado_linha(f"tick {tick}  gerador", PARADO_GEN_X, "yellow")
+                parado_linha(f"tick {tick}  cabo", PARADO_CABLE_X, "red")
             time.sleep(1.0)
         out, err = rec.communicate(timeout=int(segundos) + 90)
         print(out, err, flush=True)
@@ -767,8 +822,9 @@ def parado_video():
         if rec is not None and rec.poll() is None:
             rec.wait(timeout=60)
         cmd("kill @e[type=!minecraft:player]")
-        cmd("setblock 66 150 80 minecraft:air")
-        cmd("setblock 69 150 80 minecraft:air")
+        for x in (PARADO_GEN_X, PARADO_CABLE_X):
+            cmd(f"setblock {x} {Y} {SCENE_Z} minecraft:air")
+        cmd(f"setblock {PARADO_GEN_X} {Y} {SCENE_Z - 1} minecraft:air")
         ctl("options-set", "chatVisibility", "0")
         restore()
 
@@ -794,6 +850,9 @@ def main():
         sys.exit(0 if mob() else 1)
     if what == "parado":
         sys.exit(0 if parado() else 1)
+    if what == "parado_cena":
+        parado_cena(sys.argv[2])
+        return
     if what == "parado_video":
         parado_video()
         return
