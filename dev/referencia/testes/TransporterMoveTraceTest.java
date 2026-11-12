@@ -733,6 +733,46 @@ public class TransporterMoveTraceTest {
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // Um transportador sozinho entre dois contêineres
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+    private static void lone(final DynamicTest test, String name, boolean homeFull) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(3, 1, 1);
+            layout.chest(builder, 0, 0, 0).t(builder, 1, 0, 0, tier(1), pull(Direction.WEST)).dropper(builder, 2, 0, 0);
+            return builder;
+        });
+        run(test, name, layout, 200, r -> {
+            // O destino tem um slot livre, que a pilha puxada ocupa.
+            for (int slot = 0; slot < 8; slot++) {
+                fill(r, 1, new int[]{2, 0, 0}, slot, Items.COBBLESTONE, 64);
+            }
+            fill(r, 2, new int[]{0, 0, 0}, 0, Items.DIRT, 16);
+            // Com a pilha já puxada para o único slot livre, outro item toma esse slot.
+            fill(r, 9, new int[]{2, 0, 0}, 8, Items.STONE, 64);
+            if (homeFull) {
+                // A casa também enche: a pilha passeia dentro do transportador.
+                for (int slot = 0; slot < 27; slot++) {
+                    fill(r, 9, new int[]{0, 0, 0}, slot, Items.COBBLESTONE, 64);
+                }
+            }
+        });
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_lone")
+    @TestHolder(description = "Records a stack in a lone transporter whose destination is full, so it goes back home.")
+    public static void lone(final DynamicTest test) {
+        lone(test, "lone", false);
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_lone_idle")
+    @TestHolder(description = "Records a stack in a lone transporter whose destination and home are full, so it idles.")
+    public static void loneIdle(final DynamicTest test) {
+        lone(test, "lone_idle", true);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
     // O transportador restritivo no caminho
     // -----------------------------------------------------------------------------------------------------------------------------------------------------
 

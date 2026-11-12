@@ -356,7 +356,10 @@ impl TransporterStack {
             OutputterTile::Other => true,
             OutputterTile::Transmitter { can_connect_back } => can_connect_back,
             OutputterTile::Unknown => world
-                .neighbor_transmitter_can_connect(super::pos::relative_pos(transporter_pos, side), side.opposite())
+                .neighbor_transmitter_can_connect(
+                    super::pos::relative_pos(transporter_pos, side),
+                    side.opposite(),
+                )
                 .unwrap_or(true),
         }
     }

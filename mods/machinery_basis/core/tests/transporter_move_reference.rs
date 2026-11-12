@@ -27,7 +27,8 @@ use machinery_basis_core::transporter::movement::{
 };
 use machinery_basis_core::transporter::nbt::to_snbt;
 use machinery_basis_core::transporter::node::{
-    DiversionControl, DiversionNeighbor, LogisticalTransporterBase, TransporterKind, TransporterTier,
+    DiversionControl, DiversionNeighbor, LogisticalTransporterBase, TransporterKind,
+    TransporterTier,
 };
 use machinery_basis_core::transporter::pathfinder::PathContext;
 use machinery_basis_core::transporter::stack::write_var_int;
@@ -375,8 +376,6 @@ struct Scenario {
     power: Rc<Cell<bool>>,
     /// A posição relativa de cada transportador do `setup`, na ordem dele.
     relative: Vec<[i32; 3]>,
-    /// Os contêineres do `setup`: a posição relativa e a empacotada.
-    containers: Vec<([i32; 3], i64)>,
     expected: HashMap<usize, Value>,
     statics: HashMap<(usize, i32, i64), Value>,
     expected_chests: Vec<Value>,
@@ -395,18 +394,6 @@ impl Scenario {
 
     fn abs_value(&self, rel: &Value) -> BlockPos {
         self.abs(int3(rel))
-    }
-
-    fn rel_long(&self, packed: i64) -> Value {
-        if packed == machinery_basis_core::transporter::pos::NO_POS {
-            return Value::Null;
-        }
-        let pos = machinery_basis_core::transporter::pos::block_pos_of(packed);
-        serde_json::json!([
-            pos.x - self.origin.x,
-            pos.y - self.origin.y,
-            pos.z - self.origin.z
-        ])
     }
 
     fn rel_block(&self, pos: BlockPos) -> Value {
@@ -429,7 +416,6 @@ impl Scenario {
             by_pos: HashMap::new(),
             chests: HashMap::new(),
         };
-        let mut containers = Vec::new();
         for container in setup["containers"].as_array().unwrap() {
             let rel = int3(&container["p"]);
             let pos = BlockPos::new(origin.x + rel[0], origin.y + rel[1], origin.z + rel[2]);
@@ -437,7 +423,6 @@ impl Scenario {
                 pos.as_long(),
                 VanillaContainer::new(container["size"].as_u64().unwrap() as usize, Rc::new(|| {})),
             );
-            containers.push((rel, pos.as_long()));
         }
         let mut relative = Vec::new();
         for (index, transporter) in setup["transporters"].as_array().unwrap().iter().enumerate() {
@@ -458,12 +443,8 @@ impl Scenario {
                 other => panic!("tipo {other}"),
             };
             let signal = power.clone();
-            let mut base = LogisticalTransporterBase::new(
-                pos,
-                tier,
-                kind,
-                Rc::new(move || signal.get()),
-            );
+            let mut base =
+                LogisticalTransporterBase::new(pos, tier, kind, Rc::new(move || signal.get()));
             let raw: [ConnectionType; 6] = std::array::from_fn(|side| {
                 ConnectionType::by_id(transporter["raw"][side].as_i64().unwrap() as i32)
             });
@@ -503,7 +484,13 @@ impl Scenario {
         };
         registry.on_tick(&mut host, true);
         let mut order: Vec<usize> = (0..relative.len()).collect();
-        order.sort_by_key(|index| (relative[*index][1], relative[*index][0], relative[*index][2]));
+        order.sort_by_key(|index| {
+            (
+                relative[*index][1],
+                relative[*index][0],
+                relative[*index][2],
+            )
+        });
         Scenario {
             name,
             origin,
@@ -516,7 +503,6 @@ impl Scenario {
             order,
             power,
             relative,
-            containers,
             expected: HashMap::new(),
             statics: HashMap::new(),
             expected_chests: Vec::new(),
@@ -574,7 +560,11 @@ impl Scenario {
                 let env: Rc<dyn TransporterEnv> = self.shared.clone();
                 let handler = {
                     let state = self.shared.state.borrow();
-                    TransporterItemHandler::for_side(env, &state.node(TransmitterId(index as u32)).base, side)
+                    TransporterItemHandler::for_side(
+                        env,
+                        &state.node(TransmitterId(index as u32)).base,
+                        side,
+                    )
                 };
                 let inserted = handler.map_or(-1_i64, |handler| {
                     let transaction = Transaction::open_root();
@@ -582,7 +572,11 @@ impl Scenario {
                     transaction.commit();
                     i64::from(inserted)
                 });
-                assert_eq!(inserted, row["inserted"].as_i64().unwrap(), "{who} inserido");
+                assert_eq!(
+                    inserted,
+                    row["inserted"].as_i64().unwrap(),
+                    "{who} inserido"
+                );
             }
             "power" => {
                 self.power.set(row["on"].as_bool().unwrap());
@@ -606,7 +600,10 @@ impl Scenario {
                 .map(|node| {
                     (
                         node.base.transmitter.current_transmitter_connections,
-                        node.base.transmitter.acceptor_cache.current_acceptor_connections,
+                        node.base
+                            .transmitter
+                            .acceptor_cache
+                            .current_acceptor_connections,
                     )
                 })
                 .collect()
@@ -662,7 +659,10 @@ impl Scenario {
             };
             let step = {
                 let state = self.shared.state.borrow();
-                state.node(TransmitterId(index as u32)).base.diversion_neighbor_change(None)
+                state
+                    .node(TransmitterId(index as u32))
+                    .base
+                    .diversion_neighbor_change(None)
             };
             match step {
                 DiversionNeighbor::PowerChanged | DiversionNeighbor::Refresh(_) => {
@@ -715,9 +715,9 @@ impl Scenario {
             self.expected_chests = chests.as_array().unwrap().clone();
         }
         let delays = row["dl"].as_array().unwrap();
-        for index in 0..self.relative.len() {
+        for (index, delay) in delays.iter().enumerate().take(self.relative.len()) {
             let expected = self.expected.get(&index).cloned();
-            let delay = delays[index].as_i64().unwrap();
+            let delay = delay.as_i64().unwrap();
             let pos = self.pos_long(index);
             let me = format!("{who} {:?}", self.relative[index]);
             let mut checks: Vec<String> = Vec::new();
@@ -740,7 +740,11 @@ impl Scenario {
                     expected["dc"].as_i64().unwrap(),
                     "{me} delayCount"
                 );
-                assert_eq!(i64::from(next_id), expected["nid"].as_i64().unwrap(), "{me} nextId");
+                assert_eq!(
+                    i64::from(next_id),
+                    expected["nid"].as_i64().unwrap(),
+                    "{me} nextId"
+                );
                 let rel = |packed: i64| -> Value {
                     if packed == machinery_basis_core::transporter::pos::NO_POS {
                         return Value::Null;
@@ -761,7 +765,11 @@ impl Scenario {
                 for ((id, stack), want) in stacks.iter().zip(expected_stacks) {
                     let state = stack.borrow();
                     let hash = state.identity_hash();
-                    assert_eq!(i64::from(hash), want["h"].as_i64().unwrap(), "{me} #{id} hash");
+                    assert_eq!(
+                        i64::from(hash),
+                        want["h"].as_i64().unwrap(),
+                        "{me} #{id} hash"
+                    );
                     assert_eq!(
                         i64::from(state.progress),
                         want["prog"].as_i64().unwrap(),
@@ -783,17 +791,35 @@ impl Scenario {
                         full["item"].as_str().map(str::to_owned),
                         "{tag} item"
                     );
-                    assert_eq!(i64::from(state.size()), full["n"].as_i64().unwrap(), "{tag} quantidade");
                     assert_eq!(
-                        state.color.map(|c| machinery_basis_core::side_config::ENUM_COLOR_NAMES[c as usize]),
+                        i64::from(state.size()),
+                        full["n"].as_i64().unwrap(),
+                        "{tag} quantidade"
+                    );
+                    assert_eq!(
+                        state.color.map(
+                            |c| machinery_basis_core::side_config::ENUM_COLOR_NAMES[c as usize]
+                        ),
                         full["color"].as_str(),
                         "{tag} cor"
                     );
-                    assert_eq!(state.initiated_path, full["init"].as_bool().unwrap(), "{tag} initiatedPath");
-                    assert_eq!(state.idle_dir.map(Face::name), full["idle"].as_str(), "{tag} idleDir");
+                    assert_eq!(
+                        state.initiated_path,
+                        full["init"].as_bool().unwrap(),
+                        "{tag} initiatedPath"
+                    );
+                    assert_eq!(
+                        state.idle_dir.map(Face::name),
+                        full["idle"].as_str(),
+                        "{tag} idleDir"
+                    );
                     assert_eq!(rel(state.original_location), full["orig"], "{tag} original");
                     assert_eq!(rel(state.home_location), full["home"], "{tag} casa");
-                    assert_eq!(state.path_type().serialized_name(), full["pt"].as_str().unwrap(), "{tag} pathType");
+                    assert_eq!(
+                        state.path_type().serialized_name(),
+                        full["pt"].as_str().unwrap(),
+                        "{tag} pathType"
+                    );
                     assert_eq!(
                         serde_json::Value::Array(state.path().iter().map(|p| rel(*p)).collect()),
                         full["path"],
@@ -801,7 +827,11 @@ impl Scenario {
                     );
                     assert_eq!(rel(state.get_next(pos)), full["next"], "{tag} próximo");
                     assert_eq!(rel(state.get_prev(pos)), full["prev"], "{tag} anterior");
-                    assert_eq!(state.get_side(pos).name(), full["side"].as_str().unwrap(), "{tag} lado");
+                    assert_eq!(
+                        state.get_side(pos).name(),
+                        full["side"].as_str().unwrap(),
+                        "{tag} lado"
+                    );
                     drop(state);
                     if fresh && let Some(stream) = want.get("stream") {
                         let iid = want["iid"].as_i64().unwrap() as i32;
@@ -823,7 +853,10 @@ impl Scenario {
                     .collect();
                 assert_eq!(sync, want_sync, "{me} needsSync");
                 if fresh {
-                    for (key, text) in [("nbt", base.write_items()), ("upd", base.write_reduced_updated_items())] {
+                    for (key, text) in [
+                        ("nbt", base.write_items()),
+                        ("upd", base.write_reduced_updated_items()),
+                    ] {
                         if let Some(want) = expected.get(key) {
                             checks.push(format!("{me} {key}"));
                             assert_eq!(
@@ -841,9 +874,9 @@ impl Scenario {
             let container = self.container(&expected["p"]);
             let actual: Vec<Value> = (0..container.size())
                 .filter_map(|slot| {
-                    container
-                        .resource(slot)
-                        .map(|item| serde_json::json!([slot, item.id.to_string(), container.amount(slot)]))
+                    container.resource(slot).map(|item| {
+                        serde_json::json!([slot, item.id.to_string(), container.amount(slot)])
+                    })
                 })
                 .collect();
             assert_eq!(
@@ -858,7 +891,14 @@ impl Scenario {
             .drops
             .borrow_mut()
             .drain(..)
-            .map(|drop| format!("{} {} {}", drop.item.id, drop.amount, self.rel_block(drop.pos)))
+            .map(|drop| {
+                format!(
+                    "{} {} {}",
+                    drop.item.id,
+                    drop.amount,
+                    self.rel_block(drop.pos)
+                )
+            })
             .collect();
         let mut expected: Vec<String> = row
             .get("drops")
@@ -930,7 +970,10 @@ fn run(name: &'static str) {
         scenario
             .shared
             .with_transporter(pos, &mut |base, _| base.restore_counters(delay, dc, nid));
-        assert!(entry["transit"].as_array().unwrap().is_empty(), "{name}: começa com pilhas");
+        assert!(
+            entry["transit"].as_array().unwrap().is_empty(),
+            "{name}: começa com pilhas"
+        );
     }
     if let Some(chests) = rows[1].get("chests") {
         scenario.expected_chests = chests.as_array().unwrap().clone();

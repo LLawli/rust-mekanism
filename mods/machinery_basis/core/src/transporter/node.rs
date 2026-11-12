@@ -1,14 +1,14 @@
 //! `LogisticalTransporterBase` e as três classes de transportador (`LogisticalTransporter`, `RestrictiveTransporter`,
 //! `DiversionTransporter`), no que a busca de caminho lê: a cor, o custo, o que cada lado deixa passar e o modo do desviador contra o
 //! sinal de redstone. O estado de conexão é o [`Transmitter`] da `rede-conexao`.
+use super::movement::{DroppedItems, TransitState, WorldDrop};
 use super::world::Transporter;
 use crate::item_handler::ItemHandler;
 use crate::sides::Face;
 use crate::sim::chunks::BlockPos;
+use crate::transaction::JournalCell;
 use crate::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
 use crate::transmission::transmitter::{NeighborTransmitter, Transmitter, TransmitterWorld};
-use super::movement::{DroppedItems, TransitState, WorldDrop};
-use crate::transaction::JournalCell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -280,7 +280,9 @@ impl LogisticalTransporterBase {
     /// `DiversionTransporter.onRightClick`: o próximo modo do lado.
     pub fn next_mode(&self, side: Face) -> Option<DiversionControl> {
         match &self.kind {
-            TransporterKind::Diversion { modes } => Some(modes[super::world::side_index(side)].next()),
+            TransporterKind::Diversion { modes } => {
+                Some(modes[super::world::side_index(side)].next())
+            }
             _ => None,
         }
     }
@@ -308,7 +310,11 @@ impl LogisticalTransporterBase {
     pub fn read_color(&mut self, tag: Option<&super::nbt::Nbt>) -> bool {
         let color = tag
             .and_then(super::nbt::Nbt::as_str)
-            .and_then(|name| crate::side_config::ENUM_COLOR_NAMES.iter().position(|candidate| *candidate == name))
+            .and_then(|name| {
+                crate::side_config::ENUM_COLOR_NAMES
+                    .iter()
+                    .position(|candidate| *candidate == name)
+            })
             .map(|index| index as u8);
         match &mut self.kind {
             TransporterKind::Logistical { color: current } => {

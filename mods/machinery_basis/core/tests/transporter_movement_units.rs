@@ -86,7 +86,10 @@ fn the_stream_codec_round_trips_and_a_zero_progress_arrives_as_five() {
     assert_eq!(decoded.color, Some(12));
     assert_eq!(decoded.progress, 55);
     assert_eq!(decoded.original_location, stack.original_location);
-    assert_eq!(decoded.path_type(), machinery_basis_core::transporter::Path::None);
+    assert_eq!(
+        decoded.path_type(),
+        machinery_basis_core::transporter::Path::None
+    );
 
     stack.progress = 0;
     let bytes = stack.write_stream(&|_, out| {
@@ -138,7 +141,10 @@ fn the_items_list_is_written_in_table_order_and_read_with_new_ids() {
     // O pacote de atualização leva o índice de cada pilha e a troca por inteiro.
     let update = source.write_reduced_updated_items().unwrap();
     let text = to_snbt(&update);
-    assert!(text.starts_with("[{color:\"blue\",index:0,item:{amount:5L,"), "{text}");
+    assert!(
+        text.starts_with("[{color:\"blue\",index:0,item:{amount:5L,"),
+        "{text}"
+    );
     assert!(text.contains(",index:1,"), "{text}");
     let client = logistical();
     client.entity_entering(StackRef::new(TransporterStack::new()), 0);
@@ -208,12 +214,21 @@ fn the_diversion_modes_are_saved_as_an_int_array() {
     assert_eq!(to_snbt(&written), "[I;0,0,1,0,0,2]");
     // Sem a chave todos voltam a desligados; um vetor curto muda só os primeiros.
     transporter.read_modes(None);
-    assert_eq!(to_snbt(&transporter.write_modes().unwrap()), "[I;0,0,0,0,0,0]");
+    assert_eq!(
+        to_snbt(&transporter.write_modes().unwrap()),
+        "[I;0,0,0,0,0,0]"
+    );
     transporter.read_modes(Some(&Nbt::IntArray(vec![1, 2])));
-    assert_eq!(to_snbt(&transporter.write_modes().unwrap()), "[I;1,2,0,0,0,0]");
+    assert_eq!(
+        to_snbt(&transporter.write_modes().unwrap()),
+        "[I;1,2,0,0,0,0]"
+    );
     // Um índice fora da faixa cai em desligado (`OutOfBoundsStrategy.ZERO`).
     transporter.read_modes(Some(&Nbt::IntArray(vec![9, 1, 2, 0, 0, 0])));
-    assert_eq!(to_snbt(&transporter.write_modes().unwrap()), "[I;0,1,2,0,0,0]");
+    assert_eq!(
+        to_snbt(&transporter.write_modes().unwrap()),
+        "[I;0,1,2,0,0,0]"
+    );
     assert!(logistical().write_modes().is_none());
 }
 
@@ -259,7 +274,10 @@ fn the_diversion_announces_or_hides_the_item_capability_by_the_mode() {
     let update = transporter
         .update_mode(Face::South, DiversionControl::Low)
         .unwrap();
-    assert_eq!(update.capability, Some(CapabilityChange::Hidden(Face::South)));
+    assert_eq!(
+        update.capability,
+        Some(CapabilityChange::Hidden(Face::South))
+    );
     let update = transporter
         .update_mode(Face::South, DiversionControl::Disabled)
         .unwrap();
@@ -269,8 +287,15 @@ fn the_diversion_announces_or_hides_the_item_capability_by_the_mode() {
         .unwrap();
     assert_eq!(update.capability, None);
     // O mesmo modo não muda nada.
-    assert!(transporter.update_mode(Face::South, DiversionControl::High).is_none());
-    assert_eq!(transporter.next_mode(Face::South), Some(DiversionControl::Low));
+    assert!(
+        transporter
+            .update_mode(Face::South, DiversionControl::High)
+            .is_none()
+    );
+    assert_eq!(
+        transporter.next_mode(Face::South),
+        Some(DiversionControl::Low)
+    );
     assert_eq!(DiversionControl::Low.next(), DiversionControl::Disabled);
 }
 
@@ -353,7 +378,12 @@ fn a_rolled_back_transaction_restores_the_copy_of_the_in_flight_set() {
     {
         let transaction = Transaction::open_root();
         let extra = flying(99);
-        extra.set_path(&ctx, vec![destination, start], Path::Dest, Some(&transaction));
+        extra.set_path(
+            &ctx,
+            vec![destination, start],
+            Path::Dest,
+            Some(&transaction),
+        );
         assert_eq!(order(&manager).len(), 3);
         // Sem `commit`: desfaz.
     }
@@ -425,6 +455,12 @@ fn an_upgrade_carries_the_stacks_and_the_counters_over() {
     new.parse_upgrade_transit(old.upgrade_transit());
     assert_eq!(new.counters(), (4, 2, 2));
     let ids: Vec<i32> = new.transit_stacks().iter().map(|(id, _)| *id).collect();
-    assert_eq!(ids, old.transit_stacks().iter().map(|(id, _)| *id).collect::<Vec<_>>());
+    assert_eq!(
+        ids,
+        old.transit_stacks()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>()
+    );
     assert_eq!(new.pending_sync(), old.pending_sync());
 }

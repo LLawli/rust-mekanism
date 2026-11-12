@@ -340,8 +340,11 @@ impl LogisticalTransporterBase {
                 continue;
             };
             let transaction = Transaction::open_root();
-            let request =
-                TransitRequest::any_item(&inventory, self.tier.pull_amount() as u32, Some(&transaction));
+            let request = TransitRequest::any_item(
+                &inventory,
+                self.tier.pull_amount() as u32,
+                Some(&transaction),
+            );
             if request.is_empty() {
                 continue;
             }
@@ -483,8 +486,10 @@ impl LogisticalTransporterBase {
                     stack.borrow_mut().progress = 0;
                 }
             } else if prev_progress < 50 && stack.borrow().progress >= 50 {
-                let try_recalculate = self.must_recalculate_at_half(ctx, pos, network, &stack, transaction);
-                if try_recalculate && !self.recalculate(ctx, stack_id, &stack, NO_POS, transaction) {
+                let try_recalculate =
+                    self.must_recalculate_at_half(ctx, pos, network, &stack, transaction);
+                if try_recalculate && !self.recalculate(ctx, stack_id, &stack, NO_POS, transaction)
+                {
                     deletes.insert(IntKey(stack_id));
                 }
             }
@@ -512,9 +517,7 @@ impl LogisticalTransporterBase {
                         ctx.path.world,
                         state.get_dest(),
                         state.color,
-                        state
-                            .item_type()
-                            .expect("pilha em trânsito sem item"),
+                        state.item_type().expect("pilha em trânsito sem item"),
                         state.size(),
                         side,
                         path_type.is_home(),
@@ -595,7 +598,12 @@ impl LogisticalTransporterBase {
     }
 
     /// `drop(level, stack, transaction)`: tira a pilha das em voo e a solta no mundo quando a transação da raiz commita.
-    pub fn drop_stack(&self, ctx: &MoveContext, stack: &StackRef, transaction: Option<&Transaction>) {
+    pub fn drop_stack(
+        &self,
+        ctx: &MoveContext,
+        stack: &StackRef,
+        transaction: Option<&Transaction>,
+    ) {
         if stack.borrow().is_empty() {
             // Pilhas vazias que chegam aqui por algum motivo são ignoradas.
             return;
@@ -618,7 +626,8 @@ impl LogisticalTransporterBase {
                 state.size(),
             )
         };
-        self.dropped.update_snapshots(&sub, || self.dropped.borrow().entries.len());
+        self.dropped
+            .update_snapshots(&sub, || self.dropped.borrow().entries.len());
         self.dropped.borrow_mut().entries.push_back(DropInfo {
             resource,
             amount,
@@ -725,7 +734,10 @@ impl LogisticalTransporterBase {
         transaction: Option<&Transaction>,
     ) -> u32 {
         let request = TransitRequest::simple(resource, amount);
-        let stack = StackRef::new(TransporterStack::for_insert(outputter_pos, self.get_color()));
+        let stack = StackRef::new(TransporterStack::for_insert(
+            outputter_pos,
+            self.get_color(),
+        ));
         self.insert_unchecked_with(ctx, &request, &stack, 1, transaction, |stack| {
             stack.recalculate_path(
                 ctx.path,
@@ -836,9 +848,11 @@ impl LogisticalTransporterBase {
     /// `parseUpgradeData(data, transaction)`: `transit.putAll`, `needsSync.putAll` e os contadores.
     pub fn parse_upgrade_transit(&self, data: TransitUpgrade) {
         let mut state = self.transit.borrow_mut();
-        state
-            .transit
-            .put_all(data.transit.into_iter().map(|(id, stack)| (IntKey(id), stack)));
+        state.transit.put_all(
+            data.transit
+                .into_iter()
+                .map(|(id, stack)| (IntKey(id), stack)),
+        );
         state.needs_sync.put_all(
             data.needs_sync
                 .into_iter()
@@ -1075,7 +1089,9 @@ pub fn eject(
             let color = output_color.or(transporter.get_color());
             response = transporter.insert(
                 ctx,
-                outputter.take().expect("o transportador é visitado uma vez"),
+                outputter
+                    .take()
+                    .expect("o transportador é visitado uma vez"),
                 outputter_pos,
                 request,
                 color,

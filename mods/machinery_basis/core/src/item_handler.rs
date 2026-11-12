@@ -25,7 +25,9 @@ pub trait ItemHandler {
     ) -> u32;
 
     /// O `TransporterItemHandler`, se este é o que um transportador logístico expõe (`target instanceof TransporterItemHandler`).
-    fn as_transporter_handler(&self) -> Option<&crate::transporter::movement::TransporterItemHandler> {
+    fn as_transporter_handler(
+        &self,
+    ) -> Option<&crate::transporter::movement::TransporterItemHandler> {
         None
     }
 
