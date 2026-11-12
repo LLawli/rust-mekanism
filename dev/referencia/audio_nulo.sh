@@ -10,10 +10,11 @@
 #   audio_nulo.sh verificar CONTAINER      imprime `ok N` se há ao menos um stream do CONTAINER e todos os links de saída dele vão só para o sink nulo; senão `ruim ...` e sai com 1
 #   audio_nulo.sh info CONTAINER           imprime as propriedades dos streams do CONTAINER (aplicação, taxa, formato, latência, destino) e as do sink nulo: a configuração de áudio de cada jogo
 #   audio_nulo.sh gravar ARQUIVO.wav [PID] grava o sink nulo até receber SIGINT/SIGTERM (o pid do gravador vai para o arquivo PID, se dado)
-#   audio_nulo.sh remover                  apaga o sink nulo
+#   audio_nulo.sh remover                  apaga o sink nulo (só um sink próprio: nunca o `som_nulo` compartilhado, que outra frente pode estar usando)
+# AUDIO_SINK=<nome> troca o sink (padrão `som_nulo`): o `gravar-jogo rec` usa um sink próprio por gravação, para o som de um jogo não se misturar com o de outro.
 set -u
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
-SINK=som_nulo
+SINK=${AUDIO_SINK:-som_nulo}
 criar() {
   pw-cli ls Node 2>/dev/null | grep -q "node.name = \"$SINK\"" && return
   pw-cli create-node adapter "{ factory.name=support.null-audio-sink node.name=$SINK media.class=Audio/Sink object.linger=true audio.position=[FL FR] }" >/dev/null
