@@ -379,6 +379,7 @@ PARADO_TICKS = 12
 REPEATS = 6
 # A colisão de cada alvo (caixas `[x0, y0, z0, x1, y1, z1]` da célula): a laje de baixo do Heat Generator (as outras caixas só aumentam o `noPhysics`, e a laje basta para saber que o item
 # está preso), o núcleo do cabo e o cacto.
+FLOOR = [[-8.0, -1.0, -8.0, 9.0, 0.0, 9.0]]  # o andar de pedra em y = 149 (a célula fica em y = 150): um item preso que cai pelo vão sem fluido entra nele
 COLLISION = {GEN: [[0.0, 0.0, 0.0, 1.0, 0.375, 1.0]], CABLE: [[0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875]], "minecraft:cactus": [[0.0625, 0.0, 0.0625, 0.9375, 0.9375, 0.9375]]}
 
 
@@ -396,14 +397,48 @@ def parado_cases():
     # O controle de saída: com uma fonte de lava de verdade no vão ao norte do gerador (para onde o item preso é empurrado), o item que sai da colisão cai na lava e pega fogo.
     for repeat in range(REPEATS):
         out.append((f"heat_generator_pool_stone#{repeat}", GEN, "empty", "stone", 0))
-    return out
+    only = [name for name in os.environ.get("PARADO_SO", "").split(",") if name]  # `PARADO_SO=a,b`: só os casos cujo nome começa por um deles (a mutação em jogo)
+    return [case for case in out if not only or any(case[0].startswith(name) for name in only)]
 
 
 def stuck(block, rel, half=0.125, height=0.25):
     """Se a caixa do item (pé em `rel`, relativo à célula) está dentro de alguma colisão do bloco: o `noPhysics` do tick que começa ali (`noCollision(box.deflate(1.0E-7))`)."""
     e = 1.0e-7
     lo, hi = (rel[0] - half + e, rel[1] + e, rel[2] - half + e), (rel[0] + half - e, rel[1] + height - e, rel[2] + half - e)
-    return any(lo[0] < b[3] and hi[0] > b[0] and lo[1] < b[4] and hi[1] > b[1] and lo[2] < b[5] and hi[2] > b[2] for b in COLLISION[block])
+    return any(lo[0] < b[3] and hi[0] > b[0] and lo[1] < b[4] and hi[1] > b[1] and lo[2] < b[5] and hi[2] > b[2] for b in COLLISION[block] + FLOOR)
+
+
+def run_parado(spots, log):
+    """A montagem e os ticks de `parado`: um tick por vez com o servidor parado, a posição, o fogo e a vida de cada item a cada tick, em `log`."""
+    sky()
+    cmd("tick unfreeze")
+    for z in (Z0 + 8, Z0 + 16, Z0 + 24):
+        cmd(f"fill {X0} {Y} {z} {X0 + 60} {Y + 8} {z + 6} minecraft:air")
+    cmd(f"fill {X0} {Y - 1} {Z0 + 8} {X0 + 60} {Y - 1} {Z0 + 32} minecraft:stone")
+    time.sleep(3)
+    cmd("tick freeze")
+    time.sleep(0.5)
+    for name, block, fluid, item, fire, x, z in spots:
+        if block == "minecraft:cactus":
+            cmd(f"setblock {x} {Y - 1} {z} minecraft:sand")
+            cmd(f"setblock {x} {Y} {z} minecraft:cactus")
+        else:
+            cmd(f"setblock {x} {Y} {z} {block}[fluid_logged={fluid}]")
+        if "_pool_" in name:
+            cmd(f"setblock {x} {Y} {z - 1} minecraft:lava")
+    time.sleep(0.5)
+    for name, block, fluid, item, fire, x, z in spots:
+        nbt = f'Item:{{id:"minecraft:{item}",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]' + (f",Fire:{fire}s" if fire else "")
+        cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{{nbt}}}")
+    time.sleep(0.5)
+    for tick in range(1, PARADO_TICKS + 1):
+        cmd("tick step 1")
+        time.sleep(0.4)
+        for name, block, fluid, item, fire, x, z in spots:
+            sel = f"@e[type=minecraft:item,limit=1,x={x + 0.5},y={Y},z={z + 0.5},distance=..3]"
+            pos = read_pos(sel)
+            log[(name, tick)] = {"alive": pos is not None, "pos": pos, "fire": read_number(sel, "Fire") if pos else None, "health": read_number(sel, "Health") if pos else None}
+    cmd("tick unfreeze")
 
 
 def parado():
@@ -412,38 +447,13 @@ def parado():
     a água não apaga o que já queimava, o cacto não o fere, e o fogo só desce 1 por tick; no tick em que a caixa sai da colisão a lava o acende (fogo 300), e o do cabo, que nunca fica
     preso, queima no primeiro tick e morre no segundo."""
     cases = parado_cases()
-    sky()
-    cmd("tick unfreeze")
-    for z in (Z0 + 8, Z0 + 16):
-        cmd(f"fill {X0} {Y} {z} {X0 + 60} {Y + 8} {z + 6} minecraft:air")
-    cmd(f"fill {X0} {Y - 1} {Z0 + 8} {X0 + 60} {Y - 1} {Z0 + 22} minecraft:stone")
-    time.sleep(3)
-    cmd("tick freeze")
-    time.sleep(0.5)
-    spots = []
-    for index, (name, block, fluid, item, fire) in enumerate(cases):
-        x, z = X0 + 4 + 5 * (index % 11), Z0 + 10 + 8 * (index // 11)
-        if block == "minecraft:cactus":
-            cmd(f"setblock {x} {Y - 1} {z} minecraft:sand")
-            cmd(f"setblock {x} {Y} {z} minecraft:cactus")
-        else:
-            cmd(f"setblock {x} {Y} {z} {block}[fluid_logged={fluid}]")
-        if "_pool_" in name:
-            cmd(f"setblock {x} {Y} {z - 1} minecraft:lava")
-        spots.append((name, block, fluid, item, fire, x, z))
-    time.sleep(0.5)
-    for name, block, fluid, item, fire, x, z in spots:
-        nbt = f'Item:{{id:"minecraft:{item}",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]' + (f",Fire:{fire}s" if fire else "")
-        cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{{nbt}}}")
-    time.sleep(0.5)
+    reuse = os.environ.get("PARADO_REUSE")  # um log salvo de uma rodada: confere de novo sem abrir o jogo
+    spots = [(name, block, fluid, item, fire, X0 + 4 + 5 * (index % 11), Z0 + 10 + 8 * (index // 11)) for index, (name, block, fluid, item, fire) in enumerate(cases)]
     log = {}
-    for tick in range(1, PARADO_TICKS + 1):
-        cmd("tick step 1")
-        time.sleep(0.4)
-        for name, block, fluid, item, fire, x, z in spots:
-            sel = f"@e[type=minecraft:item,limit=1,x={x + 0.5},y={Y},z={z + 0.5},distance=..3]"
-            pos = read_pos(sel)
-            log[(name, tick)] = {"alive": pos is not None, "pos": pos, "fire": read_number(sel, "Fire") if pos else None, "health": read_number(sel, "Health") if pos else None}
+    if reuse:
+        log = {(key.rsplit("/", 1)[0], int(key.rsplit("/", 1)[1])): value for key, value in json.load(open(reuse)).items()}
+    else:
+        run_parado(spots, log)
     cmd("tick unfreeze")
     ok = True
     summary = []
@@ -498,8 +508,9 @@ def parado():
     print(f"itens que saíram da colisão para a lava do vão: {exits}")
     ok &= check("saídas para a lava conferidas", exits >= 1, True)
     json.dump({f"{a}/{b}": v for (a, b), v in log.items()}, open(os.environ.get("MOB_LOG", "/tmp/fluido_item_parado.json"), "w"))
-    cmd("kill @e[type=!minecraft:player]")
-    restore()
+    if not reuse:
+        cmd("kill @e[type=!minecraft:player]")
+        restore()
     return ok
 
 
@@ -672,6 +683,96 @@ def mob_video():
         restore()
 
 
+def parado_video():
+    """O roteiro do vídeo com som: o Heat Generator com lava (à esquerda) e o cabo com lava (à direita), lado a lado, e em cada um o mesmo item de pedra ou de carvão parado na célula. O
+    servidor anda em câmera lenta (`tick step 1` um atrás do outro, cerca de dois ticks por segundo): o item do cabo pega fogo no primeiro tick e morre no segundo, com o som da queima; o do
+    gerador, preso na colisão, fica na lava sem pegar fogo e sem som até a colisão o pôr para fora. Cinco rodadas, a lava reposta a cada uma. O som só sobe depois de o stream do jogo
+    estar num sink de teste, e uma thread confere a cada meio segundo (`seguro`) e manda o stream novo para o sink da gravação."""
+    import subprocess
+    import threading
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import h2_nota_instrumento as n
+
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "46"), os.environ.get("ARQUIVO", "item_parado.mp4")
+    scene_clear()
+    cmd("gamerule send_command_feedback false")
+    gen_x, cable_x, z = 66, 69, SCENE_Z
+    ctl("options-set", "chatVisibility", "2")
+
+    def reset(item):
+        for x in (gen_x, cable_x):
+            cmd(f"setblock {x} {Y} {z} minecraft:air")
+        cmd("kill @e[type=minecraft:item]")
+        cmd(f"setblock {gen_x} {Y} {z} {GEN}[facing=south,fluid_logged=lava]")
+        cmd(f"setblock {cable_x} {Y} {z} {CABLE}[fluid_logged=lava]")
+        for x in (gen_x, cable_x):
+            cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:{item}\",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]}}")
+
+    cmd("tick freeze")
+    reset("cobblestone")
+    cmd(f"tp @s 67.5 {Y + 1.7} {z + 3.2} 180 28")
+    n.mute()
+    for categoria in n.SOUND_OFF:
+        if categoria != "neutral":
+            ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "neutral", "player", "hostile"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 10
+        inicio = time.time()
+        for rodada, item in enumerate(("cobblestone", "coal", "cobblestone", "coal", "cobblestone", "coal", "cobblestone")):
+            if time.time() - inicio > int(segundos) - 12:
+                break
+            if rodada:
+                reset(item)
+            time.sleep(1.5)
+            for _ in range(12):
+                cmd("tick step 1")
+            time.sleep(1.0)
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        cmd("kill @e[type=!minecraft:player]")
+        cmd("setblock 66 150 80 minecraft:air")
+        cmd("setblock 69 150 80 minecraft:air")
+        ctl("options-set", "chatVisibility", "0")
+        restore()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "flow"
     if what == "flow":
@@ -693,6 +794,9 @@ def main():
         sys.exit(0 if mob() else 1)
     if what == "parado":
         sys.exit(0 if parado() else 1)
+    if what == "parado_video":
+        parado_video()
+        return
     print("uso:", __doc__)
 
 
