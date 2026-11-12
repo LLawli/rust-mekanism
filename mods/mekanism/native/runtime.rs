@@ -3958,6 +3958,120 @@ pub fn effects_config(loaded: &ClientLoaded) -> EffectsConfig {
     }
 }
 
+/// `BlockEnergyCube.getShape` (a seleção e a colisão: o cubo não sobrescreve `getCollisionShape`) do cubo posto, com o tile (`bounds[getIndex(...)]`): o quadro, com os LEDs, e a
+/// placa (o conector e a porta) de cada lado absoluto habilitado. Com o `facing` leste ou oeste o quadro e as placas de cima e de baixo giram 90 graus em Y; com o `facing` para
+/// cima ou para baixo, o quadro e as placas da esquerda e da direita giram 270 graus em X (`Shapes.rotate` com `BLOCK_ROT_Y_90` e `BLOCK_ROT_X_270`). As caixas saem em unidades de
+/// bloco e não são fundidas como o `VoxelShape.toAabbs` do original: o conjunto de pontos é o mesmo.
+pub mod cube_shape {
+    use machinery_basis_core::side_config::RelativeSide;
+    use machinery_basis_core::sides::Face;
+
+    type Box16 = [f64; 6];
+
+    const FRAME: [Box16; 24] = [
+        [0.0, 0.0, 0.0, 3.0, 3.0, 16.0],
+        [0.0, 3.0, 0.0, 3.0, 16.0, 3.0],
+        [0.0, 3.0, 13.0, 3.0, 16.0, 16.0],
+        [0.0, 13.0, 3.0, 3.0, 16.0, 13.0],
+        [3.0, 0.0, 0.0, 16.0, 3.0, 3.0],
+        [3.0, 0.0, 13.0, 16.0, 3.0, 16.0],
+        [3.0, 13.0, 0.0, 16.0, 16.0, 3.0],
+        [3.0, 13.0, 13.0, 16.0, 16.0, 16.0],
+        [13.0, 0.0, 3.0, 16.0, 3.0, 13.0],
+        [13.0, 3.0, 0.0, 16.0, 13.0, 3.0],
+        [13.0, 3.0, 13.0, 16.0, 13.0, 16.0],
+        [13.0, 13.0, 3.0, 16.0, 16.0, 13.0],
+        [12.5, 15.0, 7.5, 13.5, 15.9, 8.5],
+        [2.5, 15.0, 7.5, 3.5, 15.9, 8.5],
+        [12.5, 7.5, 0.1, 13.5, 8.5, 1.0],
+        [2.5, 7.5, 0.1, 3.5, 8.5, 1.0],
+        [2.5, 0.1, 7.5, 3.5, 1.0, 8.5],
+        [12.5, 0.1, 7.5, 13.5, 1.0, 8.5],
+        [12.5, 7.5, 15.0, 13.5, 8.5, 15.9],
+        [2.5, 7.5, 15.0, 3.5, 8.5, 15.9],
+        [0.1, 7.5, 2.5, 1.0, 8.5, 3.5],
+        [0.1, 7.5, 12.5, 1.0, 8.5, 13.5],
+        [15.0, 7.5, 2.5, 15.9, 8.5, 3.5],
+        [15.0, 7.5, 12.5, 15.9, 8.5, 13.5],
+    ];
+    const FRONT: [Box16; 2] = [
+        [3.0, 5.0, 14.0, 13.0, 11.0, 15.0],
+        [4.0, 4.0, 15.0, 12.0, 12.0, 16.0],
+    ];
+    const RIGHT: [Box16; 2] = [
+        [1.0, 5.0, 3.0, 2.0, 11.0, 13.0],
+        [0.0, 4.0, 4.0, 1.0, 12.0, 12.0],
+    ];
+    const LEFT: [Box16; 2] = [
+        [14.0, 5.0, 3.0, 15.0, 11.0, 13.0],
+        [15.0, 4.0, 4.0, 16.0, 12.0, 12.0],
+    ];
+    const BACK: [Box16; 2] = [
+        [3.0, 5.0, 1.0, 13.0, 11.0, 2.0],
+        [4.0, 4.0, 0.0, 12.0, 12.0, 1.0],
+    ];
+    const TOP: [Box16; 2] = [
+        [3.0, 14.0, 5.0, 13.0, 15.0, 11.0],
+        [4.0, 15.0, 4.0, 12.0, 16.0, 12.0],
+    ];
+    const BOTTOM: [Box16; 2] = [
+        [3.0, 1.0, 5.0, 13.0, 2.0, 11.0],
+        [4.0, 0.0, 4.0, 12.0, 1.0, 12.0],
+    ];
+
+    /// `BLOCK_ROT_Y_90`: o norte vai para o leste, `(x, z) -> (16 - z, x)`.
+    fn rotate_y90(b: Box16) -> Box16 {
+        [16.0 - b[5], b[1], b[0], 16.0 - b[2], b[4], b[3]]
+    }
+
+    /// `BLOCK_ROT_X_270`: o norte vai para cima, `(y, z) -> (16 - z, y)`.
+    fn rotate_x270(b: Box16) -> Box16 {
+        [b[0], 16.0 - b[5], b[1], b[3], 16.0 - b[2], b[4]]
+    }
+
+    /// As caixas, em unidades de bloco, do cubo virado para `facing` com os lados absolutos `enabled` (cima, baixo, sul, norte, leste, oeste: a ordem do `getIndex`).
+    pub fn boxes(facing: Face, enabled: [bool; 6]) -> Vec<[f64; 6]> {
+        let rotate_vertical = matches!(facing, Face::East | Face::West);
+        let rotate_horizontal = matches!(facing, Face::Up | Face::Down);
+        let turn = |boxes: &[Box16], rotate: Option<fn(Box16) -> Box16>| -> Vec<Box16> {
+            boxes.iter().map(|b| rotate.map_or(*b, |f| f(*b))).collect()
+        };
+        let y = rotate_vertical.then_some(rotate_y90 as fn(Box16) -> Box16);
+        let x = rotate_horizontal.then_some(rotate_x270 as fn(Box16) -> Box16);
+        let mut out = turn(&FRAME, y.or(x));
+        let [top, bottom, front, back, left, right] = enabled;
+        for (on, panel, rotate) in [
+            (top, &TOP, y),
+            (bottom, &BOTTOM, y),
+            (front, &FRONT, None),
+            (back, &BACK, None),
+            (left, &LEFT, x),
+            (right, &RIGHT, x),
+        ] {
+            if on {
+                out.extend(turn(panel, rotate));
+            }
+        }
+        out.into_iter().map(|b| b.map(|v| v / 16.0)).collect()
+    }
+
+    /// `isSideEnabled` de cada lado absoluto, na ordem de `boxes`: o lado relativo ao `facing` tem de estar habilitado (`slotInfo.isEnabled()`).
+    pub fn absolute_enabled(
+        facing: Face,
+        relative_enabled: impl Fn(RelativeSide) -> bool,
+    ) -> [bool; 6] {
+        [
+            Face::Up,
+            Face::Down,
+            Face::South,
+            Face::North,
+            Face::East,
+            Face::West,
+        ]
+        .map(|side| relative_enabled(RelativeSide::from_directions(facing, side)))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

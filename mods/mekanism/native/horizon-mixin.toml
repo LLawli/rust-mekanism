@@ -828,3 +828,17 @@ bindings = [
   { name = "entity", ty = "&horizon_client::containers::ModBlockEntity", value = "entity" },
   { name = "tag", ty = "&mut Option<horizon_world::nbt::Compound>", value = "&mut *tag" },
 ]
+
+# A forma de seleção do cubo de energia por instância (`BlockEnergyCube.getShape`: o quadro e as placas dos lados habilitados, girados pelo `facing`). O Horizon tem uma forma
+# por estado de bloco (as seis placas sempre), e `outline_boxes` é onde o contorno e o raio de seleção a leem: o HEAD cancelável devolve as caixas do cubo posto. A colisão
+# fica com a forma por estado (H92). Alvo cru, H92.
+[[injection]]
+id = "outline_boxes"
+target = "horizon_client::game::Game<'_>::outline_boxes"
+kind = "HEAD"
+cancellable = true
+helper = "outline_boxes.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]

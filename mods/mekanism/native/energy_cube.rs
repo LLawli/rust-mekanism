@@ -737,6 +737,27 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEn
     }
 }
 
+/// `BlockEnergyCube.getShape` do cubo posto (`outline_boxes`): o quadro e as placas dos lados habilitados, o `facing` e os lados que o tile mandou (`CubeSideState` diferente
+/// de `INACTIVE` é o `slotInfo.isEnabled()` do original). Sem o tile (o cliente ainda não recebeu a cópia), `getShape` cai no índice "norte, tudo habilitado". A colisão
+/// segue o modelo estático do bloco (as seis placas): o Horizon só tem a forma de colisão por estado (H92).
+pub(in crate::game) fn outline_boxes(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    let block = game.native_block(pos);
+    tier_of(&block)?;
+    let (facing, enabled) = match crate::game::machinery_tile_sound::tile_view(game.native_dimension(), pos) {
+        Some((_, sides)) => {
+            let facing = basis::front(game, pos);
+            let enabled = rules::cube_shape::absolute_enabled(facing, |side| {
+                let index = machinery_basis_core::side_config::RelativeSide::VALUES.iter().position(|s| *s == side).unwrap_or(0);
+                sides[index] != CubeSideState::Inactive as u8
+            });
+            (facing, enabled)
+        }
+        None => (Face::North, [true; 6]),
+    };
+    let origin = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
+    Some(rules::cube_shape::boxes(facing, enabled).into_iter().map(|b| std::array::from_fn(|i| origin[i % 3] + b[i])).collect())
+}
+
 /// O cliente só tem a block entity do cubo, e então a desenha, se o servidor mandar uma cópia.
 pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<horizon_world::nbt::Compound>) {
     if is_cube(&entity.id) {
