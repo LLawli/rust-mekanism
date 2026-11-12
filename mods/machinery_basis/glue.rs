@@ -3394,7 +3394,14 @@ fn acceptors_refresh(game: &Game<'_>, dimension: &'static str, around: Option<[i
             {
                 continue;
             }
-            acceptor.snapshot.set(snapshot_of(game, dimension, *pos, acceptor.side).unwrap_or_default());
+            let snapshot = snapshot_of(game, dimension, *pos, acceptor.side).unwrap_or_default();
+            if TRANSMITTER_PROBE && around.is_none() {
+                eprintln!(
+                    "MBA {{\"p\":[{},{},{}],\"amount\":{},\"cap\":{},\"maxin\":{},\"ins\":{}}}",
+                    pos[0], pos[1], pos[2], snapshot.amount, snapshot.capacity, snapshot.max_insert, snapshot.can_insert
+                );
+            }
+            acceptor.snapshot.set(snapshot);
         }
     });
 }
@@ -3592,6 +3599,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         }
     };
     let post = matches!(event, CableEvent::ServerTickPost { .. });
+    let runs_normally = matches!(event, CableEvent::ServerTickPost { runs_normally: true });
     let removed = if let CableEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
     // `onChunkUnloaded` toma a parte do cabo e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
     let unloaded = if let CableEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
@@ -3656,7 +3664,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
                     ))
                 })
                 .collect();
-            eprintln!("MBE {{\"t\":{},\"nets\":[{}]}}", TRANSMITTER_PASS.load(Ordering::Relaxed), nets.join(","));
+            eprintln!("MBE {{\"t\":{},\"runs\":{},\"nets\":[{}]}}", TRANSMITTER_PASS.load(Ordering::Relaxed), runs_normally, nets.join(","));
         }
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });

@@ -1,8 +1,8 @@
-//! Redes de transmissores. Não existe objeto de rede: quem tem algo a entregar percorre as ligações
-//! a partir de si, e a divisão é a do `SplitInfo` do Mekanism.
+//! As faces de energia que um bloco declara (`data/<ns>/machinery_basis/energy/<bloco>.json`): por onde a energia entra e sai de uma máquina ou de um gerador que a lib não conhece.
+//! A rede de transmissores (o cabo) é `transmission`: o cabo não se declara aqui.
 use crate::sides::{Face, Sides};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 /// A pasta que declara quais blocos entram na rede de energia, dentro de `data/<ns>/`. O arquivo
@@ -39,7 +39,6 @@ fn parse_sides(json: Option<&Value>) -> [bool; 6] {
 /// a capability de energia do Mekanism, que responde por lado.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct EnergyBlock {
-    transmitter: bool,
     /// Por onde a energia entra, na ordem de `SIDE_NAMES`.
     inputs: [bool; 6],
     /// Por onde a energia sai, na ordem de `SIDE_NAMES`.
@@ -47,10 +46,9 @@ struct EnergyBlock {
 }
 
 impl EnergyBlock {
-    /// `{"transmitter": true}`, ou `{"inputs": "all"}`, `{"outputs": ["front"]}` e combinações.
+    /// `{"inputs": "all"}`, `{"outputs": ["front"]}` e combinações.
     fn parse(json: &Value) -> Self {
         Self {
-            transmitter: json.get("transmitter").and_then(Value::as_bool) == Some(true),
             inputs: parse_sides(json.get("inputs")),
             outputs: parse_sides(json.get("outputs")),
         }
@@ -83,12 +81,6 @@ impl EnergyBlocks {
         }
     }
 
-    pub fn is_transmitter(&self, block: &str) -> bool {
-        self.blocks
-            .get(block)
-            .is_some_and(|block| block.transmitter)
-    }
-
     /// As faces de energia de `block`, que tem a frente em `front`. Um bloco que não se declarou
     /// não tem nenhuma.
     pub fn sides(&self, block: &str, front: Face) -> Sides {
@@ -96,18 +88,17 @@ impl EnergyBlocks {
         declared.map_or_else(Sides::default, |block| block.sides(front))
     }
 
-    /// Se um transmissor se liga à face `face` de `block`: há ligação onde há troca de energia,
-    /// em qualquer sentido.
+    /// Se um bloco troca energia pela face `face`, em qualquer sentido.
     pub fn joins(&self, block: &str, front: Face, face: Face) -> bool {
         let sides = self.sides(block, front);
-        self.is_transmitter(block) || sides.accepts_input(face) || sides.gives_output(face)
+        sides.accepts_input(face) || sides.gives_output(face)
     }
 
     /// Se dá para entregar energia pela face `face` de `block`. Quem não se declarou fica com a
     /// regra do Horizon, porque pode ser de um mod que não conhece a lib.
     pub fn receives(&self, block: &str, front: Face, face: Face) -> bool {
         match self.blocks.get(block) {
-            Some(declared) => declared.transmitter || declared.sides(front).accepts_input(face),
+            Some(declared) => declared.sides(front).accepts_input(face),
             None => true,
         }
     }
@@ -127,76 +118,13 @@ pub fn current() -> Arc<EnergyBlocks> {
     current.clone().unwrap_or_default()
 }
 
-/// O que uma ligação alcança.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Link {
-    Transmitter,
-    Acceptor,
-}
-
-/// Quem a rede alcança a partir de `start`: a posição de cada consumidor e a face dele que a rede
-/// toca. Um consumidor tocado por dois transmissores aparece duas vezes, como no original.
-pub fn acceptors(
-    start: [i32; 3],
-    mut links: impl FnMut([i32; 3]) -> [Option<Link>; 6],
-) -> Vec<([i32; 3], Face)> {
-    let mut found = Vec::new();
-    let mut seen = HashSet::from([start]);
-    let mut queue = VecDeque::from([start]);
-    while let Some(pos) = queue.pop_front() {
-        let around = links(pos);
-        for face in Face::ALL {
-            let [x, y, z] = face.offset();
-            let next = [pos[0] + x, pos[1] + y, pos[2] + z];
-            match around[face as usize] {
-                Some(Link::Acceptor) => found.push((next, face.opposite())),
-                Some(Link::Transmitter) if seen.insert(next) => queue.push_back(next),
-                _ => {}
-            }
-        }
-    }
-    found
-}
-
-/// Divide `amount` entre quem pede `wanted`. Quem pede menos que a parte igual leva o que pediu, e
-/// o que sobra volta para os outros. O resto da divisão vai aos primeiros, um para cada.
-pub fn split_fairly(amount: i32, wanted: &[i32]) -> Vec<i32> {
-    let mut shares = vec![0; wanted.len()];
-    let mut open: Vec<usize> = (0..wanted.len()).filter(|&i| wanted[i] > 0).collect();
-    let mut left = amount;
-    loop {
-        let Some(count) = i32::try_from(open.len()).ok().filter(|&count| count > 0) else {
-            return shares;
-        };
-        let share = left / count;
-        let (small, big): (Vec<usize>, Vec<usize>) =
-            open.iter().partition(|&&i| wanted[i] <= share);
-        if small.is_empty() {
-            let mut extra = left % count;
-            for i in big {
-                let bonus = i32::from(extra > 0 && wanted[i] > share);
-                shares[i] = share + bonus;
-                extra -= bonus;
-            }
-            return shares;
-        }
-        for i in small {
-            shares[i] = wanted[i];
-            left -= wanted[i];
-        }
-        open = big;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::collections::HashMap;
 
     fn blocks() -> EnergyBlocks {
         EnergyBlocks::load(&[
-            ("a:cabo".to_owned(), json!({"transmitter": true})),
             ("a:gerador".to_owned(), json!({"outputs": ["front"]})),
             ("a:maquina".to_owned(), json!({"inputs": "all"})),
             (
@@ -260,15 +188,6 @@ mod tests {
     }
 
     #[test]
-    fn a_transmitter_joins_and_receives_by_every_face() {
-        let blocks = blocks();
-        assert!(blocks.is_transmitter("a:cabo"));
-        assert!(!blocks.is_transmitter("a:maquina"));
-        assert!(blocks.joins("a:cabo", Face::North, Face::Down));
-        assert!(blocks.receives("a:cabo", Face::North, Face::Down));
-    }
-
-    #[test]
     fn a_block_nobody_declared_does_not_join_but_keeps_the_game_rule() {
         assert!(!blocks().joins("a:pedra", Face::North, Face::North));
         assert!(blocks().receives("a:outro_mod", Face::North, Face::North));
@@ -281,113 +200,5 @@ mod tests {
         assert!(blocks.joins("a:x", Face::East, Face::East.left_of()));
         assert!(blocks.joins("a:x", Face::East, Face::Up));
         assert!(!blocks.joins("a:x", Face::East, Face::Down));
-    }
-
-    /// Uma rede de teste: cada posição com o que tem em cada face.
-    fn walk(start: [i32; 3], map: &HashMap<[i32; 3], [Option<Link>; 6]>) -> Vec<([i32; 3], Face)> {
-        acceptors(start, |pos| map.get(&pos).copied().unwrap_or([None; 6]))
-    }
-
-    fn cable(links: &[(Face, Link)]) -> [Option<Link>; 6] {
-        let mut around = [None; 6];
-        for &(face, link) in links {
-            around[face as usize] = Some(link);
-        }
-        around
-    }
-
-    #[test]
-    fn a_line_reaches_the_machine_at_its_end() {
-        let map = HashMap::from([
-            ([0, 0, 0], cable(&[(Face::East, Link::Transmitter)])),
-            (
-                [1, 0, 0],
-                cable(&[
-                    (Face::East, Link::Transmitter),
-                    (Face::West, Link::Transmitter),
-                ]),
-            ),
-            (
-                [2, 0, 0],
-                cable(&[
-                    (Face::West, Link::Transmitter),
-                    (Face::East, Link::Acceptor),
-                ]),
-            ),
-        ]);
-        assert_eq!(walk([0, 0, 0], &map), [([3, 0, 0], Face::West)]);
-    }
-
-    #[test]
-    fn a_loop_ends() {
-        let round = cable(&[
-            (Face::East, Link::Transmitter),
-            (Face::West, Link::Transmitter),
-        ]);
-        let map = HashMap::from([([0, 0, 0], round), ([1, 0, 0], round), ([-1, 0, 0], round)]);
-        assert!(walk([0, 0, 0], &map).len() < 10);
-    }
-
-    #[test]
-    fn a_machine_touched_twice_counts_twice() {
-        let map = HashMap::from([
-            (
-                [0, 0, 0],
-                cable(&[(Face::Up, Link::Acceptor), (Face::East, Link::Transmitter)]),
-            ),
-            (
-                [1, 0, 0],
-                cable(&[(Face::West, Link::Transmitter), (Face::Up, Link::Acceptor)]),
-            ),
-        ]);
-        assert_eq!(walk([0, 0, 0], &map).len(), 2);
-    }
-
-    #[test]
-    fn nothing_connected_is_nobody() {
-        assert!(walk([0, 0, 0], &HashMap::new()).is_empty());
-    }
-
-    #[test]
-    fn splits_evenly() {
-        assert_eq!(split_fairly(90, &[100, 100, 100]), [30, 30, 30]);
-    }
-
-    #[test]
-    fn a_small_need_gives_the_rest_back() {
-        assert_eq!(split_fairly(90, &[10, 100, 100]), [10, 40, 40]);
-    }
-
-    #[test]
-    fn the_remainder_goes_to_the_first_ones() {
-        assert_eq!(split_fairly(11, &[100, 100, 100]), [4, 4, 3]);
-    }
-
-    #[test]
-    fn the_remainder_skips_who_has_enough() {
-        assert_eq!(split_fairly(10, &[3, 100, 100]), [3, 4, 3]);
-    }
-
-    #[test]
-    fn nobody_gets_more_than_it_asked() {
-        assert_eq!(split_fairly(1_000, &[5, 7]), [5, 7]);
-        assert_eq!(split_fairly(10, &[0, 0]), [0, 0]);
-        assert_eq!(split_fairly(0, &[5]), [0]);
-    }
-
-    #[test]
-    fn nothing_is_lost_or_created() {
-        for amount in 0..60 {
-            let wanted = [7, 0, 13, 2, 40];
-            let shares = split_fairly(amount, &wanted);
-            let sent: i32 = shares.iter().sum();
-            assert_eq!(sent, amount.min(wanted.iter().sum()), "{amount}");
-            assert!(
-                shares
-                    .iter()
-                    .zip(wanted)
-                    .all(|(&share, want)| share <= want)
-            );
-        }
     }
 }
