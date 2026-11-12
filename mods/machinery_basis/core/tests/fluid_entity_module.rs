@@ -96,3 +96,12 @@ fn the_mob_eye_flag_names_one_mob() {
     machinery_water_like::set_mob_eye(7, false);
     assert!(!machinery_water_like::mob_eye(7));
 }
+
+#[test]
+fn the_eye_on_the_surface_counts_as_inside() {
+    // `EntityFluidInteraction`: os olhos valem dentro do fluido até o topo da célula, inclusive (`eyeY <= y + altura`).
+    let top = 6.0 + machinery_water_like::height(0, false);
+    let box_at = |eye: f64| contact([2.2, 5.0, 2.2], [2.8, 6.8, 2.8], eye, &column(3, 6), NONE);
+    assert!(box_at(top).eye);
+    assert!(!box_at(top + 1e-9).eye);
+}
