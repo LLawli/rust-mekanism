@@ -162,7 +162,8 @@ def ausentes_do_caso(c, visivel=None):
         # O Heat Generator não tem a aba de xp: não está nos elementos dele, e o log também não a lista.
         return ausentes
     ausentes = [] if cena_telas.xp_visivel(c) else ["aba_xp"]
-    if "_xp_" in c["nome"] or "_nome_" in c["nome"] or "_aba_energia" in c["nome"]:
+    # O cubo não tem receita nem erro: o `GuiWarningTab` dele nunca aparece (`visivel false` em todo caso do log).
+    if "_xp_" in c["nome"] or "_nome_" in c["nome"] or "_aba_energia" in c["nome"] or c["maquina"].startswith("cubo"):
         ausentes.append("aba_avisos")
     return ausentes
 

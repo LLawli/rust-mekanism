@@ -31,8 +31,8 @@ def terra(a, b, i):
     return any(img[i] > img[i + 1] + 12 and img[i + 1] > img[i + 2] + 12 for img in (a, b))
 
 
-# O mundo de cada jogo tem o seu tom de grama (o bioma e o céu) e a luz do chão é a do Horizon (H30): na região do mundo só conta o desvio acima deste limite por canal.
-LIMITE = {"mundo": int(os.environ.get("LIMITE_MUNDO", "24")), "hotbar": 0, "mao": 0}
+# O mundo de cada jogo tem o seu tom de grama (também atrás da barra de atalhos e da mão) (o bioma e o céu) e a luz do chão é a do Horizon (H30): na região do mundo só conta o desvio acima deste limite por canal.
+LIMITE = {"mundo": int(os.environ.get("LIMITE_MUNDO", "24")), "hotbar": int(os.environ.get("LIMITE_MUNDO", "24")), "mao": int(os.environ.get("LIMITE_MUNDO", "24"))}
 
 
 def comparar_regiao(a, b, regiao, usa_terra):

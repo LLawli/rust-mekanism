@@ -870,6 +870,7 @@ class Lote(unittest.TestCase):
             "tooltip_canto": {2: (6, 72), 3: (21, 72)},
             "barra_quimico_fase": {2: (192, 1), 3: (342, 1)},
             "medidor_lava_fase": {2: (0, 0), 3: (0, 0)},
+            "medidor_fase": {2: (0, 0), 3: (0, 0)},
         })
 
     def test_o_ciclo_com_o_cursor_conta_o_tooltip_com_a_tolerancia_dele(self):

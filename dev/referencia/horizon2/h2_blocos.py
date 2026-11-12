@@ -379,6 +379,9 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         sys.path.insert(0, os.path.join(h.TOOLS, ".."))
         import cena_telas
         cena_telas.iguala_as_opcoes()
+        # O `guiScale` automático do original numa janela de 1920 por 1080 é 4, e a barra de atalhos começa no primeiro slot.
+        h.ctl("options-set", "guiScale", "4")
+        h.ctl("key", "1", "tap")
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]

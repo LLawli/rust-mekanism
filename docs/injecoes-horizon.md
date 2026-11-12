@@ -111,6 +111,9 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
 | H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
+| H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | nenhuma (o item usa o modelo comum de decisão 26, sem as portas nem o núcleo, decisão 74) | pedido |
+| H100 `BlockEntityDraw::partial` preso com o `tick freeze` (como o `getGameTimeDeltaPartialTick(false)` do vanilla) | correção | nenhuma (sob `tick freeze` o núcleo do cubo se mexe entre dois prints, só aparece em teste com o servidor parado) | pedido |
+
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
 ## A regra de slot do clique
@@ -1593,6 +1596,19 @@ entre parênteses.
 
 - **Lado:** cliente. **Tipo:** helper (leitura). **O que dá:** `native_block_target() -> Option<(pos, face)>` com as mesmas portas do contorno (sem F1; pode construir ou aventura) e `native_camera_yaw()`.
 - **Elimina:** `Game::pick`, `may_build` e `yaw` na sobreposição do Configurator (`RenderTickHandler.onBlockHover` olha o `HitResult` do contorno).
+
+### H99 desenhista de item de mod por quadro
+
+- **Lado:** cliente. **Tipo:** hook (o `SpecialModelRenderer` do 26.x).
+- **O que faz:** o `RenderEnergyCubeItem` do original desenha o quadro do cubo com as portas e os LEDs do estado de cada lado (padrão ou guardado no item) e, com energia, o núcleo translúcido girando pelo `gameTime` com o alfa da razão de energia. O pedido é um callback de desenho de item (na barra, na mão e no chão) que receba a pilha com os componentes e o `gameTime` mais o `partial`, e escreva vértices como o `block_entity_submit`.
+- **Hoje:** nenhuma injeção: o item usa o modelo comum (H60, decisão 26). Medido em jogo com `comparar_cubo.py`: 2.310 pixels diferentes na barra e 23.000 na mão, iguais para todos os níveis de energia.
+- **Risco do que existe hoje:** o item do cubo não mostra as portas nem o núcleo.
+
+### H100 `BlockEntityDraw::partial` preso com o `tick freeze`
+
+- **Lado:** cliente. **Tipo:** correção.
+- **O que faz:** no vanilla o `partial` de desenho de uma block entity vem do `DeltaTracker.getGameTimeDeltaPartialTick(false)`, que fica preso com o servidor parado. O `draw.partial` que o Horizon entrega varia entre dois prints seguidos sob `tick freeze` (o núcleo do cubo, que gira por `gameTime + partial`, muda 96 pixels entre dois prints).
+- **Hoje:** nenhuma injeção; só testes com o servidor parado (a comparação em pixel do núcleo e a espera de estado estável da cena de telas) são afetados; o jogo normal anda igual.
 
 ### H90 envio ao servidor dos ganchos de tela
 
