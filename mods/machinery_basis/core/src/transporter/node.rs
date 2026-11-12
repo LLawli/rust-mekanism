@@ -177,13 +177,11 @@ impl LogisticalTransporterBase {
     /// `modeReqsMet(side)`: o modo do lado contra o sinal. Só o desviador tem modo.
     pub fn mode_reqs_met(&self, side: Face) -> bool {
         match &self.kind {
-            TransporterKind::Diversion { modes } => {
-                match modes[super::world::side_index(side)] {
-                    DiversionControl::High => (self.powered)(),
-                    DiversionControl::Low => !(self.powered)(),
-                    DiversionControl::Disabled => true,
-                }
-            }
+            TransporterKind::Diversion { modes } => match modes[super::world::side_index(side)] {
+                DiversionControl::High => (self.powered)(),
+                DiversionControl::Low => !(self.powered)(),
+                DiversionControl::Disabled => true,
+            },
             _ => true,
         }
     }
@@ -191,6 +189,17 @@ impl LogisticalTransporterBase {
     /// `exposesInsertCap(side)`: `getConnectionTypeRaw(side).canAccept()`, e no desviador o modo também.
     pub fn exposes_insert_cap(&self, side: Face) -> bool {
         self.transmitter.get_connection_type_raw(side).can_accept() && self.mode_reqs_met(side)
+    }
+
+    /// `isValidTransmitterBasic(transmitter, side)` com um transportador do outro lado: as cores não se contradizem e os dois lados ligam
+    /// (`canConnectMutual`, com o modo do desviador).
+    pub fn is_valid_transmitter_basic(
+        &self,
+        other: &LogisticalTransporterBase,
+        side: Face,
+    ) -> bool {
+        self.colors_allow(true, other.get_color())
+            && Transporter::can_connect_mutual(self, side, Some(other))
     }
 
     /// `isValidTransmitterBasic(transmitter, side)`, a parte das cores: o outro é um transportador e as cores não se contradizem (uma

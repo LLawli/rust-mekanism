@@ -169,7 +169,11 @@ impl TransporterManager {
                 if state.is_empty() || !state.path_type().has_target() {
                     continue;
                 }
-                (state.item_type().cloned(), state.size(), state.side_of_dest())
+                (
+                    state.item_type().cloned(),
+                    state.size(),
+                    state.side_of_dest(),
+                )
             };
             let Some(item) = item else {
                 continue;

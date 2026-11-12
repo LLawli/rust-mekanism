@@ -33,6 +33,9 @@ pub trait Transporter {
     }
 }
 
+/// Um aceitador da rede: a posição (`BlockPos.asLong`) e os handlers dos lados dele, na ordem do `Direction`.
+pub type AcceptorEntry = (i64, Vec<(Face, Rc<dyn ItemHandler>)>);
+
 /// A `InventoryNetwork`, no que a busca lê.
 pub trait InventoryNetworkView {
     /// `getUUID`: a chave da cache de caminhos.
@@ -41,7 +44,7 @@ pub trait InventoryNetworkView {
     fn transmitter(&self, pos: i64) -> Option<&dyn Transporter>;
     /// `acceptorCache.getAcceptorFastIterator()`: as posições (`BlockPos.asLong`) na ordem da tabela, cada uma com os aceitadores dos
     /// seus lados na ordem do `Direction` (o lado do aceitador voltado para a rede).
-    fn acceptors(&self) -> Vec<(i64, Vec<(Face, Rc<dyn ItemHandler>)>)>;
+    fn acceptors(&self) -> Vec<AcceptorEntry>;
 }
 
 /// `ISideConfiguration`, no que a busca lê: se a entrada é estrita e a cor de entrada de cada lado do mundo (já passada por

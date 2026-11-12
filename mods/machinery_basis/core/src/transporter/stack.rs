@@ -8,9 +8,9 @@ use super::pathfinder::{
 use super::pos::{NO_POS, side_difference};
 use super::world::{InventoryNetworkView, Transporter};
 use crate::containers::ItemResource;
+use crate::side_config::ENUM_COLOR_NAMES;
 use crate::sides::Face;
 use crate::sim::chunks::BlockPos;
-use crate::side_config::ENUM_COLOR_NAMES;
 use crate::transaction::Transaction;
 use crate::transit::{TransitRequest, TransitResponse};
 use std::cell::{Ref, RefCell, RefMut};
@@ -370,10 +370,7 @@ impl TransporterStack {
             .get(keys::COLOR)
             .and_then(Nbt::as_str)
             .and_then(color_from_name);
-        stack.progress = input
-            .get(keys::PROGRESS)
-            .and_then(Nbt::as_int)
-            .unwrap_or(0);
+        stack.progress = input.get(keys::PROGRESS).and_then(Nbt::as_int).unwrap_or(0);
         stack.original_location = input
             .get(keys::ORIGINAL_LOCATION)
             .and_then(Nbt::as_long)

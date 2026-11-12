@@ -121,7 +121,11 @@ pub fn get_paths(
 }
 
 /// `checkPath(network, path, stack)`: todos os transportadores do caminho (menos o destino) ainda existem e deixam a pilha passar.
-pub fn check_path(network: &dyn InventoryNetworkView, path: &[i64], stack: &TransporterStack) -> bool {
+pub fn check_path(
+    network: &dyn InventoryNetworkView,
+    path: &[i64],
+    stack: &TransporterStack,
+) -> bool {
     for index in (1..path.len()).rev() {
         let Some(transmitter) = network.transmitter(path[index]) else {
             return false;
@@ -501,10 +505,11 @@ impl<'a> Pathfinder<'a> {
         for direction in Face::ALL {
             let neighbor = self.start.relative(direction);
             let neighbor_transmitter = self.network.transmitter(neighbor.as_long());
-            if self
-                .stack
-                .can_insert_to_transporter(neighbor_transmitter, direction, start_transmitter)
-            {
+            if self.stack.can_insert_to_transporter(
+                neighbor_transmitter,
+                direction,
+                start_transmitter,
+            ) {
                 // Dá para entrar num transportador: há um caminho a tentar.
                 has_valid_direction = true;
                 break;
@@ -555,7 +560,9 @@ impl<'a> Pathfinder<'a> {
                     current_transmitter,
                 ) {
                     let tentative_g = current_score
-                        + neighbor_transmitter.expect("o vizinho é um transportador").cost();
+                        + neighbor_transmitter
+                            .expect("o vizinho é um transportador")
+                            .cost();
                     if self.closed_set.contains(LongKey(neighbor_long))
                         && tentative_g >= self.g(neighbor_long)
                     {

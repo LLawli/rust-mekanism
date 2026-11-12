@@ -12,7 +12,7 @@ use crate::transporter::cache::PathfinderCache;
 use crate::transporter::pathfinder::PathContext;
 use crate::transporter::pos::block_pos_of;
 use crate::transporter::stack::TransporterStack;
-use crate::transporter::world::{InventoryNetworkView, Transporter};
+use crate::transporter::world::{AcceptorEntry, InventoryNetworkView, Transporter};
 use std::rc::Rc;
 
 /// `InventoryNetwork.AcceptorData`: um destino, o que ele aceita do pedido e os lados dele por onde aceita (os do destino voltados para a
@@ -137,7 +137,7 @@ impl<L: TransporterLookup> InventoryNetworkView for RegistryNetworkView<'_, L> {
         self.transporters.transporter(id)
     }
 
-    fn acceptors(&self) -> Vec<(i64, Vec<(Face, Rc<dyn ItemHandler>)>)> {
+    fn acceptors(&self) -> Vec<AcceptorEntry> {
         let cache = &self.registry.network(self.network).acceptor_cache;
         cache
             .positions_in_order()

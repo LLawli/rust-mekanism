@@ -322,7 +322,7 @@ public class TransporterPathTraceTest {
             if (network != null) {
                 PathfinderCache.onChanged(network);
             }
-            mark("color " + rel(new int[]{x, y, z}) + " " + (color == null ? "none" : color.getSerializedName()));
+            add("{\"e\":\"color\",\"p\":" + rel(new int[]{x, y, z}) + ",\"color\":" + color(color) + "}");
         }
 
         String acceptorList(TransitRequest request, TransporterStack stack, LogisticalTransporterBase start) {
@@ -404,7 +404,7 @@ public class TransporterPathTraceTest {
                 stack.setStack(response.itemType(), response.sendingAmount());
             }
             add("{\"e\":\"query\",\"q\":" + index + ",\"note\":\"" + note + "\",\"kind\":\"" + (ejector == null ? "base" : "rr") + "\",\"start\":" + rel(start)
-                + ",\"color\":" + color(color) + ",\"item\":" + item(item) + ",\"amount\":" + amount + ",\"min\":" + min + ",\"homePos\":" + rel(home)
+                + ",\"color\":" + color(color) + ",\"item\":" + item(item) + ",\"amount\":" + amount + ",\"min\":" + min + ",\"keep\":" + keep + ",\"homePos\":" + rel(home)
                 + ",\"chests\":" + chests + ",\"acceptors\":" + acceptors + ",\"destinations\":" + destinations
                 + ",\"rrBefore\":" + before + ",\"rrAfter\":" + ejectorState(ejector)
                 + ",\"empty\":" + response.isEmpty() + ",\"respItem\":" + (response.isEmpty() ? "null" : item(response.itemType().toStack(1).getItem()))
@@ -430,9 +430,11 @@ public class TransporterPathTraceTest {
             }
             int index = queryIndex++;
             String chests = chestsJson();
+            String inputs = "\"reuse\":" + (previous != null) + ",\"inHome\":" + rel(stack.homeLocation) + ",\"inIdleDir\":" + dir(stack.idleDir)
+                            + ",\"inProgress\":" + stack.progress + ",\"inOriginal\":" + rel(stack.originalLocation) + ",\"inColor\":" + color(stack.color);
             boolean found = stack.calculateIdle(level, transporter, null);
             add("{\"e\":\"idle\",\"q\":" + index + ",\"note\":\"" + note + "\",\"start\":" + rel(start) + ",\"color\":" + color(color) + ",\"item\":" + item(item)
-                + ",\"amount\":" + amount + ",\"chests\":" + chests + ",\"found\":" + found + "," + stackState(stack) + "}");
+                + ",\"amount\":" + amount + "," + inputs + ",\"chests\":" + chests + ",\"found\":" + found + "," + stackState(stack) + "}");
             lastIdle = stack;
             lastFound = found;
             TransporterManager.remove(level, stack, null);
@@ -815,6 +817,157 @@ public class TransporterPathTraceTest {
                 rec.idle("idle, no home, progress 50, came from the west", new int[]{1, 0, 0}, null, STONE, 10, null, null, 50, new int[]{0, 0, 0}, null);
                 rec.idle("idle, east dir", new int[]{1, 0, 0}, null, STONE, 10, null, Direction.EAST, 0, new int[]{0, 0, 0}, null);
                 rec.idle("a transporter next to nothing", new int[]{4, 0, 0}, null, STONE, 10, null, null, 0, new int[]{3, 0, 0}, null);
+            });
+        }).thenSucceed());
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // Um baú tocado por dois lados, com a cache de caminhos e as pilhas em voo
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_two_sides")
+    @TestHolder(description = "Records a chest touched by two routes: the path cache of each side, and a stack in flight to one side.")
+    public static void twoSides(final DynamicTest test) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(5, 1, 3);
+            layout.chest(builder, 0, 0, 0).t(builder, 1, 0, 0, basic(), null).t(builder, 2, 0, 0, basic(), colored(EnumColor.RED)).t(builder, 3, 0, 0, basic(), null)
+                  .chest(builder, 3, 0, 1).col(builder, 1, 0, 1, 2, basic()).row(builder, 2, 3, 0, 2, basic());
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            Rec rec = new Rec("two_sides", helper, layout);
+            run(rec, () -> {
+                int[] home = {0, 0, 0};
+                int[] start = {1, 0, 0};
+                rec.query("red, the short way through the red transporter is cached", start, EnumColor.RED, STONE, 10, 0, home, false, null);
+                rec.query("blue, the red one is avoided and the long way is cached", start, EnumColor.DARK_BLUE, STONE, 10, 0, home, false, null);
+                rec.query("red again, both sides are cached and the cheaper one wins", start, EnumColor.RED, STONE, 10, 0, home, false, null);
+                rec.query("red dirt stays in flight to the north side", start, EnumColor.RED, Items.DIRT, 10, 0, home, true, null);
+                rec.fill(3, 0, 1, 26, STONE, 64);
+                rec.chest(3, 0, 1).setItem(26, new ItemStack(Items.APPLE, 10));
+                rec.mark("the chest has no room for dirt, but has for apples");
+                rec.query("apple, the dirt in flight does not fit through the north side", start, EnumColor.RED, Items.APPLE, 10, 0, home, false, null);
+                rec.query("stone, nothing fits", start, EnumColor.RED, STONE, 10, 0, home, false, null);
+                rec.query("blue apple", start, EnumColor.DARK_BLUE, Items.APPLE, 10, 0, home, false, null);
+            });
+        }).thenSucceed());
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // Dois destinos com o mesmo custo e caminhos de tamanhos diferentes
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+    private static void tieLength(final DynamicTest test, String name, boolean longLeft) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(6, 1, 2);
+            BlockState advanced = MekanismBlocks.ADVANCED_LOGISTICAL_TRANSPORTER.defaultState();
+            if (longLeft) {
+                layout.chest(builder, 0, 0, 1).row(builder, 1, 2, 0, 1, advanced).t(builder, 3, 0, 1, basic(), null).t(builder, 4, 0, 1, basic(), null)
+                      .chest(builder, 5, 0, 1).chest(builder, 3, 0, 0);
+            } else {
+                layout.chest(builder, 0, 0, 1).t(builder, 1, 0, 1, basic(), null).t(builder, 2, 0, 1, basic(), null).row(builder, 3, 4, 0, 1, advanced)
+                      .chest(builder, 5, 0, 1).chest(builder, 2, 0, 0);
+            }
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            Rec rec = new Rec(name, helper, layout);
+            run(rec, () -> {
+                //The start sits between two paths of the same cost: one transporter of 10 on one side, two of 5 on the other
+                int[] start = longLeft ? new int[]{3, 0, 1} : new int[]{2, 0, 1};
+                int[] home = longLeft ? new int[]{3, 0, 0} : new int[]{2, 0, 0};
+                rec.query("two destinations with the same cost", start, null, STONE, 10, 0, home, false, null);
+                Ejector ejector = new Ejector();
+                rec.query("round robin first", start, null, STONE, 10, 0, home, true, ejector);
+                rec.query("round robin second", start, null, STONE, 10, 0, home, true, ejector);
+            });
+        }).thenSucceed());
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_tie_length_left")
+    @TestHolder(description = "Records two destinations with the same cost where the longer path is on the left.")
+    public static void tieLengthLeft(final DynamicTest test) {
+        tieLength(test, "tie_length_left", true);
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_tie_length_right")
+    @TestHolder(description = "Records two destinations with the same cost where the longer path is on the right.")
+    public static void tieLengthRight(final DynamicTest test) {
+        tieLength(test, "tie_length_right", false);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // Um transportador que puxa de casa, uma grade, um desvio longo
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_pull_home")
+    @TestHolder(description = "Records the way home to a chest whose transporter is set to pull, which can connect to it but not emit to it.")
+    public static void pullHome(final DynamicTest test) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(5, 1, 1);
+            layout.chest(builder, 0, 0, 0).t(builder, 1, 0, 0, basic(), StructureBuilderUtils.configured(Direction.WEST)).row(builder, 2, 3, 0, 0, basic())
+                  .chest(builder, 4, 0, 0);
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            Rec rec = new Rec("pull_home", helper, layout);
+            run(rec, () -> {
+                int[] home = {0, 0, 0};
+                rec.query("the pulling transporter's chest is the home", new int[]{3, 0, 0}, null, STONE, 10, 0, home, false, null);
+                rec.query("the end chest is the home", new int[]{2, 0, 0}, null, STONE, 10, 0, new int[]{4, 0, 0}, false, null);
+                rec.idle("idle, the way home ends on the pulling side", new int[]{3, 0, 0}, null, STONE, 10, home, null, 0, new int[]{3, 0, 0}, null);
+                rec.idle("idle, standing next to the home", new int[]{1, 0, 0}, null, STONE, 10, home, null, 0, new int[]{2, 0, 0}, null);
+                rec.idle("idle, the home is the end chest", new int[]{2, 0, 0}, null, STONE, 10, new int[]{4, 0, 0}, null, 0, new int[]{1, 0, 0}, null);
+            });
+        }).thenSucceed());
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_grid")
+    @TestHolder(description = "Records the path across a plane of transporters, where many paths have the same cost.")
+    public static void grid(final DynamicTest test) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(7, 1, 5);
+            layout.chest(builder, 0, 0, 0).chest(builder, 6, 0, 4);
+            for (int z = 0; z < 5; z++) {
+                layout.row(builder, 1, 5, 0, z, basic());
+            }
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            Rec rec = new Rec("grid", helper, layout);
+            run(rec, () -> {
+                int[] home = {0, 0, 0};
+                rec.query("across the whole plane", new int[]{1, 0, 0}, null, STONE, 10, 0, home, false, null);
+                rec.query("from the middle", new int[]{3, 0, 2}, null, STONE, 10, 0, home, false, null);
+                rec.query("from the far corner", new int[]{5, 0, 0}, null, STONE, 10, 0, home, false, null);
+                rec.query("the far chest is the home", new int[]{5, 0, 4}, null, STONE, 10, 0, new int[]{6, 0, 4}, false, null);
+                rec.idle("idle on the plane", new int[]{3, 0, 2}, null, STONE, 10, null, null, 0, new int[]{3, 0, 1}, null);
+            });
+        }).thenSucceed());
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_transporter_detour")
+    @TestHolder(description = "Records a destination that is only reachable through a detour that leaves the search area of a nearby destination.")
+    public static void detour(final DynamicTest test) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(6, 1, 5);
+            layout.chest(builder, 3, 0, 1).t(builder, 3, 0, 2, basic(), null).row(builder, 0, 2, 0, 2, basic()).col(builder, 0, 0, 3, 4, basic())
+                  .row(builder, 1, 3, 0, 4, basic()).t(builder, 4, 0, 4, basic(), null).chest(builder, 4, 0, 3);
+            return builder;
+        });
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            Rec rec = new Rec("detour", helper, layout);
+            run(rec, () -> {
+                int[] home = {3, 0, 1};
+                rec.query("the destination is diagonal, the way goes around", new int[]{3, 0, 2}, null, STONE, 10, 0, home, false, null);
+                rec.query("from the far end of the detour", new int[]{0, 0, 4}, null, STONE, 10, 0, home, false, null);
+                rec.query("from next to the destination", new int[]{4, 0, 4}, null, STONE, 10, 0, home, false, null);
+                rec.query("from the middle of the detour", new int[]{0, 0, 3}, null, STONE, 10, 0, home, false, null);
             });
         }).thenSucceed());
     }

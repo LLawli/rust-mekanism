@@ -154,7 +154,9 @@ impl TransitResponse {
 
     /// `slotData().getTotalCount()`.
     pub fn slot_total(&self) -> u32 {
-        self.slot_data.as_ref().map_or(0, |data| data.borrow().total)
+        self.slot_data
+            .as_ref()
+            .map_or(0, |data| data.borrow().total)
     }
 
     /// `getRejected()`: o que o pedido tinha daquele item e o destino não aceitou.
