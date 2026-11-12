@@ -1079,6 +1079,13 @@ impl<H: ChunkHooks> SimLevel<H> {
         }
     }
 
+    /// Completa agora as cargas pendentes, no meio do tick. Um chunk que o jogo mesmo devolve ao nível dos tickets (sem passo de teste) carregou,
+    /// no rastro de `NetworkTopologyTraceTest`, depois do tick dos block entities e antes do `ServerTickEvent.Post`: os block entities
+    /// novos existem no `Post` do mesmo tick, mas só andam no seguinte.
+    pub fn complete_pending_loads(&mut self) {
+        self.run_distance_manager_updates();
+    }
+
     /// `ServerChunkCache.runDistanceManagerUpdates` (`ServerChunkCache.java:284`): leva os holders novos ao mapa visível e
     /// completa as cargas pedidas, na ordem do pedido.
     fn run_distance_manager_updates(&mut self) {
