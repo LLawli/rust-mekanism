@@ -155,7 +155,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         }
         self.register_network(into);
         for transmitter in transmitters_to_update {
-            host.request_update(transmitter);
+            host.request_update_in(self, transmitter);
         }
     }
 
@@ -251,7 +251,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
             if added_valid_transmitters {
                 host.network_event(&*self, network, NetworkEvent::ValidTransmittersAdded);
                 for transmitter in transmitters_to_update {
-                    host.request_update(transmitter);
+                    host.request_update_in(self, transmitter);
                 }
             }
         }
@@ -296,7 +296,10 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         for transmitter in self.network(network).transmitters() {
             if host.is_valid(transmitter) {
                 host.take_share(transmitter);
-                set_transmitter_network(host, transmitter, None, true);
+                // `setTransmitterNetwork(null, true)`: sem rede e `requestsUpdate` na hora.
+                if set_transmitter_network(host, transmitter, None, false) {
+                    host.request_update_in(self, transmitter);
+                }
                 self.register_orphan_transmitter(&*host, transmitter);
             }
         }

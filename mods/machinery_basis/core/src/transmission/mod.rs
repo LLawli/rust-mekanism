@@ -179,6 +179,12 @@ pub trait TransmitterHost<A> {
     fn identity_hash(&self, transmitter: TransmitterId) -> i32;
     /// `Transmitter.requestsUpdate` (`sendUpdatePacket` do tile).
     fn request_update(&mut self, transmitter: TransmitterId);
+    /// `Transmitter.requestsUpdate` chamado de dentro do registro (o `commit` de uma rede, `adoptAllAndRegister`, `invalidate`). Um transmissor
+    /// que relê as conexões ao pedir a atualização (o `BufferedTransmitter` de fluido, químico e calor: `requestsUpdate` avisa os vizinhos, que
+    /// podem fundir redes) volta ao registro, por isso este recebe o registro. A base só repassa a [`Self::request_update`].
+    fn request_update_in(&mut self, _registry: &mut TransmitterNetworkRegistry<A>, transmitter: TransmitterId) {
+        self.request_update(transmitter);
+    }
     /// `Transmitter.supportsTransmissionType(other)`: algum tipo de transmissão em comum.
     fn supports_transmission_type(&self, transmitter: TransmitterId, other: TransmitterId) -> bool;
     /// `Transmitter.isValidTransmitterBasic(tile, side)`: `supportsTransmissionType(tile) && canConnectMutual(side, tile)`.
