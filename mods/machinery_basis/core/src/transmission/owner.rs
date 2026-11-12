@@ -577,9 +577,12 @@ impl EnergyTransmitters {
             };
             let available = UniversalCable::available_pull(self.st.container(id));
             let container = self.st.container(id);
-            let transaction = Transaction::open_root();
             let extracted = acceptor.extract(available, true);
-            if extracted > 0 && container.insert(extracted, &transaction, AutomationType::Internal) == extracted {
+            if extracted == 0 {
+                continue;
+            }
+            let transaction = Transaction::open_root();
+            if container.insert(extracted, &transaction, AutomationType::Internal) == extracted {
                 // O vizinho não desfaz: a simulação diz o que sai, o buffer confirma, e só então a retirada de verdade.
                 transaction.commit();
                 acceptor.extract(extracted, false);
@@ -617,13 +620,7 @@ impl EnergyTransmitters {
         let pos = self.st.slots[id.0 as usize].pos;
         for effect in effects {
             match effect {
-                Effect::SendUpdatePacket | Effect::RequestsUpdate => {
-                    // O transmissor tirado do lugar (uma operação em andamento) publica quando voltar.
-                    if self.st.slots[id.0 as usize].tx.is_some() && !self.st.slots[id.0 as usize].dead {
-                        let view = self.cable_view(&*world, id);
-                        world.publish(pos, &view);
-                    }
-                }
+                Effect::SendUpdatePacket | Effect::RequestsUpdate => self.publish(world, id),
                 Effect::NotifyTileChange => {
                     for side in Face::ALL {
                         let neighbor = pos.relative(side);
@@ -660,10 +657,25 @@ impl EnergyTransmitters {
                     }
                 }
                 Effect::SetChanged => world.set_changed(pos),
-                Effect::SideChanged { side, old, new } => world.side_changed(pos, side, old, new),
-                Effect::RedstoneChanged(powered) => world.redstone_changed(pos, powered),
+                Effect::SideChanged { side, old, new } => {
+                    world.side_changed(pos, side, old, new);
+                    self.publish(world, id);
+                }
+                Effect::RedstoneChanged(powered) => {
+                    world.redstone_changed(pos, powered);
+                    self.publish(world, id);
+                }
                 Effect::Overlay(overlay) => world.overlay(pos, overlay),
             }
+        }
+    }
+
+    /// `sendUpdatePacket`: o jogo recebe a vista do cabo. Um cabo que saiu, ou que está tirado do lugar por uma operação em andamento, não publica.
+    fn publish<W: OwnerWorld>(&self, world: &mut W, id: TransmitterId) {
+        let slot = &self.st.slots[id.0 as usize];
+        if slot.tx.is_some() && !slot.dead {
+            let view = self.cable_view(&*world, id);
+            world.publish(slot.pos, &view);
         }
     }
 
@@ -709,6 +721,13 @@ impl EnergyTransmitters {
         let id = self.st.live(pos)?;
         let container = self.st.container(id);
         Some(CableBuffer { view: self.cable_view(world, id), capacity: container.capacity(), amount: container.amount() })
+    }
+
+    /// A capacidade e a energia do contêiner do cabo em `pos` (`getContainer()`).
+    pub fn container_state(&self, pos: BlockPos) -> Option<(i64, i64)> {
+        let id = self.st.live(pos)?;
+        let container = self.st.container(id);
+        Some((container.capacity(), container.amount()))
     }
 
     /// `getContainer().insert(amount, transaction, EXTERNAL)`: o que o vizinho empurrou para o cabo.

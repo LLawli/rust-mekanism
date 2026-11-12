@@ -8,12 +8,15 @@ use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::transmission::connection::ConnectionType;
+use machinery_basis_core::transmission::transmitter::Tag;
+use machinery_basis_core::transmission::owner::ENERGY_KEY;
+use machinery_basis_core::sim::chunks::ChunkPos;
 use machinery_basis_core::transmission::energy_container::{BufferEnergyContainer, always};
 use machinery_basis_core::transmission::owner::{Acceptor, CableBuffer, CableInfo, CableView, EnergyTransmitters, Event, OwnerWorld};
 use machinery_basis_core::transmission::transmitter::{Compound, Overlay};
 use machinery_basis_core::transmission::{DimensionId, Uuid};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 pub const DIMENSION: DimensionId = DimensionId(0);
@@ -133,6 +136,28 @@ impl Sim {
         }
     }
 
+    /// Um nível com hashes que o teste inventa (a conta que ele confere não depende da ordem das tabelas).
+    pub fn free() -> Self {
+        let mut uuid = 0i32;
+        let mut tile = 0i32;
+        Self {
+            owner: EnergyTransmitters::new(
+                DIMENSION,
+                move || {
+                    uuid += 1;
+                    Uuid::with_hash_code(uuid.wrapping_mul(0x1234_5679))
+                },
+                move |_| {
+                    tile += 1;
+                    tile.wrapping_mul(0x2545_F491)
+                },
+            ),
+            level: Level::default(),
+            time: 0,
+            frozen: false,
+        }
+    }
+
     fn send(&mut self, event: Event) {
         self.owner.handle(&mut self.level, event);
     }
@@ -239,7 +264,7 @@ fn trace_estate(row: &Value, mine: &[i64]) -> Value {
         .collect();
     nets.sort_unstable();
     let actors: Vec<(String, i64)> = row["actors"].as_array().unwrap().iter().map(|a| (a["name"].as_str().unwrap().to_owned(), int(a, "energy"))).collect();
-    let cables: Vec<(i64, i64, i64)> = row["cables"].as_array().unwrap().iter().map(|c| (int(c, "x"), int(c, "share"), int(c, "cap"))).collect();
+    let cables: Vec<(i64, i64, i64, i64)> = row["cables"].as_array().unwrap().iter().map(|c| (int(c, "x"), int(c, "buf"), int(c, "share"), int(c, "cap"))).collect();
     serde_json::json!({ "nets": nets, "actors": actors, "cables": cables })
 }
 
@@ -295,8 +320,15 @@ impl Run {
         }
         nets.sort_unstable();
         let actors: Vec<(String, i64)> = self.actors.iter().map(|(name, machine)| (name.clone(), machine.container.amount())).collect();
-        let _ = rows_x;
-        serde_json::json!({ "nets": nets, "actors": actors })
+        let cables: Vec<(i64, i64, i64, i64)> = rows_x
+            .iter()
+            .filter_map(|x| {
+                let id = self.sim.owner.cable_at(self.at(*x, 0))?;
+                let cable = self.sim.owner.family().cable(id);
+                Some((*x, cable.buffer.amount(), cable.save_share_amount(), cable.capacity()))
+            })
+            .collect();
+        serde_json::json!({ "nets": nets, "actors": actors, "cables": cables })
     }
 }
 
@@ -342,9 +374,11 @@ fn run(run_name: &str, scenario: &str) {
         state.sim.tick();
         if let Some(row) = rows.iter().find(|row| kind(row) == "estate" && int(row, "t") == t) {
             let want = trace_estate(row, &mine);
-            let got = state.estate(&[]);
+            let xs: Vec<i64> = want["cables"].as_array().unwrap().iter().map(|c| c[0].as_i64().unwrap()).collect();
+            let got = state.estate(&xs);
             assert_eq!(got["nets"], want["nets"], "{run_name} {scenario}, tick {t}: redes (energia, capacidade, prev)");
             assert_eq!(got["actors"], want["actors"], "{run_name} {scenario}, tick {t}: máquinas");
+            assert_eq!(got["cables"], want["cables"], "{run_name} {scenario}, tick {t}: cabos (buffer, share, capacidade)");
         }
         for (pre, mark) in &marks {
             if !*pre {
@@ -371,5 +405,208 @@ fn scenarios_of_the_second_run_match_the_original_by_game_events() {
     }
 }
 
-#[allow(dead_code)]
-fn unused(_: ConnectionType, _: BTreeMap<u8, u8>) {}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O mundo salvo e reaberto: `energy_reopen.jsonl`. O chunk sai (o ticket, `onChunkUnloaded` de cada cabo com o `saveAdditional` logo depois, `setRemoved`), volta com o NBT
+// que os cabos gravaram, e a rede nova tem a energia de antes.
+
+impl Sim {
+    fn unload(&mut self, chunk: ChunkPos, saved: &mut HashMap<BlockPos, (i64, Compound)>) {
+        let mut cables: Vec<BlockPos> = self.owner.positions().into_iter().filter(|pos| pos.chunk() == chunk).collect();
+        cables.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+        self.send(Event::Ticket { chunk, loaded: false });
+        for pos in &cables {
+            self.send(Event::ChunkUnloaded(*pos));
+            let capacity = match self.level.blocks.get(pos) {
+                Some(Block::Cable { capacity, .. }) => *capacity,
+                _ => unreachable!("o cabo está no nível"),
+            };
+            saved.insert(*pos, (capacity, self.owner.write(*pos).expect("o cabo grava")));
+        }
+        for pos in &cables {
+            self.send(Event::Removed(*pos));
+            self.level.blocks.remove(pos);
+        }
+        self.level.unloaded.extend(cables);
+    }
+
+    fn reload(&mut self, chunk: ChunkPos, saved: &mut HashMap<BlockPos, (i64, Compound)>) {
+        self.send(Event::Ticket { chunk, loaded: true });
+        let mut back: Vec<BlockPos> = saved.keys().copied().filter(|pos| pos.chunk() == chunk).collect();
+        back.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+        self.level.unloaded.retain(|pos| pos.chunk() != chunk);
+        for pos in back {
+            let (capacity, nbt) = saved.remove(&pos).unwrap();
+            self.place_cable(pos, capacity, Some(nbt));
+        }
+    }
+}
+
+#[test]
+fn a_reopened_chunk_gives_the_networks_energy_back_like_the_original() {
+    let rows = read_rows("", "reopen");
+    let setup = &rows[0];
+    let origin = BlockPos::new(int(setup, "x") as i32, int(setup, "y") as i32, int(setup, "z") as i32);
+    let mut sim = Sim::free();
+    let tiers = ["basic", "basic", "advanced", "basic", "basic"];
+    let at = |x: i64| BlockPos::new(origin.x + x as i32, origin.y, origin.z);
+    let cables: Vec<BlockPos> = (28..33).map(at).collect();
+    for (pos, tier) in cables.iter().zip(tiers) {
+        sim.place_cable(*pos, tier_capacity(tier), None);
+    }
+    for _ in 0..6 {
+        sim.tick();
+    }
+    assert_eq!(sim.owner.insert_external(cables[0], 31_001), 31_001);
+    for _ in 0..4 {
+        sim.tick();
+    }
+    let nbt_row = rows.iter().find(|row| kind(row) == "nbt").unwrap();
+    let written = sim.owner.write(cables[0]).unwrap();
+    assert_eq!(written.get(ENERGY_KEY), Some(&Tag::Long(int(nbt_row, "energy"))), "o `energy` que o cabo grava");
+    // O chunk sai com os cabos de um lado só (o rastro põe os cinco no mesmo): saem todos os cabos que o chunk tem, e os outros ficam.
+    let mut saved = HashMap::new();
+    let chunks: Vec<ChunkPos> = {
+        let mut list: Vec<ChunkPos> = cables.iter().map(|pos| pos.chunk()).collect();
+        list.dedup();
+        list
+    };
+    for chunk in &chunks {
+        sim.unload(*chunk, &mut saved);
+    }
+    sim.tick();
+    assert!(sim.owner.positions().is_empty(), "todos os cabos saíram");
+    for chunk in &chunks {
+        sim.reload(*chunk, &mut saved);
+    }
+    for _ in 0..6 {
+        sim.tick();
+    }
+    let last = rows.iter().rev().find(|row| kind(row) == "estate" && !row["nets"].as_array().unwrap().is_empty()).unwrap();
+    let want = &last["nets"][0];
+    let network = sim.owner.network_of(cables[0]).expect("a rede voltou");
+    let net = sim.owner.family().network(network).unwrap();
+    assert_eq!((net.buffer(), net.capacity()), (int(want, "energy"), int(want, "capacity")), "a energia da rede depois de reabrir");
+    for (x, cable) in last["cables"].as_array().unwrap().iter().map(|c| (int(c, "x"), c)) {
+        let id = sim.owner.cable_at(at(x)).unwrap();
+        assert_eq!(sim.owner.family().cable(id).save_share_amount(), int(cable, "share"), "o share do cabo {x}");
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O que o jogo faz com o cabo posto por um item: `ClearRemoved`, o aviso do vizinho, `PlacedByItem` (`onAdded` e `refreshConnections`) e só depois o tick.
+
+#[test]
+fn cables_placed_by_item_one_after_the_other_connect_both_ways() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(100, 64, 100);
+    for x in 0..5 {
+        let pos = BlockPos::new(origin.x + x, origin.y, origin.z);
+        sim.place_cable(pos, 8_000, None);
+        sim.send(Event::PlacedByItem(pos));
+        // O jogo tica entre uma colocação e outra (a mão do jogador é mais lenta): a rede dos de antes já existe quando o seguinte chega.
+        for _ in 0..3 {
+            sim.tick();
+        }
+    }
+    for _ in 0..3 {
+        sim.tick();
+    }
+    for x in 0..5 {
+        let pos = BlockPos::new(origin.x + x, origin.y, origin.z);
+        let view = sim.owner.view_at(&sim.level, pos).unwrap();
+        let west = view.connected[Face::West as usize];
+        let east = view.connected[Face::East as usize];
+        assert_eq!((west, east), (x > 0, x < 4), "o cabo {x}: braços para oeste e leste");
+    }
+    assert_eq!(sim.owner.registry().networks_in_order().len(), 1, "uma rede só");
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O Configurator (`TileEntityTransmitter.onSneakRightClick`): o tipo de conexão do lado cicla `NORMAL`, `PUSH`, `PULL`, `NONE`, a mensagem diz o tipo, e o braço some (e o do
+// vizinho junto) quando o lado vai a `NONE`.
+
+fn line(sim: &mut Sim, origin: BlockPos, count: i32) -> Vec<BlockPos> {
+    let cables: Vec<BlockPos> = (0..count).map(|x| BlockPos::new(origin.x + x, origin.y, origin.z)).collect();
+    for pos in &cables {
+        sim.place_cable(*pos, 8_000, None);
+        sim.send(Event::PlacedByItem(*pos));
+    }
+    for _ in 0..3 {
+        sim.tick();
+    }
+    cables
+}
+
+fn sneak(sim: &mut Sim, pos: BlockPos, side: Face, hit: Option<Face>) -> bool {
+    let Sim { owner, level, .. } = sim;
+    owner.sneak_right_click(level, pos, side, hit)
+}
+
+#[test]
+fn the_configurator_cycles_a_side_and_the_arm_goes_and_comes_back() {
+    use machinery_basis_core::transmission::transmitter::Overlay;
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line(&mut sim, origin, 3);
+    let kinds = [ConnectionType::Push, ConnectionType::Pull, ConnectionType::None, ConnectionType::Normal];
+    for kind in kinds {
+        // Agachado, olhando o braço para leste do cabo do meio.
+        assert!(sneak(&mut sim, cables[1], Face::North, Some(Face::East)), "o clique é do cabo");
+        assert_eq!(sim.level.overlays.last(), Some(&Overlay::ConnectionType { connection: kind }), "a mensagem diz o tipo");
+        let view = sim.owner.view_at(&sim.level, cables[1]).unwrap();
+        assert_eq!(view.raw[Face::East as usize], kind);
+        let arm = kind != ConnectionType::None;
+        assert_eq!(view.connected[Face::East as usize], arm, "{kind:?}: o braço do cabo do meio");
+        let other = sim.owner.view_at(&sim.level, cables[2]).unwrap();
+        assert_eq!(other.connected[Face::West as usize], arm, "{kind:?}: o braço do vizinho, que o aviso refaz");
+    }
+    // Fora de um braço (o olhar no centro) o lado clicado é o que cicla.
+    assert!(sneak(&mut sim, cables[1], Face::Up, None));
+    assert_eq!(sim.owner.view_at(&sim.level, cables[1]).unwrap().raw[Face::Up as usize], ConnectionType::Push);
+}
+
+#[test]
+fn a_cable_in_pull_takes_energy_from_the_neighbor_that_gives_it() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line(&mut sim, origin, 3);
+    let source = sim.place_machine(BlockPos::new(origin.x, origin.y + 1, origin.z), 1_000_000, 20_000, true);
+    sim.tick();
+    // Sem `PULL` a máquina que dá não é puxada: o cabo só a vê como aceitador.
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(source.container.amount(), 20_000);
+    // `NORMAL`, `PUSH`, `PULL` no lado de cima do primeiro cabo.
+    for _ in 0..2 {
+        sneak(&mut sim, cables[0], Face::Up, Some(Face::Up));
+    }
+    assert_eq!(sim.owner.view_at(&sim.level, cables[0]).unwrap().raw[Face::Up as usize], ConnectionType::Pull);
+    for _ in 0..3 {
+        sim.tick();
+    }
+    // O contêiner da rede (3 cabos de 8.000) enche com o que a máquina deu, de uma vez, e o que ela deu sai dela.
+    let network = sim.owner.network_of(cables[0]).unwrap();
+    let net = sim.owner.family().network(network).unwrap();
+    assert_eq!(net.buffer() + source.container.amount(), 20_000, "a energia só mudou de lugar");
+    assert!(net.buffer() > 0 && net.buffer() <= 24_000, "o cabo puxou");
+}
+
+#[test]
+fn a_redstone_reactive_cable_lets_go_while_it_is_powered() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line(&mut sim, origin, 3);
+    let Sim { owner, level, .. } = &mut sim;
+    assert!(owner.right_click(level, cables[1]), "o clique liga o redstone reativo");
+    assert!(owner.view_at(level, cables[1]).unwrap().redstone_reactive);
+    // Um bloco de redstone ao lado do cabo do meio: o vizinho muda e o cabo solta as ligações.
+    level.powered.push(BlockPos::new(origin.x + 1, origin.y + 1, origin.z));
+    sim.send(Event::Neighbor(cables[1]));
+    sim.tick();
+    let view = sim.owner.view_at(&sim.level, cables[1]).unwrap();
+    assert!(view.redstone_activated, "o cabo está ativado");
+    assert!(!view.connected[Face::West as usize] && !view.connected[Face::East as usize], "sem braços enquanto está ligado");
+    assert!(!view.insert.iter().any(|&b| b), "sem capability de entrada");
+}

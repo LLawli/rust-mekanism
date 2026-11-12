@@ -252,6 +252,10 @@ fn is_cable(block: &str) -> bool {
     rules::cable_capacity(block).is_some()
 }
 
+pub(in crate::game) fn is_cable_block(block: &str) -> bool {
+    is_cable(block)
+}
+
 fn inside(rect: [f32; 4], at: [f32; 2]) -> bool {
     gui::contains(rect, at)
 }
@@ -284,14 +288,16 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_machine(block) || is_cable(block) {
         *ticks = true;
     }
-    // A sonda dos eventos dos transmissores (desligada no repositório): os cabos se registram só para o rastro; a rede de verdade chega com a Fase 3.
-    if is_cable(block) && basis::transmitter_probe_enabled() {
-        basis::transmitters_register("mekanism", block, transmitter_event);
+    // Os cabos de energia: os eventos do jogo vão ao dono dos transmissores da `machinery_basis` (a rede), com a capacidade do tier (`tiers.toml`).
+    if is_cable(block) {
+        basis::cables_register("mekanism", block, cable_capacity_of);
     }
 }
 
-/// O dono dos eventos dos cabos: por enquanto não faz nada com eles (a sonda os escreve antes de chegarem aqui).
-fn transmitter_event(_game: &mut Game<'_>, _event: &basis::TransmitterEvent) {}
+/// `CableTier.getCableCapacity` do bloco: a capacidade do arquivo `tiers.toml`.
+fn cable_capacity_of(block: &str) -> Option<i64> {
+    rules::cable_tier(block).map(|tier| server_config().cables[tier])
+}
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
     crate::game::mekanism_cube::energy(block, energy);
@@ -301,7 +307,8 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
         *energy = Some(ModEnergyBuffer {
             capacity,
             max_insert: capacity,
-            insert_faces: [true; 6],
+            // As faces e a capacidade de verdade são da instância (o dono dos transmissores responde pelo `energy_capacity`): um cabo que ele não conhece não aceita nada.
+            insert_faces: [false; 6],
             ..Default::default()
         });
         return;
@@ -2866,7 +2873,7 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if is_cable(&entity.id) {
-        basis::transmit_energy(game, pos, entity);
+        basis::cable_tick(game, pos, entity);
     } else if crate::game::mekanism_cube::is_cube(&entity.id) {
         crate::game::mekanism_cube::tick(game, pos, entity);
     } else if let Some(machine) = machine_of(&entity.id) {

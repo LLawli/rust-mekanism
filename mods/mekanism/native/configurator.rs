@@ -114,6 +114,9 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     let mode = mode_of(game, stack);
     let sneaking = game.native_sneaking();
     let block = game.native_block(pos);
+    if mode.transmission().is_some() && glue::is_cable_block(&block) {
+        return cable_click(game, pos, face, sneaking);
+    }
     if let Some(kind) = mode.transmission() {
         if cube::is_cube(&block) {
             let click = cube::with_cube(game, pos, |cube| {
@@ -183,6 +186,55 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
             false
         }
         _ => false,
+    }
+}
+
+/// O clique de um modo de configurar num cabo (`ItemConfigurator.useOn`: a capability `IConfigurable` do transmissor, `onSneakRightClick` agachado e `onRightClick` senão).
+fn cable_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
+    let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
+    let Some((consumed, overlays)) = basis::cable_configure(game, pos, face, hit_side, sneaking) else {
+        return false;
+    };
+    for message in &overlays {
+        overlay(game, &rules::cable_overlay_message(message));
+    }
+    consumed
+}
+
+/// `TileEntityTransmitter.getSideLookingAt`: o lado do braço que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`). As caixas são as da forma do estado
+/// (o centro e uma por lado ligado); a do braço encosta na face do bloco, e é por qual que se acha o lado. O centro, ou nada, não é braço.
+fn aimed_arm(game: &Game<'_>, pos: [i32; 3]) -> Option<Face> {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let facts = game.res.facts().get(state);
+    let center = rules::transmitter_center(&facts.name)?;
+    let (origin, direction) = game.aim()?;
+    let reach = game.reach();
+    let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
+    let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
+    let nearest = facts
+        .outline
+        .iter()
+        .filter_map(|bounds| rules::clip_box(local, end, bounds).map(|distance| (distance, bounds)))
+        .min_by(|a, b| a.0.total_cmp(&b.0))?
+        .1;
+    if *nearest == center {
+        return None;
+    }
+    // Os lados na ordem de `Direction`: baixo, cima, norte, sul, oeste, leste.
+    if nearest[1] == 0.0 {
+        Some(Face::Down)
+    } else if nearest[4] == 1.0 {
+        Some(Face::Up)
+    } else if nearest[2] == 0.0 {
+        Some(Face::North)
+    } else if nearest[5] == 1.0 {
+        Some(Face::South)
+    } else if nearest[0] == 0.0 {
+        Some(Face::West)
+    } else if nearest[3] == 1.0 {
+        Some(Face::East)
+    } else {
+        None
     }
 }
 

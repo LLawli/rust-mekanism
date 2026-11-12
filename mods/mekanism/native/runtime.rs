@@ -3618,6 +3618,36 @@ pub fn configurator_side_message(
     )
 }
 
+/// As mensagens que o cabo manda ao jogador quando o Configurator mexe nele (`TileEntityTransmitter.onSneakRightClick`, `Transmitter.onRightClick`):
+/// `CONNECTION_TYPE.translateColored(GRAY, connectionType)` e `REDSTONE_SENSITIVITY.translateColored(GRAY, INDIGO, OnOff.of(redstoneReactive))`. O tipo de conexão
+/// (`ConnectionType.getTextComponent`) leva a cor dele: `ORANGE`, `BRIGHT_GREEN`, `YELLOW` e `WHITE`.
+pub fn cable_overlay_message(overlay: &machinery_basis_core::transmission::transmitter::Overlay) -> Chat {
+    use machinery_basis_core::transmission::connection::ConnectionType;
+    use machinery_basis_core::transmission::transmitter::Overlay;
+    const COLOR_ORANGE: u8 = 6;
+    const COLOR_WHITE: u8 = 15;
+    match overlay {
+        Overlay::ConnectionType { connection } => {
+            let color = match connection {
+                ConnectionType::Normal => COLOR_ORANGE,
+                ConnectionType::Push => COLOR_BRIGHT_GREEN,
+                ConnectionType::Pull => COLOR_YELLOW,
+                ConnectionType::None => COLOR_WHITE,
+            };
+            Chat::new(
+                "configurator.mekanism.mode_change",
+                vec![Chat::plain(&format!("connection.mekanism.{}", connection.serialized_name()), Some(color))],
+                Some(enum_color_rgb(COLOR_GRAY)),
+            )
+        }
+        Overlay::RedstoneSensitivity { on } => Chat::new(
+            "configurator.mekanism.redstone_sensitivity",
+            vec![Chat::plain(if *on { "boolean.mekanism.on" } else { "boolean.mekanism.off" }, Some(COLOR_INDIGO))],
+            Some(enum_color_rgb(COLOR_GRAY)),
+        ),
+    }
+}
+
 /// O que a mão principal segura no clique de um bloco de Mekanism, para `tile_use`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HeldItem {

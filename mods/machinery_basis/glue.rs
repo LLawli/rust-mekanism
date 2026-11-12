@@ -23,7 +23,7 @@ use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
 use machinery_basis_core::liquid_data;
 use machinery_basis_core::neighbors::{OUTPUT_SIGNAL_ORDER, PendingPower};
-use machinery_basis_core::network::{self, EnergyBlocks, Link};
+use machinery_basis_core::network::{self, EnergyBlocks};
 use machinery_basis_core::placement::{self, Rules as PlacementRules};
 use machinery_basis_core::recipe::{
     Conversion, ConversionFields, EnergyConversionData, MachineRecipeData, RecipeFields, ResourceInput,
@@ -34,6 +34,7 @@ use machinery_basis_core::tank::{FORMAT, Tank};
 use machinery_basis_core::temperature;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Instant;
@@ -75,13 +76,6 @@ static INCOMPLETE: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// Sobe a cada carga de dados (`data_loaded`). Os índices de receitas de cada thread (`MekanismRecipeType.getInputCache`) guardam a
 /// carga de onde saíram e se limpam (`clear`) quando ela muda.
 static DATA_GENERATION: AtomicU64 = AtomicU64::new(0);
-// A travessia de uma rede custa 1 ms a cada mil transmissores. Guardada por um segundo, uma mudança
-// demora até isso para valer, e nada se perde: a energia só espera no transmissor.
-const NETWORK_REFRESH_TICKS: i64 = 20;
-type NetworkWalk = (i64, Arc<Vec<([i32; 3], Face)>>);
-static NETWORK_WALKS: LazyLock<Mutex<HashMap<(&'static str, [i32; 3]), NetworkWalk>>> =
-    LazyLock::new(Default::default);
-
 // A parte da tela que toda máquina tem, nas posições do inventário vanilla.
 const INVENTORY_LEFT: f32 = 7.0;
 const INVENTORY_TOP: f32 = 83.0;
@@ -439,22 +433,13 @@ pub(in crate::game) fn face_of(direction: Direction) -> Face {
     }
 }
 
-/// Se um transmissor se liga ao bloco `neighbour` pela face `face` dele.
-fn joins(level: &GameLevel<'_>, energy: &EnergyBlocks, neighbour: BlockStateId, face: Face) -> bool {
-    level.registry.state(neighbour).is_some_and(|state| {
-        let facing = state.properties.get("facing");
-        let front = facing.and_then(|facing| Face::from_property(facing));
-        energy.joins(&state.name, front.unwrap_or(Face::North), face)
-    })
-}
-
 fn with_side(level: &GameLevel<'_>, state: BlockStateId, side: Face, joined: bool) -> BlockStateId {
     let value = if joined { "true" } else { "false" };
     level.native_state_with_property(state, side.name(), value).unwrap_or(state)
 }
 
-fn is_transmitter_state(level: &GameLevel<'_>, energy: &EnergyBlocks, state: BlockStateId) -> bool {
-    level.native_state_block(state).is_some_and(|block| energy.is_transmitter(block))
+fn is_cable_state(level: &GameLevel<'_>, state: BlockStateId) -> bool {
+    level.native_state_block(state).is_some_and(|block| cable_capacity(block).is_some())
 }
 
 /// O bloco sendo colocado. Um transmissor liga cada lado só ao que troca energia por aquela face. Um bloco com regra de colocação (`machinery_basis/placement`) escolhe
@@ -468,16 +453,11 @@ pub(in crate::game) fn state_for_placement(
     answer: &mut Option<Option<BlockStateId>>,
 ) {
     let pos = context.pos;
-    let energy = network::current();
     let rules = placement::current();
     let rule = level.native_state_block(state).and_then(|block| rules.get(block));
-    if is_transmitter_state(level, &energy, state) {
-        let placed = Face::ALL.iter().fold(state, |placed, &side| {
-            let [x, y, z] = neighbour([pos.x, pos.y, pos.z], side);
-            let joined = joins(level, &energy, level.world.block(x, y, z), side.opposite());
-            with_side(level, placed, side, joined)
-        });
-        // O cabo tem o `fluid_logged` do original (a regra de colocação só diz esse, o cabo não tem `facing`).
+    if is_cable_state(level, state) {
+        // `BlockTransmitter.getStateForPlacement`: só o fluido. As conexões vêm do `Transmitter` (a block entity), e o dono as publica nas propriedades de lado.
+        let placed = Face::ALL.iter().fold(state, |placed, &side| with_side(level, placed, side, false));
         let placed = rule.map_or(placed, |rule| with_fluid(level, placed, rule, fluid));
         *answer = Some(Some(placed));
         return;
@@ -532,11 +512,10 @@ pub(in crate::game) fn update_shape(
         let delay = tick_delay(fluid, matches!(level.dimension, LevelDimension::Nether));
         level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], fluid, delay);
     }
-    let energy = network::current();
-    if is_transmitter_state(level, &energy, state) {
-        let side = face_of(direction);
-        let joined = joins(level, &energy, around, side.opposite());
-        *new = Some(with_side(level, state, side, joined));
+    if is_cable_state(level, state) {
+        // As conexões do cabo são do `Transmitter`, e não da forma: um vizinho que muda não troca o braço (o dono o faz, `sendUpdatePacket`).
+        let _ = (direction, around);
+        *new = Some(state);
     }
 }
 
@@ -614,7 +593,6 @@ pub(in crate::game) fn data_loaded() {
     CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     ENERGY_CONVERSIONS.lock().unwrap_or_else(|e| e.into_inner()).clear();
     INCOMPLETE.lock().unwrap_or_else(|e| e.into_inner()).clear();
-    NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 /// A tabela dos estados que levam o sombreamento do NeoForge (`EnhancedBlockModelLighter`, `enhanced_lighting.rs`): os de bloco de mod. O NeoForge o dá a todo bloco; o mesher do Horizon o dá só aos
@@ -1397,11 +1375,19 @@ pub(in crate::game) fn set_energy_capacity(
     extract_faces: [bool; 6],
 ) {
     let mut capacities = ENERGY_CAPACITIES.lock().unwrap_or_else(|e| e.into_inner());
-    capacities.insert(
+    let old = capacities.insert(
         (dimension, pos),
         InstanceEnergy { block: block.to_owned(), capacity, insert_faces, extract_faces },
     );
+    // Uma capability que apareceu ou mudou de lado (a configuração de lados, a frente do bloco): `BlockEntity.invalidateCapabilities`, que o cabo vizinho ouve
+    // (`RefreshListener`). O Horizon só põe as faces da instância no primeiro tick da máquina, e o cabo que a olhou antes a achou sem capability.
+    if old.is_none_or(|old| old.block != block || old.insert_faces != insert_faces || old.extract_faces != extract_faces) {
+        CAPABILITY_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).push((dimension, pos));
+    }
 }
+
+/// As posições cuja capability de energia mudou desde o último tick do servidor, para os cabos vizinhos ouvirem.
+static CAPABILITY_CHANGED: Mutex<Vec<(&'static str, [i32; 3])>> = Mutex::new(Vec::new());
 
 /// Esquece as capacidades das máquinas que já não andam: a tabela não cresce com os blocos quebrados.
 pub(in crate::game) fn retain_energy_capacities(keep: impl Fn(&'static str, [i32; 3]) -> bool) {
@@ -1412,6 +1398,9 @@ pub(in crate::game) fn retain_energy_capacities(keep: impl Fn(&'static str, [i32
 /// As faces de energia que a instância em `pos` declarou (entrar e sair), ou `None` se ela não declarou: o que o ejetor de um vizinho precisa para saber se há
 /// capability do outro lado (`BlockCapabilityCache.getCapability` não nulo).
 pub(in crate::game) fn instance_energy_faces(dimension: &'static str, pos: [i32; 3]) -> Option<([bool; 6], [bool; 6])> {
+    if let Some(faces) = cable_faces(dimension, pos) {
+        return Some(faces);
+    }
     ENERGY_CAPACITIES
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -1427,6 +1416,9 @@ pub(in crate::game) fn energy_capacity(
 ) -> std::ops::ControlFlow<Option<(Arc<horizon_client::containers::ModEnergyBuffer>, i32)>> {
     use horizon_client::containers::{BlockEntity, ModEnergyBuffer};
     use std::ops::ControlFlow::{Break, Continue};
+    if let Break(answer) = cable_energy(game, pos) {
+        return Break(answer);
+    }
     let key = (pos[0], pos[1], pos[2]);
     let Some(InstanceEnergy { block, capacity, insert_faces, extract_faces }) = ENERGY_CAPACITIES
         .lock()
@@ -1711,66 +1703,6 @@ pub(in crate::game) fn distribute_energy(
     }
     set_stored_energy(entity, stored);
     start - stored
-}
-
-/// O que cada lado do transmissor em `pos` alcança. Uma saída de outro bloco liga o cabo, mas não
-/// é consumidor: a rede só entrega por uma face de entrada.
-fn links(game: &Game<'_>, pos: [i32; 3], energy: &EnergyBlocks) -> [Option<Link>; 6] {
-    Face::ALL.map(|face| {
-        if game.native_block_property(pos, face.name()).as_deref() != Some("true") {
-            return None;
-        }
-        let at = neighbour(pos, face);
-        let block = game.native_block(at);
-        if energy.is_transmitter(&block) {
-            Some(Link::Transmitter)
-        } else {
-            energy.receives(&block, front(game, at), face.opposite()).then_some(Link::Acceptor)
-        }
-    })
-}
-
-/// Quem a rede alcança a partir de `pos`, numa travessia guardada por `NETWORK_REFRESH_TICKS`.
-fn network_acceptors(game: &Game<'_>, pos: [i32; 3]) -> Arc<Vec<([i32; 3], Face)>> {
-    let now = game.world.game_time;
-    let key = (game.native_dimension(), pos);
-    let mut walks = NETWORK_WALKS.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((expires, acceptors)) = walks.get(&key)
-        && now < *expires
-    {
-        return acceptors.clone();
-    }
-    walks.retain(|_, (expires, _)| now < *expires);
-    let energy = network::current();
-    let acceptors = Arc::new(network::acceptors(pos, |at| links(game, at, &energy)));
-    walks.insert(key, (now + NETWORK_REFRESH_TICKS, acceptors.clone()));
-    acceptors
-}
-
-/// Um tick de um transmissor de energia: o que ele guarda vai para os consumidores que a rede
-/// alcança, divididos por igual. As ligações são as propriedades de lado do bloco.
-pub(in crate::game) fn transmit_energy(
-    game: &mut Game<'_>,
-    pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-) {
-    let stored = stored_energy(entity);
-    if stored == 0 {
-        return;
-    }
-    let acceptors = network_acceptors(game, pos);
-    let wanted: Vec<i32> = acceptors
-        .iter()
-        .map(|&(at, face)| game.native_energy_insert(at, direction(face), stored, true))
-        .collect();
-    let shares = network::split_fairly(stored, &wanted);
-    let mut sent = 0;
-    for (&(at, face), share) in acceptors.iter().zip(shares) {
-        if share > 0 {
-            sent += game.native_energy_insert(at, direction(face), share, false);
-        }
-    }
-    set_stored_energy(entity, stored - sent);
 }
 
 /// O clima do bioma que `Level.getBiome(pos)` dá em `pos`: o `BiomeManager` não lê o quadrado de 4 por 4 que contém o bloco, e sim o
@@ -3306,4 +3238,581 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
     }
     let events = transmitters::reset();
     transmitters_deliver(game, events);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os cabos de energia (frente `cabo-jogo`, Fase 3). O dono dos transmissores (`machinery_basis_core::transmission::owner`) guarda por dimensão o registro, os
+// `Transmitter` e a família de energia; esta parte o liga ao jogo: os eventos da decisão 107 entram nele, as conexões que ele calcula viram as propriedades de lado do
+// bloco, a capability de energia do cabo (o contêiner da rede) responde pelo `energy_capacity`, e o NBT do cabo (`TileEntityTransmitter.saveAdditional`) sai no
+// salvamento. A lib não conhece nenhum id: o mod diz quais blocos são cabos e a capacidade de cada um em `cables_register`.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+use machinery_basis_core::distribution::EnergyInsert;
+use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
+use machinery_basis_core::transaction::Transaction;
+use machinery_basis_core::transmission::connection::ConnectionType;
+use machinery_basis_core::transmission::owner::{
+    Acceptor, CableInfo, CableView, ENERGY_KEY, EnergyTransmitters, Event as CableEvent, OwnerWorld,
+};
+use machinery_basis_core::transmission::transmitter::{Compound as CableNbt, Overlay as CableOverlay, Tag as CableTag};
+use machinery_basis_core::transmission::{DimensionId, Uuid};
+use std::cell::{Cell, RefCell};
+
+/// A capacidade de um bloco de cabo (`CableTier.getCableCapacity`), ou `None` se o bloco não é um cabo.
+pub type CableCapacity = fn(&str) -> Option<i64>;
+
+static CABLE_KINDS: Mutex<Vec<(&'static str, CableCapacity)>> = Mutex::new(Vec::new());
+/// `UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE`: as propriedades de lado só vão aos clientes (`sendUpdatePacket` não avisa vizinho nem refaz forma).
+const CABLE_FLAGS: i32 = 2 | 16;
+
+/// `(dimensão, posição do vizinho, lado dele que olha o cabo)`.
+type AcceptorKey = (&'static str, [i32; 3], usize);
+
+thread_local! {
+    /// Os transmissores de energia de cada dimensão do nível deste servidor.
+    static CABLES: RefCell<HashMap<&'static str, EnergyTransmitters>> = RefCell::new(HashMap::new());
+    /// A última vista publicada de cada cabo (as faces da capability).
+    static CABLE_VIEWS: RefCell<HashMap<(&'static str, [i32; 3]), CableView>> = RefCell::new(HashMap::new());
+    /// O que do `energy` inteiro do cabo (a caixa de entrada do Horizon) o dono já recebeu.
+    static CABLE_ABSORBED: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
+    /// Os avisos de tela que o Configurator provocou, para quem chamou entregar ao jogador.
+    static CABLE_OVERLAYS: RefCell<Vec<CableOverlay>> = const { RefCell::new(Vec::new()) };
+    /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon (a fila anota o `insert` no começo dele): `(dimensão, posição, tick)`, tentados de novo.
+    static CABLE_PENDING: RefCell<Vec<(&'static str, [i32; 3], i64)>> = const { RefCell::new(Vec::new()) };
+    /// Os vizinhos que o dono guarda como aceitadores (o mesmo objeto que o registro tem no cache de aceitadores).
+    static CABLE_ACCEPTORS: RefCell<HashMap<AcceptorKey, Rc<HostAcceptor>>> = RefCell::new(HashMap::new());
+}
+
+/// `id` (o `ModBlockEntity.id`) passa a ser um cabo de energia de `owner`: os eventos do jogo dele vão ao dono dos cabos, e `capacity` dá a capacidade.
+pub fn cables_register(owner: &'static str, id: &str, capacity: CableCapacity) {
+    transmitters_register(owner, id, cables_event);
+    let mut kinds = CABLE_KINDS.lock().unwrap_or_else(|e| e.into_inner());
+    if !kinds.iter().any(|(name, _)| *name == owner) {
+        kinds.push((owner, capacity));
+    }
+}
+
+fn cable_capacity(block: &str) -> Option<i64> {
+    let kinds: Vec<CableCapacity> = CABLE_KINDS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, capacity)| *capacity).collect();
+    kinds.into_iter().find_map(|capacity| capacity(block))
+}
+
+fn sim_pos(pos: [i32; 3]) -> SimPos {
+    SimPos::new(pos[0], pos[1], pos[2])
+}
+
+fn arr(pos: SimPos) -> [i32; 3] {
+    [pos.x, pos.y, pos.z]
+}
+
+/// O que o buffer do vizinho dizia no começo da conta (`Game::native_energy`).
+#[derive(Clone, Copy, Default)]
+struct BufferSnapshot {
+    amount: i32,
+    capacity: i32,
+    max_insert: i32,
+    max_extract: i32,
+    can_insert: bool,
+    can_extract: bool,
+}
+
+/// Um vizinho que dá ou recebe energia pela capability dele. O Horizon não desfaz uma inserção e a lib não tem o jogo na mão quando distribui (`probe_insert` só simula e
+/// `commit_probe` insere de verdade, veja `distribution`), então o aceitador faz a conta de `SimpleEnergyHandler.insert` e `extract` sobre o que o buffer dizia no começo do
+/// evento (`insert_amount` e `extract_amount` do Horizon) e guarda o que entregou e o que tirou; `acceptors_flush` aplica isso no jogo no fim do evento.
+struct HostAcceptor {
+    dimension: &'static str,
+    pos: [i32; 3],
+    /// O lado do vizinho que olha o cabo.
+    side: Direction,
+    snapshot: Cell<BufferSnapshot>,
+    delivered: Cell<i32>,
+    taken: Cell<i32>,
+}
+
+impl HostAcceptor {
+    fn insertable(&self, offered: i32) -> i32 {
+        let snapshot = self.snapshot.get();
+        if !snapshot.can_insert {
+            return 0;
+        }
+        snapshot.capacity.saturating_sub(snapshot.amount.saturating_add(self.delivered.get())).min(offered).min(snapshot.max_insert).max(0)
+    }
+}
+
+impl EnergyInsert for HostAcceptor {
+    fn insert(&self, amount: i32, _: &Transaction) -> i32 {
+        let moved = self.insertable(amount);
+        self.delivered.set(self.delivered.get().saturating_add(moved));
+        moved
+    }
+
+    fn probe_insert(&self, amount: i32, _: &Transaction) -> i32 {
+        self.insertable(amount)
+    }
+
+    fn commit_probe(&self, amount: i32, _: &Transaction) {
+        let moved = self.insertable(amount);
+        self.delivered.set(self.delivered.get().saturating_add(moved));
+    }
+
+    fn extract(&self, amount: i32, simulate: bool) -> i32 {
+        let snapshot = self.snapshot.get();
+        if !snapshot.can_extract || amount <= 0 {
+            return 0;
+        }
+        let moved = snapshot.amount.saturating_sub(self.taken.get()).min(amount).min(snapshot.max_extract).max(0);
+        if !simulate {
+            self.taken.set(self.taken.get().saturating_add(moved));
+        }
+        moved
+    }
+}
+
+fn snapshot_of(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: Direction) -> Option<BufferSnapshot> {
+    let energy = game.native_energy(dimension, pos, side)?;
+    Some(BufferSnapshot {
+        amount: energy.amount,
+        capacity: energy.capacity,
+        max_insert: energy.max_insert,
+        max_extract: energy.max_extract,
+        can_insert: energy.can_insert,
+        can_extract: energy.can_extract,
+    })
+}
+
+/// Antes de um evento que pode distribuir ou puxar energia: os aceitadores leem o buffer de novo (`around` limita aos vizinhos de um cabo).
+fn acceptors_refresh(game: &Game<'_>, dimension: &'static str, around: Option<[i32; 3]>) {
+    CABLE_ACCEPTORS.with_borrow_mut(|acceptors| {
+        // Quem só a tabela guarda já não está no cache de nenhum cabo.
+        acceptors.retain(|_, acceptor| Rc::strong_count(acceptor) > 1);
+        for ((dim, pos, _), acceptor) in acceptors.iter() {
+            if *dim != dimension {
+                continue;
+            }
+            if let Some(cable) = around
+                && !Face::ALL.iter().any(|face| neighbour(cable, *face) == *pos)
+            {
+                continue;
+            }
+            acceptor.snapshot.set(snapshot_of(game, dimension, *pos, acceptor.side).unwrap_or_default());
+        }
+    });
+}
+
+/// Depois do evento: o que os aceitadores entregaram e tiraram vai para os buffers dos vizinhos.
+fn acceptors_flush(game: &mut Game<'_>, dimension: &'static str) {
+    let pending: Vec<Rc<HostAcceptor>> = CABLE_ACCEPTORS.with_borrow(|acceptors| {
+        acceptors.values().filter(|a| a.dimension == dimension && (a.delivered.get() != 0 || a.taken.get() != 0)).cloned().collect()
+    });
+    for acceptor in pending {
+        let delivered = acceptor.delivered.replace(0);
+        let taken = acceptor.taken.replace(0);
+        if delivered > 0 {
+            game.native_energy_insert(acceptor.pos, acceptor.side, delivered, false);
+        }
+        if taken > 0 {
+            game.native_energy_extract(dimension, acceptor.pos, acceptor.side, taken, false);
+        }
+    }
+}
+
+/// O jogo visto pelo dono durante um evento.
+struct GameWorld<'a, 'g> {
+    game: RefCell<&'a mut Game<'g>>,
+    dimension: &'static str,
+}
+
+fn nbt_to_cable(nbt: &Compound) -> CableNbt {
+    let mut out = CableNbt::new();
+    for (key, tag) in nbt.iter() {
+        let Ok(key) = key.to_string() else {
+            continue;
+        };
+        let converted = match tag {
+            Tag::Byte(v) => CableTag::Byte(*v),
+            Tag::Short(v) => CableTag::Short(*v),
+            Tag::Int(v) => CableTag::Int(*v),
+            Tag::Long(v) => CableTag::Long(*v),
+            Tag::IntArray(v) => CableTag::IntArray(v.clone()),
+            _ => continue,
+        };
+        out.insert(key, converted);
+    }
+    out
+}
+
+fn cable_to_nbt(tag: &CableNbt, nbt: &mut Compound) {
+    for (key, value) in tag {
+        let converted = match value {
+            CableTag::Byte(v) => Tag::Byte(*v),
+            CableTag::Short(v) => Tag::Short(*v),
+            CableTag::Int(v) => Tag::Int(*v),
+            CableTag::Long(v) => Tag::Long(*v),
+            CableTag::IntArray(v) => Tag::IntArray(v.clone()),
+            _ => continue,
+        };
+        nbt.insert(JavaString::from(key.as_str()), converted);
+    }
+}
+
+impl OwnerWorld for GameWorld<'_, '_> {
+    fn is_block_loaded(&self, pos: SimPos) -> bool {
+        self.game.borrow().world.chunks.contains_key(&(pos.x >> 4, pos.z >> 4))
+    }
+
+    fn is_getting_powered(&self, pos: SimPos) -> bool {
+        self.game.borrow_mut().native_neighbor_signal(self.dimension, arr(pos)) > 0
+    }
+
+    fn energy_handler(&self, pos: SimPos, side: Face) -> Option<Acceptor> {
+        let side = direction(side);
+        let key = (self.dimension, arr(pos), side as usize);
+        if let Some(acceptor) = CABLE_ACCEPTORS.with_borrow(|acceptors| acceptors.get(&key).cloned()) {
+            // `getCapability` não nulo: o vizinho tem um buffer que alguma configuração de lados deixa encher ou esvaziar por este lado.
+            let alive = snapshot_of(&self.game.borrow(), self.dimension, arr(pos), side);
+            return alive.map(|snapshot| {
+                acceptor.snapshot.set(snapshot);
+                acceptor as Acceptor
+            });
+        }
+        let snapshot = snapshot_of(&self.game.borrow(), self.dimension, arr(pos), side)?;
+        let acceptor = Rc::new(HostAcceptor {
+            dimension: self.dimension,
+            pos: arr(pos),
+            side,
+            snapshot: Cell::new(snapshot),
+            delivered: Cell::new(0),
+            taken: Cell::new(0),
+        });
+        CABLE_ACCEPTORS.with_borrow_mut(|acceptors| acceptors.insert(key, acceptor.clone()));
+        Some(acceptor)
+    }
+
+    fn cable_info(&mut self, pos: SimPos) -> Option<CableInfo> {
+        let key = (pos.x, pos.y, pos.z);
+        let game = self.game.borrow();
+        let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get(&key) else {
+            if TRANSMITTER_PROBE {
+                eprintln!("MBX {{\"cable_info\":\"sem block entity de mod\",\"p\":[{},{},{}]}}", pos.x, pos.y, pos.z);
+            }
+            return None;
+        };
+        let capacity = cable_capacity(&entity.id)?;
+        let saved = nbt_to_cable(&entity.nbt);
+        let from_save = saved.contains_key(machinery_basis_core::transmission::transmitter::keys::CONNECTION) || saved.contains_key(ENERGY_KEY);
+        Some(CableInfo { capacity, saved: from_save.then_some(saved) })
+    }
+
+    fn publish(&mut self, pos: SimPos, view: &CableView) {
+        let at = arr(pos);
+        let mut game = self.game.borrow_mut();
+        for side in Face::ALL {
+            let value = if view.connected[side as usize] { "true" } else { "false" };
+            game.native_set_block_property_with(at, side.name(), value, CABLE_FLAGS);
+        }
+        if TRANSMITTER_PROBE {
+            let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
+            let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
+            eprintln!("MBV {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
+        }
+        CABLE_VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
+    }
+
+    fn overlay(&mut self, _pos: SimPos, overlay: CableOverlay) {
+        CABLE_OVERLAYS.with_borrow_mut(|list| list.push(overlay));
+    }
+}
+
+fn new_cable_owner() -> EnergyTransmitters {
+    EnergyTransmitters::new(DimensionId(0), Uuid::random, |_| Uuid::random().hash_code())
+}
+
+/// Roda `f` no dono dos cabos da dimensão. `None` se o dono já está ocupado (um evento dentro de outro).
+fn with_owner<R>(dimension: &'static str, f: impl FnOnce(&mut EnergyTransmitters) -> R) -> Option<R> {
+    CABLES.with(|cables| {
+        let mut cables = cables.try_borrow_mut().ok()?;
+        Some(f(cables.entry(dimension).or_insert_with(new_cable_owner)))
+    })
+}
+
+/// O sink dos eventos dos cabos: traduz o evento do jogo para o do dono.
+fn cables_event(game: &mut Game<'_>, event: &TransmitterEvent) {
+    let dimension = game.native_dimension();
+    cables_retry_pending(game, dimension);
+    cables_deliver(game, dimension, event);
+    // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
+    if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
+        let created = with_owner(dimension, |owner| owner.cable_at(sim_pos(*pos)).is_some()).unwrap_or(true);
+        if !created {
+            let now = game.world.game_time;
+            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dimension, *pos, now)));
+        }
+    }
+}
+
+/// Os `ClearRemoved` que esperavam o block entity: o que já o tem entra, o que esperou demais (o bloco já não é um cabo) sai da fila.
+fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
+    let waiting: Vec<(&'static str, [i32; 3], i64)> = CABLE_PENDING.with_borrow_mut(|pending| std::mem::take(pending));
+    for (dim, pos, since) in waiting {
+        if dim != dimension {
+            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dim, pos, since)));
+            continue;
+        }
+        let present = matches!(game.world.block_entities.get(&(pos[0], pos[1], pos[2])), Some(horizon_client::containers::BlockEntity::Mod(_)));
+        if present {
+            cables_deliver(game, dimension, &TransmitterEvent::Transmitter { dim: dimension.to_owned(), pos, kind: TransmitterKind::ClearRemoved });
+        } else if game.world.game_time - since < 200 {
+            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dim, pos, since)));
+        }
+    }
+}
+
+fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
+    let event = match event {
+        TransmitterEvent::Transmitter { pos, kind, .. } => {
+            let pos = sim_pos(*pos);
+            match kind {
+                TransmitterKind::ClearRemoved => CableEvent::ClearRemoved(pos),
+                TransmitterKind::PlacedByItem => CableEvent::PlacedByItem(pos),
+                TransmitterKind::ChunkUnloaded => CableEvent::ChunkUnloaded(pos),
+                TransmitterKind::Removed => CableEvent::Removed(pos),
+                TransmitterKind::Update => CableEvent::Update(pos),
+                TransmitterKind::Neighbor => CableEvent::Neighbor(pos),
+                TransmitterKind::Capability(side) => CableEvent::Capability(pos, Face::ALL[*side]),
+            }
+        }
+        TransmitterEvent::Ticket { chunk, loaded, .. } => CableEvent::Ticket { chunk: ChunkPos::new(chunk[0], chunk[1]), loaded: *loaded },
+        TransmitterEvent::ServerTickPost { runs_normally } => CableEvent::ServerTickPost { runs_normally: *runs_normally },
+        TransmitterEvent::Reset => {
+            CABLES.with_borrow_mut(HashMap::clear);
+            CABLE_VIEWS.with_borrow_mut(HashMap::clear);
+            CABLE_ABSORBED.with_borrow_mut(HashMap::clear);
+            CABLE_ACCEPTORS.with_borrow_mut(HashMap::clear);
+            return;
+        }
+    };
+    let post = matches!(event, CableEvent::ServerTickPost { .. });
+    let removed = if let CableEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
+    // `onChunkUnloaded` toma a parte do cabo e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
+    let unloaded = if let CableEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
+    // Quem puxa (`Update`) ou distribui (`ServerTickPost`) fala com os vizinhos pelos aceitadores, que leem o buffer deles antes e escrevem depois.
+    match &event {
+        CableEvent::Update(pos) => acceptors_refresh(game, dimension, Some(arr(*pos))),
+        CableEvent::ServerTickPost { .. } => acceptors_refresh(game, dimension, None),
+        _ => {}
+    }
+    if post {
+        // As capabilities que mudaram durante o tick chegam aos cabos vizinhos antes do `onTick` do registro.
+        let changed: Vec<[i32; 3]> = {
+            let mut list = CAPABILITY_CHANGED.lock().unwrap_or_else(|e| e.into_inner());
+            let (here, other): (Vec<_>, Vec<_>) = std::mem::take(&mut *list).into_iter().partition(|(dim, _)| *dim == dimension);
+            *list = other;
+            here.into_iter().map(|(_, pos)| pos).collect()
+        };
+        for pos in changed {
+            for side in Face::ALL {
+                let neighbor = neighbour(pos, side);
+                let present = with_owner(dimension, |owner| owner.cable_at(sim_pos(neighbor)).is_some()).unwrap_or(false);
+                if present {
+                    let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+                    with_owner(dimension, |owner| owner.handle(&mut world, CableEvent::Capability(sim_pos(neighbor), side.opposite())));
+                }
+            }
+        }
+        // O que entrou em cada cabo depois do tick dele chega ao contêiner (a rede só emite o que já guarda).
+        let time = game.world.game_time;
+        let inboxes: Vec<([i32; 3], i32)> = with_owner(dimension, |owner| owner.positions().into_iter().map(|pos| (arr(pos), cable_inbox_value(game, arr(pos)))).collect()).unwrap_or_default();
+        with_owner(dimension, |owner| {
+            for (pos, inbox) in inboxes {
+                cables_absorb(owner, dimension, pos, inbox);
+            }
+            owner.set_game_time(time);
+        });
+    }
+    let dirty = with_owner(dimension, |owner| {
+        {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            owner.handle(&mut world, event);
+        }
+        if let Some(pos) = unloaded {
+            cable_write(game, owner, pos);
+        }
+        if post && TRANSMITTER_PROBE {
+            // A sonda da energia (`MBE`): a energia, a capacidade e o que saiu de cada rede neste tick, e quantos cabos e aceitadores ela tem.
+            let nets: Vec<String> = owner
+                .registry()
+                .networks_in_order()
+                .into_iter()
+                .filter_map(|id| {
+                    let net = owner.family().network(id)?;
+                    let registered = owner.registry().network(id);
+                    Some(format!(
+                        "[{},{},{},{},{}]",
+                        net.buffer(),
+                        net.capacity(),
+                        net.prev_transfer_amount(),
+                        registered.transmitters_size(),
+                        registered.acceptor_count()
+                    ))
+                })
+                .collect();
+            eprintln!("MBE {{\"t\":{},\"nets\":[{}]}}", TRANSMITTER_PASS.load(Ordering::Relaxed), nets.join(","));
+        }
+        if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
+    });
+    acceptors_flush(game, dimension);
+    if let Some(pos) = removed {
+        CABLE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
+        CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.remove(&(dimension, pos)));
+    }
+    // `markChunkDirty` da rede: o chunk do cabo vai para o próximo salvamento.
+    for key in dirty.unwrap_or_default() {
+        let chunk = ChunkPos::unpack(key);
+        game.world.modified.insert((chunk.x, chunk.z));
+    }
+}
+
+/// O que um vizinho empurrou para um cabo desde a última conta está no `energy` inteiro do block entity (o Horizon grava a inserção ali): passa para o
+/// contêiner da rede. Quem empurra em `native_energy_insert` só vê o `energy_capacity` do cabo, que chama isto antes de dizer a sobra.
+fn cable_inbox_value(game: &Game<'_>, pos: [i32; 3]) -> i32 {
+    match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(horizon_client::containers::BlockEntity::Mod(entity)) => stored_energy(entity),
+        _ => 0,
+    }
+}
+
+fn cables_absorb(owner: &mut EnergyTransmitters, dimension: &'static str, pos: [i32; 3], inbox: i32) {
+    let key = (dimension, pos);
+    let before = CABLE_ABSORBED.with_borrow(|absorbed| absorbed.get(&key).copied().unwrap_or(0));
+    let pending = inbox - before;
+    if pending > 0 {
+        owner.insert_external(sim_pos(pos), pending);
+    }
+    CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert(key, inbox));
+}
+
+/// O tick do block entity do cabo (que está fora do mundo): a caixa de entrada passa para a rede e se zera, e o `energy` volta a ser só o que o salvamento põe.
+pub(in crate::game) fn cable_tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
+    let dimension = game.native_dimension();
+    let inbox = stored_energy(entity);
+    with_owner(dimension, |owner| cables_absorb(owner, dimension, pos, inbox));
+    if entity.nbt.contains_key(&JavaString::from(ENERGY)) {
+        entity.nbt.remove(&JavaString::from(ENERGY));
+    }
+    CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), 0));
+}
+
+/// `energy_capacity` (H1) do cabo: a capacidade que o Horizon enxerga é a energia da caixa de entrada mais o que ainda cabe no contêiner da rede, e as faces são as que
+/// `canInsert` e o contêiner dão. `Continue` se o bloco em `pos` não é um cabo que o dono conhece.
+pub(in crate::game) fn cable_energy(
+    game: &Game<'_>,
+    pos: [i32; 3],
+) -> std::ops::ControlFlow<Option<(Arc<horizon_client::containers::ModEnergyBuffer>, i32)>> {
+    use std::ops::ControlFlow::{Break, Continue};
+    let dimension = game.native_dimension();
+    let known = CABLES.with(|cables| cables.try_borrow().ok().is_some_and(|cables| cables.get(dimension).is_some_and(|owner| owner.cable_at(sim_pos(pos)).is_some())));
+    if !known {
+        return Continue(());
+    }
+    let key = (pos[0], pos[1], pos[2]);
+    let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get(&key) else {
+        // O block entity que está no tick está fora do mundo: sem buffer, como o Horizon.
+        return Break(None);
+    };
+    let inbox = stored_energy(entity);
+    let state = with_owner(dimension, |owner| {
+        cables_absorb(owner, dimension, pos, inbox);
+        owner.container_state(sim_pos(pos))
+    })
+    .flatten();
+    let Some((capacity, amount)) = state else {
+        return Break(None);
+    };
+    let view = CABLE_VIEWS.with_borrow(|views| views.get(&(dimension, pos)).cloned());
+    let Some(view) = view else {
+        return Break(None);
+    };
+    let room = i32::try_from((capacity - amount).max(0)).unwrap_or(i32::MAX).min(i32::MAX - inbox.max(0));
+    let mut insert_faces = [false; 6];
+    let mut extract_faces = [false; 6];
+    for side in 0..6 {
+        insert_faces[side] = view.insert[side];
+        // A capability existe no lado, mas não deixa tirar (`ReadOnly`): `max_extract` é 0.
+        extract_faces[side] = view.exists[side] && !view.insert[side];
+    }
+    let buffer = horizon_client::containers::ModEnergyBuffer {
+        capacity: inbox.saturating_add(room),
+        max_insert: i32::MAX,
+        max_extract: 0,
+        insert_faces,
+        extract_faces,
+    };
+    Break(Some((Arc::new(buffer), inbox)))
+}
+
+/// As faces da capability de um cabo, para o ejetor de um vizinho (`BlockCapabilityCache.getCapability` não nulo): `(entrar, existir sem entrar)`.
+pub(in crate::game) fn cable_faces(dimension: &'static str, pos: [i32; 3]) -> Option<([bool; 6], [bool; 6])> {
+    CABLE_VIEWS.with_borrow(|views| {
+        views.get(&(dimension, pos)).map(|view| {
+            let mut extract = [false; 6];
+            for side in 0..6 {
+                extract[side] = view.exists[side] && !view.insert[side];
+            }
+            (view.insert, extract)
+        })
+    })
+}
+
+/// `TileEntityTransmitter.saveAdditional`: grava no block entity de `pos` o que o cabo guarda, e põe o `energy` (a parte do cabo na energia da rede).
+fn cable_write(game: &mut Game<'_>, owner: &mut EnergyTransmitters, pos: [i32; 3]) {
+    let dimension = game.native_dimension();
+    let inbox = cable_inbox_value(game, pos);
+    cables_absorb(owner, dimension, pos, inbox);
+    let Some(tag) = owner.write(sim_pos(pos)) else {
+        return;
+    };
+    if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        entity.nbt.remove(&JavaString::from(ENERGY));
+        cable_to_nbt(&tag, &mut entity.nbt);
+    }
+    CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), 0));
+}
+
+/// O salvamento do nível (`Game::save_level`, antes de ele esvaziar os chunks alterados): os cabos dos chunks que vão para o disco gravam o NBT deles.
+pub(in crate::game) fn cables_save(game: &mut Game<'_>) {
+    let dimension = game.native_dimension();
+    let chunks: Vec<(i32, i32)> = game.world.modified.iter().copied().collect();
+    if chunks.is_empty() {
+        return;
+    }
+    let positions: Vec<[i32; 3]> = with_owner(dimension, |owner| owner.positions().into_iter().map(arr).collect()).unwrap_or_default();
+    for pos in positions {
+        if chunks.contains(&(pos[0] >> 4, pos[2] >> 4)) {
+            with_owner(dimension, |owner| cable_write(game, owner, pos));
+        }
+    }
+}
+
+/// O clique do Configurator num cabo (`ItemConfigurator.useOn`: `IConfigurable.onSneakRightClick` agachado, `onRightClick` senão). `side` é a face clicada e `hit_side` o
+/// lado do braço que o olhar toca. Devolve se o clique foi do cabo e os avisos para o jogador.
+pub(in crate::game) fn cable_configure(
+    game: &mut Game<'_>,
+    pos: [i32; 3],
+    side: Face,
+    hit_side: Option<Face>,
+    sneaking: bool,
+) -> Option<(bool, Vec<CableOverlay>)> {
+    let dimension = game.native_dimension();
+    CABLE_OVERLAYS.with_borrow_mut(Vec::clear);
+    let consumed = with_owner(dimension, |owner| {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        if sneaking { owner.sneak_right_click(&mut world, sim_pos(pos), side, hit_side) } else { owner.right_click(&mut world, sim_pos(pos)) }
+    })?;
+    let overlays = CABLE_OVERLAYS.with_borrow_mut(std::mem::take);
+    Some((consumed, overlays))
+}
+
+/// Os tipos de conexão crus do cabo em `pos`, na ordem dos lados (para os testes em jogo).
+pub(in crate::game) fn cable_connection_types(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
+    with_owner(game.native_dimension(), |owner| owner.transmitter(sim_pos(pos)).map(|tx| *tx.connection_types_raw())).flatten()
 }

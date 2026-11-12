@@ -1242,3 +1242,15 @@ bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "phase", ty = "horizon_client::mod_api::WorldPhase", value = "phase" },
 ]
+
+# `TileEntityTransmitter.saveAdditional` e `UniversalCable.write` (frente `cabo-jogo`): o cabo grava no block entity a conexão por lado e a parte dele na energia da rede (as
+# `save shares`) quando o chunk vai para o disco. O Horizon não avisa um block entity de mod que vai ser serializado; o HEAD de `Game::save_level` vê os chunks alterados
+# (`world.modified`) antes de o `save_level` os esvaziar. Alvo cru, H13 (`block_entity_save`).
+[[injection]]
+id = "transmitter_save"
+target = "horizon_client::game::Game<'_>::save_level"
+kind = "HEAD"
+helper = "transmitter_save.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
