@@ -379,21 +379,28 @@ def video_roteiro(pausa):
     Configurator agachado no braço leste do segundo cabo (o braço some e B para) e na face (o braço volta e B volta). `pausa(s)` espera e deixa o gravador andar."""
     enquadrar()
     shot("cabo_linha_ligada")
-    pausa(5)
+    pausa(4)
     cmd("setblock %s minecraft:air destroy" % txt(MEIO))
     pausa(1)
     shot("cabo_meio_quebrado")
-    pausa(5)
+    pausa(4)
     cmd("setblock %s mekanism:basic_universal_cable" % txt(MEIO))
     pausa(1)
     shot("cabo_meio_reposto")
-    pausa(5)
+    pausa(4)
     for _ in range(3):
-        click_arm(at(1), "east")
-        pausa(1.5)
-    enquadrar()
+        # O `interact` vira a mira para a face do bloco: o roteiro devolve o enquadramento depois de cada clique e repete o que errou o braço (o clique que erra muda o lado
+        # clicado, o norte, que não tem braço).
+        for _ in range(6):
+            antes = (last_views().get(at(1)) or {}).get("raw", [None] * 6)[5]
+            click_arm(at(1), "east")
+            enquadrar()
+            time.sleep(1.2)
+            if (last_views().get(at(1)) or {}).get("raw", [None] * 6)[5] != antes:
+                break
+        pausa(2)
     shot("cabo_configurador_sem_braco")
-    pausa(5)
+    pausa(4)
     cmd("setblock %s minecraft:air" % txt(at(2)))
     stand((at(1)[0] + 3.5, at(1)[1], at(1)[2] + 0.5))
     h.ctl("select", "mekanism:configurator")
@@ -404,7 +411,7 @@ def video_roteiro(pausa):
     cmd("setblock %s mekanism:basic_universal_cable" % txt(at(2)))
     enquadrar()
     shot("cabo_configurador_braco_volta")
-    pausa(5)
+    pausa(4)
 
 
 def video():
