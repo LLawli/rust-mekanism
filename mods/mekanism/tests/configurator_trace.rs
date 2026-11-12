@@ -542,7 +542,7 @@ fn the_card_passes_the_screen_to_the_item_like_the_original() {
         assert!(matches!(class, "Success" | "Pass"), "{:?}", row["marks"]);
         checked += 1;
     }
-    assert!(checked >= 60, "{checked}");
+    assert_eq!(checked, 66);
 }
 
 #[test]
