@@ -1033,6 +1033,7 @@ dá 0 pixel no medidor, e `heat_trace.rs` repete o rastro `heat_generator_lava_r
 
 **Rede e cabo**
 
+- **Aberto (2026-11-12, visto pelo usuário nos prints da frente `cabo-jogo`):** o Configurator agachado no braço de um cabo mostra "Connection type changed to: None", mas o braço continua desenhado no cabo e no vizinho (os prints antes, com `NONE` e depois são iguais no trecho do braço). Quebrar um cabo redesenha certo, então a propriedade de lado chega ao cliente; a causa está no clique (o lado que ele muda) ou no refresh e na publicação depois do `NONE`. O relatório da `cabo-jogo` dizia que o braço sumia; não foi conferido com o antes e o depois. Conserto na frente `cabo-ajustes`, a medida em jogo na próxima frente com a vaga do desktop.
 - Rede de energia com o buffer somado: **feito em 2026-11-12** (frente `cabo-jogo`, decisão 121). O registro, a rede e o `EnergyFamily` rodam no jogo para os quatro cabos universais, conferidos tick a tick contra o original em jogo e pelos eventos do jogo (`owner_trace.rs`).
 - Save shares: **feito em 2026-11-12** (decisões 121 e 123): a quebra devolve a parte do cabo à rede, o chunk que sai toma a parte (`onChunkUnloaded`), o NBT sai no `save_level` e volta no `clearRemoved` (em jogo: 31.001 antes de salvar e depois de reabrir).
 - Travessia guardada por 20 ticks: **removida em 2026-11-12** (`network.rs`, `transmit_energy`, `NETWORK_WALKS` e os arquivos de energia dos cabos saíram; a rede é a do registro).
