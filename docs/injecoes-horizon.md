@@ -111,8 +111,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
 | H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
-| H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | nenhuma (o item usa o modelo comum de decisão 26, sem as portas nem o núcleo, decisão 74) | pedido |
-| H100 `BlockEntityDraw::partial` preso com o `tick freeze` (como o `getGameTimeDeltaPartialTick(false)` do vanilla) | correção | nenhuma (sob `tick freeze` o núcleo do cubo se mexe entre dois prints, só aparece em teste com o servidor parado) | pedido |
+| H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | nenhuma (o item usa o modelo gerado de decisão 26, com a porta de todo lado e o LED aceso onde sai, decisão 74; falta só o núcleo) | pedido |
+| ~~H100~~ `BlockEntityDraw::partial` preso com o `tick freeze` | retirado em 2026-11-12 | não procede: o `partial` é 1,0 e o `gameTime` fica parado sob `tick freeze` (medido em jogo) | retirado |
 
 H1 a H6, H13 a H15 e H21 são genéricos: qualquer mod de máquina, de rede, de fluido ou de tela com slot virtual usa. Nada neles cita o Mekanism.
 
@@ -1601,14 +1601,12 @@ entre parênteses.
 
 - **Lado:** cliente. **Tipo:** hook (o `SpecialModelRenderer` do 26.x).
 - **O que faz:** o `RenderEnergyCubeItem` do original desenha o quadro do cubo com as portas e os LEDs do estado de cada lado (padrão ou guardado no item) e, com energia, o núcleo translúcido girando pelo `gameTime` com o alfa da razão de energia. O pedido é um callback de desenho de item (na barra, na mão e no chão) que receba a pilha com os componentes e o `gameTime` mais o `partial`, e escreva vértices como o `block_entity_submit`.
-- **Hoje:** nenhuma injeção: o item usa o modelo comum (H60, decisão 26). Medido em jogo com `comparar_cubo.py`: 2.310 pixels diferentes na barra e 23.000 na mão, iguais para todos os níveis de energia.
-- **Risco do que existe hoje:** o item do cubo não mostra as portas nem o núcleo.
+- **Hoje:** nenhuma injeção: o item usa o modelo gerado (H60, decisão 26) com a porta de todo lado e o LED aceso onde sai (2026-11-12). Medido em jogo com `comparar_cubo.py`: 49 pixels diferentes na barra e, na mão, 0 pixel sem energia e 128 com energia (o núcleo).
+- **Risco do que existe hoje:** o item do cubo com energia não mostra o núcleo.
 
-### H100 `BlockEntityDraw::partial` preso com o `tick freeze`
+### H100 `BlockEntityDraw::partial` preso com o `tick freeze` (retirado)
 
-- **Lado:** cliente. **Tipo:** correção.
-- **O que faz:** no vanilla o `partial` de desenho de uma block entity vem do `DeltaTracker.getGameTimeDeltaPartialTick(false)`, que fica preso com o servidor parado. O `draw.partial` que o Horizon entrega varia entre dois prints seguidos sob `tick freeze` (o núcleo do cubo, que gira por `gameTime + partial`, muda 96 pixels entre dois prints).
-- **Hoje:** nenhuma injeção; só testes com o servidor parado (a comparação em pixel do núcleo e a espera de estado estável da cena de telas) são afetados; o jogo normal anda igual.
+- **Retirado em 2026-11-12 (frente `cubo-item`).** O pedido dizia que o `draw.partial` varia entre dois prints sob `tick freeze`. Medido em jogo: com o servidor parado o `partial` entregue é 1,0 (`Clock::fraction` devolve 1,0 com o jogo congelado) e o `gameTime` fica parado em 211 chamadas de desenho seguidas, e três prints com o chat já apagado diferem em menos de 1 pixel. Os 96 pixels que a comparação mostrava eram o texto do chat que apaga. Sem pedido.
 
 ### H90 envio ao servidor dos ganchos de tela
 
