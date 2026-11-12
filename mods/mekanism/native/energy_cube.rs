@@ -4,6 +4,10 @@ use crate::game::mekanism_glue as glue;
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, machinery_basis as basis};
 use crate::game::native_block_entity_draw::{BlockEntityDraw, CubeFace};
+use crate::item_render::{ItemRenderState, LayerGeometry, LayerRender};
+use horizon_assets::item_bake::BakedItemModel;
+use horizon_assets::item_model::FoilType;
+use std::sync::Arc;
 use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer};
 use horizon_client::items::ItemStack;
 use horizon_world::nbt::{JavaString, Tag};
@@ -686,6 +690,66 @@ fn face_the_front(draw: &mut BlockEntityDraw, facing: Face) {
     }
 }
 
+thread_local! {
+    /// O modelo do núcleo assado para o item, com as faces translúcidas (`Sheets.translucentBlockItemSheet`), e o modelo de onde saiu: o desenhista de item assa de novo
+    /// quando o jogo recarrega os modelos.
+    static CORE_ITEM_MODEL: RefCell<Option<(Arc<BakedItemModel>, Arc<BakedItemModel>)>> = const { RefCell::new(None) };
+}
+
+fn core_item_model(game: &Game<'_>) -> Arc<BakedItemModel> {
+    let source = game.pack.item_renderer.bake(CORE_MODEL);
+    CORE_ITEM_MODEL.with_borrow_mut(|cache| {
+        if let Some((from, made)) = cache
+            && Arc::ptr_eq(from, &source)
+        {
+            return made.clone();
+        }
+        let mut model = (*source).clone();
+        for quad in &mut model.quads {
+            quad.material.force_translucent = true;
+        }
+        let made = Arc::new(model);
+        *cache = Some((source, made.clone()));
+        made
+    })
+}
+
+/// `RenderEnergyCubeItem.submit`: o núcleo do item, translúcido, depois do quadro (o item resolvido do jogo, `resolve_item_in_hand`). A tinta é a cor do tier com o alfa da razão
+/// de energia guardada (`ARGB.as8BitChannel(ContainerType.ENERGY.getRatio(stack))`), e sem energia não há núcleo. O tempo é o `gameTime` mais o `partialTick`, como no tile.
+pub(in crate::game) fn item_core(game: &Game<'_>, stack: &ItemStack, mut state: ItemRenderState) -> ItemRenderState {
+    let Some(tier) = tier_of(&stack.item) else {
+        return state;
+    };
+    let Some(frame) = state.layers.first() else {
+        return state;
+    };
+    let capacity = glue::server_config().cubes[tier];
+    let stored = basis::item_energy_of(game, stack, rules::ENERGY_COMPONENT);
+    let ratio = machinery_basis_core::item_energy::divide_to_level(stored, capacity) as f32;
+    if ratio <= 0.0 {
+        return state;
+    }
+    let pose = energy_cube::core_pose(game.world.game_time as f32 + game.clock.fraction() as f32);
+    let axis = glam::Vec3::new(0.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2);
+    let matrix = frame.matrix
+        * glam::Mat4::from_translation(glam::Vec3::splat(0.5))
+        * glam::Mat4::from_scale(glam::Vec3::splat(0.4))
+        * glam::Mat4::from_translation(glam::Vec3::new(0.0, pose.bob, 0.0))
+        * glam::Mat4::from_rotation_y(pose.yaw.to_radians())
+        * glam::Mat4::from_axis_angle(axis, pose.tilt.to_radians());
+    let core = LayerRender {
+        geometry: LayerGeometry::Quads(core_item_model(game)),
+        tints: vec![((energy_cube::core_alpha(ratio) << 24) | TIER_COLORS[tier]) as i32],
+        foil: FoilType::None,
+        matrix,
+        particle: frame.particle.clone(),
+        uses_block_light: frame.uses_block_light,
+        extents: frame.extents.clone(),
+    };
+    state.layers.push(core);
+    state
+}
+
 /// `BlockEntityRenderer.submit` do cubo (`block_entity_submit`).
 pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEntityDraw) {
     let block = game.native_block(pos);
@@ -715,19 +779,18 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEn
     draw.pop();
     // `RenderEnergyCube.shouldRender`: o núcleo só aparece com energia.
     if scale > 0.0 {
-        let time = draw.game_time as f32 + draw.partial;
+        let pose = energy_cube::core_pose(draw.game_time as f32 + draw.partial);
         draw.push();
         draw.translate([0.5, 0.5, 0.5]);
         draw.scale([0.4, 0.4, 0.4]);
-        draw.translate([0.0, (3.0 * time).to_radians().sin() / 7.0, 0.0]);
-        let scaled = 4.0 * time;
-        draw.rotate_about([0.0, 1.0, 0.0], scaled, [0.0; 3]);
-        draw.rotate_about([0.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2], 36.0 + scaled, [0.0; 3]);
+        draw.translate([0.0, pose.bob, 0.0]);
+        draw.rotate_about([0.0, 1.0, 0.0], pose.yaw, [0.0; 3]);
+        draw.rotate_about([0.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2], pose.tilt, [0.0; 3]);
         draw.light = FULL_BRIGHT;
         let start = draw.vertices_mut().len();
         if game.native_draw_model(draw, CORE_MODEL, TIER_COLORS[tier]) {
             // O núcleo é translúcido: a tinta leva a escala no canal alfa (`ARGB.as8BitChannel(getEnergyScale())`).
-            let alpha = ((scale.clamp(0.0, 1.0) * 255.0).round() as u32) << 24;
+            let alpha = energy_cube::core_alpha(scale.clamp(0.0, 1.0)) << 24;
             for vertex in &mut draw.vertices_mut()[start..] {
                 vertex.color = alpha | (vertex.color & 0x00FF_FFFF);
             }

@@ -110,6 +110,31 @@ pub fn scale_towards(prev_scale: f32, target: f32, empty: bool, full: bool) -> f
     prev_scale
 }
 
+/// `ARGB.as8BitChannel(float)`: `Mth.floor(value * 255.0F)`. O alfa do núcleo (a escala da energia do tile, a razão da energia do item) sai daqui, e não de um arredondamento:
+/// 0,5 dá 127.
+pub fn core_alpha(ratio: f32) -> u32 {
+    (ratio * 255.0).floor().max(0.0) as u32
+}
+
+/// O quanto o núcleo se mexe num instante `time` (`RenderEnergyCube.submit` e `RenderEnergyCubeItem.submit`, que repetem a conta): a altura (`sin(toRadians(3 * time)) / 7`,
+/// em `double`), a volta em torno de Y (`4 * time`) e a inclinação em torno do eixo `(0, 1/raiz(2), 1/raiz(2))` (`36 + 4 * time`), em graus.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CorePose {
+    pub bob: f32,
+    pub yaw: f32,
+    pub tilt: f32,
+}
+
+/// A pose do núcleo no instante `time` (o `gameTime` mais o `partialTick`, em `float`).
+pub fn core_pose(time: f32) -> CorePose {
+    let scaled = 4.0 * time;
+    CorePose {
+        bob: ((f64::from(3.0 * time)).to_radians().sin() / 7.0) as f32,
+        yaw: scaled,
+        tilt: 36.0 + scaled,
+    }
+}
+
 /// `MekanismUtils.scaleChanged`.
 pub fn scale_changed(scale: f32, prev_scale: f32) -> bool {
     if mth_equal(scale, prev_scale) {
@@ -1174,6 +1199,25 @@ pub struct TickResult {
 mod tests {
     use super::*;
     use crate::side_config::{DataType, LightConfigInfo};
+
+    #[test]
+    fn the_core_alpha_floors_like_as_8bit_channel_and_the_pose_follows_the_original() {
+        // Valores do Java (`Mth.floor(r * 255.0F)`, `Math.sin(Math.toRadians(3 * t)) / 7`), rodados com o JDK 21.
+        for (ratio, alpha) in [(0.001f32, 0), (0.5, 127), (0.333_333_3, 84), (0.7, 178), (0.999, 254), (1.0, 255)] {
+            assert_eq!(core_alpha(ratio), alpha, "{ratio}");
+        }
+        for (time, bob, yaw, tilt) in [
+            (0.0f32, 0.0, 0.0, 36.0),
+            (1.5, 0.011_208_442_246_834_992, 6.0, 42.0),
+            (37.25, 0.132_687_078_981_703_45, 149.0, 185.0),
+            (211.6, -0.142_356_112_562_559_7, 846.4, 882.4),
+            (100_000.75, 0.120_818_260_243_417_32, 400_003.0, 400_039.0),
+        ] {
+            let pose = core_pose(time);
+            assert!((f64::from(pose.bob) - bob).abs() < 1.0e-6, "{time}: {}", pose.bob);
+            assert_eq!((pose.yaw, pose.tilt), (yaw, tilt), "{time}");
+        }
+    }
 
     #[test]
     fn the_scale_walks_a_tenth_of_the_way_and_snaps_when_close() {

@@ -817,6 +817,19 @@ bindings = [
   { name = "draw", ty = "&mut crate::game::native_block_entity_draw::BlockEntityDraw", value = "&mut *draw" },
 ]
 
+# O núcleo do item do cubo (`RenderEnergyCubeItem`): o item usa o modelo base no lugar do `minecraft:special` (H60), e o núcleo translúcido, que gira com o `gameTime` e tem o alfa da
+# energia guardada, é uma camada a mais no item resolvido. RETURN de `resolve_item_in_hand`, que a barra, a mão, o chão e o quadro chamam a cada quadro. Alvo cru, H99.
+[[injection]]
+id = "energy_cube_item_core"
+target = "horizon_client::game::Game<'_>::resolve_item_in_hand"
+kind = "RETURN"
+helper = "energy_cube_item_core.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "state", ty = "crate::item_render::ItemRenderState", value = "$value" },
+]
+
 # O cliente só tem a block entity do cubo (e então a desenha) se o servidor mandar uma cópia. O que o desenho precisa (a escala e os lados) vai por um canal próprio da `machinery_basis`.
 [[injection]]
 id = "block_entity_update_tag"
