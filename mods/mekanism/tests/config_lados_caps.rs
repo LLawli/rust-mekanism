@@ -9,7 +9,7 @@ use machinery_basis_core::side_config::{
 };
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
-use mekanism_rules::{advanced_machine_default, electric_machine_default};
+use mekanism_rules::{advanced_machine_default, electric_machine_default, item_instance};
 use serde_json::Value;
 use std::path::Path;
 
@@ -259,4 +259,71 @@ fn the_increment_sequences_match_the_original() {
         compared += 1;
     }
     assert!(compared >= 12, "só {compared} sequências");
+}
+
+/// O contêiner da instância (H2): em cada uma das configurações do original, o que cada face alcança e deixa fazer é o que as
+/// capabilities de item do Java deixam, e o que o Horizon lê sem face (`inputs`, `outputs`) é a soma das faces que deixam.
+#[test]
+fn the_container_of_the_instance_gives_each_face_what_the_original_gives_it() {
+    let (mut cases, mut faces_with_slots) = (0, 0);
+    for line in &trace("config_lados_caps.jsonl") {
+        let name = line["machine"].as_str().unwrap();
+        let Some(items) = line.get("item") else {
+            continue;
+        };
+        if !MACHINES.contains(&name) {
+            continue;
+        }
+        let facing = face(line["facing"].as_str().unwrap());
+        let label = format!("{name} {} {facing:?} {}", line["origin"], line["step"]);
+        let mut machine = born(name, "set_block", facing);
+        load(&mut machine, line);
+        let instance = item_instance(name == "metallurgic_infuser", machine.side_config(), facing);
+        let mut inputs = Vec::new();
+        let mut outputs = Vec::new();
+        for text in FACES {
+            let side = face(text);
+            let want = &items[text];
+            let reached: Vec<usize> = want["slots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|slot| slot.as_u64().unwrap() as usize)
+                .collect();
+            assert_eq!(instance.is_present(side), want["present"], "{label}: capability em {text}");
+            assert_eq!(instance.face_slots()[side as usize], reached, "{label}: slots em {text}");
+            for &slot in &reached {
+                assert_eq!(
+                    instance.accepts_through(side, slot),
+                    want["can_insert"] == true,
+                    "{label}: entrada em {text}, slot {slot}"
+                );
+                assert_eq!(
+                    instance.releases_through(side, slot),
+                    want["can_extract"] == true,
+                    "{label}: saída em {text}, slot {slot}"
+                );
+                faces_with_slots += 1;
+                if want["can_insert"] == true && !inputs.contains(&slot) {
+                    inputs.push(slot);
+                }
+                if want["can_extract"] == true && !outputs.contains(&slot) {
+                    outputs.push(slot);
+                }
+            }
+            if reached.is_empty() {
+                assert!(
+                    !instance.accepts_through(side, 0) && !instance.releases_through(side, 0),
+                    "{label}: {text} sem slot não deixa nada"
+                );
+            }
+        }
+        inputs.sort_unstable();
+        outputs.sort_unstable();
+        assert_eq!(instance.inputs(), inputs, "{label}: entradas do contêiner");
+        assert_eq!(instance.outputs(), outputs, "{label}: saídas do contêiner");
+        cases += 1;
+    }
+    assert!(cases >= 100, "só {cases} configurações");
+    assert!(faces_with_slots >= 300, "só {faces_with_slots} faces com slot");
 }

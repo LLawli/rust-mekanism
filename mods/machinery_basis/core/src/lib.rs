@@ -27,6 +27,7 @@ pub mod identity_hash;
 pub mod item_chemical_constant_recipe;
 pub mod item_energy;
 pub mod item_handler;
+pub mod item_instance;
 pub mod item_hud;
 pub mod java_random;
 pub mod last_energy;

@@ -13,6 +13,7 @@ use machinery_basis_core::containers::{Access, InventorySlot, ItemResource};
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
+use machinery_basis_core::item_instance::InstanceItems;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
 use machinery_basis_core::resource::Resource;
@@ -2325,6 +2326,29 @@ pub fn slot_accepts(
             }
         }
     }
+}
+
+/// Se um item pode sair do slot `slot` para quem está de fora (`isValidForExtraction(item, EXTERNAL)`): o slot de entrada
+/// (`InputInventorySlot`, `canExtract` só para o interno) nunca deixa; o de saída (`OutputInventorySlot`, `alwaysTrue`) sempre; o de
+/// energia e o de infusão (`fillOrConvert`: `!external || !canFillOrConvert(item)`) deixam só o item que o tanque ou o buffer não
+/// converteria. É a regra que o `can_take` do Horizon não tem (H2).
+pub fn slot_extractable(
+    indexes: &Indexes,
+    slots: &SlotIndexes,
+    slot: usize,
+    item: &ItemResource,
+    held: &Held,
+) -> bool {
+    if slot == slots.energy || Some(slot) == slots.infusion {
+        return !slot_accepts(indexes, slots, slot, item, held);
+    }
+    slot != slots.input
+}
+
+/// As faces de item da instância (H2): o que a configuração de lados dá a uma máquina virada para `front`.
+pub fn item_instance(infuser: bool, config: &TileComponentConfig, front: Face) -> InstanceItems {
+    let all: &[usize] = if infuser { &INFUSER_ALL_SLOTS } else { &ELECTRIC_ALL_SLOTS };
+    InstanceItems::of_config(config, front, all)
 }
 
 /// `AttributeEnergy.STORAGE_MULTIPLIER`: o buffer guarda quatro ticks de uso.

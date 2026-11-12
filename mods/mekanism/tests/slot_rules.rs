@@ -20,7 +20,14 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
-use mekanism_rules::{ELECTRIC_ENERGY_SLOT, ENERGY_SLOT, item_sides, item_slots};
+use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemRecipe};
+use machinery_basis_core::chemical::ChemicalConversion;
+use machinery_basis_core::item_instance::InstanceItems;
+use mekanism_rules::{
+    ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT, Indexes, SlotIndexes,
+    infusing_cache_of, item_instance, item_placed_config, item_sides, item_slots, slot_accepts, slot_extractable,
+};
+use std::rc::Rc;
 use serde_json::Value;
 use std::path::Path;
 
@@ -283,4 +290,203 @@ fn the_hopper_below_gets_what_the_original_gives_it() {
         }
         assert!(seen >= 1, "{name}: sem fases de hopper embaixo");
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// H2: o contêiner por instância. O hopper do Horizon (`add_item`, `suck_from_slots`) no lugar da emulação do tick: as mesmas fases do
+// rastro, vistas pelas faces da instância, pela regra de entrada (`container_accepts`, com a face) e pela de saída (`can_take`).
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+fn slot_indexes(name: &str) -> SlotIndexes {
+    if name == "metallurgic_infuser" {
+        SlotIndexes { input: INPUT_SLOT, energy: ENERGY_SLOT, infusion: Some(INFUSION_SLOT) }
+    } else {
+        SlotIndexes { input: ELECTRIC_INPUT_SLOT, energy: ELECTRIC_ENERGY_SLOT, infusion: None }
+    }
+}
+
+fn indexes_of(name: &str) -> Indexes {
+    if name == "metallurgic_infuser" {
+        let (recipes, conversions) = common::infuser_recipes_by_type();
+        return Indexes::Infuser {
+            recipes: infusing_cache_of(recipes),
+            conversions: ChemicalConversion::cache_of(conversions),
+            energy: common::energy_conversions(),
+        };
+    }
+    let valid = valid_input(name);
+    let recipe = Rc::new(ItemToItemRecipe {
+        id: format!("test/{valid}"),
+        input: ItemIngredient::item(valid),
+        input_count: 1,
+        output: ItemOutput { resource: item("clay_ball"), count: 1 },
+    });
+    Indexes::Electric { recipes: ItemToItemRecipe::cache_of(vec![recipe]), energy: common::energy_conversions() }
+}
+
+fn held_of(tank: &str, input: &str) -> Held {
+    let id = tank.split(':').next().unwrap();
+    Held {
+        chemical: matches!(id, "bio" | "fungi").then(|| ChemicalResource::new(id)),
+        input: (!input.is_empty()).then(|| item(input)),
+    }
+}
+
+/// A máquina como o jogador a põe (a configuração do item), virada para `front`: o que o contêiner da instância declara.
+fn placed_instance(name: &str, front: Face) -> InstanceItems {
+    let infuser = name == "metallurgic_infuser";
+    item_instance(infuser, &item_placed_config(infuser), front)
+}
+
+/// O que o hopper do Horizon (`add_item`: os slots da face, na ordem, cada um por `can_place` sem face e pelo hook `container_accepts`
+/// com ela) deixa de fora, na ordem dos itens.
+fn horizon_left_in_the_hopper(name: &str, instance: &InstanceItems, at: Face, held: &Held) -> Vec<String> {
+    let (indexes, slots) = (indexes_of(name), slot_indexes(name));
+    HOPPER_ITEMS
+        .iter()
+        .map(|id| if *id == "VALID" { valid_input(name) } else { id })
+        .filter(|id| {
+            let resource = item(id);
+            let landing = instance.face_slots()[at as usize].iter().copied().find(|slot| {
+                instance.inputs().contains(slot)
+                    && instance.accepts_through(at, *slot)
+                    && slot_accepts(&indexes, &slots, *slot, &resource, held)
+            });
+            landing.is_none()
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn the_horizon_hopper_pointed_at_each_face_puts_in_what_the_original_puts_in() {
+    for name in MACHINES {
+        let (front, phases) = phases(name);
+        let instance = placed_instance(name, front);
+        let held = held_of("empty:0", "");
+        let mut seen = 0;
+        for phase in phases {
+            let Some(side) = phase["phase"].as_str().unwrap().strip_prefix("take_") else {
+                continue;
+            };
+            let original: Vec<String> = phase["hoppers"][side]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|stack| stack[0].as_str().unwrap().to_owned())
+                .collect();
+            let port = horizon_left_in_the_hopper(name, &instance, face(side), &held);
+            assert_eq!(port, original, "{name} {side}: {phase}");
+            seen += 1;
+        }
+        assert_eq!(seen, 5, "{name}: faltam faces no rastro");
+    }
+}
+
+#[test]
+fn the_instance_container_has_what_the_a_emulation_declared() {
+    for name in MACHINES {
+        let (front, _) = phases(name);
+        let instance = placed_instance(name, front);
+        for at in Face::ALL {
+            let old = reached(name, front, at);
+            let new = &instance.faces[at as usize];
+            assert_eq!(new.can_input, !old.inputs.is_empty(), "{name} {at:?}: entrada");
+            assert_eq!(new.can_output, !old.outputs.is_empty(), "{name} {at:?}: saída");
+            if new.can_input {
+                assert_eq!(new.slots, old.inputs, "{name} {at:?}: slots de entrada");
+            }
+            if new.can_output {
+                assert_eq!(new.slots, old.outputs, "{name} {at:?}: slots de saída");
+            }
+        }
+    }
+}
+
+/// O hopper de baixo do Horizon (`suck_from_slots`): os slots da face de baixo, na ordem, cada um por `can_take` (a face que deixa sair
+/// e a regra do slot de quem está de fora). O rastro põe só o item do slot de infusão; os outros slots não deixam o hopper levar nada.
+#[test]
+fn the_horizon_hopper_below_gets_what_the_original_gives_it() {
+    for name in MACHINES {
+        let (front, phases) = phases(name);
+        let instance = placed_instance(name, front);
+        let (indexes, slots) = (indexes_of(name), slot_indexes(name));
+        let mut seen = 0;
+        for phase in phases {
+            let Some(label) = phase["phase"].as_str().unwrap().strip_prefix("give_") else {
+                continue;
+            };
+            let in_hopper: u64 = phase["hoppers"]["down"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|stack| stack[1].as_u64().unwrap())
+                .sum();
+            let (item_id, tank) = match label {
+                "stick_in_infusion" => ("stick", "empty:0"),
+                "bio_fuel_tank_full_bio" => ("bio_fuel", "bio:1000"),
+                "bio_fuel_tank_fungi" => ("bio_fuel", "fungi:500"),
+                "bio_fuel_tank_empty" => ("bio_fuel", "empty:0"),
+                _ => ("", "empty:0"),
+            };
+            let held = held_of(tank, "");
+            let mut expected = 0;
+            if !item_id.is_empty() && name == "metallurgic_infuser" {
+                // O tanque vazio converte o item no mesmo tick: o hopper não chega a ver nada, e o rastro mostra isso.
+                let converted_at_once = tank == "empty:0" && item_id == "bio_fuel";
+                let taken = instance.face_slots()[Face::Down as usize].iter().any(|&slot| {
+                    slot == INFUSION_SLOT
+                        && instance.releases_through(Face::Down, slot)
+                        && slot_extractable(&indexes, &slots, slot, &item(item_id), &held)
+                });
+                if taken && !converted_at_once {
+                    expected = 3;
+                }
+            } else {
+                // Nenhum slot das elétricas sai pela base, e nada das outras fases (o slot de energia guarda um graveto, que
+                // nem a base alcança): a regra do slot sozinha não basta, a face é que fecha.
+                assert!(
+                    name == "metallurgic_infuser" || !instance.faces[Face::Down as usize].can_output,
+                    "{name}"
+                );
+            }
+            assert_eq!(in_hopper, expected, "{name} {label}: {phase}");
+            seen += 1;
+        }
+        assert!(seen >= 1, "{name}: sem fases de hopper embaixo");
+    }
+}
+
+/// A regra do slot de quem está de fora, sem o objeto da lib: `slot_accepts` e `slot_extractable` dão o que o original respondeu a
+/// cada sonda (`insert` e `extract` simulados com `EXTERNAL`).
+#[test]
+fn the_slot_rules_of_the_instance_follow_the_probes_of_the_original() {
+    let mut seen = 0;
+    for name in MACHINES {
+        let (indexes, slots) = (indexes_of(name), slot_indexes(name));
+        for line in read_trace(name) {
+            let Some(probe) = line["probe"].as_str() else {
+                continue;
+            };
+            let slot = if probe == "energy" { slots.energy } else { slots.infusion.unwrap() };
+            let held = if probe == "energy" {
+                held_of("empty:0", "")
+            } else {
+                held_of(line["tank"].as_str().unwrap(), line["input"].as_str().unwrap())
+            };
+            let resource = item(line["item"].as_str().unwrap());
+            assert_eq!(
+                u64::from(slot_accepts(&indexes, &slots, slot, &resource, &held)),
+                line["insert"]["EXTERNAL"].as_u64().unwrap(),
+                "{name} {probe} insert: {line}"
+            );
+            assert_eq!(
+                slot_extractable(&indexes, &slots, slot, &resource, &held),
+                line["extract"]["EXTERNAL"].as_u64().unwrap() > 0,
+                "{name} {probe} extract: {line}"
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen >= 4 * ENERGY_PROBES + INFUSION_PROBES, "só {seen} sondas");
 }
