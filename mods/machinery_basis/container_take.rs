@@ -15,7 +15,11 @@ fn machinery_basis_container_take(containers: &Containers<'_>, view: &View, slot
     let state = containers.world.block(pos.0, pos.1, pos.2);
     let own = containers.name(state).to_owned();
     let front = containers.prop(state, "facing").map(str::to_owned);
-    match crate::game::machinery_basis::container_take(&own, entity, front.as_deref(), face as usize, index, stack, containers.max_stack(stack)) {
+    let facts = crate::game::machinery_basis::ItemFacts {
+        max_stack: containers.max_stack(stack),
+        cooking_fuel: containers.items.get(&stack.item).is_some_and(|info| info.fuel.is_some()),
+    };
+    match crate::game::machinery_basis::container_take(&own, entity, front.as_deref(), face as usize, index, stack, facts) {
         Some(answer) => Break(answer),
         None => Continue(()),
     }

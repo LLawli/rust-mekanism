@@ -423,6 +423,18 @@ pub struct ItemEnergySpec {
     pub creative: bool,
 }
 
+impl ItemEnergySpec {
+    /// `insert(amount, simulation) > 0` de um item só, para quem está de fora: o que `EnergyInventorySlot.canDrain` pergunta ao item de um slot de energia.
+    pub fn accepts_external(&self, amount: i32) -> bool {
+        ItemHandler {
+            spec: *self,
+            count: 1,
+        }
+        .insert(amount, AutomationType::External)
+        .0 > 0
+    }
+}
+
 /// O handler de energia de uma pilha de `count` itens.
 #[derive(Clone, Copy)]
 struct ItemHandler {
@@ -887,6 +899,103 @@ pub struct EnergyCubeConfig {
     pub items: ItemEnergy,
 }
 
+/// Os dois slots do cubo (`getInitialInventory`): o de descarga (`EnergyInventorySlot.fillOrConvert`) e o de carga (`EnergyInventorySlot.drain`), lendo o contêiner de energia e o
+/// que o mod diz dos itens.
+fn energy_slots(items: &ItemEnergy, energy: &CubeEnergy) -> (InventorySlot, InventorySlot) {
+    // `EnergyInventorySlot.fillOrConvert`: quem está de fora só tira o que o slot não consegue encher ou converter.
+    let discharge_slot = InventorySlot::with_checks(
+        Access::Any,
+        Access::Any,
+        SlotChecks::fill_or_convert({
+            let (items, energy) = (items.clone(), energy.clone());
+            Rc::new(move |item: &ItemResource| items.can_fill_or_convert(&energy, item))
+        }),
+        None,
+        None,
+    );
+    // `EnergyInventorySlot.drain`.
+    let can_drain = {
+        let (items, energy) = (items.clone(), energy.clone());
+        move |item: &ItemResource| items.can_drain(&energy, item)
+    };
+    let extract_by: crate::containers::AutomationItemTest = {
+        let can_drain = can_drain.clone();
+        Rc::new(move |item, automation| automation != AutomationType::External || !can_drain(item))
+    };
+    let insert_by: crate::containers::AutomationItemTest =
+        Rc::new(move |item, automation| automation == AutomationType::Internal || can_drain(item));
+    let charge_slot = InventorySlot::with_checks(
+        Access::Any,
+        Access::Any,
+        SlotChecks {
+            extract_by: Some(extract_by),
+            insert_by: Some(insert_by),
+            ..SlotChecks::default()
+        },
+        None,
+        None,
+    );
+    (discharge_slot, charge_slot)
+}
+
+/// As regras dos dois slots de um cubo que não está vivo: quem pergunta de fora (um hopper, um dropper, um ejetor, o `can_take` do Horizon) tem a energia guardada e o que o mod
+/// diz dos itens, não o objeto. É a mesma construção do tile (`energy_slots`), com um contêiner de energia à parte que guarda `stored`.
+pub struct SlotRules {
+    discharge: InventorySlot,
+    charge: InventorySlot,
+}
+
+impl SlotRules {
+    pub fn new(
+        tier: usize,
+        capacity: i64,
+        transfer_rate: i32,
+        stored: i64,
+        items: &ItemEnergy,
+    ) -> Self {
+        let energy = CubeEnergy::new(
+            capacity,
+            transfer_rate,
+            tier == CREATIVE,
+            Rc::new(Cell::new(0)),
+            None,
+        );
+        energy.set_energy(stored, None);
+        let (discharge, charge) = energy_slots(items, &energy);
+        Self { discharge, charge }
+    }
+
+    fn slot(&self, index: usize) -> Option<&InventorySlot> {
+        match index {
+            DISCHARGE_SLOT => Some(&self.discharge),
+            CHARGE_SLOT => Some(&self.charge),
+            _ => None,
+        }
+    }
+
+    /// `isValidForInsertion(item, automation)` do slot `index`.
+    pub fn is_valid_for_insertion(
+        &self,
+        index: usize,
+        item: &ItemResource,
+        automation: AutomationType,
+    ) -> bool {
+        self.slot(index)
+            .is_some_and(|slot| slot.is_valid_for_insertion(item, automation))
+    }
+
+    /// `isValidForExtraction(item, automation)` do slot `index`.
+    pub fn is_valid_for_extraction(
+        &self,
+        index: usize,
+        item: &ItemResource,
+        automation: AutomationType,
+    ) -> bool {
+        self.slot(index)
+            .is_some_and(|slot| slot.is_valid_for_extraction(item, automation))
+    }
+}
+
 /// `TileEntityEnergyCube`.
 pub struct EnergyCube {
     tile: Rc<RefCell<TileBase>>,
@@ -924,42 +1033,7 @@ impl EnergyCube {
             Some(tile_changed),
         );
         let items = config.items;
-        // `EnergyInventorySlot.fillOrConvert`: quem está de fora só tira o que o slot não consegue encher ou converter.
-        let discharge_slot = InventorySlot::with_checks(
-            Access::Any,
-            Access::Any,
-            SlotChecks::fill_or_convert({
-                let (items, energy) = (items.clone(), energy.clone());
-                Rc::new(move |item: &ItemResource| items.can_fill_or_convert(&energy, item))
-            }),
-            None,
-            None,
-        );
-        // `EnergyInventorySlot.drain`.
-        let can_drain = {
-            let (items, energy) = (items.clone(), energy.clone());
-            move |item: &ItemResource| items.can_drain(&energy, item)
-        };
-        let extract_by: crate::containers::AutomationItemTest = {
-            let can_drain = can_drain.clone();
-            Rc::new(move |item, automation| {
-                automation != AutomationType::External || !can_drain(item)
-            })
-        };
-        let insert_by: crate::containers::AutomationItemTest = Rc::new(move |item, automation| {
-            automation == AutomationType::Internal || can_drain(item)
-        });
-        let charge_slot = InventorySlot::with_checks(
-            Access::Any,
-            Access::Any,
-            SlotChecks {
-                extract_by: Some(extract_by),
-                insert_by: Some(insert_by),
-                ..SlotChecks::default()
-            },
-            None,
-            None,
-        );
+        let (discharge_slot, charge_slot) = energy_slots(&items, &energy);
         let inventory_slots = vec![discharge_slot.clone(), charge_slot.clone()];
         // `setupIOConfig(ITEM, chargeSlot, dischargeSlot, true).setCanEject(false)` e `setupIOConfig(ENERGY, energyContainer)`.
         let spec = side_config_spec();

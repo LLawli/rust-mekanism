@@ -22,7 +22,6 @@ pub mod fluid_entity;
 pub mod fluid_logged;
 pub mod gui;
 pub mod heat;
-pub mod hopper;
 pub mod identity_hash;
 pub mod item_chemical_constant_recipe;
 pub mod item_energy;

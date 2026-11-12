@@ -2,9 +2,8 @@
 //! dados) diante do slot de entrada das quatro máquinas. O `ItemResource` do NeoForge compara o item e os componentes, então um
 //! slot com `clay` de nome A não aceita `clay` de nome B nem `clay` sem nome, e aceita outro de nome A.
 //!
-//! - **Hopper de cima**, tick a tick: o hopper entrega um item por vez (`Cooldown`), escolhendo o primeiro item dele, na ordem dos
-//!   slots, que a entrada aceita e tem lugar para ele (`hopper::first_taker`, a escolha que o glue faz), e a entrada recebe pelo
-//!   `InventorySlot::insert` de verdade.
+//! - **Hopper de cima**: quem move os itens é o hopper do Horizon, pelo contêiner da instância (H2); a regra do slot (`isValidForInsertion` com o
+//!   componente) é a de `slot_rules.rs`, e o ritmo e a escolha do hopper foram medidos em jogo (`h2_container_instancia.py`, `h2_cubo_gerador.py`).
 //! - **Shift-clique** (`quickMoveStack`), nos dois sentidos: da barra de atalhos e do inventário para a entrada, e da entrada para o
 //!   jogador. O menu usa os slots da lib e o `room_for` para o inventário do jogador.
 mod common;
@@ -13,7 +12,6 @@ use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::{
     Access, AutomationType, InventorySlot, ItemResource, SlotChecks, SlotContents, room_for,
 };
-use machinery_basis_core::hopper::{Cooldown, Offer, first_taker};
 use machinery_basis_core::quick_move::{QuickMenu, Region, quick_move};
 use machinery_basis_core::tile::{ProgressMachine, energy_can_drain};
 use machinery_basis_core::transaction::Transaction;
@@ -28,8 +26,6 @@ const MACHINES: [&str; 4] = [
 ];
 /// Menos linhas do que isto é um rastro cortado: 5 fases de hopper com 40 ticks, mais 8 de shift-clique, mais a linha da máquina.
 const MINIMUM_LINES: usize = 200 + 8;
-/// O hopper entrega um item a cada 8 ticks.
-const HOPPER_PHASES: usize = 5;
 
 fn read_trace(machine: &str) -> Vec<Value> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,25 +42,6 @@ fn read_trace(machine: &str) -> Vec<Value> {
         lines.len()
     );
     lines
-}
-
-/// `["id", "nome", "dados", quantidade]` do rastro.
-fn stack(json: &Value) -> Option<(ItemResource, u32)> {
-    let [id, name, data, count] = json.as_array().unwrap().as_slice() else {
-        panic!("item {json}");
-    };
-    let count = count.as_u64().unwrap() as u32;
-    if count == 0 {
-        return None;
-    }
-    Some((
-        resource(
-            id.as_str().unwrap(),
-            name.as_str().unwrap(),
-            data.as_str().unwrap(),
-        ),
-        count,
-    ))
 }
 
 /// O item com o nome e os dados que o cenário em Java lhe deu (`custom_name` e `custom_data`), cada um um componente.
@@ -101,187 +78,6 @@ fn json_of(resource: &Option<ItemResource>, amount: u32) -> Value {
                 .to_owned()
         });
     json!([resource.id.to_string(), name, data, amount])
-}
-
-fn slot_json(slot: &InventorySlot) -> Value {
-    json_of(&slot.resource(), slot.amount())
-}
-
-/// O hopper de cima: cinco slots e o ritmo de oito ticks.
-struct Hopper {
-    slots: Vec<Option<(ItemResource, u32)>>,
-    cooldown: Cooldown,
-}
-
-impl Hopper {
-    fn json(&self) -> Value {
-        Value::Array(
-            self.slots
-                .iter()
-                .map(|slot| match slot {
-                    Some((resource, amount)) => json_of(&Some(resource.clone()), *amount),
-                    None => json!(["", "", "", 0]),
-                })
-                .collect(),
-        )
-    }
-
-    /// O que o glue faz com um hopper apontado para a máquina (`take_one`): se o ritmo deixa, leva um item para a entrada.
-    fn tick(&mut self, input: &InventorySlot) {
-        if !self.cooldown.tick() {
-            return;
-        }
-        let offers: Vec<Offer<usize>> = self
-            .slots
-            .iter()
-            .enumerate()
-            .filter_map(|(index, slot)| {
-                let (resource, _) = slot.as_ref()?;
-                Some(Offer {
-                    slot: index,
-                    resource: resource.clone(),
-                    payload: index,
-                })
-            })
-            .collect();
-        let accepts = |_: usize, offer: &Offer<usize>| {
-            input.is_valid_for_insertion(&offer.resource, AutomationType::External)
-        };
-        let Some((offer, _)) = first_taker(&offers, &[(0, input.contents())], accepts) else {
-            return;
-        };
-        let offer = &offers[offer];
-        let transaction = Transaction::open_root();
-        let moved = input.insert(&offer.resource, 1, &transaction, AutomationType::External);
-        transaction.commit();
-        assert_eq!(moved, 1, "o slot recusou o que o hopper escolheu");
-        let slot = &mut self.slots[offer.payload];
-        let (resource, amount) = slot.take().unwrap();
-        *slot = (amount > 1).then_some((resource, amount - 1));
-        self.cooldown.moved();
-    }
-}
-
-fn set_input(machine: &ProgressMachine, contents: &Value) {
-    match stack(contents) {
-        Some((resource, amount)) => machine.input().set_contents(Some(resource), amount, None),
-        None => machine.input().set_contents(None, 0, None),
-    }
-}
-
-/// O Heat Generator: o slot de combustível é um `BasicInventorySlot` que só aceita o que queima (`coal`, no cenário). O rastro
-/// mantém o tanque de lava cheio, então o gerador não queima o que o hopper põe.
-#[test]
-fn a_hopper_above_the_heat_generator_stacks_only_the_same_item_and_components() {
-    let lines = read_trace("heat_generator");
-    let fuel = InventorySlot::with_checks(
-        machinery_basis_core::containers::Access::Any,
-        machinery_basis_core::containers::Access::Any,
-        machinery_basis_core::containers::SlotChecks {
-            validator: Some(std::rc::Rc::new(|resource: &ItemResource| {
-                &*resource.id == "coal"
-            })),
-            ..Default::default()
-        },
-        None,
-        None,
-    );
-    let mut hopper = Hopper {
-        slots: Vec::new(),
-        cooldown: Cooldown::default(),
-    };
-    let mut compared = 0;
-    for line in lines.iter().filter(|line| {
-        line["phase"]
-            .as_str()
-            .is_some_and(|p| p.starts_with("hopper_"))
-    }) {
-        let phase = line["phase"].as_str().unwrap();
-        let t = line["t"].as_u64().unwrap();
-        if t == 0 {
-            match stack(&line["slots"][0]) {
-                Some((resource, amount)) => fuel.set_contents(Some(resource), amount, None),
-                None => fuel.set_contents(None, 0, None),
-            }
-            hopper = Hopper {
-                slots: line["hopper"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(stack)
-                    .collect(),
-                cooldown: Cooldown::default(),
-            };
-        } else {
-            hopper.tick(&fuel);
-        }
-        assert_eq!(
-            line["hopper"],
-            hopper.json(),
-            "heat_generator {phase} t={t}: hopper"
-        );
-        assert_eq!(
-            line["slots"][0],
-            slot_json(&fuel),
-            "heat_generator {phase} t={t}: combustível"
-        );
-        compared += 1;
-    }
-    assert_eq!(compared, HOPPER_PHASES * 40);
-}
-
-/// O número do slot de entrada na lista `slots` do rastro, por máquina.
-fn input_index(name: &str) -> usize {
-    if name == "metallurgic_infuser" { 1 } else { 0 }
-}
-
-#[test]
-fn a_hopper_above_stacks_only_the_same_item_and_components() {
-    for name in MACHINES {
-        let lines = read_trace(name);
-        let machine = common::machine(name);
-        let mut hopper = Hopper {
-            slots: Vec::new(),
-            cooldown: Cooldown::default(),
-        };
-        let mut compared = 0;
-        for line in lines.iter().filter(|line| {
-            line["phase"]
-                .as_str()
-                .is_some_and(|p| p.starts_with("hopper_"))
-        }) {
-            let phase = line["phase"].as_str().unwrap();
-            let t = line["t"].as_u64().unwrap();
-            let slots = line["slots"].as_array().unwrap();
-            if t == 0 {
-                // O cenário em Java põe a entrada e o hopper e só então grava: nada se move neste tick.
-                set_input(&machine, &slots[input_index(name)]);
-                hopper = Hopper {
-                    slots: line["hopper"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(stack)
-                        .collect(),
-                    cooldown: Cooldown::default(),
-                };
-            } else {
-                hopper.tick(machine.input());
-            }
-            assert_eq!(
-                line["hopper"],
-                hopper.json(),
-                "{name} {phase} t={t}: hopper"
-            );
-            assert_eq!(
-                slots[input_index(name)],
-                slot_json(machine.input()),
-                "{name} {phase} t={t}: entrada"
-            );
-            compared += 1;
-        }
-        assert_eq!(compared, HOPPER_PHASES * 40, "{name}: linhas de hopper");
-    }
 }
 
 /// O menu do shift-clique com os índices do Java: dois slots virtuais, a infusão no Infuser, a entrada, a saída e a energia, depois

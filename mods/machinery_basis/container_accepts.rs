@@ -1,4 +1,4 @@
-fn mekanism_container_accepts(
+fn machinery_basis_container_accepts(
     game: &crate::game::Game<'_>,
     pos: [i32; 3],
     entity: &horizon_client::containers::ModBlockEntity,
@@ -7,5 +7,5 @@ fn mekanism_container_accepts(
     face: Option<horizon_core::geometry::Direction>,
     cancel: &mut bool,
 ) {
-    crate::game::mekanism_glue::container_accepts(game, pos, entity, slot, stack, face, cancel);
+    crate::game::machinery_basis::container_accepts(game, pos, entity, slot, stack, face, cancel);
 }

@@ -1,5 +1,5 @@
 // Os cubos de energia no jogo (`TileEntityEnergyCube`). As regras ficam em machinery_basis_core::energy_cube, e o que é genérico (nome, configuração de lados, energia do item,
-// hoppers) em machinery_basis.
+// faces de item por instância) em machinery_basis.
 use crate::game::mekanism_glue as glue;
 use crate::game::mekanism_rules as rules;
 use crate::game::{Game, machinery_basis as basis};
@@ -23,7 +23,7 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::energy_cube::{self, CubeSideState, EnergyCube, EnergyNeighbours, ItemEnergy};
 use machinery_basis_core::network;
 use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
-use machinery_basis_core::sides::{Face, Sides};
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::RedstoneControl;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -96,8 +96,9 @@ fn energy_of(resource: &ItemResource) -> i64 {
     resource
         .components
         .get(rules::ENERGY_COMPONENT)
-        .and_then(|text| text.trim_end_matches(['L', 'l']).parse().ok())
-        .unwrap_or(0)
+        .and_then(|text| text.trim_end_matches(['L', 'l']).parse::<i64>().ok())
+        // `item_energy_of`: o componente nunca vale menos que zero (`ContainerType.ENERGY.getOrZero`).
+        .map_or(0, |energy| energy.max(0))
 }
 
 /// O mesmo item com a energia nova: os componentes que ele tinha e o da energia (ou sem ele, se zero).
@@ -115,12 +116,54 @@ fn with_energy(resource: &ItemResource, energy: i64) -> ItemResource {
 }
 
 fn items(game: &Game<'_>) -> ItemEnergy {
+    items_with(glue::energy_index(game))
+}
+
+fn items_with(conversions: Rc<machinery_basis_core::energy_conversion::EnergyConversionCache>) -> ItemEnergy {
     let config = glue::server_config();
     ItemEnergy {
         lookup: Rc::new(move |resource: &ItemResource| rules::item_energy_spec(&resource.id, energy_of(resource), &config)),
         write: Rc::new(|resource: &ItemResource, energy: i64| Some(with_energy(resource, energy))),
-        conversions: glue::energy_index(game),
+        conversions,
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// As faces e as regras de slot de quem está de fora (H2, decisão 94): o Horizon pergunta ao contêiner da instância, e o cubo responde pelo que o tile guarda.
+
+/// `ConfigHolder` do cubo: o `component_config` do NBT do tile, montado como o tick o monta, com a frente do bloco. O item posto traz a configuração dele; um cubo posto por
+/// `setBlock` fica com tudo em `NONE`.
+pub(in crate::game) fn item_faces(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+    let spec = side_spec(block)?.spec;
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    if let Some(data) = &basis::read_side_nbt(entity).config {
+        config.deserialize(data, front, false);
+    }
+    Some(rules::cube_item_instance(&config, front))
+}
+
+/// As regras dos dois slots (`EnergyInventorySlot.fillOrConvert` e `drain`) com a energia que o tile guarda e o índice de conversões que `conversions` dá.
+fn slot_rules_of(tier: usize, entity: &ModBlockEntity, conversions: Rc<machinery_basis_core::energy_conversion::EnergyConversionCache>) -> energy_cube::SlotRules {
+    let stored = if tier == energy_cube::CREATIVE { creative_amount(entity) } else { i64::from(basis::stored_energy(entity)) };
+    rules::cube_slot_rules(tier, stored, &glue::server_config(), &items_with(conversions))
+}
+
+/// `isValidForExtraction(item, EXTERNAL)` do slot do cubo, sem o jogo (o `can_take` do Horizon): o índice de conversões é o da última pergunta.
+pub(in crate::game) fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &ItemStack, limit: u32) -> bool {
+    let (Some(tier), Some(conversions)) = (tier_of(block), glue::published_energy_index()) else {
+        return false;
+    };
+    slot_rules_of(tier, entity, conversions).is_valid_for_extraction(slot, &basis::item_resource_with_limit(stack, limit), AutomationType::External)
+}
+
+/// `isValidForInsertion(item, EXTERNAL)` do slot do cubo pela face `face`: a face deixa entrar e o slot aceita o item.
+pub(in crate::game) fn item_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Face) -> bool {
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let allowed = item_faces(&entity.id, entity, basis::front(game, pos)).is_some_and(|items| items.accepts_through(face, slot));
+    allowed && slot_rules_of(tier, entity, glue::energy_index(game)).is_valid_for_insertion(slot, &resource_of(game, stack), AutomationType::External)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -197,7 +240,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     if is_cube(block) {
-        // Sem interface vanilla: hoppers passam pela regra da machinery_basis. O menu é a tela `GuiEnergyCube` (`screen` do glue).
+        // Sem interface vanilla: as faces são da instância (`item_faces`, H2). O menu é a tela `GuiEnergyCube` (`screen` do glue).
         *container = Some(ModContainer { slots: SLOTS, menu: Some(block.to_owned()), ..Default::default() });
     }
 }
@@ -396,20 +439,6 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     if entity.data.is_empty() {
         entity.data = vec![1];
     }
-
-    // As faces dos hoppers vizinhos seguem a configuração de itens da instância: o `DataType` de cada lado, pela frente de agora. Quem tira de um slot de fora (`EXTERNAL`) obedece
-    // à regra do slot.
-    let cube = &live.cube;
-    let front = cube.facing();
-    let accepts = |game: &Game<'_>, slot: usize, stack: &ItemStack| {
-        cube.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource_of(game, stack), AutomationType::External))
-    };
-    let can_give = |game: &Game<'_>, slot: usize, stack: &ItemStack| {
-        cube.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_extraction(&resource_of(game, stack), AutomationType::External))
-    };
-    let slots = |face| cube.side_config().item_face(front, face, &[]);
-    let sides = Sides::of_slots(&slots);
-    basis::tick_hoppers(game, pos, entity, &sides, &slots, &accepts, &can_give);
 
     live.last_seen = now;
     LIVE_CUBES.with_borrow_mut(|cubes| {

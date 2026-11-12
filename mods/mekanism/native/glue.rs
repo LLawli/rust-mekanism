@@ -20,7 +20,7 @@ use machinery_basis_core::menu_source;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
-use machinery_basis_core::sides::{Face, Sides};
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::resource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
@@ -314,6 +314,12 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     crate::game::mekanism_cube::container(block, container);
+    if crate::game::mekanism_cube::is_cube(block) {
+        // As faces, as entradas e as saídas do cubo também são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
+        basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
+        basis::register_item_energy(RULES_OWNER, ENERGY_ITEMS);
+        return;
+    }
     let slots = match machine_of(block) {
         Some(machine) if machine.slots.infusion.is_some() => rules::MENU_SLOTS,
         Some(_) => rules::ELECTRIC_MENU_SLOTS,
@@ -329,12 +335,22 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
     });
 }
 
+/// Os itens com handler de energia daqui (o equipamento e os cubos): outro bloco com slot de energia, como o Heat Generator, pergunta a `machinery_basis`.
+const ENERGY_ITEMS: basis::ItemEnergyProvider = basis::ItemEnergyProvider { component: rules::ENERGY_COMPONENT, spec: energy_item_spec };
+
+fn energy_item_spec(item: &str, energy: i64) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
+    rules::item_energy_spec(item, energy, &server_config())
+}
+
 /// Quem responde pelas faces de item das máquinas daqui (H2): a configuração de lados que o tile guarda, com a frente do bloco.
-const ITEM_INSTANCES: basis::ItemInstances = basis::ItemInstances { faces: item_faces, extractable: item_extractable };
+const ITEM_INSTANCES: basis::ItemInstances = basis::ItemInstances { faces: item_faces, extractable: item_extractable, accepts: item_accepts };
 
 /// `ConfigHolder` de uma máquina: o `component_config` do NBT do tile, montado como `config_view` o monta (uma máquina posta por `setBlock`
 /// não traz nada e fica com tudo em `NONE`; a de um item recebeu a configuração dele na colocação).
 fn item_faces(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+    if crate::game::mekanism_cube::is_cube(block) {
+        return crate::game::mekanism_cube::item_faces(block, entity, front);
+    }
     let machine = machine_of(block)?;
     let spec = side_spec(block)?.spec;
     let mut config = TileComponentConfig::new(&spec.types);
@@ -355,11 +371,14 @@ fn held_of_entity(machine: &Machine, entity: &ModBlockEntity, limit: &dyn Fn(&It
 }
 
 /// `isValidForExtraction(item, EXTERNAL)` do slot da máquina (`slot_extractable`), com os índices de receita da última vez que alguém os pediu.
-fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &ItemStack, limit: u32) -> bool {
+fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &ItemStack, facts: basis::ItemFacts) -> bool {
+    if crate::game::mekanism_cube::is_cube(block) {
+        return crate::game::mekanism_cube::item_extractable(block, entity, slot, stack, facts.max_stack);
+    }
     let Some(machine) = machine_of(block) else {
         return false;
     };
-    let held = held_of_entity(machine, entity, &|input| basis::item_resource_with_limit(input, limit));
+    let held = held_of_entity(machine, entity, &|input| basis::item_resource_with_limit(input, facts.max_stack));
     RULE_INDEXES.with_borrow(|rules| {
         rules
             .get(machine.block)
@@ -367,27 +386,24 @@ fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &I
     })
 }
 
-/// O hook `container_accepts` (`IItemHandler.isItemValid` da capability da face): o Horizon pergunta antes de pôr um item de um hopper, de um
-/// dropper ou de `native_insert_item` num slot que o `ModContainer` deixa encher. A face da instância tem de deixar entrar, e o slot tem de
-/// aceitar o item de quem está de fora (`isValidForInsertion`). Sem face não há capability.
-pub(in crate::game) fn container_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Direction>, cancel: &mut bool) {
-    let Some(machine) = machine_of(&entity.id) else {
-        return;
-    };
-    let Some(face) = face.map(basis::face_of) else {
-        *cancel = true;
-        return;
+/// `IItemHandler.isItemValid` da capability da face, a resposta do mod ao hook `container_accepts` da `machinery_basis`: o Horizon pergunta antes de pôr um item de um
+/// hopper, de um dropper ou de `native_insert_item` num slot que o `ModContainer` deixa encher. A face da instância tem de deixar entrar, e o slot tem de aceitar o item
+/// de quem está de fora (`isValidForInsertion`). Sem face não há capability. `None` se o bloco não é daqui.
+fn item_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Face>) -> Option<bool> {
+    if crate::game::mekanism_cube::is_cube(&entity.id) {
+        return Some(face.is_some_and(|face| crate::game::mekanism_cube::item_accepts(game, pos, entity, slot, stack, face)));
+    }
+    let machine = machine_of(&entity.id)?;
+    let Some(face) = face else {
+        return Some(false);
     };
     let front = basis::front(game, pos);
     let allowed = item_faces(&entity.id, entity, front).is_some_and(|items| items.accepts_through(face, slot));
-    let accepted = allowed && {
+    Some(allowed && {
         let indexes = indexes_of(game, machine);
         let held = held_of_entity(machine, entity, &|input| resource_of(game, input));
         slot_accepts(&indexes, &machine.slots, slot, &typed_item(stack), &held)
-    };
-    if !accepted {
-        *cancel = true;
-    }
+    })
 }
 
 fn native_screen(machine: &Machine) -> NativeScreen {
@@ -859,9 +875,10 @@ thread_local! {
     static BOOKS: RefCell<Books> = RefCell::new(Books::default());
 }
 
-/// O índice de `ENERGY_CONVERSION` que o slot de energia de qualquer bloco consulta (o mesmo das máquinas).
+/// O índice de `ENERGY_CONVERSION` que o slot de energia de qualquer bloco consulta (o mesmo das máquinas). Cada pergunta repõe a cópia que as regras de saída leem
+/// ([`published_energy_index`]).
 pub(in crate::game) fn energy_index(game: &Game<'_>) -> Rc<EnergyConversionCache> {
-    BOOKS.with_borrow_mut(|books| {
+    let index = BOOKS.with_borrow_mut(|books| {
         books
             .energy
             .get_or_insert_with(|| Book::new(|source| EnergyConversion::cache(source)))
@@ -872,10 +889,19 @@ pub(in crate::game) fn energy_index(game: &Game<'_>) -> Rc<EnergyConversionCache
                     core_energy_conversions(&loaded)
                 },
             )
-    })
+    });
+    PUBLISHED_ENERGY.with_borrow_mut(|published| *published = Some(index.clone()));
+    index
+}
+
+/// O índice de `ENERGY_CONVERSION` da última pergunta: a regra de saída do slot do cubo (`can_take` do Horizon, H2) não tem o jogo na mão. `server_data_loaded` o repõe a cada
+/// carga e `/reload`.
+pub(in crate::game) fn published_energy_index() -> Option<Rc<EnergyConversionCache>> {
+    PUBLISHED_ENERGY.with_borrow(Clone::clone)
 }
 
 thread_local! {
+    static PUBLISHED_ENERGY: RefCell<Option<Rc<EnergyConversionCache>>> = const { RefCell::new(None) };
     /// Os índices de receita da última vez que cada máquina os pediu: a regra de saída do slot (`can_take` do Horizon, H2) não tem o jogo na
     /// mão. `indexes_of` os repõe a cada tick de máquina e a cada pergunta de entrada, e `server_data_loaded` a cada carga e `/reload`.
     static RULE_INDEXES: RefCell<HashMap<&'static str, Indexes>> = RefCell::new(HashMap::new());
@@ -1689,7 +1715,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         entity.data = vec![TILE_TICKED];
     }
 
-    // Os hoppers, o dropper e o ejetor de outra máquina vizinhos agem pelo contêiner da instância (H2, `item_faces` e `container_accepts`): o
+    // Os hoppers, o dropper e o ejetor de outra máquina vizinhos agem pelo contêiner da instância (H2, `item_faces` e `item_accepts`): o
     // Horizon move os itens, e a máquina só os acha nos slots no tick seguinte.
     live.last_seen = now;
     LIVE_MACHINES.with_borrow_mut(|machines| {
@@ -2126,6 +2152,7 @@ pub(in crate::game) fn server_data_loaded(game: &mut Game<'_>, reload: bool) {
     for machine in MACHINES.iter() {
         indexes_of(game, machine);
     }
+    energy_index(game);
     let found = scan_incomplete_recipes(game);
     let everyone = {
         let mut scanner = SCANNER.lock().unwrap_or_else(|error| error.into_inner());

@@ -21,7 +21,7 @@ use machinery_basis_core::settings::{self, ConfigValue, MachineSettings};
 use machinery_basis_core::side_config::{
     AttachedSideConfig, LightConfigInfo, RelativeSide, TileComponentConfig, TransmissionType,
 };
-use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::sides::{Face, FaceSlots};
 use machinery_basis_core::slot_view::{
     ContainerSlotType, DataType, ItemConfig, SlotOverlay, SlotSpec, SlotType, slot_type,
 };
@@ -2355,6 +2355,27 @@ pub fn item_instance(infuser: bool, config: &TileComponentConfig, front: Face) -
     InstanceItems::of_config(config, front, all)
 }
 
+/// As faces de item de um cubo de energia (H2, decisão 94): o `ConfigHolder` dele só tem os slots de carga e de descarga, então a lista de "todos os slots" (o `NO_CONFIG`) é vazia.
+pub fn cube_item_instance(config: &TileComponentConfig, front: Face) -> InstanceItems {
+    InstanceItems::of_config(config, front, &[])
+}
+
+/// As regras dos slots de carga e de descarga do cubo de `tier` com `stored` de energia (`EnergyInventorySlot.drain` e `fillOrConvert`), para quem pergunta de fora.
+pub fn cube_slot_rules(
+    tier: usize,
+    stored: i64,
+    config: &ServerConfig,
+    items: &ItemEnergy,
+) -> energy_cube::SlotRules {
+    energy_cube::SlotRules::new(
+        tier,
+        config.cubes[tier],
+        config.cube_rates[tier],
+        stored,
+        items,
+    )
+}
+
 /// `AttributeEnergy.STORAGE_MULTIPLIER`: o buffer guarda quatro ticks de uso.
 /// O Horizon guarda a capacidade em `i32` (`ModEnergyBuffer`): o que passa disso fica em `i32::MAX`; a máquina viva guarda a conta inteira em `i64`.
 pub const fn energy_capacity(usage: i32) -> i32 {
@@ -2631,11 +2652,6 @@ pub fn item_slots(infuser: bool, front: Face, face: Face) -> FaceSlots {
         &ELECTRIC_ALL_SLOTS
     };
     item_placed_config(infuser).item_face(front, face, all)
-}
-
-/// Para um hopper, de uma máquina posta por um item.
-pub fn item_sides(infuser: bool, front: Face) -> Sides {
-    Sides::of_slots(&|face| item_slots(infuser, front, face))
 }
 
 /// As pastas do original: `data/<ns>/mekanism/chemical` e as outras, para datapacks do Mekanism valerem aqui.
@@ -4204,30 +4220,8 @@ mod tests {
                 item_slots(true, front, front.opposite()).outputs,
                 [ENERGY_SLOT]
             );
-            assert!(item_sides(true, front).accepts_input(front));
+            assert!(!item_slots(true, front, front).inputs.is_empty());
         }
-    }
-
-    #[test]
-    fn a_hopper_below_the_infuser_gets_the_infusion_slot_and_no_other_face_can_be_below() {
-        let sides = item_sides(true, Face::North);
-        assert!(sides.gives_output(Face::Down));
-        assert_eq!(
-            item_slots(true, Face::North, Face::Down).outputs,
-            [INFUSION_SLOT]
-        );
-        // O back (`ENERGY`) também entrega, mas um hopper só puxa do bloco de cima: ele não está embaixo de nenhuma face lateral.
-        assert!(sides.gives_output(Face::South));
-        assert!(!sides.gives_output(Face::North));
-        assert!(!sides.gives_output(Face::East));
-        assert!(!sides.gives_output(Face::Up));
-    }
-
-    #[test]
-    fn a_hopper_below_an_electric_machine_gets_nothing() {
-        let sides = item_sides(false, Face::North);
-        assert!(!sides.gives_output(Face::Down));
-        assert!(sides.gives_output(Face::South));
     }
 
     #[test]

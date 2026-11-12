@@ -266,25 +266,6 @@ bindings = [
   { name = "drops", ty = "&mut Vec<horizon_client::items::ItemStack>", value = "&mut *drops" },
 ]
 
-# `IItemHandler.isItemValid` da capability de item de uma face (H2): o Horizon pergunta, antes de um hopper, um dropper ou `native_insert_item` pôr um item num
-# slot que o `ModContainer` deixa encher, e responde pelo que o mod disser. A face da instância tem de deixar entrar e o slot tem de aceitar o item de quem está
-# de fora. Alvo cru: o hook `container_accepts` existe no `main` do Horizon (`tools/native-hook-fragments/container_accepts.json`) e não no catálogo do pin
-# (`E_HOOK_UNKNOWN`, medido), mas `native_container_accepts` já faz a pergunta com a face; a injeção entra no começo dela e é o hook que o `main` já tem.
-[[injection]]
-id = "container_accepts"
-target = "horizon_client::game::native_hooks::Game<'_>::native_container_accepts"
-kind = "HEAD"
-helper = "container_accepts.rs"
-bindings = [
-  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
-  { name = "pos", ty = "[i32; 3]", value = "pos" },
-  { name = "entity", ty = "&horizon_client::containers::ModBlockEntity", value = "entity" },
-  { name = "slot", ty = "usize", value = "slot" },
-  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
-  { name = "face", ty = "Option<horizon_core::geometry::Direction>", value = "face" },
-  { name = "cancel", ty = "&mut bool", value = "&mut *cancel" },
-]
-
 [[injection]]
 id = "container_opened"
 hook = "container_opened"

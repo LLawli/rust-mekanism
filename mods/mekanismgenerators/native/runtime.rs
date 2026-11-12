@@ -685,6 +685,35 @@ pub fn item_slot_of(
     }
 }
 
+/// As faces de item do Heat Generator por instância (H2, decisão 94): cada face alcança o slot de [`item_slot_of`] e deixa entrar e sair (o `BasicContainerHolder` não tem
+/// `ISlotInfo` com `canInput` e `canOutput`); quem decide é a regra do slot.
+pub fn item_instance(
+    front: machinery_basis_core::sides::Face,
+) -> machinery_basis_core::item_instance::InstanceItems {
+    use machinery_basis_core::item_instance::{FaceItems, InstanceItems};
+    let mut items = InstanceItems::default();
+    for face in machinery_basis_core::sides::Face::ALL {
+        items.faces[face as usize] = FaceItems {
+            slots: vec![item_slot_of(front, face)],
+            can_input: true,
+            can_output: true,
+        };
+    }
+    items
+}
+
+/// `isValidForInsertion(item, EXTERNAL)` do slot de combustível (`FluidFuelInventorySlot.forFuel`, `FluidFuelInventorySlot.java:56-60`): o item tem `COOKING_FUEL` ou enche o
+/// tanque de lava (`canFill`: um balde de lava).
+pub fn fuel_slot_insertable(cooking_fuel: bool, fills_tank: bool) -> bool {
+    cooking_fuel || fills_tank
+}
+
+/// `isValidForExtraction(item, EXTERNAL)` do mesmo slot (`FluidFuelInventorySlot.java:47-54`): sai o que não é combustível e não enche o tanque, o que sobra quando "algo deu
+/// muito errado", por exemplo depois de um `/reload`.
+pub fn fuel_slot_extractable(cooking_fuel: bool, fills_tank: bool) -> bool {
+    !cooking_fuel && !fills_tank
+}
+
 /// A capability de energia do gerador (`TileEntityGenerator.ENERGY_SIDES`, `BasicSingleHolder`): só a frente.
 pub fn has_energy_capability(
     front: machinery_basis_core::sides::Face,
@@ -1023,5 +1052,36 @@ mod tests {
         assert!(state.tile.block_active());
         step(&mut state, &PLAINS);
         assert!(!state.tile.block_active());
+    }
+
+    #[test]
+    fn the_fuel_slot_takes_what_burns_or_fills_the_tank_and_lets_out_only_the_rest() {
+        // `FluidFuelInventorySlot.forFuel`: entra o combustível e o que enche o tanque; sai só o que não é nem um nem outro.
+        for (fuel, fills) in [(false, false), (true, false), (false, true), (true, true)] {
+            assert_eq!(fuel_slot_insertable(fuel, fills), fuel || fills);
+            assert_eq!(fuel_slot_extractable(fuel, fills), !fuel && !fills);
+        }
+    }
+
+    #[test]
+    fn every_face_reaches_the_fuel_slot_except_the_right_which_reaches_the_energy_slot() {
+        use machinery_basis_core::sides::Face;
+        for front in [Face::North, Face::South, Face::East, Face::West] {
+            let items = item_instance(front);
+            for face in Face::ALL {
+                let want = if face == front.right_of() {
+                    ENERGY_SLOT
+                } else {
+                    FUEL_SLOT
+                };
+                assert_eq!(
+                    items.face_slots()[face as usize],
+                    vec![want],
+                    "{front:?} {face:?}"
+                );
+                assert!(items.accepts_through(face, want) && items.releases_through(face, want));
+            }
+            assert_eq!(items.inputs(), vec![FUEL_SLOT, ENERGY_SLOT]);
+        }
     }
 }

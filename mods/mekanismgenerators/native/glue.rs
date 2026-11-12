@@ -19,7 +19,7 @@ use machinery_basis_core::menu_source;
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::side_tab;
-use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
 use machinery_basis_core::tile::{ItemEnergy, RedstoneControl, SavedState, TileBase, energy_can_drain};
@@ -33,7 +33,6 @@ use std::rc::Rc;
 
 const FUEL_SLOT: usize = rules::FUEL_SLOT;
 const ENERGY_SLOT: usize = rules::ENERGY_SLOT;
-const FUEL_SLOTS: &[usize] = &[FUEL_SLOT];
 
 /// `MekanismGeneratorsConfig.generators` e `.storageConfig` (os dois `Type.SYNCED`, `Mekanism/generators.toml` e `Mekanism/generator-storage.toml`), como o
 /// último arquivo lido os deixou. O processo tem a janela e a thread do servidor integrado, então a tabela é do processo; um convidado de LAN não a recebe do
@@ -258,7 +257,8 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
         // Todo caminho que abre o menu (o servidor que monta o menu com os cinco slots a mais, o cliente que os põe na tela) passa por aqui antes.
         declare_armor_bar(rules::MENU, rules::armor_bar_declaration);
         machinery_basis_core::screen_elements::declare_once(rules::MENU, rules::screen_elements);
-        // Sem interface vanilla: hoppers passam pela regra da machinery_basis.
+        // As faces, as entradas e as saídas são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
+        basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
         *container = Some(ModContainer {
             slots: rules::MENU_SLOTS,
             menu: Some(rules::MENU.to_owned()),
@@ -290,8 +290,14 @@ fn burn_time(game: &Game<'_>, stack: &ItemStack) -> i32 {
     game.res.providers().burn_time(world_items!(game), stack, false)
 }
 
+/// `itemType.has(DataComponents.COOKING_FUEL)` (`TileEntityHeatGenerator.java:112`): o catálogo de itens do jogo guarda o componente em `fuel`.
 fn is_fuel(game: &Game<'_>, stack: &ItemStack) -> bool {
-    burn_time(game, stack) > 0
+    game.items().get(&stack.item).is_some_and(|info| info.fuel.is_some())
+}
+
+/// `FluidInventorySlot.canFill(lavaTank, item)`: o item tem um fluido que o tanque (só lava) aceita. O único item portado assim é o balde de lava.
+fn fills_tank(stack: &ItemStack) -> bool {
+    &*stack.item == LAVA_BUCKET
 }
 
 fn lava_bucket_burn_time(game: &Game<'_>) -> i32 {
@@ -345,20 +351,6 @@ pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<Comp
     if is_generator(&entity.id) {
         *tag = Some(Compound::default());
     }
-}
-
-/// Combustível entra por todas as faces menos a direita, e o balde vazio sai por baixo.
-fn sides(front: Face) -> Sides {
-    let mut sides = Sides {
-        input: [true; 6],
-        output: [false; 6],
-    };
-    // O slot de combustível é o dos lados menos a direita (`rules::item_slot_of`); a direita é do slot de energia.
-    for face in Face::ALL {
-        sides.input[face as usize] = rules::item_slot_of(front, face) == FUEL_SLOT;
-    }
-    sides.output[Face::Down as usize] = true;
-    sides
 }
 
 fn load_heat(entity: &ModBlockEntity, ambient: f64) -> Capacitor {
@@ -760,19 +752,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(heat.heat.to_bits()));
     save_tile(entity, &state.tile);
 
-    let front = basis::front(game, pos);
-    let sides = sides(front);
     basis::distribute_energy(game, pos, entity);
-    // Só o balde vazio sai: combustível fica no slot.
-    let empty_bucket = entity.items[FUEL_SLOT]
-        .as_ref()
-        .is_some_and(|stack| &*stack.item == EMPTY_BUCKET);
-    let slots = FaceSlots {
-        inputs: FUEL_SLOTS.to_vec(),
-        outputs: if empty_bucket { FUEL_SLOTS.to_vec() } else { Vec::new() },
-    };
-    let accepts = |game: &Game<'_>, _: usize, stack: &ItemStack| is_fuel(game, stack);
-    basis::tick_hoppers(game, pos, entity, &sides, &|_| slots.clone(), &accepts, &|_, _, _| true);
     // O bloco só muda quando o tile manda: o atraso de `blockDeactivationDelay` o segura aceso depois que o gerador para.
     let lit = state.tile.block_active();
     if lit != block_active {
@@ -939,6 +919,43 @@ pub(in crate::game) fn widget_tooltip(
 /// O dono das regras de slot que este mod deixa na `slot_rules` do núcleo.
 const RULES_OWNER: &str = "mekanismgenerators";
 
+/// Quem responde pelas faces de item do Heat Generator (H2): lados fixos pela frente do bloco, e a regra de cada slot.
+const ITEM_INSTANCES: basis::ItemInstances = basis::ItemInstances { faces: item_faces, extractable: item_extractable, accepts: item_accepts };
+
+fn item_faces(block: &str, _entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+    (block == rules::HEAT_GENERATOR).then(|| rules::item_instance(front))
+}
+
+/// `isValidForExtraction(item, EXTERNAL)`: o slot de combustível (`FluidFuelInventorySlot.forFuel`) e o de energia (`EnergyInventorySlot.drain`: `!External || !canDrain`).
+fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &ItemStack, facts: basis::ItemFacts) -> bool {
+    if block != rules::HEAT_GENERATOR {
+        return false;
+    }
+    match slot {
+        FUEL_SLOT => rules::fuel_slot_extractable(facts.cooking_fuel, fills_tank(stack)),
+        ENERGY_SLOT => !energy_can_drain(stored_energy(entity), true, item_energy(stack)),
+        _ => false,
+    }
+}
+
+/// `isValidForInsertion(item, EXTERNAL)` pela face: a face alcança o slot e o slot aceita o item (o mesmo que o menu pergunta, `GeneratorMenu::accepts`).
+fn item_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Face>) -> Option<bool> {
+    if entity.id != rules::HEAT_GENERATOR {
+        return None;
+    }
+    let Some(face) = face else {
+        return Some(false);
+    };
+    if !rules::item_instance(basis::front(game, pos)).accepts_through(face, slot) {
+        return Some(false);
+    }
+    Some(match slot {
+        FUEL_SLOT => rules::fuel_slot_insertable(is_fuel(game, stack), fills_tank(stack)),
+        ENERGY_SLOT => energy_can_drain(stored_energy(entity), true, item_energy(stack)),
+        _ => false,
+    })
+}
+
 /// Antes de um clique do jogador no menu de uma máquina (`lan_machine_click`, que o servidor roda para o anfitrião e para os
 /// convidados): deixa a regra de `InventoryContainerSlot.mayPlace` do Heat Generator aberto, que o hook `menu_slot_rules` do Horizon
 /// consulta dentro do menu, onde não há o jogo. A regra do slot de combustível pergunta o tempo de queima, que só o jogo sabe: ela
@@ -959,12 +976,10 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
         return;
     }
     let stored = stored_energy(entity);
-    let mut answers: std::collections::HashMap<String, (bool, bool)> = std::collections::HashMap::new();
+    let mut fuel: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
     let stacks = guest.inventory.iter().flatten().chain(guest.carried.as_ref()).chain(entity.items.iter().flatten());
     for stack in stacks {
-        answers
-            .entry(stack.item.to_string())
-            .or_insert_with(|| (is_fuel(game, stack), energy_can_drain(stored, true, item_energy(stack))));
+        fuel.entry(stack.item.to_string()).or_insert_with(|| rules::fuel_slot_insertable(is_fuel(game, stack), fills_tank(stack)));
     }
     let upgrades = window_upgrade_data();
     slot_rules::set(
@@ -976,11 +991,12 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
             rules::UPGRADE_SLOT => stack
                 .downcast_ref::<ItemStack>()
                 .is_some_and(|stack| rules::accepts_upgrade(&upgrades, item, upgrade_type_of(stack).as_deref())),
-            _ => answers.get(item).is_some_and(|&(fuel, drain)| match slot {
-                FUEL_SLOT => fuel,
-                ENERGY_SLOT => drain,
-                _ => false,
-            }),
+            FUEL_SLOT => fuel.get(item).copied().unwrap_or(false),
+            // `EnergyInventorySlot.drain`: o handler de energia é o da pilha (a energia que ela guarda decide se está cheia).
+            ENERGY_SLOT => stack
+                .downcast_ref::<ItemStack>()
+                .is_some_and(|stack| energy_can_drain(stored, true, item_energy(stack))),
+            _ => false,
         }),
     );
 }
@@ -1048,7 +1064,7 @@ impl GeneratorMenu<'_, '_> {
     /// A saída de upgrades não aceita nada de quem clica.
     fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
         match slot {
-            FUEL_SLOT => is_fuel(self.game, stack),
+            FUEL_SLOT => rules::fuel_slot_insertable(is_fuel(self.game, stack), fills_tank(stack)),
             ENERGY_SLOT => energy_can_drain(stored_energy(self.entity), true, item_energy(stack)),
             rules::UPGRADE_SLOT => rules::accepts_upgrade(&self.upgrades, &stack.item, self.upgrade_type(stack).as_deref()),
             _ => false,
@@ -1102,9 +1118,11 @@ impl GeneratorMenu<'_, '_> {
     }
 }
 
-/// O handler de energia de um item: nenhum item portado tem um (`energy_tablet` e os outros ainda não existem).
-fn item_energy(_stack: &ItemStack) -> Option<ItemEnergy> {
-    None
+/// O handler de energia do item (`Capabilities.ENERGY`), como `EnergyInventorySlot.canDrain` o usa: a energia e a capacidade dele, e se aceita algo do gerador (`insert` da capacidade
+/// do contêiner dele). Quem sabe quais itens têm handler é o mod dono do item (`machinery_basis::register_item_energy`).
+fn item_energy(stack: &ItemStack) -> Option<ItemEnergy> {
+    let spec = basis::item_energy_spec_of(stack)?;
+    Some(ItemEnergy { amount: spec.amount, capacity: spec.capacity, accepts_energy: spec.accepts_external(heat_config().energy_capacity_int()) })
 }
 
 fn stored_energy(entity: &ModBlockEntity) -> i64 {

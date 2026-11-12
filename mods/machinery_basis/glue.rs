@@ -22,7 +22,6 @@ use machinery_basis_core::gui::{self, NineSlice, TilingDirection};
 use machinery_basis_core::tooltip;
 use machinery_basis_core::heat;
 use machinery_basis_core::liquid_data;
-use machinery_basis_core::hopper::{self, Cooldown, Ejector, Hopper, Transfer};
 use machinery_basis_core::neighbors::{OUTPUT_SIGNAL_ORDER, PendingPower};
 use machinery_basis_core::network::{self, EnergyBlocks, Link};
 use machinery_basis_core::placement::{self, Rules as PlacementRules};
@@ -30,7 +29,7 @@ use machinery_basis_core::recipe::{
     Conversion, ConversionFields, EnergyConversionData, MachineRecipeData, RecipeFields, ResourceInput,
 };
 use machinery_basis_core::resource::{self, Registry, Tags};
-use machinery_basis_core::sides::{Face, FaceSlots, Sides};
+use machinery_basis_core::sides::Face;
 use machinery_basis_core::tank::{FORMAT, Tank};
 use machinery_basis_core::temperature;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
@@ -46,13 +45,9 @@ const PLACEMENT_LISTENER: &str = "machinery_basis:placement";
 const UPGRADES_LISTENER: &str = "machinery_basis:upgrades";
 const UPGRADE_TAGS_LISTENER: &str = "machinery_basis:upgrade_tags";
 const LIQUIDS_LISTENER: &str = "machinery_basis:liquids";
-const HOPPER: &str = "minecraft:hopper";
 const SAVED: &str = "machinery_basis";
 const ENERGY: &str = "energy";
 const DEFAULT_STACK: u32 = 64;
-// Um contador por face, mais um para o ejetor.
-const COOLDOWNS: usize = 7;
-const EJECT_COOLDOWN: usize = 6;
 const WATER: &str = "minecraft:water";
 const LAVA: &str = "minecraft:lava";
 /// `WaterFluid.getTickDelay` e `LavaFluid.getTickDelay` (fora e dentro do Nether).
@@ -1373,8 +1368,52 @@ pub(in crate::game) fn energy_capacity(
 pub struct ItemInstances {
     /// As faces de item da instância: o bloco, o que o tile guarda (o NBT e os itens) e a frente do bloco. `None` se o bloco não é seu.
     pub faces: fn(&str, &ModBlockEntity, Face) -> Option<machinery_basis_core::item_instance::InstanceItems>,
-    /// `isValidForExtraction(item, EXTERNAL)` do slot: o bloco, o tile, o slot, a pilha dele e o limite de pilha do item.
-    pub extractable: fn(&str, &ModBlockEntity, usize, &ItemStack, u32) -> bool,
+    /// `isValidForExtraction(item, EXTERNAL)` do slot: o bloco, o tile, o slot, a pilha dele e o que o catálogo do jogo sabe do item.
+    pub extractable: fn(&str, &ModBlockEntity, usize, &ItemStack, ItemFacts) -> bool,
+    /// `isValidForInsertion(item, EXTERNAL)` do slot, pela face (`None` é sem face: sem capability): o jogo, a posição, o tile, o slot, a pilha e a face. `None` se o bloco não é seu.
+    pub accepts: fn(&Game<'_>, [i32; 3], &ModBlockEntity, usize, &ItemStack, Option<Face>) -> Option<bool>,
+}
+
+/// O que o catálogo de itens do jogo sabe de um item e que o `can_take` do Horizon, que não tem o jogo na mão, entrega a quem responde: o limite de pilha e se o item tem o
+/// componente `minecraft:cooking_fuel` (`DataComponents.COOKING_FUEL`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemFacts {
+    pub max_stack: u32,
+    pub cooking_fuel: bool,
+}
+
+/// Quem diz, por item, qual é o handler de energia dele (`Capabilities.ENERGY` do item): o componente que guarda a energia e a conta do mod. Os blocos que carregam itens de
+/// energia (o cubo, o Heat Generator) perguntam aqui, e o mod dono do item responde.
+#[derive(Clone, Copy)]
+pub struct ItemEnergyProvider {
+    pub component: &'static str,
+    /// O item (id) e a energia que a pilha guarda: o handler dele, ou `None` se não tem.
+    pub spec: fn(&str, i64) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec>,
+}
+
+static ITEM_ENERGY: Mutex<Vec<(&'static str, ItemEnergyProvider)>> = Mutex::new(Vec::new());
+
+/// Registra (ou troca) quem responde pelos itens de energia de `owner`.
+pub(in crate::game) fn register_item_energy(owner: &'static str, provider: ItemEnergyProvider) {
+    let mut registered = ITEM_ENERGY.lock().unwrap_or_else(|e| e.into_inner());
+    match registered.iter_mut().find(|(name, _)| *name == owner) {
+        Some(entry) => entry.1 = provider,
+        None => registered.push((owner, provider)),
+    }
+}
+
+/// O handler de energia de uma pilha (um item só), sem o jogo: a energia vem do texto do componente, o mesmo que o slot do cubo lê.
+pub(in crate::game) fn item_energy_spec_of(stack: &ItemStack) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
+    let providers: Vec<ItemEnergyProvider> = ITEM_ENERGY.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
+    let resource = item_resource_with_limit(stack, 1);
+    providers.iter().find_map(|provider| {
+        let energy = resource
+            .components
+            .get(provider.component)
+            .and_then(|text| text.trim_end_matches(['L', 'l']).parse::<i64>().ok())
+            .map_or(0, |energy| energy.max(0));
+        (provider.spec)(&stack.item, energy)
+    })
 }
 
 static ITEM_INSTANCES: Mutex<Vec<(&'static str, ItemInstances)>> = Mutex::new(Vec::new());
@@ -1435,21 +1474,28 @@ pub(in crate::game) fn container_take(
     face: usize,
     slot: usize,
     stack: &ItemStack,
-    limit: u32,
+    facts: ItemFacts,
 ) -> Option<bool> {
     let front = front_of(front);
     let face = *Face::ALL.get(face)?;
     let providers: Vec<ItemInstances> = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
     providers.iter().find_map(|p| {
         let instance = (p.faces)(block, entity, front)?;
-        Some(instance.releases_through(face, slot) && (p.extractable)(block, entity, slot, stack, limit))
+        Some(instance.releases_through(face, slot) && (p.extractable)(block, entity, slot, stack, facts))
     })
 }
 
-/// As faces de item da instância de `block`, para o hook `container_accepts` de quem registrou (a regra de entrada é a do mod).
-pub(in crate::game) fn item_instance(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machinery_basis_core::item_instance::InstanceItems> {
+/// O começo de `native_container_accepts` (`IItemHandler.isItemValid` da capability da face, H2): o Horizon pergunta antes de um hopper, um dropper ou `native_insert_item` pôr um
+/// item num slot que o `ModContainer` deixa encher. Quem registrou em [`register_item_instances`] responde pelo bloco dele: a face da instância tem de deixar entrar e o slot
+/// tem de aceitar o item de quem está de fora; recusa cancela a entrada. Um bloco que ninguém reclama passa como o Horizon o deu.
+pub(in crate::game) fn container_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Direction>, cancel: &mut bool) {
+    let face = face.map(face_of);
     let providers: Vec<ItemInstances> = ITEM_INSTANCES.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
-    providers.iter().find_map(|p| (p.faces)(block, entity, front))
+    if let Some(accepted) = providers.iter().find_map(|p| (p.accepts)(game, pos, entity, slot, stack, face))
+        && !accepted
+    {
+        *cancel = true;
+    }
 }
 
 pub(in crate::game) fn direction(face: Face) -> Direction {
@@ -1531,7 +1577,7 @@ pub(in crate::game) fn save_tanks(entity: &mut ModBlockEntity, tanks: &[Tank]) {
 }
 
 /// Tira os tanques salvos da block entity, para um mod que guarda os seus em outro formato. Os outros dados da lib no mesmo
-/// compound (os cooldowns dos hoppers) ficam.
+/// compound ficam.
 pub(in crate::game) fn discard_tanks(entity: &mut ModBlockEntity) {
     let has_tanks = saved(entity).is_some_and(|compound| {
         compound.contains_key(&JavaString::from("v")) || compound.contains_key(&JavaString::from("tanks"))
@@ -1542,19 +1588,6 @@ pub(in crate::game) fn discard_tanks(entity: &mut ModBlockEntity) {
     let mut compound = saved(entity).cloned().unwrap_or_default();
     compound.remove(&JavaString::from("v"));
     compound.remove(&JavaString::from("tanks"));
-    entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
-}
-
-fn cooldowns(entity: &ModBlockEntity) -> Vec<i32> {
-    match saved(entity).and_then(|compound| compound.get(&JavaString::from("cooldowns"))) {
-        Some(Tag::IntArray(values)) if values.len() == COOLDOWNS => values.clone(),
-        _ => vec![0; COOLDOWNS],
-    }
-}
-
-fn save_cooldowns(entity: &mut ModBlockEntity, values: Vec<i32>) {
-    let mut compound = saved(entity).cloned().unwrap_or_default();
-    compound.insert(JavaString::from("cooldowns"), Tag::IntArray(values));
     entity.nbt.insert(JavaString::from(SAVED), Tag::Compound(compound));
 }
 
@@ -1583,129 +1616,6 @@ pub(in crate::game) fn distribute_energy(
     }
     set_stored_energy(entity, stored);
     start - stored
-}
-
-fn hopper_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Hopper> {
-    if game.native_block(pos) != HOPPER {
-        return None;
-    }
-    let facing = game.native_block_property(pos, "facing")?;
-    Some(Hopper {
-        facing: Face::from_property(&facing)?,
-        enabled: game.native_block_property(pos, "enabled").as_deref() != Some("false"),
-    })
-}
-
-fn give_one(
-    game: &mut Game<'_>,
-    hopper_pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-    outputs: &[usize],
-    can_give: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
-) -> bool {
-    for &slot in outputs {
-        let Some(stack) = entity.items[slot].clone() else {
-            continue;
-        };
-        // O `canExtract` do slot, com quem está de fora (`AutomationType.EXTERNAL`): o slot que recusa o item não o entrega.
-        if !can_give(game, slot, &stack) {
-            continue;
-        }
-        let mut one = stack.clone();
-        one.count = 1;
-        if game.native_insert_item(hopper_pos, Direction::Up, one).is_some() {
-            return false;
-        }
-        let mut left = stack;
-        left.count -= 1;
-        entity.items[slot] = (left.count > 0).then_some(left);
-        return true;
-    }
-    false
-}
-
-fn take_one(
-    game: &mut Game<'_>,
-    hopper_pos: [i32; 3],
-    face: Face,
-    entity: &mut ModBlockEntity,
-    inputs: &[usize],
-    accepts: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
-) -> bool {
-    let reached = direction(face.opposite());
-    let dimension = game.native_dimension();
-    let Some(slots) = game.native_container_slots(dimension, hopper_pos, reached) else {
-        return false;
-    };
-    // Como o hopper: o primeiro item que o destino aceita, na ordem dos slots, para o primeiro slot de entrada que o aceita e tem
-    // lugar (vazio, ou o mesmo recurso abaixo da capacidade).
-    let offers: Vec<hopper::Offer<ItemStack>> = slots
-        .iter()
-        .filter_map(|s| {
-            let stack = s.stack.as_ref().filter(|_| s.can_take)?;
-            Some(hopper::Offer {
-                slot: s.slot,
-                resource: item_resource(game, stack),
-                payload: stack.clone(),
-            })
-        })
-        .collect();
-    let held: Vec<(usize, SlotContents)> = inputs
-        .iter()
-        .map(|&slot| (slot, slot_contents(game, entity.items[slot].as_ref())))
-        .collect();
-    let Some((offer, into)) =
-        hopper::first_taker(&offers, &held, |slot, offer| accepts(game, slot, &offer.payload))
-    else {
-        return false;
-    };
-    let Some(one) = game.native_extract_item(dimension, hopper_pos, reached, offers[offer].slot, 1) else {
-        return false;
-    };
-    match &mut entity.items[into] {
-        Some(stack) => stack.count += one.count,
-        empty => *empty = Some(one),
-    }
-    true
-}
-
-/// A regra dos hoppers vizinhos, a cada tick: veja `machinery_basis_core::hopper`. A máquina
-/// declara `inputs` e `outputs` vazios no seu `ModContainer`.
-pub(in crate::game) fn tick_hoppers(
-    game: &mut Game<'_>,
-    pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-    sides: &Sides,
-    slots: &dyn Fn(Face) -> FaceSlots,
-    accepts: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
-    can_give: &dyn Fn(&Game<'_>, usize, &ItemStack) -> bool,
-) {
-    let mut values = cooldowns(entity);
-    for face in Face::ALL {
-        let mut cooldown = Cooldown {
-            ticks: values[face as usize] as u8,
-        };
-        if cooldown.tick() {
-            let hopper_pos = neighbour(pos, face);
-            if let Some(neighbour) = hopper_at(game, hopper_pos) {
-                let slots = slots(face);
-                let moved = match hopper::transfer(face, neighbour, sides) {
-                    Some(Transfer::Give) => {
-                        give_one(game, hopper_pos, entity, &slots.outputs, can_give)
-                    }
-                    Some(Transfer::Take) => {
-                        take_one(game, hopper_pos, face, entity, &slots.inputs, accepts)
-                    }
-                    None => false,
-                };
-                if moved {
-                    cooldown.moved();
-                }
-            }
-        }
-        values[face as usize] = i32::from(cooldown.ticks);
-    }
-    save_cooldowns(entity, values);
 }
 
 /// O que cada lado do transmissor em `pos` alcança. Uma saída de outro bloco liga o cabo, mas não
@@ -1766,36 +1676,6 @@ pub(in crate::game) fn transmit_energy(
         }
     }
     set_stored_energy(entity, stored - sent);
-}
-
-/// O push: entrega os itens de saída a qualquer inventário vizinho que os aceite, pelas faces de
-/// saída, como um dropper atirando num hopper. O ritmo é o de `Ejector`.
-pub(in crate::game) fn eject_items(
-    game: &mut Game<'_>,
-    pos: [i32; 3],
-    entity: &mut ModBlockEntity,
-    sides: &Sides,
-    outputs: &[usize],
-) {
-    let mut values = cooldowns(entity);
-    let mut ejector = Ejector {
-        delay: values[EJECT_COOLDOWN] as u8,
-    };
-    if ejector.tick() {
-        for face in Face::ALL {
-            if !sides.gives_output(face) {
-                continue;
-            }
-            let reached = direction(face.opposite());
-            for &slot in outputs {
-                if let Some(stack) = entity.items[slot].take() {
-                    entity.items[slot] = game.native_insert_item(neighbour(pos, face), reached, stack);
-                }
-            }
-        }
-    }
-    values[EJECT_COOLDOWN] = i32::from(ejector.delay);
-    save_cooldowns(entity, values);
 }
 
 /// O clima do bioma que `Level.getBiome(pos)` dá em `pos`: o `BiomeManager` não lê o quadrado de 4 por 4 que contém o bloco, e sim o

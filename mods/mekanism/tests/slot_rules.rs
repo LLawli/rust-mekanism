@@ -25,8 +25,8 @@ use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
 use mekanism_rules::{
     ELECTRIC_ENERGY_SLOT, ELECTRIC_INPUT_SLOT, ENERGY_SLOT, Held, INFUSION_SLOT, INPUT_SLOT,
-    Indexes, SlotIndexes, infusing_cache_of, item_instance, item_placed_config, item_sides,
-    item_slots, slot_accepts, slot_extractable,
+    Indexes, SlotIndexes, infusing_cache_of, item_instance, item_placed_config, item_slots,
+    slot_accepts, slot_extractable,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -266,19 +266,16 @@ fn the_hopper_below_gets_what_the_original_gives_it() {
                 _ => ("", "empty:0"),
             };
             let slots = reached(name, front, Face::Down);
-            let declared = item_sides(name == "metallurgic_infuser", front);
-            assert_eq!(declared.gives_output(Face::Down), !slots.outputs.is_empty());
             // A base das máquinas elétricas é `DataType.INPUT`: o hopper de baixo não leva nada, nem a entrada nem a saída.
             assert!(
-                name == "metallurgic_infuser" || !declared.gives_output(Face::Down),
+                name == "metallurgic_infuser" || slots.outputs.is_empty(),
                 "{name}"
             );
             let mut expected = 0;
             if !item_id.is_empty() && name == "metallurgic_infuser" {
                 set_state(&machine, tank, "");
                 let slot = &machine.chemical_side().unwrap().slot;
-                let gives = declared.gives_output(Face::Down)
-                    && slots.outputs.contains(&0)
+                let gives = slots.outputs.contains(&0)
                     && slot.is_valid_for_extraction(&item(item_id), AutomationType::External);
                 // O tanque vazio converte o item no mesmo tick: o hopper não chega a ver nada, e o rastro mostra isso.
                 let converted_at_once = tank == "empty:0" && item_id == "bio_fuel";
