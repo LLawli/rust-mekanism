@@ -24,5 +24,5 @@ docker update --cpus 4 --memory 6g --memory-swap 6g horizon
 echo "EXIT $?"
 NOVO=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$V/../instances.json" | head -1)
 echo "novo $NOVO"
-# Só o build atual e o `native-f319701-76be8ef43ab8` ficam.
-for d in "$V"/native-*; do b=$(basename "$d"); [ "$b" = "$NOVO" ] || [ "$b" = native-f319701-76be8ef43ab8 ] || { echo "apaga $b"; rm -rf "$d"; }; done
+# Só o build atual fica.
+for d in "$V"/native-*; do b=$(basename "$d"); [ "$b" = "$NOVO" ] || { echo "apaga $b"; rm -rf "$d"; }; done

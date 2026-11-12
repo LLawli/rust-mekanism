@@ -1,8 +1,8 @@
 #!/bin/bash
 # Roda no desktop. Pega a trava de container que estiver livre (`horizon.lock` ou `horizon2.lock`, laço de `mkdir` a cada 2 s; nunca `pgrep`), guarda os fontes que estão em
 # `Games/Horizon[2]/mods`, põe os de `PASTA/fontes.tar` (veja `enviar_fontes.sh`), faz o `native-build` pelo `lim-build` (uma vaga, 4 núcleos, o container com 6 GB:
-# `docker update --cpus 4 --memory 6g --memory-swap 6g`), amostra a memória do container em `PASTA/mem.log` e apaga os builds de teste anteriores (ficam o atual e o
-# `native-f319701-76be8ef43ab8`). A trava FICA com quem chamou: `PASTA/ambiente` diz qual é; solte-a com `rm -rf` ao fim do teste. `PASTA/build.fim` aparece quando acaba.
+# `docker update --cpus 4 --memory 6g --memory-swap 6g`), amostra a memória do container em `PASTA/mem.log` e apaga os builds de teste anteriores (fica só o atual).
+# A trava FICA com quem chamou: `PASTA/ambiente` diz qual é; solte-a com `rm -rf` ao fim do teste. `PASTA/build.fim` aparece quando acaba.
 # Uso: construir_efeitos.sh PASTA   (PASTA em ~/.cache/rust-mekanism)
 set -u
 P=$HOME/.cache/rust-mekanism/$1
@@ -37,5 +37,5 @@ docker update --cpus 4 --memory 6g --memory-swap 6g "$N"
 echo "EXIT $?" >> "$P/build.log"
 NOVO=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$V/../instances.json" | head -1)
 echo "$NOVO" > "$P/versao-nova.txt"
-for d in "$V"/native-*; do b=$(basename "$d"); [ "$b" = "$NOVO" ] || [ "$b" = native-f319701-76be8ef43ab8 ] || { echo "apaga $b" >> "$P/build.log"; rm -rf "$d"; }; done
+for d in "$V"/native-*; do b=$(basename "$d"); [ "$b" = "$NOVO" ] || { echo "apaga $b" >> "$P/build.log"; rm -rf "$d"; }; done
 touch "$P/build.fim"

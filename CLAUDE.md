@@ -65,7 +65,7 @@ Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repet
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
   compartilham `native/target` e `cargo` por bind mount. Nunca crie outro `target` nem copie esses diretórios.
 - Build de debug é apagado quando deixa de ser usado: ao integrar um workspace, remova o workspace e sua pasta de rascunho; a cada `native-build`,
-  apague o build de teste anterior, mantendo só o atual e o `native-f319701-76be8ef43ab8`. Ao fim do teste, apague também backups e mundos de teste.
+  apague o build de teste anterior, mantendo só o atual. Ao fim do teste, apague também backups e mundos de teste.
 - Se um dos dois scripts sumir, recrie antes de compilar: o conteúdo está em `_rules/um-build-e-um-jogo-por-vez.md`, no ai-memory.
 
 ## Onde o código fica
