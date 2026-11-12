@@ -67,6 +67,7 @@ pub mod tile_trackers;
 pub mod tooltip;
 pub mod transaction;
 pub mod transit;
+pub mod transmission;
 pub mod two_input_recipe;
 pub mod units;
 pub mod upgrade;
