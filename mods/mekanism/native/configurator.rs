@@ -216,41 +216,32 @@ fn pipe_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) ->
     consumed
 }
 
-/// `TileEntityTransmitter.getSideLookingAt`: o lado do braço que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`). As caixas são as da forma do estado
-/// (o centro e uma por lado ligado); a do braço encosta na face do bloco, e é por qual que se acha o lado. O centro, ou nada, não é braço.
-fn aimed_arm(game: &Game<'_>, pos: [i32; 3]) -> Option<Face> {
+/// As peças do transmissor em `pos` (`TileEntityTransmitter.getCollisionBoxes`: um braço por lado ligado, com a forma do tipo dele, e o centro). O dono dos cabos e o dos canos, que vivem no
+/// servidor, sabem o tipo visível de cada lado; o cliente (o contorno) só tem as propriedades de lado do bloco, que dizem braço ou não, e dá o braço normal a cada uma. A forma
+/// de estado do Horizon (`facts.outline`) não serve: é a união do centro e dos braços, e dois braços opostos viram uma caixa só.
+fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::TransmitterPiece>> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let facts = game.res.facts().get(state);
-    let center = rules::transmitter_center(&facts.name)?;
+    let kinds = basis::cable_arm_kinds(game, pos).or_else(|| crate::game::machinery_pipes::pipe_arm_kinds(game, pos)).unwrap_or_else(|| {
+        let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
+        for side in Face::ALL {
+            if game.native_block_property(pos, side.name()).as_deref() == Some("true") {
+                kinds[side as usize] = machinery_basis_core::transmission::connection::ConnectionType::Normal;
+            }
+        }
+        kinds
+    });
+    rules::transmitter_pieces(&facts.name, &kinds)
+}
+
+/// `TileEntityTransmitter.getSideLookingAt`: o lado do braço que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`). O centro, ou nada, não é braço.
+fn aimed_arm(game: &Game<'_>, pos: [i32; 3]) -> Option<Face> {
+    let pieces = transmitter_pieces_at(game, pos)?;
     let (origin, direction) = game.aim()?;
     let reach = game.reach();
     let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
     let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
-    let nearest = facts
-        .outline
-        .iter()
-        .filter_map(|bounds| rules::clip_box(local, end, bounds).map(|distance| (distance, bounds)))
-        .min_by(|a, b| a.0.total_cmp(&b.0))?
-        .1;
-    if *nearest == center {
-        return None;
-    }
-    // Os lados na ordem de `Direction`: baixo, cima, norte, sul, oeste, leste.
-    if nearest[1] == 0.0 {
-        Some(Face::Down)
-    } else if nearest[4] == 1.0 {
-        Some(Face::Up)
-    } else if nearest[2] == 0.0 {
-        Some(Face::North)
-    } else if nearest[5] == 1.0 {
-        Some(Face::South)
-    } else if nearest[0] == 0.0 {
-        Some(Face::West)
-    } else if nearest[3] == 1.0 {
-        Some(Face::East)
-    } else {
-        None
-    }
+    rules::side_looking_at(&pieces, local, end)
 }
 
 /// `TileEntityMekanism.setFacing`: o bloco muda a propriedade `facing`, e a máquina avisa as faces dela no mesmo instante.
@@ -687,7 +678,8 @@ fn mode_timer_start() {
 
 /// `BlockTransmitter.getShape` com o Configurator em uma das mãos (`CollisionContext.isHoldingItem`): a caixa que o olhar toca
 /// (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), e o centro se nenhuma. Sem o Configurator, ou em outro bloco, o
-/// Horizonte segue com a forma inteira. As caixas são as da forma do estado, em coordenadas do bloco.
+/// Horizonte segue com a forma inteira. As caixas são as peças de `transmitter_pieces_at`, em coordenadas do bloco (o braço `PUSH` e o `PULL` valem pela menor caixa que os contém: o
+/// cliente só conhece o braço normal, veja lá).
 pub(in crate::game) fn partial_outline(
     game: &Game<'_>,
     pos: [i32; 3],
@@ -704,10 +696,13 @@ pub(in crate::game) fn partial_outline(
     let Some((origin, direction)) = game.aim() else {
         return core::ops::ControlFlow::Break(Some(center));
     };
+    let Some(pieces) = transmitter_pieces_at(game, pos) else {
+        return core::ops::ControlFlow::Break(Some(center));
+    };
     let reach = game.reach();
     let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
     let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
-    core::ops::ControlFlow::Break(Some(rules::select_box(&facts.outline, local, end, center)))
+    core::ops::ControlFlow::Break(Some(rules::partial_shape(&pieces, local, end)))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

@@ -35,6 +35,7 @@ use machinery_basis_core::tile_trackers::{
     source, upgrade_window_trackers,
 };
 use machinery_basis_core::tooltip;
+use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
@@ -3915,8 +3916,8 @@ pub fn bucket_refused_at(
     target == Some(pos) && bucket_refused_by(bucket, block)
 }
 
-/// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.
-pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
+/// Se o bloco é um transmissor do Mekanism: `Some(false)` nos pequenos (`BlockSmallTransmitter`), `Some(true)` nos grandes (`BlockLargeTransmitter`).
+fn transmitter_is_large(block: &str) -> Option<bool> {
     let name = block.strip_prefix("mekanism:")?;
     let small = [
         "universal_cable",
@@ -3934,26 +3935,148 @@ pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
     .iter()
     .any(|kind| name.ends_with(kind));
     if small {
-        Some([
-            5.0 / 16.0,
-            5.0 / 16.0,
-            5.0 / 16.0,
-            11.0 / 16.0,
-            11.0 / 16.0,
-            11.0 / 16.0,
-        ])
+        Some(false)
     } else if large {
-        Some([
-            4.0 / 16.0,
-            4.0 / 16.0,
-            4.0 / 16.0,
-            12.0 / 16.0,
-            12.0 / 16.0,
-            12.0 / 16.0,
-        ])
+        Some(true)
     } else {
         None
     }
+}
+
+/// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.
+pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
+    let (low, high) = if transmitter_is_large(block)? {
+        (4.0, 12.0)
+    } else {
+        (5.0, 11.0)
+    };
+    Some([low, low, low, high, high, high].map(|pixels| pixels / 16.0))
+}
+
+/// Uma peça de `TileEntityTransmitter.getCollisionBoxes`: o braço de um lado (`side`) ou o centro (`None`), com as caixas da forma dela em coordenadas do bloco (o braço
+/// `PUSH` e o `PULL` são de três caixas).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TransmitterPiece {
+    pub side: Option<Face>,
+    pub boxes: Vec<[f64; 6]>,
+}
+
+impl TransmitterPiece {
+    /// A menor caixa que contém a peça inteira.
+    pub fn bounds(&self) -> [f64; 6] {
+        let mut bounds = self.boxes[0];
+        for part in &self.boxes[1..] {
+            for axis in 0..3 {
+                bounds[axis] = bounds[axis].min(part[axis]);
+                bounds[axis + 3] = bounds[axis + 3].max(part[axis + 3]);
+            }
+        }
+        bounds
+    }
+}
+
+/// As caixas de `box(x, y, z, ...)` do braço que sai para baixo (`SIDES`, `SIDES_PULL` e `SIDES_PUSH` de `BlockSmallTransmitter` e `BlockLargeTransmitter`), em pixels:
+/// `(meia largura, de y, até y)`. Todas são simétricas em torno do eixo do braço, então girar para um lado é só trocar o eixo e, para o lado positivo, espelhar o intervalo.
+fn arm_parts(large: bool, kind: ConnectionType) -> &'static [(f64, f64, f64)] {
+    match (large, kind) {
+        (false, ConnectionType::Pull) => &[(3.0, 4.0, 5.0), (2.0, 2.0, 4.0), (4.0, 0.0, 2.0)],
+        (false, ConnectionType::Push) => &[(3.0, 3.0, 5.0), (2.0, 1.0, 3.0), (1.0, 0.0, 1.0)],
+        (false, _) => &[(3.0, 0.0, 5.0)],
+        (true, ConnectionType::Pull) => &[(4.0, 3.0, 4.0), (3.0, 2.0, 3.0), (5.0, 0.0, 2.0)],
+        (true, ConnectionType::Push) => &[(4.0, 3.0, 4.0), (3.0, 1.0, 3.0), (2.0, 0.0, 1.0)],
+        (true, _) => &[(4.0, 0.0, 4.0)],
+    }
+}
+
+/// `getSideForType(type, side)` dos dois blocos: as caixas do braço de `side` para o tipo de conexão `kind` (o que não é `PUSH` nem `PULL` é o braço normal).
+fn arm_boxes(large: bool, kind: ConnectionType, side: Face) -> Vec<[f64; 6]> {
+    let axis = match side {
+        Face::Down | Face::Up => 1,
+        Face::North | Face::South => 2,
+        Face::West | Face::East => 0,
+    };
+    let positive = matches!(side, Face::Up | Face::South | Face::East);
+    arm_parts(large, kind)
+        .iter()
+        .map(|&(half, from, to)| {
+            let (near, far) = if positive {
+                (16.0 - to, 16.0 - from)
+            } else {
+                (from, to)
+            };
+            let mut bounds = [
+                8.0 - half,
+                8.0 - half,
+                8.0 - half,
+                8.0 + half,
+                8.0 + half,
+                8.0 + half,
+            ];
+            bounds[axis] = near;
+            bounds[axis + 3] = far;
+            bounds.map(|pixels| pixels / 16.0)
+        })
+        .collect()
+}
+
+/// `TileEntityTransmitter.getCollisionBoxes`: um braço por lado cujo tipo visível (`getConnectionType`) não é `NONE`, na ordem dos lados, e o centro por último. `kinds` está na
+/// ordem de `Direction`. `None` se o bloco não é um transmissor.
+pub fn transmitter_pieces(
+    block: &str,
+    kinds: &[ConnectionType; 6],
+) -> Option<Vec<TransmitterPiece>> {
+    let large = transmitter_is_large(block)?;
+    let mut pieces: Vec<TransmitterPiece> = Face::ALL
+        .into_iter()
+        .filter(|side| kinds[*side as usize] != ConnectionType::None)
+        .map(|side| TransmitterPiece {
+            side: Some(side),
+            boxes: arm_boxes(large, kinds[side as usize], side),
+        })
+        .collect();
+    pieces.push(TransmitterPiece {
+        side: None,
+        boxes: vec![transmitter_center(block)?],
+    });
+    Some(pieces)
+}
+
+/// `MultipartUtils.collisionRayTrace`: a peça mais perto que o raio de `origin` a `end` atravessa (a primeira em empate). Cada peça vale pela caixa dela que o raio toca antes.
+pub fn looked_piece(
+    pieces: &[TransmitterPiece],
+    origin: [f64; 3],
+    end: [f64; 3],
+) -> Option<&TransmitterPiece> {
+    let mut best: Option<(f64, &TransmitterPiece)> = None;
+    for piece in pieces {
+        let nearest = piece
+            .boxes
+            .iter()
+            .filter_map(|bounds| clip_box(origin, end, bounds))
+            .min_by(f64::total_cmp);
+        if let Some(distance) = nearest
+            && best.is_none_or(|(taken, _)| distance < taken)
+        {
+            best = Some((distance, piece));
+        }
+    }
+    best.map(|(_, piece)| piece)
+}
+
+/// `TileEntityTransmitter.getSideLookingAt`: o lado do braço que o raio toca, e `None` no centro ou se o raio erra tudo.
+pub fn side_looking_at(
+    pieces: &[TransmitterPiece],
+    origin: [f64; 3],
+    end: [f64; 3],
+) -> Option<Face> {
+    looked_piece(pieces, origin, end)?.side
+}
+
+/// `BlockTransmitter.getShape` com o Configurator na mão: a caixa da peça que o raio toca (a menor que a contém, nos braços `PUSH` e `PULL`), e o centro se nenhuma.
+pub fn partial_shape(pieces: &[TransmitterPiece], origin: [f64; 3], end: [f64; 3]) -> [f64; 6] {
+    let piece = looked_piece(pieces, origin, end)
+        .unwrap_or_else(|| pieces.last().expect("o centro está na lista"));
+    piece.bounds()
 }
 
 /// `VoxelShape.clip` de uma caixa: a distância (como fração do raio) até a caixa, se o raio de `origin` a `end` a atravessa.
@@ -3978,25 +4101,6 @@ pub fn clip_box(origin: [f64; 3], end: [f64; 3], bounds: &[f64; 6]) -> Option<f6
         }
     }
     Some(near)
-}
-
-/// `MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`: a caixa mais perto que o raio atravessa (a primeira em empate), e o centro se nenhuma
-/// (`BlockTransmitter.getShape`: "if we failed to figure it out somehow, just fall back to the center").
-pub fn select_box(
-    boxes: &[[f64; 6]],
-    origin: [f64; 3],
-    end: [f64; 3],
-    center: [f64; 6],
-) -> [f64; 6] {
-    let mut best: Option<(f64, [f64; 6])> = None;
-    for bounds in boxes {
-        if let Some(distance) = clip_box(origin, end, bounds)
-            && best.is_none_or(|(nearest, _)| distance < nearest)
-        {
-            best = Some((distance, *bounds));
-        }
-    }
-    best.map_or(center, |(_, bounds)| bounds)
 }
 
 /// `SerializationConstants.DATA_NAME`, `DATA_TYPE` e `CONFIG`: as chaves do compound do cartão.

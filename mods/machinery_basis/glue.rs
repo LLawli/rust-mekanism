@@ -3864,6 +3864,12 @@ pub(in crate::game) fn cable_configure(
     Some((consumed, overlays))
 }
 
+/// Os tipos de conexão visíveis do cabo em `pos` (`getConnectionType(side)`: `NONE` onde não há braço), na ordem dos lados, como o último `publish` os deixou. `None` fora do servidor,
+/// que é onde o dono vive, ou se o cabo ainda não publicou.
+pub(in crate::game) fn cable_arm_kinds(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
+    CABLE_VIEWS.with_borrow(|views| views.get(&(game.native_dimension(), pos)).map(|view| view.kind))
+}
+
 /// Os tipos de conexão crus do cabo em `pos`, na ordem dos lados (para os testes em jogo).
 pub(in crate::game) fn cable_connection_types(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
     with_owner(game.native_dimension(), |owner| owner.transmitter(sim_pos(pos)).map(|tx| *tx.connection_types_raw())).flatten()

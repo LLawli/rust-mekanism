@@ -356,6 +356,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- O Configurator agachado num cabo escolhe o lado do braço que o olhar toca, e não o primeiro lado da forma de estado (Fase 3, frente `cabo-ajustes`, decisão 133): a forma de estado do Horizon é a união do centro e dos braços, e num cabo em linha (oeste e leste) ela é uma caixa só de ponta a ponta, então mirar o braço leste cortava o oeste (a mensagem dizia `None` e o braço leste seguia desenhado). A mira e o contorno usam agora as peças de `TileEntityTransmitter.getCollisionBoxes` (um braço por lado ligado, com a forma do tipo de conexão, `BlockSmallTransmitter` e `BlockLargeTransmitter`, e o centro por último), e o lado é o de `getSideLookingAt`. Falta a medida em jogo.
+
 - O balde cheio só deixa de derramar quando o bloco que recebe o fluido é o transmissor (decisão 86, H116): ao lado de uma laje ou escada que se enche de água, um cabo não impede mais de enchê-la, como no original. A injeção `bucket_target` (RETURN de `Game::bucket_target`) anota o bloco que recebe, e o hook `fill_bucket` recusa só esse.
 - A cor do nome de item com `setNameColor` (o Configurator, os circuitos de controle, os instaladores de tier e os pellets) saía a 19 a 37 % de opacidade, e as linhas do tooltip do upgrade saíam com as cores trocadas (o `u32` da linha de tooltip é ARGB e o glue mandava RGBA): a cor agora vai no estilo do texto.
 - A caixa de papelão aberta (e os outros blocos de elemento girado: o barril radioativo, a mesa de segurança, o vibrador sísmico, o ativador de nêutrons, a estação de modificação, o entangloporter, o minerador digital) tem o sombreamento do original: a aba da

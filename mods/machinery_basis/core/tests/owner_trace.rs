@@ -782,6 +782,51 @@ fn the_configurator_cycles_a_side_and_the_arm_goes_and_comes_back() {
     );
 }
 
+/// O que o jogo mostra de um cabo é a última vista publicada dele (`publish` vira as propriedades de lado do bloco): as conexões que o dono calcula
+/// e a vista que chegou ao bloco têm de ser as mesmas depois de todos os efeitos de um clique.
+fn last_published(sim: &Sim, pos: BlockPos) -> CableView {
+    sim.level
+        .published
+        .iter()
+        .rev()
+        .find(|(at, _)| *at == pos)
+        .map(|(_, view)| view.clone())
+        .unwrap_or_else(|| panic!("o cabo {pos:?} nunca publicou"))
+}
+
+#[test]
+fn what_the_game_shows_follows_the_configurator_in_both_cables() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line(&mut sim, origin, 3);
+    for kind in [
+        ConnectionType::Push,
+        ConnectionType::Pull,
+        ConnectionType::None,
+        ConnectionType::Normal,
+    ] {
+        assert!(sneak(&mut sim, cables[1], Face::North, Some(Face::East)));
+        // O jogo tica entre um clique e outro, e o que o tick refaz também chega ao bloco.
+        for _ in 0..2 {
+            sim.tick();
+        }
+        let arm = kind != ConnectionType::None;
+        for (pos, side) in [(cables[1], Face::East), (cables[2], Face::West)] {
+            let live = sim.owner.view_at(&sim.level, pos).unwrap();
+            let shown = last_published(&sim, pos);
+            assert_eq!(live.connected[side as usize], arm, "{kind:?}: o dono");
+            assert_eq!(
+                shown.connected[side as usize], arm,
+                "{kind:?}: o braço que o jogo mostra em {pos:?}"
+            );
+            assert_eq!(
+                shown, live,
+                "{kind:?}: a vista publicada é a viva em {pos:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_cable_in_pull_takes_energy_from_the_neighbor_that_gives_it() {
     let mut sim = Sim::free();

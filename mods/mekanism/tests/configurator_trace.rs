@@ -431,10 +431,10 @@ fn rotate_walks_the_cycle_of_the_original_from_every_face() {
     }
 }
 
-/// A seleção parcial (`BlockTransmitter.getShape` com o Configurator): o raio escolhe a caixa mais perto, e o centro vale se nenhuma.
+/// O centro de cada tamanho de transmissor (`box(5..11)` e `box(4..12)`); a seleção parcial é de `tests/transmitter_pieces.rs`.
 #[test]
-fn the_ray_picks_the_nearest_box_of_a_transmitter() {
-    use mekanism_rules::{select_box, transmitter_center};
+fn the_center_of_a_transmitter_is_the_one_of_its_size() {
+    use mekanism_rules::transmitter_center;
     let center = transmitter_center("mekanism:basic_universal_cable").unwrap();
     assert_eq!(
         center,
@@ -456,31 +456,6 @@ fn the_ray_picks_the_nearest_box_of_a_transmitter() {
         12.0 / 16.0
     );
     assert!(transmitter_center("mekanism:enrichment_chamber").is_none());
-    // Centro e braço para leste, o do braço de `box(5, 0, 5, 11, 5, 11)` girado: x de 11 a 16.
-    let east = [
-        11.0 / 16.0,
-        5.0 / 16.0,
-        5.0 / 16.0,
-        1.0,
-        11.0 / 16.0,
-        11.0 / 16.0,
-    ];
-    let boxes = [center, east];
-    // Olhando de leste para oeste: toca o braço antes do centro.
-    assert_eq!(
-        select_box(&boxes, [3.0, 0.5, 0.5], [-1.0, 0.5, 0.5], center),
-        east
-    );
-    // Olhando de oeste para leste: toca o centro primeiro.
-    assert_eq!(
-        select_box(&boxes, [-3.0, 0.5, 0.5], [3.0, 0.5, 0.5], center),
-        center
-    );
-    // Um raio que erra tudo cai no centro, mesmo com outra caixa na frente da lista.
-    assert_eq!(
-        select_box(&[east, center], [0.5, 3.0, 0.5], [0.5, 2.0, 0.5], center),
-        center
-    );
 }
 
 /// `TileEntityMekanism.openGui` e `BlockTile.useItemOn` no clique da mão principal num bloco de Mekanism: a tela abre (`menu` do rastro) só quando o bloco a abre, e o

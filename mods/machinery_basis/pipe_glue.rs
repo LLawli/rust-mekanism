@@ -13,6 +13,7 @@ use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
 use machinery_basis_core::transmission::fluid_network::{FluidHandler, FluidTransmitters, fluid_transmitters};
+use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::host_resource::{HostHandler, ResourceSnapshot};
 use machinery_basis_core::transmission::owner::{CableView, Event as PipeEvent};
 use machinery_basis_core::transmission::resource_owner::{PipeInfo, ResourceOwnerWorld};
@@ -45,6 +46,8 @@ thread_local! {
     static HANDLERS: RefCell<HashMap<HandlerKey, Rc<HostHandler<FluidResource>>>> = RefCell::new(HashMap::new());
     /// Os avisos de tela que o Configurator provocou, para quem chamou entregar ao jogador.
     static OVERLAYS: RefCell<Vec<PipeOverlay>> = const { RefCell::new(Vec::new()) };
+    /// O último `publish` de cada cano (o tipo de conexão visível de cada lado), para a mira do Configurator achar as peças de `getCollisionBoxes`.
+    static PIPE_VIEWS: RefCell<HashMap<(&'static str, [i32; 3]), CableView>> = RefCell::new(HashMap::new());
     /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon: `(dimensão, posição, tick)`, tentados de novo.
     static PENDING: RefCell<Vec<(&'static str, [i32; 3], i64)>> = const { RefCell::new(Vec::new()) };
 }
@@ -257,6 +260,7 @@ impl ResourceOwnerWorld<FluidResource> for GameWorld<'_, '_> {
             let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
             eprintln!("MBW {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
         }
+        PIPE_VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
     }
 
     fn overlay(&mut self, _pos: SimPos, overlay: PipeOverlay) {
@@ -384,6 +388,7 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
         TransmitterEvent::ServerTickPost { runs_normally } => PipeEvent::ServerTickPost { runs_normally: *runs_normally },
         TransmitterEvent::Reset => {
             PIPES.with_borrow_mut(HashMap::clear);
+            PIPE_VIEWS.with_borrow_mut(HashMap::clear);
             HANDLERS.with_borrow_mut(HashMap::clear);
             FACES.lock().unwrap_or_else(|e| e.into_inner()).clear();
             CAPABILITY_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).clear();
@@ -393,6 +398,7 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
     let post = matches!(event, PipeEvent::ServerTickPost { .. });
     // `onChunkUnloaded` toma a parte do cano e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
     let unloaded = if let PipeEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
+    let removed = if let PipeEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
     // Quem puxa (`Update`) ou distribui (`ServerTickPost`) fala com os vizinhos pelos aceitadores, que leem o contêiner deles antes e escrevem depois.
     match &event {
         PipeEvent::Update(pos) => handlers_refresh(game, dimension, Some(arr(*pos))),
@@ -462,6 +468,9 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
     handlers_flush(game, dimension);
+    if let Some(pos) = removed {
+        PIPE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
+    }
     // `markChunkDirty` da rede: o chunk do cano vai para o próximo salvamento.
     for key in dirty.unwrap_or_default() {
         let chunk = ChunkPos::unpack(key);
@@ -493,6 +502,12 @@ pub(in crate::game) fn pipes_save(game: &mut Game<'_>) {
             with_owner(dimension, |owner| pipe_write(game, owner, pos));
         }
     }
+}
+
+/// Os tipos de conexão visíveis do cano em `pos` (`getConnectionType(side)`: `NONE` onde não há braço), na ordem dos lados, como o último `publish` os deixou. `None` fora do
+/// servidor, que é onde o dono vive, ou se o cano ainda não publicou.
+pub(in crate::game) fn pipe_arm_kinds(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
+    PIPE_VIEWS.with_borrow(|views| views.get(&(game.native_dimension(), pos)).map(|view| view.kind))
 }
 
 /// O clique do Configurator num cano (`ItemConfigurator.useOn`: `IConfigurable.onSneakRightClick` agachado, `onRightClick` senão). `side` é a face clicada e `hit_side` o lado do
