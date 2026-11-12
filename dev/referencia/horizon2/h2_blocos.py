@@ -344,7 +344,8 @@ def comando_do_cubo(texto, cmds):
     tier = next(c.split("mekanism:")[1].split("_energy_cube")[0] for c in cmds if c.startswith(f"setblock {x} {y} {z} "))
     nbt = []
     if tier == "creative":
-        nbt.append("energy_amount:%dL" % int(float(fracao) * 9223372036854775807))
+        # `float * Long.MAX_VALUE` em 1.0 dá 2^63, que o `data merge` recusa ("Failed to parse number") e deixa o cubo sem configuração: o teto é `Long.MAX_VALUE` (o original, `fracao * capacidade` em `long`).
+        nbt.append("energy_amount:%dL" % min(int(float(fracao) * 9223372036854775807), 9223372036854775807))
     else:
         nbt.append("energy:%d" % int(float(fracao) * CAPACIDADE_DO_CUBO[tier]))
     if lados:

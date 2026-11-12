@@ -483,7 +483,7 @@ fn the_transmitters_are_drawn_with_the_textures_of_the_original() {
 }
 
 /// O cubo de energia: o `EnergyCubeModel` junta o quadro e, por lado, o LED apagado (sem block entity todo lado é `INACTIVE`); o item (`RenderEnergyCubeItem`) usa a configuração de
-/// lados do item, só a frente com saída (`FRONT_OUT_EJECT`): o LED aceso (as mesmas caixas com o uv deslocado e a luz em 15) e a porta. O blockstate gira o modelo como o original.
+/// lados do item (`FRONT_OUT_EJECT`: entrada em todo lado e saída na frente; `ALL_OUTPUT` no criativo): a porta em todo lado e o LED aceso (as mesmas caixas com o uv deslocado e a luz em 15) onde sai. O blockstate gira o modelo como o original.
 #[test]
 fn the_energy_cubes_are_drawn_with_the_frame_the_leds_and_the_ports_of_the_original() {
     let rastro = rastro("estrutura_modelos.json");
@@ -503,7 +503,8 @@ fn the_energy_cubes_are_drawn_with_the_frame_the_leds_and_the_ports_of_the_origi
         let mut carried = resting.clone();
         for side in sides {
             resting.extend(cube["leds"][side].as_array().unwrap().clone());
-            if side == "front" {
+            // O item: `SIDE_CONFIG` tem `INPUT` em todo lado e `OUTPUT` na frente (`ALL_OUTPUT` no criativo): a porta em todos, o LED aceso só nos que saem.
+            if side == "front" || tier == "creative" {
                 for led in cube["leds"][side].as_array().unwrap() {
                     let mut lit = led.clone();
                     for face in lit["faces"].as_object_mut().unwrap().values_mut() {
@@ -525,10 +526,10 @@ fn the_energy_cubes_are_drawn_with_the_frame_the_leds_and_the_ports_of_the_origi
                     lit["light_emission"] = 15.into();
                     carried.push(lit);
                 }
-                carried.extend(cube["ports"][side].as_array().unwrap().clone());
             } else {
                 carried.extend(cube["leds"][side].as_array().unwrap().clone());
             }
+            carried.extend(cube["ports"][side].as_array().unwrap().clone());
         }
         let models = content().join("assets/mekanism/models");
         let at_rest = json(&models.join(format!("block/energy_cube/{tier}_static.json")));

@@ -550,15 +550,18 @@ def lit_led(element, shift):
 
 def energy_cube_model(tier, item):
     """O modelo do cubo de energia sem os dados de lado: o `EnergyCubeModel` junta o quadro e, por lado, o LED (e a porta, se o lado não for `INACTIVE`). Sem block entity todo lado é
-    `INACTIVE` (o bloco posto); o item sai com a configuração de lados do item (`ItemBlockEnergyCube.SIDE_CONFIG`: saída só na frente, `FRONT_OUT_EJECT`), o lado de saída aceso e com a porta."""
+    `INACTIVE` (o bloco posto); o item sai com a configuração de lados do item (`RenderEnergyCubeItem.extractArgument`): `ItemBlockEnergyCube.SIDE_CONFIG` (`FRONT_OUT_EJECT`, que
+    `LightConfigInfo.create` monta com `INPUT` em todos os lados e `OUTPUT` na frente) ou, no criativo, `ALL_OUTPUT`. Todo lado tem a porta; o LED é aceso (uv deslocado e luz 15)
+    no lado que sai e apagado no que só entra (decisão 74)."""
     base = read_json(f"{RES}/assets/mekanism/models/block/energy_cube/base.json")
     corner = read_json(f"{RES}/assets/mekanism/models/block/energy_cube/{tier}.json")
     assert corner["parent"] == "mekanism:block/energy_cube/base", tier
     shift = base["leds"]["lit_uv_shift"]
     elements = list(base["frame"])
     for side in RELATIVE_SIDES:
-        if item and side == "front":
-            elements += [lit_led(e, shift) for e in base["leds"][side]] + list(base["ports"][side])
+        if item:
+            lit = side == "front" or tier == "creative"
+            elements += [lit_led(e, shift) if lit else e for e in base["leds"][side]] + list(base["ports"][side])
         else:
             elements += list(base["leds"][side])
     return {"parent": "minecraft:block/block", "textures": {**base["textures"], **corner["textures"]}, "elements": elements}
