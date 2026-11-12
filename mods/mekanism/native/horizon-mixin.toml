@@ -484,6 +484,20 @@ file = "crates/horizon-client/src/mod_content.rs"
 name = "mekanism_rows"
 source = "block_rows_table.rs"
 
+# O instrumento do bloco de nota em cima do sal (`SNARE`) e do bloco de bio fuel (`BANJO`, `MekanismBlocks.java:980-982`; decisão 17 e H44). `BlockProperties` não tem `instrument`: o
+# instrumento mora na linha de cada estado de `facts.json` e de `block-behaviours.json` (posição 8), que `Plan::states` copia do gabarito `lapis_block` (`HARP`) e renomeia com
+# `J::rename`. O RETURN dele troca o `HARP` copiado pelo do original, só na linha desses dois blocos. Alvo cru, H44.
+[[injection]]
+id = "note_instrument"
+target = "horizon_client_lib::mod_content::J::rename"
+kind = "RETURN"
+helper = "note_instrument.rs"
+bindings = [
+  { name = "row", ty = "&mut J", value = "&mut *self" },
+  { name = "to", ty = "&str", value = "r.to.as_str()" },
+  { name = "value", ty = "()", value = "$value" },
+]
+
 # O Horizon aceita 16 caixas por forma (`BlockShapes::check`, `horizon-mods/src/content.rs:186`) e o original tem formas de até 47 caixas depois de cobertas (o Digital
 # Miner): doze blocos passam do limite. O HEAD cancelável de `check` refaz a conferência sem o limite e devolve o resultado. Alvo cru, H50.
 [[injection]]

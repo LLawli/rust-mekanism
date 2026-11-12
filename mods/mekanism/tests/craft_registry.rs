@@ -7,6 +7,25 @@ use common::craft::{EQUIPMENT_ITEMS, content, declared, json, rastro};
 use mekanism_rules::{name_color, ore_experience};
 use serde_json::{Value, json};
 
+/// O `J` de `mod_content.rs` do Horizon (JSON com as chaves na ordem do arquivo), só com o que a injeção `note_instrument` toca.
+#[derive(Clone, Debug, PartialEq)]
+enum J {
+    Null,
+    Num(i64),
+    Str(String),
+    Arr(Vec<J>),
+    Obj(Vec<(String, J)>),
+}
+
+/// O helper da injeção, como mora em `mod_content.rs`.
+mod note_instrument {
+    use super::J;
+    include!("../native/note_instrument.rs");
+    pub fn run(row: &mut J, to: &str) {
+        mekanism_note_instrument(row, to, ());
+    }
+}
+
 /// Um bloco do original: dureza, resistência, exige ferramenta, `MapColor` (id), luz, instrumento do bloco de nota, reação a pistão e som de quebra.
 struct Block {
     id: &'static str,
@@ -362,8 +381,10 @@ const BLOCKS: [Block; 28] = [
     ),
 ];
 
-/// O que o Horizon não deixa o mod dizer: o instrumento do bloco de nota (`BlockProperties` não tem `instrument`) e nenhum gabarito de bloco liso do vanilla tem
-/// o `SNARE` ou o `BANJO` sem outro efeito (areia cai, o feno tem o estado `axis`). Registrado no plano; o teste exige que sejam exatamente estes dois.
+/// O que o gabarito não dá: o instrumento do bloco de nota (`BlockProperties` não tem `instrument` e nenhum gabarito de bloco liso do vanilla tem o `SNARE` ou o `BANJO` sem outro
+/// efeito: areia cai, o feno tem o estado `axis`). O gabarito `lapis_block` dá `HARP`, e a injeção `note_instrument` (`native/note_instrument.rs`, H44) troca na linha do estado
+/// o `HARP` pelo instrumento do original; o teste `the_note_instrument_injection_gives_the_original_instrument` confere. O teste abaixo exige que as diferenças do gabarito sejam
+/// exatamente estes dois blocos.
 const INSTRUMENT_DIFFERENCES: [(&str, &str, &str); 2] = [
     ("block_salt", "SNARE", "HARP"),
     ("block_bio_fuel", "BANJO", "HARP"),
@@ -683,5 +704,57 @@ fn only_fluorite_ore_gives_experience_and_it_draws_one_to_four() {
             None,
             "{block}"
         );
+    }
+}
+
+/// Uma linha de estado de `facts.json` (`StateFacts`: lados firmes, fluido, sinais e o instrumento na posição 8) com o instrumento dado.
+fn state_row(instrument: &str) -> J {
+    J::Arr(vec![
+        J::Num(63),
+        J::Num(0),
+        J::Num(0),
+        J::Num(0),
+        J::Null,
+        J::Num(0),
+        J::Num(0),
+        J::Num(0),
+        J::Str(instrument.to_owned()),
+        J::Null,
+    ])
+}
+
+#[test]
+fn the_note_instrument_injection_gives_the_original_instrument() {
+    // Os dois blocos: o `HARP` do gabarito vira o instrumento do original (`MekanismBlocks.java:980-982`).
+    for (id, original, template) in INSTRUMENT_DIFFERENCES {
+        let mut row = state_row(template);
+        note_instrument::run(&mut row, &format!("mekanism:{id}"));
+        assert_eq!(row, state_row(original), "{id}");
+    }
+    // Só eles: outro bloco do Mekanism, o gabarito e um bloco do vanilla ficam como estão.
+    for to in ["mekanism:block_osmium", "mekanism:salt", "minecraft:lapis_block", "mekanism:block_salt_extra"] {
+        let mut row = state_row("HARP");
+        note_instrument::run(&mut row, to);
+        assert_eq!(row, state_row("HARP"), "{to}");
+    }
+    // Só o `HARP` do gabarito: um instrumento que a linha já tinha não é tocado.
+    let mut row = state_row("BASEDRUM");
+    note_instrument::run(&mut row, "mekanism:block_salt");
+    assert_eq!(row, state_row("BASEDRUM"));
+    // Só a linha de estado: um nó que não é uma lista, uma lista curta, ou uma lista cujo primeiro valor não é um número (uma lista de nomes) passam sem mudança.
+    let object = J::Obj(vec![("sound".to_owned(), J::Str("HARP".to_owned()))]);
+    let short = J::Arr(vec![J::Num(1), J::Str("HARP".to_owned())]);
+    let names = J::Arr(
+        ["a", "b", "c", "d", "e", "f", "g", "h", "HARP"]
+            .into_iter()
+            .map(|name| J::Str(name.to_owned()))
+            .collect(),
+    );
+    // Oito valores, um a menos do que a posição do instrumento pede: não há instrumento a trocar nem posição 8 a ler.
+    let eight = J::Arr((0..8).map(J::Num).collect());
+    for node in [J::Null, J::Num(8), J::Str("HARP".to_owned()), object, short, names, eight] {
+        let mut copy = node.clone();
+        note_instrument::run(&mut copy, "mekanism:block_salt");
+        assert_eq!(copy, node);
     }
 }
