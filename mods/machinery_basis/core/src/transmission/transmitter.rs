@@ -262,6 +262,9 @@ pub struct Transmitter<A: Clone> {
     pub removed: bool,
     /// `TileEntityTransmitter.loaded`.
     pub loaded: bool,
+    /// O `isValidAcceptor` do `ThermodynamicConductor`, que não chama o `super`: qualquer aceitador conectado vale, inclusive outro
+    /// transmissor (os da própria rede são aceitadores de propósito). Falso nas outras famílias.
+    pub any_connected_acceptor_valid: bool,
 }
 
 impl<A: Clone> Transmitter<A> {
@@ -287,6 +290,7 @@ impl<A: Clone> Transmitter<A> {
             force_update: true,
             removed: false,
             loaded: false,
+            any_connected_acceptor_valid: false,
         }
     }
 
@@ -635,6 +639,14 @@ impl<A: Clone> Transmitter<A> {
         side: Face,
         world: &W,
     ) -> bool {
+        if self.any_connected_acceptor_valid {
+            return self
+                .acceptor_cache
+                .get_connected_acceptor(side, &|s| {
+                    world.acceptor(relative(self.pos, s), s.opposite())
+                })
+                .is_some();
+        }
         let is_transmitter_of_ours =
             tile.is_some_and(|t| self.supports_transmission_type(t.supported));
         if !is_transmitter_of_ours {

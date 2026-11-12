@@ -1,6 +1,8 @@
 //! Calor e temperatura ambiente, como o `HeatAPI` do Mekanism: temperatura é calor dividido pela
 //! capacidade, e o que está mais quente que o ambiente perde calor para o ar por cada face.
 
+use crate::sides::Face;
+
 /// A temperatura de um bioma de 0,8, como planícies, em kelvin.
 pub const AMBIENT_TEMP: f64 = 300.0;
 /// A troca de calor com o ar (`HeatAPI.AIR_INVERSE_COEFFICIENT`).
@@ -101,6 +103,135 @@ impl Capacitor {
     }
 }
 
+/// `HeatAPI.HeatTransfer`: o que um `simulate` moveu, para a tela e o leitor de rede.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HeatTransfer {
+    /// A temperatura que passou para os vizinhos (`adjacentTransfer`).
+    pub adjacent: f64,
+    /// A temperatura que o ar levou, só das faces mais quentes que ele (`environmentTransfer`).
+    pub environment: f64,
+}
+
+/// Os `IHeatHandler` do mundo, cada um por um identificador (a referência ao objeto, no Java): o tile que simula, o vizinho que recebe
+/// calor e o próprio capacitor de um condutor são todos um `Handle`. Quem implementa é o dono dos objetos (o jogo, ou o mundo simulado de
+/// um teste), porque o mesmo objeto é o vizinho de um e o capacitor de outro.
+pub trait HeatHandlers {
+    type Handle: Copy;
+    /// `IHeatHandler.getTemperature`.
+    fn temperature(&self, handle: Self::Handle) -> f64;
+    /// `IHeatHandler.getInverseConduction`.
+    fn inverse_conduction(&self, handle: Self::Handle) -> f64;
+    /// `IHeatHandler.getHeatCapacity`.
+    fn heat_capacity(&self, handle: Self::Handle) -> f64;
+    /// `IHeatHandler.handleHeat(transfer, transaction)`, dentro da transação da rede.
+    fn handle_heat(&mut self, handle: Self::Handle, transfer: f64);
+}
+
+/// Os `IHeatCapacitor`: um `IHeatHandler` que também diz a isolação (`getInverseInsulation`).
+pub trait HeatCapacitors: HeatHandlers {
+    fn inverse_insulation(&self, handle: Self::Handle) -> f64;
+}
+
+/// Um tile que troca calor (`ITileHeatHandler`). `H` é o identificador dos `IHeatHandler` do mundo ([`HeatHandlers::Handle`]). O que o
+/// original dá por `default` na interface está em [`simulate`], [`simulate_adjacent`] e [`simulate_environment`].
+pub trait TileHeatHandler<H: Copy> {
+    /// `getHeatCapacitor(side)`: o capacitor visto desse lado, ou nenhum.
+    fn heat_capacitor(&self, side: Face) -> Option<H>;
+    /// `getAdjacent(side)`: o vizinho desse lado que recebe calor (o padrão é nenhum).
+    fn adjacent(&self, _side: Face) -> Option<H> {
+        None
+    }
+    /// `getAmbientTemperature(side)`: o ar daquele lado (o padrão é `HeatAPI.AMBIENT_TEMP`). `&self`: o cache de quem implementa é interior.
+    fn ambient_temperature(&self, _side: Face) -> f64 {
+        AMBIENT_TEMP
+    }
+    /// `countsAsAdjacent(side)`: se a troca desse lado entra em `adjacentTransfer` (o padrão é sim).
+    fn counts_as_adjacent(&self, _side: Face) -> bool {
+        true
+    }
+}
+
+/// `ITileHeatHandler.simulate`: a troca com os vizinhos e depois a com o ar.
+pub fn simulate<W: HeatCapacitors, T: TileHeatHandler<W::Handle>>(
+    tile: &T,
+    world: &mut W,
+) -> HeatTransfer {
+    let adjacent = simulate_adjacent(tile, world);
+    let environment = simulate_environment(tile, world);
+    HeatTransfer {
+        adjacent,
+        environment,
+    }
+}
+
+/// `ITileHeatHandler.simulateEnvironment`: cada face perde calor para o ar na própria temperatura. A ordem das leituras é a do Java: a capacidade, a
+/// isolação e a condução do capacitor, e só então a temperatura dele e a do ar (a temperatura de um capacitor ainda não inicializado lê o ar).
+pub fn simulate_environment<W: HeatCapacitors, T: TileHeatHandler<W::Handle>>(
+    tile: &T,
+    world: &mut W,
+) -> f64 {
+    let mut environment_transfer = 0.0;
+    for side in Face::ALL {
+        let Some(capacitor) = tile.heat_capacitor(side) else {
+            continue;
+        };
+        let heat_capacity = world.heat_capacity(capacitor);
+        let inverse_conduction = AIR_INVERSE_COEFFICIENT
+            + world.inverse_insulation(capacitor)
+            + world.inverse_conduction(capacitor);
+        let temperature_to_transfer =
+            (world.temperature(capacitor) - tile.ambient_temperature(side)) / inverse_conduction;
+        world.handle_heat(capacitor, -temperature_to_transfer * heat_capacity);
+        if temperature_to_transfer > 0.0 {
+            environment_transfer += temperature_to_transfer;
+        }
+    }
+    environment_transfer
+}
+
+/// `ITileHeatHandler.simulateAdjacent`: só o lado mais quente cede calor ao vizinho (o mais frio é problema do vizinho, quando ele
+/// simula), pela temperatura final de uma calorimetria dividida pela condução dos dois.
+pub fn simulate_adjacent<W: HeatCapacitors, T: TileHeatHandler<W::Handle>>(
+    tile: &T,
+    world: &mut W,
+) -> f64 {
+    let mut adjacent_transfer = 0.0;
+    for side in Face::ALL {
+        let Some(capacitor) = tile.heat_capacitor(side) else {
+            continue;
+        };
+        let Some(sink) = tile.adjacent(side) else {
+            continue;
+        };
+        let temperature = world.temperature(capacitor);
+        let sink_temperature = world.temperature(sink);
+        if temperature <= sink_temperature {
+            continue;
+        }
+        let heat_capacity = world.heat_capacity(capacitor);
+        let sink_heat_capacity = world.heat_capacity(sink);
+        let final_temperature = (temperature * heat_capacity
+            + sink_temperature * sink_heat_capacity)
+            / (heat_capacity + sink_heat_capacity);
+        let inverse_conduction =
+            world.inverse_conduction(sink) + world.inverse_conduction(capacitor);
+        let temperature_to_transfer = (temperature - final_temperature) / inverse_conduction;
+        let heat_to_transfer = temperature_to_transfer * heat_capacity;
+        world.handle_heat(capacitor, -heat_to_transfer);
+        world.handle_heat(sink, heat_to_transfer);
+        if temperature_to_transfer != 0.0 && tile.counts_as_adjacent(side) {
+            adjacent_transfer += temperature_to_transfer;
+        }
+    }
+    adjacent_transfer
+}
+
+/// O ar de um bloco: `HeatAPI.getAmbientTemp(world, pos)` do bloco (`None`) ou do vizinho de um lado (`Some`). `None` na resposta é o
+/// `world == null` do original (vale `AMBIENT_TEMP` e o [`AmbientCache`] não guarda).
+pub trait AmbientSource {
+    fn read(&self, side: Option<Face>) -> Option<f64>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +325,169 @@ mod tests {
         let before = capacitor.temperature();
         assert!(capacitor.lose_to_environment(300.0, [100.0; 6]) > 0.0);
         assert!(capacitor.temperature() < before);
+    }
+
+    /// Capacitores de teste por índice, para o `simulate` genérico.
+    struct Arena(Vec<Capacitor>);
+
+    impl HeatHandlers for Arena {
+        type Handle = usize;
+
+        fn temperature(&self, handle: usize) -> f64 {
+            self.0[handle].temperature()
+        }
+
+        fn inverse_conduction(&self, handle: usize) -> f64 {
+            self.0[handle].inverse_conduction
+        }
+
+        fn heat_capacity(&self, handle: usize) -> f64 {
+            self.0[handle].capacity
+        }
+
+        fn handle_heat(&mut self, handle: usize, transfer: f64) {
+            self.0[handle].handle(transfer);
+        }
+    }
+
+    impl HeatCapacitors for Arena {
+        fn inverse_insulation(&self, handle: usize) -> f64 {
+            self.0[handle].inverse_insulation
+        }
+    }
+
+    /// Um tile com um capacitor em todo lado, um vizinho só por cima e o ar fixo.
+    struct Tile {
+        own: usize,
+        up: Option<usize>,
+        ambient: f64,
+        counts: bool,
+    }
+
+    impl TileHeatHandler<usize> for Tile {
+        fn heat_capacitor(&self, _side: Face) -> Option<usize> {
+            Some(self.own)
+        }
+
+        fn adjacent(&self, side: Face) -> Option<usize> {
+            (side == Face::Up).then_some(self.up).flatten()
+        }
+
+        fn ambient_temperature(&self, _side: Face) -> f64 {
+            self.ambient
+        }
+
+        fn counts_as_adjacent(&self, _side: Face) -> bool {
+            self.counts
+        }
+    }
+
+    #[test]
+    fn the_generic_environment_loss_is_the_capacitor_one() {
+        let mut direct = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        direct.handle(1_000.0);
+        let mut arena = Arena(vec![direct]);
+        let tile = Tile {
+            own: 0,
+            up: None,
+            ambient: 290.0,
+            counts: true,
+        };
+        let lost = direct.lose_to_environment(290.0, [100.0; 6]);
+        let transfer = simulate(&tile, &mut arena);
+        assert_eq!(transfer.environment, lost);
+        assert_eq!(transfer.adjacent, 0.0);
+        assert_eq!(arena.0[0], direct);
+    }
+
+    #[test]
+    fn the_hotter_side_gives_heat_by_calorimetry_over_both_conductions() {
+        let mut hot = Capacitor::new(2.0, 5.0, 1.0e12, 300.0);
+        hot.handle(2.0 * 100.0);
+        let cold = Capacitor::new(6.0, 7.0, 1.0e12, 300.0);
+        let mut arena = Arena(vec![hot, cold]);
+        let tile = Tile {
+            own: 0,
+            up: Some(1),
+            ambient: 300.0,
+            counts: true,
+        };
+        let (t_hot, t_cold) = (400.0, 300.0);
+        let final_temperature = (t_hot * 2.0 + t_cold * 6.0) / (2.0 + 6.0);
+        let to_transfer = (t_hot - final_temperature) / (7.0 + 5.0);
+        let adjacent = simulate_adjacent(&tile, &mut arena);
+        assert_eq!(adjacent, to_transfer);
+        assert_eq!(arena.0[0].heat, 2.0 * 400.0 - to_transfer * 2.0);
+        assert_eq!(arena.0[1].heat, 6.0 * 300.0 + to_transfer * 2.0);
+    }
+
+    #[test]
+    fn the_colder_side_waits_for_the_other_to_simulate() {
+        let cold = Capacitor::new(2.0, 5.0, 1.0e12, 300.0);
+        let mut hot = Capacitor::new(6.0, 7.0, 1.0e12, 300.0);
+        hot.handle(600.0);
+        let mut arena = Arena(vec![cold, hot]);
+        let tile = Tile {
+            own: 0,
+            up: Some(1),
+            ambient: 300.0,
+            counts: true,
+        };
+        assert_eq!(simulate_adjacent(&tile, &mut arena), 0.0);
+        assert_eq!(arena.0[0], cold);
+    }
+
+    #[test]
+    fn equal_temperatures_do_not_transfer() {
+        let a = Capacitor::new(2.0, 5.0, 1.0e12, 300.0);
+        let mut arena = Arena(vec![a, a]);
+        let tile = Tile {
+            own: 0,
+            up: Some(1),
+            ambient: 300.0,
+            counts: true,
+        };
+        assert_eq!(simulate_adjacent(&tile, &mut arena), 0.0);
+    }
+
+    #[test]
+    fn a_transfer_that_does_not_count_as_adjacent_still_moves_heat() {
+        let mut hot = Capacitor::new(1.0, 5.0, 1.0e12, 300.0);
+        hot.handle(100.0);
+        let cold = Capacitor::new(1.0, 5.0, 1.0e12, 300.0);
+        let mut arena = Arena(vec![hot, cold]);
+        let tile = Tile {
+            own: 0,
+            up: Some(1),
+            ambient: 300.0,
+            counts: false,
+        };
+        assert_eq!(simulate_adjacent(&tile, &mut arena), 0.0);
+        assert!(arena.0[1].heat > 300.0);
+    }
+
+    #[test]
+    fn simulate_is_adjacent_then_environment() {
+        let mut hot = Capacitor::new(1.0, 5.0, 10.0, 300.0);
+        hot.handle(1_000.0);
+        let cold = Capacitor::new(1.0, 5.0, 10.0, 300.0);
+        let mut arena = Arena(vec![hot, cold]);
+        let tile = Tile {
+            own: 0,
+            up: Some(1),
+            ambient: 300.0,
+            counts: true,
+        };
+        let mut by_parts = Arena(vec![hot, cold]);
+        let adjacent = simulate_adjacent(&tile, &mut by_parts);
+        let environment = simulate_environment(&tile, &mut by_parts);
+        assert_eq!(
+            simulate(&tile, &mut arena),
+            HeatTransfer {
+                adjacent,
+                environment
+            }
+        );
+        assert_eq!(arena.0, by_parts.0);
     }
 }

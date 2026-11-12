@@ -7,4 +7,4 @@ publish = false
 
 # Só crates que estão no Cargo.lock do Horizon: é a regra dos crates de um mod.
 [dependencies]
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
