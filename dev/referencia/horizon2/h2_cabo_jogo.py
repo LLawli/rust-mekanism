@@ -334,6 +334,137 @@ def reabrir_conferir():
     return good
 
 
+LINHA = 6
+CUBO = at(0, 0, 1)
+MAQUINAS = {"A": at(2, 0, 1), "B": at(5, 0, 1)}
+MEIO = at(3)
+SHOTS = os.environ.get("SHOTS", "~/.cache/rust-mekanism/cabo-jogo/prints")
+
+
+def shot(name):
+    """Um print do jogo (o `horizon-ctl screenshot` grava dentro do container; o arquivo vai para a pasta de prints do desktop)."""
+    h.ctl("screenshot", f"/tmp/{name}.png")
+    subprocess.run(["ssh", "desktop", f"mkdir -p {SHOTS} && docker exec {os.environ.get('H_NAME', 'horizon')} cat /tmp/{name}.png > {SHOTS}/{name}.png"], check=True)
+
+
+def enquadrar():
+    """A câmera de todo o roteiro: ao norte e a oeste da linha, onde o Configurator alcança o braço (`click_arm`), olhando o meio dela."""
+    cmd("tp @s %.2f %.2f %.2f" % (at(1)[0] - 2.3, at(1)[1], at(1)[2] - 2.5))
+    wait(12)
+    h.ctl("look-at", "%.2f" % (BASE[0] + 3.0), "%.2f" % (BASE[1] + 0.3), "%.2f" % (BASE[2] + 0.7))
+    wait(4)
+
+
+def montar_cena():
+    """Seis cabos em linha, o cubo criativo ao lado do primeiro (ejeta), duas Enrichment Chamber com minério de ferro (A no terceiro cabo, B no último)."""
+    clear()
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tick unfreeze")
+    for x in range(LINHA):
+        place(at(x), CABLE["basic"])
+    place(MAQUINAS["A"], CHAMBER)
+    place(MAQUINAS["B"], CHAMBER)
+    place(CUBO, "mekanism:creative_energy_cube")
+    wait(10)
+    cmd("data merge block %s {component_config:{config0:[I;4,4,4,4,4,4],eject0:1b},energy_amount:9223372036854775807L}" % txt(CUBO))
+    for p in MAQUINAS.values():
+        cmd("data merge block %s {Items:[{Slot:0b,id:\"minecraft:iron_ore\",count:64}]}" % txt(p))
+    h.ctl("give", "mekanism:configurator", "1")
+    wait(40)
+
+
+def video_roteiro(pausa):
+    """O que o vídeo mostra: as duas máquinas funcionando com a energia que vem do cubo pela linha; o cabo do meio quebrado (a máquina B, depois dele, para) e reposto (volta); o
+    Configurator agachado no braço leste do segundo cabo (o braço some e B para) e na face (o braço volta e B volta). `pausa(s)` espera e deixa o gravador andar."""
+    enquadrar()
+    shot("cabo_linha_ligada")
+    pausa(5)
+    cmd("setblock %s minecraft:air destroy" % txt(MEIO))
+    pausa(1)
+    shot("cabo_meio_quebrado")
+    pausa(5)
+    cmd("setblock %s mekanism:basic_universal_cable" % txt(MEIO))
+    pausa(1)
+    shot("cabo_meio_reposto")
+    pausa(5)
+    for _ in range(3):
+        click_arm(at(1), "east")
+        pausa(1.5)
+    enquadrar()
+    shot("cabo_configurador_sem_braco")
+    pausa(5)
+    cmd("setblock %s minecraft:air" % txt(at(2)))
+    stand((at(1)[0] + 3.5, at(1)[1], at(1)[2] + 0.5))
+    h.ctl("select", "mekanism:configurator")
+    h.ctl("key", "shift", "down")
+    wait(3)
+    h.ctl("interact", *map(str, at(1)), "east")
+    h.ctl("key", "shift", "up")
+    cmd("setblock %s mekanism:basic_universal_cable" % txt(at(2)))
+    enquadrar()
+    shot("cabo_configurador_braco_volta")
+    pausa(5)
+
+
+def video():
+    """O vídeo com som: `NOME` (o `gravar-jogo start`), `SEGUNDOS` (padrão 60), `ARQUIVO` (padrão cabo.mp4). O volume mestre só sobe depois de o stream do container estar no sink nulo."""
+    import threading
+    import h2_nota_instrumento as n
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "60"), os.environ.get("ARQUIVO", "cabo.mp4")
+    n.sky()
+    cmd("tick unfreeze")
+    montar_cena()
+    n.mute()
+    h.ctl("options-set", "chatVisibility", "2")
+    for categoria in n.SOUND_OFF:
+        h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "record"):
+        h.ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        h.ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 8
+        video_roteiro(lambda s: time.sleep(s))
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        h.ctl("close")
+        n.restore()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "energia"
     if what == "energia":
@@ -344,6 +475,13 @@ def main():
         sys.exit(0 if ok else 1)
     if what == "configurador":
         sys.exit(0 if configurador() else 1)
+    if what == "video":
+        video()
+        return
+    if what == "cena":
+        montar_cena()
+        video_roteiro(lambda s: time.sleep(s))
+        return
     if what == "reabrir":
         part = sys.argv[2] if len(sys.argv) > 2 else "montar"
         sys.exit(0 if (reabrir_montar() if part == "montar" else reabrir_conferir()) else 1)

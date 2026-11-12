@@ -9,16 +9,26 @@ use events::{Raw, Tracker};
 #[test]
 fn a_chunk_loaded_before_the_first_registration_is_replayed_once() {
     // Antes do registro: um chunk com um cabo e um baú, e outro só com um baú (esse não importa).
-    events::push(Raw::LoadChunk(vec![([2, 150, 0], Some("test:cable".to_owned())), ([3, 150, 0], None)]));
+    events::push(Raw::LoadChunk(vec![
+        ([2, 150, 0], Some("test:cable".to_owned())),
+        ([3, 150, 0], None),
+    ]));
     events::push(Raw::LoadChunk(vec![([200, 64, 200], None)]));
     assert!(events::take().is_empty(), "sem dono nada entra na fila");
     events::register("test:cable");
-    assert_eq!(events::take_early_chunks(), vec![[0, 0]], "só o chunk com block entity de mod volta");
+    assert_eq!(
+        events::take_early_chunks(),
+        vec![[0, 0]],
+        "só o chunk com block entity de mod volta"
+    );
     assert!(events::take_early_chunks().is_empty(), "uma vez só");
     // A fila traz o que o chunk trouxe, e o `chunk_loaded` os anuncia na ordem do original: o ticket, o `clearRemoved` do cabo e a capability do vizinho.
     let queued = events::take();
     let translated = events::translate("overworld", queued);
-    assert!(translated.is_empty(), "a tradução só guarda o chunk à espera do `chunk_loaded`");
+    assert!(
+        translated.is_empty(),
+        "a tradução só guarda o chunk à espera do `chunk_loaded`"
+    );
     let loaded = events::chunk_loaded("overworld", [0, 0]);
     let _ = Tracker::new();
     assert!(

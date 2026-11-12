@@ -14,7 +14,9 @@
 //! Do cabo (`TileEntityUniversalCable`): `onUpdateServer` puxa dos aceitadores em `PULL` antes de tudo (`pullFromAcceptors`), e a capability
 //! de energia é o contêiner da rede (`getContainer`), que só existe com rede; sem rede o cabo não aceita nada de fora (o buffer próprio é
 //! `notExternal`).
-use super::connection::{ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side};
+use super::connection::{
+    ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
+};
 use super::energy_container::BufferEnergyContainer;
 use super::energy_network::EnergyFamily;
 use super::registry::TransmitterNetworkRegistry;
@@ -121,7 +123,14 @@ pub trait OwnerWorld {
     /// `BlockEntity.setChanged`.
     fn set_changed(&mut self, _pos: BlockPos) {}
     /// `TileEntityTransmitter.sideChanged`.
-    fn side_changed(&mut self, _pos: BlockPos, _side: Face, _old: ConnectionType, _new: ConnectionType) {}
+    fn side_changed(
+        &mut self,
+        _pos: BlockPos,
+        _side: Face,
+        _old: ConnectionType,
+        _new: ConnectionType,
+    ) {
+    }
     /// `TileEntityTransmitter.redstoneChanged`.
     fn redstone_changed(&mut self, _pos: BlockPos, _powered: bool) {}
     /// `player.sendOverlayMessage`.
@@ -197,7 +206,10 @@ impl<W: OwnerWorld> TransmitterWorld for View<'_, W> {
 
 impl State {
     fn tx(&self, id: TransmitterId) -> &Transmitter<Acceptor> {
-        self.slots[id.0 as usize].tx.as_ref().expect("o transmissor está no lugar")
+        self.slots[id.0 as usize]
+            .tx
+            .as_ref()
+            .expect("o transmissor está no lugar")
     }
 
     fn live(&self, pos: BlockPos) -> Option<TransmitterId> {
@@ -205,7 +217,10 @@ impl State {
     }
 
     fn uuid_value(&self, network: NetworkId) -> u128 {
-        let uuid = self.uuids.get(&network).copied().unwrap_or(Uuid { most_significant: 0, least_significant: i64::from(network.0) });
+        let uuid = self.uuids.get(&network).copied().unwrap_or(Uuid {
+            most_significant: 0,
+            least_significant: i64::from(network.0),
+        });
         (u128::from(uuid.most_significant as u64) << 64) | u128::from(uuid.least_significant as u64)
     }
 
@@ -230,27 +245,48 @@ struct Ctx<'a, W: OwnerWorld> {
 
 impl<W: OwnerWorld> Ctx<'_, W> {
     fn view(&self) -> View<'_, W> {
-        View { st: &*self.st, world: &*self.world }
+        View {
+            st: &*self.st,
+            world: &*self.world,
+        }
     }
 
     /// `TileEntityTransmitter.onWorldJoin`.
-    fn world_join(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, id: TransmitterId, was_present: bool) {
+    fn world_join(
+        &mut self,
+        registry: &mut TransmitterNetworkRegistry<Acceptor>,
+        id: TransmitterId,
+        was_present: bool,
+    ) {
         if !was_present {
             registry.track_transmitter(&*self, id);
         }
         if !self.st.tx(id).loaded {
-            self.st.slots[id.0 as usize].tx.as_mut().expect("no lugar").loaded = true;
+            self.st.slots[id.0 as usize]
+                .tx
+                .as_mut()
+                .expect("no lugar")
+                .loaded = true;
             registry.register_orphan_transmitter(&*self, id);
         }
     }
 
     /// `TileEntityTransmitter.onWorldSeparate`.
-    fn world_separate(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, id: TransmitterId, still_present: bool) {
+    fn world_separate(
+        &mut self,
+        registry: &mut TransmitterNetworkRegistry<Acceptor>,
+        id: TransmitterId,
+        still_present: bool,
+    ) {
         if !still_present {
             registry.untrack_transmitter(&*self, id);
         }
         if self.st.tx(id).loaded {
-            self.st.slots[id.0 as usize].tx.as_mut().expect("no lugar").loaded = false;
+            self.st.slots[id.0 as usize]
+                .tx
+                .as_mut()
+                .expect("no lugar")
+                .loaded = false;
             registry.invalidate_transmitter(&*self, id);
         }
     }
@@ -266,7 +302,10 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
     }
 
     fn is_valid(&self, transmitter: TransmitterId) -> bool {
-        self.st.slots[transmitter.0 as usize].tx.as_ref().is_some_and(Transmitter::is_valid)
+        self.st.slots[transmitter.0 as usize]
+            .tx
+            .as_ref()
+            .is_some_and(Transmitter::is_valid)
     }
 
     fn is_orphan(&self, transmitter: TransmitterId) -> bool {
@@ -274,20 +313,31 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
     }
 
     fn set_orphan(&mut self, transmitter: TransmitterId, orphan: bool) {
-        self.st.slots[transmitter.0 as usize].tx.as_mut().expect("no lugar").set_orphan(orphan);
+        self.st.slots[transmitter.0 as usize]
+            .tx
+            .as_mut()
+            .expect("no lugar")
+            .set_orphan(orphan);
     }
 
     fn transmitter_network(&self, transmitter: TransmitterId) -> Option<NetworkId> {
         self.st.slots[transmitter.0 as usize].network
     }
 
-    fn store_transmitter_network(&mut self, transmitter: TransmitterId, network: Option<NetworkId>) {
+    fn store_transmitter_network(
+        &mut self,
+        transmitter: TransmitterId,
+        network: Option<NetworkId>,
+    ) {
         let uuid = network.map(|network| self.st.uuid_value(network));
         let slot = &mut self.st.slots[transmitter.0 as usize];
         slot.network = network;
         // Só a atribuição: o `requestsUpdate` é do registro (`request_update`).
         let mut out = Vec::new();
-        slot.tx.as_mut().expect("no lugar").set_transmitter_network(uuid, false, &mut out);
+        slot.tx
+            .as_mut()
+            .expect("no lugar")
+            .set_transmitter_network(uuid, false, &mut out);
     }
 
     fn identity_hash(&self, transmitter: TransmitterId) -> i32 {
@@ -296,14 +346,23 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
 
     fn request_update(&mut self, transmitter: TransmitterId) {
         // `BufferedTransmitter.requestsUpdate` do cabo de energia é a base: o pacote de atualização.
-        self.st.deferred.push((transmitter, Effect::SendUpdatePacket));
+        self.st
+            .deferred
+            .push((transmitter, Effect::SendUpdatePacket));
     }
 
     fn supports_transmission_type(&self, transmitter: TransmitterId, other: TransmitterId) -> bool {
-        self.st.tx(transmitter).supports_transmission_type(self.st.tx(other).supported_transmission_types())
+        self.st
+            .tx(transmitter)
+            .supports_transmission_type(self.st.tx(other).supported_transmission_types())
     }
 
-    fn is_valid_transmitter_basic(&self, transmitter: TransmitterId, other: TransmitterId, side: Face) -> bool {
+    fn is_valid_transmitter_basic(
+        &self,
+        transmitter: TransmitterId,
+        other: TransmitterId,
+        side: Face,
+    ) -> bool {
         let view = self.view();
         let me = self.st.tx(transmitter);
         let other = self.st.tx(other);
@@ -324,27 +383,50 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         self.st.live(pos)
     }
 
-    fn chunk_accessibility_change(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, transmitter: TransmitterId, loaded: bool) {
+    fn chunk_accessibility_change(
+        &mut self,
+        registry: &mut TransmitterNetworkRegistry<Acceptor>,
+        transmitter: TransmitterId,
+        loaded: bool,
+    ) {
         if loaded {
             self.world_join(registry, transmitter, true);
         } else {
             let network = self.st.slots[transmitter.0 as usize].network;
-            self.st.family.validate_and_take_share(registry, transmitter, network, None);
+            self.st
+                .family
+                .validate_and_take_share(registry, transmitter, network, None);
             self.world_separate(registry, transmitter, true);
         }
     }
 
     fn refresh_acceptor_connections(&mut self, transmitter: TransmitterId, side: Face) {
-        let mut tx = self.st.slots[transmitter.0 as usize].tx.take().expect("no lugar");
+        let mut tx = self.st.slots[transmitter.0 as usize]
+            .tx
+            .take()
+            .expect("no lugar");
         let mut out = Vec::new();
-        tx.refresh_acceptor_connections(side, &View { st: &*self.st, world: &*self.world }, &mut out);
+        tx.refresh_acceptor_connections(
+            side,
+            &View {
+                st: &*self.st,
+                world: &*self.world,
+            },
+            &mut out,
+        );
         self.st.slots[transmitter.0 as usize].tx = Some(tx);
-        self.st.deferred.extend(out.into_iter().map(|effect| (transmitter, effect)));
+        self.st
+            .deferred
+            .extend(out.into_iter().map(|effect| (transmitter, effect)));
     }
 
     fn acceptor(&self, transmitter: TransmitterId, side: Face) -> Option<Acceptor> {
         let tx = self.st.tx(transmitter);
-        if tx.can_connect_to_acceptor(side) { tx.get_acceptor(side, &self.view()) } else { None }
+        if tx.can_connect_to_acceptor(side) {
+            tx.get_acceptor(side, &self.view())
+        } else {
+            None
+        }
     }
 
     fn begin_take_shares(&mut self) {
@@ -369,12 +451,23 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         }
     }
 
-    fn on_update(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, network: NetworkId) {
+    fn on_update(
+        &mut self,
+        registry: &mut TransmitterNetworkRegistry<Acceptor>,
+        network: NetworkId,
+    ) {
         self.st.family.on_update(registry, network);
     }
 
-    fn network_event(&mut self, registry: &TransmitterNetworkRegistry<Acceptor>, network: NetworkId, event: NetworkEvent) {
-        self.st.family.network_event(registry, network, event.clone());
+    fn network_event(
+        &mut self,
+        registry: &TransmitterNetworkRegistry<Acceptor>,
+        network: NetworkId,
+        event: NetworkEvent,
+    ) {
+        self.st
+            .family
+            .network_event(registry, network, event.clone());
         match event {
             NetworkEvent::Created { uuid } => self.st.pending_uuid = Some(uuid),
             NetworkEvent::Merged { .. } => {
@@ -465,7 +558,10 @@ impl EnergyTransmitters {
             Event::PlacedByItem(pos) => {
                 if let Some(id) = self.st.live(pos) {
                     // `onAdded`: `onWorldJoin(level, false)` e `refreshConnections()`.
-                    let mut ctx = Ctx { st: &mut self.st, world };
+                    let mut ctx = Ctx {
+                        st: &mut self.st,
+                        world,
+                    };
                     ctx.world_join(&mut self.registry, id, false);
                     self.with(world, id, |tx, view, out| tx.refresh_connections(view, out));
                 }
@@ -473,31 +569,45 @@ impl EnergyTransmitters {
             Event::ChunkUnloaded(pos) => {
                 if let Some(id) = self.st.live(pos) {
                     let network = self.st.slots[id.0 as usize].network;
-                    self.st.family.validate_and_take_share(&self.registry, id, network, None);
+                    self.st
+                        .family
+                        .validate_and_take_share(&self.registry, id, network, None);
                 }
             }
             Event::Removed(pos) => self.removed(world, pos),
             Event::Update(pos) => self.update(world, pos),
             Event::Neighbor(pos) => {
                 if let Some(id) = self.st.live(pos) {
-                    self.with(world, id, |tx, view, out| tx.on_neighbor_block_change(None, view, out));
+                    self.with(world, id, |tx, view, out| {
+                        tx.on_neighbor_block_change(None, view, out)
+                    });
                 }
             }
             Event::Capability(pos, side) => {
                 if let Some(id) = self.st.live(pos) {
                     self.with(world, id, |tx, _, out| {
-                        if let Some(dirty) = tx.acceptor_cache.refresh_listener_run(side, tx.is_valid()) {
+                        if let Some(dirty) =
+                            tx.acceptor_cache.refresh_listener_run(side, tx.is_valid())
+                        {
                             tx.mark_dirty_acceptor(dirty, out);
                         }
                     });
                 }
             }
             Event::Ticket { chunk, loaded } => {
-                let (old, new) = if loaded { (MAX_VIEW_DISTANCE + 1, MAX_VIEW_DISTANCE) } else { (MAX_VIEW_DISTANCE, MAX_VIEW_DISTANCE + 1) };
-                self.registry.on_ticket_level_change(self.st.dimension, chunk.pack(), old, new);
+                let (old, new) = if loaded {
+                    (MAX_VIEW_DISTANCE + 1, MAX_VIEW_DISTANCE)
+                } else {
+                    (MAX_VIEW_DISTANCE, MAX_VIEW_DISTANCE + 1)
+                };
+                self.registry
+                    .on_ticket_level_change(self.st.dimension, chunk.pack(), old, new);
             }
             Event::ServerTickPost { runs_normally } => {
-                let mut ctx = Ctx { st: &mut self.st, world };
+                let mut ctx = Ctx {
+                    st: &mut self.st,
+                    world,
+                };
                 self.registry.on_tick(&mut ctx, runs_normally);
             }
             Event::Reset => {
@@ -531,7 +641,11 @@ impl EnergyTransmitters {
         };
         let hash = (self.st.hashes)(pos);
         let id = TransmitterId(self.st.slots.len() as u32);
-        let mut tx = Transmitter::new(arr(pos), TransmissionSet::of(&[TransmissionType::Energy]), true);
+        let mut tx = Transmitter::new(
+            arr(pos),
+            TransmissionSet::of(&[TransmissionType::Energy]),
+            true,
+        );
         self.st.family.add_cable(id, pos, info.capacity);
         if let Some(saved) = &info.saved {
             // `loadAdditional`, antes de `setLevel`.
@@ -545,7 +659,14 @@ impl EnergyTransmitters {
             }
         }
         tx.set_level(false);
-        self.st.slots.push(Slot { pos, tx: Some(tx), hash, mark_joined: true, network: None, dead: false });
+        self.st.slots.push(Slot {
+            pos,
+            tx: Some(tx),
+            hash,
+            mark_joined: true,
+            network: None,
+            dead: false,
+        });
         self.st.by_pos.insert(pos, id);
     }
 
@@ -559,7 +680,10 @@ impl EnergyTransmitters {
             slot.dead = true;
         }
         // `setRemoved`: `onWorldSeparate(level, false)` e `remove()`.
-        let mut ctx = Ctx { st: &mut self.st, world };
+        let mut ctx = Ctx {
+            st: &mut self.st,
+            world,
+        };
         ctx.world_separate(&mut self.registry, id, false);
         self.st.by_pos.remove(&pos);
     }
@@ -570,7 +694,10 @@ impl EnergyTransmitters {
         };
         self.pull_from_acceptors(world, id);
         if self.st.slots[id.0 as usize].mark_joined {
-            let mut ctx = Ctx { st: &mut self.st, world };
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
             ctx.world_join(&mut self.registry, id, false);
             self.st.slots[id.0 as usize].mark_joined = false;
         }
@@ -592,7 +719,9 @@ impl EnergyTransmitters {
             if !tx.is_connection_type(side, ConnectionType::Pull) {
                 continue;
             }
-            let acceptor = tx.acceptor_cache.get_connected_acceptor(side, &|s| world.energy_handler(pos.relative(s), s.opposite()));
+            let acceptor = tx.acceptor_cache.get_connected_acceptor(side, &|s| {
+                world.energy_handler(pos.relative(s), s.opposite())
+            });
             let Some(acceptor) = acceptor else {
                 continue;
             };
@@ -623,7 +752,14 @@ impl EnergyTransmitters {
     ) -> Option<R> {
         let mut tx = self.st.slots[id.0 as usize].tx.take()?;
         let mut out = Vec::new();
-        let result = op(&mut tx, &View { st: &self.st, world: &*world }, &mut out);
+        let result = op(
+            &mut tx,
+            &View {
+                st: &self.st,
+                world: &*world,
+            },
+            &mut out,
+        );
         self.st.slots[id.0 as usize].tx = Some(tx);
         self.apply(world, id, out);
         Some(result)
@@ -649,29 +785,44 @@ impl EnergyTransmitters {
                             continue;
                         }
                         if let Some(other) = self.st.live(neighbor) {
-                            self.with(world, other, |tx, view, out| tx.on_neighbor_block_change(None, view, out));
+                            self.with(world, other, |tx, view, out| {
+                                tx.on_neighbor_block_change(None, view, out)
+                            });
                         }
                     }
                 }
                 Effect::InvalidateTransmitter => {
-                    let ctx = Ctx { st: &mut self.st, world };
+                    let ctx = Ctx {
+                        st: &mut self.st,
+                        world,
+                    };
                     self.registry.invalidate_transmitter(&ctx, id);
                 }
                 Effect::AcceptorChanged(side) => {
                     if let Some(network) = self.st.slots[id.0 as usize].network {
-                        let ctx = Ctx { st: &mut self.st, world };
-                        self.registry.network_acceptor_changed(&ctx, network, id, side);
+                        let ctx = Ctx {
+                            st: &mut self.st,
+                            world,
+                        };
+                        self.registry
+                            .network_acceptor_changed(&ctx, network, id, side);
                     }
                 }
                 Effect::RefreshNeighbor { pos: other, side } => {
                     if let Some(other) = self.st.live(bp(other)) {
-                        self.with(world, other, |tx, view, out| tx.refresh_connections_side(side, view, out));
+                        self.with(world, other, |tx, view, out| {
+                            tx.refresh_connections_side(side, view, out)
+                        });
                     }
                 }
                 Effect::RecheckConnections(mask) => {
-                    self.with(world, id, |tx, view, out| tx.base_recheck_connections(mask, view, out));
+                    self.with(world, id, |tx, view, out| {
+                        tx.base_recheck_connections(mask, view, out)
+                    });
                 }
-                Effect::RecheckConnection(_) | Effect::ClientNetworkRemove(_) | Effect::ClientNetworkAdd(_) => {}
+                Effect::RecheckConnection(_)
+                | Effect::ClientNetworkRemove(_)
+                | Effect::ClientNetworkAdd(_) => {}
                 Effect::SetForceUpdate => {
                     if let Some(tx) = self.st.slots[id.0 as usize].tx.as_mut() {
                         tx.set_force_update();
@@ -712,7 +863,10 @@ impl EnergyTransmitters {
     fn cable_view<W: OwnerWorld>(&self, world: &W, id: TransmitterId) -> CableView {
         let tx = self.st.tx(id);
         let all = tx.get_all_current_connections();
-        let activated = tx.is_redstone_activated(&View { st: &self.st, world });
+        let activated = tx.is_redstone_activated(&View {
+            st: &self.st,
+            world,
+        });
         let has_network = tx.has_transmitter_network();
         let mut view = CableView {
             connected: [false; 6],
@@ -741,7 +895,11 @@ impl EnergyTransmitters {
     pub fn buffer_at<W: OwnerWorld>(&self, world: &W, pos: BlockPos) -> Option<CableBuffer> {
         let id = self.st.live(pos)?;
         let container = self.st.container(id);
-        Some(CableBuffer { view: self.cable_view(world, id), capacity: container.capacity(), amount: container.amount() })
+        Some(CableBuffer {
+            view: self.cable_view(world, id),
+            capacity: container.capacity(),
+            amount: container.amount(),
+        })
     }
 
     /// A capacidade e a energia do contêiner do cabo em `pos` (`getContainer()`).
@@ -757,7 +915,10 @@ impl EnergyTransmitters {
             return 0;
         };
         let transaction = Transaction::open_root();
-        let accepted = self.st.container(id).insert(amount, &transaction, AutomationType::External);
+        let accepted = self
+            .st
+            .container(id)
+            .insert(amount, &transaction, AutomationType::External);
         transaction.commit();
         accepted
     }
@@ -775,11 +936,19 @@ impl EnergyTransmitters {
 
     /// Os cliques do Configurator (`TileEntityTransmitter.onSneakRightClick`): `hit_side` é o lado do braço que o olhar toca. Devolve se o
     /// clique foi do cabo.
-    pub fn sneak_right_click<W: OwnerWorld>(&mut self, world: &mut W, pos: BlockPos, side: Face, hit_side: Option<Face>) -> bool {
+    pub fn sneak_right_click<W: OwnerWorld>(
+        &mut self,
+        world: &mut W,
+        pos: BlockPos,
+        side: Face,
+        hit_side: Option<Face>,
+    ) -> bool {
         let Some(id) = self.st.live(pos) else {
             return false;
         };
-        let result = self.with(world, id, |tx, view, out| tx.on_sneak_right_click(side, hit_side, |t, _| t.base_on_configure(), view, out));
+        let result = self.with(world, id, |tx, view, out| {
+            tx.on_sneak_right_click(side, hit_side, |t, _| t.base_on_configure(), view, out)
+        });
         self.flush_deferred(world);
         result.is_some_and(|result| result.consumes_action())
     }
