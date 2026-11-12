@@ -8,6 +8,9 @@
                                     porco e o item (que o Horizon lê pela tabela de fatos do estado) só se medem, sem comparar
     h2_fluido_no_bloco.py mob       o porco e o item solto na célula de um cabo com água, com lava e sem fluido, tick a tick: o ar, a vida, o fogo, se vive e a altura, contra o rastro de
                                     porco e de item do original (decisão 88: eles leem o fluido pela tabela de fatos do estado, que `logged_fluid_facts` completa)
+    h2_fluido_no_bloco.py parado      o item solto parado na célula do Heat Generator (e do cabo) com lava, com água e sem fluido, tick a tick, contra `rastros/fluido_item_parado.jsonl` (decisão 100:
+                                    o item com `noPhysics` não é afetado pelos blocos: a lava não o acende, a água não o apaga, o cacto não o fere)
+    h2_fluido_no_bloco.py parado_video   o vídeo com som: o item no gerador com lava (vive) e no cabo com lava (queima), lado a lado (`NOME=<gravar-jogo start>`, `SEGUNDOS`, `ARQUIVO`)
     h2_fluido_no_bloco.py mob_video   o vídeo com som: o porco num cabo com água, o porco num cabo com lava (queima e morre) e o item de pedra que a lava destrói, em poços de vidro
                                     (`NOME=<gravar-jogo start>`, `SEGUNDOS`, `ARQUIVO`)
     h2_fluido_no_bloco.py bucket    os casos do `fluido_no_bloco_bucket.jsonl` (cabo, fábrica e cubo de energia; vazio, com água e com lava; balde de água, de lava e vazio;
@@ -370,6 +373,136 @@ def mob():
     return ok
 
 
+GEN = "mekanismgenerators:heat_generator"
+CABLE = "mekanism:basic_universal_cable"
+PARADO_TICKS = 12
+REPEATS = 6
+# A colisão de cada alvo (caixas `[x0, y0, z0, x1, y1, z1]` da célula): a laje de baixo do Heat Generator (as outras caixas só aumentam o `noPhysics`, e a laje basta para saber que o item
+# está preso), o núcleo do cabo e o cacto.
+COLLISION = {GEN: [[0.0, 0.0, 0.0, 1.0, 0.375, 1.0]], CABLE: [[0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875]], "minecraft:cactus": [[0.0625, 0.0, 0.0625, 0.9375, 0.9375, 0.9375]]}
+
+
+def parado_cases():
+    """(nome, bloco, fluido, item, fogo): os casos do rastro `fluido_item_parado.jsonl` (o gerador com a pedra e o carvão repetidos, e os de item em chamas)."""
+    out = []
+    for repeat in range(REPEATS):
+        out.append((f"heat_generator_lava_stone#{repeat}", GEN, "lava", "stone", 0))
+        out.append((f"heat_generator_lava_coal#{repeat}", GEN, "lava", "coal", 0))
+    out.append(("cable_lava_stone", CABLE, "lava", "stone", 0))
+    for target, label in ((GEN, "heat_generator"), (CABLE, "cable")):
+        for fluid in ("lava", "water", "empty"):
+            out.append((f"{label}_{fluid}_burning", target, fluid, "stone", 100))
+    out.append(("cactus_stone", "minecraft:cactus", "empty", "stone", 0))
+    # O controle de saída: com uma fonte de lava de verdade no vão ao norte do gerador (para onde o item preso é empurrado), o item que sai da colisão cai na lava e pega fogo.
+    for repeat in range(REPEATS):
+        out.append((f"heat_generator_pool_stone#{repeat}", GEN, "empty", "stone", 0))
+    return out
+
+
+def stuck(block, rel, half=0.125, height=0.25):
+    """Se a caixa do item (pé em `rel`, relativo à célula) está dentro de alguma colisão do bloco: o `noPhysics` do tick que começa ali (`noCollision(box.deflate(1.0E-7))`)."""
+    e = 1.0e-7
+    lo, hi = (rel[0] - half + e, rel[1] + e, rel[2] - half + e), (rel[0] + half - e, rel[1] + height - e, rel[2] + half - e)
+    return any(lo[0] < b[3] and hi[0] > b[0] and lo[1] < b[4] and hi[1] > b[1] and lo[2] < b[5] and hi[2] > b[2] for b in COLLISION[block])
+
+
+def parado():
+    """Cada caso do rastro numa célula sua (o bloco com o fluido e um item de pedra ou carvão parado a 0,05 de altura no meio, com ou sem fogo), servidor parado, um tick por vez. O
+    `noPhysics` de cada tick se calcula da posição em que o tick começa e da colisão do bloco. Contra o original (decisão 100): enquanto o item está preso ele não pega fogo na lava,
+    a água não apaga o que já queimava, o cacto não o fere, e o fogo só desce 1 por tick; no tick em que a caixa sai da colisão a lava o acende (fogo 300), e o do cabo, que nunca fica
+    preso, queima no primeiro tick e morre no segundo."""
+    cases = parado_cases()
+    sky()
+    cmd("tick unfreeze")
+    for z in (Z0 + 8, Z0 + 16):
+        cmd(f"fill {X0} {Y} {z} {X0 + 60} {Y + 8} {z + 6} minecraft:air")
+    cmd(f"fill {X0} {Y - 1} {Z0 + 8} {X0 + 60} {Y - 1} {Z0 + 22} minecraft:stone")
+    time.sleep(3)
+    cmd("tick freeze")
+    time.sleep(0.5)
+    spots = []
+    for index, (name, block, fluid, item, fire) in enumerate(cases):
+        x, z = X0 + 4 + 5 * (index % 11), Z0 + 10 + 8 * (index // 11)
+        if block == "minecraft:cactus":
+            cmd(f"setblock {x} {Y - 1} {z} minecraft:sand")
+            cmd(f"setblock {x} {Y} {z} minecraft:cactus")
+        else:
+            cmd(f"setblock {x} {Y} {z} {block}[fluid_logged={fluid}]")
+        if "_pool_" in name:
+            cmd(f"setblock {x} {Y} {z - 1} minecraft:lava")
+        spots.append((name, block, fluid, item, fire, x, z))
+    time.sleep(0.5)
+    for name, block, fluid, item, fire, x, z in spots:
+        nbt = f'Item:{{id:"minecraft:{item}",count:1}},Age:-32768s,PickupDelay:32767s,Motion:[0.0,0.0,0.0]' + (f",Fire:{fire}s" if fire else "")
+        cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{{nbt}}}")
+    time.sleep(0.5)
+    log = {}
+    for tick in range(1, PARADO_TICKS + 1):
+        cmd("tick step 1")
+        time.sleep(0.4)
+        for name, block, fluid, item, fire, x, z in spots:
+            sel = f"@e[type=minecraft:item,limit=1,x={x + 0.5},y={Y},z={z + 0.5},distance=..3]"
+            pos = read_pos(sel)
+            log[(name, tick)] = {"alive": pos is not None, "pos": pos, "fire": read_number(sel, "Fire") if pos else None, "health": read_number(sel, "Health") if pos else None}
+    cmd("tick unfreeze")
+    ok = True
+    summary = []
+    exits = 0
+    trace = {}
+    for line in open(f"{TRACES}/fluido_item_parado.jsonl"):
+        row = json.loads(line)
+        trace.setdefault(row["case"], []).append(row)
+    for name, block, fluid, item, fire, x, z in spots:
+        start = (0.5, 0.05, 0.5)
+        pos_before = start
+        held = True  # o item esteve preso em todos os ticks até aqui (o fogo do original nesses ticks é o do `baseTick`)
+        expected_fire = fire
+        first_left = None
+        for tick in range(1, PARADO_TICKS + 1):
+            row = log[(name, tick)]
+            np = stuck(block, pos_before)
+            free = not np and pos_before[1] < 0.12  # sem colisão por certo: abaixo da laje de 0,375 só ela conta
+            after = row["pos"]
+            if row["pos"]:
+                pos_before = (row["pos"][0] - x, row["pos"][1] - Y, row["pos"][2] - z)
+            if "_pool_" in name and free and after and (after[2] - z) < 0.0 and (after[2] - z) >= -1.0:
+                # Saiu da colisão e a caixa está na célula da lava: acende neste tick (ou já morreu).
+                burned = (row["fire"] or 0) >= 299
+                ok &= check(f"{name} t={tick} saiu para a lava", burned, True)
+                exits += 1
+            if not held:
+                continue
+            if not np:
+                held = False
+                first_left = tick
+                continue
+            # Preso neste tick: sem efeito de bloco. O fogo é o do `baseTick` (desce 1 por tick); a água e a lava não mexem nele; o item vive.
+            expected_fire = max(expected_fire - 1, 0)
+            got = row["fire"]
+            # A vida: o `baseTick` fere 1 no primeiro tick de quem chega em chamas (fogo 100, `% 20 == 0`, e `isInLava` é falso no primeiro tick), e mais nada nestes ticks.
+            ok &= check(f"{name} t={tick} preso", {"alive": row["alive"], "fire": max(int(got), 0) if got is not None else 0, "health": row["health"]},
+                        {"alive": True, "fire": expected_fire, "health": 4.0 if fire else 5.0})
+        summary.append(f"{name}: preso até o tick {(first_left - 1) if first_left else PARADO_TICKS}")
+        if name.startswith("cable"):
+            # O vão do cabo nunca prende o item (sem `noPhysics`): sem rastro de acaso, o original e o port andam igual em todos os ticks: se vive, o fogo e a vida.
+            for row in trace[name]:
+                got = log[(name, row["t"])]
+                want = {"alive": not row["removed"]}
+                seen = {"alive": got["alive"]}
+                if got["alive"] and not row["removed"]:
+                    want.update({"fire": max(row["fire"], 0), "health": float(row["health"])})
+                    seen.update({"fire": max(int(got["fire"]), 0), "health": got["health"]})
+                ok &= check(f"{name} t={row['t']} no vão (rastro)", seen, want)
+    print("\n".join(summary))
+    # O caminho de antes volta a valer quando o item sai: ao menos um dos do vão com lava saiu da colisão para ela (e então pegou fogo, conferido acima).
+    print(f"itens que saíram da colisão para a lava do vão: {exits}")
+    ok &= check("saídas para a lava conferidas", exits >= 1, True)
+    json.dump({f"{a}/{b}": v for (a, b), v in log.items()}, open(os.environ.get("MOB_LOG", "/tmp/fluido_item_parado.json"), "w"))
+    cmd("kill @e[type=!minecraft:player]")
+    restore()
+    return ok
+
+
 # A cena do print e do vídeo: uma fileira em cima do andar de pedra de y = 149 (a plataforma de `h2_nota_instrumento.py`, com céu), de frente para o norte.
 SCENE_Z = 80
 SCENE = (("mekanism:basic_universal_cable", 66, "empty"), ("mekanism:basic_fluid_tank", 70, "water"), ("mekanism:basic_energy_cube", 74, "lava"))
@@ -558,6 +691,8 @@ def main():
         return
     if what == "mob":
         sys.exit(0 if mob() else 1)
+    if what == "parado":
+        sys.exit(0 if parado() else 1)
     print("uso:", __doc__)
 
 

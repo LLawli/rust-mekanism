@@ -32,7 +32,7 @@ import net.neoforged.testframework.gametest.StructureTemplateBuilder;
 ///
 /// O que se quer saber é por que o item parado na célula com lava do gerador não pega fogo (`dispenser_lava_item.jsonl`: vivo, `isInLava` verdadeiro, fogo 0) e o do cabo morre:
 /// `Entity.isAffectedByBlocks` é `!isRemoved() && !noPhysics`, e o `ItemEntity.tick` põe `noPhysics` quando a caixa dele está dentro de uma colisão. Cada linha traz `np` (o `noPhysics`),
-/// `lava`/`water` (`isInLava`, `isInWater`), `fire` (`getRemainingFireTicks`), a posição relativa à máquina e o fluido da célula. Os casos com `burning` põem o item já em chamas
+/// `lava`/`water` (`isInLava`, `isInWater`), `fire` (`getRemainingFireTicks`), `health` (a vida do item, 5 de início), a posição relativa à máquina e o fluido da célula. Os casos com `burning` põem o item já em chamas
 /// (a água apaga por `WaterFluid.entityInside`, que também é um efeito de bloco). O caso do cacto é o mesmo teste do `noPhysics` com outro efeito de bloco (`CactusBlock.entityInside`).
 ///
 /// Copie o arquivo para `src/src/gameTest/java/mekanism/common/tests/network/` só na hora de rodar o `runGameTestServer` e apague-o depois.
@@ -63,6 +63,17 @@ public class FluidoItemParadoTraceTest {
             Files.createDirectories(file.getParent());
             Files.write(file, lines);
         } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /// `ItemEntity.health` (privado, 5 de início): a vida que a lava, o fogo e o cacto tiram.
+    private static int health(ItemEntity entity) {
+        try {
+            java.lang.reflect.Field field = ItemEntity.class.getDeclaredField("health");
+            field.setAccessible(true);
+            return field.getInt(entity);
+        } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
     }
@@ -177,7 +188,7 @@ public class FluidoItemParadoTraceTest {
                         ItemEntity e = spawned[0];
                         BlockPos pos = scene.machinePos();
                         String cell = BuiltInRegistries.FLUID.getKey(helper.getLevel().getFluidState(pos).getType()).getPath();
-                        scene.lines.add("{\"case\":\"" + c.name() + "\",\"t\":" + tick + ",\"removed\":" + e.isRemoved() + ",\"np\":" + e.noPhysics + ",\"lava\":" + e.isInLava()
+                        scene.lines.add("{\"case\":\"" + c.name() + "\",\"t\":" + tick + ",\"removed\":" + e.isRemoved() + ",\"health\":" + health(e) + ",\"np\":" + e.noPhysics + ",\"lava\":" + e.isInLava()
                               + ",\"water\":" + e.isInWater() + ",\"fire\":" + e.getRemainingFireTicks() + ",\"x\":" + rnd(e.getX() - pos.getX()) + ",\"y\":" + rnd(e.getY() - pos.getY())
                               + ",\"z\":" + rnd(e.getZ() - pos.getZ()) + ",\"cell\":\"" + cell + "\"}");
                     });

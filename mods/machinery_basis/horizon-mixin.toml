@@ -882,10 +882,11 @@ bindings = [
   { name = "value", ty = "Breath", value = "$value" },
 ]
 
-# O item solto com `noPhysics` (a caixa dele dentro de uma colisão: o Heat Generator com lava, um bloco posto onde ele estava) não é afetado pelos blocos (`Entity.isAffectedByBlocks`,
-# `Entity.java:1030`): nem a lava que acende e fere, nem a água que apaga, nem o cacto (`entityInside` de cada um, só dentro do `checkInsideBlocks`). O `environment_tick` do Horizon lê o
-# fluido da célula e aplica tudo isso, e não sabe do `noPhysics` (um local de `tick_dropped_items`). A `item_no_physics` guarda o `noPhysics` que `tick_item` recebe no módulo
-# `item-effects`, e a `item_effects`, HEAD cancelável do `environment_tick`, o lê e, com `noPhysics`, faz só o `baseTick` do fogo. Alvos crus, H123 e H124 (decisão 100).
+# O que os blocos fazem a um item solto em um tick (o `environment_tick` do Horizon) em três pontos que o original não faz assim, medidos em `rastros/fluido_item_parado.jsonl`: o item com
+# `noPhysics` (a caixa dentro de uma colisão: o Heat Generator com lava, um bloco posto onde ele estava) não é afetado pelos blocos (`Entity.isAffectedByBlocks`, `Entity.java:1030`: nem a lava
+# que acende e fere, nem a água que apaga, nem o cacto), `isInLava` é falso no primeiro tick (`Entity.java:1782`) e o `baseTick` do fogo vem antes dos efeitos dos blocos. O `noPhysics` é um
+# local de `tick_dropped_items` que o `environment_tick` não recebe: a `item_no_physics` o guarda, na `tick_item`, no módulo `item-effects`, e a `item_effects`, HEAD cancelável do
+# `environment_tick`, que refaz o tick na ordem do original, o lê. Alvos crus, H123 e H124 (decisão 100).
 [[module]]
 id = "item-effects"
 file = "crates/horizon-client/src/entities.rs"
@@ -904,7 +905,7 @@ bindings = [
 
 [[injection]]
 id = "item_effects"
-target = "horizon_client::entities::ItemEntity::environment_tick"
+target = "horizon_client_lib::entities::ItemEntity::environment_tick"
 kind = "HEAD"
 cancellable = true
 helper = "item_effects_tick.rs"
@@ -912,6 +913,7 @@ bindings = [
   { name = "item", ty = "&mut ItemEntity", value = "&mut *self" },
   { name = "world", ty = "&World", value = "world" },
   { name = "facts", ty = "&BlockFacts", value = "facts" },
+  { name = "registry", ty = "&horizon_world::registry::BlockRegistry", value = "registry" },
   { name = "items", ty = "&crate::items::Items", value = "items" },
 ]
 

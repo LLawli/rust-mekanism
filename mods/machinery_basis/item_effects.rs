@@ -1,9 +1,15 @@
-// Entra em `crates/horizon-client/src/entities.rs` como `pub mod machinery_item_effects` (`visibility = "pub"`). O item solto que o `ItemEntity.tick` marcou com `noPhysics` (a caixa dele
-// está dentro de uma colisão: um bloco posto onde ele estava, a célula do Heat Generator com lava) não é afetado pelos blocos: `Entity.isAffectedByBlocks` é `!isRemoved() && !noPhysics`
-// (`Entity.java:1030`), e é ele que deixa `Entity.applyEffectsFromBlocks` rodar o `checkInsideBlocks`, de onde saem todos os `entityInside` (a lava que acende e fere,
-// `LavaFluid.java:121-124`, a água que apaga, `WaterFluid.java:87`, o cacto, o fogo). Sem o efeito do bloco, o que sobra é o do `baseTick`: o fogo que já havia desce 1 por tick e fere 1 a
-// cada 20 fora da lava (`Entity.java:561-575`), e `isInLava` (a altura do fluido, não o `entityInside`) continua verdadeiro. Só `std`: o teste do `machinery_basis_core` compila este arquivo
-// como está (`tests/item_effects_reference.rs`).
+// Entra em `crates/horizon-client/src/entities.rs` como `pub mod machinery_item_effects` (`visibility = "pub"`). O que o fogo, a lava, a água, o fogo de bloco e o cacto fazem a um item solto
+// em um tick, na ordem do `ItemEntity.tick` do original, que o `environment_tick` do Horizon não segue em três pontos (medidos em `rastros/fluido_item_parado.jsonl`):
+//
+// - **`noPhysics`**: o item que o `ItemEntity.tick` marcou com `noPhysics` (a caixa dele está dentro de uma colisão: um bloco posto onde ele estava, a célula do Heat Generator com lava)
+//   não é afetado pelos blocos, porque `Entity.isAffectedByBlocks` é `!isRemoved() && !noPhysics` (`Entity.java:1030`) e é ele que deixa `applyEffectsFromBlocks` rodar o
+//   `checkInsideBlocks`, de onde saem todos os `entityInside`: a lava que acende e fere (`LavaFluid.java:121-124`), a água que apaga (`WaterFluid.java:87`), o cacto e o fogo. Fica o
+//   `baseTick`;
+// - **`firstTick`**: `isInLava` é `!firstTick && ...` (`Entity.java:1782`), então no primeiro tick do item o `baseTick` fere 1 do fogo mesmo dentro da lava;
+// - **a ordem**: o `baseTick` (o fogo fere 1 a cada 20 e desce 1) vem antes dos efeitos dos blocos (a água apaga, a lava acende), que rodam depois do movimento, e o Horizon apagava
+//   primeiro, então o item em chamas dentro da água não levava o ferimento de 1 do primeiro tick.
+//
+// Só `std`: o teste do `machinery_basis_core` compila este arquivo como está (`tests/item_effects_reference.rs`).
 use std::cell::Cell;
 
 thread_local! {
@@ -27,23 +33,74 @@ pub fn affected_by_blocks(no_physics: bool) -> bool {
     !no_physics
 }
 
-/// O fogo de um item que os blocos não afetam, depois de um tick: `fire_ticks` é o novo valor e `hurt` diz se o `baseTick` fere 1 (`hurtServer(onFire, 1)`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Burn {
+/// O que o tick do item tem de entrada: o fogo que ele traz, o `noPhysics` e o primeiro tick, o fluido da célula e o que os blocos da caixa fazem, e o que o item resiste.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Input {
     pub fire_ticks: i32,
-    pub hurt: bool,
+    pub no_physics: bool,
+    pub first_tick: bool,
+    /// A célula do item tem água / lava (o `FluidState` do bloco).
+    pub in_water: bool,
+    pub in_lava: bool,
+    /// O ferimento do fogo de bloco na caixa (`fire_contact`), se há fogo.
+    pub fire_damage: Option<i32>,
+    /// A caixa toca um cacto.
+    pub cactus: bool,
+    pub fire_immune: bool,
+    pub resists_on_fire: bool,
+    pub resists_lava: bool,
+    pub resists_in_fire: bool,
+    pub resists_cactus: bool,
 }
 
-/// O `Entity.baseTick` de um item que os blocos não afetam: `fireImmune` apaga o fogo; com fogo, `remainingFireTicks % 20 == 0 && !isInLava` fere 1 (a menos que o item resista a
-/// `on_fire`) e o fogo desce 1. A água e a lava do bloco não mexem no fogo (são `entityInside`): `in_lava` só decide o ferimento, porque `isInLava` vem da altura do fluido, e no primeiro
-/// tick do item ele é falso (`isInLava` é `!firstTick && ...`, `Entity.java:1782`): `first_tick`.
-pub fn burn(fire_ticks: i32, in_lava: bool, first_tick: bool, fire_immune: bool, resists_on_fire: bool) -> Burn {
-    let in_lava = in_lava && !first_tick;
-    let mut fire_ticks = if fire_immune { 0 } else { fire_ticks };
-    let mut hurt = false;
-    if fire_ticks > 0 {
-        hurt = fire_ticks % 20 == 0 && !in_lava && !resists_on_fire;
-        fire_ticks -= 1;
+/// O que sai: o fogo novo e os ferimentos, na ordem em que o original os dá (`hurtServer(amount)`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Outcome {
+    pub fire_ticks: i32,
+    pub hurts: Vec<i32>,
+    /// A lava feriu (o som do `Entity.lavaHurt`).
+    pub lava_hurt: bool,
+}
+
+/// Um tick do item: o `Entity.baseTick` (`Entity.java:561-575`) e, se os blocos o afetam, os `entityInside` da lava, da água, do fogo e do cacto.
+pub fn tick(input: Input) -> Outcome {
+    let mut fire = input.fire_ticks;
+    let mut hurts = Vec::new();
+    let mut lava_hurt = false;
+    // `baseTick`: o item imune a fogo apaga; com fogo, `remainingFireTicks % 20 == 0 && !isInLava` fere 1 (a menos que o item resista a `on_fire`) e o fogo desce 1. A água e a lava do bloco
+    // não entram aqui (são `entityInside`): `isInLava` vem da altura do fluido, e é falso no primeiro tick.
+    if input.fire_immune {
+        fire = 0;
     }
-    Burn { fire_ticks, hurt }
+    if fire > 0 {
+        let in_lava = input.in_lava && !input.first_tick;
+        if fire % 20 == 0 && !in_lava && !input.resists_on_fire {
+            hurts.push(1);
+        }
+        fire -= 1;
+    }
+    if affected_by_blocks(input.no_physics) {
+        if input.in_water {
+            fire = 0;
+        }
+        if input.in_lava && !input.fire_immune {
+            fire = fire.max(300);
+            if !input.resists_lava {
+                hurts.push(4);
+                lava_hurt = true;
+            }
+        }
+        if let Some(damage) = input.fire_damage {
+            if !input.fire_immune {
+                fire = fire.max(160);
+                if !input.resists_in_fire {
+                    hurts.push(damage);
+                }
+            }
+        }
+        if input.cactus && !input.resists_cactus {
+            hurts.push(1);
+        }
+    }
+    Outcome { fire_ticks: fire, hurts, lava_hurt }
 }
