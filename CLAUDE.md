@@ -49,17 +49,17 @@ manual em mundo fica para o que só o jogo mostra, como visual e som.
 
 Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
 
-- No máximo 1 build por vez no notebook. No desktop há 2 vagas, para build ou jogo em qualquer combinação (2 builds, 2 jogos ou 1 de cada).
-  Um teste de multiplayer abre os dois clientes dentro de uma vaga. Jogo só no desktop, nos containers de teste `horizon` e `horizon2`.
-  (Regra do usuário de 2026-11-12; os limites só mudam quando ele disser.)
+- No máximo 1 build por vez no notebook. No desktop há 1 vaga, para um build ou um jogo de cada vez.
+  Um teste de multiplayer abre os dois clientes dentro da vaga. Jogo só no desktop, nos containers de teste `horizon` e `horizon2`.
+  (Regra do usuário de 2026-11-12, revista no mesmo dia de 2 vagas para 1 no desktop; os limites só mudam quando ele disser.)
 - O jogo é sempre headless: `gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080`, sem `-f`. Nunca `--backend wayland` nem nada que abra
   janela no desktop, que o usuário está usando. Prints e vídeo saem pelo `horizon-ctl`. Nunca mate um gamescope que não seja do teste.
 - O jogo de teste também é mudo: todo cliente, do port e do original, manda o áudio para um sink nulo do PipeWire (criado antes, removido ao fim)
   ou roda com o som desligado. Nunca pelas caixas do usuário.
 - Notebook: todo `cargo`, clippy e `scripts/ci.sh` passa por `/mnt/dados/builds/rust-mekanism-ws/lim <comando>`, que faz fila com `flock` e
   roda num escopo do systemd com teto de memória e CPU. Nunca chame `cargo` fora dele.
-- Desktop: cada vaga tem 4 núcleos e 6 GB, para build e para jogo. Use `~/.cache/rust-mekanism/lim-build <comando>`, que pega uma vaga e põe
-  `CARGO_BUILD_JOBS=4`, com `--max-workers=4` no gradle. O jogo também ocupa uma vaga: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`,
+- Desktop: a vaga tem 4 núcleos e 6 GB, para build e para jogo. Use `~/.cache/rust-mekanism/lim-build <comando>`, que pega a vaga e põe
+  `CARGO_BUILD_JOBS=4`, com `--max-workers=4` no gradle. O jogo também ocupa a vaga: antes de abri-lo, rode em background `~/.cache/rust-mekanism/lim-jogo <nome>`,
   espere `jogo-<nome>.ativo` ganhar o número da vaga, e apague esse arquivo ao fechar o jogo. O container nasce com 6 CPUs e 12 GB: antes do
   `native-build` e do jogo, rode `docker update --cpus 4 --memory 6g --memory-swap 6g <container>`.
 - Um só cache Rust por máquina: no notebook, `lim` aponta todos os workspaces para o `target` do projeto; no desktop, `horizon` e `horizon2`
