@@ -38,7 +38,7 @@ fn machinery_occlusion_shapes(base: &Path, plan: &Plan<'_>, overlay: &Overlay<'_
             };
             let mut indices = Vec::new();
             let mut encoded: BTreeMap<Vec<[u64; 6]>, i32> = BTreeMap::new();
-            let Some(Tag::List(entries)) = table.get_mut("shapes") else {
+            let Some(Tag::List(entries)) = table.get_mut(&JavaString::from("shapes")) else {
                 return Err("occlusion table has no shapes".into());
             };
             for (first, shapes) in &declared {
@@ -65,7 +65,7 @@ fn machinery_occlusion_shapes(base: &Path, plan: &Plan<'_>, overlay: &Overlay<'_
                     indices.push((first + offset, id));
                 }
             }
-            let Some(Tag::IntArray(mapping)) = table.get_mut("cached_shapes") else {
+            let Some(Tag::IntArray(mapping)) = table.get_mut(&JavaString::from("cached_shapes")) else {
                 return Err("occlusion table has no mapping".into());
             };
             for (state, id) in indices {

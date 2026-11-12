@@ -347,7 +347,8 @@ pastas `data/` e arquivos de texto como `README` e `LICENSE`.
   `build` passa e o log só diz "placed features cannot run".
 - As tags `c:` (`#c:ingots/iron`) não existem no vanilla: o mod que as usa em receitas precisa declará-las.
 - Com `own_background`, a tela desenha também as molduras do inventário do jogador.
-- Um bloco com modelo menor que um cubo precisa de `occludes: false`, senão as faces dos vizinhos somem.
+- Um bloco com modelo menor que um cubo e sem a injeção `occlusion_shapes` (da `machinery_basis`) precisa de `occludes: false`, senão as faces dos vizinhos somem: o gabarito deixa o cubo cheio como forma de oclusão. Com a injeção, o bloco que declara `shapes` esconde a face do vizinho pela forma real e fica com `can_occlude` verdadeiro; `occludes: false` fica só para o bloco `noOcclusion` do original.
+- Generics (`impl<L: ..> Sim<L>`, `fn f<L>(..)`) não são alvo do horizon-mixins, e o RETURN recusa o `?` do corpo: para rodar depois de uma função cheia de `?`, use um HEAD cancelável que a chama de novo por dentro com uma marca de reentrada (`occlusion_shapes`).
 - O alvo de uma injeção usa o nome do crate alvo: `mod_content` e o resto de `client_lib.rs` são `horizon_client_lib::`, não
   `horizon_client::`, embora os helpers importem por `horizon_client::`.
 - `?` no corpo do alvo barra `OVERWRITE`, `RETURN` e as injeções que reescrevem o corpo, e `Self` no retorno barra HEAD
