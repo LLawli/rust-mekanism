@@ -8,6 +8,8 @@
                                     porco e o item (que o Horizon lê pela tabela de fatos do estado) só se medem, sem comparar
     h2_fluido_no_bloco.py mob       o porco e o item solto na célula de um cabo com água, com lava e sem fluido, tick a tick: o ar, a vida, o fogo, se vive e a altura, contra o rastro de
                                     porco e de item do original (decisão 88: eles leem o fluido pela tabela de fatos do estado, que `logged_fluid_facts` completa)
+    h2_fluido_no_bloco.py mob_video   o vídeo com som: o porco num cabo com água, o porco num cabo com lava (queima e morre) e o item de pedra que a lava destrói, em poços de vidro
+                                    (`NOME=<gravar-jogo start>`, `SEGUNDOS`, `ARQUIVO`)
     h2_fluido_no_bloco.py bucket    os casos do `fluido_no_bloco_bucket.jsonl` (cabo, fábrica e cubo de energia; vazio, com água e com lava; balde de água, de lava e vazio;
                                     em pé, agachado e no criativo): o estado do bloco e o inventário depois do clique
     h2_fluido_no_bloco.py cena PASTA   o print lado a lado de cada bloco com água e com lava
@@ -51,6 +53,7 @@ def sky():
 
 def restore():
     # O jogador sai do meio do que os testes deixaram correndo (a lava mata o jogador de sobrevivência e a vida zerada trava o resto do teste).
+    cmd("effect clear @s")
     cmd("gamemode creative")
     tp(f"{X0 + 60}", f"{Y + 30}", f"{Z0 + 20}")
     cmd("tick unfreeze")
@@ -319,7 +322,7 @@ def mob():
     time.sleep(0.5)
     for fluid, kind, x, z in wells:
         if kind == "pig":
-            cmd(f"summon minecraft:pig {x + 0.5} {Y + 0.05} {z + 0.5} {{PersistenceRequired:1b,Silent:1b,NoAI:0b,Health:10f}}")
+            cmd(f"summon minecraft:pig {x + 0.5} {Y + 0.05} {z + 0.5} {{PersistenceRequired:1b,Silent:1b,NoAI:1b,Health:10f}}")
         else:
             cmd(f"summon minecraft:item {x + 0.5} {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:cobblestone\",count:1}},Age:-32768s,PickupDelay:32767s}}")
     time.sleep(0.5)
@@ -448,6 +451,94 @@ def video():
     restore()
 
 
+def mob_video():
+    """O roteiro do vídeo com som: três poços de vidro de 1 por 1 com a célula do cabo embaixo; o porco do primeiro recebe água, o do segundo lava (queima e morre em um segundo) e, no
+    terceiro, também com lava, cai um item de pedra, que a lava destrói. A resposta de `data get entity` mostra o ar do porco na água caindo. O som só sobe depois de o stream do
+    jogo estar num sink de teste, e uma thread confere a cada meio segundo (`seguro`) e manda o stream novo para o sink da gravação (o stream nasce no `som_nulo`)."""
+    import subprocess
+    import threading
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import h2_nota_instrumento as n
+
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "34"), os.environ.get("ARQUIVO", "mob_no_cabo.mp4")
+    scene_clear()
+    cmd("gamerule send_command_feedback true")
+    cmd("effect give @s minecraft:fire_resistance 999 255 true")
+    wells = [(63, "water"), (67, "lava"), (71, "lava")]
+    z = SCENE_Z
+    for x, fluid in wells:
+        for dy in (0, 1):
+            for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                cmd(f"setblock {x + dx} {Y + dy} {z + dz} minecraft:glass")
+        cmd(f"setblock {x} {Y + 2} {z} minecraft:glass")
+        cmd(f"setblock {x} {Y} {z} mekanism:basic_universal_cable[fluid_logged=empty]")
+    time.sleep(1.0)
+    pig = "{PersistenceRequired:1b,Silent:0b,NoAI:1b,Health:10f}"
+    cmd(f"summon minecraft:pig 63.5 {Y + 0.05} {z + 0.5} {pig}")
+    cmd(f"summon minecraft:pig 67.5 {Y + 0.05} {z + 0.5} {pig}")
+    cmd(f"tp @s 67.0 {Y + 1.4} {z + 5.5} 180 10")
+    ctl("options-set", "chatVisibility", "0")
+    n.mute()
+    for categoria in n.SOUND_OFF:
+        if categoria != "neutral":
+            ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "neutral", "player"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 10
+        # A água entra no primeiro cabo e a lava no segundo e no terceiro.
+        for x, fluid in wells:
+            cmd(f"setblock {x} {Y} {z} mekanism:basic_universal_cable[fluid_logged={fluid}]")
+        time.sleep(3.0)
+        # O ar do porco na água: 1 por tick, 20 por segundo.
+        for _ in range(4):
+            cmd("data get entity @e[type=minecraft:pig,limit=1,x=63.5,y=150,z=80.5,distance=..2] Air")
+            time.sleep(2.0)
+        cmd(f"summon minecraft:item 71.5 {Y + 0.05} {z + 0.5} {{Item:{{id:\"minecraft:cobblestone\",count:1}},Age:-32768s,PickupDelay:32767s}}")
+        time.sleep(6.0)
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        cmd("kill @e[type=!minecraft:player]")
+        cmd("effect clear @s")
+        ctl("options-set", "chatVisibility", "0")
+        restore()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "flow"
     if what == "flow":
@@ -462,6 +553,9 @@ def main():
         sys.exit(0 if entity() else 1)
     if what == "bucket":
         sys.exit(0 if bucket() else 1)
+    if what == "mob_video":
+        mob_video()
+        return
     if what == "mob":
         sys.exit(0 if mob() else 1)
     print("uso:", __doc__)
