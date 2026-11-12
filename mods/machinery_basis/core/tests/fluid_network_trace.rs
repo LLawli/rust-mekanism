@@ -79,9 +79,8 @@ fn trace_event(row: &Value, mine: &Mine) -> Option<String> {
             int(row, "x"),
             row["loaded"].as_bool().unwrap()
         )),
-        "adopt" => net(row).and_then(|n| {
-            rank(mine, int(row, "from")).map(|from| format!("adopt {n} {from}"))
-        }),
+        "adopt" => net(row)
+            .and_then(|n| rank(mine, int(row, "from")).map(|from| format!("adopt {n} {from}"))),
         "commit" => net(row).map(|n| format!("commit {n}")),
         "invalidate" => net(row).map(|n| format!("invalidate {n}")),
         "net_update" => net(row).map(|n| format!("net_update {n}")),
@@ -742,7 +741,10 @@ fn run(run: &str, scenario: &str) {
                 )
             })
             .collect();
-        assert_eq!(transfers, expected_transfers, "{context}: FluidTransferEvent");
+        assert_eq!(
+            transfers, expected_transfers,
+            "{context}: FluidTransferEvent"
+        );
         // O `onContentsChanged` do contêiner de cada rede, na ordem.
         let expected_contents: Vec<(i64, String, i64)> = tick_rows
             .iter()

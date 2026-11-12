@@ -28,7 +28,9 @@
 //!   `getFlowInfo`, `getNeededInfo`): o `TransferEvent` fica numa lista ([`ResourceFamily::take_transfer_events`]) para quem liga ao
 //!   jogo mandar o `PacketNetworkScale`.
 use super::buffered_network::{BufferedNetwork, chunk_of};
-use super::buffered_resource_transmitter::{ResourcePipe, ResourceTransmitterUpgradeData, SaveShare};
+use super::buffered_resource_transmitter::{
+    ResourcePipe, ResourceTransmitterUpgradeData, SaveShare,
+};
 use super::buffered_transmitter::{Ends, primary_and_secondary};
 use super::energy_container::add_clamped;
 use super::registry::TransmitterNetworkRegistry;
@@ -97,10 +99,10 @@ pub fn type_to_extract<R: Resource, H: ResourceExtract<R> + ?Sized>(
     filter: &dyn Fn(&R) -> bool,
     transaction: Option<&Transaction>,
 ) -> Option<R> {
-    if current.is_none() {
-        if let Some(found) = find_extractable_resource(handler, filter, transaction) {
-            return Some(found);
-        }
+    if current.is_none()
+        && let Some(found) = find_extractable_resource(handler, filter, transaction)
+    {
+        return Some(found);
     }
     current
 }
@@ -183,11 +185,14 @@ impl<R: Resource> SharedViews<R> {
         network: Option<NetworkId>,
     ) -> Option<R> {
         let views = self.0.borrow();
-        let own = views.pipes.get(&transmitter).and_then(|tank| tank.resource());
-        if own.is_none() {
-            if let Some(view) = network.and_then(|network| views.networks.get(&network)) {
-                return view.container.resource();
-            }
+        let own = views
+            .pipes
+            .get(&transmitter)
+            .and_then(|tank| tank.resource());
+        if own.is_none()
+            && let Some(view) = network.and_then(|network| views.networks.get(&network))
+        {
+            return view.container.resource();
         }
         own
     }
@@ -217,7 +222,8 @@ impl<R: Resource> CompatibleResourceValidator<R> {
 }
 
 impl<R: Resource, A: Clone + 'static> CompatibleTransmitterValidator<A>
-    for CompatibleResourceValidator<R> {
+    for CompatibleResourceValidator<R>
+{
     fn is_network_compatible(
         &mut self,
         _host: &dyn TransmitterHost<A>,
@@ -388,8 +394,7 @@ impl<R: Resource> ResourceNetwork<R> {
                 return;
             }
             if self.container.amount() > capacity {
-                self.container
-                    .set_contents(Some(resource), capacity, None);
+                self.container.set_contents(Some(resource), capacity, None);
             }
         }
     }
@@ -535,7 +540,8 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
                 }
                 net.buffered.needs_update = true;
             }
-            self.contents_events.push(ContentsChanged { network, contents });
+            self.contents_events
+                .push(ContentsChanged { network, contents });
         }
     }
 
@@ -682,9 +688,7 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
                     theirs.resource
                 ));
             }
-            self.networks[&from]
-                .container
-                .set_contents(None, 0, None);
+            self.networks[&from].container.set_contents(None, 0, None);
         }
         let net = self.net(network);
         if scale_changed(net.buffered.current_scale, old_scale) {
@@ -708,7 +712,11 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
         }
         let mut target = Target::new(ResourceTransmitterSaveKind::<SaveShare<R>, R>::new());
         for transmitter in registry.network(network).transmitters() {
-            target.add_handler(self.pipes[&transmitter].state.start_new_save_share(transaction));
+            target.add_handler(
+                self.pipes[&transmitter]
+                    .state
+                    .start_new_save_share(transaction),
+            );
         }
         let contents = self.net(network).container.contents();
         if let Some(resource) = contents.resource.as_ref() {
@@ -859,11 +867,7 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
         // Os alvos entram sem checar se aceitam: o `sendToAcceptors` calcula isso.
         let sent = emit_resource(targets, &resource, current, Some(&transaction));
         self.net(network).prev_transfer_amount.set(sent);
-        container.set_contents(
-            Some(resource),
-            (current - sent) as u64,
-            Some(&transaction),
-        );
+        container.set_contents(Some(resource), (current - sent) as u64, Some(&transaction));
         transaction.commit();
         self.flush_contents();
     }
@@ -912,13 +916,11 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
         network: Option<NetworkId>,
     ) -> Option<R> {
         let buffer = self.buffer_with_fallback(transmitter, network).resource;
-        if buffer.is_none() {
-            if let Some(network) = network {
-                let net = &self.networks[&network];
-                if net.prev_transfer_amount() > 0 {
-                    return net.last_type();
-                }
-            }
+        if buffer.is_none()
+            && let Some(network) = network
+            && self.networks[&network].prev_transfer_amount() > 0
+        {
+            return self.networks[&network].last_type();
         }
         buffer
     }
@@ -1015,18 +1017,18 @@ impl<R: Resource, H: ResourceAcceptor<R> + ?Sized> ResourceFamily<R, H> {
             let Some(connected) = acceptor(side) else {
                 continue;
             };
-            let received = type_to_extract(
-                container.resource(),
-                connected.as_ref(),
-                &|_| true,
-                None,
-            );
+            let received =
+                type_to_extract(container.resource(), connected.as_ref(), &|_| true, None);
             if let Some(received) = received {
                 let transaction = Transaction::open_root();
                 let extracted = connected.extract(&received, available(&container), &transaction);
                 if extracted > 0
-                    && container.insert(&received, extracted, &transaction, AutomationType::Internal)
-                        == extracted
+                    && container.insert(
+                        &received,
+                        extracted,
+                        &transaction,
+                        AutomationType::Internal,
+                    ) == extracted
                 {
                     // Primeiro simula o próprio contêiner e só então confirma: um aceitador que deu um valor errado não duplica nada.
                     transaction.commit();

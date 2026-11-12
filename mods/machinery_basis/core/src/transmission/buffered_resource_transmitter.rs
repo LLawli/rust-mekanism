@@ -178,7 +178,8 @@ impl<R: Resource> ResourcePipe<R> {
     /// `read`, a parte do buffer: `saveShare = readOrEmpty(STORED)` e `bufferContainer.setContents(saveShare, null)`.
     pub fn read_stored(&self, stored: StackContents<R>) {
         self.save_share.set_without_transaction(stored.clone());
-        self.buffer.set_contents(stored.resource, stored.amount, None);
+        self.buffer
+            .set_contents(stored.resource, stored.amount, None);
     }
 
     /// `getUpgradeData()`, a parte do buffer.

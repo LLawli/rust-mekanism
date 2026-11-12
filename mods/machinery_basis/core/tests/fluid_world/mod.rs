@@ -310,7 +310,9 @@ impl Ctx<'_> {
     fn apply(&mut self, registry: &mut Registry, id: TransmitterId, effects: Vec<Effect>) {
         for effect in effects {
             match effect {
-                Effect::NotifyTileChange => self.notify_neighbors(registry, tpos(self.pipe(id).pos)),
+                Effect::NotifyTileChange => {
+                    self.notify_neighbors(registry, tpos(self.pipe(id).pos))
+                }
                 Effect::RefreshNeighbor { pos, side } => {
                     if let Some(other) = self.id_at(pos) {
                         self.with_tr(registry, other, |t, w, out| {
@@ -345,7 +347,10 @@ impl Ctx<'_> {
                     registry.invalidate_transmitter(&*self, id);
                 }
                 Effect::AcceptorChanged(side) => {
-                    let network = self.pipe(id).network.expect("só há AcceptorChanged com rede");
+                    let network = self
+                        .pipe(id)
+                        .network
+                        .expect("só há AcceptorChanged com rede");
                     registry.network_acceptor_changed(&*self, network, id, side);
                 }
                 Effect::SetForceUpdate => {
@@ -466,7 +471,10 @@ impl TransmitterWorld for Ctx<'_> {
         let (pa, pb) = (self.pipe(a), self.pipe(b));
         let ends = |p: &Pipe| self.st.family.ends(p.net().is_some(), p.orphan);
         extra_valid_transmitter(ends(pa), ends(pb))
-            && self.st.family.is_valid_transmitter(a, pa.net(), b, pb.net())
+            && self
+                .st
+                .family
+                .is_valid_transmitter(a, pa.net(), b, pb.net())
     }
 }
 
@@ -750,7 +758,9 @@ impl ChunkHooks for Hooks {
             ctx.world_join(&mut self.registry, id, false);
             ctx.pipe_mut(id).mark_joined = false;
         }
-        ctx.with_tr(&mut self.registry, id, |t, w, out| t.on_update_server(w, out));
+        ctx.with_tr(&mut self.registry, id, |t, w, out| {
+            t.on_update_server(w, out)
+        });
     }
 
     /// `TileEntityTransmitter.onChunkUnloaded`, `:156`: `validateAndTakeShare`.

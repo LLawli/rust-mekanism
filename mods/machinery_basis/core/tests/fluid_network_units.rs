@@ -82,7 +82,11 @@ fn two_networks_with_different_fluids_stay_apart_until_one_is_empty_and_a_side_i
     tick(&mut world, 4);
     let bridge = network_of(&world, 3);
     assert!(bridge == water || bridge == lava);
-    assert_ne!(network_of(&world, 0), network_of(&world, 6), "continuam duas redes");
+    assert_ne!(
+        network_of(&world, 0),
+        network_of(&world, 6),
+        "continuam duas redes"
+    );
     dbg!(world.family().network(water).map(|n| n.buffer()));
     dbg!(world.family().network(lava).map(|n| n.buffer()));
 }
@@ -162,7 +166,8 @@ fn the_pipe_reads_its_stored_fluid_and_releases_the_buffer() {
 }
 
 #[test]
-fn the_external_automation_cannot_take_fluid_out_of_the_pipe_buffer_but_the_network_container_allows_it() {
+fn the_external_automation_cannot_take_fluid_out_of_the_pipe_buffer_but_the_network_container_allows_it()
+ {
     use machinery_basis_core::transmission::buffered_resource_transmitter::ResourcePipe;
     let pipe = ResourcePipe::new(2_000, 250);
     let transaction = Transaction::open_root();
@@ -182,4 +187,127 @@ fn the_external_automation_cannot_take_fluid_out_of_the_pipe_buffer_but_the_netw
         100
     );
     transaction.commit();
+}
+
+fn standalone_family() -> (
+    machinery_basis_core::transmission::fluid_network::FluidFamily<
+        dyn machinery_basis_core::transmission::buffered_resource_network::ResourceAcceptor<
+                machinery_basis_core::fluid::FluidResource,
+            >,
+    >,
+    machinery_basis_core::transmission::registry::TransmitterNetworkRegistry<fluid_world::Acceptor>,
+) {
+    use machinery_basis_core::transmission::registry::TransmitterNetworkRegistry;
+    use machinery_basis_core::transmission::{NetworkEvent, Uuid};
+    let registry = TransmitterNetworkRegistry::new(|| Uuid::with_hash_code(1));
+    let mut family = fluid_world::Family::new();
+    family.network_event(
+        &registry,
+        NetworkId(0),
+        NetworkEvent::Created {
+            uuid: Uuid::with_hash_code(1),
+        },
+    );
+    (family, registry)
+}
+
+#[test]
+fn a_network_that_has_no_capacity_yet_does_not_clamp_its_buffer_to_zero() {
+    let (mut family, _) = standalone_family();
+    family
+        .network(NetworkId(0))
+        .unwrap()
+        .container()
+        .set_contents(Some(fluid("minecraft:water")), 500, None);
+    assert_eq!(family.network(NetworkId(0)).unwrap().capacity(), 0);
+    family.clamp_buffer(NetworkId(0));
+    // A rede finge capacidade zero até terminar de se montar: o corte a ignora.
+    assert_eq!(family.network(NetworkId(0)).unwrap().buffer().amount, 500);
+}
+
+#[test]
+fn a_transmitter_buffer_of_another_fluid_is_released_and_lost_when_it_joins_a_network() {
+    use machinery_basis_core::sim::chunks::BlockPos;
+    use machinery_basis_core::transmission::{NetworkEvent, TransmitterId};
+    let (mut family, registry) = standalone_family();
+    let pipe = TransmitterId(0);
+    family.add_pipe(pipe, BlockPos::new(0, 64, 0), 2_000, 250);
+    family
+        .pipe(pipe)
+        .buffer
+        .set_contents(Some(fluid("minecraft:water")), 300, None);
+    family
+        .network(NetworkId(0))
+        .unwrap()
+        .container()
+        .set_contents(Some(fluid("minecraft:lava")), 100, None);
+    family.network_event(
+        &registry,
+        NetworkId(0),
+        NetworkEvent::TransmitterCommitted(pipe),
+    );
+    let net = family.network(NetworkId(0)).unwrap();
+    assert_eq!(net.buffer().resource, Some(fluid("minecraft:lava")));
+    assert_eq!(net.buffer().amount, 100);
+    assert!(family.pipe(pipe).share().is_empty());
+}
+
+#[test]
+fn a_pulling_pipe_stops_at_the_first_side_that_fills_it() {
+    use machinery_basis_core::sides::Face;
+    use machinery_basis_core::transmission::connection::ConnectionType;
+    let mut world = world();
+    world.place_pipe(0, "basic");
+    let below = world.place_fluid_tank(
+        BlockPos::new(0, 63, 0),
+        "basic",
+        Some(("minecraft:water", Some(5_000))),
+    );
+    let above = world.place_fluid_tank(
+        BlockPos::new(0, 65, 0),
+        "basic",
+        Some(("minecraft:water", Some(5_000))),
+    );
+    tick(&mut world, 4);
+    assert_eq!(push(&mut world, 0, "minecraft:water", 1_800), 1_800);
+    world.set_mode(0, Face::Down, ConnectionType::Pull);
+    world.set_mode(0, Face::Up, ConnectionType::Pull);
+    tick(&mut world, 1);
+    // falta 200 (menos que a taxa de 250): o primeiro lado (embaixo) enche o cano e o de cima não é tocado
+    assert_eq!(below.tank.amount(), 4_800);
+    assert_eq!(above.tank.amount(), 5_000);
+}
+
+#[test]
+fn a_manual_merge_tells_the_clients_the_new_scale_even_when_no_fluid_moved() {
+    use machinery_basis_core::sides::Face;
+    use machinery_basis_core::transmission::connection::ConnectionType;
+    let mut world = world();
+    for x in 0..6 {
+        world.place_pipe(x, "basic");
+    }
+    tick(&mut world, 4);
+    // As duas metades separadas pelos lados que se encaram.
+    world.set_mode(2, Face::East, ConnectionType::None);
+    world.set_mode(3, Face::West, ConnectionType::None);
+    tick(&mut world, 3);
+    assert_ne!(network_of(&world, 0), network_of(&world, 5));
+    assert_eq!(push(&mut world, 0, "minecraft:water", 1_000), 1_000);
+    tick(&mut world, 60);
+    world.family();
+    let before = world.level.hooks.state.family.take_transfer_events();
+    drop(before);
+    world.set_mode(2, Face::East, ConnectionType::Normal);
+    world.set_mode(3, Face::West, ConnectionType::Normal);
+    tick(&mut world, 1);
+    assert_eq!(
+        network_of(&world, 0),
+        network_of(&world, 5),
+        "as redes se juntaram"
+    );
+    let events = world.level.hooks.state.family.take_transfer_events();
+    assert!(
+        !events.is_empty(),
+        "a escala da rede fundida mudou e o cliente precisa saber"
+    );
 }

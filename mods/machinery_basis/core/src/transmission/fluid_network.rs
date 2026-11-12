@@ -8,11 +8,11 @@
 //! [`ResourceFamily::is_valid_transmitter`] (a regra de `MechanicalPipe.isValidTransmitter`).
 //!
 //! `fluidScale` não é da rede: é o `currentScale` dela, que o renderizador do cano lê.
+use super::TransmitterId;
 use super::buffered_resource_network::{
     CompatibleResourceValidator, ResourceAcceptor, ResourceFamily, ResourceNetwork, TransferEvent,
 };
 use super::mechanical_pipe::PipeTier;
-use super::TransmitterId;
 use crate::fluid::FluidResource;
 use crate::sim::chunks::BlockPos;
 
@@ -27,7 +27,12 @@ pub type FluidFamily<H> = ResourceFamily<FluidResource, H>;
 
 impl<H: ResourceAcceptor<FluidResource> + ?Sized> FluidFamily<H> {
     /// Um cano novo: `new MechanicalPipe(blockProvider, tile)`, com a capacidade e a vazão do tier.
-    pub fn add_mechanical_pipe(&mut self, transmitter: TransmitterId, pos: BlockPos, tier: PipeTier) {
+    pub fn add_mechanical_pipe(
+        &mut self,
+        transmitter: TransmitterId,
+        pos: BlockPos,
+        tier: PipeTier,
+    ) {
         self.add_pipe(transmitter, pos, tier.capacity(), tier.transfer_rate());
     }
 }

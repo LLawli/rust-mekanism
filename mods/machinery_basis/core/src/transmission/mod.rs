@@ -182,7 +182,11 @@ pub trait TransmitterHost<A> {
     /// `Transmitter.requestsUpdate` chamado de dentro do registro (o `commit` de uma rede, `adoptAllAndRegister`, `invalidate`). Um transmissor
     /// que relê as conexões ao pedir a atualização (o `BufferedTransmitter` de fluido, químico e calor: `requestsUpdate` avisa os vizinhos, que
     /// podem fundir redes) volta ao registro, por isso este recebe o registro. A base só repassa a [`Self::request_update`].
-    fn request_update_in(&mut self, _registry: &mut TransmitterNetworkRegistry<A>, transmitter: TransmitterId) {
+    fn request_update_in(
+        &mut self,
+        _registry: &mut TransmitterNetworkRegistry<A>,
+        transmitter: TransmitterId,
+    ) {
         self.request_update(transmitter);
     }
     /// `Transmitter.supportsTransmissionType(other)`: algum tipo de transmissão em comum.
