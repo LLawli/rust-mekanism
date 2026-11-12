@@ -26,14 +26,28 @@ fn declared(target: &str) -> Option<Vec<String>> {
         "stone" => return None,
         _ => ("mekanism", target),
     };
-    let path = root().join(format!("mods/{mod_id}/content/data/{mod_id}/horizon/block/{block}.json"));
+    let path = root().join(format!(
+        "mods/{mod_id}/content/data/{mod_id}/horizon/block/{block}.json"
+    ));
     let json: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).unwrap();
     let property = json.get("state_properties")?.get("fluid_logged")?;
-    Some(property["values"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_owned()).collect())
+    Some(
+        property["values"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect(),
+    )
 }
 
 fn contents(row: &Value) -> Vec<(String, u64)> {
-    row["dispenser"].as_array().unwrap().iter().map(|s| (s[0].as_str().unwrap().to_owned(), s[1].as_u64().unwrap())).collect()
+    row["dispenser"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| (s[0].as_str().unwrap().to_owned(), s[1].as_u64().unwrap()))
+        .collect()
 }
 
 /// O que cada balde faz contra cada bloco, em 90 casos, é o que o original faz: o fluido entra no bloco vazio que o declara e o balde volta vazio, o balde vazio tira o fluido de dentro
@@ -52,15 +66,25 @@ fn a_dispenser_does_with_each_bucket_what_the_original_does() {
         let id = format!("minecraft:{item}");
         let current = declared.as_ref().map(|_| pre);
         if let Some(values) = &declared {
-            assert!(values.iter().any(|v| v == pre), "{case}: o bloco não declara {pre}: {values:?}");
+            assert!(
+                values.iter().any(|v| v == pre),
+                "{case}: o bloco não declara {pre}: {values:?}"
+            );
         }
-        let outcome = fluid_logged::dispense_bucket(&id, current, |value| declared.as_ref().is_some_and(|values| values.iter().any(|v| v == value)));
+        let outcome = fluid_logged::dispense_bucket(&id, current, |value| {
+            declared
+                .as_ref()
+                .is_some_and(|values| values.iter().any(|v| v == value))
+        });
         let logged = row["logged"].as_str().unwrap();
         let held = contents(row);
         match outcome {
             Dispensed::Pass => {
                 passed += 1;
-                assert_eq!(logged, "-", "{case}: um bloco com a propriedade não pode ficar para o Horizon");
+                assert_eq!(
+                    logged, "-",
+                    "{case}: um bloco com a propriedade não pode ficar para o Horizon"
+                );
             }
             Dispensed::Fill { value } => {
                 filled += 1;
@@ -71,12 +95,20 @@ fn a_dispenser_does_with_each_bucket_what_the_original_does() {
                 picked += 1;
                 assert_eq!(logged, value, "{case}");
                 let name = bucket.trim_start_matches("minecraft:");
-                assert_eq!(held, vec![("bucket".to_owned(), 1), (name.to_owned(), 1)], "{case}");
+                assert_eq!(
+                    held,
+                    vec![("bucket".to_owned(), 1), (name.to_owned(), 1)],
+                    "{case}"
+                );
             }
             Dispensed::Drop => {
                 dropped += 1;
                 assert_eq!(logged, pre, "{case}: o bloco não muda");
-                let left = if item == "bucket" { vec![("bucket".to_owned(), 1)] } else { vec![] };
+                let left = if item == "bucket" {
+                    vec![("bucket".to_owned(), 1)]
+                } else {
+                    vec![]
+                };
                 assert_eq!(held, left, "{case}");
             }
         }
@@ -90,19 +122,65 @@ fn a_dispenser_does_with_each_bucket_what_the_original_does() {
 #[test]
 fn only_a_bucket_with_water_or_lava_fills_a_block() {
     let all = |_: &str| true;
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:lava_bucket", Some("empty"), all), Dispensed::Fill { value: "lava" });
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:water_bucket", Some("empty"), all), Dispensed::Fill { value: "water" });
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:cod_bucket", Some("empty"), all), Dispensed::Fill { value: "water" });
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:powder_snow_bucket", Some("empty"), all), Dispensed::Drop);
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:sulfur_cube_bucket", Some("empty"), all), Dispensed::Drop);
-    assert_eq!(fluid_logged::dispense_bucket("minecraft:stick", Some("empty"), all), Dispensed::Pass);
-    assert_eq!(fluid_logged::dispense_bucket("mekanism:heavy_water_bucket", Some("empty"), all), Dispensed::Pass);
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:lava_bucket", Some("empty"), all),
+        Dispensed::Fill { value: "lava" }
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:water_bucket", Some("empty"), all),
+        Dispensed::Fill { value: "water" }
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:cod_bucket", Some("empty"), all),
+        Dispensed::Fill { value: "water" }
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:powder_snow_bucket", Some("empty"), all),
+        Dispensed::Drop
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:sulfur_cube_bucket", Some("empty"), all),
+        Dispensed::Drop
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:stick", Some("empty"), all),
+        Dispensed::Pass
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("mekanism:heavy_water_bucket", Some("empty"), all),
+        Dispensed::Pass
+    );
 }
 
 /// Um bloco sem a propriedade fica para o dispenser do Horizon, com qualquer balde.
 #[test]
 fn a_block_without_fluid_logged_is_left_to_the_dispenser_of_the_game() {
-    for item in ["minecraft:lava_bucket", "minecraft:bucket", "minecraft:cod_bucket"] {
-        assert_eq!(fluid_logged::dispense_bucket(item, None, |_| true), Dispensed::Pass);
+    for item in [
+        "minecraft:lava_bucket",
+        "minecraft:bucket",
+        "minecraft:cod_bucket",
+    ] {
+        assert_eq!(
+            fluid_logged::dispense_bucket(item, None, |_| true),
+            Dispensed::Pass
+        );
     }
+}
+
+/// `IStateFluidLoggable.isValidFluid`: um bloco que não declara o valor do fluido (o Heat Generator antigo, só `empty` e `lava`) não recebe o balde de água, que o dispenser solta.
+#[test]
+fn a_block_that_does_not_declare_the_fluid_gets_the_bucket_dropped() {
+    let lava_only = |value: &str| value == "lava";
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:water_bucket", Some("empty"), lava_only),
+        Dispensed::Drop
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:cod_bucket", Some("empty"), lava_only),
+        Dispensed::Drop
+    );
+    assert_eq!(
+        fluid_logged::dispense_bucket("minecraft:lava_bucket", Some("empty"), lava_only),
+        Dispensed::Fill { value: "lava" }
+    );
 }

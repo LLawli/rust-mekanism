@@ -81,7 +81,8 @@ pub enum Content {
 /// O conteúdo do balde cheio `item` (`DispensibleContainerItem`): nenhum para o que não é balde cheio.
 pub fn content_of(item: &str) -> Option<Content> {
     match item {
-        WATER_BUCKET | COD_BUCKET | SALMON_BUCKET | PUFFERFISH_BUCKET | TROPICAL_FISH_BUCKET | AXOLOTL_BUCKET | TADPOLE_BUCKET => Some(Content::Fluid(WATER)),
+        WATER_BUCKET | COD_BUCKET | SALMON_BUCKET | PUFFERFISH_BUCKET | TROPICAL_FISH_BUCKET
+        | AXOLOTL_BUCKET | TADPOLE_BUCKET => Some(Content::Fluid(WATER)),
         LAVA_BUCKET => Some(Content::Fluid(LAVA)),
         POWDER_SNOW_BUCKET | SULFUR_CUBE_BUCKET => Some(Content::Other),
         _ => None,
@@ -96,7 +97,10 @@ pub enum Dispensed {
     /// `emptyContents` pôs o fluido no bloco: o balde cheio vira o vazio (`consumeWithRemainder`).
     Fill { value: &'static str },
     /// `pickupBlock` tirou o fluido do bloco: o balde vazio vira o cheio `bucket`.
-    Pickup { value: &'static str, bucket: &'static str },
+    Pickup {
+        value: &'static str,
+        bucket: &'static str,
+    },
     /// Não deu: o dispenser solta o item como o `DefaultDispenseItemBehavior`.
     Drop,
 }
@@ -105,18 +109,27 @@ pub enum Dispensed {
 /// declara um valor, o Heat Generator só tem `empty` e `lava`). O dispenser chama `emptyContents(null, level, pos, null, stack)`: `canBeReplaced(fluid)` é falso nos blocos do
 /// Mekanism (`BlockMekanism.java:79`), então só `canPlaceLiquid` (vazio e fluido válido) deixa o fluido entrar, e `hitResult` nulo impede o balde de ir para o bloco ao lado. O balde
 /// vazio pergunta `instanceof BucketPickup` e `pickupBlock` (vazio sem fluido: solta o balde).
-pub fn dispense_bucket(item: &str, current: Option<&str>, declares: impl Fn(&str) -> bool) -> Dispensed {
+pub fn dispense_bucket(
+    item: &str,
+    current: Option<&str>,
+    mut declares: impl FnMut(&str) -> bool,
+) -> Dispensed {
     let Some(current) = current else {
         return Dispensed::Pass;
     };
     if item == EMPTY_BUCKET {
         return match bucket_of_value(current) {
-            Some(bucket) => Dispensed::Pickup { value: EMPTY, bucket },
+            Some(bucket) => Dispensed::Pickup {
+                value: EMPTY,
+                bucket,
+            },
             None => Dispensed::Drop,
         };
     }
     match content_of(item) {
-        Some(Content::Fluid(value)) if current == EMPTY && declares(value) => Dispensed::Fill { value },
+        Some(Content::Fluid(value)) if current == EMPTY && declares(value) => {
+            Dispensed::Fill { value }
+        }
         Some(_) => Dispensed::Drop,
         None => Dispensed::Pass,
     }
