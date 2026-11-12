@@ -1,0 +1,8 @@
+{"own":"mekanism:structural_glass","other":"mekanism:structural_glass"}
+{"own":"mekanism:structural_glass","other":"mekanismgenerators:reactor_glass"}
+{"own":"mekanismgenerators:reactor_glass","other":"mekanism:structural_glass"}
+{"own":"mekanismgenerators:reactor_glass","other":"mekanismgenerators:reactor_glass"}
+{"own":"mekanismgenerators:reactor_glass","other":"mekanismgenerators:laser_focus_matrix"}
+{"own":"mekanismgenerators:laser_focus_matrix","other":"mekanismgenerators:reactor_glass"}
+{"own":"mekanismgenerators:laser_focus_matrix","other":"mekanismgenerators:laser_focus_matrix"}
+{"pairs":42436,"blocks":206}

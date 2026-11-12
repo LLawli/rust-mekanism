@@ -275,9 +275,9 @@ def block_declaration(row, template=TEMPLATE):
     if row["explosion_state"] >= 0:
         properties["explosion_resistance"] = row["explosion_state"]
         assert row["explosion_state"] == row["resistance"], row["id"]
-    # Um bloco de forma menor que o cubo (`isSolidRender` falso) não esconde a face do vizinho. O Horizon esconde pela forma de oclusão da tabela `occlusion.nbt`, que um bloco de mod copia do
-    # gabarito (o cubo cheio do `lodestone`), e pelo `can_occlude` de `render-definitions.json`; `occludes: false` põe o segundo falso (decisão 22): sem isso o chão sob a máquina perde a face de cima.
-    if not row["states"][0]["solid_render"] and not glass:
+    # Só o bloco que o original marca com `noOcclusion` (`canOcclude` falso) leva `occludes: false`. Um bloco de forma menor que o cubo (`isSolidRender` falso) mas com `canOcclude` verdadeiro fica
+    # com `can_occlude` verdadeiro, e a forma de oclusão dele (a de seleção, `getOcclusionShape`) entra em `occlusion.nbt` pela injeção `occlusion_shapes` da `machinery_basis` (decisão 22).
+    if not row["states"][0]["can_occlude"] and not glass:
         properties["occludes"] = False
     # `RenderShape.INVISIBLE` (o `bounding_block`: `BlockBounding.getRenderShape`) não desenha o bloco.
     if first["render_shape"] != "MODEL":
@@ -355,10 +355,9 @@ def row_facts(row):
     for s in states:
         want = max(static_light, active_light if s["props"].get("active") == "true" else 0, 15 if s["props"].get("fluid_logged") == "lava" else 0)
         assert s["light"] == want, (row["id"], s["props"], s["light"], want)
-    # O original dá `canOcclude` verdadeiro a todo bloco menos o do `noOcclusion`, e o `Block.shouldRenderFace` do vanilla esconde a face do vizinho pela forma de oclusão. O mesher do Horizon
-    # esconde pelo `can_occlude` sozinho (um bloco de forma menor com `can_occlude` verdadeiro deixa um buraco na face do vizinho: visto em jogo, a grama sob a máquina some). Então a
-    # linha do port diz `can_occlude` igual ao `solid_render`: verdadeiro só no cubo cheio (decisão 22, H49).
-    can_occlude = solid_render
+    # O original dá `canOcclude` verdadeiro a todo bloco menos o do `noOcclusion`, e o `Block.shouldRenderFace` do vanilla esconde a face do vizinho pela forma de oclusão. A linha do port diz o
+    # mesmo, e a forma de oclusão real de cada bloco entra em `occlusion.nbt` pela injeção `occlusion_shapes` (decisão 22, H49 e H51): com o cubo cheio do gabarito, um bloco de forma menor
+    # deixava um buraco na face do vizinho (visto em jogo, a grama sob a máquina sumia), e foi isso que fez `can_occlude` valer `solid_render` antes.
     return {"id": row["id"], "active_light": active_light if active_light != static_light else 0, "push": push, "can_occlude": can_occlude, "solid_render": solid_render,
             "dampening": dampening, "skylight_down": skylight_down, "wet_dampening": wet[3], "wet_skylight_down": wet[4],
             "explosion": row["explosion_state"] if row["explosion_state"] < 0 else None}

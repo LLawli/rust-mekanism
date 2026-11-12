@@ -886,3 +886,18 @@ bindings = [
   { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
   { name = "pos", ty = "[i32; 3]", value = "pos" },
 ]
+
+# `BlockMekanism.canBeReplaced(state, fluid)` é falso: o balde cheio não derrama num cabo ou transmissor (o gabarito `chorus_plant` não é sólido, e o Horizon troca por fluido o bloco que não é sólido). Hook do
+# catálogo, com o contrato dele (cancelar o clique do balde no alvo). O dispensador não passa por ele (H110).
+[[injection]]
+id = "fill_bucket"
+hook = "fill_bucket"
+hook_version = 1
+kind = "HEAD"
+helper = "fill_bucket.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]

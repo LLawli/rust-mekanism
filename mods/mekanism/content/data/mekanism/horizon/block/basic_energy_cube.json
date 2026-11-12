@@ -5,8 +5,7 @@
     "requires_tool": true,
     "map_color": 59,
     "sounds": "minecraft:stone",
-    "explosion_resistance": 2.4,
-    "occludes": false
+    "explosion_resistance": 2.4
   },
   "state_properties": {
     "facing": {

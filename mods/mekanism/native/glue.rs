@@ -3340,3 +3340,12 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
     }
     false
 }
+
+/// `BucketItem.emptyContents` num transmissor: `BlockMekanism.canBeReplaced(state, fluid)` é falso, então o balde não derrama nele (o Horizon trocaria o cabo pelo fluido: o gabarito `chorus_plant` não
+/// é sólido). O gancho `fill_bucket` ouve o clique do jogador no alvo e no bloco ao lado, e cancelar deixa o balde cheio e o cabo onde está, como o `InteractionResult.FAIL` do original. Não ouve o
+/// dispensador (H110).
+pub(in crate::game) fn fill_bucket(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], canceled: &mut bool) {
+    if !*canceled && rules::bucket_refused_by(&stack.item, &game.native_block(pos)) {
+        *canceled = true;
+    }
+}

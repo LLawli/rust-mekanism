@@ -3666,6 +3666,21 @@ pub fn change_mode(mode: ConfiguratorMode, shift: i32, display: DisplayChange) -
     }
 }
 
+/// `BlockMekanism.canBeReplaced(state, fluid)` (falso) contra o balde (`BucketItem.emptyContents`: `blockState.canBeReplaced(this.content)`): o balde cheio que não derrama no bloco do Mekanism que o
+/// Horizon deixaria o fluido trocar. O Horizon troca um bloco por fluido quando ele é substituível ou não sólido (`mayReplace`), e o gabarito `chorus_plant` dos cabos e transmissores não é sólido
+/// (`facts.json`, bit `SOLID` zerado); o gabarito `lodestone` e os outros dos blocos do Mekanism são sólidos, e o Horizon já os recusa como o original (decisão 22 do plano). `bucket` é o item na mão.
+pub fn bucket_refused_by(bucket: &str, block: &str) -> bool {
+    // Um balde que não derrama fluido: o vazio, o de leite (`Item` comum) e o de neve em pó (`SolidBucketItem`, que põe um bloco: `canBeReplaced(context)`, não o do fluido).
+    const NOT_POURING: [&str; 3] = [
+        "minecraft:bucket",
+        "minecraft:milk_bucket",
+        "minecraft:powder_snow_bucket",
+    ];
+    bucket.ends_with("_bucket")
+        && !NOT_POURING.contains(&bucket)
+        && transmitter_center(block).is_some()
+}
+
 /// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.
 pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
     let name = block.strip_prefix("mekanism:")?;

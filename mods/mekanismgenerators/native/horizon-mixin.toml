@@ -342,3 +342,33 @@ bindings = [
   { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
   { name = "lines", ty = "&mut Vec<(horizon_client::mod_api::Text, u32)>", value = "&mut *lines" },
 ]
+
+# `skipRendering` do vidro do Mekanism e do Generators (decisão 30 e H51): o original pula a face entre o vidro estrutural, o vidro do reator e a matriz de foco do laser pela hierarquia de classes
+# (`BlockTileGlass`, `BlockReactorGlass`, `BlockLaserFocusMatrix`), e a regra `same_block` do Horizon só pula entre estados do mesmo bloco. A tabela (o estado padrão de cada um dos três, em `block_render.rs`)
+# é anotada no HEAD de `FaceVisibility::new`, que tem o registro, e consultada no HEAD cancelável de `FaceVisibility::skips`, a conta por face do mesher. Alvos crus, H51.
+[[module]]
+id = "glass-skip"
+file = "crates/horizon-world/src/block_render.rs"
+name = "mekanismgenerators_glass"
+source = "glass_skip_table.rs"
+visibility = "pub"
+
+[[injection]]
+id = "glass_ids"
+target = "horizon_world::block_render::FaceVisibility::new"
+kind = "HEAD"
+helper = "glass_ids.rs"
+bindings = [
+  { name = "occlusion", ty = "&CachedCollisionRegistry<'_>", value = "occlusion" },
+]
+
+[[injection]]
+id = "glass_skip"
+target = "horizon_world::block_render::FaceVisibility::skips"
+kind = "HEAD"
+cancellable = true
+helper = "glass_skip.rs"
+bindings = [
+  { name = "own", ty = "State", value = "a" },
+  { name = "other", ty = "State", value = "b" },
+]

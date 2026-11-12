@@ -436,16 +436,16 @@ fn every_block_is_declared_as_the_original_registers_it() {
             },
             "{id}"
         );
-        // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
-        // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
-        let solid = row["states"]
+        // `occludes: false` só no bloco que o original marca com `noOcclusion` (`canOcclude` falso: o Nutritional Liquifier e o `bounding_block`); um bloco de forma menor que o cubo tem `canOcclude`
+        // verdadeiro, e a forma de oclusão real dele entra em `occlusion.nbt` pela injeção `occlusion_shapes` (decisão 22). O vidro estrutural tem o gabarito `minecraft:glass`, sem oclusão.
+        let occludes = row["states"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|s| s["solid_render"] == true);
+            .all(|s| s["can_occlude"] == true);
         assert_eq!(
             properties.get("occludes").and_then(Value::as_bool),
-            if solid || glass { None } else { Some(false) },
+            if occludes || glass { None } else { Some(false) },
             "{id}: occludes"
         );
         // A luz fixa (só o Teleporter): `AttributeLight(3)`. A do estado ativo e a da lava vêm da tabela.
@@ -545,9 +545,9 @@ fn the_rows_table_gives_every_state_what_the_original_gave() {
                 state["props"]
             );
             assert_eq!(facts.push, state["push"], "{id}");
-            // O original dá `canOcclude` verdadeiro (menos no Nutritional Liquifier) e o Horizon esconde a face do vizinho por ele, sem olhar a forma: a linha do port o dá só ao cubo
-            // cheio (`solid_render`), senão a grama sob a máquina some (decisão 22). O resto do original está na linha.
-            assert_eq!(facts.can_occlude, state["solid_render"], "{id}");
+            // A linha do port diz o `canOcclude` do original (verdadeiro, menos no Nutritional Liquifier, no vidro estrutural e no `bounding_block`): a face do vizinho é escondida pela forma de
+            // oclusão real, que a injeção `occlusion_shapes` escreve (decisão 22).
+            assert_eq!(facts.can_occlude, state["can_occlude"], "{id}");
             assert!(
                 state["can_occlude"] == true || state["solid_render"] == false,
                 "{id}"
@@ -584,5 +584,92 @@ fn the_rows_table_gives_every_state_what_the_original_gave() {
             .map(|f| f.id.to_owned())
             .collect::<BTreeSet<_>>(),
         ids
+    );
+}
+
+/// `rastros/blocos_oclusao.jsonl` (`testes/OclusaoTraceTest.java`, o original em jogo): por bloco do Mekanism e do Generators, os estados e a tabela `facts` que eles apontam (a forma de oclusão e a de cada face,
+/// `canOcclude`, `isSolid`, `canBeReplaced(fluid)` e `isPathfindable`).
+fn oclusao() -> BTreeMap<String, Value> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/blocos_oclusao.jsonl");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+        .lines()
+        .map(|line| {
+            let row: Value = serde_json::from_str(line).unwrap();
+            (row["id"].as_str().unwrap().to_owned(), row)
+        })
+        .collect()
+}
+
+/// O que o port diz de `canOcclude` num bloco declarado: `occludes: false` (o `noOcclusion`), o gabarito `minecraft:glass` (já sem oclusão), e os canos e cabos, que a injeção `occlusion_shapes` põe
+/// verdadeiro (o gabarito `chorus_plant` é `noOcclusion`).
+fn port_can_occlude(id: &str, declaration: &Value) -> bool {
+    if is_transmitter(id) {
+        return true;
+    }
+    declaration["properties"]["occludes"] != serde_json::json!(false)
+        && declaration["template"] != serde_json::json!("minecraft:glass")
+}
+
+/// A forma de oclusão que o port escreve em `occlusion.nbt` (a injeção `occlusion_shapes`): o centro de um cano ou cabo, a forma `shapes` declarada, ou o cubo cheio do gabarito.
+fn port_occlusion(id: &str, declaration: &Value, facing: Option<&str>) -> Vec<[f64; 6]> {
+    if is_transmitter(id) {
+        let half = declaration["thickness"].as_f64().unwrap() / 32.0;
+        return vec![[
+            0.5 - half,
+            0.5 - half,
+            0.5 - half,
+            0.5 + half,
+            0.5 + half,
+            0.5 + half,
+        ]];
+    }
+    declared_shape(declaration, "shapes", facing)
+}
+
+/// O `canOcclude` e a forma de oclusão de cada estado são os do original: o `getOcclusionShape` do `Block` é a forma de seleção, e o `BlockTransmitter` a troca pelo centro. A linha da tabela de jogo
+/// (`block_rows_table.rs`) diz o mesmo `canOcclude`.
+#[test]
+fn every_state_occludes_the_way_the_original_does() {
+    let rastro = oclusao();
+    let mut compared = 0;
+    let mut occluding = 0;
+    for id in rows_scope() {
+        let row = &rastro[&format!("mekanism:{id}")];
+        let declaration = declaration(&id);
+        let facts = row["facts"].as_array().unwrap();
+        for state in row["states"].as_array().unwrap() {
+            let facing = state["props"].get("facing").and_then(Value::as_str);
+            let want = &facts[state["facts"].as_u64().unwrap() as usize];
+            let can = want["can_occlude"].as_bool().unwrap();
+            assert_eq!(
+                can,
+                port_can_occlude(&id, &declaration),
+                "{id} {:?}: canOcclude",
+                state["props"]
+            );
+            assert_eq!(
+                can,
+                rows::facts(&format!("mekanism:{id}")).unwrap().can_occlude,
+                "{id}: a tabela de linhas"
+            );
+            compared += 1;
+            if can {
+                assert!(
+                    same_union(
+                        &port_occlusion(&id, &declaration, facing),
+                        &boxes(&want["occlusion"])
+                    ),
+                    "{id} {:?}: a forma de oclusão difere do original",
+                    state["props"]
+                );
+                occluding += 1;
+            }
+        }
+    }
+    assert!(
+        compared >= 1_000 && occluding >= 700,
+        "{compared} {occluding}"
     );
 }

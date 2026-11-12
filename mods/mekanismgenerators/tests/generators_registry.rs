@@ -218,15 +218,16 @@ fn every_block_is_declared_as_the_original_registers_it() {
                 .explosion
                 .is_none()
         );
-        // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original), decisão 22 do plano.
-        let solid = row["states"]
+        // `occludes: false` só nos blocos que o original marca com `noOcclusion` (`canOcclude` falso: os dois de vidro); um bloco de forma menor que o cubo tem `canOcclude` verdadeiro, e a forma de
+        // oclusão real dele entra em `occlusion.nbt` pela injeção `occlusion_shapes` (decisão 22 do plano).
+        let occludes = row["states"]
             .as_array()
             .unwrap()
             .iter()
-            .all(|s| s["solid_render"] == true);
+            .all(|s| s["can_occlude"] == true);
         assert_eq!(
             properties.get("occludes").and_then(Value::as_bool),
-            if solid { None } else { Some(false) },
+            if occludes { None } else { Some(false) },
             "{id}: occludes"
         );
         // Nenhum bloco do Generators tem luz fixa: a do estado ativo e a da lava vêm da tabela.
@@ -320,9 +321,9 @@ fn the_rows_table_gives_every_state_what_the_original_gave() {
                 state["props"]
             );
             assert_eq!(facts.push, state["push"], "{id}");
-            // O original dá `canOcclude` verdadeiro a todo bloco menos aos dois de vidro, e o Horizon esconde a face do vizinho por ele, sem olhar a forma: a linha do port o dá só
-            // ao cubo cheio (`solid_render`), senão o chão sob o gerador some (decisão 22).
-            assert_eq!(facts.can_occlude, state["solid_render"], "{id}");
+            // A linha do port diz o `canOcclude` do original (verdadeiro, menos nos dois blocos de vidro): a face do vizinho é escondida pela forma de oclusão real, que a injeção
+            // `occlusion_shapes` escreve (decisão 22).
+            assert_eq!(facts.can_occlude, state["can_occlude"], "{id}");
             assert!(
                 state["can_occlude"] == true || state["solid_render"] == false,
                 "{id}"
@@ -384,4 +385,51 @@ fn the_active_light_is_the_one_of_each_block_type() {
             ("wind_generator", 8)
         ])
     );
+}
+
+/// O `canOcclude` e a forma de oclusão de cada estado são os do original (`rastros/blocos_oclusao.jsonl`, `testes/OclusaoTraceTest.java`): o `getOcclusionShape` do `Block` é a forma de seleção, que a
+/// injeção `occlusion_shapes` escreve em `occlusion.nbt`; os dois blocos de vidro têm o gabarito `minecraft:glass`, sem oclusão.
+#[test]
+fn every_state_occludes_the_way_the_original_does() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/blocos_oclusao.jsonl");
+    let rastro: BTreeMap<String, Value> = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+        .lines()
+        .map(|line| {
+            let row: Value = serde_json::from_str(line).unwrap();
+            (row["id"].as_str().unwrap().to_owned(), row)
+        })
+        .collect();
+    let (mut compared, mut occluding) = (0, 0);
+    for id in scope() {
+        let row = &rastro[&format!("mekanismgenerators:{id}")];
+        let declaration = declaration(&id);
+        let facts = row["facts"].as_array().unwrap();
+        for state in row["states"].as_array().unwrap() {
+            let facing = state["props"].get("facing").and_then(Value::as_str);
+            let want = &facts[state["facts"].as_u64().unwrap() as usize];
+            let can = want["can_occlude"].as_bool().unwrap();
+            assert_eq!(
+                can,
+                declaration["properties"]["occludes"] != serde_json::json!(false)
+                    && declaration["template"] != serde_json::json!("minecraft:glass"),
+                "{id} {:?}: canOcclude",
+                state["props"]
+            );
+            compared += 1;
+            if can {
+                assert!(
+                    same_union(
+                        &declared_shape(&declaration, "shapes", facing),
+                        &boxes(&want["occlusion"])
+                    ),
+                    "{id} {:?}: a forma de oclusão difere do original",
+                    state["props"]
+                );
+                occluding += 1;
+            }
+        }
+    }
+    assert!(compared >= 100 && occluding >= 80, "{compared} {occluding}");
 }

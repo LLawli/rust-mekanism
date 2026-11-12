@@ -950,3 +950,19 @@ bindings = [
   { name = "skip_flat", ty = "bool", value = "skip_flat" },
   { name = "output", ty = "&mut Vec<ModelQuad>", value = "&mut *output" },
 ]
+
+# A forma de oclusão real de cada bloco de mod que declara `shapes` (e o centro dos canos e cabos de `thickness`), em `occlusion.nbt` (decisão 22 e H51). O Horizon copia para um bloco de mod a forma
+# de oclusão do gabarito e o mod não tem como dizer a dele. O HEAD cancelável de `tables` a chama de novo por dentro (a marca de reentrada deixa o corpo original escrever as tabelas todas; o RETURN
+# não aceita o `?` do corpo), depois lê `occlusion.nbt` do overlay, troca o índice de forma de cada estado e a reescreve, como `Plan::collision_shapes` faz com `cached-collision.nbt`, e põe
+# `can_occlude` verdadeiro em `render-definitions.json` nos canos e cabos. Alvo cru, H51.
+[[injection]]
+id = "occlusion_shapes"
+target = "horizon_client_lib::mod_content::tables"
+kind = "HEAD"
+cancellable = true
+helper = "occlusion_shapes.rs"
+bindings = [
+  { name = "base", ty = "&Path", value = "base" },
+  { name = "plan", ty = "&Plan<'_>", value = "plan" },
+  { name = "overlay", ty = "&Overlay<'_>", value = "overlay" },
+]
