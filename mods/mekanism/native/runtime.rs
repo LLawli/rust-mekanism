@@ -3574,6 +3574,44 @@ pub fn configurator_side_message(
     )
 }
 
+/// O que a mão principal segura no clique de um bloco de Mekanism, para `tile_use`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeldItem {
+    /// Nenhuma mão (principal e secundária) segura nada.
+    Hands,
+    /// O Configurator, no modo da pilha.
+    Configurator(ConfiguratorMode),
+    /// O cartão de configuração.
+    Card,
+    /// Qualquer outra coisa (ou só a mão secundária cheia).
+    Other,
+}
+
+/// O que o bloco de Mekanism (`TileEntityMekanism`) faz no clique da mão principal antes de o item agir.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileUse {
+    /// `BlockTile.useItemOn` -> `tryWrenchRotate`: o bloco gira e responde `SUCCESS` (o balanço é do cliente e do servidor).
+    Rotate,
+    /// `TileEntityMekanism.openGui` devolve `TRY_WITH_EMPTY_HAND` (o cartão, e o Configurator em `ROTATE`): a tela não abre e `Item.useOn` tem o clique.
+    PassToItem,
+    /// `openGui` abre a tela (`CONSUME`, sem balanço).
+    Menu,
+    /// O bloco não abre a tela: agachado, `openGui` passa (`!player.isShiftKeyDown()`), e com algo numa das mãos o bloco nem chega a agir (`doesSneakBypassUse`).
+    Nothing,
+}
+
+/// `BlockTile.useItemOn` seguido de `TileEntityMekanism.openGui` (`TileEntityMekanism.java:565-587`) para um bloco que gira e tem tela, no turno da mão principal.
+pub fn tile_use(held: HeldItem, sneaking: bool) -> TileUse {
+    if sneaking {
+        return TileUse::Nothing;
+    }
+    match held {
+        HeldItem::Configurator(ConfiguratorMode::Rotate) => TileUse::Rotate,
+        HeldItem::Card => TileUse::PassToItem,
+        HeldItem::Hands | HeldItem::Other | HeldItem::Configurator(_) => TileUse::Menu,
+    }
+}
+
 /// `ItemConfigurator.useOn` -> `MekanismUtils.rotate(orientation, supportY)`.
 pub fn rotate_facing(facing: Face, support_y: bool) -> Face {
     if support_y {

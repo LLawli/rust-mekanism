@@ -639,17 +639,34 @@ bindings = [
   { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
 ]
 
+# O item e o bloco no clique (decisão 47, H72). O original deixa o Configurator em `ROTATE` e o cartão agirem antes da tela (`TileEntityMekanism.openGui` devolve
+# `TRY_WITH_EMPTY_HAND`) e passa o resultado adiante (`SUCCESS`, `SUCCESS_SERVER` ou `PASS`). `Game::use_hand` é o turno de uma mão no despacho de uso do bloco, no
+# servidor (e no servidor integrado): o HEAD cancelável responde por ele nos blocos de Mekanism e devolve o resultado do clique (`Ok(true)` agiu, `Ok(false)` passa, e o
+# resto segue o despacho). Alvo cru, H72.
 [[injection]]
-id = "right_click_block"
-hook = "right_click_block"
-hook_version = 1
+id = "use_hand"
+target = "horizon_client::game::Game<'_>::use_hand"
 kind = "HEAD"
-helper = "right_click_block.rs"
+cancellable = true
+helper = "use_hand.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
-  { name = "pos", ty = "[i32; 3]", value = "pos" },
-  { name = "face", ty = "[i32; 3]", value = "face" },
-  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+  { name = "hit", ty = "Option<&crate::game::Hit>", value = "block_hit" },
+]
+
+# A previsão do `Item.useOn` no cliente de um convidado de LAN (`MultiPlayerGameMode.useItemOn`): `ItemConfigurationCard.useOn` devolve `SUCCESS_SERVER` num bloco com a
+# capability do cartão, o que consome o clique e dispensa o `use`. O cliente do Horizon só prevê os itens dele (`predict_item_on_block`); o HEAD cancelável responde pelo
+# cartão. Alvo cru, H72.
+[[injection]]
+id = "predict_item_on_block"
+target = "horizon_client::game::remote::Game<'_>::predict_item_on_block"
+kind = "HEAD"
+cancellable = true
+helper = "predict_item_on_block.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "hit", ty = "&crate::game::Hit", value = "hit" },
 ]
 
 [[injection]]

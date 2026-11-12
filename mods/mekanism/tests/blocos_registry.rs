@@ -425,7 +425,7 @@ fn every_block_is_declared_as_the_original_registers_it() {
         // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas). O vidro estrutural (`BlockTileGlass`: sem oclusão,
         // sombra 1, sem a face entre dois vidros, forma visual vazia, som e instrumento do vidro) é o `minecraft:glass`, que dá tudo isso (decisão 26).
         let glass = id == "structural_glass";
-        // O cubo de energia abre o menu pelo gancho `right_click_block` (decisão 68), não pelo gabarito: com o `beacon` o bloco de nota em cima tocava o `hat` do beacon, e o
+        // O cubo de energia abre o menu pela injeção `use_hand` (decisões 47 e 68), não pelo gabarito: com o `beacon` o bloco de nota em cima tocava o `hat` do beacon, e o
         // original (instrumento padrão) toca o `harp`.
         assert_eq!(
             declaration["template"],

@@ -11,6 +11,7 @@ use mekanism_rules::{
     card_got_message, card_set_message, card_tooltip_line, card_unequal_message, change_mode,
     configurator_side_message, electric_machine_default, rotate_facing,
 };
+use mekanism_rules::{HeldItem, TileUse, tile_use};
 use serde_json::Value;
 use std::path::Path;
 
@@ -480,4 +481,87 @@ fn the_ray_picks_the_nearest_box_of_a_transmitter() {
         select_box(&[east, center], [0.5, 3.0, 0.5], [0.5, 2.0, 0.5], center),
         center
     );
+}
+
+/// `TileEntityMekanism.openGui` e `BlockTile.useItemOn` no clique da mão principal num bloco de Mekanism: a tela abre (`menu` do rastro) só quando o bloco a abre, e o
+/// giro e o cartão passam à frente dela.
+#[test]
+fn the_block_acts_before_the_screen_like_the_original() {
+    let mut checked = 0;
+    for file in [
+        "configurator_click_enrichment_chamber.jsonl",
+        "configurator_click_metallurgic_infuser.jsonl",
+        "configurator_click_crusher.jsonl",
+        "configurator_click_heat_generator.jsonl",
+    ] {
+        for row in rows(file) {
+            let held = HeldItem::Configurator(mode_of(row["mode"].as_str().unwrap()));
+            let sneaking = row["sneak"].as_bool().unwrap();
+            let opened = !row["menu"].is_null();
+            let use_ = tile_use(held, sneaking);
+            assert_eq!(opened, use_ == TileUse::Menu, "{:?}", row["marks"]);
+            // Sem agachar, só o giro responde `SUCCESS` sem abrir a tela e com o balanço previsto (do cliente).
+            let rotated = !opened && !sneaking;
+            assert_eq!(rotated, use_ == TileUse::Rotate, "{:?}", row["marks"]);
+            if rotated {
+                assert_eq!(
+                    row["result"]["swing_source"], "PREDICTED",
+                    "{:?}",
+                    row["marks"]
+                );
+            }
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 4 * 96);
+}
+
+#[test]
+fn the_card_passes_the_screen_to_the_item_like_the_original() {
+    let mut checked = 0;
+    for row in rows("configurator_card.jsonl") {
+        let step = row["marks"][0].as_str().unwrap();
+        if !matches!(step, "read" | "read_overwrite" | "apply" | "apply_empty") {
+            continue;
+        }
+        let sneaking = row["sneak"].as_bool().unwrap();
+        let use_ = tile_use(HeldItem::Card, sneaking);
+        assert!(row["menu"].is_null(), "{:?}", row["marks"]);
+        assert_eq!(
+            use_,
+            if sneaking {
+                TileUse::Nothing
+            } else {
+                TileUse::PassToItem
+            },
+            "{:?}",
+            row["marks"]
+        );
+        // O cartão responde `SUCCESS` com o balanço do servidor, ou `PASS` sem dados.
+        let class = row["result"]["class"].as_str().unwrap();
+        assert!(matches!(class, "Success" | "Pass"), "{:?}", row["marks"]);
+        checked += 1;
+    }
+    assert!(checked >= 60, "{checked}");
+}
+
+#[test]
+fn the_screen_opens_only_standing_without_the_card_or_the_rotation() {
+    let modes = ConfiguratorMode::VALUES;
+    for mode in modes {
+        let want = if mode == ConfiguratorMode::Rotate {
+            TileUse::Rotate
+        } else {
+            TileUse::Menu
+        };
+        assert_eq!(tile_use(HeldItem::Configurator(mode), false), want);
+        assert_eq!(
+            tile_use(HeldItem::Configurator(mode), true),
+            TileUse::Nothing
+        );
+    }
+    assert_eq!(tile_use(HeldItem::Hands, false), TileUse::Menu);
+    assert_eq!(tile_use(HeldItem::Other, false), TileUse::Menu);
+    assert_eq!(tile_use(HeldItem::Hands, true), TileUse::Nothing);
+    assert_eq!(tile_use(HeldItem::Other, true), TileUse::Nothing);
 }

@@ -6,6 +6,7 @@ use crate::game::mekanism_glue as glue;
 use crate::game::mekanism_rules as rules;
 use crate::game::mekanism_rules::{ConfiguratorMode, DisplayChange};
 use crate::game::{Game, machinery_basis as basis};
+use core::ops::ControlFlow;
 use horizon_client::containers::BlockEntity;
 use horizon_client::first_person::Hand;
 use horizon_client::hud::HudBatch;
@@ -91,18 +92,6 @@ fn inventory_slots(block: &str) -> Vec<usize> {
     }
 }
 
-fn held_item(game: &Game<'_>) -> Option<(ItemStack, bool)> {
-    let stack = game.held()?.clone();
-    Some((stack, matches!(game.hand, Hand::Main)))
-}
-
-fn swing(game: &mut Game<'_>) {
-    // Um convidado balança o braço no cliente dele, e não no servidor.
-    if game.lan_acting.is_none() {
-        game.swing_arm();
-    }
-}
-
 // ---------------------------------------------------------------------------------------------------------------------------
 // O clique do item (`Item.useOn`), depois de o bloco deixar passar.
 
@@ -114,13 +103,7 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     let face = face_of(face);
     let result = match &*stack.item {
         rules::CONFIGURATOR_ITEM => configurator_use_on(game, stack, pos, face),
-        rules::CONFIGURATION_CARD_ITEM => {
-            let used = card_use_on(game, stack, pos);
-            if used {
-                note_card_use(game);
-            }
-            used
-        }
+        rules::CONFIGURATION_CARD_ITEM => card_use_on(game, stack, pos),
         _ => return,
     };
     *claimed = result;
@@ -294,49 +277,78 @@ fn dismantle(game: &mut Game<'_>, pos: [i32; 3]) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // O bloco, antes de abrir a tela (`BlockTile.useItemOn` e `useWithoutItem`).
 
-/// O que o Java resolve no bloco antes do item: o Configurator em `ROTATE` gira (`TileEntityMekanism.tryWrenchRotate`) e o cartão em mão passa a vez da
-/// tela (`TileEntityMekanism.openGui` devolve `TRY_WITH_EMPTY_HAND`) e age em seguida. O Horizon abriria a tela primeiro, então o clique é feito aqui e o
-/// resto é cancelado. Só a mão principal e só sem agachar: agachado o bloco nem chega a agir (e a chave inglesa age no `use_item_on`).
-/// `BlockEnergyCube.useWithoutItem` (protótipo da decisão 68): abre o menu do cubo sem o gabarito `beacon`. `Game::open_menu` é o que o efeito `OpenMenu` do gabarito chama; o resto
-/// é o que `use_hand` faz com um `Success` (o gatilho `default_block_use` e o balanço do braço). O cancelamento marca `use_failed`, que só um convidado de LAN lê (não medido com dois clientes).
-pub(in crate::game) fn open_cube_menu(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
-    if *canceled || !cube::is_cube(&game.native_block(pos)) {
-        return;
+/// O turno de uma mão no clique num bloco (`ServerPlayerGameMode.useItemOn`), antes do despacho do Horizon: o que um bloco de Mekanism (`TileEntityMekanism`) faz com a
+/// mão principal antes de `Item.useOn`. `mekanism_rules::tile_use` decide (`BlockTile.useItemOn` e `TileEntityMekanism.openGui`, `:565-587`):
+/// - o Configurator em `ROTATE` gira o bloco (`tryWrenchRotate`, `SUCCESS`);
+/// - o cartão faz `openGui` devolver `TRY_WITH_EMPTY_HAND` e o `Item.useOn` dele tem o clique (`SUCCESS_SERVER`, ou `PASS` sem dados: a tela não abre mesmo assim);
+/// - agachado `openGui` passa (`!player.isShiftKeyDown()`): sem item nas mãos nada acontece, e com item o bloco nem age (o despacho do Horizon segue para o item);
+/// - o resto abre a tela (`CONSUME`, sem balanço): o cubo de energia aqui (decisão 68), as máquinas pelo gabarito do Horizon.
+/// `Break(Ok(true))` encerra o clique (agiu), `Break(Ok(false))` é o `PASS` (a outra mão tem a vez) e `Continue` deixa o despacho do Horizon seguir. Quem age balança a
+/// mão para todo jogador (`swing_arm`, e o servidor avisa o convidado de LAN) e dispara `ITEM_USED_ON_BLOCK`, como `ServerPlayerGameMode.useItemOn` com um resultado que consome.
+pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::Hit>) -> ControlFlow<crate::game::Result<bool>> {
+    let Some(hit) = hit else {
+        return ControlFlow::Continue(());
+    };
+    if !matches!(game.hand, Hand::Main) {
+        return ControlFlow::Continue(());
     }
-    let hands_full = game.stack_in(game.selected).is_some() || game.offhand.is_some();
-    if game.native_sneaking() && hands_full {
-        return;
+    let block = game.native_block(hit.pos);
+    if !is_mekanism_tile(&block) {
+        return ControlFlow::Continue(());
     }
-    game.open_menu(pos);
-    game.trigger_default_block_use(pos);
-    game.swing_arm();
-    *canceled = true;
+    // `use_hand` zera o `use_failed` ao começar; aqui ele ainda traz o do clique anterior.
+    game.use_failed = false;
+    let stack = game.held().cloned();
+    let sneaking = game.native_sneaking();
+    let hands_full = stack.is_some() || game.offhand.is_some();
+    let held = match &stack {
+        Some(stack) => match &*stack.item {
+            rules::CONFIGURATOR_ITEM => rules::HeldItem::Configurator(mode_of(game, stack)),
+            rules::CONFIGURATION_CARD_ITEM => rules::HeldItem::Card,
+            _ => rules::HeldItem::Other,
+        },
+        None if game.offhand.is_some() => rules::HeldItem::Other,
+        None => rules::HeldItem::Hands,
+    };
+    match rules::tile_use(held, sneaking) {
+        rules::TileUse::Nothing if hands_full => ControlFlow::Continue(()),
+        rules::TileUse::Nothing => ControlFlow::Break(Ok(false)),
+        rules::TileUse::Rotate => {
+            let facing = rules::rotate_facing(basis::front(game, hit.pos), true);
+            set_facing(game, hit.pos, &block, facing);
+            used(game, hit.pos, stack)
+        }
+        rules::TileUse::PassToItem => match stack {
+            Some(stack) if card_use_on(game, &stack, hit.pos) => used(game, hit.pos, Some(stack)),
+            _ => ControlFlow::Break(Ok(false)),
+        },
+        rules::TileUse::Menu if cube::is_cube(&block) => {
+            game.open_menu(hit.pos);
+            game.trigger_default_block_use(hit.pos);
+            ControlFlow::Break(Ok(true))
+        }
+        rules::TileUse::Menu => ControlFlow::Continue(()),
+    }
 }
 
-pub(in crate::game) fn right_click_block(game: &mut Game<'_>, pos: [i32; 3], face: [i32; 3], canceled: &mut bool) {
-    if *canceled || game.native_sneaking() {
-        return;
+/// O resultado que consome (`SUCCESS`): a mão balança e `ITEM_USED_ON_BLOCK` dispara com a pilha de antes do uso.
+fn used(game: &mut Game<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> ControlFlow<crate::game::Result<bool>> {
+    if let Some(stack) = stack {
+        game.trigger_block("minecraft:item_used_on_block", pos, &stack);
     }
-    let Some((stack, main)) = held_item(game) else {
-        return;
-    };
-    if !main {
-        return;
+    game.swing_arm();
+    ControlFlow::Break(Ok(true))
+}
+
+/// `MultiPlayerGameMode.useItemOn` no cliente de um convidado de LAN: `ItemConfigurationCard.useOn` devolve `SUCCESS_SERVER` num bloco com a capability do cartão, e o
+/// resultado que consome termina o clique sem mandar o `use` (o original também não o manda: no cliente a tela do bloco já responde `SUCCESS`). O cliente do Horizon só
+/// prevê o `useOn` dos itens dele, então sem isto o `use` agachado esvaziava o cartão logo depois de copiar.
+pub(in crate::game) fn predict_item_on_block(game: &Game<'_>, stack: &ItemStack, hit: &crate::game::Hit) -> ControlFlow<bool> {
+    if &*stack.item == rules::CONFIGURATION_CARD_ITEM && is_mekanism_tile(&game.native_block(hit.pos)) {
+        ControlFlow::Break(true)
+    } else {
+        ControlFlow::Continue(())
     }
-    let block = game.native_block(pos);
-    match &*stack.item {
-        rules::CONFIGURATOR_ITEM if mode_of(game, &stack) == ConfiguratorMode::Rotate && is_mekanism_tile(&block) => {
-            let facing = rules::rotate_facing(basis::front(game, pos), true);
-            set_facing(game, pos, &block, facing);
-        }
-        rules::CONFIGURATION_CARD_ITEM if is_mekanism_tile(&block) => {
-            card_use_on(game, &stack, pos);
-        }
-        _ => return,
-    }
-    let _ = face;
-    *canceled = true;
-    swing(game);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -443,7 +455,7 @@ fn card_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
 
 /// `ItemConfigurationCard.use`: agachado no ar (ou sobre um bloco que não age), o cartão esvazia.
 pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
-    if *claimed || &*stack.item != rules::CONFIGURATION_CARD_ITEM || !game.native_sneaking() || card_just_used(game) {
+    if *claimed || &*stack.item != rules::CONFIGURATION_CARD_ITEM || !game.native_sneaking() {
         return;
     }
     let mut card = stack.clone();
@@ -629,26 +641,6 @@ pub(in crate::game) fn partial_outline(
     let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
     let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
     core::ops::ControlFlow::Break(Some(rules::select_box(&facts.outline, local, end, center)))
-}
-
-thread_local! {
-    /// O jogador e o tique do último clique do cartão que agiu sobre um bloco (`useOn` devolveu `SUCCESS_SERVER`).
-    static CARD_USE: std::cell::Cell<Option<(u128, i64)>> = const { std::cell::Cell::new(None) };
-}
-
-fn note_card_use(game: &Game<'_>) {
-    if let Some(player) = game.native_acting_player() {
-        CARD_USE.set(Some((player.uuid, game.world.game_time)));
-    }
-}
-
-/// No original o cliente já sabe que o clique foi do cartão (`SUCCESS_SERVER` conta como consumido) e não manda o uso no ar do mesmo clique. O cliente do
-/// Horizon manda os dois, então o `use` que chega no mesmo clique, logo depois de um `useOn` do cartão, é descartado (H72).
-fn card_just_used(game: &Game<'_>) -> bool {
-    let Some(player) = game.native_acting_player() else {
-        return false;
-    };
-    CARD_USE.get().is_some_and(|(uuid, tick)| uuid == player.uuid && game.world.game_time - tick <= 2)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
