@@ -89,6 +89,10 @@ static ACTIVE: AtomicBool = AtomicBool::new(false);
 static QUEUE: Mutex<Vec<Raw>> = Mutex::new(Vec::new());
 /// Os avisos de vizinho que o fim da última operação segurou: saem no fim da operação seguinte, ou antes, no `place_block` e nos pontos do tick.
 static HELD: Mutex<Vec<Raw>> = Mutex::new(Vec::new());
+/// Os chunks que carregaram antes de haver dono (o primeiro tipo se registra quando a tabela de ticks nasce, e o spawn pode carregar antes): o que `load_chunk` trouxe deles espera o
+/// registro, que o põe na fila, e o dono entrega o `ChunkEvent.Load` desses chunks na primeira passada (`take_early_chunks`).
+static EARLY: Mutex<Vec<Raw>> = Mutex::new(Vec::new());
+static EARLY_CHUNKS: Mutex<Vec<[i32; 2]>> = Mutex::new(Vec::new());
 static TRACKER: LazyLock<Mutex<Tracker>> = LazyLock::new(|| Mutex::new(Tracker::new()));
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -103,7 +107,24 @@ pub fn is_active() -> bool {
 /// Um tipo de block entity que é transmissor (`id` do `ModBlockEntity`); liga a fila.
 pub fn register(id: &str) {
     lock(&TRACKER).ids.insert(id.to_owned());
-    ACTIVE.store(true, Ordering::Relaxed);
+    if !ACTIVE.swap(true, Ordering::Relaxed) {
+        let early = std::mem::take(&mut *lock(&EARLY));
+        let mut chunks = lock(&EARLY_CHUNKS);
+        for raw in &early {
+            if let Raw::LoadChunk(blocks) = raw
+                && let Some((pos, _)) = blocks.first()
+                && !chunks.contains(&chunk_of(*pos))
+            {
+                chunks.push(chunk_of(*pos));
+            }
+        }
+        lock(&QUEUE).extend(early);
+    }
+}
+
+/// Os chunks cujos block entities chegaram antes do registro: o dono lhes entrega o `chunk_loaded` (uma vez).
+pub fn take_early_chunks() -> Vec<[i32; 2]> {
+    std::mem::take(&mut *lock(&EARLY_CHUNKS))
 }
 
 pub fn is_registered(id: &str) -> bool {
@@ -113,6 +134,8 @@ pub fn is_registered(id: &str) -> bool {
 pub fn push(raw: Raw) {
     if is_active() {
         lock(&QUEUE).push(raw);
+    } else if matches!(&raw, Raw::LoadChunk(blocks) if blocks.iter().any(|(_, id)| id.is_some())) {
+        lock(&EARLY).push(raw);
     }
 }
 

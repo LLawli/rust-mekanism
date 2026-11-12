@@ -184,6 +184,156 @@ def run_energy(scenario, run=""):
     return not diffs
 
 
+def last_views():
+    last = {}
+    for v in log_lines("MBV"):
+        last[tuple(v["p"])] = v
+    return last
+
+
+def click_arm(cable, side, sneak=True):
+    """O clique do Configurator no braço de `side` (leste ou oeste) do cabo. O `interact` mira o centro da face norte do bloco a partir de onde o jogador está: o jogador fica ao
+    norte e de lado, de modo que o raio atravessa a laje do norte e acerta a caixa do braço (e não o centro) antes de sair pelo outro lado."""
+    if side == "south":
+        # O braço no eixo z: o jogador fica ao oeste e deslocado para o norte, olhando a face oeste.
+        cmd("tp @s %.2f %.2f %.2f" % (cable[0] - 2.5, cable[1], cable[2] - 2.3))
+        face = "west"
+    else:
+        local_x = -2.3 if side == "east" else 3.3
+        cmd("tp @s %.2f %.2f %.2f" % (cable[0] + local_x, cable[1], cable[2] - 2.5))
+        face = "north"
+    wait(10)
+    h.ctl("select", "mekanism:configurator")
+    if sneak:
+        h.ctl("key", "shift", "down")
+        wait(3)
+    out = h.ctl("interact", *map(str, cable), face)
+    if sneak:
+        h.ctl("key", "shift", "up")
+    wait(6)
+    return out
+
+
+def configurador():
+    """O Configurator agachado cicla o tipo de conexão do lado do braço que o olhar toca (NORMAL, PUSH, PULL, NONE), o braço some e volta; sem agachar liga o redstone reativo."""
+    clear()
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tick unfreeze")
+    for x in range(3):
+        place(at(x), CABLE["basic"])
+    wait(40)
+    h.ctl("give", "mekanism:configurator", "1")
+    cable = at(1)
+    ok = True
+    misses = 0
+    for want in ("push", "pull", "none"):
+        # A mira do `interact` cai no braço na maior parte das vezes e no centro nas outras (o centro dá o lado clicado, o norte): o clique que erra é contado e repetido.
+        for _ in range(8):
+            before = (last_views().get(cable) or {}).get("raw", [None] * 6)[5]
+            click_arm(cable, "east")
+            time.sleep(1.5)
+            view = last_views().get(cable)
+            if view and view["raw"][5] != before:
+                break
+            misses += 1
+        got = view["raw"][5] if view else None
+        arm = view["conn"][5] if view else None
+        other = last_views().get(at(2))
+        other_arm = other["conn"][4] if other else None
+        expected_arm = want != "none"
+        good = got == want and arm == expected_arm and other_arm == expected_arm
+        ok &= good
+        print(("OK   " if good else "DIFF ") + f"agachado no braço leste: tipo cru {got} (esperado {want}), braço do meio {arm}, braço do vizinho {other_arm}")
+    # Sem braço não há o que mirar: o clique cai na face (o lado clicado, como o original quando `getSideLookingAt` é nulo). O vizinho sai para a face leste ficar à vista.
+    cmd("setblock %s minecraft:air" % txt(at(2)))
+    wait(10)
+    stand((cable[0] + 3.5, cable[1], cable[2] + 0.5))
+    h.ctl("select", "mekanism:configurator")
+    h.ctl("key", "shift", "down")
+    wait(3)
+    h.ctl("interact", *map(str, cable), "east")
+    h.ctl("key", "shift", "up")
+    wait(6)
+    time.sleep(1.5)
+    place(at(2), CABLE["basic"])
+    wait(30)
+    time.sleep(1.5)
+    view = last_views().get(cable)
+    other = last_views().get(at(2))
+    good = bool(view) and view["raw"][5] == "normal" and view["conn"][5] and bool(other) and other["conn"][4]
+    ok &= good
+    print(("OK   " if good else "DIFF ") + f"agachado na face leste sem braço: tipo cru {view and view['raw'][5]} (esperado normal), o braço volta com o vizinho reposto {view and view['conn'][5]} {other and other['conn'][4]}")
+    print(f"cliques que erraram o braço: {misses}")
+    print("fim", "OK" if ok else "DIFF")
+    return ok
+
+
+def puxar():
+    """O cabo em PULL puxa de um cubo de energia: o cubo com 100.000 de energia fica ao sul do primeiro cabo de uma linha de 3; o lado sul vai a PULL com o Configurator e a rede
+    enche (24.000 de capacidade) com o que o cubo perde, sem a energia mudar de total."""
+    clear()
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tick unfreeze")
+    for x in range(3):
+        place(at(x), CABLE["basic"])
+    place(at(0, 0, 1), "mekanism:basic_energy_cube")
+    wait(20)
+    # Os seis lados do cubo em saída e sem ejetor: ele não empurra nada para o cabo, e o `PULL` é que tira a energia (`extract` da capability, que respeita a saída do lado).
+    cmd("data merge block %s {energy:100000,component_config:{config0:[I;4,4,4,4,4,4],eject0:0b}}" % txt(at(0, 0, 1)))
+    wait(10)
+    h.ctl("give", "mekanism:configurator", "1")
+    print("cubo antes", energy(at(0, 0, 1)))
+    cable = at(0)
+    for _ in range(12):
+        click_arm(cable, "south")
+        time.sleep(1.2)
+        view = last_views().get(cable)
+        if view and view["raw"][3] == "pull":
+            break
+    print("lado sul:", view and view["raw"][3], view and view["kind"][3])
+    wait(60)
+    nets = log_lines("MBE")[-1]["nets"]
+    after = energy(at(0, 0, 1))
+    print("cubo depois", after, "rede", nets)
+    stored = nets[0][0] if nets else 0
+    good = view is not None and view["raw"][3] == "pull" and stored > 0 and stored + after == 100000
+    print(("OK   " if good else "DIFF ") + f"o cabo puxou {stored} do cubo ({after} sobraram): a energia só mudou de lugar")
+    return good
+
+
+def reabrir_montar():
+    """`energy_reopen.jsonl` no jogo, a primeira metade: cinco cabos (o do meio avançado), 31.001 de energia na rede (a caixa de entrada do primeiro cabo), e o mundo salvo e fechado.
+    Quem chama reabre o mundo e roda `reabrir conferir`."""
+    clear()
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tick unfreeze")
+    for x, tier in enumerate(["basic", "basic", "advanced", "basic", "basic"]):
+        place(at(x), CABLE[tier])
+    wait(60)
+    cmd("data merge block %s {energy:31001}" % txt(at(0)))
+    wait(30)
+    nets = log_lines("MBE")[-1]["nets"]
+    print("antes de fechar:", nets)
+    h.ctl("save")
+    wait(20)
+    return nets == [[31001, 160000, 0, 5, 0]]
+
+
+def reabrir_conferir():
+    """A segunda metade: o mundo reaberto tem a rede com a mesma energia e a capacidade de antes (`energy_reopen`: 31.001 e 160.000), e os cabos ligados."""
+    wait(120)
+    nets = log_lines("MBE")[-1]["nets"]
+    views = last_views()
+    arms = [views.get(at(x), {}).get("conn") for x in range(5)]
+    print("depois de reabrir:", nets)
+    good = nets == [[31001, 160000, 0, 5, 0]] and all(arms)
+    print(("OK   " if good else "DIFF ") + "a rede reaberta tem a energia e a capacidade de antes, e os cabos continuam ligados")
+    return good
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "energia"
     if what == "energia":
@@ -192,7 +342,14 @@ def main():
         for name in names:
             ok &= run_energy(name)
         sys.exit(0 if ok else 1)
-    raise SystemExit("uso: h2_cabo_jogo.py energia [CENARIO|todos]")
+    if what == "configurador":
+        sys.exit(0 if configurador() else 1)
+    if what == "reabrir":
+        part = sys.argv[2] if len(sys.argv) > 2 else "montar"
+        sys.exit(0 if (reabrir_montar() if part == "montar" else reabrir_conferir()) else 1)
+    if what == "puxar":
+        sys.exit(0 if puxar() else 1)
+    raise SystemExit("uso: h2_cabo_jogo.py energia [CENARIO|todos] | configurador | puxar")
 
 
 if __name__ == "__main__":

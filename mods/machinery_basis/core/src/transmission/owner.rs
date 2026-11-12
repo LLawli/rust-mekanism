@@ -150,6 +150,8 @@ struct State {
     hashes: Box<dyn FnMut(BlockPos) -> i32>,
     pending_uuid: Option<Uuid>,
     uuids: HashMap<NetworkId, Uuid>,
+    /// A transação raiz de `DynamicNetwork.invalidate` (`begin_take_shares` a `end_take_shares`): todos os `takeShare` do laço andam nela e ela confirma no fim.
+    take_root: Option<Transaction>,
     /// Efeitos que um método do `TransmitterHost` pediu e que só o dono, com o registro, pode aplicar.
     deferred: Vec<(TransmitterId, Effect)>,
 }
@@ -345,9 +347,26 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         if tx.can_connect_to_acceptor(side) { tx.get_acceptor(side, &self.view()) } else { None }
     }
 
+    fn begin_take_shares(&mut self) {
+        self.st.take_root = Some(Transaction::open_root());
+    }
+
     fn take_share(&mut self, transmitter: TransmitterId) {
         let network = self.st.slots[transmitter.0 as usize].network;
-        self.st.family.take_share_in_root(transmitter, network);
+        match self.st.take_root.take() {
+            // O laço de `invalidate` abre uma raiz só, que `end_take_shares` confirma.
+            Some(root) => {
+                self.st.family.take_share(transmitter, network, Some(&root));
+                self.st.take_root = Some(root);
+            }
+            None => self.st.family.take_share_in_root(transmitter, network),
+        }
+    }
+
+    fn end_take_shares(&mut self) {
+        if let Some(root) = self.st.take_root.take() {
+            root.commit();
+        }
     }
 
     fn on_update(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, network: NetworkId) {
@@ -391,6 +410,7 @@ impl EnergyTransmitters {
                 hashes: Box::new(hashes),
                 pending_uuid: None,
                 uuids: HashMap::new(),
+                take_root: None,
                 deferred: Vec::new(),
             },
         }
@@ -492,6 +512,7 @@ impl EnergyTransmitters {
                     hashes,
                     pending_uuid: None,
                     uuids: HashMap::new(),
+                    take_root: None,
                     deferred: Vec::new(),
                 };
             }

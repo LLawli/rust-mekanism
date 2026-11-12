@@ -3084,19 +3084,21 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     }
 }
 
-/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora.
+/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora. Se o block entity ainda não está lá (a ocorrência veio antes
+/// da inserção), a ocorrência cai: a inserção anota a sua, e uma entrada sem tipo marcaria a posição como ocupada e esconderia o `clearRemoved` da inserção de verdade.
 fn transmitters_resolve(game: &Game<'_>, raws: Vec<transmitters::Raw>) -> Vec<transmitters::Raw> {
     let entities = &game.world.block_entities;
     raws.into_iter()
-        .map(|raw| match raw {
+        .filter_map(|raw| match raw {
             transmitters::Raw::AddedLater { pos } => {
                 let id = match entities.get(&(pos[0], pos[1], pos[2])) {
                     Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
-                    _ => None,
+                    Some(_) => None,
+                    None => return None,
                 };
-                transmitters::Raw::Added { pos, id }
+                Some(transmitters::Raw::Added { pos, id })
             }
-            other => other,
+            other => Some(other),
         })
         .collect()
 }
@@ -3116,6 +3118,13 @@ pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
     let raws = transmitters_resolve(game, raws);
     let events = transmitters::translate(game.native_dimension(), raws);
     transmitters_deliver(game, events);
+    // Os chunks que carregaram antes do registro do primeiro tipo: o `chunk_loaded` deles sai agora, com os block entities já na tabela de carga.
+    for chunk in transmitters::take_early_chunks() {
+        if game.world.chunks.contains_key(&(chunk[0], chunk[1])) {
+            let events = transmitters::chunk_loaded(game.native_dimension(), chunk);
+            transmitters_deliver(game, events);
+        }
+    }
 }
 
 /// O fim de uma operação no mundo (`flush_signals`): o resto sai, depois os avisos de vizinho da operação anterior, e os desta ficam para a seguinte. O original cria o block entity
@@ -3449,7 +3458,7 @@ fn nbt_to_cable(nbt: &Compound) -> CableNbt {
 }
 
 fn cable_to_nbt(tag: &CableNbt, nbt: &mut Compound) {
-    for (key, value) in tag {
+    for (key, value) in tag.iter().filter(|(key, _)| key.as_str() != ENERGY_KEY) {
         let converted = match value {
             CableTag::Byte(v) => Tag::Byte(*v),
             CableTag::Short(v) => Tag::Short(*v),
@@ -3505,8 +3514,16 @@ impl OwnerWorld for GameWorld<'_, '_> {
             return None;
         };
         let capacity = cable_capacity(&entity.id)?;
-        let saved = nbt_to_cable(&entity.nbt);
+        let mut saved = nbt_to_cable(&entity.nbt);
+        // A parte do cabo na energia da rede, pelo `long` exato quando o `energy` inteiro não a comporta (veja `cable_write`).
+        if let Some(Tag::Long(exact)) = entity.nbt.get(&JavaString::from(ENERGY_AMOUNT)) {
+            saved.insert(ENERGY_KEY.to_owned(), CableTag::Long(*exact));
+        }
         let from_save = saved.contains_key(machinery_basis_core::transmission::transmitter::keys::CONNECTION) || saved.contains_key(ENERGY_KEY);
+        if TRANSMITTER_PROBE {
+            let keys: Vec<String> = entity.nbt.iter().map(|(key, tag)| format!("{}:{}", key.to_string().unwrap_or_default(), tag.id())).collect();
+            eprintln!("MBL {{\"p\":[{},{},{}],\"energy\":{:?},\"salvo\":{},\"chaves\":{:?}}}", pos.x, pos.y, pos.z, saved.get(ENERGY_KEY), from_save, keys);
+        }
         Some(CableInfo { capacity, saved: from_save.then_some(saved) })
     }
 
@@ -3600,6 +3617,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
     };
     let post = matches!(event, CableEvent::ServerTickPost { .. });
     let runs_normally = matches!(event, CableEvent::ServerTickPost { runs_normally: true });
+    let cleared = if let CableEvent::ClearRemoved(pos) = &event { Some(arr(*pos)) } else { None };
     let removed = if let CableEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
     // `onChunkUnloaded` toma a parte do cabo e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
     let unloaded = if let CableEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
@@ -3669,6 +3687,11 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
     acceptors_flush(game, dimension);
+    if let Some(pos) = cleared {
+        // O `energy` que o save trouxe já é a parte do cabo (o dono a leu em `cable_info`): não é energia que um vizinho empurrou.
+        let inbox = cable_inbox_value(game, pos);
+        CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), inbox));
+    }
     if let Some(pos) = removed {
         CABLE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
         CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.remove(&(dimension, pos)));
@@ -3702,11 +3725,15 @@ fn cables_absorb(owner: &mut EnergyTransmitters, dimension: &'static str, pos: [
 /// O tick do block entity do cabo (que está fora do mundo): a caixa de entrada passa para a rede e se zera, e o `energy` volta a ser só o que o salvamento põe.
 pub(in crate::game) fn cable_tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     let dimension = game.native_dimension();
+    // Um cabo que o dono ainda não conhece (o `clearRemoved` do chunk que acabou de carregar chega depois do primeiro tick do block entity) guarda o que o save trouxe: o
+    // `energy` dele é a parte do cabo na energia da rede, e o dono a lê quando o cabo entra.
+    if !with_owner(dimension, |owner| owner.cable_at(sim_pos(pos)).is_some()).unwrap_or(false) {
+        return;
+    }
     let inbox = stored_energy(entity);
     with_owner(dimension, |owner| cables_absorb(owner, dimension, pos, inbox));
-    if entity.nbt.contains_key(&JavaString::from(ENERGY)) {
-        entity.nbt.remove(&JavaString::from(ENERGY));
-    }
+    entity.nbt.remove(&JavaString::from(ENERGY));
+    entity.nbt.remove(&JavaString::from(ENERGY_AMOUNT));
     CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), 0));
 }
 
@@ -3779,11 +3806,23 @@ fn cable_write(game: &mut Game<'_>, owner: &mut EnergyTransmitters, pos: [i32; 3
     let Some(tag) = owner.write(sim_pos(pos)) else {
         return;
     };
+    if TRANSMITTER_PROBE {
+        eprintln!("MBS {{\"p\":[{},{},{}],\"energy\":{:?},\"inbox\":{}}}", pos[0], pos[1], pos[2], tag.get(ENERGY_KEY), inbox);
+    }
+    let mut written = 0;
     if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
         entity.nbt.remove(&JavaString::from(ENERGY));
         cable_to_nbt(&tag, &mut entity.nbt);
+        // O Horizon grava o `energy` de um block entity de mod como `int` (um `long` não sobrevive ao salvar), então a parte do cabo na energia da rede, que no original é o `long`
+        // `energy` (`UniversalCable.write`), sai no `energy` inteiro e, se passa dele, no `energy_amount` (a convenção da energia exata do port, decisão 2).
+        match tag.get(ENERGY_KEY) {
+            Some(CableTag::Long(share)) => set_stored_energy_long(entity, *share),
+            _ => set_stored_energy(entity, 0),
+        }
+        written = stored_energy(entity);
     }
-    CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), 0));
+    // O `energy` que acabou de sair é a parte do cabo, e não energia que um vizinho empurrou: o dono não a recebe de novo como caixa de entrada.
+    CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), written));
 }
 
 /// O salvamento do nível (`Game::save_level`, antes de ele esvaziar os chunks alterados): os cabos dos chunks que vão para o disco gravam o NBT deles.
