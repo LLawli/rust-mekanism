@@ -14,6 +14,10 @@ use machinery_basis_core::transmission::transmitter::{
 struct World {
     neighbors: Vec<(BlockPos, bool)>,
     powered: bool,
+    /// Os lados do transmissor em `POS` que têm uma capability.
+    acceptor_sides: Vec<Face>,
+    /// O tipo de transmissão dos transmissores vizinhos.
+    neighbor_kind: TransmissionType,
 }
 
 impl TransmitterWorld for World {
@@ -32,13 +36,15 @@ impl TransmitterWorld for World {
             .iter()
             .find(|(at, _)| *at == pos)
             .map(|(_, accepts)| NeighborTransmitter {
-                supported: TransmissionSet::of(&[TransmissionType::Energy]),
+                supported: TransmissionSet::of(&[self.neighbor_kind]),
                 can_connect_opposite: *accepts,
             })
     }
 
-    fn acceptor(&self, _pos: BlockPos, _from_side: Face) -> Option<()> {
-        None
+    fn acceptor(&self, _pos: BlockPos, from_side: Face) -> Option<()> {
+        self.acceptor_sides
+            .contains(&from_side.opposite())
+            .then_some(())
     }
 }
 
@@ -54,6 +60,8 @@ fn world_with(sides: &[Face]) -> World {
     World {
         neighbors: sides.iter().map(|s| (relative(POS, *s), true)).collect(),
         powered: false,
+        acceptor_sides: Vec::new(),
+        neighbor_kind: TransmissionType::Energy,
     }
 }
 
@@ -374,4 +382,166 @@ fn can_extract_and_can_insert_follow_the_visible_type() {
     assert!(t.can_extract(Some(Face::East)));
     assert!(t.can_insert(None));
     assert!(t.can_extract(None));
+}
+
+#[test]
+fn a_side_refresh_sets_and_clears_the_bits() {
+    let mut t = cable(false);
+    let mut out = Vec::new();
+    t.refresh_connections_side(Face::East, &world_with(&[Face::East]), &mut out);
+    assert_eq!(t.current_transmitter_connections, side_bit(Face::East));
+    // O lado ganhou um transmissor que antes não era: pede a releitura do lado de volta, depois manda o pacote.
+    assert_eq!(
+        out,
+        vec![
+            Effect::RecheckConnection(Face::East),
+            Effect::SendUpdatePacket
+        ]
+    );
+    let mut out = Vec::new();
+    t.refresh_connections_side(Face::East, &world_with(&[]), &mut out);
+    assert_eq!(t.current_transmitter_connections, 0);
+    assert_eq!(out, vec![Effect::SendUpdatePacket]);
+    let mut out = Vec::new();
+    t.refresh_connections_side(Face::East, &world_with(&[]), &mut out);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn an_acceptor_refresh_sets_and_clears_only_its_bit() {
+    let mut t = cable(false);
+    let mut world = world_with(&[]);
+    world.acceptor_sides = vec![Face::Up];
+    let mut out = Vec::new();
+    t.refresh_acceptor_connections(Face::Up, &world, &mut out);
+    assert_eq!(
+        t.acceptor_cache.current_acceptor_connections,
+        side_bit(Face::Up)
+    );
+    assert_eq!(out, vec![Effect::SendUpdatePacket]);
+    let mut out = Vec::new();
+    t.refresh_acceptor_connections(Face::Up, &world, &mut out);
+    assert!(out.is_empty());
+    t.acceptor_cache.invalidate(Face::Up);
+    world.acceptor_sides.clear();
+    t.refresh_acceptor_connections(Face::Up, &world, &mut out);
+    assert_eq!(t.acceptor_cache.current_acceptor_connections, 0);
+    assert_eq!(out, vec![Effect::SendUpdatePacket]);
+}
+
+#[test]
+fn the_base_recheck_refreshes_the_neighbors_only_without_a_network() {
+    let mut t = cable(false);
+    let world = world_with(&[Face::East, Face::West]);
+    let mask = side_bit(Face::East) | side_bit(Face::Up);
+    let mut out = Vec::new();
+    t.base_recheck_connections(mask, &world, &mut out);
+    // O de cima não tem transmissor, o leste tem: relê o lado de volta (o oeste não estava na máscara).
+    assert_eq!(
+        out,
+        vec![Effect::RefreshNeighbor {
+            pos: relative(POS, Face::East),
+            side: Face::West
+        }]
+    );
+    t.set_transmitter_network(Some(9), true, &mut Vec::new());
+    let mut out = Vec::new();
+    t.base_recheck_connections(mask, &world, &mut out);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn the_sneak_click_effects_come_in_the_order_of_the_original() {
+    let mut t = cable(false);
+    let world = world_with(&[]);
+    let mut out = Vec::new();
+    t.on_sneak_right_click(
+        Face::Up,
+        None,
+        |t, _| t.base_on_configure(),
+        &world,
+        &mut out,
+    );
+    assert_eq!(
+        out,
+        vec![
+            Effect::SideChanged {
+                side: Face::Up,
+                old: ConnectionType::Normal,
+                new: ConnectionType::Push
+            },
+            Effect::SetChanged,
+            Effect::NotifyTileChange,
+            Effect::Overlay(Overlay::ConnectionType {
+                connection: ConnectionType::Push
+            }),
+            Effect::SendUpdatePacket,
+        ]
+    );
+}
+
+#[test]
+fn the_sneak_click_that_cuts_a_transmitter_invalidates_the_network_and_the_acceptors() {
+    let mut t = cable(false);
+    let world = world_with(&[Face::East]);
+    t.refresh_connections(&world, &mut Vec::new());
+    t.set_transmitter_network(Some(1), true, &mut Vec::new());
+    t.set_connection_types_raw({
+        let mut types = [ConnectionType::Normal; 6];
+        types[1] = ConnectionType::Normal;
+        types[5] = ConnectionType::Pull;
+        types
+    });
+    let mut out = Vec::new();
+    t.on_sneak_right_click(
+        Face::East,
+        None,
+        |t, _| t.base_on_configure(),
+        &world,
+        &mut out,
+    );
+    assert_eq!(t.get_connection_type_raw(Face::East), ConnectionType::None);
+    assert_eq!(t.current_transmitter_connections, 0);
+    let mut expected = vec![
+        Effect::SideChanged {
+            side: Face::East,
+            old: ConnectionType::Pull,
+            new: ConnectionType::None,
+        },
+        Effect::AcceptorChanged(Face::East),
+        Effect::NotifyTileChange,
+        Effect::InvalidateTransmitter,
+        Effect::SetChanged,
+    ];
+    // `getPossibleAcceptorConnections` marca sujo todo lado sem aceitador, na ordem dos lados.
+    expected.extend(Face::ALL.iter().map(|side| Effect::AcceptorChanged(*side)));
+    expected.extend([
+        Effect::SendUpdatePacket,
+        Effect::NotifyTileChange,
+        Effect::Overlay(Overlay::ConnectionType {
+            connection: ConnectionType::None,
+        }),
+        Effect::SendUpdatePacket,
+    ]);
+    assert_eq!(out, expected);
+}
+
+#[test]
+fn a_transmitter_of_another_type_can_be_an_acceptor_and_one_of_our_type_cannot() {
+    let mut t = cable(false);
+    let mut world = world_with(&[Face::East]);
+    world.acceptor_sides = vec![Face::East];
+    // O vizinho é do nosso tipo: é transmissor, não aceitador, ainda que a capability exista.
+    t.refresh_connections(&world, &mut Vec::new());
+    assert_eq!(t.current_transmitter_connections, side_bit(Face::East));
+    assert_eq!(t.acceptor_cache.current_acceptor_connections, 0);
+    // O vizinho é de outro tipo (um cano ao lado do cabo): não é transmissor para nós, e a capability o faz aceitador.
+    let mut t = cable(false);
+    world.neighbor_kind = TransmissionType::Fluid;
+    t.refresh_connections(&world, &mut Vec::new());
+    assert_eq!(t.current_transmitter_connections, 0);
+    assert_eq!(
+        t.acceptor_cache.current_acceptor_connections,
+        side_bit(Face::East)
+    );
 }

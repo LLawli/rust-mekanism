@@ -10,7 +10,7 @@ use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side, face_ordinal,
 };
 use machinery_basis_core::transmission::transmitter::{
-    BlockPos, Effect, InteractionResult, NeighborTransmitter, Overlay, Transmitter,
+    BlockPos, Compound, Effect, InteractionResult, NeighborTransmitter, Overlay, Tag, Transmitter,
     TransmitterWorld, relative,
 };
 use serde_json::Value;
@@ -336,6 +336,75 @@ fn transmitter_kind(name: &str) -> &'static str {
     }
 }
 
+/// O NBT do transmissor no formato do rastro (`write` e o pacote reduzido, este sem a rede).
+fn nbt_json(sim: &Sim, pos: BlockPos) -> Value {
+    let t = &sim.transmitters[&pos];
+    let typed = |compound: Compound| -> Value {
+        Value::Object(
+            compound
+                .into_iter()
+                .map(|(key, tag)| {
+                    let value = match tag {
+                        Tag::Byte(v) => serde_json::json!({ "byte": v }),
+                        Tag::IntArray(v) => serde_json::json!({ "int_array": v }),
+                        other => panic!("etiqueta {other:?}"),
+                    };
+                    (key, value)
+                })
+                .collect(),
+        )
+    };
+    let mut reduced = t.write_reduced_updated_tag();
+    reduced.remove("network");
+    serde_json::json!({ "write": typed(t.write()), "reduced": typed(reduced) })
+}
+
+/// O NBT que o rastro grava só com as quatro chaves da base: o cabo e o cano acrescentam as da própria subclasse (o buffer), que é de outra frente.
+fn base_keys(nbt: &Value) -> Value {
+    let keep = ["redstone", "connections", "acceptors", "connection"];
+    let only = |value: &Value| -> Value {
+        Value::Object(
+            value
+                .as_object()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| keep.contains(&key.as_str()))
+                .map(|(key, v)| (key.clone(), v.clone()))
+                .collect(),
+        )
+    };
+    serde_json::json!({ "write": only(&nbt["write"]), "reduced": only(&nbt["reduced"]) })
+}
+
+/// A mensagem de overlay como o Java a manda (`translateColored`): o texto em cinza (`EnumColor.GRAY`) com o argumento na cor dele.
+fn overlay_message(overlay: &Overlay) -> Value {
+    const GRAY: &str = "#CFCFCF";
+    const INDIGO: &str = "#559EFF";
+    match overlay {
+        Overlay::ConnectionType { connection } => {
+            let colors = trace("transmitter_types.jsonl");
+            let color = colors
+                .iter()
+                .find(|line| {
+                    line["kind"] == "connection_type"
+                        && line["serialized"] == connection.serialized_name()
+                })
+                .map(|line| line["text"]["color"].clone())
+                .unwrap();
+            serde_json::json!({
+                "translate": "configurator.mekanism.mode_change",
+                "with": [{"translate": format!("connection.mekanism.{}", connection.lang_name()), "color": color}],
+                "color": GRAY,
+            })
+        }
+        Overlay::RedstoneSensitivity { on } => serde_json::json!({
+            "translate": "configurator.mekanism.redstone_sensitivity",
+            "with": [{"translate": if *on { "boolean.mekanism.on" } else { "boolean.mekanism.off" }, "color": INDIGO}],
+            "color": GRAY,
+        }),
+    }
+}
+
 #[test]
 fn neighbors_placed_before_and_after_match_the_original() {
     let mut cases = 0;
@@ -480,6 +549,11 @@ fn configurator_cycle_matches_the_original() {
         let before = &line["before"];
         let _ = before;
         assert_state(&sim, ORIGIN, after, &format!("{name}: depois"));
+        assert_eq!(
+            nbt_json(&sim, ORIGIN),
+            base_keys(&line["nbt"]),
+            "{name}: NBT"
+        );
         // A mensagem do overlay.
         let overlays: Vec<&Overlay> = sim
             .log
@@ -495,33 +569,7 @@ fn configurator_cycle_matches_the_original() {
         let expected_overlay = line["overlay"].as_array().unwrap();
         assert_eq!(overlays.len(), expected_overlay.len(), "{name}: mensagens");
         for (overlay, expected) in overlays.iter().zip(expected_overlay) {
-            let text = expected.to_string();
-            match overlay {
-                Overlay::ConnectionType { connection } => {
-                    assert!(
-                        text.contains("configurator.mekanism.mode_change"),
-                        "{name}: {text}"
-                    );
-                    assert!(
-                        text.contains(&format!("connection.mekanism.{}", connection.lang_name())),
-                        "{name}: {text}"
-                    );
-                }
-                Overlay::RedstoneSensitivity { on } => {
-                    assert!(
-                        text.contains("configurator.mekanism.redstone_sensitivity"),
-                        "{name}: {text}"
-                    );
-                    assert!(
-                        text.contains(if *on {
-                            "gui.mekanism.on"
-                        } else {
-                            "gui.mekanism.off"
-                        }),
-                        "{name}: {text}"
-                    );
-                }
-            }
+            assert_eq!(&overlay_message(overlay), expected, "{name}: texto");
         }
         sim.ticks(4);
         assert_state(
@@ -578,20 +626,28 @@ fn redstone_reactive_matches_the_original() {
             sim.ticks(4);
             let label = format!("{name} {what}");
             assert_state(&sim, ORIGIN, &step["t"], &label);
+            assert_eq!(
+                nbt_json(&sim, ORIGIN),
+                base_keys(&step["nbt"]),
+                "{label}: NBT"
+            );
             assert_state(
                 &sim,
                 pos_at("east"),
                 &step["east"],
                 &format!("{label} leste"),
             );
-            let overlays = sim
+            let overlays: Vec<Value> = sim
                 .log
                 .iter()
-                .filter(|(_, e)| matches!(e, Effect::Overlay(_)))
-                .count();
+                .filter_map(|(_, e)| match e {
+                    Effect::Overlay(o) => Some(overlay_message(o)),
+                    _ => None,
+                })
+                .collect();
             assert_eq!(
-                overlays,
-                step["overlay"].as_array().unwrap().len(),
+                Value::Array(overlays),
+                step["overlay"],
                 "{label}: mensagens"
             );
             if what == "power_off" && step["t"]["reactive"] == true {
