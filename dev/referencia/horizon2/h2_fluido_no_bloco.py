@@ -234,7 +234,7 @@ def entity():
     cmd(f"fill {X0} {Y - 1} {Z0} {X0 + 40} {Y - 1} {Z0 + 40} minecraft:stone")
     time.sleep(3)
     ok = True
-    for index, fluid in enumerate(("water", "lava", "none")):
+    for index, fluid in enumerate(("none", "water", "lava")):
         x, z = X0 + 6 + 8 * index, Z0 + 8
         cmd("gamemode survival")
         for dx, dz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
@@ -265,10 +265,97 @@ def entity():
     return ok
 
 
+# A cena do print e do vídeo: uma fileira em cima do andar de pedra de y = 149 (a plataforma de `h2_nota_instrumento.py`, com céu), de frente para o norte.
+SCENE_Z = 80
+SCENE = (("mekanism:basic_universal_cable", 66, "empty"), ("mekanism:basic_fluid_tank", 70, "water"), ("mekanism:basic_energy_cube", 74, "lava"))
+CAMERA = (68.5, 151, 83.5)
+
+
+def scene_clear():
+    sky()
+    cmd("tick unfreeze")
+    cmd(f"fill 55 {Y} 74 90 {Y + 10} 96 minecraft:air")
+    cmd(f"fill 55 {Y - 1} 74 90 {Y - 1} 96 minecraft:stone")
+    time.sleep(3)
+    cmd("gamemode survival")
+    cmd("effect give @s minecraft:fire_resistance 999 255 true")
+    cmd("clear @s")
+
+
+def scene_build(still=False):
+    """Os três blocos postos; `still`: com o fluido dentro (a água no tanque e a lava no cubo) e sem fluxo ainda, que só começa quando se mexe num vizinho."""
+    for block, x, fluid in SCENE:
+        cmd(f"setblock {x} {Y} {SCENE_Z} {block}[fluid_logged={fluid if still else 'empty'}]")
+
+
+def aim(x):
+    ctl("look-at", "block", str(x), str(Y), str(SCENE_Z), "south")
+
+
+def scene(folder):
+    """Os três blocos com o fluido dentro, parados (o fluido só corre depois que se mexe num vizinho): o print."""
+    scene_clear()
+    cmd("tick freeze")
+    scene_build(still=True)
+    cmd(f"setblock 66 {Y} {SCENE_Z} mekanism:basic_universal_cable[fluid_logged=water]")
+    ctl("options-set", "chatVisibility", "2")
+    tp(70.5, 152.0, 89.5)
+    time.sleep(1.0)
+    ctl("look", "180", "17")
+    time.sleep(1.5)
+    ctl("screenshot", f"{folder}/cena.png")
+    print("print cena")
+    restore()
+
+
+def video():
+    """O roteiro do vídeo: o balde de água enche o cabo (a água aparece dentro dele), o balde vazio a tira, de novo a água, e depois o tanque com água e o cubo com lava postos
+    correm para fora (o vizinho mexido agenda o tick). Com `REC=1` o roteiro abre sozinho o `gravar-jogo rec` (34 s, com o som do jogo) quando começa."""
+    import subprocess
+    scene_clear()
+    cmd(f"setblock 66 {Y} {SCENE_Z} mekanism:basic_universal_cable[fluid_logged=empty]")
+    # Um pilar de pedra levanta o jogador acima da água que vai correr.
+    cmd(f"setblock 68 {Y} 83 minecraft:stone")
+    ctl("options-set", "chatVisibility", "2")
+    cmd("give @s minecraft:water_bucket")
+    ctl("select", "1")
+    tp(*CAMERA)
+    time.sleep(1.0)
+    aim(66)
+    time.sleep(1.5)
+    rec = None
+    if os.environ.get("REC"):
+        rec = subprocess.Popen(["ssh", "desktop", "~/.cache/rust-mekanism/gravar-jogo rec fluido-no-bloco fnb.mp4 34 horizon"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3.0)
+    for _ in range(3):
+        aim(66)
+        time.sleep(0.5)
+        ctl("use-item")
+        time.sleep(2.5)
+    ctl("look", "180", "24")
+    # O tanque e o cubo entram com o fluido dentro e começam a correr com o vizinho mexido.
+    for block, x, fluid in SCENE[1:]:
+        cmd(f"setblock {x} {Y} {SCENE_Z} {block}[fluid_logged={fluid}]")
+        cmd(f"setblock {x + 1} {Y} {SCENE_Z} minecraft:stone")
+        cmd(f"setblock {x + 1} {Y} {SCENE_Z} minecraft:air")
+    time.sleep(12.0)
+    if os.environ.get("FOTO"):
+        ctl("screenshot", os.environ["FOTO"])
+    if rec:
+        rec.wait(timeout=60)
+    restore()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "flow"
     if what == "flow":
         sys.exit(0 if flow() else 1)
+    if what == "cena":
+        scene(sys.argv[2])
+        return
+    if what == "video":
+        video()
+        return
     if what == "entity":
         sys.exit(0 if entity() else 1)
     if what == "bucket":
