@@ -280,6 +280,8 @@ def check_unload(events):
     wrong = 0
     batches = []
     i = 0
+    # Só a linha do cenário (y = BASE[1]): o mundo de teste pode ter outros cabos nos mesmos chunks.
+    events = [e for e in events if "p" not in e or e["p"][1] == BASE[1]]
     while i < len(events):
         if events[i]["e"] == "onChunkUnloaded":
             j = i
