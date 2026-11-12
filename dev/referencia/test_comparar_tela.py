@@ -1064,5 +1064,58 @@ class Lote(unittest.TestCase):
         self.assertEqual(resultado["elementos"]["tooltip"]["diferentes"], 0)
 
 
+class CompararCubo(unittest.TestCase):
+    """O Energy Cube no comparador de telas (frente `cubo-pixel`)."""
+
+    def test_o_cubo_tem_o_medidor_os_slots_e_o_suporte_da_armadura_a_direita(self):
+        elementos = ct.elementos_da_tela("cubo")
+        self.assertEqual(elementos["medidor"], (55, 18, 66, 50))
+        self.assertEqual(elementos["slot_descarga"], (16, 34, 18, 18))
+        self.assertEqual(elementos["slot_carga"], (142, 34, 18, 18))
+        self.assertEqual(elementos["suporte_armadura"], (176, 36, 26, 98))
+        self.assertEqual(elementos["slots_armadura"], (179, 40, 18, 90))
+        self.assertEqual([elementos[f"fundo_armadura_{i}"] for i in (0, 4)], [(180, 41, 16, 16), (180, 113, 16, 16)])
+        # Sem upgrades nem xp (o cubo não é `IUpgradeTile`).
+        self.assertNotIn("aba_upgrades", elementos)
+        self.assertNotIn("aba_xp", elementos)
+
+    def test_cada_caso_de_cubo_tem_nome_unico_e_o_ciclo_de_referencia_existe(self):
+        casos = cena_telas.casos_cubo()
+        nomes = [c["nome"] for c in casos]
+        self.assertEqual(len(nomes), len(set(nomes)))
+        self.assertGreaterEqual(len(nomes), 20)
+        self.assertTrue(all(cena_telas.MAQUINAS[c["maquina"]]["tela"] == "cubo" for c in casos))
+        for chave, ciclo in cl.CICLO_DA_ENERGIA.items():
+            self.assertIn(ciclo, nomes, chave)
+        # Todo caso de cubo com o medidor animado (energia acima de zero, fora os de ciclo) tem o ciclo do mesmo nível.
+        for c in casos:
+            if "ciclo" in c["args"] or c["args"].get("energia") == "0":
+                continue
+            if "clicar" in c["args"]:
+                continue
+            self.assertIsNotNone(cl.ciclo_do_caso(c), c["nome"])
+
+    def test_o_medidor_de_energia_anima_32_quadros_de_2_ticks(self):
+        # `mek_liquid/energy`: 16 por 512 (32 quadros) e `frametime` 2: o ciclo do port dá a volta inteira em 64 passos.
+        for c in cena_telas.casos_cubo():
+            if "ciclo" in c["args"]:
+                self.assertEqual(cena_telas.ciclos(c, "port"), 64)
+                self.assertEqual(cena_telas.ciclos(c, "oficial"), 40)
+        self.assertEqual(cl.animado_da_tela("cubo"), "medidor")
+
+    def test_o_cubo_atras_da_tela_conta_a_parte(self):
+        a = imagem()
+        b = copia(a)
+        # Um pixel do mundo atrás da tela (um pixel de GUI fora do painel), muito diferente: dentro da caixa do cubo conta em `cubo_no_mundo`, fora dela em `alem_mundo_atras`.
+        x, y = na_tela(-1, -1)
+        pintar(b, x, y, cor=(255, 255, 255))
+        dentro = ct.comparar(a, b, "cubo", ESCALA, margem=2, mascarar_abas=False, limite_mundo=1, particulas=(x - 1, y - 1, 8, 8), classe_da_caixa="cubo_no_mundo")[0]
+        self.assertEqual(dentro["elementos"]["cubo_no_mundo"]["diferentes"], 1)
+        self.assertNotIn("alem_mundo_atras", dentro["elementos"])
+        fora = ct.comparar(a, b, "cubo", ESCALA, margem=2, mascarar_abas=False, limite_mundo=1, particulas=(x + 50, y + 50, 8, 8), classe_da_caixa="cubo_no_mundo")[0]
+        self.assertEqual(fora["elementos"]["alem_mundo_atras"]["diferentes"], 1)
+        self.assertNotIn("cubo_no_mundo", fora["elementos"])
+
+
 if __name__ == "__main__":
     unittest.main()

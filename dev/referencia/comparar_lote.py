@@ -82,6 +82,11 @@ def casar_fases(c, escala, original, port):
     prt = [recorte(ct.ler_png(p), escala, rect) for p in arquivos(port, "port", m)]
     pares_ = []
     for k in range(n):
+        # Um quadro identico (custo 0) acha-se pela igualdade dos recortes, em C; só sem ele vale a conta pixel a pixel.
+        identico = next((j for j in range(m) if ori[k] == prt[j]), None)
+        if identico is not None:
+            pares_.append((0, identico))
+            continue
         custo, j = min((diferentes(ori[k], prt[j]), j) for j in range(m))
         pares_.append((custo, j))
     return pares_, arquivos(original, "oficial", n), arquivos(port, "port", m)
@@ -109,10 +114,15 @@ PREFIXOS_RESIDUO = ("canto", ICONE_DA_LISTA, "tooltip_canto")
 LIMITE_MUNDO_POR_LUZ = {0: 1, 8: 1, 13: 1}
 # O que difere entre os dois jogos por construção, e que aparece no relatório como diferença conhecida (não conta como resíduo do Horizon nem fica calada): nome e causa.
 DIFERENCAS_CONHECIDAS = {
+    "cubo_no_mundo": "o Energy Cube desenhado atrás da tela: o modelo (portas, LED, núcleo) é conferido à parte (`comparar_cubo.py`); o que difere ali é a rotação de uv das "
+                     "faces finas das portas (H91) e o tom da luz do mundo (H30)",
     "particulas_da_maquina": "partículas da máquina acesa (AttributeParticleFX em Machine.java:23: fumaça e poeira de redstone na face da frente, a cada "
                              "animateTick ativo): portadas (injeção animate_tick, taxa e posição conferidas à parte), mas cada jogo sorteia as suas com um gerador sem semente "
                              "(ClientLevel.animateTick), então onde cai cada uma difere entre os dois prints por construção; também as que a máquina do caso anterior deixou no ar",
 }
+# O Energy Cube desenhado no mundo atrás da tela (o quadro, as portas, os LEDs e o núcleo que gira): o modelo se confere à parte, lado a lado e sem tela (`comparar_cubo.py`, onde
+# a rotação de uv das faces finas é a H91), e atrás da tela o que passa do limite do mundo, dentro desta caixa, conta como `cubo_no_mundo`. Em pixels do print de 1920 por 1080.
+CAIXA_DO_CUBO = (700, 700, 260, 260)
 # Onde essas partículas caem no print (1920 por 1080, a vista de frente do `CenaTelas`, igual em todo guiScale): a face da frente da máquina (x 705 a 960, y 660
 # a 955 nos prints medidos), com folga. Só nos estados em que a máquina está acesa ou o caso anterior estava (`com_particulas`).
 CAIXA_DAS_PARTICULAS = (690, 640, 285, 330)
@@ -189,7 +199,7 @@ def prioridade_do_caso(c, regioes, janela):
 #   casos sem ciclo (os 17 do Infuser com tanque) deram de 0 a 54 pixels e 1 nível. Teto: o pior de todos, 192 e 342, com 1 nível.
 # - Medidor de lava (`medidor_lava_fase`): 0 pixel e 0 nível em todos os quadros e casos (os ciclos a 500 e a 1000 mB, com e sem o cursor, e os casos de medidor
 #   parado nas duas escalas): o `lava_still` não tem mistura. Teto 0 e 0.
-# - O ícone de cada linha da lista de upgrades é idêntico em guiScale 2 (0 pixel nos casos com a janela): é ali que a troca de ícone aparece. Em guiScale 3 o item
+# - O ícone de cada linha da lista de upgrades é identico em guiScale 2 (0 pixel nos casos com a janela): é ali que a troca de ícone aparece. Em guiScale 3 o item
 #   em escala 0,75 (H25) cai entre pixels, e o pior do lote é 107 de 576 pixels, 206 por canal; só vale se o mesmo estado deu 0 em guiScale 2 (`residuos_e_reais`).
 # - Os cantos do tooltip de item (H23): 6 de 64 pixels e 72 por canal em guiScale 2, 21 de 144 e 72 em 3 (`chamber_hover_slot_item`).
 TETO_DO_RESIDUO = {
@@ -221,7 +231,7 @@ def residuo(nome, escala=2, diferentes=0, maior=0):
 
 def residuos_e_reais(dados, escala, icone_provado=True):
     """Separa os elementos com diferença (`{nome: {"diferentes", "maior"}}`) em resíduos e reais, cada um `{nome: pixels}`. Em guiScale 3 o ícone de
-    uma linha da lista cai entre pixels (H25) e o teto dele é largo: só vale como resíduo se o mesmo estado, em guiScale 2, deu o ícone idêntico
+    uma linha da lista cai entre pixels (H25) e o teto dele é largo: só vale como resíduo se o mesmo estado, em guiScale 2, deu o ícone identico
     (`icone_provado`), o que prova que o ícone é o certo."""
     eh = {n: residuo(n, escala, d["diferentes"], d["maior"]) and (icone_provado or not n.startswith(ICONE_DA_LISTA)) for n, d in dados.items()}
     return {n: d["diferentes"] for n, d in dados.items() if eh[n]}, {n: d["diferentes"] for n, d in dados.items() if not eh[n]}
@@ -373,14 +383,15 @@ def principal(argv):
             n = cena_telas.ciclos(c, "oficial")
             distintos = len({tuple(x) for x in casados})
             sem_par = sum(1 for custo, _ in casados if custo)
-            print(f"ciclo {c['nome']}_e{escala}: {len(casados) - sem_par} de {len(casados)} prints do original têm um estado idêntico no port; {sem_par} sem par (pior {max(custo for custo, _ in casados)} px)")
+            print(f"ciclo {c['nome']}_e{escala}: {len(casados) - sem_par} de {len(casados)} prints do original têm um estado identico no port; {sem_par} sem par (pior {max(custo for custo, _ in casados)} px)")
             tela = cena_telas.MAQUINAS[c["maquina"]]["tela"]
             for k in range(n):
                 a, b = ct.ler_png(pa[k]), ct.ler_png(pb[casados[k][1]])
                 # O cursor de um ciclo com `hover` (o medidor de lava com o tooltip) cobre o que está embaixo, como nos casos sem ciclo.
                 regioes = regioes_do_caso(c, a, b, escala)
                 resultado, diferenca = ct.comparar(a, b, tela, escala, regioes=regioes, prioridade=prioridade_do_caso(c, regioes, None), mascarar_abas=False,
-                                                   limite_mundo=LIMITE_MUNDO_POR_LUZ[cena_telas.luz_do_caso(c)])
+                                                   limite_mundo=LIMITE_MUNDO_POR_LUZ[cena_telas.luz_do_caso(c)],
+                                                   particulas=CAIXA_DO_CUBO if c["maquina"].startswith("cubo") else None, classe_da_caixa="cubo_no_mundo")
                 mundo_max = max(mundo_max, resultado["maior_do_mundo"])
                 resultado["caso"] = f"{c['nome']}_e{escala}_{k}"
                 resultados.append(resultado)
@@ -418,7 +429,8 @@ def principal(argv):
                 a, b, tela, escala, regioes=regioes, mascarar_abas=False,
                 margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] or c["maquina"].startswith("cubo") else 0, prioridade=prioridade_do_caso(c, regioes, janela),
                 ausentes=ausentes_do_caso(c, visivel), limite_mundo=LIMITE_MUNDO_POR_LUZ[cena_telas.luz_do_caso(c)],
-                particulas=CAIXA_DAS_PARTICULAS if com_particulas(c) else None,
+                particulas=CAIXA_DO_CUBO if c["maquina"].startswith("cubo") else CAIXA_DAS_PARTICULAS if com_particulas(c) else None,
+                classe_da_caixa="cubo_no_mundo" if c["maquina"].startswith("cubo") else "particulas_da_maquina",
             )
             resultado["caso"] = nome
             mundo_max = max(mundo_max, resultado["maior_do_mundo"])

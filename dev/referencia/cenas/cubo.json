@@ -19,7 +19,7 @@
   {
    "name": "cubo_vazio",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
     "fill 59 -60 85 65 -56 85 minecraft:stone",
     "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
@@ -27,6 +27,7 @@
     "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north]",
     "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north]",
     "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north]",
+    "#esperar 10",
     "#cubo 60 -60 82 0 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 61 -60 82 0 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 62 -60 82 0 front=output left=input right=input back=input top=input bottom=input",
@@ -40,7 +41,7 @@
   {
    "name": "cubo_cheio",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
     "fill 59 -60 85 65 -56 85 minecraft:stone",
     "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
@@ -48,6 +49,7 @@
     "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north]",
     "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north]",
     "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north]",
+    "#esperar 10",
     "#cubo 60 -60 82 1 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 61 -60 82 1 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 62 -60 82 1 front=output left=input right=input back=input top=input bottom=input",
@@ -61,7 +63,7 @@
   {
    "name": "cubo_metade",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
     "fill 59 -60 85 65 -56 85 minecraft:stone",
     "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
@@ -69,6 +71,7 @@
     "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north]",
     "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north]",
     "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north]",
+    "#esperar 10",
     "#cubo 60 -60 82 0.5 front=none left=output right=none back=output top=input bottom=none",
     "#cubo 61 -60 82 0.5 front=none left=output right=none back=output top=input bottom=none",
     "#cubo 62 -60 82 0.5 front=none left=output right=none back=output top=input bottom=none",
@@ -82,7 +85,7 @@
   {
    "name": "cubo_quarto",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
     "fill 59 -60 85 65 -56 85 minecraft:stone",
     "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
@@ -90,6 +93,7 @@
     "setblock 62 -60 82 mekanism:elite_energy_cube[facing=north]",
     "setblock 63 -60 82 mekanism:ultimate_energy_cube[facing=north]",
     "setblock 64 -60 82 mekanism:creative_energy_cube[facing=north]",
+    "#esperar 10",
     "#cubo 60 -60 82 0.25 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 61 -60 82 0.1 front=output left=input right=input back=input top=input bottom=input",
     "#cubo 62 -60 82 0.75 front=output left=input right=input back=input top=input bottom=input",
@@ -103,10 +107,11 @@
   {
    "name": "cubo_perto",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
     "fill 59 -60 85 65 -56 85 minecraft:stone",
     "setblock 60 -60 82 mekanism:basic_energy_cube[facing=north]",
+    "#esperar 10",
     "#cubo 60 -60 82 0.5 front=none left=output right=none back=output top=input bottom=none",
     "#esperar 40",
     "tick freeze"
@@ -116,14 +121,16 @@
   {
    "name": "item_basic_vazio",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
+    "tp @a 62.5 -59 78.5 0 0",
+    "#esperar 40",
     "fill 56 -60 74 68 -52 74 minecraft:stone",
-    "item replace entity @s hotbar.0 with mekanism:basic_energy_cube",
-    "item replace entity @s hotbar.1 with mekanism:advanced_energy_cube",
-    "item replace entity @s hotbar.2 with mekanism:elite_energy_cube",
-    "item replace entity @s hotbar.3 with mekanism:ultimate_energy_cube",
-    "item replace entity @s hotbar.4 with mekanism:creative_energy_cube",
+    "item replace entity @a hotbar.0 with mekanism:basic_energy_cube",
+    "item replace entity @a hotbar.1 with mekanism:advanced_energy_cube",
+    "item replace entity @a hotbar.2 with mekanism:elite_energy_cube",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_energy_cube",
+    "item replace entity @a hotbar.4 with mekanism:creative_energy_cube",
     "#esperar 40",
     "tick freeze"
    ],
@@ -132,14 +139,16 @@
   {
    "name": "item_basic_metade",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
+    "tp @a 62.5 -59 78.5 0 0",
+    "#esperar 40",
     "fill 56 -60 74 68 -52 74 minecraft:stone",
-    "item replace entity @s hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=2000000L]",
-    "item replace entity @s hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=8000000L]",
-    "item replace entity @s hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=32000000L]",
-    "item replace entity @s hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=128000000L]",
-    "item replace entity @s hotbar.4 with mekanism:creative_energy_cube",
+    "item replace entity @a hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=2000000L]",
+    "item replace entity @a hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=8000000L]",
+    "item replace entity @a hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=32000000L]",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=128000000L]",
+    "item replace entity @a hotbar.4 with mekanism:creative_energy_cube",
     "#esperar 40",
     "tick freeze"
    ],
@@ -148,14 +157,16 @@
   {
    "name": "item_basic_cheio",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
+    "tp @a 62.5 -59 78.5 0 0",
+    "#esperar 40",
     "fill 56 -60 74 68 -52 74 minecraft:stone",
-    "item replace entity @s hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=4000000L]",
-    "item replace entity @s hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=16000000L]",
-    "item replace entity @s hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=64000000L]",
-    "item replace entity @s hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=256000000L]",
-    "item replace entity @s hotbar.4 with mekanism:creative_energy_cube[mekanism:energy=9223372036854775807L]",
+    "item replace entity @a hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=4000000L]",
+    "item replace entity @a hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=16000000L]",
+    "item replace entity @a hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=64000000L]",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=256000000L]",
+    "item replace entity @a hotbar.4 with mekanism:creative_energy_cube[mekanism:energy=9223372036854775807L]",
     "#esperar 40",
     "tick freeze"
    ],
@@ -164,14 +175,16 @@
   {
    "name": "item_quarto",
    "cmds": [
-    "clear @s",
+    "clear @a",
     "tick unfreeze",
+    "tp @a 62.5 -59 78.5 0 0",
+    "#esperar 40",
     "fill 56 -60 74 68 -52 74 minecraft:stone",
-    "item replace entity @s hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=1000000L]",
-    "item replace entity @s hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=1600000L]",
-    "item replace entity @s hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=16000000L]",
-    "item replace entity @s hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=230400000L]",
-    "item replace entity @s hotbar.4 with mekanism:basic_energy_cube[mekanism:energy=3600000L]",
+    "item replace entity @a hotbar.0 with mekanism:basic_energy_cube[mekanism:energy=1000000L]",
+    "item replace entity @a hotbar.1 with mekanism:advanced_energy_cube[mekanism:energy=1600000L]",
+    "item replace entity @a hotbar.2 with mekanism:elite_energy_cube[mekanism:energy=16000000L]",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_energy_cube[mekanism:energy=230400000L]",
+    "item replace entity @a hotbar.4 with mekanism:basic_energy_cube[mekanism:energy=3600000L]",
     "#esperar 40",
     "tick freeze"
    ],

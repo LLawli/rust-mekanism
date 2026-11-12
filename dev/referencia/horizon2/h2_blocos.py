@@ -374,6 +374,11 @@ def alinha_o_tempo(nome):
 
 
 def cena(out, nomes=(), roteiro="blocos.json"):
+    if os.environ.get("IGUALAR_OPCOES"):
+        # As opções do cliente do original (`options.txt` da run do `mekanism-ref`): o campo de visão, o brilho, a oclusão ambiente. Sem elas o mundo sai com outra vista.
+        sys.path.insert(0, os.path.join(h.TOOLS, ".."))
+        import cena_telas
+        cena_telas.iguala_as_opcoes()
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
@@ -394,7 +399,7 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         for cmd in shot["cmds"]:
             if cmd.startswith("#cubo "):
                 # O bloco precisa ter nascido para receber o NBT.
-                time.sleep(0.5)
+                time.sleep(1.5)
                 cmd = comando_do_cubo(cmd, shot["cmds"])
             if cmd.startswith("#esperar "):
                 time.sleep(int(cmd.split()[1]) / 20.0)

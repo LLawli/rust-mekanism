@@ -348,7 +348,7 @@ def do_mundo(nome):
 
 
 def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), tolerancia=0, regioes=None, mascarar_abas=True,
-             prioridade=None, ausentes=(), limite_mundo=None, particulas=None):
+             prioridade=None, ausentes=(), limite_mundo=None, particulas=None, classe_da_caixa="particulas_da_maquina"):
     """Compara os dois prints (cada um `(largura, altura, rgba)`).
 
     Devolve (resultado, imagem), com `resultado` um dicionário com os totais e os elementos, e `imagem` o `(largura, altura, rgba)`
@@ -397,7 +397,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
     alem_amostra = []  # os primeiros pixels que passaram do limite do mundo: (área, x, y de GUI, cor no original, cor no port)
     maior_do_mundo = 0  # a maior diferença por canal que ficou dentro do limite do mundo: a medida do limite
     # `particulas`: o retângulo do print (x, y, largura, altura, em pixels da imagem) onde as partículas da máquina acesa caem; o que passa do `limite_mundo`
-    # ali conta em `particulas_da_maquina`, à parte, e fora dali em `alem_*`.
+    # ali conta em `classe_da_caixa` (`particulas_da_maquina`, ou `cubo_no_mundo`), à parte, e fora dali em `alem_*`.
     mascarados = 0
     ignorados = 0
     classe = {}  # o que cada pixel de GUI é: None se fica fora da conta, senão o nome do elemento
@@ -454,7 +454,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                         x_img, y_img = esquerda + px, topo + py
                         nas_particulas = particulas is not None and (
                             particulas[0] <= x_img < particulas[0] + particulas[2] and particulas[1] <= y_img < particulas[1] + particulas[3])
-                        conta = "particulas_da_maquina" if nas_particulas else "alem_" + nome
+                        conta = classe_da_caixa if nas_particulas else "alem_" + nome
                         contagem.setdefault(conta, [0, 0])[0] += 1
                         if not nas_particulas and len(alem_amostra) < 12:
                             alem_amostra.append((nome, gx, gy, tuple(a[indice : indice + 3]), tuple(b[indice : indice + 3])))

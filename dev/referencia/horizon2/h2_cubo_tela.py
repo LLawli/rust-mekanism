@@ -111,7 +111,16 @@ def slots():
 
 
 def video():
+    """A cena do vídeo. Com `GRAVAR` (o nome do gravador de `gravar-jogo`, no desktop) grava o arquivo `cubo_tela.mp4` de dentro desta cena: o chat fica escondido durante a
+    gravação (o chat oculto também impede comandos, então tudo o que precisa de comando vem antes e o `finish` depois)."""
+    import subprocess
     prepare(1500000)
+    gravador = os.environ.get("GRAVAR")
+    rec = None
+    if gravador:
+        a.ctl("options-set", "chatVisibility", "2")
+        rec = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {gravador} cubo_tela.mp4 22"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        a.settle(3.0)
     ab.open_screen()
     a.settle(2.0)
     tl.click(tl.SIDE_TAB)
@@ -120,6 +129,11 @@ def video():
     a.settle(3.0)
     tl.click(tl.at(tl.WIN, tl.SIDE["top"]))
     a.settle(2.0)
+    a.ctl("close")
+    a.settle(1.0)
+    if rec:
+        rec.wait()
+        a.ctl("options-set", "chatVisibility", "0")
     finish()
 
 

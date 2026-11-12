@@ -736,7 +736,22 @@ def reabre_no_port(pos, bloco):
     comando(f"data merge block {pos} {nbt}")
 
 
-def espera_estado_estavel(alvo, destino, tentativas=12):
+def caminho_no_desktop(caminho):
+    """O caminho do arquivo no desktop: dentro do container `horizon2` a pasta de dados aparece com o nome da do `horizon`."""
+    return caminho.replace("/jogo-isolado/horizon/", f"/jogo-isolado/{os.environ.get('H_NAME', 'horizon')}/")
+
+
+def iguais_no_recorte(a, b, recorte):
+    """Se os dois prints são iguais dentro do `recorte` (esquerda, topo, direita, base, em pixels da imagem), comparado no desktop (PIL). O que o Energy Cube desenha
+    no mundo atrás da tela (o núcleo gira com o `partial` do cliente, que o Horizon não prende com o `tick freeze`) fica fora do recorte, que é a tela e as abas."""
+    codigo = ("from PIL import Image, ImageChops; import sys; a, b = (Image.open(p).convert('RGB').crop(%r) for p in sys.argv[1:3]); "
+              "print('igual' if ImageChops.difference(a, b).getbbox() is None else 'diferente')" % (tuple(recorte),))
+    a, b = caminho_no_desktop(a), caminho_no_desktop(b)
+    saida = subprocess.run(["ssh", "desktop", f"python3 -c {shlex.quote(codigo)} {shlex.quote(a)} {shlex.quote(b)}"], capture_output=True, text=True).stdout.strip()
+    return saida == "igual"
+
+
+def espera_estado_estavel(alvo, destino, tentativas=12, recorte=None):
     """Tira o print até dois seguidos serem idênticos: a janela de upgrades recebe os dados do servidor alguns quadros depois de abrir
     (o servidor só os escreve com a janela acompanhada), e um print na frente disso mostra a lista vazia. Em vez de repetir o caso até
     passar, espera o estado parar de mudar e grava o último print. O arquivo é lido no desktop, por `md5sum`."""
@@ -745,9 +760,13 @@ def espera_estado_estavel(alvo, destino, tentativas=12):
         ctl("screenshot", anterior)
         ctl("wait", "3")
         ctl("screenshot", alvo)
-        soma = subprocess.run(["ssh", "desktop", f"md5sum {shlex.quote(anterior)} {shlex.quote(alvo)}"], capture_output=True, text=True).stdout.split()
-        if len(soma) == 4 and soma[0] == soma[2]:
-            return
+        if recorte is not None:
+            if iguais_no_recorte(anterior, alvo, recorte):
+                return
+        else:
+            soma = subprocess.run(["ssh", "desktop", f"md5sum {shlex.quote(caminho_no_desktop(anterior))} {shlex.quote(caminho_no_desktop(alvo))}"], capture_output=True, text=True).stdout.split()
+            if len(soma) == 4 and soma[0] == soma[2]:
+                return
         ctl("wait", "5")
     raise RuntimeError(f"o estado de {alvo} não parou de mudar em {tentativas} prints")
 
@@ -790,7 +809,11 @@ def tira_port(c, x, escala, destino):
             ctl("wait", "2")
         alvo = f"{destino}/port_{c['nome']}_e{escala}{sufixo}.png"
         if c["args"].get("clicar"):
-            espera_estado_estavel(alvo, destino)
+            # O cubo: só a tela e as abas valem (o núcleo atrás gira).
+            recorte = ((gui_l - 176) // 2 - 28, (gui_a - 166) // 2, (gui_l - 176) // 2 + 204, (gui_a - 166) // 2 + 166) if c["maquina"].startswith("cubo") else None
+            if recorte:
+                recorte = tuple(v * escala for v in recorte)
+            espera_estado_estavel(alvo, destino, recorte=recorte)
         else:
             ctl("screenshot", alvo)
         if capturas > 1 and not ciclo:
