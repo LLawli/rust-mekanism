@@ -264,6 +264,24 @@ impl ResourceOwnerWorld<FluidResource> for GameWorld<'_, '_> {
     }
 }
 
+/// Só com a sonda ligada (a cópia de teste): o NBT do cano com `probe_push: {fluid, amount}` empurra esse fluido para o contêiner da capability dele (`EXTERNAL`), como um vizinho que
+/// tem um tanque faria, e a chave some. Serve ao teste em jogo repetir o `push` do rastro; nenhum bloco portado empurra fluido ainda.
+fn probe_push(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    let key = JavaString::from("probe_push");
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let Some(Tag::Compound(push)) = entity.nbt.remove(&key) else {
+        return;
+    };
+    let (Some(Tag::String(fluid)), Some(Tag::Int(amount))) = (push.get(&JavaString::from("fluid")), push.get(&JavaString::from("amount"))) else {
+        return;
+    };
+    let fluid = FluidResource::new(&fluid.to_string_lossy());
+    let got = with_owner(dimension, |owner| owner.insert_external(sim_pos(pos), &fluid, *amount));
+    eprintln!("MBF {{\"push\":[{},{},{}],\"fluid\":\"{}\",\"amount\":{},\"got\":{:?}}}", pos[0], pos[1], pos[2], fluid.id, amount, got);
+}
+
 /// O `saveShare` que o Horizon guardou: `stored: {type: {id}, amount}` (`StackHelper.storeNonEmpty` com o `FluidResource.CODEC`).
 fn read_stored(nbt: &Compound) -> Option<StackContents<FluidResource>> {
     let Some(Tag::Compound(stored)) = nbt.get(&JavaString::from(STORED)) else {
@@ -380,6 +398,13 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
         PipeEvent::Update(pos) => handlers_refresh(game, dimension, Some(arr(*pos))),
         PipeEvent::ServerTickPost { .. } => handlers_refresh(game, dimension, None),
         _ => {}
+    }
+    if post && basis::transmitter_probe_enabled() {
+        // O tile que está no tick está fora do mundo: o empurrão da sonda espera o fim do tick, antes do `onTick` do registro.
+        let positions: Vec<[i32; 3]> = with_owner(dimension, |owner| owner.positions().into_iter().map(arr).collect()).unwrap_or_default();
+        for pos in positions {
+            probe_push(game, dimension, pos);
+        }
     }
     if post {
         // As capabilities de fluido que mudaram durante o tick chegam aos canos vizinhos antes do `onTick` do registro.

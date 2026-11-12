@@ -13,13 +13,16 @@ use crate::transaction::Transaction;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+/// `Predicate<R>` de um contêiner.
+pub type Accepts<R> = Rc<dyn Fn(&R) -> bool>;
+
 /// O que o contêiner de um vizinho dizia no começo do evento.
 #[derive(Clone)]
 pub struct ResourceSnapshot<R: Resource> {
     pub contents: StackContents<R>,
     pub capacity: u64,
     /// O validador do contêiner (`fluidStack -> fluidStack.is(FluidTags.LAVA)`).
-    pub accepts: Rc<dyn Fn(&R) -> bool>,
+    pub accepts: Accepts<R>,
     /// `canInsert` para quem vem de fora (`EXTERNAL`).
     pub can_insert: bool,
     /// `canExtract` para quem vem de fora.
@@ -45,7 +48,7 @@ impl<R: Resource> ResourceSnapshot<R> {
 struct Rules<R: Resource> {
     can_insert: Cell<bool>,
     can_extract: Cell<bool>,
-    accepts: RefCell<Rc<dyn Fn(&R) -> bool>>,
+    accepts: RefCell<Accepts<R>>,
 }
 
 /// A capability de recurso de um vizinho, como a rede a usa.
