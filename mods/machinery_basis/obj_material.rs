@@ -4,8 +4,31 @@
 // Os materiais do cabo têm `Kd 0.8 0.8 0.8`: sem ler isso tudo sai 20% mais claro; e os do vidro do transportador e do conteúdo têm `neoforge_TintIndex 0`.
 //
 // Este arquivo é só a conta, sem tipo do Horizon (usa `std`), para os testes compilarem-no como está; o encaixe nos tipos do Horizon fica nas duas injeções `obj_material_parse`
-// (o fim de `parse_mtl`) e `obj_material_quads` (o fim de `bake_obj`). `parse_mtl` devolve um mapa de material para textura que não tem lugar para essas duas coisas: ela as
+// (o fim de `parse_mtl`) e `obj_material_quads` (o começo de `bake_obj`, que o chama de novo e depois mexe nos quads que ele acrescentou). `parse_mtl` devolve um mapa de material para textura que não tem lugar para essas duas coisas: ela as
 // guarda no mesmo mapa, sob uma chave `PREFIX` + nome do material que nenhuma face usa (uma face procura o próprio nome), e `bake_obj` as lê de volta.
+
+use std::cell::Cell;
+
+thread_local! {
+    /// O `ObjModel` de um `bake_obj` em andamento que a injeção já tratou (o endereço dele; 0 se nenhum).
+    static BAKING: Cell<usize> = const { Cell::new(0) };
+}
+
+/// A injeção de `bake_obj` já tratou este OBJ? Limpa a marca. A injeção é um HEAD cancelável (o corpo de `bake_obj` tem `?`, e o RETURN não o aceita): chama `bake_obj` de novo por dentro,
+/// com a marca posta, e a segunda passagem segue para o corpo original.
+pub fn bake_reentered(obj: usize) -> bool {
+    BAKING.with(|mark| {
+        let same = mark.get() == obj;
+        if same {
+            mark.set(0);
+        }
+        same
+    })
+}
+
+pub fn bake_mark(obj: usize) {
+    BAKING.with(|mark| mark.set(obj));
+}
 
 /// O começo da chave de um material extra. O `\u{1}` não está em nome de material nenhum (o `parse_mtl` do Horizon lê o nome como a primeira palavra da linha `newmtl`).
 pub const PREFIX: &str = "\u{1}mtl:";

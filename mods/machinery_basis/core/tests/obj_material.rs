@@ -121,3 +121,15 @@ fn the_extra_entry_round_trips() {
     assert!(key("None").starts_with(material::PREFIX));
     assert_ne!(key("None"), "None");
 }
+
+/// A injeção de `bake_obj` chama `bake_obj` de novo por dentro: a marca do endereço faz a segunda passagem (e só ela) seguir para o corpo original, e um OBJ que não foi marcado não é tratado
+/// como já visto.
+#[test]
+fn the_bake_mark_lets_only_the_second_pass_through() {
+    let (a, b) = (0x1000, 0x2000);
+    assert!(!material::bake_reentered(a));
+    material::bake_mark(a);
+    assert!(!material::bake_reentered(b));
+    assert!(material::bake_reentered(a));
+    assert!(!material::bake_reentered(a));
+}
