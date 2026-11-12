@@ -3,7 +3,7 @@
 //! em que o original o pôs (`BlockStateBase.is`/`Holder.tags()` em jogo, `rastros/blocos.jsonl`).
 mod common;
 
-use common::craft::{TIERS5, blocos, content, json, rastro, structure_scope, transmitters};
+use common::craft::{TIERS5, blocos, cables, content, json, rastro, structure_scope, transmitters};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -44,8 +44,8 @@ fn fluid_tanks() -> Vec<String> {
     TIERS5.map(|tier| format!("{tier}_fluid_tank")).to_vec()
 }
 
-/// Os arquivos que o port escreve em vez de copiar (decisão 26): o blockstate e o item dos transmissores, do cubo de energia e do tanque de fluido (o vidro tingido de cada tier), e os modelos
-/// e as texturas que eles citam.
+/// Os arquivos que o port escreve em vez de copiar (decisão 26): o blockstate dos transmissores (e as partes que ele junta) e o blockstate e o item do cubo de energia e do tanque de fluido
+/// (o vidro tingido de cada tier), e os modelos e as texturas que eles citam. O item, o modelo, o OBJ e o `.mtl` do transmissor são os do original.
 fn generated(relative: &str) -> bool {
     let id = relative
         .rsplit('/')
@@ -57,8 +57,8 @@ fn generated(relative: &str) -> bool {
     (relative.starts_with("assets/mekanism/blockstates/")
         && (in_set(transmitters()) || in_set(energy_cubes()) || in_set(fluid_tanks())))
         || (relative.starts_with("assets/mekanism/items/")
-            && (in_set(transmitters()) || in_set(energy_cubes()) || in_set(fluid_tanks())))
-        || relative.starts_with("assets/mekanism/models/block/transmitter_port/")
+            && (in_set(energy_cubes()) || in_set(fluid_tanks())))
+        || relative.starts_with("assets/mekanism/models/block/transmitter_part/")
         || relative.starts_with("assets/mekanism/models/block/fluid_tank/")
         || (relative.starts_with("assets/mekanism/textures/block/models/fluid_tank_side_")
             && TIERS5.iter().any(|tier| id.ends_with(&format!("_{tier}"))))
@@ -66,6 +66,9 @@ fn generated(relative: &str) -> bool {
             && (id.ends_with("_static") || id.ends_with("_item")))
         || (relative.starts_with("assets/mekanism/models/item/") && id.ends_with("_port"))
 }
+
+/// O que um modelo `neoforge:obj` cita em `model` e `mtl_override`: arquivos, não modelos.
+const OBJ_SUFFIXES: [&str; 3] = [".obj", ".obj.mek", ".mtl"];
 
 const ADAPTED: &str = "assets/mekanism/blockstates/qio_redstone_adapter.json";
 
@@ -85,7 +88,7 @@ fn references(value: &Value, models: &mut BTreeSet<String>, textures: &mut BTree
             for (key, child) in object {
                 match (key.as_str(), child) {
                     ("model" | "parent" | "lit" | "unlit", Value::String(name))
-                        if name.contains(':') =>
+                        if name.contains(':') && !OBJ_SUFFIXES.iter().any(|s| name.ends_with(s)) =>
                     {
                         models.insert(name.clone());
                     }
@@ -392,93 +395,62 @@ fn numbers(value: &Value) -> Value {
     }
 }
 
-/// O blockstate, o item e os dois modelos de cada transmissor novo: o corpo é o cubo de 6 pixels (os pequenos) ou 8 (os grandes) e o braço vai da borda até ele, com as texturas do
-/// modelo do original (`center_opaque` e `side_opaque`), uma conexão por lado do chorus plant do Horizon e o item é o modelo do centro, como o do cabo.
+/// O transmissor do original é uma variante `mekanism:special/transmitter` que o Horizon recusa; o port põe, por lado, a parte `NORMAL` (lado ligado) ou `NONE` do OBJ do modelo do
+/// original (`TransmitterBlockStateModel.collectParts`), em um modelo-filho com `visibility` de todas as 24 partes. O item, o modelo do corpo, o OBJ e o `.mtl` são cópias.
 #[test]
-fn the_transmitters_are_drawn_with_the_textures_of_the_original() {
+fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
     let rastro = rastro("estrutura_modelos.json");
-    let models = content().join("assets/mekanism/models/block/transmitter_port");
-    let directions = [
-        ("north", None, None),
-        ("east", Some(90), None),
-        ("south", Some(180), None),
-        ("west", Some(270), None),
-        ("up", None, Some(270)),
-        ("down", None, Some(90)),
-    ];
-    for id in transmitters() {
+    let files = manifest();
+    let sides = ["down", "up", "north", "south", "west", "east"];
+    let statuses = ["NONE", "NORMAL", "PUSH", "PULL"];
+    let mut ids = transmitters();
+    ids.extend(cables());
+    assert_eq!(ids.len(), 22);
+    for id in ids {
         let want = &rastro["transmitters"][&id];
-        let (lo, hi) = if want["size"] == "small" {
-            (5.0, 11.0)
-        } else {
-            (4.0, 12.0)
-        };
-        let center = json(&models.join(format!("{id}_center.json")));
-        assert_eq!(center["textures"]["center"], want["center"], "{id}");
-        let element = &center["elements"][0];
-        assert_eq!(
-            numbers(&element["from"]),
-            serde_json::json!([lo, lo, lo]),
-            "{id}"
-        );
-        assert_eq!(
-            numbers(&element["to"]),
-            serde_json::json!([hi, hi, hi]),
-            "{id}"
-        );
-        assert_eq!(element["faces"].as_object().unwrap().len(), 6, "{id}");
-        let side = json(&models.join(format!("{id}_side.json")));
-        assert_eq!(side["textures"]["side"], want["side"], "{id}");
-        let arm = &side["elements"][0];
-        assert_eq!(
-            numbers(&arm["from"]),
-            serde_json::json!([lo, lo, 0.0]),
-            "{id}"
-        );
-        assert_eq!(numbers(&arm["to"]), serde_json::json!([hi, hi, lo]), "{id}");
-        // Os dois lados do braço que se veem são os de cima, de baixo, leste e oeste: a ponta fica contra o vizinho.
-        let mut faces: Vec<&str> = arm["faces"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        faces.sort_unstable();
-        assert_eq!(faces, ["down", "east", "up", "west"], "{id}");
-        // O blockstate: o centro sempre e o braço girado para cada lado ligado.
+        assert!(files.contains(&format!("assets/mekanism/items/{id}.json")), "{id}: o item é o do original");
         let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
         let parts = state["multipart"].as_array().unwrap();
-        assert_eq!(parts.len(), 7, "{id}");
-        assert_eq!(
-            parts[0],
-            serde_json::json!({"apply": {"model": format!("mekanism:block/transmitter_port/{id}_center")}}),
-            "{id}"
-        );
-        for ((name, y, x), part) in directions.iter().zip(&parts[1..]) {
-            assert_eq!(part["when"][name], "true", "{id}");
-            let apply = &part["apply"];
-            assert_eq!(
-                apply["model"],
-                format!("mekanism:block/transmitter_port/{id}_side"),
-                "{id}"
-            );
-            assert_eq!(
-                apply.get("y").and_then(Value::as_i64),
-                y.map(i64::from),
-                "{id} {name}"
-            );
-            assert_eq!(
-                apply.get("x").and_then(Value::as_i64),
-                x.map(i64::from),
-                "{id} {name}"
-            );
+        assert_eq!(parts.len(), 12, "{id}");
+        for (i, side) in sides.iter().enumerate() {
+            for (j, (connected, status)) in [("true", "NORMAL"), ("false", "NONE")].iter().enumerate() {
+                let part = &parts[i * 2 + j];
+                assert_eq!(part["when"], serde_json::json!({ *side: *connected }), "{id}");
+                let name = format!("{side}_{}", status.to_lowercase());
+                assert_eq!(
+                    part["apply"],
+                    serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/{name}")}),
+                    "{id}"
+                );
+                let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/{id}/{name}.json")));
+                assert_eq!(model["parent"], want["model"], "{id} {name}");
+                let visibility = model["visibility"].as_object().unwrap();
+                assert_eq!(visibility.len(), sides.len() * statuses.len(), "{id} {name}");
+                for (group, shown) in visibility {
+                    assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{status}"), "{id} {name} {group}");
+                }
+            }
         }
-        let item = json(&content().join(format!("assets/mekanism/items/{id}.json")));
-        assert_eq!(
-            item["model"]["model"],
-            format!("mekanism:block/transmitter_port/{id}_center"),
-            "{id}"
-        );
+        // O corpo herda um modelo `neoforge:obj` do original; o OBJ tem as 24 partes e o `.mtl` que ele nomeia está ao lado.
+        let mut model = want["model"].as_str().unwrap().to_owned();
+        let obj = loop {
+            let path = format!("assets/mekanism/models/{}.json", model.strip_prefix("mekanism:").unwrap());
+            assert!(files.contains(&path), "{path}");
+            let data = json(&content().join(&path));
+            if data["loader"] == "neoforge:obj" {
+                break data;
+            }
+            model = data["parent"].as_str().unwrap().to_owned();
+        };
+        let obj_path = format!("assets/mekanism/{}", obj["model"].as_str().unwrap().strip_prefix("mekanism:").unwrap());
+        assert!(files.contains(&obj_path), "{obj_path}");
+        let text = std::fs::read_to_string(content().join(&obj_path)).unwrap();
+        let groups: BTreeSet<&str> = text.lines().filter_map(|l| l.strip_prefix("o ")).collect();
+        let expected: BTreeSet<String> = sides.iter().flat_map(|s| statuses.iter().map(move |t| format!("{s}{t}"))).collect();
+        assert_eq!(groups, expected.iter().map(String::as_str).collect::<BTreeSet<_>>(), "{id}");
+        let mtl = text.lines().find_map(|l| l.strip_prefix("mtllib ")).unwrap();
+        let mtl_path = obj_path.rsplit_once('/').unwrap().0.to_owned() + "/" + mtl;
+        assert!(files.contains(&mtl_path), "{mtl_path}");
     }
 }
 

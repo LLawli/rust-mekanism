@@ -1,6 +1,6 @@
 {
- "model": {
-  "type": "minecraft:model",
-  "model": "mekanism:block/universal_cable/elite_center"
- }
+  "model": {
+    "type": "minecraft:model",
+    "model": "mekanism:item/elite_universal_cable"
+  }
 }

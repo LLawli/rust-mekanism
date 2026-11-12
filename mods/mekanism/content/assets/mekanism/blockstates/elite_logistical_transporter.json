@@ -1,43 +1,19 @@
 {
   "multipart": [
     {
+      "when": {
+        "down": "true"
+      },
       "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_center"
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/down_normal"
       }
     },
     {
       "when": {
-        "north": "true"
+        "down": "false"
       },
       "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side"
-      }
-    },
-    {
-      "when": {
-        "east": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side",
-        "y": 90
-      }
-    },
-    {
-      "when": {
-        "south": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side",
-        "y": 180
-      }
-    },
-    {
-      "when": {
-        "west": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side",
-        "y": 270
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/down_none"
       }
     },
     {
@@ -45,17 +21,79 @@
         "up": "true"
       },
       "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side",
-        "x": 270
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/up_normal"
       }
     },
     {
       "when": {
-        "down": "true"
+        "up": "false"
       },
       "apply": {
-        "model": "mekanism:block/transmitter_port/elite_logistical_transporter_side",
-        "x": 90
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/up_none"
+      }
+    },
+    {
+      "when": {
+        "north": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/north_normal"
+      }
+    },
+    {
+      "when": {
+        "north": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/north_none"
+      }
+    },
+    {
+      "when": {
+        "south": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/south_normal"
+      }
+    },
+    {
+      "when": {
+        "south": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/south_none"
+      }
+    },
+    {
+      "when": {
+        "west": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/west_normal"
+      }
+    },
+    {
+      "when": {
+        "west": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/west_none"
+      }
+    },
+    {
+      "when": {
+        "east": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/east_normal"
+      }
+    },
+    {
+      "when": {
+        "east": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/east_none"
       }
     }
   ]

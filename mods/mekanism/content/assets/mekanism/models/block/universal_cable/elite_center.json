@@ -1,6 +1,0 @@
-{
- "parent": "mekanism:block/universal_cable/center",
- "textures": {
-  "center": "mekanism:block/models/multipart/elite_universal_cable"
- }
-}

@@ -1,0 +1,29 @@
+{
+  "parent": "mekanism:block/transmitter/small/pressurized_tube/ultimate",
+  "visibility": {
+    "downNONE": false,
+    "downNORMAL": false,
+    "downPUSH": false,
+    "downPULL": false,
+    "upNONE": false,
+    "upNORMAL": false,
+    "upPUSH": false,
+    "upPULL": false,
+    "northNONE": false,
+    "northNORMAL": false,
+    "northPUSH": false,
+    "northPULL": false,
+    "southNONE": false,
+    "southNORMAL": false,
+    "southPUSH": false,
+    "southPULL": false,
+    "westNONE": false,
+    "westNORMAL": true,
+    "westPUSH": false,
+    "westPULL": false,
+    "eastNONE": false,
+    "eastNORMAL": false,
+    "eastPUSH": false,
+    "eastPULL": false
+  }
+}

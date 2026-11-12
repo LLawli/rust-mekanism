@@ -1,62 +1,100 @@
 {
- "multipart": [
-  {
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_center"
-   }
-  },
-  {
-   "when": {
-    "north": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side"
-   }
-  },
-  {
-   "when": {
-    "east": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side",
-    "y": 90
-   }
-  },
-  {
-   "when": {
-    "south": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side",
-    "y": 180
-   }
-  },
-  {
-   "when": {
-    "west": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side",
-    "y": 270
-   }
-  },
-  {
-   "when": {
-    "up": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side",
-    "x": 270
-   }
-  },
-  {
-   "when": {
-    "down": "true"
-   },
-   "apply": {
-    "model": "mekanism:block/universal_cable/ultimate_side",
-    "x": 90
-   }
-  }
- ]
+  "multipart": [
+    {
+      "when": {
+        "down": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/down_normal"
+      }
+    },
+    {
+      "when": {
+        "down": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/down_none"
+      }
+    },
+    {
+      "when": {
+        "up": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/up_normal"
+      }
+    },
+    {
+      "when": {
+        "up": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/up_none"
+      }
+    },
+    {
+      "when": {
+        "north": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/north_normal"
+      }
+    },
+    {
+      "when": {
+        "north": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/north_none"
+      }
+    },
+    {
+      "when": {
+        "south": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/south_normal"
+      }
+    },
+    {
+      "when": {
+        "south": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/south_none"
+      }
+    },
+    {
+      "when": {
+        "west": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/west_normal"
+      }
+    },
+    {
+      "when": {
+        "west": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/west_none"
+      }
+    },
+    {
+      "when": {
+        "east": "true"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/east_normal"
+      }
+    },
+    {
+      "when": {
+        "east": "false"
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/ultimate_universal_cable/east_none"
+      }
+    }
+  ]
 }

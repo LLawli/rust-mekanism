@@ -4161,114 +4161,114 @@
 },
 "transmitters": {
 "advanced_logistical_transporter": {
-"center": "mekanism:block/models/multipart/opaque/advanced_logistical_transporter",
-"side": "mekanism:block/models/multipart/opaque/advanced_logistical_transporter_vertical",
-"size": "large"
+"glass": "mekanism:block/transmitter/large/logistical_transporter/transporter_glass",
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/logistical_transporter/advanced"
 },
 "advanced_mechanical_pipe": {
-"center": "mekanism:block/models/multipart/opaque/advanced_mechanical_pipe",
-"side": "mekanism:block/models/multipart/opaque/advanced_mechanical_pipe_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/mechanical_pipe/advanced"
 },
 "advanced_pressurized_tube": {
-"center": "mekanism:block/models/multipart/advanced_pressurized_tube",
-"side": "mekanism:block/models/multipart/opaque/advanced_pressurized_tube_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/pressurized_tube/advanced"
 },
 "advanced_thermodynamic_conductor": {
-"center": "mekanism:block/models/multipart/advanced_thermodynamic_conductor",
-"side": "mekanism:block/models/multipart/opaque/advanced_thermodynamic_conductor_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/thermodynamic_conductor/advanced"
 },
 "advanced_universal_cable": {
-"center": "mekanism:block/models/multipart/advanced_universal_cable",
-"side": "mekanism:block/models/multipart/opaque/advanced_universal_cable_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/universal_cable/advanced"
 },
 "basic_logistical_transporter": {
-"center": "mekanism:block/models/multipart/opaque/basic_logistical_transporter",
-"side": "mekanism:block/models/multipart/opaque/basic_logistical_transporter_vertical",
-"size": "large"
+"glass": "mekanism:block/transmitter/large/logistical_transporter/transporter_glass",
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/logistical_transporter/basic"
 },
 "basic_mechanical_pipe": {
-"center": "mekanism:block/models/multipart/opaque/basic_mechanical_pipe",
-"side": "mekanism:block/models/multipart/opaque/basic_mechanical_pipe_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/mechanical_pipe/basic"
 },
 "basic_pressurized_tube": {
-"center": "mekanism:block/models/multipart/basic_pressurized_tube",
-"side": "mekanism:block/models/multipart/opaque/basic_pressurized_tube_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/pressurized_tube/basic"
 },
 "basic_thermodynamic_conductor": {
-"center": "mekanism:block/models/multipart/basic_thermodynamic_conductor",
-"side": "mekanism:block/models/multipart/opaque/basic_thermodynamic_conductor_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/thermodynamic_conductor/basic"
 },
 "basic_universal_cable": {
-"center": "mekanism:block/models/multipart/basic_universal_cable",
-"side": "mekanism:block/models/multipart/opaque/basic_universal_cable_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/universal_cable/basic"
 },
 "diversion_transporter": {
-"center": "mekanism:block/models/multipart/opaque/diversion_transporter",
-"side": "mekanism:block/models/multipart/opaque/diversion_transporter_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": false,
+"model": "mekanism:block/transmitter/large/diversion_transporter"
 },
 "elite_logistical_transporter": {
-"center": "mekanism:block/models/multipart/opaque/elite_logistical_transporter",
-"side": "mekanism:block/models/multipart/opaque/elite_logistical_transporter_vertical",
-"size": "large"
+"glass": "mekanism:block/transmitter/large/logistical_transporter/transporter_glass",
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/logistical_transporter/elite"
 },
 "elite_mechanical_pipe": {
-"center": "mekanism:block/models/multipart/opaque/elite_mechanical_pipe",
-"side": "mekanism:block/models/multipart/opaque/elite_mechanical_pipe_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/mechanical_pipe/elite"
 },
 "elite_pressurized_tube": {
-"center": "mekanism:block/models/multipart/elite_pressurized_tube",
-"side": "mekanism:block/models/multipart/opaque/elite_pressurized_tube_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/pressurized_tube/elite"
 },
 "elite_thermodynamic_conductor": {
-"center": "mekanism:block/models/multipart/elite_thermodynamic_conductor",
-"side": "mekanism:block/models/multipart/opaque/elite_thermodynamic_conductor_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/thermodynamic_conductor/elite"
 },
 "elite_universal_cable": {
-"center": "mekanism:block/models/multipart/elite_universal_cable",
-"side": "mekanism:block/models/multipart/opaque/elite_universal_cable_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/universal_cable/elite"
 },
 "restrictive_transporter": {
-"center": "mekanism:block/models/multipart/opaque/restrictive_transporter",
-"side": "mekanism:block/models/multipart/opaque/restrictive_transporter_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/restrictive_transporter"
 },
 "ultimate_logistical_transporter": {
-"center": "mekanism:block/models/multipart/opaque/ultimate_logistical_transporter",
-"side": "mekanism:block/models/multipart/opaque/ultimate_logistical_transporter_vertical",
-"size": "large"
+"glass": "mekanism:block/transmitter/large/logistical_transporter/transporter_glass",
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/logistical_transporter/ultimate"
 },
 "ultimate_mechanical_pipe": {
-"center": "mekanism:block/models/multipart/opaque/ultimate_mechanical_pipe",
-"side": "mekanism:block/models/multipart/opaque/ultimate_mechanical_pipe_vertical",
-"size": "large"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/large/mechanical_pipe/ultimate"
 },
 "ultimate_pressurized_tube": {
-"center": "mekanism:block/models/multipart/ultimate_pressurized_tube",
-"side": "mekanism:block/models/multipart/opaque/ultimate_pressurized_tube_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/pressurized_tube/ultimate"
 },
 "ultimate_thermodynamic_conductor": {
-"center": "mekanism:block/models/multipart/ultimate_thermodynamic_conductor",
-"side": "mekanism:block/models/multipart/opaque/ultimate_thermodynamic_conductor_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/thermodynamic_conductor/ultimate"
 },
 "ultimate_universal_cable": {
-"center": "mekanism:block/models/multipart/ultimate_universal_cable",
-"side": "mekanism:block/models/multipart/opaque/ultimate_universal_cable_vertical",
-"size": "small"
+"glass": null,
+"hide_contiguous_join": true,
+"model": "mekanism:block/transmitter/small/universal_cable/ultimate"
 }
 }
 }

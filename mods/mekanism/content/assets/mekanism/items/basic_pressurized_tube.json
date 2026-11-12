@@ -1,6 +1,6 @@
 {
   "model": {
     "type": "minecraft:model",
-    "model": "mekanism:block/transmitter_port/basic_pressurized_tube_center"
+    "model": "mekanism:item/basic_pressurized_tube"
   }
 }

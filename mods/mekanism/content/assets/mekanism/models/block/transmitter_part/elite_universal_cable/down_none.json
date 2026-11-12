@@ -1,0 +1,29 @@
+{
+  "parent": "mekanism:block/transmitter/small/universal_cable/elite",
+  "visibility": {
+    "downNONE": true,
+    "downNORMAL": false,
+    "downPUSH": false,
+    "downPULL": false,
+    "upNONE": false,
+    "upNORMAL": false,
+    "upPUSH": false,
+    "upPULL": false,
+    "northNONE": false,
+    "northNORMAL": false,
+    "northPUSH": false,
+    "northPULL": false,
+    "southNONE": false,
+    "southNORMAL": false,
+    "southPUSH": false,
+    "southPULL": false,
+    "westNONE": false,
+    "westNORMAL": false,
+    "westPUSH": false,
+    "westPULL": false,
+    "eastNONE": false,
+    "eastNORMAL": false,
+    "eastPUSH": false,
+    "eastPULL": false
+  }
+}

@@ -410,15 +410,16 @@ MC = "/mnt/dados/caches/rust-mekanism-ref/mc-sources/mc"
 def estrutura_modelos():
     """O que o port reescreve em vez de copiar (`blocos_conteudo.py`, decisão 26), lido do original: `tests/blocos_content.rs` confere os arquivos do port contra isto."""
     tiers = "basic advanced elite ultimate".split()
-    kinds = {"universal_cable": "small", "pressurized_tube": "small", "thermodynamic_conductor": "small", "mechanical_pipe": "large", "logistical_transporter": "large"}
+    # O blockstate de cada transmissor no original é uma variante `mekanism:special/transmitter` (`TransmitterBlockStateModel.Unbaked`): o modelo do corpo, o do vidro (o transportador
+    # logístico, que só se desenha com cor) e `hideContiguousJoin` (padrão `true`). O port junta, por lado, a parte `NONE` ou `NORMAL` do OBJ do modelo do corpo.
+    ids = [f"{tier}_{kind}" for kind in ("universal_cable", "pressurized_tube", "thermodynamic_conductor", "mechanical_pipe", "logistical_transporter") for tier in tiers]
+    ids += ["restrictive_transporter", "diversion_transporter"]
     transmitters = {}
-    for kind, size in kinds.items():
-        for tier in tiers:
-            model = json.load(open(f"{RES}/models/block/transmitter/{size}/{kind}/{tier}.json"))
-            transmitters[f"{tier}_{kind}"] = {"size": size, "center": model["textures"]["center_opaque"], "side": model["textures"]["side_opaque"]}
-    for kind in ("restrictive_transporter", "diversion_transporter"):
-        model = json.load(open(f"{RES}/models/block/transmitter/large/{kind}.json"))
-        transmitters[kind] = {"size": "large", "center": model["textures"]["center_opaque"], "side": model["textures"]["side_opaque"]}
+    for ident in ids:
+        variants = json.load(open(f"{GEN}/assets/mekanism/blockstates/{ident}.json"))["variants"]
+        assert list(variants) == [""] and variants[""]["type"] == "mekanism:special/transmitter", ident
+        variant = variants[""]
+        transmitters[ident] = {"model": variant["model"], "glass": variant.get("glass"), "hide_contiguous_join": variant.get("hideContiguousJoin", True)}
     base = json.load(open(f"{RES}/models/block/energy_cube/base.json"))
     cube = {"textures": base["textures"], "frame": base["frame"], "leds": base["leds"], "ports": base["ports"], "tiers": {}, "display": {}}
     for tier in tiers + ["creative"]:

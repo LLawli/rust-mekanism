@@ -1,6 +1,0 @@
-{
- "parent": "mekanism:block/universal_cable/side",
- "textures": {
-  "side": "mekanism:block/models/multipart/opaque/basic_universal_cable_vertical"
- }
-}

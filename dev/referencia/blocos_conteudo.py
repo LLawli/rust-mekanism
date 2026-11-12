@@ -445,7 +445,7 @@ def refs(path):
     def walk(x):
         if isinstance(x, dict):
             for key, value in x.items():
-                if key in ("model", "parent", "lit", "unlit") and isinstance(value, str) and ":" in value:
+                if key in ("model", "parent", "lit", "unlit") and isinstance(value, str) and ":" in value and not value.endswith(OBJ_SUFFIXES):
                     models.add(value)
                 if key == "holidays":
                     models.update(value.values())
@@ -460,6 +460,26 @@ def refs(path):
     return models, textures
 
 
+# O que um modelo de carregador `neoforge:obj` cita em `model` e `mtl_override`: arquivos, não modelos.
+OBJ_SUFFIXES = (".obj", ".obj.mek", ".mtl")
+
+
+def obj_files(path):
+    """Os arquivos de recurso (relativos a `assets/`) que um modelo `neoforge:obj` lê: o OBJ, o `.mtl` que o OBJ nomeia em `mtllib` (na mesma pasta) ou o `mtl_override`."""
+    data = json.load(open(path))
+    if data.get("loader") != "neoforge:obj":
+        return []
+    found = [data["model"]]
+    if "mtl_override" in data:
+        found.append(data["mtl_override"])
+    else:
+        namespace, relative = data["model"].split(":")
+        for line in open(f"{RES}/assets/{namespace}/{relative}"):
+            if line.startswith("mtllib "):
+                found.append(f"{namespace}:{relative.rsplit('/', 1)[0]}/{line.split()[1]}")
+    return [f"{name.split(':')[0]}/{name.split(':')[1]}" for name in found]
+
+
 def model_source(name):
     namespace, path = name.split(":")
     for base in (f"{RES}/assets/{namespace}/models/{path}.json", f"{GEN}/assets/{namespace}/models/{path}.json"):
@@ -468,12 +488,12 @@ def model_source(name):
     return None
 
 
-# O que o port escreve em vez de copiar, porque o Horizon não carrega o que o original usa (decisão 26): o modelo de transmissor é um OBJ próprio do Mekanism
-# (`mekanism:special/transmitter`, `.obj.mek`), o do cubo de energia um carregador de modelo (`mekanism:energy_cube_sided`, `mekanism:energy_cube`) e o item do tanque de
+# O que o port escreve em vez de copiar, porque o Horizon não carrega o que o original usa (decisão 26): o blockstate do transmissor é do tipo próprio do Mekanism
+# (`mekanism:special/transmitter`, que escolhe as partes do OBJ `.obj.mek` pelo dado do modelo da block entity; o modelo e o item são cópias), o do cubo de energia um carregador de modelo (`mekanism:energy_cube_sided`, `mekanism:energy_cube`) e o item do tanque de
 # fluido e do cubo de energia um desenhista especial (`minecraft:special` com `mekanism:fluid_tank` e `mekanism:energy_cube`, que o Horizon troca pelo modelo base, e o base
 # dos dois só tem `display`).
-GENERATED_BLOCKSTATES = TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
-GENERATED_ITEMS = TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
+GENERATED_BLOCKSTATES = CABLES + TRANSMITTERS + ENERGY_CUBES + FLUID_TANKS
+GENERATED_ITEMS = ENERGY_CUBES + FLUID_TANKS
 DIRECTIONS = (("north", {}), ("east", {"y": 90}), ("south", {"y": 180}), ("west", {"y": 270}), ("up", {"x": 270}), ("down", {"x": 90}))
 # `RelativeSide.VALUES`: a ordem em que o `EnergyCubeModel` junta as partes.
 RELATIVE_SIDES = ("front", "left", "right", "back", "top", "bottom")
@@ -484,57 +504,41 @@ def read_json(path):
         return json.load(handle)
 
 
-def transmitter_textures(block):
-    """As texturas do centro e do braço de um transmissor: as do modelo do original (`transmitter/<tamanho>/<família>/<tier>.json`), nas variantes `opaque` como o cabo que o port
-    já tinha (o braço recortado e o centro animado são da Fase 4)."""
+# As partes do OBJ do transmissor (`o downNONE`, `o downNORMAL`...): `TransmitterBlockStateModel.getPartName` junta o lado (`Direction.getSerializedName`) e o estado visual da
+# conexão (`VisualConnectionStatus.partName`). Sem block entity o original põe `NONE` em todo lado (`collectParts`, "Fallback to all none if no data"); com a conexão do chorus
+# plant do Horizon o lado ligado é `NORMAL`. `PUSH` e `PULL` esperam o `ConnectionType` da Fase 3, e os `NONE_CONTIGUOUS` (o `hideContiguousJoin`) a Fase 4.
+SIDES = ("down", "up", "north", "south", "west", "east")
+STATUSES = ("NONE", "NORMAL", "PUSH", "PULL")
+
+
+def transmitter_parent(block):
+    """O modelo do original que o transmissor herda: `transmitter/<tamanho>/<família>/<tier>` (o centro, o braço e as texturas), ou `transmitter/large/<id>` no restritivo e no desviador."""
     kind = transmitter_kind(block)
-    size = transmitter_size(block)
     if kind in TRANSMITTER_KINDS:
-        tier = block[: -len(kind) - 1]
-        path = f"{RES}/assets/mekanism/models/block/transmitter/{size}/{kind}/{tier}.json"
-    else:
-        path = f"{RES}/assets/mekanism/models/block/transmitter/large/{block}.json"
-    textures = read_json(path)["textures"]
-    return textures["center_opaque"], textures["side_opaque"]
+        return f"mekanism:block/transmitter/{transmitter_size(block)}/{kind}/{block[: -len(kind) - 1]}"
+    return f"mekanism:block/transmitter/large/{block}"
 
 
-def box_faces(texture, faces):
-    return {face: {"uv": [0, 0, 16, 16], "texture": texture} for face in faces}
+def transmitter_part_model(parent, side, status):
+    """Um modelo-filho que mostra só a parte `side` + `status` do OBJ: `visibility` com as 24 partes, como os modelos de item da datagen (`items/<id>`)."""
+    visibility = {f"{s}{t}": s == side and t == status for s in SIDES for t in STATUSES}
+    return {"parent": parent, "visibility": visibility}
 
 
 def transmitter_assets(block):
-    """O blockstate (as seis conexões do chorus plant), o modelo do centro e o do braço de um transmissor, e o item (o centro, como o do cabo). O corpo do centro é o cubo de 6 ou 8 pixels
-    (`transmitter_small.obj.mek` e `transmitter_large.obj.mek`: 0,3125 a 0,6875 e 0,25 a 0,75) e o braço vai da borda até ele, com as quatro faces laterais (a da ponta é escondida)."""
-    size = transmitter_size(block)
-    center_texture, side_texture = transmitter_textures(block)
-    lo, hi = (5, 11) if size == "small" else (4, 12)
-    center = {
-        "parent": "minecraft:block/block",
-        "textures": {"particle": "#center", "center": center_texture},
-        "elements": [{"from": [lo, lo, lo], "to": [hi, hi, hi], "faces": box_faces("#center", ("north", "south", "east", "west", "up", "down"))}],
-    }
-    # O braço do cabo mapeia a faixa vertical da textura em 13,33 de 16 para os 5 pixels de comprimento (v de 1,33 a 14,67); o do tamanho grande tem 4.
-    v0, v1 = (1.33, 14.67) if size == "small" else (2.67, 13.33)
-    arm_faces = {
-        "up": {"uv": [0, v0, 16, v1], "texture": "#side"},
-        "down": {"uv": [0, v0, 16, v1], "texture": "#side"},
-        "east": {"uv": [0, v0, 16, v1], "rotation": 90, "texture": "#side"},
-        "west": {"uv": [0, v0, 16, v1], "rotation": 90, "texture": "#side"},
-    }
-    side = {
-        "parent": "minecraft:block/block",
-        "textures": {"particle": "#side", "side": side_texture},
-        "elements": [{"from": [lo, lo, 0], "to": [hi, hi, lo], "faces": arm_faces}],
-    }
-    multipart = [{"apply": {"model": f"mekanism:block/transmitter_port/{block}_center"}}]
-    for name, rotation in DIRECTIONS:
-        multipart.append({"when": {name: "true"}, "apply": {"model": f"mekanism:block/transmitter_port/{block}_side", **rotation}})
-    return {
-        f"assets/mekanism/blockstates/{block}.json": {"multipart": multipart},
-        f"assets/mekanism/items/{block}.json": {"model": {"type": "minecraft:model", "model": f"mekanism:block/transmitter_port/{block}_center"}},
-        f"assets/mekanism/models/block/transmitter_port/{block}_center.json": center,
-        f"assets/mekanism/models/block/transmitter_port/{block}_side.json": side,
-    }, {center_texture, side_texture}
+    """O blockstate do transmissor: o original usa `mekanism:special/transmitter` (`TransmitterBlockStateModel`), que escolhe a parte do OBJ de cada lado pelo dado do modelo da block
+    entity, e o Horizon recusa o tipo. O port junta, por lado, o modelo-filho da parte `NORMAL` (lado ligado) ou `NONE` (desligado), em um `multipart` sobre as seis conexões do chorus
+    plant, e o modelo, o OBJ, o `.mtl` e o item são os do original."""
+    parent = transmitter_parent(block)
+    files = {}
+    multipart = []
+    for side in SIDES:
+        for connected, status in (("true", "NORMAL"), ("false", "NONE")):
+            name = f"{side}_{status.lower()}"
+            files[f"assets/mekanism/models/block/transmitter_part/{block}/{name}.json"] = transmitter_part_model(parent, side, status)
+            multipart.append({"when": {side: connected}, "apply": {"model": f"mekanism:block/transmitter_part/{block}/{name}"}})
+    files[f"assets/mekanism/blockstates/{block}.json"] = {"multipart": multipart}
+    return files, set()
 
 
 def lit_led(element, shift):
@@ -628,7 +632,7 @@ def baked_textures():
 def generated_assets():
     """Os arquivos que o port escreve (JSON) e as texturas que eles citam."""
     files, textures = {}, set()
-    for block in TRANSMITTERS:
+    for block in CABLES + TRANSMITTERS:
         more, tex = transmitter_assets(block)
         files.update(more)
         textures |= tex
@@ -652,12 +656,14 @@ def assets_plan():
         if source is None:
             raise SystemExit(f"modelo {name} sem arquivo no original")
         models[name] = source
+        for relative in obj_files(source):
+            files[f"assets/{relative}"] = f"{RES}/assets/{relative}"
         more, tex = refs(source)
         textures.update(tex)
         for item in more:
             visit(item)
 
-    for block in SCOPE:
+    for block in SCOPE + CABLES:
         sources = []
         if block not in GENERATED_BLOCKSTATES:
             state = blockstate_source(block)
