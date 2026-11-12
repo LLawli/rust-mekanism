@@ -476,8 +476,16 @@ fn the_names_are_the_originals() {
     for (key, value) in screens.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os nomes dos tipos de conexão do cabo (`ConnectionType`, a mensagem do Configurator: frente `cabo-jogo`), copiados da datagen do original.
+    let cables = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/cabos/lang.json"),
+    );
+    for (key, value) in cables.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
-        if fluids.get(key).is_some() || screens.get(key).is_some() {
+        if fluids.get(key).is_some() || screens.get(key).is_some() || cables.get(key).is_some() {
             continue;
         }
         assert_eq!(original.get(key), Some(value), "{key}");

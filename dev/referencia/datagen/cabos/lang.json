@@ -1,0 +1,6 @@
+{
+  "connection.mekanism.none": "None",
+  "connection.mekanism.normal": "Normal",
+  "connection.mekanism.pull": "Pull",
+  "connection.mekanism.push": "Push"
+}
