@@ -882,6 +882,39 @@ bindings = [
   { name = "value", ty = "Breath", value = "$value" },
 ]
 
+# O item solto com `noPhysics` (a caixa dele dentro de uma colisão: o Heat Generator com lava, um bloco posto onde ele estava) não é afetado pelos blocos (`Entity.isAffectedByBlocks`,
+# `Entity.java:1030`): nem a lava que acende e fere, nem a água que apaga, nem o cacto (`entityInside` de cada um, só dentro do `checkInsideBlocks`). O `environment_tick` do Horizon lê o
+# fluido da célula e aplica tudo isso, e não sabe do `noPhysics` (um local de `tick_dropped_items`). A `item_no_physics` guarda o `noPhysics` que `tick_item` recebe no módulo
+# `item-effects`, e a `item_effects`, HEAD cancelável do `environment_tick`, o lê e, com `noPhysics`, faz só o `baseTick` do fogo. Alvos crus, H123 e H124 (decisão 100).
+[[module]]
+id = "item-effects"
+file = "crates/horizon-client/src/entities.rs"
+name = "machinery_item_effects"
+source = "item_effects.rs"
+visibility = "pub"
+
+[[injection]]
+id = "item_no_physics"
+target = "horizon_client::game::entity::tick_item"
+kind = "HEAD"
+helper = "item_no_physics.rs"
+bindings = [
+  { name = "no_physics", ty = "bool", value = "no_physics" },
+]
+
+[[injection]]
+id = "item_effects"
+target = "horizon_client::entities::ItemEntity::environment_tick"
+kind = "HEAD"
+cancellable = true
+helper = "item_effects_tick.rs"
+bindings = [
+  { name = "item", ty = "&mut ItemEntity", value = "&mut *self" },
+  { name = "world", ty = "&World", value = "world" },
+  { name = "facts", ty = "&BlockFacts", value = "facts" },
+  { name = "items", ty = "&crate::items::Items", value = "items" },
+]
+
 # O equipamento vestido que o mod desenha por código (H55): o `MekanismArmorLayer` do original (`HumanoidArmorLayer` com o `ICustomArmor` de cada item) pede o modelo de cada peça na
 # pose da parte do corpo, e o hook `mob_layer` do Horizon (`native_mob_layer`) só dá o quadro do mob (giro, cabeça, passo), sem as partes do modelo, sem o armor stand, sem a tela do
 # inventário e sem a primeira pessoa. Sete injeções e dois módulos: as regras são `machinery_basis_core::worn_gear`, e o mod diz a tabela dele por `standalone_models`.
