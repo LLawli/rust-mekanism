@@ -462,3 +462,32 @@ fn the_heat_generator_occludes_by_its_shape() {
         );
     }
 }
+
+/// A tabela `FURNACE`, do `heat_generator` que segue com o gabarito `minecraft:furnace` (a injeção `block_rows` aplica a reação ao pistão e a oclusão dela), diz em todo estado, seco e com fluido dentro,
+/// o que o original deu.
+#[test]
+fn the_furnace_table_gives_the_heat_generator_what_the_original_gave() {
+    let rastro = original();
+    let row = &rastro["heat_generator"];
+    let facts = rows::furnace_facts("mekanismgenerators:heat_generator").unwrap();
+    assert_eq!(rows::FURNACE.len(), 1);
+    assert!(rows::facts("mekanismgenerators:heat_generator").is_none());
+    let mut wet_states = 0;
+    for state in row["states"].as_array().unwrap() {
+        let wet = state["props"]["fluid_logged"] != "empty";
+        let (dampening, skylight) = if wet {
+            (facts.wet_dampening, facts.wet_skylight_down)
+        } else {
+            (facts.dampening, facts.skylight_down)
+        };
+        assert_eq!(facts.push, state["push"]);
+        assert_eq!(facts.can_occlude, state["can_occlude"]);
+        assert_eq!(facts.solid_render, state["solid_render"]);
+        assert_eq!(u64::from(dampening), state["dampening"].as_u64().unwrap());
+        assert_eq!(skylight, state["skylight_down"]);
+        wet_states += usize::from(wet);
+    }
+    assert_eq!(wet_states, 16);
+    // O `BlockTileModel` é de forma menor que o cubo: o gabarito do forno não é.
+    assert!(!facts.solid_render);
+}

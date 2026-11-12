@@ -305,6 +305,26 @@ pub const BLOCKS: [Facts; 23] = [
     },
 ];
 
+/// Os blocos que seguem com o gabarito `minecraft:furnace` (estado `lit`, sem `active`): a injeção só lhes aplica a reação ao pistão e a oclusão do original (`push`, `can_occlude`,
+/// `solid_render`, `dampening`, `skylight_down` e, com fluido dentro, `wet_*`); a luz fica a do gabarito.
+pub const FURNACE: [Facts; 1] = [Facts {
+    id: "mekanismgenerators:heat_generator",
+    active_light: 13,
+    push: "IMMOVEABLE",
+    can_occlude: true,
+    solid_render: false,
+    dampening: 0,
+    skylight_down: true,
+    wet_dampening: 1,
+    wet_skylight_down: false,
+    explosion: None,
+}];
+
+/// A linha de um bloco que segue com o gabarito do forno, pelo id.
+pub fn furnace_facts(id: &str) -> Option<&'static Facts> {
+    FURNACE.iter().find(|facts| facts.id == id)
+}
+
 /// A linha da tabela de um bloco do Mekanism Generators, pelo id.
 pub fn facts(id: &str) -> Option<&'static Facts> {
     BLOCKS.iter().find(|facts| facts.id == id)

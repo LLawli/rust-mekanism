@@ -697,3 +697,53 @@ fn the_metallurgic_infuser_occludes_by_its_shape() {
         );
     }
 }
+
+/// A tabela `FURNACE`, das quatro máquinas que seguem com o gabarito `minecraft:furnace` (a injeção `active_light` aplica a reação ao pistão e a oclusão dela), diz em todo estado o que o original deu.
+#[test]
+fn the_furnace_table_gives_every_state_what_the_original_gave() {
+    let rastro = original();
+    let ids = [
+        "crusher",
+        "enrichment_chamber",
+        "energized_smelter",
+        "metallurgic_infuser",
+    ];
+    assert_eq!(rows::FURNACE.len(), ids.len());
+    for id in ids {
+        let row = &rastro[id];
+        let facts = rows::furnace_facts(&format!("mekanism:{id}")).unwrap();
+        assert!(rows::facts(&format!("mekanism:{id}")).is_none(), "{id}");
+        for state in row["states"].as_array().unwrap() {
+            let wet = state["props"]
+                .get("fluid_logged")
+                .is_some_and(|v| v != "empty");
+            let (dampening, skylight) = if wet {
+                (facts.wet_dampening, facts.wet_skylight_down)
+            } else {
+                (facts.dampening, facts.skylight_down)
+            };
+            assert_eq!(facts.push, state["push"], "{id}");
+            assert_eq!(facts.can_occlude, state["can_occlude"], "{id}");
+            assert_eq!(facts.solid_render, state["solid_render"], "{id}");
+            assert_eq!(
+                u64::from(dampening),
+                state["dampening"].as_u64().unwrap(),
+                "{id}"
+            );
+            assert_eq!(skylight, state["skylight_down"], "{id}");
+            // A luz do estado ativo: o gabarito dá 13 e o original 8.
+            let active = state["props"]["active"] == "true" && !wet;
+            assert_eq!(
+                u64::from(rows::light(
+                    facts,
+                    &[("active".to_owned(), active.to_string())],
+                    0
+                )),
+                if active { 8 } else { 0 },
+                "{id}"
+            );
+        }
+        // O que o gabarito de cubo cheio não dá: só o Metallurgic Infuser é de forma menor que o cubo.
+        assert_eq!(facts.solid_render, id != "metallurgic_infuser", "{id}");
+    }
+}

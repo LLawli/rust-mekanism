@@ -1829,6 +1829,64 @@ pub const BLOCKS: [Facts; 150] = [
     },
 ];
 
+/// Os blocos que seguem com o gabarito `minecraft:furnace` (estado `lit`, sem `active`): a injeção só lhes aplica a reação ao pistão e a oclusão do original (`push`, `can_occlude`,
+/// `solid_render`, `dampening`, `skylight_down` e, com fluido dentro, `wet_*`); a luz fica a do gabarito.
+pub const FURNACE: [Facts; 4] = [
+    Facts {
+        id: "mekanism:crusher",
+        active_light: 8,
+        push: "IMMOVEABLE",
+        can_occlude: true,
+        solid_render: true,
+        dampening: 15,
+        skylight_down: false,
+        wet_dampening: 15,
+        wet_skylight_down: false,
+        explosion: None,
+    },
+    Facts {
+        id: "mekanism:enrichment_chamber",
+        active_light: 8,
+        push: "IMMOVEABLE",
+        can_occlude: true,
+        solid_render: true,
+        dampening: 15,
+        skylight_down: false,
+        wet_dampening: 15,
+        wet_skylight_down: false,
+        explosion: None,
+    },
+    Facts {
+        id: "mekanism:energized_smelter",
+        active_light: 8,
+        push: "IMMOVEABLE",
+        can_occlude: true,
+        solid_render: true,
+        dampening: 15,
+        skylight_down: false,
+        wet_dampening: 15,
+        wet_skylight_down: false,
+        explosion: None,
+    },
+    Facts {
+        id: "mekanism:metallurgic_infuser",
+        active_light: 8,
+        push: "IMMOVEABLE",
+        can_occlude: true,
+        solid_render: false,
+        dampening: 0,
+        skylight_down: true,
+        wet_dampening: 1,
+        wet_skylight_down: false,
+        explosion: None,
+    },
+];
+
+/// A linha de um bloco que segue com o gabarito do forno, pelo id.
+pub fn furnace_facts(id: &str) -> Option<&'static Facts> {
+    FURNACE.iter().find(|facts| facts.id == id)
+}
+
 /// A linha da tabela de um bloco do Mekanism, pelo id.
 pub fn facts(id: &str) -> Option<&'static Facts> {
     BLOCKS.iter().find(|facts| facts.id == id)

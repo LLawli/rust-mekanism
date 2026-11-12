@@ -68,6 +68,9 @@ STRUCTURE = STORAGE + INDUCTION + MULTIBLOCK + TRANSMITTERS + ["bounding_block"]
 SCOPE = MACHINES + FACTORIES + STRUCTURE
 # O que a tabela de linhas leva: o escopo e os quatro cabos, que a frente anterior deixou com a linha do gabarito do chorus plant.
 ROWS_SCOPE = SCOPE + CABLES
+# As quatro máquinas da Fase 5 seguem com o gabarito `minecraft:furnace` (estado `lit`, sem `active`): a injeção `active_light` aplica a elas só a reação ao pistão e a oclusão do original
+# (`FURNACE_MACHINES`, a segunda tabela de `block_rows_table.rs`); a luz delas é a do gabarito, trocada para 8.
+FURNACE_MACHINES = ["crusher", "enrichment_chamber", "energized_smelter", "metallurgic_infuser"]
 ENERGY_CUBES = [f"{t}_energy_cube" for t in TIERS5]
 FLUID_TANKS = [f"{t}_fluid_tank" for t in TIERS5]
 TEMPLATE = "minecraft:lodestone"
@@ -363,7 +366,7 @@ def row_facts(row):
             "explosion": row["explosion_state"] if row["explosion_state"] < 0 else None}
 
 
-def rows_table(facts):
+def rows_table(facts, furnace=()):
     lines = [
         "// GERADO por `dev/referencia/blocos_conteudo.py` a partir de `rastros/blocos.jsonl` (`testes/BlocosTraceTest.java`, o original em jogo). Não edite à mão.",
         "//",
@@ -410,6 +413,30 @@ def rows_table(facts):
         "    BLOCKS.iter().find(|facts| facts.id == id)",
         "}",
         "",
+    ]
+    if furnace:
+        lines += [
+            "/// Os blocos que seguem com o gabarito `minecraft:furnace` (estado `lit`, sem `active`): a injeção só lhes aplica a reação ao pistão e a oclusão do original (`push`, `can_occlude`,",
+            "/// `solid_render`, `dampening`, `skylight_down` e, com fluido dentro, `wet_*`); a luz fica a do gabarito.",
+            f"pub const FURNACE: [Facts; {len(furnace)}] = [",
+        ]
+        for f in furnace:
+            lines.append(
+                f"    Facts {{ id: \"{f['id']}\", active_light: {f['active_light']}, push: \"{f['push']}\", can_occlude: {str(f['can_occlude']).lower()}, "
+                f"solid_render: {str(f['solid_render']).lower()}, dampening: {f['dampening']}, skylight_down: {str(f['skylight_down']).lower()}, "
+                f"wet_dampening: {f['wet_dampening']}, wet_skylight_down: {str(f['wet_skylight_down']).lower()}, "
+                f"explosion: {'None' if f['explosion'] is None else 'Some(' + repr(f['explosion']) + ')'} }},"
+            )
+        lines += [
+            "];",
+            "",
+            "/// A linha de um bloco que segue com o gabarito do forno, pelo id.",
+            "pub fn furnace_facts(id: &str) -> Option<&'static Facts> {",
+            "    FURNACE.iter().find(|facts| facts.id == id)",
+            "}",
+            "",
+        ]
+    lines += [
         "/// A luz do estado de `facts` com as propriedades `combo` (`active`, `fluid_logged`): a maior entre a do `active`, a da lava e a que o bloco já tinha.",
         "pub fn light(facts: &Facts, combo: &[(String, String)], base: u8) -> u8 {",
         "    let has = |name: &str, value: &str| combo.iter().any(|(k, v)| k == name && v == value);",
@@ -1023,8 +1050,9 @@ def main():
         elif os.path.exists(target):
             os.remove(target)
         facts.append(row_facts(row))
+    furnace = [row_facts(by_id[block]) for block in FURNACE_MACHINES]
     with open(os.path.join(NATIVE, "block_rows_table.rs"), "w") as handle:
-        handle.write(rows_table(facts))
+        handle.write(rows_table(facts, furnace))
     print(f"blocos: {len(SCOPE)} e {len(CABLES)} cabos")
     copy_assets()
     copy_loot()

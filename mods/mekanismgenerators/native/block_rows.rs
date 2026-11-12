@@ -3,12 +3,17 @@
 // de `BlockMekanism.getPistonPushReaction`) e a oclusão (`isSolidRender`, `canOcclude`, `getLightDampening`, `propagatesSkylightDown`), que o gabarito de cubo cheio não dá
 // a uma forma menor; `properties` não alcança nada disso. É o `mekanism_active_light` do Mekanism, com a tabela do Generators.
 fn mekanismgenerators_block_rows(block: &NewBlock<'_>, combo: &[(String, String)], row: &mut J) {
-    let Some(facts) = mekanismgenerators_rows::facts(block.decl.id.as_str()) else {
+    // O `heat_generator` segue com o gabarito do forno (`lit`): só a reação ao pistão e a oclusão do original (a tabela `FURNACE`; o gabarito dá `push` normal, cubo cheio e amortecimento 15, e o
+    // `BlockTileModel` é de forma menor que o cubo: `isSolidRender` falso, amortecimento 0 e a luz do céu passa). A luz é a do gabarito e a da lava, que `logged-fluid-row` põe.
+    let furnace = mekanismgenerators_rows::furnace_facts(block.decl.id.as_str());
+    let Some(facts) = furnace.or_else(|| mekanismgenerators_rows::facts(block.decl.id.as_str())) else {
         return;
     };
     let wet = combo.iter().any(|(k, v)| k == "fluid_logged" && v != "empty");
     let (dampening, skylight_down) = if wet { (facts.wet_dampening, facts.wet_skylight_down) } else { (facts.dampening, facts.skylight_down) };
-    row.set("emission", J::Num(mekanismgenerators_rows::light(facts, combo, 0).into()));
+    if furnace.is_none() {
+        row.set("emission", J::Num(mekanismgenerators_rows::light(facts, combo, 0).into()));
+    }
     row.set("push", J::Str(facts.push.to_owned()));
     row.set("can_occlude", J::Bool(facts.can_occlude));
     row.set("solid_render", J::Bool(facts.solid_render));

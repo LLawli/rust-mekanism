@@ -145,8 +145,8 @@ def write_items(item_by_id):
         bc.write_json(os.path.join(CONTENT, f"data/{NS}/horizon/item/{item}.json"), declaration)
 
 
-def write_rows_table(facts):
-    text = bc.rows_table(facts)
+def write_rows_table(facts, furnace=()):
+    text = bc.rows_table(facts, furnace)
     text = text.replace(
         "// GERADO por `dev/referencia/blocos_conteudo.py` a partir de `rastros/blocos.jsonl` (`testes/BlocosTraceTest.java`, o original em jogo). Não edite à mão.",
         "// GERADO por `dev/referencia/generators_conteudo.py` a partir de `rastros/blocos_generators.jsonl` (`testes/BlocosTraceTest.java`, o original em jogo). Não edite à mão.",
@@ -574,7 +574,8 @@ def main():
     scope = [b for b in order if b not in EXISTING]
     facts = write_blocks(by_id, scope)
     write_items(item_by_id)
-    write_rows_table(facts)
+    # O `heat_generator` segue com o gabarito do forno: só a reação ao pistão e a oclusão do original entram (a segunda tabela, `FURNACE`).
+    write_rows_table(facts, [bc.row_facts(by_id[block]) for block in EXISTING])
     print(f"blocos: {len(scope)}, itens: {len(ITEMS)}")
     placed = copy_assets(scope)
     copy_loot(scope)
