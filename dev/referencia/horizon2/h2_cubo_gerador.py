@@ -198,16 +198,56 @@ def pace():
     return 0 if same else 1
 
 
+SHOTS = "/home/luka/.cache/rust-mekanism/ccg/shots"
+
+
+def shot(name):
+    """Um print do jogo: o `horizon-ctl screenshot` grava dentro do container, e o arquivo vai para a pasta de prints do desktop."""
+    c.ctl("screenshot", f"/tmp/{name}.png")
+    subprocess.run(["ssh", "desktop", f"mkdir -p {SHOTS} && docker exec {os.environ.get('H_NAME', 'horizon2')} cat /tmp/{name}.png > {SHOTS}/{name}.png"], check=True)
+
+
+def camera(x, y, z, yaw, pitch):
+    n.h.command("tp @s %s %s %s %s %s" % (x, y, z, yaw, pitch))
+    time.sleep(1.2)
+
+
 def scene(desk=None):
+    """O Heat Generator com um dropper de carvão em cima e outro nas costas, e o cubo ao lado, antes e depois de o dropper das costas disparar."""
+    c.command("tick unfreeze")
     n.sky()
     n.clear()
+    c.ctl("options-set", "chatVisibility", "2")
     place_generator(0)
-    dropper = at(O, "up")
-    c.setblock(dropper, f'minecraft:dropper[facing=down]{{Items:[{{Slot:0b,id:"minecraft:coal",count:16}}]}}')
-    n.h.command("tp @s %s %s %s %s %s" % CAMERA)
-    time.sleep(1.0)
-    if desk:
-        c.ctl("screenshot", desk)
+    south, east = at(O, "south"), at(O, "east")
+    c.setblock(south, 'minecraft:dropper[facing=north]{Items:[{Slot:0b,id:"minecraft:coal",count:8}]}')
+    c.setblock(east, 'minecraft:dropper[facing=west]{Items:[{Slot:0b,id:"minecraft:coal",count:16}]}')
+    camera(63.0, 150.0, 80.0, -38, -10)
+    shot("gerador_antes")
+    for dropper, face in ((south, "south"), (east, "east")):
+        for _ in range(3):
+            behind = at(dropper, face)
+            c.setblock(behind, "minecraft:redstone_block")
+            time.sleep(0.7)
+            c.setblock(behind, "minecraft:air")
+            time.sleep(1.0)
+    time.sleep(2.0)
+    shot("gerador_depois")
+    cube_at = (O[0] - 4, O[1], O[2])
+    c.setblock(cube_at, f"{CUBE}[facing=down]")
+    time.sleep(0.6)
+    merge(cube_at, "energy:0," + c.config_nbt(item=sides(front=4, left=1, right=1, back=1, top=1, bottom=1), energy=sides(front=4, left=1, right=1, back=1, top=1, bottom=1)))
+    c.setblock(at(cube_at, "up"), 'minecraft:dropper[facing=down]{Items:[{Slot:0b,id:"mekanism:energy_tablet",count:3}]}')
+    time.sleep(0.5)
+    camera(59.0, 150.0, 80.0, -38, -14)
+    shot("cubo_antes")
+    behind = at(at(cube_at, "up"), "up")
+    c.setblock(behind, "minecraft:redstone_block")
+    time.sleep(1.5)
+    c.setblock(behind, "minecraft:air")
+    time.sleep(1.5)
+    shot("cubo_depois")
+    c.ctl("options-set", "chatVisibility", "0")
 
 
 def video():
@@ -226,7 +266,7 @@ def video():
     east = at(O, "east")
     c.setblock(south, 'minecraft:dropper[facing=north]{Items:[{Slot:0b,id:"minecraft:coal",count:8}]}')
     c.setblock(east, 'minecraft:dropper[facing=west]{Items:[{Slot:0b,id:"minecraft:coal",count:16}]}')
-    n.h.command("tp @s %s %s %s %s %s" % (66.5, 154.2, 89.5, 160, 22))
+    n.h.command("tp @s %s %s %s %s %s" % (63.0, 150.0, 80.0, -38, -10))
     n.mute()
     c.ctl("options-set", "chatVisibility", "2")
     for categoria in n.SOUND_OFF:
@@ -244,8 +284,15 @@ def video():
         sys.exit(1)
     parar = threading.Event()
 
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
     def vigia():
+        # O stream do jogo só existe enquanto algo toca: um som novo abre um stream novo, que segue o sink de teste (`som_nulo`) e não o da gravação. Até poucos segundos antes do fim
+        # (o `rec` apaga o sink dele ao terminar), o vigia manda o stream do container para o sink da gravação.
         while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
             if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
                 print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
                 n.mute()
@@ -259,6 +306,7 @@ def video():
         time.sleep(2.0)
         rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 10
 
         def pulse(dropper, face):
             behind = at(dropper, face)
