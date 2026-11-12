@@ -284,7 +284,14 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_machine(block) || is_cable(block) {
         *ticks = true;
     }
+    // A sonda dos eventos dos transmissores (desligada no repositório): os cabos se registram só para o rastro; a rede de verdade chega com a Fase 3.
+    if is_cable(block) && basis::transmitter_probe_enabled() {
+        basis::transmitters_register("mekanism", block, transmitter_event);
+    }
 }
+
+/// O dono dos eventos dos cabos: por enquanto não faz nada com eles (a sonda os escreve antes de chegarem aqui).
+fn transmitter_event(_game: &mut Game<'_>, _event: &basis::TransmitterEvent) {}
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
     crate::game::mekanism_cube::energy(block, energy);

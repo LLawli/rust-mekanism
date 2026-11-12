@@ -2372,6 +2372,7 @@ pub(in crate::game) fn neighbor_changed(
     state: BlockStateId,
 ) {
     crate::game::machinery_liquid::note(level, dimension, pos, state);
+    transmitters_neighbor(dimension, pos);
     if level.native_state_block(state).is_some_and(takes_redstone) {
         NOTIFIED
             .lock()
@@ -2385,6 +2386,7 @@ pub(in crate::game) fn neighbor_changed(
 /// operação que avisou, e não o de um tick depois. Um aviso de outra dimensão espera a vez dela.
 pub(in crate::game) fn flush_neighbor_signals(game: &mut Game<'_>) {
     crate::game::machinery_liquid::flush(game);
+    transmitters_flush_operation(game);
     let notified = std::mem::take(&mut *NOTIFIED.lock().unwrap_or_else(|e| e.into_inner()));
     if notified.is_empty() {
         return;
@@ -3074,4 +3076,234 @@ pub(in crate::game) fn stored_energy_line(
         text = text.append(Text::colored(tail, line.label_color));
     }
     (text, u32::MAX)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os eventos do jogo que a rede de transmissores recebe (frente `rede-ganchos`, Fase 3). Um tipo de block entity se registra como transmissor com
+// `transmitters_register(id, sink)` e o `sink` recebe, na ordem do original, `clearRemoved`, `onAdded`, `onChunkUnloaded`, `setRemoved`, o tick, o aviso do
+// vizinho, a capability invalidada, o ticket do chunk e o `ServerTickEvent.Post`. A lib não conhece nenhum id. Os eventos saem da fila do módulo
+// `transmitter_events.rs` (`machinery_transmitters`); veja o cabeçalho dele para o que cada um é e para o que fica diferente do original.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+use horizon_client::block_entities::machinery_transmitters as transmitters;
+
+pub use transmitters::{Event as TransmitterEvent, Kind as TransmitterKind};
+
+/// Quem recebe os eventos: roda com o jogo no nível do evento.
+pub type TransmitterSink = fn(&mut Game<'_>, &TransmitterEvent);
+
+static TRANSMITTER_SINKS: Mutex<Vec<(&'static str, TransmitterSink)>> = Mutex::new(Vec::new());
+/// O rastro dos eventos no `stderr` (`MBT {json}`), para comparar com `transmitter_events_*.jsonl`. O repositório o deixa desligado; `enviar_fontes.sh` o liga na cópia de teste.
+const TRANSMITTER_PROBE: bool = false;
+/// As passadas do `server_tick` desde que o jogo abriu (a sonda numera por elas, e não pelo `game_time`, que o `/tick freeze` para).
+static TRANSMITTER_PASS: AtomicI64 = AtomicI64::new(0);
+
+/// `id` (o `ModBlockEntity.id`) passa a ser um transmissor, e o `sink` de `owner` (um por dono, a primeira vez que o dono o diz) ouve os eventos de todos. Pode ser dito mais de uma vez.
+pub fn transmitters_register(owner: &'static str, id: &str, sink: TransmitterSink) {
+    transmitters::register(id);
+    let mut sinks = TRANSMITTER_SINKS.lock().unwrap_or_else(|e| e.into_inner());
+    if !sinks.iter().any(|(name, _)| *name == owner) {
+        sinks.push((owner, sink));
+    }
+}
+
+/// A sonda dos eventos está ligada nesta cópia?
+pub fn transmitter_probe_enabled() -> bool {
+    TRANSMITTER_PROBE
+}
+
+fn transmitter_probe(game: &Game<'_>, event: &TransmitterEvent) {
+    let pass = TRANSMITTER_PASS.load(Ordering::Relaxed);
+    let line = match event {
+        TransmitterEvent::Transmitter { dim, pos, kind } => {
+            let name = match kind {
+                TransmitterKind::ClearRemoved => "clearRemoved".to_owned(),
+                TransmitterKind::PlacedByItem => "onAdded".to_owned(),
+                TransmitterKind::ChunkUnloaded => "onChunkUnloaded".to_owned(),
+                TransmitterKind::Removed => "setRemoved".to_owned(),
+                TransmitterKind::Update => "tick".to_owned(),
+                TransmitterKind::Neighbor => "neighbor".to_owned(),
+                TransmitterKind::Capability(side) => format!("cap\",\"side\":\"{}", transmitters::SIDE_NAMES[*side]),
+            };
+            format!("{{\"t\":{pass},\"e\":\"{name}\",\"dim\":\"{dim}\",\"p\":[{},{},{}]}}", pos[0], pos[1], pos[2])
+        }
+        TransmitterEvent::Ticket { dim, chunk, loaded } => {
+            format!("{{\"t\":{pass},\"e\":\"ticket\",\"dim\":\"{dim}\",\"cx\":{},\"cz\":{},\"loaded\":{loaded}}}", chunk[0], chunk[1])
+        }
+        TransmitterEvent::ServerTickPost { runs_normally } => format!("{{\"t\":{pass},\"e\":\"post\",\"runs\":{runs_normally}}}"),
+        TransmitterEvent::Reset => format!("{{\"t\":{pass},\"e\":\"reset\"}}"),
+    };
+    let _ = game;
+    eprintln!("MBT {line}");
+}
+
+fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
+    if events.is_empty() {
+        return;
+    }
+    let sinks: Vec<TransmitterSink> = TRANSMITTER_SINKS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, sink)| *sink).collect();
+    for event in &events {
+        if TRANSMITTER_PROBE {
+            transmitter_probe(game, event);
+        }
+        for sink in &sinks {
+            sink(game, event);
+        }
+    }
+}
+
+/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora.
+fn transmitters_resolve(game: &Game<'_>, raws: Vec<transmitters::Raw>) -> Vec<transmitters::Raw> {
+    let entities = &game.world.block_entities;
+    raws.into_iter()
+        .map(|raw| match raw {
+            transmitters::Raw::AddedLater { pos } => {
+                let id = match entities.get(&(pos[0], pos[1], pos[2])) {
+                    Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
+                    _ => None,
+                };
+                transmitters::Raw::Added { pos, id }
+            }
+            other => other,
+        })
+        .collect()
+}
+
+/// Esvazia a fila de ocorrências do nível em que o jogo está, tudo: os pontos do tick, o `chunk_load` e os ganchos. Um cliente que só recebe o mundo do servidor não a tem.
+pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
+    if !transmitters::is_active() {
+        return;
+    }
+    // O block entity criado depois do aviso que a operação segurou vem antes dele.
+    let (mut raws, neighbors) = transmitters::split_neighbors(transmitters::take());
+    raws.extend(transmitters::take_held());
+    raws.extend(neighbors);
+    if raws.is_empty() || game.remote.is_some() {
+        return;
+    }
+    let raws = transmitters_resolve(game, raws);
+    let events = transmitters::translate(game.native_dimension(), raws);
+    transmitters_deliver(game, events);
+}
+
+/// O fim de uma operação no mundo (`flush_signals`): o resto sai, depois os avisos de vizinho da operação anterior, e os desta ficam para a seguinte. O original cria o block entity
+/// dentro do `setBlock` e avisa o vizinho depois; o Horizon avisa dentro do `setBlock` e cria o block entity de um item depois (o `place_block`), e o aviso espera por ele.
+pub(in crate::game) fn transmitters_flush_operation(game: &mut Game<'_>) {
+    if !transmitters::is_active() {
+        return;
+    }
+    let raws = transmitters::take();
+    if game.remote.is_some() || raws.is_empty() {
+        return;
+    }
+    let (others, neighbors) = transmitters::split_neighbors(raws);
+    if others.is_empty() {
+        // Só avisos: esperam o block entity que a operação ainda vai criar, ou o próximo ponto do tick.
+        transmitters::hold(neighbors);
+        return;
+    }
+    // O block entity que o `setBlock` criou depois do aviso (o Horizon o insere depois do `with_level`) entra antes do aviso da operação anterior, como no original.
+    let mut now = others;
+    now.extend(transmitters::take_held());
+    let events = transmitters::translate(game.native_dimension(), transmitters_resolve(game, now));
+    transmitters::hold(neighbors);
+    transmitters_deliver(game, events);
+}
+
+/// O aviso de vizinho do bloco em `pos` (o gancho `neighbor_changed`): anota a ocorrência, que a fila entrega na ordem.
+pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: BlockPos) {
+    transmitters::push(transmitters::Raw::Neighbor { dim: dimension.to_owned(), pos: [pos.x, pos.y, pos.z] });
+}
+
+/// O ticker de um block entity de mod (o gancho `block_entity_tick`): o `onUpdateServer` dos transmissores.
+pub(in crate::game) fn transmitters_update(game: &mut Game<'_>, pos: [i32; 3], id: &str) {
+    if !transmitters::is_active() || !transmitters::is_registered(id) {
+        return;
+    }
+    transmitters_flush(game);
+    let events = transmitters::update(game.native_dimension(), pos);
+    transmitters_deliver(game, events);
+}
+
+/// Um item pôs o bloco em `pos` (o gancho `place_block`): o `onAdded`, depois do que a fila tem (o block entity que o item criou) e antes do aviso dos vizinhos que a operação segurou.
+pub(in crate::game) fn transmitters_placed(game: &mut Game<'_>, pos: [i32; 3]) {
+    if !transmitters::is_active() || game.remote.is_some() {
+        return;
+    }
+    let raws = transmitters::take();
+    let held = transmitters::take_held();
+    let dimension = game.native_dimension();
+    let events = transmitters::translate(dimension, transmitters_resolve(game, raws));
+    transmitters_deliver(game, events);
+    let events = transmitters::placed(dimension, pos);
+    transmitters_deliver(game, events);
+    let events = transmitters::translate(dimension, held);
+    transmitters_deliver(game, events);
+}
+
+/// `ChunkEvent.Load` (o gancho `chunk_load`).
+pub(in crate::game) fn transmitters_chunk_loaded(game: &mut Game<'_>, dimension: &str, chunk: [i32; 2]) {
+    if !transmitters::is_active() || game.remote.is_some() {
+        return;
+    }
+    transmitters_flush(game);
+    let events = transmitters::chunk_loaded(dimension, chunk);
+    transmitters_deliver(game, events);
+}
+
+/// O chunk vai sair (o gancho `chunk_unload`, que o jogo chama com os block entities ainda no lugar): os block entities de mod do chunk, na ordem do mapa dele.
+pub(in crate::game) fn transmitters_chunk_unloading(game: &mut Game<'_>, dimension: &str, chunk: [i32; 2]) {
+    if !transmitters::is_active() || game.remote.is_some() {
+        return;
+    }
+    transmitters_flush(game);
+    let entities = &game.world.block_entities;
+    let middle = (f64::from(chunk[0] * 16 + 8), f64::from(chunk[1] * 16 + 8));
+    let here = entities
+        .mods_near(middle.0, middle.1, 8.0)
+        .copied()
+        .filter(|pos| transmitters::chunk_of([pos.0, pos.1, pos.2]) == chunk);
+    let blocks: Vec<([i32; 3], Option<String>)> = horizon_client::block_entities::chunk_map_order(here)
+        .into_iter()
+        .map(|pos| {
+            let id = match entities.get(&pos) {
+                Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
+                _ => None,
+            };
+            ([pos.0, pos.1, pos.2], id)
+        })
+        .collect();
+    let events = transmitters::chunk_unloading(dimension, chunk, &blocks);
+    transmitters_deliver(game, events);
+}
+
+/// O `server_tick`: a numeração das passadas (a sonda), a fila no começo do tick e o `ServerTickEvent.Post` no fim, com o `runsNormally`.
+pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_client::mod_api::ServerTickPhase) {
+    use horizon_client::mod_api::ServerTickPhase;
+    match phase {
+        ServerTickPhase::ServerTickStart { .. } => {
+            TRANSMITTER_PASS.fetch_add(1, Ordering::Relaxed);
+            if TRANSMITTER_PROBE && transmitters::is_active() {
+                eprintln!("MBT {{\"t\":{},\"e\":\"pre\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
+            }
+            transmitters_flush(game);
+        }
+        ServerTickPhase::ServerTickEnd { world_running } => {
+            if !transmitters::is_active() {
+                return;
+            }
+            transmitters_flush(game);
+            transmitters_deliver(game, vec![TransmitterEvent::ServerTickPost { runs_normally: world_running }]);
+        }
+        _ => {}
+    }
+}
+
+/// O mundo fechou (`ServerStoppedEvent`, o `reset` do registro).
+pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
+    if !transmitters::is_active() {
+        return;
+    }
+    let events = transmitters::reset();
+    transmitters_deliver(game, events);
 }

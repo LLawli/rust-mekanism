@@ -1129,3 +1129,116 @@ bindings = [
   { name = "transform", ty = "BlockModelTransform", value = "transform" },
   { name = "output", ty = "&mut Vec<ModelQuad>", value = "&mut *output" },
 ]
+
+# ---- os eventos do jogo que a rede de transmissores recebe (frente `rede-ganchos`, Fase 3) ----
+# `TileEntityTransmitter` e `TransmitterNetworkRegistry` vivem de eventos que o Horizon não dá a um block entity de mod: o `clearRemoved` (`LevelChunk.setBlockEntity`), o `setRemoved`
+# (`LevelChunk.removeBlockEntity`), a entrada de um chunk inteiro e o `onChunkUnloaded`. O módulo guarda a fila e a tradução (`transmitter_events.rs`); quatro alvos crus no
+# `BlockEntities` anotam as ocorrências (H131: um hook por block entity de mod com o ciclo de vida, e um por chunk), e os ganchos do catálogo dão o resto. Alvos crus, H131.
+[[module]]
+id = "transmitter-events"
+file = "crates/horizon-client-render/src/block_entities.rs"
+name = "machinery_transmitters"
+source = "transmitter_events.rs"
+visibility = "pub"
+
+[[injection]]
+id = "transmitter_insert"
+target = "horizon_client_render::block_entities::BlockEntities::insert"
+kind = "HEAD"
+helper = "transmitter_insert.rs"
+bindings = [
+  { name = "entities", ty = "&BlockEntities", value = "&*self" },
+  { name = "pos", ty = "Pos", value = "pos" },
+  { name = "entity", ty = "&BlockEntity", value = "&entity" },
+]
+
+[[injection]]
+id = "transmitter_get_or_insert"
+target = "horizon_client_render::block_entities::BlockEntities::get_or_insert_with"
+kind = "HEAD"
+helper = "transmitter_get_or_insert.rs"
+bindings = [
+  { name = "entities", ty = "&BlockEntities", value = "&*self" },
+  { name = "pos", ty = "Pos", value = "pos" },
+]
+
+[[injection]]
+id = "transmitter_load_chunk"
+target = "horizon_client_render::block_entities::BlockEntities::load_chunk"
+kind = "HEAD"
+helper = "transmitter_load_chunk.rs"
+bindings = [
+  { name = "entities", ty = "&Vec<(Pos, BlockEntity)>", value = "&entities" },
+]
+
+[[injection]]
+id = "transmitter_remove"
+target = "horizon_client_render::block_entities::BlockEntities::remove"
+kind = "HEAD"
+helper = "transmitter_remove.rs"
+bindings = [
+  { name = "entities", ty = "&BlockEntities", value = "&*self" },
+  { name = "pos", ty = "&Pos", value = "pos" },
+]
+
+# O ticker do block entity (`TileEntityTransmitter.onUpdateServer`). Hook do catálogo (`block_entity_tick`), usado só com o contrato dele.
+[[injection]]
+id = "transmitter_tick"
+hook = "block_entity_tick"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "entity", ty = "&mut horizon_client::containers::ModBlockEntity", value = "&mut *entity" },
+]
+
+# `BlockMekanism.setPlacedBy` -> `onAdded`: o bloco posto por um item. Hook do catálogo (`place_block`), usado só com o contrato dele.
+[[injection]]
+id = "transmitter_placed"
+hook = "place_block"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_placed.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
+# `ChunkEvent.Load` e `ChunkEvent.Unload` (e o ticket que os acompanha): os block entities do chunk estão no lugar (`world.block_entities`, privado de `Game`). Ganchos do catálogo.
+[[injection]]
+id = "transmitter_chunk_load"
+hook = "chunk_load"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_chunk_load.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "chunk", ty = "[i32; 2]", value = "chunk" },
+]
+
+[[injection]]
+id = "transmitter_chunk_unload"
+hook = "chunk_unload"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_chunk_unload.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "chunk", ty = "[i32; 2]", value = "chunk" },
+]
+
+# `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`): o mundo fechou. Hook do catálogo (`world_lifecycle`), usado só com o contrato dele.
+[[injection]]
+id = "transmitter_reset"
+hook = "world_lifecycle"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_reset.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "phase", ty = "horizon_client::mod_api::WorldPhase", value = "phase" },
+]
