@@ -126,3 +126,19 @@ pub fn set_player_update(mod_only: bool) {
 pub fn player_update_mod_only() -> bool {
     PLAYER_UPDATE.with(Cell::get)
 }
+
+thread_local! {
+    /// O mob cujos olhos estão num fluido de mod, na chamada de `update_fluids` que o `base_tick` dele acabou de fazer: o `LivingBreatheEvent` do mesmo
+    /// `base_tick` (`breathing::breathe`) o lê. O `base_tick` do mob corre inteiro antes do seguinte, então o valor é sempre o do mob certo.
+    static MOB_EYE: Cell<Option<u32>> = const { Cell::new(None) };
+}
+
+/// `update_fluids` do mob `id` terminou: `eye` diz se os olhos estão num fluido de mod.
+pub fn set_mob_eye(id: u32, eye: bool) {
+    MOB_EYE.with(|c| c.set(eye.then_some(id)));
+}
+
+/// Os olhos do mob `id` estão num fluido de mod (pelo último `update_fluids`).
+pub fn mob_eye(id: u32) -> bool {
+    MOB_EYE.with(|c| c.get() == Some(id))
+}

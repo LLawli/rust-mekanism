@@ -70,3 +70,12 @@ fn the_player_update_flag_is_per_thread() {
         .unwrap();
     machinery_water_like::set_player_update(false);
 }
+
+#[test]
+fn the_mob_eye_flag_names_one_mob() {
+    machinery_water_like::set_mob_eye(7, true);
+    assert!(machinery_water_like::mob_eye(7));
+    assert!(!machinery_water_like::mob_eye(8));
+    machinery_water_like::set_mob_eye(7, false);
+    assert!(!machinery_water_like::mob_eye(7));
+}

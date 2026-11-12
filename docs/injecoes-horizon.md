@@ -18,18 +18,18 @@ Contagem em 2026-11-12 (depois da frente `item-antes-do-bloco`, que trocou o hoo
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 146 | |
+| `[[injection]]` no total | 153 | |
 | Hook do catálogo, usado só com o contrato dele | 45 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 45 | sim |
-| Injeção crua (`target = ...`) | 56 | sim |
+| Injeção crua (`target = ...`) | 63 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 32 | sim |
 
-45 + 45 + 56 = 146. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-101 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+45 + 45 + 63 = 153. Os 32 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+108 injeções e 32 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 56 | 31 | 45 |
+| Em uso | 63 | 31 | 45 |
 | Provada em spike | 5 | 0 | 1 |
 | Prevista | 5 | 0 | 0 |
 
@@ -107,7 +107,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H66 tags de mod no comando `execute if block #tag` | dado | nenhuma (só a conferência em jogo é afetada) | proposta |
 | H67 `transform` do modelo (translação, rotação, escala e origem, na raiz e no filho do `composite`) | dado | as injeções `model_transform_decode` e `model_transform_bake` e o módulo `model-transform` (o `CuboidModel` ganha o campo e o cozimento junta a transformação ao `ModelState`) | em uso (2 cruas, 1 módulo) |
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
-| H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e `fire_before` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade pela água) | em uso (2 módulos, 2 cruas, 4 hooks) |
+| H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e as oito `fluid_entity_*` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade do jogador, do mob e do item) | em uso (2 módulos, 9 cruas, 4 hooks) |
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
 | H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
@@ -158,18 +158,18 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 55 | 24 | 31 | 20 |
+| `mods/machinery_basis/horizon-mixin.toml` | 62 | 24 | 38 | 20 |
 | `mods/mekanism/native/horizon-mixin.toml` | 66 | 45 | 21 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 25 | 21 | 4 | 4 |
-| Total | 146 | 90 | 56 | 32 |
+| Total | 153 | 90 | 63 | 32 |
 
-Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core` e `note_instrument` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 22 das 56 cruas são `cancellable = true` (a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fire_before`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
+Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core`, `note_instrument` e `fluid_entity_mob_air` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 27 das 63 cruas são `cancellable = true` (as cinco `fluid_entity_*` de 2026-11-12 que cancelam: `fluid_entity_splash`, `fluid_entity_fall`, `fluid_entity_touch`, `fluid_entity_travel` e `fluid_entity_mob_travel`; as outras vinte e duas: a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fluid_entity_update`, `fluid_entity_mob_update`, `fluid_entity_mob_air`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
 
 Dos 90 hooks, 45 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (56)
+## Injeções cruas em uso (63)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -236,16 +236,31 @@ e 45 não (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cub
 ### `fluid_state` (machinery_basis)
 
 - **Alvo:** `horizon_client_lib::motion::fluids::FluidResources::fluid`, `kind = "RETURN"`, helper `fluid_state.rs`, e o módulo `water-like` (`water_like.rs`, em `motion.rs`).
-- **Por que é necessária:** a física de entidade (jogador, itens, flechas) lê o fluido de cada estado de uma tabela só de água e lava. O RETURN dá a um estado de bloco de líquido de mod o `FluidState` da água, só nesta consulta (o mesher não a usa), para o fluxo empurrar, o item subir e o ar acabar como no original (`FluidType`: `canSwim`, `canDrown`, `canPushEntity`, `motionScale`).
+- **Por que é necessária:** a física de entidade (jogador, itens, flechas) lê o fluido de cada estado de uma tabela só de água e lava. O RETURN dá a um estado de bloco de líquido de mod o `FluidState` da água, só nesta consulta (o mesher não a usa), para o fluxo empurrar, o item subir e o ar acabar do jogador como no original (`FluidType`: `canSwim`, `canDrown`, `canPushEntity`, `motionScale`).
 - **Hook mais próximo:** nenhum; H47 pede o fluido de mod no motor.
-- **Risco:** depende do nome e da assinatura de `FluidResources::fluid`. Não dá ao bloco o resto da água (fonte, hidratar), mas o que o motor faz por `was_touching_water` (som de respingo, partículas azuis de água) vale também, e a entidade em chamas que não é o jogador (o mob, o item solto e o armor stand) também não apaga: eles leem o fluido do bloco pela tabela de fatos, que não dá água ao bloco de mod (e por isso o mob também não nada nem se afoga num fluido de mod: ele atravessa como ar).
+- **Risco:** depende do nome e da assinatura de `FluidResources::fluid`. Não dá ao bloco o resto da água (fonte, hidratar). O que a água faz a mais na entidade (travel de água, respingo, `wasTouchingWater`, queda zerada, fogo apagado) é desfeito pelas oito `fluid_entity_*` logo abaixo; o mob não passa por aqui (lê a tabela de fatos) e é tratado por elas.
 
-### `fire_before` (machinery_basis)
+### `fluid_entity_*` (machinery_basis, 8 injeções, 2026-11-12, frente `fluido-entidade`)
 
-- **Alvo:** `horizon_client_lib::motion::environment::MotionWorld<'_,'_,'_>::tick_remaining_fire`, `kind = "HEAD"`, helper `fire_before.rs` (a forma `<'_,'_,'_>` sem espaços é a que o `horizon-mixins` acha; `RETURN` não serve, porque o corpo tem `?`).
-- **Por que é necessária:** o `tick_remaining_fire` zera o fogo do jogador se `was_touching_water`, e o `fluid_state` faz o bloco de líquido de mod valer água nessa conta. O `FluidType` do original tem `canExtinguish` falso. O HEAD desliga `was_touching_water` para o jogador cujo pé ou olho está num bloco de líquido de mod; `update_fluids` o refaz no tick seguinte.
-- **Hook mais próximo:** nenhum; H47.
-- **Risco:** depende do nome e da assinatura de `tick_remaining_fire` e do campo `fluids.was_touching_water`. Não cobre nem precisa cobrir os mobs: o `MobWorld::fluids` (`mobs/living.rs`) lê o fluido pela tabela de fatos do bloco, que não dá água ao bloco de mod, então um mob em chamas dentro de um fluido de mod segue queimando sem injeção (medido em jogo em 2026-11-09, decisão 18).
+Substituem a `fire_before` (removida). O `fluid_state` empresta a água ao bloco de líquido de mod para a altura, a correnteza (0,014, o `motionScale` padrão do `FluidType`) e o item;
+estas oito tiram da entidade o que a água faz e o `FluidType` do Mekanism não faz (`isWaterLike` falso, `canExtinguish` falso, `FluidType.move` falso, `fallDistanceModifier` 0,5):
+a decisão 18 do plano e `rastros/fluids_entity.jsonl`. As contas puras ficam no módulo `water-like` (`water_like.rs`, testado por `include!` em `tests/fluid_entity_module.rs`).
+Todas têm o alvo e o helper abaixo; o risco comum é o nome e a assinatura de cada alvo (privados do `horizon_client_lib`) e, para as de trait, a forma `<Tipo as Trait>`.
+
+| Injeção | Alvo (`horizon_client_lib::...`) | Tipo | O que faz |
+|---|---|---|---|
+| `fluid_entity_update` | `motion::fluids::MotionWorld<'_,'_,'_>::update_fluids` | HEAD | guarda, para esta chamada, se a água que o jogador toca é só de fluido de mod (`Contact::mod_only`) |
+| `fluid_entity_splash` | `motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::water_splash` | HEAD, cancela | sem respingo na entrada (`isWaterLike` falso) |
+| `fluid_entity_fall` | `motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::reset_fall_distance` | HEAD, cancela | a queda vale 0,5 vezes a de antes em vez de zerar (`Entity.baseTick`, `fallDistanceModifier`) |
+| `fluid_entity_touch` | `motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::set_was_touching_water` | HEAD, cancela | `wasTouchingWater` fica falso (o fogo não apaga; era a `fire_before`) |
+| `fluid_entity_travel` | `motion::MotionWorld<'_,'_,'_>::player_travel` | HEAD, cancela | o jogador num fluido de mod que não é água nem lava não se move (`LivingEntity.travelInFluid`: `FluidType.move` falso e nenhum ramo de água ou lava), com a direção de nado do `Player.travel` |
+| `fluid_entity_mob_travel` | `mobs::living::Mob::travel` | HEAD, cancela | o mesmo para o mob que não voa |
+| `fluid_entity_mob_update` | `mobs::living::Mob::update_fluids` | HEAD | o mob não passa pelo `FluidResources::fluid` (lê a tabela de fatos): a correnteza de 0,014, a queda por 0,5 e a marca de olhos no fluido |
+| `fluid_entity_mob_air` | `breathing::breathe` | RETURN | o `LivingBreatheEvent` do mob com os olhos no fluido de mod: não respira e não enche (`canDrown`) |
+
+- **Hook mais próximo:** nenhum; H47 (o motor aceitar o fluido de mod com o `FluidType`: `isWaterLike`, `canSwim`, `canDrown`, `canExtinguish`, `motionScale`, `move`), e H106 abaixo, que pede os pontos de entrada de movimento e de ar por fluido.
+- **Helpers:** `mods/machinery_basis/fluid_entity_*.rs`. O `alvo` do mob usa a marca por thread de `water_like.rs` (`set_mob_eye`), porque `breathe` só recebe o id e o tipo, e o `base_tick` do mob (`mobs/ai.rs`) não aceita `MODIFY_VARIABLE` (`E_UNSUPPORTED_MACRO`, a macro `identity`).
+- **Risco:** o jogador lê o `PlayerMotion` e o `MotionWorld` (campos `player`, `resources.fluids`, `fluids.was_touching_water`, `fall_distance`); o mob lê `Mob`, `MobWorld`, `fluid_currents` e `Pushed` (privados de `mobs/living.rs`). O estado por thread vale porque `update_fluids` e o que ele chama correm na mesma thread, sem outra entidade no meio. Não cobre: o item (vale a água emprestada), a espécie com `travel` próprio (cai no hold do mob, menos as que voam), o pulo dentro do fluido (`jumpInFluid`, só soma velocidade que não aparece parada) e a sobreposição e a névoa de dentro.
 
 ### `logged-fluid-row` (machinery_basis)
 
@@ -1486,9 +1501,17 @@ fn screen_slot_highlight(&self, _host: &dyn Host, event: &mut ScreenSlotHighligh
 - **Por que:** o motor só conhece água e lava. `FluidKind` (`horizon-world/src/fluid.rs`) é uma enumeração de cinco valores (`Empty`, `FlowingWater`, `Water`, `FlowingLava`, `Lava`), a máscara de tipos é `1 << kind` em `u8`, e `FluidState::from_block` decide pelo nome `minecraft:water` ou `minecraft:lava` ou pela propriedade `waterlogged`. Nada do que um mod declara chega aí: o hook `block_entity_fluids` guarda mB num tanque, sem bloco nem balde, e `docs/native-mods.md` ("A mod's own fluids in tanks") diz que o mundo só tem os fluidos do vanilla. Uma injeção não troca uma enumeração (os hooks acertam funções, e o tipo está em 30 arquivos), e disfarçar o fluido de água ou de lava daria a física dela (nadar, apagar fogo, virar fonte).
 - **O que o original dá a um fluido de mod** (`FluidDeferredRegister`): o fluido parado e o que corre (`BaseFlowingFluid`), o `FluidType` (temperatura, densidade, viscosidade, luz, sons, `canSwim`, `canPushEntity`, `canDrown`, `motionScale`), o `LiquidBlock`, o balde, as tags de fluido (`c:` e `minecraft:`), o modelo de fluido com a tinta (`FluidTintSources.constant`) e a textura de sobreposição, a névoa e a sobreposição de dentro do fluido.
 - **O que o port faz hoje:** um bloco de líquido por fluido (a propriedade `level` do `LiquidBlock` e a `up`), o `FlowingFluid` portado em `machinery_basis_core::liquid` e ligado por ticks agendados do bloco, o balde (pôr e pegar a fonte), o dispensador, a recusa da água e da lava do vanilla de lado (`block_spread`), e a física de entidade pela água (o RETURN `fluid_state` dá aos estados do bloco de líquido o `FluidState` da água só em `FluidResources::fluid`, que o jogador, as entidades e as flechas leem, e o mesher não). O fluxo é igual ao original tick a tick (13 cenários do Java no simulador, `flat` e `waterfall` em jogo), o desenho é um cubo por célula na altura do fluido, sem a superfície inclinada do mesher.
-- **O que o port não faz, com o que o original mostra** (`rastros/fluids_entity.jsonl`): o jogador e o porco dentro do fluido ficam parados, sem gravidade, e perdem o ar sem nadar (o 26.3 não aplica a física de fluido a um tipo que não é água nem lava); no port eles afundam a 0,025 por tick e se afogam como na água, e o jogador em chamas não apaga (a injeção `fire_before` desliga `was_touching_water` dentro de um bloco de líquido de mod, como o `canExtinguish` falso do `FluidType`; o mob em chamas também não apaga, sem injeção, porque ele não está na água: o `MobWorld::fluids` lê a tabela de fatos do bloco, e o mob atravessa o fluido de mod como ar). Tampouco: a névoa e a sobreposição de dentro do fluido, as tags de fluido (as 23 `c:` da datagen não entram: só citariam ids que ninguém registra como fluido), a luz do balde (`applyFluidLuminosity` dos três fluidos de luz 15), as partículas e o som de dentro.
+- **O que o port faz da entidade dentro do fluido, medido contra o original** (`rastros/fluids_entity.jsonl`, `h2_fluido_entidade.py`, desde 2026-11-12): o jogador e o porco ficam parados (`fluid_entity_travel` e `fluid_entity_mob_travel`: no 26.3 o `FluidType.move` é falso e `travelInFluid` só trata água e lava), o porco cai e para na superfície em 4,1555 com a velocidade de queda de 0,8439 guardada, como o original, o ar cai 1 por tick (jogador e porco), o fogo não apaga, a correnteza soma 0,014 por tick e o item sobe pelo `setItemMovement` igual ao rastro (y e velocidade a 5 casas). Tampouco: a névoa e a sobreposição de dentro do fluido, as tags de fluido (as 23 `c:` da datagen não entram: só citariam ids que ninguém registra como fluido), a luz do balde (`applyFluidLuminosity` dos três fluidos de luz 15), as partículas e o som de dentro, e o que a ficha H106 lista.
 - **O que pedir:** `FluidKind` aberto a ids de mod (um registro de fluidos com o par parado e corrente, o tipo e o bloco), o mesher de fluido lendo o modelo e a tinta do fluido, a física de entidade lendo o `FluidType`, as tags de fluido lidas pelo motor, e o dispensador e o balde pelos mesmos caminhos da água.
 - **Risco do que existe hoje:** o módulo lê campos privados de `GameLevel` e `Game` (`behaviours`, `registry`, `world`, `audio`, `rules`, `events`) e o tick agendado é por bloco, e não por fluido (um tick de fonte e um de corrente na mesma célula contam como um só); o RETURN `fluid_state` depende de `FluidResources::fluid`. Cair em quase todo commit do Horizon que mexa nesses campos.
+
+### H106 a física de entidade lê o `FluidType` do fluido (não só água e lava)
+
+- **Lado:** cliente e servidor. **Tipo:** contrato novo, junto do H47.
+- **Por que:** o jogador (`motion.rs::player_travel` e `motion/fluids.rs`), o mob (`mobs/living.rs`) e o item (`entities/fluids.rs`) leem o fluido por três tabelas diferentes que só conhecem água e lava, e a decisão do que cada fluido faz com a entidade (`motionScale`, `canPushEntity`, `canSwim`, `canDrown`, `canExtinguish`, `fallDistanceModifier`, `isWaterLike`, `FluidType.move`, `setItemMovement`) não existe. O port faz hoje as oito `fluid_entity_*` e o `fluid_state` (a água emprestada ao bloco) para o jogador, o mob que não voa e o ar do mob.
+- **O que o original faz** (`rastros/fluids_entity.jsonl`, `LivingEntity.java:2594-2607`, `Entity.java:577-581`, `ItemEntity.java:130-132`): num fluido de mod que não é água nem lava, a entidade viva não se move (sem gravidade, sem atrito), o ar cai 1 por tick, a queda anda por `fallDistanceModifier`, a correnteza soma 0,014 por tick, o item sobe pelo `setItemMovement`, e o fogo não apaga.
+- **O que pedir:** um ponto de entrada por fluido de mod, no movimento da entidade viva (`travelInFluid` chama o `FluidType.move` do fluido, devolvendo se tratou) e no `baseTick` (`wasTouchingWater` por `isWaterLike`, a queda por `fallDistanceModifier`), lendo as propriedades do `FluidType` declarado pelo mod; o mesmo por mob e por item, pela mesma tabela do jogador.
+- **Risco do que existe hoje:** as oito injeções dependem de métodos privados do `horizon_client_lib` (ver a ficha `fluid_entity_*`).
 
 ### H48 tinta constante no modelo de bloco
 

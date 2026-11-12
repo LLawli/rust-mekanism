@@ -722,7 +722,7 @@ bindings = [
 
 [[injection]]
 id = "fluid_entity_splash"
-target = "horizon_client_lib::motion::fluids::MotionWorld<'_,'_,'_>::water_splash"
+target = "horizon_client_lib::motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::water_splash"
 kind = "HEAD"
 cancellable = true
 helper = "fluid_entity_splash.rs"
@@ -730,7 +730,7 @@ bindings = []
 
 [[injection]]
 id = "fluid_entity_fall"
-target = "horizon_client_lib::motion::fluids::MotionWorld<'_,'_,'_>::reset_fall_distance"
+target = "horizon_client_lib::motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::reset_fall_distance"
 kind = "HEAD"
 cancellable = true
 helper = "fluid_entity_fall.rs"
@@ -740,8 +740,9 @@ bindings = [
 
 [[injection]]
 id = "fluid_entity_touch"
-target = "horizon_client_lib::motion::fluids::MotionWorld<'_,'_,'_>::set_was_touching_water"
-kind = "RETURN"
+target = "horizon_client_lib::motion::fluids::<MotionWorld<'_,'_,'_> as EntityFluidTickWorld>::set_was_touching_water"
+kind = "HEAD"
+cancellable = true
 helper = "fluid_entity_touch.rs"
 bindings = [
   { name = "world", ty = "&mut MotionWorld<'_, '_, '_>", value = "&mut *self" },
@@ -771,7 +772,7 @@ bindings = [
 [[injection]]
 id = "fluid_entity_mob_update"
 target = "horizon_client_lib::mobs::living::Mob::update_fluids"
-kind = "RETURN"
+kind = "HEAD"
 helper = "fluid_entity_mob_update.rs"
 bindings = [
   { name = "m", ty = "&mut Mob", value = "&mut *self" },
@@ -780,16 +781,13 @@ bindings = [
 
 [[injection]]
 id = "fluid_entity_mob_air"
-target = "horizon_client_lib::mobs::ai::base_tick"
-kind = "MODIFY_VARIABLE"
-variable = { name = "drowns", ordinal = 0, at = "STORE" }
-require = 1
-ordinal = 0
+target = "horizon_client_lib::breathing::breathe"
+kind = "RETURN"
 helper = "fluid_entity_mob_air.rs"
 bindings = [
-  { name = "m", ty = "&Mob", value = "&*m" },
-  { name = "w", ty = "&MobWorld", value = "w" },
-  { name = "value", ty = "bool", value = "$value" },
+  { name = "entity", ty = "u32", value = "entity" },
+  { name = "kind", ty = "&str", value = "kind" },
+  { name = "value", ty = "Breath", value = "$value" },
 ]
 
 # O equipamento vestido que o mod desenha por código (H55): o `MekanismArmorLayer` do original (`HumanoidArmorLayer` com o `ICustomArmor` de cada item) pede o modelo de cada peça na
