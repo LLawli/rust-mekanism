@@ -673,3 +673,27 @@ fn every_state_occludes_the_way_the_original_does() {
         "{compared} {occluding}"
     );
 }
+
+/// O Metallurgic Infuser (o gabarito `minecraft:furnace`, da Fase 5) tem `canOcclude` verdadeiro e a forma de oclusão da seleção no original: sem `occludes: false`, e a forma declarada é a do original.
+#[test]
+fn the_metallurgic_infuser_occludes_by_its_shape() {
+    let rastro = oclusao();
+    let id = "metallurgic_infuser";
+    let row = &rastro[&format!("mekanism:{id}")];
+    let declaration = declaration(id);
+    assert!(declaration["properties"].get("occludes").is_none());
+    let facts = row["facts"].as_array().unwrap();
+    for state in row["states"].as_array().unwrap() {
+        let facing = state["props"].get("facing").and_then(Value::as_str);
+        let want = &facts[state["facts"].as_u64().unwrap() as usize];
+        assert_eq!(want["can_occlude"], true);
+        assert!(
+            same_union(
+                &declared_shape(&declaration, "shapes", facing),
+                &boxes(&want["occlusion"])
+            ),
+            "{:?}",
+            state["props"]
+        );
+    }
+}

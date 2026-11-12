@@ -3,8 +3,7 @@
  "properties": {
   "hardness": 3.5,
   "explosion_resistance": 8.0,
-  "requires_tool": true,
-  "occludes": false
+  "requires_tool": true
  },
  "state_properties": {
   "fluid_logged": {

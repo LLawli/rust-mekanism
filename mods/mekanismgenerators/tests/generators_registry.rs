@@ -433,3 +433,32 @@ fn every_state_occludes_the_way_the_original_does() {
     }
     assert!(compared >= 100 && occluding >= 80, "{compared} {occluding}");
 }
+
+/// O Heat Generator (o gabarito `minecraft:furnace`, da Fase 5) tem `canOcclude` verdadeiro e a forma de oclusão da seleção no original: sem `occludes: false`, e a forma declarada é a do original.
+#[test]
+fn the_heat_generator_occludes_by_its_shape() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/blocos_oclusao.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let row: Value = text
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|row| row["id"] == "mekanismgenerators:heat_generator")
+        .unwrap();
+    let declaration = declaration("heat_generator");
+    assert!(declaration["properties"].get("occludes").is_none());
+    let facts = row["facts"].as_array().unwrap();
+    for state in row["states"].as_array().unwrap() {
+        let facing = state["props"].get("facing").and_then(Value::as_str);
+        let want = &facts[state["facts"].as_u64().unwrap() as usize];
+        assert_eq!(want["can_occlude"], true);
+        assert!(
+            same_union(
+                &declared_shape(&declaration, "shapes", facing),
+                &boxes(&want["occlusion"])
+            ),
+            "{:?}",
+            state["props"]
+        );
+    }
+}

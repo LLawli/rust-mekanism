@@ -3,8 +3,7 @@
  "properties": {
   "hardness": 3.5,
   "explosion_resistance": 16.0,
-  "requires_tool": true,
-  "occludes": false
+  "requires_tool": true
  },
  "shapes": {
   "properties": [
