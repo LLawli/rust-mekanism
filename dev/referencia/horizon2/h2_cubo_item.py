@@ -3,7 +3,7 @@
 
     h2_cubo_item.py repor PASTA     o cubo posto, apagado e posto de novo no mesmo lugar (o objeto vivo velho do `energy_cube.rs`): um print por rodada
     h2_cubo_item.py congelar PASTA  três prints seguidos com `tick freeze` (o núcleo não pode andar entre eles)
-    h2_cubo_item.py video           o roteiro do vídeo (os cinco itens na mão e os cinco cubos postos, o núcleo girando); grave com `gravar-jogo rec` em paralelo
+    h2_cubo_item.py video           o roteiro do vídeo (os cinco itens na mão e os cinco cubos postos, o núcleo girando); grave com `gravar-jogo rec cubo 36` aberto 16 s depois de começar
 
 Clima limpo e meio-dia com os ciclos parados; as gamerules voltam ao fim.
 """
@@ -84,6 +84,8 @@ def video():
         h.command(f"item replace entity @s hotbar.{slot} with mekanism:{tier}_energy_cube[mekanism:energy={energy}L]")
     h.command("tp @s 62.5 -59 78.5 0 0")
     h.ctl("key", "1", "tap")
+    # O chat some depois de 10 s: a gravação (`rec`, aberta 16 s depois do começo do roteiro) começa com ele limpo.
+    time.sleep(12.0)
     time.sleep(4.0)
     for slot in range(1, 5):
         h.ctl("key", str(slot + 1), "tap")
@@ -99,7 +101,7 @@ def video():
         else:
             h.command(f"data merge block {x + i} {y} {z} {{energy:{energy // 2},component_config:{{config0:[I;4,1,1,1,1,1]}}}}")
     h.command("tp @s " + TP)
-    time.sleep(9.0)
+    time.sleep(14.0)
     h.command(CLEAR)
     h.command("clear @s")
 
