@@ -14,24 +14,24 @@ daqui em diante é o desse commit, em `/mnt/dados/caches/rust-mekanism-ref/horiz
 O que é: uma lista de contratos que faltam no Horizon. Um hook do catálogo (`hook = ...` em `native-hooks.json`) tem contrato
 estável e não é problema. Só entram aqui as injeções que dependem de algo que o Horizon pode mudar em qualquer commit.
 
-Contagem em 2026-11-12 (depois da frente `restos-fase2`, que acrescentou 2 injeções cruas do `mekanism`, a `bucket_target` (o bloco que o balde enche, para o hook `fill_bucket`, H116) e a `note_sound_source` (a categoria de som do bloco de nota, H117; HEAD cancelável); e antes dela a frente `transmissor-obj`, que acrescentou 2 injeções cruas, a `obj_material_parse` e a `obj_material_quads`, e 1 módulo, o `obj-material`, todos da `machinery_basis`: o `Kd` e o `neoforge_TintIndex` do `.mtl`, H16; e antes dela a frente `oclusao`, que acrescentou 3 injeções cruas, `occlusion_shapes` da `machinery_basis` (a forma de oclusão real, H51) e `glass_ids` e `glass_skip` do `mekanismgenerators` (o corte de face entre os vidros, H51), 1 módulo, o `glass-skip`, e 1 hook do catálogo, o `fill_bucket` do `mekanism`, e antes dela da frente `item-antes-do-bloco`, que trocou o hook `right_click_block` do `mekanism` por 2 injeções cruas, a `use_hand` e a `predict_item_on_block` (H72), e antes dela a frente `nota-instrumento`, que acrescentou 1 injeção crua, a `note_instrument`, do `mekanism`: o instrumento do bloco de nota do sal e do bio fuel, H44, e antes dela a frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
+Contagem em 2026-11-12 (depois da frente `container-instancia`, que acrescentou 3 injeções cruas, `container_instance` e `container_take` da `machinery_basis` e `container_accepts` do `mekanism`: o contêiner de itens por instância e por face, H2; e antes dela a frente `restos-fase2`, que acrescentou 2 injeções cruas do `mekanism`, a `bucket_target` (o bloco que o balde enche, para o hook `fill_bucket`, H116) e a `note_sound_source` (a categoria de som do bloco de nota, H117; HEAD cancelável); e antes dela a frente `transmissor-obj`, que acrescentou 2 injeções cruas, a `obj_material_parse` e a `obj_material_quads`, e 1 módulo, o `obj-material`, todos da `machinery_basis`: o `Kd` e o `neoforge_TintIndex` do `.mtl`, H16; e antes dela a frente `oclusao`, que acrescentou 3 injeções cruas, `occlusion_shapes` da `machinery_basis` (a forma de oclusão real, H51) e `glass_ids` e `glass_skip` do `mekanismgenerators` (o corte de face entre os vidros, H51), 1 módulo, o `glass-skip`, e 1 hook do catálogo, o `fill_bucket` do `mekanism`, e antes dela da frente `item-antes-do-bloco`, que trocou o hook `right_click_block` do `mekanism` por 2 injeções cruas, a `use_hand` e a `predict_item_on_block` (H72), e antes dela a frente `nota-instrumento`, que acrescentou 1 injeção crua, a `note_instrument`, do `mekanism`: o instrumento do bloco de nota do sal e do bio fuel, H44, e antes dela a frente `cubo-nucleo`, que acrescentou 1 injeção crua, a `energy_cube_item_core`, do `mekanism`, e antes dela as frentes `armadura-vestida` (6 injeções cruas, o hook `standalone_models` e 2 módulos), `fluidos` (5 hooks do catálogo com estrutura privada, 2 injeções cruas e 2 módulos), `itens-equipamento` (1 injeção crua, a `item_component_type`, sobre as 2 injeções cruas e o módulo das `itens-craft`) e `blocos-maquinas`, que acrescentou 1 injeção crua, a `shape_limit`, e 1 módulo, o `block-rows`, e ampliou a `active_light`) e `generators-conteudo` (2 injeções cruas, `block_rows` e `creative_tabs`, e 2 módulos, `block-rows` e `creative-tabs-table`, todos do Generators: as cópias das do Mekanism com as tabelas do Generators) e `acabamento-conteudo` (1 injeção crua, a `enhanced_ao`, e 1 módulo, o `enhanced-lighting`) e `transform-modelo` (2 injeções cruas, `model_transform_decode` e `model_transform_bake`, e 1 módulo, o `model-transform`, todos da `machinery_basis`: o `transform` do modelo, H67) e `mek-data` (1 injeção crua, a `mek_data_alias`, do `mekanism`: o tipo de receita `mekanism:mek_data` na mesa, H79), e `energia-item` (2 injeções cruas, `mek_data_energy_grid` e `mek_data_energy_use`, e 1 módulo, o `mek-data-energy`, do `mekanism`: a energia que a `mek_data` copia, H79; mais os hooks `item_bar` e, no Generators, `tooltip`, do catálogo), sobre os `horizon-mixin.toml` (conferência na [próxima seção](#contagem-e-conferência)):
 
 | Categoria | Quantas | Assunto deste documento |
 |---|---|---|
-| `[[injection]]` no total | 161 | |
+| `[[injection]]` no total | 164 | |
 | Hook do catálogo, usado só com o contrato dele | 46 | não |
 | Hook do catálogo, usado com estrutura privada do jogo | 45 | sim |
-| Injeção crua (`target = ...`) | 70 | sim |
+| Injeção crua (`target = ...`) | 73 | sim |
 | `[[module]]` (fora da contagem de `[[injection]]`) | 34 | sim |
 
-46 + 45 + 70 = 161. Os 34 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
-115 injeções e 34 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
+46 + 45 + 73 = 164. Os 34 módulos são outra coisa: código nosso compilado dentro do `horizon-client`. O assunto do documento são, então,
+118 injeções e 34 módulos em uso, mais o que já foi provado em spike e o que as fases futuras vão pedir:
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 70 | 33 | 45 |
+| Em uso | 73 | 33 | 45 |
 | Provada em spike | 4 | 0 | 1 |
-| Prevista | 5 | 0 | 0 |
+| Prevista | 2 | 0 | 0 |
 
 As provadas em spike não contam `native_energy_at` nem `override_gameplay`, que já estão em uso. As previstas vêm do plano e não foram compiladas.
 
@@ -44,7 +44,7 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | Proposta | Tipo | Elimina | Estado |
 |---|---|---|---|
 | H1 `block_entity_energy_instance` | hook | `energy_capacity` | em uso |
-| H2 `block_entity_container_instance` | hook | `Containers::view`, `can_take`, `native_container_accepts`, `native_fluid_at` | prevista (4) |
+| H2 `block_entity_container_instance` | hook | `container_instance` (`Containers::view`), `container_take` (`Containers::can_take`) e `container_accepts` (`native_container_accepts`, o hook que o `main` do Horizon já tem); falta só `native_fluid_at`, o tanque por instância | em uso (3 cruas), prevista (1) |
 | H3 `block_fluid` | hook | `logged-fluid-row` | em uso |
 | H4 `screen_tooltip` v2 | hook | `widget_tooltip` (mekanism e mekanismgenerators) | em uso (2) |
 | H5 `component_types` v2 | hook | `command_components` e `item_component_type` | em uso (2) |
@@ -163,10 +163,10 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 65 | 24 | 41 | 21 |
-| `mods/mekanism/native/horizon-mixin.toml` | 69 | 46 | 23 | 8 |
+| `mods/machinery_basis/horizon-mixin.toml` | 67 | 24 | 43 | 21 |
+| `mods/mekanism/native/horizon-mixin.toml` | 70 | 46 | 24 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 27 | 21 | 6 | 5 |
-| Total | 161 | 91 | 70 | 34 |
+| Total | 164 | 91 | 73 | 34 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `bucket_target`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core`, `note_instrument`, `fluid_entity_mob_air` e `obj_material_parse` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 27 das 63 cruas são `cancellable = true` (as cinco `fluid_entity_*` de 2026-11-12 que cancelam: `fluid_entity_splash`, `fluid_entity_fall`, `fluid_entity_touch`, `fluid_entity_travel` e `fluid_entity_mob_travel`; as outras vinte e duas: a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fluid_entity_update`, `fluid_entity_mob_update`, `fluid_entity_mob_air`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
@@ -174,7 +174,7 @@ Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_sl
 Dos 91 hooks, 45 têm estrutura privada (lista em [Hooks do catálogo com estrutura privada](#hooks-do-catálogo-com-estrutura-privada)),
 e 46 não (o `fill_bucket` do `mekanism`, de 2026-11-12 (frente `oclusao`), só usa o contrato: cancelar o clique do balde; (o `block_entity_update_tag` do `mekanism`, de 2026-11-11 (frente `cubo-energia`), só usa o contrato: o cliente recebe a cópia da block entity do cubo; os `screen_key_pressed`, `screen_mouse_pressed` e `block_highlight` dos efeitos de tela do Configurator, de 2026-11-11, só usam o contrato; o `item_bar` do `mekanism` e o `tooltip` do `mekanismgenerators`, de 2026-11-11 (frente `energia-item`), só usam o contrato: a barra de energia e a linha do tooltip; o `net_from_server` e o `item_model_property` do Configurator, de 2026-11-11, só usam o contrato; o `standalone_models` do `mekanism`, de 2026-11-09, só devolve ao jogo os ids que o mod pede e entrega a tabela à `machinery_basis`: limpo; a divisão foi inferida pela frente do som e conferida em 2026-11-08, hook a hook, contra os três `horizon-mixin.toml`: `machinery_basis` tem 20 hooks, 15 com estrutura privada e 5 sem (`add_server_reload_listeners`, `server_reload_listener_apply`, `block_entity_submit`, `server_data_loaded` e `ingredient`); `mekanism` tem 27, 10 e 17; `mekanismgenerators` tem 20, 6 e 14; 15 + 10 + 6 = 31 e 5 + 17 + 14 = 36, e o total dos três arquivos fecha em 67; os 3 hooks novos de `mekanismgenerators` são os da configuração de servidor, `register_configs`, `config_loading` e `config_reloading`, API 397, limpos): 5 em `machinery_basis`, 17 em `mekanism` (os 3 da configuração, de cliente e de servidor, e o `player_logged_in` da mensagem de receita incompleta entre eles), 14 em `mekanismgenerators` (o `client_tick`, o hook `tick` só com o contrato dele, que registra o animador das partículas do Heat Generator; um deles, `heat_tab_press`, é `screen_mouse_button_pressed_pre`, o mesmo hook de `window_press`, usado só com o contrato dele: a aba de calor toma o clique sem o som e o pacote que o `screen_click` mandaria). Os 31 com estrutura privada são os 7 de antes, o `server_data_loaded` do `mekanism` (a varredura de receitas incompletas, 2026-11-08), os 9 da janela de upgrades (`window_*`; o `window_viewers` saiu em 2026-11-08, veja `container_viewers`), os 2 do som e da experiência (`client_tick` e `destroy_block`), os 3 do nome (`place_block`, `loot_drops` e `container_opened`), o `menu_quick_move` do Heat Generator, 1 da aba de xp (`menu_button`), 1 da experiência de uma explosão (`explosion_detonate`) os 4 do nome do Heat Generator (`place_block`, `loot_drops`, `container_opened` e `destroy_block` de `mekanismgenerators`) o `server_tick` da `machinery_basis` (o `broadcastChanges` no começo do tick do servidor, 2026-11-08; era do `mekanism`) e o `neighbor_changed` da `machinery_basis` (2026-11-08).
 
-## Injeções cruas em uso (70)
+## Injeções cruas em uso (73)
 
 ### `window_draw_slots` (machinery_basis)
 
@@ -218,6 +218,31 @@ e 46 não (o `fill_bucket` do `mekanism`, de 2026-11-12 (frente `oclusao`), só 
 - **Risco:** depende de `HudBatch::fill` e da cor do retângulo, de `draw_inventory` e do campo `mod_screen`/`open_spec`. Mudar a cor, o alfa ou o método, e o fundo volta ao
   do Horizon, sem erro. O custo é uma leitura de `AtomicBool` e cinco comparações por `fill`.
 - **Conferido em jogo** (2026-11-07, `horizon`, contra o original, mesmo mundo): ver H22.
+
+### `container_instance`, `container_take` (machinery_basis) e `container_accepts` (mekanism): o contêiner de itens por instância (H2)
+
+- **Estado:** em uso desde 2026-11-12 (frente `container-instancia`). **Alvos:** `horizon_client::game::machines::Containers<'_>::view` (HEAD cancelável, `machines.rs:177`),
+  `Containers<'_>::can_take` (HEAD cancelável, `:369`) e `horizon_client::game::native_hooks::Game<'_>::native_container_accepts` (HEAD, `native_hooks.rs:3234`), todas privadas.
+- **Helpers:** `mods/machinery_basis/container_instance.rs` e `container_take.rs`, que chamam `machinery_basis::container_instance` e `container_take` em `glue.rs`, e
+  `mods/mekanism/native/container_accepts.rs`, que chama `mekanism_glue::container_accepts`. Quem responde por um bloco se registra em `machinery_basis::register_item_instances`
+  (as faces da instância e a regra de saída do slot); a `machinery_basis` não conhece o Mekanism.
+- **Por que são necessárias:** o original dá a cada face a capability de item do `DataType` do lado (`ConfigHolder`, `ProxyItemHandler`): quais slots a face alcança, se
+  deixa entrar e se deixa sair, e a regra do slot de quem está de fora (`isValidForInsertion` e `isValidForExtraction` com `AutomationType.EXTERNAL`: o slot de entrada não deixa tirar,
+  o de infusão e o de energia só o que o tanque ou o buffer não converteria). O Horizon sabe o `ModContainer` por tipo de bloco (`faces`, `inputs` e `outputs`, sem face), e o
+  `can_take` só olha `outputs.contains(slot)`. A emulação que a frente `config-lados` fez (a máquina puxa e entrega pelos hoppers vizinhos no tick dela) não alcançava o dropper
+  e o ejetor de outra máquina; com o contêiner por instância, o hopper do Horizon, o dropper e o `native_insert_item` (que o ejetor de outra máquina usa) agem pelas faces
+  de cada instância, e a emulação saiu (`tick_hoppers` deixou de ser chamado pelas quatro máquinas).
+- **O que cada uma faz:** `container_instance` chama `view` de novo por dentro (a marca `view_enter`; o corpo de `view` tem `?` e o RETURN não o aceita, como em `obj_material_quads`)
+  e troca o `ModContainer` do `View` de um bloco de mod pelo da instância (`faces`, `inputs`, `outputs`; a contagem de slots e o menu ficam), calculado do NBT do tile
+  (`component_config`) e da frente do bloco, sem o objeto vivo. `container_take` responde `can_take` com a face (`releases_through`) e a regra do slot (`slot_extractable`, com os índices de
+  receita da última vez que uma máquina os pediu). `container_accepts` cancela a entrada se a face não deixa entrar no slot (`accepts_through`) ou o slot não aceita o item.
+- **Hook mais próximo:** `container_accepts` (`cancel`), que está no `main` do Horizon (`tools/native-hook-fragments/container_accepts.json`) e não no catálogo do pin
+  (`E_HOOK_UNKNOWN`, medido em 2026-11-12): a injeção entra no começo de `native_container_accepts`, a função que o hook cobre. Para `view` e `can_take` não há hook.
+- **Hook proposto:** H2.
+- **Conferido:** as 810 configurações de capability, as fases de hopper, as sondas dos slots e as 120 fases de dropper e de dispenser do original, pelo modelo do hopper do Horizon
+  (`config_lados_caps.rs`, `slot_rules.rs`, `dropper_trace.rs`); em jogo, 14 casos iguais (`h2_container_instancia.py medir`) e o ritmo do hopper em 1 item por 8 ticks (18 em 144), sem dobrar.
+- **Risco:** depende dos três nomes, da forma de `View` (`kind`, `container`, `locate`) e de `Containers::name`, `prop` e `max_stack`. Mudar a marca de reentrada ou o corpo de `view` (um
+  `return` novo antes do bloco de mod) deixa a máquina com as faces do tipo de bloco, sem erro. O custo é uma leitura de `thread_local` por `view` e uma leitura de NBT por consulta de uma máquina.
 
 ### `energy_capacity` (machinery_basis)
 
@@ -1065,7 +1090,7 @@ Do plano, sem compilar. O Java está nas fases correspondentes.
 
 | Prevista | Fase | Alvo (do plano) | Proposta |
 |---|---|---|---|
-| Faces e contêiner por instância | 2, 3 | HEAD cancelável em `native_fluid_at`, `Containers::view`, `can_take` e `native_container_accepts` | H2 |
+| Tanque por instância (`native_fluid_at`; o contêiner de itens já está em uso, 2026-11-12) | 3 | HEAD cancelável em `native_fluid_at` | H2 |
 | Regra de slot que vê o outro slot | feita por contexto de clique (2026-11-07), sem H20 | `menu_slot_rules` v1 não tem `Game`, nem a posição, nem o outro slot; ver [A regra de slot do clique](#a-regra-de-slot-do-clique) | H20 |
 | Seleção do Configurator com `context_outline` (não conta: o spike já cobriu) | decisão 1 | o spike resolveu por `block_highlight` mais `native_frame_visuals`: `context_outline` devolve uma caixa só | H15 |
 | `native_screen_slot` (não conta: o spike já cobriu) | 1 | HEAD, "não testado": o spike da aba cobriu o caso por H9 | H9 |
@@ -1136,15 +1161,13 @@ fn block_entity_container_instance(&self, _host: &dyn Host, event: &mut BlockEnt
 
 - **Nota:** `block_entity_container` v1 continua declarando o tipo de bloco, e H2 afina por instância, como `energy_instance` faz com
   `block_entity_energy`. É o que a Fase 2 (`TileComponentConfig`, `ConfigInfo`, `DataType`) precisa: lados coloridos por instância.
-- **Por que a frente `config-lados` (2026-11-09) não o usou:** o hopper vizinho, o único consumidor de contêiner que a máquina tem hoje, é emulado
-  pela própria máquina (`tick_hoppers`), com as faces do `DataType` da instância, e o rastro dos hoppers (`slots_*`, `identity_*`) já
-  confere essa emulação com o original. Expor as faces pelo `ModContainer` ligaria os dois caminhos ao mesmo tempo (o hopper do Horizon
-  e o da máquina), e três coisas faltam para o resto: (1) `Containers::can_take` e `can_place` não olham a face (`outputs` e `inputs` são
-  uma lista só), (2) `can_take` não consulta a regra do slot (`isValidForExtraction` de quem está de fora: o slot de entrada não
-  deixa tirar, o de infusão só o que o tanque não converte), e (3) não há como o `ModContainer` mudar por instância. O dropper, o
-  dispenser e o ejetor de outra máquina que apontam para uma máquina não a alcançam (nem antes), e a Fase 3 (os canos de item) é a
-  que vai precisar. A ficha segue **prevista**, com estes três pontos como o que o hook tem de resolver (o terceiro é o H2; os dois
-  primeiros acrescentam a face e a regra do slot ao `can_take`).
+- **Feito em 2026-11-12 (frente `container-instancia`), para os itens:** a ficha em [`container_instance`, `container_take` e `container_accepts`](#container_instance-container_take-machinery_basis-e-container_accepts-mekanism-o-contêiner-de-itens-por-instância-h2).
+  A frente `config-lados` (2026-11-09) tinha deixado a máquina imitar o hopper (decisão 45, opção A), porque o `can_take` não olha a face nem a regra do slot e o contêiner não muda por
+  instância; as três coisas viraram as duas injeções e o hook `container_accepts`, e a emulação saiu. O hook proposto tem de resolver os mesmos três pontos: (1) a face em `can_take` e
+  `can_place` (hoje `inputs` e `outputs` são uma lista só para o bloco todo, e a face da entrada vem só do `container_accepts`), (2) a regra do slot em `can_take`, e (3) o contêiner por instância.
+  Falta só `native_fluid_at`, o tanque por instância, que as máquinas portadas não usam (nenhuma tem saída de fluido) e o Heat Generator espera a Fase 3.
+- **Ainda pelo caminho antigo (a emulação `tick_hoppers`):** o cubo de energia e o Heat Generator. As regras de slot deles (o `EnergyInventorySlot` do cubo lê o objeto vivo e a energia
+  do item; o combustível do gerador lê as tags do jogo) precisam do `Game`, que `can_take` não tem; o dropper e o ejetor de outra máquina ainda não os alcançam (pendência no plano).
 
 ### H3 `block_fluid`
 
@@ -1887,7 +1910,7 @@ cat mods/machinery_basis/horizon-mixin.toml mods/mekanism/native/horizon-mixin.t
        END{printf "injection=%d hook=%d target=%d module=%d soma_ok=%s\n", i, h, t, m, (i==h+t)?"sim":"NAO"}'
 ```
 
-   Hoje: `injection=161 hook=91 target=70 module=33 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
+   Hoje: `injection=164 hook=91 target=73 module=33 soma_ok=sim`. Se `target` mudar, uma ficha nova ou removida tem de
    acompanhar. Se `hook` mudar, reclassifique entre limpo e com estrutura privada: 46 + 45 tem de somar `hook`.
 6. **Quem lê:** o texto vira a issue no Horizon. Escreva cada ficha para um leitor que não conhece o Mekanism: o comportamento
    do original, e o que um mod qualquer ganha com o hook.

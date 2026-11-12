@@ -77,11 +77,17 @@ da máquina relê o NBT e aplica o que mudou de fora (um comando, o cartão de c
 `write_configuration_data`/`set_configuration_data` é o `writeConfigurationData`/`setConfigurationData` do `TileEntityConfigurableMachine`,
 que o Configurator e o cartão de configuração vão usar.
 
-As capabilities por face seguem a instância. Itens: a máquina declara `inputs` e `outputs` vazios, então hopper nenhum a enxerga, e quem
-age é ela, imitando o hopper com as faces que o `DataType` de cada lado dá (`TileComponentConfig::item_face`, o `ConfigHolder`), pela
-frente de agora. Assim a regra vale por instância e acompanha a rotação. Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
+As capabilities por face seguem a instância. Itens: o `ModContainer` de uma máquina com lados coloridos é da instância (H2). A lib calcula, da
+configuração de lados (`TileComponentConfig::item_face`, o `ConfigHolder`) e da frente de agora, o que cada face alcança e deixa fazer
+(`item_instance::InstanceItems`: os slots, `can_input` e `can_output`), e o mod registra em `register_item_instances` quem responde pelos blocos dele
+(as faces, calculadas do NBT do tile, e a regra de saída do slot, `isValidForExtraction` de quem está de fora). Três injeções (`container_instance`,
+`container_take` e `container_accepts`) fazem o Horizon perguntar a ela: o hopper, o dropper, o `native_insert_item` e o ejetor de outra máquina agem pelas faces
+de cada instância, e a regra acompanha a rotação. Antes a máquina declarava `inputs` e `outputs` vazios e imitava o hopper no tick dela (`tick_hoppers`, abaixo), que
+ainda serve a quem não tem `ConfigHolder` de item. Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
 `energy_capacity` (H1) responde pela instância, com a capacidade e as faces que entram e saem (`ConfigHolder.canInsert/canExtract` do
 `DataType` do lado).
+
+A tabela é a regra de `tick_hoppers`, que o cubo de energia e o Heat Generator ainda usam; as máquinas configuráveis seguem a mesma regra pelo hopper do Horizon (H2).
 
 | Situação | O que a máquina faz |
 |---|---|
@@ -94,10 +100,7 @@ frente de agora. Assim a regra vale por instância e acompanha a rotação. Ener
 O ritmo é o do hopper: 1 item a cada 8 ticks por elo, e só um sucesso espera. O ejetor é outra coisa: entrega ativa a qualquer
 inventário que aceite entrada, pelos lados de saída, hopper incluído, como um dropper atirando num hopper, a cada 11 ticks (o `tickDelay` de 10 conta, e o disparo é o seguinte).
 
-Limites: outros mods que automatizam pelas faces do Horizon (dropper, o ejetor de uma máquina vizinha, um cano) também não enxergam a
-máquina, porque o contêiner do bloco é um só (H2, ver `docs/injecoes-horizon.md`), e fluido ou químico vindos deles seguem as faces fixas
-do tipo de bloco. Hopper minecart ainda não entra na regra. O elo tem contador próprio, sem sincronizar com o cooldown interno do
-hopper, que os helpers não expõem.
+Limites: as máquinas com lados coloridos (as quatro configuráveis do Mekanism) não passam mais por esse tick: o `ModContainer` delas é da instância (H2, `register_item_instances`, ver `docs/injecoes-horizon.md`), e o hopper, o dropper e o ejetor de outra máquina do Horizon agem pelas faces de cada uma, no ritmo do próprio hopper. O que ainda usa `tick_hoppers` (o cubo de energia e o Heat Generator) segue com os limites de antes: o dropper e o ejetor de outra máquina não os enxergam, e fluido ou químico vindos de fora seguem as faces fixas do tipo de bloco. Hopper minecart ainda não entra na regra.
 
 ### Fluido dentro do bloco
 
