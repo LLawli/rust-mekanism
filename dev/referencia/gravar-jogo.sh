@@ -24,12 +24,13 @@ rec)
   arq=$3; seg=$4; cont=${5:-}; nomearq=$(basename "$arq")
   id=$(docker exec "$c" sh -c "pw-cli ls Node 2>/dev/null" | awk "/^\tid/{id=\$2} /node.name = \"gamescope\"/{print id}" | tr -d , | head -1)
   [ -n "$id" ] || { echo "sem o nó do gamescope no PipeWire privado" >&2; docker exec "$c" pw-cli ls Node >&2; exit 1; }
-  an=~/.cache/rust-mekanism/audio_nulo.sh; sink=som_grav_$nome; wav=$base/saida/${nomearq%.mp4}.wav; pr=
+  an=~/.cache/rust-mekanism/audio_nulo.sh; sink=som_grav_$nome; wav=$base/saida/${nomearq%.mp4}.wav; pr=; vigia=
   # O sink próprio some em todo caminho de saída (erro, sinal, fim): o `trap` devolve o stream ao `som_nulo` ANTES de apagar o sink (nunca cai no sink padrão, as caixas) e depois o apaga.
   # Sem `set -e` daqui em diante: um `wait` ou um `remover` com status diferente de 0 não pode sair do script antes da limpeza.
   limpar() {
     set +e
     trap - EXIT INT TERM HUP
+    if [ -n "$vigia" ]; then kill "$vigia" 2>/dev/null; wait "$vigia" 2>/dev/null; vigia=; fi
     if [ -n "$pr" ]; then kill -INT "$pr" 2>/dev/null; wait "$pr" 2>/dev/null; pr=; fi
     if [ -n "$cont" ]; then
       bash "$an" ligar "$cont" >/dev/null 2>&1
@@ -42,8 +43,10 @@ rec)
     trap limpar EXIT
     trap "exit 1" INT TERM HUP
     AUDIO_SINK=$sink bash "$an" ligar "$cont" >/dev/null
-    AUDIO_SINK=$sink bash "$an" verificar "$cont" >/dev/null || { echo "o som de $cont não foi para $sink" >&2; exit 1; }
     AUDIO_SINK=$sink bash "$an" gravar "$wav" & pr=$!
+    # O stream de som do jogo só existe enquanto algo toca, e cada stream novo nasce no sink padrão do cliente (o `som_nulo`):
+    # o vigia o move para o sink da gravação a cada 0,5 s, enquanto o vídeo grava.
+    ( while :; do AUDIO_SINK=$sink bash "$an" ligar "$cont" >/dev/null 2>&1; sleep 0.5; done ) & vigia=$!
   fi
   docker exec "$c" timeout -s INT "$seg" gst-launch-1.0 -e pipewiresrc path="$id" do-timestamp=true ! videoconvert ! videorate ! video/x-raw,framerate=30/1 \
     ! x264enc speed-preset=veryfast tune=zerolatency bitrate=6000 ! video/x-h264,profile=high ! h264parse ! mp4mux ! filesink location="/saida/$nomearq" >/dev/null 2>&1
