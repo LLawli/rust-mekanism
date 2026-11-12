@@ -25,20 +25,32 @@ rec)
   id=$(docker exec "$c" sh -c "pw-cli ls Node 2>/dev/null" | awk "/^\tid/{id=\$2} /node.name = \"gamescope\"/{print id}" | tr -d , | head -1)
   [ -n "$id" ] || { echo "sem o nó do gamescope no PipeWire privado" >&2; docker exec "$c" pw-cli ls Node >&2; exit 1; }
   an=~/.cache/rust-mekanism/audio_nulo.sh; sink=som_grav_$nome; wav=$base/saida/${nomearq%.mp4}.wav; pr=
+  # O sink próprio some em todo caminho de saída (erro, sinal, fim): o `trap` devolve o stream ao `som_nulo` ANTES de apagar o sink (nunca cai no sink padrão, as caixas) e depois o apaga.
+  # Sem `set -e` daqui em diante: um `wait` ou um `remover` com status diferente de 0 não pode sair do script antes da limpeza.
+  limpar() {
+    set +e
+    trap - EXIT INT TERM HUP
+    if [ -n "$pr" ]; then kill -INT "$pr" 2>/dev/null; wait "$pr" 2>/dev/null; pr=; fi
+    if [ -n "$cont" ]; then
+      bash "$an" ligar "$cont" >/dev/null 2>&1
+      bash "$an" verificar "$cont" >/dev/null 2>&1 || echo "AVISO: confira o som de $cont" >&2
+      AUDIO_SINK=$sink bash "$an" remover
+    fi
+  }
+  set +e
   if [ -n "$cont" ]; then
+    trap limpar EXIT
+    trap "exit 1" INT TERM HUP
     AUDIO_SINK=$sink bash "$an" ligar "$cont" >/dev/null
-    AUDIO_SINK=$sink bash "$an" verificar "$cont" >/dev/null || { echo "o som de $cont não foi para $sink" >&2; bash "$an" ligar "$cont" >/dev/null; AUDIO_SINK=$sink bash "$an" remover; exit 1; }
+    AUDIO_SINK=$sink bash "$an" verificar "$cont" >/dev/null || { echo "o som de $cont não foi para $sink" >&2; exit 1; }
     AUDIO_SINK=$sink bash "$an" gravar "$wav" & pr=$!
   fi
   docker exec "$c" timeout -s INT "$seg" gst-launch-1.0 -e pipewiresrc path="$id" do-timestamp=true ! videoconvert ! videorate ! video/x-raw,framerate=30/1 \
-    ! x264enc speed-preset=veryfast tune=zerolatency bitrate=6000 ! video/x-h264,profile=high ! h264parse ! mp4mux ! filesink location="/saida/$nomearq" >/dev/null 2>&1 || true
-  if [ -n "$pr" ]; then
-    kill -INT "$pr" 2>/dev/null; wait "$pr" 2>/dev/null
-    # Volta o stream ao som_nulo antes de apagar o sink próprio, para nunca cair no sink padrão (as caixas).
-    bash "$an" ligar "$cont" >/dev/null; bash "$an" verificar "$cont" >/dev/null || echo "AVISO: confira o som de $cont" >&2
-    AUDIO_SINK=$sink bash "$an" remover
+    ! x264enc speed-preset=veryfast tune=zerolatency bitrate=6000 ! video/x-h264,profile=high ! h264parse ! mp4mux ! filesink location="/saida/$nomearq" >/dev/null 2>&1
+  if [ -n "$cont" ]; then
+    limpar
     ffmpeg -v error -y -i "$base/saida/$nomearq" -i "$wav" -c:v copy -c:a aac -b:a 160k -shortest "$base/saida/com_som_$nomearq" \
-      && mv "$base/saida/com_som_$nomearq" "$base/saida/$nomearq" && rm -f "$wav"
+      && mv "$base/saida/com_som_$nomearq" "$base/saida/$nomearq" && rm -f "$wav" || { echo "o ffmpeg não juntou o som" >&2; exit 1; }
   fi
   ls -la "$base/saida/$nomearq" ;;
 stop)

@@ -177,7 +177,7 @@ def scene(folder):
 AUDIO_NULO = os.environ.get("AUDIO_NULO", "~/.cache/rust-mekanism/audio_nulo.sh")
 CONTAINER = os.environ.get("H_NAME", "horizon2")
 GRAVAR = "~/.cache/rust-mekanism/gravar-jogo"
-SOUND_OFF = ("music", "weather", "hostile", "neutral", "player", "ambient", "voice", "ui", "block")
+SOUND_OFF = ("music", "weather", "hostile", "neutral", "player", "ambient", "voice", "ui")
 
 
 def desktop(args):
@@ -191,7 +191,8 @@ def mute():
 def video():
     """A fileira montada, a legenda de som ligada, e a nota tocando em cada base da esquerda para a direita (sal, bio fuel, lápis, areia, feno), com o som do jogo no vídeo.
 
-    O bloco de nota toca na categoria `record` (Jukebox/Note Blocks): só ela fica ligada, e o volume mestre só sobe depois de o stream do container estar no sink nulo
+    O original toca o bloco de nota na categoria `record` (Jukebox/Note Blocks, `NoteBlock.java:162`), mas o Horizon o toca na `block` (medido em 2026-11-12: só com `record` em 1 e o resto
+    em 0 a gravação sai muda, só com `block` ela sai com a nota): as duas ficam ligadas e o resto desligado. O volume mestre só sobe depois de o stream do container estar no sink nulo
     (`audio_nulo.sh ligar` e `verificar`). Uma thread confere a cada meio segundo (`seguro`: nenhum link fora de `som_nulo` e `som_grav_*`) e, se o stream sair, o volume mestre volta a 0
     na hora. A gravação é a do `gravar-jogo rec <NOME> nota.mp4 <s> <container>` (o container com `JOGO_PW_SOCK`), que grava o som do jogo num sink próprio e o junta ao vídeo.
     Variáveis: `NOME` (o nome do `gravar-jogo start`), `SEGUNDOS` (padrão 20), `ARQUIVO` (padrão nota.mp4)."""
@@ -205,6 +206,7 @@ def video():
     for categoria in SOUND_OFF:
         h.ctl("options-set", f"soundCategory_{categoria}", "0")
     h.ctl("options-set", "soundCategory_record", "1.0")
+    h.ctl("options-set", "soundCategory_block", "1.0")
     ligado = False
     for _ in range(60):
         if "movidos 0" not in desktop(f"ligar {CONTAINER}").stdout and desktop(f"verificar {CONTAINER}").stdout.startswith("ok"):
