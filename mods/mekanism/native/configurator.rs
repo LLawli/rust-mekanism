@@ -297,6 +297,22 @@ fn dismantle(game: &mut Game<'_>, pos: [i32; 3]) {
 /// O que o Java resolve no bloco antes do item: o Configurator em `ROTATE` gira (`TileEntityMekanism.tryWrenchRotate`) e o cartão em mão passa a vez da
 /// tela (`TileEntityMekanism.openGui` devolve `TRY_WITH_EMPTY_HAND`) e age em seguida. O Horizon abriria a tela primeiro, então o clique é feito aqui e o
 /// resto é cancelado. Só a mão principal e só sem agachar: agachado o bloco nem chega a agir (e a chave inglesa age no `use_item_on`).
+/// `BlockEnergyCube.useWithoutItem` (protótipo da decisão 68): abre o menu do cubo sem o gabarito `beacon`. `Game::open_menu` é o que o efeito `OpenMenu` do gabarito chama; o resto
+/// é o que `use_hand` faz com um `Success` (o gatilho `default_block_use` e o balanço do braço). O cancelamento marca `use_failed`, que só um convidado de LAN lê (não medido com dois clientes).
+pub(in crate::game) fn open_cube_menu(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
+    if *canceled || !cube::is_cube(&game.native_block(pos)) {
+        return;
+    }
+    let hands_full = game.stack_in(game.selected).is_some() || game.offhand.is_some();
+    if game.native_sneaking() && hands_full {
+        return;
+    }
+    game.open_menu(pos);
+    game.trigger_default_block_use(pos);
+    game.swing_arm();
+    *canceled = true;
+}
+
 pub(in crate::game) fn right_click_block(game: &mut Game<'_>, pos: [i32; 3], face: [i32; 3], canceled: &mut bool) {
     if *canceled || game.native_sneaking() {
         return;

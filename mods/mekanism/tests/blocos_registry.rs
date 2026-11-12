@@ -425,22 +425,17 @@ fn every_block_is_declared_as_the_original_registers_it() {
         // O gabarito: um bloco sem comportamento próprio, de reação normal ao pistão (a reação do original vem da tabela de linhas). O vidro estrutural (`BlockTileGlass`: sem oclusão,
         // sombra 1, sem a face entre dois vidros, forma visual vazia, som e instrumento do vidro) é o `minecraft:glass`, que dá tudo isso (decisão 26).
         let glass = id == "structural_glass";
-        // O cubo de energia abre menu, e o Horizon só o abre num gabarito com a ação de uso: `beacon`, o único sem propriedade de estado própria (decisão 68), com a luz zerada.
-        let cube = id.ends_with("_energy_cube");
+        // O cubo de energia abre o menu pelo gancho `right_click_block` (decisão 68), não pelo gabarito: com o `beacon` o bloco de nota em cima tocava o `hat` do beacon, e o
+        // original (instrumento padrão) toca o `harp`.
         assert_eq!(
             declaration["template"],
             if glass {
                 "minecraft:glass"
-            } else if cube {
-                "minecraft:beacon"
             } else {
                 "minecraft:lodestone"
             },
             "{id}"
         );
-        if cube {
-            assert_eq!(properties["light"], 0, "{id}: o beacon acende");
-        }
         // `occludes: false` nos blocos de forma menor que o cubo (`isSolidRender` falso no original): o Horizon esconde a face do vizinho pela forma de oclusão do gabarito (o cubo cheio)
         // e pelo `can_occlude` de `render-definitions.json`; só `occludes: false` o faz parar (decisão 22).
         let solid = row["states"]

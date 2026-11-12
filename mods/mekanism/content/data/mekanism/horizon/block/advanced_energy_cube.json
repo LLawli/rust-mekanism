@@ -1,13 +1,12 @@
 {
-  "template": "minecraft:beacon",
+  "template": "minecraft:lodestone",
   "properties": {
     "hardness": 2.0,
     "requires_tool": true,
     "map_color": 59,
     "sounds": "minecraft:stone",
     "explosion_resistance": 2.4,
-    "occludes": false,
-    "light": 0
+    "occludes": false
   },
   "state_properties": {
     "facing": {
