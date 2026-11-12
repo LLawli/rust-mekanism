@@ -417,6 +417,12 @@ pub trait EnergyInsert {
     }
 
     fn commit_probe(&self, _amount: i32, _transaction: &Transaction) {}
+
+    /// `EnergyHandler.extract`, para o cabo em `PULL` (`UniversalCable.pullFromAcceptors`): quanto o vizinho entrega (`simulate`) e, sem `simulate`, a entrega de
+    /// verdade. Um destino que só recebe não entrega nada.
+    fn extract(&self, _amount: i32, _simulate: bool) -> i32 {
+        0
+    }
 }
 
 /// `EnergyHandlerTarget`: `accept` é `handler.insert(saturatedCast(amount))`.

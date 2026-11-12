@@ -38,6 +38,7 @@ pub mod heat_network;
 pub mod inventory_network;
 pub mod mechanical_pipe;
 pub mod network_acceptors;
+pub mod owner;
 pub mod pressurized_tube;
 pub mod registry;
 pub mod thermodynamic_conductor;
