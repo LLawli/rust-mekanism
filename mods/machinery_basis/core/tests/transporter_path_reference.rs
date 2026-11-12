@@ -280,6 +280,10 @@ impl TransporterWorld for World<'_> {
             .get(&pos)
             .map(|chest| chest.clone() as Rc<dyn ItemHandler>)
     }
+
+    fn neighbor_transmitter_can_connect(&self, _: i64, _: Face) -> Option<bool> {
+        None
+    }
 }
 
 #[derive(Default)]

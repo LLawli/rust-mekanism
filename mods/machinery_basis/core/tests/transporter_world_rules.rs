@@ -6,7 +6,7 @@ use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transaction::Transaction;
-use machinery_basis_core::transit::TransitRequest;
+use machinery_basis_core::transit::{TransitRequest, TransitResponse};
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::Uuid;
 use machinery_basis_core::transmission::inventory_network::calculate_acceptors;
@@ -36,6 +36,10 @@ impl TransportSorter for Sorter {
     fn can_send_home(&self, _: &ItemResource, _: u32, _: Option<&Transaction>) -> bool {
         self.0
     }
+
+    fn send_home(&self, _: &TransitRequest, _: &Transaction) -> TransitResponse {
+        TransitResponse::EMPTY
+    }
 }
 
 impl TransporterWorld for Machine {
@@ -51,6 +55,10 @@ impl TransporterWorld for Machine {
 
     fn item_handler(&self, _: i64, _: Face) -> Option<Rc<dyn ItemHandler>> {
         Some(self.chest.clone())
+    }
+
+    fn neighbor_transmitter_can_connect(&self, _: i64, _: Face) -> Option<bool> {
+        None
     }
 }
 

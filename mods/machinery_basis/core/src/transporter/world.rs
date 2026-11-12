@@ -5,6 +5,7 @@ use crate::containers::ItemResource;
 use crate::item_handler::ItemHandler;
 use crate::sides::Face;
 use crate::transaction::Transaction;
+use crate::transit::{TransitRequest, TransitResponse};
 use crate::transmission::Uuid;
 use crate::transmission::connection::ConnectionType;
 use std::rc::Rc;
@@ -31,6 +32,21 @@ pub trait Transporter {
     fn can_connect_mutual(&self, side: Face, other: Option<&dyn Transporter>) -> bool {
         self.can_connect(side) && other.is_none_or(|other| other.can_connect(side.opposite()))
     }
+    /// Este transportador como o `LogisticalTransporterBase` que guarda as pilhas em trânsito (para `entityEntering`).
+    fn as_logistical(&self) -> Option<&super::node::LogisticalTransporterBase> {
+        None
+    }
+}
+
+/// O bloco de onde vem uma pilha, no que `canConnectMutual(side, BlockEntity)` pergunta dele.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputterTile {
+    /// Sem bloco (`null`): o transportador procura o do vizinho no mundo.
+    Unknown,
+    /// Um bloco que não é transmissor.
+    Other,
+    /// Um transmissor (de qualquer família); `can_connect_back` é o `canConnect` dele para o lado do transportador.
+    Transmitter { can_connect_back: bool },
 }
 
 /// Um aceitador da rede: a posição (`BlockPos.asLong`) e os handlers dos lados dele, na ordem do `Direction`.
@@ -72,6 +88,8 @@ pub trait TransportSorter {
         amount: u32,
         transaction: Option<&Transaction>,
     ) -> bool;
+    /// `sendHome(level, request, transaction)`: o que o sorter aceita de volta de uma pilha que não achou outro destino.
+    fn send_home(&self, request: &TransitRequest, transaction: &Transaction) -> TransitResponse;
 }
 
 /// O `Level` no que a busca lê de um bloco de destino.
@@ -82,6 +100,8 @@ pub trait TransporterWorld {
     fn sorter(&self, pos: i64) -> Option<&dyn TransportSorter>;
     /// `Capabilities.ITEM.getCapabilityIfLoaded(level, pos, null, tile, side)`.
     fn item_handler(&self, pos: i64, side: Face) -> Option<Rc<dyn ItemHandler>>;
+    /// `WorldUtils.getTileEntity(level, pos)` quando é um `TileEntityTransmitter`, e o `canConnect(side)` do transmissor dele.
+    fn neighbor_transmitter_can_connect(&self, pos: i64, side: Face) -> Option<bool>;
 }
 
 /// `TransporterUtils.canInsert(level, pos, tile, color, itemType, itemAmount, side, force, transaction)`.

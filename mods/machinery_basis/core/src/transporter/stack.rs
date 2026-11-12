@@ -6,14 +6,14 @@ use super::pathfinder::{
     PathContext, RoundRobinEjector, get_idle_path, get_new_base_path, get_new_rr_path,
 };
 use super::pos::{NO_POS, side_difference};
-use super::world::{InventoryNetworkView, Transporter};
+use super::world::{InventoryNetworkView, OutputterTile, Transporter, TransporterWorld};
 use crate::containers::ItemResource;
 use crate::side_config::ENUM_COLOR_NAMES;
 use crate::sides::Face;
 use crate::sim::chunks::BlockPos;
 use crate::transaction::Transaction;
 use crate::transit::{TransitRequest, TransitResponse};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 /// As chaves de NBT de `SerializationConstants`.
@@ -104,6 +104,18 @@ fn color_from_name(name: &str) -> Option<u8> {
         .map(|index| index as u8)
 }
 
+/// O `ItemResource.CODEC` ao gravar: o `{id, components}` do item.
+pub type ItemEncode<'a> = &'a dyn Fn(&ItemResource) -> Compound;
+/// O `ItemResource.CODEC` ao ler.
+pub type ItemDecode<'a> = &'a dyn Fn(&Compound) -> Option<ItemResource>;
+
+/// O recurso só pelo id, sem componentes.
+pub fn plain_item_encode(item: &ItemResource) -> Compound {
+    let mut resource = Compound::new();
+    resource.insert(keys::ID.into(), Nbt::String(item.id.to_string()));
+    resource
+}
+
 #[derive(Clone, Debug)]
 pub struct TransporterStack {
     item: Option<(ItemResource, u32)>,
@@ -119,6 +131,9 @@ pub struct TransporterStack {
     client_prev: i64,
     path_type: Option<Path>,
     path_to_target: Vec<i64>,
+    /// O `System.identityHashCode` da pilha: o `TransporterStack` não sobrescreve `hashCode`, então o `HashSet` do
+    /// `TransporterManager` a ordena por ele (decisão 118). Sorteado ao criar, como o HotSpot sorteia ao pedir.
+    identity_hash: Cell<Option<i32>>,
 }
 
 impl Default for TransporterStack {
@@ -141,7 +156,24 @@ impl TransporterStack {
             client_prev: NO_POS,
             path_type: None,
             path_to_target: Vec::new(),
+            identity_hash: Cell::new(None),
         }
+    }
+
+    /// `System.identityHashCode(stack)`: o HotSpot sorteia na primeira vez que o objeto o pede (quando entra num `HashSet`), e depois é o
+    /// mesmo. Aqui também.
+    pub fn identity_hash(&self) -> i32 {
+        if let Some(hash) = self.identity_hash.get() {
+            return hash;
+        }
+        let hash = crate::identity_hash::next_identity_hash();
+        self.identity_hash.set(Some(hash));
+        hash
+    }
+
+    /// O hash que o original tinha para a pilha.
+    pub fn set_identity_hash(&mut self, hash: i32) {
+        self.identity_hash.set(Some(hash));
     }
 
     /// `createInsertStack(outputterCoord, color)`: a pilha de um item que entra no transportador vindo de `outputter`, que também é a casa.
@@ -299,12 +331,42 @@ impl TransporterStack {
             && transporter.can_connect_mutual(from.opposite(), transporter_from)
     }
 
+    /// `canInsertToTransporter(transporter, from, tileFrom)`, a sobrecarga que recebe o bloco de onde vem a pilha: a cor do transportador
+    /// é a da pilha (ou nenhuma) e `canConnectMutual(from.getOpposite(), tileFrom)` (sem bloco, ele é procurado no mundo).
+    pub fn can_insert_to_transporter_tile(
+        &self,
+        transporter: Option<&dyn Transporter>,
+        from: Face,
+        tile_from: OutputterTile,
+        transporter_pos: i64,
+        world: &dyn TransporterWorld,
+    ) -> bool {
+        let Some(transporter) = transporter else {
+            return false;
+        };
+        let color = transporter.color();
+        if !(color.is_none() || color == self.color) {
+            return false;
+        }
+        let side = from.opposite();
+        if !transporter.can_connect(side) {
+            return false;
+        }
+        match tile_from {
+            OutputterTile::Other => true,
+            OutputterTile::Transmitter { can_connect_back } => can_connect_back,
+            OutputterTile::Unknown => world
+                .neighbor_transmitter_can_connect(super::pos::relative_pos(transporter_pos, side), side.opposite())
+                .unwrap_or(true),
+        }
+    }
+
     // -----------------------------------------------------------------------------------------------------------------------------------
     // NBT
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    /// `STREAM_CODEC` e `writeCommon`: as chaves que o NBT salvo e o de atualização têm em comum.
-    fn write_common(&self, out: &mut Compound) {
+    /// `STREAM_CODEC` e `writeCommon`: as chaves que o NBT salvo e o de atualização têm em comum. `encode` é o `ItemResource.CODEC`.
+    fn write_common(&self, out: &mut Compound, encode: ItemEncode) {
         if let Some(color) = self.color {
             out.insert(keys::COLOR.into(), Nbt::String(color_name(color).into()));
         }
@@ -314,20 +376,23 @@ impl TransporterStack {
             Nbt::Long(self.original_location),
         );
         if let Some((item, amount)) = &self.item {
-            // O `ItemResource.CODEC` grava o id; os componentes do item ficam por conta de quem liga o jogo.
-            let mut resource = Compound::new();
-            resource.insert(keys::ID.into(), Nbt::String(item.id.to_string()));
             let mut stack = Compound::new();
-            stack.insert(keys::TYPE.into(), Nbt::Compound(resource));
+            stack.insert(keys::TYPE.into(), Nbt::Compound(encode(item)));
             stack.insert(keys::AMOUNT.into(), Nbt::Long(i64::from(*amount)));
             out.insert(keys::ITEM.into(), Nbt::Compound(stack));
         }
     }
 
-    /// `write(output)`: o NBT que vai para o disco. O `pathType` é o cru (nulo não é gravado) e a casa só se existe.
+    /// `write(output)`: o NBT que vai para o disco, com o item só pelo id.
     pub fn write(&self) -> Compound {
+        self.write_with(&plain_item_encode)
+    }
+
+    /// `write(output)`: o `pathType` é o cru (nulo não é gravado) e a casa só se existe. `encode` grava o `ItemResource`
+    /// (`{id, components}`); a lib não conhece os componentes, então quem liga o jogo os põe.
+    pub fn write_with(&self, encode: ItemEncode) -> Compound {
         let mut out = Compound::new();
-        self.write_common(&mut out);
+        self.write_common(&mut out, encode);
         if let Some(path_type) = self.path_type {
             out.insert(
                 keys::PATH_TYPE.into(),
@@ -343,11 +408,16 @@ impl TransporterStack {
         out
     }
 
+    /// `writeToUpdateTag(transporter, output)` no servidor, com o item só pelo id.
+    pub fn write_to_update_tag(&self, transporter: i64) -> Compound {
+        self.write_to_update_tag_with(transporter, &plain_item_encode)
+    }
+
     /// `writeToUpdateTag(transporter, output)` no servidor: o comum, o `pathType` (`NONE` se nulo) e o próximo e o anterior do
     /// transportador `transporter`, quando existem.
-    pub fn write_to_update_tag(&self, transporter: i64) -> Compound {
+    pub fn write_to_update_tag_with(&self, transporter: i64, encode: ItemEncode) -> Compound {
         let mut out = Compound::new();
-        self.write_common(&mut out);
+        self.write_common(&mut out, encode);
         out.insert(
             keys::PATH_TYPE.into(),
             Nbt::String(self.path_type().serialized_name().into()),
@@ -363,8 +433,8 @@ impl TransporterStack {
         out
     }
 
-    /// O construtor privado `TransporterStack(ValueInput)`. `resolve` dá o `ItemResource` de um id (o limite de pilha vem do registro).
-    fn from_input(input: &Compound, resolve: &dyn Fn(&str) -> Option<ItemResource>) -> Self {
+    /// O construtor privado `TransporterStack(ValueInput)`. `decode` lê o `ItemResource` do `{id, components}`.
+    fn from_input(input: &Compound, decode: ItemDecode) -> Self {
         let mut stack = Self::new();
         stack.color = input
             .get(keys::COLOR)
@@ -379,25 +449,89 @@ impl TransporterStack {
             .get(keys::PATH_TYPE)
             .and_then(Nbt::as_str)
             .and_then(Path::from_serialized_name);
-        // `LargeResourceStack.ITEM_HELPER.readOrEmpty`: a pilha vazia se falta a chave, o id ou a quantidade.
+        // `LargeResourceStack.ITEM_HELPER.readOrEmpty`: a pilha vazia se falta a chave, o recurso ou a quantidade.
         if let Some(item) = input.get(keys::ITEM).and_then(Nbt::as_compound)
-            && let Some(id) = item
-                .get(keys::TYPE)
-                .and_then(Nbt::as_compound)
-                .and_then(|resource| resource.get(keys::ID))
-                .and_then(Nbt::as_str)
+            && let Some(resource) = item.get(keys::TYPE).and_then(Nbt::as_compound)
             && let Some(amount) = item.get(keys::AMOUNT).and_then(Nbt::as_long)
             && amount > 0
-            && let Some(resource) = resolve(id)
+            && let Some(resource) = decode(resource)
         {
             stack.item = Some((resource, amount.min(i64::from(i32::MAX)) as u32));
         }
         stack
     }
 
-    /// `read(input)`: a pilha salva no disco.
+    // -----------------------------------------------------------------------------------------------------------------------------------
+    // STREAM_CODEC
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    /// `STREAM_CODEC.encode`: a pilha como o pacote a leva (a do servidor precisa de `updateForPos` antes). `item_codec` escreve o
+    /// `ItemResource.STREAM_CODEC` (o id do registro e o patch de componentes).
+    pub fn write_stream(&self, item_codec: &dyn Fn(&ItemResource, &mut Vec<u8>)) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.push(u8::from(self.color.is_some()));
+        if let Some(color) = self.color {
+            write_var_int(&mut out, i32::from(color));
+        }
+        write_var_int(&mut out, self.progress);
+        write_var_long(&mut out, self.original_location);
+        write_var_int(&mut out, self.path_type().ordinal());
+        for position in [self.client_next, self.client_prev] {
+            out.push(u8::from(position != NO_POS));
+            if position != NO_POS {
+                write_var_long(&mut out, position);
+            }
+        }
+        // `LargeResourceStack.ITEM_HELPER.streamCodec()`: a quantidade e, se há pilha, o recurso.
+        write_var_long(&mut out, i64::from(self.size()));
+        if let Some((item, _)) = &self.item {
+            item_codec(item, &mut out);
+        }
+        out
+    }
+
+    /// `STREAM_CODEC.decode`: o progresso zero vira 5.
+    pub fn read_stream(
+        bytes: &mut &[u8],
+        read_item: &dyn Fn(&mut &[u8]) -> Option<ItemResource>,
+    ) -> Option<Self> {
+        let mut stack = Self::new();
+        if read_byte(bytes)? != 0 {
+            stack.color = Some(read_var_long(bytes)? as u8);
+        }
+        let progress = read_var_long(bytes)? as i32;
+        stack.progress = if progress == 0 { 5 } else { progress };
+        stack.original_location = read_var_long(bytes)?;
+        stack.path_type = Some(Path::by_id(read_var_long(bytes)? as i32));
+        stack.client_next = if read_byte(bytes)? != 0 {
+            read_var_long(bytes)?
+        } else {
+            NO_POS
+        };
+        stack.client_prev = if read_byte(bytes)? != 0 {
+            read_var_long(bytes)?
+        } else {
+            NO_POS
+        };
+        let amount = read_var_long(bytes)?;
+        if amount > 0
+            && let Some(resource) = read_item(bytes)
+        {
+            stack.item = Some((resource, amount.min(i64::from(i32::MAX)) as u32));
+        }
+        Some(stack)
+    }
+
+    /// `read(input)`: a pilha salva no disco. `resolve` dá o `ItemResource` de um id (o limite de pilha vem do registro).
     pub fn read(input: &Compound, resolve: &dyn Fn(&str) -> Option<ItemResource>) -> Self {
-        let mut stack = Self::from_input(input, resolve);
+        Self::read_with(input, &|resource| {
+            resolve(resource.get(keys::ID).and_then(Nbt::as_str)?)
+        })
+    }
+
+    /// `read(input)` com o decodificador do `ItemResource` de quem liga o jogo.
+    pub fn read_with(input: &Compound, decode: ItemDecode) -> Self {
+        let mut stack = Self::from_input(input, decode);
         stack.idle_dir = input
             .get(keys::IDLE_DIR)
             .and_then(Nbt::as_str)
@@ -414,7 +548,14 @@ impl TransporterStack {
         input: &Compound,
         resolve: &dyn Fn(&str) -> Option<ItemResource>,
     ) -> Self {
-        let mut stack = Self::from_input(input, resolve);
+        Self::read_from_update_with(input, &|resource| {
+            resolve(resource.get(keys::ID).and_then(Nbt::as_str)?)
+        })
+    }
+
+    /// `readFromUpdate(input)` com o decodificador do `ItemResource` de quem liga o jogo.
+    pub fn read_from_update_with(input: &Compound, decode: ItemDecode) -> Self {
+        let mut stack = Self::from_input(input, decode);
         stack.client_next = input
             .get(keys::NEXT)
             .and_then(Nbt::as_long)
@@ -425,6 +566,50 @@ impl TransporterStack {
             .unwrap_or(NO_POS);
         stack
     }
+}
+
+/// `VarInt`/`VarLong` do protocolo: sete bits por byte, o bit alto diz que há mais.
+pub fn write_var_long(out: &mut Vec<u8>, value: i64) {
+    let mut value = value as u64;
+    loop {
+        if value & !0x7F == 0 {
+            out.push(value as u8);
+            return;
+        }
+        out.push((value & 0x7F) as u8 | 0x80);
+        value >>= 7;
+    }
+}
+
+/// O `VarInt` de um `i32`: negativos ocupam cinco bytes.
+pub fn write_var_int(out: &mut Vec<u8>, value: i32) {
+    let mut value = value as u32;
+    loop {
+        if value & !0x7F == 0 {
+            out.push(value as u8);
+            return;
+        }
+        out.push((value & 0x7F) as u8 | 0x80);
+        value >>= 7;
+    }
+}
+
+pub fn read_byte(bytes: &mut &[u8]) -> Option<u8> {
+    let (first, rest) = bytes.split_first()?;
+    *bytes = rest;
+    Some(*first)
+}
+
+pub fn read_var_long(bytes: &mut &[u8]) -> Option<i64> {
+    let mut value = 0_u64;
+    for shift in (0..70).step_by(7) {
+        let byte = read_byte(bytes)?;
+        value |= u64::from(byte & 0x7F) << shift;
+        if byte & 0x80 == 0 {
+            return Some(value as i64);
+        }
+    }
+    None
 }
 
 /// Uma pilha com identidade: o `TransporterManager` guarda a mesma que o transportador (um `HashSet` por identidade).

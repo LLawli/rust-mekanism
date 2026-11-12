@@ -8,6 +8,10 @@ pub enum Nbt {
     Long(i64),
     String(String),
     Compound(Compound),
+    /// `ListTag`: os elementos, na ordem.
+    List(Vec<Nbt>),
+    /// `IntArrayTag`.
+    IntArray(Vec<i32>),
 }
 
 /// Um `CompoundTag`: as chaves em ordem alfabética, como o `toString` as mostra.
@@ -40,6 +44,20 @@ impl Nbt {
     pub fn as_compound(&self) -> Option<&Compound> {
         match self {
             Nbt::Compound(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn as_list(&self) -> Option<&[Nbt]> {
+        match self {
+            Nbt::List(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn as_int_array(&self) -> Option<&[i32]> {
+        match self {
+            Nbt::IntArray(v) => Some(v),
             _ => None,
         }
     }
@@ -77,6 +95,14 @@ pub fn to_snbt(tag: &Nbt) -> String {
         Nbt::Int(v) => v.to_string(),
         Nbt::Long(v) => format!("{v}L"),
         Nbt::String(v) => quote(v),
+        Nbt::List(items) => {
+            let parts: Vec<String> = items.iter().map(to_snbt).collect();
+            format!("[{}]", parts.join(","))
+        }
+        Nbt::IntArray(values) => {
+            let parts: Vec<String> = values.iter().map(i32::to_string).collect();
+            format!("[I;{}]", parts.join(","))
+        }
         Nbt::Compound(map) => {
             let parts: Vec<String> = map
                 .iter()

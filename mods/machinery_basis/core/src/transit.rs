@@ -233,6 +233,92 @@ impl TransitRequest {
         }
     }
 
+    /// `addToInventory(level, pos, inventory, min, force, transaction)`: o que o destino aceita de volta ou de novo. Com `force` e um
+    /// sorter no destino, é ele quem responde (`sendHome`).
+    pub fn add_to_inventory(
+        &self,
+        world: &dyn crate::transporter::world::TransporterWorld,
+        pos: i64,
+        inventory: Option<&Rc<dyn ItemHandler>>,
+        min: u32,
+        force: bool,
+        transaction: &Transaction,
+    ) -> TransitResponse {
+        if self.is_empty() {
+            return TransitResponse::EMPTY;
+        }
+        if force && let Some(sorter) = world.sorter(pos) {
+            return sorter.send_home(self, transaction);
+        }
+        self.add_to_inventory_unchecked(inventory, min, transaction)
+    }
+
+    /// `addToInventoryUnchecked(inventory, min, transaction)`: o primeiro tipo do pedido que o inventário aceita ao menos `min`.
+    pub fn add_to_inventory_unchecked(
+        &self,
+        inventory: Option<&Rc<dyn ItemHandler>>,
+        min: u32,
+        transaction: &Transaction,
+    ) -> TransitResponse {
+        let Some(inventory) = inventory.filter(|inventory| inventory.size() > 0) else {
+            return TransitResponse::EMPTY;
+        };
+        for data in self.item_data() {
+            let (resource, count) = item_data_info(&data);
+            if count == 0 {
+                continue;
+            }
+            let sub = Transaction::open(Some(transaction));
+            let inserted = inventory.insert(&resource, count, &sub);
+            if inserted > 0 && inserted >= min {
+                sub.commit();
+                return self.create_response(&resource, inserted, &data);
+            }
+        }
+        TransitResponse::EMPTY
+    }
+
+    /// `definedItem(inventory, min, max, finder, transaction)`: o que dá para tirar do inventário, slot a slot de trás para a frente, até
+    /// `max` de cada tipo, deixando de fora os tipos de que há menos de `min`. `TransitRequest.anyItem` é o de `min` 1 e qualquer item.
+    pub fn defined_item(
+        inventory: &Rc<dyn ItemHandler>,
+        min: u32,
+        max: u32,
+        finder: &dyn Fn(&ItemResource) -> bool,
+        transaction: Option<&Transaction>,
+    ) -> TransitRequest {
+        let request = HandlerTransitRequest::new(Some(inventory.clone()));
+        let simulation = Transaction::open(transaction);
+        for index in (0..inventory.size()).rev() {
+            let Some(resource) = inventory.resource(index) else {
+                continue;
+            };
+            if !finder(&resource) {
+                continue;
+            }
+            let extractable = inventory.extract_at(index, &resource, max, &simulation);
+            if extractable > 0 {
+                let to_use = extractable.min(max - request.count_of(&resource));
+                if to_use == 0 {
+                    continue;
+                }
+                request.add_item(&resource, to_use, index);
+            }
+        }
+        drop(simulation);
+        request.retain_at_least(min);
+        TransitRequest::Handler(request)
+    }
+
+    /// `anyItem(inventory, amount, transaction)`.
+    pub fn any_item(
+        inventory: &Rc<dyn ItemHandler>,
+        amount: u32,
+        transaction: Option<&Transaction>,
+    ) -> TransitRequest {
+        Self::defined_item(inventory, 1, amount, &|_| true, transaction)
+    }
+
     /// `createResponse(itemType, inserted, data)`.
     pub fn create_response(
         &self,
@@ -306,6 +392,24 @@ impl HandlerTransitRequest {
             None => state.slots.push((slot, journal)),
         }
         state.total += amount;
+    }
+
+    /// `getCount(itemType)`: quanto o pedido já tem do item.
+    pub fn count_of(&self, resource: &ItemResource) -> u32 {
+        self.shared
+            .items
+            .borrow()
+            .iter()
+            .find(|data| data.borrow().resource == *resource)
+            .map_or(0, |data| data.borrow().total)
+    }
+
+    /// Tira do pedido os itens de que há menos de `min`.
+    pub fn retain_at_least(&self, min: u32) {
+        self.shared
+            .items
+            .borrow_mut()
+            .retain(|data| data.borrow().total >= min);
     }
 
     pub fn is_empty(&self) -> bool {

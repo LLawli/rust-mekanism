@@ -7,6 +7,9 @@ use crate::sides::Face;
 use crate::sim::chunks::BlockPos;
 use crate::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
 use crate::transmission::transmitter::{NeighborTransmitter, Transmitter, TransmitterWorld};
+use super::movement::{DroppedItems, TransitState, WorldDrop};
+use crate::transaction::JournalCell;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 /// `TransporterTier`: a velocidade e a quantidade que puxa por vez (os valores de fábrica, sem a configuração).
@@ -123,6 +126,11 @@ pub struct LogisticalTransporterBase {
     pub kind: TransporterKind,
     /// `WorldUtils.isGettingPowered(level, pos)`: lido a cada vez, como o do original.
     powered: Rc<dyn Fn() -> bool>,
+    pos: BlockPos,
+    /// `transit`, `needsSync`, `nextId`, `delay` e `delayCount` (`movement.rs`).
+    pub(super) transit: Rc<RefCell<TransitState>>,
+    pub(super) dropped: Rc<JournalCell<DroppedItems>>,
+    pub(super) world_drops: Rc<RefCell<Vec<WorldDrop>>>,
 }
 
 impl LogisticalTransporterBase {
@@ -139,7 +147,12 @@ impl LogisticalTransporterBase {
                 TransporterTier::Basic
             }
         };
+        let world_drops = Rc::new(RefCell::new(Vec::new()));
         Self {
+            dropped: DroppedItems::new(pos, world_drops.clone()),
+            world_drops,
+            transit: Rc::new(RefCell::new(TransitState::default())),
+            pos,
             transmitter: Transmitter::new(
                 [pos.x, pos.y, pos.z],
                 TransmissionSet::of(&[TransmissionType::Item]),
@@ -149,6 +162,11 @@ impl LogisticalTransporterBase {
             kind,
             powered,
         }
+    }
+
+    /// `getBlockPos()`.
+    pub fn block_pos(&self) -> BlockPos {
+        self.pos
     }
 
     /// `getColor`.
@@ -213,6 +231,10 @@ impl LogisticalTransporterBase {
 }
 
 impl Transporter for LogisticalTransporterBase {
+    fn as_logistical(&self) -> Option<&LogisticalTransporterBase> {
+        Some(self)
+    }
+
     fn color(&self) -> Option<u8> {
         self.get_color()
     }

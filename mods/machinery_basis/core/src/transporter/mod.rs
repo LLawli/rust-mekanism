@@ -12,6 +12,7 @@
 //! identidade; o port percorre na ordem de inserção (decisão 118).
 pub mod cache;
 pub mod manager;
+pub mod movement;
 pub mod nbt;
 pub mod node;
 pub mod pathfinder;

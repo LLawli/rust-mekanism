@@ -57,6 +57,9 @@ fn with_path(stack: &StackRef, path: Vec<i64>, path_type: Path) {
         ) -> Option<std::rc::Rc<dyn machinery_basis_core::item_handler::ItemHandler>> {
             None
         }
+        fn neighbor_transmitter_can_connect(&self, _: i64, _: Face) -> Option<bool> {
+            None
+        }
     }
     let ctx = machinery_basis_core::transporter::pathfinder::PathContext {
         dimension: DimensionId(0),
