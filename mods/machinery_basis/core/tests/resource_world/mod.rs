@@ -1,25 +1,31 @@
-//! O mundo simulado dos testes da rede de fluido: canos mecânicos (o `Transmitter` da `rede-conexao`, o registro da `rede-registro`, a
-//! família de fluido da lib) sobre os chunks falsos de `sim::chunks`, ligados como o `TileEntityTransmitter` os liga, e tanques como
-//! vizinhos. Quem chama o registro é este arquivo; o cano, a rede e a fusão são os da lib.
-#![allow(dead_code)]
+//! O mundo simulado dos testes das redes de recurso com buffer (fluido e químico): canos mecânicos ou tubos pressurizados (o `Transmitter`
+//! da `rede-conexao`, o registro da `rede-registro`, a família de recurso da lib) sobre os chunks falsos de `sim::chunks`, ligados como o
+//! `TileEntityTransmitter` os liga, e tanques como vizinhos. Quem chama o registro é este arquivo; o cano, a rede e a fusão são os da lib.
+//!
+//! É genérico sobre o [`Kind`]: o recurso, o tipo de transmissão, os valores dos tiers do cano e os tanques. [`FluidKind`] e
+//! [`ChemicalKind`] são os dois que existem.
+#![allow(dead_code, type_alias_bounds)]
+use machinery_basis_core::chemical::ChemicalResource;
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::distribution::ResourceInsert;
 use machinery_basis_core::fluid::FluidResource;
-use machinery_basis_core::resource_tank::{ResourceTank, StackContents};
+use machinery_basis_core::resource_tank::{Resource, ResourceTank, StackContents};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::{BlockPos, ChunkHooks, ChunkPos, LevelView, SimLevel};
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::transmission::buffered_resource_network::{
-    ResourceAcceptor, ResourceExtract,
+    ResourceAcceptor, ResourceExtract, ResourceFamily,
 };
 use machinery_basis_core::transmission::buffered_transmitter::{
     extra_valid_transmitter, merge_networks_manually, recheck_connections_sides, requests_update,
 };
+use machinery_basis_core::transmission::chemical_network::ChemicalFamily;
 use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
 use machinery_basis_core::transmission::fluid_network::FluidFamily;
 use machinery_basis_core::transmission::mechanical_pipe::PipeTier;
+use machinery_basis_core::transmission::pressurized_tube::TubeTier;
 use machinery_basis_core::transmission::registry::TransmitterNetworkRegistry;
 use machinery_basis_core::transmission::transmitter::{
     BlockPos as TPos, Compound, Effect, NeighborTransmitter, Transmitter, TransmitterWorld,
@@ -49,19 +55,149 @@ const UPDATE_ORDER: [Face; 6] = [
     Face::South,
 ];
 
-/// O aceitador de fluido que o vizinho dá ao cano (`ResourceHandler<FluidResource>`).
-pub type Acceptor = Rc<dyn ResourceAcceptor<FluidResource>>;
-pub type Family = FluidFamily<dyn ResourceAcceptor<FluidResource>>;
-type Registry = TransmitterNetworkRegistry<Acceptor>;
+/// O que muda de uma rede de recurso para outra: o recurso, o tipo de transmissão, os valores dos tiers do cano e dos tanques.
+pub trait Kind: 'static {
+    type R: Resource;
+    /// `TransmissionType` do transmissor.
+    const TRANSMISSION: TransmissionType;
+    /// O nome dos arquivos do rastro: `<NAME>_<cenário>.jsonl`.
+    const NAME: &'static str;
+    /// A chave do recurso nas linhas do rastro (`fluid` ou `chem`).
+    const KEY: &'static str;
+    /// A chave do recurso do `saveShare` (`shareFluid` ou `shareChem`).
+    const SHARE_KEY: &'static str;
+    /// O recurso de um id.
+    fn resource(id: &str) -> Self::R;
+    /// O id de um recurso.
+    fn id(resource: &Self::R) -> String;
+    /// A capacidade e a vazão do tier do cano (`basic`, `advanced`, `elite`, `ultimate`).
+    fn pipe(tier: &str) -> (i64, i32);
+    /// A capacidade do tanque do tier (`creative` é a máxima).
+    fn tank_capacity(tier: &str) -> u64;
+    /// A família da lib para este recurso (a de químico registra os `disperse`).
+    fn family() -> Family<Self>
+    where
+        Self: Sized;
+    /// O Heat Generator (`generator` do rastro): só o fluido tem.
+    fn place_generator(_world: &mut World<Self>, _pos: BlockPos) -> Rc<Tank<Self>>
+    where
+        Self: Sized,
+    {
+        panic!("só o fluido tem o Heat Generator")
+    }
+}
+
+/// O fluido: `MechanicalPipe` e o Fluid Tank.
+pub struct FluidKind;
+/// O químico: `PressurizedTube` e o Chemical Tank.
+pub struct ChemicalKind;
+
+impl Kind for FluidKind {
+    type R = FluidResource;
+    const TRANSMISSION: TransmissionType = TransmissionType::Fluid;
+    const NAME: &'static str = "fluid";
+    const KEY: &'static str = "fluid";
+    const SHARE_KEY: &'static str = "shareFluid";
+
+    fn resource(id: &str) -> FluidResource {
+        FluidResource::new(id)
+    }
+
+    fn id(resource: &FluidResource) -> String {
+        resource.id.to_string()
+    }
+
+    fn pipe(tier: &str) -> (i64, i32) {
+        let tier = match tier {
+            "basic" => PipeTier::Basic,
+            "advanced" => PipeTier::Advanced,
+            "elite" => PipeTier::Elite,
+            "ultimate" => PipeTier::Ultimate,
+            other => panic!("tier desconhecido: {other}"),
+        };
+        (tier.capacity(), tier.transfer_rate())
+    }
+
+    fn tank_capacity(tier: &str) -> u64 {
+        match tier {
+            "basic" => 32_000,
+            "advanced" => 64_000,
+            "elite" => 128_000,
+            "ultimate" => 256_000,
+            "creative" => i64::MAX as u64,
+            other => panic!("tier de tanque desconhecido: {other}"),
+        }
+    }
+
+    fn family() -> Family<Self> {
+        FluidFamily::new()
+    }
+
+    fn place_generator(world: &mut World<Self>, pos: BlockPos) -> Rc<Tank<Self>> {
+        world.place_generator(pos)
+    }
+}
+
+impl Kind for ChemicalKind {
+    type R = ChemicalResource;
+    const TRANSMISSION: TransmissionType = TransmissionType::Chemical;
+    const NAME: &'static str = "chemical";
+    const KEY: &'static str = "chem";
+    const SHARE_KEY: &'static str = "shareChem";
+
+    fn resource(id: &str) -> ChemicalResource {
+        ChemicalResource::new(id)
+    }
+
+    fn id(resource: &ChemicalResource) -> String {
+        resource.id.to_string()
+    }
+
+    fn pipe(tier: &str) -> (i64, i32) {
+        let tier = match tier {
+            "basic" => TubeTier::Basic,
+            "advanced" => TubeTier::Advanced,
+            "elite" => TubeTier::Elite,
+            "ultimate" => TubeTier::Ultimate,
+            other => panic!("tier desconhecido: {other}"),
+        };
+        (tier.capacity(), tier.transfer_rate())
+    }
+
+    /// `ChemicalTankTier`: 64, 256, 1.024 e 8.192 baldes; o criativo, `Long.MAX_VALUE`.
+    fn tank_capacity(tier: &str) -> u64 {
+        match tier {
+            "basic" => 64_000,
+            "advanced" => 256_000,
+            "elite" => 1_024_000,
+            "ultimate" => 8_192_000,
+            "creative" => i64::MAX as u64,
+            other => panic!("tier de tanque desconhecido: {other}"),
+        }
+    }
+
+    fn family() -> Family<Self> {
+        ChemicalFamily::chemical()
+    }
+}
+
+/// O aceitador que o vizinho dá ao cano (`ResourceHandler<RESOURCE>`).
+pub type Acceptor<K: Kind> = Rc<dyn ResourceAcceptor<K::R>>;
+pub type Family<K: Kind> = ResourceFamily<K::R, dyn ResourceAcceptor<K::R>>;
+type Registry<K: Kind> = TransmitterNetworkRegistry<Acceptor<K>>;
 
 pub fn fluid(id: &str) -> FluidResource {
-    FluidResource::new(id)
+    FluidKind::resource(id)
+}
+
+pub fn chemical(id: &str) -> ChemicalResource {
+    ChemicalKind::resource(id)
 }
 
 /// Um tanque vizinho (o Fluid Tank de um tier, ou o `lavaTank` do Heat Generator): o contêiner, e os lados em que ele expõe a capability
 /// de fluido.
-pub struct Tank {
-    pub tank: ResourceTank<FluidResource>,
+pub struct Tank<K: Kind> {
+    pub tank: ResourceTank<K::R>,
     /// Os lados (por `Face::ALL`) que expõem a capability.
     pub sides: [bool; 6],
     /// O tanque criativo (`FluidTankFluidTank.isCreative`): `insert` e `extract` pela capability dão o resultado sem mudar nada.
@@ -77,7 +213,7 @@ pub struct Tank {
     pub energy_full: std::cell::Cell<bool>,
 }
 
-impl Tank {
+impl<K: Kind> Tank<K> {
     pub fn exposes(&self, side: Face) -> bool {
         self.sides[Face::ALL.iter().position(|f| *f == side).unwrap()]
     }
@@ -135,8 +271,8 @@ impl Tank {
 /// `general.blockDeactivationDelay`: 3 segundos.
 const BLOCK_DEACTIVATION_DELAY: i32 = 60;
 
-impl ResourceInsert<FluidResource> for Tank {
-    fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+impl<K: Kind> ResourceInsert<K::R> for Tank<K> {
+    fn insert(&self, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
         if self.creative {
             // Aceita sem mudar nada: o resultado de uma simulação.
             let simulation = Transaction::open(Some(transaction));
@@ -149,12 +285,12 @@ impl ResourceInsert<FluidResource> for Tank {
     }
 }
 
-impl ResourceExtract<FluidResource> for Tank {
+impl<K: Kind> ResourceExtract<K::R> for Tank<K> {
     fn size(&self) -> usize {
         1
     }
 
-    fn resource_at(&self, _: usize) -> Option<FluidResource> {
+    fn resource_at(&self, _: usize) -> Option<K::R> {
         self.tank.resource()
     }
 
@@ -162,17 +298,11 @@ impl ResourceExtract<FluidResource> for Tank {
         self.tank.amount_as_int()
     }
 
-    fn extract_at(
-        &self,
-        _: usize,
-        resource: &FluidResource,
-        amount: i32,
-        transaction: &Transaction,
-    ) -> i32 {
+    fn extract_at(&self, _: usize, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
         self.extract(resource, amount, transaction)
     }
 
-    fn extract(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+    fn extract(&self, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
         if self.creative {
             let simulation = Transaction::open(Some(transaction));
             return self
@@ -184,13 +314,13 @@ impl ResourceExtract<FluidResource> for Tank {
     }
 }
 
-impl ResourceAcceptor<FluidResource> for Tank {}
+impl<K: Kind> ResourceAcceptor<K::R> for Tank<K> {}
 
 /// O `MechanicalPipe` e o `TileEntityMechanicalPipe` dele, no que a rede lê.
-pub struct Pipe {
+pub struct Pipe<K: Kind> {
     pub pos: BlockPos,
     /// Fora do lugar enquanto uma operação o usa (veja `Ctx::with_tr`).
-    pub tr: Option<Transmitter<Acceptor>>,
+    pub tr: Option<Transmitter<Acceptor<K>>>,
     /// `markJoined`.
     pub mark_joined: bool,
     /// A cópia da rede e do órfão que o `Transmitter` guarda, para ler com ele fora do lugar.
@@ -198,11 +328,10 @@ pub struct Pipe {
     pub orphan: bool,
     /// O `System.identityHashCode` do transmissor.
     pub hash: i32,
-    pub tier: PipeTier,
 }
 
-impl Pipe {
-    pub fn tr(&self) -> &Transmitter<Acceptor> {
+impl<K: Kind> Pipe<K> {
+    pub fn tr(&self) -> &Transmitter<Acceptor<K>> {
         self.tr.as_ref().expect("cano em uso")
     }
 
@@ -231,17 +360,17 @@ pub enum Event {
     Access(BlockPos, bool),
 }
 
-pub struct State {
-    pub pipes: Vec<Pipe>,
+pub struct State<K: Kind> {
+    pub pipes: Vec<Pipe<K>>,
     /// O `identityHashCode` do próximo cano posto em cada posição.
     pub hash_for: Box<dyn FnMut(BlockPos) -> i32>,
     pub events: Vec<Event>,
     pub runs_normally: bool,
-    pub family: Family,
+    pub family: Family<K>,
     /// O cano de cada posição (veja `Ctx::id_at`).
     by_pos: BTreeMap<BlockPos, TransmitterId>,
     /// Os tanques postos, por posição.
-    pub tanks: BTreeMap<BlockPos, Rc<Tank>>,
+    pub tanks: BTreeMap<BlockPos, Rc<Tank<K>>>,
     pending_uuid: Option<Uuid>,
     /// A transação raiz que `DynamicNetwork.invalidate` abre em volta dos `takeShare` (`begin_take_shares`).
     share_tx: Option<Transaction>,
@@ -249,14 +378,14 @@ pub struct State {
     manual_merge: bool,
 }
 
-pub struct Hooks {
-    pub registry: Registry,
-    pub state: State,
+pub struct Hooks<K: Kind> {
+    pub registry: Registry<K>,
+    pub state: State<K>,
 }
 
 /// O que o registro enxerga num instante: os canos e os chunks do nível.
-pub struct Ctx<'a> {
-    pub st: &'a mut State,
+pub struct Ctx<'a, K: Kind> {
+    pub st: &'a mut State<K>,
     pub level: &'a LevelView<TransmitterId>,
 }
 
@@ -268,12 +397,12 @@ fn spos(pos: TPos) -> BlockPos {
     BlockPos::new(pos[0], pos[1], pos[2])
 }
 
-impl Ctx<'_> {
-    pub fn pipe(&self, id: TransmitterId) -> &Pipe {
+impl<K: Kind> Ctx<'_, K> {
+    pub fn pipe(&self, id: TransmitterId) -> &Pipe<K> {
         &self.st.pipes[id.0 as usize]
     }
 
-    fn pipe_mut(&mut self, id: TransmitterId) -> &mut Pipe {
+    fn pipe_mut(&mut self, id: TransmitterId) -> &mut Pipe<K> {
         &mut self.st.pipes[id.0 as usize]
     }
 
@@ -295,9 +424,9 @@ impl Ctx<'_> {
     /// efeitos que ela pediu.
     pub fn with_tr<T>(
         &mut self,
-        registry: &mut Registry,
+        registry: &mut Registry<K>,
         id: TransmitterId,
-        f: impl FnOnce(&mut Transmitter<Acceptor>, &Self, &mut Vec<Effect>) -> T,
+        f: impl FnOnce(&mut Transmitter<Acceptor<K>>, &Self, &mut Vec<Effect>) -> T,
     ) -> T {
         let mut tr = self.pipe_mut(id).tr.take().expect("cano em uso");
         let mut out = Vec::new();
@@ -307,7 +436,7 @@ impl Ctx<'_> {
         result
     }
 
-    fn apply(&mut self, registry: &mut Registry, id: TransmitterId, effects: Vec<Effect>) {
+    fn apply(&mut self, registry: &mut Registry<K>, id: TransmitterId, effects: Vec<Effect>) {
         for effect in effects {
             match effect {
                 Effect::NotifyTileChange => {
@@ -362,7 +491,7 @@ impl Ctx<'_> {
     }
 
     /// `BufferedTransmitter.requestsUpdate()`: o `update` do rastro e as conexões relidas.
-    fn requests_update(&mut self, registry: &mut Registry, id: TransmitterId) {
+    fn requests_update(&mut self, registry: &mut Registry<K>, id: TransmitterId) {
         let pos = self.pipe(id).pos;
         self.st.events.push(Event::Update(pos));
         self.with_tr(registry, id, |t, w, out| requests_update(t, true, w, out));
@@ -371,7 +500,7 @@ impl Ctx<'_> {
     /// `BufferedTransmitter.recheckConnectionPrechecked(side)`.
     fn recheck_connection_prechecked(
         &mut self,
-        registry: &mut Registry,
+        registry: &mut Registry<K>,
         id: TransmitterId,
         side: Face,
     ) {
@@ -400,7 +529,7 @@ impl Ctx<'_> {
     }
 
     /// Os vizinhos recebem `neighborChanged` sem orientação.
-    fn notify_neighbors(&mut self, registry: &mut Registry, pos: TPos) {
+    fn notify_neighbors(&mut self, registry: &mut Registry<K>, pos: TPos) {
         for side in UPDATE_ORDER {
             if let Some(id) = self.id_at(relative(pos, side)) {
                 self.with_tr(registry, id, |t, w, out| {
@@ -411,7 +540,7 @@ impl Ctx<'_> {
     }
 
     /// `TileEntityTransmitter.onWorldJoin`.
-    fn world_join(&mut self, registry: &mut Registry, id: TransmitterId, was_present: bool) {
+    fn world_join(&mut self, registry: &mut Registry<K>, id: TransmitterId, was_present: bool) {
         if !was_present {
             registry.track_transmitter(&*self, id);
         }
@@ -422,7 +551,12 @@ impl Ctx<'_> {
     }
 
     /// `TileEntityTransmitter.onWorldSeparate`.
-    fn world_separate(&mut self, registry: &mut Registry, id: TransmitterId, still_present: bool) {
+    fn world_separate(
+        &mut self,
+        registry: &mut Registry<K>,
+        id: TransmitterId,
+        still_present: bool,
+    ) {
         if !still_present {
             registry.untrack_transmitter(&*self, id);
         }
@@ -433,8 +567,8 @@ impl Ctx<'_> {
     }
 }
 
-impl TransmitterWorld for Ctx<'_> {
-    type Acceptor = Acceptor;
+impl<K: Kind> TransmitterWorld for Ctx<'_, K> {
+    type Acceptor = Acceptor<K>;
 
     fn is_block_loaded(&self, pos: TPos) -> bool {
         self.level.is_block_loaded(spos(pos))
@@ -453,13 +587,13 @@ impl TransmitterWorld for Ctx<'_> {
     }
 
     /// A capability de fluido do vizinho: o tanque, nos lados em que ele a expõe.
-    fn acceptor(&self, pos: TPos, from_side: Face) -> Option<Acceptor> {
+    fn acceptor(&self, pos: TPos, from_side: Face) -> Option<Acceptor<K>> {
         let pos = spos(pos);
         if self.level.block_if_loaded(pos) != Some(TANK) {
             return None;
         }
         let tank = self.st.tanks.get(&pos)?;
-        tank.exposes(from_side).then(|| tank.clone() as Acceptor)
+        tank.exposes(from_side).then(|| tank.clone() as Acceptor<K>)
     }
 
     /// `MechanicalPipe.isValidTransmitter(transmitter, side)`, a parte que a regra básica não tem: `BufferedTransmitter` (rede contra
@@ -469,7 +603,7 @@ impl TransmitterWorld for Ctx<'_> {
             return true;
         };
         let (pa, pb) = (self.pipe(a), self.pipe(b));
-        let ends = |p: &Pipe| self.st.family.ends(p.net().is_some(), p.orphan);
+        let ends = |p: &Pipe<K>| self.st.family.ends(p.net().is_some(), p.orphan);
         extra_valid_transmitter(ends(pa), ends(pb))
             && self
                 .st
@@ -478,7 +612,7 @@ impl TransmitterWorld for Ctx<'_> {
     }
 }
 
-impl TransmitterHost<Acceptor> for Ctx<'_> {
+impl<K: Kind> TransmitterHost<Acceptor<K>> for Ctx<'_, K> {
     fn block_pos(&self, transmitter: TransmitterId) -> BlockPos {
         self.pipe(transmitter).pos
     }
@@ -532,7 +666,7 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
         panic!("o registro chama request_update_in; {transmitter:?}");
     }
 
-    fn request_update_in(&mut self, registry: &mut Registry, transmitter: TransmitterId) {
+    fn request_update_in(&mut self, registry: &mut Registry<K>, transmitter: TransmitterId) {
         self.requests_update(registry, transmitter);
     }
 
@@ -560,14 +694,14 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
     fn new_orphan_validator(
         &self,
         transmitter: TransmitterId,
-    ) -> Box<dyn CompatibleTransmitterValidator<Acceptor>> {
+    ) -> Box<dyn CompatibleTransmitterValidator<Acceptor<K>>> {
         let pipe = self.pipe(transmitter);
         Box::new(self.st.family.new_orphan_validator(transmitter, pipe.net()))
     }
 
     fn chunk_accessibility_change(
         &mut self,
-        registry: &mut Registry,
+        registry: &mut Registry<K>,
         transmitter: TransmitterId,
         loaded: bool,
     ) {
@@ -593,7 +727,7 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
         debug_assert!(out.iter().all(|e| matches!(e, Effect::SendUpdatePacket)));
     }
 
-    fn acceptor(&self, transmitter: TransmitterId, side: Face) -> Option<Acceptor> {
+    fn acceptor(&self, transmitter: TransmitterId, side: Face) -> Option<Acceptor<K>> {
         let tr = self.pipe(transmitter).tr();
         tr.can_connect_to_acceptor(side)
             .then(|| tr.get_acceptor(side, self))
@@ -626,12 +760,12 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
         }
     }
 
-    fn on_update(&mut self, registry: &mut Registry, network: NetworkId) {
+    fn on_update(&mut self, registry: &mut Registry<K>, network: NetworkId) {
         self.st.events.push(Event::NetUpdate(network));
         self.st.family.on_update(registry, network);
     }
 
-    fn network_event(&mut self, registry: &Registry, network: NetworkId, event: NetworkEvent) {
+    fn network_event(&mut self, registry: &Registry<K>, network: NetworkId, event: NetworkEvent) {
         self.st
             .family
             .network_event(registry, network, event.clone());
@@ -656,38 +790,29 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
 }
 
 /// O que um cano grava no chunk: o NBT do `Transmitter` e o `stored`.
-pub type Saved = (Compound, StackContents<FluidResource>);
+pub type Saved<K: Kind> = (Compound, StackContents<K::R>);
 
-impl ChunkHooks for Hooks {
+impl<K: Kind> ChunkHooks for Hooks<K> {
     type BlockEntity = TransmitterId;
-    type Saved = Saved;
+    type Saved = Saved<K>;
 
     fn new_block_entity(
         &mut self,
         pos: BlockPos,
         block: &str,
-        saved: Option<&Saved>,
+        saved: Option<&Saved<K>>,
     ) -> Option<TransmitterId> {
-        let tier = match block.strip_prefix(PIPE_PREFIX)? {
-            "basic" => PipeTier::Basic,
-            "advanced" => PipeTier::Advanced,
-            "elite" => PipeTier::Elite,
-            "ultimate" => PipeTier::Ultimate,
-            other => panic!("tier desconhecido: {other}"),
-        };
+        let (capacity, rate) = K::pipe(block.strip_prefix(PIPE_PREFIX)?);
         let hash = (self.state.hash_for)(pos);
-        let mut tr: Transmitter<Acceptor> = Transmitter::new(
-            tpos(pos),
-            TransmissionSet::of(&[TransmissionType::Fluid]),
-            true,
-        );
+        let mut tr: Transmitter<Acceptor<K>> =
+            Transmitter::new(tpos(pos), TransmissionSet::of(&[K::TRANSMISSION]), true);
         let id = TransmitterId(self.state.pipes.len() as u32);
         if let Some((tag, stored)) = saved {
             tr.read(tag, &mut Vec::new());
-            self.state.family.add_mechanical_pipe(id, pos, tier);
+            self.state.family.add_pipe(id, pos, capacity, rate);
             self.state.family.read_stored(id, stored.clone());
         } else {
-            self.state.family.add_mechanical_pipe(id, pos, tier);
+            self.state.family.add_pipe(id, pos, capacity, rate);
         }
         self.state.by_pos.insert(pos, id);
         self.state.pipes.push(Pipe {
@@ -697,13 +822,12 @@ impl ChunkHooks for Hooks {
             network: None,
             orphan: true,
             hash,
-            tier,
         });
         Some(id)
     }
 
     /// `MechanicalPipe.write`: valida as shares e grava o `saveShare`, e o NBT do `Transmitter`.
-    fn save_block_entity(&mut self, _: BlockPos, entity: &mut TransmitterId) -> Saved {
+    fn save_block_entity(&mut self, _: BlockPos, entity: &mut TransmitterId) -> Saved<K> {
         let network = self.state.pipes[entity.0 as usize].net();
         let stored = self
             .state
@@ -853,7 +977,7 @@ impl ChunkHooks for Hooks {
     }
 }
 
-impl Hooks {
+impl<K: Kind> Hooks<K> {
     /// `BufferedResourceTransmitter.pullFromAcceptors(level)`.
     fn pull(&mut self, level: &LevelView<TransmitterId>, pos: BlockPos, id: TransmitterId) {
         let pipe = &self.state.pipes[id.0 as usize];
@@ -883,14 +1007,14 @@ impl Hooks {
 }
 
 /// O mundo de um cenário: o nível, e a origem da estrutura (a posição do cano 0).
-pub struct World {
-    pub level: SimLevel<Hooks>,
+pub struct World<K: Kind> {
+    pub level: SimLevel<Hooks<K>>,
     pub origin: BlockPos,
     /// A largura da estrutura: o cano de índice `i` está em `x = i % width`, `z = i / width`.
     pub width: i32,
 }
 
-impl World {
+impl<K: Kind> World<K> {
     /// `uuid_hashes` são os `UUID.hashCode()` das redes que vão nascer, na ordem; `hash_for` o `identityHashCode` de cada cano novo.
     pub fn new(
         origin: BlockPos,
@@ -914,7 +1038,7 @@ impl World {
                 hash_for: Box::new(hash_for),
                 events: Vec::new(),
                 runs_normally: true,
-                family: Family::new(),
+                family: K::family(),
                 by_pos: BTreeMap::new(),
                 tanks: BTreeMap::new(),
                 pending_uuid: None,
@@ -945,11 +1069,11 @@ impl World {
             .then_some(z * self.width + x)
     }
 
-    pub fn registry(&self) -> &Registry {
+    pub fn registry(&self) -> &Registry<K> {
         &self.level.hooks.registry
     }
 
-    pub fn family(&self) -> &Family {
+    pub fn family(&self) -> &Family<K> {
         &self.level.hooks.state.family
     }
 
@@ -959,25 +1083,18 @@ impl World {
         assert!(self.level.set_block(pos, Some(&block)), "cano {x}");
     }
 
-    /// Um Fluid Tank do tier (`basic`, `advanced`, `elite`, `ultimate` ou `creative`) em `pos`, com o fluido (`None` é vazio) e a
+    /// Um Fluid Tank ou Chemical Tank do tier (`basic`, `advanced`, `elite`, `ultimate` ou `creative`) em `pos`, com o fluido (`None` é vazio) e a
     /// quantidade (`None` é a capacidade): expõe a capability nos seis lados.
-    pub fn place_fluid_tank(
+    pub fn place_tank(
         &mut self,
         pos: BlockPos,
         tier: &str,
         content: Option<(&str, Option<u64>)>,
-    ) -> Rc<Tank> {
-        let capacity: u64 = match tier {
-            "basic" => 32_000,
-            "advanced" => 64_000,
-            "elite" => 128_000,
-            "ultimate" => 256_000,
-            "creative" => i64::MAX as u64,
-            other => panic!("tier de tanque desconhecido: {other}"),
-        };
+    ) -> Rc<Tank<K>> {
+        let capacity = K::tank_capacity(tier);
         let tank = ResourceTank::open(capacity, None);
         if let Some((id, amount)) = content {
-            tank.set_contents(Some(fluid(id)), amount.unwrap_or(capacity), None);
+            tank.set_contents(Some(K::resource(id)), amount.unwrap_or(capacity), None);
         }
         self.put_tank(
             pos,
@@ -994,33 +1111,7 @@ impl World {
         )
     }
 
-    /// O Heat Generator em `pos`: o `lavaTank` (capacidade 1.000, só lava, `input`: ninguém de fora tira dele) em todo lado menos a frente
-    /// (norte), que queima 100 por tick.
-    pub fn place_generator(&mut self, pos: BlockPos) -> Rc<Tank> {
-        let lava = Rc::new(|resource: &FluidResource| resource.id.as_ref() == "minecraft:lava");
-        let tank = ResourceTank::create(
-            1_000,
-            Rc::new(|_, automation| automation != AutomationType::External),
-            Rc::new(|_, _| true),
-            lava,
-            None,
-        );
-        self.put_tank(
-            pos,
-            Tank {
-                tank,
-                sides: [true, true, false, true, true, true],
-                creative: false,
-                burn: 100,
-                active: Default::default(),
-                client_active: Default::default(),
-                update_delay: Default::default(),
-                energy_full: Default::default(),
-            },
-        )
-    }
-
-    fn put_tank(&mut self, pos: BlockPos, tank: Tank) -> Rc<Tank> {
+    fn put_tank(&mut self, pos: BlockPos, tank: Tank<K>) -> Rc<Tank<K>> {
         let tank = Rc::new(tank);
         self.level.hooks.state.tanks.insert(pos, tank.clone());
         assert!(self.level.set_block(pos, Some(TANK)), "tanque {pos:?}");
@@ -1051,7 +1142,7 @@ impl World {
     }
 
     /// `MechanicalPipe.write`, a parte de fluido: valida as shares e devolve o `saveShare`.
-    pub fn write_stored(&mut self, index: i32) -> StackContents<FluidResource> {
+    pub fn write_stored(&mut self, index: i32) -> StackContents<K::R> {
         let (id, pipe) = self.pipe_at(self.pipe_pos(index)).expect("cano");
         let network = pipe.net();
         let hooks = &mut self.level.hooks;
@@ -1086,7 +1177,7 @@ impl World {
     }
 
     /// O cano do bloco em `pos`, se o chunk está carregado e há um cano.
-    pub fn pipe_at(&self, pos: BlockPos) -> Option<(TransmitterId, &Pipe)> {
+    pub fn pipe_at(&self, pos: BlockPos) -> Option<(TransmitterId, &Pipe<K>)> {
         let id = *self.level.view().block_entity(pos)?;
         Some((id, &self.level.hooks.state.pipes[id.0 as usize]))
     }
@@ -1094,5 +1185,33 @@ impl World {
     /// Os eventos da rede desde a última chamada.
     pub fn take_events(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.level.hooks.state.events)
+    }
+}
+
+impl World<FluidKind> {
+    /// O Heat Generator em `pos`: o `lavaTank` (capacidade 1.000, só lava, `input`: ninguém de fora tira dele) em todo lado menos a frente
+    /// (norte), que queima 100 por tick.
+    pub fn place_generator(&mut self, pos: BlockPos) -> Rc<Tank<FluidKind>> {
+        let lava = Rc::new(|resource: &FluidResource| resource.id.as_ref() == "minecraft:lava");
+        let tank = ResourceTank::create(
+            1_000,
+            Rc::new(|_, automation| automation != AutomationType::External),
+            Rc::new(|_, _| true),
+            lava,
+            None,
+        );
+        self.put_tank(
+            pos,
+            Tank {
+                tank,
+                sides: [true, true, false, true, true, true],
+                creative: false,
+                burn: 100,
+                active: Default::default(),
+                client_active: Default::default(),
+                update_delay: Default::default(),
+                energy_full: Default::default(),
+            },
+        )
     }
 }

@@ -1,6 +1,8 @@
 //! Os caminhos da rede de fluido que o rastro de `FluidNetworkTraceTest` não alcança, lidos do Java, e a base genérica de recurso.
-mod fluid_world;
-use fluid_world::{World, fluid};
+mod resource_world;
+use resource_world::{FluidKind, fluid};
+
+type World = resource_world::World<FluidKind>;
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::sim::chunks::{BlockPos, ChunkPos, ENTITY_TICKING_LEVEL};
 use machinery_basis_core::transaction::Transaction;
@@ -55,7 +57,7 @@ fn a_line_of_pipes_shares_the_fluid_in_one_network_and_the_tank_drinks_it() {
         world.place_pipe(x, "basic");
     }
     let tank_pos = BlockPos::new(4, 65, 0);
-    let tank = world.place_fluid_tank(tank_pos, "basic", None);
+    let tank = world.place_tank(tank_pos, "basic", None);
     tick(&mut world, 4);
     let network = network_of(&world, 0);
     assert_eq!(world.family().network(network).unwrap().capacity(), 10_000);
@@ -195,12 +197,14 @@ fn standalone_family() -> (
                 machinery_basis_core::fluid::FluidResource,
             >,
     >,
-    machinery_basis_core::transmission::registry::TransmitterNetworkRegistry<fluid_world::Acceptor>,
+    machinery_basis_core::transmission::registry::TransmitterNetworkRegistry<
+        resource_world::Acceptor<FluidKind>,
+    >,
 ) {
     use machinery_basis_core::transmission::registry::TransmitterNetworkRegistry;
     use machinery_basis_core::transmission::{NetworkEvent, Uuid};
     let registry = TransmitterNetworkRegistry::new(|| Uuid::with_hash_code(1));
-    let mut family = fluid_world::Family::new();
+    let mut family = resource_world::Family::<FluidKind>::new();
     family.network_event(
         &registry,
         NetworkId(0),
@@ -258,12 +262,12 @@ fn a_pulling_pipe_stops_at_the_first_side_that_fills_it() {
     use machinery_basis_core::transmission::connection::ConnectionType;
     let mut world = world();
     world.place_pipe(0, "basic");
-    let below = world.place_fluid_tank(
+    let below = world.place_tank(
         BlockPos::new(0, 63, 0),
         "basic",
         Some(("minecraft:water", Some(5_000))),
     );
-    let above = world.place_fluid_tank(
+    let above = world.place_tank(
         BlockPos::new(0, 65, 0),
         "basic",
         Some(("minecraft:water", Some(5_000))),
