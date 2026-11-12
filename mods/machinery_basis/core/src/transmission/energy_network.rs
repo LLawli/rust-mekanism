@@ -12,9 +12,7 @@
 //! - `getPacketRange`, o cliente (`clientNetworks`, o pacote em si) e o `EnergyTransferEvent` como evento do NeoForge: o evento fica numa
 //!   lista ([`EnergyFamily::take_transfer_events`]) para quem liga ao jogo mandar o `PacketNetworkScale`.
 use super::buffered_network::{BufferedNetwork, chunk_of};
-use super::energy_container::{
-    BufferEnergyContainer, add_clamped, always,
-};
+use super::energy_container::{BufferEnergyContainer, add_clamped, always};
 use super::registry::TransmitterNetworkRegistry;
 use super::universal_cable::UniversalCable;
 use super::{NetworkEvent, NetworkId, TransmitterId};
@@ -219,10 +217,8 @@ impl<H: EnergyInsert + ?Sized> EnergyFamily<H> {
                 if energy > 0 {
                     let transaction = Transaction::open_root();
                     let net = self.net(network);
-                    net.energy.set_energy(
-                        add_clamped(net.energy.amount(), energy),
-                        Some(&transaction),
-                    );
+                    net.energy
+                        .set_energy(add_clamped(net.energy.amount(), energy), Some(&transaction));
                     transaction.commit();
                     self.mark_dirty(network);
                 }
@@ -263,7 +259,11 @@ impl<H: EnergyInsert + ?Sized> EnergyFamily<H> {
         let old_capacity = self.networks[&network].capacity();
         let (their_capacity, their_scale, their_chunks) = {
             let other = &self.networks[&from];
-            (other.capacity(), other.current_scale(), other.buffered.chunks().collect::<Vec<_>>())
+            (
+                other.capacity(),
+                other.current_scale(),
+                other.buffered.chunks().collect::<Vec<_>>(),
+            )
         };
         // `DynamicBufferedNetwork`: `chunks.addAll(net.chunks)` e `updateCapacity()`.
         self.net(network).buffered.adopt_chunks(their_chunks);
@@ -312,7 +312,11 @@ impl<H: EnergyInsert + ?Sized> EnergyFamily<H> {
         }
         let mut target = EnergyTransmitterSaveTarget::new(EnergyTransmitterSaveKind::new());
         for transmitter in registry.network(network).transmitters() {
-            target.add_handler(self.cables[&transmitter].state.start_new_save_share(transaction));
+            target.add_handler(
+                self.cables[&transmitter]
+                    .state
+                    .start_new_save_share(transaction),
+            );
         }
         let amount = self.net(network).energy.amount();
         send_to_acceptors(Some(&mut target), amount, &(), Some(transaction));
@@ -440,7 +444,11 @@ impl<H: EnergyInsert + ?Sized> EnergyFamily<H> {
     }
 
     /// `UniversalCable.getBufferWithFallback()`.
-    pub fn buffer_with_fallback(&self, transmitter: TransmitterId, network: Option<NetworkId>) -> i64 {
+    pub fn buffer_with_fallback(
+        &self,
+        transmitter: TransmitterId,
+        network: Option<NetworkId>,
+    ) -> i64 {
         let buffer = self.cables[&transmitter].state.share();
         match network {
             Some(network) if buffer == 0 => self.networks[&network].buffer(),
@@ -448,4 +456,3 @@ impl<H: EnergyInsert + ?Sized> EnergyFamily<H> {
         }
     }
 }
-

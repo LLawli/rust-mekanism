@@ -130,7 +130,8 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         let network = self.push_network(DynamicNetwork::new(uuid));
         host.network_event(&*self, network, NetworkEvent::Created { uuid });
         self.adopt_all_and_register(host, network, networks);
-        host.network_event(&*self, 
+        host.network_event(
+            &*self,
             network,
             NetworkEvent::Merged {
                 from: networks.to_vec(),
@@ -239,7 +240,11 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
                     self.network_mut(network)
                         .positioned
                         .insert(LongKey(host.block_pos(transmitter).as_long()), transmitter);
-                    host.network_event(&*self, network, NetworkEvent::TransmitterCommitted(transmitter));
+                    host.network_event(
+                        &*self,
+                        network,
+                        NetworkEvent::TransmitterCommitted(transmitter),
+                    );
                 }
             }
             self.network_mut(network).transmitters_to_add.clear();
@@ -268,7 +273,11 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
             && !host.is_valid(trigger)
         {
             // Está destruindo o último transmissor da rede (e não só mudando a sensibilidade ao redstone).
-            host.network_event(&*self, network, NetworkEvent::LastTransmitterRemoved(trigger));
+            host.network_event(
+                &*self,
+                network,
+                NetworkEvent::LastTransmitterRemoved(trigger),
+            );
         }
         // `removeInvalid`: `getTransmitters().removeIf(transmitter -> !transmitter.isValid())`.
         let invalid: Vec<LongKey> = self

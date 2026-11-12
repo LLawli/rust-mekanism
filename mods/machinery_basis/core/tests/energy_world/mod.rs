@@ -5,10 +5,10 @@
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::distribution::EnergyInsert;
 use machinery_basis_core::sides::Face;
+use machinery_basis_core::sim::chunks::{BlockPos, ChunkHooks, ChunkPos, LevelView, SimLevel};
 use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::transmission::energy_container::{BufferEnergyContainer, always};
 use machinery_basis_core::transmission::energy_network::EnergyFamily;
-use machinery_basis_core::sim::chunks::{BlockPos, ChunkHooks, ChunkPos, LevelView, SimLevel};
 use machinery_basis_core::transmission::registry::TransmitterNetworkRegistry;
 use machinery_basis_core::transmission::{
     DimensionId, NetworkEvent, NetworkId, TransmitterHost, TransmitterId, Uuid,
@@ -250,7 +250,11 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
         self.st.family.take_share_in_root(transmitter, network);
     }
 
-    fn on_update(&mut self, registry: &mut TransmitterNetworkRegistry<Acceptor>, network: NetworkId) {
+    fn on_update(
+        &mut self,
+        registry: &mut TransmitterNetworkRegistry<Acceptor>,
+        network: NetworkId,
+    ) {
         self.st.events.push(Event::NetUpdate(network));
         self.st.family.on_update(registry, network);
     }
@@ -291,9 +295,7 @@ impl ChunkHooks for Hooks {
         block: &str,
         saved: Option<&i64>,
     ) -> Option<TransmitterId> {
-        let Some(tier) = block.strip_prefix(CABLE_PREFIX) else {
-            return None;
-        };
+        let tier = block.strip_prefix(CABLE_PREFIX)?;
         let hash = (self.state.hash_for)(pos);
         self.state.txs.push(Tx {
             pos,
@@ -306,9 +308,7 @@ impl ChunkHooks for Hooks {
             shares_taken: 0,
         });
         let id = TransmitterId(self.state.txs.len() as u32 - 1);
-        self.state
-            .family
-            .add_cable(id, pos, tier_capacity(tier));
+        self.state.family.add_cable(id, pos, tier_capacity(tier));
         if let Some(energy) = saved {
             // `UniversalCable.read`: `saveShare = ENERGY` e `buffer.setEnergy(saveShare, null)`.
             self.state.family.cable(id).read_energy(*energy);

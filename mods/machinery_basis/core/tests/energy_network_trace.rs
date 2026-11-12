@@ -411,7 +411,9 @@ impl Replay {
                     .find(|(name, _)| name == words[1])
                     .unwrap()
                     .1;
-                machine.container.set_energy(words[2].parse().unwrap(), None);
+                machine
+                    .container
+                    .set_energy(words[2].parse().unwrap(), None);
             }
             // `push x z quantidade`
             "push" => {
@@ -427,9 +429,10 @@ impl Replay {
                     (id, tx.network)
                 };
                 let state = &mut self.world.level.hooks.state;
-                let energy = state
-                    .family
-                    .write_energy(&self.world.level.hooks.registry, id, network);
+                let energy =
+                    state
+                        .family
+                        .write_energy(&self.world.level.hooks.registry, id, network);
                 self.nbt.push_back((i64::from(number(1)), energy));
             }
             // `ChunkData.updateChunkLoading`: não faz nada se o chunk já está no estado pedido.
@@ -502,10 +505,15 @@ fn port_estate(replay: &Replay) -> Value {
     }
     // As redes do registro que têm um cabo da linha entram também (como `registry` do `state`).
     for network in world.registry().networks_in_order() {
-        let in_line = world.registry().network(network).transmitters().iter().any(|t| {
-            let pos = state.txs[t.0 as usize].pos;
-            world.index_of(pos, replay.depth as i32).is_some()
-        });
+        let in_line = world
+            .registry()
+            .network(network)
+            .transmitters()
+            .iter()
+            .any(|t| {
+                let pos = state.txs[t.0 as usize].pos;
+                world.index_of(pos, replay.depth as i32).is_some()
+            });
         if in_line {
             nets.insert(network.0, ());
         }
@@ -657,7 +665,11 @@ fn run(run: &str, scenario: &str) {
         }
         for row in tick_rows.iter().filter(|row| kind(row) == "nbt") {
             let (x, energy) = replay.nbt.pop_front().expect("nbt do port");
-            assert_eq!((x, energy), (int(row, "x"), int(row, "energy")), "{context}: nbt");
+            assert_eq!(
+                (x, energy),
+                (int(row, "x"), int(row, "energy")),
+                "{context}: nbt"
+            );
         }
         // Os `EnergyTransferEvent` (o `PacketNetworkScale`), na ordem.
         let expected_transfers: Vec<(i64, String)> = tick_rows
@@ -685,7 +697,10 @@ fn run(run: &str, scenario: &str) {
             .iter()
             .map(|(net, scale)| (*net, scale.parse::<f32>().unwrap()))
             .collect();
-        assert_eq!(port_scales, expected_scales, "{context}: EnergyTransferEvent");
+        assert_eq!(
+            port_scales, expected_scales,
+            "{context}: EnergyTransferEvent"
+        );
         let estate = tick_rows
             .iter()
             .rfind(|row| kind(row) == "estate")
