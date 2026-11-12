@@ -17,12 +17,18 @@ enum J {
     Obj(Vec<(String, J)>),
 }
 
+/// O `Rename` de `mod_content.rs`, só com o id de destino.
+struct Rename {
+    to: String,
+}
+
 /// O helper da injeção, como mora em `mod_content.rs`.
 mod note_instrument {
-    use super::J;
+    use super::{J, Rename};
     include!("../native/note_instrument.rs");
     pub fn run(row: &mut J, to: &str) {
-        mekanism_note_instrument(row, to, ());
+        let renamed = Rename { to: to.to_owned() };
+        mekanism_note_instrument((), row, &renamed);
     }
 }
 
