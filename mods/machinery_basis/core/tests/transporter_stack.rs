@@ -311,3 +311,25 @@ fn removing_the_last_stack_inside_a_transaction_drops_the_destination_even_if_it
     assert!(manager.flowing_to(dimension, at(3)).is_empty());
     assert_eq!(manager.flowing_destinations(), 0);
 }
+
+#[test]
+fn the_side_switches_from_the_previous_to_the_next_exactly_at_half_the_way() {
+    // Um caminho com uma curva: (0) -> (1,0,0) -> (1,0,1) -> destino (1,0,2).
+    let corner = |x: i32, z: i32| BlockPos::new(x, 0, z).as_long();
+    let stack = StackRef::new(TransporterStack::for_insert(corner(0, 0), None));
+    stack.borrow_mut().set_stack(Some(&stone()), 1);
+    with_path(
+        &stack,
+        vec![corner(1, 2), corner(1, 1), corner(1, 0)],
+        Path::Dest,
+    );
+    let mut state = stack.borrow_mut();
+    state.progress = 49;
+    assert_eq!(state.get_side(corner(1, 0)), Face::East);
+    state.progress = 50;
+    assert_eq!(state.get_side(corner(1, 0)), Face::South);
+    // O cliente guarda o que `updateForPos` calculou.
+    state.update_for_pos(corner(1, 0));
+    assert_eq!(state.client_next(), corner(1, 1));
+    assert_eq!(state.client_prev(), corner(0, 0));
+}
