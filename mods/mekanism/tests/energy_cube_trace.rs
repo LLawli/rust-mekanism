@@ -85,6 +85,13 @@ impl EnergyNeighbours for Neighbours {
     }
 
     fn insert(&self, face: Face, amount: i32, simulate: bool) -> i32 {
+        let transaction = Transaction::open(None);
+        let inserted = self.insert_in(face, amount, simulate, &transaction);
+        transaction.commit();
+        inserted
+    }
+
+    fn insert_in(&self, face: Face, amount: i32, simulate: bool, parent: &Transaction) -> i32 {
         if let Some((at, cube, time)) = &self.cube
             && *at == face
         {
@@ -98,7 +105,7 @@ impl EnergyNeighbours for Neighbours {
             if !can_input {
                 return 0;
             }
-            let transaction = Transaction::open(None);
+            let transaction = Transaction::open(Some(parent));
             let inserted = cube
                 .energy()
                 .insert(amount, &transaction, AutomationType::External);

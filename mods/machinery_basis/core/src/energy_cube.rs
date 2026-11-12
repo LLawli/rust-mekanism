@@ -7,6 +7,7 @@
 use crate::containers::{
     Access, AutomationType, InventorySlot, ItemResource, SlotChecks, lerp_discrete,
 };
+use crate::distribution::{self, EnergyHandlerKind, EnergyInsert, Target, handlers_from_caches};
 use crate::ejector::{AttachedEjector, EjectEnv, EjectorData, TileComponentEjector};
 use crate::energy_conversion::EnergyConversionCache;
 use crate::item_handler::NoNeighbours;
@@ -675,6 +676,17 @@ pub trait EnergyNeighbours {
     fn has_handler(&self, face: Face) -> bool;
     /// `EnergyHandler.insert`: o que o vizinho aceita; `simulate` não muda nada.
     fn insert(&self, face: Face, amount: i32, simulate: bool) -> i32;
+    /// O mesmo `insert` dentro da transação do envio: um vizinho com diário (outro contêiner da lib) entra nela em vez de abrir uma
+    /// raiz própria, que não pode haver duas.
+    fn insert_in(
+        &self,
+        face: Face,
+        amount: i32,
+        simulate: bool,
+        _transaction: &Transaction,
+    ) -> i32 {
+        self.insert(face, amount, simulate)
+    }
 }
 
 /// Sem vizinho nenhum.
@@ -690,152 +702,55 @@ impl EnergyNeighbours for NoEnergyNeighbours {
     }
 }
 
-/// `SplitInfo`.
-struct SplitInfo {
-    amount_per_changed: bool,
-    to_split_among: i64,
-    amount_to_split: i64,
-    amount_per_target: i64,
-    sent_so_far: i64,
-    remainder: i64,
+/// O vizinho de uma face como destino da distribuição. O Horizon não desfaz uma inserção, então a consulta do `sendPossible` é uma
+/// simulação e a inserção de verdade vem ao confirmar (`probe_insert` e `commit_probe`).
+struct NeighbourHandler<'a> {
+    neighbours: &'a dyn EnergyNeighbours,
+    face: Face,
 }
 
-impl SplitInfo {
-    fn new(amount_to_split: i64, total_targets: i64) -> Self {
-        Self {
-            amount_per_changed: false,
-            to_split_among: total_targets,
-            amount_to_split,
-            amount_per_target: if total_targets == 0 {
-                0
-            } else {
-                amount_to_split / total_targets
-            },
-            sent_so_far: 0,
-            remainder: if total_targets == 0 {
-                0
-            } else {
-                amount_to_split % total_targets
-            },
-        }
+impl EnergyInsert for NeighbourHandler<'_> {
+    fn insert(&self, amount: i32, transaction: &Transaction) -> i32 {
+        self.neighbours
+            .insert_in(self.face, amount, false, transaction)
     }
 
-    fn send(&mut self, amount_needed: i64, decrement_targets: bool) {
-        self.amount_to_split -= amount_needed;
-        self.sent_so_far += amount_needed;
-        if !decrement_targets {
-            let difference = amount_needed - self.amount_per_target;
-            if difference > 0 {
-                self.remainder -= difference;
-            }
-            return;
-        }
-        self.to_split_among -= 1;
-        if amount_needed != self.amount_per_target && self.to_split_among != 0 {
-            let last = self.amount_per_target;
-            self.amount_per_target = self.amount_to_split / self.to_split_among;
-            self.remainder = self.amount_to_split % self.to_split_among;
-            if !self.amount_per_changed && self.amount_per_target != last {
-                self.amount_per_changed = true;
-            }
-        }
+    fn probe_insert(&self, amount: i32, transaction: &Transaction) -> i32 {
+        self.neighbours
+            .insert_in(self.face, amount, true, transaction)
     }
 
-    fn share_amount(&self) -> i64 {
-        self.amount_per_target
-    }
-
-    fn remainder_amount(&self) -> i64 {
-        if self.to_split_among != 0 && self.remainder > 0 {
-            return self.amount_per_target + 1;
-        }
-        self.amount_per_target
-    }
-
-    fn unsent(&self) -> i64 {
-        self.amount_to_split
+    fn commit_probe(&self, amount: i32, transaction: &Transaction) {
+        self.neighbours
+            .insert_in(self.face, amount, false, transaction);
     }
 }
 
-/// `EnergyHandlerTarget.accept`: `handler.insert(saturatedCast(amount))`, de verdade.
-fn accept(neighbours: &dyn EnergyNeighbours, face: Face, amount: i64) -> i64 {
-    i64::from(neighbours.insert(face, saturated(amount), false))
+/// Os handlers dos vizinhos que têm capability, na ordem das faces (`EmitUtils.getHandlersFromCaches`).
+fn neighbour_handlers<'a>(
+    neighbours: &'a dyn EnergyNeighbours,
+    faces: &[Face],
+) -> Vec<Rc<NeighbourHandler<'a>>> {
+    handlers_from_caches(faces, |&face| {
+        neighbours
+            .has_handler(face)
+            .then(|| Rc::new(NeighbourHandler { neighbours, face }))
+    })
 }
 
-/// `EmitUtils.sendToAcceptors` para os alvos de energia, na ordem em que o ejetor os deu. O diário do Java desfaz o que uma consulta
-/// fez e não vira envio (`needed`); aqui a consulta é uma simulação, e só o envio de verdade muda o vizinho.
+/// `EmitUtils.sendToAcceptors` para os alvos de energia, na ordem em que o ejetor os deu.
 pub fn send_to_acceptors(neighbours: &dyn EnergyNeighbours, targets: &[Face], amount: i64) -> i64 {
-    if amount == 0 || targets.is_empty() {
-        return 0;
-    }
-    if targets.len() == 1 {
-        return accept(neighbours, targets[0], amount);
-    }
-    let mut split = SplitInfo::new(amount, targets.len() as i64);
-    // `needed`: o que cada um quis além da parte, na ordem em que apareceram.
-    let mut needed: Vec<(Face, i64)> = Vec::new();
-    for &face in targets {
-        let amount_needed = i64::from(neighbours.insert(face, saturated(split.unsent()), true));
-        if amount_needed <= split.share_amount() {
-            split.send(accept(neighbours, face, amount_needed), true);
-        } else {
-            needed.retain(|(known, _)| *known != face);
-            needed.push((face, amount_needed));
-        }
-    }
-    while split.amount_per_changed {
-        split.amount_per_changed = false;
-        if needed.is_empty() || split.share_amount() == 0 {
-            continue;
-        }
-        let mut index = 0;
-        while index < needed.len() {
-            let (face, amount_needed) = needed[index];
-            if amount_needed <= split.share_amount() {
-                split.send(accept(neighbours, face, amount_needed), true);
-                needed.remove(index);
-            } else {
-                index += 1;
-            }
-        }
-    }
-    if !needed.is_empty() && split.unsent() > 0 {
-        if needed.len() == 1 {
-            let accepted = accept(neighbours, needed[0].0, split.unsent());
-            split.send(accepted, false);
-            return split.sent_so_far;
-        }
-        let mut index = 0;
-        while index < needed.len() {
-            let remainder_amount = split.remainder_amount();
-            if remainder_amount == 0 {
-                return split.sent_so_far;
-            }
-            let (face, amount_needed) = needed[index];
-            if amount_needed <= remainder_amount {
-                split.send(accept(neighbours, face, amount_needed), true);
-                needed.remove(index);
-            } else {
-                split.send(accept(neighbours, face, remainder_amount), false);
-                index += 1;
-            }
-        }
-        let mut unsent = split.unsent();
-        if unsent > 0 {
-            for &(face, _) in &needed {
-                let accepted = accept(neighbours, face, unsent);
-                split.send(accepted, false);
-                unsent -= accepted;
-                if unsent == 0 {
-                    return split.sent_so_far;
-                }
-            }
-        }
-    }
-    split.sent_so_far
+    let handlers = targets
+        .iter()
+        .map(|&face| Rc::new(NeighbourHandler { neighbours, face }))
+        .collect();
+    let mut target = Target::with_handlers(EnergyHandlerKind::new(), handlers);
+    distribution::send_to_acceptors(Some(&mut target), amount, &(), None)
 }
 
-/// `EnergyUtils.emit(caches, container, maxOutput, null)`.
+/// `EnergyUtils.emit(caches, container, maxOutput, null)`. É o `distribution::emit_from_container` com a ordem trocada: no Java a
+/// transação do contêiner está aberta durante o envio, mas os vizinhos não têm diário (o Horizon não desfaz uma inserção, e um
+/// vizinho de teste abre a própria transação raiz), então o envio roda antes de ela abrir.
 pub fn emit_energy(
     neighbours: &dyn EnergyNeighbours,
     container: &CubeEnergy,
@@ -853,13 +768,11 @@ pub fn emit_energy(
         }
         to_send
     };
-    let targets: Vec<Face> = sides
-        .iter()
-        .copied()
-        .filter(|&face| neighbours.has_handler(face))
-        .collect();
-    // Os vizinhos não têm diário (o Horizon não desfaz uma inserção), então o envio roda antes de a transação do contêiner abrir.
-    let sent = saturated(send_to_acceptors(neighbours, &targets, i64::from(to_send)));
+    let sent = saturated(distribution::emit(
+        neighbour_handlers(neighbours, sides),
+        i64::from(to_send),
+        None,
+    ));
     let sub = Transaction::open(None);
     if sent > 0 && container.extract(sent, &sub, AutomationType::Internal) == sent {
         sub.commit();

@@ -12,6 +12,7 @@ pub mod composter;
 pub mod config_window;
 pub mod container_sync;
 pub mod containers;
+pub mod distribution;
 pub mod ejector;
 pub mod energy_conversion;
 pub mod energy_cube;
