@@ -901,3 +901,14 @@ bindings = [
   { name = "pos", ty = "[i32; 3]", value = "pos" },
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
+
+# O bloco que o clique do balde enche (`Game::bucket_target`: o clicado, se é um contêiner de água, senão o ao lado). O hook `fill_bucket` ouve esse bloco e, quando o clicado é o contêiner, também
+# o ao lado (a conferência `mayUseItemAt`); o RETURN anota o primeiro para o hook recusar o balde só quando o bloco que recebe o fluido é o transmissor (decisão 86). Alvo cru.
+[[injection]]
+id = "bucket_target"
+target = "horizon_client::game::Game<'_>::bucket_target"
+kind = "RETURN"
+helper = "bucket_target.rs"
+bindings = [
+  { name = "value", ty = "[i32; 3]", value = "$value" },
+]

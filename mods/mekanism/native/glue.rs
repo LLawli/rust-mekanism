@@ -3342,10 +3342,20 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
 }
 
 /// `BucketItem.emptyContents` num transmissor: `BlockMekanism.canBeReplaced(state, fluid)` é falso, então o balde não derrama nele (o Horizon trocaria o cabo pelo fluido: o gabarito `chorus_plant` não
-/// é sólido). O gancho `fill_bucket` ouve o clique do jogador no alvo e no bloco ao lado, e cancelar deixa o balde cheio e o cabo onde está, como o `InteractionResult.FAIL` do original. Não ouve o
-/// dispensador (H110).
+/// é sólido). O gancho `fill_bucket` ouve o clique do jogador no bloco que recebe o fluido e, quando esse é um contêiner de água (laje, escada), também no bloco ao lado, que não recebe nada: só o
+/// primeiro é recusado (o `target` que a injeção `bucket_target` anotou), e cancelar deixa o balde cheio e o cabo onde está, como o `InteractionResult.FAIL` do original. Não ouve o dispensador (H110).
 pub(in crate::game) fn fill_bucket(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], canceled: &mut bool) {
-    if !*canceled && rules::bucket_refused_by(&stack.item, &game.native_block(pos)) {
+    if !*canceled && rules::bucket_refused_at(&stack.item, &game.native_block(pos), pos, BUCKET_TARGET.with(Cell::get)) {
         *canceled = true;
     }
+}
+
+thread_local! {
+    /// O bloco que o clique do balde enche (`Game::bucket_target`), anotado pela injeção `bucket_target` antes de os ganchos `fill_bucket` rodarem.
+    static BUCKET_TARGET: Cell<Option<[i32; 3]>> = const { Cell::new(None) };
+}
+
+/// O RETURN de `Game::bucket_target`: anota o bloco que o balde vai encher.
+pub(in crate::game) fn bucket_target_seen(target: [i32; 3]) {
+    BUCKET_TARGET.with(|cell| cell.set(Some(target)));
 }

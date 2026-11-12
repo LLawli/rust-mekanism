@@ -56,3 +56,52 @@ fn a_filled_bucket_does_not_pour_into_a_transmitter() {
     }
     assert_eq!(transmitters, 22);
 }
+
+/// `BucketItem.use` pergunta ao gancho `fill_bucket` pelo bloco que recebe o fluido e, quando o clicado é um contêiner de água (laje, escada), também pelo ao lado (a conferência `mayUseItemAt`,
+/// que não passa fluido). O original só olha o `canBeReplaced` do bloco que recebe: um transmissor ao lado de uma laje não impede de encher a laje; o próprio transmissor como alvo, sim.
+#[test]
+fn only_the_block_that_receives_the_fluid_refuses_the_bucket() {
+    let cable = "mekanism:basic_universal_cable";
+    let target = [10, 64, 10];
+    let beside = [10, 64, 11];
+    // O transmissor é o alvo (o bloco clicado não é um contêiner de água, então o fluido vai para o ao lado): recusa.
+    assert!(rules::bucket_refused_at(
+        "minecraft:water_bucket",
+        cable,
+        target,
+        Some(target)
+    ));
+    assert!(rules::bucket_refused_at(
+        "minecraft:lava_bucket",
+        cable,
+        target,
+        Some(target)
+    ));
+    // O alvo é uma laje e o transmissor está ao lado dela (a segunda pergunta do gancho): a laje se enche, o gancho não recusa.
+    assert!(!rules::bucket_refused_at(
+        "minecraft:water_bucket",
+        cable,
+        beside,
+        Some(target)
+    ));
+    // Nenhum clique de balde visto: nada a recusar.
+    assert!(!rules::bucket_refused_at(
+        "minecraft:water_bucket",
+        cable,
+        target,
+        None
+    ));
+    // O alvo que não é um transmissor, ou um balde que não derrama, nunca recusa.
+    assert!(!rules::bucket_refused_at(
+        "minecraft:water_bucket",
+        "minecraft:stone_slab",
+        target,
+        Some(target)
+    ));
+    assert!(!rules::bucket_refused_at(
+        "minecraft:bucket",
+        cable,
+        target,
+        Some(target)
+    ));
+}

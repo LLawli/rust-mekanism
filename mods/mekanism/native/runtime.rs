@@ -3681,6 +3681,19 @@ pub fn bucket_refused_by(bucket: &str, block: &str) -> bool {
         && transmitter_center(block).is_some()
 }
 
+/// `BucketItem.use` pergunta ao gancho `fill_bucket` pelo bloco que recebe o fluido (o `target` de `Game::bucket_target`: o bloco clicado, se é um contêiner de água, senão o ao lado) e, quando o
+/// clicado recebe, também pelo bloco ao lado (`player.mayUseItemAt(blockPos2, ...)`, uma conferência de permissão que não passa fluido por ele). O original só consulta `canBeReplaced(state, fluid)` do
+/// bloco que recebe (`BucketItem.emptyContents`); então um transmissor ao lado de uma laje ou escada que se enche de água não recusa o balde. `target` é o que a injeção `bucket_target` anotou
+/// (`None`: nenhum clique visto, nada a recusar).
+pub fn bucket_refused_at(
+    bucket: &str,
+    block: &str,
+    pos: [i32; 3],
+    target: Option<[i32; 3]>,
+) -> bool {
+    target == Some(pos) && bucket_refused_by(bucket, block)
+}
+
 /// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.
 pub fn transmitter_center(block: &str) -> Option<[f64; 6]> {
     let name = block.strip_prefix("mekanism:")?;
