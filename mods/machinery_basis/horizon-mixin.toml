@@ -966,3 +966,35 @@ bindings = [
   { name = "plan", ty = "&Plan<'_>", value = "plan" },
   { name = "overlay", ty = "&Overlay<'_>", value = "overlay" },
 ]
+
+# O `Kd` e o `neoforge_TintIndex` do `.mtl` (H16): o `parse_mtl` do Horizon lê só o `map_Kd`, e o NeoForge multiplica a cor `Kd` na de cada vértice (`ObjGeometry.makeQuad`) e dá ao quad o
+# índice de tinta do material. Os materiais dos cabos têm `Kd 0.8`: sem isso o corpo sai 20% mais claro que o do original. Um módulo (a conta do `.mtl`, em `obj.rs` do `horizon-assets`,
+# que `core/tests/obj_material.rs` compila como está) e duas injeções cruas: o fim de `parse_mtl` guarda as duas propriedades de cada material no mapa que ela devolve, sob uma chave
+# que nenhuma face usa, e o fim de `bake_obj` as põe nos quads que acabou de cozinhar.
+[[module]]
+id = "obj-material"
+file = "crates/horizon-assets/src/obj.rs"
+name = "machinery_obj_material"
+source = "obj_material.rs"
+
+[[injection]]
+id = "obj_material_parse"
+target = "horizon_assets::obj::parse_mtl"
+kind = "RETURN"
+helper = "obj_material_parse.rs"
+bindings = [
+  { name = "value", ty = "BTreeMap<String, MtlTexture>", value = "$value" },
+  { name = "text", ty = "&str", value = "text" },
+]
+
+[[injection]]
+id = "obj_material_quads"
+target = "horizon_assets::bake::bake_obj"
+kind = "RETURN"
+helper = "obj_material_quads.rs"
+bindings = [
+  { name = "value", ty = "Result<()>", value = "$value" },
+  { name = "obj", ty = "&ObjModel", value = "obj" },
+  { name = "hidden", ty = "&std::collections::BTreeSet<String>", value = "hidden" },
+  { name = "output", ty = "&mut Vec<ModelQuad>", value = "&mut *output" },
+]
