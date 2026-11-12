@@ -219,6 +219,13 @@ pub trait TransmitterHost<A> {
     /// `Transmitter.takeShare(transaction)`, em `invalidate`, na ordem de `positionedTransmitters`. Dentro de uma transação raiz no
     /// original; a energia (segunda leva) a abre por conta própria.
     fn take_share(&mut self, _transmitter: TransmitterId) {}
+    /// O começo do laço de `DynamicNetwork.invalidate` que chama `takeShare`, `setTransmitterNetwork(null)` e `registerOrphanTransmitter` de
+    /// cada transmissor válido: o original o faz dentro de uma transação raiz só, que confirma depois do laço. Quem quer essa raiz (o que
+    /// guarda a parte de cada transmissor na rede, e deixa o `onContentsChanged` do contêiner da rede disparar uma vez no fim) a abre
+    /// aqui e a usa em [`Self::take_share`]; a base não faz nada (a energia abre uma raiz por `take_share`).
+    fn begin_take_shares(&mut self) {}
+    /// O fim do laço de [`Self::begin_take_shares`]: confirma a transação raiz.
+    fn end_take_shares(&mut self) {}
     /// `DynamicNetwork.onUpdate`, no `ServerTickEvent.Post` quando o tick roda normalmente, na ordem do `networks`.
     fn on_update(&mut self, _registry: &mut TransmitterNetworkRegistry<A>, _network: NetworkId) {}
     /// O que uma subclasse acrescenta a um método da rede ([`NetworkEvent`]).

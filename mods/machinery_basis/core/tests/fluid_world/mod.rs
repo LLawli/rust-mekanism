@@ -58,23 +58,92 @@ pub fn fluid(id: &str) -> FluidResource {
     FluidResource::new(id)
 }
 
-/// Um tanque vizinho: o contêiner, e os lados em que ele expõe a capability de fluido.
+/// Um tanque vizinho (o Fluid Tank de um tier, ou o `lavaTank` do Heat Generator): o contêiner, e os lados em que ele expõe a capability
+/// de fluido.
 pub struct Tank {
     pub tank: ResourceTank<FluidResource>,
     /// Os lados (por `Face::ALL`) que expõem a capability.
     pub sides: [bool; 6],
-    /// A origem da quantidade infinita (o tanque criativo): `extract` entrega sem tirar nada do contêiner.
-    pub infinite: bool,
+    /// O tanque criativo (`FluidTankFluidTank.isCreative`): `insert` e `extract` pela capability dão o resultado sem mudar nada.
+    pub creative: bool,
+    /// O que o gerador queima por tick (`heatGenerationFluidRate`), ou 0.
+    pub burn: i32,
+    /// `currentActive` do gerador, o `active` do estado do bloco (`getClientActive`) e a espera de desligar (`updateDelay`).
+    pub active: std::cell::Cell<bool>,
+    pub client_active: std::cell::Cell<bool>,
+    pub update_delay: std::cell::Cell<i32>,
+    /// O contêiner de energia do gerador está cheio (`EnergyHandlerUtil.isFull`): vem de fora, porque a conta de calor e de energia é do
+    /// gerador e não da rede.
+    pub energy_full: std::cell::Cell<bool>,
 }
 
 impl Tank {
     pub fn exposes(&self, side: Face) -> bool {
         self.sides[Face::ALL.iter().position(|f| *f == side).unwrap()]
     }
+
+    /// Um tick do Heat Generator (`TileEntityMekanism.tickServer` e `TileEntityHeatGenerator.onUpdateServer`, a parte do `lavaTank` e do
+    /// `setActive`): a espera de desligar anda, o gerador tira a taxa do `lavaTank` (`INTERNAL`) se ela inteira couber e o contêiner de
+    /// energia não está cheio, e `setActive` liga na hora e desliga na hora só se a espera está zerada (e a reinicia sempre).
+    ///
+    /// Devolve se o estado de ativo do bloco mudou, que o mundo avisa aos vizinhos com um `setBlockAndUpdate`.
+    pub fn burn_tick(&self) -> bool {
+        if self.burn == 0 {
+            return false;
+        }
+        let mut notify = false;
+        if self.update_delay.get() > 0 {
+            self.update_delay.set(self.update_delay.get() - 1);
+            if self.update_delay.get() == 0 && self.client_active.get() != self.active.get() {
+                self.client_active.set(self.active.get());
+                notify = true;
+            }
+        }
+        let mut is_active = false;
+        if !self.energy_full.get()
+            && let Some(resource) = self.tank.resource()
+        {
+            let transaction = Transaction::open_root();
+            if self
+                .tank
+                .extract(&resource, self.burn, &transaction, AutomationType::Internal)
+                == self.burn
+            {
+                is_active = true;
+                transaction.commit();
+            }
+        }
+        if is_active != self.active.get() {
+            self.active.set(is_active);
+            if self.client_active.get() != is_active {
+                if is_active {
+                    self.client_active.set(true);
+                    notify = true;
+                } else {
+                    if self.update_delay.get() == 0 {
+                        self.client_active.set(false);
+                        notify = true;
+                    }
+                    self.update_delay.set(BLOCK_DEACTIVATION_DELAY);
+                }
+            }
+        }
+        notify
+    }
 }
+
+/// `general.blockDeactivationDelay`: 3 segundos.
+const BLOCK_DEACTIVATION_DELAY: i32 = 60;
 
 impl ResourceInsert<FluidResource> for Tank {
     fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        if self.creative {
+            // Aceita sem mudar nada: o resultado de uma simulação.
+            let simulation = Transaction::open(Some(transaction));
+            return self
+                .tank
+                .insert(resource, amount, &simulation, AutomationType::External);
+        }
         self.tank
             .insert(resource, amount, transaction, AutomationType::External)
     }
@@ -104,16 +173,14 @@ impl ResourceExtract<FluidResource> for Tank {
     }
 
     fn extract(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
-        if self.infinite {
-            if self.tank.resource().as_ref() == Some(resource) {
-                amount.min(self.tank.amount_as_int())
-            } else {
-                0
-            }
-        } else {
-            self.tank
-                .extract(resource, amount, transaction, AutomationType::External)
+        if self.creative {
+            let simulation = Transaction::open(Some(transaction));
+            return self
+                .tank
+                .extract(resource, amount, &simulation, AutomationType::External);
         }
+        self.tank
+            .extract(resource, amount, transaction, AutomationType::External)
     }
 }
 
@@ -171,9 +238,15 @@ pub struct State {
     pub events: Vec<Event>,
     pub runs_normally: bool,
     pub family: Family,
+    /// O cano de cada posição (veja `Ctx::id_at`).
+    by_pos: BTreeMap<BlockPos, TransmitterId>,
     /// Os tanques postos, por posição.
     pub tanks: BTreeMap<BlockPos, Rc<Tank>>,
     pending_uuid: Option<Uuid>,
+    /// A transação raiz que `DynamicNetwork.invalidate` abre em volta dos `takeShare` (`begin_take_shares`).
+    share_tx: Option<Transaction>,
+    /// A fusão manual está rodando: só o `adoptTransmittersAndAcceptorsFrom` dela vai para o rastro (o do construtor aparece em `created`).
+    manual_merge: bool,
 }
 
 pub struct Hooks {
@@ -204,13 +277,23 @@ impl Ctx<'_> {
         &mut self.st.pipes[id.0 as usize]
     }
 
+    /// `WorldUtils.getTileEntity(TileEntityTransmitter.class, level, pos)`: o cano do bloco em `pos` se o chunk está carregado. Lê o
+    /// mapa do mundo de teste e não o do nível, porque o nível entrega o block entity ao gancho e o deixa fora do mapa enquanto ele roda.
     fn id_at(&self, pos: TPos) -> Option<TransmitterId> {
-        self.level.block_entity(spos(pos)).copied()
+        let pos = spos(pos);
+        if !self.level.is_block_loaded(pos) {
+            return None;
+        }
+        let id = *self.st.by_pos.get(&pos)?;
+        self.level
+            .block_if_loaded(pos)
+            .is_some_and(|block| block.starts_with(PIPE_PREFIX))
+            .then_some(id)
     }
 
     /// Roda uma operação do `Transmitter` com ele fora do lugar (ela lê o mundo, e o mundo guarda o transmissor), e aplica os
     /// efeitos que ela pediu.
-    fn with_tr<T>(
+    pub fn with_tr<T>(
         &mut self,
         registry: &mut Registry,
         id: TransmitterId,
@@ -299,7 +382,9 @@ impl Ctx<'_> {
         else {
             return;
         };
+        self.st.manual_merge = true;
         let adopted = merge_networks_manually(registry, self, primary, secondary);
+        self.st.manual_merge = false;
         self.st.family.clamp_buffer(primary);
         self.with_tr(registry, other, |t, w, out| {
             t.refresh_connections_side(side.opposite(), w, out);
@@ -461,7 +546,7 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
     }
 
     fn transmitter_at(&self, _: DimensionId, pos: BlockPos) -> Option<TransmitterId> {
-        self.level.block_entity(pos).copied()
+        self.id_at(tpos(pos))
     }
 
     fn new_orphan_validator(
@@ -507,9 +592,30 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
             .flatten()
     }
 
+    fn begin_take_shares(&mut self) {
+        self.st.share_tx = Some(Transaction::open_root());
+    }
+
+    fn end_take_shares(&mut self) {
+        self.st
+            .share_tx
+            .take()
+            .expect("begin_take_shares abriu a raiz")
+            .commit();
+        self.st.family.flush_contents();
+    }
+
     fn take_share(&mut self, transmitter: TransmitterId) {
         let network = self.pipe(transmitter).net();
-        self.st.family.take_share_in_root(transmitter, network);
+        match self.st.share_tx.take() {
+            Some(transaction) => {
+                self.st
+                    .family
+                    .take_share(transmitter, network, Some(&transaction));
+                self.st.share_tx = Some(transaction);
+            }
+            None => self.st.family.take_share_in_root(transmitter, network),
+        }
     }
 
     fn on_update(&mut self, registry: &mut Registry, network: NetworkId) {
@@ -531,7 +637,9 @@ impl TransmitterHost<Acceptor> for Ctx<'_> {
                     from,
                 });
             }
-            NetworkEvent::Adopted { from } => self.st.events.push(Event::Adopt { network, from }),
+            NetworkEvent::Adopted { from } if self.st.manual_merge => {
+                self.st.events.push(Event::Adopt { network, from });
+            }
             NetworkEvent::Committing => self.st.events.push(Event::Commit(network)),
             NetworkEvent::Invalidating(_) => self.st.events.push(Event::Invalidate(network)),
             _ => {}
@@ -573,6 +681,7 @@ impl ChunkHooks for Hooks {
         } else {
             self.state.family.add_mechanical_pipe(id, pos, tier);
         }
+        self.state.by_pos.insert(pos, id);
         self.state.pipes.push(Pipe {
             pos,
             tr: Some(tr),
@@ -796,8 +905,11 @@ impl World {
                 events: Vec::new(),
                 runs_normally: true,
                 family: Family::new(),
+                by_pos: BTreeMap::new(),
                 tanks: BTreeMap::new(),
                 pending_uuid: None,
+                share_tx: None,
+                manual_merge: false,
             },
         };
         Self {
@@ -837,32 +949,125 @@ impl World {
         assert!(self.level.set_block(pos, Some(&block)), "cano {x}");
     }
 
-    /// Um tanque em `pos`, com a capacidade, o fluido e os lados dados.
-    pub fn place_tank(
+    /// Um Fluid Tank do tier (`basic`, `advanced`, `elite`, `ultimate` ou `creative`) em `pos`, com o fluido (`None` é vazio) e a
+    /// quantidade (`None` é a capacidade): expõe a capability nos seis lados.
+    pub fn place_fluid_tank(
         &mut self,
         pos: BlockPos,
-        capacity: u64,
-        content: Option<(&str, u64)>,
-        sides: [bool; 6],
-        infinite: bool,
+        tier: &str,
+        content: Option<(&str, Option<u64>)>,
     ) -> Rc<Tank> {
+        let capacity: u64 = match tier {
+            "basic" => 32_000,
+            "advanced" => 64_000,
+            "elite" => 128_000,
+            "ultimate" => 256_000,
+            "creative" => i64::MAX as u64,
+            other => panic!("tier de tanque desconhecido: {other}"),
+        };
         let tank = ResourceTank::open(capacity, None);
         if let Some((id, amount)) = content {
-            tank.set_contents(Some(fluid(id)), amount, None);
+            tank.set_contents(Some(fluid(id)), amount.unwrap_or(capacity), None);
         }
-        let tank = Rc::new(Tank {
-            tank,
-            sides,
-            infinite,
-        });
+        self.put_tank(
+            pos,
+            Tank {
+                tank,
+                sides: [true; 6],
+                creative: tier == "creative",
+                burn: 0,
+                active: Default::default(),
+                client_active: Default::default(),
+                update_delay: Default::default(),
+                energy_full: Default::default(),
+            },
+        )
+    }
+
+    /// O Heat Generator em `pos`: o `lavaTank` (capacidade 1.000, só lava, `input`: ninguém de fora tira dele) em todo lado menos a frente
+    /// (norte), que queima 100 por tick.
+    pub fn place_generator(&mut self, pos: BlockPos) -> Rc<Tank> {
+        let lava = Rc::new(|resource: &FluidResource| resource.id.as_ref() == "minecraft:lava");
+        let tank = ResourceTank::create(
+            1_000,
+            Rc::new(|_, automation| automation != AutomationType::External),
+            Rc::new(|_, _| true),
+            lava,
+            None,
+        );
+        self.put_tank(
+            pos,
+            Tank {
+                tank,
+                sides: [true, true, false, true, true, true],
+                creative: false,
+                burn: 100,
+                active: Default::default(),
+                client_active: Default::default(),
+                update_delay: Default::default(),
+                energy_full: Default::default(),
+            },
+        )
+    }
+
+    fn put_tank(&mut self, pos: BlockPos, tank: Tank) -> Rc<Tank> {
+        let tank = Rc::new(tank);
         self.level.hooks.state.tanks.insert(pos, tank.clone());
         assert!(self.level.set_block(pos, Some(TANK)), "tanque {pos:?}");
         tank
     }
 
+    /// O que a chave inglesa faz num lado: `setConnectionTypeRaw`, `onModeChange`, `refreshConnections` e `notifyTileChange`.
+    pub fn set_mode(&mut self, index: i32, side: Face, kind: ConnectionType) {
+        let id = self.pipe_at(self.pipe_pos(index)).expect("cano").0;
+        self.level.with_hooks(|hooks, level| {
+            let mut ctx = Ctx {
+                st: &mut hooks.state,
+                level,
+            };
+            ctx.with_tr(&mut hooks.registry, id, |t, _, out| {
+                t.set_connection_type_raw(side, kind, out);
+            });
+            ctx.with_tr(&mut hooks.registry, id, |t, w, out| {
+                t.on_mode_change(side, w, out);
+            });
+            ctx.with_tr(&mut hooks.registry, id, |t, w, out| {
+                t.refresh_connections(w, out);
+            });
+            ctx.with_tr(&mut hooks.registry, id, |t, _, out| {
+                t.notify_tile_change(out);
+            });
+        });
+    }
+
+    /// `MechanicalPipe.write`, a parte de fluido: valida as shares e devolve o `saveShare`.
+    pub fn write_stored(&mut self, index: i32) -> StackContents<FluidResource> {
+        let (id, pipe) = self.pipe_at(self.pipe_pos(index)).expect("cano");
+        let network = pipe.net();
+        let hooks = &mut self.level.hooks;
+        hooks
+            .state
+            .family
+            .write_stored(&hooks.registry, id, network)
+    }
+
     /// Um tick do nível: o relógio do jogo (`getGameTime`) anda antes de tudo o que roda nele.
     pub fn tick_level(&mut self) {
         self.level.hooks.state.family.game_time += 1;
+        // Os tickers dos tanques (o Heat Generator queima) rodam com os block entities.
+        let changed: Vec<BlockPos> = self
+            .level
+            .hooks
+            .state
+            .tanks
+            .iter()
+            .filter(|(_, tank)| tank.burn_tick())
+            .map(|(pos, _)| *pos)
+            .collect();
+        for pos in changed {
+            // `level.setBlockAndUpdate(pos, state com `active`)`: os vizinhos recebem `neighborChanged`.
+            self.level.update_neighbors_at(pos);
+        }
         self.level.tick_level();
     }
 

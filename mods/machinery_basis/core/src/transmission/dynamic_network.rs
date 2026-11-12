@@ -292,7 +292,8 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
             self.network_mut(network).positioned.remove(key);
         }
         host.network_event(&*self, network, NetworkEvent::InvalidRemoved(trigger));
-        // Agora os transmissores que sobraram.
+        // Agora os transmissores que sobraram, numa transação raiz só (`try (Transaction transaction = Transaction.openRoot())`).
+        host.begin_take_shares();
         for transmitter in self.network(network).transmitters() {
             if host.is_valid(transmitter) {
                 host.take_share(transmitter);
@@ -303,6 +304,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
                 self.register_orphan_transmitter(&*host, transmitter);
             }
         }
+        host.end_take_shares();
         self.deregister_network(host, network);
     }
 

@@ -589,6 +589,12 @@ impl<H: ChunkHooks> SimLevel<H> {
         }
     }
 
+    /// Os ganchos (mutáveis) e o nível (só leitura) ao mesmo tempo, para o que um teste faz de fora com o que um gancho receberia: o dono dos
+    /// block entities pede ao registro e aos vizinhos com o `LevelView` na mão.
+    pub fn with_hooks<R>(&mut self, f: impl FnOnce(&mut H, &LevelView<H::BlockEntity>) -> R) -> R {
+        f(&mut self.hooks, &self.view)
+    }
+
     pub fn view(&self) -> &LevelView<H::BlockEntity> {
         &self.view
     }
