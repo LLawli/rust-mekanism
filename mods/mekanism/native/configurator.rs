@@ -117,6 +117,9 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     if mode.transmission().is_some() && glue::is_cable_block(&block) {
         return cable_click(game, pos, face, sneaking);
     }
+    if mode.transmission().is_some() && glue::is_pipe_block(&block) {
+        return pipe_click(game, pos, face, sneaking);
+    }
     if let Some(kind) = mode.transmission() {
         if cube::is_cube(&block) {
             let click = cube::with_cube(game, pos, |cube| {
@@ -193,6 +196,18 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
 fn cable_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
     let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
     let Some((consumed, overlays)) = basis::cable_configure(game, pos, face, hit_side, sneaking) else {
+        return false;
+    };
+    for message in &overlays {
+        overlay(game, &rules::cable_overlay_message(message));
+    }
+    consumed
+}
+
+/// O clique de um modo de configurar num cano mecânico (a mesma capability `IConfigurable` do transmissor).
+fn pipe_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
+    let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
+    let Some((consumed, overlays)) = crate::game::machinery_pipes::pipe_configure(game, pos, face, hit_side, sneaking) else {
         return false;
     };
     for message in &overlays {

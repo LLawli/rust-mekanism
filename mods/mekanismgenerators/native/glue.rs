@@ -236,7 +236,54 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_generator(block) {
         *ticks = true;
+        // O `lavaTank` é uma capability de fluido que os canos mecânicos alcançam (`TileEntityHeatGenerator.java:98-103`).
+        crate::game::machinery_pipes::fluid_neighbor_register(rules::HEAT_GENERATOR, lava_tank_probe, lava_tank_write);
     }
+}
+
+/// O `lavaTank` como a rede de fluido o vê: só lava (`fluidStack.is(FluidTags.LAVA)`), entra de fora e ninguém de fora o esvazia (`VariableCapacityFluidTank.input`).
+/// `None` com o tile fora do mundo (está no tick).
+fn lava_tank_probe(
+    game: &Game<'_>,
+    _dimension: &'static str,
+    pos: [i32; 3],
+) -> Option<machinery_basis_core::transmission::host_resource::ResourceSnapshot<machinery_basis_core::fluid::FluidResource>> {
+    use machinery_basis_core::fluid::FluidResource;
+    use machinery_basis_core::resource_tank::StackContents;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    if !is_generator(&entity.id) {
+        return None;
+    }
+    let capacity = lava_tank();
+    let tanks = basis::load_tanks(entity, &capacity);
+    let tank = &tanks[0];
+    Some(machinery_basis_core::transmission::host_resource::ResourceSnapshot {
+        contents: StackContents::new(tank.resource().map(FluidResource::new), tank.amount()),
+        capacity: capacity[0],
+        accepts: Rc::new(|fluid: &FluidResource| &*fluid.id == rules::LAVA),
+        can_insert: true,
+        can_extract: false,
+        creative: false,
+    })
+}
+
+/// O que a rede mudou no `lavaTank`.
+fn lava_tank_write(
+    game: &mut Game<'_>,
+    _dimension: &'static str,
+    pos: [i32; 3],
+    contents: machinery_basis_core::resource_tank::StackContents<machinery_basis_core::fluid::FluidResource>,
+) {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let capacity = lava_tank();
+    let mut tanks = basis::load_tanks(entity, &capacity);
+    tanks[0] = Tank::restored(contents.resource.map(|fluid| fluid.id.to_string()), contents.amount, capacity[0]);
+    basis::save_tanks(entity, &tanks);
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
 }
 
 pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>) {
@@ -704,6 +751,9 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         return;
     }
     basis::name_apply_pending(entity, pos);
+    // A capability de fluido do `lavaTank`: todo lado menos a frente (`RelativeSide.LEFT, RIGHT, BACK, TOP, BOTTOM`).
+    let front = basis::front(game, pos);
+    crate::game::machinery_pipes::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));
     basis::energy_apply_pending(entity, pos, heat_config().energy_capacity);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);

@@ -3443,7 +3443,7 @@ struct GameWorld<'a, 'g> {
     dimension: &'static str,
 }
 
-fn nbt_to_cable(nbt: &Compound) -> CableNbt {
+pub(in crate::game) fn nbt_to_cable(nbt: &Compound) -> CableNbt {
     let mut out = CableNbt::new();
     for (key, tag) in nbt.iter() {
         let Ok(key) = key.to_string() else {
@@ -3462,7 +3462,7 @@ fn nbt_to_cable(nbt: &Compound) -> CableNbt {
     out
 }
 
-fn cable_to_nbt(tag: &CableNbt, nbt: &mut Compound) {
+pub(in crate::game) fn cable_to_nbt(tag: &CableNbt, nbt: &mut Compound) {
     for (key, value) in tag.iter().filter(|(key, _)| key.as_str() != ENERGY_KEY) {
         let converted = match value {
             CableTag::Byte(v) => Tag::Byte(*v),

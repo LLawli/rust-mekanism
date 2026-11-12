@@ -229,6 +229,30 @@ fn the_cables_follow_the_order_of_the_tiers() {
     );
 }
 
+#[test]
+fn the_pipes_follow_the_order_of_the_tiers_and_the_file_changes_capacity_and_rate() {
+    use machinery_basis_core::transmission::mechanical_pipe::PipeTier;
+    use mekanism_rules::{MECHANICAL_PIPES, pipe_capacities, pipe_rates, pipe_tier};
+    assert_eq!(pipe_tier("mekanism:basic_mechanical_pipe"), Some(0));
+    assert_eq!(pipe_tier("mekanism:ultimate_mechanical_pipe"), Some(3));
+    assert_eq!(pipe_tier("mekanism:basic_universal_cable"), None);
+    assert_eq!(MECHANICAL_PIPES.len(), PipeTier::ALL.len());
+    // Os padrões do arquivo são os de `PipeTier.getBaseCapacity` e `getBaseTransferRate`, os que a lib já tinha.
+    let defaults = TIERS_CONFIG.defaults();
+    assert_eq!(
+        pipe_capacities(&defaults).to_vec(),
+        PipeTier::ALL.map(PipeTier::capacity).to_vec()
+    );
+    assert_eq!(
+        pipe_rates(&defaults).to_vec(),
+        PipeTier::ALL.map(PipeTier::transfer_rate).to_vec()
+    );
+    let loaded = TIERS_CONFIG
+        .load("[transmitters.fluid]\n\tadvancedCapacity = 50000\n\telitePullAmount = 12000\n\tbasicPullAmount = 0\n");
+    assert_eq!(pipe_capacities(&loaded), [2_000, 50_000, 32_000, 128_000]);
+    assert_eq!(pipe_rates(&loaded), [1, 1_000, 12_000, 32_000]);
+}
+
 // ---- O efeito de cada chave ----
 
 fn machine_with(usage: i32) -> ProgressMachine {

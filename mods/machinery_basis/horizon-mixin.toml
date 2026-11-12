@@ -19,6 +19,13 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_basis"
 source = "glue.rs"
 
+# Os canos mecânicos no jogo (frente `cano-jogo`): o dono dos transmissores de recurso, o espelho dos tanques vizinhos e o NBT do cano. Código nosso no `Game`, como a cola dos cabos.
+[[module]]
+id = "pipe-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_pipes"
+source = "pipe_glue.rs"
+
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
 # Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos

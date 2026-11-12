@@ -36,3 +36,24 @@ impl<H: ResourceAcceptor<FluidResource> + ?Sized> FluidFamily<H> {
         self.add_pipe(transmitter, pos, tier.capacity(), tier.transfer_rate());
     }
 }
+
+/// O dono dos canos mecânicos de uma dimensão (`ResourceTransmitters` com o fluido como recurso).
+pub type FluidTransmitters = super::resource_owner::ResourceTransmitters<FluidResource>;
+
+/// A capability de fluido de um vizinho (`ResourceHandler<FluidResource>`).
+pub type FluidHandler = super::resource_owner::Handler<FluidResource>;
+
+/// Um dono de canos novo: a família de fluido (o `disperse` dela é vazio, não registra despejos), os UUID das redes e o `identityHashCode` de cada cano.
+pub fn fluid_transmitters(
+    dimension: super::DimensionId,
+    uuids: impl FnMut() -> super::Uuid + 'static,
+    hashes: impl FnMut(BlockPos) -> i32 + 'static,
+) -> FluidTransmitters {
+    FluidTransmitters::new(
+        dimension,
+        super::connection::TransmissionType::Fluid,
+        FluidFamily::new,
+        uuids,
+        hashes,
+    )
+}

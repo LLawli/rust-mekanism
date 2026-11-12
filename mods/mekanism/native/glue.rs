@@ -278,20 +278,40 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
             Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
         }
     }
-    if (is_machine(block) || is_cable(block)) && entity.is_none() {
+    if (is_machine(block) || is_cable(block) || is_pipe(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
-    if is_machine(block) || is_cable(block) {
+    if is_machine(block) || is_cable(block) || is_pipe(block) {
         *ticks = true;
+    }
+    // Os canos mecânicos: os eventos do jogo vão ao dono dos canos da `machinery_basis`, com a capacidade e a vazão do tier (`tiers.toml`).
+    if is_pipe(block) {
+        crate::game::machinery_pipes::pipes_register(block, pipe_stats_of);
     }
     // Os cabos de energia: os eventos do jogo vão ao dono dos transmissores da `machinery_basis` (a rede), com a capacidade do tier (`tiers.toml`).
     if is_cable(block) {
         basis::cables_register("mekanism", block, cable_capacity_of);
     }
+}
+
+fn is_pipe(block: &str) -> bool {
+    rules::pipe_tier(block).is_some()
+}
+
+pub(in crate::game) fn is_pipe_block(block: &str) -> bool {
+    is_pipe(block)
+}
+
+/// `PipeTier.getCapacity` e `getTransferRate` do bloco: o que o arquivo `tiers.toml` diz.
+fn pipe_stats_of(block: &str) -> Option<(i64, i32)> {
+    rules::pipe_tier(block).map(|tier| {
+        let config = server_config();
+        (config.pipes[tier], config.pipe_rates[tier])
+    })
 }
 
 /// `CableTier.getCableCapacity` do bloco: a capacidade do arquivo `tiers.toml`.
@@ -2110,6 +2130,8 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             let loaded = basis::read_config(config, &rules::TIERS_CONFIG, None);
             let mut server = SERVER_CONFIG.write().unwrap_or_else(|error| error.into_inner());
             server.cables = rules::cable_capacities(&loaded);
+            server.pipes = rules::pipe_capacities(&loaded);
+            server.pipe_rates = rules::pipe_rates(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
             server.cube_rates = rules::cube_rates(&loaded);
             server.cells = rules::cell_capacities(&loaded);

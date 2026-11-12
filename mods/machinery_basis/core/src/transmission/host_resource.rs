@@ -200,7 +200,10 @@ mod tests {
         assert_eq!(handler.insert(&lava(), 250, &transaction), 100);
         assert_eq!(handler.insert(&water(), 250, &transaction), 0);
         transaction.commit();
-        assert_eq!(handler.changed(), Some(StackContents::new(Some(lava()), 1_000)));
+        assert_eq!(
+            handler.changed(),
+            Some(StackContents::new(Some(lava()), 1_000))
+        );
     }
 
     #[test]
@@ -229,7 +232,10 @@ mod tests {
         let transaction = Transaction::open_root();
         assert_eq!(handler.extract(&lava(), 300, &transaction), 300);
         transaction.commit();
-        assert_eq!(handler.changed(), Some(StackContents::new(Some(lava()), 200)));
+        assert_eq!(
+            handler.changed(),
+            Some(StackContents::new(Some(lava()), 200))
+        );
         handler.settle();
         assert_eq!(handler.changed(), None);
     }

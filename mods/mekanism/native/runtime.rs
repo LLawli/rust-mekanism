@@ -727,6 +727,86 @@ pub const TIERS_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `TierConfig.addMechanicalPipeCategory`: a capacidade (`<tier>Capacity`, `1..Long.MAX_VALUE`) e a vazão (`<tier>PullAmount`, `1..Integer.MAX_VALUE`) de cada cano mecânico, com
+        // o texto de `TierTranslations.create(PipeTier)`.
+        ClientSection {
+            name: "transmitters.fluid",
+            comment: "Settings for configuring Mechanical Pipes",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic mechanical pipes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 2_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicPullAmount",
+                    comment: "Pump rate of Basic mechanical pipes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 250,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced mechanical pipes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 8_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedPullAmount",
+                    comment: "Pump rate of Advanced mechanical pipes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 1_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite mechanical pipes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 32_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "elitePullAmount",
+                    comment: "Pump rate of Elite mechanical pipes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 8_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate mechanical pipes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 128_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimatePullAmount",
+                    comment: "Pump rate of Ultimate mechanical pipes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 32_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
     ],
 };
 
@@ -750,11 +830,64 @@ pub fn cable_capacities(loaded: &ClientLoaded) -> [i64; 4] {
 /// Os padrões de `UNIVERSAL_CABLES` como `long`.
 pub const DEFAULT_CABLE_CAPACITIES: [i64; 4] = [8_000, 128_000, 1_024_000, 8_192_000];
 
+/// `PipeTier`: o id de cada cano mecânico, na ordem dos tiers.
+pub const MECHANICAL_PIPES: [&str; 4] = [
+    "mekanism:basic_mechanical_pipe",
+    "mekanism:advanced_mechanical_pipe",
+    "mekanism:elite_mechanical_pipe",
+    "mekanism:ultimate_mechanical_pipe",
+];
+
+/// Qual cano mecânico é o bloco, na ordem de [`MECHANICAL_PIPES`].
+pub fn pipe_tier(block: &str) -> Option<usize> {
+    MECHANICAL_PIPES.iter().position(|id| *id == block)
+}
+
+/// As capacidades dos quatro canos (`PipeTier.getCapacity`: o valor do arquivo, ou o padrão sem ele), na ordem de [`MECHANICAL_PIPES`].
+pub fn pipe_capacities(loaded: &ClientLoaded) -> [i64; 4] {
+    const KEYS: [&str; 4] = [
+        "basicCapacity",
+        "advancedCapacity",
+        "eliteCapacity",
+        "ultimateCapacity",
+    ];
+    let mut out = DEFAULT_PIPE_CAPACITIES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .long(&TIERS_CONFIG, "transmitters.fluid", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// As vazões dos quatro canos (`PipeTier.getTransferRate`: o valor do arquivo, ou o padrão sem ele).
+pub fn pipe_rates(loaded: &ClientLoaded) -> [i32; 4] {
+    const KEYS: [&str; 4] = [
+        "basicPullAmount",
+        "advancedPullAmount",
+        "elitePullAmount",
+        "ultimatePullAmount",
+    ];
+    let mut out = DEFAULT_PIPE_RATES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .int(&TIERS_CONFIG, "transmitters.fluid", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// Os padrões de `PipeTier` (`getBaseCapacity` e `getBaseTransferRate`).
+pub const DEFAULT_PIPE_CAPACITIES: [i64; 4] = [2_000, 8_000, 32_000, 128_000];
+pub const DEFAULT_PIPE_RATES: [i32; 4] = [250, 1_000, 8_000, 32_000];
+
 /// O que os arquivos de servidor dizem às mecânicas portadas do Mekanism, de uma vez.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ServerConfig {
     pub usage: Usage,
     pub cables: [i64; 4],
+    pub pipes: [i64; 4],
+    pub pipe_rates: [i32; 4],
     pub cubes: [i64; 5],
     /// `EnergyCubeTier.getTransferRate`, na mesma ordem.
     pub cube_rates: [i32; 5],
@@ -766,6 +899,8 @@ impl ServerConfig {
     pub const DEFAULT: Self = Self {
         usage: Usage::DEFAULT,
         cables: DEFAULT_CABLE_CAPACITIES,
+        pipes: DEFAULT_PIPE_CAPACITIES,
+        pipe_rates: DEFAULT_PIPE_RATES,
         cubes: DEFAULT_CUBE_CAPACITIES,
         cube_rates: DEFAULT_CUBE_RATES,
         cells: DEFAULT_CELL_CAPACITIES,
