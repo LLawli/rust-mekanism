@@ -272,6 +272,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Changed
 
+- O Configurator em `ROTATE` e o cartão de configuração agem antes de a tela do bloco abrir pelo resultado do clique, como o original (`TileEntityMekanism.openGui` devolve `TRY_WITH_EMPTY_HAND`): uma injeção crua em `Game::use_hand` (o hook `right_click_block` saiu) gira o bloco ou passa a vez ao `useOn` do cartão (`SUCCESS_SERVER`, ou `PASS` sem dados), balança a mão para todo jogador, inclusive o convidado de LAN, e dispara `ITEM_USED_ON_BLOCK`; uma segunda, no cliente do convidado (`predict_item_on_block`), prevê o `useOn` do cartão, e o descarte do `use` duplicado (`card_just_used`) saiu. Agachado de mãos vazias a tela das máquinas e do cubo de energia não abre (`openGui` passa), e o menu do cubo não balança a mão nem marca `use_failed`. `mekanism_rules::tile_use` está conferida contra os rastros `configurator_click_*.jsonl` e `configurator_card.jsonl` (decisões 47 e 68, H72).
 - Os comandos `mekanism_eject` e `mekanism_eject_face` saem: o ejetor liga e escolhe os lados pelo NBT `component_config` do tile (por exemplo
   `/data merge block x y z {component_config:{eject3:1b,config3:[I;0,0,4,0,0,0]}}`, a direita em `OUTPUT`), que é o que o original grava. `FaceSlots` e `Sides` deixam de ser declarados à mão por bloco: saem do `DataType` de cada lado.
 - A mensagem de receita incompleta (decisão 13) vale como no original: com o conteúdo de craft e de recurso completo, as 40 receitas que só faltavam por conteúdo (`CONTENT_GAPS`) viraram 0 e a
