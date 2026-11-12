@@ -33,6 +33,11 @@ Este projeto é um port do Mekanism e do Mekanism Generators: o comportamento te
 - O estado de cada fase (aberta, em andamento, fechada, com a data) fica no começo dela. Uma fase só fecha quando tudo dela cumpre "Pronto significa".
 - Decisões do usuário sobre o plano entram em "Decisões", com a data e o motivo.
 - Antes de integrar uma frente, releia as linhas do inventário que ela toca e confira cada uma contra o código.
+- Ao integrar cada frente, quem integra relê o estado no começo da fase dela (o "Feito" e o "falta") e o corrige no mesmo passo: o
+  estado da fase é o que mais fica velho, porque cada frente atualiza a sua linha do inventário e esquece o cabeçalho. Vale também para
+  as decisões que a frente reabre ou fecha e para a lista "Esperando decisão do usuário" da fase.
+- Pedido do usuário ou resposta dele que muda o plano (uma decisão, uma regra de jogo, uma fase fechada) entra no plano na hora, não no
+  fim da frente.
 
 ## Testes
 
