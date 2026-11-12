@@ -147,6 +147,40 @@ impl TransitResponse {
         self.sending_amount
     }
 
+    /// `itemType()`: o item da resposta, ou nada se é a vazia.
+    pub fn item_type(&self) -> Option<&ItemResource> {
+        self.resource.as_ref()
+    }
+
+    /// `slotData().getTotalCount()`.
+    pub fn slot_total(&self) -> u32 {
+        self.slot_data.as_ref().map_or(0, |data| data.borrow().total)
+    }
+
+    /// `getRejected()`: o que o pedido tinha daquele item e o destino não aceitou.
+    pub fn rejected(&self) -> u32 {
+        if self.is_empty() {
+            0
+        } else {
+            self.slot_total() - self.sending_amount
+        }
+    }
+
+    /// `TransitResponse.equals` (o `equals` do `record`): o mesmo item, a mesma quantidade e um `ItemData` igual (o `ItemData.equals`
+    /// compara a quantidade total e o item).
+    pub fn same_as(&self, other: &TransitResponse) -> bool {
+        self.resource == other.resource
+            && self.sending_amount == other.sending_amount
+            && match (&self.slot_data, &other.slot_data) {
+                (Some(a), Some(b)) => {
+                    let (a, b) = (a.borrow(), b.borrow());
+                    a.total == b.total && a.resource == b.resource
+                }
+                (None, None) => true,
+                _ => false,
+            }
+    }
+
     pub fn use_items(&self, amount: u32, transaction: &Transaction) -> u32 {
         match &self.slot_data {
             Some(data) if !self.is_empty() => use_items(data, amount, transaction),
@@ -157,6 +191,68 @@ impl TransitResponse {
     pub fn use_all(&self, transaction: &Transaction) -> bool {
         !self.is_empty() && self.use_items(self.sending_amount, transaction) == self.sending_amount
     }
+}
+
+/// `TransitRequest`: o que se quer mandar. `Simple` é o `SimpleTransitRequest` (um item e uma quantidade, sem inventário de onde sair), e
+/// `Handler` o `HandlerTransitRequest`.
+pub enum TransitRequest {
+    Simple(ItemDataRef),
+    Handler(HandlerTransitRequest),
+}
+
+impl TransitRequest {
+    /// `TransitRequest.simple(itemType, amount)`: a quantidade tem de ser positiva.
+    pub fn simple(resource: &ItemResource, amount: u32) -> Self {
+        assert!(amount > 0, "Amount must be positive");
+        let data = JournalCell::new(ItemData {
+            resource: resource.clone(),
+            total: amount,
+            slots: Vec::new(),
+            request: Weak::new(),
+            me: Weak::new(),
+        });
+        data.borrow_mut().me = Rc::downgrade(&data);
+        TransitRequest::Simple(data)
+    }
+
+    /// Os `ItemData` do pedido, na ordem (`iterator()`).
+    pub fn item_data(&self) -> Vec<ItemDataRef> {
+        match self {
+            TransitRequest::Simple(data) => vec![data.clone()],
+            TransitRequest::Handler(request) => request.shared.items.borrow().clone(),
+        }
+    }
+
+    /// `isEmpty()`.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            TransitRequest::Simple(_) => false,
+            TransitRequest::Handler(request) => request.is_empty(),
+        }
+    }
+
+    /// `createResponse(itemType, inserted, data)`.
+    pub fn create_response(
+        &self,
+        resource: &ItemResource,
+        inserted: u32,
+        data: &ItemDataRef,
+    ) -> TransitResponse {
+        if inserted == 0 {
+            return TransitResponse::EMPTY;
+        }
+        TransitResponse {
+            resource: Some(resource.clone()),
+            sending_amount: inserted,
+            slot_data: Some(data.clone()),
+        }
+    }
+}
+
+/// `ItemData.getItemType()` e `getTotalCount()`, de um `ItemData` do pedido.
+pub fn item_data_info(data: &ItemDataRef) -> (ItemResource, u32) {
+    let state = data.borrow();
+    (state.resource.clone(), state.total)
 }
 
 /// `HandlerTransitRequest` (e `EjectTransitRequest`, que só deixa trocar o handler).

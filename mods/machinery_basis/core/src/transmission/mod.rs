@@ -28,6 +28,7 @@ pub mod buffered_network;
 pub mod buffered_transmitter;
 pub mod connection;
 pub mod dynamic_network;
+pub mod inventory_network;
 pub mod energy_container;
 pub mod energy_network;
 pub mod heat_network;

@@ -646,16 +646,16 @@ public class TransporterPathTraceTest {
                 int[] start = {1, 0, 0};
                 rec.query("red, through the red transporter", start, EnumColor.RED, STONE, 10, 0, home, false, null);
                 rec.query("no color, the red one is avoided (the cache is stale)", start, null, STONE, 10, 0, home, false, null);
-                rec.query("blue, the red one is avoided", start, EnumColor.BLUE, STONE, 10, 0, home, false, null);
+                rec.query("blue, the red one is avoided", start, EnumColor.DARK_BLUE, STONE, 10, 0, home, false, null);
                 rec.query("no color again, from the cache", start, null, STONE, 10, 0, home, false, null);
-                rec.setColor(3, 0, 0, EnumColor.BLUE);
-                rec.setColor(3, 0, 1, EnumColor.BLUE);
+                rec.setColor(3, 0, 0, EnumColor.DARK_BLUE);
+                rec.setColor(3, 0, 1, EnumColor.DARK_BLUE);
                 rec.query("no color, blue ones in the way", start, null, STONE, 10, 0, home, false, null);
                 rec.query("red, a blue one in the way", start, EnumColor.RED, STONE, 10, 0, home, false, null);
-                rec.query("blue, the red one is in the way", start, EnumColor.BLUE, STONE, 10, 0, home, false, null);
+                rec.query("blue, the red one is in the way", start, EnumColor.DARK_BLUE, STONE, 10, 0, home, false, null);
                 rec.setColor(2, 0, 0, null);
-                rec.query("blue, the red one is gone", start, EnumColor.BLUE, STONE, 10, 0, home, false, null);
-                rec.idle("idle, colored stack, home is reachable", new int[]{2, 0, 1}, EnumColor.BLUE, STONE, 10, home, null, 0, new int[]{1, 0, 0}, null);
+                rec.query("blue, the red one is gone", start, EnumColor.DARK_BLUE, STONE, 10, 0, home, false, null);
+                rec.idle("idle, colored stack, home is reachable", new int[]{2, 0, 1}, EnumColor.DARK_BLUE, STONE, 10, home, null, 0, new int[]{1, 0, 0}, null);
             });
         }).thenSucceed());
     }

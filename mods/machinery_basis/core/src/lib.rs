@@ -69,6 +69,7 @@ pub mod tooltip;
 pub mod transaction;
 pub mod transit;
 pub mod transmission;
+pub mod transporter;
 pub mod two_input_recipe;
 pub mod units;
 pub mod upgrade;
