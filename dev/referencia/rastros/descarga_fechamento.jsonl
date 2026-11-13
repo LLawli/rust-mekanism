@@ -1,0 +1,43 @@
+{"e": "saindo", "rotulo": "a1_sai"}
+{"e": "stopping", "rotulo": "a1_sai", "registro": {"n": 5, "networksToChange": 0, "invalid": 0}}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 0, "z": 0, "n": 1, "invalid": 0, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": -1, "z": 1, "n": 137, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 1, "z": 1, "n": 249, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 1, "z": 0, "n": 544, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": -1, "z": -1, "n": 545, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 0, "z": 1, "n": 610, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 0, "z": -1, "n": 611, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": -1, "z": 0, "n": 770, "invalid": 28, "networksToChange": 5}
+{"e": "unload_perto", "rotulo": "a1_sai", "dim": "minecraft:overworld", "x": 1, "z": -1, "n": 771, "invalid": 28, "networksToChange": 5}
+{"e": "level_unload", "rotulo": "a1_sai", "nivel": "minecraft:overworld", "chunks_descarregados": 1277, "registro": {"n": 5, "networksToChange": 5, "invalid": 28}}
+{"e": "level_unload", "rotulo": "a1_sai", "nivel": "minecraft:the_nether", "chunks_descarregados": 1277, "registro": {"n": 5, "networksToChange": 5, "invalid": 28}}
+{"e": "level_unload", "rotulo": "a1_sai", "nivel": "minecraft:the_end", "chunks_descarregados": 1277, "registro": {"n": 5, "networksToChange": 5, "invalid": 28}}
+{"e": "stopped_antes", "rotulo": "a1_sai", "chunks_descarregados": 1277, "registro": {"n": 5, "networksToChange": 5, "invalid": 28}}
+{"e": "stopped_depois", "rotulo": "a1_sai", "registro": {"n": 0, "networksToChange": 0, "invalid": 0}}
+{"e": "saindo", "rotulo": "a4_sai"}
+{"e": "stopping", "rotulo": "a4_sai", "registro": {"n": 6, "networksToChange": 0, "invalid": 0}}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 0, "z": 0, "n": 1, "invalid": 0, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 0, "z": -1, "n": 6, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 0, "z": 1, "n": 7, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 1, "z": 1, "n": 12, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": -1, "z": 1, "n": 41, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 1, "z": 0, "n": 50, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": -1, "z": -1, "n": 51, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": 1, "z": -1, "n": 58, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:the_nether", "x": -1, "z": 0, "n": 59, "invalid": 3, "networksToChange": 1}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 0, "z": 0, "n": 61, "invalid": 3, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": -1, "z": 1, "n": 272, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 1, "z": 1, "n": 478, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 1, "z": 0, "n": 1014, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": -1, "z": -1, "n": 1016, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 0, "z": 1, "n": 1123, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 0, "z": -1, "n": 1124, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": -1, "z": 0, "n": 1396, "invalid": 32, "networksToChange": 6}
+{"e": "unload_perto", "rotulo": "a4_sai", "dim": "minecraft:overworld", "x": 1, "z": -1, "n": 1397, "invalid": 32, "networksToChange": 6}
+{"e": "level_unload", "rotulo": "a4_sai", "nivel": "minecraft:overworld", "chunks_descarregados": 1429, "registro": {"n": 6, "networksToChange": 6, "invalid": 32}}
+{"e": "level_unload", "rotulo": "a4_sai", "nivel": "minecraft:the_nether", "chunks_descarregados": 1429, "registro": {"n": 6, "networksToChange": 6, "invalid": 32}}
+{"e": "level_unload", "rotulo": "a4_sai", "nivel": "minecraft:the_end", "chunks_descarregados": 1429, "registro": {"n": 6, "networksToChange": 6, "invalid": 32}}
+{"e": "stopped_antes", "rotulo": "a4_sai", "chunks_descarregados": 1429, "registro": {"n": 6, "networksToChange": 6, "invalid": 32}}
+{"e": "stopped_depois", "rotulo": "a4_sai", "registro": {"n": 0, "networksToChange": 0, "invalid": 0}}
+{"e": "fechamento", "rotulo": "a1_sai", "descarregados": {"minecraft:overworld": 1277}}
+{"e": "fechamento", "rotulo": "a4_sai", "descarregados": {"minecraft:the_nether": 60, "minecraft:overworld": 1369}}

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -251,6 +252,7 @@ public class CenaReset {
     @SubscribeEvent
     public static void onStarted(ServerStartedEvent event) {
         if (Files.exists(ATIVA)) {
+            fechando = false;
             primeiros = 0;
             escreve("{\"e\":\"started\",\"registro\":" + registro() + "}");
         }
@@ -261,6 +263,30 @@ public class CenaReset {
         if (primeiros >= 0 && primeiros < 14 && Files.exists(ATIVA)) {
             primeiros++;
             escreve("{\"e\":\"tick\",\"k\":" + primeiros + ",\"gt\":" + event.getServer().overworld().getGameTime() + ",\"registro\":" + registro() + "}");
+        }
+        if (obs > 0 && Files.exists(ATIVA)) {
+            obs--;
+            obsK++;
+            MinecraftServer server = event.getServer();
+            StringBuilder carregados = new StringBuilder("{");
+            boolean first = true;
+            for (ServerLevel level : server.getAllLevels()) {
+                carregados.append(first ? "" : ",").append(q(String.valueOf(level.dimension().identifier()))).append(':').append(level.getChunkSource().getLoadedChunksCount());
+                first = false;
+            }
+            carregados.append('}');
+            StringBuilder desc = new StringBuilder("{");
+            first = true;
+            for (Map.Entry<String, Integer> entry : descPorDimensao.entrySet()) {
+                desc.append(first ? "" : ",").append(q(entry.getKey())).append(':').append(entry.getValue());
+                first = false;
+            }
+            desc.append('}');
+            escreve("{\"e\":\"obs\",\"tag\":" + q(obsTag) + ",\"k\":" + obsK + ",\"gt\":" + server.overworld().getGameTime() + ",\"ms\":" + System.currentTimeMillis()
+                  + ",\"descarregados\":" + desc + ",\"carregados\":" + carregados + ",\"perto\":[" + obsPerto + "],\"redes\":" + tamanho("networks")
+                  + ",\"invalid\":" + tamanho("invalidTransmitters") + ",\"networksToChange\":" + tamanho("networksToChange") + ",\"transito\":" + transito() + "}");
+            descPorDimensao.clear();
+            obsPerto.setLength(0);
         }
     }
 
@@ -273,11 +299,46 @@ public class CenaReset {
         escreve("{\"e\":\"stopping\",\"rotulo\":" + q(rotulo) + ",\"registro\":" + registro() + ",\"transito\":" + transito() + "}");
     }
 
+    /// A janela de observação tick a tick (descarte da dimensão que o jogador deixa): quantos ticks faltam, o rótulo, e o que descarregou desde a última linha.
+    private static int obs;
+    private static int obsK;
+    private static String obsTag = "";
+    private static final Map<String, Integer> descPorDimensao = new LinkedHashMap<>();
+    private static final StringBuilder obsPerto = new StringBuilder();
+    /// Verdadeiro do `sai` até o próximo mundo abrir: cada descarga de chunk perto da origem escreve uma linha (a ordem e o `invalid` na hora).
+    private static boolean fechando;
+
+    private static int tamanho(String campoNome) {
+        try {
+            return ((Set<?>) campo(TransmitterNetworkRegistry.class, campoNome, null)).size();
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return -1;
+        }
+    }
+
     @SubscribeEvent
     public static void onChunkUnload(ChunkEvent.Unload event) {
         if (Files.exists(ATIVA) && !event.getLevel().isClientSide()) {
             descargas++;
+            String dim = String.valueOf(((Level) event.getLevel()).dimension().identifier());
+            descPorDimensao.merge(dim, 1, Integer::sum);
+            int x = event.getChunk().getPos().x();
+            int z = event.getChunk().getPos().z();
+            if (Math.abs(x) <= 1 && Math.abs(z) <= 1) {
+                if (obs > 0) {
+                    obsPerto.append(obsPerto.length() == 0 ? "" : ",").append("{\"dim\":").append(q(dim)).append(",\"x\":").append(x).append(",\"z\":").append(z)
+                          .append(",\"invalid\":").append(tamanho("invalidTransmitters")).append('}');
+                }
+                if (fechando) {
+                    escreve("{\"e\":\"unload_perto\",\"rotulo\":" + q(rotulo) + ",\"dim\":" + q(dim) + ",\"x\":" + x + ",\"z\":" + z + ",\"n\":" + descargas
+                          + ",\"invalid\":" + tamanho("invalidTransmitters") + ",\"networksToChange\":" + tamanho("networksToChange") + "}");
+                }
+            }
         }
+    }
+
+    private static void marca(String nome, MinecraftServer server) {
+        escreve("{\"e\":\"marca\",\"nome\":" + q(nome) + ",\"gt\":" + server.overworld().getGameTime() + ",\"ms\":" + System.currentTimeMillis() + "}");
     }
 
     @SubscribeEvent
@@ -384,6 +445,7 @@ public class CenaReset {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.level != null) {
                 rotulo = nome;
+                fechando = true;
                 escreve("{\"e\":\"saindo\",\"rotulo\":" + q(nome) + "}");
                 // O que o `PauseScreen` faz no botão de sair do mundo local.
                 minecraft.level.disconnect(Component.translatable("menu.disconnect"));
@@ -570,11 +632,19 @@ public class CenaReset {
         passos.add(zera());
         passos.add(depoisDeEntrar(20));
         passos.add(snapPasso("a4_nether_cabo"));
-        passos.add(faz(() -> servidorFaz(server -> run(server, "execute in minecraft:the_nether run tp @a 0.5 100 0.5"))));
+        passos.add(faz(() -> { obsTag = "no_nether"; obsK = 0; obs = 80; }));
+        passos.add(faz(() -> servidorFaz(server -> {
+            run(server, "execute in minecraft:the_nether run tp @a 0.5 100 0.5");
+            marca("tp_nether", server);
+        })));
         passos.add(zera());
         passos.add(depoisDeEntrar(60));
         passos.add(snapPasso("a4_no_nether"));
-        passos.add(faz(() -> servidorFaz(server -> run(server, "execute in minecraft:overworld run tp @a 2.5 -60 -6"))));
+        passos.add(faz(() -> { obsTag = "de_volta"; obsK = 0; obs = 80; }));
+        passos.add(faz(() -> servidorFaz(server -> {
+            run(server, "execute in minecraft:overworld run tp @a 2.5 -60 -6");
+            marca("tp_overworld", server);
+        })));
         passos.add(zera());
         passos.add(depoisDeEntrar(60));
         passos.add(snapPasso("a4_de_volta"));
