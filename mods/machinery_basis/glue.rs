@@ -3138,10 +3138,6 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
 /// nessa ordem, e contar só os de mod erra quando o chunk tem um baú ou um funil (medido em `transmitter_events_chunks_mixed.jsonl`, decisão 187).
 static BLOCK_ENTITY_ORDER: LazyLock<Mutex<machinery_basis_core::sim::block_entity_order::BlockEntityOrder>> = LazyLock::new(Default::default);
 
-fn sim_pos(pos: [i32; 3]) -> machinery_basis_core::sim::chunks::BlockPos {
-    machinery_basis_core::sim::chunks::BlockPos::new(pos[0], pos[1], pos[2])
-}
-
 /// O que a fila anotou (na ordem) entra no mapa de cada chunk: `put` quando o block entity entra, `remove` quando sai, um mapa novo quando o chunk carrega.
 fn transmitters_note_order(dimension: &str, raws: &[transmitters::Raw]) {
     let mut order = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner());
