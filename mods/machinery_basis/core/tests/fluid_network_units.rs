@@ -299,7 +299,7 @@ fn a_manual_merge_tells_the_clients_the_new_scale_even_when_no_fluid_moved() {
     assert_eq!(push(&mut world, 0, "minecraft:water", 1_000), 1_000);
     tick(&mut world, 60);
     world.family();
-    let before = world.family_mut().take_transfer_events();
+    let before = world.take_transfer_events();
     drop(before);
     world.set_mode(2, Face::East, ConnectionType::Normal);
     world.set_mode(3, Face::West, ConnectionType::Normal);
@@ -309,7 +309,7 @@ fn a_manual_merge_tells_the_clients_the_new_scale_even_when_no_fluid_moved() {
         network_of(&world, 5),
         "as redes se juntaram"
     );
-    let events = world.family_mut().take_transfer_events();
+    let events = world.take_transfer_events();
     assert!(
         !events.is_empty(),
         "a escala da rede fundida mudou e o cliente precisa saber"

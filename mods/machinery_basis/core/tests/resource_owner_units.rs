@@ -444,9 +444,18 @@ fn the_alloy_raises_the_pipes_one_tier_keeps_the_fluid_and_remakes_the_network()
     let mut run = sim.owner.alloy_start(pos, 1, &|_| Some(0)).unwrap();
     assert_eq!(run.targets.len(), 5);
     assert_eq!(run.targets[0], pos, "o clicado primeiro");
-    assert!(sim.owner.alloy_start(pos, 1, &|_| Some(1)).unwrap().targets.is_empty());
+    assert!(
+        sim.owner
+            .alloy_start(pos, 1, &|_| Some(1))
+            .unwrap()
+            .targets
+            .is_empty()
+    );
     for target in run.targets.clone() {
-        let data = sim.owner.alloy_take(&mut sim.level, &mut run, target).unwrap();
+        let data = sim
+            .owner
+            .alloy_take(&mut sim.level, &mut run, target)
+            .unwrap();
         // O bloco muda: o cano velho sai e o novo entra no mesmo lugar.
         sim.send(Event::Removed(target));
         sim.send(Event::ClearRemoved(target));
@@ -460,7 +469,15 @@ fn the_alloy_raises_the_pipes_one_tier_keeps_the_fluid_and_remakes_the_network()
     }
     let network = sim.owner.network_of(Sim::pos(0)).unwrap();
     for x in 1..5 {
-        assert_eq!(sim.owner.network_of(Sim::pos(x)), Some(network), "uma rede só");
+        assert_eq!(
+            sim.owner.network_of(Sim::pos(x)),
+            Some(network),
+            "uma rede só"
+        );
     }
-    assert_eq!(sim.network_amount(0), 4_000, "o fluido da rede velha não se perde");
+    assert_eq!(
+        sim.network_amount(0),
+        4_000,
+        "o fluido da rede velha não se perde"
+    );
 }

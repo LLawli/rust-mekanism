@@ -364,9 +364,15 @@ impl ClientTransmitters {
             UpdateTagNetwork::Unchanged => {}
             UpdateTagNetwork::Detached => {}
             UpdateTagNetwork::Attach(id) => {
-                if !self.networks.contains_key(&id) {
+                let created = match self.networks.entry(id) {
+                    std::collections::hash_map::Entry::Vacant(slot) => {
+                        slot.insert(ClientNetwork::new(id, kind));
+                        true
+                    }
+                    std::collections::hash_map::Entry::Occupied(_) => false,
+                };
+                if created {
                     // `createEmptyNetworkWithID`, `register`, `setTransmitterNetwork` e `handleContentsUpdateTag`.
-                    self.networks.insert(id, ClientNetwork::new(id, kind));
                     tile.transmitter
                         .set_transmitter_network(Some(id), true, &mut effects);
                     self.apply_effects(pos, generation, kind, &effects);
@@ -466,7 +472,13 @@ impl ClientTransmitters {
     }
 
     /// Os `ClientNetworkRemove`/`ClientNetworkAdd` de `setTransmitterNetwork`.
-    fn apply_effects(&mut self, pos: BlockPos, generation: u64, _kind: ClientKind, effects: &[Effect]) {
+    fn apply_effects(
+        &mut self,
+        pos: BlockPos,
+        generation: u64,
+        _kind: ClientKind,
+        effects: &[Effect],
+    ) {
         for effect in effects {
             match effect {
                 Effect::ClientNetworkRemove(old) => self.remove_transmitter(*old, pos, generation),
@@ -801,7 +813,9 @@ impl ClientTransmitters {
             }
             Op::Gone { pos, .. } => self.remove_tile(*pos),
             Op::Scale(packet) => self.on_scale_packet(packet),
-            Op::Contents { network, resource } => self.on_contents_packet(*network, resource.clone()),
+            Op::Contents { network, resource } => {
+                self.on_contents_packet(*network, resource.clone())
+            }
         }
     }
 }

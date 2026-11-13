@@ -721,7 +721,6 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
             .collect();
         let transfers: Vec<(i64, f32, String)> = replay
             .world
-            .family_mut()
             .take_transfer_events()
             .into_iter()
             .map(|event| {

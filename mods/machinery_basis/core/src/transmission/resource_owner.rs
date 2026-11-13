@@ -12,12 +12,12 @@
 //! - `DynamicNetwork.invalidate` abre uma transação raiz só em volta dos `takeShare` (`begin_take_shares` e `end_take_shares`);
 //! - a capability é o contêiner da rede (`getContainer()`), e o buffer do cano, `notExternal`, recusa quem vem de fora sem rede;
 //! - o NBT leva o `Transmitter` e o `saveShare` (`stored`), depois de validar as shares da rede.
+use super::alloy::{AlloyRun, ResourceUpgrade, can_upgrade, order_by_distance};
 use super::buffered_resource_network::{ResourceAcceptor, ResourceFamily};
+use super::buffered_resource_transmitter::ResourceTransmitterUpgradeData;
 use super::buffered_transmitter::{
     merge_networks_manually, recheck_connections_sides, requests_update,
 };
-use super::alloy::{AlloyRun, ResourceUpgrade, can_upgrade, order_by_distance};
-use super::buffered_resource_transmitter::ResourceTransmitterUpgradeData;
 use super::client::{Outgoing, ScaleOutbox};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
@@ -150,6 +150,8 @@ struct State<R: Resource> {
     manual_merge: bool,
     record: bool,
     events: Vec<TraceEvent>,
+    /// Os `TransferEvent` que o `onUpdate` viu, com o registro ligado (para os testes: o dono manda os pacotes e esvazia a lista da família).
+    transfer_log: Vec<super::buffered_resource_network::TransferEvent<R>>,
     /// O `packetRange` de cada rede e os `PacketNetworkScale` (e o conteúdo do evento) que o `onUpdate` mandou.
     outbox: ScaleOutbox<Option<R>>,
 }
@@ -176,6 +178,7 @@ impl<R: Resource> State<R> {
             manual_merge: false,
             record: false,
             events: Vec::new(),
+            transfer_log: Vec::new(),
             outbox: ScaleOutbox::new(dimension),
         }
     }
@@ -642,6 +645,9 @@ impl<R: Resource, W: ResourceOwnerWorld<R>> TransmitterHost<Handler<R>> for Ctx<
         self.st.family.on_update(registry, network);
         // `Mekanism.onLiquidTransferred` e `onChemicalTransferred`: o `PacketNetworkScale` e o do conteúdo saem juntos (um `ClientboundBundlePacket`).
         for event in self.st.family.take_transfer_events() {
+            if self.st.record {
+                self.st.transfer_log.push(event.clone());
+            }
             let uuid = self.st.uuid_value(event.network);
             let positions: Vec<BlockPos> = registry
                 .network(event.network)
@@ -726,6 +732,13 @@ impl<R: Resource> ResourceTransmitters<R> {
     /// Liga ou desliga o registro dos eventos da rede ([`TraceEvent`]), para os testes.
     pub fn record_events(&mut self, on: bool) {
         self.st.record = on;
+    }
+
+    /// Os `TransferEvent` desde a última chamada, com o registro ligado ([`Self::record_events`]).
+    pub fn take_transfer_events(
+        &mut self,
+    ) -> Vec<super::buffered_resource_network::TransferEvent<R>> {
+        std::mem::take(&mut self.st.transfer_log)
     }
 
     pub fn take_events(&mut self) -> Vec<TraceEvent> {
@@ -1070,7 +1083,10 @@ impl<R: Resource> ResourceTransmitters<R> {
             run.shares_set = true;
         }
         let network = self.st.slots[id.0 as usize].net();
-        self.st.slots[id.0 as usize].tx.as_mut()?.set_upgrading(true);
+        self.st.slots[id.0 as usize]
+            .tx
+            .as_mut()?
+            .set_upgrading(true);
         self.st.family.take_share(id, network, None);
         {
             let mut ctx = Ctx {
@@ -1125,7 +1141,8 @@ impl<R: Resource> ResourceTransmitters<R> {
             st: &mut self.st,
             world,
         };
-        self.registry.invalidate_network(&mut ctx, run.network, None);
+        self.registry
+            .invalidate_network(&mut ctx, run.network, None);
         self.flush_deferred(world);
     }
 

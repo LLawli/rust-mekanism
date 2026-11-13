@@ -294,14 +294,41 @@ fn a_cable_swapped_for_another_tier_stays_followed() {
     // O upgrade pela liga troca o bloco do cabo por outro tipo de block entity: o novo continua seguido (recebe o `Update`), como o cabo novo do original.
     let mut tracker = Tracker::with_ids(&["basic", "advanced"]);
     let mut out = Vec::new();
-    tracker.apply(OW, Raw::Added { pos: [4, 1, 1], id: Some("basic".to_owned()) }, &mut out);
+    tracker.apply(
+        OW,
+        Raw::Added {
+            pos: [4, 1, 1],
+            id: Some("basic".to_owned()),
+        },
+        &mut out,
+    );
     out.clear();
-    tracker.apply(OW, Raw::Removed { pos: [4, 1, 1], id: Some("basic".to_owned()) }, &mut out);
-    tracker.apply(OW, Raw::Added { pos: [4, 1, 1], id: Some("advanced".to_owned()) }, &mut out);
+    tracker.apply(
+        OW,
+        Raw::Removed {
+            pos: [4, 1, 1],
+            id: Some("basic".to_owned()),
+        },
+        &mut out,
+    );
+    tracker.apply(
+        OW,
+        Raw::Added {
+            pos: [4, 1, 1],
+            id: Some("advanced".to_owned()),
+        },
+        &mut out,
+    );
     let mut update = Vec::new();
     tracker.simple(OW, [4, 1, 1], Kind::Update, &mut update);
     assert_eq!(update.len(), 1, "o cabo novo recebe o Update");
-    assert!(out.iter().any(|event| matches!(event, Event::Transmitter { kind: Kind::ClearRemoved, .. })));
+    assert!(out.iter().any(|event| matches!(
+        event,
+        Event::Transmitter {
+            kind: Kind::ClearRemoved,
+            ..
+        }
+    )));
 }
 
 #[test]

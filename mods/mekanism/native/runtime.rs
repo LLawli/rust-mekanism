@@ -1110,11 +1110,18 @@ pub fn cable_capacities(loaded: &ClientLoaded) -> [i64; 4] {
 pub const DEFAULT_CABLE_CAPACITIES: [i64; 4] = [8_000, 128_000, 1_024_000, 8_192_000];
 
 /// As ligas (`ItemAlloy`) e o nível do tier que cada uma dá (`IAlloyTier.getBaseTierLevel`: avançado 1, elite 2, supremo 3).
-pub const ALLOYS: [(&str, i32); 3] = [("mekanism:alloy_infused", 1), ("mekanism:alloy_reinforced", 2), ("mekanism:alloy_atomic", 3)];
+pub const ALLOYS: [(&str, i32); 3] = [
+    ("mekanism:alloy_infused", 1),
+    ("mekanism:alloy_reinforced", 2),
+    ("mekanism:alloy_atomic", 3),
+];
 
 /// O nível do tier da liga `item`, ou `None` se o item não é uma liga.
 pub fn alloy_level(item: &str) -> Option<i32> {
-    ALLOYS.iter().find(|(id, _)| *id == item).map(|(_, level)| *level)
+    ALLOYS
+        .iter()
+        .find(|(id, _)| *id == item)
+        .map(|(_, level)| *level)
 }
 
 /// `PipeTier`: o id de cada cano mecânico, na ordem dos tiers.

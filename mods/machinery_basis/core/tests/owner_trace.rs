@@ -562,12 +562,17 @@ fn run(run_name: &str, scenario: &str) {
         let mut sent: Vec<f32> = outgoing.iter().map(|out| out.packet.scale).collect();
         let mut posted: Vec<f32> = rows
             .iter()
-            .filter(|row| kind(row) == "transfer" && int(row, "t") == t && mine.contains(&int(row, "net")))
+            .filter(|row| {
+                kind(row) == "transfer" && int(row, "t") == t && mine.contains(&int(row, "net"))
+            })
             .map(|row| row["scale"].as_f64().unwrap() as f32)
             .collect();
         sent.sort_by(f32::total_cmp);
         posted.sort_by(f32::total_cmp);
-        assert_eq!(sent, posted, "{run_name} {scenario}, tick {t}: os PacketNetworkScale");
+        assert_eq!(
+            sent, posted,
+            "{run_name} {scenario}, tick {t}: os PacketNetworkScale"
+        );
         if let Some(row) = rows
             .iter()
             .find(|row| kind(row) == "estate" && int(row, "t") == t)
@@ -1866,7 +1871,10 @@ mod alloy {
         assert_eq!(upgraded, 5);
         let order = x_of(&done);
         assert_eq!(order[0], 3, "o clicado primeiro");
-        assert!(order[1..3].contains(&2) && order[1..3].contains(&4), "depois os dois vizinhos");
+        assert!(
+            order[1..3].contains(&2) && order[1..3].contains(&4),
+            "depois os dois vizinhos"
+        );
         assert_eq!(order[3], 1);
         assert_eq!(order[4], 0);
     }
@@ -1876,7 +1884,11 @@ mod alloy {
         let mut sim = line(12);
         let (done, upgraded) = click(&mut sim, 0, 1, 0);
         assert_eq!(upgraded, MAX_UPGRADES);
-        assert_eq!(x_of(&done), (0..8).collect::<Vec<_>>(), "os 8 mais perto do clique");
+        assert_eq!(
+            x_of(&done),
+            (0..8).collect::<Vec<_>>(),
+            "os 8 mais perto do clique"
+        );
     }
 
     #[test]
@@ -1884,8 +1896,21 @@ mod alloy {
         let sim = line(3);
         let pos = BlockPos::new(1, 0, 0);
         // Uma liga de nível 3 (atômica) num cabo básico (nível 0): `canUpgrade` é falso.
-        assert!(sim.owner.alloy_start(pos, 3, &|_| Some(0)).unwrap().targets.is_empty());
-        assert_eq!(sim.owner.alloy_start(pos, 1, &|_| Some(0)).unwrap().targets.len(), 3);
+        assert!(
+            sim.owner
+                .alloy_start(pos, 3, &|_| Some(0))
+                .unwrap()
+                .targets
+                .is_empty()
+        );
+        assert_eq!(
+            sim.owner
+                .alloy_start(pos, 1, &|_| Some(0))
+                .unwrap()
+                .targets
+                .len(),
+            3
+        );
         // Sem rede (o cabo recém-posto, antes do primeiro tick) a liga não faz nada.
         let mut fresh = Sim::free();
         fresh.place_cable(pos, tier_capacity("basic"), None);
@@ -1912,10 +1937,18 @@ mod alloy {
         for _ in 0..4 {
             sim.tick();
         }
-        assert_eq!(total_energy(&sim), 3_000, "a energia da rede velha não se perde");
+        assert_eq!(
+            total_energy(&sim),
+            3_000,
+            "a energia da rede velha não se perde"
+        );
         let network = sim.owner.network_of(BlockPos::new(0, 0, 0)).unwrap();
         for x in 1..5 {
-            assert_eq!(sim.owner.network_of(BlockPos::new(x, 0, 0)), Some(network), "uma rede só");
+            assert_eq!(
+                sim.owner.network_of(BlockPos::new(x, 0, 0)),
+                Some(network),
+                "uma rede só"
+            );
         }
         assert_eq!(
             sim.owner.family().network(network).unwrap().capacity(),
@@ -1963,8 +1996,11 @@ mod alloy {
         assert!(sim.owner.alloy_give(&mut run, pos, &data));
         let tx = sim.owner.transmitter(pos).unwrap();
         assert_eq!(tx.get_connection_type_raw(Face::East), ConnectionType::Push);
-        assert_eq!(tx.get_connection_type_raw(Face::North), ConnectionType::None);
+        assert_eq!(
+            tx.get_connection_type_raw(Face::North),
+            ConnectionType::None
+        );
         assert!(tx.redstone_reactive);
-        assert!(tx.has_pull_side() == false);
+        assert!(!tx.has_pull_side());
     }
 }

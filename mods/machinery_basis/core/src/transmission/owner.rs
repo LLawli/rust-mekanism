@@ -1029,9 +1029,16 @@ impl EnergyTransmitters {
         }
         let network = {
             let slot = &self.st.slots[id.0 as usize];
-            slot.network.filter(|_| slot.tx.as_ref().is_some_and(Transmitter::has_transmitter_network))
+            slot.network.filter(|_| {
+                slot.tx
+                    .as_ref()
+                    .is_some_and(Transmitter::has_transmitter_network)
+            })
         };
-        self.st.slots[id.0 as usize].tx.as_mut()?.set_upgrading(true);
+        self.st.slots[id.0 as usize]
+            .tx
+            .as_mut()?
+            .set_upgrading(true);
         self.st.family.take_share(id, network, None);
         {
             let mut ctx = Ctx {
@@ -1081,7 +1088,8 @@ impl EnergyTransmitters {
             st: &mut self.st,
             world,
         };
-        self.registry.invalidate_network(&mut ctx, run.network, None);
+        self.registry
+            .invalidate_network(&mut ctx, run.network, None);
         self.flush_deferred(world);
     }
 

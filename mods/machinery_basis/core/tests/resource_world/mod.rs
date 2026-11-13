@@ -532,6 +532,14 @@ impl<K: Kind> World<K> {
         self.level.hooks.owner.family()
     }
 
+    /// Os `TransferEvent` do dono desde a última chamada (o dono manda o `PacketNetworkScale` e esvazia a lista da família).
+    pub fn take_transfer_events(
+        &mut self,
+    ) -> Vec<machinery_basis_core::transmission::buffered_resource_network::TransferEvent<K::R>>
+    {
+        self.level.hooks.owner.take_transfer_events()
+    }
+
     pub fn family_mut(&mut self) -> &mut Family<K> {
         self.level.hooks.owner.family_mut()
     }

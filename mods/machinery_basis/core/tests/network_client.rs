@@ -5,8 +5,9 @@
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::client::{
-    ClientKind, ClientTransmitters, MAX_BATCH, Op, ScaleOutbox, ScalePacket, TagMessage, decode_batch, decode_contents, encode_batches, decode_gone, encode_contents,
-    encode_gone, gen_packet_range, player_in_range,
+    ClientKind, ClientTransmitters, MAX_BATCH, Op, ScaleOutbox, ScalePacket, TagMessage,
+    decode_batch, decode_contents, decode_gone, encode_batches, encode_contents, encode_gone,
+    gen_packet_range, player_in_range,
 };
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::transmitter::{Compound, Tag, keys};
@@ -30,9 +31,17 @@ fn uuid_tag(id: u128) -> Tag {
 }
 
 /// O `writeReducedUpdatedTag` de um transmissor com a rede `network` e os tipos crus dados.
-fn tag(network: Option<u128>, raw: [i32; 6], transmitter_connections: i8, acceptors: i8) -> Compound {
+fn tag(
+    network: Option<u128>,
+    raw: [i32; 6],
+    transmitter_connections: i8,
+    acceptors: i8,
+) -> Compound {
     let mut tag = Compound::new();
-    tag.insert(keys::CURRENT_CONNECTIONS.into(), Tag::Byte(transmitter_connections));
+    tag.insert(
+        keys::CURRENT_CONNECTIONS.into(),
+        Tag::Byte(transmitter_connections),
+    );
     tag.insert(keys::CURRENT_ACCEPTORS.into(), Tag::Byte(acceptors));
     tag.insert(keys::CONNECTION.into(), Tag::IntArray(raw.to_vec()));
     if let Some(id) = network {
@@ -60,12 +69,18 @@ fn the_scale_packet_is_the_uuid_as_two_big_endian_longs_then_the_float() {
 fn the_packet_range_is_the_box_of_the_network_whatever_the_order() {
     let list = [at(5, 3), at(-2, 9), at(7, -4), at(0, 0)];
     let range = gen_packet_range(list, DIM).unwrap();
-    assert_eq!((range.x_min, range.z_min, range.x_max, range.z_max), (-2, -4, 7, 9));
+    assert_eq!(
+        (range.x_min, range.z_min, range.x_max, range.z_max),
+        (-2, -4, 7, 9)
+    );
     let mut reversed = list;
     reversed.reverse();
     assert_eq!(gen_packet_range(reversed, DIM), Some(range));
     let single = gen_packet_range([at(3, 4)], DIM).unwrap();
-    assert_eq!((single.x_min, single.z_min, single.x_max, single.z_max), (3, 4, 3, 4));
+    assert_eq!(
+        (single.x_min, single.z_min, single.x_max, single.z_max),
+        (3, 4, 3, 4)
+    );
     assert_eq!(gen_packet_range([], DIM), None);
 }
 
@@ -79,10 +94,16 @@ fn the_players_in_range_are_the_ones_within_the_view_distance_of_the_box() {
     assert!(near(170, 0), "o limite leste: 10 + 0.99999 > 170 - 160");
     assert!(!near(171, 0));
     assert!(near(0, -161) && !near(0, -162));
-    assert!(near(0, 180) && !near(0, 181), "o sul: 20 + 0.99999 > z - 160");
+    assert!(
+        near(0, 180) && !near(0, 181),
+        "o sul: 20 + 0.99999 > z - 160"
+    );
     assert!(!player_in_range(&range, OTHER, 0, 0, 10), "outra dimensão");
     assert!(player_in_range(&range, DIM, 0, 0, 2));
-    assert!(!player_in_range(&range, DIM, 100, 0, 2), "a distância de visão vale: 2 * 16 = 32");
+    assert!(
+        !player_in_range(&range, DIM, 100, 0, 2),
+        "a distância de visão vale: 2 * 16 = 32"
+    );
 }
 
 #[test]
@@ -96,7 +117,10 @@ fn the_outbox_keeps_the_range_until_the_network_gets_new_transmitters_or_dies() 
     outbox.flush_range(net);
     outbox.send(net, A, 0.7, [at(0, 0), at(40, 0)], None);
     let sent = outbox.take();
-    let boxes: Vec<(i32, f32)> = sent.iter().map(|out| (out.range.x_max, out.packet.scale)).collect();
+    let boxes: Vec<(i32, f32)> = sent
+        .iter()
+        .map(|out| (out.range.x_max, out.packet.scale))
+        .collect();
     assert_eq!(boxes, vec![(4, 0.5), (4, 0.6), (40, 0.7)]);
     assert!(outbox.take().is_empty());
     // Uma rede sem transmissores não manda nada (`getPacketRange` nulo).
@@ -118,7 +142,10 @@ fn an_update_tag_with_a_network_creates_it_on_the_client_and_sums_the_capacity()
     client.handle_update_tag(at(1, 0), &tag(Some(A), [0; 6], 0, 0));
     let network = client.get_client_network(A).unwrap();
     assert_eq!(network.transmitters_size(), 2);
-    assert_eq!(network.capacity, 136_000, "updateClientNetwork soma o getCapacity de cada um");
+    assert_eq!(
+        network.capacity, 136_000,
+        "updateClientNetwork soma o getCapacity de cada um"
+    );
     assert_eq!(client.network_at(at(1, 0)).map(|net| net.uuid), Some(A));
 }
 
@@ -127,13 +154,25 @@ fn the_scale_packet_sets_the_scale_of_a_known_network_only() {
     let mut client = ClientTransmitters::new();
     client.add_tile(at(0, 0), ClientKind::Resource, 1_000);
     client.handle_update_tag(at(0, 0), &tag(Some(A), [0; 6], 0, 0));
-    client.on_scale_packet(&ScalePacket { network: A, scale: 0.75 });
-    client.on_scale_packet(&ScalePacket { network: B, scale: 0.25 });
+    client.on_scale_packet(&ScalePacket {
+        network: A,
+        scale: 0.75,
+    });
+    client.on_scale_packet(&ScalePacket {
+        network: B,
+        scale: 0.25,
+    });
     assert_eq!(client.get_client_network(A).unwrap().current_scale, 0.75);
-    assert!(client.get_client_network(B).is_none(), "o pacote de uma rede desconhecida não a cria");
+    assert!(
+        client.get_client_network(B).is_none(),
+        "o pacote de uma rede desconhecida não a cria"
+    );
     // `PacketFluidNetworkContents.handle`.
     client.on_contents_packet(A, Some("minecraft:water".into()));
-    assert_eq!(client.get_client_network(A).unwrap().last_type.as_deref(), Some("minecraft:water"));
+    assert_eq!(
+        client.get_client_network(A).unwrap().last_type.as_deref(),
+        Some("minecraft:water")
+    );
 }
 
 #[test]
@@ -141,7 +180,10 @@ fn a_heat_network_has_no_scale() {
     let mut client = ClientTransmitters::new();
     client.add_tile(at(0, 0), ClientKind::Heat, 0);
     client.handle_update_tag(at(0, 0), &tag(Some(A), [0; 6], 0, 0));
-    client.on_scale_packet(&ScalePacket { network: A, scale: 0.5 });
+    client.on_scale_packet(&ScalePacket {
+        network: A,
+        scale: 0.5,
+    });
     assert_eq!(client.get_client_network(A).unwrap().current_scale, 0.0);
     assert_eq!(client.get_client_network(A).unwrap().capacity, 0);
 }
@@ -169,7 +211,10 @@ fn a_transmitter_moving_between_networks_leaves_the_old_one() {
     client.add_tile(at(0, 0), ClientKind::Energy, 8_000);
     client.handle_update_tag(at(0, 0), &tag(Some(A), [0; 6], 0, 0));
     client.handle_update_tag(at(0, 0), &tag(Some(B), [0; 6], 0, 0));
-    assert!(client.get_client_network(A).is_none(), "a rede velha ficou vazia");
+    assert!(
+        client.get_client_network(A).is_none(),
+        "a rede velha ficou vazia"
+    );
     assert_eq!(client.get_client_network(B).unwrap().transmitters_size(), 1);
     // O mesmo pacote de novo não muda nada (o `return refreshModelData` cedo).
     client.handle_update_tag(at(0, 0), &tag(Some(B), [0; 6], 0, 0));
@@ -200,8 +245,16 @@ fn the_client_learns_the_raw_connection_types_and_shows_the_arms() {
     let view = client.view_at(at(0, 0)).unwrap();
     assert_eq!(view.kind[2], ConnectionType::Push);
     assert_eq!(view.kind[3], ConnectionType::Pull);
-    assert_eq!(view.kind[5], ConnectionType::None, "o NONE cru não tem braço");
-    assert_eq!(view.kind[0], ConnectionType::None, "sem braço o lado mostra NONE");
+    assert_eq!(
+        view.kind[5],
+        ConnectionType::None,
+        "o NONE cru não tem braço"
+    );
+    assert_eq!(
+        view.kind[0],
+        ConnectionType::None,
+        "sem braço o lado mostra NONE"
+    );
     // Um lado entre dois transmissores mostra NORMAL, seja qual for o cru.
     let again = client.handle_update_tag(at(0, 0), &tag(None, raw, 1 << 2, 1 << 3));
     assert!(again);
@@ -244,8 +297,14 @@ fn the_messages_survive_the_wire() {
     cut.push(0);
     assert_eq!(TagMessage::decode(&cut), None, "nem um com sobra");
     let gone = encode_gone("minecraft:overworld", BlockPos::new(1, 2, 3));
-    assert_eq!(decode_gone(&gone), Some(("minecraft:overworld".to_owned(), BlockPos::new(1, 2, 3))));
-    assert_eq!(decode_contents(&encode_contents(A, Some("mekanism:hydrogen"))), Some((A, Some("mekanism:hydrogen".into()))));
+    assert_eq!(
+        decode_gone(&gone),
+        Some(("minecraft:overworld".to_owned(), BlockPos::new(1, 2, 3)))
+    );
+    assert_eq!(
+        decode_contents(&encode_contents(A, Some("mekanism:hydrogen"))),
+        Some((A, Some("mekanism:hydrogen".into())))
+    );
     assert_eq!(decode_contents(&encode_contents(B, None)), Some((B, None)));
 }
 
@@ -261,15 +320,35 @@ fn the_packets_travel_in_batches_in_order_and_each_batch_fits_a_mod_message() {
             tag: tag(Some(A), [0; 6], 0, 0),
         }));
         if x % 100 == 0 {
-            ops.push(Op::Scale(ScalePacket { network: A, scale: x as f32 / 2_000.0 }));
-            ops.push(Op::Gone { dimension: "minecraft:overworld".into(), pos: at(x, 1) });
-            ops.push(Op::Contents { network: A, resource: (x % 200 == 0).then(|| "minecraft:lava".to_owned()) });
+            ops.push(Op::Scale(ScalePacket {
+                network: A,
+                scale: x as f32 / 2_000.0,
+            }));
+            ops.push(Op::Gone {
+                dimension: "minecraft:overworld".into(),
+                pos: at(x, 1),
+            });
+            ops.push(Op::Contents {
+                network: A,
+                resource: (x % 200 == 0).then(|| "minecraft:lava".to_owned()),
+            });
         }
     }
     let batches = encode_batches(&ops);
-    assert!(batches.len() > 1 && batches.len() < 32, "uma rede grande cabe nas 32 mensagens por tick: {}", batches.len());
-    assert!(batches.iter().all(|batch| batch.len() <= 30_000 && batch.len() <= MAX_BATCH + 4));
-    let decoded: Vec<Op> = batches.iter().flat_map(|batch| decode_batch(batch).unwrap()).collect();
+    assert!(
+        batches.len() > 1 && batches.len() < 32,
+        "uma rede grande cabe nas 32 mensagens por tick: {}",
+        batches.len()
+    );
+    assert!(
+        batches
+            .iter()
+            .all(|batch| batch.len() <= 30_000 && batch.len() <= MAX_BATCH + 4)
+    );
+    let decoded: Vec<Op> = batches
+        .iter()
+        .flat_map(|batch| decode_batch(batch).unwrap())
+        .collect();
     assert_eq!(decoded, ops, "a ordem se mantém");
     assert!(encode_batches(&[]).is_empty());
     assert_eq!(decode_batch(&[0, 1]), None);
@@ -278,18 +357,29 @@ fn the_packets_travel_in_batches_in_order_and_each_batch_fits_a_mod_message() {
 #[test]
 fn applying_the_packets_in_order_leaves_the_client_as_the_server_told() {
     let mut client = ClientTransmitters::new();
-    let tag_for = |x| Op::Tag(TagMessage {
-        dimension: "d".into(),
-        pos: at(x, 0),
-        kind: ClientKind::Energy,
-        capacity: 8_000,
-        tag: tag(Some(A), [0; 6], 0, 0),
-    });
+    let tag_for = |x| {
+        Op::Tag(TagMessage {
+            dimension: "d".into(),
+            pos: at(x, 0),
+            kind: ClientKind::Energy,
+            capacity: 8_000,
+            tag: tag(Some(A), [0; 6], 0, 0),
+        })
+    };
     client.apply(&tag_for(0));
     client.apply(&tag_for(1));
-    client.apply(&Op::Scale(ScalePacket { network: A, scale: 0.5 }));
+    client.apply(&Op::Scale(ScalePacket {
+        network: A,
+        scale: 0.5,
+    }));
     assert_eq!(client.get_client_network(A).unwrap().current_scale, 0.5);
-    client.apply(&Op::Gone { dimension: "d".into(), pos: at(0, 0) });
-    client.apply(&Op::Gone { dimension: "d".into(), pos: at(1, 0) });
+    client.apply(&Op::Gone {
+        dimension: "d".into(),
+        pos: at(0, 0),
+    });
+    client.apply(&Op::Gone {
+        dimension: "d".into(),
+        pos: at(1, 0),
+    });
     assert!(client.get_client_network(A).is_none());
 }
