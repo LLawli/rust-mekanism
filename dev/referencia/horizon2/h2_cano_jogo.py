@@ -363,6 +363,132 @@ def lava():
     return good
 
 
+def pull_oeste(pipe):
+    """O Configurator agachado no braço oeste de `pipe` até `PULL` (a fonte fica a oeste)."""
+    view = None
+    for _ in range(12):
+        click_arm(pipe, "west")
+        time.sleep(1.2)
+        view = last_views().get(pipe)
+        if view and view["raw"][4] == "pull":
+            return True
+    return False
+
+
+def montar_cena():
+    """A linha de lava (z 0: a fonte, quatro canos com o primeiro em `PULL`, o Heat Generator) e a de água (z 3: a fonte e quatro canos, o primeiro em `PULL`, sem consumidor), cada uma com a
+    sua rede. A ponte (dois canos em x 1, z 1 e 2) é posta no roteiro."""
+    clear()
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tick unfreeze")
+    cmd("setblock %s minecraft:lava_cauldron" % txt(at(-1, 0, 0)))
+    cmd("setblock %s minecraft:water_cauldron[level=3]" % txt(at(-1, 0, 3)))
+    cmd("setblock %s %s[facing=north]" % (txt(at(4, 0, 0)), GENERATOR))
+    wait(20)
+    for x in range(4):
+        place(at(x, 0, 0), PIPE["basic"])
+        place(at(x, 0, 3), PIPE["basic"])
+    wait(40)
+    h.ctl("give", "mekanism:configurator", "1")
+    ok = pull_oeste(at(0, 0, 0)) and pull_oeste(at(0, 0, 3))
+    cmd("clear @s")
+    wait(80)
+    return ok
+
+
+def enquadrar_cena():
+    """A câmera do vídeo: ao norte e acima, olhando o meio da cena."""
+    cmd("tp @s %.2f %.2f %.2f" % (BASE[0] + 2.0, BASE[1] + 2.6, BASE[2] - 3.5))
+    wait(12)
+    h.ctl("look-at", "%.2f" % (BASE[0] + 2.0), "%.2f" % (BASE[1] + 0.0), "%.2f" % (BASE[2] + 1.5))
+    wait(6)
+
+
+def roteiro(pausa):
+    """O que o vídeo mostra: a lava saindo da fonte pela linha até o Heat Generator, que queima; o cano do meio quebrado (o gerador apaga quando o tanque esvazia) e reposto (volta a
+    queimar); e a ponte entre a linha de lava e a de água, que seguem em redes separadas. O cano sai como o jogador o quebra (`break`, para o som do bloco ir ao vídeo) e entra por `setblock`."""
+    def por(p):
+        # O `place` com o item não pôs o cano nesta cena (o jogo diz "blocked by an entity, or the item cannot be placed", também para o cabo); o roteiro usa `setblock`, e só a quebra tem som.
+        cmd("setblock %s mekanism:basic_mechanical_pipe" % txt(p))
+
+    enquadrar_cena()
+    shot("cano_linha_lava_acesa")
+    pausa(6)
+    h.ctl("break", *map(str, at(2, 0, 0)))
+    pausa(1)
+    shot("cano_meio_quebrado")
+    pausa(6)
+    por(at(2, 0, 0))
+    pausa(1)
+    shot("cano_meio_reposto")
+    pausa(6)
+    por(at(1, 0, 1))
+    pausa(1)
+    por(at(1, 0, 2))
+    pausa(2)
+    shot("cano_ponte_redes_separadas")
+    pausa(6)
+
+
+def video():
+    """O vídeo com som: `NOME` (o `gravar-jogo start`), `SEGUNDOS` (padrão 50), `ARQUIVO` (padrão cano.mp4). O volume mestre só sobe depois de o stream do container estar no sink nulo."""
+    import threading
+    import h2_nota_instrumento as n
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "50"), os.environ.get("ARQUIVO", "cano.mp4")
+    n.sky()
+    cmd("tick unfreeze")
+    print("cena montada, PULL nos dois:", montar_cena())
+    n.mute()
+    h.ctl("options-set", "chatVisibility", "2")
+    for categoria in n.SOUND_OFF:
+        h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "record"):
+        h.ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        h.ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 8
+        roteiro(lambda s: time.sleep(s))
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        h.ctl("close")
+        n.restore()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else "fluido"
     if what == "fluido":
@@ -371,6 +497,13 @@ def main():
         for name in names:
             ok &= run_fluid(name)
         sys.exit(0 if ok else 1)
+    if what == "video":
+        video()
+        return
+    if what == "cena":
+        print(montar_cena())
+        roteiro(lambda t: time.sleep(t))
+        return
     if what == "lava":
         sys.exit(0 if lava() else 1)
     if what == "reabrir":
