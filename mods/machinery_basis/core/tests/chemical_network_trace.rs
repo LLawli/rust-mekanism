@@ -35,3 +35,15 @@ fn every_scenario_matches_the_second_run_of_the_original() {
         network_trace::run::<ChemicalKind>("run2", scenario);
     }
 }
+
+#[test]
+fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
+    network_trace::odd_unit_follows_the_position::<ChemicalKind>();
+}
+
+#[test]
+fn the_ten_more_positions_of_break_end_odd_match_the_original() {
+    for k in 0..network_trace::ODD_RUNS {
+        network_trace::run::<ChemicalKind>("", &format!("odd_{k}"));
+    }
+}

@@ -836,3 +836,140 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
         assert_eq!(port_tickets, tickets, "{context}: níveis de ticket");
     }
 }
+
+/// A quantidade da rede de cada cano que sobrou no fim do cenário, no rastro do original: (índice do cano, quantidade). No `break_end_odd` são as duas metades
+/// que a unidade ímpar deixa desiguais.
+pub fn recorded_halves<K: Kind>(run: &str, scenario: &str) -> Vec<(i32, u64)> {
+    let rows = read_rows::<K>(run, scenario);
+    let state = rows.iter().rfind(|row| kind(row) == "state").unwrap();
+    let estate = rows.iter().rfind(|row| kind(row) == "estate").unwrap();
+    let amount_of = |net: i64| {
+        estate["nets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|candidate| int(candidate, "net") == net)
+            .map(|candidate| int(candidate, "amount") as u64)
+    };
+    let mut out = Vec::new();
+    for (x, cable) in state["cables"].as_array().unwrap().iter().enumerate() {
+        if let Some(amount) = cable["net"].as_i64().and_then(amount_of) {
+            out.push((x as i32, amount));
+        }
+    }
+    out
+}
+
+/// Repete as ações do cenário do rastro `run` no mundo simulado, sem comparar com o rastro, com a linha deslocada `dx` blocos em x e `dz` em z e, se `seed` vem,
+/// com os hashes dos canos e das redes sorteados por ela no lugar dos que o rastro gravou. Devolve o mesmo que [`recorded_halves`]: a quantidade da rede de cada
+/// cano que sobrou no fim.
+pub fn replay_halves<K: Kind>(
+    run: &str,
+    scenario: &str,
+    dx: i32,
+    dz: i32,
+    seed: Option<u64>,
+) -> Vec<(i32, u64)> {
+    let mut rows = read_rows::<K>(run, scenario);
+    rows[0]["x"] = Value::from(int(&rows[0], "x") + i64::from(dx));
+    rows[0]["z"] = Value::from(int(&rows[0], "z") + i64::from(dz));
+    if let Some(mut state) = seed {
+        // Um congruencial qualquer: só precisa de hashes de 32 bits diferentes a cada semente.
+        let mut next = move || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            i64::from((state >> 32) as i32)
+        };
+        for row in rows.iter_mut().filter(|row| kind(row) == "tile" || kind(row) == "created") {
+            row["hash"] = Value::from(next());
+        }
+        for tile in rows[0]["tiles"].as_array_mut().unwrap() {
+            tile["hash"] = Value::from(next());
+        }
+        for row in rows.iter_mut().filter(|row| kind(row) == "state") {
+            for net in row["nets"].as_array_mut().into_iter().flatten() {
+                net["hash"] = Value::from(next());
+            }
+        }
+    }
+    let mut replay = Replay::<K>::new(&rows);
+    let last_tick = rows
+        .iter()
+        .filter(|row| kind(row) == "state")
+        .map(|row| int(row, "t"))
+        .max()
+        .unwrap();
+    for t in 0..=last_tick {
+        let marks: Vec<(bool, String)> = rows
+            .iter()
+            .filter(|row| int(row, "t") == t && kind(row) == "mark")
+            .map(|row| {
+                let mark = row["m"].as_str().unwrap();
+                (parse_mark(mark).0, mark.to_owned())
+            })
+            .collect();
+        if marks.iter().any(|(pre, mark)| *pre && mark == "pre finish") {
+            break;
+        }
+        for (pre, mark) in &marks {
+            if *pre {
+                replay.apply(mark, None);
+            }
+        }
+        replay.world.tick_level();
+        for (pre, mark) in &marks {
+            if !*pre {
+                replay.apply(mark, None);
+            }
+        }
+        replay.world.level.finish_tick();
+        replay.world.take_events();
+    }
+    let world = &replay.world;
+    let mut out = Vec::new();
+    for x in 0..i64::from(world.width) * replay.depth {
+        if let Some((_, pipe)) = world.pipe_at(world.pipe_pos(x as i32))
+            && let Some(network) = pipe.network
+        {
+            out.push((x as i32, world.family().network(network).unwrap().buffer().amount as u64));
+        }
+    }
+    out
+}
+
+/// Quantas rodadas do original o `break_end_odd` tem além das duas primeiras (`odd_0` a `odd_9`, de `*OddTraceTest.java`: cada uma é um `GameTest` em outro
+/// lote, logo em outra posição do mundo).
+pub const ODD_RUNS: usize = 10;
+
+/// A unidade ímpar da divisão do `break_end_odd` (3.001 em cinco canos, quebrados um a um) vai para uma das duas metades que sobram, e qual delas depende da posição
+/// da linha no mundo, não dos hashes: `DynamicNetwork.invalidate` percorre `positionedTransmitters`, um `Long2ObjectOpenHashMap` por `BlockPos.asLong`, e a ordem dessa
+/// tabela é a das posições (a decisão 155). As doze rodadas do original (as duas primeiras e `odd_0` a `odd_9`), cada uma na posição em que o jogo a pôs:
+/// - o port com os hashes do rastro repete cada uma tick a tick (`run`, em cada teste);
+/// - com hashes sorteados (20 sementes por rodada), a metade é a mesma do original: o sorteio da JVM não decide;
+/// - as duas metades aparecem entre as posições, e deslocar a linha de um rastro a faz trocar de metade.
+pub fn odd_unit_follows_the_position<K: Kind>() {
+    let runs: Vec<(&str, String)> = [("", "break_end_odd".to_owned()), ("run2", "break_end_odd".to_owned())]
+        .into_iter()
+        .chain((0..ODD_RUNS).map(|k| ("", format!("odd_{k}"))))
+        .collect();
+    let mut at_pipe_one = std::collections::BTreeSet::new();
+    for (run, scenario) in &runs {
+        let recorded = recorded_halves::<K>(run, scenario);
+        assert_eq!(recorded.len(), 2, "{run} {scenario}: as duas metades");
+        at_pipe_one.insert(recorded.iter().find(|(x, _)| *x == 1).unwrap().1);
+        assert_eq!(replay_halves::<K>(run, scenario, 0, 0, None), recorded, "{run} {scenario}");
+        for seed in 1..=20 {
+            assert_eq!(
+                replay_halves::<K>(run, scenario, 0, 0, Some(seed)),
+                recorded,
+                "{run} {scenario}, hashes da semente {seed}"
+            );
+        }
+    }
+    assert_eq!(at_pipe_one.len(), 2, "as duas metades aparecem entre as posições: {at_pipe_one:?}");
+    let moved: std::collections::BTreeSet<u64> = (0..16)
+        .map(|dx| replay_halves::<K>("", "break_end_odd", dx, 0, None).iter().find(|(x, _)| *x == 1).unwrap().1)
+        .collect();
+    assert_eq!(moved.len(), 2, "deslocar a linha troca a metade: {moved:?}");
+}
