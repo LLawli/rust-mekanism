@@ -3,7 +3,7 @@
 # headless: nenhuma janela abre no desktop; o som fica desligado) e devolve o `reset-mundo.jsonl` e as linhas do log. A árvore volta como estava: a `CenaReset.java` e o `cena-reset` saem, os
 # mundos `ResetA` e `ResetB` são apagados, o `GameTestWorld` volta ao lugar e o `options.txt` também.
 # Uso: oficial_reset.sh testes/CenaReset.java PASTA_DA_SAIDA
-# Pega `~/.cache/rust-mekanism/mekanism-ref.lock` com `mkdir` (espera com `test -d` a cada 60 s, nunca `pgrep`) e a solta ao sair. O gradle passa pelo `lim-build` (uma vaga, 4 núcleos).
+# Pega `~/.cache/rust-mekanism/mekanism-ref.lock` com `mkdir` (espera em laço de `mkdir` a cada 5 s, nunca `pgrep`) e a solta ao sair. O gradle passa pelo `lim-build` (uma vaga, 4 núcleos).
 # O container `mekanism-ref` recebe o teto da vaga (`docker update`) dentro dela; o pico de memória sai em `memoria.txt` (amostrado a cada 3 s).
 set -u
 JAVA=$(readlink -f "$1")
@@ -15,7 +15,7 @@ C=$HOME/.cache/rust-mekanism
 LOCK=$C/mekanism-ref.lock
 MUNDO=$R/saves/GameTestWorld
 ANTES=$R/saves/GameTestWorld.antes-reset
-until mkdir "$LOCK" 2>/dev/null; do sleep 60; done
+until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
 echo "$DONO" > "$LOCK/dono"
 echo "TRAVA $(date +%T)"
 MEM=

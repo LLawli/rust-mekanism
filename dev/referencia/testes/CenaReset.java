@@ -27,15 +27,12 @@ import mekanism.common.tile.transmitter.TileEntityTransmitter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelSettings;
@@ -50,11 +47,10 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
-import net.neoforged.neoforge.transfer.ResourceHandler;
-import net.neoforged.neoforge.transfer.item.ItemResource;
-import net.neoforged.neoforge.transfer.transaction.Transaction;
 
 /// O mundo que sai e volta no cliente oficial (frente `reset-mundo`, decisão 183 (c)): o que o original faz com o estado estático das redes (o `TransmitterNetworkRegistry`, o
 /// `TransporterManager`, o `PathfinderCache`, o `clientNetworks`, o `MekanismAPI.debug`) ao sair do mundo para o menu, ao abrir o mesmo mundo e um segundo mundo, no mesmo processo, e ao
@@ -249,6 +245,25 @@ public class CenaReset {
 
     private static int descargas;
 
+    /// Os primeiros ticks do servidor depois de abrir o mundo: quantas redes o registro tem no fim de cada um (depois do `onTick` do Mekanism, que corre na prioridade normal).
+    private static int primeiros = -1;
+
+    @SubscribeEvent
+    public static void onStarted(ServerStartedEvent event) {
+        if (Files.exists(ATIVA)) {
+            primeiros = 0;
+            escreve("{\"e\":\"started\",\"registro\":" + registro() + "}");
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onServerTick(ServerTickEvent.Post event) {
+        if (primeiros >= 0 && primeiros < 14 && Files.exists(ATIVA)) {
+            primeiros++;
+            escreve("{\"e\":\"tick\",\"k\":" + primeiros + ",\"gt\":" + event.getServer().overworld().getGameTime() + ",\"registro\":" + registro() + "}");
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onStopping(ServerStoppingEvent event) {
         if (!Files.exists(ATIVA)) {
@@ -317,7 +332,10 @@ public class CenaReset {
             if (noMundo(minecraft)) {
                 return true;
             }
-            if (minecraft.level == null && minecraft.screen instanceof TitleScreen && ++n == 60) {
+            if (minecraft.level == null && minecraft.getSingleplayerServer() == null && ++n == 30) {
+                escreve("{\"e\":\"titulo\",\"tela\":" + q(String.valueOf(minecraft.gui.screen())) + "}");
+            }
+            if (minecraft.level == null && minecraft.getSingleplayerServer() == null && n == 60) {
                 escreve("{\"e\":\"criando\",\"nome\":" + q(nome) + "}");
                 minecraft.createWorldOpenFlows().createFreshLevel(nome,
                       new LevelSettings(nome, GameType.CREATIVE, new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false), true, WorldDataConfiguration.DEFAULT),
@@ -335,9 +353,9 @@ public class CenaReset {
             if (noMundo(minecraft)) {
                 return true;
             }
-            if (minecraft.level == null && minecraft.screen instanceof TitleScreen && ++n == 20) {
+            if (minecraft.level == null && minecraft.getSingleplayerServer() == null && ++n == 20) {
                 escreve("{\"e\":\"abrindo\",\"nome\":" + q(nome) + "}");
-                minecraft.createWorldOpenFlows().openWorld(nome, () -> minecraft.setScreen(new TitleScreen()));
+                minecraft.createWorldOpenFlows().openWorld(nome, () -> minecraft.setScreenAndShow(new TitleScreen()));
             }
             return false;
         };
@@ -370,14 +388,14 @@ public class CenaReset {
                 // O que o `PauseScreen` faz no botão de sair do mundo local.
                 minecraft.level.disconnect(Component.translatable("menu.disconnect"));
                 minecraft.disconnectWithSavingScreen();
-                minecraft.setScreen(new TitleScreen());
+                minecraft.setScreenAndShow(new TitleScreen());
             }
             return true;
         };
     }
 
     private static BooleanSupplier noMenu() {
-        return () -> Minecraft.getInstance().level == null && Minecraft.getInstance().getSingleplayerServer() == null && Minecraft.getInstance().screen instanceof TitleScreen;
+        return () -> Minecraft.getInstance().level == null && Minecraft.getInstance().getSingleplayerServer() == null;
     }
 
     private static BooleanSupplier snapPasso(String label) {
@@ -432,6 +450,11 @@ public class CenaReset {
         linha(server, "mekanism:basic_thermodynamic_conductor", 6, 0, 4);
         linha(server, "mekanism:basic_logistical_transporter", 8, 1, 8);
         run(server, String.format(Locale.ROOT, "setblock 9 %d 8 minecraft:chest", Y));
+        // O calor: um Heat Generator em cima do último condutor (o calor dele sai pelo condutor, como na cena do port).
+        run(server, String.format(Locale.ROOT, "setblock 4 %d 6 mekanismgenerators:heat_generator", Y + 1));
+        // Os itens: um baú sobre um funil sobre o primeiro transportador (o funil passa um item a cada 8 ticks).
+        run(server, String.format(Locale.ROOT, "setblock 1 %d 8 minecraft:hopper[facing=down]", Y + 1));
+        run(server, String.format(Locale.ROOT, "setblock 1 %d 8 minecraft:chest", Y + 2));
     }
 
     private static void constroiB(MinecraftServer server) {
@@ -473,29 +496,14 @@ public class CenaReset {
         }
     }
 
-    private static void aquece(MinecraftServer server) {
+    private static void aquece(MinecraftServer server) throws Exception {
         ServerLevel level = server.overworld();
-        for (int x = 0; x <= 4; x++) {
-            if (level.getBlockEntity(new BlockPos(x, Y, 6)) instanceof TileEntityTransmitter tile && tile.getTransmitter() instanceof ThermodynamicConductor conductor) {
-                conductor.buffer.setHeat(900 + x, null);
-            }
+        if (level.getBlockEntity(new BlockPos(4, Y + 1, 6)) instanceof mekanism.generators.common.tile.TileEntityHeatGenerator generator) {
+            mekanism.common.capabilities.heat.BasicHeatCapacitor capacitor =
+                  (mekanism.common.capabilities.heat.BasicHeatCapacitor) campo(mekanism.generators.common.tile.TileEntityHeatGenerator.class, "heatCapacitor", generator);
+            capacitor.setHeat(4000.0, null);
         }
-    }
-
-    private static void insereItens(MinecraftServer server) {
-        ServerLevel level = server.overworld();
-        ItemStack[] stacks = {new ItemStack(Items.COBBLESTONE, 64), new ItemStack(Items.DIRT, 32), new ItemStack(Items.SAND, 16)};
-        for (ItemStack stack : stacks) {
-            ResourceHandler<ItemResource> handler = level.getCapability(mekanism.common.capabilities.Capabilities.ITEM.block(), new BlockPos(1, Y, 8), Direction.NORTH);
-            int inserted = -1;
-            if (handler != null) {
-                try (Transaction transaction = Transaction.openRoot()) {
-                    inserted = handler.insert(ItemResource.of(stack), stack.getCount(), transaction);
-                    transaction.commit();
-                }
-            }
-            escreve("{\"e\":\"insere\",\"item\":" + q(String.valueOf(stack.getItem())) + ",\"inseriu\":" + inserted + "}");
-        }
+        run(server, String.format(Locale.ROOT, "item replace block 1 %d 8 container.0 with minecraft:cobblestone 64", Y + 2));
     }
 
     private static void montar() {
@@ -513,10 +521,9 @@ public class CenaReset {
             enchePorReflexao(server, "FluidNetwork", "", 1500);
             enchePorReflexao(server, "ChemicalNetwork", "mekanism:hydrogen", 2500);
             aquece(server);
-            insereItens(server);
         })));
         passos.add(zera());
-        passos.add(depoisDeEntrar(8));
+        passos.add(depoisDeEntrar(60));
         passos.add(snapPasso("a1_antes_de_sair"));
         // 2. Sai para o menu e volta ao mesmo mundo.
         passos.add(sai("a1_sai"));
