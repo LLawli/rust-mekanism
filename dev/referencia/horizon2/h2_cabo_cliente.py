@@ -136,8 +136,12 @@ def push():
     cmd("gamemode creative @s")
     cmd("tick unfreeze")
     observer_near()
-    for x in range(3):
+    # O braço leste do segundo cabo dá numa máquina: só aí o tipo cru (`PUSH`, `PULL`) é o que o lado mostra (entre dois cabos o lado mostra `NORMAL`).
+    for x in range(2):
         cmd("setblock %s %s" % (txt(at(x)), BLOCOS["cabo"][0]))
+    cmd("setblock %s mekanism:creative_energy_cube" % txt(at(2)))
+    wait(10)
+    cmd("data merge block %s {component_config:{config0:[I;4,4,4,4,4,4],eject0:0b},energy_amount:9223372036854775807L}" % txt(at(2)))
     wait(40)
     time.sleep(1.0)
     h.ctl("give", "mekanism:configurator", "1")
@@ -158,7 +162,7 @@ def push():
         time.sleep(1.0)
         mbo = [r for r in log("a", "MBO") if r["p"] == list(middle)][-1:]
         kinds = [r for r in log("a", "MBV") if r["p"] == list(middle)][-1:]
-        cliente = [r for r in log("a", "MBG") if r["p"] == list(middle) and r["who"] == "host"][-1:]
+        cliente = [r for r in log("a", "MBG") if r["p"] == list(middle) and True][-1:]
         convidado = [r for r in log("b", "MBG") if r["p"] == list(middle)][-1:]
         print(rotulo, "| contorno:", mbo, "| servidor:", kinds and kinds[0].get("kind"), "| cliente anfitrião:", cliente and cliente[0].get("kind"), "| convidado:", convidado and convidado[0].get("kind"))
 

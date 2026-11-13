@@ -272,21 +272,36 @@ fn replaced_block_entity_of_the_same_kind_is_not_a_new_one() {
     // `note_insert` com o mesmo tipo no lugar (`/data merge block`): nada para a rede.
     events::note_insert([1, 1, 1], Some("rewrite"), Some(Some("rewrite")));
     assert!(events::take().is_empty());
-    // De outro tipo: o novo entra e o velho sai, nessa ordem (`LevelChunk.setBlockEntity`).
+    // De outro tipo (o bloco trocado, `LevelChunk.setBlockState`): o velho sai e o novo entra, nessa ordem; o rastreio por posição não perde o novo.
     events::note_insert([1, 1, 1], Some("rewrite"), Some(None));
     assert_eq!(
         events::take(),
         vec![
-            Raw::Added {
-                pos: [1, 1, 1],
-                id: Some("rewrite".to_owned())
-            },
             Raw::Removed {
                 pos: [1, 1, 1],
                 id: None
             },
+            Raw::Added {
+                pos: [1, 1, 1],
+                id: Some("rewrite".to_owned())
+            },
         ]
     );
+}
+
+#[test]
+fn a_cable_swapped_for_another_tier_stays_followed() {
+    // O upgrade pela liga troca o bloco do cabo por outro tipo de block entity: o novo continua seguido (recebe o `Update`), como o cabo novo do original.
+    let mut tracker = Tracker::with_ids(&["basic", "advanced"]);
+    let mut out = Vec::new();
+    tracker.apply(OW, Raw::Added { pos: [4, 1, 1], id: Some("basic".to_owned()) }, &mut out);
+    out.clear();
+    tracker.apply(OW, Raw::Removed { pos: [4, 1, 1], id: Some("basic".to_owned()) }, &mut out);
+    tracker.apply(OW, Raw::Added { pos: [4, 1, 1], id: Some("advanced".to_owned()) }, &mut out);
+    let mut update = Vec::new();
+    tracker.simple(OW, [4, 1, 1], Kind::Update, &mut update);
+    assert_eq!(update.len(), 1, "o cabo novo recebe o Update");
+    assert!(out.iter().any(|event| matches!(event, Event::Transmitter { kind: Kind::ClearRemoved, .. })));
 }
 
 #[test]

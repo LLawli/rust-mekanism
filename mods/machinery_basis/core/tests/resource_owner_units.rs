@@ -428,3 +428,39 @@ fn notify_tile_change_walks_the_neighbors_in_direction_values_order() {
         [Face::Down, Face::North, Face::South, Face::West, Face::East]
     );
 }
+
+#[test]
+fn the_alloy_raises_the_pipes_one_tier_keeps_the_fluid_and_remakes_the_network() {
+    let mut sim = Sim::new();
+    line(&mut sim, 5);
+    assert_eq!(
+        sim.owner.insert_external(Sim::pos(0), &water(), 4_000),
+        4_000
+    );
+    sim.tick();
+    let pos = Sim::pos(2);
+    let old_network = sim.owner.network_of(pos).unwrap();
+    // O nível 1 (avançado) sobe os de nível 0; um de nível 1 já não sobe com a mesma liga.
+    let mut run = sim.owner.alloy_start(pos, 1, &|_| Some(0)).unwrap();
+    assert_eq!(run.targets.len(), 5);
+    assert_eq!(run.targets[0], pos, "o clicado primeiro");
+    assert!(sim.owner.alloy_start(pos, 1, &|_| Some(1)).unwrap().targets.is_empty());
+    for target in run.targets.clone() {
+        let data = sim.owner.alloy_take(&mut sim.level, &mut run, target).unwrap();
+        // O bloco muda: o cano velho sai e o novo entra no mesmo lugar.
+        sim.send(Event::Removed(target));
+        sim.send(Event::ClearRemoved(target));
+        assert!(sim.owner.alloy_give(&mut run, target, &data));
+    }
+    sim.owner.alloy_finish(&mut sim.level, &run);
+    assert_eq!(run.upgraded, 5);
+    assert!(!sim.owner.registry().network(old_network).is_registered());
+    for _ in 0..4 {
+        sim.tick();
+    }
+    let network = sim.owner.network_of(Sim::pos(0)).unwrap();
+    for x in 1..5 {
+        assert_eq!(sim.owner.network_of(Sim::pos(x)), Some(network), "uma rede só");
+    }
+    assert_eq!(sim.network_amount(0), 4_000, "o fluido da rede velha não se perde");
+}

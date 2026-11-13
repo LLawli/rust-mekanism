@@ -144,7 +144,8 @@ pub fn push(raw: Raw) {
     }
 }
 
-/// `LevelChunk.setBlockEntity` de um block entity novo (ou trocado): o antigo, se era de outro tipo, sai logo depois.
+/// `LevelChunk.setBlockState` com outro bloco no lugar: o block entity antigo sai (`removeBlockEntity`, `setRemoved`) antes de o novo entrar (`clearRemoved`). O rastreio é por posição, então o
+/// novo que entrasse antes da saída do antigo se perderia (a saída do antigo o tiraria de quem é seguido): foi o que o upgrade pela liga mostrou.
 pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
     if !is_active() {
         return;
@@ -153,8 +154,8 @@ pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
         // Um block entity do mesmo tipo reescrito no lugar (o jogo mantém o objeto): nada muda para a rede.
         Some(old) if old == new => {}
         Some(old) => {
-            push(Raw::Added { pos, id: new.map(str::to_owned) });
             push(Raw::Removed { pos, id: old.map(str::to_owned) });
+            push(Raw::Added { pos, id: new.map(str::to_owned) });
         }
         None => push(Raw::Added { pos, id: new.map(str::to_owned) }),
     }

@@ -139,13 +139,13 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
             let network = levels.values().find_map(|level| level.get_client_network(packet.network));
             match network {
                 Some(net) => eprintln!(
-                    "MBS {{\"who\":\"{who}\",\"net\":\"{:032x}\",\"scale\":{:?},\"cap\":{},\"n\":{},\"energy\":{},\"type\":{:?}}}",
+                    "MBS {{\"who\":\"{who}\",\"net\":\"{:032x}\",\"scale\":{:?},\"cap\":{},\"n\":{},\"energy\":{},\"type\":{}}}",
                     packet.network,
                     net.current_scale,
                     net.capacity,
                     net.transmitters_size(),
                     net.energy,
-                    net.last_type
+                    net.last_type.as_ref().map_or("null".to_owned(), |id| format!("{id:?}"))
                 ),
                 None => eprintln!("MBS {{\"who\":\"{who}\",\"net\":\"{:032x}\",\"scale\":{:?},\"known\":false}}", packet.network, packet.scale),
             }
@@ -158,12 +158,12 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
                 .unwrap_or_default();
             let net = levels.get(dimension).and_then(|level| level.network_at(message.pos));
             eprintln!(
-                "MBG {{\"who\":\"{who}\",\"p\":[{},{},{}],\"kind\":{:?},\"net\":{:?},\"cap\":{},\"n\":{}}}",
+                "MBG {{\"who\":\"{who}\",\"p\":[{},{},{}],\"kind\":{:?},\"net\":{},\"cap\":{},\"n\":{}}}",
                 message.pos.x,
                 message.pos.y,
                 message.pos.z,
                 kinds,
-                net.map(|net| format!("{:032x}", net.uuid)),
+                net.map_or("null".to_owned(), |net| format!("\"{:032x}\"", net.uuid)),
                 net.map_or(0, |net| net.capacity),
                 net.map_or(0, ClientNetwork::transmitters_size)
             );

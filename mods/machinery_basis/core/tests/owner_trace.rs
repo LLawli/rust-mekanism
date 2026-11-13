@@ -1902,8 +1902,13 @@ mod alloy {
         }
         let before: i64 = total_energy(&sim);
         assert_eq!(before, 3_000);
+        let old_network = sim.owner.network_of(BlockPos::new(2, 0, 0)).unwrap();
         let (_, upgraded) = click(&mut sim, 2, 1, 0);
         assert_eq!(upgraded, 5);
+        assert!(
+            !sim.owner.registry().network(old_network).is_registered(),
+            "`transmitterNetwork.invalidate(null)` desfaz a rede velha na hora, sem esperar o tick"
+        );
         for _ in 0..4 {
             sim.tick();
         }
