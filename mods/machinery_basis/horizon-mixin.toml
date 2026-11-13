@@ -1386,3 +1386,14 @@ helper = "outline_edges_return.rs"
 bindings = [
   { name = "value", ty = "Vec<[f64; 6]>", value = "$value" },
 ]
+
+# O carregamento dos chunks por tick (decisão 196): o `Streaming` do Horizon dimensiona o trabalho em voo pelos `workers` dele (a geração, 3 por worker), o que traz uns 9 chunks por tick; o
+# original carrega o que os workers aguentam, sem teto por tick. O HEAD de `Streaming::update` sobe o `workers` para o mínimo de 16 (só sobe: a conta é idempotente). Alvo cru, H222.
+[[injection]]
+id = "stream_budget"
+target = "horizon_client_render::streaming::Streaming::update"
+kind = "HEAD"
+helper = "stream_budget.rs"
+bindings = [
+  { name = "streaming", ty = "&mut Streaming", value = "&mut *self" },
+]
