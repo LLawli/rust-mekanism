@@ -86,10 +86,13 @@ pub struct Level {
     pub redstone_changes: Vec<(BlockPos, bool)>,
     /// O jogo dá capability de energia também ao bloco de um cabo (o dono nunca deve perguntar por ela).
     pub cables_have_capability: bool,
+    /// Cada posição por que o dono perguntou `is_block_loaded`, na ordem.
+    pub asked: std::cell::RefCell<Vec<BlockPos>>,
 }
 
 impl OwnerWorld for Level {
     fn is_block_loaded(&self, pos: BlockPos) -> bool {
+        self.asked.borrow_mut().push(pos);
         !self.unloaded.contains(&pos)
     }
 
@@ -872,6 +875,40 @@ fn what_the_game_shows_follows_the_configurator_in_both_cables() {
             );
         }
     }
+}
+
+#[test]
+fn notify_tile_change_walks_the_neighbors_in_direction_values_order() {
+    // `Transmitter.notifyTileChange` -> `WorldUtils.notifyLoadedNeighborsOfTileChange` percorre `EnumUtils.DIRECTIONS` (`Direction.values()`: baixo, cima, norte, sul, oeste, leste),
+    // e não `NeighborUpdater.UPDATE_ORDER` (oeste, leste, baixo, cima, norte, sul) de `Level.updateNeighborsAt`. Cada vizinho que recebe o aviso relê as conexões dele e pergunta se os
+    // lados dele estão carregados; o ponto a dois blocos do centro, na direção do vizinho, só esse vizinho pergunta.
+    let mut sim = Sim::free();
+    let center = BlockPos::new(10, 64, 10);
+    for pos in std::iter::once(center).chain(Face::ALL.map(|side| center.relative(side))) {
+        sim.place_cable(pos, 8_000, None);
+        sim.send(Event::PlacedByItem(pos));
+    }
+    for _ in 0..3 {
+        sim.tick();
+    }
+    sim.level.asked.borrow_mut().clear();
+    // Agachado no braço de cima: o vizinho de cima também é atualizado por `refreshConnections(side)`, então fica fora da comparação.
+    assert!(sneak(&mut sim, center, Face::Up, Some(Face::Up)));
+    let asked = sim.level.asked.borrow().clone();
+    let mut order = Vec::new();
+    for pos in asked {
+        for side in Face::ALL {
+            let outer = center.relative(side).relative(side);
+            if pos == outer && !order.contains(&side) {
+                order.push(side);
+            }
+        }
+    }
+    order.retain(|side| *side != Face::Up);
+    assert_eq!(
+        order,
+        [Face::Down, Face::North, Face::South, Face::West, Face::East]
+    );
 }
 
 #[test]

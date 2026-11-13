@@ -15,6 +15,7 @@ use machinery_basis_core::transmission::mechanical_pipe::PipeTier;
 use machinery_basis_core::transmission::owner::{CableView, Event};
 use machinery_basis_core::transmission::resource_owner::{PipeInfo, ResourceOwnerWorld};
 use machinery_basis_core::transmission::transmitter::{Compound, Overlay};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -36,10 +37,13 @@ struct Level {
     blocks: HashMap<BlockPos, Block>,
     published: Vec<(BlockPos, CableView)>,
     overlays: Vec<Overlay>,
+    /// Cada posição por que o dono perguntou `is_block_loaded`, na ordem.
+    asked: RefCell<Vec<BlockPos>>,
 }
 
 impl ResourceOwnerWorld<FluidResource> for Level {
-    fn is_block_loaded(&self, _: BlockPos) -> bool {
+    fn is_block_loaded(&self, pos: BlockPos) -> bool {
+        self.asked.borrow_mut().push(pos);
         true
     }
 
@@ -386,5 +390,41 @@ fn a_removed_pipe_gives_its_share_back_and_the_two_halves_keep_the_fluid() {
     assert_ne!(
         sim.owner.network_of(Sim::pos(0)),
         sim.owner.network_of(Sim::pos(4))
+    );
+}
+
+#[test]
+fn notify_tile_change_walks_the_neighbors_in_direction_values_order() {
+    // `Transmitter.notifyTileChange` -> `WorldUtils.notifyLoadedNeighborsOfTileChange` percorre `EnumUtils.DIRECTIONS` (`Direction.values()`: baixo, cima, norte, sul, oeste, leste),
+    // e não `NeighborUpdater.UPDATE_ORDER` (oeste, leste, baixo, cima, norte, sul) de `Level.updateNeighborsAt`. Cada vizinho que recebe o aviso relê as conexões dele e pergunta se os
+    // lados dele estão carregados; o ponto a dois blocos do centro, na direção do vizinho, só esse vizinho pergunta.
+    let mut sim = Sim::new();
+    let center = BlockPos::new(0, 0, 0);
+    for pos in std::iter::once(center).chain(Face::ALL.map(|side| center.relative(side))) {
+        sim.level.blocks.insert(pos, Block::Pipe(None));
+        sim.send(Event::ClearRemoved(pos));
+        sim.neighbors(pos);
+    }
+    for _ in 0..4 {
+        sim.tick();
+    }
+    sim.level.asked.borrow_mut().clear();
+    // Agachado no braço de cima: o vizinho de cima também é atualizado por `refreshConnections(side)`, então fica fora da comparação.
+    sim.owner
+        .sneak_right_click(&mut sim.level, center, Face::Up, Some(Face::Up));
+    let asked = sim.level.asked.borrow().clone();
+    let mut order = Vec::new();
+    for pos in asked {
+        for side in Face::ALL {
+            let outer = center.relative(side).relative(side);
+            if pos == outer && !order.contains(&side) {
+                order.push(side);
+            }
+        }
+    }
+    order.retain(|side| *side != Face::Up);
+    assert_eq!(
+        order,
+        [Face::Down, Face::North, Face::South, Face::West, Face::East]
     );
 }

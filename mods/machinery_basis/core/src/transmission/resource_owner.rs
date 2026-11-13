@@ -27,7 +27,6 @@ use super::transmitter::{
 use super::validator::CompatibleTransmitterValidator;
 use super::{DimensionId, NetworkEvent, NetworkId, TransmitterHost, TransmitterId, Uuid};
 use crate::containers::AutomationType;
-use crate::neighbors::UPDATE_ORDER;
 use crate::resource_tank::{Resource, StackContents};
 use crate::sides::Face;
 use crate::sim::chunks::{BlockPos, MAX_VIEW_DISTANCE};
@@ -409,9 +408,10 @@ impl<R: Resource, W: ResourceOwnerWorld<R>> Ctx<'_, R, W> {
         }
     }
 
-    /// Os vizinhos recebem `neighborChanged` sem orientação, na ordem de `Level.updateNeighborsAt`.
+    /// `Transmitter.notifyTileChange` -> `WorldUtils.notifyLoadedNeighborsOfTileChange`: os vizinhos carregados recebem `neighborChanged` sem orientação, na ordem de
+    /// `EnumUtils.DIRECTIONS` (`Direction.values()`), e não na de `Level.updateNeighborsAt` (`NeighborUpdater.UPDATE_ORDER`).
     fn notify_neighbors(&mut self, registry: &mut Reg<R>, pos: BlockPos) {
-        for side in UPDATE_ORDER {
+        for side in Face::ALL {
             if let Some(id) = self.view().id_at(pos.relative(side)) {
                 self.with_tr(registry, id, |t, w, out| {
                     t.on_neighbor_block_change(None, w, out)
