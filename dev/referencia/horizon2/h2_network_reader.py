@@ -152,13 +152,23 @@ CENAS = [
 ]
 
 
-def empilhar(original, port, saida):
+LINHAS = {"cabo": 8, "cano": 8, "tubo": 8, "condutor": 8, "transportador": 4, "bau": 3, "gerador": 3}
+PASSO = 27  # a altura de uma linha do chat em guiScale 3, e o fundo da caixa do chat fica em y = 960
+
+
+def corte(nome):
+    """O trecho do chat só com as linhas que o clique escreveu (o chat guarda as anteriores e os ecos dos comandos)."""
+    altura = LINHAS[nome] * PASSO + 4
+    return "1000x%d+0+%d" % (altura, 960 - altura)
+
+
+def empilhar(original, port, saida, nome):
     """O chat do original (em cima) e o do port (embaixo), recortados no mesmo trecho."""
     partes = []
     for arquivo, rotulo in ((original, "original"), (port, "port")):
-        corte = arquivo + ".corte.png"
-        subprocess.run(["magick", arquivo, "-crop", CORTE, "+repage", "-gravity", "NorthEast", "-fill", "white", "-undercolor", "#000000aa", "-pointsize", "28", "-annotate", "+8+8", rotulo, corte], check=True)
-        partes.append(corte)
+        recorte = arquivo + ".corte.png"
+        subprocess.run(["magick", arquivo, "-crop", corte(nome), "+repage", "-gravity", "NorthEast", "-fill", "white", "-undercolor", "#000000aa", "-pointsize", "28", "-annotate", "+8+8", rotulo, recorte], check=True)
+        partes.append(recorte)
     subprocess.run(["magick", *partes, "-append", saida], check=True)
     for parte in partes:
         os.remove(parte)
@@ -193,7 +203,7 @@ def prints():
         clicar(mira, (0.5, 0.5, 0.5), sneak=sneak, stand=stand)
         arquivo = a.shot("leitor_" + nome)
         origem = os.path.join(ORIGINAIS, "leitor_oficial_%s.png" % nome)
-        empilhar(origem, arquivo, os.path.join(LOCAL, "comparacao_%s.png" % nome))
+        empilhar(origem, arquivo, os.path.join(LOCAL, "comparacao_%s.png" % nome), nome)
         print("comparacao_%s.png" % nome)
 
 
