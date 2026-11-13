@@ -234,8 +234,10 @@ fn the_values_the_original_formats_in_odd_ranges_are_covered() {
 // O modo de depuração (`MekanismAPI.debug`, o `/mek debug`): `rastros/network_reader_debug.jsonl`.
 
 fn debug_rows() -> Vec<Value> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros/network_reader_debug.jsonl");
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/network_reader_debug.jsonl");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     text.lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .filter(|row: &Value| row.get("meta").is_none())
@@ -273,7 +275,9 @@ fn registry_of(note: &Value) -> Vec<(TransmissionType, usize, usize)> {
 fn the_description_of_every_network_is_the_one_of_the_original() {
     let mut count = 0;
     for row in debug_rows() {
-        let Some(registry) = row["registry"].as_array() else { continue };
+        let Some(registry) = row["registry"].as_array() else {
+            continue;
+        };
         for network in registry {
             let (kind, transmitters, acceptors) = (
                 family_of_class(network["class"].as_str().unwrap()),
@@ -282,7 +286,12 @@ fn the_description_of_every_network_is_the_one_of_the_original() {
             );
             // O original põe a cor só no clique do leitor (`TextComponentUtil.build(DARK_GRAY, ..)`): aqui o texto da rede, sem estilo.
             assert!(network["text"].get("color").is_none());
-            assert_eq!(network_reader::network_description(kind, transmitters, acceptors).to_json(), network["text"], "{}", row["case"]);
+            assert_eq!(
+                network_reader::network_description(kind, transmitters, acceptors).to_json(),
+                network["text"],
+                "{}",
+                row["case"]
+            );
             count += 1;
         }
     }
@@ -302,18 +311,26 @@ fn the_sneaking_reader_writes_the_registry_with_the_debug_on_and_nothing_otherwi
             continue;
         }
         let case = row["case"].as_str().unwrap();
-        let Some(sneak) = row["sneak"].as_bool() else { continue };
+        let Some(sneak) = row["sneak"].as_bool() else {
+            continue;
+        };
         let no_block_entity = !case.starts_with("cable") && !case.starts_with("chest");
         let chat = row["chat"].as_array().cloned().unwrap_or_default();
         // O que a cena deixa ligado ao clique: a depuração vira `true` na linha `stone/sneak/debug_on` e segue assim até `after_changes`.
         let on = case.contains("debug_on") || case.ends_with("after_changes");
         if no_block_entity && sneak && on {
-            let wanted: Vec<Value> = network_reader::debug_messages(&registry).iter().map(Comp::to_json).collect();
+            let wanted: Vec<Value> = network_reader::debug_messages(&registry)
+                .iter()
+                .map(Comp::to_json)
+                .collect();
             assert_eq!(chat, wanted, "{case}");
             assert!(chat.len() >= 3, "{case}");
             clicks_with_chat += 1;
         } else if no_block_entity {
-            assert!(chat.is_empty(), "{case}: sem depuração, sem agachar ou com block entity não há linha");
+            assert!(
+                chat.is_empty(),
+                "{case}: sem depuração, sem agachar ou com block entity não há linha"
+            );
         }
         let _ = debug;
     }
@@ -331,7 +348,12 @@ fn the_toggle_message_is_the_one_of_the_original() {
         let on = row["debug_after"].as_bool().unwrap();
         let chat = row["chat"].as_array().unwrap();
         assert_eq!(chat.len(), 1);
-        assert_eq!(chat[0], network_reader::debug_toggle_message(on).to_json(), "{}", row["case"]);
+        assert_eq!(
+            chat[0],
+            network_reader::debug_toggle_message(on).to_json(),
+            "{}",
+            row["case"]
+        );
         seen[usize::from(on)] = true;
     }
     assert_eq!(seen, [true, true]);
@@ -344,7 +366,9 @@ fn the_mek_tree_answers_every_line_and_level_like_the_original() {
     let tree = mekanism_rules::command::tree(());
     let mut lines = 0;
     for row in debug_rows() {
-        let Some(command) = row["command"].as_str() else { continue };
+        let Some(command) = row["command"].as_str() else {
+            continue;
+        };
         let level = match row["level"].as_str().unwrap() {
             "ALL" => 0,
             "MODERATORS" => 1,
@@ -356,7 +380,11 @@ fn the_mek_tree_answers_every_line_and_level_like_the_original() {
         let case = row["case"].as_str().unwrap();
         // `CommandNode.canUse` de `mek` e de `mek debug`.
         assert_eq!(row["mek_usable"], level >= tree.level, "{case}");
-        assert_eq!(row["debug_usable"], level >= tree.children[0].level, "{case}");
+        assert_eq!(
+            row["debug_usable"],
+            level >= tree.children[0].level,
+            "{case}"
+        );
         let chat = row["chat"].as_array().unwrap();
         match parse(&tree, command, level).unwrap() {
             Parsed::Run(()) => {
@@ -376,7 +404,11 @@ fn the_mek_tree_answers_every_line_and_level_like_the_original() {
                 } else {
                     assert_eq!(context[1]["translate"], "command.context.here", "{case}");
                 }
-                assert_eq!(chat[1]["extra"][0]["click_event"]["command"], format!("/{command}"), "{case}");
+                assert_eq!(
+                    chat[1]["extra"][0]["click_event"]["command"],
+                    format!("/{command}"),
+                    "{case}"
+                );
             }
         }
         lines += 1;

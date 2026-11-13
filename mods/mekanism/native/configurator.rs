@@ -1334,7 +1334,7 @@ pub(in crate::game) fn block_highlight(pos: [i32; 3], canceled: &mut bool) {
 // O leitor de rede (`ItemNetworkReader`).
 
 /// O `Component` das mensagens como o jogo o escreve: a chave de tradução com os argumentos, ou o texto com os irmãos, e a cor do estilo.
-fn network_text(comp: &Comp) -> Text {
+pub(in crate::game) fn network_text(comp: &Comp) -> Text {
     let mut out = match &comp.body {
         network_reader::Body::Translate { key, with } => {
             let args: Vec<Text> = with.iter().map(network_arg).collect();
@@ -1418,12 +1418,18 @@ fn connected_networks(game: &Game<'_>, pos: [i32; 3]) -> Vec<Comp> {
 /// `ItemNetworkReader.useOn`. Num bloco com block entity o item sempre toma o clique (`CONSUME`): num transmissor mostra a rede, numa máquina com calor a temperatura, e em qualquer outro
 /// as redes que o têm como aceitador. Sem block entity o clique passa (a depuração do `TransmitterNetworkRegistry.toComponents` pede `MekanismAPI.debug`, desligado).
 fn network_reader_use_on(game: &mut Game<'_>, pos: [i32; 3], face: Face) -> bool {
-    if !game.world.block_entities.contains_key(&(pos[0], pos[1], pos[2])) {
-        return false;
-    }
     let Some(player) = game.native_acting_player() else {
         return false;
     };
+    if !game.world.block_entities.contains_key(&(pos[0], pos[1], pos[2])) {
+        // `else if (player.isShiftKeyDown() && MekanismAPI.debug)`: as redes do registro, e o clique segue (`PASS`).
+        if game.native_sneaking() && basis::debug_mode() {
+            for message in network_reader::debug_messages(&basis::registry_networks()) {
+                game.native_tell(player.uuid, network_text(&message));
+            }
+        }
+        return false;
+    }
     let local = network_reader::LocalConfig {
         temperature_unit: basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE),
         compact_energy: basis::compact_energy_display(rules::LOCAL_CONFIG_NAMESPACE),
