@@ -79,6 +79,12 @@ pub trait TransmitterWorld {
     fn extra_valid_transmitter(&self, _me: BlockPos, _other: BlockPos, _side: Face) -> bool {
         true
     }
+
+    /// A parte do `canConnect(side)` que as subclasses acrescentam à da base (a do desviador: o modo do lado contra o sinal). A base não
+    /// acrescenta nada.
+    fn extra_can_connect(&self, _me: BlockPos, _side: Face) -> bool {
+        true
+    }
 }
 
 /// `InteractionResult`, no que importa aqui.
@@ -106,6 +112,12 @@ pub enum Overlay {
     /// `MekanismLang.CONNECTION_TYPE` (`configurator.<mod>.mode_change`), cinza, com o tipo cru
     /// com a cor dele.
     ConnectionType { connection: ConnectionType },
+    /// `MekanismLang.TOGGLE_COLOR` (`configurator.<mod>.toggle_color`), cinza, com o nome da cor que o transportador logístico passa a ter (`None`: nenhuma).
+    ToggleColor { color: Option<u8> },
+    /// `MekanismLang.CURRENT_COLOR`: a cor atual do transportador logístico, no clique sem agachar.
+    CurrentColor { color: Option<u8> },
+    /// `MekanismLang.TOGGLE_DIVERTER`: o modo novo do lado do desviador.
+    ToggleDiverter { mode: crate::transporter::node::DiversionControl },
 }
 
 /// O que o transmissor pede ao mundo e à rede, na ordem em que o original o faz.
@@ -682,9 +694,9 @@ impl<A: Clone> Transmitter<A> {
             if !self.redstone_set.get() {
                 self.set_redstone_state(world);
             }
-            return !self.redstone_powered.get();
+            return !self.redstone_powered.get() && world.extra_can_connect(self.pos, side);
         }
-        true
+        world.extra_can_connect(self.pos, side)
     }
 
     // ---------------------------------------------------------------------------------------

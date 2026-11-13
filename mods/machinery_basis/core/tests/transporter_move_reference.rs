@@ -1,41 +1,29 @@
 //! O movimento das pilhas nos transportadores logísticos contra o original, tick a tick: `dev/referencia/rastros/transporter_move_<cenário>.jsonl`
 //! (`testes/TransporterMoveTraceTest.java`). Cada cenário monta transportadores e contêineres (baús e droppers) e o original anda com eles; o teste monta
-//! o mesmo mundo simulado (o `Transmitter` da `rede-conexao`, o registro da `rede-registro`, contêineres `VanillaContainer`), aplica as ações (`mark`) na hora
-//! em que o original as aplicou e roda os transportadores na ordem do original (`onUpdateServer` de cada um, depois o `onTick` do registro, como o
-//! `ServerTickEvent.Post`). Depois de cada tick confere cada transportador (as pilhas em trânsito na ordem da tabela do fastutil, com o id, o
-//! `System.identityHashCode`, o progresso, o caminho, o próximo e o anterior, o NBT salvo, o de atualização e o `STREAM_CODEC` em hexadecimal), os
-//! contêineres e o que caiu no mundo.
+//! o mesmo mundo simulado e o faz andar pelo dono de produção (`InventoryTransmitters`, o que o jogo usa): os eventos do jogo (`ClearRemoved` e `PlacedByItem` de cada
+//! transportador, `Update` na ordem do original, `Neighbor` do bloco de redstone e do bloco que sai, `Removed` ao quebrar, `ServerTickPost`) entram no dono, que faz o
+//! que o `TileEntityLogisticalTransporterBase` e o registro fazem. As ações (`mark`) entram na hora em que o original as aplicou. Depois de cada tick confere cada
+//! transportador (as pilhas em trânsito na ordem da tabela do fastutil, com o id, o `System.identityHashCode`, o progresso, o caminho, o próximo e o anterior, o NBT
+//! salvo, o de atualização e o `STREAM_CODEC` em hexadecimal), os contêineres e o que caiu no mundo.
 //!
 //! Os `System.identityHashCode` das pilhas vêm do rastro (decisão 118): o teste os dá na ordem em que as pilhas aparecem.
 use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::identity_hash::{feed_identity_hashes, pending_fed_identity_hashes};
 use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
+use machinery_basis_core::neighbors::UPDATE_ORDER;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
-use machinery_basis_core::transaction::Transaction;
-use machinery_basis_core::transmission::connection::ConnectionType;
-use machinery_basis_core::transmission::inventory_network::{
-    RegistryNetworkView, TransporterLookup, on_network_event,
+use machinery_basis_core::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
+use machinery_basis_core::transmission::inventory_owner::{
+    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
 };
-use machinery_basis_core::transmission::registry::TransmitterNetworkRegistry;
-use machinery_basis_core::transmission::validator::CompatibleTransmitterValidator;
-use machinery_basis_core::transmission::{
-    DimensionId, NetworkEvent, NetworkId, TransmitterHost, TransmitterId, Uuid,
-};
-use machinery_basis_core::transporter::movement::{
-    MoveContext, TransporterEnv, TransporterItemHandler, WorldDrop,
-};
-use machinery_basis_core::transporter::nbt::to_snbt;
-use machinery_basis_core::transporter::node::{
-    DiversionControl, DiversionNeighbor, LogisticalTransporterBase, TransporterKind,
-    TransporterTier,
-};
-use machinery_basis_core::transporter::pathfinder::PathContext;
+use machinery_basis_core::transmission::owner::{CableView, Event};
+use machinery_basis_core::transmission::transmitter::Transmitter;
+use machinery_basis_core::transmission::{DimensionId, Uuid};
+use machinery_basis_core::transporter::movement::WorldDrop;
+use machinery_basis_core::transporter::nbt::{Compound, Nbt, to_snbt};
+use machinery_basis_core::transporter::node::{DiversionControl, TransporterKind, TransporterTier};
 use machinery_basis_core::transporter::stack::write_var_int;
-use machinery_basis_core::transporter::world::{
-    InventoryNetworkView, SideConfigView, TransportSorter, Transporter, TransporterWorld,
-};
-use machinery_basis_core::transporter::{PathfinderCache, TransporterManager};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -74,286 +62,45 @@ fn item_of(value: &Value) -> ItemResource {
     ItemResource::new(value.as_str().unwrap(), 64)
 }
 
-/// Um transportador do mundo simulado.
-struct Node {
-    pos: BlockPos,
-    base: LogisticalTransporterBase,
-    hash: i32,
-    network: Option<NetworkId>,
-    orphan: bool,
-    removed: bool,
+/// O `Level` do cenário: contêineres (os baús e droppers do `setup`), o sinal de redstone, e o que o dono pede ao jogo ao ligar um transportador. Sem configuração de lados
+/// nem ejetor avançado.
+struct SimWorld {
+    chests: HashMap<BlockPos, Rc<VanillaContainer>>,
+    /// `WorldUtils.isGettingPowered`: o bloco de redstone do cenário, o mesmo para todos.
+    power: Rc<Cell<bool>>,
+    /// Os transportadores que o jogo vai entregar ao dono (`transporter_info`).
+    infos: RefCell<HashMap<BlockPos, TransporterInfo>>,
+    /// O que caiu no mundo desde a última conferência.
+    drops: Vec<WorldDrop>,
 }
 
-struct State {
-    nodes: Vec<Node>,
-    by_pos: HashMap<i64, TransmitterId>,
-    chests: HashMap<i64, Rc<VanillaContainer>>,
-}
-
-impl State {
-    fn node(&self, id: TransmitterId) -> &Node {
-        &self.nodes[id.0 as usize]
+impl InventoryOwnerWorld for SimWorld {
+    fn is_block_loaded(&self, _: BlockPos) -> bool {
+        true
     }
 
-    fn node_mut(&mut self, id: TransmitterId) -> &mut Node {
-        &mut self.nodes[id.0 as usize]
+    fn is_getting_powered(&self, _: BlockPos) -> bool {
+        self.power.get()
     }
 
-    fn chest_handler_at(&self, pos: i64) -> Option<Rc<dyn ItemHandler>> {
+    fn item_handler(&self, pos: BlockPos, _side: Face) -> Option<ItemAcceptor> {
         self.chests
             .get(&pos)
             .map(|chest| chest.clone() as Rc<dyn ItemHandler>)
     }
 
-    fn chest_handler(&self, pos: BlockPos) -> Option<Rc<dyn ItemHandler>> {
-        self.chests
-            .get(&pos.as_long())
-            .map(|chest| chest.clone() as Rc<dyn ItemHandler>)
+    fn transporter_info(&mut self, pos: BlockPos) -> Option<TransporterInfo> {
+        self.infos.borrow_mut().remove(&pos)
     }
 
-    /// O bit de aceitador de um lado: o lado liga (`canConnect`, com o modo do desviador) e há um baú ali (`isValidAcceptor`).
-    fn acceptor_bit(&self, id: TransmitterId, side: Face) -> bool {
-        let node = self.node(id);
-        let neighbor = node.pos.relative(side);
-        !self.by_pos.contains_key(&neighbor.as_long())
-            && Transporter::can_connect(&node.base, side)
-            && self.chests.contains_key(&neighbor.as_long())
+    fn decode_item(&self, tag: &Compound) -> Option<ItemResource> {
+        tag.get("id").and_then(|id| id.as_str()).map(|id| ItemResource::new(id, 64))
     }
 
-    /// `refreshConnections()` de todos: as ligações a outros transportadores e a baús, lidas dos vizinhos.
-    fn refresh_connections(&mut self) {
-        for index in 0..self.nodes.len() {
-            if self.nodes[index].removed {
-                continue;
-            }
-            let id = TransmitterId(index as u32);
-            let (mut tx_bits, mut acc_bits) = (0u8, 0u8);
-            for (side_index, side) in Face::ALL.into_iter().enumerate() {
-                let neighbor = self.node(id).pos.relative(side);
-                if let Some(other) = self.by_pos.get(&neighbor.as_long()) {
-                    if self
-                        .node(id)
-                        .base
-                        .is_valid_transmitter_basic(&self.node(*other).base, side)
-                    {
-                        tx_bits |= 1 << side_index;
-                    }
-                } else if self.acceptor_bit(id, side) {
-                    acc_bits |= 1 << side_index;
-                }
-            }
-            let transmitter = &mut self.node_mut(id).base.transmitter;
-            transmitter.current_transmitter_connections = tx_bits;
-            transmitter.acceptor_cache.current_acceptor_connections = acc_bits;
-        }
-    }
-}
+    fn publish(&mut self, _: BlockPos, _: &CableView) {}
 
-struct Host<'a> {
-    state: &'a mut State,
-    cache: &'a PathfinderCache,
-}
-
-impl TransmitterHost<Rc<dyn ItemHandler>> for Host<'_> {
-    fn block_pos(&self, transmitter: TransmitterId) -> BlockPos {
-        self.state.node(transmitter).pos
-    }
-
-    fn dimension(&self, _: TransmitterId) -> DimensionId {
-        DIMENSION
-    }
-
-    fn is_valid(&self, transmitter: TransmitterId) -> bool {
-        !self.state.node(transmitter).removed
-    }
-
-    fn is_orphan(&self, transmitter: TransmitterId) -> bool {
-        self.state.node(transmitter).orphan
-    }
-
-    fn set_orphan(&mut self, transmitter: TransmitterId, orphan: bool) {
-        self.state.node_mut(transmitter).orphan = orphan;
-    }
-
-    fn transmitter_network(&self, transmitter: TransmitterId) -> Option<NetworkId> {
-        self.state.node(transmitter).network
-    }
-
-    fn store_transmitter_network(
-        &mut self,
-        transmitter: TransmitterId,
-        network: Option<NetworkId>,
-    ) {
-        self.state.node_mut(transmitter).network = network;
-    }
-
-    fn identity_hash(&self, transmitter: TransmitterId) -> i32 {
-        self.state.node(transmitter).hash
-    }
-
-    fn request_update(&mut self, _: TransmitterId) {}
-
-    fn supports_transmission_type(&self, _: TransmitterId, _: TransmitterId) -> bool {
-        true
-    }
-
-    fn is_valid_transmitter_basic(
-        &self,
-        transmitter: TransmitterId,
-        other: TransmitterId,
-        side: Face,
-    ) -> bool {
-        self.state
-            .node(transmitter)
-            .base
-            .is_valid_transmitter_basic(&self.state.node(other).base, side)
-    }
-
-    fn transmitter_at(&self, _: DimensionId, pos: BlockPos) -> Option<TransmitterId> {
-        self.state.by_pos.get(&pos.as_long()).copied()
-    }
-
-    fn new_orphan_validator(
-        &self,
-        _: TransmitterId,
-    ) -> Box<dyn CompatibleTransmitterValidator<Rc<dyn ItemHandler>>> {
-        Box::new(machinery_basis_core::transmission::validator::AlwaysCompatible)
-    }
-
-    fn chunk_accessibility_change(
-        &mut self,
-        _: &mut TransmitterNetworkRegistry<Rc<dyn ItemHandler>>,
-        _: TransmitterId,
-        _: bool,
-    ) {
-        unreachable!("os chunks do cenário não mudam")
-    }
-
-    fn refresh_acceptor_connections(&mut self, transmitter: TransmitterId, side: Face) {
-        let bit = self.state.acceptor_bit(transmitter, side);
-        let index = Face::ALL.iter().position(|face| *face == side).unwrap();
-        let connections = &mut self
-            .state
-            .node_mut(transmitter)
-            .base
-            .transmitter
-            .acceptor_cache
-            .current_acceptor_connections;
-        if bit {
-            *connections |= 1 << index;
-        } else {
-            *connections &= !(1 << index);
-        }
-    }
-
-    /// `canConnectToAcceptor(side) ? getAcceptor(side) : null`.
-    fn acceptor(&self, transmitter: TransmitterId, side: Face) -> Option<Rc<dyn ItemHandler>> {
-        let node = self.state.node(transmitter);
-        if node
-            .base
-            .transmitter
-            .get_connection_type_raw(side)
-            .can_send_to()
-            && self.state.acceptor_bit(transmitter, side)
-        {
-            self.state.chest_handler(node.pos.relative(side))
-        } else {
-            None
-        }
-    }
-
-    fn network_event(
-        &mut self,
-        registry: &TransmitterNetworkRegistry<Rc<dyn ItemHandler>>,
-        network: NetworkId,
-        event: NetworkEvent,
-    ) {
-        on_network_event(self.cache, registry.network(network).uuid(), &event);
-    }
-}
-
-struct Lookup<'a>(&'a State);
-
-impl TransporterLookup for Lookup<'_> {
-    fn transporter(&self, id: TransmitterId) -> Option<&dyn Transporter> {
-        Some(&self.0.node(id).base)
-    }
-}
-
-/// O `Level` do cenário: contêineres, sem configuração de lados nem ejetor avançado.
-struct World<'a>(&'a State);
-
-impl TransporterWorld for World<'_> {
-    fn side_configuration(&self, _: i64) -> Option<SideConfigView> {
-        None
-    }
-
-    fn sorter(&self, _: i64) -> Option<&dyn TransportSorter> {
-        None
-    }
-
-    fn item_handler(&self, pos: i64, _side: Face) -> Option<Rc<dyn ItemHandler>> {
-        self.0.chest_handler_at(pos)
-    }
-
-    fn neighbor_transmitter_can_connect(&self, pos: i64, side: Face) -> Option<bool> {
-        let id = self.0.by_pos.get(&pos)?;
-        Some(Transporter::can_connect(&self.0.node(*id).base, side))
-    }
-}
-
-/// O que os transportadores e o `TransporterItemHandler` enxergam do mundo.
-struct Shared {
-    state: RefCell<State>,
-    registry: RefCell<TransmitterNetworkRegistry<Rc<dyn ItemHandler>>>,
-    manager: TransporterManager,
-    cache: PathfinderCache,
-}
-
-impl TransporterEnv for Shared {
-    fn with_transporter(
-        &self,
-        pos: i64,
-        body: &mut dyn FnMut(&LogisticalTransporterBase, &MoveContext),
-    ) {
-        let state = self.state.borrow();
-        let Some(id) = state.by_pos.get(&pos).copied() else {
-            return;
-        };
-        let node = state.node(id);
-        let world = World(&state);
-        let ctx = PathContext {
-            dimension: DIMENSION,
-            manager: &self.manager,
-            cache: &self.cache,
-            world: &world,
-        };
-        let registry = self.registry.borrow();
-        let lookup = Lookup(&state);
-        match node.network {
-            Some(network) => {
-                let view = RegistryNetworkView {
-                    registry: &registry,
-                    network,
-                    transporters: &lookup,
-                };
-                let view: &dyn InventoryNetworkView = &view;
-                body(
-                    &node.base,
-                    &MoveContext {
-                        path: &ctx,
-                        network: Some(view),
-                    },
-                );
-            }
-            None => body(
-                &node.base,
-                &MoveContext {
-                    path: &ctx,
-                    network: None,
-                },
-            ),
-        }
+    fn world_drop(&mut self, drop: WorldDrop) {
+        self.drops.push(drop);
     }
 }
 
@@ -370,16 +117,15 @@ fn int3(value: &Value) -> [i32; 3] {
 struct Scenario {
     name: &'static str,
     origin: BlockPos,
-    shared: Rc<Shared>,
+    owner: InventoryTransmitters,
+    world: SimWorld,
     /// A ordem em que o original anda os transportadores num tick (a dos block entities, `y`, `x`, `z`).
     order: Vec<usize>,
-    power: Rc<Cell<bool>>,
     /// A posição relativa de cada transportador do `setup`, na ordem dele.
     relative: Vec<[i32; 3]>,
     expected: HashMap<usize, Value>,
     statics: HashMap<(usize, i32, i64), Value>,
     expected_chests: Vec<Value>,
-    drops: RefCell<Vec<WorldDrop>>,
     tick: u32,
 }
 
@@ -411,24 +157,27 @@ impl Scenario {
             setup["z"].as_i64().unwrap() as i32,
         );
         let power = Rc::new(Cell::new(false));
-        let mut state = State {
-            nodes: Vec::new(),
-            by_pos: HashMap::new(),
+        let mut world = SimWorld {
             chests: HashMap::new(),
+            power,
+            infos: RefCell::new(HashMap::new()),
+            drops: Vec::new(),
         };
         for container in setup["containers"].as_array().unwrap() {
             let rel = int3(&container["p"]);
             let pos = BlockPos::new(origin.x + rel[0], origin.y + rel[1], origin.z + rel[2]);
-            state.chests.insert(
-                pos.as_long(),
+            world.chests.insert(
+                pos,
                 VanillaContainer::new(container["size"].as_u64().unwrap() as usize, Rc::new(|| {})),
             );
         }
         let mut relative = Vec::new();
-        for (index, transporter) in setup["transporters"].as_array().unwrap().iter().enumerate() {
+        let mut positions = Vec::new();
+        for transporter in setup["transporters"].as_array().unwrap() {
             let rel = int3(&transporter["p"]);
             relative.push(rel);
             let pos = BlockPos::new(origin.x + rel[0], origin.y + rel[1], origin.z + rel[2]);
+            positions.push(pos);
             let tier = TransporterTier::by_id(transporter["tier"].as_i64().unwrap() as i32);
             let kind = match transporter["kind"].as_str().unwrap() {
                 "logistical" => TransporterKind::Logistical {
@@ -442,47 +191,68 @@ impl Scenario {
                 },
                 other => panic!("tipo {other}"),
             };
-            let signal = power.clone();
-            let mut base =
-                LogisticalTransporterBase::new(pos, tier, kind, Rc::new(move || signal.get()));
+            // O que o block entity trazia: os tipos de conexão de cada lado (`connection`).
             let raw: [ConnectionType; 6] = std::array::from_fn(|side| {
                 ConnectionType::by_id(transporter["raw"][side].as_i64().unwrap() as i32)
             });
-            base.transmitter.set_connection_types_raw(raw);
-            let id = TransmitterId(index as u32);
-            state.by_pos.insert(pos.as_long(), id);
-            state.nodes.push(Node {
-                pos,
-                base,
-                hash: 100_003 * (index as i32 + 1),
-                network: None,
-                orphan: true,
-                removed: false,
-            });
-        }
-        state.refresh_connections();
-        let cache = PathfinderCache::new();
-        let mut registry = TransmitterNetworkRegistry::new({
-            let mut next = 0;
-            move || {
-                next += 1;
-                Uuid::with_hash_code(next * 7919)
-            }
-        });
-        for index in 0..state.nodes.len() {
-            let id = TransmitterId(index as u32);
-            let host = Host {
-                state: &mut state,
-                cache: &cache,
+            let mut template: Transmitter<ItemAcceptor> = Transmitter::new(
+                [pos.x, pos.y, pos.z],
+                TransmissionSet::of(&[TransmissionType::Item]),
+                false,
+            );
+            template.set_connection_types_raw(raw);
+            // O `write` do block entity: as ligações, a cor ou o `mode` do desviador.
+            let saved = SavedTransporter {
+                tag: template.write(),
+                color: match &kind {
+                    TransporterKind::Logistical { color: Some(color) } => Some(Nbt::String(
+                        machinery_basis_core::side_config::ENUM_COLOR_NAMES[usize::from(*color)]
+                            .into(),
+                    )),
+                    _ => None,
+                },
+                modes: match &kind {
+                    TransporterKind::Diversion { modes } => Some(Nbt::IntArray(
+                        modes.iter().map(|mode| mode.ordinal()).collect(),
+                    )),
+                    _ => None,
+                },
+                items: None,
             };
-            registry.track_transmitter(&host, id);
-            registry.register_orphan_transmitter(&host, id);
+            world.infos.borrow_mut().insert(
+                pos,
+                TransporterInfo {
+                    tier,
+                    kind,
+                    saved: Some(saved),
+                },
+            );
         }
-        let mut host = Host {
-            state: &mut state,
-            cache: &cache,
-        };
-        registry.on_tick(&mut host, true);
+        let mut owner = InventoryTransmitters::new(
+            DIMENSION,
+            {
+                let mut next = 0;
+                move || {
+                    next += 1;
+                    Uuid::with_hash_code(next * 7919)
+                }
+            },
+            {
+                let mut index = 0;
+                move |_| {
+                    index += 1;
+                    100_003 * index
+                }
+            },
+        );
+        // O jogo entrega os block entities ao chunk, e cada um é posto por um item (`onAdded`): entra na rede e relê as ligações. O primeiro tick forma as redes.
+        for pos in &positions {
+            owner.handle(&mut world, Event::ClearRemoved(*pos));
+        }
+        for pos in &positions {
+            owner.handle(&mut world, Event::PlacedByItem(*pos));
+        }
+        owner.handle(&mut world, Event::ServerTickPost { runs_normally: true });
         let mut order: Vec<usize> = (0..relative.len()).collect();
         order.sort_by_key(|index| {
             (
@@ -494,50 +264,39 @@ impl Scenario {
         Scenario {
             name,
             origin,
-            shared: Rc::new(Shared {
-                state: RefCell::new(state),
-                registry: RefCell::new(registry),
-                manager: TransporterManager::new(),
-                cache,
-            }),
+            owner,
+            world,
             order,
-            power,
             relative,
             expected: HashMap::new(),
             statics: HashMap::new(),
             expected_chests: Vec::new(),
-            drops: RefCell::new(Vec::new()),
             tick: 0,
         }
     }
 
+    fn pos_of(&self, index: usize) -> BlockPos {
+        self.abs(self.relative[index])
+    }
+
     fn pos_long(&self, index: usize) -> i64 {
-        self.abs(self.relative[index]).as_long()
+        self.pos_of(index).as_long()
     }
 
     /// Um tick do servidor: os block entities na ordem, e o `onTick` do registro no `ServerTickEvent.Post`.
     fn run_tick(&mut self) {
         self.tick += 1;
         for index in self.order.clone() {
-            let pos = self.pos_long(index);
-            let drops = &self.drops;
-            self.shared.with_transporter(pos, &mut |base, ctx| {
-                base.on_update_server(ctx);
-                drops.borrow_mut().extend(base.take_world_drops());
-            });
+            let pos = self.pos_of(index);
+            self.owner.handle(&mut self.world, Event::Update(pos));
         }
-        let mut state = self.shared.state.borrow_mut();
-        let mut registry = self.shared.registry.borrow_mut();
-        let mut host = Host {
-            state: &mut state,
-            cache: &self.shared.cache,
-        };
-        registry.on_tick(&mut host, true);
+        self.owner
+            .handle(&mut self.world, Event::ServerTickPost { runs_normally: true });
     }
 
     fn container(&self, rel: &Value) -> Rc<VanillaContainer> {
-        let pos = self.abs_value(rel).as_long();
-        self.shared.state.borrow().chests[&pos].clone()
+        let pos = self.abs_value(rel);
+        self.world.chests[&pos].clone()
     }
 
     fn apply_mark(&mut self, row: &Value) {
@@ -549,29 +308,14 @@ impl Scenario {
                 row["n"].as_u64().unwrap() as u32,
             ),
             "cap_insert" => {
-                let index = self
-                    .relative
-                    .iter()
-                    .position(|rel| *rel == int3(&row["p"]))
-                    .unwrap();
+                let pos = self.abs_value(&row["p"]);
                 let side = face(row["side"].as_str().unwrap());
                 let item = item_of(&row["item"]);
                 let amount = row["n"].as_u64().unwrap() as u32;
-                let env: Rc<dyn TransporterEnv> = self.shared.clone();
-                let handler = {
-                    let state = self.shared.state.borrow();
-                    TransporterItemHandler::for_side(
-                        env,
-                        &state.node(TransmitterId(index as u32)).base,
-                        side,
-                    )
-                };
-                let inserted = handler.map_or(-1_i64, |handler| {
-                    let transaction = Transaction::open_root();
-                    let inserted = handler.insert(&item, amount, &transaction);
-                    transaction.commit();
-                    i64::from(inserted)
-                });
+                let inserted = self
+                    .owner
+                    .insert(&mut self.world, pos, side, &item, amount)
+                    .map_or(-1_i64, i64::from);
                 assert_eq!(
                     inserted,
                     row["inserted"].as_i64().unwrap(),
@@ -579,8 +323,9 @@ impl Scenario {
                 );
             }
             "power" => {
-                self.power.set(row["on"].as_bool().unwrap());
-                self.neighbor_changed(&row["p"]);
+                self.world.power.set(row["on"].as_bool().unwrap());
+                let at = self.abs_value(&row["p"]);
+                self.neighbors_changed(at);
             }
             "break" => self.break_transporter(&row["p"]),
             "finishing" | "finish" => {}
@@ -588,115 +333,20 @@ impl Scenario {
         }
     }
 
-    /// As ligações de cada transportador antes e depois de `refreshConnections()`: as de transportador (e o que isso pede à rede) e as de aceitador.
-    fn refresh_and_notify(&mut self, diverter: Option<usize>) {
-        let bits = |scenario: &Scenario| -> Vec<(u8, u8)> {
-            scenario
-                .shared
-                .state
-                .borrow()
-                .nodes
-                .iter()
-                .map(|node| {
-                    (
-                        node.base.transmitter.current_transmitter_connections,
-                        node.base
-                            .transmitter
-                            .acceptor_cache
-                            .current_acceptor_connections,
-                    )
-                })
-                .collect()
-        };
-        let before = bits(self);
-        self.shared.state.borrow_mut().refresh_connections();
-        let after = bits(self);
-        for index in 0..before.len() {
-            let id = TransmitterId(index as u32);
-            let (tx_changed, acc_changed) = (
-                before[index].0 != after[index].0,
-                before[index].1 != after[index].1,
-            );
-            let mut state = self.shared.state.borrow_mut();
-            let network = state.node(id).network;
-            let mut registry = self.shared.registry.borrow_mut();
-            let host = Host {
-                state: &mut state,
-                cache: &self.shared.cache,
-            };
-            // Os desviadores invalidam a rede por qualquer mudança de ligação (`markDirtyTransmitters`); os outros, só pelas de transportador.
-            let dirty = if diverter == Some(index) {
-                tx_changed || acc_changed
-            } else {
-                tx_changed
-            };
-            if dirty {
-                registry.invalidate_transmitter(&host, id);
-            } else if acc_changed && let Some(network) = network {
-                for (side_index, side) in Face::ALL.into_iter().enumerate() {
-                    if (before[index].1 ^ after[index].1) & (1 << side_index) != 0 {
-                        registry.network_acceptor_changed(&host, network, id, side);
-                    }
-                }
-            }
-        }
-    }
-
-    /// O bloco de redstone muda de lugar: o desviador ao lado recebe `neighborChanged`.
-    fn neighbor_changed(&mut self, redstone: &Value) {
-        let at = self.abs_value(redstone);
-        for side in Face::ALL {
+    /// `Level.updateNeighborsAt(at)`: os vizinhos recebem `neighborChanged` na ordem de `UPDATE_ORDER`.
+    fn neighbors_changed(&mut self, at: BlockPos) {
+        for side in UPDATE_ORDER {
             let neighbor = at.relative(side);
-            let Some(index) = self
-                .shared
-                .state
-                .borrow()
-                .by_pos
-                .get(&neighbor.as_long())
-                .map(|id| id.0 as usize)
-            else {
-                continue;
-            };
-            let step = {
-                let state = self.shared.state.borrow();
-                state
-                    .node(TransmitterId(index as u32))
-                    .base
-                    .diversion_neighbor_change(None)
-            };
-            match step {
-                DiversionNeighbor::PowerChanged | DiversionNeighbor::Refresh(_) => {
-                    self.refresh_and_notify(Some(index));
-                }
-            }
+            self.owner
+                .handle(&mut self.world, Event::Neighbor(neighbor));
         }
     }
 
-    /// `setBlock(AIR)` num transportador: solta o que ele leva, esquece o que estava em voo e a rede o invalida.
+    /// `setBlock(AIR)` num transportador: o bloco quebrado solta o que leva (`preRemoveSideEffects`) e sai (`setRemoved`); os vizinhos recebem o aviso.
     fn break_transporter(&mut self, p: &Value) {
-        let rel = int3(p);
-        let index = self.relative.iter().position(|r| *r == rel).unwrap();
-        let pos = self.pos_long(index);
-        let drops = &self.drops;
-        self.shared.with_transporter(pos, &mut |base, ctx| {
-            base.pre_remove_side_effects(ctx);
-            drops.borrow_mut().extend(base.take_world_drops());
-            base.remove_transit(ctx.path);
-        });
-        {
-            let mut state = self.shared.state.borrow_mut();
-            let id = TransmitterId(index as u32);
-            state.node_mut(id).removed = true;
-            state.by_pos.remove(&pos);
-            let mut registry = self.shared.registry.borrow_mut();
-            let host = Host {
-                state: &mut state,
-                cache: &self.shared.cache,
-            };
-            registry.untrack_transmitter(&host, id);
-            registry.invalidate_transmitter(&host, id);
-        }
-        self.refresh_and_notify(None);
+        let at = self.abs_value(p);
+        self.owner.handle(&mut self.world, Event::Removed(at));
+        self.neighbors_changed(at);
     }
 
     fn check_row(&mut self, row: &Value) {
@@ -719,11 +369,12 @@ impl Scenario {
             let expected = self.expected.get(&index).cloned();
             let delay = delay.as_i64().unwrap();
             let pos = self.pos_long(index);
+            let bpos = self.pos_of(index);
             let me = format!("{who} {:?}", self.relative[index]);
             let mut checks: Vec<String> = Vec::new();
             let statics = &mut self.statics;
             let origin = self.origin;
-            self.shared.with_transporter(pos, &mut |base, _| {
+            self.owner.with_transporter(&self.world, bpos, |base, _| {
                 let (actual_delay, delay_count, next_id) = base.counters();
                 if delay >= 0 {
                     assert_eq!(i64::from(actual_delay), delay, "{me} delay");
@@ -887,10 +538,8 @@ impl Scenario {
             );
         }
         // O que caiu no mundo neste tick.
-        let mut actual: Vec<String> = self
-            .drops
-            .borrow_mut()
-            .drain(..)
+        let mut actual: Vec<String> = std::mem::take(&mut self.world.drops)
+            .into_iter()
             .map(|drop| {
                 format!(
                     "{} {} {}",
@@ -962,14 +611,15 @@ fn run(name: &'static str) {
             .position(|rel| *rel == int3(&entry["p"]))
             .unwrap();
         let delay = rows[1]["dl"][index].as_i64().unwrap() as i32;
-        let pos = scenario.pos_long(index);
         let (dc, nid) = (
             entry["dc"].as_i64().unwrap() as i32,
             entry["nid"].as_i64().unwrap() as i32,
         );
         scenario
-            .shared
-            .with_transporter(pos, &mut |base, _| base.restore_counters(delay, dc, nid));
+            .owner
+            .with_transporter(&scenario.world, scenario.pos_of(index), |base, _| {
+                base.restore_counters(delay, dc, nid)
+            });
         assert!(
             entry["transit"].as_array().unwrap().is_empty(),
             "{name}: começa com pilhas"
