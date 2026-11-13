@@ -9,8 +9,14 @@ fn the_tier_values_are_the_defaults_until_the_file_sets_them_and_then_the_file_w
     assert_eq!(speeds, [5, 10, 20, 50]);
     assert_eq!(pulls, [1, 16, 32, 64]);
     TransporterTier::configure([6, 11, 21, 51], [2, 17, 33, 65]);
-    assert_eq!(TransporterTier::VALUES.map(TransporterTier::speed), [6, 11, 21, 51]);
-    assert_eq!(TransporterTier::VALUES.map(TransporterTier::pull_amount), [2, 17, 33, 65]);
+    assert_eq!(
+        TransporterTier::VALUES.map(TransporterTier::speed),
+        [6, 11, 21, 51]
+    );
+    assert_eq!(
+        TransporterTier::VALUES.map(TransporterTier::pull_amount),
+        [2, 17, 33, 65]
+    );
     TransporterTier::configure(speeds, pulls);
     assert_eq!(TransporterTier::Ultimate.speed(), 50);
 }

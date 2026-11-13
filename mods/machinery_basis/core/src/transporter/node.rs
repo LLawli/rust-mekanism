@@ -10,8 +10,8 @@ use crate::transaction::JournalCell;
 use crate::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
 use crate::transmission::transmitter::{NeighborTransmitter, Transmitter, TransmitterWorld};
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 /// `TransporterTier`: a velocidade e a quantidade que puxa por vez (os valores de fábrica, sem a configuração).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,8 +23,18 @@ pub enum TransporterTier {
 }
 
 /// `TransporterTier.getSpeed` e `getPullAmount` de cada tier: o valor do arquivo `tiers.toml` (`TierConfig`), que a cola põe quando o arquivo carrega; os padrões antes disso.
-static SPEEDS: [AtomicI32; 4] = [AtomicI32::new(5), AtomicI32::new(10), AtomicI32::new(20), AtomicI32::new(50)];
-static PULL_AMOUNTS: [AtomicI32; 4] = [AtomicI32::new(1), AtomicI32::new(16), AtomicI32::new(32), AtomicI32::new(64)];
+static SPEEDS: [AtomicI32; 4] = [
+    AtomicI32::new(5),
+    AtomicI32::new(10),
+    AtomicI32::new(20),
+    AtomicI32::new(50),
+];
+static PULL_AMOUNTS: [AtomicI32; 4] = [
+    AtomicI32::new(1),
+    AtomicI32::new(16),
+    AtomicI32::new(32),
+    AtomicI32::new(64),
+];
 
 impl TransporterTier {
     /// Os valores do arquivo de configuração, na ordem dos tiers: a velocidade e a quantidade que puxa por vez.

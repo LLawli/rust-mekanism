@@ -458,7 +458,10 @@ fn the_transporters_follow_the_order_of_the_tiers_and_the_file_changes_speed_and
     assert_eq!(LOGISTICAL_TRANSPORTERS.len(), TransporterTier::VALUES.len());
     // Os padrões do arquivo são os de `TransporterTier` (`getBasePull`, `getBaseSpeed`), os que a lib tinha.
     let defaults = TIERS_CONFIG.defaults();
-    assert_eq!(transporter_pull_amounts(&defaults), DEFAULT_TRANSPORTER_PULL_AMOUNTS);
+    assert_eq!(
+        transporter_pull_amounts(&defaults),
+        DEFAULT_TRANSPORTER_PULL_AMOUNTS
+    );
     assert_eq!(transporter_speeds(&defaults), DEFAULT_TRANSPORTER_SPEEDS);
     assert_eq!(DEFAULT_TRANSPORTER_PULL_AMOUNTS, [1, 16, 32, 64]);
     assert_eq!(DEFAULT_TRANSPORTER_SPEEDS, [5, 10, 20, 50]);

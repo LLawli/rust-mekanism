@@ -1195,10 +1195,17 @@ pub const DEFAULT_TRANSPORTER_SPEEDS: [i32; 4] = [5, 10, 20, 50];
 
 /// A quantidade que cada transportador logístico puxa por vez (`TransporterTier.getPullAmount`: o valor do arquivo, ou o padrão sem ele), na ordem de [`LOGISTICAL_TRANSPORTERS`].
 pub fn transporter_pull_amounts(loaded: &ClientLoaded) -> [i32; 4] {
-    const KEYS: [&str; 4] = ["basicPullAmount", "advancedPullAmount", "elitePullAmount", "ultimatePullAmount"];
+    const KEYS: [&str; 4] = [
+        "basicPullAmount",
+        "advancedPullAmount",
+        "elitePullAmount",
+        "ultimatePullAmount",
+    ];
     let mut out = DEFAULT_TRANSPORTER_PULL_AMOUNTS;
     for (slot, key) in out.iter_mut().zip(KEYS) {
-        *slot = loaded.int(&TIERS_CONFIG, "transmitters.items", key).unwrap_or(*slot);
+        *slot = loaded
+            .int(&TIERS_CONFIG, "transmitters.items", key)
+            .unwrap_or(*slot);
     }
     out
 }
@@ -1208,7 +1215,9 @@ pub fn transporter_speeds(loaded: &ClientLoaded) -> [i32; 4] {
     const KEYS: [&str; 4] = ["basicSpeed", "advancedSpeed", "eliteSpeed", "ultimateSpeed"];
     let mut out = DEFAULT_TRANSPORTER_SPEEDS;
     for (slot, key) in out.iter_mut().zip(KEYS) {
-        *slot = loaded.int(&TIERS_CONFIG, "transmitters.items", key).unwrap_or(*slot);
+        *slot = loaded
+            .int(&TIERS_CONFIG, "transmitters.items", key)
+            .unwrap_or(*slot);
     }
     out
 }

@@ -796,7 +796,10 @@ fn replay_halves(run: &str, scenario: &str, shift: [i32; 3], seed: Option<u64>) 
                 .wrapping_add(1442695040888963407);
             i64::from((state >> 32) as i32)
         };
-        for row in rows.iter_mut().filter(|row| kind(row) == "tile" || kind(row) == "created") {
+        for row in rows
+            .iter_mut()
+            .filter(|row| kind(row) == "tile" || kind(row) == "created")
+        {
             row["hash"] = Value::from(next());
         }
         for tile in rows[0]["tiles"].as_array_mut().unwrap() {
@@ -848,7 +851,10 @@ fn replay_halves(run: &str, scenario: &str, shift: [i32; 3], seed: Option<u64>) 
         if let Some((_, tx)) = world.tx_at(world.cable(x as i32))
             && let Some(network) = tx.network
         {
-            out.push((x as i32, state.family.network(network).unwrap().energy.amount() as u64));
+            out.push((
+                x as i32,
+                state.family.network(network).unwrap().energy.amount() as u64,
+            ));
         }
     }
     out
@@ -870,16 +876,23 @@ fn the_ten_more_positions_of_break_end_odd_match_the_original() {
 /// As doze rodadas do original: o port com hashes sorteados dá a mesma metade, as duas aparecem entre as posições, e deslocar a linha a troca.
 #[test]
 fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
-    let runs: Vec<(&str, String)> = [("", "break_end_odd".to_owned()), ("run2", "break_end_odd".to_owned())]
-        .into_iter()
-        .chain((0..ODD_RUNS).map(|k| ("", format!("odd_{k}"))))
-        .collect();
+    let runs: Vec<(&str, String)> = [
+        ("", "break_end_odd".to_owned()),
+        ("run2", "break_end_odd".to_owned()),
+    ]
+    .into_iter()
+    .chain((0..ODD_RUNS).map(|k| ("", format!("odd_{k}"))))
+    .collect();
     let mut at_cable_one = std::collections::BTreeSet::new();
     for (run, scenario) in &runs {
         let recorded = recorded_halves(run, scenario);
         assert_eq!(recorded.len(), 2, "{run} {scenario}: as duas metades");
         at_cable_one.insert(recorded.iter().find(|(x, _)| *x == 1).unwrap().1);
-        assert_eq!(replay_halves(run, scenario, [0, 0, 0], None), recorded, "{run} {scenario}");
+        assert_eq!(
+            replay_halves(run, scenario, [0, 0, 0], None),
+            recorded,
+            "{run} {scenario}"
+        );
         for seed in 1..=20 {
             assert_eq!(
                 replay_halves(run, scenario, [0, 0, 0], Some(seed)),
@@ -888,9 +901,19 @@ fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
             );
         }
     }
-    assert_eq!(at_cable_one.len(), 2, "as duas metades aparecem entre as posições: {at_cable_one:?}");
+    assert_eq!(
+        at_cable_one.len(),
+        2,
+        "as duas metades aparecem entre as posições: {at_cable_one:?}"
+    );
     let moved: std::collections::BTreeSet<u64> = (0..16)
-        .map(|dx| replay_halves("", "break_end_odd", [dx, 0, 0], None).iter().find(|(x, _)| *x == 1).unwrap().1)
+        .map(|dx| {
+            replay_halves("", "break_end_odd", [dx, 0, 0], None)
+                .iter()
+                .find(|(x, _)| *x == 1)
+                .unwrap()
+                .1
+        })
         .collect();
     assert_eq!(moved.len(), 2, "deslocar a linha troca a metade: {moved:?}");
 }
@@ -899,11 +922,24 @@ fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
 #[ignore = "mede para o jogo: ODD_ORIGINS=x,y,z;x,y,z cargo test ... -- --ignored --nocapture"]
 fn predict_the_halves_for_the_game() {
     let rows = read_rows("", "break_end_odd");
-    let base = [int(&rows[0], "x") as i32, int(&rows[0], "y") as i32, int(&rows[0], "z") as i32];
-    for origin in std::env::var("ODD_ORIGINS").expect("ODD_ORIGINS=x,y,z;x,y,z").split(';') {
-        let at: Vec<i32> = origin.split(',').map(|n| n.trim().parse().unwrap()).collect();
+    let base = [
+        int(&rows[0], "x") as i32,
+        int(&rows[0], "y") as i32,
+        int(&rows[0], "z") as i32,
+    ];
+    for origin in std::env::var("ODD_ORIGINS")
+        .expect("ODD_ORIGINS=x,y,z;x,y,z")
+        .split(';')
+    {
+        let at: Vec<i32> = origin
+            .split(',')
+            .map(|n| n.trim().parse().unwrap())
+            .collect();
         let shift = [at[0] - base[0], at[1] - base[1], at[2] - base[2]];
-        println!("ODD {at:?} {:?}", replay_halves("", "break_end_odd", shift, None));
+        println!(
+            "ODD {at:?} {:?}",
+            replay_halves("", "break_end_odd", shift, None)
+        );
     }
 }
 
@@ -922,19 +958,36 @@ fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again(
             .unwrap();
         state["cables"][x]["net"].as_i64()
     };
-    let frozen_from = rows.iter().find(|row| row["m"] == "pre freeze").map(|row| int(row, "t")).unwrap();
-    let loaded_at = rows.iter().find(|row| kind(row) == "load").map(|row| int(row, "t")).unwrap();
-    let unfrozen_at = rows.iter().find(|row| row["m"] == "pre unfreeze").map(|row| int(row, "t")).unwrap();
+    let frozen_from = rows
+        .iter()
+        .find(|row| row["m"] == "pre freeze")
+        .map(|row| int(row, "t"))
+        .unwrap();
+    let loaded_at = rows
+        .iter()
+        .find(|row| kind(row) == "load")
+        .map(|row| int(row, "t"))
+        .unwrap();
+    let unfrozen_at = rows
+        .iter()
+        .find(|row| row["m"] == "pre unfreeze")
+        .map(|row| int(row, "t"))
+        .unwrap();
     assert!(frozen_from < loaded_at && loaded_at < unfrozen_at);
     // Os cabos 15 a 24 são os do chunk que voltou (o `lineChunk(1)`): parado, sem rede; os de fora seguem nas duas redes que a descarga deixou.
     for tick in loaded_at..unfrozen_at {
         for x in [15, 16, 17, 24] {
             assert_eq!(net_of(tick, x), None, "tick {tick}, cabo {x}");
         }
-        assert_ne!(net_of(tick, 0), net_of(tick, 47), "tick {tick}: duas redes, a junção espera");
+        assert_ne!(
+            net_of(tick, 0),
+            net_of(tick, 47),
+            "tick {tick}: duas redes, a junção espera"
+        );
     }
     // No tick em que o servidor anda, os 48 estão numa rede só.
-    let nets: std::collections::BTreeSet<Option<i64>> = (0..48).map(|x| net_of(unfrozen_at, x)).collect();
+    let nets: std::collections::BTreeSet<Option<i64>> =
+        (0..48).map(|x| net_of(unfrozen_at, x)).collect();
     assert_eq!(nets.len(), 1);
     assert!(nets.iter().next().unwrap().is_some());
 }

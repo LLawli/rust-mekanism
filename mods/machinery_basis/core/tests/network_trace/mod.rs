@@ -881,7 +881,10 @@ pub fn replay_halves<K: Kind>(
                 .wrapping_add(1442695040888963407);
             i64::from((state >> 32) as i32)
         };
-        for row in rows.iter_mut().filter(|row| kind(row) == "tile" || kind(row) == "created") {
+        for row in rows
+            .iter_mut()
+            .filter(|row| kind(row) == "tile" || kind(row) == "created")
+        {
             row["hash"] = Value::from(next());
         }
         for tile in rows[0]["tiles"].as_array_mut().unwrap() {
@@ -932,7 +935,10 @@ pub fn replay_halves<K: Kind>(
         if let Some((_, pipe)) = world.pipe_at(world.pipe_pos(x as i32))
             && let Some(network) = pipe.network
         {
-            out.push((x as i32, world.family().network(network).unwrap().buffer().amount as u64));
+            out.push((
+                x as i32,
+                world.family().network(network).unwrap().buffer().amount,
+            ));
         }
     }
     out
@@ -949,16 +955,23 @@ pub const ODD_RUNS: usize = 10;
 /// - com hashes sorteados (20 sementes por rodada), a metade é a mesma do original: o sorteio da JVM não decide;
 /// - as duas metades aparecem entre as posições, e deslocar a linha de um rastro a faz trocar de metade.
 pub fn odd_unit_follows_the_position<K: Kind>() {
-    let runs: Vec<(&str, String)> = [("", "break_end_odd".to_owned()), ("run2", "break_end_odd".to_owned())]
-        .into_iter()
-        .chain((0..ODD_RUNS).map(|k| ("", format!("odd_{k}"))))
-        .collect();
+    let runs: Vec<(&str, String)> = [
+        ("", "break_end_odd".to_owned()),
+        ("run2", "break_end_odd".to_owned()),
+    ]
+    .into_iter()
+    .chain((0..ODD_RUNS).map(|k| ("", format!("odd_{k}"))))
+    .collect();
     let mut at_pipe_one = std::collections::BTreeSet::new();
     for (run, scenario) in &runs {
         let recorded = recorded_halves::<K>(run, scenario);
         assert_eq!(recorded.len(), 2, "{run} {scenario}: as duas metades");
         at_pipe_one.insert(recorded.iter().find(|(x, _)| *x == 1).unwrap().1);
-        assert_eq!(replay_halves::<K>(run, scenario, [0, 0, 0], None), recorded, "{run} {scenario}");
+        assert_eq!(
+            replay_halves::<K>(run, scenario, [0, 0, 0], None),
+            recorded,
+            "{run} {scenario}"
+        );
         for seed in 1..=20 {
             assert_eq!(
                 replay_halves::<K>(run, scenario, [0, 0, 0], Some(seed)),
@@ -967,23 +980,43 @@ pub fn odd_unit_follows_the_position<K: Kind>() {
             );
         }
     }
-    assert_eq!(at_pipe_one.len(), 2, "as duas metades aparecem entre as posições: {at_pipe_one:?}");
+    assert_eq!(
+        at_pipe_one.len(),
+        2,
+        "as duas metades aparecem entre as posições: {at_pipe_one:?}"
+    );
     let moved: std::collections::BTreeSet<u64> = (0..16)
-        .map(|dx| replay_halves::<K>("", "break_end_odd", [dx, 0, 0], None).iter().find(|(x, _)| *x == 1).unwrap().1)
+        .map(|dx| {
+            replay_halves::<K>("", "break_end_odd", [dx, 0, 0], None)
+                .iter()
+                .find(|(x, _)| *x == 1)
+                .unwrap()
+                .1
+        })
         .collect();
     assert_eq!(moved.len(), 2, "deslocar a linha troca a metade: {moved:?}");
 }
 
 /// O que o port prevê para uma linha de cinco canos posta em cada origem de `ODD_ORIGINS` (`x,y,z;x,y,z`, a posição do primeiro cano): a quantidade da rede do cano 1
 /// (o avançado) e a do cano 3, com os hashes do rastro. Para comparar com o jogo (`h2_metade_impar.py`).
-pub fn predict_halves<K: Kind>() -> Vec<([i32; 3], Vec<(i32, u64)>)> {
+/// A origem da linha e as duas metades previstas para ela.
+pub type Prediction = ([i32; 3], Vec<(i32, u64)>);
+
+pub fn predict_halves<K: Kind>() -> Vec<Prediction> {
     let rows = read_rows::<K>("", "break_end_odd");
-    let base = [int(&rows[0], "x") as i32, int(&rows[0], "y") as i32, int(&rows[0], "z") as i32];
+    let base = [
+        int(&rows[0], "x") as i32,
+        int(&rows[0], "y") as i32,
+        int(&rows[0], "z") as i32,
+    ];
     std::env::var("ODD_ORIGINS")
         .expect("ODD_ORIGINS=x,y,z;x,y,z")
         .split(';')
         .map(|origin| {
-            let at: Vec<i32> = origin.split(',').map(|n| n.trim().parse().unwrap()).collect();
+            let at: Vec<i32> = origin
+                .split(',')
+                .map(|n| n.trim().parse().unwrap())
+                .collect();
             let at = [at[0], at[1], at[2]];
             let shift = [at[0] - base[0], at[1] - base[1], at[2] - base[2]];
             (at, replay_halves::<K>("", "break_end_odd", shift, None))
