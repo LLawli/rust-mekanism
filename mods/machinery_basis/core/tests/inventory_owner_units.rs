@@ -10,7 +10,7 @@ use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
 use machinery_basis_core::transmission::inventory_owner::{
-    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
+    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, hopper_outcome,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event};
 use machinery_basis_core::transmission::transmitter::{Overlay, Transmitter};
@@ -618,4 +618,39 @@ fn an_item_with_components_survives_a_save_and_a_reload() {
             assert!(back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").all(|item| item.components.is_empty()));
         }
     }
+}
+
+/// O que o funil recebe de volta (`hopper_insert`): o que não entrou fica com ele, e `moved` só vale se algo entrou.
+#[test]
+fn the_hopper_gets_back_what_the_transporter_did_not_take() {
+    assert_eq!(hopper_outcome(64, Some(34)).rest, 30);
+    assert!(hopper_outcome(64, Some(34)).moved);
+    assert_eq!(hopper_outcome(64, Some(64)).rest, 0);
+    assert!(hopper_outcome(64, Some(64)).moved);
+    // Nada entrou: tudo volta e nada se moveu, como quando o lado não expõe a capability (`None`).
+    for inserted in [Some(0), None] {
+        let outcome = hopper_outcome(64, inserted);
+        assert_eq!(outcome.rest, 64);
+        assert!(!outcome.moved);
+    }
+    // O dono nunca devolve mais do que foi oferecido; se devolvesse, o resto não pode passar do oferecido nem ficar negativo.
+    let outcome = hopper_outcome(5, Some(9));
+    assert_eq!(outcome.rest, 0);
+    assert!(outcome.moved);
+}
+
+/// A conta inteira com o dono: um funil que oferece 64 de terra a um transportador básico (vazão `pullAmount` do tier) volta com o resto, e o que entrou está em trânsito.
+#[test]
+fn a_hopper_offering_more_than_the_pull_amount_gets_the_rest_back() {
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    let dirt = ItemResource::new("minecraft:dirt", 64);
+    let up = Face::ALL[1];
+    let inserted = owner.insert(&mut world, at(0), up, &dirt, 64);
+    let outcome = hopper_outcome(64, inserted);
+    assert!(outcome.moved, "nada entrou");
+    assert_eq!(u64::from(outcome.rest), 64 - u64::from(inserted.unwrap()));
+    assert!(outcome.rest > 0, "o básico não leva 64 de uma vez");
+    // O que entrou está em trânsito (mais o que a linha já puxava do baú: a soma é só do funil).
+    let inside = transit_total(&owner, 3);
+    assert!(inside >= inserted.unwrap(), "a pilha do funil não entrou em trânsito");
 }

@@ -17,7 +17,7 @@ use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::host_item::{HostItemHandler, MirrorSlot, SlotChange};
 use machinery_basis_core::transmission::inventory_owner::{
-    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, keys,
+    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, hopper_outcome, keys,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event as TransporterEvent};
 use machinery_basis_core::transmission::transmitter::Overlay as TransporterOverlay;
@@ -645,13 +645,13 @@ pub(in crate::game) fn hopper_insert(
         let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
         owner.insert(&mut world, sim_pos(pos), side, &resource, stack.count)
     })
-    .flatten()
-    .unwrap_or(0);
+    .flatten();
     handlers_flush(game, dimension);
-    if inserted == 0 {
+    let outcome = hopper_outcome(stack.count, inserted);
+    if !outcome.moved {
         return refused;
     }
     let mut rest = stack.clone();
-    rest.count -= inserted.min(stack.count);
+    rest.count = outcome.rest;
     Some(((rest.count > 0).then_some(rest), true))
 }

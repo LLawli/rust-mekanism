@@ -66,6 +66,25 @@ fn bp(pos: [i32; 3]) -> BlockPos {
     BlockPos::new(pos[0], pos[1], pos[2])
 }
 
+/// O que `Game::move_in_item` recebe de volta de um transportador (`tryMoveInItem`): o que sobra da pilha oferecida e se algo entrou.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HopperOutcome {
+    /// Quanto da pilha oferecida ficou com quem a pôs (um funil, um dropper, o ejetor de outra máquina).
+    pub rest: u32,
+    /// Se `TransporterItemHandler.insert` aceitou alguma coisa (`inserted > 0`).
+    pub moved: bool,
+}
+
+/// A conta de `hopper_insert` (o `TransporterItemHandler.insert` para quem oferece `offered` itens): `inserted` é o que `InventoryTransmitters::insert` devolveu, `None` se o lado não expõe a
+/// capability (ou o funil não diz de que lado vem). O que não entra volta inteiro, e nunca volta mais do que foi oferecido.
+pub fn hopper_outcome(offered: u32, inserted: Option<u32>) -> HopperOutcome {
+    let inserted = inserted.unwrap_or(0).min(offered);
+    HopperOutcome {
+        rest: offered - inserted,
+        moved: inserted > 0,
+    }
+}
+
 /// O que o block entity guardou de um transportador (`loadAdditional`), se veio de um save.
 #[derive(Default)]
 pub struct SavedTransporter {
