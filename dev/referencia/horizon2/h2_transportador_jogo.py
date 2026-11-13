@@ -245,20 +245,24 @@ def last_views():
     return last
 
 
-def linha(n=4, tier="basic", pull=True):
+def linha(n=4, tier="basic", pull=True, fill=True):
     """Um baú com terra, `n` transportadores e outro baú: o primeiro transportador em `PULL` do baú de origem."""
     clear()
     cmd("gamemode creative @s")
     cmd("tick unfreeze")
     cmd("setblock %s minecraft:chest" % txt(at((0, 0, 0))))
     cmd("setblock %s minecraft:chest" % txt(at((n + 1, 0, 0))))
+    # O mundo de teste guarda o que a cena anterior deixou nos baús: começa vazio.
+    for end in (0, n + 1):
+        cmd("data merge block %s {Items:[]}" % txt(at((end, 0, 0))))
     for x in range(1, n + 1):
         cmd("setblock %s mekanism:%s_logistical_transporter" % (txt(at((x, 0, 0))), tier))
     wait(40)
     if pull:
         cmd("data merge block %s {probe_set:{raw:[I;0,0,0,0,2,0]}}" % txt(at((1, 0, 0))))
     wait(40)
-    fill_chest((0, 0, 0), [(0, "minecraft:dirt", 64)])
+    if fill:
+        fill_chest((0, 0, 0), [(0, "minecraft:dirt", 64)])
 
 
 def reabrir_montar():
@@ -290,15 +294,45 @@ def reabrir_conferir():
     return origem + destino <= 64 and destino > 0
 
 
-def quebrar():
-    """O transportador do meio quebrado com pilhas dentro: os itens caem (item entities no chão)."""
-    linha(6, tier="basic")
-    time.sleep(3)
-    cmd("setblock %s minecraft:air" % txt(at((3, 0, 0))))
-    wait(10)
-    out = cmd("data get entity @e[type=item,limit=1,sort=nearest]")
-    print("item no chão:", out[:160])
-    return "Item" in out or "item" in out
+def quebrar(como="setblock"):
+    """O transportador do meio quebrado com pilhas dentro (`preRemoveSideEffects`): o que ele levava cai no mundo, na quantidade da sonda `MBI`. O servidor para (`tick freeze`) assim que o
+    transportador 3 leva uma pilha; o bloco sai por `setblock` ou como um jogador (`mouse left click`, `como=jogador`); depois de dois ticks contamos os itens no chão."""
+    clima()
+    linha(6, tier="advanced")
+    cmd("kill @e[type=item]")
+    cmd("tick freeze")
+    alvo = list(at((3, 0, 0)))
+    carregando = None
+    for _ in range(80):
+        for r in step(1):
+            if r["p"] == alvo and r["stacks"]:
+                carregando = r["stacks"]
+        if carregando:
+            break
+    if not carregando:
+        print("o transportador 3 não levou pilha em 80 ticks")
+        return False
+    esperado = sorted((s[1], s[2]) for s in carregando)
+    print("em trânsito no transportador 3:", esperado)
+    if como == "jogador":
+        b = at((3, 0, 0))
+        cmd("tp @s %.2f %.2f %.2f" % (b[0] + 0.5, b[1] + 1.0, b[2] - 2.0))
+        wait(8)
+        h.ctl("look-at", "%.2f" % (b[0] + 0.5), "%.2f" % (b[1] + 0.5), "%.2f" % (b[2] + 0.5))
+        wait(6)
+        h.ctl("mouse", "left", "click")
+    else:
+        cmd("setblock %s minecraft:air" % txt(alvo and at((3, 0, 0))))
+    step(2)
+    time.sleep(1.0)
+    chat = cmd("data get entity @e[type=item,limit=1,sort=nearest]")
+    quantos = cmd("execute if entity @e[type=item]")
+    soltos = {}
+    for entity in range(6):
+        out = cmd("data get entity @e[type=item,limit=1,sort=nearest,nbt={Age:%ds}]" % entity) if False else ""
+    print("depois de quebrar:", chat[:160], "|", quantos[:50])
+    cmd("tick unfreeze")
+    return "has the following entity data" in chat
 
 
 def configurador():
@@ -400,29 +434,54 @@ def empilhar(antes, depois, saida, geometry="760x340+580+300"):
 
 
 def video_linha():
-    """A linha de transportadores de ultimate levando a terra do baú de origem ao de destino (a tela do baú de destino enche), e depois o transportador do meio quebrado: os itens caem."""
+    """A linha de transportadores de ultimate levando a terra do baú de origem ao de destino (a tela do baú de destino enche), e depois o transportador do meio quebrado como um jogador
+    (o botão esquerdo do mouse): os itens caem. Grava com som (o baú, o bloco quebrado)."""
     clima()
     som(True)
-    linha(6, tier="ultimate", pull=False)
+    linha(6, tier="basic", pull=False, fill=False)
     cmd("data merge block %s {probe_set:{raw:[I;0,0,0,0,2,0]}}" % txt(at((1, 0, 0))))
     camera((3, 0, 0), dz=-6.0, dy=2.0)
+    cmd("clear @s")
+    rec = gravar("transportador_linha.mp4", 45)
+    time.sleep(2)
     abrir_bau((7, 0, 0))
     antes = shot("transportador_destino_antes")
-    rec = gravar("transportador_linha.mp4", 40)
-    time.sleep(1)
     fill_chest((0, 0, 0), [(0, "minecraft:dirt", 64), (1, "minecraft:gravel", 64), (2, "minecraft:cobblestone", 64)])
-    time.sleep(17)
+    time.sleep(16)
     depois = shot("transportador_destino_depois")
     fechar_tela()
-    camera((3, 0, 0), dz=-6.0, dy=2.0)
-    time.sleep(3)
-    cmd("setblock %s minecraft:air" % txt(at((3, 0, 0))))
-    time.sleep(8)
+    # O baú de origem enche de novo e o transportador do meio quebra com pilhas dentro (os itens soltos de antes saem, para só os desta quebra aparecerem).
+    cmd("kill @e[type=item]")
+    fill_chest((0, 0, 0), [(0, "minecraft:dirt", 64), (1, "minecraft:gravel", 64), (2, "minecraft:cobblestone", 64)])
+    time.sleep(2)
+    b = at((3, 0, 0))
+    cmd("tp @s %.2f %.2f %.2f" % (b[0] + 0.5, b[1] + 1.0, b[2] - 2.0))
+    wait(8)
+    h.ctl("look-at", "%.2f" % (b[0] + 0.5), "%.2f" % (b[1] + 0.5), "%.2f" % (b[2] + 0.5))
+    wait(6)
+    h.ctl("mouse", "left", "click")
+    time.sleep(1.5)
+    carregava = cmd("data get entity @e[type=item,limit=1,sort=nearest]")
+    print("item no chão logo depois de quebrar:", carregava[:140], "| quantos:", cmd("execute if entity @e[type=item]")[:60])
+    shot("transportador_quebrado")
+    time.sleep(5)
     rec.wait()
     print("destino:", chest_slots((7, 0, 0)))
+    print("o transportador do meio:", cmd("data get block %s id" % txt(b))[:80])
     print("recorte do destino, antes e depois:", empilhar(antes, depois, f"{LOCAL}/transportador_destino_antes_depois.png"), "pixels diferentes")
     print("vídeo:", baixar("transportador_linha.mp4"))
     som(False)
+
+
+def alavanca(p):
+    """O jogador vira a alavanca como um jogador: a mira do `look-at` sobre ela e o botão direito do mouse (o `interact` do `horizon-ctl` não a vira)."""
+    b = at(p)
+    cmd("tp @s %.2f %.2f %.2f" % (b[0] + 2.5, b[1] + 0.5, b[2] + 0.5))
+    wait(8)
+    h.ctl("look-at", "%.2f" % (b[0] + 0.5), "%.2f" % (b[1] + 0.5), "%.2f" % (b[2] + 0.5))
+    wait(6)
+    h.ctl("mouse", "right", "click")
+    wait(6)
 
 
 def video_desviador():
@@ -431,26 +490,26 @@ def video_desviador():
     setup = rows[0]
     clima()
     som(True)
-    for t in setup["transporters"]:
-        if t["kind"] == "logistical":
-            t["tier"] = 3
     montar(setup)
     # A alavanca: um bloco de pedra ao sul do desviador e a alavanca na face leste dele.
     cmd("setblock %s minecraft:stone" % txt(at((3, 1, 3))))
     cmd("setblock %s minecraft:lever[face=wall,facing=east,powered=false]" % txt(at((4, 1, 3))))
     camera((3, 1, 2), dx=2.5, dy=3.2, dz=-6.0)
-    rec = gravar("transportador_desviador.mp4", 45)
+    rec = gravar("transportador_desviador.mp4", 40)
     time.sleep(1)
     fill_chest((0, 1, 2), [(0, "minecraft:dirt", 64), (1, "minecraft:gravel", 64)])
+    def total(p):
+        return sum(n for _, _, n in chest_slots(p))
+    time.sleep(8)
+    print("sem sinal: leste", total((6, 1, 2)), "norte", total((3, 1, 0)))
+    alavanca((4, 1, 3))
     time.sleep(12)
-    print("sem sinal: leste", chest_slots((6, 1, 2)), "norte", chest_slots((3, 1, 0)))
-    h.ctl("interact", *map(str, at((4, 1, 3))), "east")
-    time.sleep(14)
-    print("com sinal: leste", chest_slots((6, 1, 2)), "norte", chest_slots((3, 1, 0)))
-    h.ctl("interact", *map(str, at((4, 1, 3))), "east")
+    print("com sinal: leste", total((6, 1, 2)), "norte", total((3, 1, 0)))
+    alavanca((4, 1, 3))
+    camera((3, 1, 2), dx=2.5, dy=3.2, dz=-6.0)
     time.sleep(10)
     rec.wait()
-    print("sem sinal outra vez: leste", chest_slots((6, 1, 2)), "norte", chest_slots((3, 1, 0)))
+    print("sem sinal outra vez: leste", total((6, 1, 2)), "norte", total((3, 1, 0)))
     print("vídeo:", baixar("transportador_desviador.mp4"))
     som(False)
 
@@ -473,7 +532,7 @@ if __name__ == "__main__":
         (video_linha if (len(sys.argv) < 3 or sys.argv[2] == "linha") else video_desviador)()
         sys.exit(0)
     if what == "quebrar":
-        sys.exit(0 if quebrar() else 1)
+        sys.exit(0 if quebrar(sys.argv[2] if len(sys.argv) > 2 else "setblock") else 1)
     if what == "configurador":
         sys.exit(0 if configurador() else 1)
     raise SystemExit("subcomando " + what)
