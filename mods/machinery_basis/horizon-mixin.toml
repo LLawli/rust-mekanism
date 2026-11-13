@@ -1238,6 +1238,19 @@ bindings = [
   { name = "chunk", ty = "[i32; 2]", value = "chunk" },
 ]
 
+# O nível no lugar muda (`Game::enter_level`): a fila de ocorrências dos block entities (`transmitter-events`) sai com o nome do nível que está saindo, o único em que a operação
+# pôde anotar. Sem isto, com mais de um nível ticando (um chunk forçado no Nether), o servidor deixa o Nether no lugar no fim do tick, um comando do overworld entra no nível,
+# anota o cabo e volta, e a fila só esvazia no `server_tick` seguinte, com o Nether no lugar: o cabo posto no overworld entra no dono do Nether. Alvo cru, H166.
+[[injection]]
+id = "transmitter_level_leave"
+target = "horizon_client::game::levels::Game<'_>::enter_level"
+kind = "HEAD"
+helper = "transmitter_level_leave.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "target", ty = "crate::game::Dim", value = "target" },
+]
+
 # `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`): o mundo fechou. Hook do catálogo (`world_lifecycle`), usado só com o contrato dele.
 [[injection]]
 id = "transmitter_reset"
