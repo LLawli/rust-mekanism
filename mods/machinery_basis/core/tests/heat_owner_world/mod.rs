@@ -131,14 +131,19 @@ impl HeatOwnerWorld for Game<'_> {
         false
     }
 
+    fn has_host(&self, pos: BlockPos, _: Face) -> bool {
+        self.level.block_if_loaded(pos) == Some(GENERATOR)
+    }
+
     /// O capacitor do gerador, visto de qualquer lado.
-    fn host(&self, pos: BlockPos, side: Face) -> Option<HostCapacitor> {
-        if self.level.block_if_loaded(pos) != Some(GENERATOR) {
-            return None;
-        }
-        let heater = self.heater.as_ref().filter(|heater| heater.pos == pos)?;
+    fn host(&self, pos: BlockPos, side: Face) -> HostCapacitor {
+        let heater = self
+            .heater
+            .as_ref()
+            .filter(|heater| heater.pos == pos)
+            .expect("o gerador");
         let capacitor = heater.capacitor();
-        Some(HostCapacitor {
+        HostCapacitor {
             temperature: capacitor.temperature(),
             heat_capacity: GEN_CAPACITY,
             inverse_conduction: GEN_INVERSE_CONDUCTION,
@@ -147,7 +152,7 @@ impl HeatOwnerWorld for Game<'_> {
             } else {
                 GEN_INSULATION
             },
-        })
+        }
     }
 
     fn host_handle_heat(&self, pos: BlockPos, _: Face, transfer: f64) {

@@ -120,6 +120,9 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     if mode.transmission().is_some() && glue::is_pipe_block(&block) {
         return pipe_click(game, pos, face, sneaking);
     }
+    if mode.transmission().is_some() && glue::is_conductor_block(&block) {
+        return conductor_click(game, pos, face, sneaking);
+    }
     if let Some(kind) = mode.transmission() {
         if cube::is_cube(&block) {
             let click = cube::with_cube(game, pos, |cube| {
@@ -216,13 +219,28 @@ fn pipe_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) ->
     consumed
 }
 
+/// O clique de um modo de configurar num condutor termodinâmico (a mesma capability `IConfigurable` do transmissor).
+fn conductor_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
+    let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
+    let Some((consumed, overlays)) = crate::game::machinery_heat::conductor_configure(game, pos, face, hit_side, sneaking) else {
+        return false;
+    };
+    for message in &overlays {
+        overlay(game, &rules::cable_overlay_message(message));
+    }
+    consumed
+}
+
 /// As peças do transmissor em `pos` (`TileEntityTransmitter.getCollisionBoxes`: um braço por lado ligado, com a forma do tipo dele, e o centro). O dono dos cabos e o dos canos, que vivem no
 /// servidor, sabem o tipo visível de cada lado; o cliente (o contorno) só tem as propriedades de lado do bloco, que dizem braço ou não, e dá o braço normal a cada uma. A forma
 /// de estado do Horizon (`facts.outline`) não serve: é a união do centro e dos braços, e dois braços opostos viram uma caixa só.
 fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::TransmitterPiece>> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let facts = game.res.facts().get(state);
-    let kinds = basis::cable_arm_kinds(game, pos).or_else(|| crate::game::machinery_pipes::pipe_arm_kinds(game, pos)).unwrap_or_else(|| {
+    let kinds = basis::cable_arm_kinds(game, pos)
+        .or_else(|| crate::game::machinery_pipes::pipe_arm_kinds(game, pos))
+        .or_else(|| crate::game::machinery_heat::conductor_arm_kinds(game, pos))
+        .unwrap_or_else(|| {
         let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
         for side in Face::ALL {
             if game.native_block_property(pos, side.name()).as_deref() == Some("true") {

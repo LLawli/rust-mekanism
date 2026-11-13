@@ -70,8 +70,11 @@ pub trait HeatOwnerWorld {
     fn is_block_loaded(&self, pos: BlockPos) -> bool;
     /// `WorldUtils.isGettingPowered`.
     fn is_getting_powered(&self, pos: BlockPos) -> bool;
-    /// A capability `HEAT` do bloco em `pos` pelo lado `side` dele, ou `None` se não há (o dono nunca pergunta por um condutor).
-    fn host(&self, pos: BlockPos, side: Face) -> Option<HostCapacitor>;
+    /// A capability `HEAT` do bloco em `pos` existe pelo lado `side` dele (o dono nunca pergunta por um condutor). Não lê o capacitor: o tile que está no tick
+    /// continua com a capability, e o cache de aceitadores de um condutor não pode guardar a falta dela por um instante.
+    fn has_host(&self, pos: BlockPos, side: Face) -> bool;
+    /// O capacitor do bloco em `pos` visto pelo lado `side` dele, só para um lado em que [`Self::has_host`] disse sim.
+    fn host(&self, pos: BlockPos, side: Face) -> HostCapacitor;
     /// `handleHeat(transfer, transaction)` do capacitor do tile em `pos`, visto pelo lado `side`.
     fn host_handle_heat(&self, pos: BlockPos, side: Face, transfer: f64);
     /// `HeatAPI.getAmbientTemp` do bloco em `pos` (`None`) ou do vizinho dele por `side` (`Some`); `None` é o `world == null`.
@@ -231,7 +234,9 @@ impl<W: HeatOwnerWorld> TransmitterWorld for View<'_, W> {
                 || transmitter.is_redstone_activated(self);
             return (!blocked).then_some(Sink::Conductor(id));
         }
-        self.world.host(at, from_side)?;
+        if !self.world.has_host(at, from_side) {
+            return None;
+        }
         Some(Sink::Host {
             pos: at,
             side: from_side,
@@ -620,9 +625,7 @@ impl<W: HeatOwnerWorld> Arena<'_, W> {
     }
 
     fn host(&self, pos: BlockPos, side: Face) -> HostCapacitor {
-        self.world
-            .host(pos, side)
-            .expect("a capability existia ao escolher o vizinho")
+        self.world.host(pos, side)
     }
 }
 

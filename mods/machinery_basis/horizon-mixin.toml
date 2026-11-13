@@ -26,6 +26,13 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_pipes"
 source = "pipe_glue.rs"
 
+# Os condutores termodinâmicos no jogo (frente `condutor-jogo`): o dono dos condutores, o calor dos tiles vizinhos (o Heat Generator) e o NBT do condutor. Código nosso no `Game`, como `pipe-glue`.
+[[module]]
+id = "heat-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_heat"
+source = "heat_glue.rs"
+
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
 # Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos

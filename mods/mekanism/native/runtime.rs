@@ -36,6 +36,7 @@ use machinery_basis_core::tile_trackers::{
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::transmission::connection::ConnectionType;
+use machinery_basis_core::transmission::thermodynamic_conductor::TierValues;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
@@ -808,6 +809,122 @@ pub const TIERS_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `TierConfig.addThermodynamicConductorsCategory`: a condução inversa (`<tier>InverseConduction`, `1..Double.MAX_VALUE`), a capacidade de calor (`<tier>HeatCapacity`, `1..Double.MAX_VALUE`) e a
+        // isolação (`<tier>Insulation`, `0..Double.MAX_VALUE`) de cada condutor termodinâmico, com o texto de `TierTranslations.create(ConductorTier)`.
+        ClientSection {
+            name: "transmitters.heat",
+            comment: "Settings for configuring Thermodynamic Conductors",
+            entries: &[
+                ClientEntry {
+                    key: "basicInverseConduction",
+                    comment: "Conduction value of Basic thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 5.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicHeatCapacity",
+                    comment: "Heat capacity of Basic thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 1.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicInsulation",
+                    comment: "Insulation value of Basic thermodynamic conductor.",
+                    setting: ClientSetting::Float {
+                        default: 10.0,
+                        min: 0.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedInverseConduction",
+                    comment: "Conduction value of Advanced thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 5.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedHeatCapacity",
+                    comment: "Heat capacity of Advanced thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 1.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedInsulation",
+                    comment: "Insulation value of Advanced thermodynamic conductor.",
+                    setting: ClientSetting::Float {
+                        default: 400.0,
+                        min: 0.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteInverseConduction",
+                    comment: "Conduction value of Elite thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 5.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteHeatCapacity",
+                    comment: "Heat capacity of Elite thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 1.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteInsulation",
+                    comment: "Insulation value of Elite thermodynamic conductor.",
+                    setting: ClientSetting::Float {
+                        default: 8_000.0,
+                        min: 0.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateInverseConduction",
+                    comment: "Conduction value of Ultimate thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 5.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateHeatCapacity",
+                    comment: "Heat capacity of Ultimate thermodynamic conductors.",
+                    setting: ClientSetting::Float {
+                        default: 1.0,
+                        min: 1.0,
+                        max: f64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateInsulation",
+                    comment: "Insulation value of Ultimate thermodynamic conductor.",
+                    setting: ClientSetting::Float {
+                        default: 100_000.0,
+                        min: 0.0,
+                        max: f64::MAX,
+                    },
+                },
+            ],
+        },
     ],
 };
 
@@ -878,17 +995,97 @@ pub fn pipe_rates(loaded: &ClientLoaded) -> [i32; 4] {
     out
 }
 
+/// `ConductorTier`: o id de cada condutor termodinâmico, na ordem dos tiers.
+pub const THERMODYNAMIC_CONDUCTORS: [&str; 4] = [
+    "mekanism:basic_thermodynamic_conductor",
+    "mekanism:advanced_thermodynamic_conductor",
+    "mekanism:elite_thermodynamic_conductor",
+    "mekanism:ultimate_thermodynamic_conductor",
+];
+
+/// Qual condutor termodinâmico é o bloco, na ordem de [`THERMODYNAMIC_CONDUCTORS`].
+pub fn conductor_tier(block: &str) -> Option<usize> {
+    THERMODYNAMIC_CONDUCTORS.iter().position(|id| *id == block)
+}
+
+/// Os valores dos quatro condutores (`ConductorTier.getInverseConduction`, `getHeatCapacity`, `getInverseConductionInsulation`: o valor do arquivo, ou o padrão sem ele), na ordem de
+/// [`THERMODYNAMIC_CONDUCTORS`].
+pub fn conductor_values(loaded: &ClientLoaded) -> [TierValues; 4] {
+    const KEYS: [[&str; 3]; 4] = [
+        [
+            "basicInverseConduction",
+            "basicHeatCapacity",
+            "basicInsulation",
+        ],
+        [
+            "advancedInverseConduction",
+            "advancedHeatCapacity",
+            "advancedInsulation",
+        ],
+        [
+            "eliteInverseConduction",
+            "eliteHeatCapacity",
+            "eliteInsulation",
+        ],
+        [
+            "ultimateInverseConduction",
+            "ultimateHeatCapacity",
+            "ultimateInsulation",
+        ],
+    ];
+    let mut out = DEFAULT_CONDUCTOR_VALUES;
+    for (slot, keys) in out.iter_mut().zip(KEYS) {
+        let read = |key: &str, default: f64| {
+            loaded
+                .float(&TIERS_CONFIG, "transmitters.heat", key)
+                .unwrap_or(default)
+        };
+        *slot = TierValues {
+            inverse_conduction: read(keys[0], slot.inverse_conduction),
+            heat_capacity: read(keys[1], slot.heat_capacity),
+            insulation: read(keys[2], slot.insulation),
+        };
+    }
+    out
+}
+
+/// Os padrões de `ConductorTier` (`baseConduction`, `baseHeatCapacity`, `baseConductionInsulation`).
+pub const DEFAULT_CONDUCTOR_VALUES: [TierValues; 4] = [
+    TierValues {
+        inverse_conduction: 5.0,
+        heat_capacity: 1.0,
+        insulation: 10.0,
+    },
+    TierValues {
+        inverse_conduction: 5.0,
+        heat_capacity: 1.0,
+        insulation: 400.0,
+    },
+    TierValues {
+        inverse_conduction: 5.0,
+        heat_capacity: 1.0,
+        insulation: 8_000.0,
+    },
+    TierValues {
+        inverse_conduction: 5.0,
+        heat_capacity: 1.0,
+        insulation: 100_000.0,
+    },
+];
+
 /// Os padrões de `PipeTier` (`getBaseCapacity` e `getBaseTransferRate`).
 pub const DEFAULT_PIPE_CAPACITIES: [i64; 4] = [2_000, 8_000, 32_000, 128_000];
 pub const DEFAULT_PIPE_RATES: [i32; 4] = [250, 1_000, 8_000, 32_000];
 
 /// O que os arquivos de servidor dizem às mecânicas portadas do Mekanism, de uma vez.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ServerConfig {
     pub usage: Usage,
     pub cables: [i64; 4],
     pub pipes: [i64; 4],
     pub pipe_rates: [i32; 4],
+    /// `ConductorTier`: a condução inversa, a capacidade de calor e a isolação de cada condutor termodinâmico.
+    pub conductors: [TierValues; 4],
     pub cubes: [i64; 5],
     /// `EnergyCubeTier.getTransferRate`, na mesma ordem.
     pub cube_rates: [i32; 5],
@@ -902,6 +1099,7 @@ impl ServerConfig {
         cables: DEFAULT_CABLE_CAPACITIES,
         pipes: DEFAULT_PIPE_CAPACITIES,
         pipe_rates: DEFAULT_PIPE_RATES,
+        conductors: DEFAULT_CONDUCTOR_VALUES,
         cubes: DEFAULT_CUBE_CAPACITIES,
         cube_rates: DEFAULT_CUBE_RATES,
         cells: DEFAULT_CELL_CAPACITIES,

@@ -425,8 +425,8 @@ pub struct Produced {
     pub active: bool,
     pub lava_used: u64,
     pub energy: i32,
-    /// `lastTransferLoss`, o `adjacentTransfer` de `simulate`: a temperatura que passou para o vizinho de baixo. Fica em zero porque
-    /// nenhum bloco portado tem calor para receber (a capacidade `HEAT` do original só existe nas máquinas que a declaram).
+    /// `lastTransferLoss`, o `adjacentTransfer` de `simulate`: a temperatura que passou para o vizinho de baixo (um condutor termodinâmico, `condutor-jogo`). Zero sem vizinho com a
+    /// capability `HEAT` voltada para cima.
     pub transfer_loss: f64,
     /// `lastEnvironmentLoss`, o `environmentTransfer` de `simulate`: a temperatura que o ar levou, só das faces mais quentes que ele.
     pub environment_loss: f64,
@@ -470,6 +470,29 @@ pub fn tick(
     energy_full: bool,
     can_function: bool,
 ) -> Produced {
+    tick_with(
+        config,
+        heat,
+        around,
+        lava,
+        energy_full,
+        can_function,
+        &mut |_| 0.0,
+    )
+}
+
+/// [`tick`] com o vizinho de baixo: `adjacent` é o `simulateAdjacent` do lado `DOWN` (`TileEntityHeatGenerator.getAdjacent` só entrega por baixo), chamado com o capacitor depois da perda
+/// do `simulate` do gerador e antes da perda para o ar (`ITileHeatHandler.simulate`: primeiro `simulateAdjacent`, depois `simulateEnvironment`), e devolve a temperatura que passou.
+#[allow(clippy::too_many_arguments)]
+pub fn tick_with(
+    config: &HeatConfig,
+    heat: &mut Capacitor,
+    around: &Surroundings,
+    lava: u64,
+    energy_full: bool,
+    can_function: bool,
+    adjacent: &mut dyn FnMut(&mut Capacitor) -> f64,
+) -> Produced {
     heat.handle(boost(config, around));
     let fluid_rate = u64::try_from(config.fluid_rate).unwrap_or(0);
     let active = can_function && lava >= fluid_rate && !energy_full;
@@ -481,12 +504,13 @@ pub fn tick(
     let heat_lost = THERMAL_EFFICIENCY * (temperature - around.ambient);
     heat.handle(-heat_lost);
     let energy = ((heat_lost.abs() * carnot) as i32).min(config.max_production());
+    let transfer_loss = adjacent(heat);
     let environment_loss = heat.lose_to_faces(around.face_ambient, INSULATION_BY_FACE);
     Produced {
         active,
         lava_used: if active { fluid_rate } else { 0 },
         energy,
-        transfer_loss: 0.0,
+        transfer_loss,
         environment_loss,
     }
 }
@@ -522,17 +546,27 @@ impl State {
 /// guarda a energia no buffer, liga ou desliga o tile (`setActive`) e devolve o que entrou no buffer (`producingEnergy`: a diferença
 /// da energia antes e depois, que o limite do buffer corta).
 pub fn step(state: &mut State, around: &Surroundings) -> Produced {
+    step_with(state, around, &mut |_| 0.0)
+}
+
+/// [`step`] com o vizinho de baixo (veja [`tick_with`]).
+pub fn step_with(
+    state: &mut State,
+    around: &Surroundings,
+    adjacent: &mut dyn FnMut(&mut Capacitor) -> f64,
+) -> Produced {
     state.tile.tick_delay();
     let capacity = state.config.energy_capacity_int();
     let full = state.energy >= capacity;
     let can_function = state.tile.is_redstone_activated();
-    let mut produced = tick(
+    let mut produced = tick_with(
         &state.config,
         &mut state.heat,
         around,
         state.lava,
         full,
         can_function,
+        adjacent,
     );
     state.lava -= produced.lava_used;
     let filled = state.energy.saturating_add(produced.energy).min(capacity);

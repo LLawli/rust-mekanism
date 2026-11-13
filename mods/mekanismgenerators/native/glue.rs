@@ -15,6 +15,7 @@ use machinery_basis_core::armor_slots::{self, EquipmentSlot, SlotKind};
 use machinery_basis_core::gui;
 use machinery_basis_core::fluid_logged::{EMPTY_BUCKET, LAVA_BUCKET};
 use machinery_basis_core::heat::{AmbientCache, Capacitor};
+use machinery_basis_core::transmission::heat_owner::HostCapacitor;
 use machinery_basis_core::menu_source;
 use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::slot_rules;
@@ -238,6 +239,8 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
         *ticks = true;
         // O `lavaTank` é uma capability de fluido que os canos mecânicos alcançam (`TileEntityHeatGenerator.java:98-103`).
         crate::game::machinery_pipes::fluid_neighbor_register(rules::HEAT_GENERATOR, lava_tank_probe, lava_tank_write);
+        // O capacitor de calor é a capability `HEAT` nos seis lados (`OverridingSingleHolder`), que os condutores termodinâmicos alcançam.
+        crate::game::machinery_heat::heat_neighbor_register(rules::HEAT_GENERATOR, heat_probe, heat_write);
     }
 }
 
@@ -267,6 +270,41 @@ fn lava_tank_probe(
         can_extract: false,
         creative: false,
     })
+}
+
+/// O capacitor de calor como a rede de calor o vê (`heatCapacitor`: capacidade 10, condução 5, isolação 100; visto de baixo é o `DefaultInsulationCapacitor`, sem isolação).
+/// `None` com o tile fora do mundo (está no tick).
+fn heat_probe(game: &Game<'_>, _dimension: &'static str, pos: [i32; 3], side: Face) -> Option<HostCapacitor> {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    if !is_generator(&entity.id) {
+        return None;
+    }
+    // `BasicHeatCapacitor.getHeat`: um calor que nunca foi salvo parte do ar do bloco.
+    let ambient = AmbientCache::default().get(AmbientCache::SELF_INDEX, || basis::ambient_temperature(game, pos));
+    let capacitor = load_heat(entity, ambient);
+    Some(HostCapacitor {
+        temperature: capacitor.temperature(),
+        heat_capacity: capacitor.capacity,
+        inverse_conduction: capacitor.inverse_conduction,
+        inverse_insulation: if side == Face::Down { rules::INSULATION_BY_FACE[Face::Down as usize] } else { capacitor.inverse_insulation },
+    })
+}
+
+/// `handleHeat(transfer, transaction)` que a rede de calor fez no capacitor do gerador.
+fn heat_write(game: &mut Game<'_>, _dimension: &'static str, pos: [i32; 3], transfer: f64) {
+    let ambient = AmbientCache::default().get(AmbientCache::SELF_INDEX, || basis::ambient_temperature(game, pos));
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    if !is_generator(&entity.id) {
+        return;
+    }
+    let mut capacitor = load_heat(entity, ambient);
+    capacitor.handle(transfer);
+    entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(capacitor.heat.to_bits()));
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
 }
 
 /// O que a rede mudou no `lavaTank`.
@@ -793,7 +831,9 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     // queimar a lava e produzir: sai a energia que o buffer guardava no fim do tick anterior.
     let dimension = game.native_dimension();
     let front = basis::front(game, pos);
-    let produced = rules::step_emitting(&mut state, &around, &basis::GameEnergy::new(game, dimension, pos), front);
+    rules::emit_energy(&mut state, &basis::GameEnergy::new(game, dimension, pos), front);
+    // `simulateAdjacent` só pelo lado de baixo (`getAdjacent`): o condutor termodinâmico embaixo recebe o calor, e o capacitor dele confirma no fim do `onUpdateServer`.
+    let produced = rules::step_with(&mut state, &around, &mut |capacitor| crate::game::machinery_heat::heat_adjacent(game, pos, Face::Down, capacitor));
     if basis::MEDIR {
         let fuel = entity.items[FUEL_SLOT].as_ref().map_or(("", 0), |stack| {
             (stack.item.split_once(':').map_or(&*stack.item, |(_, path)| path), stack.count.max(0) as u64)

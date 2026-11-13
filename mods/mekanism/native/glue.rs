@@ -16,6 +16,7 @@ use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, Che
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::gui;
+use machinery_basis_core::transmission::thermodynamic_conductor::{ConductorTier, TierValues};
 use machinery_basis_core::menu_source;
 use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
 use machinery_basis_core::ejector::TileComponentEjector;
@@ -278,19 +279,23 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
             Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
         }
     }
-    if (is_machine(block) || is_cable(block) || is_pipe(block)) && entity.is_none() {
+    if (is_machine(block) || is_cable(block) || is_pipe(block) || is_conductor(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
-    if is_machine(block) || is_cable(block) || is_pipe(block) {
+    if is_machine(block) || is_cable(block) || is_pipe(block) || is_conductor(block) {
         *ticks = true;
     }
     // Os canos mecânicos: os eventos do jogo vão ao dono dos canos da `machinery_basis`, com a capacidade e a vazão do tier (`tiers.toml`).
     if is_pipe(block) {
         crate::game::machinery_pipes::pipes_register(block, pipe_stats_of);
+    }
+    // Os condutores termodinâmicos: os eventos do jogo vão ao dono dos condutores da `machinery_basis` (a rede de calor), com os valores do tier (`tiers.toml`).
+    if is_conductor(block) {
+        crate::game::machinery_heat::conductors_register(block, conductor_stats_of);
     }
     // Os cabos de energia: os eventos do jogo vão ao dono dos transmissores da `machinery_basis` (a rede), com a capacidade do tier (`tiers.toml`).
     if is_cable(block) {
@@ -300,6 +305,19 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 
 fn is_pipe(block: &str) -> bool {
     rules::pipe_tier(block).is_some()
+}
+
+fn is_conductor(block: &str) -> bool {
+    rules::conductor_tier(block).is_some()
+}
+
+pub(in crate::game) fn is_conductor_block(block: &str) -> bool {
+    is_conductor(block)
+}
+
+/// O nível e os valores de um condutor termodinâmico (`ConductorTier.getInverseConduction`, `getHeatCapacity`, `getInverseConductionInsulation`): o que o arquivo `tiers.toml` diz.
+fn conductor_stats_of(block: &str) -> Option<(ConductorTier, TierValues)> {
+    rules::conductor_tier(block).map(|tier| (ConductorTier::ALL[tier], server_config().conductors[tier]))
 }
 
 pub(in crate::game) fn is_pipe_block(block: &str) -> bool {
@@ -2132,6 +2150,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             server.cables = rules::cable_capacities(&loaded);
             server.pipes = rules::pipe_capacities(&loaded);
             server.pipe_rates = rules::pipe_rates(&loaded);
+            server.conductors = rules::conductor_values(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
             server.cube_rates = rules::cube_rates(&loaded);
             server.cells = rules::cell_capacities(&loaded);
