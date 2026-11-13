@@ -415,7 +415,8 @@ bindings = [
 # morreu) deixa a sessão, a janela de upgrades escolhida e o acompanhamento para trás, e o espectador conta (`MekanismTileContainer.openInventory` não olha
 # o modo de jogo; o hook `mod_container_viewers` do jogo só conta quem não é espectador); depois o `MekanismContainer.broadcastChanges` de todos os menus
 # abertos: o `ServerPlayer.tick` do original o lê antes dos block entities, com o valor vivo de cada dado, e o cliente recebe o estado do fim do tick
-# anterior (o overlay de 0,98 da barra de energia depende disso). Também a cada passada com o servidor parado, onde o jogador continua andando.
+# anterior (o overlay de 0,98 da barra de energia depende disso). Também a cada passada com o servidor parado, onde o jogador continua andando. No `ServerTickEnd`, antes do
+# `ServerTickEvent.Post` dos transmissores, o nível que o jogador deixou descarrega os chunks dele no segundo tick sem ninguém (decisão 193, `Game::mb_idle_levels_end_of_tick`).
 [[injection]]
 id = "server_tick"
 hook = "server_tick"
@@ -1312,7 +1313,7 @@ bindings = [
   { name = "target", ty = "crate::game::Dim", value = "target" },
 ]
 
-# `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`): o mundo fechou (`WorldCloseFinal`); e `MinecraftServer.createLevels`: o mundo abriu (`WorldOpenReady`) e os níveis que ele já visitou abrem, para o chunk forçado fora da dimensão do jogador andar. Hook do catálogo (`world_lifecycle`), usado só com o contrato dele.
+# `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`): o mundo fechou (`WorldCloseFinal`), e antes do `reset` cada nível solta os chunks (o `onChunkUnloaded` e o `setRemoved` de cada transmissor, decisão 194); e `MinecraftServer.createLevels`: o mundo abriu (`WorldOpenReady`) e os níveis que ele já visitou abrem, para o chunk forçado fora da dimensão do jogador andar. Hook do catálogo (`world_lifecycle`), usado só com o contrato dele.
 [[injection]]
 id = "transmitter_reset"
 hook = "world_lifecycle"

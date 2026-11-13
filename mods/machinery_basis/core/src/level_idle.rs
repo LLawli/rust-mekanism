@@ -40,7 +40,12 @@ impl IdleLevels {
             self.loaded.insert((*dim).to_owned(), 0);
         }
         let mut step = Step::default();
-        let idle: Vec<String> = self.loaded.keys().filter(|dim| !occupied.contains(&dim.as_str())).cloned().collect();
+        let idle: Vec<String> = self
+            .loaded
+            .keys()
+            .filter(|dim| !occupied.contains(&dim.as_str()))
+            .cloned()
+            .collect();
         for dim in idle {
             let ticks = self.loaded.get_mut(&dim).map(|ticks| {
                 *ticks += 1;
@@ -82,7 +87,8 @@ impl IdleLevels {
 /// com o Nether (60 chunks) e o Overworld (1.369), o Nether descarrega todo antes de o Overworld começar, nas duas saídas com os dois carregados (`descarga_fechamento.jsonl`).
 /// `levels` traz, na ordem dos níveis do servidor, quantos chunks cada um tem carregados; os vazios saem.
 pub fn closing_order(levels: &[(String, usize)]) -> Vec<String> {
-    let mut loaded: Vec<&(String, usize)> = levels.iter().filter(|(_, chunks)| *chunks > 0).collect();
+    let mut loaded: Vec<&(String, usize)> =
+        levels.iter().filter(|(_, chunks)| *chunks > 0).collect();
     loaded.sort_by_key(|(_, chunks)| *chunks);
     loaded.into_iter().map(|(dim, _)| dim.clone()).collect()
 }
