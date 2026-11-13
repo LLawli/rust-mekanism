@@ -1,0 +1,65 @@
+# Os setups reais da decisão 196 (frente `setups-reais`): a mesma construção no original (`testes/CenaSetups.java`) e no port (`horizon2/h2_setups_reais.py`), nas mesmas coordenadas.
+# Cada linha é `cmd <comando>` (o mesmo comando nos dois jogos), `espera <ticks>` ou `@passo` (um passo que cada jogo faz do seu jeito: o conteúdo de um tanque, o combustível de um
+# gerador, os itens de um baú; o original pelo Java, o port pelo NBT). `== nome` abre uma seção. O mundo é superplano (a grama em y = -61), o jogador nasce em (2,5, -60, -6) e tudo fica
+# em y = -60, em cima do chão. Simulação 12 e visão 16 nos dois (`options.txt`: `simulationDistance:12`, `renderDistance:16`); o chunk do jogador é o (0, -1).
+#
+# As cinco pistas (uma por família, cada uma com o próprio z, sem encostar nas outras) e o que tem em cada uma:
+#   z = 0   energia: o Heat Generator em x = 0 (de frente para o leste) alimenta uma linha de 399 cabos (do chunk 0 ao 24); Enrichment Chambers (aceitadores, com minério para moer) ao lado dela
+#           em x = 20 (chunk 1), 100 (chunk 6), 200 (chunk 12: a borda da distância de simulação), 232 (chunk 14: fora da simulação, dentro da visão) e 300 (chunk 18: fora da visão).
+#   z = 6   fluido: 239 canos, lava (o conteúdo da rede) e um Heat Generator como tanque (costas para o cano) em x = 100 e outro em x = 190.
+#   z = 12  químico: 239 tubos, carbono e um Metallurgic Infuser como tanque em x = 100 e outro em x = 190.
+#   z = 18  calor: 239 condutores, um Heat Generator quente em x = 0 e dois frios (aceitadores) em x = 100 e x = 190.
+#   z = 24  itens: 159 transportadores ultimate (2 ticks por bloco), um funil e um baú de origem em x = 1 e um baú de destino em x = 140.
+# Um bloco posto por `setblock` não tem a configuração de lados do item (decisão 113): o passo `@maquinas` dá aos aceitadores a de um bloco posto por item (a energia da Enrichment Chamber e
+# o químico do Infuser em `INPUT` nos seis lados), o que o jogador teria ao colocá-los.
+
+== construir
+cmd difficulty peaceful
+cmd gamerule advance_time false
+cmd gamerule advance_weather false
+cmd time set 6000
+cmd weather clear
+cmd gamemode creative @a
+cmd tp @a 2.5 -60 -6
+cmd forceload add 0 -1 400 31
+espera 200
+cmd fill 1 -60 0 399 -60 0 mekanism:basic_universal_cable
+cmd setblock 0 -60 0 mekanismgenerators:heat_generator[facing=east]
+cmd setblock 20 -60 1 mekanism:enrichment_chamber
+cmd setblock 100 -60 1 mekanism:enrichment_chamber
+cmd setblock 200 -60 1 mekanism:enrichment_chamber
+cmd setblock 232 -60 1 mekanism:enrichment_chamber
+cmd setblock 300 -60 1 mekanism:enrichment_chamber
+cmd fill 1 -60 6 239 -60 6 mekanism:basic_mechanical_pipe
+cmd setblock 100 -60 7 mekanismgenerators:heat_generator[facing=south]
+cmd setblock 190 -60 7 mekanismgenerators:heat_generator[facing=south]
+cmd fill 1 -60 12 239 -60 12 mekanism:basic_pressurized_tube
+cmd setblock 100 -60 13 mekanism:metallurgic_infuser
+cmd setblock 190 -60 13 mekanism:metallurgic_infuser
+cmd fill 1 -60 18 239 -60 18 mekanism:basic_thermodynamic_conductor
+cmd setblock 0 -60 18 mekanismgenerators:heat_generator
+cmd setblock 100 -60 19 mekanismgenerators:heat_generator
+cmd setblock 190 -60 19 mekanismgenerators:heat_generator
+cmd fill 1 -60 24 159 -60 24 mekanism:ultimate_logistical_transporter
+cmd setblock 1 -59 24 minecraft:hopper[facing=down]
+cmd setblock 1 -58 24 minecraft:chest
+cmd setblock 140 -60 25 minecraft:chest
+espera 40
+@maquinas
+espera 60
+cmd forceload remove all
+espera 100
+
+== fluxo
+@combustivel
+@minerio
+@lava
+@carbono
+@calor
+@itens
+
+== afasta
+cmd tp @a 330.5 -60 6.5
+
+== volta
+cmd tp @a 2.5 -60 -6
