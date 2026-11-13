@@ -159,6 +159,26 @@ impl Game<'_> {
             let _ = self.enter_level(None, back);
         }
     }
+
+    /// `MinecraftServer.createLevels` abre os três níveis ao começar, e um chunk forçado (`/forceload`) do Nether ou do End anda desde o primeiro tick, sem jogador nenhum lá. O Horizon só
+    /// abre o nível de uma dimensão quando alguém entra nela: o que o mundo guardou de forçado fora da dimensão do jogador ficava parado até alguém visitar a dimensão (medido: três cabos
+    /// num chunk forçado do Nether, reabertos, só voltavam à rede depois de um comando no Nether). Abre aqui, antes do laço do servidor (`WorldOpenReady`), cada nível que o mundo já visitou
+    /// (a pasta da dimensão existe); o que não tem chunk forçado fecha sozinho pela ociosidade (`close_idle_levels`).
+    pub(in crate::game) fn mb_open_visited_levels(&mut self) {
+        if self.remote.is_some() {
+            return;
+        }
+        let back = self.dim;
+        for dim in [crate::game::Dim::Nether, crate::game::Dim::End] {
+            let visited = self.world_root.join("dimensions").join(dim.id().replace(':', "/")).is_dir();
+            if dim != back && visited && self.enter_level(None, dim).is_err() {
+                continue;
+            }
+        }
+        if self.dim != back {
+            let _ = self.enter_level(None, back);
+        }
+    }
 }
 
 impl RecipeSource {

@@ -120,6 +120,8 @@ def montar():
     cmd("gamemode creative @s")
     cmd("tp @s 2.5 -60 -6")
     ctl("wait", "20")
+    # O modo de depuração (`MekanismAPI.debug`) fica ligado em todos os mundos desta rodada: o original não o desliga ao sair (o estado é estático).
+    cmd("mek debug")
     for x in range(5):
         cmd(f"setblock {x} {Y} 0 {CABLE}")
         cmd(f"setblock {x} {Y} 2 {PIPE}")
@@ -143,7 +145,7 @@ def encher():
     cmd(f"setblock 1 {Y + 1} 8 minecraft:hopper[facing=down]")
     cmd(f"setblock 1 {Y + 2} 8 minecraft:chest")
     wait(10)
-    cmd(f"container 1 {Y + 2} 8 minecraft:cobblestone 64")
+    cmd(f'data merge block 1 {Y + 2} 8 {{Items:[{{Slot:0b,id:"minecraft:cobblestone",count:64}}]}}')
     wait(60)
 
 
@@ -169,7 +171,12 @@ def abrir(nome):
 
 def roteiro(saida):
     if state().get("world") != "ResetA":
-        abrir("ResetA")
+        # Do título: os dois mundos de uma rodada anterior saem, e o `ResetA` nasce de novo (a energia e os itens de antes não entram na conta).
+        for nome in ("ResetA", "ResetB"):
+            ctl("world-delete", nome, "--confirm")
+        import h2_mundo_plano as mp
+        sys.argv = ["h2_mundo_plano.py", "ResetA", "20261113"]
+        mp.main()
     r = Roteiro(saida)
     # Sempre com o servidor andando; o mundo A já está aberto.
     montar()
@@ -256,8 +263,65 @@ def segunda_parte(r):
     r.evento("fim")
 
 
+def video():
+    """O vídeo com som e os prints de antes e de depois: cinco cabos com energia, o leitor de rede no cabo do meio, Save and Quit to Title, o mesmo mundo aberto de novo e o leitor no mesmo cabo. O
+    jogo já tem de estar aberto no `ResetA` (criado por `h2_mundo_plano.py`), com `SOCK` do `gravar-jogo start` (`JOGO_PW_SOCK` no container) e o sink conferido por `audio_nulo.sh`."""
+    import h2_ajustes_jogo as a
+    import h2_network_reader as nr
+    sock = os.environ["SOCK"]
+    nome = os.environ.get("NOME", "reset_mundo")
+    local = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/reset-mundo"))
+    a.SHOTS = "/home/luka/.cache/rust-mekanism/reset-mundo/prints"
+    a.LOCAL = local
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("weather clear")
+    ctl("time", "6000")
+    cmd("gamerule advance_time false")
+    cmd("gamerule advance_weather false")
+    ctl("options-set", "chatVisibility", "0")
+    ctl("options-set", "guiScale", "3")
+    for x in range(5):
+        cmd(f"setblock {x} {Y} 0 {CABLE}")
+    wait(40)
+    cmd(f"data merge block 0 {Y} 0 {{energy:12345}}")
+    wait(40)
+    ctl("give", nr.READER, "1")
+    wait(10)
+    ctl("select", nr.READER)
+    stand = (2.5, -60.0, -2.4)
+    cmd("tp @s %.2f %.2f %.2f" % stand)
+    wait(240)
+    a.CROP = "1000x300+0+680"
+    ctl("options-set", "chatVisibility", "2")
+    for categoria in ("master", "block", "ui", "player"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} {nome}.mp4 58 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
+    time.sleep(2.0)
+    try:
+        nr.clicar((2, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        antes = a.shot("reset_antes")
+        wait(40)
+        sair()
+        time.sleep(1.5)
+        abrir("ResetA")
+        wait(20)
+        ctl("select", nr.READER)
+        wait(20)
+        nr.clicar((2, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        depois = a.shot("reset_depois")
+        wait(40)
+    finally:
+        proc.wait()
+        ctl("options-set", "soundCategory_master", "0.0")
+    a.stack(antes, depois, os.path.join(local, "reset_antes_depois.png"))
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
+    if what == "video":
+        video()
+        return
     if what == "roteiro":
         roteiro(sys.argv[2])
         return
