@@ -18,7 +18,7 @@ use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::host_item::{HostItemHandler, MirrorSlot, SlotChange};
 use machinery_basis_core::transmission::inventory_owner::{
-    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, hopper_outcome, keys,
+    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, TransporterPacket, hopper_outcome, keys,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event as TransporterEvent};
 use machinery_basis_core::transmission::transmitter::Overlay as TransporterOverlay;
@@ -255,6 +255,9 @@ fn handlers_flush(game: &mut Game<'_>, dimension: &'static str) {
         for change in handler.changes() {
             match change {
                 SlotChange::Take { index, count } => {
+                    if basis::transmitter_probe_enabled() {
+                        eprintln!("MBX {{\"t\":{},\"p\":{pos:?},\"take\":{count},\"slot\":{index}}}", game.world.game_time);
+                    }
                     // O jogo entrega as pilhas tiradas à rede, que já as tem em trânsito.
                     if game.native_extract_item(dimension, pos, face, index, count).is_none() {
                         eprintln!("mekanism: o slot {index} de {pos:?} não deixou tirar {count}");
@@ -265,6 +268,9 @@ fn handlers_flush(game: &mut Game<'_>, dimension: &'static str) {
                         eprintln!("mekanism: o recurso {} perdeu os componentes ao entrar no vizinho", resource.id);
                         horizon_client::items::ItemStack::new(&resource.id, count)
                     });
+                    if basis::transmitter_probe_enabled() {
+                        eprintln!("MBX {{\"t\":{},\"p\":{pos:?},\"put\":{count},\"item\":{:?}}}", game.world.game_time, resource.id);
+                    }
                     if let Some(rest) = game.native_insert_item(pos, face, stack) {
                         // O que o vizinho recusou (a regra do slot mudou entre a pergunta e a entrega) não se perde: cai ao lado dele.
                         eprintln!("mekanism: {} x{} recusados pelo vizinho {pos:?}, soltos no mundo", rest.item, rest.count);
@@ -300,7 +306,8 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         // `getCapability` não nulo: o vizinho tem um contêiner de itens que este lado alcança.
         let slots = mirror_slots(&self.game.borrow(), self.dimension, arr(pos), side)?;
         if let Some(handler) = HANDLERS.with_borrow(|handlers| handlers.get(&key).cloned()) {
-            handler.refresh(slots);
+            // O mesmo objeto de antes, com o que o evento já mudou nele: o `BlockCapabilityCache` do original devolve sempre o mesmo handler vivo.
+            handler.refresh_if_clean(slots);
             return Some(handler as ItemAcceptor);
         }
         let handler = Rc::new(HostItemHandler::new(slots));
@@ -342,6 +349,10 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         self.game.borrow_mut().world.modified.insert((pos.x >> 4, pos.z >> 4));
     }
 
+    fn transporter_packet(&mut self, pos: SimPos, packet: TransporterPacket) {
+        client::transporter_packet(self.dimension, arr(pos), packet);
+    }
+
     fn overlay(&mut self, _pos: SimPos, overlay: TransporterOverlay) {
         OVERLAYS.with_borrow_mut(|list| list.push(overlay));
     }
@@ -354,6 +365,9 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
     /// espera de 10 ticks para ser pega.
     fn world_drop(&mut self, drop: WorldDrop) {
         let mut game = self.game.borrow_mut();
+        if basis::transmitter_probe_enabled() {
+            eprintln!("MBD {{\"t\":{},\"p\":[{},{},{}],\"item\":{:?},\"n\":{}}}", game.world.game_time, drop.pos.x, drop.pos.y, drop.pos.z, drop.item.id, drop.amount);
+        }
         let Some(stack) = basis::stack_of_resource(&drop.item, drop.amount) else {
             eprintln!("mekanism: o recurso {} perdeu os componentes ao cair no mundo", drop.item.id);
             return;
@@ -368,6 +382,14 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         // `ItemEntity(level, x, y, z, stack)`: o movimento inicial é sorteado.
         let motion = [random.next_double() * 0.2 - 0.1, 0.2, random.next_double() * 0.2 - 0.1];
         game.spawn_item(stack, at, motion, 10);
+    }
+}
+
+/// `LogisticalTransporterBase.onUpdateClient` do transportador em `pos`, no tick do cliente (`TileEntityTransmitter.tickClient`): as pilhas do cliente avançam a velocidade do tier. `id` é o
+/// bloco; fora dos transportadores não faz nada.
+pub(in crate::game) fn transporter_client_tick(game: &Game<'_>, pos: [i32; 3], id: &str) {
+    if let Some((tier, _)) = transporter_stats(id) {
+        client::tick_transporter(game.native_dimension(), pos, tier.speed());
     }
 }
 
@@ -500,8 +522,12 @@ pub(in crate::game) fn transporter_alloy(game: &mut Game<'_>, pos: [i32; 3], all
         let Some(data) = data else {
             continue;
         };
-        basis::alloy_replace(game, arr(target), upgraded_block);
+        let carried: u32 = data.transit.transit.iter().map(|(_, stack)| stack.borrow().size()).sum();
+        let replaced = basis::alloy_replace(game, arr(target), upgraded_block);
         let given = with_owner(dimension, |owner| owner.alloy_give(&mut run, target, data)).unwrap_or(false);
+        if basis::transmitter_probe_enabled() {
+            eprintln!("MBL {{\"e\":\"tstep\",\"p\":{:?},\"replaced\":{replaced},\"given\":{given},\"carried\":{carried}}}", arr(target));
+        }
         if given && run.full() {
             break;
         }

@@ -144,6 +144,26 @@ pub fn push(raw: Raw) {
     }
 }
 
+/// Só na cópia de teste (`enviar_fontes.sh` liga; o repositório fica com `false`): de onde vem cada ocorrência que as injeções anotam, o ponteiro do `BlockEntities` que a recebeu e as funções
+/// que a chamaram (`MBR`).
+const SOURCE_TRACE: bool = false;
+
+/// A sonda `MBR` de uma ocorrência (`kind`: `insert` ou `remove`) em `pos`, recebida pelo `BlockEntities` em `source`.
+pub fn trace_source(kind: &str, pos: Pos, source: usize) {
+    if !SOURCE_TRACE {
+        return;
+    }
+    let text = std::backtrace::Backtrace::force_capture().to_string();
+    let frames: Vec<&str> = text
+        .lines()
+        .filter(|line| line.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .map(|line| line.split_once(": ").map_or(line, |(_, name)| name))
+        .filter(|name| !name.contains("trace_source") && !name.contains("backtrace") && !name.starts_with("machinery_basis_transmitter"))
+        .take(9)
+        .collect();
+    eprintln!("MBR {kind} {pos:?} src={source:x} {}", frames.join(" < "));
+}
+
 /// `LevelChunk.setBlockState` com outro bloco no lugar: o block entity antigo sai (`removeBlockEntity`, `setRemoved`) antes de o novo entrar (`clearRemoved`). O rastreio é por posição, então o
 /// novo que entrasse antes da saída do antigo se perderia (a saída do antigo o tiraria de quem é seguido): foi o que o upgrade pela liga mostrou.
 pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {

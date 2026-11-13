@@ -128,6 +128,23 @@ def chest_slots(p):
     return sorted(out)
 
 
+LIGA = "mekanism:alloy_infused"
+ARM_EAST = (0.85, 0.5, 0.5)
+
+
+def liga(p):
+    """O botão direito com a liga infundida na mão, mirando o braço leste do transportador em `p` (o clique no centro não chega ao `use_hand` sem o Configurator; frente `cabo-cliente`). Com o
+    servidor parado: a troca de nível roda inteira na hora do clique, e o tick que o rastro anda vem depois, no `step`."""
+    pos = at(p)
+    cmd("tp @s %.2f %.2f %.2f" % (pos[0] + 0.5, pos[1] + 1.0, pos[2] - 2.6))
+    h.ctl("give", LIGA, "1")
+    h.ctl("select", LIGA)
+    h.ctl("look-at", *("%.3f" % (pos[i] + ARM_EAST[i]) for i in range(3)))
+    time.sleep(1.0)
+    h.ctl("mouse", "right", "click")
+    time.sleep(1.5)
+
+
 def replay(name):
     rows = [json.loads(l) for l in open(os.path.join(RASTROS, f"transporter_move_{name}.jsonl")) if l.strip()]
     setup, begin = rows[0], rows[1]
@@ -164,6 +181,8 @@ def replay(name):
                 cmd("setblock %s %s" % (txt(at(m["p"])), "minecraft:redstone_block" if m["on"] else "minecraft:air"))
             elif m["k"] == "break":
                 cmd("setblock %s minecraft:air" % txt(at(m["p"])))
+            elif m["k"] == "alloy":
+                liga(m["p"])
             else:
                 stop = (t, m["k"])
         if stop:
@@ -538,7 +557,7 @@ def funil(lado="up"):
 
 def todos():
     ok = True
-    for name in ("pull_line", "tiers", "full_midway", "restrictive", "diversion", "broken"):
+    for name in ("pull_line", "tiers", "full_midway", "restrictive", "diversion", "broken", "alloy_a", "alloy_b", "alloy_c", "alloy_d"):
         ok &= replay(name)
     return ok
 

@@ -3171,6 +3171,8 @@ pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: Block
 
 /// O ticker de um block entity de mod (o gancho `block_entity_tick`): o `onUpdateServer` dos transmissores.
 pub(in crate::game) fn transmitters_update(game: &mut Game<'_>, pos: [i32; 3], id: &str) {
+    // `TileEntityTransmitter.tickClient`: o transportador do cliente (a janela do anfitrião e o convidado) avança as pilhas dele.
+    crate::game::machinery_transporters::transporter_client_tick(game, pos, id);
     if !transmitters::is_active() || !transmitters::is_registered(id) {
         if TRANSMITTER_PROBE && transmitters::is_active() && (id.contains("cable") || id.contains("pipe")) {
             eprintln!("MBT {{\"e\":\"drop_unregistered\",\"id\":{id:?},\"p\":{pos:?}}}");
@@ -3258,6 +3260,8 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele.
             let dims = game.levels_to_tick();
             transmitters::deliver_server_tick_post(&mut TickLevels { game, dims }, world_running);
+            // Os pacotes de movimento das pilhas (`PacketTransporterSync` e `PacketTransporterBatch`) do tick saem agora.
+            crate::game::machinery_transmitter_client::flush_packets(game);
         }
         _ => {}
     }

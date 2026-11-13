@@ -11,9 +11,10 @@
 use crate::game::Game;
 use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::client::{
-    chunk_entered_view, chunk_in_view, ClientKind, ClientNetwork, ClientTransmitters, ClientView, Op, OPS_CHANNEL, RESET_CHANNEL, Range3D, ScalePacket, TagMessage, decode_batch, encode_batches,
+    chunk_entered_view, chunk_in_view, chunks_left_view, ClientKind, ClientNetwork, ClientTransmitters, ClientView, Op, OPS_CHANNEL, RESET_CHANNEL, Range3D, ScalePacket, TagMessage, decode_batch, encode_batches,
     player_in_range,
 };
+use machinery_basis_core::transmission::inventory_owner::TransporterPacket;
 use machinery_basis_core::transmission::transmitter::Compound;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -58,6 +59,9 @@ static SOURCES: Mutex<Vec<TagSource>> = Mutex::new(Vec::new());
 /// Onde cada jogador estava no último tick: a dimensão e o chunk. O `ChunkMap` do original manda os transmissores de um chunk a quem passa a vê-lo, ao andar ou ao trocar de dimensão.
 static WATCHED: Mutex<Option<HashMap<Watcher, (String, i32, i32)>>> = Mutex::new(None);
 static QUEUE: Mutex<Vec<Pending>> = Mutex::new(Vec::new());
+/// Os pacotes de movimento das pilhas (`PacketTransporterSync` e `PacketTransporterBatch`) que o tick mandou, para sair juntos no fim dele: o canal de mod aceita 32 mensagens por jogador
+/// por tick, e cada transportador manda um ou dois pacotes por tick.
+static PACKETS: Mutex<Vec<(&'static str, [i32; 3], Op)>> = Mutex::new(Vec::new());
 /// O cliente de cada dimensão.
 static CLIENT: Mutex<Option<HashMap<String, ClientTransmitters>>> = Mutex::new(None);
 
@@ -79,6 +83,42 @@ pub fn register_source(source: TagSource) {
     if !sources.iter().any(|known| known.tag as usize == source.tag as usize) {
         sources.push(source);
     }
+}
+
+/// `PacketUtils.sendToAllTracking(PacketTransporterSync | PacketTransporterBatch, tile)`: o pacote do transportador em `pos` sai no fim do tick, a quem vê o chunk dele.
+pub(in crate::game) fn transporter_packet(dimension: &'static str, pos: [i32; 3], packet: TransporterPacket) {
+    let op = match packet {
+        TransporterPacket::Sync { id, stack } => Op::TransporterSync { dimension: dimension.to_owned(), pos: sim_pos(pos), id, stack },
+        TransporterPacket::Batch { deletes, updates } => Op::TransporterBatch { dimension: dimension.to_owned(), pos: sim_pos(pos), deletes, updates },
+    };
+    lock(&PACKETS).push((dimension, pos, op));
+}
+
+/// O fim do tick: os pacotes de movimento das pilhas saem, na ordem em que o tick os mandou.
+pub(in crate::game) fn flush_packets(game: &mut Game<'_>) {
+    let packets = std::mem::take(&mut *lock(&PACKETS));
+    if packets.is_empty() {
+        return;
+    }
+    let mut by_dimension: Vec<(&'static str, Vec<(Op, Audience)>)> = Vec::new();
+    for (dimension, pos, op) in packets {
+        match by_dimension.iter_mut().find(|(known, _)| *known == dimension) {
+            Some((_, items)) => items.push((op, Audience::Chunk(pos))),
+            None => by_dimension.push((dimension, vec![(op, Audience::Chunk(pos))])),
+        }
+    }
+    for (dimension, items) in by_dimension {
+        distribute(game, dimension, items);
+    }
+}
+
+/// `TileEntityTransmitter.tickClient` do transportador em `pos`: `onUpdateClient` avança as pilhas do cliente `speed` (o `getSpeed()` do tier).
+pub(in crate::game) fn tick_transporter(dimension: &str, pos: [i32; 3], speed: i32) {
+    client_run(|levels| {
+        if let Some(level) = levels.get_mut(dimension) {
+            level.tick_client_at(sim_pos(pos), speed);
+        }
+    });
 }
 
 /// `TileEntityTransmitter.sendUpdatePacket`: o pacote sai no começo do tick seguinte, uma vez por transmissor.
@@ -183,6 +223,16 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
                     .unwrap_or_default()
             );
         }
+        Op::TransporterSync { pos, .. } | Op::TransporterBatch { pos, .. } => {
+            let kind = if matches!(op, Op::TransporterSync { .. }) { "sync" } else { "batch" };
+            let transit = levels
+                .get(dimension)
+                .and_then(|level| level.extra_at(*pos))
+                .map(|extra| extra.transit.iter().map(|stack| format!("[{},{:?},{},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1), stack.progress)).collect::<Vec<_>>().join(","))
+                .unwrap_or_default();
+            eprintln!("MBH {{\"who\":\"{who}\",\"dim\":\"{dimension}\",\"p\":[{},{},{}],\"k\":\"{kind}\",\"transit\":[{transit}]}}", pos.x, pos.y, pos.z);
+        }
+        Op::Forget { chunks, .. } => eprintln!("MBF {{\"who\":\"{who}\",\"dim\":\"{dimension}\",\"chunks\":{},\"tiles\":{}}}", chunks.as_ref().map_or(-1, |list| list.len() as i64), levels.get(dimension).map_or(0, ClientTransmitters::tile_count)),
         _ => {}
     }
 }
@@ -296,27 +346,32 @@ fn watch(game: &mut Game<'_>) {
     for (who, dimension, position) in now {
         let center = chunk_of(position);
         let before = watched_run(|watched| watched.insert(who, (dimension.clone(), center.0, center.1)));
-        let before_chunk = match before {
+        // `ChunkMap`: o que sai da vista é esquecido (`ClientboundForgetLevelChunkPacket`, e o `ClientChunkCache` solta os block entities); trocar de dimensão larga o nível inteiro da
+        // dimensão que ficou para trás.
+        let (before_chunk, forget) = match before {
             Some((before_dimension, x, z)) if before_dimension == dimension => {
                 if (x, z) == center {
                     continue;
                 }
-                Some((x, z))
+                (Some((x, z)), Some(Op::Forget { dimension: dimension.clone(), chunks: Some(chunks_left_view(center, (x, z), view)) }))
             }
+            Some((before_dimension, _, _)) => (None, Some(Op::Forget { dimension: before_dimension, chunks: None })),
             // Um convidado novo recebe tudo no `player_in`; a janela do anfitrião, que não tem pacote de entrada, e quem chegou de outra dimensão recebem o que veem agora.
             None if matches!(who, Watcher::Guest(_)) => continue,
-            _ => None,
+            None => (None, None),
         };
         let wanted = move |pos: [i32; 3]| chunk_entered_view((pos[0] >> 4, pos[2] >> 4), center, before_chunk, view);
-        let ops = collect_tags(game, &dimension, &wanted);
+        let mut ops: Vec<Op> = forget.into_iter().collect();
+        ops.extend(collect_tags(game, &dimension, &wanted));
         if ops.is_empty() {
             continue;
         }
         match who {
             Watcher::Host => client_run(|levels| {
                 for op in &ops {
-                    levels.entry(dimension.clone()).or_default().apply(op);
-                    probe("host", levels, &dimension, op);
+                    let at = if let Op::Forget { dimension: old, .. } = op { old.clone() } else { dimension.clone() };
+                    levels.entry(at.clone()).or_default().apply(op);
+                    probe("host", levels, &at, op);
                 }
             }),
             Watcher::Guest(uuid) => {
@@ -350,7 +405,11 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
                 for op in &ops {
                     let mut at = String::new();
                     match op {
-                        Op::Tag(TagMessage { dimension, .. }) | Op::Gone { dimension, .. } => {
+                        Op::Tag(TagMessage { dimension, .. })
+                        | Op::Gone { dimension, .. }
+                        | Op::TransporterSync { dimension, .. }
+                        | Op::TransporterBatch { dimension, .. }
+                        | Op::Forget { dimension, .. } => {
                             levels.entry(dimension.clone()).or_default().apply(op);
                             at = dimension.clone();
                         }
