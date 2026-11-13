@@ -2245,6 +2245,9 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             server.pipe_rates = rules::pipe_rates(&loaded);
             server.tubes = rules::tube_capacities(&loaded);
             server.tube_rates = rules::tube_rates(&loaded);
+            server.transporter_pulls = rules::transporter_pull_amounts(&loaded);
+            server.transporter_speeds = rules::transporter_speeds(&loaded);
+            TransporterTier::configure(server.transporter_speeds, server.transporter_pulls);
             server.conductors = rules::conductor_values(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
             server.cube_rates = rules::cube_rates(&loaded);

@@ -130,29 +130,14 @@ fn transmitters_part(text: &str) -> String {
     text[start..].to_owned()
 }
 
-/// A seção `[transmitters.items]` (os Logistical Transporters, que ainda não estão na especificação do port) tirada do texto do original,
-/// com a linha em branco que a separa da anterior.
-fn without_items_section(original: &str) -> String {
-    let start = original
-        .find("\n\t#Settings for configuring Logistical Transporters\n")
-        .expect("a seção [transmitters.items]");
-    let end = original
-        .find("\n\t#Settings for configuring Thermodynamic Conductors\n")
-        .expect("a seção [transmitters.heat]");
-    format!("{}{}", &original[..start], &original[end..])
-}
-
-/// `[transmitters.energy]`, `.fluid`, `.chemical` e `.heat` byte a byte: o texto, a ordem das chaves e das seções, as linhas em branco e as
+/// `[transmitters.energy]`, `.fluid`, `.chemical`, `.items` e `.heat` byte a byte: o texto, a ordem das chaves e das seções, as linhas em branco e as
 /// tabulações do `tiers.toml` que o original escreveu sozinho (o teste de cada chave não vê uma linha em branco a menos nem uma seção fora de ordem).
 #[test]
 fn the_transmitter_sections_of_tiers_are_the_original_byte_for_byte() {
     let original = reference("tiers");
     let port = TIERS_CONFIG.default_text();
-    assert_eq!(
-        transmitters_part(&port),
-        without_items_section(&transmitters_part(&original))
-    );
-    for section in ["energy", "fluid", "chemical", "heat"] {
+    assert_eq!(transmitters_part(&port), transmitters_part(&original));
+    for section in ["energy", "fluid", "chemical", "items", "heat"] {
         let name = format!("transmitters.{section}");
         assert_eq!(header(&port, &name), header(&original, &name), "{name}");
     }
@@ -461,4 +446,25 @@ fn the_energy_buffer_is_capped_at_what_the_horizon_holds() {
         machine_with(i32::MAX).energy().capacity(),
         4 * i64::from(i32::MAX)
     );
+}
+
+#[test]
+fn the_transporters_follow_the_order_of_the_tiers_and_the_file_changes_speed_and_pull_amount() {
+    use machinery_basis_core::transporter::node::TransporterTier;
+    use mekanism_rules::{
+        DEFAULT_TRANSPORTER_PULL_AMOUNTS, DEFAULT_TRANSPORTER_SPEEDS, LOGISTICAL_TRANSPORTERS,
+        transporter_pull_amounts, transporter_speeds,
+    };
+    assert_eq!(LOGISTICAL_TRANSPORTERS.len(), TransporterTier::VALUES.len());
+    // Os padrões do arquivo são os de `TransporterTier` (`getBasePull`, `getBaseSpeed`), os que a lib tinha.
+    let defaults = TIERS_CONFIG.defaults();
+    assert_eq!(transporter_pull_amounts(&defaults), DEFAULT_TRANSPORTER_PULL_AMOUNTS);
+    assert_eq!(transporter_speeds(&defaults), DEFAULT_TRANSPORTER_SPEEDS);
+    assert_eq!(DEFAULT_TRANSPORTER_PULL_AMOUNTS, [1, 16, 32, 64]);
+    assert_eq!(DEFAULT_TRANSPORTER_SPEEDS, [5, 10, 20, 50]);
+    let loaded = TIERS_CONFIG.load(
+        "[transmitters.items]\n\t\tadvancedPullAmount = 3\n\t\telitespeed = 7\n\t\tultimateSpeed = 99\n\t\tbasicSpeed = 0\n",
+    );
+    assert_eq!(transporter_pull_amounts(&loaded), [1, 3, 32, 64]);
+    assert_eq!(transporter_speeds(&loaded), [1, 10, 20, 99]);
 }

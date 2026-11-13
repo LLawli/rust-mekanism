@@ -10,6 +10,7 @@ use crate::transaction::JournalCell;
 use crate::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
 use crate::transmission::transmitter::{NeighborTransmitter, Transmitter, TransmitterWorld};
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::rc::Rc;
 
 /// `TransporterTier`: a velocidade e a quantidade que puxa por vez (os valores de fábrica, sem a configuração).
@@ -21,7 +22,21 @@ pub enum TransporterTier {
     Ultimate,
 }
 
+/// `TransporterTier.getSpeed` e `getPullAmount` de cada tier: o valor do arquivo `tiers.toml` (`TierConfig`), que a cola põe quando o arquivo carrega; os padrões antes disso.
+static SPEEDS: [AtomicI32; 4] = [AtomicI32::new(5), AtomicI32::new(10), AtomicI32::new(20), AtomicI32::new(50)];
+static PULL_AMOUNTS: [AtomicI32; 4] = [AtomicI32::new(1), AtomicI32::new(16), AtomicI32::new(32), AtomicI32::new(64)];
+
 impl TransporterTier {
+    /// Os valores do arquivo de configuração, na ordem dos tiers: a velocidade e a quantidade que puxa por vez.
+    pub fn configure(speeds: [i32; 4], pull_amounts: [i32; 4]) {
+        for (slot, value) in SPEEDS.iter().zip(speeds) {
+            slot.store(value, Ordering::Relaxed);
+        }
+        for (slot, value) in PULL_AMOUNTS.iter().zip(pull_amounts) {
+            slot.store(value, Ordering::Relaxed);
+        }
+    }
+
     pub const VALUES: [TransporterTier; 4] = [
         TransporterTier::Basic,
         TransporterTier::Advanced,
@@ -43,22 +58,12 @@ impl TransporterTier {
 
     /// `getSpeed`.
     pub fn speed(self) -> i32 {
-        match self {
-            TransporterTier::Basic => 5,
-            TransporterTier::Advanced => 10,
-            TransporterTier::Elite => 20,
-            TransporterTier::Ultimate => 50,
-        }
+        SPEEDS[self as usize].load(Ordering::Relaxed)
     }
 
     /// `getPullAmount`.
     pub fn pull_amount(self) -> i32 {
-        match self {
-            TransporterTier::Basic => 1,
-            TransporterTier::Advanced => 16,
-            TransporterTier::Elite => 32,
-            TransporterTier::Ultimate => 64,
-        }
+        PULL_AMOUNTS[self as usize].load(Ordering::Relaxed)
     }
 }
 

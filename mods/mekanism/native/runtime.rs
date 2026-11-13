@@ -890,6 +890,86 @@ pub const TIERS_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `TierConfig.addLogisticalTransportersCategory`: a quantidade que cada transportador logístico puxa por vez (`<tier>PullAmount`, itens por meio segundo) e a velocidade (`<tier>Speed`, cinco
+        // vezes os m/s), de 1 a `Integer.MAX_VALUE`, com o texto de `TierTranslations.create(TransporterTier)`.
+        ClientSection {
+            name: "transmitters.items",
+            comment: "Settings for configuring Logistical Transporters",
+            entries: &[
+                ClientEntry {
+                    key: "basicPullAmount",
+                    comment: "Item throughput rate of Basic logistical transporters in items/half second. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 1,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicSpeed",
+                    comment: "Five times the travel speed in m/s of Basic logistical transporter. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 5,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedPullAmount",
+                    comment: "Item throughput rate of Advanced logistical transporters in items/half second. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 16,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedSpeed",
+                    comment: "Five times the travel speed in m/s of Advanced logistical transporter. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 10,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "elitePullAmount",
+                    comment: "Item throughput rate of Elite logistical transporters in items/half second. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 32,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteSpeed",
+                    comment: "Five times the travel speed in m/s of Elite logistical transporter. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 20,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimatePullAmount",
+                    comment: "Item throughput rate of Ultimate logistical transporters in items/half second. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 64,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateSpeed",
+                    comment: "Five times the travel speed in m/s of Ultimate logistical transporter. This value assumes a target tick rate of 20 ticks per second.",
+                    setting: ClientSetting::Int {
+                        default: 50,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
         // `TierConfig.addThermodynamicConductorsCategory`: a condução inversa (`<tier>InverseConduction`, `1..Double.MAX_VALUE`), a capacidade de calor (`<tier>HeatCapacity`, `1..Double.MAX_VALUE`) e a
         // isolação (`<tier>Insulation`, `0..Double.MAX_VALUE`) de cada condutor termodinâmico, com o texto de `TierTranslations.create(ConductorTier)`.
         ClientSection {
@@ -1109,6 +1189,30 @@ pub fn pipe_rates(loaded: &ClientLoaded) -> [i32; 4] {
     out
 }
 
+/// Os padrões de `TransporterTier` (`getBasePullAmount` e `getBaseSpeed`).
+pub const DEFAULT_TRANSPORTER_PULL_AMOUNTS: [i32; 4] = [1, 16, 32, 64];
+pub const DEFAULT_TRANSPORTER_SPEEDS: [i32; 4] = [5, 10, 20, 50];
+
+/// A quantidade que cada transportador logístico puxa por vez (`TransporterTier.getPullAmount`: o valor do arquivo, ou o padrão sem ele), na ordem de [`LOGISTICAL_TRANSPORTERS`].
+pub fn transporter_pull_amounts(loaded: &ClientLoaded) -> [i32; 4] {
+    const KEYS: [&str; 4] = ["basicPullAmount", "advancedPullAmount", "elitePullAmount", "ultimatePullAmount"];
+    let mut out = DEFAULT_TRANSPORTER_PULL_AMOUNTS;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded.int(&TIERS_CONFIG, "transmitters.items", key).unwrap_or(*slot);
+    }
+    out
+}
+
+/// A velocidade de cada transportador logístico (`TransporterTier.getSpeed`: o valor do arquivo, ou o padrão sem ele).
+pub fn transporter_speeds(loaded: &ClientLoaded) -> [i32; 4] {
+    const KEYS: [&str; 4] = ["basicSpeed", "advancedSpeed", "eliteSpeed", "ultimateSpeed"];
+    let mut out = DEFAULT_TRANSPORTER_SPEEDS;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded.int(&TIERS_CONFIG, "transmitters.items", key).unwrap_or(*slot);
+    }
+    out
+}
+
 /// `ConductorTier`: o id de cada condutor termodinâmico, na ordem dos tiers.
 pub const THERMODYNAMIC_CONDUCTORS: [&str; 4] = [
     "mekanism:basic_thermodynamic_conductor",
@@ -1253,6 +1357,9 @@ pub struct ServerConfig {
     pub conductors: [TierValues; 4],
     pub tubes: [i64; 4],
     pub tube_rates: [i32; 4],
+    /// `TransporterTier.getPullAmount` e `getSpeed`.
+    pub transporter_pulls: [i32; 4],
+    pub transporter_speeds: [i32; 4],
     pub cubes: [i64; 5],
     /// `EnergyCubeTier.getTransferRate`, na mesma ordem.
     pub cube_rates: [i32; 5],
@@ -1269,6 +1376,8 @@ impl ServerConfig {
         conductors: DEFAULT_CONDUCTOR_VALUES,
         tubes: DEFAULT_TUBE_CAPACITIES,
         tube_rates: DEFAULT_TUBE_RATES,
+        transporter_pulls: DEFAULT_TRANSPORTER_PULL_AMOUNTS,
+        transporter_speeds: DEFAULT_TRANSPORTER_SPEEDS,
         cubes: DEFAULT_CUBE_CAPACITIES,
         cube_rates: DEFAULT_CUBE_RATES,
         cells: DEFAULT_CELL_CAPACITIES,
