@@ -1313,6 +1313,22 @@ bindings = [
   { name = "target", ty = "crate::game::Dim", value = "target" },
 ]
 
+# O dono do mundo no primeiro tick do servidor (decisão 195). No original o jogador já está no servidor quando o primeiro tick roda (medido: um jogador no `PlayerList` no `ServerTickEvent.Pre`
+# do tick 1 de cada abertura), e o chunk dele anda nesse tick: o `clearRemoved` de cada transmissor só marca o `markJoined`, e a rede nasce no `onUpdateServer`, que é o tick do block entity.
+# O Horizon põe o dono no fim da primeira passada, depois do bloco de ticks, e `Game::update_chunk_tickets` só tem os tickets dos convidados e do `self.player`: na primeira passada nenhum
+# block entity anda e a rede nasce na segunda. O HEAD cancelável responde pela função enquanto o dono (`Owner.saved`) não entrou, com o corpo dela refeito e o chunk do dono (a posição
+# guardada no arquivo do jogador, senão o spawn) como mais um jogador; sem dono à espera deixa o corpo original. O `ChunkTickets.sources`, o `Sources` montado dentro de um fechamento
+# e o laço de `self.lan` são privados, e o `MODIFY_VARIABLE` do `players` recusa o fechamento do valor: não há ponto mais estreito. Alvo cru, H222.
+[[injection]]
+id = "owner_tickets"
+target = "horizon_client::game::Game<'_>::update_chunk_tickets"
+kind = "HEAD"
+cancellable = true
+helper = "owner_tickets.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
 # `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`): o mundo fechou (`WorldCloseFinal`), e antes do `reset` cada nível solta os chunks (o `onChunkUnloaded` e o `setRemoved` de cada transmissor, decisão 194); e `MinecraftServer.createLevels`: o mundo abriu (`WorldOpenReady`) e os níveis que ele já visitou abrem, para o chunk forçado fora da dimensão do jogador andar. Hook do catálogo (`world_lifecycle`), usado só com o contrato dele.
 [[injection]]
 id = "transmitter_reset"

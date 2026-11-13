@@ -180,6 +180,76 @@ impl Game<'_> {
         }
     }
 
+    /// O chunk do dono do mundo que ainda não entrou (decisão 195): `Owner.saved` fica cheio até o dono entrar (`lan_guest_joined` o tira), e a posição dele é a do arquivo do jogador
+    /// (o chunk em que ele estava ao sair) ou, num jogador novo, a do spawn. Só vale para o nível em que ele estava: o de outra dimensão não o tem como jogador. O segundo valor é o modo
+    /// espectador (a regra `spectators_generate_chunks` o tira dos tickets, como o de qualquer jogador).
+    fn mb_pending_owner(&self) -> Option<((i32, i32), bool)> {
+        let saved = self.lan.as_ref()?.owner.as_ref()?.saved.as_ref()?;
+        if !saved.dimension.is_empty() && saved.dimension != self.dim.id() {
+            return None;
+        }
+        let (x, z) = match saved.position {
+            Some(position) => (position[0], position[2]),
+            None => self
+                .spawn
+                .map(|s| (s.x, s.z))
+                .or_else(|| self.level.spawn.map(|s| (s[0], s[2])))?,
+        };
+        Some((((x.floor() as i32) >> 4, (z.floor() as i32) >> 4), saved.mode() == 3))
+    }
+
+    /// O jogador já está no servidor no primeiro tick do original (decisão 195, a causa da rede na segunda passada): `Game::update_chunk_tickets` só conhece os convidados e o `self.player`,
+    /// e o dono do mundo entra no fim da primeira passada. Enquanto ele não entrou, esta função faz o que a original faz (a lista de jogadores, os chunks forçados, o portal, a arena do
+    /// dragão e as distâncias) com o chunk dele como mais um jogador, e devolve `true` para a função original não rodar; sem dono à espera devolve `false` e a função original roda, intacta. O corpo é
+    /// o do Horizon da base `f319701`, linha a linha, com a única diferença do `players.push` do dono.
+    pub(in crate::game) fn mb_owner_tickets(&mut self) -> bool {
+        if TRANSMITTER_PROBE && std::path::Path::new("/tmp/mb_sem_primeira_passada").exists() {
+            return false;
+        }
+        let Some((chunk, spectator)) = self.mb_pending_owner() else {
+            return false;
+        };
+        if TRANSMITTER_PROBE {
+            eprintln!("MBT {{\"t\":{},\"e\":\"owner_tickets\",\"chunk\":[{},{}]}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk.0, chunk.1);
+        }
+        let rule = self.ui.rules.bool("spectators_generate_chunks");
+        let mut players: Vec<((i32, i32), bool)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
+            h.hub
+                .guests
+                .iter()
+                .filter(|g| h.hub.here(g))
+                .map(|g| (g.chunk(), g.spectator()))
+                .collect()
+        });
+        if let Some(p) = &self.player {
+            players.push((
+                ((p.position.x.floor() as i32) >> 4, (p.position.z.floor() as i32) >> 4),
+                self.spectator(),
+            ));
+        }
+        players.push((chunk, spectator));
+        let sources = horizon_client::ticket_levels::Sources {
+            players: players
+                .into_iter()
+                .filter(|&(_, spectator)| crate::game::game_mode::loads_chunks(rule, spectator))
+                .map(|(chunk, _)| chunk)
+                .collect(),
+            forced: self
+                .streaming
+                .forced
+                .iter()
+                .chain(self.streaming.mod_forced.iter().filter(|c| !self.streaming.forced.contains(c)))
+                .copied()
+                .collect(),
+            portal: Vec::new(),
+            dragon: (self.dim == crate::game::Dim::End && self.fight.arena_watched()).then_some((0, 0)),
+            view_distance: self.settings.render_distance.clamp(2, 32),
+            simulation_distance: self.settings.simulation_distance.max(2),
+        };
+        self.tickets.update(Some(sources));
+        true
+    }
+
     /// O nível está aberto: o que está no lugar ou um dos parados.
     fn mb_level_open(&self, dim: crate::game::Dim) -> bool {
         dim == self.dim || self.lod_source_in(dim).is_some()
@@ -3187,7 +3257,8 @@ pub fn transmitter_probe_reset(family: &str, counts: (usize, usize, usize)) {
 /// Uma marca da sonda (a abertura do mundo, a primeira passada), com o número da passada do servidor.
 pub fn transmitter_probe_note(name: &str) {
     if TRANSMITTER_PROBE {
-        eprintln!("MBT {{\"t\":{},\"e\":\"{name}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+        eprintln!("MBT {{\"t\":{},\"e\":\"{name}\",\"ms\":{ms}}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
     }
 }
 
@@ -3420,6 +3491,18 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
+            if TRANSMITTER_PROBE && TRANSMITTER_PASS.load(Ordering::Relaxed) <= 8 {
+                // Os primeiros ticks do mundo aberto (decisão 195), o que a `CenaReset` do original grava em cada um: quantos jogadores já estão, os chunks carregados e se o chunk (0, 0) anda.
+                let players = game.lan.as_ref().map_or(0, |h| h.hub.guests.iter().filter(|g| g.placed).count());
+                let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+                eprintln!(
+                    "MBT {{\"t\":{},\"e\":\"estado\",\"ms\":{ms},\"jogadores\":{players},\"carregados\":{},\"anda00\":{},\"dim\":\"{}\"}}",
+                    TRANSMITTER_PASS.load(Ordering::Relaxed),
+                    game.world.chunks.len(),
+                    game.tickets.levels().block_ticking(0, 0),
+                    game.dim.id()
+                );
+            }
             // Os níveis parados que descarregam neste tick saem antes do `Post`, como no original (o `ServerLevel.tick` vem antes do `ServerTickEvent.Post`).
             let post_levels = idle_levels_end_of_tick(game);
             if !transmitters::is_active() {
