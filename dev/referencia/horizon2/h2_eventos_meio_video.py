@@ -43,7 +43,7 @@ def arena():
 
 def camera():
     x, y, z = g.BASE
-    g.chat(f"tp @s {x + 3.5} {y + 5} {z - 4} 0 42")
+    g.chat(f"tp @s {x + 3.5} {y + 5} {z + 8} 180 42")
     h.ctl("wait", "10")
     h.ctl("look-at", f"{x + 3.5:.3f}", f"{y - 0.5:.3f}", f"{z + 2.0:.3f}")
     h.ctl("wait", "10")
@@ -84,7 +84,8 @@ def gravado(sock):
     camera()
     h.ctl("options-set", "soundCategory_master", "1.0")
     h.ctl("options-set", "soundCategory_block", "1.0")
-    h.ctl("options-set", "soundCategory_player", "1.0")
+    for categoria in ("player", "hostile", "neutral", "ui"):
+        h.ctl("options-set", f"soundCategory_{categoria}", "1.0")
     proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} eventos_meio.mp4 30 {NAME}"], stdout=subprocess.DEVNULL)
     time.sleep(2.0)
     try:
