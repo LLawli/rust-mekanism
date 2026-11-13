@@ -6,8 +6,8 @@ use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::client::{
     ClientKind, ClientTransmitters, MAX_BATCH, Op, ScaleOutbox, ScalePacket, TagMessage,
-    decode_batch, decode_contents, decode_gone, encode_batches, encode_contents, encode_gone,
-    gen_packet_range, player_in_range,
+    chunk_entered_view, chunk_in_view, decode_batch, decode_contents, decode_gone, encode_batches,
+    encode_contents, encode_gone, gen_packet_range, player_in_range,
 };
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::transmitter::{Compound, Tag, keys};
@@ -404,4 +404,22 @@ fn applying_the_packets_in_order_leaves_the_client_as_the_server_told() {
         pos: at(1, 0),
     });
     assert!(client.get_client_network(A).is_none());
+}
+
+/// O `ChunkMap` manda os block entities de um chunk a quem passa a vê-lo: ao andar, só os chunks que entraram na distância de visão; ao chegar de outra dimensão (sem chunk anterior),
+/// todos os que vê.
+#[test]
+fn a_player_gets_the_chunks_that_entered_the_view_distance_and_all_of_them_after_a_dimension_change()
+ {
+    let view = 2;
+    assert!(chunk_in_view((2, -2), (0, 0), view));
+    assert!(!chunk_in_view((3, 0), (0, 0), view));
+    // Um passo para leste: a coluna x = 3 entra, o resto já estava.
+    assert!(chunk_entered_view((3, 0), (1, 0), Some((0, 0)), view));
+    assert!(!chunk_entered_view((2, 0), (1, 0), Some((0, 0)), view));
+    // Fora da vista nova nada entra.
+    assert!(!chunk_entered_view((-2, 0), (1, 0), Some((0, 0)), view));
+    // Outra dimensão: tudo o que está na vista é novo.
+    assert!(chunk_entered_view((0, 0), (0, 0), None, view));
+    assert!(!chunk_entered_view((9, 9), (0, 0), None, view));
 }

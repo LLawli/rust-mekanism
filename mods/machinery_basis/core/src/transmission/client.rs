@@ -30,6 +30,22 @@ pub const RESET_CHANNEL: &str = "machinery_basis:transmitter_reset";
 /// O que cabe numa mensagem de mod (`native_net_send_to_player`: 30.000 bytes), com folga para o cabeçalho.
 pub const MAX_BATCH: usize = 28_000;
 
+/// O chunk `at` está dentro da distância de visão (`ChunkMap.isChunkInRange`: o máximo das duas diferenças) de quem está no chunk `center`.
+pub fn chunk_in_view(at: (i32, i32), center: (i32, i32), view: i32) -> bool {
+    (at.0 - center.0).abs() <= view && (at.1 - center.1).abs() <= view
+}
+
+/// O `ChunkMap` manda o pacote de atualização dos block entities de um chunk a quem passa a vê-lo: `before` é o chunk de quem estava na mesma dimensão no tick anterior (`None` se
+/// chegou agora ou veio de outra dimensão, e então todo chunk que ele vê é novo). Vale para o chunk `at` se está na vista de `center` e não estava na de `before`.
+pub fn chunk_entered_view(
+    at: (i32, i32),
+    center: (i32, i32),
+    before: Option<(i32, i32)>,
+    view: i32,
+) -> bool {
+    chunk_in_view(at, center, view) && !before.is_some_and(|old| chunk_in_view(at, old, view))
+}
+
 /// `Range3D`: o retângulo (em x e z) que a rede cobre, e a dimensão dela.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Range3D {

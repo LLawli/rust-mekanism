@@ -840,3 +840,34 @@ fn the_alloy_raises_the_transporters_and_keeps_the_stacks_the_color_and_the_conn
     let none = owner.alloy_start(at(1), 1, &|_| None).expect("há rede");
     assert!(none.targets.is_empty());
 }
+
+/// Nenhuma terra se perde na troca (em jogo, com a liga no meio da linha, chegaram 62 de 64): a linha de três com a terra em trânsito sobe de nível e entrega as 64.
+#[test]
+fn the_alloy_loses_no_item_in_flight() {
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    tick(&mut owner, &mut world, 25, 3);
+    let mut run = owner.alloy_start(at(1), 1, &|_| Some(0)).expect("há rede");
+    for target in run.targets.clone() {
+        let data = owner
+            .alloy_take(&mut world, &mut run, target)
+            .expect("dado");
+        owner.handle(&mut world, Event::Removed(target));
+        world.infos.borrow_mut().insert(
+            target,
+            TransporterInfo {
+                tier: TransporterTier::Advanced,
+                kind: logistical(),
+                saved: None,
+            },
+        );
+        owner.handle(&mut world, Event::ClearRemoved(target));
+        assert!(owner.alloy_give(&mut run, target, data));
+    }
+    owner.alloy_finish(&mut world, &run);
+    tick(&mut owner, &mut world, 1_500, 3);
+    assert_eq!(
+        dirt_in(&world.chests[&at(3)]),
+        64,
+        "tudo chega ao baú de destino"
+    );
+}

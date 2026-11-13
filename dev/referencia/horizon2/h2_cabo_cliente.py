@@ -67,10 +67,14 @@ def escala():
     print("o anfitrião guardou", len(host), "escalas;", "o convidado", len(guest), "; o servidor mandou ao convidado", len(sent))
     print("anfitrião:", [(r["scale"], r.get("cap"), r.get("n")) for r in host[-8:]])
     print("convidado:", [(r["scale"], r.get("cap"), r.get("n")) for r in guest[-8:]])
-    sg = [r["scale"] for r in sent]
     gg = [r["scale"] for r in guest]
-    ok = bool(gg) and gg == sg[-len(gg):] and [r["scale"] for r in host] == gg
-    print("anfitrião == convidado:", [r["scale"] for r in host] == gg, "| convidado == o que o servidor mandou a ele:", gg == sg[-len(gg):] if gg else None, "| capacidade da rede no convidado:", guest[-1].get("cap") if guest else None, "(esperado", LINHA * 8000, ")")
+    # Com a LAN aberta a janela do anfitrião também é um jogador do servidor: `MBN` traz as duas sequências (uma por jogador, em `to`), e o convidado tem de ter recebido uma delas inteira.
+    por_jogador = {}
+    for r in sent:
+        por_jogador.setdefault(r["to"], []).append(r["scale"])
+    igual_a_algum = gg in por_jogador.values()
+    ok = bool(gg) and igual_a_algum and [r["scale"] for r in host] == gg
+    print("anfitrião == convidado:", [r["scale"] for r in host] == gg, "| convidado == o que o servidor mandou a um jogador:", igual_a_algum, "| capacidade da rede no convidado:", guest[-1].get("cap") if guest else None, "(esperado", LINHA * 8000, ")")
     print("fim", "OK" if ok and guest[-1].get("cap") == LINHA * 8000 else "DIFF")
 
 

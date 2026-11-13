@@ -11,7 +11,7 @@
 use crate::game::Game;
 use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::client::{
-    ClientKind, ClientNetwork, ClientTransmitters, ClientView, Op, OPS_CHANNEL, RESET_CHANNEL, Range3D, ScalePacket, TagMessage, decode_batch, encode_batches,
+    chunk_entered_view, chunk_in_view, ClientKind, ClientNetwork, ClientTransmitters, ClientView, Op, OPS_CHANNEL, RESET_CHANNEL, Range3D, ScalePacket, TagMessage, decode_batch, encode_batches,
     player_in_range,
 };
 use machinery_basis_core::transmission::transmitter::Compound;
@@ -166,15 +166,21 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
                 .map(|view| view.kind.iter().map(|kind| kind.serialized_name()).collect())
                 .unwrap_or_default();
             let net = levels.get(dimension).and_then(|level| level.network_at(message.pos));
+            let extra = levels.get(dimension).and_then(|level| level.extra_at(message.pos));
             eprintln!(
-                "MBG {{\"who\":\"{who}\",\"p\":[{},{},{}],\"kind\":{:?},\"net\":{},\"cap\":{},\"n\":{}}}",
+                "MBG {{\"who\":\"{who}\",\"dim\":\"{dimension}\",\"p\":[{},{},{}],\"kind\":{:?},\"net\":{},\"cap\":{},\"n\":{},\"heat\":{},\"color\":{},\"transit\":[{}]}}",
                 message.pos.x,
                 message.pos.y,
                 message.pos.z,
                 kinds,
                 net.map_or("null".to_owned(), |net| format!("\"{:032x}\"", net.uuid)),
                 net.map_or(0, |net| net.capacity),
-                net.map_or(0, ClientNetwork::transmitters_size)
+                net.map_or(0, ClientNetwork::transmitters_size),
+                extra.and_then(|extra| extra.heat).map_or("null".to_owned(), |heat| format!("{heat:?}")),
+                extra.and_then(|extra| extra.color).map_or("null".to_owned(), |color| color.to_string()),
+                extra
+                    .map(|extra| extra.transit.iter().map(|stack| format!("[{},{:?},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1))).collect::<Vec<_>>().join(","))
+                    .unwrap_or_default()
             );
         }
         _ => {}
@@ -238,11 +244,6 @@ fn chunk_of(position: [f64; 3]) -> (i32, i32) {
     ((position[0].floor() as i32) >> 4, (position[2].floor() as i32) >> 4)
 }
 
-/// O chunk `at` está dentro da distância de visão de quem está no chunk `center`.
-fn in_view(at: (i32, i32), center: (i32, i32), view: i32) -> bool {
-    (at.0 - center.0).abs() <= view && (at.1 - center.1).abs() <= view
-}
-
 /// Os pacotes de atualização de todos os transmissores de `dimension` que `wanted` aceita (a posição do transmissor).
 fn collect_tags(game: &Game<'_>, dimension: &str, wanted: &dyn Fn([i32; 3]) -> bool) -> Vec<Op> {
     let sources: Vec<TagSource> = lock(&SOURCES).clone();
@@ -273,7 +274,7 @@ pub(in crate::game) fn player_in(game: &mut Game<'_>, player: u128) {
     let view = view_distance(game);
     let center = chunk_of(who.position);
     watched_run(|watched| watched.insert(Watcher::Guest(player), (who.dimension.clone(), center.0, center.1)));
-    let ops = collect_tags(game, &who.dimension, &|pos| in_view((pos[0] >> 4, pos[2] >> 4), center, view));
+    let ops = collect_tags(game, &who.dimension, &|pos| chunk_in_view((pos[0] >> 4, pos[2] >> 4), center, view));
     for batch in encode_batches(&ops) {
         let _ = game.native_net_send_to_player(player, OPS_CHANNEL, &batch);
     }
@@ -295,20 +296,18 @@ fn watch(game: &mut Game<'_>) {
     for (who, dimension, position) in now {
         let center = chunk_of(position);
         let before = watched_run(|watched| watched.insert(who, (dimension.clone(), center.0, center.1)));
-        let wanted: Box<dyn Fn([i32; 3]) -> bool> = match before {
+        let before_chunk = match before {
             Some((before_dimension, x, z)) if before_dimension == dimension => {
                 if (x, z) == center {
                     continue;
                 }
-                Box::new(move |pos| {
-                    let at = (pos[0] >> 4, pos[2] >> 4);
-                    in_view(at, center, view) && !in_view(at, (x, z), view)
-                })
+                Some((x, z))
             }
-            // Um convidado novo recebe tudo no `player_in`; a janela do anfitrião, que não tem pacote de entrada, recebe o que vê agora.
+            // Um convidado novo recebe tudo no `player_in`; a janela do anfitrião, que não tem pacote de entrada, e quem chegou de outra dimensão recebem o que veem agora.
             None if matches!(who, Watcher::Guest(_)) => continue,
-            _ => Box::new(move |pos| in_view((pos[0] >> 4, pos[2] >> 4), center, view)),
+            _ => None,
         };
+        let wanted = move |pos: [i32; 3]| chunk_entered_view((pos[0] >> 4, pos[2] >> 4), center, before_chunk, view);
         let ops = collect_tags(game, &dimension, &wanted);
         if ops.is_empty() {
             continue;
