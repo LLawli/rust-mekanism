@@ -290,9 +290,16 @@ impl TileComponentEjector {
             let handler: Rc<dyn ItemHandler> = Rc::new(SlotHandler::new(slots.clone()));
             let mut eject_map: Option<HandlerTransitRequest> = None;
             for &side in &outputs {
-                let Some(capability) = neighbours.item_handler(side) else {
-                    // Sem alvo neste lado.
-                    continue;
+                // Um transportador é o `TransporterItemHandler` da capability: o pedido vai a ele inteiro, com a cor de saída.
+                let transporter = neighbours.transporter(side);
+                let capability = if transporter.is_some() {
+                    None
+                } else {
+                    let Some(capability) = neighbours.item_handler(side) else {
+                        // Sem alvo neste lado.
+                        continue;
+                    };
+                    Some(capability)
                 };
                 if let Some(request) = &eject_map {
                     // O handler do lado de onde o item sai, para a resposta usar as regras dele.
@@ -313,7 +320,15 @@ impl TileComponentEjector {
                     break;
                 };
                 let sub = Transaction::open(None);
-                let response = request.eject(Some(&capability), 1, &sub);
+                let response = match &transporter {
+                    Some(transporter) => request.eject_to_transporter(
+                        transporter.as_ref(),
+                        1,
+                        self.output_color,
+                        &sub,
+                    ),
+                    None => request.eject(capability.as_ref(), 1, &sub),
+                };
                 if response.use_all(&sub) {
                     sub.commit();
                     if request.is_empty() {
@@ -445,6 +460,114 @@ mod tests {
         fn emit(&mut self, kind: TransmissionType, container: usize, sides: &[Face]) {
             self.0.push((kind, container, sides.to_vec()));
         }
+    }
+
+    /// Um transportador como o ejetor o vê: guarda com que cor, mínimo e itens o pedido chegou, e devolve a resposta vazia.
+    /// A cor de saída, o mínimo e os itens (id e quantidade) de um pedido.
+    type Seen = (Option<u8>, u32, Vec<(String, u32)>);
+
+    struct Transporter {
+        seen: std::cell::RefCell<Vec<Seen>>,
+    }
+
+    impl crate::item_handler::TransporterTarget for Transporter {
+        fn insert_request(
+            &self,
+            request: &crate::transit::TransitRequest,
+            output_color: Option<u8>,
+            min: u32,
+            _: &Transaction,
+        ) -> crate::transit::TransitResponse {
+            let items = request
+                .item_data()
+                .iter()
+                .map(|data| {
+                    let (resource, count) = crate::transit::item_data_info(data);
+                    (resource.id.to_string(), count)
+                })
+                .collect();
+            self.seen.borrow_mut().push((output_color, min, items));
+            crate::transit::TransitResponse::EMPTY
+        }
+    }
+
+    struct Beside<'a>(&'a Transporter);
+
+    impl ItemCapabilities for Beside<'_> {
+        fn item_handler(&self, _: Face) -> Option<Rc<dyn ItemHandler>> {
+            panic!("um transportador não passa pelo handler");
+        }
+
+        fn transporter(
+            &self,
+            face: Face,
+        ) -> Option<Box<dyn crate::item_handler::TransporterTarget + '_>> {
+            (face == Face::West).then(|| {
+                Box::new(Share(self.0)) as Box<dyn crate::item_handler::TransporterTarget + '_>
+            })
+        }
+    }
+
+    struct Share<'a>(&'a Transporter);
+
+    impl crate::item_handler::TransporterTarget for Share<'_> {
+        fn insert_request(
+            &self,
+            request: &crate::transit::TransitRequest,
+            output_color: Option<u8>,
+            min: u32,
+            transaction: &Transaction,
+        ) -> crate::transit::TransitResponse {
+            self.0
+                .insert_request(request, output_color, min, transaction)
+        }
+    }
+
+    /// `TileComponentEjector.outputItems` com um `TransporterItemHandler` do outro lado: `ejectMap.eject(tile, level, capability, 1, this.outputColor, subTransaction)` entrega o pedido
+    /// inteiro ao transportador com a cor de saída, e sem cor entrega `null` (o transportador usa a dele).
+    #[test]
+    fn a_transporter_neighbour_gets_the_whole_request_and_the_output_color() {
+        let mut config = config();
+        let info = config.config_mut(TransmissionType::Item).unwrap();
+        info.set_data_type(DataType::Output, RelativeSide::Right);
+        info.set_ejecting(true);
+        let output = InventorySlot::output(None, None);
+        output.set_contents(
+            Some(crate::containers::ItemResource::new(
+                "minecraft:clay_ball",
+                64,
+            )),
+            7,
+            None,
+        );
+        let inventory = [InventorySlot::new(None), output];
+        let transporter = Transporter {
+            seen: Default::default(),
+        };
+        for (color, expected) in [(Some(4), Some(4)), (None, None)] {
+            let mut ejector = TileComponentEjector::new();
+            ejector.set_output_data(&config, &[TransmissionType::Item]);
+            ejector.set_output_color(color);
+            // Facing norte: o lado direito é o oeste.
+            ejector.tick_server(
+                &config,
+                Face::North,
+                &inventory,
+                &Beside(&transporter),
+                &mut Recorder(Vec::new()),
+            );
+            let seen = transporter
+                .seen
+                .borrow()
+                .last()
+                .cloned()
+                .expect("o transportador foi chamado");
+            assert_eq!(
+                seen,
+                (expected, 1, vec![("minecraft:clay_ball".to_owned(), 7)])
+            );
+        }
+        assert_eq!(transporter.seen.borrow().len(), 2);
     }
 
     #[test]

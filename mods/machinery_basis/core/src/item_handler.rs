@@ -112,6 +112,24 @@ impl ItemHandler for RuledHandler {
 /// Quem diz, de um bloco vizinho, o que ele expõe de itens por uma face (`BlockCapabilityCache.getCapability`).
 pub trait ItemCapabilities {
     fn item_handler(&self, face: crate::sides::Face) -> Option<Rc<dyn ItemHandler>>;
+
+    /// O vizinho por essa face é um transportador logístico que expõe a capability de inserção (`TransporterItemHandler`)? Quem ejeta nele não insere no handler: passa o pedido
+    /// inteiro e a cor de saída (`TransitRequest.eject`). Quando responde, `item_handler` não é perguntado por essa face.
+    fn transporter(&self, _face: crate::sides::Face) -> Option<Box<dyn TransporterTarget + '_>> {
+        None
+    }
+}
+
+/// O `TransporterItemHandler` visto por quem ejeta: `LogisticalTransporterBase.insert(level, outputter, outputterPos, request, color, min, transaction)`. Quem implementa conhece o
+/// transportador e o bloco de onde vem o pedido; a cor que o pedido leva é `outputColor`, ou a do próprio transportador se o ejetor não tem uma.
+pub trait TransporterTarget {
+    fn insert_request(
+        &self,
+        request: &crate::transit::TransitRequest,
+        output_color: Option<u8>,
+        min: u32,
+        transaction: &Transaction,
+    ) -> crate::transit::TransitResponse;
 }
 
 /// Sem vizinho nenhum.

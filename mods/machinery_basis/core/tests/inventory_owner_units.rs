@@ -1211,3 +1211,59 @@ fn the_alloy_in_the_middle_of_a_line_with_the_mirrored_destination_delivers_all_
         "entregue ao baú de destino pelo espelho"
     );
 }
+
+/// `TransitRequest.eject` de uma máquina para um `TransporterItemHandler` (`LogisticalTransporterBase.insert` com `outputColor == null ? transporter.getColor() : outputColor`): a cor do
+/// ejetor vai para a pilha, e um transportador de outra cor recusa (`canInsertToTransporter`); sem cor de saída vale a do transportador.
+#[test]
+fn the_output_color_of_an_ejector_decides_what_a_colored_transporter_takes() {
+    use machinery_basis_core::transaction::Transaction;
+    use machinery_basis_core::transit::TransitRequest;
+    let dirt = ItemResource::new("minecraft:dirt", 64);
+    let try_insert =
+        |owner: &mut InventoryTransmitters, world: &mut SimWorld, color: Option<u8>| {
+            let transaction = Transaction::open_root();
+            let request = TransitRequest::simple(&dirt, 8);
+            let response = owner
+                .insert_request(world, at(0), at(-1), &request, color, 1, &transaction)
+                .expect("o lado expõe a capability");
+            let sent = response.sending_amount();
+            transaction.commit();
+            sent
+        };
+    let (mut owner, mut world) = line(&[
+        TransporterKind::Logistical { color: Some(1) },
+        logistical(),
+        logistical(),
+    ]);
+    assert_eq!(
+        try_insert(&mut owner, &mut world, Some(2)),
+        0,
+        "azul no verde"
+    );
+    assert_eq!(
+        try_insert(&mut owner, &mut world, Some(1)),
+        8,
+        "a cor do transportador"
+    );
+    assert_eq!(
+        try_insert(&mut owner, &mut world, None),
+        8,
+        "sem cor de saída vale a do transportador"
+    );
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    assert_eq!(
+        try_insert(&mut owner, &mut world, Some(2)),
+        8,
+        "o transportador sem cor aceita qualquer"
+    );
+    assert_eq!(try_insert(&mut owner, &mut world, None), 8);
+    // Um lado que não expõe a capability não responde (o ejetor nem o enxerga como alvo): longe do transportador.
+    let transaction = Transaction::open_root();
+    let request = TransitRequest::simple(&dirt, 8);
+    assert!(
+        owner
+            .insert_request(&mut world, at(1), at(-1), &request, None, 1, &transaction)
+            .is_none(),
+        "quem não é vizinho do transportador"
+    );
+}

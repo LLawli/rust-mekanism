@@ -18,7 +18,9 @@ use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResour
 use machinery_basis_core::gui;
 use machinery_basis_core::transmission::thermodynamic_conductor::{ConductorTier, TierValues};
 use machinery_basis_core::menu_source;
-use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, VanillaContainer};
+use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHandler, TransporterTarget, VanillaContainer};
+use machinery_basis_core::transit::{TransitRequest, TransitResponse};
+use machinery_basis_core::transaction::Transaction;
 use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
 use machinery_basis_core::sides::Face;
@@ -290,6 +292,10 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block) {
         *ticks = true;
     }
+    // As máquinas e o cubo são `ISideConfiguration`: a entrada estrita e a cor de entrada de cada lado decidem o destino de uma pilha de transportador.
+    if is_machine(block) || crate::game::mekanism_cube::is_cube(block) {
+        crate::game::machinery_transporters::side_config_register(block, side_config_view);
+    }
     // Os transportadores logísticos: os eventos do jogo vão ao dono dos transportadores da `machinery_basis`.
     if is_transporter(block) {
         crate::game::machinery_transporters::transporters_register(block, transporter_stats_of);
@@ -314,6 +320,22 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_cable(block) {
         basis::cables_register("mekanism", block, cable_capacity_of);
     }
+}
+
+/// `ISideConfiguration` de uma máquina ou do cubo em `pos`, no que o transportador lê: `getEjector().hasStrictInput()` e `getInputColor(RelativeSide.fromDirections(direction, side))` por lado
+/// do mundo. O ejetor vem do NBT do bloco, que o jogo regrava a cada mudança da configuração.
+fn side_config_view(game: &Game<'_>, pos: [i32; 3]) -> Option<machinery_basis_core::transporter::world::SideConfigView> {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    let mut ejector = TileComponentEjector::new();
+    ejector.deserialize(&basis::read_side_nbt(entity).ejector.unwrap_or_default());
+    let facing = basis::front(game, pos);
+    let mut input_colors = [None; 6];
+    for (color, side) in input_colors.iter_mut().zip(Face::ALL) {
+        *color = ejector.input_color(machinery_basis_core::side_config::RelativeSide::from_directions(facing, side));
+    }
+    Some(machinery_basis_core::transporter::world::SideConfigView { strict_input: ejector.has_strict_input(), input_colors })
 }
 
 fn is_transporter(block: &str) -> bool {
@@ -1457,6 +1479,10 @@ impl ItemCapabilities for GameNeighbours<'_, '_> {
     fn item_handler(&self, face: Face) -> Option<Rc<dyn ItemHandler>> {
         let [x, y, z] = face.offset();
         let at = [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z];
+        // Um transportador é alcançado por `transporter`, com o pedido inteiro e a cor de saída; a cópia de contêiner de um slot que ele mostra ao funil não serve ao ejetor.
+        if is_transporter(&self.game.borrow().native_block(at)) {
+            return None;
+        }
         let reached = basis::direction(face.opposite());
         let slots = self.game.borrow().native_container_slots(self.dimension, at, reached);
         let Some(slots) = slots else {
@@ -1490,6 +1516,29 @@ impl ItemCapabilities for GameNeighbours<'_, '_> {
         Some(Rc::new(RuledHandler::new(container, move |index, resource: &ItemResource| {
             offered.as_ref() == Some(resource) && accepted.get(index).copied().unwrap_or(false)
         })))
+    }
+
+    fn transporter(&self, face: Face) -> Option<Box<dyn TransporterTarget + '_>> {
+        let [x, y, z] = face.offset();
+        let at = [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z];
+        let exposes = {
+            let game = self.game.borrow();
+            is_transporter(&game.native_block(at)) && crate::game::machinery_transporters::exposes_insert_cap(&game, at, face.opposite())
+        };
+        exposes.then(|| Box::new(TransporterLink { neighbours: self, at }) as Box<dyn TransporterTarget + '_>)
+    }
+}
+
+/// O transportador logístico vizinho como o ejetor o vê (`TransporterItemHandler`): o pedido inteiro entra na rede dele, com a cor de saída do ejetor.
+struct TransporterLink<'n, 'a, 'g> {
+    neighbours: &'n GameNeighbours<'a, 'g>,
+    at: [i32; 3],
+}
+
+impl TransporterTarget for TransporterLink<'_, '_, '_> {
+    fn insert_request(&self, request: &TransitRequest, output_color: Option<u8>, min: u32, transaction: &Transaction) -> TransitResponse {
+        let mut game = self.neighbours.game.borrow_mut();
+        crate::game::machinery_transporters::eject_into(&mut **game, self.at, self.neighbours.pos, request, output_color, min, transaction).unwrap_or(TransitResponse::EMPTY)
     }
 }
 

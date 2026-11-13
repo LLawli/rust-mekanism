@@ -27,6 +27,7 @@ use machinery_basis_core::transmission::reading::{AcceptorSides, TransmitterRead
 use machinery_basis_core::transporter::movement::WorldDrop;
 use machinery_basis_core::transporter::nbt::{Compound as LibCompound, Nbt};
 use machinery_basis_core::transporter::node::{CapabilityChange, DiversionControl, TransporterKind, TransporterTier};
+use machinery_basis_core::transporter::world::SideConfigView;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -64,6 +65,26 @@ pub fn transporters_register(id: &str, stats: TransporterStats) {
     if !kinds.iter().any(|known| *known as usize == stats as usize) {
         kinds.push(stats);
     }
+}
+
+/// O que o mod sabe da configuração de lados de um bloco dele (`ISideConfiguration`): a entrada estrita e a cor de entrada de cada lado, lidas do bloco em `pos`.
+pub type SideConfigProbe = fn(&Game<'_>, [i32; 3]) -> Option<SideConfigView>;
+
+static SIDE_CONFIGS: Mutex<Vec<(String, SideConfigProbe)>> = Mutex::new(Vec::new());
+
+/// `block` é um `ISideConfiguration`: `probe` diz a entrada estrita e as cores de entrada dele a quem decide para onde vai uma pilha (`TransporterUtils.canInsert`,
+/// `TransporterPathfinder.calculateAcceptors`). Pode ser dito mais de uma vez.
+pub fn side_config_register(block: &str, probe: SideConfigProbe) {
+    let mut probes = SIDE_CONFIGS.lock().unwrap_or_else(|e| e.into_inner());
+    if !probes.iter().any(|(known, _)| known == block) {
+        probes.push((block.to_owned(), probe));
+    }
+}
+
+fn side_config_of(game: &Game<'_>, pos: [i32; 3]) -> Option<SideConfigView> {
+    let block = game.native_block(pos);
+    let probe = SIDE_CONFIGS.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(known, _)| *known == block).map(|(_, probe)| *probe)?;
+    probe(game, pos)
 }
 
 fn transporter_stats(block: &str) -> Option<(TransporterTier, TransporterKind)> {
@@ -314,6 +335,10 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         let handler = Rc::new(HostItemHandler::new(slots));
         HANDLERS.with_borrow_mut(|handlers| handlers.insert(key, handler.clone()));
         Some(handler)
+    }
+
+    fn side_configuration(&self, pos: i64) -> Option<SideConfigView> {
+        side_config_of(&self.game.borrow(), arr(machinery_basis_core::transporter::pos::block_pos_of(pos)))
     }
 
     fn transporter_info(&mut self, pos: SimPos) -> Option<TransporterInfo> {
@@ -721,4 +746,32 @@ pub(in crate::game) fn transporter_read(game: &Game<'_>, pos: [i32; 3]) -> Optio
 pub(in crate::game) fn transporter_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
     use machinery_basis_core::transmission::reading::NetworkReader;
     with_owner(game.native_dimension(), |owner| owner.acceptor_sides(sim_pos(transmitter), sim_pos(acceptor))).flatten()
+}
+
+/// O transportador em `pos` expõe a capability de inserção pelo lado `side` dele (`exposesInsertCap`)? É o que decide se o ejetor de uma máquina vizinha o enxerga como alvo.
+pub(in crate::game) fn exposes_insert_cap(game: &Game<'_>, pos: [i32; 3], side: Face) -> bool {
+    with_owner(game.native_dimension(), |owner| owner.transporter_at(sim_pos(pos)).is_some_and(|base| base.exposes_insert_cap(side))).unwrap_or(false)
+}
+
+/// `TransitRequest.eject` de uma máquina em `outputter` para o transportador em `pos` (`LogisticalTransporterBase.insert` com a cor de saída): o pedido inteiro entra na rede, e a pilha
+/// sai em trânsito quando a transação do ejetor confirma. `None` se o bloco não é um transportador que expõe a capability por esse lado.
+pub(in crate::game) fn eject_into(
+    game: &mut Game<'_>,
+    pos: [i32; 3],
+    outputter: [i32; 3],
+    request: &machinery_basis_core::transit::TransitRequest,
+    output_color: Option<u8>,
+    min: u32,
+    transaction: &machinery_basis_core::transaction::Transaction,
+) -> Option<machinery_basis_core::transit::TransitResponse> {
+    let dimension = game.native_dimension();
+    // Como no funil: o caminho simula a inserção em todos os destinos da rede, os espelhos leem os contêineres antes e o que a pilha mudar sai depois.
+    handlers_refresh(game, dimension);
+    let response = with_owner(dimension, |owner| {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        owner.insert_request(&mut world, sim_pos(pos), sim_pos(outputter), request, output_color, min, transaction)
+    })
+    .flatten();
+    handlers_flush(game, dimension);
+    response
 }

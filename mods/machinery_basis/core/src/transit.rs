@@ -358,6 +358,32 @@ impl HandlerTransitRequest {
         }
     }
 
+    /// O mesmo pedido, visto por outro dono (`TransitRequest.Handler` guarda o pedido por valor, e o ejetor segue com o dele): os dois dividem os itens.
+    pub fn share(&self) -> Self {
+        Self {
+            shared: self.shared.clone(),
+        }
+    }
+
+    /// `eject`, para um alvo que é um transportador (`target instanceof TransporterItemHandler`): o pedido inteiro vai a `LogisticalTransporterBase.insert`, com a cor de saída.
+    pub fn eject_to_transporter(
+        &self,
+        target: &dyn crate::item_handler::TransporterTarget,
+        min: u32,
+        output_color: Option<u8>,
+        transaction: &Transaction,
+    ) -> TransitResponse {
+        if self.is_empty() {
+            return TransitResponse::EMPTY;
+        }
+        target.insert_request(
+            &TransitRequest::Handler(self.share()),
+            output_color,
+            min,
+            transaction,
+        )
+    }
+
     /// `EjectTransitRequest.setHandler`.
     pub fn set_handler(&self, handler: Option<Rc<dyn ItemHandler>>) {
         *self.shared.handler.borrow_mut() = handler;

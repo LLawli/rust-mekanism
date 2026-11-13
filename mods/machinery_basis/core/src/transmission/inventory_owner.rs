@@ -1178,6 +1178,55 @@ impl InventoryTransmitters {
         Some(inserted)
     }
 
+    /// `LogisticalTransporterBase.insert(level, outputter, outputterPos, request, color, min, transaction)` com `color = outputColor == null ? transporter.getColor() : outputColor`
+    /// (`TransitRequest.eject` para um `TransporterItemHandler`): o que o ejetor de uma máquina chama. `outputter_pos` é o bloco que ejeta. `None` se não há transportador em `pos` ou
+    /// o lado não expõe a capability (`exposesInsertCap`); senão a resposta, vazia quando nenhum caminho serve (ou não há rede, que o original nem chega a tentar).
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_request<W: InventoryOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        pos: BlockPos,
+        outputter_pos: BlockPos,
+        request: &crate::transit::TransitRequest,
+        output_color: Option<u8>,
+        min: u32,
+        transaction: &Transaction,
+    ) -> Option<crate::transit::TransitResponse> {
+        let id = self.st.live(pos)?;
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world: &mut *world,
+            };
+            ctx.refresh_power(id);
+        }
+        let from = crate::sides::Face::ALL.into_iter().find(|side| {
+            crate::transporter::pos::relative_pos(pos.as_long(), *side) == outputter_pos.as_long()
+        })?;
+        if !self.st.slots[id.0 as usize].base.exposes_insert_cap(from) {
+            return None;
+        }
+        let mut response = crate::transit::TransitResponse::EMPTY;
+        self.move_with(&*world, id, |base, ctx| {
+            if ctx.network.is_some() {
+                let color = output_color.or_else(|| base.get_color());
+                response = base.insert(
+                    ctx,
+                    crate::transporter::movement::Outputter::Tile(
+                        crate::transporter::world::OutputterTile::Other,
+                    ),
+                    outputter_pos.as_long(),
+                    request,
+                    color,
+                    min,
+                    Some(transaction),
+                );
+            }
+        });
+        self.drain_transit(world, id);
+        Some(response)
+    }
+
     /// O que o transportador guarda no block entity (`TileEntityTransmitter.saveAdditional`, `LogisticalTransporterBase.write`, a cor e o modo). `encode` é o
     /// `ItemResource.CODEC` do jogo.
     pub fn write(&self, pos: BlockPos, encode: ItemEncode) -> Option<SavedTransporter> {
