@@ -3172,10 +3172,16 @@ pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: Block
 /// O ticker de um block entity de mod (o gancho `block_entity_tick`): o `onUpdateServer` dos transmissores.
 pub(in crate::game) fn transmitters_update(game: &mut Game<'_>, pos: [i32; 3], id: &str) {
     if !transmitters::is_active() || !transmitters::is_registered(id) {
+        if TRANSMITTER_PROBE && transmitters::is_active() && (id.contains("cable") || id.contains("pipe")) {
+            eprintln!("MBT {{\"e\":\"drop_unregistered\",\"id\":{id:?},\"p\":{pos:?}}}");
+        }
         return;
     }
     transmitters_flush(game);
     let events = transmitters::update(game.native_dimension(), pos);
+    if TRANSMITTER_PROBE && events.is_empty() {
+        eprintln!("MBT {{\"e\":\"drop_unwatched\",\"id\":{id:?},\"p\":{pos:?}}}");
+    }
     transmitters_deliver(game, events);
 }
 

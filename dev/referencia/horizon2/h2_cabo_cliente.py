@@ -75,12 +75,13 @@ def escala():
 
 
 def usar_liga(item, pos):
-    """O botão direito do mouse com a liga na mão, mirando o centro do transmissor em `pos` (o raio acerta a caixa do centro)."""
+    """O botão direito do mouse com a liga na mão, mirando o braço leste do transmissor em `pos`: o raio do jogo (`pick`) só acerta os braços de um transmissor, e não o centro, quando
+    o Configurator não está na mão (o clique no centro não chega ao `use_hand`; observação da frente `cabo-cliente`, decisão 152)."""
     cmd("tp @s %.2f %.2f %.2f" % (pos[0] + 0.5, pos[1] + 1.0, pos[2] - 2.6))
     wait(12)
     h.ctl("give", item, "1")
     h.ctl("select", item)
-    h.ctl("look-at", *("%.3f" % (pos[i] + 0.5) for i in range(3)))
+    h.ctl("look-at", *("%.3f" % (pos[i] + aj.ARM["east"][i]) for i in range(3)))
     wait(8)
     print("mira:", aj.looking())
     h.ctl("mouse", "right", "click")
@@ -116,7 +117,7 @@ def liga(kind):
     ok = verify_blocks(kind, 0)
     print("antes: todos básicos:", ok)
     for nivel in (1, 2, 3):
-        usar_liga(LIGAS[nivel - 1], at(2))
+        usar_liga(LIGAS[nivel - 1], at(1))
         wait(30)
         time.sleep(1.5)
         good = verify_blocks(kind, nivel)
