@@ -1,0 +1,7 @@
+# A mira nos transmissores: uma etapa por linha (`chave=valor`), para o original (`testes/CenaMira.java`). O cabo do meio fica em (301, -61, 10), o braço leste dá no cubo de energia criativo.
+nome=aquece efeito=contorno tipo=NORMAL espera=80
+nome=normal efeito=contorno tipo=NORMAL
+nome=push efeito=contorno tipo=PUSH
+nome=pull efeito=contorno tipo=PULL
+nome=liga_centro efeito=liga item=mekanism:alloy_infused
+nome=graveto_centro efeito=liga item=minecraft:stick
