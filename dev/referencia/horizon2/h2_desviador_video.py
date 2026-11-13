@@ -6,7 +6,7 @@ privado (`~/.cache/rust-mekanism/gravar-jogo`, ai-memory `procedures/gravar-vide
   H_NAME=horizon2 h2_desviador_video.py prints PASTA        só as ações, com um print a cada passo em PASTA (dentro do container), para conferir o roteiro sem gravar
 
 O roteiro: o jogador põe o desviador no chão (o som do bloco posto), pega o Configurator e, mirando o lado sul do núcleo com `look-at` e o botão direito do mouse, troca o modo do
-lado três vezes (sempre, com sinal, sem sinal: o pó de pólvora, a tocha acesa e a tocha apagada), depois repete o clique no lado leste e na face de cima. O jogo tem de ter nascido com
+lado duas vezes (sempre, com sinal, sem sinal: o pó de pólvora, a tocha acesa e a tocha apagada), depois clica no lado leste e na face de cima. O jogo tem de ter nascido com
 `JOGO_PW_SOCK` e com `gamescope -r 30` (`FPS=30 abrir_horizon.sh`), e o volume só sobe depois de `audio_nulo.sh verificar` dar `ok`."""
 import os, subprocess, sys, time
 
@@ -44,7 +44,7 @@ def mirar(x, y, z):
 
 def clique():
     ctl("mouse", "right", "click")
-    ctl("wait", "30")
+    ctl("wait", "24")
 
 
 def roteiro(print_pasta=None):
@@ -76,7 +76,7 @@ def roteiro(print_pasta=None):
     mirar(X + 0.5, Y + 0.5, Z + 0.75)
     ctl("wait", "20")
     foto("sul_sempre")
-    for nome in ("sul_com_sinal", "sul_sem_sinal", "sul_sempre_de_novo"):
+    for nome in ("sul_com_sinal", "sul_sem_sinal"):
         clique()
         foto(nome)
     # O lado leste: a câmera vai para o leste, e o clique troca só aquele lado.
@@ -84,7 +84,7 @@ def roteiro(print_pasta=None):
     ctl("wait", "20")
     mirar(X + 0.75, Y + 0.5, Z + 0.5)
     ctl("wait", "10")
-    for nome in ("leste_com_sinal", "leste_sem_sinal"):
+    for nome in ("leste_com_sinal",):
         clique()
         foto(nome)
     # A face de cima, com a rotação para a câmera.
@@ -92,10 +92,10 @@ def roteiro(print_pasta=None):
     ctl("wait", "20")
     mirar(X + 0.5, Y + 0.75, Z + 0.5)
     ctl("wait", "10")
-    for nome in ("topo_com_sinal", "topo_sem_sinal"):
+    for nome in ("topo_com_sinal",):
         clique()
         foto(nome)
-    ctl("wait", "30")
+    ctl("wait", "20")
 
 
 def gravado(sock):
@@ -103,7 +103,7 @@ def gravado(sock):
     # O som sobe só agora (o `verificar` deu `ok` antes): o mestre e a categoria dos blocos.
     ctl("options-set", "soundCategory_master", "1.0")
     ctl("options-set", "soundCategory_block", "1.0")
-    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} desviador_cena.mp4 40 {NAME}"], stdout=subprocess.DEVNULL)
+    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} desviador_cena.mp4 34 {NAME}"], stdout=subprocess.DEVNULL)
     time.sleep(2.0)
     try:
         roteiro()
