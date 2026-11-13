@@ -781,11 +781,13 @@ fn recorded_halves(run: &str, scenario: &str) -> Vec<(i32, u64)> {
     out
 }
 
-/// Repete as ações do cenário do rastro `run` no mundo simulado, sem comparar com o rastro, com a linha deslocada `dx` blocos em x e, se `seed` vem, com os hashes dos
+/// Repete as ações do cenário do rastro `run` no mundo simulado, sem comparar com o rastro, com a linha deslocada `shift` blocos (x, y, z) e, se `seed` vem, com os hashes dos
 /// cabos e das redes sorteados por ela no lugar dos que o rastro gravou. Devolve o mesmo que [`recorded_halves`].
-fn replay_halves(run: &str, scenario: &str, dx: i32, seed: Option<u64>) -> Vec<(i32, u64)> {
+fn replay_halves(run: &str, scenario: &str, shift: [i32; 3], seed: Option<u64>) -> Vec<(i32, u64)> {
     let mut rows = read_rows(run, scenario);
-    rows[0]["x"] = Value::from(int(&rows[0], "x") + i64::from(dx));
+    for (key, by) in ["x", "y", "z"].into_iter().zip(shift) {
+        rows[0][key] = Value::from(int(&rows[0], key) + i64::from(by));
+    }
     if let Some(mut state) = seed {
         // Um congruencial qualquer: só precisa de hashes de 32 bits diferentes a cada semente.
         let mut next = move || {
@@ -877,10 +879,10 @@ fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
         let recorded = recorded_halves(run, scenario);
         assert_eq!(recorded.len(), 2, "{run} {scenario}: as duas metades");
         at_cable_one.insert(recorded.iter().find(|(x, _)| *x == 1).unwrap().1);
-        assert_eq!(replay_halves(run, scenario, 0, None), recorded, "{run} {scenario}");
+        assert_eq!(replay_halves(run, scenario, [0, 0, 0], None), recorded, "{run} {scenario}");
         for seed in 1..=20 {
             assert_eq!(
-                replay_halves(run, scenario, 0, Some(seed)),
+                replay_halves(run, scenario, [0, 0, 0], Some(seed)),
                 recorded,
                 "{run} {scenario}, hashes da semente {seed}"
             );
@@ -888,7 +890,51 @@ fn the_odd_unit_of_break_end_odd_goes_where_the_position_puts_it() {
     }
     assert_eq!(at_cable_one.len(), 2, "as duas metades aparecem entre as posições: {at_cable_one:?}");
     let moved: std::collections::BTreeSet<u64> = (0..16)
-        .map(|dx| replay_halves("", "break_end_odd", dx, None).iter().find(|(x, _)| *x == 1).unwrap().1)
+        .map(|dx| replay_halves("", "break_end_odd", [dx, 0, 0], None).iter().find(|(x, _)| *x == 1).unwrap().1)
         .collect();
     assert_eq!(moved.len(), 2, "deslocar a linha troca a metade: {moved:?}");
+}
+
+#[test]
+#[ignore = "mede para o jogo: ODD_ORIGINS=x,y,z;x,y,z cargo test ... -- --ignored --nocapture"]
+fn predict_the_halves_for_the_game() {
+    let rows = read_rows("", "break_end_odd");
+    let base = [int(&rows[0], "x") as i32, int(&rows[0], "y") as i32, int(&rows[0], "z") as i32];
+    for origin in std::env::var("ODD_ORIGINS").expect("ODD_ORIGINS=x,y,z;x,y,z").split(';') {
+        let at: Vec<i32> = origin.split(',').map(|n| n.trim().parse().unwrap()).collect();
+        let shift = [at[0] - base[0], at[1] - base[1], at[2] - base[2]];
+        println!("ODD {at:?} {:?}", replay_halves("", "break_end_odd", shift, None));
+    }
+}
+
+/// O que o original faz com o servidor parado (`rastros/energy_frozen_load.jsonl`, `EnergyFrozenLoadTraceTest.java`): um chunk com 48 cabos congelado, descarregado
+/// e carregado de novo. Os cabos lidos do disco só marcam `markJoined` no `clearRemoved`; quem os junta à rede é o ticker do block entity (`onUpdateServer`), que um nível
+/// parado não roda. Por isso, até o servidor andar de novo, os cabos do chunk recarregado não têm rede e não estão carregados para o registro, e depois se juntam numa rede só
+/// (a decisão 156). O jogo faz o mesmo (`h2_reabertura.py cedo`). O simulador da lib ainda roda os tickers parado, então este rastro não passa pelo motor de `run`: o teste lê o que
+/// o original gravou.
+#[test]
+fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again() {
+    let rows = read_rows("", "frozen_load");
+    let net_of = |tick: i64, x: usize| {
+        let state = rows
+            .iter()
+            .rfind(|row| kind(row) == "state" && int(row, "t") == tick)
+            .unwrap();
+        state["cables"][x]["net"].as_i64()
+    };
+    let frozen_from = rows.iter().find(|row| row["m"] == "pre freeze").map(|row| int(row, "t")).unwrap();
+    let loaded_at = rows.iter().find(|row| kind(row) == "load").map(|row| int(row, "t")).unwrap();
+    let unfrozen_at = rows.iter().find(|row| row["m"] == "pre unfreeze").map(|row| int(row, "t")).unwrap();
+    assert!(frozen_from < loaded_at && loaded_at < unfrozen_at);
+    // Os cabos 15 a 24 são os do chunk que voltou (o `lineChunk(1)`): parado, sem rede; os de fora seguem nas duas redes que a descarga deixou.
+    for tick in loaded_at..unfrozen_at {
+        for x in [15, 16, 17, 24] {
+            assert_eq!(net_of(tick, x), None, "tick {tick}, cabo {x}");
+        }
+        assert_ne!(net_of(tick, 0), net_of(tick, 47), "tick {tick}: duas redes, a junção espera");
+    }
+    // No tick em que o servidor anda, os 48 estão numa rede só.
+    let nets: std::collections::BTreeSet<Option<i64>> = (0..48).map(|x| net_of(unfrozen_at, x)).collect();
+    assert_eq!(nets.len(), 1);
+    assert!(nets.iter().next().unwrap().is_some());
 }

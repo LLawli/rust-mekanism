@@ -47,3 +47,11 @@ fn the_ten_more_positions_of_break_end_odd_match_the_original() {
         network_trace::run::<ChemicalKind>("", &format!("odd_{k}"));
     }
 }
+
+#[test]
+#[ignore = "mede para o jogo: ODD_ORIGINS=x,y,z;x,y,z cargo test ... -- --ignored --nocapture"]
+fn predict_the_halves_for_the_game() {
+    for (at, halves) in network_trace::predict_halves::<ChemicalKind>() {
+        println!("ODD {at:?} {halves:?}");
+    }
+}

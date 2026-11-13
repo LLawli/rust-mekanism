@@ -860,19 +860,19 @@ pub fn recorded_halves<K: Kind>(run: &str, scenario: &str) -> Vec<(i32, u64)> {
     out
 }
 
-/// Repete as ações do cenário do rastro `run` no mundo simulado, sem comparar com o rastro, com a linha deslocada `dx` blocos em x e `dz` em z e, se `seed` vem,
+/// Repete as ações do cenário do rastro `run` no mundo simulado, sem comparar com o rastro, com a linha deslocada `shift` blocos (x, y, z) e, se `seed` vem,
 /// com os hashes dos canos e das redes sorteados por ela no lugar dos que o rastro gravou. Devolve o mesmo que [`recorded_halves`]: a quantidade da rede de cada
 /// cano que sobrou no fim.
 pub fn replay_halves<K: Kind>(
     run: &str,
     scenario: &str,
-    dx: i32,
-    dz: i32,
+    shift: [i32; 3],
     seed: Option<u64>,
 ) -> Vec<(i32, u64)> {
     let mut rows = read_rows::<K>(run, scenario);
-    rows[0]["x"] = Value::from(int(&rows[0], "x") + i64::from(dx));
-    rows[0]["z"] = Value::from(int(&rows[0], "z") + i64::from(dz));
+    for (key, by) in ["x", "y", "z"].into_iter().zip(shift) {
+        rows[0][key] = Value::from(int(&rows[0], key) + i64::from(by));
+    }
     if let Some(mut state) = seed {
         // Um congruencial qualquer: só precisa de hashes de 32 bits diferentes a cada semente.
         let mut next = move || {
@@ -958,10 +958,10 @@ pub fn odd_unit_follows_the_position<K: Kind>() {
         let recorded = recorded_halves::<K>(run, scenario);
         assert_eq!(recorded.len(), 2, "{run} {scenario}: as duas metades");
         at_pipe_one.insert(recorded.iter().find(|(x, _)| *x == 1).unwrap().1);
-        assert_eq!(replay_halves::<K>(run, scenario, 0, 0, None), recorded, "{run} {scenario}");
+        assert_eq!(replay_halves::<K>(run, scenario, [0, 0, 0], None), recorded, "{run} {scenario}");
         for seed in 1..=20 {
             assert_eq!(
-                replay_halves::<K>(run, scenario, 0, 0, Some(seed)),
+                replay_halves::<K>(run, scenario, [0, 0, 0], Some(seed)),
                 recorded,
                 "{run} {scenario}, hashes da semente {seed}"
             );
@@ -969,7 +969,24 @@ pub fn odd_unit_follows_the_position<K: Kind>() {
     }
     assert_eq!(at_pipe_one.len(), 2, "as duas metades aparecem entre as posições: {at_pipe_one:?}");
     let moved: std::collections::BTreeSet<u64> = (0..16)
-        .map(|dx| replay_halves::<K>("", "break_end_odd", dx, 0, None).iter().find(|(x, _)| *x == 1).unwrap().1)
+        .map(|dx| replay_halves::<K>("", "break_end_odd", [dx, 0, 0], None).iter().find(|(x, _)| *x == 1).unwrap().1)
         .collect();
     assert_eq!(moved.len(), 2, "deslocar a linha troca a metade: {moved:?}");
+}
+
+/// O que o port prevê para uma linha de cinco canos posta em cada origem de `ODD_ORIGINS` (`x,y,z;x,y,z`, a posição do primeiro cano): a quantidade da rede do cano 1
+/// (o avançado) e a do cano 3, com os hashes do rastro. Para comparar com o jogo (`h2_metade_impar.py`).
+pub fn predict_halves<K: Kind>() -> Vec<([i32; 3], Vec<(i32, u64)>)> {
+    let rows = read_rows::<K>("", "break_end_odd");
+    let base = [int(&rows[0], "x") as i32, int(&rows[0], "y") as i32, int(&rows[0], "z") as i32];
+    std::env::var("ODD_ORIGINS")
+        .expect("ODD_ORIGINS=x,y,z;x,y,z")
+        .split(';')
+        .map(|origin| {
+            let at: Vec<i32> = origin.split(',').map(|n| n.trim().parse().unwrap()).collect();
+            let at = [at[0], at[1], at[2]];
+            let shift = [at[0] - base[0], at[1] - base[1], at[2] - base[2]];
+            (at, replay_halves::<K>("", "break_end_odd", shift, None))
+        })
+        .collect()
 }
