@@ -195,21 +195,22 @@ fn read_capacitor(nbt: &Compound) -> Option<CapacitorState> {
         return None;
     };
     let number = |key: &str| match state.get(&JavaString::from(key)) {
-        Some(Tag::Double(value)) => Some(*value),
+        Some(Tag::Double(bits)) => Some(f64::from_bits(*bits)),
         _ => None,
     };
     CapacitorState::decode(number(capacitor_keys::HEAT_STORED), number(capacitor_keys::HEAT_CAPACITY))
 }
 
-/// `ContainerType.HEAT.saveTo`: o `CapacitorState.CODEC` omite o campo que vale o padrão (`optionalFieldOf` com padrão), e um filho vazio é descartado.
+/// `ContainerType.HEAT.saveTo`: o `CapacitorState.CODEC` omite o campo que vale o padrão (`CapacitorState::encode`), e um filho vazio é descartado.
 fn write_capacitor(nbt: &mut Compound, state: &CapacitorState) {
     let container_key = JavaString::from(capacitor_keys::HEAT_CAPACITOR);
+    let (heat, capacity) = state.encode();
     let mut fields = Compound::default();
-    if state.heat != 0.0 {
-        fields.insert(JavaString::from(capacitor_keys::HEAT_STORED), Tag::Double(state.heat));
+    if let Some(heat) = heat {
+        fields.insert(JavaString::from(capacitor_keys::HEAT_STORED), Tag::Double(heat.to_bits()));
     }
-    if state.heat_capacity != 1.0 {
-        fields.insert(JavaString::from(capacitor_keys::HEAT_CAPACITY), Tag::Double(state.heat_capacity));
+    if let Some(capacity) = capacity {
+        fields.insert(JavaString::from(capacitor_keys::HEAT_CAPACITY), Tag::Double(capacity.to_bits()));
     }
     if fields.is_empty() {
         nbt.remove(&container_key);
@@ -297,6 +298,8 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
     // `onChunkUnloaded` e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que tira o condutor do dono.
     let unloaded = if let HeatEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
     let removed = if let HeatEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
+    let post = matches!(event, HeatEvent::ServerTickPost { .. });
+    let runs_normally = matches!(event, HeatEvent::ServerTickPost { runs_normally: true });
     with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
@@ -306,10 +309,37 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
             DIRTY.with_borrow_mut(|dirty| dirty.push(pos));
         }
         flush_dirty(game, owner, dimension);
+        if post && basis::transmitter_probe_enabled() {
+            probe_line(game, owner, runs_normally);
+        }
     });
     if let Some(pos) = removed {
         VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
     }
+}
+
+/// A sonda do calor (`MBQ`, só na cópia de teste): o calor de cada condutor e a temperatura média, a perda e a troca de cada rede neste tick.
+fn probe_line(game: &Game<'_>, owner: &HeatTransmitters, runs_normally: bool) {
+    let nets: Vec<String> = owner
+        .registry()
+        .networks_in_order()
+        .into_iter()
+        .filter_map(|id| {
+            let heat = owner.heat_networks().get(id)?;
+            let registered = owner.registry().network(id);
+            (registered.transmitters_size() > 0).then(|| format!("[{:?},{:?},{:?},{},{}]", heat.mean_temp(), heat.heat_lost(), heat.heat_transferred(), registered.transmitters_size(), registered.acceptor_count()))
+        })
+        .collect();
+    let conductors: Vec<String> = owner
+        .positions()
+        .into_iter()
+        .filter_map(|pos| {
+            let state = owner.state_at(pos)?;
+            let heat = state.heat.map_or_else(|| "null".to_owned(), |heat| format!("{heat:?}"));
+            Some(format!("[{},{},{},{},{}]", pos.x, pos.y, pos.z, heat, state.packets))
+        })
+        .collect();
+    eprintln!("MBQ {{\"t\":{},\"runs\":{},\"nets\":[{}],\"cond\":[{}]}}", game.world.game_time, runs_normally, nets.join(","), conductors.join(","));
 }
 
 /// `setChanged`: o NBT de cada condutor que mudou volta ao block entity (o `data get` e o próximo salvamento leem o calor de agora) e o chunk dele fica marcado para salvar.

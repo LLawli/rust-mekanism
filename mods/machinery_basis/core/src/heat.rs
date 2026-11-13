@@ -355,6 +355,49 @@ mod tests {
         assert_eq!(same, warm);
     }
 
+    /// Um vizinho fora do objeto, de capacidade 6 e condução 7.
+    struct Outside {
+        heat: f64,
+    }
+
+    impl AdjacentSink for Outside {
+        fn temperature(&mut self) -> f64 {
+            self.heat / 6.0
+        }
+        fn heat_capacity(&mut self) -> f64 {
+            6.0
+        }
+        fn inverse_conduction(&mut self) -> f64 {
+            7.0
+        }
+        fn handle_heat(&mut self, transfer: f64) {
+            self.heat += transfer;
+        }
+    }
+
+    #[test]
+    fn a_capacitor_gives_heat_to_a_sink_outside_the_object_by_calorimetry() {
+        // 400 K (capacidade 10, condução 5) contra 300 K (capacidade 6, condução 7): final = 362,5; passa (400 - 362,5) / (7 + 5) = 3,125 de temperatura, 31,25 de calor.
+        let mut hot = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        hot.handle(1_000.0);
+        let mut sink = Outside { heat: 6.0 * 300.0 };
+        let transferred = hot.simulate_adjacent(&mut sink);
+        assert_eq!(transferred, 3.125);
+        assert_eq!(hot.heat, 4_000.0 - 31.25);
+        assert_eq!(sink.heat, 1_800.0 + 31.25);
+    }
+
+    #[test]
+    fn a_capacitor_that_is_not_hotter_gives_nothing_to_a_sink_outside() {
+        let mut equal = Capacitor::new(10.0, 5.0, 100.0, 300.0);
+        let mut sink = Outside { heat: 6.0 * 300.0 };
+        assert_eq!(equal.simulate_adjacent(&mut sink), 0.0);
+        assert_eq!((equal.heat, sink.heat), (3_000.0, 1_800.0));
+        let mut cold = Capacitor::new(10.0, 5.0, 100.0, 200.0);
+        assert_eq!(cold.simulate_adjacent(&mut sink), 0.0);
+        assert_eq!((cold.heat, sink.heat), (2_000.0, 1_800.0));
+    }
+
     #[test]
     fn something_hotter_cools_down() {
         let mut capacitor = Capacitor::new(10.0, 5.0, 100.0, 300.0);

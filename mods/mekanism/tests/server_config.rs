@@ -253,6 +253,46 @@ fn the_pipes_follow_the_order_of_the_tiers_and_the_file_changes_capacity_and_rat
     assert_eq!(pipe_rates(&loaded), [1, 1_000, 12_000, 32_000]);
 }
 
+#[test]
+fn the_conductors_follow_the_order_of_the_tiers_and_the_file_changes_the_three_values() {
+    use machinery_basis_core::transmission::thermodynamic_conductor::ConductorTier;
+    use mekanism_rules::{THERMODYNAMIC_CONDUCTORS, conductor_tier, conductor_values};
+    assert_eq!(
+        conductor_tier("mekanism:basic_thermodynamic_conductor"),
+        Some(0)
+    );
+    assert_eq!(
+        conductor_tier("mekanism:ultimate_thermodynamic_conductor"),
+        Some(3)
+    );
+    assert_eq!(conductor_tier("mekanism:basic_mechanical_pipe"), None);
+    assert_eq!(THERMODYNAMIC_CONDUCTORS.len(), ConductorTier::ALL.len());
+    // Os padrões do arquivo são os de `ConductorTier` (`baseConduction`, `baseHeatCapacity`, `baseConductionInsulation`), os que a lib já tinha.
+    let defaults = conductor_values(&TIERS_CONFIG.defaults());
+    for (tier, values) in ConductorTier::ALL.into_iter().zip(defaults) {
+        assert_eq!(values, tier.base_values(), "{tier:?}");
+    }
+    // Cada chave muda só o próprio número do próprio nível; abaixo do mínimo sobe ao mínimo (`1` para a condução e a capacidade, `0` para a isolação).
+    let loaded = TIERS_CONFIG.load(
+        "[transmitters.heat]\n\tadvancedInverseConduction = 12.5\n\teliteHeatCapacity = 4.0\n\tultimateInsulation = 7.0\n\tbasicInverseConduction = 0.2\n\tbasicInsulation = -3.0\n",
+    );
+    let values = conductor_values(&loaded);
+    assert_eq!(
+        values[0].inverse_conduction, 1.0,
+        "0,2 está abaixo do mínimo: sobe a 1"
+    );
+    assert_eq!(
+        values[0].insulation, 0.0,
+        "-3 está abaixo do mínimo: sobe a 0"
+    );
+    assert_eq!(values[1].inverse_conduction, 12.5);
+    assert_eq!(values[1].insulation, 400.0);
+    assert_eq!(values[2].heat_capacity, 4.0);
+    assert_eq!(values[2].inverse_conduction, 5.0);
+    assert_eq!(values[3].insulation, 7.0);
+    assert_eq!(values[3].heat_capacity, 1.0);
+}
+
 // ---- O efeito de cada chave ----
 
 fn machine_with(usage: i32) -> ProgressMachine {

@@ -113,6 +113,15 @@ impl CapacitorState {
             heat_capacity,
         })
     }
+
+    /// O codec ao gravar: `optionalFieldOf(nome, padrão)` não escreve o campo que vale o padrão (calor 0, capacidade 1). Devolve o calor e a
+    /// capacidade que vão para o NBT, `None` onde o campo é omitido. Um estado com os dois omitidos é um filho vazio, que `saveTo` descarta.
+    pub fn encode(&self) -> (Option<f64>, Option<f64>) {
+        (
+            (self.heat != 0.0).then_some(self.heat),
+            (self.heat_capacity != 1.0).then_some(self.heat_capacity),
+        )
+    }
 }
 
 /// O que `onContentsChanged` do condutor pede ao tile. O `setChanged` acontece sempre.
@@ -474,6 +483,22 @@ mod tests {
         let mut conductor = ThermodynamicConductor::new([0, 0, 0], ConductorTier::Basic);
         conductor.transmitter.set_level(false);
         conductor
+    }
+
+    #[test]
+    fn the_codec_omits_the_fields_that_hold_the_default() {
+        let state = |heat, heat_capacity| CapacitorState {
+            heat,
+            heat_capacity,
+        };
+        assert_eq!(state(300.0, 1.0).encode(), (Some(300.0), None));
+        assert_eq!(state(0.0, 1.0).encode(), (None, None));
+        assert_eq!(state(0.0, 5.0).encode(), (None, Some(5.0)));
+        assert_eq!(state(12.5, 5.0).encode(), (Some(12.5), Some(5.0)));
+        // O que o codec omite volta como o padrão ao ler.
+        assert_eq!(CapacitorState::decode(None, None), Some(state(0.0, 1.0)));
+        assert_eq!(CapacitorState::decode(Some(-1.0), None), None);
+        assert_eq!(CapacitorState::decode(None, Some(0.5)), None);
     }
 
     #[test]

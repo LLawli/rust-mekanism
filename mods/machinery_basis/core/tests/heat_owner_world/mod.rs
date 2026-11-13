@@ -11,7 +11,7 @@ use machinery_basis_core::transmission::heat_owner::{
     ConductorInfo, HeatOwnerWorld, HeatTransmitters, HostCapacitor, TraceEvent,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event};
-use machinery_basis_core::transmission::thermodynamic_conductor::ConductorTier;
+use machinery_basis_core::transmission::thermodynamic_conductor::{CapacitorState, ConductorTier};
 use machinery_basis_core::transmission::transmitter::Compound;
 use machinery_basis_core::transmission::{DimensionId, Uuid};
 use std::cell::RefCell;
@@ -114,12 +114,16 @@ impl Gen {
     }
 }
 
+/// O que um condutor novo leva do bloco: o nível e o que o chunk guardou dele.
+pub type Pending = (ConductorTier, Option<(Compound, Option<CapacitorState>)>);
+
 /// O jogo, como o dono o vê.
 pub struct Game<'a> {
     level: &'a LevelView<()>,
     heater: &'a Option<Gen>,
-    tiers: &'a mut BTreeMap<BlockPos, ConductorTier>,
+    tiers: &'a mut BTreeMap<BlockPos, Pending>,
     ambient: &'a Ambient,
+    powered: bool,
 }
 
 impl HeatOwnerWorld for Game<'_> {
@@ -128,7 +132,7 @@ impl HeatOwnerWorld for Game<'_> {
     }
 
     fn is_getting_powered(&self, _: BlockPos) -> bool {
-        false
+        self.powered
     }
 
     fn has_host(&self, pos: BlockPos, _: Face) -> bool {
@@ -166,11 +170,11 @@ impl HeatOwnerWorld for Game<'_> {
     }
 
     fn conductor_info(&mut self, pos: BlockPos) -> Option<ConductorInfo> {
-        let tier = self.tiers.remove(&pos)?;
+        let (tier, saved) = self.tiers.remove(&pos)?;
         Some(ConductorInfo {
             tier,
             values: tier.base_values(),
-            saved: None,
+            saved,
         })
     }
 
@@ -180,9 +184,12 @@ impl HeatOwnerWorld for Game<'_> {
 pub struct Hooks {
     pub owner: HeatTransmitters,
     pub heater: Option<Gen>,
-    tiers: BTreeMap<BlockPos, ConductorTier>,
+    tiers: BTreeMap<BlockPos, Pending>,
+    saved: BTreeMap<BlockPos, (Compound, Option<CapacitorState>)>,
     ambient: Ambient,
     pub runs_normally: bool,
+    /// `WorldUtils.isGettingPowered` de todo bloco.
+    pub powered: bool,
 }
 
 impl Hooks {
@@ -192,6 +199,7 @@ impl Hooks {
             heater: &self.heater,
             tiers: &mut self.tiers,
             ambient: &self.ambient,
+            powered: self.powered,
         };
         self.owner.handle(&mut game, event);
     }
@@ -206,7 +214,8 @@ impl ChunkHooks for Hooks {
             return Some(());
         }
         let tier = tier_of(block.strip_prefix(CONDUCTOR_PREFIX)?);
-        self.tiers.insert(pos, tier);
+        let saved = self.saved.remove(&pos);
+        self.tiers.insert(pos, (tier, saved));
         Some(())
     }
 
@@ -243,6 +252,7 @@ impl ChunkHooks for Hooks {
                 heater: &self.heater,
                 tiers: &mut self.tiers,
                 ambient: &self.ambient,
+                powered: self.powered,
             };
             if let Some(heater) = self.heater.as_ref().filter(|heater| heater.pos == pos) {
                 heater.tick(&mut self.owner, &mut game);
@@ -332,8 +342,10 @@ impl World {
             owner,
             heater: None,
             tiers: BTreeMap::new(),
+            saved: BTreeMap::new(),
             ambient: ambient.clone(),
             runs_normally: true,
+            powered: false,
         };
         let mut level = SimLevel::new(hooks);
         // Os chunks da estrutura e a margem de um em volta ficam com o ticket do `gameTest`.
@@ -382,6 +394,85 @@ impl World {
         );
     }
 
+    /// Um condutor que vem de um chunk salvo: `loadAdditional` lê o NBT do transmissor e o estado do capacitor antes de ele entrar no mundo.
+    pub fn place_saved_conductor(
+        &mut self,
+        x: i32,
+        tier: ConductorTier,
+        saved: (Compound, Option<CapacitorState>),
+    ) {
+        let pos = self.pos(x, 0);
+        self.level.hooks.saved.insert(pos, saved);
+        self.place_conductor(x, tier);
+    }
+
+    /// `ItemConfigurator.useOn` sem agachar: o redstone reativo liga e desliga.
+    pub fn right_click(&mut self, x: i32) -> bool {
+        let pos = self.pos(x, 0);
+        self.level.with_hooks(|hooks, level| {
+            let mut game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.right_click(&mut game, pos)
+        })
+    }
+
+    /// Os vizinhos de um bloco recebem `neighborChanged` (uma alavanca que muda).
+    pub fn update_neighbors(&mut self, x: i32) {
+        let pos = self.pos(x, 0);
+        self.level.update_neighbors_at(pos);
+    }
+
+    /// `ThermodynamicConductor.write` do condutor em `x`.
+    pub fn write(
+        &mut self,
+        pos: BlockPos,
+    ) -> machinery_basis_core::transmission::thermodynamic_conductor::ConductorTag {
+        self.level.with_hooks(|hooks, level| {
+            let game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.write(&game, pos).expect("condutor")
+        })
+    }
+
+    /// A capability `HEAT` do condutor em `pos` existe pelo lado `side` dele (o que o Heat Generator acha embaixo dele).
+    pub fn sink_exists(&mut self, pos: BlockPos, side: Face) -> bool {
+        self.level.with_hooks(|hooks, level| {
+            let game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.sink_at(&game, pos, side).is_some()
+        })
+    }
+
+    /// A vista do condutor em `x` (`getConnectionType` e `getAllCurrentConnections` de cada lado).
+    pub fn view(&mut self, x: i32) -> CableView {
+        let pos = self.pos(x, 0);
+        self.level.with_hooks(|hooks, level| {
+            let game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.view_at(&game, pos).expect("condutor")
+        })
+    }
+
     pub fn place_generator(&mut self, x: i32) {
         let pos = self.pos(x, 1);
         self.level.hooks.heater = Some(Gen {
@@ -408,9 +499,18 @@ impl World {
                 heater: &hooks.heater,
                 tiers: &mut hooks.tiers,
                 ambient: &hooks.ambient,
+                powered: hooks.powered,
             };
             hooks.owner.handle_heat_at(&mut game, pos, amount);
         });
+    }
+
+    /// O calor do gerador posto de uma vez (o `data merge` do teste em jogo).
+    pub fn set_generator_heat(&mut self, heat: f64) {
+        let heater = self.level.hooks.heater.as_ref().expect("há gerador");
+        let mut capacitor = heater.capacitor();
+        capacitor.heat = heat;
+        *heater.heat.borrow_mut() = Some(capacitor);
     }
 
     pub fn heat_generator(&mut self, amount: f64) {
@@ -430,6 +530,7 @@ impl World {
                 heater: &hooks.heater,
                 tiers: &mut hooks.tiers,
                 ambient: &hooks.ambient,
+                powered: hooks.powered,
             };
             hooks.owner.set_mode(&mut game, pos, side, kind);
         });
