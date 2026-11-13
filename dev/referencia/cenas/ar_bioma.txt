@@ -1,0 +1,14 @@
+# O ar do bioma no Network Reader (frente `ar-bioma`, decisão 184): a linha de três condutores termodinâmicos em cada bioma e altura, o clique no do meio depois de 300 tiques (o calor dos condutores
+# chega ao ar: a perda é de cerca de um quarto por tique, e depois de 300 tiques o calor é o ponto fixo, o mesmo em qualquer tique), e o log com o ar que o original lê (`AR`) e o chat (`CHAT`).
+# O mundo do cliente do original é superplano (nível do mar -63; o ajuste de altura começa em -46).
+nome=planicie_chao bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=-61 ate=300 espera=20
+nome=deserto_chao bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:desert y=-61 ate=300 espera=20
+nome=neve_chao bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:snowy_plains y=-61 ate=300 espera=20
+nome=abaixo_do_mar bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=-64 ate=300 espera=20
+nome=limite_da_neve bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=-46 ate=300 espera=20
+nome=acima_do_limite bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=-45 ate=300 espera=20
+nome=planicie_24 bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=24 ate=300 espera=20
+nome=planicie_150 bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:plains y=150 ate=300 espera=20
+nome=floresta_150 bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:forest y=150 ate=300 espera=20
+nome=montanha_250 bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:windswept_hills y=250 ate=300 espera=20
+nome=oceano_gelado_200 bloco=mekanism:basic_thermodynamic_conductor bioma=minecraft:frozen_ocean y=200 ate=300 espera=20

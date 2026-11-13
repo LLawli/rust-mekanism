@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import mekanism.api.MekanismAPI;
+import mekanism.api.heat.HeatAPI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -28,6 +29,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 
 /// O Network Reader no cliente oficial (frente `fase3-faltas`): o chat do clique de cada família, num print de 1920 por 1080, para empilhar com o do port. Só age com o arquivo `cena-leitor` ao
@@ -39,6 +41,10 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 /// `comando` roda esse comando (o `_` vira espaço, `mek_debug`) como o jogador, com a permissão de dono, no lugar do clique; `feedback=1` liga o `send_command_feedback` antes dele (o padrão da cena é desligado, para o chat
 /// só ter o que o clique escreve); `debug=0|1` põe o `MekanismAPI.debug` antes do clique; `alvo=pedra` clica numa pedra posta à direita da linha (um bloco sem block entity).
 ///
+/// `bioma` (um id, `minecraft:desert`) põe esse bioma em volta da linha com o `/fillbiome` antes dos blocos, `y` é a altura da linha (padrão -61) e `ate` os tiques entre pôr os blocos e o clique (padrão
+/// 30). Com `bioma` a cena grava no log uma linha `AR {...}` com o nível do mar, o bioma e o `HeatAPI.getAmbientTemp(level, pos)` de cada posição que os três condutores leem (a deles e a de cada vizinho) (o ar
+/// que o condutor lê), e toda mensagem de chat que chega ao cliente vira uma linha `CHAT nome: texto`.
+///
 /// `bloco`: o bloco da linha de três (o clique é no do meio), `linha=0` põe só o bloco no meio, `bau=1` põe um baú no fim da linha, `sneak` agacha o jogador no clique, `espera` os tiques depois do
 /// clique até o print (padrão 40). O clique é o de `ServerPlayerGameMode.useItemOn` (o do servidor, como o dos rastros): o chat chega ao cliente e aparece no print.
 @EventBusSubscriber(modid = MekanismTests.MODID, value = Dist.CLIENT)
@@ -47,6 +53,8 @@ public class CenaLeitor {
     private static final Path ATIVA = Path.of("cena-leitor");
     private static final int X = 300;
     private static final int Y = -61;
+    private static final int MIN_Y = -64;
+    private static final int MAX_Y = 319;
     private static final int Z = 0;
 
     private record Etapa(String nome, Map<String, String> campos) {
@@ -107,6 +115,77 @@ public class CenaLeitor {
         }
     }
 
+    /// O que o original lê como ar: uma linha `AR` por etapa, com o nível do mar, o bioma e o `HeatAPI.getAmbientTemp(level, pos)` das posições que os três condutores leem (as deles e as dos vizinhos).
+    private static void gravarAr(MinecraftServer server, String nome, int y) {
+        net.minecraft.server.level.ServerLevel level = server.overworld();
+        StringBuilder out = new StringBuilder();
+        out.append("{\"nome\":\"").append(nome).append("\",\"y\":").append(y).append(",\"sea\":").append(level.getSeaLevel()).append(",\"pos\":[");
+        boolean first = true;
+        // As posições que um condutor lê: a dele e a de cada vizinho (`getAmbientTemperature(side)` -> `HeatAPI.getAmbientTemp(level, pos.relative(side))`), sem repetir.
+        java.util.Set<BlockPos> lidas = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < 3; i++) {
+            BlockPos conductor = new BlockPos(X + i, y, Z);
+            lidas.add(conductor);
+            for (Direction side : Direction.values()) {
+                lidas.add(conductor.relative(side));
+            }
+        }
+        for (BlockPos pos : lidas) {
+            var holder = level.getBiome(pos);
+            var biome = holder.value();
+            float temperature = biome.getTemperature(pos, level.getSeaLevel());
+            out.append(first ? "" : ",").append("{\"at\":[").append(pos.getX()).append(',').append(pos.getY()).append(',').append(pos.getZ()).append("],\"biome\":\"")
+                  .append(holder.unwrapKey().map(key -> key.identifier().toString()).orElse("?")).append("\",\"base_bits\":").append(Float.floatToRawIntBits(biome.getBaseTemperature()))
+                  .append(",\"modifier\":\"").append(biome.getModifiedClimateSettings().temperatureModifier().getName()).append("\",\"bits\":").append(Float.floatToRawIntBits(temperature))
+                  .append(",\"ambient\":").append(HeatAPI.getAmbientTemp(level, pos)).append('}');
+            first = false;
+        }
+        out.append("]}");
+        Mekanism.logger.info("AR {}", out);
+    }
+
+    /// A cena de uma etapa: o bioma, o chão, o ar, a linha de blocos e o jogador no lugar.
+    private static void montar(MinecraftServer server, Etapa e) {
+        run(server, "gamerule send_command_feedback false");
+        run(server, "gamemode creative @a");
+        run(server, "clear @a");
+        run(server, "item replace entity @a hotbar.0 with mekanism:network_reader 1");
+        // O chão de teste de novo: o `fill` do tique 20 não vale se o chunk ainda não estava carregado.
+        run(server, "fill 292 -62 -8 308 -62 12 minecraft:grass_block");
+        int y = Integer.parseInt(e.get("y", Integer.toString(Y)));
+        if (e.campos().containsKey("bioma")) {
+            // O `/fillbiome` age em quadrados de 4 por 4 por 4 e o `BiomeManager` sorteia o quadrado vizinho: a caixa passa da linha em volta, e o `/fillbiome` aceita até 32768 blocos.
+            run(server, String.format(Locale.ROOT, "fillbiome %d %d %d %d %d %d %s", X - 8, Math.max(MIN_Y, y - 8), Z - 10, X + 12, Math.min(MAX_Y, y + 8), Z + 10, e.get("bioma", "minecraft:plains")));
+        }
+        if (y > Y) {
+            run(server, String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", X - 4, y - 1, Z - 8, X + 8, y - 1, Z + 10));
+        }
+        // Abaixo do chão de teste (y menor que -61) a linha fica enterrada e o ar e o jogador ficam em cima do chão: o `fill` de ar não pode levar o chão (o jogador cairia do mundo).
+        int topo = Math.max(y, Y);
+        run(server, String.format(Locale.ROOT, "fill 296 %d -2 308 %d 6 minecraft:air", topo, topo + 6));
+        boolean line = e.get("linha", "1").equals("1");
+        for (int i = line ? 0 : 1; i < (line ? 3 : 2); i++) {
+            run(server, String.format(Locale.ROOT, "setblock %d %d %d %s", X + i, y, Z, e.get("bloco", "mekanism:basic_universal_cable")));
+        }
+        if (e.get("bau", "0").equals("1")) {
+            run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:chest", X + 3, y, Z));
+        }
+        if (e.get("alvo", "").equals("pedra")) {
+            run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", X + 3, y, Z));
+        }
+        run(server, String.format(Locale.ROOT, "tp @a %s %s %s 0 40", X + 1.5 + (e.get("bau", "0").equals("1") ? 1.0 : 0.0), topo + 2.5, Z - 1.4));
+        if (e.campos().containsKey("bioma")) {
+            gravarAr(server, e.nome(), y);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onChat(ClientChatReceivedEvent event) {
+        if (atual != null && Files.exists(ATIVA)) {
+            Mekanism.logger.info("CHAT {}: {}", atual.nome(), event.getMessage().getString());
+        }
+    }
+
     private static void run(MinecraftServer server, String command) {
         server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
     }
@@ -157,30 +236,18 @@ public class CenaLeitor {
                 return;
             }
             atual = etapas.get(indice);
-            n = 0;
+            // O jogador vai para a cena antes de tudo e a cena espera 80 tiques: o chunk da linha precisa estar carregado (o mundo `runs/client` reabre com o jogador onde a última cena o deixou, ou no spawn).
+            n = -80;
             final Etapa e = atual;
-            server.execute(() -> {
-                run(server, "gamerule send_command_feedback false");
-                run(server, "gamemode creative @a");
-                run(server, "clear @a");
-                run(server, "item replace entity @a hotbar.0 with mekanism:network_reader 1");
-                run(server, "fill 296 -61 -2 308 -55 6 minecraft:air");
-                boolean line = e.get("linha", "1").equals("1");
-                for (int i = line ? 0 : 1; i < (line ? 3 : 2); i++) {
-                    run(server, String.format(Locale.ROOT, "setblock %d %d %d %s", X + i, Y, Z, e.get("bloco", "mekanism:basic_universal_cable")));
-                }
-                if (e.get("bau", "0").equals("1")) {
-                    run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:chest", X + 3, Y, Z));
-                }
-                if (e.get("alvo", "").equals("pedra")) {
-                    run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", X + 3, Y, Z));
-                }
-                run(server, String.format(Locale.ROOT, "tp @a %s %s %s 0 40", X + 1.5 + (e.get("bau", "0").equals("1") ? 1.0 : 0.0), Y + 2.5, Z - 1.4));
-            });
+            server.execute(() -> run(server, String.format(Locale.ROOT, "tp @a %s %s %s 0 40", X + 1.5, Math.max(Integer.parseInt(e.get("y", Integer.toString(Y))), Y) + 2.5, Z - 1.4)));
             return;
         }
         n++;
-        if (n == 30) {
+        if (n == 0) {
+            final Etapa e = atual;
+            server.execute(() -> montar(server, e));
+        }
+        if (n == Integer.parseInt(atual.get("ate", "30"))) {
             final Etapa e = atual;
             server.execute(() -> {
                 ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
@@ -196,13 +263,13 @@ public class CenaLeitor {
                 }
                 player.setShiftKeyDown(e.get("sneak", "0").equals("1"));
                 int dx = e.get("alvo", "bau").equals("pedra") || (e.get("bau", "0").equals("1") && e.get("alvo", "bau").equals("bau")) ? 3 : 1;
-                BlockPos pos = new BlockPos(X + dx, Y, Z);
+                BlockPos pos = new BlockPos(X + dx, Integer.parseInt(e.get("y", Integer.toString(Y))), Z);
                 BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos).relative(Direction.NORTH, 0.5), Direction.NORTH, pos, false);
                 player.gameMode.useItemOn(player, player.level(), player.getItemInHand(InteractionHand.MAIN_HAND), InteractionHand.MAIN_HAND, hit);
                 player.setShiftKeyDown(false);
             });
         }
-        if (n == 30 + Integer.parseInt(atual.get("espera", "40"))) {
+        if (n == Integer.parseInt(atual.get("ate", "30")) + Integer.parseInt(atual.get("espera", "40"))) {
             Screenshot.grab(minecraft.gameDirectory, "leitor_oficial_" + atual.nome() + ".png", minecraft.gameRenderer.mainRenderTarget(), 1,
                   message -> Mekanism.logger.info("cena: {}", message.getString()));
             atual = null;
