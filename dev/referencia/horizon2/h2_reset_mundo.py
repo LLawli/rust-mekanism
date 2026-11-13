@@ -108,7 +108,14 @@ class Roteiro:
         return out
 
     def evento(self, rotulo):
-        self.saida.write(json.dumps({"e": rotulo}) + "\n")
+        self.saida.write(json.dumps({"e": rotulo, "linha_do_log": log_total()}) + "\n")
+        self.saida.flush()
+
+    def marcar(self, rotulo, comando):
+        """Roda o comando e anota as linhas do log (`MBT`/`MBE` levam o número da passada do servidor) antes e depois dele: o tick em que o jogador sai ou volta."""
+        antes = log_total()
+        cmd(comando)
+        self.saida.write(json.dumps({"e": "marca", "rotulo": rotulo, "linha_antes": antes, "linha_depois": log_total()}) + "\n")
         self.saida.flush()
 
 
@@ -210,10 +217,10 @@ def roteiro(saida):
     cmd(f"execute in minecraft:the_nether run data merge block 0 70 0 {{energy:555}}")
     wait(20)
     r.snap("a4_nether_cabo")
-    cmd("execute in minecraft:the_nether run tp @s 0.5 100 0.5")
+    r.marcar("tp_nether", "execute in minecraft:the_nether run tp @s 0.5 100 0.5")
     wait(60)
     r.snap("a4_no_nether")
-    cmd("execute in minecraft:overworld run tp @s 2.5 -60 -6")
+    r.marcar("tp_overworld", "execute in minecraft:overworld run tp @s 2.5 -60 -6")
     wait(60)
     r.snap("a4_de_volta")
     r.evento("saindo_a4")

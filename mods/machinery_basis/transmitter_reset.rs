@@ -4,6 +4,7 @@ fn machinery_basis_transmitter_reset(game: &mut crate::game::Game<'_>, phase: ho
         crate::game::machinery_basis::world_closing(game);
         crate::game::machinery_basis::transmitters_reset(game);
     } else if phase == horizon_client::mod_api::WorldPhase::WorldOpenReady {
+        crate::game::machinery_basis::transmitter_probe_note("open_ready");
         game.mb_open_visited_levels();
     }
 }

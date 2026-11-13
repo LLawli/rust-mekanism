@@ -185,12 +185,7 @@ impl Game<'_> {
         dim == self.dim || self.lod_source_in(dim).is_some()
     }
 
-    /// A soma das contagens de vários registros (um por dimensão).
-pub fn sum_counts(counts: impl Iterator<Item = (usize, usize, usize)>) -> (usize, usize, usize) {
-    counts.fold((0, 0, 0), |all, one| (all.0 + one.0, all.1 + one.1, all.2 + one.2))
-}
-
-/// O fim de um tick do servidor para os níveis que ninguém segura (decisão 193): o original anda todos os níveis a cada tick, e o `ServerChunkCache` do que o jogador deixou, sem chunk forçado, tira os
+    /// O fim de um tick do servidor para os níveis que ninguém segura (decisão 193): o original anda todos os níveis a cada tick, e o `ServerChunkCache` do que o jogador deixou, sem chunk forçado, tira os
     /// tickets e o `ChunkMap.processUnloads` o descarrega no segundo tick (`machinery_basis_core::level_idle`, medido). O Horizon só anda `levels_to_tick` e nunca descarregava o Overworld parado.
     /// Aqui o nível parado que a lib manda descarregar entra no lugar, o `update_world` roda sem área nenhuma (o que um servidor sem jogador faz, `radius < 0`: só os chunks forçados ficam) e solta
     /// os chunks pelo caminho do jogo (o `chunk_unload` dos mods antes de os block entities saírem, a gravação do que mudou), e o nível volta ao lugar. Devolve os níveis em que o `ServerTickPost`
@@ -208,15 +203,31 @@ pub fn sum_counts(counts: impl Iterator<Item = (usize, usize, usize)>) -> (usize
         let held_ids: Vec<&str> = held.iter().map(|dim| dim.id()).collect();
         let step = IDLE_LEVELS.with_borrow_mut(|levels| levels.end_of_tick(&held_ids));
         let back = self.dim;
+        if TRANSMITTER_PROBE && !step.waiting.is_empty() {
+            eprintln!("MBT {{\"t\":{},\"e\":\"idle_step\",\"waiting\":{:?},\"unload\":{:?},\"held\":{:?}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), step.waiting, step.unload, held_ids);
+        }
         for id in &step.unload {
             let dim = Dim::from_id(id);
             if !self.mb_level_open(dim) || (dim != self.dim && self.enter_level(None, dim).is_err()) {
                 continue;
             }
+            // Sem área nenhuma: a do jogador que saiu (`lan_update_streaming`, o `extra` do último tick em que o nível esteve no lugar) e o raio de visão saem; ficam os chunks forçados.
             let radius = self.streaming.radius;
+            let extra = std::mem::take(&mut self.streaming.extra);
+            let before = self.world.chunks.len();
             self.streaming.radius = -1;
             self.update_world();
             self.streaming.radius = radius;
+            self.streaming.extra = extra;
+            if TRANSMITTER_PROBE {
+                eprintln!(
+                    "MBT {{\"t\":{},\"e\":\"idle_unload\",\"dim\":\"{}\",\"antes\":{before},\"depois\":{},\"forcados\":{}}}",
+                    TRANSMITTER_PASS.load(Ordering::Relaxed),
+                    dim.id(),
+                    self.world.chunks.len(),
+                    self.streaming.forced.len() + self.streaming.mod_forced.len()
+                );
+            }
         }
         if self.dim != back {
             let _ = self.enter_level(None, back);
@@ -3173,6 +3184,13 @@ pub fn transmitter_probe_reset(family: &str, counts: (usize, usize, usize)) {
     }
 }
 
+/// Uma marca da sonda (a abertura do mundo, a primeira passada), com o número da passada do servidor.
+pub fn transmitter_probe_note(name: &str) {
+    if TRANSMITTER_PROBE {
+        eprintln!("MBT {{\"t\":{},\"e\":\"{name}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
+    }
+}
+
 /// A sonda dos eventos está ligada nesta cópia?
 pub fn transmitter_probe_enabled() -> bool {
     TRANSMITTER_PROBE
@@ -3444,6 +3462,11 @@ impl transmitters::ServerLevels for TickLevels<'_, '_> {
     fn deliver(&mut self, events: Vec<TransmitterEvent>) {
         transmitters_deliver(self.game, events);
     }
+}
+
+/// A soma das contagens de vários registros (um por dimensão).
+pub fn sum_counts(counts: impl Iterator<Item = (usize, usize, usize)>) -> (usize, usize, usize) {
+    counts.fold((0, 0, 0), |all, one| (all.0 + one.0, all.1 + one.1, all.2 + one.2))
 }
 
 /// O fim de um tick do servidor para os níveis que ninguém segura (o `mb_idle_levels_end_of_tick`), só no servidor: o cliente que recebe o mundo não tem os níveis.
@@ -3849,6 +3872,9 @@ fn cables_event(game: &mut Game<'_>, event: &TransmitterEvent) {
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
         let created = with_owner(dimension, |owner| owner.cable_at(sim_pos(*pos)).is_some()).unwrap_or(true);
+        if TRANSMITTER_PROBE {
+            eprintln!("MBT {{\"t\":{},\"e\":\"cable_clear\",\"created\":{created},\"p\":[{},{},{}],\"chunks\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), pos[0], pos[1], pos[2], game.world.chunks.len());
+        }
         if !created {
             let now = game.world.game_time;
             CABLE_PENDING.with_borrow_mut(|pending| pending.wait(dimension, *pos, now));
@@ -3865,6 +3891,9 @@ fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
             pending.retry(dimension, now, |pos| matches!(entities.get(&(pos[0], pos[1], pos[2])), Some(horizon_client::containers::BlockEntity::Mod(_))))
         })
     };
+    if TRANSMITTER_PROBE && !ready.is_empty() {
+        eprintln!("MBT {{\"t\":{},\"e\":\"cable_retry\",\"ready\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), ready.len());
+    }
     for pos in ready {
         cables_deliver(game, dimension, &TransmitterEvent::Transmitter { dim: dimension.to_owned(), pos, kind: TransmitterKind::ClearRemoved });
     }
