@@ -298,7 +298,7 @@ A 31 (o `transform` do modelo) fechou igual ao original pela injeção e não es
 
 Aberta em 2026-11-13, pela frente `fase3-fechamento`. O detalhe, com as faltas, as diferenças conhecidas e o "Pronto significa" passado critério a critério, está no estado da Fase 3 (mais abaixo, em "Fases"):
 
-1. Abrir uma frente para as três faltas da fase (o Network Reader, as cores do ejetor chegando ao transportador, a sobreposição do Configurator no desviador) antes de fechar, ou mover cada uma para a fase que o usuário escolher. Nenhuma tem dúvida de comportamento: o Java está lido e a regra é 1:1.
+1. ~~Abrir uma frente para as três faltas da fase ou movê-las.~~ Resolvido pelo coordenador em 2026-11-13 pela regra "não aceite pendência com conserto 1:1 conhecido": as três faltas (o Network Reader, as cores do ejetor chegando ao transportador, a sobreposição do Configurator no desviador) viraram as frentes `fase3-faltas` e `desviador-overlay`, junto com o `reabrir` do cano e do tubo depois da cola única (decisão 161) que não tinha sido medido.
 2. Fechar a Fase 3 com o resto movido para as Fases 4 a 6 (cada item no estado da fase de destino, com a decisão de origem) e as diferenças conhecidas e o que não foi medido aceitos como estão. Nenhum pedido ao Horizon abre agora: a issue sai ao fim do port.
 
 ### Spike de validação (2026-11-05)
