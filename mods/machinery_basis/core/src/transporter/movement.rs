@@ -1,6 +1,5 @@
 //! O movimento das pilhas num transportador logístico, tick a tick (`LogisticalTransporterBase`: `onUpdateServer`, `tryPull`,
-//! `tickTransit`, `recalculate`, `drop`, `insert`, `insertUnchecked`, `emitStack`, `entityEntering`), o NBT e o pacote dele, e o
-//! `TransporterItemHandler` (o que um vizinho vê ao inserir no transportador).
+//! `tickTransit`, `recalculate`, `drop`, `insert`, `insertUnchecked`, `emitStack`, `entityEntering`), o NBT e o pacote dele.
 //!
 //! # O que o original faz e como a lib o guarda
 //!
@@ -14,7 +13,7 @@
 //! no mundo nesse mesmo ponto (`DroppedItems`); aqui os dois passam pelo `transaction.rs`. Os pacotes (`PacketTransporterSync`,
 //! `PacketTransporterBatch`) e o `markForSave` ficam em [`TransitState::events`], e o que cai no mundo em
 //! [`LogisticalTransporterBase::take_world_drops`], para quem liga o jogo consumir.
-use super::nbt::{Compound, Nbt};
+use super::nbt::Nbt;
 use super::node::LogisticalTransporterBase;
 use super::pathfinder::{PathContext, RoundRobinEjector};
 use super::pos::{NO_POS, relative_pos, side_difference};
@@ -960,151 +959,4 @@ fn cached_acceptor(
                 .find(|(face, _)| *face == side)
                 .map(|(_, handler)| handler)
         })
-}
-
-/// O `Level` e a rede de um transportador, para quem não os tem à mão: o `TransporterItemHandler` guarda isto em vez da referência
-/// ao `LogisticalTransporterBase`, porque quem guarda o transportador (o tile) é quem sabe de qual mundo e de qual rede ele é.
-pub trait TransporterEnv {
-    /// Roda `body` com o transportador em `pos`, o contexto de busca dele e a rede (`None` sem rede). Não roda se ele não existe mais.
-    fn with_transporter(
-        &self,
-        pos: i64,
-        body: &mut dyn FnMut(&LogisticalTransporterBase, &MoveContext),
-    );
-}
-
-/// `TransporterItemHandler`: o que um vizinho (um funil, o ejetor de outro bloco) vê ao inserir no transportador. Tem um slot que parece
-/// sempre vazio; a inserção entra como se o vizinho fosse o ejetor, até o que o nível puxa por vez.
-pub struct TransporterItemHandler {
-    env: Rc<dyn TransporterEnv>,
-    transporter: i64,
-    from_pos: i64,
-    pull_amount: u32,
-}
-
-impl TransporterItemHandler {
-    /// Como o `TransporterCapabilityResolver`: só existe se o transportador expõe a capability de inserção daquele lado.
-    pub fn for_side(
-        env: Rc<dyn TransporterEnv>,
-        transporter: &LogisticalTransporterBase,
-        side: Face,
-    ) -> Option<Rc<dyn ItemHandler>> {
-        transporter.exposes_insert_cap(side).then(|| {
-            let pos = transporter.block_pos().as_long();
-            Rc::new(Self {
-                env,
-                transporter: pos,
-                from_pos: relative_pos(pos, side),
-                pull_amount: transporter.tier.pull_amount() as u32,
-            }) as Rc<dyn ItemHandler>
-        })
-    }
-
-    /// `getTransporter()`: a posição do transportador a que isto dá acesso.
-    pub fn transporter(&self) -> i64 {
-        self.transporter
-    }
-
-    /// `getCapacityAsLong`: o quanto o nível puxa por vez.
-    pub fn capacity(&self) -> u32 {
-        self.pull_amount
-    }
-}
-
-impl ItemHandler for TransporterItemHandler {
-    fn size(&self) -> usize {
-        1
-    }
-
-    fn resource(&self, _index: usize) -> Option<ItemResource> {
-        None
-    }
-
-    fn amount(&self, _index: usize) -> u32 {
-        0
-    }
-
-    fn insert_at(
-        &self,
-        _index: usize,
-        resource: &ItemResource,
-        amount: u32,
-        transaction: &Transaction,
-    ) -> u32 {
-        if amount == 0 {
-            return 0;
-        }
-        let mut inserted = 0;
-        self.env
-            .with_transporter(self.transporter, &mut |transporter, ctx| {
-                // Sem rede, nada entra (`hasTransmitterNetwork`).
-                if ctx.network.is_some() {
-                    inserted = transporter.insert_unchecked_from(
-                        ctx,
-                        self.from_pos,
-                        resource,
-                        amount.min(self.pull_amount),
-                        Some(transaction),
-                    );
-                }
-            });
-        inserted
-    }
-
-    fn extract_at(
-        &self,
-        _index: usize,
-        _resource: &ItemResource,
-        _amount: u32,
-        _transaction: &Transaction,
-    ) -> u32 {
-        0
-    }
-
-    fn as_transporter_handler(&self) -> Option<&TransporterItemHandler> {
-        Some(self)
-    }
-}
-
-/// `TransitRequest.eject(outputter, level, outputterPos, target, min, outputColor, transaction)`: para um transportador, a inserção dele
-/// (com a cor dada ou a do transportador); para qualquer outro alvo, a entrega ao inventário.
-#[allow(clippy::too_many_arguments)]
-pub fn eject(
-    request: &TransitRequest,
-    env: &dyn TransporterEnv,
-    outputter: Outputter,
-    outputter_pos: i64,
-    target: Option<&Rc<dyn ItemHandler>>,
-    min: u32,
-    output_color: Option<u8>,
-    transaction: &Transaction,
-) -> TransitResponse {
-    if request.is_empty() {
-        return TransitResponse::EMPTY;
-    }
-    if let Some(handler) = target.and_then(|target| target.as_transporter_handler()) {
-        let mut outputter = Some(outputter);
-        let mut response = TransitResponse::EMPTY;
-        env.with_transporter(handler.transporter(), &mut |transporter, ctx| {
-            let color = output_color.or(transporter.get_color());
-            response = transporter.insert(
-                ctx,
-                outputter
-                    .take()
-                    .expect("o transportador é visitado uma vez"),
-                outputter_pos,
-                request,
-                color,
-                min,
-                Some(transaction),
-            );
-        });
-        return response;
-    }
-    request.add_to_inventory_unchecked(target, min, transaction)
-}
-
-/// O `Compound` do `ItemResource` só pelo id, para quem não grava componentes.
-pub fn item_compound(item: &ItemResource) -> Compound {
-    plain_item_encode(item)
 }

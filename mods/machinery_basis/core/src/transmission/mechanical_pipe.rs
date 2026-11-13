@@ -5,8 +5,6 @@
 //! O resto do cano é a base genérica de transmissor com buffer de recurso ([`super::buffered_resource_transmitter`]) e da família
 //! ([`super::buffered_resource_network::ResourceFamily`]): o cano só dá o tier, o tipo de aceitador (a capability de fluido) e o validador
 //! de órfãos (`CompatibleFluidTransmitterValidator`).
-use super::buffered_resource_transmitter::ResourcePipe;
-use crate::fluid::FluidResource;
 
 /// `FluidType.BUCKET_VOLUME`.
 pub const BUCKET_VOLUME: i32 = 1000;
@@ -61,10 +59,5 @@ impl PipeTier {
             PipeTier::Elite => 8 * BUCKET_VOLUME,
             PipeTier::Ultimate => 32 * BUCKET_VOLUME,
         }
-    }
-
-    /// O estado de buffer de um cano deste tier (`new MechanicalPipe(blockProvider, tile)`).
-    pub fn new_pipe(self) -> ResourcePipe<FluidResource> {
-        ResourcePipe::new(self.capacity(), self.transfer_rate())
     }
 }

@@ -149,32 +149,6 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         self.networks.in_order().into_iter().map(|k| k.id).collect()
     }
 
-    /// As redes de `networksToChange`, na ordem em que o `commitChanges` as confirma.
-    pub fn networks_to_change_in_order(&self) -> Vec<NetworkId> {
-        self.networks_to_change
-            .in_order()
-            .into_iter()
-            .map(|k| k.id)
-            .collect()
-    }
-
-    /// Os transmissores de `invalidTransmitters`, na ordem do conjunto.
-    pub fn invalid_transmitters_in_order(&self) -> Vec<TransmitterId> {
-        self.invalid_transmitters
-            .in_order()
-            .into_iter()
-            .map(|k| k.id)
-            .collect()
-    }
-
-    /// Os órfãos novos de uma dimensão, na ordem da árvore (`newOrphanTransmitters.values()`).
-    pub fn new_orphans_in_order(&self, dimension: DimensionId) -> Vec<TransmitterId> {
-        self.dimension_store
-            .get(&dimension)
-            .map(|data| data.new_orphan_transmitters.values().copied().collect())
-            .unwrap_or_default()
-    }
-
     /// Os transmissores rastreados num chunk, na ordem em que entraram (`DimData.transmitters.get(chunk)`).
     pub fn tracked_in_chunk(&self, dimension: DimensionId, chunk: i64) -> Vec<TransmitterId> {
         self.dimension_store

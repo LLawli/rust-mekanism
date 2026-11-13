@@ -24,13 +24,6 @@ pub trait ItemHandler {
         transaction: &Transaction,
     ) -> u32;
 
-    /// O `TransporterItemHandler`, se este é o que um transportador logístico expõe (`target instanceof TransporterItemHandler`).
-    fn as_transporter_handler(
-        &self,
-    ) -> Option<&crate::transporter::movement::TransporterItemHandler> {
-        None
-    }
-
     /// `ResourceHandler.insert(resource, amount, tx)`: slot a slot, na ordem, até acabar.
     fn insert(&self, resource: &ItemResource, amount: u32, transaction: &Transaction) -> u32 {
         let mut inserted = 0;

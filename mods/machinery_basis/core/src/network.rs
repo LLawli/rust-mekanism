@@ -81,19 +81,6 @@ impl EnergyBlocks {
         }
     }
 
-    /// As faces de energia de `block`, que tem a frente em `front`. Um bloco que não se declarou
-    /// não tem nenhuma.
-    pub fn sides(&self, block: &str, front: Face) -> Sides {
-        let declared = self.blocks.get(block);
-        declared.map_or_else(Sides::default, |block| block.sides(front))
-    }
-
-    /// Se um bloco troca energia pela face `face`, em qualquer sentido.
-    pub fn joins(&self, block: &str, front: Face, face: Face) -> bool {
-        let sides = self.sides(block, front);
-        sides.accepts_input(face) || sides.gives_output(face)
-    }
-
     /// Se dá para entregar energia pela face `face` de `block`. Quem não se declarou fica com a
     /// regra do Horizon, porque pode ser de um mod que não conhece a lib.
     pub fn receives(&self, block: &str, front: Face, face: Face) -> bool {
@@ -123,6 +110,20 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// As faces de energia de `block`, que tem a frente em `front`. Um bloco que não se declarou não tem nenhuma.
+    fn sides(blocks: &EnergyBlocks, block: &str, front: Face) -> Sides {
+        blocks
+            .blocks
+            .get(block)
+            .map_or_else(Sides::default, |block| block.sides(front))
+    }
+
+    /// Se um bloco troca energia pela face `face`, em qualquer sentido.
+    fn joins(blocks: &EnergyBlocks, block: &str, front: Face, face: Face) -> bool {
+        let sides = sides(blocks, block, front);
+        sides.accepts_input(face) || sides.gives_output(face)
+    }
+
     fn blocks() -> EnergyBlocks {
         EnergyBlocks::load(&[
             ("a:gerador".to_owned(), json!({"outputs": ["front"]})),
@@ -140,7 +141,7 @@ mod tests {
         for front in [Face::North, Face::South, Face::East, Face::West] {
             for face in Face::ALL {
                 assert_eq!(
-                    blocks.joins("a:gerador", front, face),
+                    joins(&blocks, "a:gerador", front, face),
                     face == front,
                     "{front:?} {face:?}"
                 );
@@ -153,10 +154,10 @@ mod tests {
     fn a_machine_takes_by_every_face_and_gives_by_none() {
         let blocks = blocks();
         for face in Face::ALL {
-            assert!(blocks.joins("a:maquina", Face::North, face));
+            assert!(joins(&blocks, "a:maquina", Face::North, face));
             assert!(blocks.receives("a:maquina", Face::North, face));
         }
-        assert_eq!(blocks.sides("a:maquina", Face::North).output, [false; 6]);
+        assert_eq!(sides(&blocks, "a:maquina", Face::North).output, [false; 6]);
     }
 
     #[test]
@@ -164,17 +165,17 @@ mod tests {
         let blocks = blocks();
         let front = Face::East;
         // A saída liga o cabo, mas a rede não entrega por ela.
-        assert!(blocks.joins("a:bateria", front, front));
+        assert!(joins(&blocks, "a:bateria", front, front));
         assert!(!blocks.receives("a:bateria", front, front));
-        assert!(blocks.sides("a:bateria", front).gives_output(front));
+        assert!(sides(&blocks, "a:bateria", front).gives_output(front));
         // As entradas ligam e recebem, e não entregam.
         for input in [front.opposite(), front.left_of()] {
-            assert!(blocks.joins("a:bateria", front, input));
+            assert!(joins(&blocks, "a:bateria", front, input));
             assert!(blocks.receives("a:bateria", front, input));
-            assert!(!blocks.sides("a:bateria", front).gives_output(input));
+            assert!(!sides(&blocks, "a:bateria", front).gives_output(input));
         }
         // Lado nenhum: nem liga.
-        assert!(!blocks.joins("a:bateria", front, front.right_of()));
+        assert!(!joins(&blocks, "a:bateria", front, front.right_of()));
     }
 
     #[test]
@@ -183,22 +184,22 @@ mod tests {
             "a:x".to_owned(),
             json!({"inputs": ["top"], "outputs": ["top"]}),
         )]);
-        let sides = blocks.sides("a:x", Face::North);
+        let sides = sides(&blocks, "a:x", Face::North);
         assert!(sides.accepts_input(Face::Up) && sides.gives_output(Face::Up));
     }
 
     #[test]
     fn a_block_nobody_declared_does_not_join_but_keeps_the_game_rule() {
-        assert!(!blocks().joins("a:pedra", Face::North, Face::North));
+        assert!(!joins(&blocks(), "a:pedra", Face::North, Face::North));
         assert!(blocks().receives("a:outro_mod", Face::North, Face::North));
     }
 
     #[test]
     fn relative_sides_follow_the_front() {
         let blocks = EnergyBlocks::load(&[("a:x".to_owned(), json!({"inputs": ["left", "top"]}))]);
-        assert!(blocks.joins("a:x", Face::North, Face::North.left_of()));
-        assert!(blocks.joins("a:x", Face::East, Face::East.left_of()));
-        assert!(blocks.joins("a:x", Face::East, Face::Up));
-        assert!(!blocks.joins("a:x", Face::East, Face::Down));
+        assert!(joins(&blocks, "a:x", Face::North, Face::North.left_of()));
+        assert!(joins(&blocks, "a:x", Face::East, Face::East.left_of()));
+        assert!(joins(&blocks, "a:x", Face::East, Face::Up));
+        assert!(!joins(&blocks, "a:x", Face::East, Face::Down));
     }
 }
