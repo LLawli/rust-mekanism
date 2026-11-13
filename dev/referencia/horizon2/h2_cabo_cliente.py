@@ -167,5 +167,127 @@ def push():
         print(rotulo, "| contorno:", mbo, "| servidor:", kinds and kinds[0].get("kind"), "| cliente anfitrião:", cliente and cliente[0].get("kind"), "| convidado:", convidado and convidado[0].get("kind"))
 
 
+def roteiro_video(pausa, marca):
+    """O que o vídeo mostra: a linha de cabos ligada (a Enrichment Chamber trabalha) sobe do básico ao supremo com as três ligas, a linha de canos também, e o Configurator põe
+    `PUSH` e `PULL` no braço de um cabo que dá no cubo (o contorno do braço). `marca(nome)` anota o instante para tirar os quadros do vídeo."""
+    aj.clear()
+    cmd("gamemode creative @s")
+    for x in range(LINHA):
+        cmd("setblock %s %s" % (txt(at(x)), BLOCOS["cabo"][0]))
+        cmd("setblock %s %s" % (txt(at(x, 0, 6)), BLOCOS["cano"][0]))
+    cmd("setblock %s mekanism:creative_energy_cube" % txt(at(-1)))
+    cmd("setblock %s mekanism:enrichment_chamber" % txt(at(3, 0, 1)))
+    # O cabo com o braço no cubo, para o Configurator.
+    for x in (8, 9):
+        cmd("setblock %s %s" % (txt(at(x)), BLOCOS["cabo"][0]))
+    cmd("setblock %s mekanism:creative_energy_cube" % txt(at(10)))
+    wait(10)
+    for cube in (at(-1), at(10)):
+        cmd("data merge block %s {component_config:{config0:[I;4,4,4,4,4,4],eject0:%s},energy_amount:9223372036854775807L}" % (txt(cube), "1b" if cube == at(-1) else "0b"))
+    cmd("data merge block %s {Items:[{Slot:0b,id:\"minecraft:iron_ore\",count:64}]}" % txt(at(3, 0, 1)))
+    h.ctl("give", "mekanism:configurator", "1")
+    for item in LIGAS:
+        h.ctl("give", item, "1")
+    wait(60)
+    observer_near()
+    # A linha de cabos.
+    for dz, kind, rotulo in ((0, "cabo", "cabo"), (6, "cano", "cano")):
+        pos = at(1, 0, dz)
+        cmd("tp @s %.2f %.2f %.2f" % (pos[0] + 0.5, pos[1] + 1.0, pos[2] - 2.6))
+        wait(12)
+        h.ctl("look-at", "%.2f" % (pos[0] + 1.0), "%.2f" % (pos[1] + 0.5), "%.2f" % (pos[2] + 0.5))
+        wait(6)
+        marca(f"{rotulo}_basico")
+        pausa(3)
+        for nivel, item in enumerate(LIGAS, 1):
+            h.ctl("select", item)
+            h.ctl("look-at", *("%.3f" % (pos[i] + aj.ARM["east"][i]) for i in range(3)))
+            wait(6)
+            h.ctl("mouse", "right", "click")
+            wait(6)
+            marca(f"{rotulo}_nivel{nivel}")
+            pausa(2)
+    # O Configurator num braço que dá no cubo: normal, PUSH, PULL.
+    mid = at(9)
+    eye = (mid[0] + 0.5, mid[1] + 1.0, mid[2] - 2.6)
+    cmd("tp @s %.2f %.2f %.2f" % eye)
+    wait(12)
+    h.ctl("select", "mekanism:configurator")
+    h.ctl("look-at", *("%.3f" % (mid[i] + aj.ARM["east"][i]) for i in range(3)))
+    wait(8)
+    marca("contorno_normal")
+    pausa(3)
+    for nome in ("push", "pull"):
+        aj.click_at(mid, aj.ARM["east"], eye)
+        wait(8)
+        h.ctl("look-at", *("%.3f" % (mid[i] + aj.ARM["east"][i]) for i in range(3)))
+        wait(6)
+        marca(f"contorno_{nome}")
+        pausa(3)
+
+
+def video():
+    """O vídeo com som: `NOME` (o `gravar-jogo start`), `SEGUNDOS` (padrão 60), `ARQUIVO` (padrão cabo-cliente.mp4). O volume mestre só sobe depois de o stream do container estar no sink nulo."""
+    import threading
+    import h2_nota_instrumento as n
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "60"), os.environ.get("ARQUIVO", "cabo-cliente.mp4")
+    n.sky()
+    cmd("tick unfreeze")
+    n.mute()
+    h.ctl("options-set", "chatVisibility", "2")
+    for categoria in n.SOUND_OFF:
+        h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "record"):
+        h.ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    marcas = []
+    try:
+        h.ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        t0 = time.time()
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 8
+
+        def marca(rotulo):
+            marcas.append((rotulo, round(time.time() - t0, 1)))
+
+        roteiro_video(lambda s: time.sleep(s), marca)
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        n.restore()
+    print("marcas", json.dumps(marcas))
+
+
 if __name__ == "__main__":
-    {"escala": escala, "liga": lambda: liga(sys.argv[2] if len(sys.argv) > 2 else "cabo"), "push": push}[sys.argv[1]]()
+    {"escala": escala, "liga": lambda: liga(sys.argv[2] if len(sys.argv) > 2 else "cabo"), "push": push, "video": video}[sys.argv[1]]()
