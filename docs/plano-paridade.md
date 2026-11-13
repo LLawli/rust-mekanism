@@ -1028,8 +1028,8 @@ Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
 
 **Esperando decisão do usuário (fim da Fase 3):**
 
-1. ~~Abrir uma frente para as três faltas ou movê-las.~~ Resolvido pelo coordenador em 2026-11-13 (ver "Esperando decisão do usuário (fim da Fase 3)", acima): a sobreposição do desviador entrou com a frente `desviador-overlay` (decisão 177); o Network Reader e as cores do ejetor saíram na frente `fase3-faltas` (decisões 174 e 175) e o `reabrir` do cano e do tubo foi medido nela, igual.
-2. Fechar a Fase 3 com o resto de "O que sai da Fase 3" movido para as Fases 4 a 6 como acima, e com as diferenças conhecidas e o não medido aceitos como estão. Nenhum pedido ao Horizon abre agora: a issue sai ao fim do port, com os pedidos H131, H166, H175, H179 e H198 (estado em `docs/injecoes-horizon.md`).
+1. ~~Abrir uma frente para as três faltas ou movê-las.~~ Resolvido pelo coordenador em 2026-11-13 (ver "Esperando decisão do usuário (fim da Fase 3)", acima): a sobreposição do desviador entrou com a frente `desviador-overlay` (decisão 177); o Network Reader e as cores do ejetor saíram na frente `fase3-faltas` (decisões 174 e 175) e o `reabrir` do cano e do tubo foi medido nela, igual. O ramo de depuração do leitor e o `/mek debug` saíram na frente `mek-debug` (decisões 180 e 181).
+2. Fechar a Fase 3 com o resto de "O que sai da Fase 3" movido para as Fases 4 a 6 como acima, e com as diferenças conhecidas e o não medido aceitos como estão. Nenhum pedido ao Horizon abre agora: a issue sai ao fim do port, com os pedidos H131, H166, H175, H179, H198, H204, H207 e H208 (estado em `docs/injecoes-horizon.md`).
 
 **"Pronto significa", critério a critério** (a seção do fim do plano):
 
