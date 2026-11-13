@@ -29,7 +29,7 @@ Contagem em 2026-11-12 (depois da frente `condutor-jogo`, que acrescentou 1 mód
 
 | Estado | Cruas | Módulos | Hook com estrutura privada |
 |---|---|---|---|
-| Em uso | 84 | 39 | 47 |
+| Em uso | 84 | 40 | 47 |
 | Provada em spike | 4 | 0 | 1 |
 | Prevista | 2 | 0 | 0 |
 
@@ -167,10 +167,10 @@ O que a regra v2 (H20) elimina: as duas injeções cruas e o contexto por clique
 
 | Arquivo | `[[injection]]` | `hook =` | `target =` | `[[module]]` |
 |---|---|---|---|---|
-| `mods/machinery_basis/horizon-mixin.toml` | 83 | 28 | 55 | 26 |
+| `mods/machinery_basis/horizon-mixin.toml` | 83 | 28 | 55 | 27 |
 | `mods/mekanism/native/horizon-mixin.toml` | 69 | 46 | 23 | 8 |
 | `mods/mekanismgenerators/native/horizon-mixin.toml` | 27 | 21 | 6 | 5 |
-| Total | 179 | 95 | 84 | 39 |
+| Total | 179 | 95 | 84 | 40 |
 
 Todas são `kind = "HEAD"`, menos `window_slot_at`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `fluid_state`, `enhanced_ao`, `worn_hide_player`, `bucket_target`, `creative_tabs` (a do Mekanism e a do Generators) `fluorite_experience`, `energy_cube_item_core`, `note_instrument`, `fluid_entity_mob_air`, `obj_material_parse` e `logged_fluid_view` (`RETURN`), e `model_transform_decode` (`MODIFY_VARIABLE`). 27 das 63 cruas são `cancellable = true` (a `logged_fluid_facts` e a `item_effects`, de 2026-11-12, também são, e não estão na lista a seguir; as cinco `fluid_entity_*` de 2026-11-12 que cancelam: `fluid_entity_splash`, `fluid_entity_fall`, `fluid_entity_touch`, `fluid_entity_travel` e `fluid_entity_mob_travel`; as outras vinte e duas: a lista a seguir é a de 2026-11-09, sem as posteriores, entre elas a `use_hand` e a `predict_item_on_block`; a oitava é `container_dim`; as três últimas, `bar_menu_slot`, `bar_clicked_outside` e `bar_quick_move`; `worn_arm`, `worn_cape`, `item_component_type` e `shape_limit`, de 2026-11-09; `model_transform_bake`, de 2026-11-09; e o `widget_tooltip` de cada um dos dois mods); as que não são: `item_no_physics` (de 2026-11-12), `logged-fluid-row`, `container_dim_flag`, `components-ingredient-stash`, `window_slot_at`, `sprite_ties`, `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_machine_menu`, `bar_answer_click`, `bar_resend_menu`, `flush_signals`, `container_changed`, `animate_tick`, `fluid_state`, `fluid_entity_update`, `fluid_entity_mob_update`, `fluid_entity_mob_air`, `enhanced_ao`, `worn_hide`, `worn_hide_player`, `worn_mob`, `worn_stand`, `result_take_before`, `active_light`, `energy_store`, `creative_tabs`, `fluorite_experience` e `menu_click_before`. Nenhuma usa `trait_method`: os crates `[api]` do Mekanism e do Generators têm só
 `impl Hooks for Mod {}`, e o da `machinery_basis` implementa um hook do catálogo, `menu_slot_rules` v1 (ver [A regra de slot do clique](#a-regra-de-slot-do-clique)), que não passa pelo `horizon-mixin.toml` e por isso não entra na contagem. Os 44 nomes distintos de `hook` (conferido em 2026-11-08 com `sort -u` sobre as 67 linhas `hook =`: 23 repetem um nome que outro mod já usa, 67 - 23 = 44; o `tick` do `mekanismgenerators`, de 2026-11-08, é um desses 23) existem no catálogo do pin, na versão 1.
