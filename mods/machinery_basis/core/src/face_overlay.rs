@@ -6,6 +6,12 @@ use crate::sides::Face;
 /// `ConfiguratorOverlayHandler`: a sobreposição fica a 0,01 da face, para fora.
 pub const OFFSET: f32 = 0.01;
 
+/// `poseStack.scale(0.5F, 0.5F, 0.5F)` do desviador.
+pub const DIVERSION_SCALE: f32 = 0.5;
+
+/// `poseStack.translate(0.5, 0.5, 0.5)` do desviador (na escala de meio: 0,25 de bloco).
+pub const DIVERSION_TRANSLATE: f32 = 0.5;
+
 /// Um vértice da sobreposição: a posição relativa ao canto do bloco e o uv normalizado do sprite (0 a 1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
@@ -49,6 +55,16 @@ fn top_bottom_rotation(facing: Face) -> Option<f32> {
 /// Os quatro vértices da face `face` do bloco, com a rotação para a câmera de `y_rot` graus nas faces de cima e de baixo. A rotação é a de um quaternion
 /// (`setAngleAxis` de `Mth.DEG_TO_RAD`) em float, como o JOML a aplica.
 pub fn vertices(face: Face, y_rot: f64) -> [Vertex; 4] {
+    build(face, y_rot, false)
+}
+
+/// `ConfiguratorOverlayHandler` com `isDiversion`: depois da rotação das faces de cima e de baixo o `PoseStack` faz `scale(0.5F)` e `translate(0.5, 0.5, 0.5)`, então o
+/// quadrilátero vira o de meio bloco que cobre a face do núcleo do desviador (de 0,25 a 0,75, mais os 0,01 da face na escala de meio: 0,005 para fora).
+pub fn diversion_vertices(face: Face, y_rot: f64) -> [Vertex; 4] {
+    build(face, y_rot, true)
+}
+
+fn build(face: Face, y_rot: f64, diversion: bool) -> [Vertex; 4] {
     let step = face.offset();
     let rotation = matches!(face, Face::Up | Face::Down)
         .then(|| top_bottom_rotation(camera_facing(y_rot)))
@@ -63,6 +79,10 @@ pub fn vertices(face: Face, y_rot: f64) -> [Vertex; 4] {
             extent[1] + step[1] as f32 * OFFSET,
             extent[2] + step[2] as f32 * OFFSET,
         ];
+        if diversion {
+            // `scale(0.5F)` e depois `translate(0.5, 0.5, 0.5)` na matriz: `0.5 * x + 0.25` por eixo (o `m30` do JOML é `0.5 * 0.5`).
+            position = position.map(|axis| DIVERSION_SCALE * axis + DIVERSION_SCALE * DIVERSION_TRANSLATE);
+        }
         if let Some(degrees) = rotation {
             position = rotate_about_y(position, degrees, [0.5, 1.0, 0.5]);
         }
