@@ -21,6 +21,7 @@ BASE = (0, 150, 0)
 KINDS = {
     "cabo": {"block": "mekanism:basic_universal_cable", "prefix": "MBV"},
     "cano": {"block": "mekanism:basic_mechanical_pipe", "prefix": "MBW"},
+    "tubo": {"block": "mekanism:basic_pressurized_tube", "prefix": "MTV"},
 }
 GENERATOR = "mekanismgenerators:heat_generator"
 CHAMBER = "mekanism:enrichment_chamber"
@@ -455,7 +456,7 @@ def main():
         return
     if what == "calor":
         sys.exit(0 if calor() else 1)
-    raise SystemExit("uso: h2_ajustes_jogo.py none cabo|cano | dimensoes | calor | video")
+    raise SystemExit("uso: h2_ajustes_jogo.py none cabo|cano|tubo | dimensoes | calor | video")
 
 
 if __name__ == "__main__":
