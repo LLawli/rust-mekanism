@@ -1,0 +1,10 @@
+{
+  "command.mekanism.debug": "Toggled debug mode: %1$s.",
+  "constants.mekanism.debug_title": "Mekanism Debug",
+  "network.mekanism.chemical": "ChemicalNetwork",
+  "network.mekanism.description": "[%1$s] %2$s transmitters, %3$s acceptors.",
+  "network.mekanism.energy": "EnergyNetwork",
+  "network.mekanism.fluid": "FluidNetwork",
+  "network.mekanism.heat": "HeatNetwork",
+  "network.mekanism.inventory": "InventoryNetwork"
+}

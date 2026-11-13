@@ -492,11 +492,20 @@ fn the_names_are_the_originals() {
     for (key, value) in reader.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os do modo de depuração (`/mek debug` e a descrição de cada rede: a frente `mek-debug`), copiados da datagen do original.
+    let debug = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/depuracao/lang.json"),
+    );
+    for (key, value) in debug.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
         if fluids.get(key).is_some()
             || screens.get(key).is_some()
             || cables.get(key).is_some()
             || reader.get(key).is_some()
+            || debug.get(key).is_some()
         {
             continue;
         }
