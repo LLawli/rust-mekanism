@@ -88,7 +88,10 @@ impl Parser<'_> {
 }
 
 fn parse(text: &str) -> Nbt {
-    let mut parser = Parser { text: text.as_bytes(), at: 0 };
+    let mut parser = Parser {
+        text: text.as_bytes(),
+        at: 0,
+    };
     let value = parser.value();
     assert_eq!(parser.at, text.len(), "sobrou texto em {text}");
     value
@@ -100,12 +103,21 @@ fn decode(tag: &Compound) -> Option<ItemResource> {
     let texts: Vec<(String, String)> = tag
         .get("components")
         .and_then(Nbt::as_compound)
-        .map(|components| components.iter().map(|(kind, value)| (kind.clone(), to_snbt(value))).collect())
+        .map(|components| {
+            components
+                .iter()
+                .map(|(kind, value)| (kind.clone(), to_snbt(value)))
+                .collect()
+        })
         .unwrap_or_default();
     Some(ItemResource::with_components(
         id,
         64,
-        Components::new(texts.iter().map(|(kind, value)| (kind.as_str(), value.as_str()))),
+        Components::new(
+            texts
+                .iter()
+                .map(|(kind, value)| (kind.as_str(), value.as_str())),
+        ),
     ))
 }
 
@@ -114,20 +126,31 @@ fn encode(item: &ItemResource) -> Compound {
     let mut resource = Compound::new();
     resource.insert("id".into(), Nbt::String(item.id.to_string()));
     if !item.components.is_empty() {
-        let components: Compound = item.components.iter().map(|(kind, value)| (kind.to_owned(), parse(value))).collect();
+        let components: Compound = item
+            .components
+            .iter()
+            .map(|(kind, value)| (kind.to_owned(), parse(value)))
+            .collect();
         resource.insert("components".into(), Nbt::Compound(components));
     }
     resource
 }
 
 fn rows() -> Vec<Value> {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros/transporter_components.jsonl");
-    std::fs::read_to_string(path).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../dev/referencia/rastros/transporter_components.jsonl");
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
 }
 
 /// O `original_location` do `write` do rastro: o rastro grava a posição absoluta do bloco de cada execução.
 fn original_location(write: &str) -> i64 {
-    let Nbt::Compound(tag) = parse(write) else { panic!("{write}") };
+    let Nbt::Compound(tag) = parse(write) else {
+        panic!("{write}")
+    };
     tag["original_location"].as_long().unwrap()
 }
 
@@ -140,7 +163,9 @@ fn stack_of(row: &Value, resource: ItemResource) -> TransporterStack {
 }
 
 fn resource_of(row: &Value) -> ItemResource {
-    let Nbt::Compound(tag) = parse(row["res"].as_str().unwrap()) else { panic!() };
+    let Nbt::Compound(tag) = parse(row["res"].as_str().unwrap()) else {
+        panic!()
+    };
     decode(&tag).unwrap()
 }
 
@@ -148,7 +173,10 @@ fn resource_of(row: &Value) -> ItemResource {
 fn the_reference_has_every_kind_of_item() {
     let rows = rows();
     assert_eq!(rows.len(), 4);
-    let with_components = rows.iter().filter(|row| row["res"].as_str().unwrap().contains("components")).count();
+    let with_components = rows
+        .iter()
+        .filter(|row| row["res"].as_str().unwrap().contains("components"))
+        .count();
     assert_eq!(with_components, 3);
 }
 
@@ -158,7 +186,12 @@ fn the_saved_stack_carries_the_components_like_the_original() {
     for row in rows() {
         let stack = stack_of(&row, resource_of(&row));
         let written = stack.write_with(&encode);
-        assert_eq!(to_snbt(&Nbt::Compound(written)), row["write"].as_str().unwrap(), "a pilha {}", row["i"]);
+        assert_eq!(
+            to_snbt(&Nbt::Compound(written)),
+            row["write"].as_str().unwrap(),
+            "a pilha {}",
+            row["i"]
+        );
     }
 }
 
@@ -168,7 +201,12 @@ fn the_update_tag_carries_the_components_like_the_original() {
     for row in rows() {
         let stack = stack_of(&row, resource_of(&row));
         let written = stack.write_to_update_tag_with(0, &encode);
-        assert_eq!(to_snbt(&Nbt::Compound(written)), row["upd"].as_str().unwrap(), "a pilha {}", row["i"]);
+        assert_eq!(
+            to_snbt(&Nbt::Compound(written)),
+            row["upd"].as_str().unwrap(),
+            "a pilha {}",
+            row["i"]
+        );
     }
 }
 
@@ -177,11 +215,26 @@ fn the_update_tag_carries_the_components_like_the_original() {
 fn the_stack_reads_back_with_its_components() {
     for row in rows() {
         let resource = resource_of(&row);
-        let Nbt::Compound(written) = parse(row["write"].as_str().unwrap()) else { panic!() };
-        let Nbt::Compound(updated) = parse(row["upd"].as_str().unwrap()) else { panic!() };
-        assert!(row["back"].as_bool().unwrap(), "o original leu a pilha de volta");
-        for back in [TransporterStack::read_with(&written, &decode), TransporterStack::read_from_update_with(&updated, &decode)] {
-            assert_eq!(back.item_type(), Some(&resource), "o recurso da pilha {}", row["i"]);
+        let Nbt::Compound(written) = parse(row["write"].as_str().unwrap()) else {
+            panic!()
+        };
+        let Nbt::Compound(updated) = parse(row["upd"].as_str().unwrap()) else {
+            panic!()
+        };
+        assert!(
+            row["back"].as_bool().unwrap(),
+            "o original leu a pilha de volta"
+        );
+        for back in [
+            TransporterStack::read_with(&written, &decode),
+            TransporterStack::read_from_update_with(&updated, &decode),
+        ] {
+            assert_eq!(
+                back.item_type(),
+                Some(&resource),
+                "o recurso da pilha {}",
+                row["i"]
+            );
             assert_eq!(back.size(), row["n"].as_u64().unwrap() as u32);
         }
     }
@@ -193,5 +246,8 @@ fn a_plain_codec_loses_the_components() {
     let row = rows().remove(0);
     let stack = stack_of(&row, resource_of(&row));
     let plain = stack.write();
-    assert_ne!(to_snbt(&Nbt::Compound(plain)), row["write"].as_str().unwrap());
+    assert_ne!(
+        to_snbt(&Nbt::Compound(plain)),
+        row["write"].as_str().unwrap()
+    );
 }

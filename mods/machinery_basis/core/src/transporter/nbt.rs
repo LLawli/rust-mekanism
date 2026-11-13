@@ -127,7 +127,11 @@ fn java_float_text(value: f64, shortest: &str, scientific: &str) -> String {
         }
     } else {
         let (mantissa, exponent) = scientific.split_once('e').unwrap_or((scientific, "0"));
-        let mantissa = if mantissa.contains('.') { mantissa.to_owned() } else { format!("{mantissa}.0") };
+        let mantissa = if mantissa.contains('.') {
+            mantissa.to_owned()
+        } else {
+            format!("{mantissa}.0")
+        };
         format!("{mantissa}E{exponent}")
     }
 }
@@ -141,11 +145,17 @@ pub fn to_snbt(tag: &Nbt) -> String {
         Nbt::Long(v) => format!("{v}L"),
         Nbt::Float(bits) => {
             let value = f32::from_bits(*bits);
-            format!("{}f", java_float_text(f64::from(value), &format!("{value}"), &format!("{value:e}")))
+            format!(
+                "{}f",
+                java_float_text(f64::from(value), &format!("{value}"), &format!("{value:e}"))
+            )
         }
         Nbt::Double(bits) => {
             let value = f64::from_bits(*bits);
-            format!("{}d", java_float_text(value, &format!("{value}"), &format!("{value:e}")))
+            format!(
+                "{}d",
+                java_float_text(value, &format!("{value}"), &format!("{value:e}"))
+            )
         }
         Nbt::ByteArray(values) => {
             let parts: Vec<String> = values.iter().map(|v| format!("{}B", *v as i8)).collect();

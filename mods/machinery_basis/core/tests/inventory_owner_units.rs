@@ -10,7 +10,8 @@ use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
 use machinery_basis_core::transmission::inventory_owner::{
-    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo, hopper_outcome,
+    InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
+    hopper_outcome,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event};
 use machinery_basis_core::transmission::transmitter::{Overlay, Transmitter};
@@ -98,7 +99,11 @@ fn component_decode(tag: &Compound) -> Option<ItemResource> {
     Some(ItemResource::with_components(
         id,
         64,
-        Components::new(texts.iter().map(|(kind, value)| (kind.as_str(), value.as_str()))),
+        Components::new(
+            texts
+                .iter()
+                .map(|(kind, value)| (kind.as_str(), value.as_str())),
+        ),
     ))
 }
 
@@ -555,13 +560,19 @@ fn an_item_with_components_survives_a_save_and_a_reload() {
     let named = ItemResource::with_components(
         "minecraft:iron_pickaxe",
         1,
-        Components::new([("minecraft:custom_name", "\"Rápida\""), ("minecraft:damage", "40")]),
+        Components::new([
+            ("minecraft:custom_name", "\"Rápida\""),
+            ("minecraft:damage", "40"),
+        ]),
     );
     for with_codec in [true, false] {
         let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
         world.chests[&at(-1)].set_item(0, Some(named.clone()), 1);
         tick(&mut owner, &mut world, 25, 3);
-        assert!(transit_total(&owner, 3) > 0, "nenhuma pilha em trânsito para salvar");
+        assert!(
+            transit_total(&owner, 3) > 0,
+            "nenhuma pilha em trânsito para salvar"
+        );
         let encode = |item: &ItemResource| {
             if with_codec {
                 component_encode(item)
@@ -605,17 +616,42 @@ fn an_item_with_components_survives_a_save_and_a_reload() {
                     .collect::<Vec<_>>()
             })
             .collect();
-        let pickaxes = back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").count();
+        // O pacote de atualização (`writeReducedUpdatedTag`) leva o item inteiro também.
+        let updates: Vec<Nbt> = (0..3)
+            .filter_map(|x| {
+                owner
+                    .transporter_at(at(x))
+                    .unwrap()
+                    .write_reduced_updated_items_with(&encode)
+            })
+            .collect();
+        let carries = updates.iter().any(|list| {
+            machinery_basis_core::transporter::nbt::to_snbt(list).contains("minecraft:damage")
+        });
+        assert_eq!(
+            carries, with_codec,
+            "o pacote de atualização e os componentes"
+        );
+        let pickaxes = back
+            .iter()
+            .filter(|item| &*item.id == "minecraft:iron_pickaxe")
+            .count();
         assert!(pickaxes > 0, "a ferramenta não estava em trânsito");
         if with_codec {
             assert!(seen > 0, "o NBT salvo não leva os componentes");
             assert!(
-                back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").all(|item| item.components == named.components),
+                back.iter()
+                    .filter(|item| &*item.id == "minecraft:iron_pickaxe")
+                    .all(|item| item.components == named.components),
                 "o item voltou sem os componentes"
             );
         } else {
             assert_eq!(seen, 0);
-            assert!(back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").all(|item| item.components.is_empty()));
+            assert!(
+                back.iter()
+                    .filter(|item| &*item.id == "minecraft:iron_pickaxe")
+                    .all(|item| item.components.is_empty())
+            );
         }
     }
 }
@@ -652,5 +688,8 @@ fn a_hopper_offering_more_than_the_pull_amount_gets_the_rest_back() {
     assert!(outcome.rest > 0, "o básico não leva 64 de uma vez");
     // O que entrou está em trânsito (mais o que a linha já puxava do baú: a soma é só do funil).
     let inside = transit_total(&owner, 3);
-    assert!(inside >= inserted.unwrap(), "a pilha do funil não entrou em trânsito");
+    assert!(
+        inside >= inserted.unwrap(),
+        "a pilha do funil não entrou em trânsito"
+    );
 }
