@@ -724,7 +724,7 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         OwnerEvent::ServerTickPost { .. } => handlers_refresh::<F>(game, dimension, None),
         _ => {}
     }
-    if post && basis::transmitter_probe_enabled() {
+    if post && basis::setups_probe_enabled() {
         // O tile que está no tick está fora do mundo: o empurrão da sonda espera o fim do tick, antes do `onTick` do registro.
         let positions: Vec<[i32; 3]> = with_owner::<F, _>(dimension, |owner| owner.positions().into_iter().map(arr).collect()).unwrap_or_default();
         for pos in positions {

@@ -19,7 +19,7 @@ import h2_reset_mundo as base
 from h2_reset_mundo import abrir, cmd, ctl, sair, ssh, state, wait
 
 PASTA = base.PASTA
-MUNDO = "SetupsA"
+MUNDO = os.environ.get("MUNDO", "SetupsA")
 SEMENTE = "20261116"
 Y = -60
 CENA = os.path.join(TOOLS, "..", "cenas", "setups_reais.txt")
@@ -250,6 +250,26 @@ def abertura(saida, tag, ticks, espera):
     return todas
 
 
+def leitor_distante():
+    """O Network Reader num cabo distante (x = 100, o chunk 6), depois de o jogador ter ido e voltado como no original: o print `setups_port_leitor.png` (o do original é o
+    `setups_oficial_leitor.png` da `CenaSetups`, a mesma cena), e o jogador volta ao começo. A pasta de saída é `LOCAL` (padrão ~/.cache/rust-mekanism/wa/setups-reais)."""
+    import h2_ajustes_jogo as a
+    import h2_network_reader as nr
+    a.SHOTS = "/home/luka/.cache/rust-mekanism/setups-reais/prints"
+    a.LOCAL = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/setups-reais"))
+    stand = (100.5, -60.0, -3.0)
+    ctl("give", nr.READER, "1")
+    cmd("tp @s %.2f %.2f %.2f 0 20" % stand)
+    espera_ticks(80)
+    ctl("select", nr.READER)
+    ctl("options-set", "chatVisibility", "0")
+    ctl("options-set", "guiScale", "3")
+    nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False)
+    a.shot("setups_port_leitor")
+    cmd("tp @s 2.5 -60 -6")
+    espera_ticks(60)
+
+
 def roteiro(caminho):
     saida = open(caminho, "w")
     if state().get("world") != MUNDO:
@@ -275,16 +295,69 @@ def roteiro(caminho):
     espera_ticks(320)
     janela(saida, "volta", inicio, 300)
     marca(saida, "depois_de_voltar")
+    leitor_distante()
     sair()
     abertura(saida, "abre2", 80, 100)
     sair()
     saida.close()
 
 
+def midia():
+    """O print do Network Reader num cabo distante (x = 100, o chunk 6, a 100 blocos do gerador) e o vídeo com som do setup funcionando: a energia do gerador chega por 100 cabos à Enrichment
+    Chamber de x = 100, que mói o minério. `SOCK` é o nome do `gravar-jogo start`, `LOCAL` a pasta de saída (padrão ~/.cache/rust-mekanism/wa/setups-reais); o jogo no título, aberto com
+    `JOGO_PW_SOCK`, o mundo `SetupsA` já construído e o sink conferido por `audio_nulo.sh`. O print do original é o `setups_oficial_leitor.png` da `CenaSetups` (a mesma cena)."""
+    import h2_ajustes_jogo as a
+    import h2_network_reader as nr
+    sock = os.environ["SOCK"]
+    local = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/setups-reais"))
+    a.SHOTS = "/home/luka/.cache/rust-mekanism/setups-reais/prints"
+    a.LOCAL = local
+    stand = (100.5, -60.0, -3.0)
+    abrir(MUNDO)
+    espera_ticks(60)
+    cmd("gamerule advance_time false")
+    cmd("gamerule advance_weather false")
+    cmd("time set 6000")
+    cmd("weather clear")
+    cmd("gamemode creative @s")
+    ctl("options-set", "chatVisibility", "0")
+    ctl("options-set", "guiScale", "3")
+    ctl("give", nr.READER, "1")
+    # O gerador de x = 0 com combustível e as Enrichment Chambers com minério: o setup anda enquanto o jogador ainda está longe.
+    passo_nomeado("@combustivel")
+    passo_nomeado("@minerio")
+    espera_ticks(100)
+    cmd("tp @s %.2f %.2f %.2f 0 20" % (stand[0], stand[1], stand[2]))
+    espera_ticks(60)
+    ctl("select", nr.READER)
+    # O print: o clique do leitor no cabo (100, -60, 0), com o chat aberto, o mesmo do original.
+    ctl("options-set", "chatVisibility", "0")
+    nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+    prints = a.shot("setups_port_leitor")
+    # O vídeo: o som do jogo liga só com o stream no sink de teste (`audio_nulo.sh seguro`), as categorias do que se ouve.
+    cmd("tp @s %.2f %.2f %.2f 0 20" % (stand[0], stand[1] + 1, stand[2] - 2))
+    espera_ticks(20)
+    for categoria in ("master", "block", "ui", "player"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} setups_reais.mp4 40 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
+    time.sleep(3.0)
+    try:
+        espera_ticks(60)
+        ctl("options-set", "chatVisibility", "0")
+        nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=(stand[0], stand[1] + 1, stand[2] - 2))
+        espera_ticks(120)
+        proc.wait()
+    finally:
+        ctl("options-set", "soundCategory_master", "0.0")
+    print("print:", prints)
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
     if what == "roteiro":
         roteiro(sys.argv[2])
+    elif what == "midia":
+        midia()
     elif what == "limpar":
         ctl("world-delete", MUNDO, "--confirm")
     else:

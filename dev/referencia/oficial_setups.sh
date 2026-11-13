@@ -22,7 +22,7 @@ echo "TRAVA $(date +%T)"
 MEM=
 restore() {
   [ -n "$MEM" ] && kill "$MEM" 2>/dev/null
-  rm -f "$N/CenaSetups.java" "$R/cena-setups" "$R/setups-reais.jsonl"
+  rm -f "$R"/screenshots/setups_oficial_*.png "$N/CenaSetups.java" "$R/cena-setups" "$R/setups-reais.jsonl"
   rm -rf "$R/saves/SetupsA" "$R/saves/SetupsB"
   [ -e "$C/cena-cabo.antes-setups" ] && mv "$C/cena-cabo.antes-setups" "$R/cena-cabo"
   [ -e "$C/options.txt.antes-setups" ] && cp "$C/options.txt.antes-setups" "$R/options.txt" && rm -f "$C/options.txt.antes-setups"
@@ -52,5 +52,6 @@ export JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAN
 "$C/lim-build" bash -c 'docker update --cpus 4 --memory 6g --memory-swap 6g mekanism-ref > /dev/null; exec "$HOME/.local/bin/mekanism-ref"' > "$SAIDA/gradle.log" 2>&1
 echo "EXIT $?"
 cp "$R/setups-reais.jsonl" "$SAIDA/" 2>/dev/null
+cp "$R"/screenshots/setups_oficial_*.png "$SAIDA/" 2>/dev/null
 grep -aE "CENA-SETUPS|Dealing with|No networks found|Merging|Adding .* transmitters|orphan|invalid Transmitters" "$R/logs/latest.log" > "$SAIDA/log.txt" 2>/dev/null
 ls -la "$SAIDA"

@@ -28,18 +28,23 @@ import mekanism.common.tile.component.config.ConfigInfo;
 import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.ISideConfiguration;
 import mekanism.common.tile.base.TileEntityMekanism;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
@@ -48,6 +53,8 @@ import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -583,6 +590,30 @@ public class CenaSetups {
         }
     }
 
+    /// O clique do Network Reader no cabo (100, -60, 0), como o de `CenaLeitor` (`ServerPlayerGameMode.useItemOn`, pela face norte), e o print do cliente (1920 por 1080, GUI 3, o chat com a resposta).
+    private static void clicaLeitor(MinecraftServer server) {
+        ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+        BlockPos pos = new BlockPos(100, Y, 0);
+        BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos).relative(Direction.NORTH, 0.5), Direction.NORTH, pos, false);
+        player.gameMode.useItemOn(player, player.level(), player.getItemInHand(InteractionHand.MAIN_HAND), InteractionHand.MAIN_HAND, hit);
+    }
+
+    private static BooleanSupplier print(String nome) {
+        return faz(() -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            Screenshot.grab(minecraft.gameDirectory, nome + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> Mekanism.logger.info("CENA-SETUPS print: {}", message.getString()));
+        });
+    }
+
+    private static BooleanSupplier vistaDoLeitor() {
+        return faz(() -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            minecraft.options.setCameraType(CameraType.FIRST_PERSON);
+            minecraft.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.FULL);
+            minecraft.options.guiScale().set(3);
+        });
+    }
+
     private static void montar() {
         // 1. O mundo, criado do título, e a construção.
         passos.add(cria(A, 20261116L));
@@ -616,6 +647,14 @@ public class CenaSetups {
         passos.add(zera());
         passos.add(depoisDeEntrar(320));
         passos.add(marca("depois_de_voltar"));
+        // 4b. O Network Reader num cabo distante (x = 100, chunk 6): o print que se empilha com o do port.
+        passos.add(vistaDoLeitor());
+        roda("leitor");
+        passos.add(faz(() -> servidorFaz(CenaSetups::clicaLeitor)));
+        passos.add(zera());
+        passos.add(depoisDeEntrar(40));
+        passos.add(print("setups_oficial_leitor"));
+        roda("leitor_volta");
         // 5. Sai com tudo andando (energia no meio, itens em trânsito) e abre de novo.
         passos.add(sai("f_sai"));
         passos.add(noMenu());
