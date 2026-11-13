@@ -110,7 +110,7 @@ def clicar(pos, point=(0.5, 0.5, 0.5), sneak=False, stand=None):
 
 
 def mascara(linhas, kind):
-    """O condutor lê o calor do ar do bioma, que no jogo (290 a 297 K) não é o do GameTest do original (decisão 146): os números das linhas de calor saem da comparação, o resto fica."""
+    """O condutor lê o calor do ar do bioma, e esta cena fica a y = 150 (o ar cai com a altura: 293 a 294 K), enquanto a do original fica a y = -61 (300 K): os números das linhas de calor saem da comparação, o resto fica. Com o bioma e a altura iguais os números são os mesmos (decisão 184, `h2_ar_bioma.py casos`)."""
     if kind != "conductor":
         return [l.strip() for l in linhas]
     return [re.sub(r"\d+(\.\d+)?%", "#%", re.sub(r"[-+]?\d+(\.\d+)?[\u00b5mkM]?K", "#K", l.strip())) for l in linhas]

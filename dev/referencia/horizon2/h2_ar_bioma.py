@@ -59,9 +59,10 @@ def original_log():
     return out
 
 
-def preparar(nome, bioma, y):
+def preparar(nome, bioma, y, ate):
     """O mesmo que a `CenaLeitor` faz antes do clique: o bioma em volta, o chão, o ar e a linha de três condutores; o jogador no mesmo lugar, olhando 40 graus para baixo."""
     topo = max(y, Y0)
+    cmd("tick unfreeze")
     cmd("gamemode creative @s")
     cmd("clear @s")
     cmd("tp @s %.2f %.2f %.2f 0 40" % (X + 1.5, topo + 2.5, Z - 1.4))
@@ -70,15 +71,30 @@ def preparar(nome, bioma, y):
     if y > Y0:
         cmd("fill %d %d %d %d %d %d minecraft:stone" % (X - 4, y - 1, Z - 8, X + 8, y - 1, Z + 10))
     cmd("fill 296 %d -2 308 %d 6 minecraft:air" % (topo, topo + 6))
+    cmd("fill %d %d %d %d %d %d minecraft:air" % (X, y, Z, X + 2, y, Z))
+    if y < Y0:
+        # A linha enterrada (abaixo do chão de teste): a vala em cima e ao norte dela, para a mira do jogador chegar ao condutor. O original clica pelo servidor e não precisa dela; o ar é lido
+        # por posição e não muda com o bloco que está lá.
+        cmd("fill %d %d %d %d %d %d minecraft:air" % (X, y, Z - 1, X + 2, Y0, Z))
+    cmd("tp @s %.2f %.2f %.2f 0 40" % (X + 1.5, topo + 2.5, Z - 1.4))
+    h.ctl("give", nr.READER, "1")
+    wait(6)
+    h.ctl("select", nr.READER)
+    # O servidor parado: os condutores entram e andam exatamente `ate` tiques até o clique (o original clica 300 tiques depois de pô-los), que os números de vazão em microkelvin pedem.
+    cmd("tick freeze")
+    time.sleep(0.5)
     for i in range(3):
         cmd("setblock %d %d %d %s" % (X + i, y, Z, CONDUCTOR))
-    cmd("tp @s %.2f %.2f %.2f 0 40" % (X + 1.5, topo + 2.5, Z - 1.4))
+    a.step(ate)
 
 
-def sonda(depois):
-    """As linhas `MBA` do log do jogo depois da linha `depois`: {(x, y, z): linha}."""
-    rows = a.log_lines("MBA")
-    return {tuple(r["at"]): r for r in rows[depois:] if "at" in r and "v" in r}
+def sonda():
+    """As linhas `MBA` do log do jogo: {(x, y, z): [linhas]}. A sonda imprime uma vez por posição e valor, então o mesmo lugar com o mesmo ar em dois casos sai só no primeiro."""
+    lidas = {}
+    for r in a.log_lines("MBA"):
+        if "at" in r and "v" in r:
+            lidas.setdefault(tuple(r["at"]), []).append(r)
+    return lidas
 
 
 def clicar_no_meio(y):
@@ -88,7 +104,7 @@ def clicar_no_meio(y):
 
 
 def normalizar(linhas):
-    return [re.sub(r"\s+", " ", l).strip() for l in linhas if l.strip()]
+    return [re.sub(r"\s+", " ", l).strip() for l in linhas if l.strip() and not l.startswith("Stepping")]
 
 
 def casos_no_port(com_original=True):
@@ -97,6 +113,7 @@ def casos_no_port(com_original=True):
     cmd("time set noon")
     cmd("gamerule advance_time false")
     cmd("gamerule advance_weather false")
+    cmd("gamerule send_command_feedback false")
     h.ctl("options-set", "chatVisibility", "0")
     h.ctl("options-set", "guiScale", "3")
     ok = True
@@ -104,29 +121,31 @@ def casos_no_port(com_original=True):
     a.LOCAL = LOCAL
     os.makedirs(LOCAL, exist_ok=True)
     resumo = []
+    escolhidos = os.environ.get("CASOS")
     for nome, bioma, y, ate in casos():
-        depois = len(a.log_lines("MBA"))
-        preparar(nome, bioma, y)
-        h.ctl("give", nr.READER, "1")
-        wait(6)
-        h.ctl("select", nr.READER)
-        wait(ate)
+        if escolhidos and nome not in escolhidos.split(","):
+            continue
+        preparar(nome, bioma, y, ate)
         got = clicar_no_meio(y)
         arquivo = a.shot("ar_" + nome)
-        lidas = sonda(depois)
-        linhas = normalizar(got[-8:])
-        row = {"nome": nome, "bioma": bioma, "y": y, "ar": {str(k): v["v"] for k, v in lidas.items()}, "sea": sorted({v.get("sea") for v in lidas.values()}), "chat": linhas}
+        cmd("tick unfreeze")
+        lidas = sonda()
+        linhas = normalizar(got)
+        row = {"nome": nome, "bioma": bioma, "y": y, "chat": linhas}
         if nome in original:
             esperado = original[nome]
-            diffs = [(k, v["v"], esperado["ar"].get(k)) for k, v in lidas.items() if esperado["ar"].get(k) != v["v"]]
-            faltam = [k for k in esperado["ar"] if k not in lidas]
-            row["ar_igual"] = not diffs
-            row["ar_diferencas"] = diffs[:5]
-            row["posicoes_lidas"] = len(lidas)
-            row["posicoes_do_original"] = len(esperado["ar"])
-            row["posicoes_sem_leitura"] = len(faltam)
-            row["chat_igual"] = [re.sub(r"\d+(\.\d+)?[µmkM]?K", "#K", l) for l in linhas] == [re.sub(r"\d+(\.\d+)?[µmkM]?K", "#K", l) for l in normalizar(esperado["chat"])] and linhas[-3:] == normalizar(esperado["chat"])[-3:]
-            ok &= row["ar_igual"] and row["chat_igual"]
+            # O ar de cada posição que o original leu tem de ter saído na sonda do port com o mesmo valor, e o nível do mar que o port leu (`mar`) tem de ser o -63 do original.
+            faltam = [(k, v) for k, v in esperado["ar"].items() if not any(r["v"] == v for r in lidas.get(k, []))]
+            mares = sorted({r.get("sea") for k, v in esperado["ar"].items() for r in lidas.get(k, []) if r["v"] == v})
+            row["ar_igual"] = not faltam
+            row["ar_sem_igual"] = [(list(k), v) for k, v in faltam[:5]]
+            row["ar_posicoes"] = len(esperado["ar"])
+            row["mar"] = mares
+            tamanho = len(esperado["chat"])
+            row["chat_igual"] = linhas[-tamanho:] == normalizar(esperado["chat"])
+            if not row["chat_igual"]:
+                row["chat_original"] = normalizar(esperado["chat"])
+            ok &= row["ar_igual"] and row["chat_igual"] and row["mar"] == [esperado["sea"]]
             original_png = os.path.join(ORIGINAL, "prints", "leitor_oficial_%s.png" % nome)
             if os.path.exists(original_png):
                 nr.LINHAS[nome] = 8
@@ -142,15 +161,142 @@ def casos_no_port(com_original=True):
 
 def spike():
     """A cena antiga das frentes de transmissores (BASE = (0, 150, 0), no mundo que estiver aberto): o que a sonda leu ali (temperatura base do bioma, nível do mar, ajuste de altura e o ar)."""
-    depois = len(a.log_lines("MBA"))
     a.clear()
     cmd("gamemode creative @s")
     cmd("clear @s")
     for x in range(3):
         cmd("setblock %s %s" % (a.txt(a.at(x)), CONDUCTOR))
     wait(120)
-    for pos, r in sorted(sonda(depois).items()):
+    for pos, r in sorted((k, v[-1]) for k, v in sonda().items() if k[1] >= 140 and k[0] < 10):
         print(json.dumps(r))
+
+
+# O vídeo: quatro linhas de condutores, uma a cada bioma e altura (as três do chão a 24 blocos uma da outra, a quarta no alto). No mundo plano do port a grama é y = -61 (o original põe a dele em -62):
+# as linhas do chão ficam em cima dela, a y = -60, onde o ar é o mesmo de y = -61 (abaixo de `seaLevel + 17` nada muda com a altura).
+VIDEO_LINHAS = [
+    ("planicie", "minecraft:plains", -60, 0),
+    ("deserto", "minecraft:desert", -60, 24),
+    ("neve", "minecraft:snowy_plains", -60, 48),
+    ("floresta_alta", "minecraft:forest", 150, 72),
+]
+
+
+def olhar_de(x, y, z, alvo):
+    """O jogador a 1,4 ao norte da linha e a 2,5 acima dela (a mira dos casos), olhando o alvo."""
+    cmd("tp @s %.2f %.2f %.2f 0 40" % (x + 1.5, max(y, Y0 + 1) + 2.5, z - 1.4))
+    wait(12)
+    h.ctl("look-at", "%.3f" % (alvo[0] + 0.5), "%.3f" % (alvo[1] + 0.5), "%.3f" % (alvo[2] + 0.5))
+    wait(6)
+
+
+def montar_video():
+    """Fora da câmera: o bioma em volta de cada linha, o chão no alto, as três linhas prontas (desert, snowy e forest a y 150) com 300 tiques andados, e a primeira (plains) só com o chão livre."""
+    cmd("tick unfreeze")
+    cmd("gamerule send_command_feedback false")
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    for nome, bioma, y, z in VIDEO_LINHAS:
+        cmd("tp @s %.2f %.2f %.2f 0 40" % (X + 1.5, max(y, Y0 + 1) + 2.5, z - 1.4))
+        wait(40)
+        cmd("fillbiome %d %d %d %d %d %d %s" % (X - 8, max(-64, y - 8), z - 8, X + 12, min(319, y + 8), z + 8, bioma))
+        if y > Y0:
+            cmd("fill %d %d %d %d %d %d minecraft:stone" % (X - 4, y - 1, z - 8, X + 8, y - 1, z + 8))
+        if y <= Y0 + 1:
+            # A grama de volta onde os casos abriram vala, e o ar em cima dela.
+            cmd("fill %d %d %d %d %d %d minecraft:grass_block" % (X - 8, Y0, z - 8, X + 12, Y0, z + 8))
+        cmd("fill %d %d %d %d %d %d minecraft:air" % (X - 4, max(y, Y0 + 1), z - 4, X + 8, max(y, Y0 + 1) + 6, z + 4))
+    cmd("tick freeze")
+    time.sleep(0.5)
+    for nome, bioma, y, z in VIDEO_LINHAS[1:]:
+        for i in range(3):
+            cmd("setblock %d %d %d %s" % (X + i, y, z, CONDUCTOR))
+    a.step(300)
+    cmd("tick unfreeze")
+    wait(20)
+    h.ctl("give", nr.READER, "1")
+    h.ctl("give", CONDUCTOR, "3")
+    wait(6)
+
+
+def roteiro_video(pausa):
+    """Na câmera: a linha de plains posta com o botão direito (o som do bloco), os 300 tiques andados depressa (`tick rate`), e o leitor no condutor do meio de cada uma das quatro linhas."""
+    nome, bioma, y, z = VIDEO_LINHAS[0]
+    olhar_de(X, y, z, (X + 1, y, z))
+    pausa(2)
+    h.ctl("select", CONDUCTOR)
+    for i in range(3):
+        out = h.ctl("place", str(X + i), str(y), str(z), "--item", CONDUCTOR)
+        if '"error"' in out:
+            print("   place falhou:", out.strip()[:140])
+        pausa(0.6)
+    cmd("tick rate 200")
+    pausa(2.5)
+    cmd("tick rate 20")
+    pausa(1)
+    h.ctl("select", nr.READER)
+    for nome, bioma, y, z in VIDEO_LINHAS:
+        olhar_de(X, y, z, (X + 1, y, z))
+        pausa(1.5)
+        h.ctl("mouse", "right", "click")
+        pausa(6)
+
+
+def video():
+    """O vídeo com som (`NOME`, `SEGUNDOS`, `ARQUIVO`): o `h2_cabo_jogo.video` com o chat à vista."""
+    import threading
+    import h2_cabo_jogo as c
+    import h2_nota_instrumento as n
+    nome, segundos, arquivo = os.environ["NOME"], os.environ.get("SEGUNDOS", "55"), os.environ.get("ARQUIVO", "ar_bioma.mp4")
+    n.sky()
+    montar_video()
+    n.mute()
+    h.ctl("options-set", "chatVisibility", "0")
+    h.ctl("options-set", "guiScale", "3")
+    for categoria in n.SOUND_OFF:
+        h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    for categoria in ("block", "record"):
+        h.ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    ligado = False
+    for _ in range(60):
+        if "movidos 0" not in n.desktop(f"ligar {n.CONTAINER}").stdout and n.desktop(f"verificar {n.CONTAINER}").stdout.startswith("ok"):
+            ligado = True
+            break
+        time.sleep(1)
+    if not ligado:
+        print("o stream do jogo não foi para o sink nulo: nada gravado, volume mestre em 0")
+        sys.exit(1)
+    parar = threading.Event()
+    grav = f"som_grav_{nome}"
+    ate = [None]
+
+    def vigia():
+        while not parar.is_set():
+            if ate[0] is not None and time.time() < ate[0]:
+                subprocess.run(["ssh", "desktop", f"AUDIO_SINK={grav} {n.AUDIO_NULO} ligar {n.CONTAINER}"], capture_output=True, text=True)
+            if not n.desktop(f"seguro {n.CONTAINER}").stdout.startswith("ok"):
+                print("stream fora dos sinks de teste: volume mestre em 0", flush=True)
+                n.mute()
+            parar.wait(0.5)
+
+    thread = threading.Thread(target=vigia, daemon=True)
+    thread.start()
+    rec = None
+    try:
+        h.ctl("options-set", "soundCategory_master", "1.0")
+        time.sleep(2.0)
+        rec = subprocess.Popen(["ssh", "desktop", f"{n.GRAVAR} rec {nome} {arquivo} {segundos} {n.CONTAINER}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(3.0)
+        ate[0] = time.time() + int(segundos) - 8
+        roteiro_video(lambda s: time.sleep(s))
+        out, err = rec.communicate(timeout=int(segundos) + 90)
+        print(out, err, flush=True)
+    finally:
+        n.mute()
+        parar.set()
+        thread.join(timeout=5)
+        if rec is not None and rec.poll() is None:
+            rec.wait(timeout=60)
+        n.restore()
 
 
 def main():
@@ -159,6 +305,13 @@ def main():
         sys.exit(0 if casos_no_port() else 1)
     if mode == "spike":
         spike()
+        return
+    if mode == "video":
+        video()
+        return
+    if mode == "cena":
+        montar_video()
+        roteiro_video(lambda t: time.sleep(t))
         return
     raise SystemExit("modo desconhecido: " + mode)
 
