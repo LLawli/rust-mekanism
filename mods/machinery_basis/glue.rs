@@ -1746,6 +1746,14 @@ pub(in crate::game) fn ambient_temperature(game: &Game<'_>, pos: [i32; 3]) -> Op
     biome_climate(game, pos).map(|climate| climate.ambient_at(pos, sea_level(game)))
 }
 
+/// O que a sonda do ar (`MBA`) mostra além do ar: a temperatura base do bioma que o jogo leu em `pos`, o nível do mar e a temperatura com o ajuste de altura (`Biome.getTemperature(pos, seaLevel)`).
+/// Serve para ver o que o jogo leu (o bioma, o nível do mar e a altura), não entra em nenhuma conta.
+pub(in crate::game) fn ambient_detail(game: &Game<'_>, pos: [i32; 3]) -> Option<(f32, i32, f32)> {
+    let climate = biome_climate(game, pos)?;
+    let sea = sea_level(game);
+    Some((climate.temperature, sea, climate.temperature_at(pos, sea)))
+}
+
 /// As configurações locais do cliente (`MekanismConfig.local`), uma por namespace: a unidade de temperatura que as abas de calor
 /// mostram. É estado do cliente e vive num `static`, porque o desenho e o clique só têm `&Game`.
 static LOCAL_UNITS: Mutex<Vec<(&'static str, temperature::LocalUnit)>> = Mutex::new(Vec::new());

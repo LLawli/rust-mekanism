@@ -41,7 +41,7 @@ thread_local! {
     /// Os condutores cujo `setChanged` rodou durante o evento: o NBT deles é regravado quando o dono volta ao jogo.
     static DIRTY: RefCell<Vec<[i32; 3]>> = const { RefCell::new(Vec::new()) };
     /// As posições cujo ar a sonda já anotou (`MBA`).
-    static AMBIENT_SEEN: RefCell<std::collections::HashSet<[i32; 3]>> = RefCell::new(std::collections::HashSet::new());
+    static AMBIENT_SEEN: RefCell<std::collections::HashSet<([i32; 3], u64)>> = RefCell::new(std::collections::HashSet::new());
     /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon: `(dimensão, posição, tick)`, tentados de novo.
     static PENDING: RefCell<Vec<(&'static str, [i32; 3], i64)>> = const { RefCell::new(Vec::new()) };
 }
@@ -140,7 +140,7 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
         };
         let value = basis::ambient_temperature(&self.game.borrow(), at);
         if let Some(value) = value {
-            ambient_probe(at, value);
+            ambient_probe(&self.game.borrow(), at, value);
         }
         value
     }
@@ -183,10 +183,12 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
     }
 }
 
-/// A sonda do ar (`MBA`, só na cópia de teste): o ar de cada posição que a rede leu, uma vez por posição. O teste da lib repete o jogo com esses valores.
-fn ambient_probe(at: [i32; 3], value: f64) {
-    if basis::transmitter_probe_enabled() && AMBIENT_SEEN.with_borrow_mut(|seen| seen.insert(at)) {
-        eprintln!("MBA {{\"at\":[{},{},{}],\"v\":{:?}}}", at[0], at[1], at[2], value);
+/// A sonda do ar (`MBA`, só na cópia de teste): o ar de cada posição que a rede leu, uma vez por posição e valor (o mesmo lugar com outro bioma, depois de um `/fillbiome`, sai de novo). O teste da lib repete o jogo com esses valores.
+fn ambient_probe(game: &Game<'_>, at: [i32; 3], value: f64) {
+    if basis::transmitter_probe_enabled() && AMBIENT_SEEN.with_borrow_mut(|seen| seen.insert((at, value.to_bits()))) {
+        // `base`, `sea` e `bt`: a temperatura do bioma que o jogo leu ali, o nível do mar e a temperatura com o ajuste de altura (de onde o ar sai).
+        let (base, sea, adjusted) = basis::ambient_detail(game, at).unwrap_or((f32::NAN, 0, f32::NAN));
+        eprintln!("MBA {{\"at\":[{},{},{}],\"v\":{:?},\"base\":{:?},\"sea\":{},\"bt\":{:?}}}", at[0], at[1], at[2], value, base, sea, adjusted);
     }
 }
 
@@ -481,7 +483,7 @@ pub fn heat_adjacent(game: &mut Game<'_>, pos: [i32; 3], side: Face, capacitor: 
                 None => pos,
             };
             if let Some(value) = basis::ambient_temperature(game, at) {
-                ambient_probe(at, value);
+                ambient_probe(game, at, value);
             }
         }
     }
