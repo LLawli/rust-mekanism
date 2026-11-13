@@ -6,6 +6,7 @@ pub mod biome_temperature;
 pub mod cached_recipe;
 pub mod chemical;
 pub mod commands;
+pub mod debug_mode;
 pub mod client_config;
 pub mod components;
 pub mod components_ingredient;

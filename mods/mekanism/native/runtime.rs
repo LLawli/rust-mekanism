@@ -5093,6 +5093,20 @@ pub mod cube_shape {
     }
 }
 
+/// `CommandMek`: a árvore do comando `/mek` que o port tem. O original registra `build`, `chunk`, `debug`, `force_retrogen`, `give_gear`, `radiation`, `testrules`, `tp` e `tpop`;
+/// o port tem `debug` (o que falta está no inventário do plano).
+pub mod command {
+    use machinery_basis_core::commands::{CommandNode, LEVEL_ALL, LEVEL_GAMEMASTERS};
+
+    /// `Commands.literal("mek")`.
+    pub const ROOT: &str = "mek";
+
+    /// `CommandMek.register`: `mek` (`MekanismPermissions.COMMAND`, `Commands.LEVEL_ALL`) e `debug` (`COMMAND_DEBUG`, `nodeOpCommand`: `Commands.LEVEL_GAMEMASTERS`), que roda `debug`.
+    pub fn tree<E>(debug: E) -> CommandNode<E> {
+        CommandNode::literal(ROOT, LEVEL_ALL).then(CommandNode::literal("debug", LEVEL_GAMEMASTERS).executes(debug))
+    }
+}
+
 /// O leitor de rede (`ItemNetworkReader`): as mensagens que o clique manda ao jogador. Os números vêm das redes (`machinery_basis_core::transmission::reading`); aqui ficam os
 /// textos, as chaves de tradução e as cores (`TextComponentUtil.smartTranslate`, `ILangEntry.translateColored`, `EnergyDisplay`, `MekanismUtils.getTemperatureDisplay`).
 pub mod network_reader {
@@ -5488,6 +5502,50 @@ pub mod network_reader {
             });
         }
         square_bracket(joined.map_or_else(|| Arg::Str(String::new()), Arg::Comp))
+    }
+
+    /// `EnumColor.BRIGHT_GREEN` e `RED` pelo `ordinal` (a cor do `OnOff` colorido).
+    const BRIGHT_GREEN: u8 = 10;
+    const RED: u8 = 12;
+
+    /// `DynamicNetwork.getTextComponent()` de cada família: `NETWORK_DESCRIPTION.translate(<tipo da rede>, transmittersSize(), getAcceptorCount())`.
+    pub fn network_description(kind: TransmissionType, transmitters: usize, acceptors: usize) -> Comp {
+        let name = match kind {
+            TransmissionType::Energy => "network.mekanism.energy",
+            TransmissionType::Fluid => "network.mekanism.fluid",
+            TransmissionType::Chemical => "network.mekanism.chemical",
+            TransmissionType::Heat => "network.mekanism.heat",
+            TransmissionType::Item => "network.mekanism.inventory",
+        };
+        Comp::translate(
+            "network.mekanism.description",
+            vec![
+                Arg::Comp(Comp::translate_key(name)),
+                Arg::Int(transmitters as i64),
+                Arg::Int(acceptors as i64),
+            ],
+        )
+    }
+
+    /// O ramo de depuração de `ItemNetworkReader.useOn` (agachado, com `MekanismAPI.debug`, num bloco sem block entity): a borda `DEBUG_TITLE` entre colchetes, cada rede do
+    /// registro (`TransmitterNetworkRegistry.toComponents`, na ordem do conjunto) como `TextComponentUtil.build(DARK_GRAY, component)` e a borda final.
+    pub fn debug_messages(networks: &[(TransmissionType, usize, usize)]) -> Vec<Comp> {
+        let mut out = vec![border(Arg::Comp(square_bracket(Arg::Comp(Comp::translate_key(
+            "constants.mekanism.debug_title",
+        )))))];
+        out.extend(
+            networks
+                .iter()
+                .map(|(kind, transmitters, acceptors)| network_description(*kind, *transmitters, *acceptors).with_color(DARK_GRAY)),
+        );
+        out.push(end_border());
+        out
+    }
+
+    /// `/mek debug`: `COMMAND_DEBUG.translateColored(GRAY, OnOff.of(MekanismAPI.debug, true))`.
+    pub fn debug_toggle_message(on: bool) -> Comp {
+        let state = Comp::translate_key(if on { "boolean.mekanism.on" } else { "boolean.mekanism.off" }).with_color(if on { BRIGHT_GREEN } else { RED });
+        Comp::translate("command.mekanism.debug", vec![Arg::Comp(state)]).with_color(GRAY)
     }
 
     /// `displayConnectedNetworks`, uma rede vizinha: o tipo de transmissão da rede, os lados do aceitador por onde ela entra.
