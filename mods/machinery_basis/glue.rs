@@ -198,12 +198,33 @@ impl Game<'_> {
         Some((((x.floor() as i32) >> 4, (z.floor() as i32) >> 4), saved.mode() == 3))
     }
 
+    /// O nível em que o dono do mundo que ainda não entrou está (a dimensão da posição guardada no arquivo do jogador), que o servidor anda no primeiro tick como o original: o dono já está
+    /// lá e o nível anda por causa dele. `levels_to_tick` só conhece os convidados e os chunks forçados (um mundo reaberto com um chunk forçado no Nether andaria só o Nether na primeira
+    /// passada, e o Overworld do dono ficaria parado). Acrescenta o nível do dono, na ordem do servidor (Overworld, Nether, End), a quem já anda; sem dono à espera devolve a lista como veio.
+    pub(in crate::game) fn mb_owner_level(&self, dims: Vec<crate::game::Dim>) -> Vec<crate::game::Dim> {
+        use crate::game::Dim;
+        if mb_first_pass_off() {
+            return dims;
+        }
+        let Some(saved) = self.lan.as_ref().and_then(|h| h.owner.as_ref()).and_then(|o| o.saved.as_ref()) else {
+            return dims;
+        };
+        let owner = Dim::from_id(&saved.dimension);
+        if dims.contains(&owner) {
+            return dims;
+        }
+        if TRANSMITTER_PROBE {
+            eprintln!("MBT {{\"t\":{},\"e\":\"owner_level\",\"dim\":\"{}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed), owner.id());
+        }
+        [Dim::Overworld, Dim::Nether, Dim::End].into_iter().filter(|dim| *dim == owner || dims.contains(dim)).collect()
+    }
+
     /// O jogador já está no servidor no primeiro tick do original (decisão 195, a causa da rede na segunda passada): `Game::update_chunk_tickets` só conhece os convidados e o `self.player`,
     /// e o dono do mundo entra no fim da primeira passada. Enquanto ele não entrou, esta função faz o que a original faz (a lista de jogadores, os chunks forçados, o portal, a arena do
     /// dragão e as distâncias) com o chunk dele como mais um jogador, e devolve `true` para a função original não rodar; sem dono à espera devolve `false` e a função original roda, intacta. O corpo é
     /// o do Horizon da base `f319701`, linha a linha, com a única diferença do `players.push` do dono.
     pub(in crate::game) fn mb_owner_tickets(&mut self) -> bool {
-        if TRANSMITTER_PROBE && std::path::Path::new("/tmp/mb_sem_primeira_passada").exists() {
+        if mb_first_pass_off() {
             return false;
         }
         let Some((chunk, spectator)) = self.mb_pending_owner() else {
@@ -3254,9 +3275,21 @@ pub fn transmitter_probe_reset(family: &str, counts: (usize, usize, usize)) {
     }
 }
 
+/// A cópia de teste liga e desliga as injeções da primeira passada (`owner_tickets` e `owner_level`) pelo arquivo `/tmp/mb_sem_primeira_passada`: com ele o port se comporta como antes
+/// da decisão 195, e o mesmo build mede os dois lados. Fora da cópia de teste (`TRANSMITTER_PROBE` é `false`) a função é a constante `false`.
+fn mb_first_pass_off() -> bool {
+    TRANSMITTER_PROBE && std::path::Path::new("/tmp/mb_sem_primeira_passada").exists()
+}
+
+/// Os ticks do servidor desde o último `open_ready`, para a sonda do estado dos primeiros ticks.
+static TRANSMITTER_PASSES_SINCE_OPEN: AtomicI64 = AtomicI64::new(0);
+
 /// Uma marca da sonda (a abertura do mundo, a primeira passada), com o número da passada do servidor.
 pub fn transmitter_probe_note(name: &str) {
     if TRANSMITTER_PROBE {
+        if name == "open_ready" {
+            TRANSMITTER_PASSES_SINCE_OPEN.store(0, Ordering::Relaxed);
+        }
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
         eprintln!("MBT {{\"t\":{},\"e\":\"{name}\",\"ms\":{ms}}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
     }
@@ -3491,7 +3524,7 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
-            if TRANSMITTER_PROBE && TRANSMITTER_PASS.load(Ordering::Relaxed) <= 8 {
+            if TRANSMITTER_PROBE && TRANSMITTER_PASSES_SINCE_OPEN.fetch_add(1, Ordering::Relaxed) < 8 {
                 // Os primeiros ticks do mundo aberto (decisão 195), o que a `CenaReset` do original grava em cada um: quantos jogadores já estão, os chunks carregados e se o chunk (0, 0) anda.
                 let players = game.lan.as_ref().map_or(0, |h| h.hub.guests.iter().filter(|g| g.placed).count());
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());

@@ -134,6 +134,26 @@ def roteiro(caminho):
     saida.close()
 
 
+def jogador_no_nether(caminho):
+    """O dono que saiu do mundo no Nether: no mundo `ResetA` do `roteiro` (com o chunk forçado), o jogador vai ao Nether, o mundo fecha e reabre sem e com a injeção. A `owner_level` põe o
+    Nether na lista do primeiro tick (o dono está nele) e a `owner_tickets` dá o chunk dele ao nível. Não há linha do original para esta (a `CenaReset` sai do Overworld)."""
+    saida = open(caminho, "w")
+    sem_injecao(False)
+    abrir("ResetA")
+    cmd("gamemode creative @s")
+    cmd("execute in minecraft:the_nether run tp @s 0.5 100 0.5")
+    wait(60)
+    sair()
+    abertura(saida, "j_injecao_1", "ResetA", False)
+    sair()
+    abertura(saida, "j_base_1", "ResetA", True)
+    sair()
+    abertura(saida, "j_injecao_2", "ResetA", False)
+    sem_injecao(False)
+    sair()
+    saida.close()
+
+
 def video():
     """O vídeo com som de abrir o mundo e o leitor de rede no cabo logo no começo. O jogo já tem de estar no título, com `SOCK` do `gravar-jogo start` e o sink conferido por `audio_nulo.sh`."""
     import h2_ajustes_jogo as a
@@ -195,11 +215,13 @@ def main():
         video()
     elif what == "roteiro":
         roteiro(sys.argv[2])
+    elif what == "jogador_no_nether":
+        jogador_no_nether(sys.argv[2])
     elif what == "limpar":
         for nome in ("ResetA", "ResetB", "ResetV"):
             ctl("world-delete", nome, "--confirm")
     else:
-        raise SystemExit("uso: h2_primeira_passada.py roteiro SAIDA.jsonl | video | limpar")
+        raise SystemExit("uso: h2_primeira_passada.py roteiro SAIDA.jsonl | jogador_no_nether SAIDA.jsonl | video | limpar")
 
 
 if __name__ == "__main__":
