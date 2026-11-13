@@ -252,6 +252,11 @@ impl PendingClears {
         ready
     }
 
+    /// O mundo fechou: o que esperava um block entity dele não vale no mundo seguinte (o relógio recomeça e a espera, medida contra ele, nunca acabaria).
+    pub fn clear(&mut self) {
+        self.waiting.clear();
+    }
+
     pub fn len(&self) -> usize {
         self.waiting.len()
     }

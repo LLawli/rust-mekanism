@@ -3726,6 +3726,10 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         CABLE_VIEWS.with_borrow_mut(HashMap::clear);
         CABLE_ABSORBED.with_borrow_mut(HashMap::clear);
         CABLE_ACCEPTORS.with_borrow_mut(HashMap::clear);
+        // O que esperava um block entity do mundo que fechou, e os avisos de tela dele, não passam ao seguinte.
+        CABLE_PENDING.with_borrow_mut(transmitters::PendingClears::clear);
+        CABLE_OVERLAYS.with_borrow_mut(Vec::clear);
+        CAPABILITY_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).clear();
         return;
     };
     let post = matches!(event, CableEvent::ServerTickPost { .. });

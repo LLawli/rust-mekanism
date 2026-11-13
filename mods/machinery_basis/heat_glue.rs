@@ -297,6 +297,9 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         CONDUCTORS.with_borrow_mut(HashMap::clear);
         VIEWS.with_borrow_mut(HashMap::clear);
         DIRTY.with_borrow_mut(Vec::clear);
+        // O que esperava um block entity do mundo que fechou, e os avisos de tela dele, não passam ao seguinte.
+        PENDING.with_borrow_mut(Vec::clear);
+        OVERLAYS.with_borrow_mut(Vec::clear);
         return;
     };
     // `onChunkUnloaded` e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que tira o condutor do dono.

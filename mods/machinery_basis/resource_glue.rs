@@ -707,6 +707,10 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         let mut shared = lock(F::shared());
         shared.faces.clear();
         shared.changed.clear();
+        drop(shared);
+        // O que esperava um block entity do mundo que fechou, e os avisos de tela dele, não passam ao seguinte.
+        F::pending().with_borrow_mut(Pending::clear);
+        F::overlays().with_borrow_mut(Vec::clear);
         return;
     };
     let post = matches!(event, OwnerEvent::ServerTickPost { .. });

@@ -501,6 +501,29 @@ fn a_clear_removed_waits_for_its_block_entity_and_gives_up_after_the_limit() {
     assert!(pending.is_empty());
 }
 
+/// `ServerStoppedEvent`: um `clearRemoved` que esperava o block entity quando o mundo fechou não vale no mundo seguinte. O relógio do mundo novo recomeça perto de 0, e a espera, medida
+/// contra ele (`now - since < PENDING_TICKS`), nunca acabaria: o `clearRemoved` velho ficava na fila e entrava no mundo novo com o primeiro block entity que aparecesse na posição.
+#[test]
+fn a_world_that_closes_drops_the_clears_that_were_still_waiting() {
+    let at = [7, 64, 7];
+    let mut pending = events::PendingClears::new();
+    pending.wait("overworld", at, 90_000);
+    // O mundo novo, com o relógio perto de 0: a entrada velha segue esperando para sempre.
+    assert!(pending.retry("overworld", 10, |_| false).is_empty());
+    assert_eq!(
+        pending.len(),
+        1,
+        "sem o `clear`, a espera do mundo velho fica"
+    );
+    pending.clear();
+    assert!(
+        pending.is_empty(),
+        "o mundo que fechou esquece o que esperava"
+    );
+    // E o block entity que aparece depois na mesma posição não recebe um `clearRemoved` do mundo velho.
+    assert!(pending.retry("overworld", 20, |_| true).is_empty());
+}
+
 /// O espelho do cliente da janela do anfitrião (outro `BlockEntities`, que recebe os blocos do servidor e passa pelas mesmas injeções) não anota nada depois de o do servidor se
 /// apresentar: o bloco trocado pela liga voltava um tick depois como `setRemoved` e `clearRemoved` do cliente, e o dono dos transportadores largava as pilhas do que ele acabara de
 /// receber. Antes de o servidor se apresentar (os chunks do começo do mundo) qualquer um vale.

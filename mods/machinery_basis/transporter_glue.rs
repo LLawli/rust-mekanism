@@ -489,6 +489,9 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
         OWNERS.with_borrow_mut(HashMap::clear);
         VIEWS.with_borrow_mut(HashMap::clear);
         HANDLERS.with_borrow_mut(HashMap::clear);
+        // O que esperava um block entity do mundo que fechou, e os avisos de tela dele, não passam ao seguinte.
+        PENDING.with_borrow_mut(Vec::clear);
+        OVERLAYS.with_borrow_mut(Vec::clear);
         return;
     };
     // `onChunkUnloaded` toma a parte do transportador e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
