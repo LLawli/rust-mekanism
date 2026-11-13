@@ -47,6 +47,15 @@ id = "transporter-glue"
 file = "crates/horizon-client/src/game.rs"
 name = "machinery_transporters"
 source = "transporter_glue.rs"
+
+# O lado do cliente dos transmissores no jogo (frente `cabo-cliente`): o pacote de atualização (`sendUpdatePacket`), o `PacketNetworkScale`, o conteúdo da rede e o `clientNetworks` de cada
+# cliente. O Horizon junta o pacote de atualização de um block entity de mod no `nbt` da cópia sem avisar o mod, então o `handleUpdateTag` roda ao chegar por um canal de mod. Código nosso no `Game`.
+[[module]]
+id = "transmitter-client"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_transmitter_client"
+source = "transmitter_client.rs"
+
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
 # Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos
@@ -426,6 +435,18 @@ helper = "window_player_in.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
   { name = "player", ty = "u128", value = "player" },
+]
+
+# Os pacotes dos transmissores chegam ao cliente (`PacketNetworkScale`, o conteúdo da rede, o pacote de atualização e a saída de um transmissor).
+[[injection]]
+id = "transmitter_net_server"
+hook = "net_from_server"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_net_server.rs"
+bindings = [
+  { name = "channel", ty = "&str", value = "channel" },
+  { name = "data", ty = "&[u8]", value = "data" },
 ]
 
 [[injection]]

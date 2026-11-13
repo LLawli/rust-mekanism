@@ -1799,3 +1799,167 @@ fn a_cable_remembers_its_connection_types_from_the_save() {
     assert!(view.redstone_reactive);
     assert_eq!(view.raw[Face::East as usize], ConnectionType::Normal);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O upgrade de tier no lugar (`TileEntityTransmitter.onAlloyInteraction`): a ordem pela distância ao clique, o limite de 8, o dado que passa ao cabo novo
+// e a rede que se refaz com a energia inteira.
+
+mod alloy {
+    use super::*;
+    use machinery_basis_core::transmission::alloy::MAX_UPGRADES;
+
+    fn line(width: i32) -> Sim {
+        let mut sim = Sim::free();
+        for x in 0..width {
+            sim.place_cable(BlockPos::new(x, 0, 0), tier_capacity("basic"), None);
+        }
+        for _ in 0..3 {
+            sim.tick();
+        }
+        sim
+    }
+
+    /// O laço de `onAlloyInteraction` com o jogo trocando o bloco entre `alloy_take` e `alloy_give`.
+    fn click(sim: &mut Sim, at: i32, alloy_level: i32, tier: i64) -> (Vec<BlockPos>, u32) {
+        let pos = BlockPos::new(at, 0, 0);
+        let Some(mut run) = sim
+            .owner
+            .alloy_start(pos, alloy_level, &|_| Some((alloy_level - 1).min(3)))
+        else {
+            return (Vec::new(), 0);
+        };
+        let targets = run.targets.clone();
+        let mut done = Vec::new();
+        for target in targets.clone() {
+            let Some(data) = sim.owner.alloy_take(&mut sim.level, &mut run, target) else {
+                continue;
+            };
+            sim.level.blocks.insert(
+                target,
+                Block::Cable {
+                    capacity: tier_capacity("advanced"),
+                    saved: None,
+                },
+            );
+            sim.send(Event::Removed(target));
+            sim.send(Event::ClearRemoved(target));
+            if sim.owner.alloy_give(&mut run, target, &data) {
+                done.push(target);
+                if run.full() {
+                    break;
+                }
+            }
+        }
+        let _ = tier;
+        sim.owner.alloy_finish(&mut sim.level, &run);
+        (done, run.upgraded)
+    }
+
+    fn x_of(list: &[BlockPos]) -> Vec<i32> {
+        list.iter().map(|pos| pos.x).collect()
+    }
+
+    #[test]
+    fn the_cables_go_up_from_the_nearest_to_the_click() {
+        let mut sim = line(5);
+        let (done, upgraded) = click(&mut sim, 3, 1, 0);
+        assert_eq!(upgraded, 5);
+        let order = x_of(&done);
+        assert_eq!(order[0], 3, "o clicado primeiro");
+        assert!(order[1..3].contains(&2) && order[1..3].contains(&4), "depois os dois vizinhos");
+        assert_eq!(order[3], 1);
+        assert_eq!(order[4], 0);
+    }
+
+    #[test]
+    fn at_most_eight_cables_go_up_in_one_click() {
+        let mut sim = line(12);
+        let (done, upgraded) = click(&mut sim, 0, 1, 0);
+        assert_eq!(upgraded, MAX_UPGRADES);
+        assert_eq!(x_of(&done), (0..8).collect::<Vec<_>>(), "os 8 mais perto do clique");
+    }
+
+    #[test]
+    fn only_the_next_tier_goes_up() {
+        let sim = line(3);
+        let pos = BlockPos::new(1, 0, 0);
+        // Uma liga de nível 3 (atômica) num cabo básico (nível 0): `canUpgrade` é falso.
+        assert!(sim.owner.alloy_start(pos, 3, &|_| Some(0)).unwrap().targets.is_empty());
+        assert_eq!(sim.owner.alloy_start(pos, 1, &|_| Some(0)).unwrap().targets.len(), 3);
+        // Sem rede (o cabo recém-posto, antes do primeiro tick) a liga não faz nada.
+        let mut fresh = Sim::free();
+        fresh.place_cable(pos, tier_capacity("basic"), None);
+        assert!(fresh.owner.alloy_start(pos, 1, &|_| Some(0)).is_none());
+    }
+
+    #[test]
+    fn the_network_is_remade_with_the_new_capacity_and_all_its_energy() {
+        let mut sim = line(5);
+        let got = sim.owner.insert_external(BlockPos::new(2, 0, 0), 3_000);
+        assert_eq!(got, 3_000);
+        for _ in 0..3 {
+            sim.tick();
+        }
+        let before: i64 = total_energy(&sim);
+        assert_eq!(before, 3_000);
+        let (_, upgraded) = click(&mut sim, 2, 1, 0);
+        assert_eq!(upgraded, 5);
+        for _ in 0..4 {
+            sim.tick();
+        }
+        assert_eq!(total_energy(&sim), 3_000, "a energia da rede velha não se perde");
+        let network = sim.owner.network_of(BlockPos::new(0, 0, 0)).unwrap();
+        for x in 1..5 {
+            assert_eq!(sim.owner.network_of(BlockPos::new(x, 0, 0)), Some(network), "uma rede só");
+        }
+        assert_eq!(
+            sim.owner.family().network(network).unwrap().capacity(),
+            5 * tier_capacity("advanced")
+        );
+    }
+
+    fn total_energy(sim: &Sim) -> i64 {
+        let mut seen = Vec::new();
+        let mut sum = 0;
+        for pos in sim.owner.positions() {
+            let network = sim.owner.network_of(pos).unwrap();
+            if !seen.contains(&network) {
+                seen.push(network);
+                sum += sim.owner.family().network(network).unwrap().buffer();
+            }
+        }
+        sum
+    }
+
+    #[test]
+    fn the_new_cable_keeps_the_connection_types_and_the_redstone_of_the_old_one() {
+        let mut sim = line(3);
+        // O lado leste do cabo do meio em PUSH (o Configurator): o dado leva isso ao cabo novo.
+        let pos = BlockPos::new(1, 0, 0);
+        let mut run = sim.owner.alloy_start(pos, 1, &|_| Some(0)).unwrap();
+        let mut types = *sim.owner.transmitter(pos).unwrap().connection_types_raw();
+        types[Face::East as usize] = ConnectionType::Push;
+        types[Face::North as usize] = ConnectionType::None;
+        let data = {
+            let mut data = sim.owner.alloy_take(&mut sim.level, &mut run, pos).unwrap();
+            data.connection_types = types;
+            data.redstone_reactive = true;
+            data
+        };
+        sim.level.blocks.insert(
+            pos,
+            Block::Cable {
+                capacity: tier_capacity("advanced"),
+                saved: None,
+            },
+        );
+        sim.send(Event::Removed(pos));
+        sim.send(Event::ClearRemoved(pos));
+        assert!(sim.owner.alloy_give(&mut run, pos, &data));
+        let tx = sim.owner.transmitter(pos).unwrap();
+        assert_eq!(tx.get_connection_type_raw(Face::East), ConnectionType::Push);
+        assert_eq!(tx.get_connection_type_raw(Face::North), ConnectionType::None);
+        assert!(tx.redstone_reactive);
+        assert!(tx.has_pull_side() == false);
+    }
+}

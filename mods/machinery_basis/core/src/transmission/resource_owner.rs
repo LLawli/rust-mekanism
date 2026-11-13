@@ -16,12 +16,14 @@ use super::buffered_resource_network::{ResourceAcceptor, ResourceFamily};
 use super::buffered_transmitter::{
     merge_networks_manually, recheck_connections_sides, requests_update,
 };
+use super::alloy::{AlloyRun, ResourceUpgrade, can_upgrade, order_by_distance};
+use super::buffered_resource_transmitter::ResourceTransmitterUpgradeData;
 use super::client::{Outgoing, ScaleOutbox};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
 };
 use super::owner::{CableView, Event};
-use super::registry::TransmitterNetworkRegistry;
+use super::registry::{TransmitterNetworkRegistry, set_transmitter_network};
 use super::transmitter::{
     Compound, Effect, NeighborTransmitter, Overlay, Transmitter, TransmitterWorld,
 };
@@ -1018,6 +1020,122 @@ impl<R: Resource> ResourceTransmitters<R> {
         let network = self.st.slots[id.0 as usize].net();
         let stored = self.st.family.write_stored(&self.registry, id, network);
         Some((self.st.tx(id).write(), stored))
+    }
+
+    /// `TileEntityTransmitter.onAlloyInteraction`, até a lista (veja `EnergyTransmitters::alloy_start`).
+    pub fn alloy_start(
+        &self,
+        pos: BlockPos,
+        alloy_level: i32,
+        tier_of: &dyn Fn(BlockPos) -> Option<i32>,
+    ) -> Option<AlloyRun> {
+        let id = self.st.live(pos)?;
+        let slot = &self.st.slots[id.0 as usize];
+        if !slot.tx.as_ref()?.has_transmitter_network() {
+            return None;
+        }
+        let network = slot.network?;
+        let members: Vec<BlockPos> = self
+            .registry
+            .network(network)
+            .transmitters()
+            .into_iter()
+            .map(|member| &self.st.slots[member.0 as usize])
+            .filter(|member| !member.dead)
+            .map(|member| member.pos)
+            .filter(|at| tier_of(*at).is_some_and(|level| can_upgrade(alloy_level, level)))
+            .collect();
+        Some(AlloyRun {
+            network,
+            targets: order_by_distance(pos, members),
+            shares_set: false,
+            upgraded: 0,
+        })
+    }
+
+    /// O começo da troca de um transmissor (veja `EnergyTransmitters::alloy_take`).
+    pub fn alloy_take<W: ResourceOwnerWorld<R>>(
+        &mut self,
+        world: &mut W,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+    ) -> Option<ResourceUpgrade<StackContents<R>>> {
+        let id = self.st.live(pos)?;
+        if !run.shares_set {
+            let root = Transaction::open_root();
+            self.st
+                .family
+                .validate_save_shares(&self.registry, run.network, id, Some(&root));
+            root.commit();
+            run.shares_set = true;
+        }
+        let network = self.st.slots[id.0 as usize].net();
+        self.st.slots[id.0 as usize].tx.as_mut()?.set_upgrading(true);
+        self.st.family.take_share(id, network, None);
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
+            set_transmitter_network(&mut ctx, id, None, true);
+        }
+        let buffer = self.st.family.pipe(id).upgrade_data().buffer;
+        let tx = self.st.slots[id.0 as usize].tx.as_ref()?;
+        let data = ResourceUpgrade {
+            redstone_reactive: tx.redstone_reactive,
+            connection_types: *tx.connection_types_raw(),
+            buffer,
+        };
+        self.flush_deferred(world);
+        Some(data)
+    }
+
+    /// O fim da troca: o transmissor novo em `pos` recebe o dado.
+    pub fn alloy_give(
+        &mut self,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+        data: &ResourceUpgrade<StackContents<R>>,
+    ) -> bool {
+        let Some(id) = self.st.live(pos) else {
+            return false;
+        };
+        if let Some(tx) = self.st.slots[id.0 as usize].tx.as_mut() {
+            tx.redstone_reactive = data.redstone_reactive;
+            tx.set_connection_types_raw(data.connection_types);
+        }
+        let root = Transaction::open_root();
+        self.st.family.pipe(id).parse_upgrade_data(
+            &ResourceTransmitterUpgradeData {
+                buffer: data.buffer.clone(),
+            },
+            &root,
+        );
+        root.commit();
+        run.upgraded += 1;
+        true
+    }
+
+    /// `transmitterNetwork.invalidate(null)` ao fim do laço, se algum subiu.
+    pub fn alloy_finish<W: ResourceOwnerWorld<R>>(&mut self, world: &mut W, run: &AlloyRun) {
+        if !run.did_upgrade() {
+            return;
+        }
+        let mut ctx = Ctx {
+            st: &mut self.st,
+            world,
+        };
+        self.registry.invalidate_network(&mut ctx, run.network, None);
+        self.flush_deferred(world);
+    }
+
+    /// O pacote de atualização do transmissor (`writeReducedUpdatedTag`) e o `getCapacity()` dele: o que o cliente recebe a cada `sendUpdatePacket`.
+    pub fn client_update(&self, pos: BlockPos) -> Option<(Compound, i64)> {
+        let id = self.st.live(pos)?;
+        Some((
+            self.st.tx(id).write_reduced_updated_tag(),
+            self.st.family.pipe(id).capacity(),
+        ))
     }
 
     /// Os cliques do Configurator (`TileEntityTransmitter.onSneakRightClick`): `hit_side` é o lado do braço que o olhar toca. Devolve se o

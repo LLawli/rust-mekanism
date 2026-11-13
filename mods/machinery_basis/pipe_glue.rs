@@ -54,6 +54,7 @@ thread_local! {
 
 /// `id` (o `ModBlockEntity.id`) passa a ser um cano mecânico: os eventos do jogo dele vão ao dono dos canos, e `stats` dá a capacidade e a vazão do tier.
 pub fn pipes_register(id: &str, stats: PipeStats) {
+    crate::game::machinery_transmitter_client::register_source(crate::game::machinery_transmitter_client::TagSource { tag: pipe_tag, positions: pipe_positions });
     basis::transmitters_register(SINK_OWNER, id, pipes_event);
     let mut kinds = PIPE_KINDS.lock().unwrap_or_else(|e| e.into_inner());
     if !kinds.iter().any(|known| *known as usize == stats as usize) {
@@ -261,6 +262,8 @@ impl ResourceOwnerWorld<FluidResource> for GameWorld<'_, '_> {
             eprintln!("MBW {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
         }
         PIPE_VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
+        // `sendUpdatePacket`: o cliente recebe o pacote de atualização no começo do tick seguinte.
+        crate::game::machinery_transmitter_client::dirty(self.dimension, at);
     }
 
     fn overlay(&mut self, _pos: SimPos, overlay: PipeOverlay) {
@@ -321,6 +324,21 @@ fn write_stored(nbt: &mut Compound, stored: &StackContents<FluidResource>) {
 
 fn new_owner() -> FluidTransmitters {
     fluid_transmitters(DimensionId(0), Uuid::random, |_| Uuid::random().hash_code())
+}
+
+/// O pacote de atualização do transmissor em `pos` (`writeReducedUpdatedTag`), para o cliente.
+fn pipe_tag(_game: &Game<'_>, dimension: &'static str, pos: [i32; 3]) -> Option<crate::game::machinery_transmitter_client::TagOut> {
+    let (tag, capacity) = with_owner(dimension, |owner| owner.client_update(sim_pos(pos))).flatten()?;
+    Some(crate::game::machinery_transmitter_client::TagOut { kind: machinery_basis_core::transmission::client::ClientKind::Resource, capacity, tag })
+}
+
+fn pipe_positions() -> Vec<(&'static str, [i32; 3])> {
+    PIPES.with(|owners| {
+        owners
+            .try_borrow()
+            .map(|owners| owners.iter().flat_map(|(dimension, owner)| owner.positions().into_iter().map(move |pos| (*dimension, arr(pos)))).collect())
+            .unwrap_or_default()
+    })
 }
 
 /// Roda `f` no dono dos canos da dimensão. `None` se o dono já está ocupado (um evento dentro de outro).
@@ -434,10 +452,14 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
         with_owner(dimension, |owner| owner.set_game_time(time));
     }
     let runs_normally = matches!(event, PipeEvent::ServerTickPost { runs_normally: true });
+    let mut scale_packets = Vec::new();
     let dirty = with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
             owner.handle(&mut world, event);
+        }
+        if post {
+            scale_packets = owner.take_scale_packets();
         }
         if let Some(pos) = unloaded {
             pipe_write(game, owner, pos);
@@ -468,7 +490,13 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
     handlers_flush(game, dimension);
+    // `Mekanism.onLiquidTransferred` e `onChemicalTransferred`: o `PacketNetworkScale` e o do conteúdo saem juntos, a quem está no raio da rede.
+    for out in scale_packets {
+        let contents = out.contents.map(|resource| resource.map(|resource| resource.id.to_string()));
+        crate::game::machinery_transmitter_client::scale(game, dimension, out.packet, out.range, contents);
+    }
     if let Some(pos) = removed {
+        crate::game::machinery_transmitter_client::gone(game, dimension, pos);
         PIPE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
     }
     // `markChunkDirty` da rede: o chunk do cano vai para o próximo salvamento.

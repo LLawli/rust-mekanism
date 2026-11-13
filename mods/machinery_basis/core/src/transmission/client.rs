@@ -496,3 +496,209 @@ impl ClientTransmitters {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os pacotes do canal entre o servidor e o cliente. O Horizon junta o pacote de atualização de um block entity de mod no `nbt` da cópia do cliente sem avisar o
+// mod (`native_block_entity_update_tag`), então o `handleUpdateTag` não teria onde rodar; a cola manda o mesmo compound (`writeReducedUpdatedTag`) por um canal
+// de mod, que roda o `handleUpdateTag` ao chegar.
+
+/// Um pacote de atualização de transmissor: o que o cliente precisa para criar o tile (`kind` e `capacity`) e o compound do `writeReducedUpdatedTag`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TagMessage {
+    pub dimension: String,
+    pub pos: BlockPos,
+    pub kind: ClientKind,
+    pub capacity: i64,
+    pub tag: Compound,
+}
+
+fn put_string(out: &mut Vec<u8>, text: &str) {
+    out.extend_from_slice(&(text.len() as u16).to_be_bytes());
+    out.extend_from_slice(text.as_bytes());
+}
+
+fn put_pos(out: &mut Vec<u8>, pos: BlockPos) {
+    for value in [pos.x, pos.y, pos.z] {
+        out.extend_from_slice(&value.to_be_bytes());
+    }
+}
+
+struct Reader<'a>(&'a [u8]);
+
+impl<'a> Reader<'a> {
+    fn take(&mut self, count: usize) -> Option<&'a [u8]> {
+        if self.0.len() < count {
+            return None;
+        }
+        let (head, rest) = self.0.split_at(count);
+        self.0 = rest;
+        Some(head)
+    }
+
+    fn u8(&mut self) -> Option<u8> {
+        self.take(1).map(|bytes| bytes[0])
+    }
+
+    fn i32(&mut self) -> Option<i32> {
+        Some(i32::from_be_bytes(self.take(4)?.try_into().ok()?))
+    }
+
+    fn i64(&mut self) -> Option<i64> {
+        Some(i64::from_be_bytes(self.take(8)?.try_into().ok()?))
+    }
+
+    fn string(&mut self) -> Option<String> {
+        let len = u16::from_be_bytes(self.take(2)?.try_into().ok()?) as usize;
+        String::from_utf8(self.take(len)?.to_vec()).ok()
+    }
+
+    fn pos(&mut self) -> Option<BlockPos> {
+        Some(BlockPos::new(self.i32()?, self.i32()?, self.i32()?))
+    }
+}
+
+impl ClientKind {
+    fn code(self) -> u8 {
+        match self {
+            ClientKind::Energy => 0,
+            ClientKind::Resource => 1,
+            ClientKind::Heat => 2,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        Some(match code {
+            0 => ClientKind::Energy,
+            1 => ClientKind::Resource,
+            2 => ClientKind::Heat,
+            _ => return None,
+        })
+    }
+}
+
+impl TagMessage {
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        put_string(&mut out, &self.dimension);
+        put_pos(&mut out, self.pos);
+        out.push(self.kind.code());
+        out.extend_from_slice(&self.capacity.to_be_bytes());
+        out.extend_from_slice(&(self.tag.len() as u16).to_be_bytes());
+        for (key, value) in &self.tag {
+            put_string(&mut out, key);
+            match value {
+                Tag::Byte(v) => out.extend_from_slice(&[1, *v as u8]),
+                Tag::Short(v) => {
+                    out.push(2);
+                    out.extend_from_slice(&v.to_be_bytes());
+                }
+                Tag::Int(v) => {
+                    out.push(3);
+                    out.extend_from_slice(&v.to_be_bytes());
+                }
+                Tag::Long(v) => {
+                    out.push(4);
+                    out.extend_from_slice(&v.to_be_bytes());
+                }
+                Tag::Float(v) => {
+                    out.push(5);
+                    out.extend_from_slice(&v.to_bits().to_be_bytes());
+                }
+                Tag::Double(v) => {
+                    out.push(6);
+                    out.extend_from_slice(&v.to_bits().to_be_bytes());
+                }
+                Tag::String(v) => {
+                    out.push(7);
+                    put_string(&mut out, v);
+                }
+                Tag::IntArray(v) => {
+                    out.push(8);
+                    out.extend_from_slice(&(v.len() as u16).to_be_bytes());
+                    for item in v {
+                        out.extend_from_slice(&item.to_be_bytes());
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    pub fn decode(bytes: &[u8]) -> Option<Self> {
+        let mut reader = Reader(bytes);
+        let dimension = reader.string()?;
+        let pos = reader.pos()?;
+        let kind = ClientKind::from_code(reader.u8()?)?;
+        let capacity = reader.i64()?;
+        let count = u16::from_be_bytes(reader.take(2)?.try_into().ok()?);
+        let mut tag = Compound::new();
+        for _ in 0..count {
+            let key = reader.string()?;
+            let value = match reader.u8()? {
+                1 => Tag::Byte(reader.u8()? as i8),
+                2 => Tag::Short(i16::from_be_bytes(reader.take(2)?.try_into().ok()?)),
+                3 => Tag::Int(reader.i32()?),
+                4 => Tag::Long(reader.i64()?),
+                5 => Tag::Float(f32::from_bits(reader.i32()? as u32)),
+                6 => Tag::Double(f64::from_bits(reader.i64()? as u64)),
+                7 => Tag::String(reader.string()?),
+                8 => {
+                    let len = u16::from_be_bytes(reader.take(2)?.try_into().ok()?);
+                    let mut items = Vec::new();
+                    for _ in 0..len {
+                        items.push(reader.i32()?);
+                    }
+                    Tag::IntArray(items)
+                }
+                _ => return None,
+            };
+            tag.insert(key, value);
+        }
+        reader.0.is_empty().then_some(Self {
+            dimension,
+            pos,
+            kind,
+            capacity,
+            tag,
+        })
+    }
+}
+
+/// O transmissor saiu do mundo do cliente (`setRemoved`).
+pub fn encode_gone(dimension: &str, pos: BlockPos) -> Vec<u8> {
+    let mut out = Vec::new();
+    put_string(&mut out, dimension);
+    put_pos(&mut out, pos);
+    out
+}
+
+pub fn decode_gone(bytes: &[u8]) -> Option<(String, BlockPos)> {
+    let mut reader = Reader(bytes);
+    let dimension = reader.string()?;
+    let pos = reader.pos()?;
+    reader.0.is_empty().then_some((dimension, pos))
+}
+
+/// `PacketFluidNetworkContents` e `PacketChemicalNetworkContents`: a rede e o último tipo (`None` é o recurso vazio).
+pub fn encode_contents(network: u128, resource: Option<&str>) -> Vec<u8> {
+    let mut out = network.to_be_bytes().to_vec();
+    match resource {
+        Some(id) => {
+            out.push(1);
+            put_string(&mut out, id);
+        }
+        None => out.push(0),
+    }
+    out
+}
+
+pub fn decode_contents(bytes: &[u8]) -> Option<(u128, Option<String>)> {
+    let mut reader = Reader(bytes);
+    let network = u128::from_be_bytes(reader.take(16)?.try_into().ok()?);
+    let resource = match reader.u8()? {
+        0 => None,
+        1 => Some(reader.string()?),
+        _ => return None,
+    };
+    reader.0.is_empty().then_some((network, resource))
+}

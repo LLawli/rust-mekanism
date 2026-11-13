@@ -14,17 +14,18 @@
 //! Do cabo (`TileEntityUniversalCable`): `onUpdateServer` puxa dos aceitadores em `PULL` antes de tudo (`pullFromAcceptors`), e a capability
 //! de energia é o contêiner da rede (`getContainer`), que só existe com rede; sem rede o cabo não aceita nada de fora (o buffer próprio é
 //! `notExternal`).
+use super::alloy::{AlloyRun, CableUpgrade, can_upgrade, order_by_distance};
 use super::client::{Outgoing, ScaleOutbox};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
 };
 use super::energy_container::BufferEnergyContainer;
 use super::energy_network::EnergyFamily;
-use super::registry::TransmitterNetworkRegistry;
+use super::registry::{TransmitterNetworkRegistry, set_transmitter_network};
 use super::transmitter::{
     Compound, Effect, NeighborTransmitter, Overlay, Tag, Transmitter, TransmitterWorld,
 };
-use super::universal_cable::UniversalCable;
+use super::universal_cable::{UniversalCable, UniversalCableUpgradeData};
 use super::{DimensionId, NetworkEvent, NetworkId, TransmitterHost, TransmitterId, Uuid};
 use crate::containers::AutomationType;
 use crate::distribution::EnergyInsert;
@@ -975,6 +976,122 @@ impl EnergyTransmitters {
         let mut tag = self.st.tx(id).write();
         tag.insert(ENERGY_KEY.to_owned(), Tag::Long(share));
         Some(tag)
+    }
+
+    /// `TileEntityTransmitter.onAlloyInteraction`, até a lista: o cabo clicado em `pos` tem rede, e os da rede que a liga de nível `alloy_level` sobe (`canUpgrade`) vêm do mais
+    /// perto para o mais longe. `tier_of` dá o nível do tier do bloco em cada posição.
+    pub fn alloy_start(
+        &self,
+        pos: BlockPos,
+        alloy_level: i32,
+        tier_of: &dyn Fn(BlockPos) -> Option<i32>,
+    ) -> Option<AlloyRun> {
+        let id = self.st.live(pos)?;
+        let slot = &self.st.slots[id.0 as usize];
+        if !slot.tx.as_ref()?.has_transmitter_network() {
+            return None;
+        }
+        let network = slot.network?;
+        let members: Vec<BlockPos> = self
+            .registry
+            .network(network)
+            .transmitters()
+            .into_iter()
+            .map(|member| &self.st.slots[member.0 as usize])
+            .filter(|member| !member.dead)
+            .map(|member| member.pos)
+            .filter(|at| tier_of(*at).is_some_and(|level| can_upgrade(alloy_level, level)))
+            .collect();
+        Some(AlloyRun {
+            network,
+            targets: order_by_distance(pos, members),
+            shares_set: false,
+            upgraded: 0,
+        })
+    }
+
+    /// O começo da troca de um cabo: na primeira, as shares da rede se validam (`validateSaveShares`, numa transação própria); depois `startUpgrading`
+    /// (`isUpgrading`, `takeShare(null)`, `setTransmitterNetwork(null)`) e o dado de upgrade (`getUpgradeData`), antes de o bloco mudar.
+    pub fn alloy_take<W: OwnerWorld>(
+        &mut self,
+        world: &mut W,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+    ) -> Option<CableUpgrade> {
+        let id = self.st.live(pos)?;
+        if !run.shares_set {
+            let root = Transaction::open_root();
+            self.st
+                .family
+                .validate_save_shares(&self.registry, run.network, id, Some(&root));
+            root.commit();
+            run.shares_set = true;
+        }
+        let network = {
+            let slot = &self.st.slots[id.0 as usize];
+            slot.network.filter(|_| slot.tx.as_ref().is_some_and(Transmitter::has_transmitter_network))
+        };
+        self.st.slots[id.0 as usize].tx.as_mut()?.set_upgrading(true);
+        self.st.family.take_share(id, network, None);
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
+            set_transmitter_network(&mut ctx, id, None, true);
+        }
+        let buffer = self.st.family.cable(id).upgrade_data().buffer;
+        let tx = self.st.slots[id.0 as usize].tx.as_ref()?;
+        let data = CableUpgrade {
+            redstone_reactive: tx.redstone_reactive,
+            connection_types: *tx.connection_types_raw(),
+            buffer,
+        };
+        self.flush_deferred(world);
+        Some(data)
+    }
+
+    /// O fim da troca: o cabo novo em `pos` recebe o dado (`parseUpgradeData`). `false` se o bloco novo não tem cabo ("Error upgrading transmitter"): o laço segue sem contar.
+    pub fn alloy_give(&mut self, run: &mut AlloyRun, pos: BlockPos, data: &CableUpgrade) -> bool {
+        let Some(id) = self.st.live(pos) else {
+            return false;
+        };
+        if let Some(tx) = self.st.slots[id.0 as usize].tx.as_mut() {
+            tx.redstone_reactive = data.redstone_reactive;
+            tx.set_connection_types_raw(data.connection_types);
+        }
+        let root = Transaction::open_root();
+        self.st.family.cable(id).parse_upgrade_data(
+            &UniversalCableUpgradeData {
+                buffer: data.buffer,
+            },
+            &root,
+        );
+        root.commit();
+        run.upgraded += 1;
+        true
+    }
+
+    /// `transmitterNetwork.invalidate(null)` ao fim do laço, se algum subiu.
+    pub fn alloy_finish<W: OwnerWorld>(&mut self, world: &mut W, run: &AlloyRun) {
+        if !run.did_upgrade() {
+            return;
+        }
+        let mut ctx = Ctx {
+            st: &mut self.st,
+            world,
+        };
+        self.registry.invalidate_network(&mut ctx, run.network, None);
+        self.flush_deferred(world);
+    }
+
+    /// O pacote de atualização do cabo (`writeReducedUpdatedTag`) e o `getCapacity()` dele: o que o cliente recebe a cada `sendUpdatePacket`.
+    pub fn client_update(&self, pos: BlockPos) -> Option<(Compound, i64)> {
+        let id = self.st.live(pos)?;
+        Some((
+            self.st.tx(id).write_reduced_updated_tag(),
+            self.st.family.cable(id).capacity(),
+        ))
     }
 
     /// Os cliques do Configurator (`TileEntityTransmitter.onSneakRightClick`): `hit_side` é o lado do braço que o olhar toca. Devolve se o

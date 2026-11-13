@@ -5,7 +5,8 @@
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::client::{
-    ClientKind, ClientTransmitters, ScaleOutbox, ScalePacket, gen_packet_range, player_in_range,
+    ClientKind, ClientTransmitters, ScaleOutbox, ScalePacket, TagMessage, decode_contents, decode_gone, encode_contents,
+    encode_gone, gen_packet_range, player_in_range,
 };
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::transmitter::{Compound, Tag, keys};
@@ -217,4 +218,33 @@ fn clearing_the_client_networks_forgets_them_and_a_new_tag_makes_them_again() {
     client.clear_client_networks();
     assert!(client.get_client_network(A).is_none());
     assert_eq!(client.network_count(), 0);
+}
+
+#[test]
+fn the_messages_survive_the_wire() {
+    let mut tag = tag(Some(A), [0, 1, 2, 3, 0, 1], 5, -3);
+    tag.insert("scale".into(), Tag::Float(0.25));
+    tag.insert("energy".into(), Tag::Long(-9_000_000_000));
+    tag.insert("stored".into(), Tag::String("minecraft:water".into()));
+    tag.insert("short".into(), Tag::Short(-7));
+    tag.insert("int".into(), Tag::Int(i32::MIN));
+    tag.insert("double".into(), Tag::Double(1.5e300));
+    let message = TagMessage {
+        dimension: "minecraft:the_nether".into(),
+        pos: BlockPos::new(-12, 64, 30_000_000),
+        kind: ClientKind::Resource,
+        capacity: 4_000,
+        tag,
+    };
+    assert_eq!(TagMessage::decode(&message.encode()), Some(message.clone()));
+    let mut cut = message.encode();
+    cut.pop();
+    assert_eq!(TagMessage::decode(&cut), None, "um pacote cortado não vale");
+    cut = message.encode();
+    cut.push(0);
+    assert_eq!(TagMessage::decode(&cut), None, "nem um com sobra");
+    let gone = encode_gone("minecraft:overworld", BlockPos::new(1, 2, 3));
+    assert_eq!(decode_gone(&gone), Some(("minecraft:overworld".to_owned(), BlockPos::new(1, 2, 3))));
+    assert_eq!(decode_contents(&encode_contents(A, Some("mekanism:hydrogen"))), Some((A, Some("mekanism:hydrogen".into()))));
+    assert_eq!(decode_contents(&encode_contents(B, None)), Some((B, None)));
 }

@@ -3241,6 +3241,8 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 eprintln!("MBT {{\"t\":{},\"e\":\"pre\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
             }
             transmitters_flush(game);
+            // O `sendUpdatePacket` do tick anterior sai agora, com o estado de agora (a transmissão de mudanças dos chunks).
+            crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
             if !transmitters::is_active() {
@@ -3289,6 +3291,7 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
     }
     let events = transmitters::reset();
     transmitters_deliver(game, events);
+    crate::game::machinery_transmitter_client::reset(game);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -3340,10 +3343,26 @@ thread_local! {
 /// `id` (o `ModBlockEntity.id`) passa a ser um cabo de energia de `owner`: os eventos do jogo dele vão ao dono dos cabos, e `capacity` dá a capacidade.
 pub fn cables_register(owner: &'static str, id: &str, capacity: CableCapacity) {
     transmitters_register(owner, id, cables_event);
+    crate::game::machinery_transmitter_client::register_source(crate::game::machinery_transmitter_client::TagSource { tag: cable_tag, positions: cable_positions });
     let mut kinds = CABLE_KINDS.lock().unwrap_or_else(|e| e.into_inner());
     if !kinds.iter().any(|(name, _)| *name == owner) {
         kinds.push((owner, capacity));
     }
+}
+
+/// O pacote de atualização do cabo em `pos` (`writeReducedUpdatedTag`), para o cliente.
+fn cable_tag(_game: &Game<'_>, dimension: &'static str, pos: [i32; 3]) -> Option<crate::game::machinery_transmitter_client::TagOut> {
+    let (tag, capacity) = with_owner(dimension, |owner| owner.client_update(sim_pos(pos))).flatten()?;
+    Some(crate::game::machinery_transmitter_client::TagOut { kind: machinery_basis_core::transmission::client::ClientKind::Energy, capacity, tag })
+}
+
+fn cable_positions() -> Vec<(&'static str, [i32; 3])> {
+    CABLES.with(|cables| {
+        cables
+            .try_borrow()
+            .map(|cables| cables.iter().flat_map(|(dimension, owner)| owner.positions().into_iter().map(move |pos| (*dimension, arr(pos)))).collect())
+            .unwrap_or_default()
+    })
 }
 
 fn cable_capacity(block: &str) -> Option<i64> {
@@ -3543,6 +3562,8 @@ impl OwnerWorld for GameWorld<'_, '_> {
             eprintln!("MBV {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
         }
         CABLE_VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
+        // `sendUpdatePacket`: o cliente recebe o pacote de atualização no começo do tick seguinte.
+        crate::game::machinery_transmitter_client::dirty(self.dimension, at);
     }
 
     fn overlay(&mut self, _pos: SimPos, overlay: CableOverlay) {
@@ -3655,10 +3676,14 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
             owner.set_game_time(time);
         });
     }
+    let mut scale_packets = Vec::new();
     let dirty = with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
             owner.handle(&mut world, event);
+        }
+        if post {
+            scale_packets = owner.take_scale_packets();
         }
         if let Some(pos) = unloaded {
             cable_write(game, owner, pos);
@@ -3687,12 +3712,17 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
     acceptors_flush(game, dimension);
+    // `Mekanism.onEnergyTransferred`: o `PacketNetworkScale` de cada evento de transferência, a quem está no raio da rede.
+    for out in scale_packets {
+        crate::game::machinery_transmitter_client::scale(game, dimension, out.packet, out.range, None);
+    }
     if let Some(pos) = cleared {
         // O `energy` que o save trouxe já é a parte do cabo (o dono a leu em `cable_info`): não é energia que um vizinho empurrou.
         let inbox = cable_inbox_value(game, pos);
         CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), inbox));
     }
     if let Some(pos) = removed {
+        crate::game::machinery_transmitter_client::gone(game, dimension, pos);
         CABLE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
         CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.remove(&(dimension, pos)));
     }

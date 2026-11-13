@@ -24,6 +24,7 @@
 //! `DimData` guarda os órfãos e os chunks em árvores (`Long2ObjectRBTreeMap`, `Long2BooleanRBTreeMap`, `Long2ObjectAVLTreeMap`), cuja
 //! ordem é a da chave `long` com sinal: determinística.
 pub mod acceptor_cache;
+pub mod alloy;
 pub mod buffered_network;
 pub mod buffered_resource_network;
 pub mod buffered_resource_transmitter;
