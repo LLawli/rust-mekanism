@@ -1,6 +1,7 @@
 //! O dono dos transportadores logísticos (`InventoryTransmitters`) pelo que os rastros não cobrem: o NBT que sai e volta (a lista de pilhas em trânsito, a cor e o modo do desviador), o
 //! chunk que descarrega (as pilhas ficam no disco, nada cai), as cores que se contradizem, o clique do Configurator (a cor do logístico, o modo do desviador) e a capability de item. Os
 //! cenários do original (o movimento tick a tick, a quebra, o desviador pelo sinal, o funil) passam por ele em `transporter_move_reference.rs`.
+use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
@@ -57,9 +58,7 @@ impl InventoryOwnerWorld for SimWorld {
     }
 
     fn decode_item(&self, tag: &Compound) -> Option<ItemResource> {
-        tag.get("id")
-            .and_then(Nbt::as_str)
-            .map(|id| ItemResource::new(id, 64))
+        component_decode(tag)
     }
 
     fn publish(&mut self, _: BlockPos, _: &CableView) {
@@ -81,6 +80,41 @@ impl InventoryOwnerWorld for SimWorld {
     fn world_drop(&mut self, drop: WorldDrop) {
         self.drops.push(drop);
     }
+}
+
+/// `ItemResource.CODEC` ao ler, para o teste: o `id` e, se há, os `components` (cada um como texto).
+fn component_decode(tag: &Compound) -> Option<ItemResource> {
+    let id = tag.get("id").and_then(Nbt::as_str)?;
+    let texts: Vec<(String, String)> = tag
+        .get("components")
+        .and_then(Nbt::as_compound)
+        .map(|components| {
+            components
+                .iter()
+                .filter_map(|(kind, value)| Some((kind.clone(), value.as_str()?.to_owned())))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(ItemResource::with_components(
+        id,
+        64,
+        Components::new(texts.iter().map(|(kind, value)| (kind.as_str(), value.as_str()))),
+    ))
+}
+
+/// `ItemResource.CODEC` ao escrever, para o teste: o `components` só existe quando o recurso tem algum.
+fn component_encode(item: &ItemResource) -> Compound {
+    let mut resource = Compound::new();
+    resource.insert("id".into(), Nbt::String(item.id.to_string()));
+    if !item.components.is_empty() {
+        let components: Compound = item
+            .components
+            .iter()
+            .map(|(kind, value)| (kind.to_owned(), Nbt::String(value.to_owned())))
+            .collect();
+        resource.insert("components".into(), Nbt::Compound(components));
+    }
+    resource
 }
 
 fn owner() -> InventoryTransmitters {
@@ -512,4 +546,76 @@ fn a_neighbor_diversion_transporter_is_read_against_the_current_signal() {
     world.powered.set(true);
     owner.handle(&mut world, Event::Neighbor(at(0)));
     assert!(owner.view_at(&world, at(0)).unwrap().connected[Face::East as usize]);
+}
+
+/// Um item com componentes (um nome, o dano) que passa por uma linha de transportadores sai do NBT salvo com os componentes e volta ao reabrir o mundo igual, sem virar o item sem
+/// componentes (`ItemResource.CODEC` leva o `components` na lista `items`). Com o codec só do id, o item volta sem eles.
+#[test]
+fn an_item_with_components_survives_a_save_and_a_reload() {
+    let named = ItemResource::with_components(
+        "minecraft:iron_pickaxe",
+        1,
+        Components::new([("minecraft:custom_name", "\"Rápida\""), ("minecraft:damage", "40")]),
+    );
+    for with_codec in [true, false] {
+        let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+        world.chests[&at(-1)].set_item(0, Some(named.clone()), 1);
+        tick(&mut owner, &mut world, 25, 3);
+        assert!(transit_total(&owner, 3) > 0, "nenhuma pilha em trânsito para salvar");
+        let encode = |item: &ItemResource| {
+            if with_codec {
+                component_encode(item)
+            } else {
+                machinery_basis_core::transporter::stack::plain_item_encode(item)
+            }
+        };
+        let mut seen = 0;
+        let mut fresh = SimWorld {
+            chests: world.chests.clone(),
+            ..SimWorld::default()
+        };
+        for x in 0..3 {
+            let saved = owner.write(at(x), &encode).expect("o transportador existe");
+            let list = saved.items.clone();
+            seen += list.as_ref().map_or(0, |items| {
+                let text = machinery_basis_core::transporter::nbt::to_snbt(items);
+                usize::from(text.contains("minecraft:damage"))
+            });
+            fresh.infos.borrow_mut().insert(
+                at(x),
+                TransporterInfo {
+                    tier: TransporterTier::Basic,
+                    kind: logistical(),
+                    saved: Some(saved),
+                },
+            );
+        }
+        let mut reopened = self::owner();
+        for x in 0..3 {
+            reopened.handle(&mut fresh, Event::ClearRemoved(at(x)));
+        }
+        let back: Vec<ItemResource> = (0..3)
+            .flat_map(|x| {
+                reopened
+                    .transporter_at(at(x))
+                    .unwrap()
+                    .transit_stacks()
+                    .iter()
+                    .filter_map(|(_, stack)| stack.borrow().item_type().cloned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let pickaxes = back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").count();
+        assert!(pickaxes > 0, "a ferramenta não estava em trânsito");
+        if with_codec {
+            assert!(seen > 0, "o NBT salvo não leva os componentes");
+            assert!(
+                back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").all(|item| item.components == named.components),
+                "o item voltou sem os componentes"
+            );
+        } else {
+            assert_eq!(seen, 0);
+            assert!(back.iter().filter(|item| &*item.id == "minecraft:iron_pickaxe").all(|item| item.components.is_empty()));
+        }
+    }
 }

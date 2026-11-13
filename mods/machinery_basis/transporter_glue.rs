@@ -83,13 +83,19 @@ fn arr(pos: SimPos) -> [i32; 3] {
 
 fn tag_to_nbt(tag: &Tag) -> Option<Nbt> {
     Some(match tag {
+        Tag::Byte(v) => Nbt::Byte(*v),
+        Tag::Short(v) => Nbt::Short(*v),
         Tag::Int(v) => Nbt::Int(*v),
         Tag::Long(v) => Nbt::Long(*v),
+        Tag::Float(v) => Nbt::Float(*v),
+        Tag::Double(v) => Nbt::Double(*v),
         Tag::String(v) => Nbt::String(v.to_string_lossy()),
+        Tag::ByteArray(v) => Nbt::ByteArray(v.clone()),
         Tag::IntArray(v) => Nbt::IntArray(v.clone()),
+        Tag::LongArray(v) => Nbt::LongArray(v.clone()),
         Tag::List(items) => Nbt::List(items.iter().filter_map(tag_to_nbt).collect()),
         Tag::Compound(compound) => Nbt::Compound(compound_to_lib(compound)),
-        _ => return None,
+        Tag::End => return None,
     })
 }
 
@@ -102,10 +108,16 @@ fn compound_to_lib(compound: &Compound) -> LibCompound {
 
 fn nbt_to_tag(nbt: &Nbt) -> Tag {
     match nbt {
+        Nbt::Byte(v) => Tag::Byte(*v),
+        Nbt::Short(v) => Tag::Short(*v),
         Nbt::Int(v) => Tag::Int(*v),
         Nbt::Long(v) => Tag::Long(*v),
+        Nbt::Float(v) => Tag::Float(*v),
+        Nbt::Double(v) => Tag::Double(*v),
         Nbt::String(v) => Tag::String(JavaString::from(v.as_str())),
+        Nbt::ByteArray(v) => Tag::ByteArray(v.clone()),
         Nbt::IntArray(v) => Tag::IntArray(v.clone()),
+        Nbt::LongArray(v) => Tag::LongArray(v.clone()),
         Nbt::List(items) => Tag::List(items.iter().map(nbt_to_tag).collect()),
         Nbt::Compound(compound) => Tag::Compound(lib_to_compound(compound)),
     }
@@ -135,14 +147,23 @@ fn write_key(nbt: &mut Compound, key: &str, value: Option<&Nbt>) {
     }
 }
 
-/// `ItemResource.CODEC` ao escrever: o id. Os componentes de um item ainda não passam por aqui (ver `docs/plano-paridade.md`, decisão 148).
-fn encode_item(item: &ItemResource) -> LibCompound {
-    machinery_basis_core::transporter::stack::plain_item_encode(item)
+/// `ItemResource.CODEC` ao escrever: o `id` e, quando o recurso tem componentes, o `components` (o `DataComponentPatch.CODEC`: o dano e cada componente na forma que a pilha do jogo tem),
+/// como o `optionalFieldOf("components", EMPTY)` do original. Vale para o NBT salvo (`items`) e para o de atualização.
+pub(in crate::game) fn encode_item(item: &ItemResource) -> LibCompound {
+    let mut resource = machinery_basis_core::transporter::stack::plain_item_encode(item);
+    if let Some(Tag::Compound(components)) = basis::components_tag(item)
+        && !components.is_empty()
+    {
+        resource.insert("components".into(), Nbt::Compound(compound_to_lib(&components)));
+    }
+    resource
 }
 
-fn decode_item(tag: &LibCompound) -> Option<ItemResource> {
+/// `ItemResource.CODEC` ao ler: o `id` e o `components`, com o limite de pilha do item no registro.
+pub(in crate::game) fn decode_item(game: &Game<'_>, tag: &LibCompound) -> Option<ItemResource> {
     let id = tag.get("id")?.as_str()?;
-    Some(ItemResource::new(id, 64))
+    let components = tag.get("components").map(nbt_to_tag);
+    Some(basis::resource_from_tag(game, id, components.as_ref()))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -310,7 +331,7 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
     }
 
     fn decode_item(&self, tag: &LibCompound) -> Option<ItemResource> {
-        decode_item(tag)
+        decode_item(&self.game.borrow(), tag)
     }
 
     fn encode_item(&self, item: &ItemResource) -> LibCompound {
