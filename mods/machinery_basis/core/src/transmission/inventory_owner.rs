@@ -1083,15 +1083,11 @@ impl InventoryTransmitters {
         Some(inserted)
     }
 
-    /// O que o transportador guarda no block entity (`TileEntityTransmitter.saveAdditional`, `LogisticalTransporterBase.write`, a cor e o modo).
-    pub fn write<W: InventoryOwnerWorld>(
-        &self,
-        world: &W,
-        pos: BlockPos,
-    ) -> Option<SavedTransporter> {
+    /// O que o transportador guarda no block entity (`TileEntityTransmitter.saveAdditional`, `LogisticalTransporterBase.write`, a cor e o modo). `encode` é o
+    /// `ItemResource.CODEC` do jogo.
+    pub fn write(&self, pos: BlockPos, encode: ItemEncode) -> Option<SavedTransporter> {
         let id = self.st.live(pos)?;
         let base = &self.st.slots[id.0 as usize].base;
-        let encode: ItemEncode = &|item| world.encode_item(item);
         Some(SavedTransporter {
             tag: base.transmitter.write(),
             color: base.write_color(),

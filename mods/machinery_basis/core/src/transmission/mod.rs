@@ -37,6 +37,7 @@ pub mod fluid_network;
 pub mod heat_network;
 pub mod heat_owner;
 pub mod host_acceptor;
+pub mod host_item;
 pub mod host_resource;
 pub mod inventory_network;
 pub mod inventory_owner;
