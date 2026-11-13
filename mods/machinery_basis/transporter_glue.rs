@@ -486,6 +486,7 @@ fn transporters_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 
 fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
     let Some(event) = basis::owner_event(event) else {
+        basis::transmitter_probe_reset("transportador", OWNERS.with_borrow(|owners| basis::sum_counts(owners.values().map(|owner| owner.registry().probe_counts()))));
         OWNERS.with_borrow_mut(HashMap::clear);
         VIEWS.with_borrow_mut(HashMap::clear);
         HANDLERS.with_borrow_mut(HashMap::clear);

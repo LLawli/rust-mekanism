@@ -701,6 +701,7 @@ fn retry_pending<F: Family>(game: &mut Game<'_>, dimension: &'static str) {
 
 fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
     let Some(event) = basis::owner_event(event) else {
+        basis::transmitter_probe_reset(F::SINK_OWNER, F::owners().with_borrow(|owners| basis::sum_counts(owners.values().map(|owner| owner.registry().probe_counts()))));
         F::owners().with_borrow_mut(HashMap::clear);
         F::views().with_borrow_mut(HashMap::clear);
         F::handlers().with_borrow_mut(HashMap::clear);

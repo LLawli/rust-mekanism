@@ -33,6 +33,7 @@ pub mod item_hud;
 pub mod item_instance;
 pub mod java_random;
 pub mod last_energy;
+pub mod level_idle;
 pub mod liquid;
 pub mod liquid_data;
 pub mod machine_sync;

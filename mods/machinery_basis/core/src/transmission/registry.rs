@@ -217,6 +217,11 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         }
     }
 
+    /// `invalidTransmitters.size()`, `networksToChange.size()` e `networks.size()`: o que o original tem no registro quando o servidor para (a sonda do fechamento, decisão 194).
+    pub fn probe_counts(&self) -> (usize, usize, usize) {
+        (self.invalid_transmitters.len(), self.networks_to_change.len(), self.networks.len())
+    }
+
     /// `reset()`: o que o servidor faz ao parar. As redes antigas ficam na lista, sem registro.
     pub fn reset(&mut self) {
         for key in self.networks.in_order() {

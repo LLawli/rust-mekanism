@@ -179,6 +179,79 @@ impl Game<'_> {
             let _ = self.enter_level(None, back);
         }
     }
+
+    /// O nível está aberto: o que está no lugar ou um dos parados.
+    fn mb_level_open(&self, dim: crate::game::Dim) -> bool {
+        dim == self.dim || self.lod_source_in(dim).is_some()
+    }
+
+    /// A soma das contagens de vários registros (um por dimensão).
+pub fn sum_counts(counts: impl Iterator<Item = (usize, usize, usize)>) -> (usize, usize, usize) {
+    counts.fold((0, 0, 0), |all, one| (all.0 + one.0, all.1 + one.1, all.2 + one.2))
+}
+
+/// O fim de um tick do servidor para os níveis que ninguém segura (decisão 193): o original anda todos os níveis a cada tick, e o `ServerChunkCache` do que o jogador deixou, sem chunk forçado, tira os
+    /// tickets e o `ChunkMap.processUnloads` o descarrega no segundo tick (`machinery_basis_core::level_idle`, medido). O Horizon só anda `levels_to_tick` e nunca descarregava o Overworld parado.
+    /// Aqui o nível parado que a lib manda descarregar entra no lugar, o `update_world` roda sem área nenhuma (o que um servidor sem jogador faz, `radius < 0`: só os chunks forçados ficam) e solta
+    /// os chunks pelo caminho do jogo (o `chunk_unload` dos mods antes de os block entities saírem, a gravação do que mudou), e o nível volta ao lugar. Devolve os níveis em que o `ServerTickPost`
+    /// deste tick roda: os que o servidor andou e os parados que ainda estão carregados.
+    pub(in crate::game) fn mb_idle_levels_end_of_tick(&mut self) -> Vec<crate::game::Dim> {
+        use crate::game::Dim;
+        const ALL: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
+        let mut held = self.levels_to_tick();
+        // Um veículo à espera do passageiro em outro nível segura o nível dele (`close_idle_levels`).
+        for dim in ALL {
+            if !held.contains(&dim) && self.vehicle_waits_in(dim) {
+                held.push(dim);
+            }
+        }
+        let held_ids: Vec<&str> = held.iter().map(|dim| dim.id()).collect();
+        let step = IDLE_LEVELS.with_borrow_mut(|levels| levels.end_of_tick(&held_ids));
+        let back = self.dim;
+        for id in &step.unload {
+            let dim = Dim::from_id(id);
+            if !self.mb_level_open(dim) || (dim != self.dim && self.enter_level(None, dim).is_err()) {
+                continue;
+            }
+            let radius = self.streaming.radius;
+            self.streaming.radius = -1;
+            self.update_world();
+            self.streaming.radius = radius;
+        }
+        if self.dim != back {
+            let _ = self.enter_level(None, back);
+        }
+        machinery_basis_core::level_idle::IdleLevels::post_levels(&held_ids, &step).iter().map(|id| Dim::from_id(id)).collect()
+    }
+
+    /// O servidor fecha (`MinecraftServer.stopServer`: `deactivateTicketsOnClosing`, os ticks até `hasWork` acabar): cada nível solta os chunks pelo caminho de sempre, o `ChunkEvent.Unload` e o
+    /// `onChunkUnloaded` e `setRemoved` de cada transmissor, antes do `ServerStoppedEvent` (`WorldCloseFinal`). Depois do salvamento final, com os block entities ainda no lugar; os níveis na ordem
+    /// em que o original os solta (`closing_order`: o de menos chunks primeiro).
+    pub(in crate::game) fn mb_close_levels(&mut self) {
+        use crate::game::Dim;
+        if self.remote.is_some() {
+            return;
+        }
+        let back = self.dim;
+        let mut counts = Vec::new();
+        for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
+            if !self.mb_level_open(dim) || (dim != self.dim && self.enter_level(None, dim).is_err()) {
+                continue;
+            }
+            counts.push((dim.id().to_owned(), self.world.chunks.len()));
+        }
+        for id in machinery_basis_core::level_idle::closing_order(&counts) {
+            let dim = Dim::from_id(&id);
+            if dim != self.dim && self.enter_level(None, dim).is_err() {
+                continue;
+            }
+            let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
+            self.native_chunks_changed(&chunks);
+        }
+        if self.dim != back {
+            let _ = self.enter_level(None, back);
+        }
+    }
 }
 
 impl RecipeSource {
@@ -3079,6 +3152,10 @@ static TRANSMITTER_SINKS: Mutex<Vec<(&'static str, TransmitterSink)>> = Mutex::n
 const TRANSMITTER_PROBE: bool = false;
 /// As passadas do `server_tick` desde que o jogo abriu (a sonda numera por elas, e não pelo `game_time`, que o `/tick freeze` para).
 static TRANSMITTER_PASS: AtomicI64 = AtomicI64::new(0);
+thread_local! {
+    /// Os níveis que o servidor já andou com alguém e ainda não soltaram os chunks (decisão 193).
+    static IDLE_LEVELS: RefCell<machinery_basis_core::level_idle::IdleLevels> = RefCell::new(machinery_basis_core::level_idle::IdleLevels::new());
+}
 
 /// `id` (o `ModBlockEntity.id`) passa a ser um transmissor, e o `sink` de `owner` (um por dono, a primeira vez que o dono o diz) ouve os eventos de todos. Pode ser dito mais de uma vez.
 pub fn transmitters_register(owner: &'static str, id: &str, sink: TransmitterSink) {
@@ -3086,6 +3163,13 @@ pub fn transmitters_register(owner: &'static str, id: &str, sink: TransmitterSin
     let mut sinks = TRANSMITTER_SINKS.lock().unwrap_or_else(|e| e.into_inner());
     if !sinks.iter().any(|(name, _)| *name == owner) {
         sinks.push((owner, sink));
+    }
+}
+
+/// O registro de uma família antes do `reset`, na sonda (`invalid`, `networksToChange` e `networks` do `TransmitterNetworkRegistry`, que no original é um só para as cinco famílias).
+pub fn transmitter_probe_reset(family: &str, counts: (usize, usize, usize)) {
+    if TRANSMITTER_PROBE {
+        eprintln!("MBT {{\"t\":{},\"e\":\"antes_do_reset\",\"familia\":\"{family}\",\"invalid\":{},\"change\":{},\"redes\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), counts.0, counts.1, counts.2);
     }
 }
 
@@ -3318,12 +3402,15 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
+            // Os níveis parados que descarregam neste tick saem antes do `Post`, como no original (o `ServerLevel.tick` vem antes do `ServerTickEvent.Post`).
+            let post_levels = idle_levels_end_of_tick(game);
             if !transmitters::is_active() {
                 return;
             }
             transmitters_flush(game);
-            // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele.
-            let dims = game.levels_to_tick();
+            // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele, e os parados que
+            // ainda estão carregados (o que descarrega neste tick inclusive, onde o original trata os transmissores inválidos).
+            let dims = post_levels;
             transmitters::deliver_server_tick_post(&mut TickLevels { game, dims }, world_running);
             // Os pacotes de movimento das pilhas (`PacketTransporterSync` e `PacketTransporterBatch`) do tick saem agora.
             crate::game::machinery_transmitter_client::flush_packets(game);
@@ -3357,6 +3444,20 @@ impl transmitters::ServerLevels for TickLevels<'_, '_> {
     fn deliver(&mut self, events: Vec<TransmitterEvent>) {
         transmitters_deliver(self.game, events);
     }
+}
+
+/// O fim de um tick do servidor para os níveis que ninguém segura (o `mb_idle_levels_end_of_tick`), só no servidor: o cliente que recebe o mundo não tem os níveis.
+fn idle_levels_end_of_tick(game: &mut Game<'_>) -> Vec<crate::game::Dim> {
+    if game.remote.is_some() {
+        return game.levels_to_tick();
+    }
+    game.mb_idle_levels_end_of_tick()
+}
+
+/// O servidor fecha: os níveis soltam os chunks antes do `ServerStoppedEvent`, e os que esperavam descarregar são esquecidos (`WorldCloseFinal`).
+pub(in crate::game) fn world_closing(game: &mut Game<'_>) {
+    game.mb_close_levels();
+    IDLE_LEVELS.with_borrow_mut(machinery_basis_core::level_idle::IdleLevels::reset);
 }
 
 /// O mundo fechou (`ServerStoppedEvent`, o `reset` do registro).
@@ -3771,6 +3872,7 @@ fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 
 fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
     let Some(event) = owner_event(event) else {
+        transmitter_probe_reset("cabo", CABLES.with_borrow(|owners| sum_counts(owners.values().map(|owner| owner.registry().probe_counts()))));
         CABLES.with_borrow_mut(HashMap::clear);
         CABLE_VIEWS.with_borrow_mut(HashMap::clear);
         CABLE_ABSORBED.with_borrow_mut(HashMap::clear);

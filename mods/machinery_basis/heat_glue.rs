@@ -294,6 +294,7 @@ fn conductors_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 
 fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
     let Some(event) = basis::owner_event(event) else {
+        basis::transmitter_probe_reset("condutor", CONDUCTORS.with_borrow(|owners| basis::sum_counts(owners.values().map(|owner| owner.registry().probe_counts()))));
         CONDUCTORS.with_borrow_mut(HashMap::clear);
         VIEWS.with_borrow_mut(HashMap::clear);
         DIRTY.with_borrow_mut(Vec::clear);
