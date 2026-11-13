@@ -1026,7 +1026,7 @@ que não cobre helpers além da lista; pedir que entrem nela dá contrato a eles
 
 | Helper | Documentado em | Quem usa |
 |---|---|---|
-| `native_energy_insert`, `native_move_energy` | API 142 | `distribute_energy`, `transmit_energy` |
+| `native_energy_insert`, `native_move_energy` | API 142 | `GameEnergy` (o cubo de energia e o Heat Generator, `machinery_basis`), `HostAcceptor` (os cabos) |
 | `native_update_output_neighbors` | API 64 | `publish_comparator` (mekanism e mekanismgenerators), chamado dentro do `native_block_entity_tick` da própria máquina: funciona com o tile fora do mundo porque `analog_output` responde por uma tabela do mod |
 | `native_container_slots` | API 48 | ejetor, hoppers |
 | `native_tell`, `native_server_players` | API 21 | `player_logged_in` e `server_data_loaded` do Mekanism (a mensagem de receita incompleta, `IncompleteRecipeScanner`); `native_server_players` também no som e nos tipos de upgrade da `machinery_basis`. O jogador da janela entra por memória no servidor integrado (`integrated.rs`), por isso o `player_logged_in` e o `native_tell` o alcançam em mundo de um jogador só |
