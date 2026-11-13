@@ -97,6 +97,9 @@ fn inventory_slots(block: &str) -> Vec<usize> {
 
 /// `ItemConfigurator.useOn` e `ItemConfigurationCard.useOn`.
 pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], face: [i32; 3], claimed: &mut bool) {
+    if basis::transmitter_probe_enabled() {
+        eprintln!("MBL {{\"e\":\"use_item_on\",\"item\":{:?},\"claimed\":{}}}", &*stack.item, *claimed);
+    }
     if *claimed {
         return;
     }
@@ -117,6 +120,9 @@ fn alloy_use_on(game: &mut Game<'_>, item: &str, pos: [i32; 3]) -> bool {
         return false;
     };
     let block = game.native_block(pos);
+    if basis::transmitter_probe_enabled() {
+        eprintln!("MBL {{\"e\":\"use\",\"item\":{item:?},\"block\":{block:?}}}");
+    }
     let upgraded = if glue::is_cable_block(&block) {
         basis::cable_alloy(game, pos, level, &rules::UNIVERSAL_CABLES.map(|(id, _)| id))
     } else if glue::is_pipe_block(&block) {
@@ -776,7 +782,18 @@ pub(in crate::game) fn partial_outline(
     let reach = game.reach();
     let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
     let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
-    core::ops::ControlFlow::Break(Some(rules::partial_shape(&pieces, local, end)))
+    let shape = rules::partial_shape(&pieces, local, end);
+    if basis::transmitter_probe_enabled() {
+        // A sonda do contorno (`MBO`): a caixa que o contorno mostra, para a mira de cada quadro (só quando muda).
+        static LAST: std::sync::Mutex<Option<([i32; 3], [i64; 6])>> = std::sync::Mutex::new(None);
+        let rounded: [i64; 6] = shape.map(|value| (value * 10_000.0).round() as i64);
+        let mut last = LAST.lock().unwrap_or_else(|error| error.into_inner());
+        if *last != Some((pos, rounded)) {
+            *last = Some((pos, rounded));
+            eprintln!("MBO {{\"p\":[{},{},{}],\"box\":{:?}}}", pos[0], pos[1], pos[2], shape);
+        }
+    }
+    core::ops::ControlFlow::Break(Some(shape))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

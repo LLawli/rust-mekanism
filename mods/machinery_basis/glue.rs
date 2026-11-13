@@ -3929,6 +3929,9 @@ pub(in crate::game) fn cable_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_lev
         with_owner(dimension, |owner| owner.alloy_start(sim_pos(pos), alloy_level, &|at| level_of(game_ref, at)))??
     };
     let upgraded_block = *blocks.get(usize::try_from(alloy_level).ok()?)?;
+    if TRANSMITTER_PROBE {
+        eprintln!("MBL {{\"e\":\"start\",\"level\":{alloy_level},\"targets\":{}}}", run.targets.len());
+    }
     for target in run.targets.clone() {
         let data = {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
@@ -3937,8 +3940,11 @@ pub(in crate::game) fn cable_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_lev
         let Some(data) = data else {
             continue;
         };
-        alloy_replace(game, arr(target), upgraded_block);
+        let replaced = alloy_replace(game, arr(target), upgraded_block);
         let given = with_owner(dimension, |owner| owner.alloy_give(&mut run, target, &data)).unwrap_or(false);
+        if TRANSMITTER_PROBE {
+            eprintln!("MBL {{\"e\":\"step\",\"p\":{:?},\"replaced\":{replaced},\"given\":{given}}}", arr(target));
+        }
         if given && run.full() {
             break;
         }

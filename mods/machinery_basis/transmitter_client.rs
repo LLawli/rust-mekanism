@@ -105,8 +105,10 @@ fn distribute(game: &mut Game<'_>, dimension: &str, items: Vec<(Op, Audience)>) 
     if let Some(host) = host {
         let ops: Vec<&Op> = items.iter().filter(|(_, audience)| accepts(audience, Some(dimension), host, view)).map(|(op, _)| op).collect();
         client_run(|levels| {
-            let level = levels.entry(dimension.to_owned()).or_default();
-            ops.into_iter().for_each(|op| level.apply(op));
+            for op in ops {
+                levels.entry(dimension.to_owned()).or_default().apply(op);
+                probe("host", levels, dimension, op);
+            }
         });
     }
     for player in game.native_server_players() {
@@ -114,9 +116,59 @@ fn distribute(game: &mut Game<'_>, dimension: &str, items: Vec<(Op, Audience)>) 
             continue;
         }
         let ops: Vec<Op> = items.iter().filter(|(_, audience)| accepts(audience, Some(dimension), player.position, view)).map(|(op, _)| op.clone()).collect();
+        if crate::game::machinery_basis::transmitter_probe_enabled() {
+            for op in &ops {
+                if let Op::Scale(packet) = op {
+                    eprintln!("MBN {{\"to\":\"{:x}\",\"net\":\"{:032x}\",\"scale\":{:?}}}", player.uuid, packet.network, packet.scale);
+                }
+            }
+        }
         for batch in encode_batches(&ops) {
             let _ = game.native_net_send_to_player(player.uuid, OPS_CHANNEL, &batch);
         }
+    }
+}
+
+/// A sonda do cliente (`MBS` a escala de uma rede, `MBG` o pacote de atualização de um transmissor, `MBN` o que o servidor mandou), só na cópia de teste (`TRANSMITTER_PROBE`).
+fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &str, op: &Op) {
+    if !crate::game::machinery_basis::transmitter_probe_enabled() {
+        return;
+    }
+    match op {
+        Op::Scale(packet) => {
+            let network = levels.values().find_map(|level| level.get_client_network(packet.network));
+            match network {
+                Some(net) => eprintln!(
+                    "MBS {{\"who\":\"{who}\",\"net\":\"{:032x}\",\"scale\":{:?},\"cap\":{},\"n\":{},\"energy\":{},\"type\":{:?}}}",
+                    packet.network,
+                    net.current_scale,
+                    net.capacity,
+                    net.transmitters_size(),
+                    net.energy,
+                    net.last_type
+                ),
+                None => eprintln!("MBS {{\"who\":\"{who}\",\"net\":\"{:032x}\",\"scale\":{:?},\"known\":false}}", packet.network, packet.scale),
+            }
+        }
+        Op::Tag(message) => {
+            let kinds: Vec<&str> = levels
+                .get(dimension)
+                .and_then(|level| level.view_at(message.pos))
+                .map(|view| view.kind.iter().map(|kind| kind.serialized_name()).collect())
+                .unwrap_or_default();
+            let net = levels.get(dimension).and_then(|level| level.network_at(message.pos));
+            eprintln!(
+                "MBG {{\"who\":\"{who}\",\"p\":[{},{},{}],\"kind\":{:?},\"net\":{:?},\"cap\":{},\"n\":{}}}",
+                message.pos.x,
+                message.pos.y,
+                message.pos.z,
+                kinds,
+                net.map(|net| format!("{:032x}", net.uuid)),
+                net.map_or(0, |net| net.capacity),
+                net.map_or(0, ClientNetwork::transmitters_size)
+            );
+        }
+        _ => {}
     }
 }
 
@@ -214,11 +266,16 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
             };
             client_run(|levels| {
                 for op in &ops {
+                    let mut at = String::new();
                     match op {
-                        Op::Tag(TagMessage { dimension, .. }) | Op::Gone { dimension, .. } => levels.entry(dimension.clone()).or_default().apply(op),
+                        Op::Tag(TagMessage { dimension, .. }) | Op::Gone { dimension, .. } => {
+                            levels.entry(dimension.clone()).or_default().apply(op);
+                            at = dimension.clone();
+                        }
                         // Os pacotes de escala e de conteúdo não dizem a dimensão: o `clientNetworks` é um só, e a rede com este UUID está no nível dela.
                         Op::Scale(_) | Op::Contents { .. } => levels.values_mut().for_each(|level| level.apply(op)),
                     }
+                    probe("guest", levels, &at, op);
                 }
             });
         }
