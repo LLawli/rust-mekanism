@@ -402,7 +402,9 @@ fn overlay_message(overlay: &Overlay) -> Value {
             "with": [{"translate": if *on { "boolean.mekanism.on" } else { "boolean.mekanism.off" }, "color": INDIGO}],
             "color": GRAY,
         }),
-        Overlay::ToggleColor { .. } | Overlay::CurrentColor { .. } | Overlay::ToggleDiverter { .. } => {
+        Overlay::ToggleColor { .. }
+        | Overlay::CurrentColor { .. }
+        | Overlay::ToggleDiverter { .. } => {
             unreachable!("o transportador não passa pelo rastro das conexões")
         }
     }

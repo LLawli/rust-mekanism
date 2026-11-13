@@ -40,6 +40,13 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_tubes"
 source = "tube_glue.rs"
 
+# Os transportadores logísticos no jogo (frente `transportador-jogo`): o dono dos transportadores (`InventoryTransmitters`) por dimensão, os eventos da decisão 107 traduzidos para ele, o
+# espelho dos inventários vizinhos e o NBT do transportador. Código nosso no `Game`, como a cola dos canos.
+[[module]]
+id = "transporter-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_transporters"
+source = "transporter_glue.rs"
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
 # Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos

@@ -22,6 +22,7 @@ use machinery_basis_core::item_handler::{ItemCapabilities, ItemHandler, RuledHan
 use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::side_config::{TileComponentConfig, TransmissionType};
 use machinery_basis_core::sides::Face;
+use machinery_basis_core::transporter::node::{DiversionControl, TransporterKind, TransporterTier};
 use machinery_basis_core::slot_rules;
 use machinery_basis_core::resource;
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
@@ -279,15 +280,19 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
             Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
         }
     }
-    if (is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block)) && entity.is_none() {
+    if (is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
-    if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) {
+    if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block) {
         *ticks = true;
+    }
+    // Os transportadores logísticos: os eventos do jogo vão ao dono dos transportadores da `machinery_basis`.
+    if is_transporter(block) {
+        crate::game::machinery_transporters::transporters_register(block, transporter_stats_of);
     }
     // Os canos mecânicos: os eventos do jogo vão ao dono dos canos da `machinery_basis`, com a capacidade e a vazão do tier (`tiers.toml`).
     if is_pipe(block) {
@@ -309,6 +314,23 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_cable(block) {
         basis::cables_register("mekanism", block, cable_capacity_of);
     }
+}
+
+fn is_transporter(block: &str) -> bool {
+    rules::transporter_block(block).is_some()
+}
+
+pub(in crate::game) fn is_transporter_block(block: &str) -> bool {
+    is_transporter(block)
+}
+
+/// O tier e o tipo do bloco (`LogisticalTransporter`, `RestrictiveTransporter`, `DiversionTransporter`).
+fn transporter_stats_of(block: &str) -> Option<(TransporterTier, TransporterKind)> {
+    Some(match rules::transporter_block(block)? {
+        rules::TransporterBlock::Logistical(tier) => (TransporterTier::by_id(tier as i32), TransporterKind::Logistical { color: None }),
+        rules::TransporterBlock::Restrictive => (TransporterTier::Basic, TransporterKind::Restrictive),
+        rules::TransporterBlock::Diversion => (TransporterTier::Basic, TransporterKind::Diversion { modes: [DiversionControl::Disabled; 6] }),
+    })
 }
 
 fn is_pipe(block: &str) -> bool {

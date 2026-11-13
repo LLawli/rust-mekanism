@@ -85,19 +85,33 @@ impl HostItemHandler {
                 continue;
             }
             match (before, now) {
-                (Some((resource, was)), Some((now_resource, now_amount))) if *resource == now_resource => {
+                (Some((resource, was)), Some((now_resource, now_amount)))
+                    if *resource == now_resource =>
+                {
                     if now_amount < *was {
-                        takes.push(SlotChange::Take { index: index[mirror], count: was - now_amount });
+                        takes.push(SlotChange::Take {
+                            index: index[mirror],
+                            count: was - now_amount,
+                        });
                     } else {
-                        puts.push(SlotChange::Put { resource: now_resource, count: now_amount - was });
+                        puts.push(SlotChange::Put {
+                            resource: now_resource,
+                            count: now_amount - was,
+                        });
                     }
                 }
                 (before, now) => {
                     if let Some((_, was)) = before {
-                        takes.push(SlotChange::Take { index: index[mirror], count: *was });
+                        takes.push(SlotChange::Take {
+                            index: index[mirror],
+                            count: *was,
+                        });
                     }
                     if let Some((resource, amount)) = now {
-                        puts.push(SlotChange::Put { resource, count: amount });
+                        puts.push(SlotChange::Put {
+                            resource,
+                            count: amount,
+                        });
                     }
                 }
             }
@@ -110,7 +124,11 @@ impl HostItemHandler {
     pub fn settle(&self) {
         let container = self.container.borrow();
         *self.original.borrow_mut() = (0..container.size())
-            .map(|mirror| container.resource(mirror).map(|resource| (resource, container.amount(mirror))))
+            .map(|mirror| {
+                container
+                    .resource(mirror)
+                    .map(|resource| (resource, container.amount(mirror)))
+            })
             .collect();
     }
 }
@@ -128,15 +146,31 @@ impl ItemHandler for HostItemHandler {
         self.container.borrow().amount(index)
     }
 
-    fn insert_at(&self, index: usize, resource: &ItemResource, amount: u32, transaction: &Transaction) -> u32 {
-        self.container.borrow().insert_at(index, resource, amount, transaction)
+    fn insert_at(
+        &self,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &Transaction,
+    ) -> u32 {
+        self.container
+            .borrow()
+            .insert_at(index, resource, amount, transaction)
     }
 
-    fn extract_at(&self, index: usize, resource: &ItemResource, amount: u32, transaction: &Transaction) -> u32 {
+    fn extract_at(
+        &self,
+        index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &Transaction,
+    ) -> u32 {
         // O jogo só deixa tirar do slot que o lado alcança e que aceita sair (`can_take`).
         if !self.can_take.borrow().get(index).copied().unwrap_or(false) {
             return 0;
         }
-        self.container.borrow().extract_at(index, resource, amount, transaction)
+        self.container
+            .borrow()
+            .extract_at(index, resource, amount, transaction)
     }
 }

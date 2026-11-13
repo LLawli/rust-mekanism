@@ -116,6 +116,14 @@ impl PathfinderCache {
             .cloned()
     }
 
+    /// Quantos caminhos a rede tem guardados.
+    pub fn cached_count(&self, network: Uuid) -> usize {
+        self.cached_paths
+            .borrow()
+            .get(&key(network))
+            .map_or(0, HashMap::len)
+    }
+
     /// `reset()`.
     pub fn reset(&self) {
         self.cached_paths.borrow_mut().clear();

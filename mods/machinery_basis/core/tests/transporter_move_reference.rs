@@ -13,7 +13,9 @@ use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
 use machinery_basis_core::neighbors::UPDATE_ORDER;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
-use machinery_basis_core::transmission::connection::{ConnectionType, TransmissionSet, TransmissionType};
+use machinery_basis_core::transmission::connection::{
+    ConnectionType, TransmissionSet, TransmissionType,
+};
 use machinery_basis_core::transmission::inventory_owner::{
     InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
 };
@@ -94,7 +96,9 @@ impl InventoryOwnerWorld for SimWorld {
     }
 
     fn decode_item(&self, tag: &Compound) -> Option<ItemResource> {
-        tag.get("id").and_then(|id| id.as_str()).map(|id| ItemResource::new(id, 64))
+        tag.get("id")
+            .and_then(|id| id.as_str())
+            .map(|id| ItemResource::new(id, 64))
     }
 
     fn publish(&mut self, _: BlockPos, _: &CableView) {}
@@ -252,7 +256,12 @@ impl Scenario {
         for pos in &positions {
             owner.handle(&mut world, Event::PlacedByItem(*pos));
         }
-        owner.handle(&mut world, Event::ServerTickPost { runs_normally: true });
+        owner.handle(
+            &mut world,
+            Event::ServerTickPost {
+                runs_normally: true,
+            },
+        );
         let mut order: Vec<usize> = (0..relative.len()).collect();
         order.sort_by_key(|index| {
             (
@@ -290,8 +299,12 @@ impl Scenario {
             let pos = self.pos_of(index);
             self.owner.handle(&mut self.world, Event::Update(pos));
         }
-        self.owner
-            .handle(&mut self.world, Event::ServerTickPost { runs_normally: true });
+        self.owner.handle(
+            &mut self.world,
+            Event::ServerTickPost {
+                runs_normally: true,
+            },
+        );
     }
 
     fn container(&self, rel: &Value) -> Rc<VanillaContainer> {

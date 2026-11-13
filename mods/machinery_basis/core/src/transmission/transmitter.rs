@@ -117,7 +117,9 @@ pub enum Overlay {
     /// `MekanismLang.CURRENT_COLOR`: a cor atual do transportador logístico, no clique sem agachar.
     CurrentColor { color: Option<u8> },
     /// `MekanismLang.TOGGLE_DIVERTER`: o modo novo do lado do desviador.
-    ToggleDiverter { mode: crate::transporter::node::DiversionControl },
+    ToggleDiverter {
+        mode: crate::transporter::node::DiversionControl,
+    },
 }
 
 /// O que o transmissor pede ao mundo e à rede, na ordem em que o original o faz.

@@ -742,6 +742,16 @@ impl InventoryTransmitters {
         list
     }
 
+    /// Quantos caminhos a cache guarda para a rede do transportador em `pos` (a invalidação por cor ou por mudança da rede os esvazia).
+    pub fn cached_paths(&self, pos: BlockPos) -> Option<usize> {
+        let network = self.network_of(pos)?;
+        Some(
+            self.st
+                .cache
+                .cached_count(self.registry.network(network).uuid()),
+        )
+    }
+
     /// As pilhas em voo do gerenciador, para o teste conferir o que o `remove` tirou.
     pub fn manager(&self) -> &TransporterManager {
         &self.st.manager
@@ -1142,9 +1152,21 @@ impl InventoryTransmitters {
     /// `LogisticalTransporter.onConfigure`.
     fn configure_color<W: InventoryOwnerWorld>(&mut self, world: &mut W, id: TransmitterId) {
         let pos = self.st.slots[id.0 as usize].pos;
-        let color = self.st.slots[id.0 as usize].base.configure_color().flatten();
+        let color = self.st.slots[id.0 as usize]
+            .base
+            .configure_color()
+            .flatten();
+        self.color_changed(world, id);
+        world.overlay(pos, Overlay::ToggleColor { color });
+    }
+
+    /// O que `onConfigure` faz depois de trocar a cor: a cache de caminhos da rede, salvar, avisar os vizinhos e mandar o pacote.
+    fn color_changed<W: InventoryOwnerWorld>(&mut self, world: &mut W, id: TransmitterId) {
+        let pos = self.st.slots[id.0 as usize].pos;
         if let Some(network) = self.st.slots[id.0 as usize].net() {
-            self.st.cache.on_changed(self.registry.network(network).uuid());
+            self.st
+                .cache
+                .on_changed(self.registry.network(network).uuid());
         }
         world.set_changed(pos);
         let mut ctx = Ctx {
@@ -1153,7 +1175,73 @@ impl InventoryTransmitters {
         };
         ctx.notify_neighbors(&mut self.registry, pos);
         ctx.publish(id);
-        ctx.world.overlay(pos, Overlay::ToggleColor { color });
+    }
+
+    /// Põe a cor do transportador em `pos` (`setColor` e o que `onConfigure` faz depois), sem o aviso: para a sonda do teste em jogo.
+    pub fn set_color<W: InventoryOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        pos: BlockPos,
+        color: Option<u8>,
+    ) {
+        let Some(id) = self.st.live(pos) else {
+            return;
+        };
+        self.st.slots[id.0 as usize].base.set_color(color);
+        self.color_changed(world, id);
+        self.flush_deferred(world);
+    }
+
+    /// O que a chave inglesa faz num lado (`setConnectionTypeRaw`, `onModeChange`, `refreshConnections` e `notifyTileChange`): para os testes e a sonda do teste em jogo.
+    pub fn set_mode<W: InventoryOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        pos: BlockPos,
+        side: Face,
+        kind: ConnectionType,
+    ) {
+        let Some(id) = self.st.live(pos) else {
+            return;
+        };
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world: &mut *world,
+            };
+            ctx.with_tr(&mut self.registry, id, |t, _, out| {
+                t.set_connection_type_raw(side, kind, out)
+            });
+            ctx.with_tr(&mut self.registry, id, |t, w, out| {
+                t.on_mode_change(side, w, out)
+            });
+            ctx.with_tr(&mut self.registry, id, |t, w, out| {
+                t.refresh_connections(w, out)
+            });
+            ctx.with_tr(&mut self.registry, id, |t, _, out| {
+                t.notify_tile_change(out)
+            });
+        }
+        self.flush_deferred(world);
+    }
+
+    /// Põe o modo de um lado do desviador em `pos` (`updateMode`): para a sonda do teste em jogo.
+    pub fn set_diversion_mode<W: InventoryOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        pos: BlockPos,
+        side: Face,
+        mode: DiversionControl,
+    ) {
+        if let Some(id) = self.st.live(pos) {
+            {
+                let mut ctx = Ctx {
+                    st: &mut self.st,
+                    world: &mut *world,
+                };
+                ctx.refresh_power(id);
+            }
+            self.update_mode(world, id, side, mode);
+        }
     }
 
     /// `onRightClick`: o transportador logístico mostra a cor; o desviador troca o modo do lado (`hit_side` é o lado do braço que o olhar toca, `side` a face clicada).
@@ -1200,10 +1288,7 @@ impl InventoryTransmitters {
         mode: DiversionControl,
     ) {
         let pos = self.st.slots[id.0 as usize].pos;
-        let Some(update) = self.st.slots[id.0 as usize]
-            .base
-            .update_mode(side, mode)
-        else {
+        let Some(update) = self.st.slots[id.0 as usize].base.update_mode(side, mode) else {
             return;
         };
         if let Some(change) = update.capability {
@@ -1214,7 +1299,9 @@ impl InventoryTransmitters {
             st: &mut self.st,
             world: &mut *world,
         };
-        ctx.with_tr(&mut self.registry, id, |t, w, out| t.refresh_connections(w, out));
+        ctx.with_tr(&mut self.registry, id, |t, w, out| {
+            t.refresh_connections(w, out)
+        });
         ctx.notify_neighbors(&mut self.registry, pos);
         ctx.publish(id);
         self.flush_deferred(world);

@@ -1042,6 +1042,39 @@ pub fn pipe_tier(block: &str) -> Option<usize> {
     MECHANICAL_PIPES.iter().position(|id| *id == block)
 }
 
+/// Os blocos do transportador logístico, do básico ao supremo (`TransporterTier`).
+pub const LOGISTICAL_TRANSPORTERS: [&str; 4] = [
+    "mekanism:basic_logistical_transporter",
+    "mekanism:advanced_logistical_transporter",
+    "mekanism:elite_logistical_transporter",
+    "mekanism:ultimate_logistical_transporter",
+];
+pub const RESTRICTIVE_TRANSPORTER: &str = "mekanism:restrictive_transporter";
+pub const DIVERSION_TRANSPORTER: &str = "mekanism:diversion_transporter";
+
+/// O que um bloco de transportador é.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransporterBlock {
+    /// `LogisticalTransporter`, com o tier na ordem de [`LOGISTICAL_TRANSPORTERS`].
+    Logistical(usize),
+    /// `RestrictiveTransporter`.
+    Restrictive,
+    /// `DiversionTransporter`.
+    Diversion,
+}
+
+/// Que transportador é o bloco, se é um.
+pub fn transporter_block(block: &str) -> Option<TransporterBlock> {
+    if let Some(tier) = LOGISTICAL_TRANSPORTERS.iter().position(|id| *id == block) {
+        return Some(TransporterBlock::Logistical(tier));
+    }
+    match block {
+        RESTRICTIVE_TRANSPORTER => Some(TransporterBlock::Restrictive),
+        DIVERSION_TRANSPORTER => Some(TransporterBlock::Diversion),
+        _ => None,
+    }
+}
+
 /// As capacidades dos quatro canos (`PipeTier.getCapacity`: o valor do arquivo, ou o padrão sem ele), na ordem de [`MECHANICAL_PIPES`].
 pub fn pipe_capacities(loaded: &ClientLoaded) -> [i64; 4] {
     const KEYS: [&str; 4] = [
@@ -3878,6 +3911,8 @@ pub const ENUM_COLOR_RGB: [u32; 18] = [
 /// Os `ordinal` de `EnumColor` que o Configurator usa: `BRIGHT_GREEN`, `DARK_RED`, `YELLOW`, `PINK` e a cor do texto de `GRAY`.
 pub const COLOR_BRIGHT_GREEN: u8 = 10;
 pub const COLOR_DARK_RED: u8 = 4;
+/// `EnumColor.RED`.
+const COLOR_RED: u8 = 5;
 pub const COLOR_YELLOW: u8 = 14;
 pub const COLOR_PINK: u8 = 13;
 pub const COLOR_GRAY: u8 = 7;
@@ -4127,6 +4162,14 @@ pub fn configurator_side_message(
     )
 }
 
+/// `LogisticalTransporter.getColorName`: o nome da cor na própria cor, ou `NONE` em branco.
+fn transporter_color_name(color: Option<u8>) -> Chat {
+    match color {
+        Some(color) => colored_name(color),
+        None => Chat::plain("gui.mekanism.none", Some(15)),
+    }
+}
+
 /// As mensagens que o cabo manda ao jogador quando o Configurator mexe nele (`TileEntityTransmitter.onSneakRightClick`, `Transmitter.onRightClick`):
 /// `CONNECTION_TYPE.translateColored(GRAY, connectionType)` e `REDSTONE_SENSITIVITY.translateColored(GRAY, INDIGO, OnOff.of(redstoneReactive))`. O tipo de conexão
 /// (`ConnectionType.getTextComponent`) leva a cor dele: `ORANGE`, `BRIGHT_GREEN`, `YELLOW` e `WHITE`.
@@ -4150,6 +4193,35 @@ pub fn cable_overlay_message(
                 vec![Chat::plain(
                     &format!("connection.mekanism.{}", connection.serialized_name()),
                     Some(color),
+                )],
+                Some(enum_color_rgb(COLOR_GRAY)),
+            )
+        }
+        // `LogisticalTransporter.onConfigure` e `onRightClick`: `TOGGLE_COLOR.translateColored(GRAY, getColorName())` e `CURRENT_COLOR.translateColored(GRAY, getColorName())`; o
+        // nome é o da cor na própria cor, ou `NONE` em branco.
+        Overlay::ToggleColor { color } => Chat::new(
+            "configurator.mekanism.toggle_color",
+            vec![transporter_color_name(*color)],
+            Some(enum_color_rgb(COLOR_GRAY)),
+        ),
+        Overlay::CurrentColor { color } => Chat::new(
+            "configurator.mekanism.view_color",
+            vec![transporter_color_name(*color)],
+            Some(enum_color_rgb(COLOR_GRAY)),
+        ),
+        // `DiversionTransporter.onRightClick`: `TOGGLE_DIVERTER.translateColored(GRAY, RED, newMode)`, com o texto do modo (`control.<modo>.desc`) em vermelho.
+        Overlay::ToggleDiverter { mode } => {
+            use machinery_basis_core::transporter::node::DiversionControl;
+            let name = match mode {
+                DiversionControl::Disabled => "disabled",
+                DiversionControl::High => "high",
+                DiversionControl::Low => "low",
+            };
+            Chat::new(
+                "transmitter.mekanism.configurator.toggle_diverter",
+                vec![Chat::plain(
+                    &format!("transmitter.mekanism.control.{name}.desc"),
+                    Some(COLOR_RED),
                 )],
                 Some(enum_color_rgb(COLOR_GRAY)),
             )

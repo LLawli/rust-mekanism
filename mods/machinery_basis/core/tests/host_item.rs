@@ -13,13 +13,18 @@ fn stone() -> ItemResource {
 }
 
 fn slot(index: usize, contents: Option<(ItemResource, u32)>, can_take: bool) -> MirrorSlot {
-    MirrorSlot { index, contents, can_take }
+    MirrorSlot {
+        index,
+        contents,
+        can_take,
+    }
 }
 
 #[test]
 fn what_the_network_inserts_and_takes_becomes_changes_for_the_game() {
     // Dois slots do jogo, 4 e 7 (um baú de lado só alcança alguns): terra no primeiro, o segundo vazio.
-    let handler = HostItemHandler::new(vec![slot(4, Some((dirt(), 10)), true), slot(7, None, true)]);
+    let handler =
+        HostItemHandler::new(vec![slot(4, Some((dirt(), 10)), true), slot(7, None, true)]);
     assert!(handler.changes().is_empty());
     let root = Transaction::open_root();
     assert_eq!(handler.extract(&dirt(), 3, &root), 3);
@@ -29,7 +34,10 @@ fn what_the_network_inserts_and_takes_becomes_changes_for_the_game() {
         handler.changes(),
         vec![
             SlotChange::Take { index: 4, count: 3 },
-            SlotChange::Put { resource: stone(), count: 5 },
+            SlotChange::Put {
+                resource: stone(),
+                count: 5
+            },
         ]
     );
     handler.settle();
