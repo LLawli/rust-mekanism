@@ -139,14 +139,15 @@ def montar():
     cmd("data merge block %s {probe_set:{raw:[I;0,0,0,0,2,0]}}" % txt(at((1, 0, 0))))
     wait(60)
     cmd("tick freeze")
+    # O NBT do transportador só é escrito no salvamento do nível: salva antes de ler.
+    h.ctl("save")
+    wait(20)
     emvoo = 0
     for x in range(1, 7):
         nbt = t.block_nbt((x, 0, 0), "items")
         if "components" in nbt:
             emvoo += 1
         print("   transportador", x, "items:", nbt[:300])
-    h.ctl("save")
-    wait(20)
     print("transportadores com componentes no NBT salvo:", emvoo, "| origem:", componentes_de((0, 0, 0)), "| destino:", componentes_de((7, 0, 0)))
     return emvoo > 0
 
