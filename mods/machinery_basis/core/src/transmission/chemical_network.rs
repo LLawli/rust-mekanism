@@ -53,3 +53,24 @@ impl<H: ResourceAcceptor<ChemicalResource> + ?Sized> ChemicalFamily<H> {
         self.add_pipe(transmitter, pos, tier.capacity(), tier.transfer_rate());
     }
 }
+
+/// O dono dos tubos pressurizados de uma dimensão (`ResourceTransmitters` com o químico como recurso).
+pub type ChemicalTransmitters = super::resource_owner::ResourceTransmitters<ChemicalResource>;
+
+/// A capability de químico de um vizinho (`ResourceHandler<ChemicalResource>`).
+pub type ChemicalHandler = super::resource_owner::Handler<ChemicalResource>;
+
+/// Um dono de tubos novo: a família de químico (que registra os `disperse`, [`ChemicalFamily::chemical`]), os UUID das redes e o `identityHashCode` de cada tubo.
+pub fn chemical_transmitters(
+    dimension: super::DimensionId,
+    uuids: impl FnMut() -> super::Uuid + 'static,
+    hashes: impl FnMut(BlockPos) -> i32 + 'static,
+) -> ChemicalTransmitters {
+    ChemicalTransmitters::new(
+        dimension,
+        super::connection::TransmissionType::Chemical,
+        ChemicalFamily::chemical,
+        uuids,
+        hashes,
+    )
+}
