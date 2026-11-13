@@ -29,7 +29,7 @@ TANQUES = (100, 190)
 FILTRO = (
     '/^MBT .*"e":"pre"/ {print "MBX " cnt+0; cnt=0; print; next} '
     '/^MBT .*"e":"tick"/ {cnt++; next} '
-    "/^(MBE|MBP|MTN|MBQ|MBI|MBC) / {print; next} "
+    "/^(MBE|MBP|MTN|MBQ|MBI|MBC|MBK) / {print; next} "
     '/^MBT .*"e":"(open_ready|estado|reset|owner_tickets|owner_level)"/ {print}'
 )
 
@@ -69,7 +69,7 @@ def passadas(lines):
                 out.clear()
                 atual = None
             elif row.get("e") == "pre":
-                atual = {"mbe": [], "mbp": [], "mtn": [], "mbq": [], "mbi": [], "mbc": None, "ticks": 0, "runs": True}
+                atual = {"mbe": [], "mbp": [], "mtn": [], "mbq": [], "mbi": [], "mbk": [], "mbc": None, "ticks": 0, "runs": True}
                 out.append(atual)
             continue
         if atual is None:
@@ -79,6 +79,8 @@ def passadas(lines):
             atual["mbc"] = row
         elif prefix == "MBI":
             atual["mbi"].append(row)
+        elif prefix == "MBK":
+            atual["mbk"].append([row["cx"], row["cz"], row["loaded"]])
         else:
             atual[key].append(row)
             atual["runs"] = atual["runs"] and bool(row.get("runs", True))
@@ -115,7 +117,7 @@ def janela(saida, tag, inicio, ticks):
     todas = [p for p in passadas(lines) if p["runs"]]
     for k, p in enumerate(todas[:ticks], 1):
         mbc = p["mbc"] or {}
-        saida.write(json.dumps({"e": "tick", "tag": tag, "k": k, "carregados": mbc.get("carregados"), "cheios": mbc.get("carregados"), "fila": mbc.get("fila"), "redes": redes_da_passada(p), "transito": transito_da_passada(p),
+        saida.write(json.dumps({"e": "tick", "tag": tag, "k": k, "carregados": mbc.get("carregados"), "cheios": mbc.get("carregados"), "ms": mbc.get("ms"), "fila": mbc.get("fila"), "redes": redes_da_passada(p), "transito": transito_da_passada(p), "tickets": p["mbk"],
                                 "block_entities": p["ticks"]}) + "\n")
     saida.flush()
     print(tag, "passadas", len(todas), "escritas", min(len(todas), ticks), flush=True)
@@ -265,10 +267,23 @@ def roteiro(caminho):
     saida.close()
 
 
+def ks(caminho, valores):
+    """A abertura do mundo `SetupsA` (já construído) para cada valor de `STREAM_WORKERS` (o arquivo `/tmp/mb_stream_workers` do container, que só a cópia de teste lê): mede quantos ticks a linha de
+    cabos leva para entrar na rede inteira (decisão 196, a injeção `stream_budget`). `1` deixa o Horizon como é."""
+    saida = open(caminho, "w")
+    for valor in valores:
+        ssh(f"docker exec {os.environ['H_NAME']} sh -c 'echo {valor} > /tmp/mb_stream_workers'")
+        abertura(saida, f"abre_k{valor}", 80, 120)
+        sair()
+    saida.close()
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
     if what == "roteiro":
         roteiro(sys.argv[2])
+    elif what == "ks":
+        ks(sys.argv[2], sys.argv[3:])
     elif what == "limpar":
         ctl("world-delete", MUNDO, "--confirm")
     else:

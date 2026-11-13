@@ -3252,6 +3252,10 @@ pub type TransmitterSink = fn(&mut Game<'_>, &TransmitterEvent);
 static TRANSMITTER_SINKS: Mutex<Vec<(&'static str, TransmitterSink)>> = Mutex::new(Vec::new());
 /// O rastro dos eventos no `stderr` (`MBT {json}`), para comparar com `transmitter_events_*.jsonl`. O repositório o deixa desligado; `enviar_fontes.sh` o liga na cópia de teste.
 const TRANSMITTER_PROBE: bool = false;
+/// A sonda leve dos setups reais (decisão 196): só a passada (`pre`), a fila de chunks (`MBC`) e a rede de cada família por tick (`MBE`, `MBP`, `MTN`, `MBQ`), sem uma linha por evento de block entity. A
+/// sonda dos eventos (`TRANSMITTER_PROBE`) escreve milhares de linhas por passada e atrasa o servidor a um quarto da velocidade: o carregamento dos chunks corre em tempo real, e a comparação por tick
+/// com o original só vale com o servidor andando a 20 por segundo. `enviar_fontes.sh` liga esta (modo `setups`) e deixa a dos eventos desligada.
+const SETUPS_PROBE: bool = false;
 /// As passadas do `server_tick` desde que o jogo abriu (a sonda numera por elas, e não pelo `game_time`, que o `/tick freeze` para).
 static TRANSMITTER_PASS: AtomicI64 = AtomicI64::new(0);
 thread_local! {
@@ -3286,7 +3290,7 @@ static TRANSMITTER_PASSES_SINCE_OPEN: AtomicI64 = AtomicI64::new(0);
 
 /// Uma marca da sonda (a abertura do mundo, a primeira passada), com o número da passada do servidor.
 pub fn transmitter_probe_note(name: &str) {
-    if TRANSMITTER_PROBE {
+    if TRANSMITTER_PROBE || SETUPS_PROBE {
         if name == "open_ready" {
             TRANSMITTER_PASSES_SINCE_OPEN.store(0, Ordering::Relaxed);
         }
@@ -3298,6 +3302,11 @@ pub fn transmitter_probe_note(name: &str) {
 /// A sonda dos eventos está ligada nesta cópia?
 pub fn transmitter_probe_enabled() -> bool {
     TRANSMITTER_PROBE
+}
+
+/// A sonda leve de cada rede por tick (`TRANSMITTER_PROBE` ou `SETUPS_PROBE`) está ligada nesta cópia?
+pub fn setups_probe_enabled() -> bool {
+    TRANSMITTER_PROBE || SETUPS_PROBE
 }
 
 fn transmitter_probe(game: &Game<'_>, event: &TransmitterEvent) {
@@ -3333,6 +3342,9 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     for event in &events {
         if TRANSMITTER_PROBE {
             transmitter_probe(game, event);
+        } else if SETUPS_PROBE && let TransmitterEvent::Ticket { chunk, loaded, .. } = event {
+            // Os tickets de acessibilidade (decisão 196), as únicas ocorrências que a sonda leve conta uma a uma: o chunk, o lado do anel e a passada.
+            eprintln!("MBK {{\"t\":{},\"cx\":{},\"cz\":{},\"loaded\":{loaded}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
         }
         for sink in &sinks {
             sink(game, event);
@@ -3516,7 +3528,7 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 transmitters::set_server_source(&game.world.block_entities as *const _ as usize);
             }
             TRANSMITTER_PASS.fetch_add(1, Ordering::Relaxed);
-            if TRANSMITTER_PROBE && transmitters::is_active() {
+            if (TRANSMITTER_PROBE || SETUPS_PROBE) && transmitters::is_active() {
                 eprintln!("MBT {{\"t\":{},\"e\":\"pre\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
             }
             transmitters_flush(game);
@@ -3524,7 +3536,7 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
-            if TRANSMITTER_PROBE && TRANSMITTER_PASSES_SINCE_OPEN.fetch_add(1, Ordering::Relaxed) < 8 {
+            if (TRANSMITTER_PROBE || SETUPS_PROBE) && TRANSMITTER_PASSES_SINCE_OPEN.fetch_add(1, Ordering::Relaxed) < 8 {
                 // Os primeiros ticks do mundo aberto (decisão 195), o que a `CenaReset` do original grava em cada um: quantos jogadores já estão, os chunks carregados e se o chunk (0, 0) anda.
                 let players = game.lan.as_ref().map_or(0, |h| h.hub.guests.iter().filter(|g| g.placed).count());
                 let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
@@ -3535,6 +3547,19 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                     game.tickets.levels().block_ticking(0, 0),
                     game.dim.id()
                 );
+            }
+            if TRANSMITTER_PROBE || SETUPS_PROBE {
+                // A fila de chunks da linha longa dos setups reais (decisão 196): de cada chunk (cx, 0), com cx de -2 a 30, `T` carregado e andando, `L` carregado e parado, `.` descarregado. A
+                // `CenaSetups` do original grava a mesma cadeia (`isPositionTicking` e `hasChunk`), a cada tick.
+                let row: String = (-2..=30)
+                    .map(|cx| match (game.world.chunks.contains_key(&(cx, 0)), game.tickets.levels().block_ticking(cx, 0)) {
+                        (true, true) => 'T',
+                        (true, false) => 'L',
+                        _ => '.',
+                    })
+                    .collect();
+                let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+                eprintln!("MBC {{\"t\":{},\"ms\":{ms},\"carregados\":{},\"dim\":\"{}\",\"fila\":\"{row}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed), game.world.chunks.len(), game.dim.id());
             }
             // Os níveis parados que descarregam neste tick saem antes do `Post`, como no original (o `ServerLevel.tick` vem antes do `ServerTickEvent.Post`).
             let post_levels = idle_levels_end_of_tick(game);
@@ -4080,7 +4105,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         if let Some(pos) = unloaded {
             cable_write(game, owner, pos);
         }
-        if post && TRANSMITTER_PROBE {
+        if post && (TRANSMITTER_PROBE || SETUPS_PROBE) {
             // A sonda da energia (`MBE`): a energia, a capacidade e o que saiu de cada rede neste tick, e quantos cabos e aceitadores ela tem.
             let nets: Vec<String> = owner
                 .registry()

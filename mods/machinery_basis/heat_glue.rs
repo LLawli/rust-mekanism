@@ -317,7 +317,7 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
             DIRTY.with_borrow_mut(|dirty| dirty.push(pos));
         }
         flush_dirty(game, owner, dimension);
-        if post && basis::transmitter_probe_enabled() {
+        if post && basis::setups_probe_enabled() {
             probe_line(game, owner, runs_normally);
         }
     });
@@ -418,9 +418,11 @@ fn probe_line(game: &Game<'_>, owner: &HeatTransmitters, runs_normally: bool) {
             (registered.transmitters_size() > 0).then(|| format!("[{:?},{:?},{:?},{},{}]", heat.mean_temp(), heat.heat_lost(), heat.heat_transferred(), registered.transmitters_size(), registered.acceptor_count()))
         })
         .collect();
+    // O calor de cada condutor só na sonda dos eventos: a leve (`SETUPS_PROBE`) escreve a rede.
     let conductors: Vec<String> = owner
         .positions()
         .into_iter()
+        .filter(|_| basis::transmitter_probe_enabled())
         .filter_map(|pos| {
             let state = owner.state_at(pos)?;
             let heat = state.heat.map_or_else(|| "null".to_owned(), |heat| format!("{heat:?}"));

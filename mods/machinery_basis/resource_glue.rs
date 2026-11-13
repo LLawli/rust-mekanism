@@ -765,7 +765,7 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         if let Some(pos) = unloaded {
             transmitter_write::<F>(game, owner, pos);
         }
-        if post && basis::transmitter_probe_enabled() {
+        if post && basis::setups_probe_enabled() {
             // A sonda da família: o recurso, a quantidade, a capacidade e o que saiu de cada rede neste tick, e quantos transmissores e aceitadores ela tem.
             let nets: Vec<String> = owner
                 .registry()
