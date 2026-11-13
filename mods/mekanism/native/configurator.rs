@@ -126,9 +126,9 @@ fn alloy_use_on(game: &mut Game<'_>, item: &str, pos: [i32; 3]) -> bool {
     let upgraded = if glue::is_cable_block(&block) {
         basis::cable_alloy(game, pos, level, &rules::UNIVERSAL_CABLES.map(|(id, _)| id))
     } else if glue::is_pipe_block(&block) {
-        crate::game::machinery_pipes::pipe_alloy(game, pos, level, &rules::MECHANICAL_PIPES)
+        crate::game::machinery_resources::pipe_alloy(game, pos, level, &rules::MECHANICAL_PIPES)
     } else if glue::is_tube_block(&block) {
-        crate::game::machinery_tubes::tube_alloy(game, pos, level, &rules::PRESSURIZED_TUBES)
+        crate::game::machinery_resources::tube_alloy(game, pos, level, &rules::PRESSURIZED_TUBES)
     } else {
         return false;
     };
@@ -245,7 +245,7 @@ fn cable_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -
 /// O clique de um modo de configurar num cano mecânico (a mesma capability `IConfigurable` do transmissor).
 fn pipe_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
     let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
-    let Some((consumed, overlays)) = crate::game::machinery_pipes::pipe_configure(game, pos, face, hit_side, sneaking) else {
+    let Some((consumed, overlays)) = crate::game::machinery_resources::pipe_configure(game, pos, face, hit_side, sneaking) else {
         return false;
     };
     for message in &overlays {
@@ -284,8 +284,8 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let facts = game.res.facts().get(state);
     let kinds = basis::cable_arm_kinds(game, pos)
-        .or_else(|| crate::game::machinery_pipes::pipe_arm_kinds(game, pos))
-        .or_else(|| crate::game::machinery_tubes::tube_arm_kinds(game, pos))
+        .or_else(|| crate::game::machinery_resources::pipe_arm_kinds(game, pos))
+        .or_else(|| crate::game::machinery_resources::tube_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_heat::conductor_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_transporters::transporter_arm_kinds(game, pos))
         // O cliente (o contorno) sabe o tipo de cada lado pelo pacote de atualização do transmissor (`handleUpdateTag`): `PUSH` e `PULL` têm as três caixas deles.
@@ -305,7 +305,7 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
 /// O clique de um modo de configurar num tubo pressurizado (a mesma capability `IConfigurable` do transmissor).
 fn tube_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
     let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
-    let Some((consumed, overlays)) = crate::game::machinery_tubes::tube_configure(game, pos, face, hit_side, sneaking) else {
+    let Some((consumed, overlays)) = crate::game::machinery_resources::tube_configure(game, pos, face, hit_side, sneaking) else {
         return false;
     };
     for message in &overlays {

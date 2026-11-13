@@ -3036,7 +3036,7 @@ pub(in crate::game) fn stored_energy_line(
 
 use horizon_client::block_entities::machinery_transmitters as transmitters;
 
-pub use transmitters::{Event as TransmitterEvent, Kind as TransmitterKind};
+pub use transmitters::{Event as TransmitterEvent, Kind as TransmitterKind, PendingClears};
 
 /// Quem recebe os eventos: roda com o jogo no nível do evento.
 pub type TransmitterSink = fn(&mut Game<'_>, &TransmitterEvent);
@@ -3326,7 +3326,7 @@ pub type CableCapacity = fn(&str) -> Option<i64>;
 
 static CABLE_KINDS: Mutex<Vec<(&'static str, CableCapacity)>> = Mutex::new(Vec::new());
 /// `UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE`: as propriedades de lado só vão aos clientes (`sendUpdatePacket` não avisa vizinho nem refaz forma).
-const CABLE_FLAGS: i32 = 2 | 16;
+const ARM_FLAGS: i32 = 2 | 16;
 
 /// `(dimensão, posição do vizinho, lado dele que olha o cabo)`.
 type AcceptorKey = (&'static str, [i32; 3], usize);
@@ -3376,12 +3376,48 @@ fn cable_capacity(block: &str) -> Option<i64> {
     kinds.into_iter().find_map(|capacity| capacity(block))
 }
 
-fn sim_pos(pos: [i32; 3]) -> SimPos {
+pub(in crate::game) fn sim_pos(pos: [i32; 3]) -> SimPos {
     SimPos::new(pos[0], pos[1], pos[2])
 }
 
-fn arr(pos: SimPos) -> [i32; 3] {
+pub(in crate::game) fn arr(pos: SimPos) -> [i32; 3] {
     [pos.x, pos.y, pos.z]
+}
+
+/// O que os cinco transmissores publicam de uma conexão: o braço de cada lado vira a propriedade do bloco (só para os clientes, `ARM_FLAGS`), e com a sonda ligada a vista sai no
+/// stderr com a etiqueta `probe` (`MBV`, `MBW`, `MTV`, `MBH`).
+pub(in crate::game) fn publish_arms(game: &mut Game<'_>, at: [i32; 3], view: &CableView, probe: &str) {
+    for side in Face::ALL {
+        let value = if view.connected[side as usize] { "true" } else { "false" };
+        game.native_set_block_property_with(at, side.name(), value, ARM_FLAGS);
+    }
+    if TRANSMITTER_PROBE {
+        let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
+        let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
+        eprintln!("{probe} {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
+    }
+}
+
+/// O evento do jogo como o dono dos transmissores o recebe (decisão 107). É o mesmo para os cabos, os canos, os tubos, os condutores e os transportadores; `None` é o
+/// `ServerStoppedEvent` (`TransmitterNetworkRegistry.reset`), que cada cola atende esvaziando as tabelas dela.
+pub(in crate::game) fn owner_event(event: &TransmitterEvent) -> Option<CableEvent> {
+    Some(match event {
+        TransmitterEvent::Transmitter { pos, kind, .. } => {
+            let pos = sim_pos(*pos);
+            match kind {
+                TransmitterKind::ClearRemoved => CableEvent::ClearRemoved(pos),
+                TransmitterKind::PlacedByItem => CableEvent::PlacedByItem(pos),
+                TransmitterKind::ChunkUnloaded => CableEvent::ChunkUnloaded(pos),
+                TransmitterKind::Removed => CableEvent::Removed(pos),
+                TransmitterKind::Update => CableEvent::Update(pos),
+                TransmitterKind::Neighbor => CableEvent::Neighbor(pos),
+                TransmitterKind::Capability(side) => CableEvent::Capability(pos, Face::ALL[*side]),
+            }
+        }
+        TransmitterEvent::Ticket { chunk, loaded, .. } => CableEvent::Ticket { chunk: ChunkPos::new(chunk[0], chunk[1]), loaded: *loaded },
+        TransmitterEvent::ServerTickPost { runs_normally } => CableEvent::ServerTickPost { runs_normally: *runs_normally },
+        TransmitterEvent::Reset => return None,
+    })
 }
 
 /// Um vizinho que dá ou recebe energia pela capability dele. O Horizon não desfaz uma inserção e a lib não tem o jogo na mão quando distribui (`probe_insert` só simula e
@@ -3536,9 +3572,6 @@ impl OwnerWorld for GameWorld<'_, '_> {
         let key = (pos.x, pos.y, pos.z);
         let game = self.game.borrow();
         let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get(&key) else {
-            if TRANSMITTER_PROBE {
-                eprintln!("MBX {{\"cable_info\":\"sem block entity de mod\",\"p\":[{},{},{}]}}", pos.x, pos.y, pos.z);
-            }
             return None;
         };
         let capacity = cable_capacity(&entity.id)?;
@@ -3548,25 +3581,12 @@ impl OwnerWorld for GameWorld<'_, '_> {
             saved.insert(ENERGY_KEY.to_owned(), CableTag::Long(*exact));
         }
         let from_save = saved.contains_key(machinery_basis_core::transmission::transmitter::keys::CONNECTION) || saved.contains_key(ENERGY_KEY);
-        if TRANSMITTER_PROBE {
-            let keys: Vec<String> = entity.nbt.iter().map(|(key, tag)| format!("{}:{}", key.to_string().unwrap_or_default(), tag.id())).collect();
-            eprintln!("MBL {{\"p\":[{},{},{}],\"energy\":{:?},\"salvo\":{},\"chaves\":{:?}}}", pos.x, pos.y, pos.z, saved.get(ENERGY_KEY), from_save, keys);
-        }
         Some(CableInfo { capacity, saved: from_save.then_some(saved) })
     }
 
     fn publish(&mut self, pos: SimPos, view: &CableView) {
         let at = arr(pos);
-        let mut game = self.game.borrow_mut();
-        for side in Face::ALL {
-            let value = if view.connected[side as usize] { "true" } else { "false" };
-            game.native_set_block_property_with(at, side.name(), value, CABLE_FLAGS);
-        }
-        if TRANSMITTER_PROBE {
-            let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
-            let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
-            eprintln!("MBV {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
-        }
+        publish_arms(&mut self.game.borrow_mut(), at, view, "MBV");
         CABLE_VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
         // `sendUpdatePacket`: o cliente recebe o pacote de atualização no começo do tick seguinte.
         crate::game::machinery_transmitter_client::dirty(self.dimension, at);
@@ -3619,28 +3639,12 @@ fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 }
 
 fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
-    let event = match event {
-        TransmitterEvent::Transmitter { pos, kind, .. } => {
-            let pos = sim_pos(*pos);
-            match kind {
-                TransmitterKind::ClearRemoved => CableEvent::ClearRemoved(pos),
-                TransmitterKind::PlacedByItem => CableEvent::PlacedByItem(pos),
-                TransmitterKind::ChunkUnloaded => CableEvent::ChunkUnloaded(pos),
-                TransmitterKind::Removed => CableEvent::Removed(pos),
-                TransmitterKind::Update => CableEvent::Update(pos),
-                TransmitterKind::Neighbor => CableEvent::Neighbor(pos),
-                TransmitterKind::Capability(side) => CableEvent::Capability(pos, Face::ALL[*side]),
-            }
-        }
-        TransmitterEvent::Ticket { chunk, loaded, .. } => CableEvent::Ticket { chunk: ChunkPos::new(chunk[0], chunk[1]), loaded: *loaded },
-        TransmitterEvent::ServerTickPost { runs_normally } => CableEvent::ServerTickPost { runs_normally: *runs_normally },
-        TransmitterEvent::Reset => {
-            CABLES.with_borrow_mut(HashMap::clear);
-            CABLE_VIEWS.with_borrow_mut(HashMap::clear);
-            CABLE_ABSORBED.with_borrow_mut(HashMap::clear);
-            CABLE_ACCEPTORS.with_borrow_mut(HashMap::clear);
-            return;
-        }
+    let Some(event) = owner_event(event) else {
+        CABLES.with_borrow_mut(HashMap::clear);
+        CABLE_VIEWS.with_borrow_mut(HashMap::clear);
+        CABLE_ABSORBED.with_borrow_mut(HashMap::clear);
+        CABLE_ACCEPTORS.with_borrow_mut(HashMap::clear);
+        return;
     };
     let post = matches!(event, CableEvent::ServerTickPost { .. });
     let runs_normally = matches!(event, CableEvent::ServerTickPost { runs_normally: true });

@@ -1,16 +1,16 @@
 // Os condutores termodinâmicos no jogo (frente `condutor-jogo`, Fase 3). O dono dos condutores (`machinery_basis_core::transmission::heat_owner`) guarda por dimensão o registro, os
-// `ThermodynamicConductor` e a rede de calor; esta parte o liga ao jogo como `machinery_pipes` liga o dos canos: os eventos da decisão 107 entram nele, as conexões que ele calcula
+// `ThermodynamicConductor` e a rede de calor; esta parte o liga ao jogo como `resource_glue.rs` liga o dos canos e o dos tubos: os eventos da decisão 107 entram nele, as conexões que ele calcula
 // viram as propriedades de lado do bloco, o NBT do condutor (`TileEntityTransmitter.saveAdditional` e o `heat_capacitor/state` de `ThermodynamicConductor.write`) sai a cada mudança
 // de calor e no salvamento, e o vizinho com a capability `HEAT` (o Heat Generator) responde à rede lendo e gravando o calor no NBT dele. A lib não conhece nenhum id: o mod diz
 // quais blocos são condutores e o nível de cada um em `conductors_register`, e quais blocos têm um capacitor de calor em `heat_neighbor_register`.
 use crate::game::Game;
 use crate::game::machinery_basis as basis;
-use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind};
+use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind, arr, sim_pos};
 use horizon_client::containers::BlockEntity;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::sides::Face;
-use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
+use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::heat_owner::{ConductorInfo, HeatOwnerWorld, HeatTransmitters, HostCapacitor};
 use machinery_basis_core::transmission::owner::{CableView, Event as HeatEvent};
@@ -24,8 +24,6 @@ use std::sync::Mutex;
 /// O nível e os valores de um bloco de condutor (`ConductorTier` e a config de `tiers.toml`), ou `None` se o bloco não é um condutor.
 pub type ConductorStats = fn(&str) -> Option<(ConductorTier, TierValues)>;
 
-/// `UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE`: as propriedades de lado só vão aos clientes (`sendUpdatePacket` não avisa vizinho nem refaz forma).
-const CONDUCTOR_FLAGS: i32 = 2 | 16;
 /// O nome do dono dos condutores entre os que ouvem os eventos dos transmissores.
 const SINK_OWNER: &str = "machinery_conductors";
 
@@ -58,14 +56,6 @@ pub fn conductors_register(id: &str, stats: ConductorStats) {
 fn conductor_stats(block: &str) -> Option<(ConductorTier, TierValues)> {
     let kinds: Vec<ConductorStats> = CONDUCTOR_KINDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     kinds.into_iter().find_map(|stats| stats(block))
-}
-
-fn sim_pos(pos: [i32; 3]) -> SimPos {
-    SimPos::new(pos[0], pos[1], pos[2])
-}
-
-fn arr(pos: SimPos) -> [i32; 3] {
-    [pos.x, pos.y, pos.z]
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -166,16 +156,7 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
 
     fn publish(&mut self, pos: SimPos, view: &CableView) {
         let at = arr(pos);
-        let mut game = self.game.borrow_mut();
-        for side in Face::ALL {
-            let value = if view.connected[side as usize] { "true" } else { "false" };
-            game.native_set_block_property_with(at, side.name(), value, CONDUCTOR_FLAGS);
-        }
-        if basis::transmitter_probe_enabled() {
-            let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
-            let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
-            eprintln!("MBH {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
-        }
+        basis::publish_arms(&mut self.game.borrow_mut(), at, view, "MBH");
         VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
     }
 
@@ -286,27 +267,11 @@ fn conductors_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 }
 
 fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
-    let event = match event {
-        TransmitterEvent::Transmitter { pos, kind, .. } => {
-            let pos = sim_pos(*pos);
-            match kind {
-                TransmitterKind::ClearRemoved => HeatEvent::ClearRemoved(pos),
-                TransmitterKind::PlacedByItem => HeatEvent::PlacedByItem(pos),
-                TransmitterKind::ChunkUnloaded => HeatEvent::ChunkUnloaded(pos),
-                TransmitterKind::Removed => HeatEvent::Removed(pos),
-                TransmitterKind::Update => HeatEvent::Update(pos),
-                TransmitterKind::Neighbor => HeatEvent::Neighbor(pos),
-                TransmitterKind::Capability(side) => HeatEvent::Capability(pos, Face::ALL[*side]),
-            }
-        }
-        TransmitterEvent::Ticket { chunk, loaded, .. } => HeatEvent::Ticket { chunk: ChunkPos::new(chunk[0], chunk[1]), loaded: *loaded },
-        TransmitterEvent::ServerTickPost { runs_normally } => HeatEvent::ServerTickPost { runs_normally: *runs_normally },
-        TransmitterEvent::Reset => {
-            CONDUCTORS.with_borrow_mut(HashMap::clear);
-            VIEWS.with_borrow_mut(HashMap::clear);
-            DIRTY.with_borrow_mut(Vec::clear);
-            return;
-        }
+    let Some(event) = basis::owner_event(event) else {
+        CONDUCTORS.with_borrow_mut(HashMap::clear);
+        VIEWS.with_borrow_mut(HashMap::clear);
+        DIRTY.with_borrow_mut(Vec::clear);
+        return;
     };
     // `onChunkUnloaded` e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que tira o condutor do dono.
     let unloaded = if let HeatEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };

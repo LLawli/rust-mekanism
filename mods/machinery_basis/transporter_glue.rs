@@ -1,19 +1,19 @@
 // Os transportadores logísticos no jogo (frente `transportador-jogo`, Fase 3). O dono dos transportadores (`machinery_basis_core::transmission::inventory_owner`) guarda por dimensão o
-// registro, o gerenciador das pilhas em voo e o `LogisticalTransporterBase` de cada transportador; esta parte o liga ao jogo como `machinery_pipes` liga o dos canos: os eventos da
+// registro, o gerenciador das pilhas em voo e o `LogisticalTransporterBase` de cada transportador; esta parte o liga ao jogo como `resource_glue.rs` liga o dos canos e o dos tubos: os eventos da
 // decisão 107 entram nele, as conexões que ele calcula viram as propriedades de lado do bloco, o NBT do transportador (`TileEntityTransmitter.saveAdditional`, a cor, o `mode` do
 // desviador e a lista `items` das pilhas em trânsito) sai no salvamento, o que um transportador solta ao quebrar vira item no mundo, e o vizinho com inventário (um baú, um funil,
 // uma máquina com slots) responde à rede por um espelho dos slots que o lado alcança (`HostItemHandler`, a decisão 137 do fluido aplicada a itens). A lib não conhece nenhum id: o mod
 // diz quais blocos são transportadores e o tipo de cada um em `transporters_register`.
 use crate::game::Game;
 use crate::game::machinery_basis as basis;
-use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind};
+use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind, arr, sim_pos};
 use horizon_client::containers::BlockEntity;
 use horizon_core::random::RandomSource;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::item_handler::ItemHandler;
 use machinery_basis_core::sides::Face;
-use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
+use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::host_item::{HostItemHandler, MirrorSlot, SlotChange};
 use machinery_basis_core::transmission::inventory_owner::{
@@ -33,8 +33,6 @@ use std::sync::Mutex;
 /// O tier e o tipo de um bloco de transportador (`LogisticalTransporter`, `RestrictiveTransporter` ou `DiversionTransporter`), ou `None` se o bloco não é um.
 pub type TransporterStats = fn(&str) -> Option<(TransporterTier, TransporterKind)>;
 
-/// `UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE`: as propriedades de lado só vão aos clientes (`sendUpdatePacket` não avisa vizinho nem refaz forma).
-const TRANSPORTER_FLAGS: i32 = 2 | 16;
 /// O nome do dono dos transportadores entre os que ouvem os eventos dos transmissores.
 const SINK_OWNER: &str = "machinery_transporters";
 
@@ -68,14 +66,6 @@ pub fn transporters_register(id: &str, stats: TransporterStats) {
 fn transporter_stats(block: &str) -> Option<(TransporterTier, TransporterKind)> {
     let kinds: Vec<TransporterStats> = KINDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     kinds.into_iter().find_map(|stats| stats(block))
-}
-
-fn sim_pos(pos: [i32; 3]) -> SimPos {
-    SimPos::new(pos[0], pos[1], pos[2])
-}
-
-fn arr(pos: SimPos) -> [i32; 3] {
-    [pos.x, pos.y, pos.z]
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -340,16 +330,7 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
 
     fn publish(&mut self, pos: SimPos, view: &CableView) {
         let at = arr(pos);
-        let mut game = self.game.borrow_mut();
-        for side in Face::ALL {
-            let value = if view.connected[side as usize] { "true" } else { "false" };
-            game.native_set_block_property_with(at, side.name(), value, TRANSPORTER_FLAGS);
-        }
-        if basis::transmitter_probe_enabled() {
-            let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
-            let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
-            eprintln!("MBW {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
-        }
+        basis::publish_arms(&mut self.game.borrow_mut(), at, view, "MBW");
         VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
     }
 
@@ -361,11 +342,8 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         OVERLAYS.with_borrow_mut(|list| list.push(overlay));
     }
 
-    fn capability_changed(&mut self, pos: SimPos, change: CapabilityChange) {
+    fn capability_changed(&mut self, _pos: SimPos, _change: CapabilityChange) {
         // `invalidateCapabilities()` / `invalidateCapability(ITEM, side)`: quem escuta a posição (um funil, o ejetor de outra máquina) só relê a capability na próxima consulta.
-        if basis::transmitter_probe_enabled() {
-            eprintln!("MBC {{\"p\":[{},{},{}],\"change\":\"{:?}\"}}", pos.x, pos.y, pos.z, change);
-        }
     }
 
     /// `Block.popResource(level, pos, stack)`: a pilha sai do centro do bloco com um sorteio de -0,25 a 0,25 em cada eixo (e o meio da altura do item a menos em y), com a
@@ -441,27 +419,11 @@ fn transporters_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
 }
 
 fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &TransmitterEvent) {
-    let event = match event {
-        TransmitterEvent::Transmitter { pos, kind, .. } => {
-            let pos = sim_pos(*pos);
-            match kind {
-                TransmitterKind::ClearRemoved => TransporterEvent::ClearRemoved(pos),
-                TransmitterKind::PlacedByItem => TransporterEvent::PlacedByItem(pos),
-                TransmitterKind::ChunkUnloaded => TransporterEvent::ChunkUnloaded(pos),
-                TransmitterKind::Removed => TransporterEvent::Removed(pos),
-                TransmitterKind::Update => TransporterEvent::Update(pos),
-                TransmitterKind::Neighbor => TransporterEvent::Neighbor(pos),
-                TransmitterKind::Capability(side) => TransporterEvent::Capability(pos, Face::ALL[*side]),
-            }
-        }
-        TransmitterEvent::Ticket { chunk, loaded, .. } => TransporterEvent::Ticket { chunk: ChunkPos::new(chunk[0], chunk[1]), loaded: *loaded },
-        TransmitterEvent::ServerTickPost { runs_normally } => TransporterEvent::ServerTickPost { runs_normally: *runs_normally },
-        TransmitterEvent::Reset => {
-            OWNERS.with_borrow_mut(HashMap::clear);
-            VIEWS.with_borrow_mut(HashMap::clear);
-            HANDLERS.with_borrow_mut(HashMap::clear);
-            return;
-        }
+    let Some(event) = basis::owner_event(event) else {
+        OWNERS.with_borrow_mut(HashMap::clear);
+        VIEWS.with_borrow_mut(HashMap::clear);
+        HANDLERS.with_borrow_mut(HashMap::clear);
+        return;
     };
     // `onChunkUnloaded` toma a parte do transportador e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
     let unloaded = if let TransporterEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };

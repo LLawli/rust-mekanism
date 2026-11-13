@@ -238,7 +238,7 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_generator(block) {
         *ticks = true;
         // O `lavaTank` é uma capability de fluido que os canos mecânicos alcançam (`TileEntityHeatGenerator.java:98-103`).
-        crate::game::machinery_pipes::fluid_neighbor_register(rules::HEAT_GENERATOR, lava_tank_probe, lava_tank_write);
+        crate::game::machinery_resources::fluid_neighbor_register(rules::HEAT_GENERATOR, lava_tank_probe, lava_tank_write);
         // O capacitor de calor é a capability `HEAT` nos seis lados (`OverridingSingleHolder`), que os condutores termodinâmicos alcançam.
         crate::game::machinery_heat::heat_neighbor_register(rules::HEAT_GENERATOR, heat_probe, heat_write);
     }
@@ -791,7 +791,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     basis::name_apply_pending(entity, pos);
     // A capability de fluido do `lavaTank`: todo lado menos a frente (`RelativeSide.LEFT, RIGHT, BACK, TOP, BOTTOM`).
     let front = basis::front(game, pos);
-    crate::game::machinery_pipes::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));
+    crate::game::machinery_resources::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));
     basis::energy_apply_pending(entity, pos, heat_config().energy_capacity);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);

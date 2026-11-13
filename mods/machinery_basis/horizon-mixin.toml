@@ -19,26 +19,20 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_basis"
 source = "glue.rs"
 
-# Os canos mecânicos no jogo (frente `cano-jogo`): o dono dos transmissores de recurso, o espelho dos tanques vizinhos e o NBT do cano. Código nosso no `Game`, como a cola dos cabos.
+# Os canos mecânicos e os tubos pressurizados no jogo (frentes `cano-jogo` e `tubo-jogo`, unificados na `limpeza-rede`): o dono dos transmissores de recurso, genérico sobre o recurso
+# (fluido ou químico), o espelho dos tanques vizinhos e o NBT do cano e do tubo. Código nosso no `Game`, como a cola dos cabos.
 [[module]]
-id = "pipe-glue"
+id = "resource-glue"
 file = "crates/horizon-client/src/game.rs"
-name = "machinery_pipes"
-source = "pipe_glue.rs"
+name = "machinery_resources"
+source = "resource_glue.rs"
 
-# Os condutores termodinâmicos no jogo (frente `condutor-jogo`): o dono dos condutores, o calor dos tiles vizinhos (o Heat Generator) e o NBT do condutor. Código nosso no `Game`, como `pipe-glue`.
+# Os condutores termodinâmicos no jogo (frente `condutor-jogo`): o dono dos condutores, o calor dos tiles vizinhos (o Heat Generator) e o NBT do condutor. Código nosso no `Game`, como `resource-glue`.
 [[module]]
 id = "heat-glue"
 file = "crates/horizon-client/src/game.rs"
 name = "machinery_heat"
 source = "heat_glue.rs"
-
-# Os tubos pressurizados no jogo (frente `tubo-jogo`): o dono dos transmissores de químico, o espelho dos tanques vizinhos e o NBT do tubo. Código nosso no `Game`, como a cola dos canos.
-[[module]]
-id = "tube-glue"
-file = "crates/horizon-client/src/game.rs"
-name = "machinery_tubes"
-source = "tube_glue.rs"
 
 # Os transportadores logísticos no jogo (frente `transportador-jogo`): o dono dos transportadores (`InventoryTransmitters`) por dimensão, os eventos da decisão 107 traduzidos para ele, o
 # espelho dos inventários vizinhos e o NBT do transportador. Código nosso no `Game`, como a cola dos canos.

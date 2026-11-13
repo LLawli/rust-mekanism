@@ -71,7 +71,9 @@ def serie(passos=40, h0=8000.0):
     os.makedirs(RASTROS, exist_ok=True)
     ar = {}
     for row in rows("MBA"):
-        ar[tuple(row["at"])] = row["v"]
+        # `MBA` também é a sonda do aceitador de energia dos cabos (`p`, `amount`...), no mesmo `game.log` se o mesmo jogo andou com cabos.
+        if "at" in row:
+            ar[tuple(row["at"])] = row["v"]
     setup = {"e": "setup", "conductors": 5, "tier": "basic", "gen_heat0": h0, "origin": list(at(0)), "ambient_reads": [[*k, v] for k, v in sorted(ar.items())], "ambient": em_repouso[0][3], "rest": [c[3] for c in em_repouso]}
     with open(f"{RASTROS}/jogo_calor.jsonl", "w") as out:
         out.write(json.dumps(setup) + "\n")

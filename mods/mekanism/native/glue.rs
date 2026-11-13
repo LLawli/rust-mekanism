@@ -296,15 +296,15 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     }
     // Os canos mecânicos: os eventos do jogo vão ao dono dos canos da `machinery_basis`, com a capacidade e a vazão do tier (`tiers.toml`).
     if is_pipe(block) {
-        crate::game::machinery_pipes::pipes_register(block, pipe_stats_of);
+        crate::game::machinery_resources::pipes_register(block, pipe_stats_of);
     }
     // O tanque de infusão do Metallurgic Infuser é um vizinho de químico dos tubos (`setupIOConfig(TransmissionType.CHEMICAL, infusionTank)`).
     if is_infuser(block) {
-        crate::game::machinery_tubes::chemical_neighbor_register(rules::INFUSER, infusion_probe, infusion_write);
+        crate::game::machinery_resources::chemical_neighbor_register(rules::INFUSER, infusion_probe, infusion_write);
     }
     // Os tubos pressurizados: o mesmo, com o dono dos tubos (a rede de químico) e a capacidade e a vazão do tier.
     if is_tube(block) {
-        crate::game::machinery_tubes::tubes_register(block, tube_stats_of);
+        crate::game::machinery_resources::tubes_register(block, tube_stats_of);
     }
     // Os condutores termodinâmicos: os eventos do jogo vão ao dono dos condutores da `machinery_basis` (a rede de calor), com os valores do tier (`tiers.toml`).
     if is_conductor(block) {
@@ -1858,7 +1858,7 @@ pub(in crate::game) fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [b
 /// Metallurgic Infuser tem tanque de químico entre as máquinas daqui.
 fn publish_chemical_faces(dimension: &'static str, pos: [i32; 3], block: &str, machine: &ProgressMachine) {
     if machine.chemical_side().is_some() {
-        crate::game::machinery_tubes::chemical_faces_set(dimension, pos, block, rules::infusion_tank_faces(machine));
+        crate::game::machinery_resources::chemical_faces_set(dimension, pos, block, rules::infusion_tank_faces(machine));
     }
 }
 
