@@ -226,6 +226,43 @@ pub fn simulate_adjacent<W: HeatCapacitors, T: TileHeatHandler<W::Handle>>(
     adjacent_transfer
 }
 
+/// O vizinho de um capacitor que não vive no mesmo objeto (o `IHeatHandler` de `getAdjacent`): o que `simulateAdjacent` lê dele e o que
+/// manda a ele.
+pub trait AdjacentSink {
+    /// `IHeatHandler.getTemperature`.
+    fn temperature(&mut self) -> f64;
+    /// `IHeatHandler.getHeatCapacity`.
+    fn heat_capacity(&mut self) -> f64;
+    /// `IHeatHandler.getInverseConduction`.
+    fn inverse_conduction(&mut self) -> f64;
+    /// `IHeatHandler.handleHeat(transfer, transaction)`.
+    fn handle_heat(&mut self, transfer: f64);
+}
+
+impl Capacitor {
+    /// `ITileHeatHandler.simulateAdjacent` de um tile cujo único lado com vizinho é este (o Heat Generator só entrega por baixo,
+    /// `TileEntityHeatGenerator.getAdjacent`), na ordem de leituras do Java e com `countsAsAdjacent` verdadeiro. Devolve a temperatura
+    /// que passou. É a conta de [`simulate_adjacent`] para um lado, com o vizinho fora do objeto.
+    pub fn simulate_adjacent(&mut self, sink: &mut dyn AdjacentSink) -> f64 {
+        let temperature = self.temperature();
+        let sink_temperature = sink.temperature();
+        if temperature <= sink_temperature {
+            return 0.0;
+        }
+        let heat_capacity = self.capacity;
+        let sink_heat_capacity = sink.heat_capacity();
+        let final_temperature = (temperature * heat_capacity
+            + sink_temperature * sink_heat_capacity)
+            / (heat_capacity + sink_heat_capacity);
+        let inverse_conduction = sink.inverse_conduction() + self.inverse_conduction;
+        let temperature_to_transfer = (temperature - final_temperature) / inverse_conduction;
+        let heat_to_transfer = temperature_to_transfer * heat_capacity;
+        self.handle(-heat_to_transfer);
+        sink.handle_heat(heat_to_transfer);
+        temperature_to_transfer
+    }
+}
+
 /// O ar de um bloco: `HeatAPI.getAmbientTemp(world, pos)` do bloco (`None`) ou do vizinho de um lado (`Some`). `None` na resposta é o
 /// `world == null` do original (vale `AMBIENT_TEMP` e o [`AmbientCache`] não guarda).
 pub trait AmbientSource {
