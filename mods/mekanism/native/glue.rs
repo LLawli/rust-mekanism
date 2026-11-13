@@ -279,19 +279,27 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
             Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
         }
     }
-    if (is_machine(block) || is_cable(block) || is_pipe(block) || is_conductor(block)) && entity.is_none() {
+    if (is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block)) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));
     }
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
-    if is_machine(block) || is_cable(block) || is_pipe(block) || is_conductor(block) {
+    if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) {
         *ticks = true;
     }
     // Os canos mecânicos: os eventos do jogo vão ao dono dos canos da `machinery_basis`, com a capacidade e a vazão do tier (`tiers.toml`).
     if is_pipe(block) {
         crate::game::machinery_pipes::pipes_register(block, pipe_stats_of);
+    }
+    // O tanque de infusão do Metallurgic Infuser é um vizinho de químico dos tubos (`setupIOConfig(TransmissionType.CHEMICAL, infusionTank)`).
+    if is_infuser(block) {
+        crate::game::machinery_tubes::chemical_neighbor_register(rules::INFUSER, infusion_probe, infusion_write);
+    }
+    // Os tubos pressurizados: o mesmo, com o dono dos tubos (a rede de químico) e a capacidade e a vazão do tier.
+    if is_tube(block) {
+        crate::game::machinery_tubes::tubes_register(block, tube_stats_of);
     }
     // Os condutores termodinâmicos: os eventos do jogo vão ao dono dos condutores da `machinery_basis` (a rede de calor), com os valores do tier (`tiers.toml`).
     if is_conductor(block) {
@@ -322,6 +330,22 @@ fn conductor_stats_of(block: &str) -> Option<(ConductorTier, TierValues)> {
 
 pub(in crate::game) fn is_pipe_block(block: &str) -> bool {
     is_pipe(block)
+}
+
+fn is_tube(block: &str) -> bool {
+    rules::tube_tier(block).is_some()
+}
+
+pub(in crate::game) fn is_tube_block(block: &str) -> bool {
+    is_tube(block)
+}
+
+/// `TubeTier.getCapacity` e `getTransferRate` do bloco: o que o arquivo `tiers.toml` diz.
+fn tube_stats_of(block: &str) -> Option<(i64, i32)> {
+    rules::tube_tier(block).map(|tier| {
+        let config = server_config();
+        (config.tubes[tier], config.tube_rates[tier])
+    })
 }
 
 /// `PipeTier.getCapacity` e `getTransferRate` do bloco: o que o arquivo `tiers.toml` diz.
@@ -1725,6 +1749,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
         basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
         live.energy_capacity = Some(energy_state);
     }
+    publish_chemical_faces(dimension, pos, &entity.id, machine);
     let scalars = machine.saved_scalars();
     if live.saved.as_ref() != Some(&scalars) {
         write_scalars(entity, live.saved.as_ref(), &scalars, slots.infusion.is_some());
@@ -1801,6 +1826,45 @@ pub(in crate::game) fn energy_faces(machine: &ProgressMachine) -> ([bool; 6], [b
     (insert, extract)
 }
 
+/// As faces do tanque de infusão como capability de químico (`TileComponentConfig.isCapabilityDisabled` e `ConfigHolder`), ditas aos tubos vizinhos: só uma mudança os avisa. Só o
+/// Metallurgic Infuser tem tanque de químico entre as máquinas daqui.
+fn publish_chemical_faces(dimension: &'static str, pos: [i32; 3], block: &str, machine: &ProgressMachine) {
+    if machine.chemical_side().is_some() {
+        crate::game::machinery_tubes::chemical_faces_set(dimension, pos, block, rules::infusion_tank_faces(machine));
+    }
+}
+
+/// O tanque de infusão como o tubo o vê por um lado (`rules::infusion_tank_view`), lido do objeto vivo da máquina. `None` com a máquina no tick (o objeto sai da tabela): a rede
+/// trata o vizinho como fechado até ela voltar.
+fn infusion_probe(
+    _game: &Game<'_>,
+    dimension: &'static str,
+    pos: [i32; 3],
+    side: Face,
+) -> Option<machinery_basis_core::transmission::host_resource::ResourceSnapshot<ChemicalResource>> {
+    LIVE_MACHINES.with(|machines| {
+        let machines = machines.try_borrow().ok()?;
+        rules::infusion_tank_view(&machines.get(&(dimension, pos))?.machine, side)
+    })
+}
+
+/// O que a rede de químico mudou no tanque de infusão: o objeto vivo recebe o conteúdo com o aviso do tanque (`onContentsChanged`: o monitor de receitas vê a mudança) e o NBT o
+/// grava, como o fim do tick faria.
+fn infusion_write(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], contents: TankContents) {
+    LIVE_MACHINES.with(|machines| {
+        if let Ok(machines) = machines.try_borrow()
+            && let Some(live) = machines.get(&(dimension, pos))
+            && let Some(side) = live.machine.chemical_side()
+        {
+            side.tank.set_contents(contents.resource.clone(), contents.amount, None);
+        }
+    });
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        write_tank(entity, &contents);
+    }
+    game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+}
+
 /// O nível que `getAnalogOutputSignal` devolve (`currentRedstoneLevel`) e, quando `tickServer` o mudou, `notifyComparatorChange`
 /// (`Level.updateNeighbourForOutputSignal`): os comparadores em volta releem, e as máquinas vizinhas recebem o `onNeighborChange` do
 /// NeoForge (`updatePower`). O objeto vivo está fora da tabela durante o próprio tick (e o Horizon tira o tile do mundo), e um
@@ -1875,6 +1939,7 @@ pub(in crate::game) fn with_machine<R>(game: &mut Game<'_>, pos: [i32; 3], act: 
         live.side_nbt = basis::read_side_nbt(entity);
         basis::set_energy_capacity(dimension, pos, &entity.id, capacity, insert_faces, extract_faces);
         live.energy_capacity = Some((capacity, insert_faces, extract_faces));
+        publish_chemical_faces(dimension, pos, &entity.id, &live.machine);
     }
     game.world.modified.insert((at.0 >> 4, at.2 >> 4));
     publish_side_config(dimension, pos, &live);
@@ -2150,6 +2215,8 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             server.cables = rules::cable_capacities(&loaded);
             server.pipes = rules::pipe_capacities(&loaded);
             server.pipe_rates = rules::pipe_rates(&loaded);
+            server.tubes = rules::tube_capacities(&loaded);
+            server.tube_rates = rules::tube_rates(&loaded);
             server.conductors = rules::conductor_values(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
             server.cube_rates = rules::cube_rates(&loaded);
@@ -2725,6 +2792,7 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
     let capacity = basis::energy_as_int(live_capacity, "a capacidade de energia");
     let (insert_faces, extract_faces) = energy_faces(&live.machine);
     basis::set_energy_capacity(game.native_dimension(), pos, &entity.id, capacity, insert_faces, extract_faces);
+    publish_chemical_faces(game.native_dimension(), pos, &entity.id, &live.machine);
     // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de uma máquina que esteve ali antes.
     COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), live.machine.tile().current_redstone_level()));
     Some(live_capacity)

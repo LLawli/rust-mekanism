@@ -123,6 +123,9 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     if mode.transmission().is_some() && glue::is_conductor_block(&block) {
         return conductor_click(game, pos, face, sneaking);
     }
+    if mode.transmission().is_some() && glue::is_tube_block(&block) {
+        return tube_click(game, pos, face, sneaking);
+    }
     if let Some(kind) = mode.transmission() {
         if cube::is_cube(&block) {
             let click = cube::with_cube(game, pos, |cube| {
@@ -239,6 +242,7 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
     let facts = game.res.facts().get(state);
     let kinds = basis::cable_arm_kinds(game, pos)
         .or_else(|| crate::game::machinery_pipes::pipe_arm_kinds(game, pos))
+        .or_else(|| crate::game::machinery_tubes::tube_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_heat::conductor_arm_kinds(game, pos))
         .unwrap_or_else(|| {
         let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
@@ -250,6 +254,18 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
         kinds
     });
     rules::transmitter_pieces(&facts.name, &kinds)
+}
+
+/// O clique de um modo de configurar num tubo pressurizado (a mesma capability `IConfigurable` do transmissor).
+fn tube_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: bool) -> bool {
+    let hit_side = if sneaking { aimed_arm(game, pos) } else { None };
+    let Some((consumed, overlays)) = crate::game::machinery_tubes::tube_configure(game, pos, face, hit_side, sneaking) else {
+        return false;
+    };
+    for message in &overlays {
+        overlay(game, &rules::cable_overlay_message(message));
+    }
+    consumed
 }
 
 /// `TileEntityTransmitter.getSideLookingAt`: o lado do braço que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`). O centro, ou nada, não é braço.
