@@ -34,6 +34,20 @@ FILTRO = (
 )
 
 
+def passadas_do_servidor():
+    """Quantas passadas do servidor o jogo já deu (as linhas `MBC` do stderr): o `wait` do `horizon-ctl` conta quadros do cliente, e o port anda a 7 a 12 ticks por segundo no gamescope
+    headless, então esperar por quadros não dá o mesmo número de ticks que o original."""
+    out = ssh(f"grep -ac '^MBC ' {PASTA}/game.log").strip()
+    return int(out) if out.isdigit() else 0
+
+
+def espera_ticks(n, limite=600):
+    """Espera `n` passadas do servidor (ou `limite` segundos)."""
+    inicio, fim = passadas_do_servidor(), time.time() + limite
+    while passadas_do_servidor() - inicio < n and time.time() < fim:
+        time.sleep(1.0)
+
+
 def secao(nome):
     """As linhas de uma seção de `cenas/setups_reais.txt` (`== nome`), sem comentário nem linha em branco."""
     linhas, dentro = [], False
@@ -212,7 +226,7 @@ def roda(nome):
         if linha.startswith("cmd "):
             cmd(linha[4:])
         elif linha.startswith("espera "):
-            wait(int(linha[7:]))
+            espera_ticks(int(linha[7:]))
         elif linha.startswith("@"):
             passo_nomeado(linha)
         else:
@@ -230,7 +244,7 @@ def criar_mundo():
 def abertura(saida, tag, ticks, espera):
     inicio = base.log_total()
     abrir(MUNDO)
-    wait(espera)
+    espera_ticks(espera)
     todas = janela(saida, tag, inicio, ticks)
     marca(saida, "depois_de_abrir" if tag == "abre1" else "depois_de_reabrir")
     return todas
@@ -248,17 +262,17 @@ def roteiro(caminho):
     # O fluxo: os cinco passos nomeados e 600 ticks.
     inicio = base.log_total()
     roda("fluxo")
-    wait(630)
+    espera_ticks(630)
     janela(saida, "fluxo", inicio, 600)
     marca(saida, "depois_do_fluxo")
     inicio = base.log_total()
     roda("afasta")
-    wait(320)
+    espera_ticks(320)
     janela(saida, "afasta", inicio, 300)
     marca(saida, "depois_de_afastar")
     inicio = base.log_total()
     roda("volta")
-    wait(320)
+    espera_ticks(320)
     janela(saida, "volta", inicio, 300)
     marca(saida, "depois_de_voltar")
     sair()
@@ -267,23 +281,10 @@ def roteiro(caminho):
     saida.close()
 
 
-def ks(caminho, valores):
-    """A abertura do mundo `SetupsA` (já construído) para cada valor de `STREAM_WORKERS` (o arquivo `/tmp/mb_stream_workers` do container, que só a cópia de teste lê): mede quantos ticks a linha de
-    cabos leva para entrar na rede inteira (decisão 196, a injeção `stream_budget`). `1` deixa o Horizon como é."""
-    saida = open(caminho, "w")
-    for valor in valores:
-        ssh(f"docker exec {os.environ['H_NAME']} sh -c 'echo {valor} > /tmp/mb_stream_workers'")
-        abertura(saida, f"abre_k{valor}", 80, 120)
-        sair()
-    saida.close()
-
-
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
     if what == "roteiro":
         roteiro(sys.argv[2])
-    elif what == "ks":
-        ks(sys.argv[2], sys.argv[3:])
     elif what == "limpar":
         ctl("world-delete", MUNDO, "--confirm")
     else:
