@@ -65,6 +65,8 @@ def place(p, item):
 
 def clear():
     cmd("tick unfreeze")
+    # O chão da cena: o `limpo` tem ar em y 149, e o `place` do cabo pede uma face à vista.
+    cmd("fill %d %d %d %d %d %d minecraft:stone" % (BASE[0] - 6, BASE[1] - 1, BASE[2] - 8, BASE[0] + 42, BASE[1] - 1, BASE[2] + 10))
     cmd("fill %d %d %d %d %d %d minecraft:air" % (BASE[0] - 4, BASE[1], BASE[2] - 6, BASE[0] + 40, BASE[1] + 6, BASE[2] + 8))
     wait(10)
 
@@ -192,26 +194,16 @@ def last_views():
 
 
 def click_arm(cable, side, sneak=True):
-    """O clique do Configurator no braço de `side` (leste ou oeste) do cabo. O `interact` mira o centro da face norte do bloco a partir de onde o jogador está: o jogador fica ao
-    norte e de lado, de modo que o raio atravessa a laje do norte e acerta a caixa do braço (e não o centro) antes de sair pelo outro lado."""
+    """O clique do Configurator no braço de `side` (leste, oeste ou sul): como um jogador, a mira do `look-at` sobre o meio do braço e o botão direito do mouse (o `interact` mira o centro
+    da face do bloco, e a mira de um braço é o que o servidor lê: `getSideLookingAt`)."""
+    import h2_ajustes_jogo as a
     if side == "south":
-        # O braço no eixo z: o jogador fica ao oeste e deslocado para o norte, olhando a face oeste.
-        cmd("tp @s %.2f %.2f %.2f" % (cable[0] - 2.5, cable[1], cable[2] - 2.3))
-        face = "west"
+        point, stand = (0.32, 0.5, 0.85), (cable[0] - 2.5, cable[1], cable[2] + 0.85)
     else:
-        local_x = -2.3 if side == "east" else 3.3
-        cmd("tp @s %.2f %.2f %.2f" % (cable[0] + local_x, cable[1], cable[2] - 2.5))
-        face = "north"
-    wait(10)
-    h.ctl("select", "mekanism:configurator")
-    if sneak:
-        h.ctl("key", "shift", "down")
-        wait(3)
-    out = h.ctl("interact", *map(str, cable), face)
-    if sneak:
-        h.ctl("key", "shift", "up")
-    wait(6)
-    return out
+        point = (0.85 if side == "east" else 0.15, 0.5, 0.5)
+        # Ao norte e no meio: o raio entra pelo braço, e não pelo centro (de lado ele cruza a face norte do centro antes do braço).
+        stand = (cable[0] + 0.5, cable[1] + 1.0, cable[2] - 2.6)
+    return a.click_at(cable, point, stand, sneak)
 
 
 def configurador():

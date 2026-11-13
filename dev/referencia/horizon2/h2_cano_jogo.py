@@ -199,20 +199,17 @@ def montar_lava():
     wait(40)
 
 
-def click_arm(pipe, side, sneak=True):
-    """O clique do Configurator agachado no braço de `side` (leste ou oeste) do cano: o jogador fica ao norte e de lado, e o raio acerta a caixa do braço."""
-    local_x = -2.3 if side == "east" else 3.3
-    cmd("tp @s %.2f %.2f %.2f" % (pipe[0] + local_x, pipe[1], pipe[2] - 2.5))
-    wait(10)
-    h.ctl("select", "mekanism:configurator")
-    if sneak:
-        h.ctl("key", "shift", "down")
-        wait(3)
-    out = h.ctl("interact", *map(str, pipe), "north")
-    if sneak:
-        h.ctl("key", "shift", "up")
-    wait(6)
-    return out
+def click_arm(cable, side, sneak=True):
+    """O clique do Configurator no braço de `side` (leste, oeste ou sul): como um jogador, a mira do `look-at` sobre o meio do braço e o botão direito do mouse (o `interact` mira o centro
+    da face do bloco, e a mira de um braço é o que o servidor lê: `getSideLookingAt`)."""
+    import h2_ajustes_jogo as a
+    if side == "south":
+        point, stand = (0.32, 0.5, 0.85), (cable[0] - 2.5, cable[1], cable[2] + 0.85)
+    else:
+        point = (0.85 if side == "east" else 0.15, 0.5, 0.5)
+        # Ao norte e no meio: o raio entra pelo braço, e não pelo centro (de lado ele cruza a face norte do centro antes do braço).
+        stand = (cable[0] + 0.5, cable[1] + 1.0, cable[2] - 2.6)
+    return a.click_at(cable, point, stand, sneak)
 
 
 SHOTS = os.environ.get("SHOTS", "~/.cache/rust-mekanism/cano-jogo-b1/prints")
