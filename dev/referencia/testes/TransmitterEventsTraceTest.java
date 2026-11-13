@@ -19,6 +19,7 @@ import mekanism.common.util.WorldUtils;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Holder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -243,6 +245,168 @@ public class TransmitterEventsTraceTest {
         });
     }
 
+    /// Os comandos que mudam vários blocos de uma vez (`/fill`, `/clone`, `/setblock`) e uma explosão, no cenário do chão de 7 por 5: a fila de cabos em z=2, as máquinas em z=1.
+    /// O original manda cada evento dentro da chamada que o causa, no meio da operação (decisão 183 (b)); o rastro mostra a ordem dos eventos de cada comando.
+    @GameTest(template = FLOOR, timeoutTicks = TIMEOUT, batch = "trace_transmitter_events_ops")
+    @TestHolder(description = "Records the events of fill, clone, setblock and an explosion over cables and machines.")
+    public static void ops(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            ServerLevel level = helper.getLevel();
+            String cable = "mekanism:basic_universal_cable";
+            String advanced = "mekanism:advanced_universal_cable";
+            String chamber = "mekanism:enrichment_chamber";
+            List<Step> steps = List.of(
+                  new Step(3, () -> command(helper, "fill the line of cables", "fill", new int[]{1, 1, 2, 5, 1, 2}, cable)),
+                  new Step(6, () -> command(helper, "fill the row of machines", "fill", new int[]{1, 1, 1, 5, 1, 1}, chamber)),
+                  new Step(9, () -> command(helper, "fill the middle of the line with air", "fill", new int[]{2, 1, 2, 3, 1, 2}, "minecraft:air")),
+                  new Step(12, () -> command(helper, "fill the gap with cables again", "fill", new int[]{2, 1, 2, 3, 1, 2}, cable)),
+                  new Step(15, () -> {
+                      Recorder.mark("build a cable, a stone and a torch on it");
+                      level.setBlock(helper.absolutePos(new BlockPos(3, 1, 3)), Blocks.STONE.defaultBlockState(), 3);
+                      level.setBlock(helper.absolutePos(new BlockPos(3, 2, 3)), Blocks.TORCH.defaultBlockState(), 3);
+                      level.setBlock(helper.absolutePos(new BlockPos(3, 2, 2)), cable(), 3);
+                  }),
+                  new Step(18, () -> command(helper, "break the stone under the torch next to the cable", "setblock", new int[]{3, 1, 3}, "minecraft:air")),
+                  new Step(21, () -> command(helper, "clone the line to z 3", "clone", new int[]{1, 1, 2, 5, 1, 2, 1, 1, 3}, "")),
+                  new Step(24, () -> command(helper, "clone the line to z 3 shifted by one with move", "clone", new int[]{1, 1, 3, 5, 1, 3, 2, 1, 3}, "replace move")),
+                  new Step(27, () -> command(helper, "setblock stone next to the line", "setblock", new int[]{0, 1, 2}, "minecraft:stone")),
+                  new Step(30, () -> command(helper, "fill advanced cables over the line", "fill", new int[]{1, 1, 2, 5, 1, 2}, advanced + " replace " + cable)),
+                  new Step(33, () -> command(helper, "fill the machines with air", "fill", new int[]{1, 1, 1, 5, 1, 1}, "minecraft:air")),
+                  new Step(36, () -> {
+                      Recorder.mark("explosion in the middle of the line");
+                      BlockPos at = helper.absolutePos(new BlockPos(3, 1, 2));
+                      level.explode(null, at.getX() + 0.5, at.getY() + 0.5, at.getZ() + 0.5, 2.0F, Level.ExplosionInteraction.TNT);
+                  })
+            );
+            helper.startSequence()
+                  .thenExecute(() -> {
+                      Recorder.begin("ops", helper, new int[]{0, 0, 0, 7, 3, 5});
+                      Script.start(steps, 42);
+                  })
+                  .thenWaitUntil(() -> waitScript(helper))
+                  .thenExecute(Recorder::finish)
+                  .thenSucceed();
+        });
+    }
+
+    /// Roda `/<name> <posições absolutas> <extra>` como o servidor, no nível do cenário. `box` são as posições relativas à estrutura, na ordem do comando.
+    private static void command(MekGameTestHelper helper, String mark, String name, int[] box, String extra) {
+        Recorder.mark(mark);
+        StringBuilder text = new StringBuilder(name);
+        for (int i = 0; i + 2 < box.length; i += 3) {
+            BlockPos pos = helper.absolutePos(new BlockPos(box[i], box[i + 1], box[i + 2]));
+            text.append(' ').append(pos.getX()).append(' ').append(pos.getY()).append(' ').append(pos.getZ());
+        }
+        if (!extra.isEmpty()) {
+            text.append(' ').append(extra);
+        }
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withLevel(helper.getLevel()), text.toString());
+    }
+
+    /// Os chunks da máquina e do cabo da borda saem e voltam no mesmo tick (a descarga e a carga uma depois da outra, e a carga e a descarga), e a máquina fica inacessível e acessível.
+    @GameTest(template = LINE, timeoutTicks = TIMEOUT, batch = "trace_transmitter_events_chunks_same_tick")
+    @TestHolder(description = "Records the events of chunks that unload and load again in the same tick.")
+    public static void chunks_same_tick(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            ServerLevel level = helper.getLevel();
+            int border = 16 - (helper.absolutePos(BlockPos.ZERO).getX() & 15);
+            BlockPos machineAt = new BlockPos(border, 1, 1);
+            BlockPos edgeAt = new BlockPos(border - 1, 1, 1);
+            List<Step> steps = List.of(
+                  new Step(1, () -> {
+                      Recorder.mark("border x " + border);
+                      for (int x = 0; x < LINE_LENGTH; x++) {
+                          level.setBlock(helper.absolutePos(new BlockPos(x, 1, 1)), x == border ? machine() : cable(), 3);
+                      }
+                      Recorder.mark("line built");
+                  }),
+                  new Step(8, () -> {
+                      Recorder.mark("unload and load the chunk of the machine in the same tick");
+                      ChunkData.update(helper, machineAt, false, MekGameTestHelper.UNLOAD_LEVEL);
+                      ChunkData.update(helper, machineAt, true, ChunkMap.MAX_VIEW_DISTANCE - 2);
+                  }),
+                  new Step(20, () -> {
+                      Recorder.mark("unload the chunk of the edge cable and the machine, load both, in the same tick");
+                      ChunkData.update(helper, edgeAt, false, MekGameTestHelper.UNLOAD_LEVEL);
+                      ChunkData.update(helper, machineAt, false, MekGameTestHelper.UNLOAD_LEVEL);
+                      ChunkData.update(helper, machineAt, true, ChunkMap.MAX_VIEW_DISTANCE - 2);
+                      ChunkData.update(helper, edgeAt, true, ChunkMap.MAX_VIEW_DISTANCE - 2);
+                  })
+            );
+            helper.startSequence()
+                  .thenExecute(() -> {
+                      Recorder.begin("chunks_same_tick", helper, new int[]{0, 0, 0, LINE_LENGTH, 3, 3});
+                      Script.start(steps, 32);
+                  })
+                  .thenWaitUntil(() -> waitScript(helper))
+                  .thenExecute(Recorder::finish)
+                  .thenSucceed();
+        });
+    }
+
+    /// Dois chunks com cabos e baús postos fora de ordem (e alguns tirados e postos de novo), que saem um de cada vez: a ordem em que o original chama o `onChunkUnloaded` e o `setRemoved`
+    /// de cada cabo é a do mapa de block entities do chunk (todos os tipos, na ordem em que entraram), e o port só vê os de mod.
+    @GameTest(template = LINE, timeoutTicks = TIMEOUT, batch = "trace_transmitter_events_chunks_mixed")
+    @TestHolder(description = "Records the order in which a chunk with cables and chests in a scrambled order unloads its block entities.")
+    public static void chunks_mixed(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            ServerLevel level = helper.getLevel();
+            int border = 16 - (helper.absolutePos(BlockPos.ZERO).getX() & 15);
+            BlockPos firstAt = new BlockPos(border, 1, 1);
+            BlockPos secondAt = new BlockPos(border + 16, 1, 1);
+            List<Step> steps = List.of(
+                  new Step(1, () -> {
+                      Recorder.mark("border x " + border);
+                      mixed(helper, level, border, 14, 7, 4);
+                      mixed(helper, level, border + 16, 36, 7, 5);
+                      Recorder.mark("chunks built");
+                  }),
+                  new Step(6, () -> {
+                      Recorder.mark("take three out of the second chunk and put two back");
+                      for (int k : new int[]{14, 21, 35}) {
+                          level.setBlock(helper.absolutePos(new BlockPos(border + 16 + k % 16, 1, k / 16)), Blocks.AIR.defaultBlockState(), 3);
+                      }
+                      for (int k : new int[]{35, 14}) {
+                          level.setBlock(helper.absolutePos(new BlockPos(border + 16 + k % 16, 1, k / 16)), cable(), 3);
+                      }
+                  }),
+                  new Step(12, () -> {
+                      Recorder.mark("unload the first chunk");
+                      ChunkData.update(helper, firstAt, false, MekGameTestHelper.UNLOAD_LEVEL);
+                  }),
+                  new Step(18, () -> {
+                      Recorder.mark("load the first chunk");
+                      ChunkData.update(helper, firstAt, true, ChunkMap.MAX_VIEW_DISTANCE - 2);
+                  }),
+                  new Step(30, () -> {
+                      Recorder.mark("unload the second chunk");
+                      ChunkData.update(helper, secondAt, false, MekGameTestHelper.UNLOAD_LEVEL);
+                  })
+            );
+            helper.startSequence()
+                  .thenExecute(() -> {
+                      Recorder.begin("chunks_mixed", helper, new int[]{0, 0, 0, LINE_LENGTH, 3, 3});
+                      Script.start(steps, 36);
+                  })
+                  .thenWaitUntil(() -> waitScript(helper))
+                  .thenExecute(Recorder::finish)
+                  .thenSucceed();
+        });
+    }
+
+    /// `count` posições do chunk que começa em `fromX`, fora de ordem (`step` é primo com 48), cada `chestEvery`-ésima um baú e as outras cabos.
+    private static void mixed(MekGameTestHelper helper, ServerLevel level, int fromX, int count, int step, int chestEvery) {
+        for (int i = 0; i < count; i++) {
+            int k = (i * step) % 48;
+            BlockState state = i % chestEvery == chestEvery - 1 ? Blocks.CHEST.defaultBlockState() : cable();
+            level.setBlock(helper.absolutePos(new BlockPos(fromX + k % 16, 1, k / 16)), state, 3);
+        }
+    }
+
     /// Como `MekGameTestHelper.setChunkLoadLevel`, mas com o chunk absoluto (o dele soma 8 ao meio do chunk relativo e erra de fileira).
     private static void absoluteLevel(MekGameTestHelper helper, ChunkPos absolute, int newLevel) {
         var distanceManager = helper.getChunkMap().getDistanceManager();
@@ -346,8 +510,8 @@ public class TransmitterEventsTraceTest {
         /// Os ouvintes de invalidação de capability de cada vizinho (o level só guarda uma referência fraca).
         private final Map<Direction, ICapabilityInvalidationListener> probes = new EnumMap<>(Direction.class);
 
-        TracedCable(BlockPos pos, BlockState state) {
-            super(MekanismBlocks.BASIC_UNIVERSAL_CABLE, pos, state);
+        TracedCable(Holder<Block> block, BlockPos pos, BlockState state) {
+            super(block, pos, state);
         }
 
         @Override
@@ -443,11 +607,15 @@ public class TransmitterEventsTraceTest {
                 return;
             }
             try {
-                BlockEntityType<TileEntityUniversalCable> type = MekanismTileEntityTypes.BASIC_UNIVERSAL_CABLE.get();
                 Field factory = BlockEntityType.class.getDeclaredField("factory");
                 factory.setAccessible(true);
-                BlockEntityType.BlockEntitySupplier<TileEntityUniversalCable> traced = TracedCable::new;
-                factory.set(type, traced);
+                // O cabo básico e o avançado: os cenários trocam um pelo outro.
+                BlockEntityType<TileEntityUniversalCable> basic = MekanismTileEntityTypes.BASIC_UNIVERSAL_CABLE.get();
+                BlockEntityType.BlockEntitySupplier<TileEntityUniversalCable> tracedBasic = (pos, state) -> new TracedCable(MekanismBlocks.BASIC_UNIVERSAL_CABLE, pos, state);
+                factory.set(basic, tracedBasic);
+                BlockEntityType<TileEntityUniversalCable> advanced = MekanismTileEntityTypes.ADVANCED_UNIVERSAL_CABLE.get();
+                BlockEntityType.BlockEntitySupplier<TileEntityUniversalCable> tracedAdvanced = (pos, state) -> new TracedCable(MekanismBlocks.ADVANCED_UNIVERSAL_CABLE, pos, state);
+                factory.set(advanced, tracedAdvanced);
                 installed = true;
             } catch (ReflectiveOperationException e) {
                 throw new IllegalStateException(e);
