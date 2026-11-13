@@ -366,6 +366,14 @@ impl LogisticalTransporterBase {
         }
     }
 
+    /// `DiversionTransporter.modes`, um por lado; `None` se não é um desviador.
+    pub fn diversion_modes(&self) -> Option<[DiversionControl; 6]> {
+        match &self.kind {
+            TransporterKind::Diversion { modes } => Some(*modes),
+            _ => None,
+        }
+    }
+
     /// `getBlockPos()`.
     pub fn block_pos(&self) -> BlockPos {
         self.pos

@@ -1222,14 +1222,38 @@ pub(in crate::game) struct OverlayRequest {
     pub sprite: String,
     pub argb: u32,
     pub y_rot: f64,
+    /// `ConfiguratorOverlayHandler.isDiversion`: o quadrilátero é o de meio bloco do núcleo do desviador, e o contorno padrão não some.
+    pub diversion: bool,
 }
 
 /// `RenderTickHandler.onBlockHover`: com o Configurator na mão principal (ou na secundária), num modo de configurar, olhando para uma máquina que aceita o tipo e tem
-/// o lado ligado. Guarda o bloco para o contorno padrão sair.
+/// o lado ligado, ou, em qualquer modo, olhando para um desviador. Guarda o bloco para o contorno padrão sair, menos no desviador (o `showingConfiguratorOverlay` do original
+/// só vira verdadeiro no ramo da máquina, e o `render` do desviador devolve `false`: o contorno padrão fica).
 pub(in crate::game) fn overlay_request(game: &Game<'_>) -> Option<OverlayRequest> {
     let found = overlay_find(game);
-    effects().overlay = found.as_ref().map(|request| request.pos);
+    effects().overlay = found.as_ref().filter(|request| !request.diversion).map(|request| request.pos);
     found
+}
+
+/// `blockState.is(MekanismBlocks.DIVERSION_TRANSPORTER)`.
+fn is_diversion(game: &Game<'_>, pos: [i32; 3]) -> bool {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    &*game.res.facts().get(state).name == rules::DIVERSION_TRANSPORTER
+}
+
+/// O ramo `blockState.is(MekanismBlocks.DIVERSION_TRANSPORTER)`: a face é o lado do braço que o olhar toca (`getSideLookingAt(player, rayTraceResult.getDirection())`, a da
+/// mira cai na face acertada), o sprite é o do modo daquele lado e a cor é branca a 80 %. Sem o block entity (`transporter == null`) não há sobreposição.
+fn diversion_request(game: &Game<'_>, pos: [i32; 3], hit_face: Face) -> Option<OverlayRequest> {
+    let face = aimed_arm(game, pos).unwrap_or(hit_face);
+    let modes = crate::game::machinery_transporters::transporter_modes(game, pos).unwrap_or([machinery_basis_core::transporter::node::DiversionControl::Disabled; 6]);
+    Some(OverlayRequest {
+        pos,
+        face,
+        sprite: rules::diversion_overlay_sprite(modes[face as usize]).to_owned(),
+        argb: rules::DIVERSION_OVERLAY_ARGB,
+        y_rot: f64::from(game.yaw),
+        diversion: true,
+    })
 }
 
 fn overlay_find(game: &Game<'_>) -> Option<OverlayRequest> {
@@ -1241,16 +1265,19 @@ fn overlay_find(game: &Game<'_>) -> Option<OverlayRequest> {
     }
     let mode = mode_of(game, stack);
     let hit = game.pick()?;
+    if is_diversion(game, hit.pos) {
+        return diversion_request(game, hit.pos, face_of(hit.face));
+    }
     let config = glue::peek_side_config(game, hit.pos)?;
     let face = face_of(hit.face);
     let (kind, data_type) = rules::configurator_overlay(mode, &config, basis::front(game, hit.pos), face)?;
-    Some(OverlayRequest { pos: hit.pos, face, sprite: rules::overlay_sprite(kind), argb: rules::overlay_argb(data_type), y_rot: f64::from(game.yaw) })
+    Some(OverlayRequest { pos: hit.pos, face, sprite: rules::overlay_sprite(kind), argb: rules::overlay_argb(data_type), y_rot: f64::from(game.yaw), diversion: false })
 }
 
 /// Os vértices da sobreposição, relativos à câmera, no formato dos primitivos do mundo: um quadrilátero do sprite, com a cor do tipo de dado.
 pub(in crate::game) fn overlay_vertices(game: &Game<'_>, request: &OverlayRequest, camera: [f64; 3]) -> Option<[[f32; 3]; 4]> {
     let _ = game.gui.atlas.sprites.get(request.sprite.as_str())?;
-    let corners = face_overlay::vertices(request.face, request.y_rot);
+    let corners = if request.diversion { face_overlay::diversion_vertices(request.face, request.y_rot) } else { face_overlay::vertices(request.face, request.y_rot) };
     Some(std::array::from_fn(|index| {
         let position = corners[index].position;
         [

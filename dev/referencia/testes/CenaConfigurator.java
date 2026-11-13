@@ -36,6 +36,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 ///   nome=status_cheio efeito=status modo=wrench espera=4 sobrevivencia=0
 ///   nome=hud efeito=hud modo=rotate
 ///   nome=radial_centro efeito=radial modo=configurate_fluids mouse=0,0
+///   nome=div_com_sinal efeito=desviador modo=rotate modos=0,0,0,1,0,0 tp=300.5,-61,2.6,180,31
 ///
 /// Os campos: `nome` (o print sai em `screenshots/configurator_oficial_<nome>.png`), `efeito`, `modo` (o `ConfiguratorMode` do item na mão, no slot 0 da barra), `tp` (`x,y,z,yaw,pitch` do
 /// jogador), `config` (para `overlay`: os `DataType` por `RelativeSide` do tipo itens da câmara de enriquecimento posta em (300, -60, 0) virada para o norte, e energia fica fixa),
@@ -164,6 +165,11 @@ public class CenaConfigurator {
                     run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:enrichment_chamber[facing=north]", X, Y, Z));
                     // Os `DataType` do tipo itens (`config3`, um por `RelativeSide`) e a energia (`config0`) da câmara, o que o `data merge` do tile lê em `loadAdditional`.
                     run(server, String.format(Locale.ROOT, "data merge block %d %d %d {component_config:{config3:[I;%s],config0:[I;0,0,0,0,0,0]}}", X, Y, Z, e.get("config", "1,4,7,3,5,9")));
+                }
+                if (e.get("efeito", "").equals("desviador")) {
+                    // O desviador isolado em (300, -61, 0), com o `mode` de cada lado (`DiversionControl.ordinal` por `Direction`: baixo, cima, norte, sul, oeste, leste), que o `RenderTickHandler`
+                    // lê em `modes[face.ordinal()]`; o configurador na mão em qualquer modo.
+                    run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:diversion_transporter{mode:[I;%s]}", X, Y, Z, e.get("modos", "0,0,0,0,0,0")));
                 }
                 String[] tp = e.get("tp", "300.5,-60,3.5,180,10").split(",");
                 run(server, String.format(Locale.ROOT, "tp @a %s %s %s %s %s", tp[0], tp[1], tp[2], tp[3], tp[4]));

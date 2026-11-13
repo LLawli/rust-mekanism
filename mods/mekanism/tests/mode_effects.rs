@@ -4,10 +4,11 @@
 use machinery_basis_core::side_config::{DataType, TransmissionType};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::tile::ProgressMachine;
+use machinery_basis_core::transporter::node::DiversionControl;
 use mekanism_rules::{
-    CLIENT_CONFIG, CONFIGURATOR_RADIAL_ID, ConfiguratorMode, EffectsConfig,
-    advanced_machine_default, configurator_overlay, effects_config, electric_machine_default,
-    overlay_argb, overlay_sprite,
+    CLIENT_CONFIG, CONFIGURATOR_RADIAL_ID, ConfiguratorMode, DIVERSION_OVERLAY_ARGB, EffectsConfig,
+    advanced_machine_default, configurator_overlay, diversion_overlay_sprite, effects_config,
+    electric_machine_default, overlay_argb, overlay_sprite,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -213,6 +214,45 @@ fn the_overlay_color_is_the_data_type_color_at_sixty_percent() {
         );
     }
     assert_eq!(overlay_argb(DataType::Input), 0x99_C9071F);
+}
+
+#[test]
+fn the_diversion_overlay_sprite_follows_the_mode_of_the_side() {
+    // `RenderTickHandler.onBlockHover`: `DISABLED` é o pó de pólvora (atlas de itens), `HIGH` a tocha acesa e `LOW` a apagada (atlas de blocos).
+    assert_eq!(
+        diversion_overlay_sprite(DiversionControl::Disabled),
+        "item/gunpowder"
+    );
+    assert_eq!(
+        diversion_overlay_sprite(DiversionControl::High),
+        "block/redstone_torch"
+    );
+    assert_eq!(
+        diversion_overlay_sprite(DiversionControl::Low),
+        "block/redstone_torch_off"
+    );
+    // `DiversionControl.next()` percorre os três: um clique em `onRightClick` troca o sprite.
+    let mut seen = Vec::new();
+    let mut mode = DiversionControl::Disabled;
+    for _ in 0..3 {
+        seen.push(diversion_overlay_sprite(mode));
+        mode = mode.next();
+    }
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), 3);
+    assert_eq!(mode, DiversionControl::Disabled);
+}
+
+#[test]
+fn the_diversion_overlay_color_is_white_at_eighty_percent() {
+    // `ConfiguratorOverlayHandler.DIVERSION_OVERLAY_ARGB = ARGB.white(0.8F)`: `floor(0,8F * 255F)` = 204. O rastro do original (`desviador_sobreposicao.jsonl`) grava o valor
+    // do `ARGB.white` real e `face_overlay_reference` o confere; aqui, a constante do mod.
+    assert_eq!(
+        DIVERSION_OVERLAY_ARGB >> 24,
+        (0.8_f32 * 255.0).floor() as u32
+    );
+    assert_eq!(DIVERSION_OVERLAY_ARGB, 0xCCFF_FFFF);
 }
 
 #[test]

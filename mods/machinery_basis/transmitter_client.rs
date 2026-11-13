@@ -430,6 +430,19 @@ pub(in crate::game) fn view_at(dimension: &str, pos: [i32; 3]) -> Option<ClientV
     client_run(|levels| levels.get(dimension)?.view_at(sim_pos(pos)))
 }
 
+/// `DiversionTransporter.modes` que o cliente leu do pacote de atualização do transmissor em `pos` (`readModes`: sem a chave, todos `DISABLED`). `None` se o cliente não conhece o
+/// transmissor.
+pub(in crate::game) fn modes_at(dimension: &str, pos: [i32; 3]) -> Option<[machinery_basis_core::transporter::node::DiversionControl; 6]> {
+    use machinery_basis_core::transporter::node::DiversionControl;
+    client_run(|levels| {
+        let extra = levels.get(dimension)?.extra_at(sim_pos(pos))?;
+        Some(match extra.modes {
+            Some(ids) => ids.map(DiversionControl::by_id),
+            None => [DiversionControl::Disabled; 6],
+        })
+    })
+}
+
 /// A rede do cliente do transmissor em `pos` (o conteúdo que o desenho da Fase 4 lê: a escala, a energia e o último tipo).
 pub(in crate::game) fn network_at(dimension: &str, pos: [i32; 3]) -> Option<ClientNetwork> {
     client_run(|levels| levels.get(dimension)?.network_at(sim_pos(pos)).cloned())

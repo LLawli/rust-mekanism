@@ -49,6 +49,12 @@ def montar(e):
         cmd(f"setblock {X} {Y} {Z} mekanism:enrichment_chamber[facing=north]")
         time.sleep(0.5)
         cmd(f"data merge block {X} {Y} {Z} {{component_config:{{config3:[I;{e.get('config', '1,4,7,3,5,9')}],config0:[I;0,0,0,0,0,0]}}}}")
+    if e.get("efeito") == "desviador":
+        # O desviador isolado em (X, Y, Z); o modo de cada lado entra pela sonda do teste (`TRANSMITTER_PROBE`, `enviar_fontes.sh`: `updateMode` do dono).
+        cmd(f"setblock {X} {Y} {Z} mekanism:diversion_transporter")
+        time.sleep(1.0)
+        cmd(f"data merge block {X} {Y} {Z} {{probe_set:{{raw:[I;0,0,0,0,0,0], mode:[I;{e.get('modos', '0,0,0,0,0,0')}]}}}}")
+        time.sleep(0.5)
     x, y, z, yaw, pitch = e.get("tp", "300.5,-60,3.5,180,10").split(",")
     cmd(f"tp @s {x} {y} {z} {yaw} {pitch}")
 

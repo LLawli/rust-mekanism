@@ -639,6 +639,18 @@ pub(in crate::game) fn transporter_arm_kinds(game: &Game<'_>, pos: [i32; 3]) -> 
     VIEWS.with_borrow(|views| views.get(&(game.native_dimension(), pos)).map(|view| view.kind))
 }
 
+/// `DiversionTransporter.modes` do desviador em `pos`, um por lado (`RenderTickHandler.onBlockHover` lê `transporter.getTransmitter().modes[face.ordinal()]`). O servidor (e o
+/// anfitrião, que o roda) lê o dono, que tem o objeto vivo; o convidado de LAN lê o que o pacote de atualização trouxe (`handleUpdateTag` -> `readModes`: sem a chave, todos
+/// desligados). `None` se não há transportador ali, ou se ele não é um desviador no dono.
+pub(in crate::game) fn transporter_modes(game: &Game<'_>, pos: [i32; 3]) -> Option<[DiversionControl; 6]> {
+    let dimension = game.native_dimension();
+    let live = with_owner(dimension, |owner| owner.transporter_at(sim_pos(pos)).map(|base| base.diversion_modes())).flatten();
+    match live {
+        Some(modes) => modes,
+        None => client::modes_at(dimension, pos),
+    }
+}
+
 /// O clique do Configurator num transportador (`ItemConfigurator.useOn`: `IConfigurable.onSneakRightClick` agachado, `onRightClick` senão). `side` é a face clicada e `hit_side` o
 /// lado do braço que o olhar toca. Devolve se o clique foi do transportador e os avisos para o jogador.
 pub(in crate::game) fn transporter_configure(

@@ -1,0 +1,15 @@
+# A sobreposição do Configurator no desviador (decisão 48, item 2; frente `desviador-overlay`): uma etapa por linha, a mesma para o original (`testes/CenaConfigurator.java`) e para o
+# port (`horizon2/h2_efeitos.py`). O desviador fica em (300, -61, 0), sem vizinho; `modos` é o `DiversionControl` por `Direction` (baixo, cima, norte, sul, oeste, leste: 0 sempre,
+# 1 com sinal, 2 sem sinal); `tp` é `x,y,z,yaw,pitch`. O configurador está na mão em qualquer modo (o ramo do desviador não olha o modo).
+nome=aquece efeito=hud modo=configurate_items espera=80 tp=300.5,-61,-1.5,180,0
+nome=div_sempre efeito=desviador modo=configurate_items modos=0,0,0,0,0,0 tp=300.5,-61,2.6,180,31
+nome=div_com_sinal efeito=desviador modo=configurate_items modos=0,0,0,1,0,0 tp=300.5,-61,2.6,180,31
+nome=div_sem_sinal efeito=desviador modo=configurate_items modos=0,0,0,2,0,0 tp=300.5,-61,2.6,180,31
+nome=div_girar_sem_sinal efeito=desviador modo=rotate modos=0,0,0,2,0,0 tp=300.5,-61,2.6,180,31
+nome=div_vazio_com_sinal efeito=desviador modo=empty modos=0,0,0,1,0,0 tp=300.5,-61,2.6,180,31
+nome=div_lado_com_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,1 tp=302.1,-61,0.5,90,31
+nome=div_lado_sem_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,2 tp=302.1,-61,0.5,90,31
+nome=div_topo_norte efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,1.6,180,67
+nome=div_topo_sul efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,-0.6,0,67
+nome=div_topo_oeste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=301.6,-61,0.5,90,67
+nome=div_topo_leste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=299.4,-61,0.5,270,67

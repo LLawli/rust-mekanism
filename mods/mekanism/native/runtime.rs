@@ -4838,6 +4838,22 @@ pub fn overlay_sprite(kind: TransmissionType) -> String {
     format!("{SPRITES}/overlay/{}_overlay", kind.serialized_name())
 }
 
+/// `RenderTickHandler.onBlockHover`, o ramo do desviador: o sprite do modo do lado que o olhar toca (`MekanismRenderer.GUNPOWDER_SPRITE`, `REDSTONE_TORCH_SPRITE` e
+/// `REDSTONE_TORCH_OFF_SPRITE`, do atlas de itens e do de blocos do original; o atlas do Horizon os tem com estes nomes).
+pub fn diversion_overlay_sprite(
+    mode: machinery_basis_core::transporter::node::DiversionControl,
+) -> &'static str {
+    use machinery_basis_core::transporter::node::DiversionControl;
+    match mode {
+        DiversionControl::Disabled => "item/gunpowder",
+        DiversionControl::High => "block/redstone_torch",
+        DiversionControl::Low => "block/redstone_torch_off",
+    }
+}
+
+/// `ConfiguratorOverlayHandler.DIVERSION_OVERLAY_ARGB = ARGB.white(0.8F)`: `floor(0,8F * 255F)` = 204 de alfa, branco.
+pub const DIVERSION_OVERLAY_ARGB: u32 = 0xCC_FF_FF_FF;
+
 /// `MekanismLang.GENERIC_WITH_PARENTHESIS.translateColored(color, dataType, color.getName())`: `"Input (Red)"`, na cor do tipo.
 fn data_type_with_color(data_type: DataType) -> Chat {
     let color = data_type.color();

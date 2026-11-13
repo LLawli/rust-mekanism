@@ -81,7 +81,8 @@ fn build(face: Face, y_rot: f64, diversion: bool) -> [Vertex; 4] {
         ];
         if diversion {
             // `scale(0.5F)` e depois `translate(0.5, 0.5, 0.5)` na matriz: `0.5 * x + 0.25` por eixo (o `m30` do JOML é `0.5 * 0.5`).
-            position = position.map(|axis| DIVERSION_SCALE * axis + DIVERSION_SCALE * DIVERSION_TRANSLATE);
+            position =
+                position.map(|axis| DIVERSION_SCALE * axis + DIVERSION_SCALE * DIVERSION_TRANSLATE);
         }
         if let Some(degrees) = rotation {
             position = rotate_about_y(position, degrees, [0.5, 1.0, 0.5]);
