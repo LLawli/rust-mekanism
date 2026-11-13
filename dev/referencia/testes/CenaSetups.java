@@ -649,6 +649,7 @@ public class CenaSetups {
         passos.add(marca("depois_de_voltar"));
         // 4b. O Network Reader num cabo distante (x = 100, chunk 6): o print que se empilha com o do port.
         passos.add(vistaDoLeitor());
+        passos.add(observa("leitor", 100));
         roda("leitor");
         passos.add(faz(() -> servidorFaz(CenaSetups::clicaLeitor)));
         passos.add(zera());
