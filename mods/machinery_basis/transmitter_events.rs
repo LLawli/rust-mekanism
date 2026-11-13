@@ -14,7 +14,9 @@
 // O jogo entrega um evento por vez, na hora; o Horizon não tem esses pontos, então as injeções (`BlockEntities::insert`, `get_or_insert_with`, `load_chunk` e `remove`) e os ganchos
 // (`block_entity_tick`, `neighbor_changed`, `place_block`, `chunk_load`, `chunk_unload`, `server_tick`, `world_lifecycle`) deixam a ocorrência numa fila, e a cola da `machinery_basis`
 // a esvazia, com a dimensão do nível em que está, no fim da operação em andamento e nos pontos do tick (a ordem da fila é a das ocorrências). Diferença que fica: o dono do
-// evento o recebe no fim da operação que o causou, e não no meio dela.
+// evento o recebe no fim da operação que o causou, e não no meio dela (decisão 187: o dono mostra o mesmo a cada tick em 15 000 cenários, menos o id da rede quando um cabo de
+// redstone reativo pisca). A ordem em que o chunk que sai visita os block entities é a do mapa de todos eles (`BlockEntityOrder` da lib, decisão 188): `chunk_unloading` recebe
+// todos, de qualquer tipo, nessa ordem.
 //
 // Só `std`: o teste do `machinery_basis_core` compila este arquivo como está (`tests/transmitter_events.rs`).
 use std::collections::{HashMap, HashSet};
@@ -295,7 +297,7 @@ pub fn chunk_loaded(dim: &str, chunk: [i32; 2]) -> Vec<Event> {
     out
 }
 
-/// O chunk vai sair (o gancho `chunk_unload`, com os block entities ainda no lugar): `blocks` são os dele, na ordem do mapa do chunk.
+/// O chunk vai sair (o gancho `chunk_unload`, com os block entities ainda no lugar): `blocks` são todos os dele, de qualquer tipo, na ordem do mapa do chunk.
 pub fn chunk_unloading(dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)]) -> Vec<Event> {
     let mut out = Vec::new();
     lock(&TRACKER).chunk_unloading(dim, chunk, blocks, &mut out);
