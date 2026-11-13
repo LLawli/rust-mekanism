@@ -211,6 +211,8 @@ fn offered_resources(game: &Game<'_>, dimension: &'static str) -> Vec<ItemResour
 thread_local! {
     /// O que `offered_resources` achou antes do evento em andamento.
     static OFFERED: RefCell<Vec<(ItemResource, Option<horizon_client::items::ItemStack>)>> = const { RefCell::new(Vec::new()) };
+    /// O que cada contêiner do vanilla recusa dos itens oferecidos (o bloco em que valeu e, por slot, os recusados); vale enquanto o bloco e os itens oferecidos são os mesmos.
+    static REFUSES_MEMO: RefCell<HashMap<(&'static str, [i32; 3], usize), (String, Vec<Vec<ItemResource>>)>> = RefCell::new(HashMap::new());
 }
 
 /// Os slots do contêiner do bloco em `pos` que o lado `side` dele alcança, ou `None` se ali não há contêiner (um bloco sem slots, outra dimensão, um chunk que não carregou, o tile
@@ -222,20 +224,41 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
     drop(slots_span);
     let slots = slots?;
     let _refuses_span = basis::perf_span(basis::PERF_TRA_REFUSES);
-    Some(
-        slots
-            .into_iter()
-            .map(|slot| MirrorSlot {
-                index: slot.slot,
-                contents: slot.stack.as_ref().map(|stack| (basis::item_resource(game, stack), stack.count)),
-                can_take: slot.can_take,
-                refuses: OFFERED.with_borrow(|offered| {
+    // A regra de slot de um contêiner do vanilla (baú, funil, forno) só depende do item, do slot e do lado: é a mesma enquanto o bloco e a lista dos itens oferecidos são os mesmos. A de um
+    // block entity de mod (uma máquina) lê o estado dela, e é perguntada a cada vez (decisão 202).
+    let plain = !matches!(game.world.block_entities.get(&(pos[0], pos[1], pos[2])), Some(BlockEntity::Mod(_)));
+    let key = (dimension, pos, side as usize);
+    let block = plain.then(|| game.native_block(pos).to_string());
+    let known: Option<Vec<Vec<ItemResource>>> = block.as_ref().and_then(|block| {
+        REFUSES_MEMO.with_borrow(|memo| memo.get(&key).filter(|(cached_block, refuses)| cached_block == block && refuses.len() == slots.len()).map(|(_, refuses)| refuses.clone()))
+    });
+    let refuses: Vec<Vec<ItemResource>> = known.unwrap_or_else(|| {
+        let computed: Vec<Vec<ItemResource>> = slots
+            .iter()
+            .map(|slot| {
+                OFFERED.with_borrow(|offered| {
                     offered
                         .iter()
                         .filter(|(_, stack)| stack.as_ref().is_some_and(|stack| !game.machinery_slot_accepts(pos, slot.slot, stack, reached)))
                         .map(|(resource, _)| resource.clone())
                         .collect()
-                }),
+                })
+            })
+            .collect();
+        if let Some(block) = block {
+            REFUSES_MEMO.with_borrow_mut(|memo| memo.insert(key, (block, computed.clone())));
+        }
+        computed
+    });
+    Some(
+        slots
+            .into_iter()
+            .zip(refuses)
+            .map(|(slot, refuses)| MirrorSlot {
+                index: slot.slot,
+                contents: slot.stack.as_ref().map(|stack| (basis::item_resource(game, stack), stack.count)),
+                can_take: slot.can_take,
+                refuses,
             })
             .collect(),
     )
@@ -246,7 +269,13 @@ fn handlers_refresh(game: &Game<'_>, dimension: &'static str) {
     let offered_span = basis::perf_span(basis::PERF_TRA_OFFERED);
     let offered = offered_resources(game, dimension);
     // Cada item oferecido vira a pilha de um item uma vez por espelho, e não uma vez por contêiner (`stack_of_resource` não depende do jogo).
-    OFFERED.with_borrow_mut(|list| *list = offered.into_iter().map(|resource| { let stack = basis::stack_of_resource(&resource, 1); (resource, stack) }).collect());
+    OFFERED.with_borrow_mut(|list| {
+        // Os itens oferecidos mudaram: o que os contêineres recusavam deles já não vale.
+        if list.len() != offered.len() || list.iter().zip(&offered).any(|((old, _), new)| old != new) {
+            REFUSES_MEMO.with_borrow_mut(HashMap::clear);
+            *list = offered.into_iter().map(|resource| { let stack = basis::stack_of_resource(&resource, 1); (resource, stack) }).collect();
+        }
+    });
     drop(offered_span);
     let _mirror_span = basis::perf_span(basis::PERF_TRA_MIRROR);
     HANDLERS.with_borrow_mut(|handlers| {
