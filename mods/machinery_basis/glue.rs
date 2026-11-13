@@ -1381,7 +1381,8 @@ pub(in crate::game) fn set_energy_capacity(
     );
     // Uma capability que apareceu ou mudou de lado (a configuração de lados, a frente do bloco): `BlockEntity.invalidateCapabilities`, que o cabo vizinho ouve
     // (`RefreshListener`). O Horizon só põe as faces da instância no primeiro tick da máquina, e o cabo que a olhou antes a achou sem capability.
-    if old.is_none_or(|old| old.block != block || old.insert_faces != insert_faces || old.extract_faces != extract_faces) {
+    let before = old.as_ref().map(|old| (old.block.as_str(), old.insert_faces, old.extract_faces));
+    if capability_changed(before, (block, insert_faces, extract_faces)) {
         CAPABILITY_CHANGED.lock().unwrap_or_else(|e| e.into_inner()).push((dimension, pos));
     }
 }
@@ -3100,23 +3101,14 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     }
 }
 
-/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora. Se o block entity ainda não está lá (a ocorrência veio antes
-/// da inserção), a ocorrência cai: a inserção anota a sua, e uma entrada sem tipo marcaria a posição como ocupada e esconderia o `clearRemoved` da inserção de verdade.
+/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora (`transmitters::resolve`).
 fn transmitters_resolve(game: &Game<'_>, raws: Vec<transmitters::Raw>) -> Vec<transmitters::Raw> {
     let entities = &game.world.block_entities;
-    raws.into_iter()
-        .filter_map(|raw| match raw {
-            transmitters::Raw::AddedLater { pos } => {
-                let id = match entities.get(&(pos[0], pos[1], pos[2])) {
-                    Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
-                    Some(_) => None,
-                    None => return None,
-                };
-                Some(transmitters::Raw::Added { pos, id })
-            }
-            other => Some(other),
-        })
-        .collect()
+    transmitters::resolve(raws, |pos| match entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(Some(entity.id.clone())),
+        Some(_) => Some(None),
+        None => None,
+    })
 }
 
 /// Esvazia a fila de ocorrências do nível em que o jogo está, tudo: os pontos do tick, o `chunk_load` e os ganchos. Um cliente que só recebe o mundo do servidor não a tem.
@@ -3255,9 +3247,38 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 return;
             }
             transmitters_flush(game);
-            transmitters_deliver(game, vec![TransmitterEvent::ServerTickPost { runs_normally: world_running }]);
+            // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele.
+            let dims = game.levels_to_tick();
+            transmitters::deliver_server_tick_post(&mut TickLevels { game, dims }, world_running);
         }
         _ => {}
+    }
+}
+
+/// Os níveis do servidor no fim do tick, para `transmitters::deliver_server_tick_post`: entrar num nível é o `enter_level` do `mb_in_levels`.
+struct TickLevels<'a, 'g> {
+    game: &'a mut Game<'g>,
+    dims: Vec<crate::game::Dim>,
+}
+
+impl transmitters::ServerLevels for TickLevels<'_, '_> {
+    fn ticked(&self) -> Vec<String> {
+        self.dims.iter().map(|dim| dim.id().to_owned()).collect()
+    }
+
+    fn current(&self) -> String {
+        self.game.native_dimension().to_owned()
+    }
+
+    fn enter(&mut self, dim: &str) -> bool {
+        match self.dims.iter().find(|candidate| candidate.id() == dim) {
+            Some(level) => self.game.enter_level(None, *level).is_ok(),
+            None => false,
+        }
+    }
+
+    fn deliver(&mut self, events: Vec<TransmitterEvent>) {
+        transmitters_deliver(self.game, events);
     }
 }
 
@@ -3278,6 +3299,8 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
 // ---------------------------------------------------------------------------------------------------------------------------
 
 use machinery_basis_core::distribution::EnergyInsert;
+use machinery_basis_core::transmission::host_acceptor::{BufferSnapshot, SnapshotAcceptor};
+use machinery_basis_core::transmission::owner::capability_changed;
 use machinery_basis_core::energy_cube::EnergyNeighbours;
 use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
 use machinery_basis_core::transaction::Transaction;
@@ -3287,7 +3310,7 @@ use machinery_basis_core::transmission::owner::{
 };
 use machinery_basis_core::transmission::transmitter::{Compound as CableNbt, Overlay as CableOverlay, Tag as CableTag};
 use machinery_basis_core::transmission::{DimensionId, Uuid};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 
 /// A capacidade de um bloco de cabo (`CableTier.getCableCapacity`), ou `None` se o bloco não é um cabo.
 pub type CableCapacity = fn(&str) -> Option<i64>;
@@ -3308,8 +3331,8 @@ thread_local! {
     static CABLE_ABSORBED: RefCell<HashMap<(&'static str, [i32; 3]), i32>> = RefCell::new(HashMap::new());
     /// Os avisos de tela que o Configurator provocou, para quem chamou entregar ao jogador.
     static CABLE_OVERLAYS: RefCell<Vec<CableOverlay>> = const { RefCell::new(Vec::new()) };
-    /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon (a fila anota o `insert` no começo dele): `(dimensão, posição, tick)`, tentados de novo.
-    static CABLE_PENDING: RefCell<Vec<(&'static str, [i32; 3], i64)>> = const { RefCell::new(Vec::new()) };
+    /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon (a fila anota o `insert` no começo dele), tentados de novo.
+    static CABLE_PENDING: RefCell<transmitters::PendingClears> = RefCell::new(transmitters::PendingClears::new());
     /// Os vizinhos que o dono guarda como aceitadores (o mesmo objeto que o registro tem no cache de aceitadores).
     static CABLE_ACCEPTORS: RefCell<HashMap<AcceptorKey, Rc<HostAcceptor>>> = RefCell::new(HashMap::new());
 }
@@ -3336,66 +3359,32 @@ fn arr(pos: SimPos) -> [i32; 3] {
     [pos.x, pos.y, pos.z]
 }
 
-/// O que o buffer do vizinho dizia no começo da conta (`Game::native_energy`).
-#[derive(Clone, Copy, Default)]
-struct BufferSnapshot {
-    amount: i32,
-    capacity: i32,
-    max_insert: i32,
-    max_extract: i32,
-    can_insert: bool,
-    can_extract: bool,
-}
-
 /// Um vizinho que dá ou recebe energia pela capability dele. O Horizon não desfaz uma inserção e a lib não tem o jogo na mão quando distribui (`probe_insert` só simula e
-/// `commit_probe` insere de verdade, veja `distribution`), então o aceitador faz a conta de `SimpleEnergyHandler.insert` e `extract` sobre o que o buffer dizia no começo do
-/// evento (`insert_amount` e `extract_amount` do Horizon) e guarda o que entregou e o que tirou; `acceptors_flush` aplica isso no jogo no fim do evento.
+/// `commit_probe` insere de verdade, veja `distribution`), então o aceitador (`SnapshotAcceptor`, da lib) faz a conta de `SimpleEnergyHandler.insert` e `extract` sobre o que o buffer
+/// dizia no começo do evento (`insert_amount` e `extract_amount` do Horizon) e guarda o que entregou e o que tirou; `acceptors_flush` aplica isso no jogo no fim do evento.
 struct HostAcceptor {
     dimension: &'static str,
     pos: [i32; 3],
     /// O lado do vizinho que olha o cabo.
     side: Direction,
-    snapshot: Cell<BufferSnapshot>,
-    delivered: Cell<i32>,
-    taken: Cell<i32>,
-}
-
-impl HostAcceptor {
-    fn insertable(&self, offered: i32) -> i32 {
-        let snapshot = self.snapshot.get();
-        if !snapshot.can_insert {
-            return 0;
-        }
-        snapshot.capacity.saturating_sub(snapshot.amount.saturating_add(self.delivered.get())).min(offered).min(snapshot.max_insert).max(0)
-    }
+    inner: SnapshotAcceptor,
 }
 
 impl EnergyInsert for HostAcceptor {
-    fn insert(&self, amount: i32, _: &Transaction) -> i32 {
-        let moved = self.insertable(amount);
-        self.delivered.set(self.delivered.get().saturating_add(moved));
-        moved
+    fn insert(&self, amount: i32, transaction: &Transaction) -> i32 {
+        self.inner.insert(amount, transaction)
     }
 
-    fn probe_insert(&self, amount: i32, _: &Transaction) -> i32 {
-        self.insertable(amount)
+    fn probe_insert(&self, amount: i32, transaction: &Transaction) -> i32 {
+        self.inner.probe_insert(amount, transaction)
     }
 
-    fn commit_probe(&self, amount: i32, _: &Transaction) {
-        let moved = self.insertable(amount);
-        self.delivered.set(self.delivered.get().saturating_add(moved));
+    fn commit_probe(&self, amount: i32, transaction: &Transaction) {
+        self.inner.commit_probe(amount, transaction);
     }
 
     fn extract(&self, amount: i32, simulate: bool) -> i32 {
-        let snapshot = self.snapshot.get();
-        if !snapshot.can_extract || amount <= 0 {
-            return 0;
-        }
-        let moved = snapshot.amount.saturating_sub(self.taken.get()).min(amount).min(snapshot.max_extract).max(0);
-        if !simulate {
-            self.taken.set(self.taken.get().saturating_add(moved));
-        }
-        moved
+        self.inner.extract(amount, simulate)
     }
 }
 
@@ -3432,7 +3421,7 @@ fn acceptors_refresh(game: &Game<'_>, dimension: &'static str, around: Option<[i
                     pos[0], pos[1], pos[2], snapshot.amount, snapshot.capacity, snapshot.max_insert, snapshot.can_insert
                 );
             }
-            acceptor.snapshot.set(snapshot);
+            acceptor.inner.snapshot.set(snapshot);
         }
     });
 }
@@ -3440,11 +3429,10 @@ fn acceptors_refresh(game: &Game<'_>, dimension: &'static str, around: Option<[i
 /// Depois do evento: o que os aceitadores entregaram e tiraram vai para os buffers dos vizinhos.
 fn acceptors_flush(game: &mut Game<'_>, dimension: &'static str) {
     let pending: Vec<Rc<HostAcceptor>> = CABLE_ACCEPTORS.with_borrow(|acceptors| {
-        acceptors.values().filter(|a| a.dimension == dimension && (a.delivered.get() != 0 || a.taken.get() != 0)).cloned().collect()
+        acceptors.values().filter(|a| a.dimension == dimension && a.inner.has_pending()).cloned().collect()
     });
     for acceptor in pending {
-        let delivered = acceptor.delivered.replace(0);
-        let taken = acceptor.taken.replace(0);
+        let (delivered, taken) = acceptor.inner.take_pending();
         if delivered > 0 {
             game.native_energy_insert(acceptor.pos, acceptor.side, delivered, false);
         }
@@ -3509,19 +3497,12 @@ impl OwnerWorld for GameWorld<'_, '_> {
             // `getCapability` não nulo: o vizinho tem um buffer que alguma configuração de lados deixa encher ou esvaziar por este lado.
             let alive = snapshot_of(&self.game.borrow(), self.dimension, arr(pos), side);
             return alive.map(|snapshot| {
-                acceptor.snapshot.set(snapshot);
+                acceptor.inner.snapshot.set(snapshot);
                 acceptor as Acceptor
             });
         }
         let snapshot = snapshot_of(&self.game.borrow(), self.dimension, arr(pos), side)?;
-        let acceptor = Rc::new(HostAcceptor {
-            dimension: self.dimension,
-            pos: arr(pos),
-            side,
-            snapshot: Cell::new(snapshot),
-            delivered: Cell::new(0),
-            taken: Cell::new(0),
-        });
+        let acceptor = Rc::new(HostAcceptor { dimension: self.dimension, pos: arr(pos), side, inner: SnapshotAcceptor::new(snapshot) });
         CABLE_ACCEPTORS.with_borrow_mut(|acceptors| acceptors.insert(key, acceptor.clone()));
         Some(acceptor)
     }
@@ -3591,25 +3572,22 @@ fn cables_event(game: &mut Game<'_>, event: &TransmitterEvent) {
         let created = with_owner(dimension, |owner| owner.cable_at(sim_pos(*pos)).is_some()).unwrap_or(true);
         if !created {
             let now = game.world.game_time;
-            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dimension, *pos, now)));
+            CABLE_PENDING.with_borrow_mut(|pending| pending.wait(dimension, *pos, now));
         }
     }
 }
 
 /// Os `ClearRemoved` que esperavam o block entity: o que já o tem entra, o que esperou demais (o bloco já não é um cabo) sai da fila.
 fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
-    let waiting: Vec<(&'static str, [i32; 3], i64)> = CABLE_PENDING.with_borrow_mut(|pending| std::mem::take(pending));
-    for (dim, pos, since) in waiting {
-        if dim != dimension {
-            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dim, pos, since)));
-            continue;
-        }
-        let present = matches!(game.world.block_entities.get(&(pos[0], pos[1], pos[2])), Some(horizon_client::containers::BlockEntity::Mod(_)));
-        if present {
-            cables_deliver(game, dimension, &TransmitterEvent::Transmitter { dim: dimension.to_owned(), pos, kind: TransmitterKind::ClearRemoved });
-        } else if game.world.game_time - since < 200 {
-            CABLE_PENDING.with_borrow_mut(|pending| pending.push((dim, pos, since)));
-        }
+    let now = game.world.game_time;
+    let ready = {
+        let entities = &game.world.block_entities;
+        CABLE_PENDING.with_borrow_mut(|pending| {
+            pending.retry(dimension, now, |pos| matches!(entities.get(&(pos[0], pos[1], pos[2])), Some(horizon_client::containers::BlockEntity::Mod(_))))
+        })
+    };
+    for pos in ready {
+        cables_deliver(game, dimension, &TransmitterEvent::Transmitter { dim: dimension.to_owned(), pos, kind: TransmitterKind::ClearRemoved });
     }
 }
 

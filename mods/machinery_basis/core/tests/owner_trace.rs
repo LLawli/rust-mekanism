@@ -37,6 +37,10 @@ pub fn tier_capacity(tier: &str) -> i64 {
 pub struct Machine {
     pub container: BufferEnergyContainer,
     pub gives: bool,
+    /// Um vizinho de simulação errada: `extract` devolve isto a mais do que o pedido, sem ter como entregar (o `EnergyHandler` que erra, de que `pullFromAcceptors` se defende).
+    pub overdraw: i32,
+    /// Os `extract` que o vizinho recebeu: o pedido e se era simulação.
+    pub extracts: std::cell::RefCell<Vec<(i32, bool)>>,
 }
 
 impl EnergyInsert for Machine {
@@ -46,6 +50,7 @@ impl EnergyInsert for Machine {
     }
 
     fn extract(&self, amount: i32, simulate: bool) -> i32 {
+        self.extracts.borrow_mut().push((amount, simulate));
         if !self.gives {
             return 0;
         }
@@ -56,7 +61,7 @@ impl EnergyInsert for Machine {
         if !simulate {
             transaction.commit();
         }
-        got
+        got + self.overdraw
     }
 }
 
@@ -75,6 +80,12 @@ pub struct Level {
     pub published: Vec<(BlockPos, CableView)>,
     pub overlays: Vec<Overlay>,
     pub powered: Vec<BlockPos>,
+    /// `BlockEntity.setChanged`, `sideChanged` e `redstoneChanged`, na ordem em que o dono os chamou.
+    pub changed: Vec<BlockPos>,
+    pub side_changes: Vec<(BlockPos, Face, ConnectionType, ConnectionType)>,
+    pub redstone_changes: Vec<(BlockPos, bool)>,
+    /// O jogo dá capability de energia também ao bloco de um cabo (o dono nunca deve perguntar por ela).
+    pub cables_have_capability: bool,
 }
 
 impl OwnerWorld for Level {
@@ -89,10 +100,23 @@ impl OwnerWorld for Level {
     }
 
     fn energy_handler(&self, pos: BlockPos, _side: Face) -> Option<Acceptor> {
+        // `BlockCapabilityCache.getCapability` de um chunk sem carregar é nulo.
+        if self.unloaded.contains(&pos) {
+            return None;
+        }
         match self.blocks.get(&pos)? {
             Block::Machine(machine) => {
                 let machine: Acceptor = machine.clone();
                 Some(machine)
+            }
+            Block::Cable { .. } if self.cables_have_capability => {
+                let ghost: Acceptor = Rc::new(Machine {
+                    container: BufferEnergyContainer::new(1_000, always, always, None),
+                    gives: false,
+                    overdraw: 0,
+                    extracts: Default::default(),
+                });
+                Some(ghost)
             }
             Block::Cable { .. } => None,
         }
@@ -114,6 +138,24 @@ impl OwnerWorld for Level {
 
     fn overlay(&mut self, _pos: BlockPos, overlay: Overlay) {
         self.overlays.push(overlay);
+    }
+
+    fn set_changed(&mut self, pos: BlockPos) {
+        self.changed.push(pos);
+    }
+
+    fn side_changed(
+        &mut self,
+        pos: BlockPos,
+        side: Face,
+        old: ConnectionType,
+        new: ConnectionType,
+    ) {
+        self.side_changes.push((pos, side, old, new));
+    }
+
+    fn redstone_changed(&mut self, pos: BlockPos, powered: bool) {
+        self.redstone_changes.push((pos, powered));
     }
 }
 
@@ -220,7 +262,12 @@ impl Sim {
     ) -> Rc<Machine> {
         let container = BufferEnergyContainer::new(max, always, always, None);
         container.set_energy(stored, None);
-        let machine = Rc::new(Machine { container, gives });
+        let machine = Rc::new(Machine {
+            container,
+            gives,
+            overdraw: 0,
+            extracts: Default::default(),
+        });
         self.level
             .blocks
             .insert(pos, Block::Machine(machine.clone()));
@@ -890,4 +937,796 @@ fn a_redstone_reactive_cable_lets_go_while_it_is_powered() {
         "sem braços enquanto está ligado"
     );
     assert!(!view.insert.iter().any(|&b| b), "sem capability de entrada");
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O que o jogo mostra e o que o dono faz com cada evento (as mutações da frente `cabo-ajustes`): cada teste abaixo é o que mata uma mutação que sobreviveu aos rastros.
+
+fn line_at(sim: &mut Sim, origin: BlockPos, count: i32) -> Vec<BlockPos> {
+    line(sim, origin, count)
+}
+
+/// O que o jogo mostra de cada cabo é a última vista publicada dele, e tem de ser a que o dono tem agora.
+fn assert_shown(sim: &Sim, step: &str) {
+    for pos in sim.owner.positions() {
+        let live = sim.owner.view_at(&sim.level, pos).unwrap();
+        let Some((_, shown)) = sim.level.published.iter().rev().find(|(at, _)| *at == pos) else {
+            continue;
+        };
+        // `onRightClick` liga o redstone reativo sem `sendUpdatePacket`: o modelo não o usa.
+        let (mut shown, mut live) = (shown.clone(), live);
+        shown.redstone_reactive = false;
+        live.redstone_reactive = false;
+        assert_eq!(
+            shown, live,
+            "{step}: o que o jogo mostra do cabo {pos:?} é o que o dono tem"
+        );
+    }
+}
+
+#[test]
+fn what_the_game_shows_is_always_what_the_owner_has_after_every_operation() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line_at(&mut sim, origin, 4);
+    assert_shown(&sim, "a linha posta");
+    sim.place_machine(
+        BlockPos::new(origin.x + 3, origin.y + 1, origin.z),
+        100_000,
+        0,
+        false,
+    );
+    assert_shown(&sim, "a máquina posta");
+    sim.tick();
+    assert_shown(&sim, "o tick com a máquina");
+    for round in 0..4 {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+        assert_shown(&sim, &format!("o clique no leste, volta {round}"));
+        sneak(&mut sim, cables[3], Face::Up, Some(Face::Up));
+        assert_shown(&sim, &format!("o clique na máquina, volta {round}"));
+        sim.tick();
+        assert_shown(&sim, &format!("o tick depois dos cliques, volta {round}"));
+    }
+    // O redstone reativo liga e desliga com o sinal ao lado.
+    assert!(sim.owner.right_click(&mut sim.level, cables[2]));
+    assert_shown(&sim, "o redstone reativo ligado");
+    let powered = BlockPos::new(origin.x + 2, origin.y + 1, origin.z);
+    sim.level.powered.push(powered);
+    sim.send(Event::Neighbor(cables[2]));
+    assert_shown(&sim, "o sinal chegou");
+    sim.tick();
+    sim.level.powered.clear();
+    sim.send(Event::Neighbor(cables[2]));
+    assert_shown(&sim, "o sinal saiu");
+    sim.tick();
+    assert_shown(&sim, "o tick depois do sinal");
+    // O cabo quebrado sai: o que o bloco mostra não muda mais por ele.
+    sim.break_block(cables[1]);
+    let published = sim.level.published.len();
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_shown(&sim, "o cabo do meio quebrado");
+    assert!(
+        sim.level.published[published..]
+            .iter()
+            .all(|(at, _)| *at != cables[1]),
+        "o cabo que saiu não publica mais"
+    );
+    sim.place_cable(cables[1], 8_000, None);
+    sim.send(Event::PlacedByItem(cables[1]));
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_shown(&sim, "o cabo reposto");
+    for pos in sim.owner.positions() {
+        assert!(
+            sim.owner.view_at(&sim.level, pos).unwrap().has_network,
+            "o cabo {pos:?} tem rede no fim"
+        );
+    }
+}
+
+/// `TileEntityTransmitter.canInsert(side)` é o tipo visível do lado (`getConnectionType`: `NONE` onde não há braço, e `NORMAL` onde o braço é para outro transmissor, seja qual for o
+/// tipo cru) e a capability existe onde o tipo cru não é `NONE` e o cabo não está ativado por redstone; o contêiner que aceita de fora é o da rede.
+#[test]
+fn the_capability_of_a_cable_follows_the_visible_type_and_the_network() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line_at(&mut sim, origin, 3);
+    sim.place_machine(cables[1].relative(Face::Up), 100_000, 0, false);
+    sim.tick();
+    let view = sim.owner.view_at(&sim.level, cables[1]).unwrap();
+    assert!(view.has_network);
+    // Em cima fica a máquina (um braço para um aceitador) e em baixo não há nada: o tipo cru é `NORMAL` nos dois (a capability existe), o visível só onde há braço.
+    let (up, down, east) = (Face::Up as usize, Face::Down as usize, Face::East as usize);
+    assert_eq!(view.raw[down], ConnectionType::Normal);
+    assert_eq!(view.kind[down], ConnectionType::None);
+    assert!(view.exists[down] && !view.insert[down]);
+    // O braço da máquina mostra o tipo cru: `PUSH` só entrega (não deixa entrar), `PULL` deixa entrar, `NONE` tira a capability.
+    for (raw, kind, exists, insert) in [
+        (ConnectionType::Push, ConnectionType::Push, true, false),
+        (ConnectionType::Pull, ConnectionType::Pull, true, true),
+        (ConnectionType::None, ConnectionType::None, false, false),
+        (ConnectionType::Normal, ConnectionType::Normal, true, true),
+    ] {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::Up));
+        let view = sim.owner.view_at(&sim.level, cables[1]).unwrap();
+        assert_eq!(view.raw[up], raw);
+        assert_eq!(view.kind[up], kind, "{raw:?}: o tipo visível");
+        assert_eq!(view.exists[up], exists, "{raw:?}: a capability existe");
+        assert_eq!(
+            view.insert[up], insert,
+            "{raw:?}: a capability deixa entrar"
+        );
+    }
+    // O braço para outro cabo mostra `NORMAL` seja qual for o tipo cru, e `NONE` corta.
+    for (raw, kind, exists, insert) in [
+        (ConnectionType::Push, ConnectionType::Normal, true, true),
+        (ConnectionType::Pull, ConnectionType::Normal, true, true),
+        (ConnectionType::None, ConnectionType::None, false, false),
+        (ConnectionType::Normal, ConnectionType::Normal, true, true),
+    ] {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+        let view = sim.owner.view_at(&sim.level, cables[1]).unwrap();
+        assert_eq!(view.raw[east], raw);
+        assert_eq!(view.kind[east], kind, "{raw:?}: o tipo visível");
+        assert_eq!(view.exists[east], exists, "{raw:?}: a capability existe");
+        assert_eq!(
+            view.insert[east], insert,
+            "{raw:?}: a capability deixa entrar"
+        );
+    }
+    // O contêiner é o da rede: três cabos de 8.000 e a energia que um vizinho empurrou.
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(sim.owner.container_state(cables[0]).unwrap(), (24_000, 0));
+    assert_eq!(sim.owner.insert_external(cables[0], 1_000), 1_000);
+    for pos in &cables {
+        assert_eq!(sim.owner.container_state(*pos).unwrap(), (24_000, 1_000));
+        let buffer = sim.buffer(*pos).unwrap();
+        assert_eq!((buffer.capacity, buffer.amount), (24_000, 1_000));
+    }
+    // Um cabo sozinho, sem rede ainda: o contêiner é o do próprio cabo, e nenhuma face deixa entrar (a capability é a da rede).
+    let lone = BlockPos::new(30, 64, 30);
+    sim.place_cable(lone, 8_000, None);
+    let view = sim.owner.view_at(&sim.level, lone).unwrap();
+    assert!(!view.has_network);
+    assert!(view.insert.iter().all(|inserts| !inserts));
+    assert!(view.exists.iter().all(|exists| *exists));
+    assert_eq!(sim.owner.container_state(lone).unwrap(), (8_000, 0));
+}
+
+#[test]
+fn the_positions_of_the_cables_are_sorted_by_x_then_y_then_z() {
+    let mut sim = Sim::free();
+    for pos in [
+        BlockPos::new(2, 64, 0),
+        BlockPos::new(1, 64, 5),
+        BlockPos::new(1, 63, 9),
+    ] {
+        sim.place_cable(pos, 8_000, None);
+    }
+    assert_eq!(
+        sim.owner.positions(),
+        vec![
+            BlockPos::new(1, 63, 9),
+            BlockPos::new(1, 64, 5),
+            BlockPos::new(2, 64, 0)
+        ]
+    );
+}
+
+/// `runsNormally`: com o servidor parado o registro ainda trata os chunks e as órfãs, mas nenhuma rede se atualiza (não entrega energia).
+#[test]
+fn a_frozen_server_tick_moves_no_energy() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    let cables = line_at(&mut sim, origin, 3);
+    let machine = sim.place_machine(
+        BlockPos::new(origin.x + 3, origin.y, origin.z),
+        100_000,
+        0,
+        false,
+    );
+    sim.tick();
+    assert_eq!(sim.owner.insert_external(cables[0], 5_000), 5_000);
+    sim.frozen = true;
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(machine.container.amount(), 0, "parado, nada sai da rede");
+    assert_eq!(sim.owner.container_state(cables[0]).unwrap().1, 5_000);
+    sim.frozen = false;
+    sim.tick();
+    assert!(machine.container.amount() > 0, "andando, a rede entrega");
+}
+
+/// `ChunkTicketLevelUpdatedEvent`: o chunk que deixa de ser acessível tira os cabos dele da rede (`chunkAccessibilityChange(false)`: toma a parte da energia e separa) e o que volta os
+/// junta de novo.
+#[test]
+fn a_chunk_that_stops_being_accessible_leaves_the_network_and_comes_back() {
+    let mut sim = Sim::free();
+    // Os cabos de x 14 a 17 passam da borda do chunk: dois no chunk 0 e dois no 1.
+    let cables = line_at(&mut sim, BlockPos::new(14, 64, 10), 4);
+    assert_eq!(cables[2].chunk(), ChunkPos::new(1, 0));
+    assert_eq!(sim.owner.insert_external(cables[0], 4_000), 4_000);
+    sim.tick();
+    let network = sim.owner.network_of(cables[0]).unwrap();
+    assert_eq!(sim.owner.network_of(cables[3]), Some(network));
+    let net_energy = |sim: &Sim, pos: BlockPos| {
+        let id = sim.owner.network_of(pos)?;
+        sim.owner.family().network(id).map(|net| net.buffer())
+    };
+    assert_eq!(net_energy(&sim, cables[0]), Some(4_000));
+    sim.send(Event::Ticket {
+        chunk: ChunkPos::new(1, 0),
+        loaded: false,
+    });
+    sim.tick();
+    assert_eq!(
+        sim.owner.network_of(cables[2]),
+        None,
+        "o chunk que saiu não tem rede"
+    );
+    assert_eq!(sim.owner.network_of(cables[3]), None);
+    let rest = net_energy(&sim, cables[0]).unwrap();
+    assert!(
+        rest < 4_000,
+        "as partes dos cabos do chunk que saiu não ficam na rede: {rest}"
+    );
+    assert_eq!(
+        sim.owner.network_of(cables[1]),
+        sim.owner.network_of(cables[0])
+    );
+    sim.send(Event::Ticket {
+        chunk: ChunkPos::new(1, 0),
+        loaded: true,
+    });
+    for _ in 0..3 {
+        sim.tick();
+    }
+    let joined = sim.owner.network_of(cables[0]).unwrap();
+    for pos in &cables {
+        assert_eq!(
+            sim.owner.network_of(*pos),
+            Some(joined),
+            "{pos:?} volta à rede"
+        );
+    }
+    assert!(
+        net_energy(&sim, cables[0]).unwrap() >= rest,
+        "o que a rede tinha não se perde na volta"
+    );
+}
+
+/// `onChunkUnloaded`: o cabo toma a parte dele da energia da rede antes de o chunk ir para o disco.
+#[test]
+fn a_cable_of_a_chunk_that_unloads_takes_its_share_from_the_network() {
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    assert_eq!(sim.owner.insert_external(cables[0], 3_000), 3_000);
+    sim.tick();
+    assert_eq!(
+        sim.owner.container_state(cables[2]).unwrap(),
+        (24_000, 3_000)
+    );
+    sim.send(Event::ChunkUnloaded(cables[0]));
+    let (_, left) = sim.owner.container_state(cables[1]).unwrap();
+    assert_eq!(left, 2_000, "a parte de um dos três cabos saiu da rede");
+    let saved = sim.owner.write(cables[0]).unwrap();
+    assert_eq!(
+        saved.get(ENERGY_KEY),
+        Some(&Tag::Long(1_000)),
+        "e está no NBT dele"
+    );
+    assert_eq!(
+        ENERGY_KEY, "energy",
+        "a chave de `SerializationConstants.ENERGY`"
+    );
+}
+
+#[test]
+fn a_world_that_closes_leaves_no_cable_and_no_network() {
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    assert_eq!(sim.owner.positions().len(), 3);
+    assert_eq!(sim.owner.registry().networks_in_order().len(), 1);
+    sim.send(Event::Reset);
+    assert!(sim.owner.positions().is_empty());
+    assert!(sim.owner.registry().networks_in_order().is_empty());
+    assert_eq!(sim.owner.cable_at(cables[0]), None);
+    // Um mundo novo começa do zero com o mesmo dono.
+    sim.level.blocks.clear();
+    let again = line_at(&mut sim, BlockPos::new(10, 64, 10), 2);
+    assert_eq!(sim.owner.positions(), again);
+    assert_eq!(sim.owner.registry().networks_in_order().len(), 1);
+}
+
+/// `onAdded`: o bloco posto por um item entra na rede e relê as conexões na hora, sem esperar o tick do block entity.
+#[test]
+fn a_cable_placed_by_an_item_joins_and_connects_before_its_first_tick() {
+    let mut sim = Sim::free();
+    let a = BlockPos::new(10, 64, 10);
+    let b = BlockPos::new(11, 64, 10);
+    for pos in [a, b] {
+        sim.level.blocks.insert(
+            pos,
+            Block::Cable {
+                capacity: 8_000,
+                saved: None,
+            },
+        );
+        sim.send(Event::ClearRemoved(pos));
+    }
+    assert!(
+        !sim.owner.view_at(&sim.level, b).unwrap().connected[Face::West as usize],
+        "só entrou: ainda não leu os lados"
+    );
+    sim.send(Event::PlacedByItem(b));
+    assert!(
+        sim.owner.view_at(&sim.level, b).unwrap().connected[Face::West as usize],
+        "o `onAdded` relê as conexões"
+    );
+    // O `onWorldJoin(level, false)` do `onAdded` põe o cabo no registro: o tick o acha como órfão, sem passar pelo ticker do block entity.
+    sim.send(Event::ServerTickPost {
+        runs_normally: true,
+    });
+    assert!(
+        sim.owner.network_of(b).is_some(),
+        "o cabo tem rede sem ter passado pelo ticker"
+    );
+}
+
+/// Um vizinho num chunk que não está carregado não é um transmissor a que se liga (`WorldUtils.isBlockLoaded`), e o aviso de um clique não o alcança.
+#[test]
+fn a_neighbor_in_an_unloaded_chunk_is_not_connected_and_not_told() {
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    assert!(sim.owner.view_at(&sim.level, cables[1]).unwrap().connected[Face::East as usize]);
+    sim.level.unloaded.push(cables[2]);
+    sim.send(Event::Neighbor(cables[1]));
+    assert!(
+        !sim.owner.view_at(&sim.level, cables[1]).unwrap().connected[Face::East as usize],
+        "o vizinho descarregado não é um braço"
+    );
+    // O cabo do fim, que não foi avisado, segue como estava.
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    sim.level.unloaded.push(cables[2]);
+    // `NORMAL`, `PUSH`, `PULL` e `NONE`: no último o braço some, e o vizinho descarregado não é avisado.
+    for _ in 0..3 {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+    }
+    assert_eq!(
+        sim.owner.view_at(&sim.level, cables[1]).unwrap().raw[Face::East as usize],
+        ConnectionType::None
+    );
+    assert!(
+        sim.owner.view_at(&sim.level, cables[2]).unwrap().connected[Face::West as usize],
+        "o aviso do clique não chega ao vizinho descarregado"
+    );
+}
+
+/// O dono nunca pergunta pela capability de um bloco que é um cabo (o cabo não é aceitador de cabo).
+#[test]
+fn a_cable_is_never_the_acceptor_of_another_cable() {
+    let mut sim = Sim::free();
+    sim.level.cables_have_capability = true;
+    line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    for _ in 0..2 {
+        sim.tick();
+    }
+    let network = sim.owner.registry().networks_in_order()[0];
+    assert_eq!(sim.owner.registry().network(network).acceptor_count(), 0);
+}
+
+/// O UUID que o cabo guarda da rede (`setTransmitterNetwork`, que vai no pacote de atualização) é o da rede do registro, também depois de duas redes se fundirem.
+#[test]
+fn the_network_each_cable_remembers_is_the_one_of_the_registry() {
+    let mut sim = Sim::free();
+    let origin = BlockPos::new(10, 64, 10);
+    for x in [0, 1, 3, 4] {
+        let pos = BlockPos::new(origin.x + x, origin.y, origin.z);
+        sim.place_cable(pos, 8_000, None);
+        sim.send(Event::PlacedByItem(pos));
+    }
+    for _ in 0..3 {
+        sim.tick();
+    }
+    let check = |sim: &Sim| {
+        let mut seen = std::collections::HashSet::new();
+        for pos in sim.owner.positions() {
+            let id = sim.owner.network_of(pos).expect("tem rede");
+            let uuid = sim.owner.registry().network(id).uuid();
+            let expected = (u128::from(uuid.most_significant as u64) << 64)
+                | u128::from(uuid.least_significant as u64);
+            assert_ne!(expected, 0);
+            assert_eq!(
+                sim.owner.transmitter(pos).unwrap().transmitter_network(),
+                Some(expected),
+                "o cabo {pos:?} guarda o UUID da rede dele"
+            );
+            seen.insert(expected);
+        }
+        seen.len()
+    };
+    assert_eq!(check(&sim), 2, "duas redes");
+    let bridge = BlockPos::new(origin.x + 2, origin.y, origin.z);
+    sim.place_cable(bridge, 8_000, None);
+    sim.send(Event::PlacedByItem(bridge));
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(check(&sim), 1, "a rede fundida tem um UUID só");
+}
+
+#[test]
+fn the_hash_of_each_new_cable_is_asked_once_in_the_order_they_enter() {
+    let asked = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let log = asked.clone();
+    let mut sim = Sim {
+        owner: EnergyTransmitters::new(
+            DIMENSION,
+            || Uuid::with_hash_code(1),
+            move |pos| {
+                log.borrow_mut().push(pos);
+                7
+            },
+        ),
+        level: Level::default(),
+        time: 0,
+        frozen: false,
+    };
+    let positions = [
+        BlockPos::new(5, 64, 5),
+        BlockPos::new(3, 64, 9),
+        BlockPos::new(4, 64, 5),
+    ];
+    for pos in positions {
+        sim.place_cable(pos, 8_000, None);
+    }
+    assert_eq!(*asked.borrow(), positions.to_vec());
+}
+
+// As ordens do `UniversalCable.pullFromAcceptors`.
+
+fn pull_setup(sim: &mut Sim, cable: BlockPos, sides: &[Face]) {
+    for side in sides {
+        for _ in 0..2 {
+            sneak(sim, cable, Face::North, Some(*side));
+        }
+        assert_eq!(
+            sim.owner.view_at(&sim.level, cable).unwrap().raw[*side as usize],
+            ConnectionType::Pull
+        );
+    }
+}
+
+fn giver(sim: &mut Sim, cable: BlockPos, side: Face, stored: i64) -> Rc<Machine> {
+    sim.place_machine(cable.relative(side), 1_000_000, stored, true)
+}
+
+#[test]
+fn a_cable_pulls_only_from_the_sides_in_pull_and_only_what_it_can_keep() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    sim.place_cable(cable, 8_000, None);
+    let up = giver(&mut sim, cable, Face::Up, 100_000);
+    let down = giver(&mut sim, cable, Face::Down, 5_000);
+    pull_setup(&mut sim, cable, &[Face::Up]);
+    sim.send(Event::Update(cable));
+    assert_eq!(
+        down.container.amount(),
+        5_000,
+        "o lado `NORMAL` não é puxado"
+    );
+    assert!(down.extracts.borrow().is_empty());
+    // A simulação pede, e só o que o cabo guarda sai de verdade, uma vez.
+    assert_eq!(up.container.amount(), 100_000 - 8_000);
+    assert_eq!(sim.buffer(cable).unwrap().amount, 8_000);
+    assert_eq!(
+        up.extracts
+            .borrow()
+            .iter()
+            .filter(|(_, simulate)| !simulate)
+            .count(),
+        1,
+        "uma retirada de verdade só"
+    );
+}
+
+#[test]
+fn a_cable_stops_pulling_when_it_is_full() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    sim.place_cable(cable, 8_000, None);
+    // Os lados na ordem de `Direction`: baixo, cima, norte.
+    let down = giver(&mut sim, cable, Face::Down, 5_000);
+    let up = giver(&mut sim, cable, Face::Up, 5_000);
+    let north = giver(&mut sim, cable, Face::North, 5_000);
+    pull_setup(&mut sim, cable, &[Face::Down, Face::Up, Face::North]);
+    sim.send(Event::Update(cable));
+    assert_eq!(down.container.amount(), 0);
+    assert_eq!(up.container.amount(), 2_000, "o segundo dá o que falta");
+    assert_eq!(
+        north.container.amount(),
+        5_000,
+        "cheio, o terceiro nem é perguntado"
+    );
+    assert_eq!(sim.buffer(cable).unwrap().amount, 8_000);
+}
+
+#[test]
+fn a_cable_without_a_network_pulls_into_its_own_buffer() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    sim.place_cable(cable, 8_000, None);
+    let source = giver(&mut sim, cable, Face::Up, 3_000);
+    pull_setup(&mut sim, cable, &[Face::Up]);
+    assert!(!sim.owner.view_at(&sim.level, cable).unwrap().has_network);
+    sim.send(Event::Update(cable));
+    assert_eq!(
+        sim.buffer(cable).unwrap().amount,
+        3_000,
+        "o próprio buffer recebe do que puxa"
+    );
+    assert_eq!(source.container.amount(), 0);
+}
+
+/// O vizinho que erra a simulação (devolve mais do que o pedido): o cabo só confirma se guardar tudo o que o vizinho disse, e então não tira nada dele.
+#[test]
+fn a_neighbor_that_overstates_what_it_gives_loses_nothing() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    sim.place_cable(cable, 8_000, None);
+    assert_eq!(sim.owner.insert_external(cable, 7_800), 7_800);
+    let machine = Rc::new(Machine {
+        container: {
+            let container = BufferEnergyContainer::new(1_000_000, always, always, None);
+            container.set_energy(1_000, None);
+            container
+        },
+        gives: true,
+        overdraw: 500,
+        extracts: Default::default(),
+    });
+    sim.level
+        .blocks
+        .insert(cable.relative(Face::Up), Block::Machine(machine.clone()));
+    pull_setup(&mut sim, cable, &[Face::Up]);
+    sim.send(Event::Update(cable));
+    assert_eq!(machine.container.amount(), 1_000, "nada saiu do vizinho");
+    assert_eq!(sim.buffer(cable).unwrap().amount, 7_800);
+    assert!(
+        machine
+            .extracts
+            .borrow()
+            .iter()
+            .all(|(_, simulate)| *simulate),
+        "só a simulação foi pedida"
+    );
+}
+
+// Os avisos que o dono dá ao mundo.
+
+#[test]
+fn the_configurator_tells_the_world_the_side_and_the_block_that_changed() {
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    sim.level.changed.clear();
+    sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+    assert_eq!(
+        sim.level.side_changes,
+        vec![(
+            cables[1],
+            Face::East,
+            ConnectionType::Normal,
+            ConnectionType::Push
+        )]
+    );
+    assert!(
+        sim.level.changed.contains(&cables[1]),
+        "`setChanged` do cabo"
+    );
+}
+
+#[test]
+fn a_reactive_cable_tells_the_world_when_the_signal_comes_and_goes_and_shows_it() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    sim.place_cable(cable, 8_000, None);
+    sim.tick();
+    assert!(sim.owner.right_click(&mut sim.level, cable));
+    sim.level.powered.push(BlockPos::new(10, 65, 10));
+    sim.send(Event::Neighbor(cable));
+    assert_eq!(sim.level.redstone_changes, vec![(cable, true)]);
+    assert!(
+        last_published(&sim, cable).redstone_activated,
+        "o bloco mostra o cabo ativado"
+    );
+    sim.level.powered.clear();
+    sim.send(Event::Neighbor(cable));
+    assert_eq!(
+        sim.level.redstone_changes,
+        vec![(cable, true), (cable, false)]
+    );
+    assert!(!last_published(&sim, cable).redstone_activated);
+}
+
+/// `refreshConnections` num vizinho que está num chunk sem carregar marca o `forceUpdate`: quando o chunk carrega, o ticker do block entity relê tudo e o cabo liga.
+#[test]
+fn a_cable_next_to_a_machine_in_an_unloaded_chunk_connects_when_the_chunk_loads() {
+    let mut sim = Sim::free();
+    let cable = BlockPos::new(10, 64, 10);
+    let machine_at = cable.relative(Face::Up);
+    sim.level.unloaded.push(machine_at);
+    sim.place_cable(cable, 8_000, None);
+    sim.place_machine(machine_at, 100_000, 0, false);
+    sim.tick();
+    assert!(!sim.owner.view_at(&sim.level, cable).unwrap().connected[Face::Up as usize]);
+    sim.level.unloaded.clear();
+    // O chunk que carrega invalida as capabilities dele (`ServerLevel.invalidateCapabilities(ChunkPos)`).
+    sim.send(Event::Capability(cable, Face::Up));
+    sim.tick();
+    assert!(
+        sim.owner.view_at(&sim.level, cable).unwrap().connected[Face::Up as usize],
+        "o ticker relê as conexões quando o chunk carrega"
+    );
+}
+
+/// `recheckConnections`: um cabo sem rede que liga a um transmissor vizinho faz o vizinho reler o lado de volta, sem esperar o aviso nem o ticker dele.
+#[test]
+fn a_cable_that_connects_makes_the_new_neighbor_read_its_side_back() {
+    let mut sim = Sim::free();
+    let a = BlockPos::new(10, 64, 10);
+    let b = BlockPos::new(11, 64, 10);
+    for pos in [a, b] {
+        sim.level.blocks.insert(
+            pos,
+            Block::Cable {
+                capacity: 8_000,
+                saved: None,
+            },
+        );
+        sim.send(Event::ClearRemoved(pos));
+    }
+    // Só o ticker de `a` anda: ele relê as conexões (o `forceUpdate` do cabo novo), liga a `b` e pede a `b` que releia o lado dele.
+    sim.send(Event::Update(a));
+    assert!(sim.owner.view_at(&sim.level, a).unwrap().connected[Face::East as usize]);
+    assert!(
+        sim.owner.view_at(&sim.level, b).unwrap().connected[Face::West as usize],
+        "`b` releu o lado de volta sem ter andado"
+    );
+}
+
+/// O clique que corta o braço de um cabo invalida a rede (`InvalidateTransmitter`): as duas pontas viram duas redes, e o braço de volta as junta.
+#[test]
+fn cutting_the_middle_arm_with_the_configurator_splits_the_network_and_restoring_it_joins_it() {
+    let mut sim = Sim::free();
+    let cables = line_at(&mut sim, BlockPos::new(10, 64, 10), 3);
+    assert_eq!(sim.owner.registry().networks_in_order().len(), 1);
+    for _ in 0..3 {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+    }
+    assert_eq!(
+        sim.owner.view_at(&sim.level, cables[1]).unwrap().raw[Face::East as usize],
+        ConnectionType::None
+    );
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(
+        sim.owner.registry().networks_in_order().len(),
+        2,
+        "duas redes"
+    );
+    assert_ne!(
+        sim.owner.network_of(cables[0]),
+        sim.owner.network_of(cables[2])
+    );
+    sneak(&mut sim, cables[1], Face::North, Some(Face::East));
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert_eq!(
+        sim.owner.registry().networks_in_order().len(),
+        1,
+        "uma rede de novo"
+    );
+}
+
+// `TileEntityTransmitter.clearRemoved` e o que o jogo dá do bloco.
+
+#[test]
+fn a_cable_remembers_the_energy_the_save_gave_as_an_int_or_a_long() {
+    for (tag, expected) in [(Tag::Int(1_500), 1_500), (Tag::Long(2_500), 2_500)] {
+        let mut sim = Sim::free();
+        let pos = BlockPos::new(10, 64, 10);
+        let mut saved = Compound::new();
+        saved.insert(ENERGY_KEY.to_owned(), tag);
+        sim.place_cable(pos, 8_000, Some(saved));
+        assert_eq!(sim.buffer(pos).unwrap().amount, expected);
+        assert_eq!(
+            sim.buffer(pos).unwrap().capacity,
+            8_000,
+            "a capacidade do tier"
+        );
+        for _ in 0..3 {
+            sim.tick();
+        }
+        assert_eq!(
+            sim.buffer(pos).unwrap().amount,
+            expected,
+            "a rede guarda o que o cabo trazia"
+        );
+    }
+}
+
+#[test]
+fn a_clear_removed_where_the_block_is_not_a_cable_makes_no_cable() {
+    let mut sim = Sim::free();
+    let pos = BlockPos::new(10, 64, 10);
+    sim.place_machine(pos, 1_000, 0, false);
+    sim.send(Event::ClearRemoved(pos));
+    assert_eq!(sim.owner.cable_at(pos), None);
+    assert!(sim.owner.positions().is_empty());
+    sim.send(Event::Update(pos));
+    sim.send(Event::ServerTickPost {
+        runs_normally: true,
+    });
+    assert!(sim.owner.registry().networks_in_order().is_empty());
+}
+
+/// Antes de o registro dar uma rede ao cabo, a capability dele não deixa entrar nada de fora (o contêiner que aceita é o da rede), mesmo com braços ligados; e o cabo ativado por
+/// redstone não tem capability em lado nenhum.
+#[test]
+fn a_cable_with_arms_but_no_network_yet_and_a_powered_cable_take_nothing_from_outside() {
+    let mut sim = Sim::free();
+    let a = BlockPos::new(10, 64, 10);
+    let b = BlockPos::new(11, 64, 10);
+    sim.place_cable(a, 8_000, None);
+    sim.place_cable(b, 8_000, None);
+    sim.send(Event::PlacedByItem(b));
+    let view = sim.owner.view_at(&sim.level, b).unwrap();
+    assert!(view.connected[Face::West as usize], "o braço está ligado");
+    assert!(!view.has_network, "mas ainda não há rede");
+    assert!(view.insert.iter().all(|inserts| !inserts));
+    // Com rede, o braço deixa entrar.
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert!(sim.owner.view_at(&sim.level, b).unwrap().insert[Face::West as usize]);
+    // O redstone reativo com sinal: o cabo solta tudo e a capability some de todo lado.
+    assert!(sim.owner.right_click(&mut sim.level, b));
+    sim.level.powered.push(BlockPos::new(11, 65, 10));
+    sim.send(Event::Neighbor(b));
+    let view = sim.owner.view_at(&sim.level, b).unwrap();
+    assert!(view.redstone_activated);
+    assert!(
+        view.exists.iter().all(|exists| !exists),
+        "ativado, nenhum lado tem capability"
+    );
+    assert!(view.insert.iter().all(|inserts| !inserts));
+}
+
+/// `loadAdditional`: o que o bloco guardou das conexões (o tipo cru de cada lado e o redstone reativo) volta com o cabo.
+#[test]
+fn a_cable_remembers_its_connection_types_from_the_save() {
+    let mut sim = Sim::free();
+    let cables = line(&mut sim, BlockPos::new(10, 64, 10), 3);
+    // `NORMAL`, `PUSH`, `PULL` na face de cima do cabo do meio, e o redstone reativo ligado.
+    for _ in 0..2 {
+        sneak(&mut sim, cables[1], Face::North, Some(Face::Up));
+    }
+    assert!(sim.owner.right_click(&mut sim.level, cables[1]));
+    let saved = sim.owner.write(cables[1]).unwrap();
+    let mut other = Sim::free();
+    let again = BlockPos::new(40, 64, 40);
+    other.place_cable(again, 8_000, Some(saved));
+    let view = other.owner.view_at(&other.level, again).unwrap();
+    assert_eq!(view.raw[Face::Up as usize], ConnectionType::Pull);
+    assert!(view.redstone_reactive);
+    assert_eq!(view.raw[Face::East as usize], ConnectionType::Normal);
 }

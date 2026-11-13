@@ -160,6 +160,64 @@ pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
     }
 }
 
+/// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora, que `kind_at` diz (`Some(Some(id))` num block entity de mod, `Some(None)`
+/// num de outro tipo, `None` sem block entity). Se o block entity ainda não está lá (a ocorrência veio antes da inserção), a ocorrência cai: a inserção anota a sua, e uma entrada sem tipo
+/// marcaria a posição como ocupada e esconderia o `clearRemoved` da inserção de verdade.
+pub fn resolve(raws: Vec<Raw>, kind_at: impl Fn(Pos) -> Option<Option<String>>) -> Vec<Raw> {
+    raws.into_iter()
+        .filter_map(|raw| match raw {
+            Raw::AddedLater { pos } => Some(Raw::Added { pos, id: kind_at(pos)? }),
+            other => Some(other),
+        })
+        .collect()
+}
+
+/// Quantos ticks um `clearRemoved` espera o block entity entrar no mundo antes de se desistir dele (o bloco já não é um cabo).
+pub const PENDING_TICKS: i64 = 200;
+
+/// Os `clearRemoved` que chegaram antes de o block entity estar no mundo do Horizon (a fila anota o `insert` no começo dele): `(dimensão, posição, tick)`, tentados de novo nos eventos seguintes.
+#[derive(Default)]
+pub struct PendingClears {
+    waiting: Vec<(String, Pos, i64)>,
+}
+
+impl PendingClears {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Um `clearRemoved` sem block entity ainda, no tick `now`.
+    pub fn wait(&mut self, dim: &str, pos: Pos, now: i64) {
+        self.waiting.push((dim.to_owned(), pos, now));
+    }
+
+    /// Os da dimensão `dim` cujo block entity já está (`present`) saem para serem entregues, na ordem em que esperaram; os que esperaram `PENDING_TICKS` ou mais caem, e os de outras
+    /// dimensões e os que ainda esperam ficam como estavam.
+    pub fn retry(&mut self, dim: &str, now: i64, present: impl Fn(Pos) -> bool) -> Vec<Pos> {
+        let mut ready = Vec::new();
+        let mut keep = Vec::new();
+        for (waiting_dim, pos, since) in std::mem::take(&mut self.waiting) {
+            if waiting_dim != dim {
+                keep.push((waiting_dim, pos, since));
+            } else if present(pos) {
+                ready.push(pos);
+            } else if now - since < PENDING_TICKS {
+                keep.push((waiting_dim, pos, since));
+            }
+        }
+        self.waiting = keep;
+        ready
+    }
+
+    pub fn len(&self) -> usize {
+        self.waiting.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.waiting.is_empty()
+    }
+}
+
 /// Esvazia a fila, na ordem das ocorrências.
 pub fn take() -> Vec<Raw> {
     std::mem::take(&mut *lock(&QUEUE))
@@ -224,9 +282,47 @@ pub fn reset() -> Vec<Event> {
     tracker.tracked.clear();
     tracker.present.clear();
     tracker.loading.clear();
+    tracker.seen.clear();
     lock(&QUEUE).clear();
     lock(&HELD).clear();
     vec![Event::Reset]
+}
+
+/// Se algum transmissor já entrou na dimensão: o registro dela tem de receber o `onTick`.
+pub fn sees_dimension(dim: &str) -> bool {
+    lock(&TRACKER).seen.contains(dim)
+}
+
+/// Os níveis do servidor como a cola os vê no fim do tick: quais ele ticou, qual está no lugar, como entrar num e o que fazer com os eventos que saem.
+pub trait ServerLevels {
+    /// Os ids dos níveis que o servidor ticou neste tick, na ordem de `MinecraftServer.levels`.
+    fn ticked(&self) -> Vec<String>;
+    /// O id do nível que está no lugar.
+    fn current(&self) -> String;
+    /// Põe o nível no lugar; `false` se não deu.
+    fn enter(&mut self, dim: &str) -> bool;
+    /// Entrega os eventos aos donos, com o nível em que o jogo está.
+    fn deliver(&mut self, events: Vec<Event>);
+}
+
+/// `TransmitterNetworkRegistry.onTick(ServerTickEvent.Post)`: no original é um só (`static`), depois do tick de todas as dimensões, e trata as redes de todas elas (`dimensionStore`).
+/// Aqui cada dimensão com transmissor tem o registro dela, e todas recebem o `ServerTickPost` uma vez por tick do servidor: a cola entra em cada nível que o servidor ticou (o
+/// `server_tick` dá só o último no lugar), deixa o nível que estava por último e volta a ele. A ordem entre as dimensões no original é a do `HashMap` de `ResourceKey`, que é por
+/// `identityHashCode` e muda a cada execução; as dimensões não trocam nada entre si (cada uma tem o mundo, as máquinas e os buffers dela), então a ordem não aparece e a daqui é a de `levels`.
+pub fn deliver_server_tick_post(levels: &mut impl ServerLevels, runs_normally: bool) {
+    let back = levels.current();
+    let mut dims: Vec<String> = levels.ticked().into_iter().filter(|dim| sees_dimension(dim)).collect();
+    // O nível que já está no lugar fica por último: o caso comum, uma dimensão só, não troca nada.
+    dims.sort_by_key(|dim| *dim == back);
+    for dim in dims {
+        if dim != levels.current() && !levels.enter(&dim) {
+            continue;
+        }
+        levels.deliver(vec![Event::ServerTickPost { runs_normally }]);
+    }
+    if levels.current() != back {
+        levels.enter(&back);
+    }
 }
 
 /// As posições dos transmissores vivos de uma dimensão (para a cola e os testes).
@@ -244,11 +340,13 @@ pub struct Tracker {
     present: HashMap<String, HashSet<Pos>>,
     /// Os block entities de chunks que `load_chunk` trouxe e o `chunk_load` ainda não anunciou.
     loading: HashMap<(String, [i32; 2]), BlockList>,
+    /// As dimensões em que algum transmissor já entrou desde que o mundo abriu: o registro delas existe, e o `onTick` do registro (um só, estático) trata todas.
+    seen: HashSet<String>,
 }
 
 impl Tracker {
     pub fn new() -> Self {
-        Self { ids: HashSet::new(), tracked: HashMap::new(), present: HashMap::new(), loading: HashMap::new() }
+        Self { ids: HashSet::new(), tracked: HashMap::new(), present: HashMap::new(), loading: HashMap::new(), seen: HashSet::new() }
     }
 
     pub fn with_ids(ids: &[&str]) -> Self {
@@ -298,6 +396,7 @@ impl Tracker {
         }
         if self.is_transmitter(id) {
             self.tracked.entry(dim.to_owned()).or_default().insert(pos);
+            self.seen.insert(dim.to_owned());
             out.push(Event::Transmitter { dim: dim.to_owned(), pos, kind: Kind::ClearRemoved });
         }
         self.capabilities_at(dim, pos, out);

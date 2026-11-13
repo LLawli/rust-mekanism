@@ -14,12 +14,21 @@ fn a_chunk_loaded_before_the_first_registration_is_replayed_once() {
         ([3, 150, 0], None),
     ]));
     events::push(Raw::LoadChunk(vec![([200, 64, 200], None)]));
+    // Dois `load_chunk` do mesmo chunk (o 1, 0): ele volta uma vez só.
+    events::push(Raw::LoadChunk(vec![(
+        [20, 150, 5],
+        Some("test:cable".to_owned()),
+    )]));
+    events::push(Raw::LoadChunk(vec![(
+        [21, 150, 5],
+        Some("test:cable".to_owned()),
+    )]));
     assert!(events::take().is_empty(), "sem dono nada entra na fila");
     events::register("test:cable");
     assert_eq!(
         events::take_early_chunks(),
-        vec![[0, 0]],
-        "só o chunk com block entity de mod volta"
+        vec![[0, 0], [1, 0]],
+        "só os chunks com block entity de mod voltam, cada um uma vez"
     );
     assert!(events::take_early_chunks().is_empty(), "uma vez só");
     // A fila traz o que o chunk trouxe, e o `chunk_loaded` os anuncia na ordem do original: o ticket, o `clearRemoved` do cabo e a capability do vizinho.

@@ -39,6 +39,19 @@ pub type Acceptor = Rc<dyn EnergyInsert>;
 /// A chave de NBT da energia guardada do cabo (`SerializationConstants.ENERGY`).
 pub const ENERGY_KEY: &str = "energy";
 
+/// Uma capability de energia que apareceu ou mudou de lado (`BlockEntity.invalidateCapabilities`, que o cabo vizinho ouve pelo `RefreshListener`): a máquina entrou (`old` é `None`:
+/// o Horizon só dá as faces da instância no primeiro tick dela, e o cabo que a olhou antes a achou sem capability), trocou de bloco, ou mudou as faces que deixam entrar ou sair
+/// (a configuração de lados, a frente do bloco). `old` e `new` são o id do bloco, as faces de entrada e as de saída; a capacidade sozinha não é capability.
+pub fn capability_changed(
+    old: Option<(&str, [bool; 6], [bool; 6])>,
+    new: (&str, [bool; 6], [bool; 6]),
+) -> bool {
+    match old {
+        None => true,
+        Some(old) => old.0 != new.0 || old.1 != new.1 || old.2 != new.2,
+    }
+}
+
 fn arr(pos: BlockPos) -> [i32; 3] {
     [pos.x, pos.y, pos.z]
 }
@@ -157,7 +170,6 @@ struct State {
     by_pos: HashMap<BlockPos, TransmitterId>,
     family: EnergyFamily<dyn EnergyInsert>,
     hashes: Box<dyn FnMut(BlockPos) -> i32>,
-    pending_uuid: Option<Uuid>,
     uuids: HashMap<NetworkId, Uuid>,
     /// A transação raiz de `DynamicNetwork.invalidate` (`begin_take_shares` a `end_take_shares`): todos os `takeShare` do laço andam nela e ela confirma no fim.
     take_root: Option<Transaction>,
@@ -468,14 +480,9 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         self.st
             .family
             .network_event(registry, network, event.clone());
-        match event {
-            NetworkEvent::Created { uuid } => self.st.pending_uuid = Some(uuid),
-            NetworkEvent::Merged { .. } => {
-                if let Some(uuid) = self.st.pending_uuid.take() {
-                    self.st.uuids.insert(network, uuid);
-                }
-            }
-            _ => {}
+        // O UUID existe desde a construção da rede (`this(UUID.randomUUID())`), antes de ela adotar os transmissores: o que cada um guarda dela (`setTransmitterNetwork`) já é este.
+        if let NetworkEvent::Created { uuid } = event {
+            self.st.uuids.insert(network, uuid);
         }
     }
 }
@@ -501,7 +508,6 @@ impl EnergyTransmitters {
                 by_pos: HashMap::new(),
                 family: EnergyFamily::new(),
                 hashes: Box::new(hashes),
-                pending_uuid: None,
                 uuids: HashMap::new(),
                 take_root: None,
                 deferred: Vec::new(),
@@ -620,7 +626,6 @@ impl EnergyTransmitters {
                     by_pos: HashMap::new(),
                     family: EnergyFamily::new(),
                     hashes,
-                    pending_uuid: None,
                     uuids: HashMap::new(),
                     take_root: None,
                     deferred: Vec::new(),

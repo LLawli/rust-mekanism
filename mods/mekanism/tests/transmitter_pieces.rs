@@ -188,8 +188,7 @@ fn java_side_looking_at(
 ) -> Option<Face> {
     let mut min_distance = f64::INFINITY;
     let mut hit: Option<i32> = None;
-    let mut i = -1;
-    for piece in pieces {
+    for (i, piece) in (-1..).zip(pieces) {
         let nearest = piece
             .boxes
             .iter()
@@ -201,7 +200,6 @@ fn java_side_looking_at(
             min_distance = distance;
             hit = Some(i);
         }
-        i += 1;
     }
     let list: Vec<Face> = Face::ALL
         .into_iter()

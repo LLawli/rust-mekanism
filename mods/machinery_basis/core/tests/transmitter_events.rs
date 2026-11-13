@@ -364,3 +364,92 @@ fn same_machine_put_and_removed_twice_invalidates_once() {
     let events = run(&mut tracker, OW, vec![gone.clone(), gone]);
     assert_eq!(events, vec![cable(OW, [3, 1, 2], Kind::Capability(5))]);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// `get_or_insert_with`, o `clearRemoved` que espera o block entity e o fim do tick (as mutações da frente `cabo-ajustes`).
+
+/// `get_or_insert_with` anota só a posição: o tipo vem do que está lá agora, e sem block entity a ocorrência cai (a inserção anota a sua).
+#[test]
+fn a_later_insert_takes_the_type_of_the_block_entity_that_is_there_and_falls_without_one() {
+    let at = |x: i32| [x, 64, 0];
+    let raws = vec![
+        Raw::AddedLater { pos: at(1) },
+        Raw::AddedLater { pos: at(2) },
+        Raw::AddedLater { pos: at(3) },
+        Raw::Neighbor {
+            dim: "overworld".to_owned(),
+            pos: at(9),
+        },
+    ];
+    let resolved = events::resolve(raws, |pos| match pos[0] {
+        1 => Some(Some("test:cable".to_owned())),
+        2 => Some(None),
+        _ => None,
+    });
+    assert_eq!(
+        resolved,
+        vec![
+            Raw::Added {
+                pos: at(1),
+                id: Some("test:cable".to_owned())
+            },
+            Raw::Added {
+                pos: at(2),
+                id: None
+            },
+            Raw::Neighbor {
+                dim: "overworld".to_owned(),
+                pos: at(9)
+            },
+        ]
+    );
+    // A ocorrência sem block entity que não cai marcaria a posição como ocupada e esconderia o `clearRemoved` da inserção de verdade.
+    let mut tracker = Tracker::with_ids(&["test:cable"]);
+    let mut out = Vec::new();
+    for raw in events::resolve(vec![Raw::AddedLater { pos: at(3) }], |_| None) {
+        tracker.apply("overworld", raw, &mut out);
+    }
+    tracker.apply(
+        "overworld",
+        Raw::Added {
+            pos: at(3),
+            id: Some("test:cable".to_owned()),
+        },
+        &mut out,
+    );
+    assert!(
+        out.iter().any(|event| matches!(event, events::Event::Transmitter { kind: events::Kind::ClearRemoved, pos, .. } if *pos == at(3))),
+        "o `clearRemoved` da inserção de verdade sai: {out:?}"
+    );
+}
+
+#[test]
+fn a_clear_removed_waits_for_its_block_entity_and_gives_up_after_the_limit() {
+    let at = |x: i32| [x, 64, 0];
+    let mut pending = events::PendingClears::new();
+    pending.wait("overworld", at(1), 100);
+    pending.wait("overworld", at(2), 150);
+    pending.wait("nether", at(3), 100);
+    assert_eq!(pending.len(), 3);
+    // Só o que já tem o block entity sai, na ordem em que esperou; os outros seguem esperando, e a outra dimensão não é tocada.
+    let ready = pending.retry("overworld", 110, |pos| pos == at(2) || pos == at(3));
+    assert_eq!(ready, vec![at(2)]);
+    assert_eq!(pending.len(), 2);
+    // Ainda dentro do limite: segue.
+    assert!(
+        pending
+            .retry("overworld", 100 + events::PENDING_TICKS - 1, |_| false)
+            .is_empty()
+    );
+    assert_eq!(pending.len(), 2);
+    // No limite desiste (o bloco já não é um cabo).
+    assert!(
+        pending
+            .retry("overworld", 100 + events::PENDING_TICKS, |_| false)
+            .is_empty()
+    );
+    assert_eq!(pending.len(), 1, "só o da outra dimensão resta");
+    // O da outra dimensão sai quando for a vez dela.
+    assert_eq!(pending.retry("nether", 120, |_| true), vec![at(3)]);
+    assert!(pending.is_empty());
+}
