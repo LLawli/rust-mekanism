@@ -258,11 +258,32 @@ public class CenaReset {
         }
     }
 
+    /// O que o servidor tem nos primeiros ticks (decisão 195): quantos jogadores, os chunks carregados de cada nível, e se o chunk (0, 0) do Overworld anda (`isPositionTicking`, `isPositionEntityTicking`).
+    private static String primeiroEstado(MinecraftServer server) {
+        StringBuilder carregados = new StringBuilder("{");
+        boolean first = true;
+        for (ServerLevel level : server.getAllLevels()) {
+            carregados.append(first ? "" : ",").append(q(String.valueOf(level.dimension().identifier()))).append(':').append(level.getChunkSource().getLoadedChunksCount());
+            first = false;
+        }
+        carregados.append('}');
+        ServerLevel overworld = server.overworld();
+        return "\"ms\":" + System.currentTimeMillis() + ",\"jogadores\":" + server.getPlayerCount() + ",\"carregados\":" + carregados + ",\"anda00\":" + overworld.getChunkSource().isPositionTicking(0L)
+            + ",\"entidades00\":" + overworld.isPositionEntityTicking(BlockPos.ZERO);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onServerTickPre(ServerTickEvent.Pre event) {
+        if (primeiros >= 0 && primeiros < 14 && Files.exists(ATIVA)) {
+            escreve("{\"e\":\"tick_pre\",\"k\":" + (primeiros + 1) + ",\"gt\":" + event.getServer().overworld().getGameTime() + "," + primeiroEstado(event.getServer()) + "}");
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
         if (primeiros >= 0 && primeiros < 14 && Files.exists(ATIVA)) {
             primeiros++;
-            escreve("{\"e\":\"tick\",\"k\":" + primeiros + ",\"gt\":" + event.getServer().overworld().getGameTime() + ",\"registro\":" + registro() + "}");
+            escreve("{\"e\":\"tick\",\"k\":" + primeiros + ",\"gt\":" + event.getServer().overworld().getGameTime() + "," + primeiroEstado(event.getServer()) + ",\"registro\":" + registro() + "}");
         }
         if (obs > 0 && Files.exists(ATIVA)) {
             obs--;

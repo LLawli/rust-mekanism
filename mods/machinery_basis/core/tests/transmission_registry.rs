@@ -1,6 +1,8 @@
 //! A topologia da rede de transmissores, em cenários pequenos montados à mão (os de rastro estão em `transmission_trace.rs`).
 mod transmission_world;
-use machinery_basis_core::sim::chunks::{BlockPos, ChunkPos, ENTITY_TICKING_LEVEL};
+use machinery_basis_core::sim::chunks::{
+    BlockPos, ChunkPos, ENTITY_TICKING_LEVEL, FULL_CHUNK_LEVEL,
+};
 use transmission_world::*;
 
 fn world(uuid_hashes: Vec<i32>) -> World {
@@ -36,6 +38,54 @@ fn a_line_of_cables_becomes_one_network_after_the_first_tick_of_its_block_entiti
         assert_eq!(tx.network, Some(network));
         assert!(!tx.orphan);
     }
+}
+
+/// A decisão 195: a rede só nasce quando o block entity anda (`TileEntityTransmitter.clearRemoved` só marca `markJoined`, e é o `onUpdateServer` do tick do block entity que o
+/// consome: `onWorldJoin`, `trackTransmitter` e `registerOrphanTransmitter`). O chunk com os cabos carrega sem ticket que o faça andar (o primeiro tick do servidor do port, antes de o
+/// jogador entrar): o `clearRemoved` chega, o `Post` passa, e nenhuma rede existe; no tick em que o ticket chega o cabo anda e a rede está lá, no `Post` do mesmo tick.
+#[test]
+fn a_cable_in_a_chunk_nobody_ticks_forms_no_network_until_its_block_entity_does() {
+    let origin = BlockPos::new(100, 64, 8);
+    let mut counter = 1000;
+    let mut world = World::new(origin, 8, vec![11], move |_| {
+        counter += 7919;
+        counter
+    });
+    // O chunk carrega por um ticket de carga (nível cheio, sem simulação): `FULL_CHUNK_LEVEL`, o que o jogador à espera ainda não dá.
+    world
+        .level
+        .set_ticket_level(origin.chunk(), FULL_CHUNK_LEVEL);
+    world.level.tick();
+    for x in 0..5 {
+        world.place_cable(x);
+    }
+    for _ in 0..3 {
+        world.level.tick();
+    }
+    for x in 0..5 {
+        let (_, tx) = world.tx_at(world.cable(x)).expect("o cabo carregou");
+        assert!(tx.network.is_none(), "o cabo {x} não anda: sem rede");
+    }
+    assert!(
+        world.registry().networks_in_order().is_empty(),
+        "sem block entity andando, o registro não tem rede"
+    );
+    world
+        .level
+        .set_ticket_level(origin.chunk(), ENTITY_TICKING_LEVEL);
+    world.level.tick();
+    let registry = world.registry();
+    assert_eq!(
+        registry.networks_in_order().len(),
+        1,
+        "a rede nasce no tick em que o cabo anda"
+    );
+    assert_eq!(
+        registry
+            .network(registry.networks_in_order()[0])
+            .transmitters_size(),
+        5
+    );
 }
 
 fn network_of(world: &World, x: i32) -> Option<machinery_basis_core::transmission::NetworkId> {
