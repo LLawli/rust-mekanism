@@ -383,7 +383,10 @@ fn the_unsorted_walk_over_the_transit_items_sees_what_the_sorted_one_sees() {
         assert_eq!(walked, sorted, "passo {step}");
         seen_in_transit += walked.len();
     }
-    assert!(seen_in_transit > 0, "a linha nunca teve nada em trânsito: o teste não olhou nada");
+    assert!(
+        seen_in_transit > 0,
+        "a linha nunca teve nada em trânsito: o teste não olhou nada"
+    );
 }
 
 /// O NBT do transportador com pilhas em trânsito volta ao ser lido (`LogisticalTransporterBase.write` e `read`, a cor, as ligações): as pilhas entram com ids novos.

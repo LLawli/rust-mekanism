@@ -4,6 +4,7 @@ tirando as pistas uma a uma, e o perfil por etapa que a cópia de teste escreve 
 
     H_NAME=horizon PASTA=<pasta do game.log> h2_rede_desempenho.py medir SAIDA.jsonl [TAG]
     H_NAME=horizon PASTA=<pasta do game.log> h2_rede_desempenho.py tabela SAIDA.jsonl [SAIDA_DEPOIS.jsonl]
+    SOCK=<nome do gravar-jogo start> H_NAME=horizon PASTA=<pasta do game.log> h2_rede_desempenho.py video [LEGENDA]
     H_NAME=horizon PASTA=<pasta do game.log> h2_rede_desempenho.py limpar
 
 O jogo tem de estar no título (`abrir_som_plano.sh titulo`). O `medir` cria o mundo `DesempenhoA` (superplano), monta as cinco pistas, sai e reabre o mundo (a abertura de sempre), põe o combustível, a lava,
@@ -147,6 +148,53 @@ def medir(caminho, prefixo=""):
     saida.close()
 
 
+def video():
+    """O setup rodando, com a velocidade do servidor na tela (`/tick query` no chat) e o som do jogo: a energia do gerador de x = 0 chega por 100 cabos à Enrichment Chamber de x = 100, que
+    mói o minério, enquanto as outras quatro pistas andam. Monta o mundo (`DesempenhoA`) como o `medir`, põe clima limpo e meio-dia com os ciclos parados, e grava 40 s pela captura PipeWire do
+    gamescope (`gravar-jogo rec`, com o som em sink nulo próprio). `SOCK` é o nome do `gravar-jogo start`, `LOCAL` a pasta de saída (padrão ~/.cache/rust-mekanism/wa/rede-desempenho). O jogo no título,
+    aberto com `JOGO_PW_SOCK`, e o `audio_nulo.sh` conferido."""
+    import subprocess
+    import h2_ajustes_jogo as a
+    sock = os.environ["SOCK"]
+    local = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/rede-desempenho"))
+    a.SHOTS = "/home/luka/.cache/rust-mekanism/rede-desempenho/prints"
+    a.LOCAL = local
+    if state().get("world") != MUNDO:
+        criar_mundo()
+    cmd("gamemode creative @s")
+    roda("construir")
+    sair()
+    abrir(MUNDO)
+    espera(30)
+    roda("fluxo")
+    espera(45)
+    for regra in ("advance_time false", "advance_weather false"):
+        cmd("gamerule " + regra)
+    cmd("time set noon")
+    cmd("weather clear")
+    ctl("options-set", "chatVisibility", "0")
+    ctl("options-set", "guiScale", "3")
+    stand = (100.5, -59.0, -4.0)
+    cmd("tp @s %.2f %.2f %.2f 0 25" % stand)
+    espera(15)
+    print("tick query:", cmd("tick query"), flush=True)
+    a.shot("rede_desempenho_tela")
+    for categoria in ("master", "block", "ui", "player"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} rede_desempenho.mp4 40 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
+    try:
+        espera(4)
+        cmd("tick query")
+        espera(14)
+        cmd("tick query")
+        espera(14)
+        cmd("tick query")
+        proc.wait()
+    finally:
+        ctl("options-set", "soundCategory_master", "0.0")
+    print("tick query (fim):", cmd("tick query"), flush=True)
+
+
 def carrega(caminho):
     return {json.loads(l)["tag"]: json.loads(l) for l in open(caminho) if l.strip()}
 
@@ -170,6 +218,8 @@ def main():
         medir(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "")
     elif what == "tabela":
         tabela(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
+    elif what == "video":
+        video()
     elif what == "limpar":
         ctl("world-delete", MUNDO, "--confirm")
     else:

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Monta, no notebook, o tar dos fontes do workspace no layout que o desktop espera em ~/Games/Horizon/mods (infuser/ e conteudo/), com `TRACE = true` no
 # `tile_sound.rs` (a cópia de teste do som; o repositório fica com `false`) e `FX_TRACE = true` e `TRANSMITTER_PROBE = true` no `glue.rs` da `machinery_basis` (o rastro das partículas e a sonda dos eventos dos transmissores), e o envia para ~/.cache/rust-mekanism/<pasta>/fontes.tar.
-# Uso: enviar_fontes.sh WORKSPACE PASTA_NO_DESKTOP [trace|sem-trace|setups]   (`setups`: só a sonda leve `SETUPS_PROBE` do `glue.rs`, sem uma linha por evento: o servidor anda a 20 por segundo)
+# Uso: enviar_fontes.sh WORKSPACE PASTA_NO_DESKTOP [trace|sem-trace|setups|perfil]   (`perfil`: só o perfil por etapa `PERF_PROBE`, linhas `MBF`; `setups`: só a sonda leve `SETUPS_PROBE` do `glue.rs`, sem uma linha por evento: o servidor anda a 20 por segundo)
 set -eu
 WS=$(readlink -f "$1"); DEST=$2; TRACE=${3:-trace}
 S=$(mktemp -d "${TMPDIR:-/tmp}/fontes.XXXXXX")

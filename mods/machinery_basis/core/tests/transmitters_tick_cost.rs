@@ -125,7 +125,9 @@ impl Lane {
                 container: BufferEnergyContainer::new(10_000_000, always, always, None),
                 gives: false,
             });
-            lane.level.machines.insert(BlockPos::new(x, -60, 1), chamber);
+            lane.level
+                .machines
+                .insert(BlockPos::new(x, -60, 1), chamber);
         }
         // O que o jogo entrega quando os blocos vizinhos entram: a capability e o aviso de cada cabo ao lado de uma máquina.
         let touched: Vec<BlockPos> = lane.level.machines.keys().copied().collect();
@@ -133,9 +135,12 @@ impl Lane {
             for side in Face::ALL {
                 let neighbor = pos.relative(side);
                 if lane.owner.cable_at(neighbor).is_some() {
+                    lane.owner.handle(
+                        &mut lane.level,
+                        Event::Capability(neighbor, side.opposite()),
+                    );
                     lane.owner
-                        .handle(&mut lane.level, Event::Capability(neighbor, side.opposite()));
-                    lane.owner.handle(&mut lane.level, Event::Neighbor(neighbor));
+                        .handle(&mut lane.level, Event::Neighbor(neighbor));
                 }
             }
         }
@@ -152,7 +157,9 @@ impl Lane {
         self.owner.set_game_time(self.time);
         self.owner.handle(
             &mut self.level,
-            Event::ServerTickPost { runs_normally: true },
+            Event::ServerTickPost {
+                runs_normally: true,
+            },
         );
         self.time += 1;
     }
@@ -179,8 +186,14 @@ fn the_energy_lane_ticks_in_the_library_far_under_the_cost_the_game_showed() {
     let received = lane.level.machines[&BlockPos::new(100, -60, 1)]
         .container
         .amount();
-    assert!(received > 0, "a energia tem de chegar à máquina do meio da pista");
-    assert!(per_tick < 0.020, "o tick da lib passou de 20 ms: {per_tick}");
+    assert!(
+        received > 0,
+        "a energia tem de chegar à máquina do meio da pista"
+    );
+    assert!(
+        per_tick < 0.020,
+        "o tick da lib passou de 20 ms: {per_tick}"
+    );
 }
 
 /// O `Update` de um block entity que o dono não tem (a cola entrega o de cada transmissor a todos os donos, e a cola sai antes de entregar o que não é do dono, decisão 202) não faz nada
@@ -192,13 +205,28 @@ fn an_update_of_a_block_entity_the_owner_does_not_have_changes_nothing() {
         lane.tick();
     }
     let positions = lane.owner.positions();
-    let energy = lane.level.machines[&BlockPos::new(20, -60, 1)].container.amount();
+    let energy = lane.level.machines[&BlockPos::new(20, -60, 1)]
+        .container
+        .amount();
     let before = lane.level.calls.get();
-    for foreign in [BlockPos::new(500, -60, 0), BlockPos::new(20, -60, 1), BlockPos::new(0, -60, -3)] {
+    for foreign in [
+        BlockPos::new(500, -60, 0),
+        BlockPos::new(20, -60, 1),
+        BlockPos::new(0, -60, -3),
+    ] {
         assert!(lane.owner.cable_at(foreign).is_none());
         lane.owner.handle(&mut lane.level, Event::Update(foreign));
     }
-    assert_eq!(lane.level.calls.get(), before, "o dono falou com o mundo por um bloco que não é dele");
+    assert_eq!(
+        lane.level.calls.get(),
+        before,
+        "o dono falou com o mundo por um bloco que não é dele"
+    );
     assert_eq!(lane.owner.positions(), positions);
-    assert_eq!(lane.level.machines[&BlockPos::new(20, -60, 1)].container.amount(), energy);
+    assert_eq!(
+        lane.level.machines[&BlockPos::new(20, -60, 1)]
+            .container
+            .amount(),
+        energy
+    );
 }
