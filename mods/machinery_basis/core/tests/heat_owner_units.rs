@@ -54,7 +54,11 @@ fn acceptor_bits(world: &World, x: i32) -> u8 {
 
 /// Quantos aceitadores a rede do condutor em `x` tem (`NetworkAcceptorCache`).
 fn acceptors_of_network(world: &World, x: i32) -> usize {
-    let network = world.owner().state_at(world.pos(x, 0)).and_then(|state| state.network).expect("em rede");
+    let network = world
+        .owner()
+        .state_at(world.pos(x, 0))
+        .and_then(|state| state.network)
+        .expect("em rede");
     world.owner().registry().network(network).acceptor_count()
 }
 
@@ -89,7 +93,11 @@ fn none_on_the_middle_conductor_cuts_the_heat_and_normal_brings_it_back() {
     assert_eq!(network(&world, 0), network(&world, 1));
     assert_ne!(network(&world, 1), network(&world, 2), "a linha se dividiu");
     // O condutor 2 olha o 1 pelo lado oeste: a capability dele no leste é nula (`NONE`), então 2 não o tem como aceitador, e a rede dele não conta aceitador nenhum.
-    assert_eq!(acceptor_bits(&world, 2), 0, "sem capacitor do outro lado não há aceitador");
+    assert_eq!(
+        acceptor_bits(&world, 2),
+        0,
+        "sem capacitor do outro lado não há aceitador"
+    );
     assert_eq!(acceptors_of_network(&world, 2), 0);
     let cut = heat(&world, 2);
     tick(&mut world, 30);

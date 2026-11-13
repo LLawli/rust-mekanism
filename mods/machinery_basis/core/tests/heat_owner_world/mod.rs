@@ -45,14 +45,38 @@ pub fn tier_of(name: &str) -> ConductorTier {
 pub struct Ambient {
     origin: BlockPos,
     cells: Vec<Vec<[f64; 7]>>,
+    /// O ar por posição absoluta (o que o jogo leu): vale no lugar da tabela se existe.
+    by_position: Option<std::collections::HashMap<[i32; 3], f64>>,
 }
 
 impl Ambient {
     pub fn new(origin: BlockPos, cells: Vec<Vec<[f64; 7]>>) -> Self {
-        Self { origin, cells }
+        Self {
+            origin,
+            cells,
+            by_position: None,
+        }
+    }
+
+    /// O ar lido por posição (a sonda `MBA` do jogo): o do lado `side` de `pos` é o da posição vizinha.
+    pub fn from_positions(
+        origin: BlockPos,
+        reads: std::collections::HashMap<[i32; 3], f64>,
+    ) -> Self {
+        Self {
+            origin,
+            cells: Vec::new(),
+            by_position: Some(reads),
+        }
     }
 
     fn read(&self, pos: BlockPos, side: Option<Face>) -> f64 {
+        if let Some(reads) = &self.by_position {
+            let at = side.map_or(pos, |side| pos.relative(side));
+            return *reads
+                .get(&[at.x, at.y, at.z])
+                .unwrap_or_else(|| panic!("o jogo não leu o ar de {at:?}"));
+        }
         let x = (pos.x - self.origin.x) as usize;
         let y = (pos.y - self.origin.y) as usize;
         self.cells[y][x][side.map_or(6, |side| side as usize)]
@@ -317,6 +341,20 @@ impl World {
         uuid_hashes: Vec<i32>,
         tile_hashes: Vec<i32>,
     ) -> Self {
+        Self::with_ambient(
+            origin,
+            Ambient::new(origin, ambient),
+            uuid_hashes,
+            tile_hashes,
+        )
+    }
+
+    pub fn with_ambient(
+        origin: BlockPos,
+        ambient: Ambient,
+        uuid_hashes: Vec<i32>,
+        tile_hashes: Vec<i32>,
+    ) -> Self {
         let queue = Rc::new(RefCell::new(VecDeque::from(uuid_hashes)));
         let tiles = Rc::new(RefCell::new(VecDeque::from(tile_hashes)));
         let mut owner = HeatTransmitters::new(
@@ -337,7 +375,6 @@ impl World {
             },
         );
         owner.record_events(true);
-        let ambient = Ambient::new(origin, ambient);
         let hooks = Hooks {
             owner,
             heater: None,
@@ -502,6 +539,21 @@ impl World {
                 powered: hooks.powered,
             };
             hooks.owner.handle_heat_at(&mut game, pos, amount);
+        });
+    }
+
+    /// O calor de um condutor posto de uma vez (`setHeat`).
+    pub fn set_conductor_heat(&mut self, x: i32, heat: f64) {
+        let pos = self.pos(x, 0);
+        self.level.with_hooks(|hooks, level| {
+            let mut game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.set_heat_at(&mut game, pos, heat);
         });
     }
 

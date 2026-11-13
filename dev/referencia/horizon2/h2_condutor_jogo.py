@@ -23,7 +23,7 @@ GENERATOR = "mekanismgenerators:heat_generator"
 a.KINDS["condutor"] = {"block": CONDUCTOR, "prefix": "MBH"}
 RASTROS = os.environ.get("RASTROS", os.path.expanduser("~/.cache/rust-mekanism/condutor-jogo/rastros"))
 cmd, wait, at, txt = a.cmd, a.wait, a.at, a.txt
-LAVA = 'machinery_basis:{v:1,tanks:[{resource:"minecraft:lava",amount:1000L}]}'
+LAVA = 'energy:0,machinery_basis:{v:1,tanks:[{resource:"minecraft:lava",amount:1000L}]}'
 
 
 def rows(prefix="MBQ"):
@@ -50,7 +50,7 @@ def montar_linha(n=5, generator=True):
     wait(60)
 
 
-def serie(passos=40, h0=2000.0):
+def serie(passos=40, h0=8000.0):
     """O Heat Generator em cima do último de cinco condutores básicos, sem lava, com o calor posto por `data merge` (o calor do original que `gheat` põe no rastro): com o servidor parado
     e `tick step 1`, cada passo imprime uma linha `MBQ` com o calor dos cinco condutores e as médias da rede. O rastro do jogo vai para `RASTROS/jogo_calor.jsonl` (o teste da lib o repete)."""
     montar_linha(5)
@@ -69,7 +69,10 @@ def serie(passos=40, h0=2000.0):
     novas = [r for r in rows()[antes:] if r["runs"]]
     print("passos com a rede andando:", len(novas), "de", passos)
     os.makedirs(RASTROS, exist_ok=True)
-    setup = {"e": "setup", "conductors": 5, "tier": "basic", "gen_heat0": h0, "ambient": em_repouso[0][3], "rest": [c[3] for c in em_repouso]}
+    ar = {}
+    for row in rows("MBA"):
+        ar[tuple(row["at"])] = row["v"]
+    setup = {"e": "setup", "conductors": 5, "tier": "basic", "gen_heat0": h0, "origin": list(at(0)), "ambient_reads": [[*k, v] for k, v in sorted(ar.items())], "ambient": em_repouso[0][3], "rest": [c[3] for c in em_repouso]}
     with open(f"{RASTROS}/jogo_calor.jsonl", "w") as out:
         out.write(json.dumps(setup) + "\n")
         for i, r in enumerate(novas):
@@ -169,25 +172,33 @@ def ler(x, z=0):
 
 
 def roteiro_video(pausa):
-    """O que o vídeo mostra: o Heat Generator aceso (lava refeita) esquentando a ponta da linha e o calor descendo pelos condutores (o chat mostra o `data get` de uma ponta e da outra); o
-    condutor do meio quebrado (o calor da ponta fria só cai) e reposto (volta a andar); e o Configurator agachado no braço leste do condutor do meio de outra linha, até o `NONE`."""
+    """O que o vídeo mostra, por `CENA`. `tudo` é `calor` e `configurador` em seguida. `calor`: o Heat Generator aceso (lava e energia refeitas) esquentando a ponta da linha e o calor descendo pelos condutores (o chat mostra o `data get`
+    do calor de uma ponta e da outra), o condutor do meio quebrado (o calor da ponta fria só cai) e reposto (volta a andar). `configurador`: o Configurator agachado no braço leste do condutor
+    do meio de outra linha, até o `NONE` (o braço some, e o do vizinho com ele), e de volta a `NORMAL` na face."""
+    h.ctl("options-set", "chatVisibility", "1")
+    cena = os.environ.get("CENA", "calor")
     gen = at(4, 1, 0)
     mid = at(2, 0, 0)
-    eye = (mid[0] + 0.5, mid[1] + 1.2, mid[2] - 4.2)
-    a.olhar(eye, (mid[0] + 0.5, mid[1] + 0.5, mid[2] + 0.5))
+    if cena in ("calor", "tudo"):
+        quantos = (3, 2, 2) if cena == "tudo" else (5, 4, 4)
+        eye = (mid[0] + 0.5, mid[1] + 1.2, mid[2] - 4.2)
+        a.olhar(eye, (mid[0] + 0.5, mid[1] + 0.5, mid[2] + 0.5))
 
-    def aceso(n):
-        for _ in range(n):
-            cmd("data merge block %s {%s}" % (txt(gen), LAVA))
-            ler(0)
-            ler(4)
-            pausa(0.7)
+        def aceso(n):
+            for _ in range(n):
+                cmd("data merge block %s {%s}" % (txt(gen), LAVA))
+                ler(0)
+                ler(4)
+                pausa(0.4)
 
-    aceso(8)
-    cmd("setblock %s minecraft:air destroy" % txt(mid))
-    aceso(6)
-    cmd("setblock %s %s" % (txt(mid), CONDUCTOR))
-    aceso(6)
+        aceso(quantos[0])
+        # Como o jogador quebra (`break`: o som do bloco vai ao vídeo).
+        h.ctl("break", *map(str, mid))
+        aceso(quantos[1])
+        cmd("setblock %s %s" % (txt(mid), CONDUCTOR))
+        aceso(quantos[2])
+        if cena == "calor":
+            return
     middle = at(1, 0, 6)
     eye2 = (middle[0] + 0.5, middle[1] + 1.0, middle[2] - 2.6)
     centro = (middle[0] + 0.5, middle[1] + 0.5, middle[2] + 0.5)
@@ -199,9 +210,19 @@ def roteiro_video(pausa):
     for _ in ("push", "pull", "none"):
         h.ctl("mouse", "right", "click")
         wait(20)
-        pausa(0.8)
+        pausa(1.2)
+    # De volta a `NORMAL` na face: sem braço o raio cai na face leste do centro; o vizinho sai para a face ficar à vista e volta.
+    cmd("setblock %s minecraft:air" % txt(at(2, 0, 6)))
+    cmd("tp @s %.2f %.2f %.2f" % (middle[0] + 3.0, middle[1] + 0.5, middle[2] + 0.5))
+    wait(10)
+    h.ctl("look-at", *("%.3f" % (middle[i] + (0.69, 0.5, 0.5)[i]) for i in range(3)))
+    wait(6)
+    h.ctl("mouse", "right", "click")
+    wait(8)
     h.ctl("key", "shift", "up")
-    pausa(1.5)
+    cmd("setblock %s %s" % (txt(at(2, 0, 6)), CONDUCTOR))
+    a.olhar(eye2, centro)
+    pausa(2.0)
 
 
 def video():

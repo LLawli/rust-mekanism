@@ -40,6 +40,8 @@ thread_local! {
     static VIEWS: RefCell<HashMap<(&'static str, [i32; 3]), CableView>> = RefCell::new(HashMap::new());
     /// Os condutores cujo `setChanged` rodou durante o evento: o NBT deles é regravado quando o dono volta ao jogo.
     static DIRTY: RefCell<Vec<[i32; 3]>> = const { RefCell::new(Vec::new()) };
+    /// As posições cujo ar a sonda já anotou (`MBA`).
+    static AMBIENT_SEEN: RefCell<std::collections::HashSet<[i32; 3]>> = RefCell::new(std::collections::HashSet::new());
     /// Os `ClearRemoved` que chegaram antes de o block entity entrar no mundo do Horizon: `(dimensão, posição, tick)`, tentados de novo.
     static PENDING: RefCell<Vec<(&'static str, [i32; 3], i64)>> = const { RefCell::new(Vec::new()) };
 }
@@ -131,7 +133,7 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
         let mut game = self.game.borrow_mut();
         let block = game.native_block(arr(pos));
         if let Some(neighbor) = neighbor_of(&block) {
-            (neighbor.write)(&mut game, self.dimension, arr(pos), transfer);
+            (neighbor.write)(&mut **game, self.dimension, arr(pos), transfer);
         }
     }
 
@@ -143,7 +145,11 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
             }
             None => arr(pos),
         };
-        basis::ambient_temperature(&self.game.borrow(), at)
+        let value = basis::ambient_temperature(&self.game.borrow(), at);
+        if let Some(value) = value {
+            ambient_probe(at, value);
+        }
+        value
     }
 
     fn conductor_info(&mut self, pos: SimPos) -> Option<ConductorInfo> {
@@ -183,6 +189,13 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
 
     fn overlay(&mut self, _pos: SimPos, overlay: HeatOverlay) {
         OVERLAYS.with_borrow_mut(|list| list.push(overlay));
+    }
+}
+
+/// A sonda do ar (`MBA`, só na cópia de teste): o ar de cada posição que a rede leu, uma vez por posição. O teste da lib repete o jogo com esses valores.
+fn ambient_probe(at: [i32; 3], value: f64) {
+    if basis::transmitter_probe_enabled() && AMBIENT_SEEN.with_borrow_mut(|seen| seen.insert(at)) {
+        eprintln!("MBA {{\"at\":[{},{},{}],\"v\":{:?}}}", at[0], at[1], at[2], value);
     }
 }
 
@@ -388,6 +401,21 @@ pub fn heat_adjacent(game: &mut Game<'_>, pos: [i32; 3], side: Face, capacitor: 
     let dimension = game.native_dimension();
     let [x, y, z] = side.offset();
     let neighbor = SimPos::new(pos[0] + x, pos[1] + y, pos[2] + z);
+    if basis::transmitter_probe_enabled() {
+        // O ar que o gerador lê (o dele e o de cada vizinho): o `CachedAmbientTemperature` dele guarda os mesmos valores.
+        for face in std::iter::once(None).chain(Face::ALL.into_iter().map(Some)) {
+            let at = match face {
+                Some(face) => {
+                    let [x, y, z] = face.offset();
+                    [pos[0] + x, pos[1] + y, pos[2] + z]
+                }
+                None => pos,
+            };
+            if let Some(value) = basis::ambient_temperature(game, at) {
+                ambient_probe(at, value);
+            }
+        }
+    }
     let transfer = with_owner(dimension, |owner| {
         let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
         let transfer = match owner.sink_at(&world, neighbor, side.opposite()) {

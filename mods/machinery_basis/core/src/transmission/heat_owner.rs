@@ -619,7 +619,7 @@ struct Arena<'a, W: HeatOwnerWorld> {
 impl<W: HeatOwnerWorld> Arena<'_, W> {
     fn conductor_ambient(&self, id: TransmitterId) -> AmbientAt<'_, W> {
         AmbientAt {
-            world: &*self.world,
+            world: self.world,
             pos: self.st.slots[id.0 as usize].pos,
         }
     }
@@ -1091,6 +1091,15 @@ impl HeatTransmitters {
             pos,
         };
         self.st.tc(id).handle_heat(amount, &ambient);
+        self.commit_pending(world);
+    }
+
+    /// `setHeat(heat, transaction)` do condutor em `pos` com a confirmação em seguida: põe o calor de uma vez (o teste que repete um estado do jogo).
+    pub fn set_heat_at<W: HeatOwnerWorld>(&mut self, world: &mut W, pos: BlockPos, heat: f64) {
+        let Some(id) = self.st.live(pos) else {
+            return;
+        };
+        self.st.tc(id).set_heat_in_transaction(heat);
         self.commit_pending(world);
     }
 
