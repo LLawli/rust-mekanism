@@ -159,7 +159,8 @@ public class CenaConfigurator {
             server.execute(() -> {
                 run(server, "gamemode " + (e.get("sobrevivencia", "0").equals("1") ? "survival" : "creative") + " @a");
                 run(server, "clear @a");
-                run(server, "item replace entity @a hotbar.0 with mekanism:configurator[mekanism:configurator_mode=\"" + e.get("modo", "configurate_items") + "\"] 1");
+                // `item=` põe outro item na mão (um graveto: sem Configurator não há sobreposição, e o print mostra só o desviador, o controle da comparação).
+                run(server, "item replace entity @a hotbar.0 with " + (e.campos().containsKey("item") ? e.get("item", "") + " 1" : "mekanism:configurator[mekanism:configurator_mode=\"" + e.get("modo", "configurate_items") + "\"] 1"));
                 run(server, "fill 296 -61 -2 304 -55 2 minecraft:air");
                 if (e.get("efeito", "").equals("overlay")) {
                     run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:enrichment_chamber[facing=north]", X, Y, Z));
@@ -169,6 +170,9 @@ public class CenaConfigurator {
                 if (e.get("efeito", "").equals("desviador")) {
                     // O desviador isolado em (300, -61, 0), com o `mode` de cada lado (`DiversionControl.ordinal` por `Direction`: baixo, cima, norte, sul, oeste, leste), que o `RenderTickHandler`
                     // lê em `modes[face.ordinal()]`; o configurador na mão em qualquer modo.
+                    // O chão do jogo (a grama) sorteia a variante da textura de outro jeito em cada jogo: o desviador é vazado e o chão aparece por trás da sobreposição, então um chão liso
+                    // (concreto branco) deixa o fundo igual nos dois e a comparação de pixels mede só a sobreposição.
+                    run(server, "fill 296 -62 -4 304 -62 4 minecraft:white_concrete");
                     run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:diversion_transporter{mode:[I;%s]}", X, Y, Z, e.get("modos", "0,0,0,0,0,0")));
                 }
                 String[] tp = e.get("tp", "300.5,-60,3.5,180,10").split(",");

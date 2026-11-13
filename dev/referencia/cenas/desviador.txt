@@ -7,9 +7,15 @@ nome=div_com_sinal efeito=desviador modo=configurate_items modos=0,0,0,1,0,0 tp=
 nome=div_sem_sinal efeito=desviador modo=configurate_items modos=0,0,0,2,0,0 tp=300.5,-61,2.6,180,31
 nome=div_girar_sem_sinal efeito=desviador modo=rotate modos=0,0,0,2,0,0 tp=300.5,-61,2.6,180,31
 nome=div_vazio_com_sinal efeito=desviador modo=empty modos=0,0,0,1,0,0 tp=300.5,-61,2.6,180,31
-nome=div_lado_com_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,1 tp=302.1,-61,0.5,90,31
-nome=div_lado_sem_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,2 tp=302.1,-61,0.5,90,31
-nome=div_topo_norte efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,1.6,180,67
-nome=div_topo_sul efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,-0.6,0,67
-nome=div_topo_oeste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=301.6,-61,0.5,90,67
-nome=div_topo_leste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=299.4,-61,0.5,270,67
+nome=div_lado_com_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,1 tp=302.1,-61,0.5,90,40
+nome=div_lado_sem_sinal efeito=desviador modo=configurate_items modos=0,0,0,0,0,2 tp=302.1,-61,0.5,90,40
+nome=div_topo_norte efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,1.6,180,38
+nome=div_topo_sul efeito=desviador modo=configurate_items modos=0,1,0,0,0,0 tp=300.5,-61,-0.6,0,38
+nome=div_topo_oeste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=301.6,-61,0.5,90,38
+nome=div_topo_leste efeito=desviador modo=configurate_items modos=0,2,0,0,0,0 tp=299.4,-61,0.5,270,38
+# Os controles: o mesmo desviador e a mesma câmera com um graveto na mão (sem Configurator não há sobreposição). A diferença entre o original e o port nesses prints é a do modelo e do contorno, sem
+# sobreposição, e é o que se desconta da diferença com o Configurator.
+nome=ctl_frente efeito=desviador item=minecraft:stick modos=0,0,0,1,0,0 tp=300.5,-61,2.6,180,31
+nome=ctl_lado efeito=desviador item=minecraft:stick modos=0,0,0,0,0,1 tp=302.1,-61,0.5,90,40
+nome=ctl_topo_oeste efeito=desviador item=minecraft:stick modos=0,2,0,0,0,0 tp=301.6,-61,0.5,90,38
+nome=ctl_topo_sul efeito=desviador item=minecraft:stick modos=0,1,0,0,0,0 tp=300.5,-61,-0.6,0,38

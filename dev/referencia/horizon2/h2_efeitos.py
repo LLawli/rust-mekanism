@@ -43,7 +43,11 @@ def montar(e):
     modo = e.get("modo", "configurate_items")
     # O texto do modo sobre a barra nasce de uma troca de modo (a rolagem agachado): a pilha começa no modo de antes.
     inicial = MODOS[(MODOS.index(modo) - 1) % len(MODOS)] if e.get("efeito") == "status" else modo
-    cmd(f'item replace entity @s hotbar.0 with mekanism:configurator[mekanism:configurator_mode="{inicial}"] 1')
+    if "item" in e:
+        # `item=`: outro item na mão (um graveto: sem Configurator não há sobreposição, o controle da comparação).
+        cmd(f"item replace entity @s hotbar.0 with {e['item']} 1")
+    else:
+        cmd(f'item replace entity @s hotbar.0 with mekanism:configurator[mekanism:configurator_mode="{inicial}"] 1')
     ctl("select", "1")
     if e.get("efeito") == "overlay":
         cmd(f"setblock {X} {Y} {Z} mekanism:enrichment_chamber[facing=north]")
@@ -51,10 +55,13 @@ def montar(e):
         cmd(f"data merge block {X} {Y} {Z} {{component_config:{{config3:[I;{e.get('config', '1,4,7,3,5,9')}],config0:[I;0,0,0,0,0,0]}}}}")
     if e.get("efeito") == "desviador":
         # O desviador isolado em (X, Y, Z); o modo de cada lado entra pela sonda do teste (`TRANSMITTER_PROBE`, `enviar_fontes.sh`: `updateMode` do dono).
+        # O chão liso (concreto branco) deixa o fundo atrás da sobreposição igual ao do original (`CenaConfigurator`): a grama sorteia a textura de outro jeito em cada jogo.
+        cmd(f"fill {X - 4} {Y - 1} -4 {X + 4} {Y - 1} 4 minecraft:white_concrete")
         cmd(f"setblock {X} {Y} {Z} mekanism:diversion_transporter")
-        time.sleep(1.0)
+        # Em ticks do jogo, não em segundos: com o jogo lento o dono ainda não tem o desviador depois de um segundo, e a sonda de modo é ignorada.
+        ctl("wait", "40")
         cmd(f"data merge block {X} {Y} {Z} {{probe_set:{{raw:[I;0,0,0,0,0,0], mode:[I;{e.get('modos', '0,0,0,0,0,0')}]}}}}")
-        time.sleep(0.5)
+        ctl("wait", "20")
     x, y, z, yaw, pitch = e.get("tp", "300.5,-60,3.5,180,10").split(",")
     cmd(f"tp @s {x} {y} {z} {yaw} {pitch}")
 
