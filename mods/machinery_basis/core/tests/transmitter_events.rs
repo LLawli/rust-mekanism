@@ -565,3 +565,123 @@ fn the_client_mirror_of_the_window_notes_nothing_once_the_server_block_entities_
     events::push_from(CLIENT, Raw::AddedLater { pos: [4, 1, 1] });
     assert_eq!(events::take().len(), 1);
 }
+
+fn ticket(chunk: [i32; 2], loaded: bool) -> Event {
+    Event::Ticket {
+        dim: OW.to_owned(),
+        chunk,
+        loaded,
+    }
+}
+
+#[test]
+fn a_chunk_that_leaves_the_accessible_ring_tells_the_ticket_while_it_stays_loaded() {
+    // O jogador se afasta: o chunk (0, 0) fica carregado (o nível 33 do original), mas o ticket passa de 32 e os cabos dele saem da rede (decisão 196, medido: 47 cabos de diferença).
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    let mut out = Vec::new();
+    tracker.chunk_loaded_with(OW, [0, 0], true, &mut out);
+    tracker.chunk_loaded_with(OW, [1, 0], true, &mut out);
+    assert_eq!(out, vec![ticket([0, 0], true), ticket([1, 0], true)]);
+    // Nada mudou: nenhum ticket.
+    let mut out = Vec::new();
+    tracker.accessibility(OW, |_| true, &mut out);
+    assert!(
+        out.is_empty(),
+        "sem mudança de nível não há ticket: {out:?}"
+    );
+    // O (0, 0) sai do anel, o (1, 0) fica.
+    tracker.accessibility(OW, |chunk| chunk[0] != 0, &mut out);
+    assert_eq!(out, vec![ticket([0, 0], false)]);
+    // Na chamada seguinte o estado já é o novo: nada se repete.
+    let mut out = Vec::new();
+    tracker.accessibility(OW, |chunk| chunk[0] != 0, &mut out);
+    assert!(out.is_empty(), "o ticket não se repete: {out:?}");
+    // E volta ao anel.
+    tracker.accessibility(OW, |_| true, &mut out);
+    assert_eq!(out, vec![ticket([0, 0], true)]);
+}
+
+#[test]
+fn the_chunks_that_change_side_come_in_position_order_and_only_for_the_dimension() {
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    let mut out = Vec::new();
+    for chunk in [[3, 0], [-1, 2], [0, 0], [3, -4]] {
+        tracker.chunk_loaded_with(OW, chunk, true, &mut out);
+    }
+    tracker.chunk_loaded_with("minecraft:the_nether", [9, 9], true, &mut out);
+    let mut out = Vec::new();
+    tracker.accessibility(OW, |_| false, &mut out);
+    assert_eq!(
+        out,
+        vec![
+            ticket([-1, 2], false),
+            ticket([0, 0], false),
+            ticket([3, -4], false),
+            ticket([3, 0], false)
+        ]
+    );
+}
+
+#[test]
+fn a_chunk_that_loads_outside_the_ring_gives_the_ticket_only_when_it_enters() {
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    let mut out = Vec::new();
+    tracker.chunk_loaded_with(OW, [5, 0], false, &mut out);
+    assert!(
+        out.is_empty(),
+        "o chunk que carrega no nível 33 não dá ticket: {out:?}"
+    );
+    tracker.accessibility(OW, |_| true, &mut out);
+    assert_eq!(out, vec![ticket([5, 0], true)]);
+}
+
+#[test]
+fn a_chunk_that_already_left_the_ring_does_not_tell_the_ticket_again_when_it_unloads() {
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    let mut out = Vec::new();
+    tracker.chunk_loaded_with(OW, [0, 0], true, &mut out);
+    tracker.accessibility(OW, |_| false, &mut out);
+    let mut out = Vec::new();
+    tracker.chunk_unloading(OW, [0, 0], &[], &mut out);
+    assert!(
+        out.is_empty(),
+        "o nível já passou de 32 quando o chunk sai: {out:?}"
+    );
+    // Um chunk sem registro (o do começo do mundo) segue dando o ticket de sempre.
+    let mut out = Vec::new();
+    tracker.chunk_unloading(OW, [7, 7], &[], &mut out);
+    assert_eq!(out, vec![ticket([7, 7], false)]);
+}
+
+#[test]
+fn a_reset_forgets_which_side_of_the_ring_each_chunk_was() {
+    let _only = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    events::register("ring");
+    let _ = events::chunk_loaded_with(OW, [0, 0], false);
+    assert!(events::accessibility(OW, |_| true).len() == 1);
+    let _ = events::reset();
+    assert!(
+        events::accessibility(OW, |_| false).is_empty(),
+        "depois do reset nenhum chunk é seguido"
+    );
+}
+
+#[test]
+fn the_client_mirror_does_not_drain_the_queue_the_server_filled() {
+    // Decisão 198, medido em jogo: o tick e o fim de cada operação do espelho do cliente da janela esvaziavam a fila global, e levavam o `load_chunk` que o servidor acabara de anotar.
+    // O chunk sem `clearRemoved` deixava os cabos dele fora da rede (uma rede partida em cerca de metade das primeiras aberturas de um mundo recém-construído).
+    let _only = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = events::reset();
+    events::register("cable");
+    let blocks = vec![([33, 1, 1], Some("cable".to_owned()))];
+    events::push(Raw::LoadChunk(blocks.clone()));
+    assert!(
+        events::take_for(false).is_empty(),
+        "o espelho do cliente não é dono da fila"
+    );
+    assert_eq!(
+        events::take_for(true),
+        vec![Raw::LoadChunk(blocks)],
+        "o que o servidor anotou segue na fila para quem o entrega"
+    );
+}

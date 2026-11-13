@@ -3258,6 +3258,18 @@ const TRANSMITTER_PROBE: bool = false;
 const SETUPS_PROBE: bool = false;
 /// As passadas do `server_tick` desde que o jogo abriu (a sonda numera por elas, e não pelo `game_time`, que o `/tick freeze` para).
 static TRANSMITTER_PASS: AtomicI64 = AtomicI64::new(0);
+/// A sonda leve da decisão 198: o que cada chunk já deu desde que o mundo abriu (a primeira vez de `clearRemoved` e de `tick` por chunk, para saber em que passada cada um entrou), para
+/// comparar com os tickets de acessibilidade (`MBK`) e com a carga do chunk (`MBL`). Só com `SETUPS_PROBE`.
+static PROBE_FIRST: Mutex<Vec<(u8, i32, i32)>> = Mutex::new(Vec::new());
+
+fn probe_first(kind: u8, name: &str, pos: [i32; 3]) {
+    let (cx, cz) = (pos[0] >> 4, pos[2] >> 4);
+    let mut seen = PROBE_FIRST.lock().unwrap_or_else(|e| e.into_inner());
+    if !seen.contains(&(kind, cx, cz)) {
+        seen.push((kind, cx, cz));
+        eprintln!("MBU {{\"t\":{},\"e\":\"{name}\",\"cx\":{cx},\"cz\":{cz}}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
+    }
+}
 thread_local! {
     /// Os níveis que o servidor já andou com alguém e ainda não soltaram os chunks (decisão 193).
     static IDLE_LEVELS: RefCell<machinery_basis_core::level_idle::IdleLevels> = RefCell::new(machinery_basis_core::level_idle::IdleLevels::new());
@@ -3342,6 +3354,12 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     for event in &events {
         if TRANSMITTER_PROBE {
             transmitter_probe(game, event);
+        } else if SETUPS_PROBE && let TransmitterEvent::Transmitter { pos, kind, .. } = event {
+            match kind {
+                TransmitterKind::ClearRemoved => probe_first(0, "clearRemoved", *pos),
+                TransmitterKind::Update => probe_first(1, "tick", *pos),
+                _ => {}
+            }
         } else if SETUPS_PROBE && let TransmitterEvent::Ticket { chunk, loaded, .. } = event {
             // Os tickets de acessibilidade (decisão 196), as únicas ocorrências que a sonda leve conta uma a uma: o chunk, o lado do anel e a passada.
             eprintln!("MBK {{\"t\":{},\"cx\":{},\"cz\":{},\"loaded\":{loaded}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
@@ -3388,14 +3406,15 @@ pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
     if !transmitters::is_active() {
         return;
     }
+    // Um cliente que só recebe o mundo do servidor não tem dono: a fila é do servidor, e o cliente não a esvazia (levava o `load_chunk` que o servidor acabara de anotar, decisão 198).
+    if game.remote.is_some() {
+        probe_remote_flush("tick");
+        return;
+    }
     // O block entity criado depois do aviso que a operação segurou vem antes dele.
     let (mut raws, neighbors) = transmitters::split_neighbors(transmitters::take());
     raws.extend(transmitters::take_held());
     raws.extend(neighbors);
-    // Um cliente que só recebe o mundo do servidor não tem dono: a fila esvazia e nada sai.
-    if game.remote.is_some() {
-        return;
-    }
     if !raws.is_empty() {
         let raws = transmitters_resolve(game, raws);
         transmitters_note_order(game.native_dimension(), &raws);
@@ -3405,7 +3424,9 @@ pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
     // Os chunks que carregaram antes do registro do primeiro tipo: o `chunk_loaded` deles sai quando o chunk está inteiro no jogo, com os block entities já na tabela de carga.
     for chunk in transmitters::take_early_chunks() {
         if game.world.chunks.contains_key(&(chunk[0], chunk[1])) {
-            let events = transmitters::chunk_loaded(game.native_dimension(), chunk);
+            let accessible = chunk_accessible(game, game.native_dimension(), chunk);
+            let events = transmitters::chunk_loaded_with(game.native_dimension(), chunk, accessible);
+            probe_chunk_load(chunk, accessible, &events);
             transmitters_deliver(game, events);
         } else {
             transmitters::keep_early_chunk(chunk);
@@ -3419,8 +3440,11 @@ pub(in crate::game) fn transmitters_flush_operation(game: &mut Game<'_>) {
     if !transmitters::is_active() {
         return;
     }
-    let raws = transmitters::take();
-    if game.remote.is_some() || raws.is_empty() {
+    if game.remote.is_some() {
+        probe_remote_flush("operation");
+    }
+    let raws = transmitters::take_for(game.remote.is_none());
+    if raws.is_empty() {
         return;
     }
     let (others, neighbors) = transmitters::split_neighbors(raws);
@@ -3486,8 +3510,34 @@ pub(in crate::game) fn transmitters_chunk_loaded(game: &mut Game<'_>, dimension:
         return;
     }
     transmitters_flush(game);
-    let events = transmitters::chunk_loaded(dimension, chunk);
+    let accessible = chunk_accessible(game, dimension, chunk);
+    let events = transmitters::chunk_loaded_with(dimension, chunk, accessible);
+    probe_chunk_load(chunk, accessible, &events);
     transmitters_deliver(game, events);
+}
+
+/// A sonda leve do cliente que passa por um ponto que esvazia a fila (`MBD`): o que ele levaria, se a esvaziasse (decisão 198).
+fn probe_remote_flush(point: &str) {
+    if SETUPS_PROBE {
+        let (queued, loads) = transmitters::queue_load();
+        if queued > 0 {
+            eprintln!("MBD {{\"remote_would_eat\":{queued},\"loads\":{loads},\"at\":\"{point}\"}}");
+        }
+    }
+}
+
+/// A sonda leve da carga de um chunk (`MBL`): o lado do anel em que ele carregou e quantos `clearRemoved` o `ChunkEvent.Load` trouxe.
+fn probe_chunk_load(chunk: [i32; 2], accessible: bool, events: &[TransmitterEvent]) {
+    if SETUPS_PROBE {
+        let clears = events.iter().filter(|event| matches!(event, TransmitterEvent::Transmitter { kind: TransmitterKind::ClearRemoved, .. })).count();
+        eprintln!("MBL {{\"t\":{},\"cx\":{},\"cz\":{},\"acc\":{accessible},\"clears\":{clears}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
+    }
+}
+
+/// O chunk está no anel acessível do original (`ChunkTicketLevelUpdatedEvent`: o nível de ticket de carga é 32 ou menos, `FullChunkStatus.BLOCK_TICKING` ou mais)? O Horizon dá o nível de
+/// carga dos chunks do nível em que está (`tickets.levels().loaded_ticking`); de outro nível não sabe, e o chunk conta como dentro.
+fn chunk_accessible(game: &Game<'_>, dimension: &str, chunk: [i32; 2]) -> bool {
+    dimension != game.native_dimension() || game.tickets.levels().loaded_ticking(chunk[0], chunk[1])
 }
 
 /// O chunk vai sair (o gancho `chunk_unload`, que o jogo chama com os block entities ainda no lugar): os block entities de mod do chunk, na ordem do mapa dele.
@@ -3567,6 +3617,10 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 return;
             }
             transmitters_flush(game);
+            // Os chunks que entraram ou saíram do anel acessível neste tick (o `ChunkTicketLevelUpdatedEvent`, que o registro anota e trata no `Post`).
+            let dim = game.native_dimension().to_owned();
+            let events = transmitters::accessibility(&dim, |chunk| chunk_accessible(game, &dim, chunk));
+            transmitters_deliver(game, events);
             // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele, e os parados que
             // ainda estão carregados (o que descarrega neste tick inclusive, onde o original trata os transmissores inválidos).
             let dims = post_levels;
@@ -3630,6 +3684,7 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
         return;
     }
     BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    PROBE_FIRST.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let events = transmitters::reset();
     transmitters_deliver(game, events);
     crate::game::machinery_transmitter_client::reset(game);

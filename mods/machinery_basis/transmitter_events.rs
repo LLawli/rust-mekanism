@@ -157,10 +157,24 @@ pub fn from_server(source: usize) -> bool {
 pub fn push_from(source: usize, raw: Raw) {
     if from_server(source) {
         push(raw);
+    } else if DROP_PROBE {
+        let (kind, at) = match &raw {
+            Raw::Added { pos, .. } | Raw::AddedLater { pos } | Raw::Removed { pos, .. } => ("one", Some(*pos)),
+            Raw::LoadChunk(blocks) => ("chunk", blocks.first().map(|(pos, _)| *pos)),
+            Raw::Neighbor { pos, .. } => ("neighbor", Some(*pos)),
+        };
+        eprintln!("MBD {{\"drop\":\"{kind}\",\"at\":{at:?},\"source\":{source},\"known\":{}}}", SERVER_SOURCE.load(Ordering::Relaxed));
     }
 }
 
+/// Só na cópia de teste (`enviar_fontes.sh setups` liga): as ocorrências que o espelho do cliente da janela anotou e a fila descartou (`MBD`), para a decisão 198.
+const DROP_PROBE: bool = false;
+
 pub fn push(raw: Raw) {
+    if DROP_PROBE && let Raw::LoadChunk(blocks) = &raw {
+        let chunk = blocks.first().map(|(pos, _)| chunk_of(*pos));
+        eprintln!("MBD {{\"push_load\":{chunk:?},\"n\":{},\"mods\":{},\"active\":{}}}", blocks.len(), blocks.iter().filter(|(_, id)| id.is_some()).count(), is_active());
+    }
     if is_active() {
         lock(&QUEUE).push(raw);
     } else if matches!(&raw, Raw::LoadChunk(blocks) if blocks.iter().any(|(_, id)| id.is_some())) {
@@ -268,8 +282,27 @@ impl PendingClears {
     }
 }
 
+/// Esvazia a fila para quem é o dono dela: o servidor (`owner`). O espelho do cliente da janela do anfitrião também passa pelos pontos que a esvaziam (o tick dos block entities dele, o fim de
+/// cada operação no mundo dele, `flush_signals`), mas não tem dono dos transmissores: se esvaziasse a fila, levava o que o servidor acabara de anotar (o `load_chunk` de um chunk que ainda não
+/// tinha dado o `ChunkEvent.Load`) e os cabos desse chunk nunca entravam na rede (decisão 198, medido em jogo: o chunk sem nenhum `clearRemoved`).
+pub fn take_for(owner: bool) -> Vec<Raw> {
+    if owner { take() } else { Vec::new() }
+}
+
+/// Quantas ocorrências a fila tem agora, e quantas delas são de `load_chunk` (a sonda `MBD` da decisão 198: o que um cliente que a esvaziasse levaria).
+pub fn queue_load() -> (usize, usize) {
+    let queue = lock(&QUEUE);
+    (queue.len(), queue.iter().filter(|raw| matches!(raw, Raw::LoadChunk(_))).count())
+}
+
 /// Esvazia a fila, na ordem das ocorrências.
 pub fn take() -> Vec<Raw> {
+    if DROP_PROBE {
+        let (queued, loads) = queue_load();
+        if queued > 0 {
+            eprintln!("MBD {{\"take\":{queued},\"loads\":{loads}}}");
+        }
+    }
     std::mem::take(&mut *lock(&QUEUE))
 }
 
@@ -292,8 +325,21 @@ pub fn translate(dim: &str, raws: Vec<Raw>) -> Vec<Event> {
 
 /// `ChunkEvent.Load` (o gancho `chunk_load`): o `ChunkTicketLevelUpdatedEvent`, o `clearRemoved` de cada block entity que o chunk trouxe, e a invalidação do chunk inteiro.
 pub fn chunk_loaded(dim: &str, chunk: [i32; 2]) -> Vec<Event> {
+    chunk_loaded_with(dim, chunk, true)
+}
+
+/// O mesmo, com o chunk que carrega fora do anel acessível (`accessible` falso): o ticket só sai quando o chunk entra nele (`accessibility`), como o original, que só o dá ao cruzar o nível 32.
+pub fn chunk_loaded_with(dim: &str, chunk: [i32; 2], accessible: bool) -> Vec<Event> {
     let mut out = Vec::new();
-    lock(&TRACKER).chunk_loaded(dim, chunk, &mut out);
+    lock(&TRACKER).chunk_loaded_with(dim, chunk, accessible, &mut out);
+    out
+}
+
+/// Os chunks que entraram e os que saíram do anel acessível desde a última chamada (`accessible` diz de cada chunk carregado da dimensão se ele está nele): o
+/// `ChunkTicketLevelUpdatedEvent` do original, que o Horizon não dá (compara-se `tickets.levels().loaded_ticking` no fim do tick).
+pub fn accessibility(dim: &str, accessible: impl Fn([i32; 2]) -> bool) -> Vec<Event> {
+    let mut out = Vec::new();
+    lock(&TRACKER).accessibility(dim, accessible, &mut out);
     out
 }
 
@@ -333,6 +379,11 @@ pub fn reset() -> Vec<Event> {
     tracker.present.clear();
     tracker.loading.clear();
     tracker.seen.clear();
+    tracker.access.clear();
+    if DROP_PROBE {
+        let (queued, loads) = queue_load();
+        eprintln!("MBD {{\"reset_clears\":{queued},\"loads\":{loads}}}");
+    }
     lock(&QUEUE).clear();
     lock(&HELD).clear();
     SERVER_SOURCE.store(0, Ordering::Relaxed);
@@ -393,11 +444,14 @@ pub struct Tracker {
     loading: HashMap<(String, [i32; 2]), BlockList>,
     /// As dimensões em que algum transmissor já entrou desde que o mundo abriu: o registro delas existe, e o `onTick` do registro (um só, estático) trata todas.
     seen: HashSet<String>,
+    /// Se cada chunk carregado está no anel acessível do original (nível de ticket 32 ou menos, `ChunkMap.MAX_VIEW_DISTANCE`), pelo último ticket dado: o chunk que sai do anel (o jogador se
+    /// afastou) fica carregado por mais tempo (nível 33), e os transmissores dele já saíram da rede (`chunkAccessibilityChange(false)`).
+    access: HashMap<(String, [i32; 2]), bool>,
 }
 
 impl Tracker {
     pub fn new() -> Self {
-        Self { ids: HashSet::new(), tracked: HashMap::new(), present: HashMap::new(), loading: HashMap::new(), seen: HashSet::new() }
+        Self { ids: HashSet::new(), tracked: HashMap::new(), present: HashMap::new(), loading: HashMap::new(), seen: HashSet::new(), access: HashMap::new() }
     }
 
     pub fn with_ids(ids: &[&str]) -> Self {
@@ -474,6 +528,10 @@ impl Tracker {
             Raw::AddedLater { pos } => self.added(dim, pos, &None, out),
             Raw::Removed { pos, id } => self.removed(dim, pos, &id, out),
             Raw::LoadChunk(blocks) => {
+                if DROP_PROBE && let Some((pos, _)) = blocks.first() {
+                    let chunk = chunk_of(*pos);
+                    eprintln!("MBD {{\"load_raw\":[{},{}],\"n\":{}}}", chunk[0], chunk[1], blocks.len());
+                }
                 if let Some((pos, _)) = blocks.first() {
                     self.loading.entry((dim.to_owned(), chunk_of(*pos))).or_default().extend(blocks);
                 }
@@ -494,15 +552,43 @@ impl Tracker {
     }
 
     pub fn chunk_loaded(&mut self, dim: &str, chunk: [i32; 2], out: &mut Vec<Event>) {
-        out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: true });
+        self.chunk_loaded_with(dim, chunk, true, out);
+    }
+
+    pub fn chunk_loaded_with(&mut self, dim: &str, chunk: [i32; 2], accessible: bool, out: &mut Vec<Event>) {
+        self.access.insert((dim.to_owned(), chunk), accessible);
+        if accessible {
+            out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: true });
+        }
         for (pos, id) in self.loading.remove(&(dim.to_owned(), chunk)).unwrap_or_default() {
             self.added(dim, pos, &id, out);
         }
         self.capabilities_in_chunk(dim, chunk, out);
     }
 
+    /// Os chunks da dimensão que mudaram de lado do anel acessível, em ordem de posição (o original os dá na ordem em que o gerenciador de distância muda o nível, que o Horizon não tem).
+    pub fn accessibility(&mut self, dim: &str, accessible: impl Fn([i32; 2]) -> bool, out: &mut Vec<Event>) {
+        let mut changed: Vec<([i32; 2], bool)> = Vec::new();
+        for ((chunk_dim, chunk), state) in &self.access {
+            if chunk_dim == dim {
+                let now = accessible(*chunk);
+                if now != *state {
+                    changed.push((*chunk, now));
+                }
+            }
+        }
+        changed.sort_unstable();
+        for (chunk, now) in changed {
+            self.access.insert((dim.to_owned(), chunk), now);
+            out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: now });
+        }
+    }
+
     pub fn chunk_unloading(&mut self, dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)], out: &mut Vec<Event>) {
-        out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: false });
+        // O chunk que já saiu do anel acessível não dá o ticket outra vez ao sair (o nível já passou de 32); sem registro conta como dentro.
+        if self.access.remove(&(dim.to_owned(), chunk)).unwrap_or(true) {
+            out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: false });
+        }
         self.capabilities_in_chunk(dim, chunk, out);
         for (pos, id) in blocks {
             if self.is_transmitter(id) {
