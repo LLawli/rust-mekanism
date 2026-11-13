@@ -201,5 +201,44 @@ def dimensao():
     print("fim", "OK" if ok else "DIFF")
 
 
+def roteiro_video(pausa, marca):
+    """A liga sobe uma linha de condutores (do básico ao supremo, com o Heat Generator aceso) e uma de transportadores (com terra em trânsito). Sem LAN: a troca de bloco é limpa."""
+    aj.clear()
+    cmd("gamemode creative @s")
+    for x in range(LINHA):
+        cmd("setblock %s %s" % (txt(at(x)), CONDUTORES[0]))
+        cmd("setblock %s %s" % (txt(at(x, 0, 6)), TRANSPORTADORES[0]))
+    cmd("setblock %s %s" % (txt(at(LINHA - 1, 1)), GERADOR))
+    cmd("setblock %s minecraft:chest" % txt(at(0, 0, 5)))
+    cmd("setblock %s minecraft:chest" % txt(at(LINHA, 0, 5)))
+    for item in c.LIGAS:
+        h.ctl("give", item, "1")
+    wait(60)
+    cmd("data merge block %s {heat:8000.0d}" % txt(at(LINHA - 1, 1)))
+    cmd("data merge block %s {probe_set:{raw:[I;0,0,0,0,2,0]}}" % txt(at(0, 0, 6)))
+    wait(20)
+    for dz, lista, rotulo, niveis in ((0, CONDUTORES, "condutor", (1, 2, 3)), (6, TRANSPORTADORES, "transportador", (1,))):
+        pos = at(1, 0, dz)
+        cmd("tp @s %.2f %.2f %.2f" % (pos[0] + 0.5, pos[1] + 1.0, pos[2] - 2.6))
+        wait(12)
+        h.ctl("look-at", "%.2f" % (pos[0] + 1.0), "%.2f" % (pos[1] + 0.5), "%.2f" % (pos[2] + 0.5))
+        wait(6)
+        marca(f"{rotulo}_basico")
+        pausa(3)
+        for nivel in niveis:
+            h.ctl("select", c.LIGAS[nivel - 1])
+            h.ctl("look-at", *("%.3f" % (pos[i] + aj.ARM["east"][i]) for i in range(3)))
+            wait(6)
+            h.ctl("mouse", "right", "click")
+            wait(6)
+            marca(f"{rotulo}_nivel{nivel}")
+            pausa(2)
+
+
+def video():
+    c.roteiro_video = roteiro_video
+    c.video()
+
+
 if __name__ == "__main__":
-    {"condutor": condutor, "transportador": transportador, "opcao": opcao, "dimensao": dimensao}[sys.argv[1]]()
+    {"condutor": condutor, "transportador": transportador, "opcao": opcao, "dimensao": dimensao, "video": video}[sys.argv[1]]()
