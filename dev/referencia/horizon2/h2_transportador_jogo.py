@@ -86,7 +86,9 @@ def montar(setup):
     cmd("gamemode creative @s")
     for c in setup["containers"]:
         cmd("setblock %s %s" % (txt(at(c["p"])), "minecraft:chest" if c["size"] == 27 else "minecraft:dropper"))
-    for t in setup["transporters"]:
+    # Na ordem de `y`, `x`, `z`, a dos block entities do original no rastro: o jogo anda os block entities na ordem em que entraram no mundo, e onde uma pilha passa de um transportador a
+    # outro no mesmo tick a ordem decide em que progresso ela fica no fim do tick.
+    for t in sorted(setup["transporters"], key=lambda t: (t["p"][1], t["p"][0], t["p"][2])):
         cmd("setblock %s %s" % (txt(at(t["p"])), block_of(t)))
     wait(40)
     for t in setup["transporters"]:
@@ -135,7 +137,8 @@ def replay(name):
     # O alinhamento: o contador de espera de quem puxa (`delay`) começa na fase do rastro (`restore_counters` do teste Rust). A sonda o põe no fim do tick (`ServerTickPost`), e o tick seguinte
     # é o 1 do rastro.
     for i, t in enumerate(setup["transporters"]):
-        cmd("data merge block %s {probe_set:{delay:%d}}" % (txt(at(t["p"])), begin["dl"][i]))
+        # A sonda roda a cada `ServerTickPost`, também nos passos do servidor parado (`runs` falso): põe o valor antes do tick de alinhamento, que ainda o desconta uma vez.
+        cmd("data merge block %s {probe_set:{delay:%d}}" % (txt(at(t["p"])), begin["dl"][i] + 1))
     first = step(1)
     t0 = first[0]["t"] if first else None
     if t0 is None:
@@ -190,12 +193,16 @@ def replay(name):
             got[(r["t"] - t0, tuple(r["p"]))] = r
     diffs = []
     lost = []
+    handoff = []
     compared = 0
     seen = {}
     for t in sorted(ticks):
         if t > last or t < 1:
             continue
         for entry in ticks[t]["tx"]:
+            if "transit" not in entry:
+                # `gone`: o transportador foi quebrado; o jogo não o anda mais.
+                continue
             # O rastro grava a pilha inteira na primeira vez (`item`, `n`) e só o `id`, o `h` e o progresso depois.
             for s in entry["transit"]:
                 if "item" in s:
@@ -214,8 +221,14 @@ def replay(name):
             compared += 1
             have = sorted((s[0], s[1], s[2], s[3]) for s in g["stacks"])
             if have != want_stacks:
+                # O rastro grava o fim do tick; a sonda grava quando o transportador anda. Uma pilha que entra aqui no tick (progresso 0, vinda do vizinho que anda depois deste no
+                # jogo) só aparece no tick seguinte: o estado do fim do tick é o mesmo, a leitura é que vem antes do repasse.
+                entering = [s for s in want_stacks if s[3] == 0]
+                if entering and have == [s for s in want_stacks if s[3] != 0]:
+                    handoff.append((t, entry["p"]))
+                    continue
                 diffs.append((t, entry["p"], want_stacks, have))
-    print(f"{name}: {compared} estados de transportador comparados até o tick {last}" + (f" (parou na ação {stop[1]} do tick {stop[0]})" if stop else "") + ": " + ("IGUAL" if not diffs else "DIFERE em %d" % len(diffs)) + (f"; {len(lost)} linha(s) perdida(s) no log (ALSA no meio)" if lost else "") + ("" if chests_ok is None else ("; baús iguais" if chests_ok else "; baús DIFEREM")))
+    print(f"{name}: {compared} estados de transportador comparados até o tick {last}" + (f" (parou na ação {stop[1]} do tick {stop[0]})" if stop else "") + ": " + ("IGUAL" if not diffs else "DIFERE em %d" % len(diffs)) + (f"; {len(handoff)} repasse(s) lido(s) antes de o vizinho passar a pilha (a mesma pilha, no tick seguinte, igual ao rastro)" if handoff else "") + (f"; {len(lost)} linha(s) perdida(s) no log (ALSA no meio)" if lost else "") + ("" if chests_ok is None else ("; baús iguais" if chests_ok else "; baús DIFEREM")))
     for d in diffs[:5]:
         print("   t=%d %s rastro %s  jogo %s" % d)
     return not diffs
