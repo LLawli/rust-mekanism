@@ -268,6 +268,8 @@ def video():
     jogo já tem de estar aberto no `ResetA` (criado por `h2_mundo_plano.py`), com `SOCK` do `gravar-jogo start` (`JOGO_PW_SOCK` no container) e o sink conferido por `audio_nulo.sh`."""
     import h2_ajustes_jogo as a
     import h2_network_reader as nr
+    # O mundo do vídeo é superplano com a grama em y = -61: os cabos ficam em cima dela, à vista (a rede dos rastros, de y = -61, fica dentro do chão).
+    YV = -60
     sock = os.environ["SOCK"]
     nome = os.environ.get("NOME", "reset_mundo")
     local = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/reset-mundo"))
@@ -287,10 +289,14 @@ def video():
     cmd("gamerule advance_weather false")
     ctl("options-set", "chatVisibility", "0")
     ctl("options-set", "guiScale", "3")
-    for x in range(5):
-        cmd(f"setblock {x} {Y} 0 {CABLE}")
+    # Uma tentativa anterior no mesmo mundo: a linha de dentro do chão e a de cima voltam à grama e ao ar.
+    cmd("fill 0 -61 0 4 -61 0 minecraft:grass_block")
+    cmd("fill 0 -60 0 4 -60 0 minecraft:air")
     wait(40)
-    cmd(f"data merge block 0 {Y} 0 {{energy:12345}}")
+    for x in range(5):
+        cmd(f"setblock {x} {YV} 0 {CABLE}")
+    wait(40)
+    cmd(f"data merge block 0 {YV} 0 {{energy:12345}}")
     wait(40)
     ctl("give", nr.READER, "1")
     wait(10)
@@ -299,13 +305,13 @@ def video():
     cmd("tp @s %.2f %.2f %.2f" % stand)
     wait(240)
     a.CROP = "1000x300+0+680"
-    ctl("options-set", "chatVisibility", "2")
+    ctl("options-set", "chatVisibility", "0")
     for categoria in ("master", "block", "ui", "player"):
         ctl("options-set", f"soundCategory_{categoria}", "1.0")
     proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} {nome}.mp4 58 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
     time.sleep(2.0)
     try:
-        nr.clicar((2, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        nr.clicar((2, YV, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
         antes = a.shot("reset_antes")
         wait(40)
         sair()
@@ -314,7 +320,7 @@ def video():
         wait(20)
         ctl("select", nr.READER)
         wait(20)
-        nr.clicar((2, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        nr.clicar((2, YV, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
         depois = a.shot("reset_depois")
         wait(40)
     finally:
