@@ -1018,7 +1018,7 @@ Vindo da Fase 1 (movido em 2026-11-08), com o que já está feito e o que falta:
 
 **Esperando decisão do usuário (fim da Fase 3):**
 
-1. (A sobreposição do desviador já foi feita, decisão 177; sobram o Network Reader e as cores do ejetor.) Abrir uma frente para as três faltas de "O que falta dentro da Fase 3" antes de fechar a fase (a frente achou 1:1 claro para as três e não decide por ele), ou mover cada uma para a fase que o usuário escolher (o Network Reader e as cores do ejetor para a Fase 5, junto dos itens de uso e das telas; a sobreposição do desviador para a Fase 4, junto do desenho).
+1. ~~Abrir uma frente para as três faltas ou movê-las.~~ Resolvido pelo coordenador em 2026-11-13 (ver "Esperando decisão do usuário (fim da Fase 3)", acima): a sobreposição do desviador entrou com a frente `desviador-overlay` (decisão 177); o Network Reader, as cores do ejetor e o `reabrir` do cano e do tubo estão na frente `fase3-faltas`.
 2. Fechar a Fase 3 com o resto de "O que sai da Fase 3" movido para as Fases 4 a 6 como acima, e com as diferenças conhecidas e o não medido aceitos como estão. Nenhum pedido ao Horizon abre agora: a issue sai ao fim do port, com os pedidos H131, H166, H175, H179 e H198 (estado em `docs/injecoes-horizon.md`).
 
 **"Pronto significa", critério a critério** (a seção do fim do plano):
