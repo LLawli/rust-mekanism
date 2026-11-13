@@ -1,0 +1,7 @@
+nome=cabo bloco=mekanism:basic_universal_cable alvo=meio
+nome=cano bloco=mekanism:basic_mechanical_pipe alvo=meio
+nome=tubo bloco=mekanism:basic_pressurized_tube alvo=meio
+nome=condutor bloco=mekanism:basic_thermodynamic_conductor alvo=meio
+nome=transportador bloco=mekanism:basic_logistical_transporter bau=1 alvo=meio
+nome=bau bloco=mekanism:basic_logistical_transporter bau=1 alvo=bau sneak=1
+nome=gerador bloco=mekanismgenerators:heat_generator linha=0 alvo=meio sneak=1

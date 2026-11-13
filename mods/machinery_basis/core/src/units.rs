@@ -190,6 +190,32 @@ pub fn stored_mb(template: &str, name: &str, amount: u64) -> String {
 mod tests {
     use super::*;
 
+    /// `Float.toString`: a forma mais curta que volta ao mesmo `float`, em decimal entre `10^-3` e `10^7` e em notação científica fora disso.
+    #[test]
+    fn a_float_is_written_the_way_java_writes_it() {
+        assert_eq!(java_float_to_string(6.0), "6.0");
+        assert_eq!(java_float_to_string(5.999), "5.999");
+        assert_eq!(java_float_to_string(0.001), "0.001");
+        assert_eq!(java_float_to_string(64.55), "64.55");
+        assert_eq!(java_float_to_string(0.0), "0.0");
+        assert_eq!(java_float_to_string(1.0e7), "1.0E7");
+        assert_eq!(java_float_to_string(1.234_567_8e8), "1.2345678E8");
+        assert_eq!(java_float_to_string(0.000_123_4), "1.234E-4");
+        assert_eq!(java_float_to_string(9_999_999.0), "9999999.0");
+    }
+
+    /// O texto de `UnitDisplayUtils.getDisplayBase` sem o símbolo: com a medida, o zero e o espaço da energia.
+    #[test]
+    fn the_number_of_a_display_keeps_the_measure_and_the_space() {
+        assert_eq!(display_number(24_000.0, 2, true), "24 k");
+        assert_eq!(display_number(0.0, 2, true), "0 ");
+        assert_eq!(display_number(0.0, 2, false), "0");
+        assert_eq!(display_number(328.22, 2, false), "328.22");
+        assert_eq!(display_number(1.0e7, 2, false), "10M");
+        assert_eq!(display_number(1_500.0, 2, true), "1.5 k");
+        assert_eq!(display_number(0.0005, 2, false), "500\u{b5}");
+    }
+
     #[test]
     fn a_compact_display_picks_the_largest_unit_and_truncates() {
         assert_eq!(compact_display(0, "FE"), "0 FE");

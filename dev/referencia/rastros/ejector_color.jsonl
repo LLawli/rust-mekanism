@@ -1,0 +1,11 @@
+{"meta":"commit b2d04e166. A Crusher facing east with 20 cobblestone in its output slot, ejecting items through its front, two basic transporters east of it and, from the second, a north and a south branch. Per scene: the output color of the source ejector (output), the colors of the branches (north, south), whether the north end is a Crusher (machine) with strict input and an input color on the side that faces the branch, or a chest. After 400 ticks: source (slot 1 of the source), north (the chest items or slot 0 of the destination Crusher), south (the chest items)."}
+{"case":"color_blue","output":"DARK_BLUE","north_color":"BLACK","south_color":"DARK_BLUE","machine":false,"strict":false,"input_color":null,"source":0,"north":0,"south":20}
+{"case":"color_black","output":"BLACK","north_color":"BLACK","south_color":"DARK_BLUE","machine":false,"strict":false,"input_color":null,"source":0,"north":20,"south":0}
+{"case":"color_none","output":null,"north_color":"BLACK","south_color":"DARK_BLUE","machine":false,"strict":false,"input_color":null,"source":20,"north":0,"south":0}
+{"case":"color_other","output":"RED","north_color":"BLACK","south_color":"DARK_BLUE","machine":false,"strict":false,"input_color":null,"source":20,"north":0,"south":0}
+{"case":"strict_match","output":"DARK_BLUE","north_color":null,"south_color":null,"machine":true,"strict":true,"input_color":"DARK_BLUE","source":0,"north":20,"south":-1}
+{"case":"strict_none","output":null,"north_color":null,"south_color":null,"machine":true,"strict":true,"input_color":"DARK_BLUE","source":20,"north":0,"south":-1}
+{"case":"strict_other","output":"BLACK","north_color":null,"south_color":null,"machine":true,"strict":true,"input_color":"DARK_BLUE","source":20,"north":0,"south":-1}
+{"case":"loose_input_color","output":null,"north_color":null,"south_color":null,"machine":true,"strict":false,"input_color":"DARK_BLUE","source":0,"north":20,"south":-1}
+{"case":"strict_side_without_color","output":"BLACK","north_color":null,"south_color":null,"machine":true,"strict":true,"input_color":null,"source":0,"north":20,"south":-1}
+{"case":"strict_with_chest_beside","output":null,"north_color":null,"south_color":null,"machine":true,"strict":true,"input_color":"DARK_BLUE","source":0,"north":0,"south":20}

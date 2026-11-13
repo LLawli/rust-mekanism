@@ -484,8 +484,20 @@ fn the_names_are_the_originals() {
     for (key, value) in cables.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os do leitor de rede (`ItemNetworkReader`: a frente `fase3-faltas`), copiados da datagen do original.
+    let reader = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/leitor/lang.json"),
+    );
+    for (key, value) in reader.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
-        if fluids.get(key).is_some() || screens.get(key).is_some() || cables.get(key).is_some() {
+        if fluids.get(key).is_some()
+            || screens.get(key).is_some()
+            || cables.get(key).is_some()
+            || reader.get(key).is_some()
+        {
             continue;
         }
         assert_eq!(original.get(key), Some(value), "{key}");

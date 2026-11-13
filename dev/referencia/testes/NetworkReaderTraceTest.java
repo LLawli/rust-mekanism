@@ -383,6 +383,7 @@ public class NetworkReaderTraceTest {
             heat(scene, sequence, "conductor_basic", "mekanism:basic_thermodynamic_conductor");
             heat(scene, sequence, "conductor_ultimate", "mekanism:ultimate_thermodynamic_conductor");
             transporter(scene, sequence);
+            plain(scene, sequence);
             mixed(scene, sequence);
             nonetwork(scene, sequence);
             others(scene, sequence);
@@ -579,6 +580,25 @@ public class NetworkReaderTraceTest {
                 scene.click("transporter/chamber", SIDE, face, sneak, null);
             }
         });
+    }
+
+    /// As mesmas linhas sem máquina nenhuma por perto (um baú só no transportador): é o que o port monta em jogo sem configurar lado de máquina, e o chat tem de sair igual.
+    private static void plain(Scene scene, java.util.function.BiConsumer<Integer, Runnable> sequence) {
+        for (String[] family : new String[][]{{"cable_plain", "mekanism:basic_universal_cable"}, {"pipe_plain", "mekanism:basic_mechanical_pipe"}, {"tube_plain", "mekanism:basic_pressurized_tube"},
+                                               {"conductor_plain", "mekanism:basic_thermodynamic_conductor"}, {"transporter_plain", "mekanism:basic_logistical_transporter"}}) {
+            sequence.accept(1, () -> {
+                line(scene, family[1], 3);
+                if (family[0].startsWith("transporter")) {
+                    scene.helper.setBlock(END, Blocks.CHEST.defaultBlockState());
+                }
+            });
+            sequence.accept(SETTLE, () -> {
+                for (Direction face : new Direction[]{Direction.UP, Direction.NORTH}) {
+                    scene.click(family[0] + "/middle", B, face, false, null);
+                    scene.click(family[0] + "/end", A, face, false, null);
+                }
+            });
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------------------------------------------
