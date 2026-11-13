@@ -55,10 +55,11 @@ def no_chao():
     return soma
 
 
-def em_transito(n=LINHA):
-    """As pilhas de cada transportador pela última linha `MBI` dele (a sonda grava a cada tick do transportador)."""
+def em_transito(n=LINHA, de=None):
+    """As pilhas de cada transportador pela última linha `MBI` dele depois do byte `de` do log (a sonda grava a cada tick do transportador)."""
+    linhas, _ = novas("a", de if de is not None else max(bytes_de("a") - 200_000, 0), {"MBI"})
     ultimo = {}
-    for r in log("a", "MBI"):
+    for _, r in linhas:
         ultimo[tuple(r["p"])] = r
     return [sum(s[2] for s in ultimo[at(x)]["stacks"]) if at(x) in ultimo else None for x in range(1, n + 1)]
 
@@ -149,6 +150,9 @@ def pilhas(ticks=150):
     guardaram dos pacotes de movimento e de atualização) é a do servidor ao fim do `Update` do próprio transportador (`MBI`)."""
     montar()
     c.observer_near(2, -3)
+    # O convidado chegou perto: o servidor só manda os transmissores do chunk que ele passou a ver no tick seguinte, então o servidor anda uns ticks antes de parar.
+    wait(80)
+    time.sleep(2)
     cmd("data merge block %s {Items:[{Slot:0b,id:\"minecraft:dirt\",count:64}]}" % txt(at(0)))
     cmd("tick freeze")
     pos = [at(x) for x in range(1, LINHA + 1)]
@@ -179,8 +183,42 @@ def pilhas(ticks=150):
                 empty_ticks += 1
     cmd("tick unfreeze")
     print("pacotes no convidado:", packets, "| estados de transportador comparados:", compared, "(sem pilha:", empty_ticks, ")")
-    print(("OK   " if not diffs else "DIFF ") + "a lista do convidado é a do servidor a cada tick" + ("" if not diffs else " | primeiras diferenças: %s" % diffs[:3]))
+    print(("OK   " if not diffs else "DIFF ") + "a lista do convidado é a do servidor a cada tick" + ("" if not diffs else " | %d diferenças, nos passos %s | primeiras: %s" % (len(diffs), sorted({d[0] for d in diffs})[:40], diffs[:4])))
     return not diffs
+
+
+CONDUTORES = ["mekanism:%s_thermodynamic_conductor" % t for t in ("basic", "advanced", "elite", "ultimate")]
+
+
+def dobro(rodadas=6):
+    """A liga num condutor com o convidado conectado, várias vezes: cada posição troca de bloco uma vez (um `setRemoved` e um `clearRemoved`), a rede fica uma só com os cinco, e o convidado
+    anda por perto como na vez em que os eventos vieram em dobro. `MBT` são os eventos do dono, `MBQ` as redes."""
+    ok = True
+    for i in range(rodadas):
+        aj.clear()
+        cmd("gamemode creative @s")
+        cmd("tick unfreeze")
+        c.observer_near(7 + (i % 3), -3 - (i % 2))
+        for x in range(LINHA):
+            cmd("setblock %s %s" % (txt(at(x)), CONDUTORES[0]))
+        wait(60)
+        inicio = bytes_de("a")
+        c.usar_liga(c.LIGAS[0], at(2))
+        wait(60)
+        time.sleep(1.5)
+        linhas, _ = novas("a", inicio, {"MBT", "MBQ"})
+        contagem = {}
+        for prefixo, r in linhas:
+            if prefixo == "MBT" and r.get("e") in ("setRemoved", "clearRemoved") and r["p"][1] == at(0)[1] and r["p"][2] == at(0)[2] and 0 <= r["p"][0] - at(0)[0] < LINHA:
+                contagem[(r["p"][0] - at(0)[0], r["e"])] = contagem.get((r["p"][0] - at(0)[0], r["e"]), 0) + 1
+        redes = [r for prefixo, r in linhas if prefixo == "MBQ"][-1]["nets"]
+        subiu = all("Test passed" in cmd("execute if block %s %s" % (txt(at(x)), CONDUTORES[1])) for x in range(LINHA))
+        dobrado = {k: v for k, v in contagem.items() if v > 1}
+        bom = subiu and not dobrado and len(redes) == 1 and redes[0][3] == LINHA and len(contagem) == 2 * LINHA
+        ok &= bom
+        print(("OK   " if bom else "DIFF "), "rodada", i + 1, "| subiram:", subiu, "| eventos por posição:", dict(sorted(contagem.items())), "| em dobro:", dobrado, "| redes (condutores):", [n[3] for n in redes])
+    print("fim", "OK" if ok else "DIFF")
+    return ok
 
 
 def chunks():
@@ -229,5 +267,57 @@ def chunks():
 BASE_LONGE = (aj.BASE[0] + 480, 150, aj.BASE[2] + 16)
 
 
+def abrir_bau(pos):
+    """O jogador abre o baú em `pos` (a tela com o conteúdo)."""
+    cmd("tp @s %.2f %.2f %.2f" % (pos[0] + 0.5, pos[1] + 1.0, pos[2] - 2.5))
+    wait(8)
+    h.ctl("interact", *map(str, pos), "north")
+    wait(8)
+
+
+def fechar_tela():
+    h.ctl("key", "escape", "down")
+    wait(2)
+    h.ctl("key", "escape", "up")
+    wait(6)
+
+
+def roteiro_video(pausa, marca):
+    """A liga numa linha de transportadores com terra em trânsito, e todas as 64 chegam ao baú de destino: a tela do baú antes (vazio) e depois (a contagem), recortadas no mesmo trecho."""
+    aj.CROP = os.environ.get("CROP_BAU", "840x360+540+310")
+    destino = at(LINHA + 1)
+    marca("linha_basica")
+    aj.enquadrar(LINHA + 1)
+    pausa(2)
+    abrir_bau(destino)
+    antes = aj.shot("bau_antes")
+    pausa(1)
+    fechar_tela()
+    aj.enquadrar(LINHA + 1)
+    cmd("data merge block %s {Items:[{Slot:0b,id:\"minecraft:dirt\",count:64}]}" % txt(at(0)))
+    marca("terra_em_transito")
+    wait(26)
+    pausa(1)
+    marca("liga")
+    c.usar_liga(c.LIGAS[0], at(3))
+    wait(20)
+    aj.enquadrar(LINHA + 1)
+    marca("seguem")
+    pausa(14)
+    marca("chegaram")
+    abrir_bau(destino)
+    pausa(1)
+    depois = aj.shot("bau_depois")
+    print("baú de destino:", total(cmd("data get block %s Items" % txt(destino)), "count"), "| empilhado:", aj.stack(antes, depois, f"{c.LOCAL}/bau_antes_depois.png", "antes (vazio)", "depois (a terra que estava em trânsito)"))
+    pausa(2)
+    fechar_tela()
+
+
+def video():
+    montar()
+    c.roteiro_video = roteiro_video
+    c.video()
+
+
 if __name__ == "__main__":
-    {"liga": liga, "controle": controle, "pilhas": pilhas, "chunks": chunks}[sys.argv[1]]()
+    {"liga": liga, "controle": controle, "pilhas": lambda: pilhas(int(sys.argv[2]) if len(sys.argv) > 2 else 150), "chunks": chunks, "video": video, "dobro": lambda: dobro(int(sys.argv[2]) if len(sys.argv) > 2 else 6)}[sys.argv[1]]()

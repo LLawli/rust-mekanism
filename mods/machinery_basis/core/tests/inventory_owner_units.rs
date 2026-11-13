@@ -1138,7 +1138,7 @@ fn the_alloy_in_the_middle_of_a_line_with_the_mirrored_destination_delivers_all_
     let length = 5;
     let (mut owner, mut world) = line(&vec![logistical(); length]);
     world.mirrored = true;
-    let mut run_ticks = |owner: &mut InventoryTransmitters, world: &mut SimWorld, count: usize| {
+    let run_ticks = |owner: &mut InventoryTransmitters, world: &mut SimWorld, count: usize| {
         for _ in 0..count {
             for x in 0..length as i32 {
                 world.refresh_mirrors();

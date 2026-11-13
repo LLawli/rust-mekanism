@@ -246,6 +246,12 @@ def replay(name):
                 if entering and have == [s for s in want_stacks if s[3] != 0]:
                     handoff.append((t, entry["p"]))
                     continue
+                # Depois da troca de nível a pilha que entra chega com o resto da velocidade do avançado (`progress % 100`, não zero): vale o mesmo, se a leitura do tick seguinte a tem.
+                later = got.get((t + 1, tuple(at(entry["p"]))))
+                missing = [s for s in want_stacks if s not in have]
+                if later is not None and missing and all(s in have or s[:3] in [(x[0], x[1], x[2]) for x in later["stacks"]] for s in want_stacks) and not [s for s in have if s not in want_stacks]:
+                    handoff.append((t, entry["p"]))
+                    continue
                 diffs.append((t, entry["p"], want_stacks, have))
     print(f"{name}: {compared} estados de transportador comparados até o tick {last}" + (f" (parou na ação {stop[1]} do tick {stop[0]})" if stop else "") + ": " + ("IGUAL" if not diffs else "DIFERE em %d" % len(diffs)) + (f"; {len(handoff)} repasse(s) lido(s) antes de o vizinho passar a pilha (a mesma pilha, no tick seguinte, igual ao rastro)" if handoff else "") + (f"; {len(lost)} linha(s) perdida(s) no log (ALSA no meio)" if lost else "") + ("" if chests_ok is None else ("; baús iguais" if chests_ok else "; baús DIFEREM")))
     for d in diffs[:5]:
