@@ -273,6 +273,12 @@ def video():
     local = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/reset-mundo"))
     a.SHOTS = "/home/luka/.cache/rust-mekanism/reset-mundo/prints"
     a.LOCAL = local
+    if state().get("world") != "ResetV":
+        # O mundo do vídeo, criado do título pela tela de criar mundo.
+        ctl("world-delete", "ResetV", "--confirm")
+        import h2_mundo_plano as mp
+        sys.argv = ["h2_mundo_plano.py", "ResetV", "20261115"]
+        mp.main()
     cmd("gamemode creative @s")
     cmd("clear @s")
     cmd("weather clear")
@@ -304,7 +310,7 @@ def video():
         wait(40)
         sair()
         time.sleep(1.5)
-        abrir("ResetA")
+        abrir("ResetV")
         wait(20)
         ctl("select", nr.READER)
         wait(20)
@@ -321,6 +327,10 @@ def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
     if what == "video":
         video()
+        return
+    if what == "limpar":
+        for nome in ("ResetA", "ResetB", "ResetV"):
+            ctl("world-delete", nome, "--confirm")
         return
     if what == "roteiro":
         roteiro(sys.argv[2])
