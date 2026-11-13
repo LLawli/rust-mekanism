@@ -210,6 +210,17 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_lava_tank_still_refuses_water_by_its_validator() {
+        let handler = HostHandler::new(ResourceSnapshot {
+            contents: StackContents::default(),
+            ..lava_tank(0)
+        });
+        let transaction = Transaction::open_root();
+        assert_eq!(handler.insert(&water(), 100, &transaction), 0);
+        assert_eq!(handler.insert(&lava(), 100, &transaction), 100);
+    }
+
+    #[test]
     fn a_reverted_transaction_changes_nothing_in_the_game() {
         let handler = HostHandler::new(lava_tank(0));
         let transaction = Transaction::open_root();
@@ -245,15 +256,16 @@ mod tests {
 
     #[test]
     fn a_creative_tank_answers_without_changing() {
-        let mut snapshot = lava_tank(1_000);
+        let mut snapshot = lava_tank(500);
         snapshot.can_extract = true;
         snapshot.creative = true;
         let handler = HostHandler::new(snapshot);
         let transaction = Transaction::open_root();
-        assert_eq!(handler.extract(&lava(), 700, &transaction), 700);
-        assert_eq!(handler.insert(&lava(), 100, &transaction), 0);
+        assert_eq!(handler.extract(&lava(), 700, &transaction), 500);
+        assert_eq!(handler.insert(&lava(), 100, &transaction), 100);
         transaction.commit();
         assert_eq!(handler.changed(), None);
+        assert_eq!(handler.contents().amount, 500);
     }
 
     #[test]
