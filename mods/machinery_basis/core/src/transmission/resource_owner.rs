@@ -16,6 +16,7 @@ use super::buffered_resource_network::{ResourceAcceptor, ResourceFamily};
 use super::buffered_transmitter::{
     merge_networks_manually, recheck_connections_sides, requests_update,
 };
+use super::client::{Outgoing, ScaleOutbox};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
 };
@@ -147,6 +148,8 @@ struct State<R: Resource> {
     manual_merge: bool,
     record: bool,
     events: Vec<TraceEvent>,
+    /// O `packetRange` de cada rede e os `PacketNetworkScale` (e o conteúdo do evento) que o `onUpdate` mandou.
+    outbox: ScaleOutbox<Option<R>>,
 }
 
 impl<R: Resource> State<R> {
@@ -171,6 +174,7 @@ impl<R: Resource> State<R> {
             manual_merge: false,
             record: false,
             events: Vec::new(),
+            outbox: ScaleOutbox::new(dimension),
         }
     }
 
@@ -634,12 +638,35 @@ impl<R: Resource, W: ResourceOwnerWorld<R>> TransmitterHost<Handler<R>> for Ctx<
     fn on_update(&mut self, registry: &mut Reg<R>, network: NetworkId) {
         self.st.event(TraceEvent::NetUpdate(network));
         self.st.family.on_update(registry, network);
+        // `Mekanism.onLiquidTransferred` e `onChemicalTransferred`: o `PacketNetworkScale` e o do conteúdo saem juntos (um `ClientboundBundlePacket`).
+        for event in self.st.family.take_transfer_events() {
+            let uuid = self.st.uuid_value(event.network);
+            let positions: Vec<BlockPos> = registry
+                .network(event.network)
+                .transmitters()
+                .into_iter()
+                .map(|id| self.st.slots[id.0 as usize].pos)
+                .collect();
+            self.st.outbox.send(
+                event.network,
+                uuid,
+                event.scale,
+                positions,
+                Some(event.last_type),
+            );
+        }
     }
 
     fn network_event(&mut self, registry: &Reg<R>, network: NetworkId, event: NetworkEvent) {
         self.st
             .family
             .network_event(registry, network, event.clone());
+        if matches!(
+            event,
+            NetworkEvent::ValidTransmittersAdded | NetworkEvent::Deregistered
+        ) {
+            self.st.outbox.flush_range(network);
+        }
         match event {
             NetworkEvent::Created { uuid } => self.st.pending_uuid = Some(uuid),
             NetworkEvent::Merged { from } => {
@@ -687,6 +714,11 @@ impl<R: Resource> ResourceTransmitters<R> {
                 Box::new(hashes),
             ),
         }
+    }
+
+    /// Os `PacketNetworkScale` (e o conteúdo do tipo, `None` se a rede acabou vazia) que as redes mandaram desde a última chamada.
+    pub fn take_scale_packets(&mut self) -> Vec<Outgoing<Option<R>>> {
+        self.st.outbox.take()
     }
 
     /// Liga ou desliga o registro dos eventos da rede ([`TraceEvent`]), para os testes.

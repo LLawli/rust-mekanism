@@ -8,6 +8,7 @@ use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::sim::chunks::ChunkPos;
 use machinery_basis_core::transaction::Transaction;
+use machinery_basis_core::transmission::client::gen_packet_range;
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::energy_container::{BufferEnergyContainer, always};
 use machinery_basis_core::transmission::owner::ENERGY_KEY;
@@ -536,6 +537,37 @@ fn run(run_name: &str, scenario: &str) {
             }
         }
         state.sim.tick();
+        // `Mekanism.onEnergyTransferred`: um `PacketNetworkScale` por `EnergyTransferEvent`, no tick e com a escala do rastro.
+        let outgoing = state.sim.owner.take_scale_packets();
+        for out in &outgoing {
+            // `getPacketRange`: o retângulo dos cabos da rede, na dimensão do dono.
+            let members: Vec<BlockPos> = state
+                .sim
+                .owner
+                .positions()
+                .into_iter()
+                .filter(|pos| {
+                    state.sim.owner.transmitter(*pos).is_some_and(|tx| {
+                        tx.has_transmitter_network()
+                            && tx.transmitter_network() == Some(out.packet.network)
+                    })
+                })
+                .collect();
+            assert_eq!(
+                Some(out.range),
+                gen_packet_range(members, DIMENSION),
+                "{run_name} {scenario}, tick {t}: o retângulo do pacote"
+            );
+        }
+        let mut sent: Vec<f32> = outgoing.iter().map(|out| out.packet.scale).collect();
+        let mut posted: Vec<f32> = rows
+            .iter()
+            .filter(|row| kind(row) == "transfer" && int(row, "t") == t && mine.contains(&int(row, "net")))
+            .map(|row| row["scale"].as_f64().unwrap() as f32)
+            .collect();
+        sent.sort_by(f32::total_cmp);
+        posted.sort_by(f32::total_cmp);
+        assert_eq!(sent, posted, "{run_name} {scenario}, tick {t}: os PacketNetworkScale");
         if let Some(row) = rows
             .iter()
             .find(|row| kind(row) == "estate" && int(row, "t") == t)

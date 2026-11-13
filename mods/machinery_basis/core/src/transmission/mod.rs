@@ -29,6 +29,7 @@ pub mod buffered_resource_network;
 pub mod buffered_resource_transmitter;
 pub mod buffered_transmitter;
 pub mod chemical_network;
+pub mod client;
 pub mod connection;
 pub mod dynamic_network;
 pub mod energy_container;

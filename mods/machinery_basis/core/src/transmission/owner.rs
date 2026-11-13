@@ -14,6 +14,7 @@
 //! Do cabo (`TileEntityUniversalCable`): `onUpdateServer` puxa dos aceitadores em `PULL` antes de tudo (`pullFromAcceptors`), e a capability
 //! de energia é o contêiner da rede (`getContainer`), que só existe com rede; sem rede o cabo não aceita nada de fora (o buffer próprio é
 //! `notExternal`).
+use super::client::{Outgoing, ScaleOutbox};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
 };
@@ -175,6 +176,8 @@ struct State {
     take_root: Option<Transaction>,
     /// Efeitos que um método do `TransmitterHost` pediu e que só o dono, com o registro, pode aplicar.
     deferred: Vec<(TransmitterId, Effect)>,
+    /// O `packetRange` de cada rede e os `PacketNetworkScale` que o `onUpdate` mandou.
+    outbox: ScaleOutbox<()>,
 }
 
 /// O que o `Transmitter` enxerga do mundo: os outros transmissores do dono e o jogo.
@@ -469,6 +472,19 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         network: NetworkId,
     ) {
         self.st.family.on_update(registry, network);
+        // `Mekanism.onEnergyTransferred`: o `PacketNetworkScale` sai no ponto do evento, com o retângulo da rede.
+        for (event_network, scale) in self.st.family.take_transfer_events() {
+            let uuid = self.st.uuid_value(event_network);
+            let positions: Vec<BlockPos> = registry
+                .network(event_network)
+                .transmitters()
+                .into_iter()
+                .map(|id| self.st.slots[id.0 as usize].pos)
+                .collect();
+            self.st
+                .outbox
+                .send(event_network, uuid, scale, positions, None);
+        }
     }
 
     fn network_event(
@@ -480,6 +496,12 @@ impl<W: OwnerWorld> TransmitterHost<Acceptor> for Ctx<'_, W> {
         self.st
             .family
             .network_event(registry, network, event.clone());
+        if matches!(
+            event,
+            NetworkEvent::ValidTransmittersAdded | NetworkEvent::Deregistered
+        ) {
+            self.st.outbox.flush_range(network);
+        }
         // O UUID existe desde a construção da rede (`this(UUID.randomUUID())`), antes de ela adotar os transmissores: o que cada um guarda dela (`setTransmitterNetwork`) já é este.
         if let NetworkEvent::Created { uuid } = event {
             self.st.uuids.insert(network, uuid);
@@ -511,6 +533,7 @@ impl EnergyTransmitters {
                 uuids: HashMap::new(),
                 take_root: None,
                 deferred: Vec::new(),
+                outbox: ScaleOutbox::new(dimension),
             },
         }
     }
@@ -546,6 +569,11 @@ impl EnergyTransmitters {
     pub fn transmitter(&self, pos: BlockPos) -> Option<&Transmitter<Acceptor>> {
         let id = self.st.live(pos)?;
         self.st.slots[id.0 as usize].tx.as_ref()
+    }
+
+    /// Os `PacketNetworkScale` que as redes mandaram desde a última chamada, com o retângulo de cada uma.
+    pub fn take_scale_packets(&mut self) -> Vec<Outgoing<()>> {
+        self.st.outbox.take()
     }
 
     /// As posições dos cabos vivos.
@@ -629,6 +657,7 @@ impl EnergyTransmitters {
                     uuids: HashMap::new(),
                     take_root: None,
                     deferred: Vec::new(),
+                    outbox: ScaleOutbox::new(dimension),
                 };
             }
         }
