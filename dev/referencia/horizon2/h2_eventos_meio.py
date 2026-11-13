@@ -160,15 +160,21 @@ def chunks_mixed():
 
 def ops():
     g.prepare()
+    def scene():
+        for rel, block in (((3, 1, 3), "minecraft:stone"), ((3, 2, 3), "minecraft:torch"), ((3, 2, 2), CABLE)):
+            g.chat(f"setblock {g.text(g.abs_pos(rel))} {block}")
+
     steps = [
         ("fill the line of cables", fill((1, 1, 2), (5, 1, 2), CABLE)),
         ("fill the row of machines", fill((1, 1, 1), (5, 1, 1), CHAMBER)),
         ("fill the middle of the line with air", fill((2, 1, 2), (3, 1, 2), "minecraft:air")),
         ("fill the gap with cables again", fill((2, 1, 2), (3, 1, 2), CABLE)),
-        ("fill advanced cables over the line", fill((1, 1, 2), (5, 1, 2), f"{ADVANCED} replace {CABLE}")),
+        ("build a cable, a stone and a torch on it", scene),
+        ("break the stone under the torch next to the cable", setblock((3, 1, 3), "minecraft:air")),
         ("clone the line to z 3", clone((1, 1, 2), (5, 1, 2), (1, 1, 3))),
         ("clone the line to z 3 shifted by one with move", clone((1, 1, 3), (5, 1, 3), (2, 1, 3), "replace move")),
         ("setblock stone next to the line", setblock((0, 1, 2), "minecraft:stone")),
+        ("fill advanced cables over the line", fill((1, 1, 2), (5, 1, 2), f"{ADVANCED} replace {CABLE}")),
         ("fill the machines with air", fill((1, 1, 1), (5, 1, 1), "minecraft:air")),
         ("explosion in the middle of the line", explode()),
     ]
