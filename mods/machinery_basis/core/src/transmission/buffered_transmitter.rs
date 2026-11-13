@@ -20,13 +20,9 @@ pub struct Ends {
 /// `BufferedTransmitter.isValidTransmitter`, a parte acrescentada à regra básica: com redes incompatíveis nos dois lados, uma rede não se
 /// liga a um órfão (nem o contrário) até o órfão ter tido a chance de achar o lugar dele.
 pub fn extra_valid_transmitter(me: Ends, other: Ends) -> bool {
-    if me.can_have_incompatible_networks
+    !(me.can_have_incompatible_networks
         && other.can_have_incompatible_networks
-        && (me.has_network && other.is_orphan || other.has_network && me.is_orphan)
-    {
-        return false;
-    }
-    true
+        && (me.has_network && other.is_orphan || other.has_network && me.is_orphan))
 }
 
 /// `BufferedTransmitter.requestsUpdate()`: com redes incompatíveis, relê as conexões e avisa os vizinhos dos lados que mudaram, antes do
