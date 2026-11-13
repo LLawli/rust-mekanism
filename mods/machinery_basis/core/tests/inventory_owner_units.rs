@@ -6,12 +6,15 @@ use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
+use machinery_basis_core::transmission::client::{
+    ClientKind, ClientTransmitters, Op, decode_batch, encode_batches,
+};
 use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
 use machinery_basis_core::transmission::inventory_owner::{
     InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
-    hopper_outcome,
+    TransporterPacket, hopper_outcome,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event};
 use machinery_basis_core::transmission::transmitter::{Overlay, Transmitter};
@@ -37,6 +40,7 @@ struct SimWorld {
     capabilities: Vec<CapabilityChange>,
     changed: usize,
     published: usize,
+    packets: Vec<(BlockPos, TransporterPacket)>,
 }
 
 impl InventoryOwnerWorld for SimWorld {
@@ -80,6 +84,10 @@ impl InventoryOwnerWorld for SimWorld {
 
     fn world_drop(&mut self, drop: WorldDrop) {
         self.drops.push(drop);
+    }
+
+    fn transporter_packet(&mut self, pos: BlockPos, packet: TransporterPacket) {
+        self.packets.push((pos, packet));
     }
 }
 
@@ -870,4 +878,147 @@ fn the_alloy_loses_no_item_in_flight() {
         64,
         "tudo chega ao baú de destino"
     );
+}
+
+/// O que o servidor tem em trânsito num transportador: o índice, o item e a quantidade de cada pilha, em ordem de índice.
+fn server_stacks(owner: &InventoryTransmitters, pos: BlockPos) -> Vec<(i32, String, u32)> {
+    let mut out: Vec<(i32, String, u32)> = owner
+        .transporter_at(pos)
+        .unwrap()
+        .transit_stacks()
+        .iter()
+        .map(|(id, stack)| {
+            let stack = stack.borrow();
+            (*id, stack.item_type().unwrap().id.to_string(), stack.size())
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// O que o cliente guardou de um transportador, no mesmo formato.
+fn client_stacks(client: &ClientTransmitters, pos: BlockPos) -> Vec<(i32, String, u32)> {
+    let mut out: Vec<(i32, String, u32)> = client
+        .extra_at(pos)
+        .unwrap()
+        .transit
+        .iter()
+        .map(|stack| {
+            let (item, amount) = stack.item.clone().expect("pilha sem item");
+            (stack.index, item, amount as u32)
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+fn packet_op(pos: BlockPos, packet: TransporterPacket) -> Op {
+    match packet {
+        TransporterPacket::Sync { id, stack } => Op::TransporterSync {
+            dimension: "o".into(),
+            pos,
+            id,
+            stack,
+        },
+        TransporterPacket::Batch { deletes, updates } => Op::TransporterBatch {
+            dimension: "o".into(),
+            pos,
+            deletes,
+            updates,
+        },
+    }
+}
+
+/// Os pacotes de movimento (`PacketTransporterSync` ao entrar a pilha, `PacketTransporterBatch` ao fim do tick do transportador) bastam para o cliente seguir a lista de pilhas de cada
+/// transportador, tick a tick, pelo fio (lotes codificados e lidos): depois de cada tick, a lista do cliente é a que o servidor tinha ao fim do `Update` do próprio transportador.
+#[test]
+fn the_client_follows_the_stacks_of_every_transporter_from_the_packets_alone() {
+    let length = 5;
+    let (mut owner, mut world) = line(&vec![logistical(); length]);
+    world.packets.clear();
+    let mut client = ClientTransmitters::new();
+    for x in 0..length as i32 {
+        client.add_tile(at(x), ClientKind::Items, 0);
+    }
+    let (mut syncs, mut batches, mut seen) = (0, 0, 0);
+    for tick_number in 0..1_500 {
+        let mut expected = Vec::new();
+        for x in 0..length as i32 {
+            owner.handle(&mut world, Event::Update(at(x)));
+            expected.push(server_stacks(&owner, at(x)));
+        }
+        owner.handle(
+            &mut world,
+            Event::ServerTickPost {
+                runs_normally: true,
+            },
+        );
+        let ops: Vec<Op> = world
+            .packets
+            .drain(..)
+            .map(|(pos, packet)| {
+                match &packet {
+                    TransporterPacket::Sync { .. } => syncs += 1,
+                    TransporterPacket::Batch { .. } => batches += 1,
+                }
+                packet_op(pos, packet)
+            })
+            .collect();
+        for batch in encode_batches(&ops) {
+            for op in decode_batch(&batch).expect("o lote volta") {
+                client.apply(&op);
+            }
+        }
+        for (x, want) in expected.iter().enumerate() {
+            seen += want.len();
+            assert_eq!(
+                &client_stacks(&client, at(x as i32)),
+                want,
+                "tick {tick_number}, transportador {x}"
+            );
+        }
+    }
+    assert!(
+        syncs >= 20 && batches >= 20,
+        "{syncs} sincronias, {batches} lotes"
+    );
+    assert!(seen > 100, "o cliente quase não viu pilhas: {seen}");
+    assert_eq!(dirt_in(&world.chests[&at(length as i32)]), 64);
+}
+
+/// O pacote leva a pilha como o `STREAM_CODEC` a leva: o progresso zero que o servidor manda ao emitir a pilha é lido como 5, e o próximo e o anterior vêm do `updateForPos`.
+#[test]
+fn the_sync_packet_carries_the_stack_as_the_stream_codec_does() {
+    let (mut owner, mut world) = line(&vec![logistical(); 3]);
+    world.packets.clear();
+    for _ in 0..8 {
+        for x in 0..3 {
+            owner.handle(&mut world, Event::Update(at(x)));
+        }
+        if !world.packets.is_empty() {
+            break;
+        }
+    }
+    let (pos, packet) = world.packets.first().cloned().expect("a primeira pilha");
+    assert_eq!(pos, at(0));
+    let TransporterPacket::Sync { id, stack } = packet else {
+        panic!("o primeiro pacote é a sincronia da pilha nova");
+    };
+    assert_eq!(id, 0);
+    let mut client = ClientTransmitters::new();
+    client.add_tile(at(0), ClientKind::Items, 0);
+    client.apply(&Op::TransporterSync {
+        dimension: "o".into(),
+        pos: at(0),
+        id,
+        stack,
+    });
+    let seen = &client.extra_at(at(0)).unwrap().transit[0];
+    assert_eq!(seen.item, Some(("minecraft:dirt".into(), 1)));
+    assert!(seen.progress > 0, "progresso 0 vira 5 no cliente");
+    assert!(seen.next.is_some() && seen.previous.is_some(), "{seen:?}");
+    // Sem o tile no cliente o pacote se perde.
+    let mut empty = ClientTransmitters::new();
+    empty.on_transporter_batch(at(0), &[], &[]);
+    assert!(empty.extra_at(at(0)).is_none());
 }

@@ -202,6 +202,42 @@ fn a_wrong_file_is_corrected_the_way_neoforge_corrected_it() {
     }
 }
 
+/// As chaves de fora de seção de um arquivo, na ordem em que aparecem (a seção sem nome vai até o primeiro `[`).
+fn root_keys(text: &str) -> Vec<String> {
+    text.lines()
+        .take_while(|line| !line.trim_start().starts_with('['))
+        .filter(|line| !line.trim_start().starts_with('#') && line.contains(" = "))
+        .map(|line| line.split(" = ").next().unwrap().trim().to_owned())
+        .collect()
+}
+
+/// Um `general.toml` de antes da chave `transmitterAlloyUpgrade` (`rastros/config_correcao/entrada_antiga`, o arquivo de uma versão velha): o NeoForge acrescenta a chave que falta no fim
+/// das chaves de fora de seção (depois da última, `maxSolarNeutronActivatorRate`, e antes da primeira seção), não no lugar em que a especificação a declara (`saida_antiga`, escrito por
+/// `oficial_config.sh`). O port faz o mesmo, na ordem de todas as chaves do arquivo, as dele e as que só o original conhece.
+#[test]
+fn a_key_missing_from_an_old_file_goes_to_the_end_of_the_root_keys_as_neoforge_put_it() {
+    let entrada = crafted("entrada_antiga", "general.toml");
+    let saida = crafted("saida_antiga", "general.toml");
+    assert!(!root_keys(&entrada).contains(&"transmitterAlloyUpgrade".to_owned()));
+    let loaded = GENERAL_CONFIG.load(&entrada);
+    assert_eq!(
+        machine_settings(&loaded),
+        MachineSettings {
+            block_deactivation_delay: 60,
+            max_upgrade_multiplier: 10,
+            transmitter_alloy_upgrade: true
+        },
+        "a chave que falta vale o padrão"
+    );
+    let written = GENERAL_CONFIG.rewrite(&entrada, &loaded);
+    assert_eq!(root_keys(&written), root_keys(&saida));
+    assert_eq!(root_keys(&saida).last().unwrap(), "transmitterAlloyUpgrade");
+    assert_eq!(
+        block(&written, "", "transmitterAlloyUpgrade"),
+        block(&saida, "", "transmitterAlloyUpgrade")
+    );
+}
+
 #[test]
 fn each_corrected_key_has_the_value_the_original_gave_it() {
     let general = GENERAL_CONFIG.load(&crafted("entrada", "general.toml"));

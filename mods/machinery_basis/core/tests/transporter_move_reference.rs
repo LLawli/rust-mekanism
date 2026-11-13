@@ -13,19 +13,22 @@ use machinery_basis_core::item_handler::{ItemHandler, VanillaContainer};
 use machinery_basis_core::neighbors::UPDATE_ORDER;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
+use machinery_basis_core::transmission::client::{ClientKind, ClientStack, ClientTransmitters};
 use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
 use machinery_basis_core::transmission::inventory_owner::{
     InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
+    TransporterPacket,
 };
 use machinery_basis_core::transmission::owner::{CableView, Event};
-use machinery_basis_core::transmission::transmitter::Transmitter;
+use machinery_basis_core::transmission::transmitter::{Compound as ClientCompound, Transmitter};
 use machinery_basis_core::transmission::{DimensionId, Uuid};
 use machinery_basis_core::transporter::movement::WorldDrop;
 use machinery_basis_core::transporter::nbt::{Compound, Nbt, to_snbt};
 use machinery_basis_core::transporter::node::{DiversionControl, TransporterKind, TransporterTier};
-use machinery_basis_core::transporter::stack::write_var_int;
+use machinery_basis_core::transporter::pos::NO_POS;
+use machinery_basis_core::transporter::stack::{TransporterStack, read_var_long, write_var_int};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -74,6 +77,8 @@ struct SimWorld {
     infos: RefCell<HashMap<BlockPos, TransporterInfo>>,
     /// O que caiu no mundo desde a última conferência.
     drops: Vec<WorldDrop>,
+    /// Os pacotes de movimento (`PacketTransporterSync` e `PacketTransporterBatch`) desde a última conferência.
+    packets: Vec<(BlockPos, TransporterPacket)>,
 }
 
 impl InventoryOwnerWorld for SimWorld {
@@ -106,6 +111,10 @@ impl InventoryOwnerWorld for SimWorld {
     fn world_drop(&mut self, drop: WorldDrop) {
         self.drops.push(drop);
     }
+
+    fn transporter_packet(&mut self, pos: BlockPos, packet: TransporterPacket) {
+        self.packets.push((pos, packet));
+    }
 }
 
 /// `[x, y, z]` do rastro.
@@ -131,6 +140,11 @@ struct Scenario {
     statics: HashMap<(usize, i32, i64), Value>,
     expected_chests: Vec<Value>,
     tick: u32,
+    /// Os pacotes de movimento que o original mandou desde o último `state`, e o item de cada id do registro que o rastro mostrou.
+    packet_rows: Vec<Value>,
+    items: HashMap<i64, String>,
+    /// Depois da troca de nível os block entities são outros objetos, e o original só anota os pacotes dos que o cenário montou: dali em diante os pacotes não se comparam.
+    packets_blind: bool,
 }
 
 impl Scenario {
@@ -166,6 +180,7 @@ impl Scenario {
             power,
             infos: RefCell::new(HashMap::new()),
             drops: Vec::new(),
+            packets: Vec::new(),
         };
         for container in setup["containers"].as_array().unwrap() {
             let rel = int3(&container["p"]);
@@ -281,6 +296,9 @@ impl Scenario {
             statics: HashMap::new(),
             expected_chests: Vec::new(),
             tick: 0,
+            packet_rows: Vec::new(),
+            items: HashMap::new(),
+            packets_blind: false,
         }
     }
 
@@ -341,6 +359,7 @@ impl Scenario {
                 self.neighbors_changed(at);
             }
             "break" => self.break_transporter(&row["p"]),
+            "alloy" => self.alloy(&row["p"]),
             "finishing" | "finish" => {}
             other => panic!("ação {other}"),
         }
@@ -353,6 +372,170 @@ impl Scenario {
             self.owner
                 .handle(&mut self.world, Event::Neighbor(neighbor));
         }
+    }
+
+    /// `ItemAlloy.useOn` com a liga infundida num transportador básico (`TileEntityTransmitter.onAlloyInteraction`): cada transportador da rede, do mais perto ao mais longe, é trocado por um
+    /// avançado (`setBlockAndUpdate`: o velho sai, o novo entra, os vizinhos recebem o aviso) e recebe o dado do velho; no fim a rede se invalida. Os block entities novos entram no fim da fila
+    /// de quem anda no tick (o original registra o ticker novo depois dos que já estavam), na ordem em que subiram.
+    fn alloy(&mut self, p: &Value) {
+        let click = self.abs_value(p);
+        self.packets_blind = true;
+        let mut run = self
+            .owner
+            .alloy_start(click, 1, &|_| Some(0))
+            .expect("o transportador tem rede");
+        let mut upgraded = Vec::new();
+        for target in run.targets.clone() {
+            let data = self
+                .owner
+                .alloy_take(&mut self.world, &mut run, target)
+                .expect("o dado do velho");
+            self.owner.handle(&mut self.world, Event::Removed(target));
+            self.world.infos.borrow_mut().insert(
+                target,
+                TransporterInfo {
+                    tier: TransporterTier::Advanced,
+                    kind: TransporterKind::Logistical { color: None },
+                    saved: None,
+                },
+            );
+            self.owner
+                .handle(&mut self.world, Event::ClearRemoved(target));
+            self.neighbors_changed(target);
+            assert!(self.owner.alloy_give(&mut run, target, data));
+            upgraded.push(
+                (0..self.relative.len())
+                    .find(|index| self.pos_of(*index) == target)
+                    .expect("o transportador é do cenário"),
+            );
+            if run.full() {
+                break;
+            }
+        }
+        self.owner.alloy_finish(&mut self.world, &run);
+        self.order.retain(|index| !upgraded.contains(index));
+        self.order.extend(upgraded);
+    }
+
+    /// Os pacotes de movimento do que passou desde o último `state`: os mesmos, na mesma ordem, com o mesmo conteúdo que o `STREAM_CODEC` deu no original.
+    fn check_packets(&mut self) {
+        let who = format!("{} t{}", self.name, self.tick);
+        let want = std::mem::take(&mut self.packet_rows);
+        let got = std::mem::take(&mut self.world.packets);
+        if self.packets_blind {
+            return;
+        }
+        assert_eq!(
+            got.iter()
+                .map(|(pos, packet)| (
+                    self.rel_block(*pos),
+                    matches!(packet, TransporterPacket::Sync { .. })
+                ))
+                .collect::<Vec<_>>(),
+            want.iter()
+                .map(|row| (row["p"].clone(), row["k"] == "sync"))
+                .collect::<Vec<_>>(),
+            "{who}: os pacotes, na ordem"
+        );
+        for ((pos, packet), row) in got.iter().zip(&want) {
+            match packet {
+                TransporterPacket::Sync { id, stack } => {
+                    assert_eq!(i64::from(*id), row["id"].as_i64().unwrap(), "{who} sync id");
+                    self.same_stack(&who, *pos, *id, stack, &row["iid"], &row["stream"]);
+                }
+                TransporterPacket::Batch { deletes, updates } => {
+                    assert_eq!(
+                        deletes.iter().map(|id| i64::from(*id)).collect::<Vec<_>>(),
+                        row["deletes"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|id| id.as_i64().unwrap())
+                            .collect::<Vec<_>>(),
+                        "{who} saídas do lote"
+                    );
+                    let want_updates = row["updates"].as_array().unwrap();
+                    assert_eq!(
+                        updates.len(),
+                        want_updates.len(),
+                        "{who} atualizações do lote"
+                    );
+                    for ((id, stack), want) in updates.iter().zip(want_updates) {
+                        assert_eq!(
+                            i64::from(*id),
+                            want[0].as_i64().unwrap(),
+                            "{who} id do lote"
+                        );
+                        self.same_stack(&who, *pos, *id, stack, &want[1], &want[2]);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A pilha do pacote de `pos` é a que o `STREAM_CODEC` do original escreveu (`hex`, com o item de `iid`): o cliente a lê do compound e a lê do fio com o mesmo resultado.
+    fn same_stack(
+        &self,
+        who: &str,
+        pos: BlockPos,
+        id: i32,
+        stack: &ClientCompound,
+        iid: &Value,
+        hex: &Value,
+    ) {
+        let mut client = ClientTransmitters::new();
+        client.add_tile(pos, ClientKind::Items, 0);
+        client.on_transporter_sync(pos, id, stack);
+        let got: ClientStack = client.extra_at(pos).unwrap().transit[0].clone();
+        let hex = hex.as_str().unwrap();
+        let bytes: Vec<u8> = (0..hex.len() / 2)
+            .map(|at| u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).unwrap())
+            .collect();
+        // O rastro só dá o item de um id do registro quando a pilha aparece num `state`; senão vale o do próprio pacote (o resto do fluxo é conferido do mesmo jeito).
+        let item = self
+            .items
+            .get(&iid.as_i64().unwrap())
+            .cloned()
+            .unwrap_or_else(|| got.item.clone().expect("pilha sem item").0);
+        let mut rest = &bytes[..];
+        let original = TransporterStack::read_stream(&mut rest, &|input| {
+            read_var_long(input)?;
+            // Sem patch de componentes: dois zeros.
+            *input = &input[2..];
+            Some(ItemResource::new(&item, 64))
+        })
+        .expect("o fluxo do original");
+        assert!(rest.is_empty(), "{who}: sobrou fluxo");
+        let to_option = |position: i64| (position != NO_POS).then_some(position);
+        assert_eq!(got.index, id, "{who}");
+        assert_eq!(got.color, original.color, "{who} {id} cor");
+        assert_eq!(got.progress, original.progress, "{who} {id} progresso");
+        assert_eq!(
+            got.original_location, original.original_location,
+            "{who} {id} origem"
+        );
+        assert_eq!(
+            got.path_type.as_deref(),
+            Some(original.path_type().serialized_name()),
+            "{who} {id} tipo de caminho"
+        );
+        assert_eq!(
+            got.next,
+            to_option(original.client_next()),
+            "{who} {id} próximo"
+        );
+        assert_eq!(
+            got.previous,
+            to_option(original.client_prev()),
+            "{who} {id} anterior"
+        );
+        assert_eq!(
+            got.item,
+            original
+                .item_type()
+                .map(|item| (item.id.to_string(), i64::from(original.size()))),
+            "{who} {id} item"
+        );
     }
 
     /// `setBlock(AIR)` num transportador: o bloco quebrado solta o que leva (`preRemoveSideEffects`) e sai (`setRemoved`); os vizinhos recebem o aviso.
@@ -616,6 +799,15 @@ fn run(name: &'static str) {
     let mut scenario = Scenario::build(name, &rows[0]);
     feed_identity_hashes(hashes_in_order(&rows, &scenario.order, &scenario.relative));
     assert_eq!(rows[1]["e"], "begin");
+    for row in &rows {
+        for entry in row["tx"].as_array().into_iter().flatten() {
+            for stack in entry["transit"].as_array().into_iter().flatten() {
+                if let (Some(iid), Some(item)) = (stack["iid"].as_i64(), stack["item"].as_str()) {
+                    scenario.items.insert(iid, item.to_owned());
+                }
+            }
+        }
+    }
     // O estado de antes do primeiro tick: os contadores de cada transportador (a estrutura já andou os ticks de preparação).
     for entry in rows[1]["tx"].as_array().unwrap() {
         let index = scenario
@@ -650,8 +842,10 @@ fn run(name: &'static str) {
             "state" => {
                 scenario.run_tick();
                 scenario.check_row(row);
+                scenario.check_packets();
                 ticks += 1;
             }
+            "packet" => scenario.packet_rows.push(row.clone()),
             other => panic!("evento {other}"),
         }
     }
@@ -689,4 +883,8 @@ scenarios! {
     contested_2 => "contested_2",
     contested_3 => "contested_3",
     contested_4 => "contested_4",
+    alloy_a => "alloy_a",
+    alloy_b => "alloy_b",
+    alloy_c => "alloy_c",
+    alloy_d => "alloy_d",
 }

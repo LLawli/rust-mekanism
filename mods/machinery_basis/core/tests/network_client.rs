@@ -6,8 +6,9 @@ use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::client::{
     ClientKind, ClientTransmitters, MAX_BATCH, Op, ScaleOutbox, ScalePacket, TagMessage,
-    chunk_entered_view, chunk_in_view, decode_batch, decode_contents, decode_gone, encode_batches,
-    encode_contents, encode_gone, gen_packet_range, player_in_range,
+    chunk_entered_view, chunk_in_view, chunk_left_view, chunks_left_view, decode_batch,
+    decode_contents, decode_gone, encode_batches, encode_contents, encode_gone, gen_packet_range,
+    player_in_range,
 };
 use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::transmitter::{Compound, Tag, keys};
@@ -422,4 +423,58 @@ fn a_player_gets_the_chunks_that_entered_the_view_distance_and_all_of_them_after
     // Outra dimensão: tudo o que está na vista é novo.
     assert!(chunk_entered_view((0, 0), (0, 0), None, view));
     assert!(!chunk_entered_view((9, 9), (0, 0), None, view));
+}
+
+/// O `ChunkMap` para de mandar o chunk que sai da vista e o `ClientChunkCache` o solta com os block entities: o chunk que estava na vista de antes e já não está na de agora.
+#[test]
+fn a_player_forgets_the_chunks_that_left_the_view_distance() {
+    let view = 2;
+    // Um passo para leste: a coluna x = -2 sai (cinco chunks), o resto fica.
+    assert!(chunk_left_view((-2, 0), (1, 0), (0, 0), view));
+    assert!(chunk_left_view((-2, 2), (1, 0), (0, 0), view));
+    assert!(!chunk_left_view((-1, 0), (1, 0), (0, 0), view));
+    assert!(!chunk_left_view((3, 0), (1, 0), (0, 0), view));
+    // O que nunca esteve na vista de antes não sai.
+    assert!(!chunk_left_view((-9, 0), (1, 0), (0, 0), view));
+    let left = chunks_left_view((1, 0), (0, 0), view);
+    assert_eq!(left, vec![(-2, -2), (-2, -1), (-2, 0), (-2, 1), (-2, 2)]);
+    // Um salto longe solta a vista inteira de antes.
+    assert_eq!(chunks_left_view((100, 100), (0, 0), view).len(), 25);
+    // Parado, nada sai.
+    assert!(chunks_left_view((0, 0), (0, 0), view).is_empty());
+}
+
+#[test]
+fn the_client_drops_the_tiles_of_the_chunks_the_server_forgot() {
+    let mut client = ClientTransmitters::new();
+    for (x, z) in [(0, 0), (20, 0), (40, 0), (-20, 5)] {
+        client.add_tile(at(x, z), ClientKind::Energy, 100);
+    }
+    assert_eq!(client.tile_count(), 4);
+    // O chunk (1, 0) tem o tile em x = 20.
+    client.apply(&Op::Forget {
+        dimension: "o".into(),
+        chunks: Some(vec![(1, 0), (7, 7)]),
+    });
+    assert_eq!(client.tile_count(), 3);
+    assert!(client.view_at(at(20, 0)).is_none());
+    assert!(client.view_at(at(0, 0)).is_some());
+    // Sem lista, o nível inteiro sai (a dimensão que o jogador deixou).
+    client.apply(&Op::Forget {
+        dimension: "o".into(),
+        chunks: None,
+    });
+    assert_eq!(client.tile_count(), 0);
+}
+
+#[test]
+fn the_forget_packet_survives_the_wire() {
+    for chunks in [None, Some(vec![]), Some(vec![(-3, 4), (5, -6)])] {
+        let op = Op::Forget {
+            dimension: "minecraft:the_nether".into(),
+            chunks,
+        };
+        let batches = encode_batches(std::slice::from_ref(&op));
+        assert_eq!(decode_batch(&batches[0]), Some(vec![op]));
+    }
 }

@@ -46,6 +46,25 @@ pub fn chunk_entered_view(
     chunk_in_view(at, center, view) && !before.is_some_and(|old| chunk_in_view(at, old, view))
 }
 
+/// O `ChunkMap` para de mandar um chunk a quem sai da vista dele (o `ClientboundForgetLevelChunkPacket`, e o `ClientChunkCache` o solta com os block entities): vale para o chunk
+/// `at` se estava na vista de `before` e já não está na de `center`.
+pub fn chunk_left_view(at: (i32, i32), center: (i32, i32), before: (i32, i32), view: i32) -> bool {
+    chunk_in_view(at, before, view) && !chunk_in_view(at, center, view)
+}
+
+/// Os chunks que o jogador deixou de ver ao ir do chunk `before` ao chunk `center`, na ordem de `x` e `z`.
+pub fn chunks_left_view(center: (i32, i32), before: (i32, i32), view: i32) -> Vec<(i32, i32)> {
+    let mut out = Vec::new();
+    for x in before.0 - view..=before.0 + view {
+        for z in before.1 - view..=before.1 + view {
+            if chunk_left_view((x, z), center, before, view) {
+                out.push((x, z));
+            }
+        }
+    }
+    out
+}
+
 /// `Range3D`: o retângulo (em x e z) que a rede cobre, e a dimensão dela.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Range3D {
@@ -349,6 +368,31 @@ pub struct ClientExtra {
 }
 
 impl ClientExtra {
+    /// `PacketTransporterSync.handle` e as atualizações de `PacketTransporterBatch.handle`: `transporter.addStack(id, stack)`, a pilha do pacote no lugar da que tinha o mesmo
+    /// índice. O `STREAM_CODEC` lê o progresso zero como 5.
+    fn put_stack(&mut self, index: i32, input: &Compound) {
+        let mut stack = ClientStack::read(index, input);
+        if stack.progress == 0 {
+            stack.progress = 5;
+        }
+        match self.transit.iter_mut().find(|known| known.index == index) {
+            Some(known) => *known = stack,
+            None => self.transit.push(stack),
+        }
+    }
+
+    /// `transporter.deleteStack(id)`.
+    fn delete_stack(&mut self, index: i32) {
+        self.transit.retain(|stack| stack.index != index);
+    }
+
+    /// `LogisticalTransporterBase.onUpdateClient`: cada pilha avança `speed` (`tier.getSpeed()`) até 100.
+    fn tick_client(&mut self, speed: i32) {
+        for stack in &mut self.transit {
+            stack.progress = (stack.progress + speed).min(100);
+        }
+    }
+
     /// `handleUpdateTag` do condutor e do transportador. Devolve se a cor mudou (`refreshModelData`).
     fn handle_update_tag(&mut self, kind: ClientKind, tag: &Compound) -> bool {
         match kind {
@@ -466,6 +510,62 @@ impl ClientTransmitters {
     /// O que o pacote de atualização deixou no tile em `pos` além das conexões: o calor do condutor, as pilhas e a cor do transportador.
     pub fn extra_at(&self, pos: BlockPos) -> Option<&ClientExtra> {
         self.tiles.get(&pos).map(|tile| &tile.extra)
+    }
+
+    /// `PacketTransporterSync.handle`: o tile em `pos` é um transportador do cliente? Então ele guarda a pilha. Sem o tile no cliente o pacote se perde (`PacketUtils.blockEntity`).
+    pub fn on_transporter_sync(&mut self, pos: BlockPos, id: i32, stack: &Compound) {
+        if let Some(tile) = self.tiles.get_mut(&pos)
+            && tile.kind == ClientKind::Items
+        {
+            tile.extra.put_stack(id, stack);
+        }
+    }
+
+    /// `PacketTransporterBatch.handle`: primeiro as atualizações, depois as saídas.
+    pub fn on_transporter_batch(
+        &mut self,
+        pos: BlockPos,
+        deletes: &[i32],
+        updates: &[(i32, Compound)],
+    ) {
+        if let Some(tile) = self.tiles.get_mut(&pos)
+            && tile.kind == ClientKind::Items
+        {
+            for (id, stack) in updates {
+                tile.extra.put_stack(*id, stack);
+            }
+            for id in deletes {
+                tile.extra.delete_stack(*id);
+            }
+        }
+    }
+
+    /// `TileEntityTransmitter.tickClient` do transportador em `pos`: `onUpdateClient`, com a velocidade do tier dele (`getSpeed`).
+    pub fn tick_client_at(&mut self, pos: BlockPos, speed: i32) {
+        if let Some(tile) = self.tiles.get_mut(&pos)
+            && tile.kind == ClientKind::Items
+        {
+            tile.extra.tick_client(speed);
+        }
+    }
+
+    /// `ClientChunkCache.drop(chunk)` de cada chunk que o servidor mandou esquecer (`None`: o nível inteiro, que o cliente larga ao sair da dimensão): os block entities do chunk
+    /// saem do mundo (`setRemoved`).
+    pub fn forget_chunks(&mut self, chunks: Option<&[(i32, i32)]>) {
+        let gone: Vec<BlockPos> = self
+            .tiles
+            .keys()
+            .filter(|pos| chunks.is_none_or(|list| list.contains(&(pos.x >> 4, pos.z >> 4))))
+            .copied()
+            .collect();
+        for pos in gone {
+            self.remove_tile(pos);
+        }
+    }
+
+    /// O número de tiles do cliente.
+    pub fn tile_count(&self) -> usize {
+        self.tiles.len()
     }
 
     /// O tile do transmissor entra no mundo do cliente (`clearRemoved` no cliente: `onWorldJoin` só marca `loaded`; o tile novo tira o
@@ -965,6 +1065,25 @@ pub enum Op {
         network: u128,
         resource: Option<String>,
     },
+    /// `PacketTransporterSync`.
+    TransporterSync {
+        dimension: String,
+        pos: BlockPos,
+        id: i32,
+        stack: Compound,
+    },
+    /// `PacketTransporterBatch`.
+    TransporterBatch {
+        dimension: String,
+        pos: BlockPos,
+        deletes: Vec<i32>,
+        updates: Vec<(i32, Compound)>,
+    },
+    /// `ClientboundForgetLevelChunkPacket` de cada chunk (`None`: o nível inteiro, que o cliente largou ao trocar de dimensão).
+    Forget {
+        dimension: String,
+        chunks: Option<Vec<(i32, i32)>>,
+    },
 }
 
 impl Op {
@@ -975,6 +1094,55 @@ impl Op {
             Op::Scale(packet) => [&[2u8][..], &packet.encode()].concat(),
             Op::Contents { network, resource } => {
                 [&[3u8][..], &encode_contents(*network, resource.as_deref())].concat()
+            }
+            Op::TransporterSync {
+                dimension,
+                pos,
+                id,
+                stack,
+            } => {
+                let mut out = vec![4u8];
+                put_string(&mut out, dimension);
+                put_pos(&mut out, *pos);
+                out.extend_from_slice(&id.to_be_bytes());
+                put_tag(&mut out, &Tag::Compound(stack.clone()));
+                out
+            }
+            Op::TransporterBatch {
+                dimension,
+                pos,
+                deletes,
+                updates,
+            } => {
+                let mut out = vec![5u8];
+                put_string(&mut out, dimension);
+                put_pos(&mut out, *pos);
+                out.extend_from_slice(&(deletes.len() as u32).to_be_bytes());
+                for id in deletes {
+                    out.extend_from_slice(&id.to_be_bytes());
+                }
+                out.extend_from_slice(&(updates.len() as u32).to_be_bytes());
+                for (id, stack) in updates {
+                    out.extend_from_slice(&id.to_be_bytes());
+                    put_tag(&mut out, &Tag::Compound(stack.clone()));
+                }
+                out
+            }
+            Op::Forget { dimension, chunks } => {
+                let mut out = vec![6u8];
+                put_string(&mut out, dimension);
+                match chunks {
+                    None => out.push(0),
+                    Some(list) => {
+                        out.push(1);
+                        out.extend_from_slice(&(list.len() as u32).to_be_bytes());
+                        for (x, z) in list {
+                            out.extend_from_slice(&x.to_be_bytes());
+                            out.extend_from_slice(&z.to_be_bytes());
+                        }
+                    }
+                }
+                out
             }
         }
     }
@@ -991,6 +1159,63 @@ impl Op {
             3 => {
                 let (network, resource) = decode_contents(rest)?;
                 Op::Contents { network, resource }
+            }
+            4 => {
+                let mut reader = Reader(rest);
+                let dimension = reader.string()?;
+                let pos = reader.pos()?;
+                let id = reader.i32()?;
+                let Tag::Compound(stack) = reader.tag()? else {
+                    return None;
+                };
+                reader.0.is_empty().then_some(Op::TransporterSync {
+                    dimension,
+                    pos,
+                    id,
+                    stack,
+                })?
+            }
+            5 => {
+                let mut reader = Reader(rest);
+                let dimension = reader.string()?;
+                let pos = reader.pos()?;
+                let mut deletes = Vec::new();
+                for _ in 0..reader.u32()? {
+                    deletes.push(reader.i32()?);
+                }
+                let mut updates = Vec::new();
+                for _ in 0..reader.u32()? {
+                    let id = reader.i32()?;
+                    let Tag::Compound(stack) = reader.tag()? else {
+                        return None;
+                    };
+                    updates.push((id, stack));
+                }
+                reader.0.is_empty().then_some(Op::TransporterBatch {
+                    dimension,
+                    pos,
+                    deletes,
+                    updates,
+                })?
+            }
+            6 => {
+                let mut reader = Reader(rest);
+                let dimension = reader.string()?;
+                let chunks = match reader.u8()? {
+                    0 => None,
+                    1 => {
+                        let mut list = Vec::new();
+                        for _ in 0..reader.u32()? {
+                            list.push((reader.i32()?, reader.i32()?));
+                        }
+                        Some(list)
+                    }
+                    _ => return None,
+                };
+                reader
+                    .0
+                    .is_empty()
+                    .then_some(Op::Forget { dimension, chunks })?
             }
             _ => return None,
         })
@@ -1050,6 +1275,16 @@ impl ClientTransmitters {
             Op::Contents { network, resource } => {
                 self.on_contents_packet(*network, resource.clone())
             }
+            Op::TransporterSync { pos, id, stack, .. } => {
+                self.on_transporter_sync(*pos, *id, stack)
+            }
+            Op::TransporterBatch {
+                pos,
+                deletes,
+                updates,
+                ..
+            } => self.on_transporter_batch(*pos, deletes, updates),
+            Op::Forget { chunks, .. } => self.forget_chunks(chunks.as_deref()),
         }
     }
 }

@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongList;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import java.io.IOException;
@@ -25,6 +26,7 @@ import mekanism.common.content.network.transmitter.RestrictiveTransporter;
 import mekanism.common.content.transporter.TransporterStack;
 import mekanism.common.lib.transmitter.ConnectionType;
 import mekanism.common.registries.MekanismBlocks;
+import mekanism.common.registries.MekanismItems;
 import mekanism.common.tests.helpers.MekGameTestHelper;
 import mekanism.common.tests.util.StructureBuilderUtils;
 import mekanism.common.tile.transmitter.TileEntityLogisticalTransporterBase;
@@ -100,6 +102,67 @@ public class TransporterMoveTraceTest {
             return field;
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    /// O `transit` de um transportador, com o que o `emitStack` manda (`PacketTransporterSync`): a pilha nova de uma inserção, vista pelo `put` que `emitStack` faz (o `entityEntering` e o
+    /// `parseUpgradeData` também põem em `transit`, e não mandam o pacote de sincronia). As saídas (`deleteStack`) esperam o `Batch` que as leva.
+    private static final class RecordingTransit extends Int2ObjectOpenHashMap<TransporterStack> {
+
+        private final Recorder recorder;
+        private final LogisticalTransporterBase transporter;
+        final List<Integer> deletes = new ArrayList<>();
+
+        RecordingTransit(Recorder recorder, LogisticalTransporterBase transporter) {
+            this.recorder = recorder;
+            this.transporter = transporter;
+        }
+
+        @Override
+        public TransporterStack put(int k, TransporterStack v) {
+            boolean emit = StackWalker.getInstance().walk(frames -> frames.limit(6).anyMatch(frame -> frame.getMethodName().equals("emitStack")));
+            if (emit && !recorder.finished) {
+                recorder.packet(transporter, "sync", "\"id\":" + k + ",\"iid\":" + recorder.iid(v) + ",\"stream\":\"" + recorder.stream(transporter, v) + "\"");
+            }
+            return super.put(k, v);
+        }
+
+        @Override
+        public TransporterStack remove(int k) {
+            deletes.add(k);
+            return super.remove(k);
+        }
+    }
+
+    /// O `needsSync`: o `clear()` só acontece depois do `PacketTransporterBatch` (`onUpdateServer`), com as saídas que `RecordingTransit` viu desde o último.
+    private static final class RecordingSync extends Int2ObjectOpenHashMap<TransporterStack> {
+
+        private final Recorder recorder;
+        private final LogisticalTransporterBase transporter;
+        private final RecordingTransit transit;
+
+        RecordingSync(Recorder recorder, LogisticalTransporterBase transporter, RecordingTransit transit) {
+            this.recorder = recorder;
+            this.transporter = transporter;
+            this.transit = transit;
+        }
+
+        @Override
+        public void clear() {
+            if (!recorder.finished) {
+                StringBuilder deletes = new StringBuilder();
+                for (int id : transit.deletes) {
+                    deletes.append(deletes.isEmpty() ? "" : ",").append(id);
+                }
+                StringBuilder updates = new StringBuilder();
+                for (ObjectIterator<Int2ObjectMap.Entry<TransporterStack>> it = Int2ObjectMaps.fastIterator(this); it.hasNext(); ) {
+                    Int2ObjectMap.Entry<TransporterStack> entry = it.next();
+                    updates.append(updates.isEmpty() ? "" : ",").append("[").append(entry.getIntKey()).append(",").append(recorder.iid(entry.getValue())).append(",\"").append(recorder.stream(transporter, entry.getValue())).append("\"]");
+                }
+                recorder.packet(transporter, "batch", "\"deletes\":[" + deletes + "],\"updates\":[" + updates + "]");
+            }
+            transit.deletes.clear();
+            super.clear();
         }
     }
 
@@ -183,6 +246,7 @@ public class TransporterMoveTraceTest {
         static void begin(String name, MekGameTestHelper helper, Layout layout) {
             Recorder recorder = new Recorder(name, helper, layout);
             recorder.setup();
+            recorder.installRecorders();
             current = recorder;
             recorder.record("begin", 0);
         }
@@ -280,6 +344,38 @@ public class TransporterMoveTraceTest {
 
         Container container(int[] p) {
             return (Container) level.getBlockEntity(abs(p));
+        }
+
+        /// `PacketTransporterSync.create` e `PacketTransporterBatch.create`: `updateForPos(pos)` e o `STREAM_CODEC` da pilha, em hexadecimal, na hora em que o pacote sai.
+        String stream(LogisticalTransporterBase t, TransporterStack stack) {
+            stack.updateForPos(t.getBlockPos().asLong());
+            RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), level.registryAccess());
+            TransporterStack.STREAM_CODEC.encode(buf, stack);
+            return ByteBufUtil.hexDump(buf);
+        }
+
+        int iid(TransporterStack stack) {
+            return BuiltInRegistries.ITEM.getId(stack.getItemType().toStack(1).getItem());
+        }
+
+        void packet(LogisticalTransporterBase t, String kind, String fields) {
+            BlockPos at = t.getBlockPos();
+            lines.add("{\"e\":\"packet\",\"t\":" + relativeTick() + ",\"p\":" + rel(at) + ",\"k\":\"" + kind + "\"," + fields + "}");
+        }
+
+        /// Troca o `transit` e o `needsSync` de cada transportador por tabelas que anotam os pacotes. As tabelas nascem vazias, antes de qualquer pilha, então a ordem de iteração delas
+        /// é a mesma das do original.
+        void installRecorders() {
+            for (int[] p : layout.transporters) {
+                LogisticalTransporterBase t = transporter(p);
+                RecordingTransit transit = new RecordingTransit(this, t);
+                try {
+                    TRANSIT.set(t, transit);
+                    NEEDS_SYNC.set(t, new RecordingSync(this, t, transit));
+                } catch (IllegalAccessException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
         }
 
         void setup() {
@@ -478,6 +574,14 @@ public class TransporterMoveTraceTest {
         });
     }
 
+    /// O clique da liga infundida (`ItemAlloy.useOn`) no transportador em `p`: sobe os transportadores da rede, do mais perto ao mais longe (`onAlloyInteraction`).
+    private static void alloy(Recorder r, int tick, int[] p) {
+        r.schedule(tick, "alloy", pos(p), rec -> {
+            rec.helper.useOn(new BlockPos(p[0], p[1], p[2]), MekanismItems.INFUSED_ALLOY.asStack(), rec.helper.makeMockPlayer(), Direction.UP);
+            return "";
+        });
+    }
+
     /// Insere pela capability de item do transportador, como um funil ou um ejetor de outro mod faria.
     private static void capInsert(Recorder r, int tick, int[] p, Direction side, Item item, int count) {
         r.schedule(tick, "cap_insert", pos(p) + ",\"side\":" + Recorder.dir(side) + ",\"item\":" + Recorder.item(item) + ",\"n\":" + count, rec -> {
@@ -542,6 +646,47 @@ public class TransporterMoveTraceTest {
             fill(r, 2, new int[]{0, 0, 0}, 1, Items.GRAVEL, 3);
             fill(r, 2, new int[]{0, 0, 0}, 5, Items.STONE, 2);
         });
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+    // A liga no meio de uma linha com pilhas em trânsito (frente `transportador-cliente`): onde cada unidade está depois da troca de nível
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+    private static void alloyLine(final DynamicTest test, String name, int alloyTick, int click) {
+        Layout layout = new Layout();
+        test.registerGameTestTemplate(() -> {
+            StructureTemplateBuilder builder = StructureTemplateBuilder.withSize(8, 1, 1);
+            layout.chest(builder, 0, 0, 0).row(builder, 1, 5, 0, 0, tier(0), pull(Direction.WEST)).chest(builder, 6, 0, 0);
+            return builder;
+        });
+        run(test, name, layout, 420, r -> {
+            fill(r, 2, new int[]{0, 0, 0}, 0, Items.DIRT, 64);
+            alloy(r, alloyTick, new int[]{click, 0, 0});
+        });
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_alloy_a")
+    @TestHolder(description = "Records the infused alloy used on the middle of a pulling line, with stacks in flight (tick 24).")
+    public static void alloyA(final DynamicTest test) {
+        alloyLine(test, "alloy_a", 24, 3);
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_alloy_b")
+    @TestHolder(description = "Records the infused alloy used on the middle of a pulling line, with stacks in flight (tick 31).")
+    public static void alloyB(final DynamicTest test) {
+        alloyLine(test, "alloy_b", 31, 3);
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_alloy_c")
+    @TestHolder(description = "Records the infused alloy used on the first transporter of a pulling line, with stacks in flight (tick 38).")
+    public static void alloyC(final DynamicTest test) {
+        alloyLine(test, "alloy_c", 38, 1);
+    }
+
+    @GameTest(setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_move_alloy_d")
+    @TestHolder(description = "Records the infused alloy used on the last transporter of a pulling line, with stacks in flight (tick 45).")
+    public static void alloyD(final DynamicTest test) {
+        alloyLine(test, "alloy_d", 45, 5);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------------------------

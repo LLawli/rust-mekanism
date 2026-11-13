@@ -55,12 +55,16 @@ impl OpenKey for IntKey {
 }
 
 /// O que o transportador manda ao cliente ou ao disco, na ordem em que acontece.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum TransitEvent {
-    /// `PacketTransporterSync.create(pos, stackId, stack)`, do `emitStack`.
-    Sync { id: i32 },
-    /// `PacketTransporterBatch.create(pos, deletes, needsSync)`: as pilhas que saíram e as que mudaram, na ordem da tabela.
-    Batch { deletes: Vec<i32>, synced: Vec<i32> },
+    /// `PacketTransporterSync.create(pos, stackId, stack)`, do `emitStack`: a pilha como estava quando o pacote saiu, com o `updateForPos(pos)` já feito.
+    Sync { id: i32, stack: TransporterStack },
+    /// `PacketTransporterBatch.create(pos, deletes, needsSync)`: as pilhas que saíram e as que mudaram (na ordem da tabela, cada uma como estava quando o pacote saiu, com o
+    /// `updateForPos(pos)` feito).
+    Batch {
+        deletes: Vec<i32>,
+        updates: Vec<(i32, TransporterStack)>,
+    },
     /// `getTransmitterTile().markForSave()`.
     MarkForSave,
 }
@@ -256,12 +260,15 @@ pub struct TransitUpgrade {
 }
 
 /// `emitStack`: a pilha entra em trânsito com um id novo e o cliente é avisado.
-fn emit_stack(transit: &Rc<RefCell<TransitState>>, stack: StackRef) {
+fn emit_stack(transit: &Rc<RefCell<TransitState>>, pos: i64, stack: StackRef) {
     let mut state = transit.borrow_mut();
     let id = state.next_id;
     state.next_id += 1;
-    state.add_stack(id, stack);
-    state.events.push(TransitEvent::Sync { id });
+    state.add_stack(id, stack.clone());
+    // `PacketTransporterSync.create`: `stack.updateForPos(pos)` e o pacote leva o que a pilha é agora.
+    let mut sent = stack.borrow().clone();
+    sent.update_for_pos(pos);
+    state.events.push(TransitEvent::Sync { id, stack: sent });
     state.events.push(TransitEvent::MarkForSave);
 }
 
@@ -303,15 +310,20 @@ impl LogisticalTransporterBase {
         let mut state = self.transit.borrow_mut();
         if !deletes.is_empty() || !state.needs_sync.is_empty() {
             let deleted: Vec<i32> = deletes.in_order().into_iter().map(|key| key.0).collect();
-            let synced: Vec<i32> = state
+            // `PacketTransporterBatch.create`: `updateForPos(pos)` em cada pilha de `needsSync` (a cópia do mapa guarda as mesmas pilhas).
+            let updates: Vec<(i32, TransporterStack)> = state
                 .needs_sync
-                .keys_in_order()
+                .entries_in_order()
                 .into_iter()
-                .map(|key| key.0)
+                .map(|(key, stack)| {
+                    let mut sent = stack.borrow().clone();
+                    sent.update_for_pos(pos);
+                    (key.0, sent)
+                })
                 .collect();
             state.events.push(TransitEvent::Batch {
                 deletes: deleted.clone(),
-                synced,
+                updates,
             });
             for id in deleted {
                 state.transit.remove(IntKey(id));
@@ -768,13 +780,14 @@ impl LogisticalTransporterBase {
                 .set_stack(response.item_type(), response.sending_amount());
             match transaction {
                 // Sem transação, a pilha sai direto.
-                None => emit_stack(&self.transit, stack.clone()),
+                None => emit_stack(&self.transit, self.pos_long(), stack.clone()),
                 // Com ela, espera o commit da raiz.
                 Some(transaction) => {
                     let transit = self.transit.clone();
                     let stack = stack.clone();
+                    let pos = self.pos_long();
                     let on_root_commit = RootCommitJournal::new(Rc::new(move || {
-                        emit_stack(&transit, stack.clone());
+                        emit_stack(&transit, pos, stack.clone());
                     }));
                     on_root_commit.touch(transaction);
                 }

@@ -39,7 +39,7 @@ use crate::transporter::node::{
 };
 use crate::transporter::pathfinder::PathContext;
 use crate::transporter::pos::{block_pos_of, side_difference};
-use crate::transporter::stack::{ItemDecode, ItemEncode, plain_item_encode};
+use crate::transporter::stack::{ItemDecode, ItemEncode, TransporterStack, plain_item_encode};
 use crate::transporter::world::{
     InventoryNetworkView, SideConfigView, TransportSorter, Transporter, TransporterWorld,
 };
@@ -172,6 +172,22 @@ pub trait InventoryOwnerWorld {
     fn capability_changed(&mut self, _pos: BlockPos, _change: CapabilityChange) {}
     /// Um `Block.popResource`: o que o `drop` do transportador soltou no mundo.
     fn world_drop(&mut self, _drop: WorldDrop) {}
+    /// `PacketUtils.sendToAllTracking(PacketTransporterSync | PacketTransporterBatch, tile)`: o pacote de movimento das pilhas do transportador em `pos`, com o valor da hora em que o
+    /// original o mandou.
+    fn transporter_packet(&mut self, _pos: BlockPos, _packet: TransporterPacket) {}
+}
+
+/// `PacketTransporterSync` e `PacketTransporterBatch`, como o cliente os lê: cada pilha é o compound do `writeToUpdateTag` (`color`, `progress`, `original_location`, `item`,
+/// `path_type`, `next`, `previous`), que é o conteúdo do `TransporterStack.STREAM_CODEC`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TransporterPacket {
+    /// Uma pilha nova em trânsito (`emitStack`).
+    Sync { id: i32, stack: Compound },
+    /// As pilhas que saíram do transportador e as que mudaram, no fim do tick dele.
+    Batch {
+        deletes: Vec<i32>,
+        updates: Vec<(i32, Compound)>,
+    },
 }
 
 /// O que a rede fez, na ordem, para um teste comparar (só se o dono grava: [`InventoryTransmitters::record_events`]).
@@ -1051,10 +1067,28 @@ impl InventoryTransmitters {
         let pos = slot.pos;
         let events = slot.base.take_events();
         let drops = slot.base.take_world_drops();
+        let packed = |stack: &TransporterStack, world: &W| -> Compound {
+            let tag =
+                stack.write_to_update_tag_with(pos.as_long(), &|item| world.encode_item(item));
+            match nbt_to_tag(&Nbt::Compound(tag)) {
+                Tag::Compound(compound) => compound,
+                _ => Compound::new(),
+            }
+        };
         for event in events {
-            // O pacote para o cliente (`Sync`, `Batch`) é do desenho das pilhas (Fase 4).
-            if event == TransitEvent::MarkForSave {
-                world.set_changed(pos);
+            match event {
+                TransitEvent::MarkForSave => world.set_changed(pos),
+                TransitEvent::Sync { id, stack } => {
+                    let stack = packed(&stack, &*world);
+                    world.transporter_packet(pos, TransporterPacket::Sync { id, stack });
+                }
+                TransitEvent::Batch { deletes, updates } => {
+                    let updates = updates
+                        .iter()
+                        .map(|(id, stack)| (*id, packed(stack, &*world)))
+                        .collect();
+                    world.transporter_packet(pos, TransporterPacket::Batch { deletes, updates });
+                }
             }
         }
         for drop in drops {
