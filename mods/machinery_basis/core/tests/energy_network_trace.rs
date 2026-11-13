@@ -986,7 +986,10 @@ fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again(
         .map(|row| int(row, "x") as usize)
         .collect();
     assert!(reloaded.len() >= 10, "o chunk recarregado tem cabos");
-    let (first, last) = (*reloaded.iter().min().unwrap(), *reloaded.iter().max().unwrap());
+    let (first, last) = (
+        *reloaded.iter().min().unwrap(),
+        *reloaded.iter().max().unwrap(),
+    );
     assert!(first > 0 && last < 47, "há cabos de fora nos dois lados");
     // Parado, os do chunk que voltou não têm rede, e os de fora seguem nas duas redes que a descarga deixou.
     for tick in loaded_at..unfrozen_at {
@@ -1025,7 +1028,10 @@ fn the_original_commits_the_two_outer_networks_because_the_neighbours_cache_is_i
     for row in &at_load {
         assert_eq!(row["cause"], "clearRemoved");
     }
-    let sides: Vec<&str> = at_load.iter().map(|row| row["side"].as_str().unwrap()).collect();
+    let sides: Vec<&str> = at_load
+        .iter()
+        .map(|row| row["side"].as_str().unwrap())
+        .collect();
     assert_eq!(sides, ["east", "west"]);
     let mut commits: Vec<i64> = rows
         .iter()

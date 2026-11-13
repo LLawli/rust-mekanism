@@ -22,7 +22,6 @@ pub type CompatibleFluidTransmitterValidator = CompatibleResourceValidator<Fluid
 /// As redes de fluido e os canos mecânicos de um dono de transmissores.
 pub type FluidFamily<H> = ResourceFamily<FluidResource, H>;
 
-
 /// O dono dos canos mecânicos de uma dimensão (`ResourceTransmitters` com o fluido como recurso).
 pub type FluidTransmitters = super::resource_owner::ResourceTransmitters<FluidResource>;
 
