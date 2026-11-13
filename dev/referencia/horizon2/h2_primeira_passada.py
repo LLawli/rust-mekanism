@@ -199,8 +199,11 @@ def video():
     time.sleep(3.0)
     try:
         abrir("ResetV")
+        # O mundo abrir não toca nada: um sino (categoria `block`, ligada) marca o instante em que o servidor já anda e a rede já existe, para a gravação ter som de verdade.
+        cmd("playsound minecraft:block.note_block.bell block @s")
         ctl("select", nr.READER)
         nr.clicar((2, YV, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        cmd("playsound minecraft:block.note_block.chime block @s")
         depois = a.shot("primeira_passada_leitor")
         wait(40)
         proc.wait()

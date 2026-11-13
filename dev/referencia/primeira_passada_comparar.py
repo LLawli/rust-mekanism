@@ -8,11 +8,12 @@
 e a 5 (o segundo mundo) com `b_*`. Por tick: os jogadores, os chunks carregados, o chunk (0, 0) andando, e quantas redes cada registro tem no fim do tick (`Post`).
 """
 import json
+import os
 import sys
 
 # A abertura do original (a ordem das linhas `started`, de 1) para os rótulos do port que lhe correspondem.
 PARES = {2: "a_", 4: "n_", 5: "b_"}
-TICKS = 4
+TICKS = int(os.environ.get("TICKS", "4"))
 
 
 def original(caminho):
