@@ -586,6 +586,80 @@ impl World {
         });
     }
 
+    /// `ItemAlloy.useOn` num condutor, como a cola do jogo o faz: a lista de `alloy_start`, e para cada alvo `alloy_take`, a troca do bloco pelo do nível da liga e `alloy_give`.
+    /// Devolve quantos subiram.
+    pub fn alloy(&mut self, x: i32, alloy_level: i32) -> u32 {
+        const TIERS: [&str; 4] = ["basic", "advanced", "elite", "ultimate"];
+        let pos = self.pos(x, 0);
+        let run = self.level.with_hooks(|hooks, level| {
+            let tier_level = |at: BlockPos| {
+                level
+                    .block_if_loaded(at)
+                    .and_then(|block| block.strip_prefix(CONDUCTOR_PREFIX))
+                    .and_then(|name| TIERS.iter().position(|tier| *tier == name))
+                    .map(|index| index as i32)
+            };
+            hooks.owner.alloy_start(pos, alloy_level, &tier_level)
+        });
+        let Some(mut run) = run else {
+            return 0;
+        };
+        let next = format!("{CONDUCTOR_PREFIX}{}", TIERS[alloy_level as usize]);
+        for target in run.targets.clone() {
+            let data = self.level.with_hooks(|hooks, level| {
+                let mut game = Game {
+                    level,
+                    heater: &hooks.heater,
+                    tiers: &mut hooks.tiers,
+                    ambient: &hooks.ambient,
+                    powered: hooks.powered,
+                };
+                hooks.owner.alloy_take(&mut game, &mut run, target)
+            });
+            let Some(data) = data else {
+                continue;
+            };
+            assert!(
+                self.level.set_block(target, Some(&next)),
+                "a troca de {target:?}"
+            );
+            let given = self.level.with_hooks(|hooks, level| {
+                let mut game = Game {
+                    level,
+                    heater: &hooks.heater,
+                    tiers: &mut hooks.tiers,
+                    ambient: &hooks.ambient,
+                    powered: hooks.powered,
+                };
+                hooks.owner.alloy_give(&mut game, &mut run, target, &data)
+            });
+            if given && run.full() {
+                break;
+            }
+        }
+        self.level.with_hooks(|hooks, level| {
+            let mut game = Game {
+                level,
+                heater: &hooks.heater,
+                tiers: &mut hooks.tiers,
+                ambient: &hooks.ambient,
+                powered: hooks.powered,
+            };
+            hooks.owner.alloy_finish(&mut game, &run);
+        });
+        run.upgraded
+    }
+
+    /// O pacote de atualização do condutor em `x` (`writeReducedUpdatedTag`).
+    pub fn client_update(&self, x: i32) -> Option<(Compound, i64)> {
+        let pos = self.pos(x, 0);
+        let ambient = AmbientAtTest {
+            ambient: &self.ambient,
+            pos,
+        };
+        self.owner().client_update(pos, &ambient)
+    }
+
     /// Um tick do servidor: os block entities e o `ServerTickEvent.Post` do registro.
     pub fn tick(&mut self) {
         self.level.tick();
@@ -593,6 +667,18 @@ impl World {
 
     pub fn take_events(&mut self) -> Vec<TraceEvent> {
         self.level.hooks.owner.take_events()
+    }
+}
+
+/// O ar de um condutor para o `getHeat` do pacote de atualização.
+struct AmbientAtTest<'a> {
+    ambient: &'a Ambient,
+    pos: BlockPos,
+}
+
+impl machinery_basis_core::heat::AmbientSource for AmbientAtTest<'_> {
+    fn read(&self, side: Option<Face>) -> Option<f64> {
+        Some(self.ambient.read(self.pos, side))
     }
 }
 

@@ -173,6 +173,11 @@ pub enum Tag {
     Double(f64),
     String(String),
     IntArray(Vec<i32>),
+    /// Os componentes de um item no pacote de atualização do transportador (`ItemResource.CODEC`) pedem o resto do NBT.
+    ByteArray(Vec<i8>),
+    LongArray(Vec<i64>),
+    List(Vec<Tag>),
+    Compound(Compound),
 }
 
 impl Tag {
@@ -186,7 +191,12 @@ impl Tag {
             Tag::Long(v) => *v as i8,
             Tag::Float(v) => (*v as i32) as i8,
             Tag::Double(v) => (*v as i32) as i8,
-            Tag::String(_) | Tag::IntArray(_) => return None,
+            Tag::String(_)
+            | Tag::IntArray(_)
+            | Tag::ByteArray(_)
+            | Tag::LongArray(_)
+            | Tag::List(_)
+            | Tag::Compound(_) => return None,
         })
     }
 
@@ -199,7 +209,12 @@ impl Tag {
             Tag::Long(v) => *v as i32,
             Tag::Float(v) => *v as i32,
             Tag::Double(v) => *v as i32,
-            Tag::String(_) | Tag::IntArray(_) => return None,
+            Tag::String(_)
+            | Tag::IntArray(_)
+            | Tag::ByteArray(_)
+            | Tag::LongArray(_)
+            | Tag::List(_)
+            | Tag::Compound(_) => return None,
         })
     }
 }

@@ -193,6 +193,8 @@ pub enum ClientKind {
     Resource,
     /// `ThermodynamicConductor`: `HeatNetwork`, sem buffer.
     Heat,
+    /// `LogisticalTransporterBase`: `InventoryNetwork`, sem buffer (o pacote de atualização leva as pilhas em trânsito e a cor).
+    Items,
 }
 
 /// Uma `DynamicNetwork` do cliente.
@@ -245,6 +247,141 @@ struct ClientTile {
     capacity: i64,
     /// `TileEntityTransmitter.loaded`.
     loaded: bool,
+    /// O que o pacote de atualização leva além do `Transmitter`: o calor do condutor e as pilhas e a cor do transportador.
+    extra: ClientExtra,
+}
+
+/// Uma pilha em trânsito como o pacote de atualização a leva (`TransporterStack.writeToUpdateTag`, lida por `readFromUpdate`): o cliente a guarda no `transit` do
+/// transportador, pelo índice que o servidor deu, para o desenho da Fase 4.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClientStack {
+    /// `SerializationConstants.INDEX`.
+    pub index: i32,
+    /// O id do item (`ItemResource.id`) e a quantidade (`LargeResourceStack`), vazios se o pacote não tinha o recurso (a pilha vazia de `readOrEmpty`).
+    pub item: Option<(String, i64)>,
+    /// O `components` do `ItemResource.CODEC`, quando o recurso tem algum.
+    pub components: Option<Tag>,
+    /// `color` (o nome da `EnumColor`), como o índice dela.
+    pub color: Option<u8>,
+    pub progress: i32,
+    /// `original_location` (`Long.MAX_VALUE` sem posição).
+    pub original_location: i64,
+    /// `path_type` (`Path.serialized_name`).
+    pub path_type: Option<String>,
+    /// `next` e `previous`, os `clientNext` e `clientPrev` do cliente.
+    pub next: Option<i64>,
+    pub previous: Option<i64>,
+}
+
+impl ClientStack {
+    fn read(index: i32, input: &Compound) -> Self {
+        let long = |key: &str| match input.get(key) {
+            Some(Tag::Long(value)) => Some(*value),
+            Some(other) => other.int_value().map(i64::from),
+            None => None,
+        };
+        let mut item = None;
+        let mut components = None;
+        if let Some(Tag::Compound(holder)) = input.get("item")
+            && let Some(Tag::Compound(resource)) = holder.get("type")
+            && let Some(Tag::String(id)) = resource.get("id")
+            && let Some(amount) = match holder.get("amount") {
+                Some(Tag::Long(value)) => Some(*value),
+                Some(other) => other.int_value().map(i64::from),
+                None => None,
+            }
+            && amount > 0
+        {
+            item = Some((id.clone(), amount));
+            components = resource.get("components").cloned();
+        }
+        Self {
+            index,
+            item,
+            components,
+            color: match input.get("color") {
+                Some(Tag::String(name)) => crate::side_config::ENUM_COLOR_NAMES
+                    .iter()
+                    .position(|candidate| candidate == name)
+                    .map(|index| index as u8),
+                _ => None,
+            },
+            progress: input.get("progress").and_then(Tag::int_value).unwrap_or(0),
+            original_location: long("original_location").unwrap_or(i64::MAX),
+            path_type: match input.get("path_type") {
+                Some(Tag::String(name)) => Some(name.clone()),
+                _ => None,
+            },
+            next: long("next"),
+            previous: long("previous"),
+        }
+    }
+}
+
+/// O que o cliente guarda de um transmissor além das conexões e da rede: o `buffer` do condutor (`setHeat(getDoubleOr(HEAT_STORED, getHeat()))`) e o `transit` e a cor do
+/// transportador. O desenho da Fase 4 lê daqui.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClientExtra {
+    /// `ThermodynamicConductor.buffer.getHeat()` depois do último pacote; `None` até o primeiro, que a conta de `getHeat` do cliente nunca viu.
+    pub heat: Option<f64>,
+    /// `LogisticalTransporter.color`.
+    pub color: Option<u8>,
+    /// `DiversionTransporter.modes` (`readModes`), um por lado; `None` se o pacote não tem a chave.
+    pub modes: Option<[i32; 6]>,
+    /// `LogisticalTransporterBase.transit`.
+    pub transit: Vec<ClientStack>,
+}
+
+impl ClientExtra {
+    /// `handleUpdateTag` do condutor e do transportador. Devolve se a cor mudou (`refreshModelData`).
+    fn handle_update_tag(&mut self, kind: ClientKind, tag: &Compound) -> bool {
+        match kind {
+            ClientKind::Heat => {
+                if let Some(Tag::Double(heat)) =
+                    tag.get(super::thermodynamic_conductor::keys::HEAT_STORED)
+                {
+                    self.heat = Some(*heat);
+                }
+                false
+            }
+            ClientKind::Items => {
+                self.transit.clear();
+                if let Some(Tag::List(items)) = tag.get("items") {
+                    for item in items {
+                        let Tag::Compound(input) = item else {
+                            continue;
+                        };
+                        // Um pacote sem índice é ignorado.
+                        if let Some(index) = input.get("index").and_then(Tag::int_value) {
+                            self.transit.retain(|stack| stack.index != index);
+                            self.transit.push(ClientStack::read(index, input));
+                        }
+                    }
+                }
+                self.modes = match tag.get("mode") {
+                    Some(Tag::IntArray(modes)) => {
+                        let mut out = [0; 6];
+                        for (slot, mode) in out.iter_mut().zip(modes) {
+                            *slot = *mode;
+                        }
+                        Some(out)
+                    }
+                    _ => None,
+                };
+                let color = match tag.get("color") {
+                    Some(Tag::String(name)) => crate::side_config::ENUM_COLOR_NAMES
+                        .iter()
+                        .position(|candidate| candidate == name)
+                        .map(|index| index as u8),
+                    _ => None,
+                };
+                let changed = self.color != color;
+                self.color = color;
+                changed
+            }
+            _ => false,
+        }
+    }
 }
 
 /// O que o desenho lê de um transmissor do cliente: as conexões por lado (`getConnectionType`, com `PUSH` e `PULL` que o cliente só
@@ -310,6 +447,11 @@ impl ClientTransmitters {
         })
     }
 
+    /// O que o pacote de atualização deixou no tile em `pos` além das conexões: o calor do condutor, as pilhas e a cor do transportador.
+    pub fn extra_at(&self, pos: BlockPos) -> Option<&ClientExtra> {
+        self.tiles.get(&pos).map(|tile| &tile.extra)
+    }
+
     /// O tile do transmissor entra no mundo do cliente (`clearRemoved` no cliente: `onWorldJoin` só marca `loaded`; o tile novo tira o
     /// anterior da mesma posição só quando ele sai).
     pub fn add_tile(&mut self, pos: BlockPos, kind: ClientKind, capacity: i64) {
@@ -317,6 +459,7 @@ impl ClientTransmitters {
             ClientKind::Energy => TransmissionType::Energy,
             ClientKind::Resource => TransmissionType::Fluid,
             ClientKind::Heat => TransmissionType::Heat,
+            ClientKind::Items => TransmissionType::Item,
         };
         let mut transmitter = Transmitter::new(
             [pos.x, pos.y, pos.z],
@@ -331,6 +474,7 @@ impl ClientTransmitters {
             transmitter,
             capacity,
             loaded: true,
+            extra: ClientExtra::default(),
         };
         self.tiles.insert(pos, tile);
     }
@@ -355,7 +499,8 @@ impl ClientTransmitters {
             return false;
         };
         let mut effects = Vec::new();
-        let update = tile.transmitter.handle_update_tag(tag, &mut effects);
+        let mut update = tile.transmitter.handle_update_tag(tag, &mut effects);
+        update.refresh_model_data |= tile.extra.handle_update_tag(tile.kind, tag);
         let generation = tile.generation;
         let kind = tile.kind;
         self.apply_effects(pos, generation, kind, &effects);
@@ -434,7 +579,7 @@ impl ClientTransmitters {
                     _ => None,
                 };
             }
-            ClientKind::Heat => {}
+            ClientKind::Heat | ClientKind::Items => {}
         }
     }
 
@@ -443,7 +588,8 @@ impl ClientTransmitters {
         let Some(kind) = self.networks.get(&network).map(|net| net.kind) else {
             return;
         };
-        if kind == ClientKind::Heat {
+        // `updateCapacity` é do `DynamicBufferedNetwork`: o calor e os itens não têm buffer.
+        if matches!(kind, ClientKind::Heat | ClientKind::Items) {
             return;
         }
         let positions: Vec<BlockPos> = self.networks[&network]
@@ -537,6 +683,71 @@ fn put_pos(out: &mut Vec<u8>, pos: BlockPos) {
     }
 }
 
+/// Uma etiqueta no fio: o código do tipo e o valor (`List` e `Compound` são recursivos).
+fn put_tag(out: &mut Vec<u8>, value: &Tag) {
+    match value {
+        Tag::Byte(v) => out.extend_from_slice(&[1, *v as u8]),
+        Tag::Short(v) => {
+            out.push(2);
+            out.extend_from_slice(&v.to_be_bytes());
+        }
+        Tag::Int(v) => {
+            out.push(3);
+            out.extend_from_slice(&v.to_be_bytes());
+        }
+        Tag::Long(v) => {
+            out.push(4);
+            out.extend_from_slice(&v.to_be_bytes());
+        }
+        Tag::Float(v) => {
+            out.push(5);
+            out.extend_from_slice(&v.to_bits().to_be_bytes());
+        }
+        Tag::Double(v) => {
+            out.push(6);
+            out.extend_from_slice(&v.to_bits().to_be_bytes());
+        }
+        Tag::String(v) => {
+            out.push(7);
+            put_string(out, v);
+        }
+        Tag::IntArray(v) => {
+            out.push(8);
+            out.extend_from_slice(&(v.len() as u16).to_be_bytes());
+            for item in v {
+                out.extend_from_slice(&item.to_be_bytes());
+            }
+        }
+        Tag::ByteArray(v) => {
+            out.push(9);
+            out.extend_from_slice(&(v.len() as u32).to_be_bytes());
+            out.extend(v.iter().map(|byte| *byte as u8));
+        }
+        Tag::LongArray(v) => {
+            out.push(10);
+            out.extend_from_slice(&(v.len() as u32).to_be_bytes());
+            for item in v {
+                out.extend_from_slice(&item.to_be_bytes());
+            }
+        }
+        Tag::List(items) => {
+            out.push(11);
+            out.extend_from_slice(&(items.len() as u32).to_be_bytes());
+            for item in items {
+                put_tag(out, item);
+            }
+        }
+        Tag::Compound(entries) => {
+            out.push(12);
+            out.extend_from_slice(&(entries.len() as u16).to_be_bytes());
+            for (key, item) in entries {
+                put_string(out, key);
+                put_tag(out, item);
+            }
+        }
+    }
+}
+
 struct Reader<'a>(&'a [u8]);
 
 impl<'a> Reader<'a> {
@@ -561,6 +772,61 @@ impl<'a> Reader<'a> {
         Some(i64::from_be_bytes(self.take(8)?.try_into().ok()?))
     }
 
+    fn u32(&mut self) -> Option<usize> {
+        Some(u32::from_be_bytes(self.take(4)?.try_into().ok()?) as usize)
+    }
+
+    /// `put_tag` ao contrário.
+    fn tag(&mut self) -> Option<Tag> {
+        Some(match self.u8()? {
+            1 => Tag::Byte(self.u8()? as i8),
+            2 => Tag::Short(i16::from_be_bytes(self.take(2)?.try_into().ok()?)),
+            3 => Tag::Int(self.i32()?),
+            4 => Tag::Long(self.i64()?),
+            5 => Tag::Float(f32::from_bits(self.i32()? as u32)),
+            6 => Tag::Double(f64::from_bits(self.i64()? as u64)),
+            7 => Tag::String(self.string()?),
+            8 => {
+                let len = u16::from_be_bytes(self.take(2)?.try_into().ok()?);
+                let mut items = Vec::new();
+                for _ in 0..len {
+                    items.push(self.i32()?);
+                }
+                Tag::IntArray(items)
+            }
+            9 => {
+                let len = self.u32()?;
+                Tag::ByteArray(self.take(len)?.iter().map(|byte| *byte as i8).collect())
+            }
+            10 => {
+                let len = self.u32()?;
+                let mut items = Vec::new();
+                for _ in 0..len {
+                    items.push(self.i64()?);
+                }
+                Tag::LongArray(items)
+            }
+            11 => {
+                let len = self.u32()?;
+                let mut items = Vec::new();
+                for _ in 0..len {
+                    items.push(self.tag()?);
+                }
+                Tag::List(items)
+            }
+            12 => {
+                let count = u16::from_be_bytes(self.take(2)?.try_into().ok()?);
+                let mut entries = Compound::new();
+                for _ in 0..count {
+                    let key = self.string()?;
+                    entries.insert(key, self.tag()?);
+                }
+                Tag::Compound(entries)
+            }
+            _ => return None,
+        })
+    }
+
     fn string(&mut self) -> Option<String> {
         let len = u16::from_be_bytes(self.take(2)?.try_into().ok()?) as usize;
         String::from_utf8(self.take(len)?.to_vec()).ok()
@@ -577,6 +843,7 @@ impl ClientKind {
             ClientKind::Energy => 0,
             ClientKind::Resource => 1,
             ClientKind::Heat => 2,
+            ClientKind::Items => 3,
         }
     }
 
@@ -585,6 +852,7 @@ impl ClientKind {
             0 => ClientKind::Energy,
             1 => ClientKind::Resource,
             2 => ClientKind::Heat,
+            3 => ClientKind::Items,
             _ => return None,
         })
     }
@@ -600,40 +868,7 @@ impl TagMessage {
         out.extend_from_slice(&(self.tag.len() as u16).to_be_bytes());
         for (key, value) in &self.tag {
             put_string(&mut out, key);
-            match value {
-                Tag::Byte(v) => out.extend_from_slice(&[1, *v as u8]),
-                Tag::Short(v) => {
-                    out.push(2);
-                    out.extend_from_slice(&v.to_be_bytes());
-                }
-                Tag::Int(v) => {
-                    out.push(3);
-                    out.extend_from_slice(&v.to_be_bytes());
-                }
-                Tag::Long(v) => {
-                    out.push(4);
-                    out.extend_from_slice(&v.to_be_bytes());
-                }
-                Tag::Float(v) => {
-                    out.push(5);
-                    out.extend_from_slice(&v.to_bits().to_be_bytes());
-                }
-                Tag::Double(v) => {
-                    out.push(6);
-                    out.extend_from_slice(&v.to_bits().to_be_bytes());
-                }
-                Tag::String(v) => {
-                    out.push(7);
-                    put_string(&mut out, v);
-                }
-                Tag::IntArray(v) => {
-                    out.push(8);
-                    out.extend_from_slice(&(v.len() as u16).to_be_bytes());
-                    for item in v {
-                        out.extend_from_slice(&item.to_be_bytes());
-                    }
-                }
-            }
+            put_tag(&mut out, value);
         }
         out
     }
@@ -648,24 +883,7 @@ impl TagMessage {
         let mut tag = Compound::new();
         for _ in 0..count {
             let key = reader.string()?;
-            let value = match reader.u8()? {
-                1 => Tag::Byte(reader.u8()? as i8),
-                2 => Tag::Short(i16::from_be_bytes(reader.take(2)?.try_into().ok()?)),
-                3 => Tag::Int(reader.i32()?),
-                4 => Tag::Long(reader.i64()?),
-                5 => Tag::Float(f32::from_bits(reader.i32()? as u32)),
-                6 => Tag::Double(f64::from_bits(reader.i64()? as u64)),
-                7 => Tag::String(reader.string()?),
-                8 => {
-                    let len = u16::from_be_bytes(reader.take(2)?.try_into().ok()?);
-                    let mut items = Vec::new();
-                    for _ in 0..len {
-                        items.push(reader.i32()?);
-                    }
-                    Tag::IntArray(items)
-                }
-                _ => return None,
-            };
+            let value = reader.tag()?;
             tag.insert(key, value);
         }
         reader.0.is_empty().then_some(Self {

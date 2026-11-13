@@ -282,6 +282,28 @@ fn the_messages_survive_the_wire() {
     tag.insert("short".into(), Tag::Short(-7));
     tag.insert("int".into(), Tag::Int(i32::MIN));
     tag.insert("double".into(), Tag::Double(1.5e300));
+    // O pacote do transportador: a lista `items` de compostos com os componentes do item (listas, vetores e compostos dentro de compostos).
+    let mut resource = Compound::new();
+    resource.insert("id".into(), Tag::String("minecraft:iron_pickaxe".into()));
+    let mut components = Compound::new();
+    components.insert("minecraft:damage".into(), Tag::Int(40));
+    components.insert("bytes".into(), Tag::ByteArray(vec![-1, 0, 7]));
+    components.insert("longs".into(), Tag::LongArray(vec![i64::MIN, 5]));
+    components.insert(
+        "nested".into(),
+        Tag::List(vec![
+            Tag::Compound(Compound::new()),
+            Tag::List(vec![Tag::Short(3)]),
+        ]),
+    );
+    resource.insert("components".into(), Tag::Compound(components));
+    let mut holder = Compound::new();
+    holder.insert("type".into(), Tag::Compound(resource));
+    holder.insert("amount".into(), Tag::Long(3));
+    let mut stack = Compound::new();
+    stack.insert("index".into(), Tag::Int(4));
+    stack.insert("item".into(), Tag::Compound(holder));
+    tag.insert("items".into(), Tag::List(vec![Tag::Compound(stack)]));
     let message = TagMessage {
         dimension: "minecraft:the_nether".into(),
         pos: BlockPos::new(-12, 64, 30_000_000),

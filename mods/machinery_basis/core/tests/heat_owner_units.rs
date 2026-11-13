@@ -271,3 +271,94 @@ fn world_write(
 fn sink_exists(world: &mut World, pos: BlockPos, side: Face) -> bool {
     world.sink_exists(pos, side)
 }
+
+/// `ItemAlloy` e `onAlloyInteraction` num condutor (`IUpgradeableTransmitter<ThermodynamicConductorUpgradeData>`): a liga avançada sobe os básicos da rede do mais perto ao mais longe
+/// (até 8), cada um leva o calor, o redstone e os tipos crus ao bloco novo, e a rede se refaz com o nível novo.
+#[test]
+fn the_alloy_raises_the_conductors_one_tier_keeps_the_heat_and_remakes_the_network() {
+    let mut world = line(5);
+    world.set_conductor_heat(1, 1_000.0);
+    let before = heat(&world, 1);
+    let network_before = world
+        .owner()
+        .state_at(world.pos(0, 0))
+        .and_then(|state| state.network);
+    assert_eq!(world.alloy(2, 1), 5, "os cinco básicos sobem");
+    tick(&mut world, 4);
+    for x in 0..5 {
+        let state = world.owner().state_at(world.pos(x, 0)).expect("condutor");
+        assert!(state.network.is_some(), "o condutor {x} está numa rede");
+    }
+    let network_after = world
+        .owner()
+        .state_at(world.pos(0, 0))
+        .and_then(|state| state.network);
+    assert_ne!(
+        network_before, network_after,
+        "a rede velha se invalida e a nova nasce"
+    );
+    let ids: std::collections::HashSet<_> = (0..5)
+        .map(|x| {
+            world
+                .owner()
+                .state_at(world.pos(x, 0))
+                .and_then(|state| state.network)
+        })
+        .collect();
+    assert_eq!(ids.len(), 1, "uma rede só");
+    // O calor do condutor 1 passou ao bloco novo (a rede troca calor em seguida, então o valor pode ter mudado um pouco: ele existe e é do mesmo tamanho).
+    assert!(
+        heat(&world, 1) > before / 2.0,
+        "o calor foi levado ao condutor novo"
+    );
+    // A liga de novo, agora com o nível dois: só os avançados sobem.
+    assert_eq!(world.alloy(0, 2), 5);
+    // Uma liga do mesmo nível ou de um nível que pula não sobe ninguém.
+    assert_eq!(world.alloy(0, 2), 0, "a rede já é elite");
+    assert_eq!(world.alloy(0, 1), 0, "a liga avançada não sobe um elite");
+}
+
+/// A lista da liga vai do mais perto do clique ao mais longe (`Comparator.comparingDouble(distSqr)`), e só entram os que `canUpgrade` aceita.
+#[test]
+fn the_alloy_list_goes_from_the_nearest_to_the_farthest_and_only_takes_the_next_tier() {
+    let mut world = line(5);
+    world.place_conductor(0, ConductorTier::Advanced);
+    tick(&mut world, 2);
+    let tier_level = |at: BlockPos| Some(i32::from(at.x - world.pos(0, 0).x == 0));
+    let run = world
+        .owner()
+        .alloy_start(world.pos(3, 0), 1, &|at| {
+            tier_level(at).map(|advanced| if advanced == 1 { 1 } else { 0 })
+        })
+        .expect("há rede");
+    let order: Vec<i32> = run.targets.iter().map(|pos| world.x_of(*pos)).collect();
+    assert_eq!(
+        order,
+        vec![3, 2, 4, 1],
+        "do 3 para fora, sem o 0 que já é avançado"
+    );
+}
+
+/// O pacote de atualização do condutor leva o calor (`HEAT_STORED`) e a rede, e o cliente guarda os dois.
+#[test]
+fn the_update_packet_carries_the_heat_and_the_client_keeps_it() {
+    use machinery_basis_core::transmission::client::{ClientKind, ClientTransmitters};
+    let mut world = line(3);
+    world.set_conductor_heat(1, 777.0);
+    let (tag, capacity) = world.client_update(1).expect("pacote");
+    assert_eq!(capacity, 0);
+    assert!(
+        matches!(tag.get("heat"), Some(machinery_basis_core::transmission::transmitter::Tag::Double(heat)) if (*heat - 777.0).abs() < 1.0e-9),
+        "{tag:?}"
+    );
+    let mut client = ClientTransmitters::new();
+    client.add_tile(world.pos(1, 0), ClientKind::Heat, capacity);
+    client.handle_update_tag(world.pos(1, 0), &tag);
+    assert_eq!(
+        client
+            .extra_at(world.pos(1, 0))
+            .and_then(|extra| extra.heat),
+        Some(777.0)
+    );
+    assert!(client.network_at(world.pos(1, 0)).is_some());
+}

@@ -13,14 +13,15 @@
 //! - `preRemoveSideEffects` solta as pilhas em trânsito quando o bloco é quebrado (não quando o chunk descarrega) e `remove()` as tira das em voo;
 //! - o NBT leva o `Transmitter`, a cor (ou o `mode` do desviador) e a lista `items` das pilhas em trânsito;
 //! - a capability de item é o `TransporterItemHandler`, que existe nos lados em que `exposesInsertCap` vale; inserir por ele é [`InventoryTransmitters::insert`].
+use super::alloy::{AlloyRun, can_upgrade, order_by_distance};
 use super::connection::{
     ConnectionType, TransmissionSet, TransmissionType, connection_map_contains_side,
 };
 use super::inventory_network::{RegistryNetworkView, TransporterLookup, on_network_event};
 use super::owner::{CableView, Event};
-use super::registry::TransmitterNetworkRegistry;
+use super::registry::{TransmitterNetworkRegistry, set_transmitter_network};
 use super::transmitter::{
-    Compound, Effect, InteractionResult, NeighborTransmitter, Overlay, Transmitter,
+    Compound, Effect, InteractionResult, NeighborTransmitter, Overlay, Tag, Transmitter,
     TransmitterWorld,
 };
 use super::validator::{AlwaysCompatible, CompatibleTransmitterValidator};
@@ -30,7 +31,7 @@ use crate::item_handler::ItemHandler;
 use crate::sides::Face;
 use crate::sim::chunks::{BlockPos, MAX_VIEW_DISTANCE};
 use crate::transaction::Transaction;
-use crate::transporter::movement::{MoveContext, TransitEvent, WorldDrop};
+use crate::transporter::movement::{MoveContext, TransitEvent, TransitUpgrade, WorldDrop};
 use crate::transporter::nbt::Nbt;
 use crate::transporter::node::{
     CapabilityChange, DiversionControl, DiversionNeighbor, LogisticalTransporterBase,
@@ -56,6 +57,29 @@ pub mod keys {
     pub const COLOR: &str = "color";
     pub const MODE: &str = "mode";
     pub const ITEMS: &str = "items";
+}
+
+/// O NBT do transportador (`transporter::nbt`) no `Tag` do pacote de atualização do `Transmitter`.
+fn nbt_to_tag(nbt: &Nbt) -> Tag {
+    match nbt {
+        Nbt::Byte(v) => Tag::Byte(*v),
+        Nbt::Short(v) => Tag::Short(*v),
+        Nbt::Int(v) => Tag::Int(*v),
+        Nbt::Long(v) => Tag::Long(*v),
+        Nbt::Float(bits) => Tag::Float(f32::from_bits(*bits)),
+        Nbt::Double(bits) => Tag::Double(f64::from_bits(*bits)),
+        Nbt::String(v) => Tag::String(v.clone()),
+        Nbt::ByteArray(v) => Tag::ByteArray(v.iter().map(|byte| *byte as i8).collect()),
+        Nbt::IntArray(v) => Tag::IntArray(v.clone()),
+        Nbt::LongArray(v) => Tag::LongArray(v.clone()),
+        Nbt::List(items) => Tag::List(items.iter().map(nbt_to_tag).collect()),
+        Nbt::Compound(entries) => Tag::Compound(
+            entries
+                .iter()
+                .map(|(key, value)| (key.clone(), nbt_to_tag(value)))
+                .collect(),
+        ),
+    }
 }
 
 fn arr(pos: BlockPos) -> [i32; 3] {
@@ -96,6 +120,14 @@ pub struct SavedTransporter {
     pub modes: Option<Nbt>,
     /// A lista `items` das pilhas em trânsito.
     pub items: Option<Nbt>,
+}
+
+/// `LogisticalTransporterUpgradeData`: o que o transportador velho leva ao novo (o redstone, os tipos de conexão crus, a cor e as pilhas em trânsito com os contadores).
+pub struct TransporterUpgrade {
+    pub redstone_reactive: bool,
+    pub connection_types: [ConnectionType; 6],
+    pub color: Option<u8>,
+    pub transit: TransitUpgrade,
 }
 
 /// O que o jogo diz de um transportador novo.
@@ -1123,6 +1155,125 @@ impl InventoryTransmitters {
             modes: base.write_modes(),
             items: base.write_items_with(encode),
         })
+    }
+
+    /// O pacote de atualização do transportador (`writeReducedUpdatedTag`) e o `getCapacity()` dele (a rede de itens não tem buffer: zero): o do `Transmitter`, as pilhas em
+    /// trânsito com o `index` de cada uma (`LogisticalTransporterBase`), a cor (`LogisticalTransporter`) e os modos do desviador (`DiversionTransporter`). `encode` é o
+    /// `ItemResource.CODEC` do jogo.
+    pub fn client_update(&self, pos: BlockPos, encode: ItemEncode) -> Option<(Compound, i64)> {
+        let id = self.st.live(pos)?;
+        let base = &self.st.slots[id.0 as usize].base;
+        let mut tag = base.transmitter.write_reduced_updated_tag();
+        if let Some(items) = base.write_reduced_updated_items_with(encode) {
+            tag.insert(keys::ITEMS.into(), nbt_to_tag(&items));
+        }
+        if let Some(color) = base.write_color() {
+            tag.insert(keys::COLOR.into(), nbt_to_tag(&color));
+        }
+        if let Some(modes) = base.write_modes() {
+            tag.insert(keys::MODE.into(), nbt_to_tag(&modes));
+        }
+        Some((tag, 0))
+    }
+
+    /// `TileEntityTransmitter.onAlloyInteraction`, até a lista: o transportador clicado em `pos` tem rede, e os da rede que a liga de nível `alloy_level` sobe (`canUpgrade`) vêm do
+    /// mais perto para o mais longe. `tier_of` dá o nível do tier do bloco em cada posição, e nada onde o bloco não é um `LogisticalTransporter` (o restritivo e o desviador não são
+    /// `IUpgradeableTransmitter`).
+    pub fn alloy_start(
+        &self,
+        pos: BlockPos,
+        alloy_level: i32,
+        tier_of: &dyn Fn(BlockPos) -> Option<i32>,
+    ) -> Option<AlloyRun> {
+        let id = self.st.live(pos)?;
+        let slot = &self.st.slots[id.0 as usize];
+        if !slot.base.transmitter.has_transmitter_network() {
+            return None;
+        }
+        let network = slot.network?;
+        let members: Vec<BlockPos> = self
+            .registry
+            .network(network)
+            .transmitters()
+            .into_iter()
+            .map(|member| &self.st.slots[member.0 as usize])
+            .filter(|member| !member.dead)
+            .map(|member| member.pos)
+            .filter(|at| tier_of(*at).is_some_and(|level| can_upgrade(alloy_level, level)))
+            .collect();
+        Some(AlloyRun {
+            network,
+            targets: order_by_distance(pos, members),
+            shares_set: false,
+            upgraded: 0,
+        })
+    }
+
+    /// O começo da troca de um transportador: `startUpgrading` (`isUpgrading`, que impede o `preRemoveSideEffects` de soltar as pilhas, `takeShare(null)`, que ele não tem, e
+    /// `setTransmitterNetwork(null)`) e o dado de upgrade (`getUpgradeData`), antes de o bloco mudar. A rede de itens não é em buffer: não há shares a validar.
+    pub fn alloy_take<W: InventoryOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+    ) -> Option<TransporterUpgrade> {
+        let id = self.st.live(pos)?;
+        run.shares_set = true;
+        self.st.slots[id.0 as usize]
+            .base
+            .transmitter
+            .set_upgrading(true);
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
+            set_transmitter_network(&mut ctx, id, None, true);
+        }
+        let base = &self.st.slots[id.0 as usize].base;
+        let data = TransporterUpgrade {
+            redstone_reactive: base.transmitter.redstone_reactive,
+            connection_types: *base.transmitter.connection_types_raw(),
+            color: base.get_color(),
+            transit: base.upgrade_transit(),
+        };
+        self.flush_deferred(world);
+        Some(data)
+    }
+
+    /// O fim da troca: o transportador novo em `pos` recebe o dado (`parseUpgradeData`: o redstone, os tipos crus, a cor, as pilhas e os contadores). `false` se o bloco novo não
+    /// tem transportador ("Error upgrading transmitter"): o laço segue sem contar.
+    pub fn alloy_give(
+        &mut self,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+        data: TransporterUpgrade,
+    ) -> bool {
+        let Some(id) = self.st.live(pos) else {
+            return false;
+        };
+        let base = &mut self.st.slots[id.0 as usize].base;
+        base.transmitter.redstone_reactive = data.redstone_reactive;
+        base.transmitter
+            .set_connection_types_raw(data.connection_types);
+        base.set_color(data.color);
+        base.parse_upgrade_transit(data.transit);
+        run.upgraded += 1;
+        true
+    }
+
+    /// `transmitterNetwork.invalidate(null)` ao fim do laço, se algum subiu.
+    pub fn alloy_finish<W: InventoryOwnerWorld>(&mut self, world: &mut W, run: &AlloyRun) {
+        if !run.did_upgrade() {
+            return;
+        }
+        let mut ctx = Ctx {
+            st: &mut self.st,
+            world,
+        };
+        self.registry
+            .invalidate_network(&mut ctx, run.network, None);
+        self.flush_deferred(world);
     }
 
     /// Lê as pilhas que o pacote de atualização traz (`handleUpdateTag`); só para os testes e para o cliente.

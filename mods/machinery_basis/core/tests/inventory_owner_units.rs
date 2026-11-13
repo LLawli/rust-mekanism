@@ -693,3 +693,150 @@ fn a_hopper_offering_more_than_the_pull_amount_gets_the_rest_back() {
         "a pilha do funil não entrou em trânsito"
     );
 }
+
+/// `writeReducedUpdatedTag` do transportador (`LogisticalTransporterBase` e `LogisticalTransporter`): a lista `items` com o `index` e o item inteiro de cada pilha em trânsito, a cor e
+/// a rede; o cliente (`handleUpdateTag`) guarda as pilhas pelo índice e a cor, e o pacote atravessa o fio.
+#[test]
+fn the_update_packet_carries_the_stacks_and_the_color_and_the_client_keeps_them() {
+    use machinery_basis_core::transmission::client::{ClientKind, ClientTransmitters, TagMessage};
+    let named = ItemResource::with_components(
+        "minecraft:iron_pickaxe",
+        1,
+        Components::new([("minecraft:damage", "40")]),
+    );
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    world.chests[&at(-1)].set_item(0, Some(named.clone()), 3);
+    tick(&mut owner, &mut world, 25, 3);
+    owner.set_color(&mut world, at(1), Some(3));
+    let (x, count) = (0..3)
+        .map(|x| {
+            (
+                x,
+                owner.transporter_at(at(x)).unwrap().transit_stacks().len(),
+            )
+        })
+        .max_by_key(|(_, count)| *count)
+        .unwrap();
+    assert!(count > 0, "nenhuma pilha em trânsito");
+    let (tag, capacity) = owner
+        .client_update(at(x), &component_encode)
+        .expect("pacote");
+    assert_eq!(capacity, 0, "a rede de itens não tem buffer");
+    let message = TagMessage {
+        dimension: "minecraft:overworld".into(),
+        pos: at(x),
+        kind: ClientKind::Items,
+        capacity,
+        tag,
+    };
+    let message = TagMessage::decode(&message.encode()).expect("o pacote atravessa o fio");
+    let mut client = ClientTransmitters::new();
+    client.add_tile(at(x), ClientKind::Items, 0);
+    client.handle_update_tag(at(x), &message.tag);
+    let extra = client.extra_at(at(x)).expect("tile");
+    assert_eq!(
+        extra.transit.len(),
+        count,
+        "uma pilha do cliente por pilha do servidor"
+    );
+    for stack in &extra.transit {
+        let (id, amount) = stack.item.clone().expect("o item");
+        assert_eq!(id, "minecraft:iron_pickaxe");
+        assert!(amount > 0);
+        assert!(
+            stack.components.is_some(),
+            "os componentes vão no pacote: {stack:?}"
+        );
+    }
+    let server: Vec<i32> = owner
+        .transporter_at(at(x))
+        .unwrap()
+        .transit_stacks()
+        .iter()
+        .map(|(id, _)| *id)
+        .collect();
+    let mut indices: Vec<i32> = extra.transit.iter().map(|stack| stack.index).collect();
+    indices.sort_unstable();
+    let mut expected = server;
+    expected.sort_unstable();
+    assert_eq!(indices, expected, "o índice é o id da pilha no servidor");
+    // A cor só existe no transportador que a tem (`LogisticalTransporter`).
+    let colored = owner.client_update(at(1), &component_encode).unwrap().0;
+    let mut other = ClientTransmitters::new();
+    other.add_tile(at(1), ClientKind::Items, 0);
+    other.handle_update_tag(at(1), &colored);
+    assert_eq!(other.extra_at(at(1)).unwrap().color, Some(3));
+    assert_eq!(
+        client.extra_at(at(x)).unwrap().color,
+        if x == 1 { Some(3) } else { None }
+    );
+    // Um pacote seguinte sem pilhas esvazia o `transit` (`transit.clear()` no `handleUpdateTag`).
+    let mut empty = colored.clone();
+    empty.remove("items");
+    other.handle_update_tag(at(1), &empty);
+    assert!(other.extra_at(at(1)).unwrap().transit.is_empty());
+}
+
+/// `ItemAlloy` num transportador logístico (`LogisticalTransporterUpgradeData`): as pilhas em trânsito, a cor e os tipos de conexão crus passam ao bloco novo, nada cai no chão
+/// (`isUpgrading` impede o `preRemoveSideEffects`) e a rede se refaz.
+#[test]
+fn the_alloy_raises_the_transporters_and_keeps_the_stacks_the_color_and_the_connections() {
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    tick(&mut owner, &mut world, 25, 3);
+    owner.set_color(&mut world, at(1), Some(5));
+    let before = transit_total(&owner, 3);
+    assert!(before > 0, "nenhuma pilha em trânsito");
+    let network = owner.network_of(at(0));
+    let mut run = owner.alloy_start(at(1), 1, &|_| Some(0)).expect("há rede");
+    assert_eq!(
+        run.targets,
+        vec![at(1), at(0), at(2)],
+        "do clique para fora"
+    );
+    for target in run.targets.clone() {
+        let data = owner
+            .alloy_take(&mut world, &mut run, target)
+            .expect("dado");
+        // `Level.setBlockAndUpdate`: o bloco velho sai e o novo entra, vazio (o dado chega depois).
+        owner.handle(&mut world, Event::Removed(target));
+        world.infos.borrow_mut().insert(
+            target,
+            TransporterInfo {
+                tier: TransporterTier::Advanced,
+                kind: logistical(),
+                saved: None,
+            },
+        );
+        owner.handle(&mut world, Event::ClearRemoved(target));
+        assert!(owner.alloy_give(&mut run, target, data));
+    }
+    owner.alloy_finish(&mut world, &run);
+    assert_eq!(run.upgraded, 3);
+    assert!(
+        world.drops.is_empty(),
+        "a troca não solta as pilhas: {:?}",
+        world.drops
+    );
+    assert_eq!(
+        transit_total(&owner, 3),
+        before,
+        "as pilhas passaram ao bloco novo"
+    );
+    assert_eq!(owner.transporter_at(at(1)).unwrap().get_color(), Some(5));
+    let raw = *owner
+        .transporter_at(at(0))
+        .unwrap()
+        .transmitter
+        .connection_types_raw();
+    assert_eq!(raw[WEST], ConnectionType::Pull, "o puxar do baú continua");
+    tick(&mut owner, &mut world, 2, 3);
+    assert_ne!(
+        owner.network_of(at(0)),
+        network,
+        "a rede velha se invalidou"
+    );
+    assert_eq!(owner.network_of(at(0)), owner.network_of(at(2)));
+    // O restritivo e o desviador não são `IUpgradeableTransmitter`: a lista os deixa de fora.
+    let none = owner.alloy_start(at(1), 1, &|_| None).expect("há rede");
+    assert!(none.targets.is_empty());
+}

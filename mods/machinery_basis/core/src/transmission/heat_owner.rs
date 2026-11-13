@@ -14,13 +14,14 @@
 //!   `onContentsChanged` de cada capacitor que mudou (`HeatNetwork.onUpdate`);
 //! - `sideChanged` e `redstoneChanged` invalidam a capability `HEAT` do condutor na hora, e os vizinhos que a guardavam no cache de
 //!   aceitadores a releem.
+use super::alloy::{AlloyRun, can_upgrade, order_by_distance};
 use super::connection::{ConnectionType, connection_map_contains_side};
 use super::heat_network::{ConductorSet, HeatNetworks};
 use super::owner::{CableView, Event};
-use super::registry::TransmitterNetworkRegistry;
+use super::registry::{TransmitterNetworkRegistry, set_transmitter_network};
 use super::thermodynamic_conductor::{
-    CapacitorState, ConductorTag, ConductorTier, ConductorTile, ContentsChanged,
-    ThermodynamicConductor, TierValues,
+    CapacitorState, ConductorTag, ConductorTier, ConductorTile, ConductorUpgradeData,
+    ContentsChanged, ThermodynamicConductor, TierValues,
 };
 use super::transmitter::{
     Compound, Effect, NeighborTransmitter, Overlay, Transmitter, TransmitterWorld,
@@ -1152,6 +1153,123 @@ impl HeatTransmitters {
         let slot = &self.st.slots[self.st.live(pos)?.0 as usize];
         let ambient = AmbientAt { world, pos };
         Some(slot.tc.as_ref()?.write_reduced_updated_tag(&ambient))
+    }
+
+    /// O pacote de atualização do condutor (`writeReducedUpdatedTag`) e o `getCapacity()` dele (o calor não tem buffer em rede: zero): o que o cliente recebe a cada
+    /// `sendUpdatePacket`. `ambient` é o ar do condutor, que `getHeat` lê quando o calor nunca foi lido.
+    pub fn client_update(
+        &self,
+        pos: BlockPos,
+        ambient: &dyn AmbientSource,
+    ) -> Option<(Compound, i64)> {
+        let slot = &self.st.slots[self.st.live(pos)?.0 as usize];
+        Some((slot.tc.as_ref()?.write_reduced_updated_tag(ambient), 0))
+    }
+
+    /// `TileEntityTransmitter.onAlloyInteraction`, até a lista: o condutor clicado em `pos` tem rede, e os da rede que a liga de nível `alloy_level` sobe (`canUpgrade`) vêm do mais
+    /// perto para o mais longe. `tier_of` dá o nível do tier do bloco em cada posição.
+    pub fn alloy_start(
+        &self,
+        pos: BlockPos,
+        alloy_level: i32,
+        tier_of: &dyn Fn(BlockPos) -> Option<i32>,
+    ) -> Option<AlloyRun> {
+        let id = self.st.live(pos)?;
+        let slot = &self.st.slots[id.0 as usize];
+        if !slot.tc.as_ref()?.transmitter.has_transmitter_network() {
+            return None;
+        }
+        let network = slot.network?;
+        let members: Vec<BlockPos> = self
+            .registry
+            .network(network)
+            .transmitters()
+            .into_iter()
+            .map(|member| &self.st.slots[member.0 as usize])
+            .filter(|member| !member.dead)
+            .map(|member| member.pos)
+            .filter(|at| tier_of(*at).is_some_and(|level| can_upgrade(alloy_level, level)))
+            .collect();
+        Some(AlloyRun {
+            network,
+            targets: order_by_distance(pos, members),
+            shares_set: false,
+            upgraded: 0,
+        })
+    }
+
+    /// O começo da troca de um condutor: `startUpgrading` (`isUpgrading`, `takeShare(null)`, que o calor não tem, e `setTransmitterNetwork(null)`) e o dado de upgrade
+    /// (`getUpgradeData`: o redstone, os tipos crus e o calor), antes de o bloco mudar. A rede de calor não é em buffer: não há shares a validar.
+    pub fn alloy_take<W: HeatOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+    ) -> Option<ConductorUpgradeData> {
+        let id = self.st.live(pos)?;
+        run.shares_set = true;
+        self.st.slots[id.0 as usize]
+            .tc
+            .as_mut()?
+            .transmitter
+            .set_upgrading(true);
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
+            set_transmitter_network(&mut ctx, id, None, true);
+        }
+        let data = {
+            let ambient = AmbientAt {
+                world: &*world,
+                pos,
+            };
+            self.st.tc(id).upgrade_data(&ambient)
+        };
+        self.flush_deferred(world);
+        Some(data)
+    }
+
+    /// O fim da troca: o condutor novo em `pos` recebe o dado (`parseUpgradeData`: o redstone, os tipos crus e `buffer.setHeat(data.heat, transaction)`, que confirma ao fim da
+    /// transação). `false` se o bloco novo não tem condutor ("Error upgrading transmitter"): o laço segue sem contar.
+    pub fn alloy_give<W: HeatOwnerWorld>(
+        &mut self,
+        world: &mut W,
+        run: &mut AlloyRun,
+        pos: BlockPos,
+        data: &ConductorUpgradeData,
+    ) -> bool {
+        let Some(id) = self.st.live(pos) else {
+            return false;
+        };
+        let Some(tc) = self.st.slots[id.0 as usize].tc.as_mut() else {
+            return false;
+        };
+        tc.parse_upgrade_data(data);
+        {
+            let mut ctx = Ctx {
+                st: &mut self.st,
+                world,
+            };
+            commit_pending(&mut ctx);
+        }
+        run.upgraded += 1;
+        true
+    }
+
+    /// `transmitterNetwork.invalidate(null)` ao fim do laço, se algum subiu.
+    pub fn alloy_finish<W: HeatOwnerWorld>(&mut self, world: &mut W, run: &AlloyRun) {
+        if !run.did_upgrade() {
+            return;
+        }
+        let mut ctx = Ctx {
+            st: &mut self.st,
+            world,
+        };
+        self.registry
+            .invalidate_network(&mut ctx, run.network, None);
+        self.flush_deferred(world);
     }
 
     /// Os cliques do Configurator (`TileEntityTransmitter.onSneakRightClick`): `hit_side` é o lado do braço que o olhar toca. Devolve se o
