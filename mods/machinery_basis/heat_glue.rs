@@ -13,6 +13,7 @@ use machinery_basis_core::heat::{AmbientSource, Capacitor};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::connection::ConnectionType;
+use machinery_basis_core::transmission::reading::{AcceptorSides, TransmitterReading};
 use machinery_basis_core::transmission::heat_owner::{ConductorInfo, HeatOwnerWorld, HeatTransmitters, HostCapacitor};
 use machinery_basis_core::transmission::owner::{CableView, Event as HeatEvent};
 use machinery_basis_core::transmission::thermodynamic_conductor::{CapacitorState, ConductorTier, TierValues, keys as capacitor_keys};
@@ -510,4 +511,33 @@ pub(in crate::game) fn conductor_configure(
     })?;
     let overlays = OVERLAYS.with_borrow_mut(std::mem::take);
     Some((consumed, overlays))
+}
+
+/// `ItemNetworkReader.displayTransmitterInfo` para o condutor em `pos`: o que a rede dele sabe de si.
+pub(in crate::game) fn conductor_read(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<()>> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.read_network(sim_pos(pos)))
+}
+
+/// `displayConnectedNetworks`: os lados do aceitador em `acceptor` por onde a rede do condutor em `transmitter` entra, se ela o tem.
+pub(in crate::game) fn conductor_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.acceptor_sides(sim_pos(transmitter), sim_pos(acceptor))).flatten()
+}
+
+/// `IHeatHandler.getTemperature()` da capability `HEAT` do condutor em `pos` (a que o leitor de rede lê; o condutor a expõe nos seis lados).
+pub(in crate::game) fn conductor_temperature(game: &mut Game<'_>, pos: [i32; 3]) -> Option<f64> {
+    let dimension = game.native_dimension();
+    with_owner(dimension, |owner| {
+        let world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        owner.temperature_at(&world, sim_pos(pos))
+    })
+    .flatten()
+}
+
+/// `IHeatHandler.getTemperature()` da capability `HEAT` do vizinho em `pos` visto pelo lado `side` (o Heat Generator); `None` se o bloco não tem a capability.
+pub(in crate::game) fn neighbor_temperature(game: &Game<'_>, pos: [i32; 3], side: Face) -> Option<f64> {
+    let block = game.native_block(pos);
+    let neighbor = neighbor_of(&block)?;
+    (neighbor.probe)(game, game.native_dimension(), pos, side).map(|capacitor| capacitor.temperature)
 }

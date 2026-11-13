@@ -1772,6 +1772,11 @@ pub(in crate::game) fn holidays_enabled(ns: &'static str) -> bool {
     with_local_unit(ns, |local| local.holidays(Instant::now())).unwrap_or(true)
 }
 
+/// `MekanismConfig.local.compactEnergyDisplay.get()`: se a energia aparece abreviada (`1.5 kFE`), relido do arquivo quando ele muda.
+pub(in crate::game) fn compact_energy_display(ns: &'static str) -> bool {
+    with_local_unit(ns, |local| local.compact_energy(Instant::now())).unwrap_or(true)
+}
+
 /// `tempUnit.set(unit)` seguido de `save()`: vale no próximo quadro e fica no arquivo.
 pub(in crate::game) fn set_temperature_unit(ns: &'static str, unit: temperature::TemperatureUnit) {
     with_local_unit(ns, |local| local.set(unit, Instant::now()));
@@ -3327,6 +3332,7 @@ use machinery_basis_core::transmission::owner::{
 };
 use machinery_basis_core::transmission::transmitter::{Compound as CableNbt, Overlay as CableOverlay, Tag as CableTag};
 use machinery_basis_core::transmission::{DimensionId, Uuid};
+use machinery_basis_core::transmission::reading::{AcceptorSides, TransmitterReading};
 use std::cell::RefCell;
 
 /// A capacidade de um bloco de cabo (`CableTier.getCableCapacity`), ou `None` se o bloco não é um cabo.
@@ -3999,4 +4005,16 @@ pub(in crate::game) fn cable_arm_kinds(game: &Game<'_>, pos: [i32; 3]) -> Option
 /// Os tipos de conexão crus do cabo em `pos`, na ordem dos lados (para os testes em jogo).
 pub(in crate::game) fn cable_connection_types(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
     with_owner(game.native_dimension(), |owner| owner.transmitter(sim_pos(pos)).map(|tx| *tx.connection_types_raw())).flatten()
+}
+
+/// `ItemNetworkReader.displayTransmitterInfo` para o cabo em `pos`: o que a rede dele sabe de si.
+pub(in crate::game) fn cable_read(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<()>> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.read_network(sim_pos(pos)))
+}
+
+/// `displayConnectedNetworks`: os lados do aceitador em `acceptor` por onde a rede do cabo em `transmitter` entra, se ela o tem.
+pub(in crate::game) fn cable_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.acceptor_sides(sim_pos(transmitter), sim_pos(acceptor))).flatten()
 }

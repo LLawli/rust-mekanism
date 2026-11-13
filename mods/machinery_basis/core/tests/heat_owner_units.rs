@@ -362,3 +362,39 @@ fn the_update_packet_carries_the_heat_and_the_client_keeps_it() {
     );
     assert!(client.network_at(world.pos(1, 0)).is_some());
 }
+
+/// `ItemNetworkReader.displayTransmitterInfo` e `displayConnectedNetworks` num condutor e num Heat Generator em cima do último: a rede conta os três condutores e o aceitador, e o
+/// gerador a enxerga por baixo (`getAcceptorDirections`, o lado do gerador que olha o condutor).
+#[test]
+fn the_network_reader_reads_the_network_and_the_sides_of_an_acceptor() {
+    use machinery_basis_core::transmission::reading::{
+        NetworkReader, ReadingDetail, TransmitterReading,
+    };
+    let mut world = line(3);
+    world.place_generator(2);
+    tick(&mut world, 4);
+    match world.owner().read_network(world.pos(1, 0)) {
+        TransmitterReading::Network(network) => {
+            assert_eq!(network.transmitters, 3);
+            assert_eq!(network.acceptors, 5, "o gerador e o que mais a rede conta");
+            assert!(matches!(network.detail, ReadingDetail::Heat { .. }));
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        world.owner().read_network(world.pos(7, 0)),
+        TransmitterReading::NoTransmitter
+    );
+    let sides = world
+        .owner()
+        .acceptor_sides(world.pos(2, 0), world.pos(2, 1))
+        .expect("a rede tem o gerador");
+    assert_eq!(sides.sides, vec![Face::Down]);
+    // Um bloco que nenhuma rede tem como aceitador não responde.
+    assert!(
+        world
+            .owner()
+            .acceptor_sides(world.pos(2, 0), world.pos(5, 1))
+            .is_none()
+    );
+}

@@ -14,7 +14,10 @@ use horizon_core::random::RandomSource;
 use horizon_client::items::ItemStack;
 use horizon_client::mod_api::Text;
 use horizon_world::nbt::{Compound, JavaString, Tag};
-use machinery_basis_core::side_config::SideClick;
+use machinery_basis_core::side_config::{SideClick, TransmissionType};
+use machinery_basis_core::transmission::reading::TransmitterReading;
+use machinery_basis_core::transmission::NetworkId;
+use rules::network_reader::{self, Comp};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::{face_overlay, item_hud, radial, status_overlay};
 
@@ -107,6 +110,7 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     let result = match &*stack.item {
         rules::CONFIGURATOR_ITEM => configurator_use_on(game, stack, pos, face),
         rules::CONFIGURATION_CARD_ITEM => card_use_on(game, stack, pos),
+        rules::NETWORK_READER_ITEM => network_reader_use_on(game, pos, face),
         // `ItemAlloy.useOn`: `MekanismConfig.general.transmitterAlloyUpgrade.get()` é lido a cada clique; desligada, a liga passa (`InteractionResult.PASS`) por qualquer bloco.
         item if rules::alloy_level(item).is_some() && machinery_basis_core::settings::transmitter_alloy_upgrade() => alloy_use_on(game, item, pos),
         _ => return,
@@ -1324,4 +1328,116 @@ pub(in crate::game) fn block_highlight(pos: [i32; 3], canceled: &mut bool) {
     if effects().overlay == Some(pos) {
         *canceled = true;
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O leitor de rede (`ItemNetworkReader`).
+
+/// O `Component` das mensagens como o jogo o escreve: a chave de tradução com os argumentos, ou o texto com os irmãos, e a cor do estilo.
+fn network_text(comp: &Comp) -> Text {
+    let mut out = match &comp.body {
+        network_reader::Body::Translate { key, with } => {
+            let args: Vec<Text> = with.iter().map(network_arg).collect();
+            Text::translate(key, &args)
+        }
+        network_reader::Body::Text { text, extra } => extra.iter().fold(Text::literal(text.clone()), |text, sibling| text.append(network_arg(sibling))),
+    };
+    if let Some(rgb) = comp.color {
+        out = out.with_style(&horizon_client::text::Style::color(rgb));
+    }
+    out
+}
+
+/// Um argumento de `Component.translatable`: o número e o texto cru entram como texto (`String.valueOf`, como o cliente os escreve).
+fn network_arg(arg: &network_reader::Arg) -> Text {
+    match arg {
+        network_reader::Arg::Str(text) => Text::literal(text.clone()),
+        network_reader::Arg::Int(number) => Text::literal(number.to_string()),
+        network_reader::Arg::Float(number) => Text::literal(machinery_basis_core::units::java_float_to_string(*number)),
+        network_reader::Arg::Comp(comp) => network_text(comp),
+    }
+}
+
+/// O que a rede de um transmissor conta de si, o tipo de transmissão dele e a temperatura da capability `HEAT` dele (`TileEntityTransmitter`): `None` se o bloco não é um transmissor.
+fn transmitter_reading(game: &mut Game<'_>, block: &str, pos: [i32; 3]) -> Option<(TransmissionType, TransmitterReading<Comp>, Option<f64>)> {
+    // As redes de energia, de calor e de itens não guardam recurso, então esta conversão nunca roda para elas.
+    let no_resource = |()| Comp::translate_key("");
+    if glue::is_cable_block(block) {
+        return Some((TransmissionType::Energy, basis::cable_read(game, pos)?.map(no_resource), None));
+    }
+    if glue::is_pipe_block(block) {
+        let reading = crate::game::machinery_resources::pipe_read(game, pos)?;
+        return Some((TransmissionType::Fluid, reading.map(|id| Comp::translate_key(&rules::fluid_lang_key(&id))), None));
+    }
+    if glue::is_tube_block(block) {
+        let reading = crate::game::machinery_resources::tube_read(game, pos)?;
+        return Some((TransmissionType::Chemical, reading.map(|id| Comp::translate_key(&rules::chemical_lang_key(&id))), None));
+    }
+    if glue::is_conductor_block(block) {
+        let reading = crate::game::machinery_heat::conductor_read(game, pos)?.map(no_resource);
+        let temperature = crate::game::machinery_heat::conductor_temperature(game, pos);
+        return Some((TransmissionType::Heat, reading, temperature));
+    }
+    if glue::is_transporter_block(block) {
+        return Some((TransmissionType::Item, crate::game::machinery_transporters::transporter_read(game, pos)?.map(no_resource), None));
+    }
+    None
+}
+
+/// `ItemNetworkReader.displayConnectedNetworks`: para cada lado de `pos`, na ordem do `Direction`, a rede do transmissor que o toca, se ela tem `pos` como aceitador e ainda não foi mostrada.
+fn connected_networks(game: &Game<'_>, pos: [i32; 3]) -> Vec<Comp> {
+    let mut shown: Vec<(TransmissionType, NetworkId)> = Vec::new();
+    let mut messages = Vec::new();
+    for side in Face::ALL {
+        let [x, y, z] = side.offset();
+        let neighbor = [pos[0] + x, pos[1] + y, pos[2] + z];
+        let block = game.native_block(neighbor);
+        let found = if glue::is_cable_block(&block) {
+            basis::cable_acceptor_sides(game, neighbor, pos).map(|sides| (TransmissionType::Energy, sides))
+        } else if glue::is_pipe_block(&block) {
+            crate::game::machinery_resources::pipe_acceptor_sides(game, neighbor, pos).map(|sides| (TransmissionType::Fluid, sides))
+        } else if glue::is_tube_block(&block) {
+            crate::game::machinery_resources::tube_acceptor_sides(game, neighbor, pos).map(|sides| (TransmissionType::Chemical, sides))
+        } else if glue::is_conductor_block(&block) {
+            crate::game::machinery_heat::conductor_acceptor_sides(game, neighbor, pos).map(|sides| (TransmissionType::Heat, sides))
+        } else if glue::is_transporter_block(&block) {
+            crate::game::machinery_transporters::transporter_acceptor_sides(game, neighbor, pos).map(|sides| (TransmissionType::Item, sides))
+        } else {
+            None
+        };
+        if let Some((kind, sides)) = found
+            && !shown.contains(&(kind, sides.network))
+        {
+            messages.extend(network_reader::connected_messages(kind, &sides.sides));
+            shown.push((kind, sides.network));
+        }
+    }
+    messages
+}
+
+/// `ItemNetworkReader.useOn`. Num bloco com block entity o item sempre toma o clique (`CONSUME`): num transmissor mostra a rede, numa máquina com calor a temperatura, e em qualquer outro
+/// as redes que o têm como aceitador. Sem block entity o clique passa (a depuração do `TransmitterNetworkRegistry.toComponents` pede `MekanismAPI.debug`, desligado).
+fn network_reader_use_on(game: &mut Game<'_>, pos: [i32; 3], face: Face) -> bool {
+    if !game.world.block_entities.contains_key(&(pos[0], pos[1], pos[2])) {
+        return false;
+    }
+    let Some(player) = game.native_acting_player() else {
+        return false;
+    };
+    let local = network_reader::LocalConfig {
+        temperature_unit: basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE),
+        compact_energy: basis::compact_energy_display(rules::LOCAL_CONFIG_NAMESPACE),
+    };
+    let block = game.native_block(pos);
+    let messages = if let Some((kind, reading, heat)) = transmitter_reading(game, &block, pos) {
+        network_reader::transmitter_messages(kind, &reading, heat, local)
+    } else if let Some(temperature) = crate::game::machinery_heat::neighbor_temperature(game, pos, face.opposite()) {
+        network_reader::heat_machine_messages(temperature, local)
+    } else {
+        connected_networks(game, pos)
+    };
+    for message in &messages {
+        game.native_tell(player.uuid, network_text(message));
+    }
+    true
 }

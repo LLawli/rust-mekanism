@@ -48,17 +48,34 @@ pub fn java_double_to_string(value: f64) -> String {
     format!("{mantissa}E{exponent}")
 }
 
-/// `UnitDisplayUtils.getDisplayBase`: o valor na maior medida que ele alcança (de `f` a `Y`), com `decimals` casas truncadas e sem o
-/// `.0` de um inteiro, seguido do símbolo da unidade. `space` põe um espaço entre o número e a medida (`1.5 kFE`). Zero
-/// vale `0` mais o símbolo, e um valor negativo mantém o sinal.
-pub fn display_base(value: f64, symbol: Option<&str>, decimals: i32, space: bool) -> String {
-    let symbol = symbol.unwrap_or_default();
+/// `Float.toString` do Java: como [`java_double_to_string`], para um `float` (a forma mais curta que volta ao mesmo `float`).
+pub fn java_float_to_string(value: f32) -> String {
+    if value.is_nan() {
+        return "NaN".to_owned();
+    }
+    if value.is_infinite() {
+        return if value < 0.0 { "-Infinity" } else { "Infinity" }.to_owned();
+    }
+    let magnitude = value.abs();
+    if magnitude == 0.0 || (1.0e-3..1.0e7).contains(&magnitude) {
+        return format!("{value:?}");
+    }
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let mantissa = if mantissa.contains('.') {
+        mantissa.to_owned()
+    } else {
+        format!("{mantissa}.0")
+    };
+    format!("{mantissa}E{exponent}")
+}
+
+/// `UnitDisplayUtils.getDisplayBase` sem a unidade: o valor na maior medida que ele alcança (de `f` a `Y`), com `decimals` casas truncadas e sem o `.0` de um inteiro,
+/// seguido da medida (`24 k`, `328.22`, `0 `). `space` põe um espaço entre o número e a medida (`1.5 k`); com ele, zero vale `0 ` (o espaço fica). É o texto que o
+/// `Component` leva; o símbolo da unidade vai depois, como outro componente (`unit.appendTo(roundedStr + name, false, singular)`).
+pub fn display_number(value: f64, decimals: i32, space: bool) -> String {
     if value == 0.0 {
-        return if space {
-            format!("0 {symbol}")
-        } else {
-            format!("0{symbol}")
-        };
+        return if space { "0 " } else { "0" }.to_owned();
     }
     let negative = value < 0.0;
     let value = value.abs();
@@ -79,12 +96,20 @@ pub fn display_base(value: f64, symbol: Option<&str>, decimals: i32, space: bool
     let text = java_double_to_string(rounded);
     let text = text.strip_suffix(".0").unwrap_or(&text);
     // O espaço vem antes da medida (`name = " " + name`), então `1.5 kFE` e não `1.5k FE`.
-    let measure = chosen.0;
     if space {
-        format!("{text} {measure}{symbol}")
+        format!("{text} {}", chosen.0)
     } else {
-        format!("{text}{measure}{symbol}")
+        format!("{text}{}", chosen.0)
     }
+}
+
+/// `UnitDisplayUtils.getDisplayBase`: [`display_number`] seguido do símbolo da unidade.
+pub fn display_base(value: f64, symbol: Option<&str>, decimals: i32, space: bool) -> String {
+    format!(
+        "{}{}",
+        display_number(value, decimals, space),
+        symbol.unwrap_or_default()
+    )
 }
 
 /// `UnitDisplayUtils.getEnergyDisplay` com `compactEnergyDisplay` ligado, o padrão (`getDisplayBase(value, FORGE_ENERGY, 2, true)`):

@@ -47,6 +47,7 @@ pub mod mechanical_pipe;
 pub mod network_acceptors;
 pub mod owner;
 pub mod pressurized_tube;
+pub mod reading;
 pub mod registry;
 pub mod resource_owner;
 pub mod thermodynamic_conductor;

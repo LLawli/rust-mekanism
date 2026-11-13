@@ -2,7 +2,7 @@
 //! troca, e o texto que `MekanismUtils.getTemperatureDisplay` monta. Nada aqui conhece id de mod: os textos de idioma e os sprites quem
 //! escolhe é o mod, pelo [`TemperatureUnit::tab_name`] e pela posição na lista.
 
-use crate::units::{display_base, format_lang};
+use crate::units::{display_base, display_number, format_lang};
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -13,6 +13,8 @@ pub const DISPLAY_DECIMALS: i32 = 2;
 pub const CONFIG_KEY: &str = "temperatureUnit";
 /// A chave de `LocalConfig.holidays`.
 pub const HOLIDAYS_KEY: &str = "holidays";
+/// A chave de `compactEnergyDisplay` no `local.toml`.
+pub const COMPACT_ENERGY_KEY: &str = "compactEnergyDisplay";
 
 /// `UnitDisplayUtils.TemperatureUnit`, na ordem do enum: `ordinal`, `getNext` e `getPrevious` seguem essa ordem.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,6 +158,19 @@ pub fn temperature_display(temp: f64, unit: TemperatureUnit, shift: bool, decima
     )
 }
 
+/// `UnitDisplayUtils.getTemperatureDisplay` em duas partes, como o `Component` as leva: o número (`328.22`, `10M`) e o símbolo da unidade (`K`).
+pub fn temperature_display_parts(
+    temp: f64,
+    unit: TemperatureUnit,
+    shift: bool,
+    decimals: i32,
+) -> (String, &'static str) {
+    (
+        display_number(unit.convert_from_k(temp, shift), decimals, false),
+        unit.symbol(),
+    )
+}
+
 /// `MekanismUtils.getTemperatureDisplay(temp, unit, shift)`: `temp` está em `from`, e sai na unidade da configuração local (`local`),
 /// com duas casas. `shift` diz se é uma temperatura (desloca o zero) ou uma diferença (só o tamanho do grau).
 pub fn local_display(
@@ -196,13 +211,12 @@ pub fn unit_from_toml(text: &str) -> TemperatureUnit {
         .unwrap_or_default()
 }
 
-/// `LocalConfig.holidays` lido do texto do arquivo (`define("holidays", true)`): `true` ou `false`, também escrito como texto em qualquer caixa (o validador de `define(String,
-/// boolean)`). Chave ausente ou valor que não é um booleano valem o padrão, `true`.
-pub fn holidays_from_toml(text: &str) -> bool {
+/// Um booleano do arquivo (`define(String, boolean)`): `true` ou `false`, também escrito como texto em qualquer caixa. `None` sem a chave ou com um valor que não é booleano.
+fn bool_from_toml(text: &str, wanted: &str) -> Option<bool> {
     text.lines()
         .find_map(|line| {
             let (key, value) = line.split_once('=')?;
-            (key.trim() == HOLIDAYS_KEY).then(|| {
+            (key.trim() == wanted).then(|| {
                 value
                     .split('#')
                     .next()
@@ -217,7 +231,16 @@ pub fn holidays_from_toml(text: &str) -> bool {
             "false" => Some(false),
             _ => None,
         })
-        .unwrap_or(true)
+}
+
+/// `LocalConfig.holidays` lido do texto do arquivo (`define("holidays", true)`). Chave ausente ou valor que não é um booleano valem o padrão, `true`.
+pub fn holidays_from_toml(text: &str) -> bool {
+    bool_from_toml(text, HOLIDAYS_KEY).unwrap_or(true)
+}
+
+/// `LocalConfig.compactEnergyDisplay` lido do texto do arquivo (`define("compactEnergyDisplay", true)`). Chave ausente ou valor que não é um booleano valem o padrão, `true`.
+pub fn compact_energy_from_toml(text: &str) -> bool {
+    bool_from_toml(text, COMPACT_ENERGY_KEY).unwrap_or(true)
 }
 
 /// O texto do arquivo com `tempUnit` trocado por `unit`, sem tocar nas outras chaves nem nos comentários. Sem a chave, ela entra no fim.
@@ -256,6 +279,7 @@ pub struct LocalUnit {
     path: PathBuf,
     unit: TemperatureUnit,
     holidays: bool,
+    compact_energy: bool,
     modified: Option<SystemTime>,
     checked: Option<Instant>,
 }
@@ -266,6 +290,7 @@ impl LocalUnit {
             path,
             unit: TemperatureUnit::default(),
             holidays: true,
+            compact_energy: true,
             modified: None,
             checked: None,
         }
@@ -280,6 +305,7 @@ impl LocalUnit {
         let text = std::fs::read_to_string(&self.path).unwrap_or_default();
         self.unit = unit_from_toml(&text);
         self.holidays = holidays_from_toml(&text);
+        self.compact_energy = compact_energy_from_toml(&text);
     }
 
     /// A unidade de agora. Na primeira vez lê o arquivo, e depois só quando a data dele muda, olhando no máximo a cada
@@ -293,6 +319,12 @@ impl LocalUnit {
     pub fn holidays(&mut self, now: Instant) -> bool {
         self.refresh(now);
         self.holidays
+    }
+
+    /// `MekanismConfig.local.compactEnergyDisplay` de agora, relido do arquivo como a unidade.
+    pub fn compact_energy(&mut self, now: Instant) -> bool {
+        self.refresh(now);
+        self.compact_energy
     }
 
     fn refresh(&mut self, now: Instant) {

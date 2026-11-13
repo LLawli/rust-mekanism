@@ -2688,6 +2688,16 @@ pub const STORED_MB_LANG: &str = "generic.mekanism.stored.mb";
 pub const EMPTY_LANG: &str = "gui.mekanism.empty";
 pub const ENERGY_UNIT_LANG: &str = "energy.mekanism.forge.short";
 
+/// A chave de idioma do nome de um fluido (`FluidType.getDescriptionId`).
+pub fn fluid_lang_key(id: &str) -> String {
+    // `FluidType.getDescriptionId`: a água e a lava do jogo usam a chave do bloco, e o resto `fluid_type.<ns>.<nome>` (`Util.makeDescriptionId`).
+    match id.split_once(':') {
+        Some(("minecraft", name @ ("water" | "lava"))) => format!("block.minecraft.{name}"),
+        Some((namespace, name)) => format!("fluid_type.{namespace}.{name}"),
+        None => format!("fluid_type.{id}"),
+    }
+}
+
 /// A chave de idioma do nome de um químico (`Chemical.getTranslationKey`: `chemical.<namespace>.<nome>`).
 pub fn chemical_lang_key(id: &str) -> String {
     match id.split_once(':') {
@@ -4041,6 +4051,7 @@ pub mod worn_gear {
 /// `MekanismItems.CONFIGURATOR` e `CONFIGURATION_CARD`.
 pub const CONFIGURATOR_ITEM: &str = "mekanism:configurator";
 pub const CONFIGURATION_CARD_ITEM: &str = "mekanism:configuration_card";
+pub const NETWORK_READER_ITEM: &str = "mekanism:network_reader";
 /// `MekanismDataComponents.CONFIGURATOR_MODE` (o nome serializado do `ConfiguratorMode`) e `CONFIGURATION_DATA` (o `CompoundTag` do cartão).
 pub const CONFIGURATOR_MODE_COMPONENT: &str = "mekanism:configurator_mode";
 pub const CONFIGURATION_DATA_COMPONENT: &str = "mekanism:configuration_data";
@@ -5079,6 +5090,423 @@ pub mod cube_shape {
             Face::West,
         ]
         .map(|side| relative_enabled(RelativeSide::from_directions(facing, side)))
+    }
+}
+
+/// O leitor de rede (`ItemNetworkReader`): as mensagens que o clique manda ao jogador. Os números vêm das redes (`machinery_basis_core::transmission::reading`); aqui ficam os
+/// textos, as chaves de tradução e as cores (`TextComponentUtil.smartTranslate`, `ILangEntry.translateColored`, `EnergyDisplay`, `MekanismUtils.getTemperatureDisplay`).
+pub mod network_reader {
+    use super::{ENUM_COLOR_RGB, Face, TransmissionType};
+    use machinery_basis_core::temperature::{TemperatureUnit, temperature_display_parts};
+    use machinery_basis_core::transmission::heat_network::flow_efficiency_percent;
+    use machinery_basis_core::transmission::reading::{
+        NetworkReading, ReadingDetail, TransmitterReading,
+    };
+    use machinery_basis_core::units::{display_number, grouped, java_float_to_string};
+    use serde_json::{Value, json};
+
+    /// `EnumColor.GRAY`, `DARK_GRAY` e `DARK_BLUE` pelo `ordinal`.
+    const GRAY: u8 = 7;
+    const DARK_GRAY: u8 = 8;
+    const DARK_BLUE: u8 = 1;
+
+    /// O traço da borda (`displayBorder`) e o texto do fim.
+    const BORDER_DASHES: &str = "-------------";
+    const END_BORDER: &str = "[=======]";
+    /// A casa decimal dos números de energia e de temperatura (`getDisplayBase(value, unit, 2, ...)`).
+    const DECIMALS: i32 = 2;
+    /// `FluidType.BUCKET_VOLUME`.
+    const BUCKET_VOLUME: f32 = 1000.0;
+
+    /// Um argumento de `Component.translatable`: o que o `ComponentSerialization.CODEC` grava (um texto cru, um número ou outro componente).
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Arg {
+        Str(String),
+        Int(i64),
+        Float(f32),
+        Comp(Comp),
+    }
+
+    /// Um `Component` com o estilo que as mensagens usam (a cor).
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct Comp {
+        pub body: Body,
+        pub color: Option<u32>,
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    pub enum Body {
+        /// `Component.translatable(key, with)`.
+        Translate { key: String, with: Vec<Arg> },
+        /// `Component.literal(text)` com os irmãos (`extra`).
+        Text { text: String, extra: Vec<Arg> },
+    }
+
+    impl Comp {
+        fn translate(key: &str, with: Vec<Arg>) -> Comp {
+            Comp {
+                body: Body::Translate {
+                    key: key.to_owned(),
+                    with,
+                },
+                color: None,
+            }
+        }
+
+        /// `Component.translatable(key)`, sem argumentos nem estilo: o nome de um recurso.
+        pub fn translate_key(key: &str) -> Comp {
+            Comp::translate(key, Vec::new())
+        }
+
+        fn literal(text: &str, extra: Vec<Arg>) -> Comp {
+            Comp {
+                body: Body::Text {
+                    text: text.to_owned(),
+                    extra,
+                },
+                color: None,
+            }
+        }
+
+        /// `MutableComponent.setStyle(Style.EMPTY.withColor(color))`: troca o estilo inteiro pela cor.
+        fn with_color(mut self, ordinal: u8) -> Comp {
+            self.color = Some(ENUM_COLOR_RGB[usize::from(ordinal)]);
+            self
+        }
+
+        /// O JSON do `ComponentSerialization.CODEC`: um texto sem irmãos nem estilo vira só o texto.
+        pub fn to_json(&self) -> Value {
+            let mut object = serde_json::Map::new();
+            match &self.body {
+                Body::Translate { key, with } => {
+                    object.insert("translate".to_owned(), json!(key));
+                    if !with.is_empty() {
+                        object.insert(
+                            "with".to_owned(),
+                            Value::Array(with.iter().map(Arg::to_json).collect()),
+                        );
+                    }
+                }
+                Body::Text { text, extra } => {
+                    if extra.is_empty() && self.color.is_none() {
+                        return json!(text);
+                    }
+                    object.insert("text".to_owned(), json!(text));
+                    if !extra.is_empty() {
+                        object.insert(
+                            "extra".to_owned(),
+                            Value::Array(extra.iter().map(Arg::to_json).collect()),
+                        );
+                    }
+                }
+            }
+            if let Some(color) = self.color {
+                object.insert("color".to_owned(), json!(format!("#{color:06X}")));
+            }
+            Value::Object(object)
+        }
+    }
+
+    impl Arg {
+        pub fn to_json(&self) -> Value {
+            match self {
+                Arg::Str(text) => json!(text),
+                Arg::Int(number) => json!(number),
+                // `Float.toString`, lido de volta: o JSON do original guarda o `float` por esse texto.
+                Arg::Float(number) => java_float_to_string(*number)
+                    .parse::<f64>()
+                    .map_or(Value::Null, |parsed| json!(parsed)),
+                Arg::Comp(comp) => comp.to_json(),
+            }
+        }
+
+        /// O argumento no estilo de `translateColored(.., DARK_GRAY, arg)`: um componente leva a cor no lugar do estilo dele, e qualquer outro vira texto (`getString(arg.toString())`).
+        fn colored(self, ordinal: u8) -> Arg {
+            Arg::Comp(match self {
+                Arg::Comp(comp) => comp.with_color(ordinal),
+                Arg::Str(text) => Comp::literal(&text, Vec::new()).with_color(ordinal),
+                Arg::Int(number) => {
+                    Comp::literal(&number.to_string(), Vec::new()).with_color(ordinal)
+                }
+                Arg::Float(number) => {
+                    Comp::literal(&java_float_to_string(number), Vec::new()).with_color(ordinal)
+                }
+            })
+        }
+    }
+
+    /// `lang.translateColored(GRAY, DARK_GRAY, arg)`.
+    fn gray(key: &str, arg: Arg) -> Comp {
+        Comp::translate(key, vec![arg.colored(DARK_GRAY)]).with_color(GRAY)
+    }
+
+    /// `displayBorder`: `NETWORK_READER_BORDER.translateColored(GRAY, "-------------", DARK_BLUE, toDisplay)`.
+    fn border(inner: Arg) -> Comp {
+        Comp::translate(
+            "network_reader.mekanism.border",
+            vec![Arg::Str(BORDER_DASHES.to_owned()), inner.colored(DARK_BLUE)],
+        )
+        .with_color(GRAY)
+    }
+
+    /// `MekanismLang.GENERIC_SQUARE_BRACKET.translate(inner)`.
+    fn square_bracket(inner: Arg) -> Comp {
+        Comp::translate("generic.mekanism.square_bracket", vec![inner])
+    }
+
+    /// `displayBorder(player, MekanismLang.MEKANISM, true)`.
+    fn start_border() -> Comp {
+        border(Arg::Comp(square_bracket(Arg::Comp(Comp::translate(
+            "constants.mekanism.mod_name",
+            Vec::new(),
+        )))))
+    }
+
+    /// `displayEndBorder`.
+    fn end_border() -> Comp {
+        border(Arg::Str(END_BORDER.to_owned()))
+    }
+
+    /// A configuração local que as mensagens leem (`MekanismConfig.local`).
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub struct LocalConfig {
+        pub temperature_unit: TemperatureUnit,
+        pub compact_energy: bool,
+    }
+
+    impl Default for LocalConfig {
+        fn default() -> Self {
+            Self {
+                temperature_unit: TemperatureUnit::default(),
+                compact_energy: true,
+            }
+        }
+    }
+
+    /// `EnergyDisplay.of(energy).getTextComponent()` (sem o máximo).
+    fn energy_display(energy: i64, local: LocalConfig) -> Comp {
+        let energy = energy.max(0);
+        if energy == i64::MAX {
+            return Comp::translate("gui.mekanism.infinite", Vec::new());
+        }
+        let symbol = vec![Arg::Comp(Comp::translate(
+            "energy.mekanism.forge.short",
+            Vec::new(),
+        ))];
+        if local.compact_energy {
+            Comp::literal(&display_number(energy as f64, DECIMALS, true), symbol)
+        } else {
+            // `FORGE_ENERGY.appendTo(TextUtils.format(value), true, ...)`: o número agrupado e um espaço.
+            Comp::literal(&format!("{} ", grouped(energy as u64)), symbol)
+        }
+    }
+
+    /// `MekanismUtils.getTemperatureDisplay(temp, KELVIN, shift)`: o número na unidade local e o símbolo dela como irmão.
+    fn temperature(temp: f64, shift: bool, local: LocalConfig) -> Comp {
+        let (number, symbol) =
+            temperature_display_parts(temp, local.temperature_unit, shift, DECIMALS);
+        Comp::literal(&number, vec![Arg::Str(symbol.to_owned())])
+    }
+
+    /// O que a rede conta de si, com o recurso guardado já em componente (`FluidResource.getHoverName`, o nome do químico).
+    pub type Reading = NetworkReading<Comp>;
+
+    /// `displayTransmitterInfo`: o que o clique num transmissor de `kind` escreve. `heat` é a temperatura da capability `HEAT` da face clicada, quando o transmissor tem uma.
+    pub fn transmitter_messages(
+        kind: TransmissionType,
+        reading: &TransmitterReading<Comp>,
+        heat: Option<f64>,
+        local: LocalConfig,
+    ) -> Vec<Comp> {
+        let mut lines = vec![start_border()];
+        match reading {
+            TransmitterReading::NoTransmitter => {}
+            TransmitterReading::NoNetwork => {
+                lines.push(Comp::translate("network.mekanism.no_network", Vec::new()))
+            }
+            TransmitterReading::Network(network) => {
+                lines.push(gray(
+                    "network_reader.mekanism.transmitters",
+                    Arg::Int(network.transmitters as i64),
+                ));
+                lines.push(gray(
+                    "network_reader.mekanism.acceptors",
+                    Arg::Int(network.acceptors as i64),
+                ));
+                lines.extend(detail_lines(kind, network, local));
+                if let Some(temp) = heat {
+                    lines.push(temperature_line(temp, local));
+                }
+            }
+        }
+        lines.push(end_border());
+        lines
+    }
+
+    /// `sendTemperature`.
+    fn temperature_line(temp: f64, local: LocalConfig) -> Comp {
+        gray(
+            "network_reader.mekanism.temperature",
+            Arg::Comp(temperature(temp, true, local)),
+        )
+    }
+
+    /// `getNeededInfo`, `getStoredInfo`, `getFlowInfo` e `getNetworkReaderCapacity`, na ordem do item, sem as que a rede deixa nulas.
+    fn detail_lines(kind: TransmissionType, network: &Reading, local: LocalConfig) -> Vec<Comp> {
+        let needed_key = "network_reader.mekanism.needed";
+        let buffer_key = "network_reader.mekanism.buffer";
+        let throughput_key = "network_reader.mekanism.throughput";
+        let capacity_key = "network_reader.mekanism.capacity";
+        match &network.detail {
+            ReadingDetail::Energy {
+                needed,
+                stored,
+                flow,
+                capacity,
+            } => vec![
+                gray(needed_key, Arg::Comp(energy_display(*needed, local))),
+                gray(buffer_key, Arg::Comp(energy_display(*stored, local))),
+                gray(
+                    throughput_key,
+                    Arg::Comp(Comp::translate(
+                        "generic.mekanism.per_tick",
+                        vec![Arg::Comp(energy_display(*flow, local))],
+                    )),
+                ),
+                gray(capacity_key, Arg::Int(*capacity)),
+            ],
+            ReadingDetail::Resource {
+                needed,
+                stored,
+                flow,
+                capacity,
+            } => {
+                let stored = match stored {
+                    None => Comp::translate("gui.mekanism.none", Vec::new()),
+                    Some((resource, amount)) => Comp::translate(
+                        "network.mekanism.mb_stored",
+                        vec![Arg::Comp(resource.clone()), Arg::Int(*amount)],
+                    ),
+                };
+                vec![
+                    gray(needed_key, Arg::Comp(resource_needed(kind, *needed))),
+                    gray(buffer_key, Arg::Comp(stored)),
+                    gray(
+                        throughput_key,
+                        Arg::Comp(Comp::translate(
+                            "network.mekanism.mb_per_tick",
+                            vec![Arg::Int(*flow)],
+                        )),
+                    ),
+                    gray(capacity_key, Arg::Int(*capacity)),
+                ]
+            }
+            ReadingDetail::Heat {
+                mean_temp,
+                transferred,
+                lost,
+            } => vec![
+                gray(
+                    buffer_key,
+                    Arg::Comp(Comp::translate(
+                        "network.mekanism.heat_stored",
+                        vec![Arg::Comp(temperature(*mean_temp, true, local))],
+                    )),
+                ),
+                gray(
+                    throughput_key,
+                    Arg::Comp(heat_flow(*transferred, *lost, local)),
+                ),
+            ],
+            ReadingDetail::Inventory => Vec::new(),
+        }
+    }
+
+    /// `getNeededInfo` das redes de recurso: o fluido em baldes (`float`, `FluidNetwork`), o químico como o número (`TextComponentUtil.build(long)`, `ChemicalNetwork`).
+    fn resource_needed(kind: TransmissionType, needed: i64) -> Comp {
+        if kind == TransmissionType::Fluid {
+            fluid_needed(needed)
+        } else {
+            Comp::literal(&needed.to_string(), Vec::new())
+        }
+    }
+
+    /// `HeatNetwork.getFlowInfo`.
+    fn heat_flow(transferred: f64, lost: f64, local: LocalConfig) -> Comp {
+        let transferred_text = temperature(transferred, false, local);
+        let lost_text = temperature(lost, false, local);
+        match flow_efficiency_percent(transferred, lost) {
+            None => Comp::translate(
+                "network.mekanism.heat_flow",
+                vec![Arg::Comp(transferred_text), Arg::Comp(lost_text)],
+            ),
+            Some(percent) => Comp::translate(
+                "network.mekanism.heat_flow.efficiency",
+                vec![
+                    Arg::Comp(transferred_text),
+                    Arg::Comp(lost_text),
+                    Arg::Comp(Comp::translate(
+                        "generic.mekanism.percent",
+                        vec![Arg::Float(percent)],
+                    )),
+                ],
+            ),
+        }
+    }
+
+    /// `FluidNetwork.getNeededInfo`: `FLUID_NETWORK_NEEDED.translate(needed / (float) BUCKET_VOLUME)`.
+    fn fluid_needed(needed: i64) -> Comp {
+        Comp::translate(
+            "network.mekanism.fluid_needed",
+            vec![Arg::Float(needed as f32 / BUCKET_VOLUME)],
+        )
+    }
+
+    /// `TextComponentUtil.build(enum)`: o nome traduzido do lado (`APILang.DOWN` e os outros).
+    fn direction(side: Face) -> Comp {
+        Comp::translate(&format!("direction.mekanism.{}", side.name()), Vec::new())
+    }
+
+    /// `TextComponentUtil.build(TransmissionType)`: `IHasTranslationKey`.
+    fn transmission(kind: TransmissionType) -> Comp {
+        Comp::translate(
+            &format!("transmission.mekanism.{}", kind.serialized_name()),
+            Vec::new(),
+        )
+    }
+
+    /// `compileList`: os elementos juntos por `GENERIC_WITH_COMMA` (aninhado à esquerda) e entre colchetes.
+    fn compile_list(elements: Vec<Comp>) -> Comp {
+        let mut joined: Option<Comp> = None;
+        for element in elements {
+            joined = Some(match joined {
+                None => element,
+                Some(previous) => Comp::translate(
+                    "generic.mekanism.with_comma",
+                    vec![Arg::Comp(previous), Arg::Comp(element)],
+                ),
+            });
+        }
+        square_bracket(joined.map_or_else(|| Arg::Str(String::new()), Arg::Comp))
+    }
+
+    /// `displayConnectedNetworks`, uma rede vizinha: o tipo de transmissão da rede, os lados do aceitador por onde ela entra.
+    pub fn connected_messages(kind: TransmissionType, sides: &[Face]) -> Vec<Comp> {
+        vec![
+            border(Arg::Comp(compile_list(vec![transmission(kind)]))),
+            gray(
+                "network_reader.mekanism.connected",
+                Arg::Comp(compile_list(
+                    sides.iter().map(|side| direction(*side)).collect(),
+                )),
+            ),
+            end_border(),
+        ]
+    }
+
+    /// `displayBorder(MEKANISM, true)`, a temperatura e o fim: o clique numa máquina com a capability `HEAT`.
+    pub fn heat_machine_messages(temp: f64, local: LocalConfig) -> Vec<Comp> {
+        vec![start_border(), temperature_line(temp, local), end_border()]
     }
 }
 

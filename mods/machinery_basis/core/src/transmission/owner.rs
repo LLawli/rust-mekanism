@@ -1136,3 +1136,56 @@ impl EnergyTransmitters {
         result.is_some_and(|result| result.consumes_action())
     }
 }
+
+impl super::reading::NetworkReader for EnergyTransmitters {
+    type Resource = ();
+
+    /// `ItemNetworkReader.displayTransmitterInfo` para o cabo em `pos`: `EnergyNetwork.getNeededInfo`, `getStoredInfo`, `getFlowInfo` e `getNetworkReaderCapacity`.
+    fn read_network(&self, pos: BlockPos) -> super::reading::TransmitterReading<()> {
+        use super::reading::{NetworkReading, ReadingDetail, TransmitterReading};
+        let Some(id) = self.st.live(pos) else {
+            return TransmitterReading::NoTransmitter;
+        };
+        // `hasTransmitterNetwork()`: `!isOrphan() && getTransmitterNetwork() != null`.
+        let Some(network) = self.st.slots[id.0 as usize]
+            .network
+            .filter(|_| !self.st.tx(id).is_orphan())
+        else {
+            return TransmitterReading::NoNetwork;
+        };
+        let (Some(energy), dynamic) = (
+            self.st.family.network(network),
+            self.registry.network(network),
+        ) else {
+            return TransmitterReading::NoNetwork;
+        };
+        let stored = energy.buffer();
+        let capacity = energy.capacity();
+        TransmitterReading::Network(NetworkReading {
+            transmitters: dynamic.transmitters_size(),
+            acceptors: dynamic.acceptor_count(),
+            detail: ReadingDetail::Energy {
+                needed: super::reading::needed(capacity, stored),
+                stored,
+                flow: energy.prev_transfer_amount(),
+                capacity,
+            },
+        })
+    }
+
+    fn acceptor_sides(
+        &self,
+        transmitter: BlockPos,
+        acceptor: BlockPos,
+    ) -> Option<super::reading::AcceptorSides> {
+        // `displayConnectedNetworks` usa `getTransmitterNetwork()`: a rede, órfã ou não.
+        let network = self.network_of(transmitter)?;
+        let dynamic = self.registry.network(network);
+        dynamic
+            .has_acceptor(acceptor)
+            .then(|| super::reading::AcceptorSides {
+                network,
+                sides: dynamic.acceptor_directions(acceptor),
+            })
+    }
+}

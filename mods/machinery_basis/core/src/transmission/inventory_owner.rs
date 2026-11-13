@@ -1523,3 +1523,39 @@ impl InventoryTransmitters {
         side_difference(pos.as_long(), from.as_long())
     }
 }
+
+impl super::reading::NetworkReader for InventoryTransmitters {
+    type Resource = ();
+
+    /// `ItemNetworkReader.displayTransmitterInfo` para o transportador em `pos`: a rede de itens não responde nenhuma das quatro informações (`INetworkDataHandler`).
+    fn read_network(&self, pos: BlockPos) -> super::reading::TransmitterReading<()> {
+        use super::reading::{NetworkReading, ReadingDetail, TransmitterReading};
+        if self.st.live(pos).is_none() {
+            return TransmitterReading::NoTransmitter;
+        }
+        let Some(network) = self.network_of(pos) else {
+            return TransmitterReading::NoNetwork;
+        };
+        let dynamic = self.registry.network(network);
+        TransmitterReading::Network(NetworkReading {
+            transmitters: dynamic.transmitters_size(),
+            acceptors: dynamic.acceptor_count(),
+            detail: ReadingDetail::Inventory,
+        })
+    }
+
+    fn acceptor_sides(
+        &self,
+        transmitter: BlockPos,
+        acceptor: BlockPos,
+    ) -> Option<super::reading::AcceptorSides> {
+        let network = self.st.slots[self.st.live(transmitter)?.0 as usize].network?;
+        let dynamic = self.registry.network(network);
+        dynamic
+            .has_acceptor(acceptor)
+            .then(|| super::reading::AcceptorSides {
+                network,
+                sides: dynamic.acceptor_directions(acceptor),
+            })
+    }
+}

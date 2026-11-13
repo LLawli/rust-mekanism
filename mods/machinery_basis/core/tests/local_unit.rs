@@ -170,3 +170,17 @@ fn holidays_are_read_from_the_same_file_and_follow_an_edit() {
     edit(&path, "holidays = true\n", 2_000);
     assert!(local.holidays(start + RELOAD_EVERY * 2));
 }
+
+#[test]
+fn compact_energy_display_is_read_from_the_file_and_defaults_on() {
+    use machinery_basis_core::temperature::compact_energy_from_toml;
+    assert!(compact_energy_from_toml(""));
+    assert!(compact_energy_from_toml("compactEnergyDisplay = true\n"));
+    assert!(!compact_energy_from_toml("compactEnergyDisplay = false\n"));
+    assert!(!compact_energy_from_toml(
+        "holidays = true\ncompactEnergyDisplay = \"FALSE\" # comment\n"
+    ));
+    // Um valor que não é booleano vale o padrão, e a outra chave não conta.
+    assert!(compact_energy_from_toml("compactEnergyDisplay = 3\n"));
+    assert!(compact_energy_from_toml("holidays = false\n"));
+}

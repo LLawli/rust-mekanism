@@ -23,6 +23,7 @@ use machinery_basis_core::transmission::inventory_owner::{
 use machinery_basis_core::transmission::owner::{CableView, Event as TransporterEvent};
 use machinery_basis_core::transmission::transmitter::Overlay as TransporterOverlay;
 use machinery_basis_core::transmission::{DimensionId, Uuid};
+use machinery_basis_core::transmission::reading::{AcceptorSides, TransmitterReading};
 use machinery_basis_core::transporter::movement::WorldDrop;
 use machinery_basis_core::transporter::nbt::{Compound as LibCompound, Nbt};
 use machinery_basis_core::transporter::node::{CapabilityChange, DiversionControl, TransporterKind, TransporterTier};
@@ -708,4 +709,16 @@ pub(in crate::game) fn hopper_insert(
     let mut rest = stack.clone();
     rest.count = outcome.rest;
     Some(((rest.count > 0).then_some(rest), true))
+}
+
+/// `ItemNetworkReader.displayTransmitterInfo` para o transportador em `pos`: o que a rede dele sabe de si.
+pub(in crate::game) fn transporter_read(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<()>> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.read_network(sim_pos(pos)))
+}
+
+/// `displayConnectedNetworks`: os lados do aceitador em `acceptor` por onde a rede do transportador em `transmitter` entra, se ela o tem.
+pub(in crate::game) fn transporter_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner(game.native_dimension(), |owner| owner.acceptor_sides(sim_pos(transmitter), sim_pos(acceptor))).flatten()
 }

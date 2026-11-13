@@ -32,6 +32,17 @@ impl Default for HeatNetwork {
     }
 }
 
+/// A porcentagem de `getFlowInfo` para o calor transferido e o perdido que o leitor de rede mostra.
+pub fn flow_efficiency_percent(heat_transferred: f64, heat_lost: f64) -> Option<f32> {
+    if heat_transferred + heat_lost == 0.0 {
+        return None;
+    }
+    let scaled = heat_transferred / (heat_transferred + heat_lost) * 10_000.0;
+    // `Math.round(double)`: `floor(x + 0.5)`, em `long`; a divisão é de `long` por `float`.
+    let rounded = (scaled + 0.5).floor() as i64;
+    Some(rounded as f32 / 100.0_f32)
+}
+
 impl HeatNetwork {
     /// Uma rede nova: `meanTemp = HeatAPI.AMBIENT_TEMP` e nenhuma troca. A fusão não copia nada das redes adotadas.
     pub fn new() -> Self {
@@ -60,13 +71,7 @@ impl HeatNetwork {
     /// A porcentagem de `getFlowInfo` (`Math.round(heatTransferred / (heatTransferred + heatLost) * 10_000) / 100F`), ou `None` quando a
     /// soma é zero e o texto não leva a eficiência.
     pub fn flow_efficiency_percent(&self) -> Option<f32> {
-        if self.heat_transferred + self.heat_lost == 0.0 {
-            return None;
-        }
-        let scaled = self.heat_transferred / (self.heat_transferred + self.heat_lost) * 10_000.0;
-        // `Math.round(double)`: `floor(x + 0.5)`, em `long`; a divisão é de `long` por `float`.
-        let rounded = (scaled + 0.5).floor() as i64;
-        Some(rounded as f32 / 100.0_f32)
+        flow_efficiency_percent(self.heat_transferred, self.heat_lost)
     }
 
     /// `onUpdate()`: cada condutor simula numa transação só, a transação confirma, e só então se soma a temperatura (um condutor que

@@ -25,6 +25,7 @@ use machinery_basis_core::transmission::connection::ConnectionType;
 use machinery_basis_core::transmission::fluid_network::fluid_transmitters;
 use machinery_basis_core::transmission::host_resource::{HostHandler, ResourceSnapshot};
 use machinery_basis_core::transmission::owner::{CableView, Event as OwnerEvent};
+use machinery_basis_core::transmission::reading::{AcceptorSides, TransmitterReading};
 use machinery_basis_core::transmission::resource_owner::{Handler, PipeInfo, ResourceOwnerWorld, ResourceTransmitters};
 use machinery_basis_core::transmission::transmitter::{Overlay, keys};
 use machinery_basis_core::transmission::{DimensionId, Uuid};
@@ -891,4 +892,32 @@ pub(in crate::game) fn pipe_configure(game: &mut Game<'_>, pos: [i32; 3], side: 
 
 pub(in crate::game) fn tube_configure(game: &mut Game<'_>, pos: [i32; 3], side: Face, hit_side: Option<Face>, sneaking: bool) -> Option<(bool, Vec<Overlay>)> {
     configure::<Tubes>(game, pos, side, hit_side, sneaking)
+}
+
+/// `ItemNetworkReader.displayTransmitterInfo` para o cano ou tubo em `pos`, com o recurso guardado pelo id.
+fn read<F: Family>(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<String>> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner::<F, _>(game.native_dimension(), |owner| owner.read_network(sim_pos(pos)).map(|resource| F::resource_id(&resource).to_owned()))
+}
+
+pub(in crate::game) fn pipe_read(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<String>> {
+    read::<Pipes>(game, pos)
+}
+
+pub(in crate::game) fn tube_read(game: &Game<'_>, pos: [i32; 3]) -> Option<TransmitterReading<String>> {
+    read::<Tubes>(game, pos)
+}
+
+/// `displayConnectedNetworks`: os lados do aceitador em `acceptor` por onde a rede do transmissor em `transmitter` entra, se ela o tem.
+fn acceptor_sides<F: Family>(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    use machinery_basis_core::transmission::reading::NetworkReader;
+    with_owner::<F, _>(game.native_dimension(), |owner| owner.acceptor_sides(sim_pos(transmitter), sim_pos(acceptor))).flatten()
+}
+
+pub(in crate::game) fn pipe_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    acceptor_sides::<Pipes>(game, transmitter, acceptor)
+}
+
+pub(in crate::game) fn tube_acceptor_sides(game: &Game<'_>, transmitter: [i32; 3], acceptor: [i32; 3]) -> Option<AcceptorSides> {
+    acceptor_sides::<Tubes>(game, transmitter, acceptor)
 }

@@ -1348,3 +1348,47 @@ impl HeatTransmitters {
         self.flush_deferred(world);
     }
 }
+
+impl super::reading::NetworkReader for HeatTransmitters {
+    type Resource = ();
+
+    /// `ItemNetworkReader.displayTransmitterInfo` para o condutor em `pos`: `HeatNetwork.getStoredInfo` e `getFlowInfo` (sem `getNeededInfo` nem capacidade).
+    fn read_network(&self, pos: BlockPos) -> super::reading::TransmitterReading<()> {
+        use super::reading::{NetworkReading, ReadingDetail, TransmitterReading};
+        let Some(id) = self.st.live(pos) else {
+            return TransmitterReading::NoTransmitter;
+        };
+        let slot = &self.st.slots[id.0 as usize];
+        let Some(network) = slot.network.filter(|_| !slot.orphan) else {
+            return TransmitterReading::NoNetwork;
+        };
+        let Some(heat) = self.st.heat_networks.get(network) else {
+            return TransmitterReading::NoNetwork;
+        };
+        let dynamic = self.registry.network(network);
+        TransmitterReading::Network(NetworkReading {
+            transmitters: dynamic.transmitters_size(),
+            acceptors: dynamic.acceptor_count(),
+            detail: ReadingDetail::Heat {
+                mean_temp: heat.mean_temp(),
+                transferred: heat.heat_transferred(),
+                lost: heat.heat_lost(),
+            },
+        })
+    }
+
+    fn acceptor_sides(
+        &self,
+        transmitter: BlockPos,
+        acceptor: BlockPos,
+    ) -> Option<super::reading::AcceptorSides> {
+        let network = self.st.slots[self.st.live(transmitter)?.0 as usize].network?;
+        let dynamic = self.registry.network(network);
+        dynamic
+            .has_acceptor(acceptor)
+            .then(|| super::reading::AcceptorSides {
+                network,
+                sides: dynamic.acceptor_directions(acceptor),
+            })
+    }
+}
