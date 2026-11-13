@@ -361,8 +361,8 @@ pub const GENERAL_CONFIG_FILE: &str = "Mekanism/general.toml";
 pub const USAGE_CONFIG_FILE: &str = "Mekanism/machine-usage.toml";
 pub const TIERS_CONFIG_FILE: &str = "Mekanism/tiers.toml";
 
-/// `GeneralConfig`: `blockDeactivationDelay` (`:126-127`, `defineInRange(.., 3 * TICKS_PER_SECOND, 0, TICKS_PER_MINUTE)`) e `maxUpgradeMultiplier` (`:133-134`,
-/// `defineInRange(.., 10, 1, Integer.MAX_VALUE)`), as duas de fora de qualquer seção. O resto do arquivo entra com a fase que o lê.
+/// `GeneralConfig`: `blockDeactivationDelay` (`:126-127`, `defineInRange(.., 3 * TICKS_PER_SECOND, 0, TICKS_PER_MINUTE)`), `transmitterAlloyUpgrade` (`:130-131`, `define(.., true)`)
+/// e `maxUpgradeMultiplier` (`:133-134`, `defineInRange(.., 10, 1, Integer.MAX_VALUE)`), as três de fora de qualquer seção. O resto do arquivo entra com a fase que o lê.
 pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
     sections: &[
         ClientSection {
@@ -377,6 +377,12 @@ pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
                         min: 0,
                         max: 1_200,
                     },
+                },
+                // `GeneralConfig.java:130-131`, depois do `aestheticWorldDamage` (que o port ainda não tem).
+                ClientEntry {
+                    key: "transmitterAlloyUpgrade",
+                    comment: "Allow upgrading Universal Cables, Mechanical Pipes, Pressurized Tubes, Logistical Transporters, and Thermodynamic Conductors by right clicking them with the next tier of alloy.",
+                    setting: ClientSetting::Bool { default: true },
                 },
                 ClientEntry {
                     key: "maxUpgradeMultiplier",
@@ -450,7 +456,7 @@ pub fn paste_settings(loaded: &ClientLoaded) -> PasteSettings {
     }
 }
 
-/// `GeneralConfig.blockDeactivationDelay` e `maxUpgradeMultiplier` de um arquivo lido.
+/// `GeneralConfig.blockDeactivationDelay`, `transmitterAlloyUpgrade` e `maxUpgradeMultiplier` de um arquivo lido.
 pub fn machine_settings(loaded: &ClientLoaded) -> MachineSettings {
     let defaults = MachineSettings::DEFAULT;
     MachineSettings {
@@ -460,6 +466,9 @@ pub fn machine_settings(loaded: &ClientLoaded) -> MachineSettings {
         max_upgrade_multiplier: loaded
             .int(&GENERAL_CONFIG, "", "maxUpgradeMultiplier")
             .unwrap_or(defaults.max_upgrade_multiplier),
+        transmitter_alloy_upgrade: loaded
+            .bool(&GENERAL_CONFIG, "", "transmitterAlloyUpgrade")
+            .unwrap_or(defaults.transmitter_alloy_upgrade),
     }
 }
 

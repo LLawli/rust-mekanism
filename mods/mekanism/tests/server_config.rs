@@ -209,7 +209,8 @@ fn each_corrected_key_has_the_value_the_original_gave_it() {
         machine_settings(&general),
         MachineSettings {
             block_deactivation_delay: 1_200,
-            max_upgrade_multiplier: 1
+            max_upgrade_multiplier: 1,
+            transmitter_alloy_upgrade: true
         }
     );
     let usage = Usage::of(&USAGE_CONFIG.load(&crafted("entrada", "machine-usage.toml")));
@@ -228,6 +229,27 @@ fn each_corrected_key_has_the_value_the_original_gave_it() {
         cable_capacities(&tiers),
         [1, 128_000, 1_024_000, 5_000_000_000]
     );
+}
+
+/// `transmitterAlloyUpgrade = false` no arquivo desliga o upgrade pela liga (`ItemAlloy.useOn` lê a chave a cada clique); o texto da chave é o do original.
+#[test]
+fn the_alloy_upgrade_option_follows_the_file() {
+    let off = reference("general").replace(
+        "transmitterAlloyUpgrade = true",
+        "transmitterAlloyUpgrade = false",
+    );
+    assert!(!machine_settings(&GENERAL_CONFIG.load(&off)).transmitter_alloy_upgrade);
+    assert!(
+        machine_settings(&GENERAL_CONFIG.load(&reference("general"))).transmitter_alloy_upgrade
+    );
+    // Uma chave que não é booleana volta ao padrão, como o NeoForge corrige.
+    let wrong = reference("general").replace(
+        "transmitterAlloyUpgrade = true",
+        "transmitterAlloyUpgrade = 7",
+    );
+    let loaded = GENERAL_CONFIG.load(&wrong);
+    assert!(loaded.corrected);
+    assert!(machine_settings(&loaded).transmitter_alloy_upgrade);
 }
 
 #[test]

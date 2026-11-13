@@ -33,6 +33,8 @@ pub struct MachineSettings {
     pub block_deactivation_delay: i32,
     /// `maxUpgradeMultiplier` (`defineInRange(..., 10, 1, Integer.MAX_VALUE)`).
     pub max_upgrade_multiplier: i32,
+    /// `transmitterAlloyUpgrade` (`define(..., true)`): `ItemAlloy.useOn` lê a cada clique; desligada, a liga passa por qualquer bloco.
+    pub transmitter_alloy_upgrade: bool,
 }
 
 impl MachineSettings {
@@ -40,6 +42,7 @@ impl MachineSettings {
     pub const DEFAULT: Self = Self {
         block_deactivation_delay: 60,
         max_upgrade_multiplier: 10,
+        transmitter_alloy_upgrade: true,
     };
 }
 
@@ -53,6 +56,11 @@ pub fn set_machine_settings(settings: MachineSettings) {
 /// O que vale agora.
 pub fn machine_settings() -> MachineSettings {
     *MACHINE.read().unwrap_or_else(|error| error.into_inner())
+}
+
+/// `MekanismConfig.general.transmitterAlloyUpgrade`.
+pub fn transmitter_alloy_upgrade() -> bool {
+    machine_settings().transmitter_alloy_upgrade
 }
 
 /// `MekanismConfig.general.blockDeactivationDelay`.

@@ -107,14 +107,15 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     let result = match &*stack.item {
         rules::CONFIGURATOR_ITEM => configurator_use_on(game, stack, pos, face),
         rules::CONFIGURATION_CARD_ITEM => card_use_on(game, stack, pos),
-        item if rules::alloy_level(item).is_some() => alloy_use_on(game, item, pos),
+        // `ItemAlloy.useOn`: `MekanismConfig.general.transmitterAlloyUpgrade.get()` é lido a cada clique; desligada, a liga passa (`InteractionResult.PASS`) por qualquer bloco.
+        item if rules::alloy_level(item).is_some() && machinery_basis_core::settings::transmitter_alloy_upgrade() => alloy_use_on(game, item, pos),
         _ => return,
     };
     *claimed = result;
 }
 
 /// `ItemAlloy.useOn`: a liga num transmissor sobe o tier dele e dos ligados a ele (`TileEntityTransmitter.onAlloyInteraction`). O clique é da liga sempre que o bloco é um transmissor
-/// (`ALLOY_INTERACTION`), suba algum ou não; num bloco que não é, segue o caminho normal (`PASS`). `MekanismConfig.general.transmitterAlloyUpgrade` vale sempre `true` (o padrão).
+/// (`ALLOY_INTERACTION`), suba algum ou não; num bloco que não é, segue o caminho normal (`PASS`).
 fn alloy_use_on(game: &mut Game<'_>, item: &str, pos: [i32; 3]) -> bool {
     let Some(level) = rules::alloy_level(item) else {
         return false;
