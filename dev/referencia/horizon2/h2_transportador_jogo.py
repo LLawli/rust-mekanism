@@ -514,6 +514,28 @@ def video_desviador():
     som(False)
 
 
+def funil(lado="up"):
+    """O funil que insere no transportador (`TransporterItemHandler`): um baú com terra sobre um funil sobre o primeiro de quatro transportadores, e um baú no fim da linha. Com o lado de
+    cima do transportador em `NONE` (`lado=none`) a capability não existe e o funil não insere nada."""
+    clima()
+    linha(4, pull=False, fill=False)
+    cmd("setblock %s minecraft:air" % txt(at((0, 0, 0))))
+    if lado == "none":
+        cmd("data merge block %s {probe_set:{raw:[I;0,3,0,0,0,0]}}" % txt(at((1, 0, 0))))
+        wait(40)
+    cmd("setblock %s minecraft:hopper[facing=down]" % txt(at((1, 1, 0))))
+    cmd("setblock %s minecraft:chest" % txt(at((1, 2, 0))))
+    cmd("data merge block %s {Items:[]}" % txt(at((1, 2, 0))))
+    wait(20)
+    fill_chest((1, 2, 0), [(0, "minecraft:dirt", 64)])
+    wait(300)
+    time.sleep(2)
+    origem = sum(n for _, _, n in chest_slots((1, 2, 0)))
+    destino = sum(n for _, _, n in chest_slots((5, 0, 0)))
+    print(f"funil (lado de cima {lado}): baú de cima {origem}, baú do fim da linha {destino}, a soma {origem + destino} (de 64; o resto em trânsito ou no funil)")
+    return destino > 0 if lado == "up" else (destino == 0 and origem == 64)
+
+
 def todos():
     ok = True
     for name in ("pull_line", "tiers", "full_midway", "restrictive", "diversion", "broken"):
@@ -531,6 +553,8 @@ if __name__ == "__main__":
     if what == "video":
         (video_linha if (len(sys.argv) < 3 or sys.argv[2] == "linha") else video_desviador)()
         sys.exit(0)
+    if what == "funil":
+        sys.exit(0 if funil(sys.argv[2] if len(sys.argv) > 2 else "up") else 1)
     if what == "quebrar":
         sys.exit(0 if quebrar(sys.argv[2] if len(sys.argv) > 2 else "setblock") else 1)
     if what == "configurador":

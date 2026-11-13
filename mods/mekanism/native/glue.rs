@@ -412,6 +412,12 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     crate::game::mekanism_cube::container(block, container);
+    // O transportador logístico: um slot que parece sempre vazio (`TransporterItemHandler.size() == 1`), só para um funil, um dropper e o ejetor de outra máquina o acharem como contêiner;
+    // a inserção de verdade é do hook `transporter_insert` (`Game::move_in_item`), que a leva para o dono dos transportadores.
+    if is_transporter(block) {
+        *container = Some(ModContainer { slots: 1, faces: std::array::from_fn(|_| vec![0]), inputs: vec![0], ..Default::default() });
+        return;
+    }
     if crate::game::mekanism_cube::is_cube(block) {
         // As faces, as entradas e as saídas do cubo também são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
         basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);

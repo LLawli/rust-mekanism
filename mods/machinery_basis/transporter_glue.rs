@@ -598,3 +598,39 @@ pub(in crate::game) fn transporter_configure(
     let overlays = OVERLAYS.with_borrow_mut(std::mem::take);
     Some((consumed, overlays))
 }
+
+/// O item que um funil, um dropper ou o ejetor de outra máquina põe no bloco em `pos` pela face `face` dele (`TransporterItemHandler.insert`, o que o hook `transporter_insert` chama de
+/// `Game::move_in_item`). `None` se o bloco não é um transportador (o corpo original segue). Senão, `(o que sobra, se algo entrou)`: a pilha entra em trânsito até a vazão do tier
+/// (`pullAmount`) e só se o lado expõe a capability (`exposesInsertCap`) e há rede.
+pub(in crate::game) fn hopper_insert(
+    game: &mut Game<'_>,
+    pos: [i32; 3],
+    face: Option<horizon_core::geometry::Direction>,
+    stack: &horizon_client::items::ItemStack,
+) -> Option<(Option<horizon_client::items::ItemStack>, bool)> {
+    let dimension = game.native_dimension();
+    if !with_owner(dimension, |owner| owner.transporter_at(sim_pos(pos)).is_some()).unwrap_or(false) {
+        return None;
+    }
+    let refused = Some((Some(stack.clone()), false));
+    let Some(face) = face else {
+        return refused;
+    };
+    let side = basis::face_of(face);
+    let resource = basis::item_resource(game, stack);
+    // O caminho simula a inserção em todos os destinos da rede: os espelhos leem os contêineres antes e o que a pilha mudar sai depois.
+    handlers_refresh(game, dimension);
+    let inserted = with_owner(dimension, |owner| {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        owner.insert(&mut world, sim_pos(pos), side, &resource, stack.count)
+    })
+    .flatten()
+    .unwrap_or(0);
+    handlers_flush(game, dimension);
+    if inserted == 0 {
+        return refused;
+    }
+    let mut rest = stack.clone();
+    rest.count -= inserted.min(stack.count);
+    Some(((rest.count > 0).then_some(rest), true))
+}

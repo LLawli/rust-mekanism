@@ -299,6 +299,22 @@ bindings = [
   { name = "cancel", ty = "&mut bool", value = "&mut *cancel" },
 ]
 
+# O `TransporterItemHandler` no jogo (frente `transportador-jogo`): o item que um funil, um dropper ou o ejetor de outra máquina põe num transportador logístico. Todo contêiner de bloco recebe
+# por `Game::move_in_item` (`tryMoveInItem`, privada de `machines`), e a capability do transportador não é um slot: o HEAD cancelável responde pelo bloco que o dono dos transportadores conhece
+# (a inserção no caminho, o que sobra volta a quem pôs) e deixa o corpo original para os outros. Alvo cru; o hook mais próximo seria `container_accepts` com a pergunta de inserir de verdade.
+[[injection]]
+id = "transporter_insert"
+target = "horizon_client::game::machines::Game<'_>::move_in_item"
+kind = "HEAD"
+cancellable = true
+helper = "transporter_insert.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "view", ty = "&View", value = "view" },
+  { name = "stack", ty = "&ItemStack", value = "&stack" },
+  { name = "face", ty = "Option<horizon_core::geometry::Direction>", value = "face" },
+]
+
 # ---- janelas de GUI e a janela de upgrades ----
 # Hooks do catálogo que leem a tela aberta, a janela do jogo e o menu de LAN (estrutura privada).
 [[injection]]
