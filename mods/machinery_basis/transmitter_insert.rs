@@ -4,8 +4,9 @@ fn machinery_basis_transmitter_insert(entities: &BlockEntities, pos: Pos, entity
         BlockEntity::Mod(entity) => Some(entity.id.clone()),
         _ => None,
     };
-    machinery_transmitters::trace_source("insert", [pos.0, pos.1, pos.2], entities as *const BlockEntities as usize);
+    let source = entities as *const BlockEntities as usize;
+    machinery_transmitters::trace_source("insert", [pos.0, pos.1, pos.2], source);
     let new = id(entity);
     let old = entities.get(&pos).map(id);
-    machinery_transmitters::note_insert([pos.0, pos.1, pos.2], new.as_deref(), old.as_ref().map(Option::as_deref));
+    machinery_transmitters::note_insert(source, [pos.0, pos.1, pos.2], new.as_deref(), old.as_ref().map(Option::as_deref));
 }

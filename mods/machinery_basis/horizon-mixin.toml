@@ -1227,6 +1227,7 @@ target = "horizon_client_render::block_entities::BlockEntities::load_chunk"
 kind = "HEAD"
 helper = "transmitter_load_chunk.rs"
 bindings = [
+  { name = "container", ty = "&BlockEntities", value = "&*self" },
   { name = "entities", ty = "&Vec<(Pos, BlockEntity)>", value = "&entities" },
 ]
 

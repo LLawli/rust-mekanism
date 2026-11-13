@@ -3,12 +3,13 @@ fn machinery_basis_transmitter_remove(entities: &BlockEntities, pos: &Pos) {
     if !machinery_transmitters::is_active() {
         return;
     }
-    machinery_transmitters::trace_source("remove", [pos.0, pos.1, pos.2], entities as *const BlockEntities as usize);
+    let source = entities as *const BlockEntities as usize;
+    machinery_transmitters::trace_source("remove", [pos.0, pos.1, pos.2], source);
     if let Some(entity) = entities.get(pos) {
         let id = match entity {
             BlockEntity::Mod(entity) => Some(entity.id.clone()),
             _ => None,
         };
-        machinery_transmitters::push(machinery_transmitters::Raw::Removed { pos: [pos.0, pos.1, pos.2], id });
+        machinery_transmitters::push_from(source, machinery_transmitters::Raw::Removed { pos: [pos.0, pos.1, pos.2], id });
     }
 }

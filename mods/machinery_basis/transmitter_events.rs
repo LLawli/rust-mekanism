@@ -18,7 +18,7 @@
 //
 // Só `std`: o teste do `machinery_basis_core` compila este arquivo como está (`tests/transmitter_events.rs`).
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 pub type Pos = [i32; 3];
@@ -86,6 +86,10 @@ pub enum Raw {
 }
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
+/// O endereço do `BlockEntities` do nível do servidor (o `world.block_entities` do jogo que roda o tick do servidor), ou 0 se ainda não se sabe. O processo do anfitrião tem outro
+/// `BlockEntities`, o espelho do cliente da janela, que recebe do servidor os blocos e os chunks (`Game::server_block`, `remote_chunk`) e passa pelas mesmas injeções: o que ele anota é o
+/// servidor mudando de novo o que já mudou (o bloco trocado pela liga voltava um tick depois como `setRemoved` e `clearRemoved`), e não é do dono da rede.
+static SERVER_SOURCE: AtomicUsize = AtomicUsize::new(0);
 static QUEUE: Mutex<Vec<Raw>> = Mutex::new(Vec::new());
 /// Os avisos de vizinho que o fim da última operação segurou: saem no fim da operação seguinte, ou antes, no `place_block` e nos pontos do tick.
 static HELD: Mutex<Vec<Raw>> = Mutex::new(Vec::new());
@@ -136,6 +140,24 @@ pub fn is_registered(id: &str) -> bool {
     lock(&TRACKER).ids.contains(id)
 }
 
+/// O `BlockEntities` do servidor se apresenta (o começo de cada tick do servidor): dali em diante só o que ele anota entra na fila.
+pub fn set_server_source(source: usize) {
+    SERVER_SOURCE.store(source, Ordering::Relaxed);
+}
+
+/// A ocorrência de um `BlockEntities` em `source` é do servidor? Enquanto ele não se apresentou (os chunks do começo do mundo), qualquer um vale.
+pub fn from_server(source: usize) -> bool {
+    let known = SERVER_SOURCE.load(Ordering::Relaxed);
+    known == 0 || known == source
+}
+
+/// `push` de uma injeção, que diz de que `BlockEntities` ela veio: o espelho do cliente não anota nada.
+pub fn push_from(source: usize, raw: Raw) {
+    if from_server(source) {
+        push(raw);
+    }
+}
+
 pub fn push(raw: Raw) {
     if is_active() {
         lock(&QUEUE).push(raw);
@@ -166,7 +188,7 @@ pub fn trace_source(kind: &str, pos: Pos, source: usize) {
 
 /// `LevelChunk.setBlockState` com outro bloco no lugar: o block entity antigo sai (`removeBlockEntity`, `setRemoved`) antes de o novo entrar (`clearRemoved`). O rastreio é por posição, então o
 /// novo que entrasse antes da saída do antigo se perderia (a saída do antigo o tiraria de quem é seguido): foi o que o upgrade pela liga mostrou.
-pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
+pub fn note_insert(source: usize, pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
     if !is_active() {
         return;
     }
@@ -174,10 +196,10 @@ pub fn note_insert(pos: Pos, new: Option<&str>, old: Option<Option<&str>>) {
         // Um block entity do mesmo tipo reescrito no lugar (o jogo mantém o objeto): nada muda para a rede.
         Some(old) if old == new => {}
         Some(old) => {
-            push(Raw::Removed { pos, id: old.map(str::to_owned) });
-            push(Raw::Added { pos, id: new.map(str::to_owned) });
+            push_from(source, Raw::Removed { pos, id: old.map(str::to_owned) });
+            push_from(source, Raw::Added { pos, id: new.map(str::to_owned) });
         }
-        None => push(Raw::Added { pos, id: new.map(str::to_owned) }),
+        None => push_from(source, Raw::Added { pos, id: new.map(str::to_owned) }),
     }
 }
 
@@ -306,6 +328,7 @@ pub fn reset() -> Vec<Event> {
     tracker.seen.clear();
     lock(&QUEUE).clear();
     lock(&HELD).clear();
+    SERVER_SOURCE.store(0, Ordering::Relaxed);
     vec![Event::Reset]
 }
 

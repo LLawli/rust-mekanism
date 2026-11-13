@@ -13,6 +13,10 @@ mod events {
 }
 
 use events::{Event, Kind, Raw, Tracker};
+use std::sync::Mutex;
+
+/// Os testes que usam a fila global (`take`, `push_from`) não andam juntos.
+static GLOBAL: Mutex<()> = Mutex::new(());
 
 fn cable(dim: &str, pos: [i32; 3], kind: Kind) -> Event {
     Event::Transmitter {
@@ -266,14 +270,15 @@ fn chunk_coming_back_tells_ticket_then_added_then_the_chunk() {
 
 #[test]
 fn replaced_block_entity_of_the_same_kind_is_not_a_new_one() {
+    let _only = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     events::register("rewrite");
     let before = events::take();
     assert!(before.is_empty() || events::is_active());
     // `note_insert` com o mesmo tipo no lugar (`/data merge block`): nada para a rede.
-    events::note_insert([1, 1, 1], Some("rewrite"), Some(Some("rewrite")));
+    events::note_insert(0, [1, 1, 1], Some("rewrite"), Some(Some("rewrite")));
     assert!(events::take().is_empty());
     // De outro tipo (o bloco trocado, `LevelChunk.setBlockState`): o velho sai e o novo entra, nessa ordem; o rastreio por posição não perde o novo.
-    events::note_insert([1, 1, 1], Some("rewrite"), Some(None));
+    events::note_insert(0, [1, 1, 1], Some("rewrite"), Some(None));
     assert_eq!(
         events::take(),
         vec![
@@ -494,4 +499,46 @@ fn a_clear_removed_waits_for_its_block_entity_and_gives_up_after_the_limit() {
     // O da outra dimensão sai quando for a vez dela.
     assert_eq!(pending.retry("nether", 120, |_| true), vec![at(3)]);
     assert!(pending.is_empty());
+}
+
+/// O espelho do cliente da janela do anfitrião (outro `BlockEntities`, que recebe os blocos do servidor e passa pelas mesmas injeções) não anota nada depois de o do servidor se
+/// apresentar: o bloco trocado pela liga voltava um tick depois como `setRemoved` e `clearRemoved` do cliente, e o dono dos transportadores largava as pilhas do que ele acabara de
+/// receber. Antes de o servidor se apresentar (os chunks do começo do mundo) qualquer um vale.
+#[test]
+fn the_client_mirror_of_the_window_notes_nothing_once_the_server_block_entities_are_known() {
+    let _only = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    events::register("rewrite");
+    let _ = events::take();
+    const SERVER: usize = 0x7fb3_d517_41d0;
+    const CLIENT: usize = 0x7fff_a19c_64d0;
+    events::reset();
+    events::push_from(CLIENT, Raw::AddedLater { pos: [1, 1, 1] });
+    assert_eq!(
+        events::take().len(),
+        1,
+        "sem servidor conhecido, qualquer um vale"
+    );
+    events::set_server_source(SERVER);
+    events::note_insert(CLIENT, [2, 1, 1], Some("rewrite"), Some(None));
+    events::push_from(
+        CLIENT,
+        Raw::Removed {
+            pos: [3, 1, 1],
+            id: None,
+        },
+    );
+    assert!(events::take().is_empty(), "o espelho do cliente não entra");
+    events::note_insert(SERVER, [2, 1, 1], Some("rewrite"), None);
+    events::push_from(
+        SERVER,
+        Raw::Removed {
+            pos: [3, 1, 1],
+            id: None,
+        },
+    );
+    assert_eq!(events::take().len(), 2, "o do servidor entra");
+    // O mundo fechou: o próximo servidor é outro objeto.
+    let _ = events::reset();
+    events::push_from(CLIENT, Raw::AddedLater { pos: [4, 1, 1] });
+    assert_eq!(events::take().len(), 1);
 }

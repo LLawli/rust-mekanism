@@ -3244,6 +3244,10 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
     use horizon_client::mod_api::ServerTickPhase;
     match phase {
         ServerTickPhase::ServerTickStart { .. } => {
+            // O `BlockEntities` do servidor se apresenta: o do espelho do cliente da janela (outro objeto, que recebe os blocos do servidor) deixa de entrar na fila.
+            if game.remote.is_none() {
+                transmitters::set_server_source(&game.world.block_entities as *const _ as usize);
+            }
             TRANSMITTER_PASS.fetch_add(1, Ordering::Relaxed);
             if TRANSMITTER_PROBE && transmitters::is_active() {
                 eprintln!("MBT {{\"t\":{},\"e\":\"pre\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
