@@ -211,7 +211,6 @@ pub struct Hooks {
     tiers: BTreeMap<BlockPos, Pending>,
     saved: BTreeMap<BlockPos, (Compound, Option<CapacitorState>)>,
     ambient: Ambient,
-    pub runs_normally: bool,
     /// `WorldUtils.isGettingPowered` de todo bloco.
     pub powered: bool,
 }
@@ -321,7 +320,7 @@ impl ChunkHooks for Hooks {
     }
 
     fn server_tick_post(&mut self, level: &LevelView<()>) {
-        let runs_normally = self.runs_normally;
+        let runs_normally = level.runs_normally();
         self.event(level, Event::ServerTickPost { runs_normally });
     }
 }
@@ -381,7 +380,6 @@ impl World {
             tiers: BTreeMap::new(),
             saved: BTreeMap::new(),
             ambient: ambient.clone(),
-            runs_normally: true,
             powered: false,
         };
         let mut level = SimLevel::new(hooks);

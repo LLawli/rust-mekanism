@@ -453,8 +453,8 @@ impl Replay {
                 let chunk = self.line_chunk(number(1));
                 self.world.level.set_chunk_load_level(chunk, number(2));
             }
-            "freeze" => self.world.level.hooks.state.runs_normally = false,
-            "unfreeze" => self.world.level.hooks.state.runs_normally = true,
+            "freeze" => self.world.level.set_runs_normally(false),
+            "unfreeze" => self.world.level.set_runs_normally(true),
             "finish" => {}
             other => panic!("ação desconhecida no rastro: {other}"),
         }
@@ -752,6 +752,11 @@ fn every_scenario_matches_the_first_run_of_the_original() {
 }
 
 #[test]
+fn the_frozen_load_matches_the_original() {
+    run("", "frozen_load");
+}
+
+#[test]
 fn every_scenario_matches_the_second_run_of_the_original() {
     for scenario in SCENARIOS {
         run("run2", scenario);
@@ -943,11 +948,11 @@ fn predict_the_halves_for_the_game() {
     }
 }
 
-/// O que o original faz com o servidor parado (`rastros/energy_frozen_load.jsonl`, `EnergyFrozenLoadTraceTest.java`): um chunk com 48 cabos congelado, descarregado
+/// O que o original faz com o servidor parado (`rastros/energy_frozen_load.jsonl`, `EnergyFrozenLoadTraceTest.java`): um chunk com cabos congelado, descarregado
 /// e carregado de novo. Os cabos lidos do disco só marcam `markJoined` no `clearRemoved`; quem os junta à rede é o ticker do block entity (`onUpdateServer`), que um nível
 /// parado não roda. Por isso, até o servidor andar de novo, os cabos do chunk recarregado não têm rede e não estão carregados para o registro, e depois se juntam numa rede só
-/// (a decisão 156). O jogo faz o mesmo (`h2_reabertura.py cedo`). O simulador da lib ainda roda os tickers parado, então este rastro não passa pelo motor de `run`: o teste lê o que
-/// o original gravou.
+/// (a decisão 156). O jogo faz o mesmo (`h2_reabertura.py cedo`). O motor de `run` repete o rastro inteiro (`the_frozen_load_matches_the_original`, com o `SimLevel` sem
+/// ticker parado); este teste lê o que o original gravou e diz o essencial, e o que dispara o `commit` das duas redes do tick seguinte à carga (a decisão 160).
 #[test]
 fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again() {
     let rows = read_rows("", "frozen_load");
@@ -974,14 +979,23 @@ fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again(
         .map(|row| int(row, "t"))
         .unwrap();
     assert!(frozen_from < loaded_at && loaded_at < unfrozen_at);
-    // Os cabos 15 a 24 são os do chunk que voltou (o `lineChunk(1)`): parado, sem rede; os de fora seguem nas duas redes que a descarga deixou.
+    // Os cabos do chunk que voltou são os que ganham um `tile` (um block entity novo) no tick da carga.
+    let reloaded: Vec<usize> = rows
+        .iter()
+        .filter(|row| kind(row) == "tile" && int(row, "t") == loaded_at)
+        .map(|row| int(row, "x") as usize)
+        .collect();
+    assert!(reloaded.len() >= 10, "o chunk recarregado tem cabos");
+    let (first, last) = (*reloaded.iter().min().unwrap(), *reloaded.iter().max().unwrap());
+    assert!(first > 0 && last < 47, "há cabos de fora nos dois lados");
+    // Parado, os do chunk que voltou não têm rede, e os de fora seguem nas duas redes que a descarga deixou.
     for tick in loaded_at..unfrozen_at {
-        for x in [15, 16, 17, 24] {
-            assert_eq!(net_of(tick, x), None, "tick {tick}, cabo {x}");
+        for x in &reloaded {
+            assert_eq!(net_of(tick, *x), None, "tick {tick}, cabo {x}");
         }
         assert_ne!(
-            net_of(tick, 0),
-            net_of(tick, 47),
+            net_of(tick, first - 1),
+            net_of(tick, last + 1),
             "tick {tick}: duas redes, a junção espera"
         );
     }
@@ -990,4 +1004,48 @@ fn the_original_joins_the_cables_read_from_disk_only_when_the_server_runs_again(
         (0..48).map(|x| net_of(unfrozen_at, x)).collect();
     assert_eq!(nets.len(), 1);
     assert!(nets.iter().next().unwrap().is_some());
+}
+
+/// O que põe as duas redes de fora em `networksToChange` na carga, sem ticker nenhum (a decisão 160): o `BlockEntity.clearRemoved` do primeiro block entity lido do disco invalida
+/// a capability da posição dele (`invalidateCapabilities()`), e o `RefreshListener` do cabo vizinho, um de cada lado do chunk, marca o lado (`markDirtyAcceptor`). O `commit` delas
+/// vem no `onTick` seguinte, e a descarga fez o mesmo pelo `ChunkEvent.Unload` (`invalidateCapabilities(ChunkPos)`).
+#[test]
+fn the_original_commits_the_two_outer_networks_because_the_neighbours_cache_is_invalidated() {
+    let rows = read_rows("", "frozen_load");
+    let loaded_at = rows
+        .iter()
+        .find(|row| kind(row) == "load")
+        .map(|row| int(row, "t"))
+        .unwrap();
+    let at_load: Vec<&Value> = rows
+        .iter()
+        .filter(|row| kind(row) == "acceptor" && int(row, "t") == loaded_at)
+        .collect();
+    assert_eq!(at_load.len(), 2, "um cabo de cada lado do chunk");
+    for row in &at_load {
+        assert_eq!(row["cause"], "clearRemoved");
+    }
+    let sides: Vec<&str> = at_load.iter().map(|row| row["side"].as_str().unwrap()).collect();
+    assert_eq!(sides, ["east", "west"]);
+    let mut commits: Vec<i64> = rows
+        .iter()
+        .filter(|row| kind(row) == "commit" && int(row, "t") == loaded_at + 1)
+        .map(|row| int(row, "net"))
+        .collect();
+    let mut warned: Vec<i64> = at_load.iter().map(|row| int(row, "net")).collect();
+    // A ordem do `commit` é a do conjunto `networksToChange` (por hash); aqui só quem comita.
+    commits.sort_unstable();
+    warned.sort_unstable();
+    assert_eq!(commits, warned, "o commit é dos mesmos dois");
+    // A descarga: o `ChunkEvent.Unload` invalida todo o chunk, e é a causa de todos os avisos do tick dela.
+    let unloaded_at = rows
+        .iter()
+        .find(|row| kind(row) == "unload")
+        .map(|row| int(row, "t"))
+        .unwrap();
+    assert!(
+        rows.iter()
+            .filter(|row| kind(row) == "acceptor" && int(row, "t") == unloaded_at)
+            .all(|row| row["cause"] == "invalidateCapsOnChunkUnload")
+    );
 }

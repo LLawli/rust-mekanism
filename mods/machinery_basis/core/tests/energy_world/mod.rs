@@ -93,13 +93,15 @@ pub struct State {
     /// O `identityHashCode` do próximo transmissor posto em cada posição.
     pub hash_for: Box<dyn FnMut(BlockPos) -> i32>,
     pub events: Vec<Event>,
-    pub runs_normally: bool,
     /// A energia dos cabos e das redes.
     pub family: EnergyFamily<dyn EnergyInsert>,
     /// As máquinas postas, por posição.
     pub machines: BTreeMap<BlockPos, Rc<Machine>>,
     /// Invalidações de capability a entregar no começo do próximo `onTick` (`RefreshListener.run` -> `markDirtyAcceptor`).
     pub acceptor_invalidations: Vec<(BlockPos, Face)>,
+    /// As invalidações que um `clearRemoved` fez (`BlockEntity.clearRemoved` invalida a capability da posição): chegam depois do `commitChanges` do
+    /// `onTick` do tick em que o block entity entrou no chunk (o rastro mostra o `commit` no tick seguinte), e uma fusão do tick seguinte as desfaz.
+    pub late_invalidations: Vec<(BlockPos, Face)>,
     /// Chamadas diretas ao registro, entregues no começo do próximo `onTick`, na ordem.
     pub registry_calls: Vec<RegistryCall>,
     pending_uuid: Option<Uuid>,
@@ -339,16 +341,40 @@ impl ChunkHooks for Hooks {
             .on_ticket_level_change(DIMENSION, chunk.pack(), old, new);
     }
 
-    /// `TileEntityTransmitter.clearRemoved`, `:146`, no servidor.
+    /// `TileEntityTransmitter.clearRemoved`, `:146`, no servidor. `BlockEntity.clearRemoved` também invalida a capability da posição
+    /// (`invalidateCapabilities()`), e o cabo vizinho que está numa rede a ouve pelo `RefreshListener` (`markDirtyAcceptor`): o lado fica
+    /// marcado e a rede entra em `networksToChange`, com ou sem ticker (`energy_frozen_load.jsonl`: o `commit` das duas redes do tick 21,
+    /// com o servidor parado).
     fn block_entity_added(
         &mut self,
-        _: &LevelView<TransmitterId>,
-        _: BlockPos,
+        level: &LevelView<TransmitterId>,
+        pos: BlockPos,
         entity: &mut TransmitterId,
     ) {
         let tx = &mut self.state.txs[entity.0 as usize];
         tx.removed = false;
         tx.mark_joined = true;
+        use Face::{Down, East, North, South, Up, West};
+        for face in [Down, Up, North, South, West, East] {
+            let neighbor = pos.relative(face);
+            if level.is_loading_chunk() {
+                // Lido do disco: a tarefa de carga roda depois do `commitChanges` do tick.
+                self.state
+                    .late_invalidations
+                    .push((neighbor, face.opposite()));
+            } else if let Some(&id) = level.block_entity(neighbor) {
+                // Posto: o `RefreshListener` roda na hora, e uma fusão no `onTick` desse tick desfaz o que ele marcou.
+                let tx = &self.state.txs[id.0 as usize];
+                if let Some(network) = tx.network.filter(|_| !tx.orphan) {
+                    let ctx = Ctx {
+                        st: &mut self.state,
+                        level,
+                    };
+                    self.registry
+                        .network_acceptor_changed(&ctx, network, id, face.opposite());
+                }
+            }
+        }
     }
 
     /// `TileEntityTransmitter.onUpdateServer`, `:93`.
@@ -429,7 +455,7 @@ impl ChunkHooks for Hooks {
 
     /// `TransmitterNetworkRegistry.onTick`.
     fn server_tick_post(&mut self, level: &LevelView<TransmitterId>) {
-        let runs_normally = self.state.runs_normally;
+        let runs_normally = level.runs_normally();
         for call in std::mem::take(&mut self.state.registry_calls) {
             let (RegistryCall::InvalidateTransmitter(pos)
             | RegistryCall::RegisterOrphanTransmitter(pos)) = call;
@@ -466,6 +492,19 @@ impl ChunkHooks for Hooks {
             level,
         };
         self.registry.on_tick(&mut ctx, runs_normally);
+        for (pos, side) in std::mem::take(&mut self.state.late_invalidations) {
+            if let Some(&id) = level.block_entity(pos) {
+                let tx = &self.state.txs[id.0 as usize];
+                if let Some(network) = tx.network.filter(|_| !tx.orphan) {
+                    let ctx = Ctx {
+                        st: &mut self.state,
+                        level,
+                    };
+                    self.registry
+                        .network_acceptor_changed(&ctx, network, id, side);
+                }
+            }
+        }
     }
 }
 
@@ -500,10 +539,10 @@ impl World {
                 txs: Vec::new(),
                 hash_for: Box::new(hash_for),
                 events: Vec::new(),
-                runs_normally: true,
                 family: EnergyFamily::new(),
                 machines: BTreeMap::new(),
                 acceptor_invalidations: Vec::new(),
+                late_invalidations: Vec::new(),
                 registry_calls: Vec::new(),
                 pending_uuid: None,
             },

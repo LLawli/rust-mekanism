@@ -250,9 +250,8 @@ fn a_new_network_with_buffered_cables_forces_its_scale_to_the_target_at_once() {
             .buffer
             .set_energy(4_000, None);
     }
-    // Congelado: o `onUpdate` não roda, e a escala é a que o `commit` forçou.
-    world.level.hooks.state.runs_normally = false;
-    tick(&mut world, 4);
+    // O primeiro tick junta os cabos (o ticker), cria a rede e a confirma; a escala é a que o `commit` forçou.
+    tick(&mut world, 2);
     let network = network_of(&world, 0);
     let net = world.level.hooks.state.family.network(network).unwrap();
     assert_eq!(net.energy.amount(), 8_000);

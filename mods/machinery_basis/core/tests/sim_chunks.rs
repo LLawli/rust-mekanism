@@ -660,6 +660,41 @@ fn um_block_entity_novo_recebe_o_on_load_no_proximo_tick_e_anda_no_mesmo() {
     assert_eq!(ticks_of(&events).last(), Some(&cable(0)));
 }
 
+/// `Level.tickBlockEntities` (`Level.java:512`, `:518`): com o servidor parado nenhum ticker roda, mas o `onLoad` dos block entities novos, as cargas do
+/// `DistanceManager` e o `ServerTickEvent.Post` seguem. Andando de novo, o primeiro tick do block entity junta o que a carga trouxe.
+#[test]
+fn com_o_servidor_parado_nenhum_ticker_roda_mas_o_nivel_anda() {
+    let mut level = straight_cable();
+    level.set_runs_normally(false);
+    assert!(!level.view().runs_normally());
+    level.set_block(cable(0), None);
+    level.set_block(cable(0), Some(CABLE));
+    level.take_events();
+    level.tick_n(2);
+    let events = level.take_events();
+    assert!(ticks_of(&events).is_empty(), "nenhum ticker parado");
+    assert!(
+        events.contains(&SimEvent::BlockEntityLoad { pos: cable(0) }),
+        "o onLoad do bloco novo roda no primeiro tickBlockEntities"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e, SimEvent::ServerTickPost { .. }))
+            .count(),
+        2,
+        "o Post sai a cada tick"
+    );
+    assert!(
+        !level.hooks.networked.contains(&cable(0)),
+        "o transmissor novo só entra na rede no primeiro tick dele"
+    );
+    level.set_runs_normally(true);
+    level.tick();
+    assert!(level.hooks.networked.contains(&cable(0)));
+    assert_eq!(ticks_of(&level.take_events()).len(), 48);
+}
+
 #[test]
 #[should_panic(expected = "não está carregado")]
 fn set_block_num_chunk_descarregado_avisa_em_vez_de_carregar_calado() {

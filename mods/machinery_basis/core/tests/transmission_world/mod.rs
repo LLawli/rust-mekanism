@@ -63,7 +63,6 @@ pub struct State {
     /// O `identityHashCode` do próximo transmissor posto em cada posição.
     pub hash_for: Box<dyn FnMut(BlockPos) -> i32>,
     pub events: Vec<Event>,
-    pub runs_normally: bool,
     /// Se o `CUBE` é um aceitador válido do cabo ao lado (o `isValidAcceptor` do transmissor): um acerto de aceitador não marca a rede como
     /// mudada. No `gameTest` do original o bloco de energia posto ao lado do cabo nunca apareceu como aceitador, então o padrão é falso.
     pub cube_is_acceptor: bool,
@@ -364,7 +363,7 @@ impl ChunkHooks for Hooks {
 
     /// `TransmitterNetworkRegistry.onTick`.
     fn server_tick_post(&mut self, level: &LevelView<TransmitterId>) {
-        let runs_normally = self.state.runs_normally;
+        let runs_normally = level.runs_normally();
         for call in std::mem::take(&mut self.state.registry_calls) {
             let (RegistryCall::InvalidateTransmitter(pos)
             | RegistryCall::RegisterOrphanTransmitter(pos)) = call;
@@ -435,7 +434,6 @@ impl World {
                 txs: Vec::new(),
                 hash_for: Box::new(hash_for),
                 events: Vec::new(),
-                runs_normally: true,
                 cube_is_acceptor: false,
                 acceptor_invalidations: Vec::new(),
                 registry_calls: Vec::new(),

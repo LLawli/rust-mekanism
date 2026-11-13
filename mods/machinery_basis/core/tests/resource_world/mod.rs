@@ -378,7 +378,6 @@ pub struct Hooks<K: Kind> {
     /// Os tanques postos, por posição.
     pub tanks: BTreeMap<BlockPos, Rc<Tank<K>>>,
     pending: BTreeMap<BlockPos, Pending<K>>,
-    pub runs_normally: bool,
 }
 
 impl<K: Kind> Hooks<K> {
@@ -471,7 +470,7 @@ impl<K: Kind> ChunkHooks for Hooks<K> {
 
     /// `TransmitterNetworkRegistry.onTick`.
     fn server_tick_post(&mut self, level: &LevelView<()>) {
-        let runs_normally = self.runs_normally;
+        let runs_normally = level.runs_normally();
         self.event(level, Event::ServerTickPost { runs_normally });
     }
 }
@@ -515,7 +514,6 @@ impl<K: Kind> World<K> {
             owner,
             tanks: BTreeMap::new(),
             pending: BTreeMap::new(),
-            runs_normally: true,
         };
         Self {
             level: SimLevel::new(hooks),

@@ -488,8 +488,8 @@ impl<K: Kind> Replay<K> {
                 let chunk = self.line_chunk(number(1));
                 self.world.level.set_chunk_load_level(chunk, number(2));
             }
-            "freeze" => self.world.level.hooks.runs_normally = false,
-            "unfreeze" => self.world.level.hooks.runs_normally = true,
+            "freeze" => self.world.level.set_runs_normally(false),
+            "unfreeze" => self.world.level.set_runs_normally(true),
             "finish" => {}
             other => panic!("ação desconhecida no rastro: {other}"),
         }

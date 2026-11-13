@@ -431,6 +431,10 @@ struct Holder<E> {
 /// O que um gancho pode ler do mundo. Os métodos têm o nome e a regra dos do Java.
 pub struct LevelView<E> {
     game_time: u64,
+    /// O `LevelChunk.runPostLoad` de um chunk está em andamento: os block entities lidos do disco entram agora (`block_entity_added`).
+    loading: bool,
+    /// `server.tickRateManager().runsNormally()`: falso com o servidor parado (`tick freeze`), e então nenhum ticker de block entity roda.
+    runs_normally: bool,
     /// O `updatingChunkMap`: todo holder que existe.
     holders: BTreeMap<ChunkPos, Holder<E>>,
     /// `ChunkMap.modified`: há holders novos para promover ao mapa visível.
@@ -445,6 +449,8 @@ impl<E> LevelView<E> {
     fn new() -> Self {
         Self {
             game_time: 0,
+            loading: false,
+            runs_normally: true,
             holders: BTreeMap::new(),
             modified: false,
             simulation: HashMap::new(),
@@ -455,6 +461,16 @@ impl<E> LevelView<E> {
     /// O `gameTime` do tick em andamento.
     pub fn game_time(&self) -> u64 {
         self.game_time
+    }
+
+    /// Os block entities que entram agora vêm do disco, na carga de um chunk (`ChunkStatusTasks.full`, `LevelChunk.runPostLoad`), e não de um bloco posto.
+    pub fn is_loading_chunk(&self) -> bool {
+        self.loading
+    }
+
+    /// `tickRateManager().runsNormally()`: o `ServerTickEvent.Post` e o `Level.tickBlockEntities` olham o mesmo valor.
+    pub fn runs_normally(&self) -> bool {
+        self.runs_normally
     }
 
     /// `ChunkMap.getUpdatingChunkIfPresent(...).getTicketLevel()`: o nível do holder, se ele existe.
@@ -597,6 +613,12 @@ impl<H: ChunkHooks> SimLevel<H> {
 
     pub fn view(&self) -> &LevelView<H::BlockEntity> {
         &self.view
+    }
+
+    /// `TickRateManager.setFrozen`: com o servidor parado o nível ainda anda (cargas, descargas, `onLoad` dos block entities novos e o
+    /// `ServerTickEvent.Post`), mas `Level.tickBlockEntities` não roda nenhum ticker (`Level.java:512`, `:518`).
+    pub fn set_runs_normally(&mut self, runs_normally: bool) {
+        self.view.runs_normally = runs_normally;
     }
 
     /// Os eventos até agora, sem esvaziar.
@@ -773,20 +795,6 @@ impl<H: ChunkHooks> SimLevel<H> {
         }
         self.saved.insert(chunk, saved);
         self.persisted.insert(chunk);
-    }
-
-    /// `ChunkMap.saveAllChunks`: grava todos os chunks carregados, sem descarregar.
-    pub fn save_all(&mut self) {
-        let chunks: Vec<ChunkPos> = self
-            .view
-            .holders
-            .iter()
-            .filter(|(_, holder)| holder.chunk.is_some())
-            .map(|(chunk, _)| *chunk)
-            .collect();
-        for chunk in chunks {
-            self.save_chunk(chunk);
-        }
     }
 
     /// Chama `f` com o block entity de `pos` fora do mapa, como o Horizon faz, e o devolve. `None` se não há.
@@ -1129,6 +1137,7 @@ impl<H: ChunkHooks> SimLevel<H> {
         });
         // `runPostLoad`, `:203`: `SerializableChunkData.postLoadChunk` recria os block entities na ordem gravada. O chunk
         // ainda não está carregado, então eles entram sem ticker.
+        self.view.loading = true;
         for (pos, saved) in self.saved.get(&chunk).cloned().unwrap_or_default() {
             let Some(block) = self.view.block_unchecked(pos).map(str::to_owned) else {
                 continue;
@@ -1137,6 +1146,7 @@ impl<H: ChunkHooks> SimLevel<H> {
                 self.set_block_entity(pos, entity);
             }
         }
+        self.view.loading = false;
         // `setLoaded(true)` e `registerAllBlockEntitiesAfterLevelLoad`, `:207` e `:210`: primeiro a lista de novos, depois um
         // ticker por block entity, tudo na ordem do mapa.
         let order = self.view.block_entity_positions(chunk);
@@ -1190,8 +1200,9 @@ impl<H: ChunkHooks> SimLevel<H> {
             if !bound {
                 continue;
             }
-            // `shouldTickBlocksAt`, `Level.java:518`, e `LevelChunk.isTicking`, `LevelChunk.java:415`.
-            let ticking = self.view.should_tick_blocks_at(chunk)
+            // `tickRateManager().runsNormally()`, `Level.java:512`, `shouldTickBlocksAt`, `:518`, e `LevelChunk.isTicking`, `LevelChunk.java:415`.
+            let ticking = self.view.runs_normally
+                && self.view.should_tick_blocks_at(chunk)
                 && self
                     .view
                     .ticket_level(chunk)

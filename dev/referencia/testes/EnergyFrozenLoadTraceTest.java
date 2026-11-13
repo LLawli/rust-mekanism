@@ -348,6 +348,23 @@ public class EnergyFrozenLoadTraceTest {
             super.commit();
         }
 
+        /// `RefreshListener` -> `Transmitter.markDirtyAcceptor` -> here: who invalidated the capability cache of the cable (`cause`: the `ChunkEvent.Unload`/`Load` of the
+        /// chunk, or the `BlockEntity.clearRemoved` of a block entity read from the disk), and `side` is the side of that cable. This is what puts the network in
+        /// `networksToChange`, so its `commit` comes at the `onTick` after the load even with no ticker running (a frozen server).
+        @Override
+        public void acceptorChanged(UniversalCable transmitter, net.minecraft.core.Direction side) {
+            String cause = "other";
+            for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+                String method = frame.getMethodName();
+                if (method.equals("clearRemoved") || method.equals("invalidateCapsOnChunkLoad") || method.equals("invalidateCapsOnChunkUnload")) {
+                    cause = method;
+                    break;
+                }
+            }
+            Recorder.log("acceptor", transmitter.getBlockPos(), "\"net\":" + index + ",\"side\":\"" + side + "\",\"cause\":\"" + cause + "\"");
+            super.acceptorChanged(transmitter, side);
+        }
+
         @Override
         public void invalidate(@Nullable UniversalCable triggerTransmitter) {
             Recorder.event("invalidate", "\"net\":" + index);
