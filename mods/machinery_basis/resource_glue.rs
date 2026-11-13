@@ -633,8 +633,30 @@ fn client_positions<F: Family>() -> Vec<(&'static str, [i32; 3])> {
 fn with_owner<F: Family, T>(dimension: &'static str, f: impl FnOnce(&mut ResourceTransmitters<F::R>) -> T) -> Option<T> {
     F::owners().with(|owners| {
         let mut owners = owners.try_borrow_mut().ok()?;
-        Some(f(owners.entry(dimension).or_insert_with(F::new_owner)))
+        let owner = owners.entry(dimension).or_insert_with(F::new_owner);
+        basis::debug_prepare(owner.registry_mut());
+        let result = f(owner);
+        basis::debug_flush(owner.registry_mut());
+        Some(result)
     })
+}
+
+/// As redes de uma família de recurso de todas as dimensões, com a chave de cada uma no espelho do conjunto único.
+fn networks<F: Family>() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    F::owners().with(|owners| {
+        owners
+            .try_borrow()
+            .map(|owners| owners.values().flat_map(|owner| owner.registry().mirror_summaries()).collect())
+            .unwrap_or_default()
+    })
+}
+
+pub(in crate::game) fn pipe_networks() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    networks::<Pipes>()
+}
+
+pub(in crate::game) fn tube_networks() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    networks::<Tubes>()
 }
 
 /// O sink dos eventos dos transmissores: traduz o evento do jogo para o do dono.

@@ -749,6 +749,10 @@ impl<R: Resource> ResourceTransmitters<R> {
         &self.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut Reg<R> {
+        &mut self.registry
+    }
+
     pub fn family(&self) -> &Family<R> {
         &self.st.family
     }

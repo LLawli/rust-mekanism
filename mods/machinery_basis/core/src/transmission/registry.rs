@@ -35,7 +35,7 @@ pub fn set_transmitter_network<A>(
 }
 
 /// A chave de uma rede no conjunto único: de que registro (um por família e por dimensão) e qual rede dele.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MirrorKey {
     pub registry: u64,
     pub network: NetworkId,
@@ -62,7 +62,12 @@ impl NetworkMirror {
 
     /// As redes na ordem do iterador do conjunto único.
     pub fn in_order(&self) -> Vec<MirrorKey> {
-        self.set.borrow().in_order().into_iter().map(|k| k.id).collect()
+        self.set
+            .borrow()
+            .in_order()
+            .into_iter()
+            .map(|k| k.id)
+            .collect()
     }
 
     fn insert(&self, key: Hashed<MirrorKey>) {
@@ -114,7 +119,10 @@ impl<A> Drop for TransmitterNetworkRegistry<A> {
     fn drop(&mut self) {
         for key in self.networks.in_order() {
             self.mirror.remove(Hashed {
-                id: MirrorKey { registry: self.id, network: key.id },
+                id: MirrorKey {
+                    registry: self.id,
+                    network: key.id,
+                },
                 hash: key.hash,
             });
         }
@@ -182,9 +190,29 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
             .collect()
     }
 
+    /// O mesmo que `network_summaries`, com a chave de cada rede no espelho.
+    pub fn mirror_summaries(&self) -> Vec<(MirrorKey, usize, usize)> {
+        self.network_summaries()
+            .into_iter()
+            .map(|(network, transmitters, acceptors)| {
+                (
+                    MirrorKey {
+                        registry: self.id,
+                        network,
+                    },
+                    transmitters,
+                    acceptors,
+                )
+            })
+            .collect()
+    }
+
     fn mirror_key(&self, key: Hashed<NetworkId>) -> Hashed<MirrorKey> {
         Hashed {
-            id: MirrorKey { registry: self.id, network: key.id },
+            id: MirrorKey {
+                registry: self.id,
+                network: key.id,
+            },
             hash: key.hash,
         }
     }
@@ -564,14 +592,22 @@ impl<A: Clone + 'static> OrphanPathFinder<A> {
         let found = self.networks_found.in_order();
         let connected_count = self.connected_transmitters.len();
         let network = if found.len() == 1 {
-            registry.debug_info(|| format!("Adding {connected_count} transmitters to single found network"));
+            registry.debug_info(|| {
+                format!("Adding {connected_count} transmitters to single found network")
+            });
             found[0].id
         } else {
             if found.is_empty() {
-                registry.debug_info(|| format!("No networks found. Creating new network for {connected_count} transmitters"));
+                registry.debug_info(|| {
+                    format!(
+                        "No networks found. Creating new network for {connected_count} transmitters"
+                    )
+                });
             } else {
                 let merging = found.len();
-                registry.debug_info(|| format!("Merging {merging} networks with {connected_count} new transmitters"));
+                registry.debug_info(|| {
+                    format!("Merging {merging} networks with {connected_count} new transmitters")
+                });
             }
             let found: Vec<NetworkId> = found.into_iter().map(|key| key.id).collect();
             registry.create_network_by_merging(host, &found)

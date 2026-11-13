@@ -48,7 +48,9 @@ fn births(notes: &[Value]) -> BTreeMap<&'static str, Vec<i32>> {
             let hash = network["hash"].as_i64().unwrap() as i32;
             if !seen.contains(&hash) {
                 seen.push(hash);
-                out.entry(family(network["class"].as_str().unwrap())).or_default().push(hash);
+                out.entry(family(network["class"].as_str().unwrap()))
+                    .or_default()
+                    .push(hash);
             }
         }
     }
@@ -63,7 +65,10 @@ fn world(hashes: Vec<i32>) -> World {
         counter
     });
     for x in 0..3 {
-        world.level.set_ticket_level(ChunkPos::new(origin.chunk().x + x - 1, origin.chunk().z), ENTITY_TICKING_LEVEL);
+        world.level.set_ticket_level(
+            ChunkPos::new(origin.chunk().x + x - 1, origin.chunk().z),
+            ENTITY_TICKING_LEVEL,
+        );
     }
     world.level.tick();
     world
@@ -96,7 +101,10 @@ fn step(case: &str) -> (&'static str, Vec<i32>, Vec<i32>) {
 fn the_mirror_gives_the_iteration_order_of_the_single_networks_set_of_the_original() {
     let notes = notes();
     let births = births(&notes);
-    let mut worlds: BTreeMap<&str, World> = births.iter().map(|(name, hashes)| (*name, world(hashes.clone()))).collect();
+    let mut worlds: BTreeMap<&str, World> = births
+        .iter()
+        .map(|(name, hashes)| (*name, world(hashes.clone())))
+        .collect();
     let mirror = NetworkMirror::current();
     let mut checked = 0;
     for note in &notes {
@@ -137,7 +145,13 @@ fn the_mirror_gives_the_iteration_order_of_the_single_networks_set_of_the_origin
             .as_array()
             .unwrap()
             .iter()
-            .map(|line| line.as_str().unwrap().strip_prefix("INFO ").unwrap().to_owned())
+            .map(|line| {
+                line.as_str()
+                    .unwrap()
+                    .strip_prefix("INFO ")
+                    .unwrap()
+                    .to_owned()
+            })
             .collect();
         assert_eq!(log, wanted, "{case}: o log");
         checked += 1;

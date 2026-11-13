@@ -791,6 +791,10 @@ impl InventoryTransmitters {
         &self.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut Reg {
+        &mut self.registry
+    }
+
     /// O transportador vivo em `pos`.
     pub fn transporter_at(&self, pos: BlockPos) -> Option<&LogisticalTransporterBase> {
         let id = self.st.live(pos)?;

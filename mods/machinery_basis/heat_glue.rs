@@ -233,7 +233,21 @@ fn new_owner() -> HeatTransmitters {
 fn with_owner<R>(dimension: &'static str, f: impl FnOnce(&mut HeatTransmitters) -> R) -> Option<R> {
     CONDUCTORS.with(|conductors| {
         let mut conductors = conductors.try_borrow_mut().ok()?;
-        Some(f(conductors.entry(dimension).or_insert_with(new_owner)))
+        let owner = conductors.entry(dimension).or_insert_with(new_owner);
+        basis::debug_prepare(owner.registry_mut());
+        let result = f(owner);
+        basis::debug_flush(owner.registry_mut());
+        Some(result)
+    })
+}
+
+/// As redes de condutores de todas as dimensões, com a chave de cada uma no espelho do conjunto único.
+pub(in crate::game) fn conductor_networks() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    CONDUCTORS.with(|conductors| {
+        conductors
+            .try_borrow()
+            .map(|conductors| conductors.values().flat_map(|owner| owner.registry().mirror_summaries()).collect())
+            .unwrap_or_default()
     })
 }
 

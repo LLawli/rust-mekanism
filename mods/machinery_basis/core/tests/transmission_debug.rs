@@ -84,12 +84,15 @@ fn the_orphan_path_finder_and_the_invalid_transmitters_log_what_the_original_log
     world.break_block(world.cable(3));
     world.level.tick_n(3);
     let broken = debug_log(&mut world);
-    assert_eq!(broken[0], "Dealing with 1 invalid Transmitters", "{broken:?}");
+    assert_eq!(
+        broken[0], "Dealing with 1 invalid Transmitters",
+        "{broken:?}"
+    );
 }
 
 #[test]
 fn a_chunk_whose_ticket_level_changes_logs_the_count_and_the_chunk() {
-    use machinery_basis_core::sim::chunks::{MAX_VIEW_DISTANCE, ENTITY_TICKING_LEVEL as LOADED};
+    use machinery_basis_core::sim::chunks::{ENTITY_TICKING_LEVEL as LOADED, MAX_VIEW_DISTANCE};
     let mut world = world(vec![11]);
     world.registry_mut().set_debug(true);
     for x in 0..3 {
@@ -101,12 +104,18 @@ fn a_chunk_whose_ticket_level_changes_logs_the_count_and_the_chunk() {
     let chunk = origin.chunk();
     let key = chunk.pack();
     let dimension = machinery_basis_core::transmission::DimensionId(0);
-    world.registry_mut().on_ticket_level_change(dimension, key, LOADED, MAX_VIEW_DISTANCE + 1);
+    world
+        .registry_mut()
+        .on_ticket_level_change(dimension, key, LOADED, MAX_VIEW_DISTANCE + 1);
     // O `onTick` do registro faz o `handleChangedChunks`; o do mundo roda no `tick` do nível.
     world.level.tick();
     let log = debug_log(&mut world);
     assert_eq!(log[0], "Dealing with 1 changed chunks", "{log:?}");
-    assert_eq!(log[1], format!("Unloaded 3 transmitters in chunk: {}, {}", chunk.x, chunk.z), "{log:?}");
+    assert_eq!(
+        log[1],
+        format!("Unloaded 3 transmitters in chunk: {}, {}", chunk.x, chunk.z),
+        "{log:?}"
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -144,7 +153,11 @@ fn the_mirror_orders_the_networks_of_every_registry_as_one_object_open_hash_set(
     assert!(all >= 5, "{all}");
     // O mesmo conjunto montado à mão: as redes na ordem em que foram registradas (a de cada mundo está em `networks_in_order`; a ordem relativa entre os mundos é a dos ticks acima).
     let hash_of = |key: &machinery_basis_core::transmission::registry::MirrorKey| {
-        let registry = if key.registry == a.registry().id() { a.registry() } else { b.registry() };
+        let registry = if key.registry == a.registry().id() {
+            a.registry()
+        } else {
+            b.registry()
+        };
         registry.network(key.network).uuid().hash_code()
     };
     let mut expected = OpenHashSet::new();
@@ -160,4 +173,23 @@ fn the_mirror_orders_the_networks_of_every_registry_as_one_object_open_hash_set(
     drop(b);
     assert!(mirror.in_order().iter().all(|key| key.registry != b_id));
     assert!(!mirror.in_order().is_empty());
+}
+
+#[test]
+fn a_reset_takes_the_networks_of_that_registry_out_of_the_mirror() {
+    let mut a = world(vec![21, 22]);
+    let mut b = world(vec![23]);
+    for x in [0, 1, 3] {
+        a.place_cable(x);
+    }
+    b.place_cable(0);
+    a.level.tick_n(3);
+    b.level.tick_n(3);
+    let mirror = NetworkMirror::current();
+    assert_eq!(mirror.in_order().len(), 3);
+    let a_id = a.registry().id();
+    a.registry_mut().reset();
+    let left = mirror.in_order();
+    assert_eq!(left.len(), 1);
+    assert!(left.iter().all(|key| key.registry != a_id));
 }

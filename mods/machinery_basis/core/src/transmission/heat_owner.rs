@@ -845,6 +845,10 @@ impl HeatTransmitters {
         &self.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut Reg {
+        &mut self.registry
+    }
+
     pub fn heat_networks(&self) -> &HeatNetworks {
         &self.st.heat_networks
     }

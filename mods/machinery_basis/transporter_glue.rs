@@ -427,7 +427,21 @@ fn new_owner() -> InventoryTransmitters {
 fn with_owner<R>(dimension: &'static str, f: impl FnOnce(&mut InventoryTransmitters) -> R) -> Option<R> {
     OWNERS.with(|owners| {
         let mut owners = owners.try_borrow_mut().ok()?;
-        Some(f(owners.entry(dimension).or_insert_with(new_owner)))
+        let owner = owners.entry(dimension).or_insert_with(new_owner);
+        basis::debug_prepare(owner.registry_mut());
+        let result = f(owner);
+        basis::debug_flush(owner.registry_mut());
+        Some(result)
+    })
+}
+
+/// As redes de transportadores de todas as dimensões, com a chave de cada uma no espelho do conjunto único.
+pub(in crate::game) fn transporter_networks() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    OWNERS.with(|owners| {
+        owners
+            .try_borrow()
+            .map(|owners| owners.values().flat_map(|owner| owner.registry().mirror_summaries()).collect())
+            .unwrap_or_default()
     })
 }
 

@@ -42,6 +42,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_transporters"
 source = "transporter_glue.rs"
 
+# Os comandos de servidor de um mod (`Commands.register`, `CommandSourceStack.sendSuccess` e `sendFailure`) sobre os ganchos `register_commands` e `perform_command`: o registro por dono (o mod),
+# os usos que o jogo anuncia e o erro de sintaxe com a linha de contexto. Código nosso no `Game`; os ganchos ficam no mod, que chama estas funções.
+[[module]]
+id = "command-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_commands"
+source = "command_glue.rs"
+
 # O lado do cliente dos transmissores no jogo (frente `cabo-cliente`): o pacote de atualização (`sendUpdatePacket`), o `PacketNetworkScale`, o conteúdo da rede e o `clientNetworks` de cada
 # cliente. O Horizon junta o pacote de atualização de um block entity de mod no `nbt` da cópia sem avisar o mod, então o `handleUpdateTag` roda ao chegar por um canal de mod. Código nosso no `Game`.
 [[module]]

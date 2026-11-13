@@ -3619,8 +3619,68 @@ fn new_cable_owner() -> EnergyTransmitters {
 fn with_owner<R>(dimension: &'static str, f: impl FnOnce(&mut EnergyTransmitters) -> R) -> Option<R> {
     CABLES.with(|cables| {
         let mut cables = cables.try_borrow_mut().ok()?;
-        Some(f(cables.entry(dimension).or_insert_with(new_cable_owner)))
+        let owner = cables.entry(dimension).or_insert_with(new_cable_owner);
+        debug_prepare(owner.registry_mut());
+        let result = f(owner);
+        debug_flush(owner.registry_mut());
+        Some(result)
     })
+}
+
+/// `MekanismAPI.debug` no registro de uma família: o estado global (`debug_mode`) vale a cada vez que o dono é usado.
+pub(in crate::game) fn debug_prepare<A: Clone + 'static>(registry: &mut machinery_basis_core::transmission::registry::TransmitterNetworkRegistry<A>) {
+    registry.set_debug(machinery_basis_core::debug_mode::enabled());
+}
+
+/// As linhas de `Mekanism.logger.info` que o registro escreveu com a depuração ligada, no log do servidor.
+pub(in crate::game) fn debug_flush<A: Clone + 'static>(registry: &mut machinery_basis_core::transmission::registry::TransmitterNetworkRegistry<A>) {
+    for line in registry.take_debug_log() {
+        log::info!("{line}");
+    }
+}
+
+/// `MekanismAPI.debug`.
+pub(in crate::game) fn debug_mode() -> bool {
+    machinery_basis_core::debug_mode::enabled()
+}
+
+/// `MekanismAPI.debug = !MekanismAPI.debug`: o valor novo.
+pub(in crate::game) fn debug_toggle() -> bool {
+    machinery_basis_core::debug_mode::toggle()
+}
+
+/// As redes dos cabos de todas as dimensões, com a chave de cada uma no espelho do conjunto único.
+fn cable_networks() -> Vec<(machinery_basis_core::transmission::registry::MirrorKey, usize, usize)> {
+    CABLES.with(|cables| {
+        cables
+            .try_borrow()
+            .map(|cables| cables.values().flat_map(|owner| owner.registry().mirror_summaries()).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// `TransmitterNetworkRegistry.toComponents`: todas as redes do registro (energia, fluido, químico, calor e itens, de todas as dimensões), na ordem do conjunto único do original
+/// (o espelho do `networks`), com o tipo, o número de transmissores e o de aceitadores de cada uma.
+pub(in crate::game) fn registry_networks() -> Vec<(machinery_basis_core::side_config::TransmissionType, usize, usize)> {
+    use machinery_basis_core::side_config::TransmissionType;
+    let mut known = HashMap::new();
+    let families = [
+        (TransmissionType::Energy, cable_networks()),
+        (TransmissionType::Fluid, crate::game::machinery_resources::pipe_networks()),
+        (TransmissionType::Chemical, crate::game::machinery_resources::tube_networks()),
+        (TransmissionType::Heat, crate::game::machinery_heat::conductor_networks()),
+        (TransmissionType::Item, crate::game::machinery_transporters::transporter_networks()),
+    ];
+    for (kind, networks) in families {
+        for (key, transmitters, acceptors) in networks {
+            known.insert(key, (kind, transmitters, acceptors));
+        }
+    }
+    machinery_basis_core::transmission::registry::NetworkMirror::current()
+        .in_order()
+        .into_iter()
+        .filter_map(|key| known.remove(&key))
+        .collect()
 }
 
 /// O sink dos eventos dos cabos: traduz o evento do jogo para o do dono.

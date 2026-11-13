@@ -543,6 +543,10 @@ impl EnergyTransmitters {
         &self.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut TransmitterNetworkRegistry<Acceptor> {
+        &mut self.registry
+    }
+
     pub fn family(&self) -> &EnergyFamily<dyn EnergyInsert> {
         &self.st.family
     }

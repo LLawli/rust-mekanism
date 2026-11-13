@@ -1,6 +1,7 @@
 //! A árvore de comandos de servidor: a conta do Brigadier para a linha digitada, e os usos que o jogo anuncia.
 use machinery_basis_core::commands::{
-    CommandNode, LEVEL_ALL, LEVEL_GAMEMASTERS, Parsed, SyntaxError, UNKNOWN_ARGUMENT, UNKNOWN_COMMAND, Usage, parse, usages,
+    CommandNode, LEVEL_ALL, LEVEL_GAMEMASTERS, Parsed, SyntaxError, UNKNOWN_ARGUMENT,
+    UNKNOWN_COMMAND, Usage, parse, usages,
 };
 
 fn tree() -> CommandNode<u32> {
