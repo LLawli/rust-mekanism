@@ -104,9 +104,32 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     let result = match &*stack.item {
         rules::CONFIGURATOR_ITEM => configurator_use_on(game, stack, pos, face),
         rules::CONFIGURATION_CARD_ITEM => card_use_on(game, stack, pos),
+        item if rules::alloy_level(item).is_some() => alloy_use_on(game, item, pos),
         _ => return,
     };
     *claimed = result;
+}
+
+/// `ItemAlloy.useOn`: a liga num transmissor sobe o tier dele e dos ligados a ele (`TileEntityTransmitter.onAlloyInteraction`). O clique é da liga sempre que o bloco é um transmissor
+/// (`ALLOY_INTERACTION`), suba algum ou não; num bloco que não é, segue o caminho normal (`PASS`). `MekanismConfig.general.transmitterAlloyUpgrade` vale sempre `true` (o padrão).
+fn alloy_use_on(game: &mut Game<'_>, item: &str, pos: [i32; 3]) -> bool {
+    let Some(level) = rules::alloy_level(item) else {
+        return false;
+    };
+    let block = game.native_block(pos);
+    let upgraded = if glue::is_cable_block(&block) {
+        basis::cable_alloy(game, pos, level, &rules::UNIVERSAL_CABLES.map(|(id, _)| id))
+    } else if glue::is_pipe_block(&block) {
+        crate::game::machinery_pipes::pipe_alloy(game, pos, level, &rules::MECHANICAL_PIPES)
+    } else if glue::is_tube_block(&block) {
+        crate::game::machinery_tubes::tube_alloy(game, pos, level, &rules::PRESSURIZED_TUBES)
+    } else {
+        return false;
+    };
+    if upgraded == Some(true) {
+        basis::alloy_consume(game);
+    }
+    true
 }
 
 /// Devolve se o clique foi do item (`SUCCESS` ou `FAIL`); `PASS` segue o caminho normal.
@@ -249,7 +272,7 @@ fn transporter_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: b
     consumed
 }
 /// As peças do transmissor em `pos` (`TileEntityTransmitter.getCollisionBoxes`: um braço por lado ligado, com a forma do tipo dele, e o centro). O dono dos cabos e o dos canos, que vivem no
-/// servidor, sabem o tipo visível de cada lado; o cliente (o contorno) só tem as propriedades de lado do bloco, que dizem braço ou não, e dá o braço normal a cada uma. A forma
+/// servidor, sabem o tipo visível de cada lado; o cliente (o contorno) sabe o tipo pelo pacote de atualização que o servidor lhe manda (`machinery_transmitter_client`), e sem ele só tem as propriedades de lado do bloco, que dizem braço ou não, e dá o braço normal a cada uma. A forma
 /// de estado do Horizon (`facts.outline`) não serve: é a união do centro e dos braços, e dois braços opostos viram uma caixa só.
 fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::TransmitterPiece>> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
@@ -259,6 +282,8 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
         .or_else(|| crate::game::machinery_tubes::tube_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_heat::conductor_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_transporters::transporter_arm_kinds(game, pos))
+        // O cliente (o contorno) sabe o tipo de cada lado pelo pacote de atualização do transmissor (`handleUpdateTag`): `PUSH` e `PULL` têm as três caixas deles.
+        .or_else(|| crate::game::machinery_transmitter_client::view_at(game.native_dimension(), pos).map(|view| view.kind))
         .unwrap_or_else(|| {
         let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
         for side in Face::ALL {

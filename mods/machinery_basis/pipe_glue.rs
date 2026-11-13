@@ -491,12 +491,15 @@ fn pipes_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmitt
     });
     handlers_flush(game, dimension);
     // `Mekanism.onLiquidTransferred` e `onChemicalTransferred`: o `PacketNetworkScale` e o do conteúdo saem juntos, a quem está no raio da rede.
-    for out in scale_packets {
-        let contents = out.contents.map(|resource| resource.map(|resource| resource.id.to_string()));
-        crate::game::machinery_transmitter_client::scale(game, dimension, out.packet, out.range, contents);
+    if !scale_packets.is_empty() {
+        let packets = scale_packets
+            .into_iter()
+            .map(|out| (out.packet, out.range, out.contents.map(|resource| resource.map(|resource| resource.id.to_string()))))
+            .collect();
+        crate::game::machinery_transmitter_client::scale(game, dimension, packets);
     }
     if let Some(pos) = removed {
-        crate::game::machinery_transmitter_client::gone(game, dimension, pos);
+        crate::game::machinery_transmitter_client::gone(dimension, pos);
         PIPE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
     }
     // `markChunkDirty` da rede: o chunk do cano vai para o próximo salvamento.
@@ -536,6 +539,40 @@ pub(in crate::game) fn pipes_save(game: &mut Game<'_>) {
 /// servidor, que é onde o dono vive, ou se o cano ainda não publicou.
 pub(in crate::game) fn pipe_arm_kinds(game: &Game<'_>, pos: [i32; 3]) -> Option<[ConnectionType; 6]> {
     PIPE_VIEWS.with_borrow(|views| views.get(&(game.native_dimension(), pos)).map(|view| view.kind))
+}
+
+/// `ItemAlloy.useOn` em um cano: a liga de nível `alloy_level` sobe os da rede que `canUpgrade` aceita (`blocks` dá o bloco de cada nível, do básico ao supremo). `None` se o bloco
+/// clicado não é do dono; senão se algum subiu (a liga se gasta).
+pub(in crate::game) fn pipe_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_level: i32, blocks: &[&str]) -> Option<bool> {
+    let dimension = game.native_dimension();
+    let level_of = |game: &Game<'_>, at: SimPos| -> Option<i32> {
+        let block = game.native_block(arr(at));
+        blocks.iter().position(|id| *id == block).map(|level| level as i32)
+    };
+    let mut run = {
+        let game_ref: &Game<'_> = game;
+        with_owner(dimension, |owner| owner.alloy_start(sim_pos(pos), alloy_level, &|at| level_of(game_ref, at)))??
+    };
+    let upgraded_block = *blocks.get(usize::try_from(alloy_level).ok()?)?;
+    for target in run.targets.clone() {
+        let data = {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            with_owner(dimension, |owner| owner.alloy_take(&mut world, &mut run, target)).flatten()
+        };
+        let Some(data) = data else {
+            continue;
+        };
+        basis::alloy_replace(game, arr(target), upgraded_block);
+        let given = with_owner(dimension, |owner| owner.alloy_give(&mut run, target, &data)).unwrap_or(false);
+        if given && run.full() {
+            break;
+        }
+    }
+    {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        with_owner(dimension, |owner| owner.alloy_finish(&mut world, &run));
+    }
+    Some(run.did_upgrade())
 }
 
 /// O clique do Configurator num cano (`ItemConfigurator.useOn`: `IConfigurable.onSneakRightClick` agachado, `onRightClick` senão). `side` é a face clicada e `hit_side` o lado do

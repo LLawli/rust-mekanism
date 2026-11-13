@@ -5,7 +5,7 @@
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::transmission::DimensionId;
 use machinery_basis_core::transmission::client::{
-    ClientKind, ClientTransmitters, ScaleOutbox, ScalePacket, TagMessage, decode_contents, decode_gone, encode_contents,
+    ClientKind, ClientTransmitters, MAX_BATCH, Op, ScaleOutbox, ScalePacket, TagMessage, decode_batch, decode_contents, encode_batches, decode_gone, encode_contents,
     encode_gone, gen_packet_range, player_in_range,
 };
 use machinery_basis_core::transmission::connection::ConnectionType;
@@ -247,4 +247,49 @@ fn the_messages_survive_the_wire() {
     assert_eq!(decode_gone(&gone), Some(("minecraft:overworld".to_owned(), BlockPos::new(1, 2, 3))));
     assert_eq!(decode_contents(&encode_contents(A, Some("mekanism:hydrogen"))), Some((A, Some("mekanism:hydrogen".into()))));
     assert_eq!(decode_contents(&encode_contents(B, None)), Some((B, None)));
+}
+
+#[test]
+fn the_packets_travel_in_batches_in_order_and_each_batch_fits_a_mod_message() {
+    let mut ops = Vec::new();
+    for x in 0..2_000 {
+        ops.push(Op::Tag(TagMessage {
+            dimension: "minecraft:overworld".into(),
+            pos: at(x, 0),
+            kind: ClientKind::Energy,
+            capacity: 8_000,
+            tag: tag(Some(A), [0; 6], 0, 0),
+        }));
+        if x % 100 == 0 {
+            ops.push(Op::Scale(ScalePacket { network: A, scale: x as f32 / 2_000.0 }));
+            ops.push(Op::Gone { dimension: "minecraft:overworld".into(), pos: at(x, 1) });
+            ops.push(Op::Contents { network: A, resource: (x % 200 == 0).then(|| "minecraft:lava".to_owned()) });
+        }
+    }
+    let batches = encode_batches(&ops);
+    assert!(batches.len() > 1 && batches.len() < 32, "uma rede grande cabe nas 32 mensagens por tick: {}", batches.len());
+    assert!(batches.iter().all(|batch| batch.len() <= 30_000 && batch.len() <= MAX_BATCH + 4));
+    let decoded: Vec<Op> = batches.iter().flat_map(|batch| decode_batch(batch).unwrap()).collect();
+    assert_eq!(decoded, ops, "a ordem se mantém");
+    assert!(encode_batches(&[]).is_empty());
+    assert_eq!(decode_batch(&[0, 1]), None);
+}
+
+#[test]
+fn applying_the_packets_in_order_leaves_the_client_as_the_server_told() {
+    let mut client = ClientTransmitters::new();
+    let tag_for = |x| Op::Tag(TagMessage {
+        dimension: "d".into(),
+        pos: at(x, 0),
+        kind: ClientKind::Energy,
+        capacity: 8_000,
+        tag: tag(Some(A), [0; 6], 0, 0),
+    });
+    client.apply(&tag_for(0));
+    client.apply(&tag_for(1));
+    client.apply(&Op::Scale(ScalePacket { network: A, scale: 0.5 }));
+    assert_eq!(client.get_client_network(A).unwrap().current_scale, 0.5);
+    client.apply(&Op::Gone { dimension: "d".into(), pos: at(0, 0) });
+    client.apply(&Op::Gone { dimension: "d".into(), pos: at(1, 0) });
+    assert!(client.get_client_network(A).is_none());
 }

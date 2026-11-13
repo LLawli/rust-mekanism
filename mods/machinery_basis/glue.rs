@@ -3713,8 +3713,8 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
     });
     acceptors_flush(game, dimension);
     // `Mekanism.onEnergyTransferred`: o `PacketNetworkScale` de cada evento de transferência, a quem está no raio da rede.
-    for out in scale_packets {
-        crate::game::machinery_transmitter_client::scale(game, dimension, out.packet, out.range, None);
+    if !scale_packets.is_empty() {
+        crate::game::machinery_transmitter_client::scale(game, dimension, scale_packets.into_iter().map(|out| (out.packet, out.range, None)).collect());
     }
     if let Some(pos) = cleared {
         // O `energy` que o save trouxe já é a parte do cabo (o dono a leu em `cable_info`): não é energia que um vizinho empurrou.
@@ -3722,7 +3722,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.insert((dimension, pos), inbox));
     }
     if let Some(pos) = removed {
-        crate::game::machinery_transmitter_client::gone(game, dimension, pos);
+        crate::game::machinery_transmitter_client::gone(dimension, pos);
         CABLE_VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
         CABLE_ABSORBED.with_borrow_mut(|absorbed| absorbed.remove(&(dimension, pos)));
     }
@@ -3887,6 +3887,83 @@ pub(in crate::game) fn cable_configure(
     })?;
     let overlays = CABLE_OVERLAYS.with_borrow_mut(std::mem::take);
     Some((consumed, overlays))
+}
+
+/// `BlockStateHelper.copyStateData(current, block)` e `Level.setBlockAndUpdate`: o bloco em `pos` vira o `block`, com as propriedades que os dois têm (os braços e a água), e os
+/// eventos que isso provoca (o transmissor velho sai, o novo entra) chegam aos donos antes de a troca devolver. `false` se o bloco novo não existe ou o jogo não trocou.
+pub(in crate::game) fn alloy_replace(game: &mut Game<'_>, pos: [i32; 3], block: &str) -> bool {
+    let dimension = game.native_dimension();
+    let current = game.world.block(pos[0], pos[1], pos[2]);
+    let properties = match game.pack.assets.registry.state(current) {
+        Some(state) => state.properties.clone(),
+        None => return false,
+    };
+    let state = game.with_level(|_, level, _| {
+        let mut state = level.registry.default_state(block)?;
+        for (key, value) in &properties {
+            if let Some(next) = level.native_state_with_property(state, key, value) {
+                state = next;
+            }
+        }
+        Some(state)
+    });
+    let Some(state) = state else {
+        return false;
+    };
+    // `UPDATE_ALL`.
+    let changed = game.native_set_block(dimension, pos, state, 3);
+    transmitters_flush(game);
+    changed
+}
+
+/// `ItemAlloy.useOn` num cabo: a liga de nível `alloy_level` (1 avançada, 2 elite, 3 suprema) sobe os cabos da rede que `canUpgrade` aceita (`blocks` dá o bloco de cada nível, do
+/// básico ao supremo). `None` se o bloco clicado não é um cabo do dono; senão se algum subiu (a liga se gasta).
+pub(in crate::game) fn cable_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_level: i32, blocks: &[&str]) -> Option<bool> {
+    let dimension = game.native_dimension();
+    let level_of = |game: &Game<'_>, at: SimPos| -> Option<i32> {
+        let block = game.native_block(arr(at));
+        blocks.iter().position(|id| *id == block).map(|level| level as i32)
+    };
+    let mut run = {
+        let game_ref: &Game<'_> = game;
+        with_owner(dimension, |owner| owner.alloy_start(sim_pos(pos), alloy_level, &|at| level_of(game_ref, at)))??
+    };
+    let upgraded_block = *blocks.get(usize::try_from(alloy_level).ok()?)?;
+    for target in run.targets.clone() {
+        let data = {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            with_owner(dimension, |owner| owner.alloy_take(&mut world, &mut run, target)).flatten()
+        };
+        let Some(data) = data else {
+            continue;
+        };
+        alloy_replace(game, arr(target), upgraded_block);
+        let given = with_owner(dimension, |owner| owner.alloy_give(&mut run, target, &data)).unwrap_or(false);
+        if given && run.full() {
+            break;
+        }
+    }
+    {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        with_owner(dimension, |owner| owner.alloy_finish(&mut world, &run));
+    }
+    Some(run.did_upgrade())
+}
+
+/// O gasto da liga (`stack.consume(1, player)`: o criativo não gasta).
+pub(in crate::game) fn alloy_consume(game: &mut Game<'_>) {
+    let creative = game.native_acting_player().is_some_and(|player| player.game_mode == 1);
+    if creative {
+        return;
+    }
+    let held = game.held_mut();
+    let emptied = held.as_mut().is_some_and(|in_hand| {
+        in_hand.count = in_hand.count.saturating_sub(1);
+        in_hand.count == 0
+    });
+    if emptied {
+        *held = None;
+    }
 }
 
 /// Os tipos de conexão visíveis do cabo em `pos` (`getConnectionType(side)`: `NONE` onde não há braço), na ordem dos lados, como o último `publish` os deixou. `None` fora do servidor,

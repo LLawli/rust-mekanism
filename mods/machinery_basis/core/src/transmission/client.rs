@@ -21,12 +21,14 @@ use super::{DimensionId, NetworkId as ServerNetworkId};
 use crate::sim::chunks::BlockPos;
 use std::collections::HashMap;
 
-/// `mekanism:network_scale`, o canal do pacote entre o servidor e o cliente.
-pub const SCALE_CHANNEL: &str = "machinery_basis:network_scale";
-/// O canal do pacote de atualização de um transmissor (`getUpdateTag`/`handleUpdateTag`): a posição e o `writeReducedUpdatedTag`.
-pub const TAG_CHANNEL: &str = "machinery_basis:transmitter_tag";
-/// O canal da saída de um transmissor do cliente (`setRemoved`, ou o chunk que sai).
-pub const GONE_CHANNEL: &str = "machinery_basis:transmitter_gone";
+/// O canal dos pacotes dos transmissores entre o servidor e o cliente: o pacote de atualização (`getUpdateTag`/`handleUpdateTag`), a saída de um transmissor, o
+/// `PacketNetworkScale` e o conteúdo da rede, em lotes na ordem em que saíram. O canal de mod do Horizon aceita 32 mensagens por jogador por tick, e uma rede que se
+/// funde pede a atualização de cada transmissor dela: os pacotes vão juntos.
+pub const OPS_CHANNEL: &str = "machinery_basis:transmitters";
+/// O canal que esvazia o cliente (`MekanismClient.reset`, `TransmitterNetworkRegistry.clearClientNetworks`).
+pub const RESET_CHANNEL: &str = "machinery_basis:transmitter_reset";
+/// O que cabe numa mensagem de mod (`native_net_send_to_player`: 30.000 bytes), com folga para o cabeçalho.
+pub const MAX_BATCH: usize = 28_000;
 
 /// `Range3D`: o retângulo (em x e z) que a rede cobre, e a dimensão dela.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -701,4 +703,105 @@ pub fn decode_contents(bytes: &[u8]) -> Option<(u128, Option<String>)> {
         _ => return None,
     };
     reader.0.is_empty().then_some((network, resource))
+}
+
+/// Um pacote do servidor ao cliente.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Op {
+    /// O pacote de atualização de um transmissor (`handleUpdateTag`).
+    Tag(TagMessage),
+    /// O transmissor saiu do mundo do cliente (`setRemoved`).
+    Gone { dimension: String, pos: BlockPos },
+    /// `PacketNetworkScale`.
+    Scale(ScalePacket),
+    /// `PacketFluidNetworkContents` e `PacketChemicalNetworkContents`.
+    Contents {
+        network: u128,
+        resource: Option<String>,
+    },
+}
+
+impl Op {
+    fn encode(&self) -> Vec<u8> {
+        match self {
+            Op::Tag(message) => [&[0u8][..], &message.encode()].concat(),
+            Op::Gone { dimension, pos } => [&[1u8][..], &encode_gone(dimension, *pos)].concat(),
+            Op::Scale(packet) => [&[2u8][..], &packet.encode()].concat(),
+            Op::Contents { network, resource } => {
+                [&[3u8][..], &encode_contents(*network, resource.as_deref())].concat()
+            }
+        }
+    }
+
+    fn decode(bytes: &[u8]) -> Option<Self> {
+        let (kind, rest) = bytes.split_first()?;
+        Some(match kind {
+            0 => Op::Tag(TagMessage::decode(rest)?),
+            1 => {
+                let (dimension, pos) = decode_gone(rest)?;
+                Op::Gone { dimension, pos }
+            }
+            2 => Op::Scale(ScalePacket::decode(rest)?),
+            3 => {
+                let (network, resource) = decode_contents(rest)?;
+                Op::Contents { network, resource }
+            }
+            _ => return None,
+        })
+    }
+}
+
+/// Os pacotes em mensagens de até [`MAX_BATCH`] bytes, na ordem: cada mensagem é uma contagem e, por pacote, o tamanho e os bytes.
+pub fn encode_batches(ops: &[Op]) -> Vec<Vec<u8>> {
+    let mut batches = Vec::new();
+    let mut body: Vec<u8> = Vec::new();
+    let mut count: u16 = 0;
+    let finish = |body: &mut Vec<u8>, count: &mut u16, batches: &mut Vec<Vec<u8>>| {
+        if *count > 0 {
+            let mut message = count.to_be_bytes().to_vec();
+            message.append(body);
+            batches.push(message);
+            *count = 0;
+        }
+    };
+    for op in ops {
+        let bytes = op.encode();
+        if !body.is_empty() && (body.len() + bytes.len() + 4 > MAX_BATCH || count == u16::MAX) {
+            finish(&mut body, &mut count, &mut batches);
+        }
+        body.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+        body.extend_from_slice(&bytes);
+        count += 1;
+    }
+    finish(&mut body, &mut count, &mut batches);
+    batches
+}
+
+/// Uma mensagem de [`encode_batches`]; `None` se está cortada ou tem sobra.
+pub fn decode_batch(bytes: &[u8]) -> Option<Vec<Op>> {
+    let mut reader = Reader(bytes);
+    let count = u16::from_be_bytes(reader.take(2)?.try_into().ok()?);
+    let mut ops = Vec::new();
+    for _ in 0..count {
+        let len = u32::from_be_bytes(reader.take(4)?.try_into().ok()?) as usize;
+        ops.push(Op::decode(reader.take(len)?)?);
+    }
+    reader.0.is_empty().then_some(ops)
+}
+
+impl ClientTransmitters {
+    /// Aplica um pacote do servidor no cliente (o `handle` de cada um).
+    pub fn apply(&mut self, op: &Op) {
+        match op {
+            Op::Tag(message) => {
+                if self.view_at(message.pos).is_none() {
+                    self.add_tile(message.pos, message.kind, message.capacity);
+                }
+                self.handle_update_tag(message.pos, &message.tag);
+            }
+            Op::Gone { pos, .. } => self.remove_tile(*pos),
+            Op::Scale(packet) => self.on_scale_packet(packet),
+            Op::Contents { network, resource } => self.on_contents_packet(*network, resource.clone()),
+        }
+    }
 }
