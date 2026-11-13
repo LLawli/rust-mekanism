@@ -358,6 +358,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 
+- Um cabo posto no overworld não entra mais no dono do Nether quando há um chunk forçado no Nether (Fase 3, frente `ajustes-jogo`, decisão 141, H166): o servidor deixa o Nether no lugar no fim do tick, e a fila de ocorrências dos block entities saía com o nível errado; a injeção `transmitter_level_leave` (HEAD de `Game::enter_level`) a esvazia com o nível que está saindo. Medido em jogo: a máquina do Nether e a do overworld recebem a mesma energia, passo a passo.
+- O Configurator agachado num cano mecânico escolhe o lado do braço que o olhar toca, como no cabo (Fase 3, frente `ajustes-jogo`, decisão 133): o `NONE` apaga o braço do cano e o do vizinho, medido em jogo com o antes e o depois recortados.
+- O `Transmitter.notifyTileChange` do cano avisa os vizinhos na ordem de `Direction.values()` (`WorldUtils.notifyLoadedNeighborsOfTileChange`), e não na de `Level.updateNeighborsAt` (decisão 140).
 - O fim do tick do servidor chega ao registro de cada dimensão (Fase 3, frente `cabo-ajustes`, decisão 134): `TransmitterNetworkRegistry.onTick` é um só no original e trata as redes de todas as dimensões, e o port entregava o `ServerTickPost` só ao dono do nível em que o jogo está, então uma rede de cabos no Nether, com o jogador no overworld e o chunk forçado, não se atualizava. A cola entra agora em cada nível que o servidor ticou e que tem transmissor (uma vez por tick, o nível do jogo por último) e volta ao que estava. Falta a medida em jogo com duas dimensões.
 - O cabo guarda o UUID verdadeiro da rede (`setTransmitterNetwork`), e não o índice dela, também na rede que nasce de transmissores órfãos: o dono só lia o UUID no `Merged`, depois de a rede adotar os transmissores. Achado por mutação (frente `cabo-ajustes`); o UUID só vai no pacote de atualização, que ainda não sai.
 
