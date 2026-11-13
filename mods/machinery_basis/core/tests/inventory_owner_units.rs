@@ -12,6 +12,7 @@ use machinery_basis_core::transmission::client::{
 use machinery_basis_core::transmission::connection::{
     ConnectionType, TransmissionSet, TransmissionType,
 };
+use machinery_basis_core::transmission::host_item::{HostItemHandler, MirrorSlot, SlotChange};
 use machinery_basis_core::transmission::inventory_owner::{
     InventoryOwnerWorld, InventoryTransmitters, ItemAcceptor, SavedTransporter, TransporterInfo,
     TransporterPacket, hopper_outcome,
@@ -24,6 +25,7 @@ use machinery_basis_core::transporter::nbt::{Compound, Nbt};
 use machinery_basis_core::transporter::node::{
     CapabilityChange, DiversionControl, TransporterKind, TransporterTier,
 };
+use machinery_basis_core::transporter::pos::NO_POS;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -41,6 +43,65 @@ struct SimWorld {
     changed: usize,
     published: usize,
     packets: Vec<(BlockPos, TransporterPacket)>,
+    /// Com o espelho ligado (`mirrored`), o contêiner é visto como o jogo o mostra: uma cópia dos slots (`HostItemHandler`), relida no começo do evento e aplicada no fim.
+    mirrored: bool,
+    mirrors: RefCell<HashMap<BlockPos, Rc<HostItemHandler>>>,
+}
+
+impl SimWorld {
+    fn slots_of(&self, pos: BlockPos) -> Option<Vec<MirrorSlot>> {
+        let chest = self.chests.get(&pos)?;
+        Some(
+            (0..chest.size())
+                .map(|index| MirrorSlot {
+                    index,
+                    contents: chest
+                        .resource(index)
+                        .map(|resource| (resource, chest.amount(index))),
+                    can_take: true,
+                    refuses: Vec::new(),
+                })
+                .collect(),
+        )
+    }
+
+    /// `handlers_refresh` da cola: os espelhos leem os contêineres de novo.
+    fn refresh_mirrors(&self) {
+        for (pos, handler) in self.mirrors.borrow().iter() {
+            handler.refresh(self.slots_of(*pos).unwrap_or_default());
+        }
+    }
+
+    /// `handlers_flush` da cola: o que o evento mudou nos espelhos vai para os contêineres.
+    fn flush_mirrors(&self) {
+        for (pos, handler) in self.mirrors.borrow().iter() {
+            let chest = self.chests[pos].clone();
+            for change in handler.changes() {
+                match change {
+                    SlotChange::Take { index, count } => {
+                        let resource = chest.resource(index).unwrap();
+                        let left = chest.amount(index) - count;
+                        chest.set_item(index, (left > 0).then_some(resource), left);
+                    }
+                    SlotChange::Put { resource, count } => {
+                        let mut left = count;
+                        for index in 0..chest.size() {
+                            if left == 0 {
+                                break;
+                            }
+                            let transaction =
+                                machinery_basis_core::transaction::Transaction::open_root();
+                            let put = chest.insert_at(index, &resource, left, &transaction);
+                            transaction.commit();
+                            left -= put;
+                        }
+                        assert_eq!(left, 0, "o jogo recusou o que o espelho aceitou");
+                    }
+                }
+            }
+            handler.settle();
+        }
+    }
 }
 
 impl InventoryOwnerWorld for SimWorld {
@@ -53,6 +114,16 @@ impl InventoryOwnerWorld for SimWorld {
     }
 
     fn item_handler(&self, pos: BlockPos, _: Face) -> Option<ItemAcceptor> {
+        if self.mirrored {
+            let slots = self.slots_of(pos)?;
+            if let Some(handler) = self.mirrors.borrow().get(&pos).cloned() {
+                handler.refresh_if_clean(slots);
+                return Some(handler as ItemAcceptor);
+            }
+            let handler = Rc::new(HostItemHandler::new(slots));
+            self.mirrors.borrow_mut().insert(pos, handler.clone());
+            return Some(handler as ItemAcceptor);
+        }
         self.chests
             .get(&pos)
             .map(|chest| chest.clone() as Rc<dyn ItemHandler>)
@@ -880,16 +951,25 @@ fn the_alloy_loses_no_item_in_flight() {
     );
 }
 
-/// O que o servidor tem em trânsito num transportador: o índice, o item e a quantidade de cada pilha, em ordem de índice.
-fn server_stacks(owner: &InventoryTransmitters, pos: BlockPos) -> Vec<(i32, String, u32)> {
-    let mut out: Vec<(i32, String, u32)> = owner
+type Seen = (i32, String, u32, Option<i64>, Option<i64>);
+
+/// O que o servidor tem em trânsito num transportador: o índice, o item, a quantidade e o próximo e o anterior (`getNext` e `getPrev` do transportador) de cada pilha, em ordem de índice.
+fn server_stacks(owner: &InventoryTransmitters, pos: BlockPos) -> Vec<Seen> {
+    let known = |position: i64| (position != NO_POS).then_some(position);
+    let mut out: Vec<Seen> = owner
         .transporter_at(pos)
         .unwrap()
         .transit_stacks()
         .iter()
         .map(|(id, stack)| {
             let stack = stack.borrow();
-            (*id, stack.item_type().unwrap().id.to_string(), stack.size())
+            (
+                *id,
+                stack.item_type().unwrap().id.to_string(),
+                stack.size(),
+                known(stack.get_next(pos.as_long())),
+                known(stack.get_prev(pos.as_long())),
+            )
         })
         .collect();
     out.sort();
@@ -897,15 +977,15 @@ fn server_stacks(owner: &InventoryTransmitters, pos: BlockPos) -> Vec<(i32, Stri
 }
 
 /// O que o cliente guardou de um transportador, no mesmo formato.
-fn client_stacks(client: &ClientTransmitters, pos: BlockPos) -> Vec<(i32, String, u32)> {
-    let mut out: Vec<(i32, String, u32)> = client
+fn client_stacks(client: &ClientTransmitters, pos: BlockPos) -> Vec<Seen> {
+    let mut out: Vec<Seen> = client
         .extra_at(pos)
         .unwrap()
         .transit
         .iter()
         .map(|stack| {
             let (item, amount) = stack.item.clone().expect("pilha sem item");
-            (stack.index, item, amount as u32)
+            (stack.index, item, amount as u32, stack.next, stack.previous)
         })
         .collect();
     out.sort();
@@ -1021,4 +1101,83 @@ fn the_sync_packet_carries_the_stack_as_the_stream_codec_does() {
     let mut empty = ClientTransmitters::new();
     empty.on_transporter_batch(at(0), &[], &[]);
     assert!(empty.extra_at(at(0)).is_none());
+}
+
+/// O destino visto pelo espelho que a cola do jogo usa (`HostItemHandler`, relido no começo de cada evento e aplicado no fim): a linha entrega os 64.
+#[test]
+fn the_mirror_of_the_destination_chest_takes_all_64() {
+    let length = 5;
+    let (mut owner, mut world) = line(&vec![logistical(); length]);
+    world.mirrored = true;
+    for tick_number in 0..1_500 {
+        for x in 0..length as i32 {
+            world.refresh_mirrors();
+            owner.handle(&mut world, Event::Update(at(x)));
+            world.flush_mirrors();
+        }
+        world.refresh_mirrors();
+        owner.handle(
+            &mut world,
+            Event::ServerTickPost {
+                runs_normally: true,
+            },
+        );
+        world.flush_mirrors();
+        let _ = tick_number;
+    }
+    assert_eq!(
+        dirt_in(&world.chests[&at(length as i32)]),
+        64,
+        "entregue ao baú de destino pelo espelho"
+    );
+}
+
+/// A liga no meio da linha com o destino visto pelo espelho (como o jogo o mostra), e a linha segue com a velocidade e o puxar do avançado: os 64 chegam ao baú.
+#[test]
+fn the_alloy_in_the_middle_of_a_line_with_the_mirrored_destination_delivers_all_64() {
+    let length = 5;
+    let (mut owner, mut world) = line(&vec![logistical(); length]);
+    world.mirrored = true;
+    let mut run_ticks = |owner: &mut InventoryTransmitters, world: &mut SimWorld, count: usize| {
+        for _ in 0..count {
+            for x in 0..length as i32 {
+                world.refresh_mirrors();
+                owner.handle(world, Event::Update(at(x)));
+                world.flush_mirrors();
+            }
+            world.refresh_mirrors();
+            owner.handle(
+                world,
+                Event::ServerTickPost {
+                    runs_normally: true,
+                },
+            );
+            world.flush_mirrors();
+        }
+    };
+    run_ticks(&mut owner, &mut world, 26);
+    let mut run = owner.alloy_start(at(2), 1, &|_| Some(0)).expect("há rede");
+    for target in run.targets.clone() {
+        let data = owner
+            .alloy_take(&mut world, &mut run, target)
+            .expect("dado");
+        owner.handle(&mut world, Event::Removed(target));
+        world.infos.borrow_mut().insert(
+            target,
+            TransporterInfo {
+                tier: TransporterTier::Advanced,
+                kind: logistical(),
+                saved: None,
+            },
+        );
+        owner.handle(&mut world, Event::ClearRemoved(target));
+        assert!(owner.alloy_give(&mut run, target, data));
+    }
+    owner.alloy_finish(&mut world, &run);
+    run_ticks(&mut owner, &mut world, 1_500);
+    assert_eq!(
+        dirt_in(&world.chests[&at(length as i32)]),
+        64,
+        "entregue ao baú de destino pelo espelho"
+    );
 }

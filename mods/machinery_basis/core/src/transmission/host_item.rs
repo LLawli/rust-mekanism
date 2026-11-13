@@ -76,6 +76,15 @@ impl HostItemHandler {
         *self.original.borrow_mut() = slots.into_iter().map(|slot| slot.contents).collect();
     }
 
+    /// A leitura do meio de um evento (`getCapability` pelo `BlockCapabilityCache`, que no original devolve sempre o mesmo objeto, vivo): o espelho relê o jogo só se o evento ainda não
+    /// mudou nada nele. Com uma mudança pendente (uma entrega que o fim do evento ainda vai aplicar) a releitura a desfaria, e a segunda pilha a chegar no mesmo tick ao mesmo baú faria a
+    /// primeira sumir.
+    pub fn refresh_if_clean(&self, slots: Vec<MirrorSlot>) {
+        if self.changes().is_empty() {
+            self.refresh(slots);
+        }
+    }
+
     /// O que o evento mudou no espelho, para o jogo aplicar: as retiradas e depois as colocações, na ordem dos slots. Vazio se nada mudou.
     pub fn changes(&self) -> Vec<SlotChange> {
         let container = self.container.borrow();

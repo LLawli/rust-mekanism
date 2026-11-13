@@ -478,3 +478,49 @@ fn the_forget_packet_survives_the_wire() {
         assert_eq!(decode_batch(&batches[0]), Some(vec![op]));
     }
 }
+
+fn stack_tag(item: &str, amount: i64, progress: i32) -> Compound {
+    let mut resource = Compound::new();
+    resource.insert("id".into(), Tag::String(item.into()));
+    let mut holder = Compound::new();
+    holder.insert("type".into(), Tag::Compound(resource));
+    holder.insert("amount".into(), Tag::Long(amount));
+    let mut stack = Compound::new();
+    stack.insert("item".into(), Tag::Compound(holder));
+    stack.insert("progress".into(), Tag::Int(progress));
+    stack.insert("original_location".into(), Tag::Long(7));
+    stack.insert("path_type".into(), Tag::String("dest".into()));
+    stack
+}
+
+/// `PacketTransporterBatch.handle`: as atualizações primeiro (`addStack` põe a pilha no lugar da que tinha o mesmo índice), as saídas depois; e `onUpdateClient` avança o progresso da
+/// pilha a velocidade do tier, até 100.
+#[test]
+fn a_batch_replaces_the_stack_with_the_same_index_then_deletes_and_the_client_tick_moves_it() {
+    let mut client = ClientTransmitters::new();
+    let pos = at(0, 0);
+    client.add_tile(pos, ClientKind::Items, 0);
+    client.on_transporter_sync(pos, 3, &stack_tag("minecraft:dirt", 1, 0));
+    client.on_transporter_sync(pos, 4, &stack_tag("minecraft:gravel", 2, 50));
+    let transit = &client.extra_at(pos).unwrap().transit;
+    assert_eq!(transit.len(), 2);
+    assert_eq!(transit[0].progress, 5, "o progresso zero do fio vira 5");
+    // O lote troca a pilha 3 (outro progresso) e tira a 4.
+    client.on_transporter_batch(pos, &[4], &[(3, stack_tag("minecraft:dirt", 1, 40))]);
+    let transit = &client.extra_at(pos).unwrap().transit;
+    assert_eq!(transit.len(), 1);
+    assert_eq!((transit[0].index, transit[0].progress), (3, 40));
+    // Uma saída e uma atualização do mesmo índice no mesmo lote: a atualização entra e a saída a tira.
+    client.on_transporter_batch(pos, &[3], &[(3, stack_tag("minecraft:dirt", 1, 60))]);
+    assert!(client.extra_at(pos).unwrap().transit.is_empty());
+    client.on_transporter_sync(pos, 9, &stack_tag("minecraft:dirt", 1, 90));
+    client.tick_client_at(pos, 5);
+    assert_eq!(client.extra_at(pos).unwrap().transit[0].progress, 95);
+    client.tick_client_at(pos, 5);
+    client.tick_client_at(pos, 5);
+    assert_eq!(client.extra_at(pos).unwrap().transit[0].progress, 100);
+    // O que não é transportador não guarda pilha.
+    client.add_tile(at(1, 0), ClientKind::Energy, 10);
+    client.on_transporter_sync(at(1, 0), 1, &stack_tag("minecraft:dirt", 1, 5));
+    assert!(client.extra_at(at(1, 0)).unwrap().transit.is_empty());
+}

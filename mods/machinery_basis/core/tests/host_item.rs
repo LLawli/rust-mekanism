@@ -94,3 +94,28 @@ fn a_slot_the_game_refuses_an_item_in_does_not_receive_it() {
         }]
     );
 }
+
+/// Pedir o handler no meio de um evento (`getCapability`) devolve o mesmo objeto com o que o evento já mudou nele: a releitura só vale se não há mudança pendente. Com uma entrega ainda
+/// por aplicar, a releitura a desfazia e a pilha sumia (a segunda a chegar no mesmo tick ao mesmo baú).
+#[test]
+fn a_mid_event_read_keeps_what_the_event_already_changed() {
+    let handler = HostItemHandler::new(vec![slot(0, Some((dirt(), 10)), true)]);
+    let root = Transaction::open_root();
+    assert_eq!(handler.insert(&dirt(), 5, &root), 5);
+    root.commit();
+    // O jogo ainda não recebeu as 5: a releitura do meio do evento não as apaga.
+    handler.refresh_if_clean(vec![slot(0, Some((dirt(), 10)), true)]);
+    assert_eq!(handler.amount(0), 15);
+    assert_eq!(
+        handler.changes(),
+        vec![SlotChange::Put {
+            resource: dirt(),
+            count: 5
+        }]
+    );
+    // Aplicado, o espelho está limpo e a releitura vale: o jogo tem 15.
+    handler.settle();
+    handler.refresh_if_clean(vec![slot(0, Some((dirt(), 20)), true)]);
+    assert_eq!(handler.amount(0), 20);
+    assert!(handler.changes().is_empty());
+}
