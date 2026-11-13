@@ -130,6 +130,10 @@ fn alloy_use_on(game: &mut Game<'_>, item: &str, pos: [i32; 3]) -> bool {
         crate::game::machinery_resources::pipe_alloy(game, pos, level, &rules::MECHANICAL_PIPES)
     } else if glue::is_tube_block(&block) {
         crate::game::machinery_resources::tube_alloy(game, pos, level, &rules::PRESSURIZED_TUBES)
+    } else if glue::is_conductor_block(&block) {
+        crate::game::machinery_heat::conductor_alloy(game, pos, level, &rules::THERMODYNAMIC_CONDUCTORS)
+    } else if glue::is_transporter_block(&block) {
+        crate::game::machinery_transporters::transporter_alloy(game, pos, level, &rules::LOGISTICAL_TRANSPORTERS)
     } else {
         return false;
     };

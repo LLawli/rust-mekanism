@@ -47,7 +47,16 @@ enum Audience {
     Range(Range3D),
 }
 
+/// Quem é observado: a janela do anfitrião ou um convidado.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Watcher {
+    Host,
+    Guest(u128),
+}
+
 static SOURCES: Mutex<Vec<TagSource>> = Mutex::new(Vec::new());
+/// Onde cada jogador estava no último tick: a dimensão e o chunk. O `ChunkMap` do original manda os transmissores de um chunk a quem passa a vê-lo, ao andar ou ao trocar de dimensão.
+static WATCHED: Mutex<Option<HashMap<Watcher, (String, i32, i32)>>> = Mutex::new(None);
 static QUEUE: Mutex<Vec<Pending>> = Mutex::new(Vec::new());
 /// O cliente de cada dimensão.
 static CLIENT: Mutex<Option<HashMap<String, ClientTransmitters>>> = Mutex::new(None);
@@ -178,6 +187,7 @@ fn tag_message(dimension: &str, pos: [i32; 3], out: TagOut) -> TagMessage {
 
 /// O começo do tick do servidor: os `sendUpdatePacket` e as saídas do tick anterior vão agora, com o estado de agora (a transmissão de mudanças dos chunks).
 pub(in crate::game) fn flush(game: &mut Game<'_>) {
+    watch(game);
     let queue = std::mem::take(&mut *lock(&QUEUE));
     if queue.is_empty() {
         return;
@@ -223,6 +233,37 @@ pub(in crate::game) fn scale(game: &mut Game<'_>, dimension: &'static str, packe
     distribute(game, dimension, items);
 }
 
+/// O chunk de uma posição do jogador.
+fn chunk_of(position: [f64; 3]) -> (i32, i32) {
+    ((position[0].floor() as i32) >> 4, (position[2].floor() as i32) >> 4)
+}
+
+/// O chunk `at` está dentro da distância de visão de quem está no chunk `center`.
+fn in_view(at: (i32, i32), center: (i32, i32), view: i32) -> bool {
+    (at.0 - center.0).abs() <= view && (at.1 - center.1).abs() <= view
+}
+
+/// Os pacotes de atualização de todos os transmissores de `dimension` que `wanted` aceita (a posição do transmissor).
+fn collect_tags(game: &Game<'_>, dimension: &str, wanted: &dyn Fn([i32; 3]) -> bool) -> Vec<Op> {
+    let sources: Vec<TagSource> = lock(&SOURCES).clone();
+    let mut ops = Vec::new();
+    for source in sources {
+        for (dim, pos) in (source.positions)() {
+            if dim != dimension || !wanted(pos) {
+                continue;
+            }
+            if let Some(out) = (source.tag)(game, dim, pos) {
+                ops.push(Op::Tag(tag_message(dim, pos, out)));
+            }
+        }
+    }
+    ops
+}
+
+fn watched_run<R>(f: impl FnOnce(&mut HashMap<Watcher, (String, i32, i32)>) -> R) -> R {
+    f(lock(&WATCHED).get_or_insert_with(HashMap::new))
+}
+
 /// O jogador entrou: o cliente dele começa vazio e recebe o que o servidor tem (a transmissão dos chunks que ele vê).
 pub(in crate::game) fn player_in(game: &mut Game<'_>, player: u128) {
     let _ = game.native_net_send_to_player(player, RESET_CHANNEL, &[]);
@@ -230,26 +271,68 @@ pub(in crate::game) fn player_in(game: &mut Game<'_>, player: u128) {
         return;
     };
     let view = view_distance(game);
-    let sources: Vec<TagSource> = lock(&SOURCES).clone();
-    let mut ops = Vec::new();
-    for source in sources {
-        for (dimension, pos) in (source.positions)() {
-            if dimension != who.dimension || !accepts(&Audience::Chunk(pos), Some(dimension), who.position, view) {
-                continue;
-            }
-            if let Some(out) = (source.tag)(game, dimension, pos) {
-                ops.push(Op::Tag(tag_message(dimension, pos, out)));
-            }
-        }
-    }
+    let center = chunk_of(who.position);
+    watched_run(|watched| watched.insert(Watcher::Guest(player), (who.dimension.clone(), center.0, center.1)));
+    let ops = collect_tags(game, &who.dimension, &|pos| in_view((pos[0] >> 4, pos[2] >> 4), center, view));
     for batch in encode_batches(&ops) {
         let _ = game.native_net_send_to_player(player, OPS_CHANNEL, &batch);
+    }
+}
+
+/// O `ChunkMap` do original manda o pacote de atualização de cada block entity de um chunk a quem passa a vê-lo, ao andar até perto dele ou ao trocar de dimensão (o
+/// `PlayerChangedDimensionEvent` e a carga dos chunks da dimensão nova). A cada tick, quem mudou de chunk ou de dimensão recebe os transmissores dos chunks que acabaram de entrar na
+/// distância de visão dele (todos, se a dimensão é outra).
+fn watch(game: &mut Game<'_>) {
+    let view = view_distance(game);
+    let mut now: Vec<(Watcher, String, [f64; 3])> = Vec::new();
+    if let Some(host) = game.native_player() {
+        now.push((Watcher::Host, host.dimension.to_string(), [host.x, host.y, host.z]));
+    }
+    for guest in game.native_server_players() {
+        now.push((Watcher::Guest(guest.uuid), guest.dimension.to_string(), guest.position));
+    }
+    watched_run(|watched| watched.retain(|key, _| now.iter().any(|(candidate, _, _)| candidate == key)));
+    for (who, dimension, position) in now {
+        let center = chunk_of(position);
+        let before = watched_run(|watched| watched.insert(who, (dimension.clone(), center.0, center.1)));
+        let wanted: Box<dyn Fn([i32; 3]) -> bool> = match before {
+            Some((before_dimension, x, z)) if before_dimension == dimension => {
+                if (x, z) == center {
+                    continue;
+                }
+                Box::new(move |pos| {
+                    let at = (pos[0] >> 4, pos[2] >> 4);
+                    in_view(at, center, view) && !in_view(at, (x, z), view)
+                })
+            }
+            // Um convidado novo recebe tudo no `player_in`; a janela do anfitrião, que não tem pacote de entrada, recebe o que vê agora.
+            None if matches!(who, Watcher::Guest(_)) => continue,
+            _ => Box::new(move |pos| in_view((pos[0] >> 4, pos[2] >> 4), center, view)),
+        };
+        let ops = collect_tags(game, &dimension, &wanted);
+        if ops.is_empty() {
+            continue;
+        }
+        match who {
+            Watcher::Host => client_run(|levels| {
+                for op in &ops {
+                    levels.entry(dimension.clone()).or_default().apply(op);
+                    probe("host", levels, &dimension, op);
+                }
+            }),
+            Watcher::Guest(uuid) => {
+                for batch in encode_batches(&ops) {
+                    let _ = game.native_net_send_to_player(uuid, OPS_CHANNEL, &batch);
+                }
+            }
+        }
     }
 }
 
 /// O mundo fechou: o `clientNetworks` do anfitrião esvazia e o dos convidados também.
 pub(in crate::game) fn reset(game: &mut Game<'_>) {
     lock(&QUEUE).clear();
+    watched_run(HashMap::clear);
     client_run(HashMap::clear);
     let players: Vec<u128> = game.native_server_players().iter().map(|player| player.uuid).collect();
     for player in players {

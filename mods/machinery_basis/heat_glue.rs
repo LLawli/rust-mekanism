@@ -5,10 +5,11 @@
 // quais blocos são condutores e o nível de cada um em `conductors_register`, e quais blocos têm um capacitor de calor em `heat_neighbor_register`.
 use crate::game::Game;
 use crate::game::machinery_basis as basis;
+use crate::game::machinery_transmitter_client as client;
 use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind, arr, sim_pos};
 use horizon_client::containers::BlockEntity;
 use horizon_world::nbt::{Compound, JavaString, Tag};
-use machinery_basis_core::heat::Capacitor;
+use machinery_basis_core::heat::{AmbientSource, Capacitor};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos as SimPos;
 use machinery_basis_core::transmission::connection::ConnectionType;
@@ -47,6 +48,7 @@ thread_local! {
 /// `id` (o `ModBlockEntity.id`) passa a ser um condutor termodinâmico: os eventos do jogo dele vão ao dono dos condutores, e `stats` dá o nível e os valores.
 pub fn conductors_register(id: &str, stats: ConductorStats) {
     basis::transmitters_register(SINK_OWNER, id, conductors_event);
+    client::register_source(client::TagSource { tag: conductor_tag, positions: conductor_positions });
     let mut kinds = CONDUCTOR_KINDS.lock().unwrap_or_else(|e| e.into_inner());
     if !kinds.iter().any(|known| *known as usize == stats as usize) {
         kinds.push(stats);
@@ -158,6 +160,13 @@ impl HeatOwnerWorld for GameWorld<'_, '_> {
         let at = arr(pos);
         basis::publish_arms(&mut self.game.borrow_mut(), at, view, "MBH");
         VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
+        // `sendUpdatePacket`: o cliente recebe o pacote de atualização no começo do tick seguinte.
+        client::dirty(self.dimension, at);
+    }
+
+    fn heat_packet(&mut self, pos: SimPos) {
+        // `ThermodynamicConductor.onContentsChanged`: a temperatura se afastou mais que um vigésimo da que o cliente sabe.
+        client::dirty(self.dimension, arr(pos));
     }
 
     fn set_changed(&mut self, pos: SimPos) {
@@ -292,8 +301,88 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         }
     });
     if let Some(pos) = removed {
+        client::gone(dimension, pos);
         VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
     }
+}
+
+/// O ar de um condutor, lido do jogo sem o dono: `getHeat` o pede quando o calor nunca foi lido, e o pacote de atualização manda o calor.
+struct GameAmbient<'a, 'g> {
+    game: &'a Game<'g>,
+    pos: [i32; 3],
+}
+
+impl AmbientSource for GameAmbient<'_, '_> {
+    fn read(&self, side: Option<Face>) -> Option<f64> {
+        let at = match side {
+            Some(side) => {
+                let [x, y, z] = side.offset();
+                [self.pos[0] + x, self.pos[1] + y, self.pos[2] + z]
+            }
+            None => self.pos,
+        };
+        basis::ambient_temperature(self.game, at)
+    }
+}
+
+/// O pacote de atualização do condutor em `pos` (`writeReducedUpdatedTag`: as conexões, a rede e o calor), para o cliente.
+fn conductor_tag(game: &Game<'_>, dimension: &'static str, pos: [i32; 3]) -> Option<client::TagOut> {
+    let ambient = GameAmbient { game, pos };
+    let (tag, capacity) = with_owner(dimension, |owner| owner.client_update(sim_pos(pos), &ambient)).flatten()?;
+    Some(client::TagOut { kind: machinery_basis_core::transmission::client::ClientKind::Heat, capacity, tag })
+}
+
+fn conductor_positions() -> Vec<(&'static str, [i32; 3])> {
+    CONDUCTORS.with(|conductors| {
+        conductors
+            .try_borrow()
+            .map(|conductors| conductors.iter().flat_map(|(dimension, owner)| owner.positions().into_iter().map(move |pos| (*dimension, arr(pos)))).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// `ItemAlloy.useOn` num condutor: a liga de nível `alloy_level` sobe os da rede que `canUpgrade` aceita (`blocks` dá o bloco de cada nível, do básico ao supremo). `None` se o bloco
+/// clicado não é do dono; senão se algum subiu (a liga se gasta).
+pub(in crate::game) fn conductor_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_level: i32, blocks: &[&str]) -> Option<bool> {
+    let dimension = game.native_dimension();
+    let level_of = |game: &Game<'_>, at: SimPos| -> Option<i32> {
+        let block = game.native_block(arr(at));
+        blocks.iter().position(|id| *id == block).map(|level| level as i32)
+    };
+    let mut run = {
+        let game_ref: &Game<'_> = game;
+        with_owner(dimension, |owner| owner.alloy_start(sim_pos(pos), alloy_level, &|at| level_of(game_ref, at)))??
+    };
+    let upgraded_block = *blocks.get(usize::try_from(alloy_level).ok()?)?;
+    for target in run.targets.clone() {
+        let data = {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            with_owner(dimension, |owner| owner.alloy_take(&mut world, &mut run, target)).flatten()
+        };
+        let Some(data) = data else {
+            continue;
+        };
+        basis::alloy_replace(game, arr(target), upgraded_block);
+        let given = {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            with_owner(dimension, |owner| owner.alloy_give(&mut world, &mut run, target, &data)).unwrap_or(false)
+        };
+        flush_dirty_all(game, dimension);
+        if given && run.full() {
+            break;
+        }
+    }
+    {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        with_owner(dimension, |owner| owner.alloy_finish(&mut world, &run));
+    }
+    flush_dirty_all(game, dimension);
+    Some(run.did_upgrade())
+}
+
+/// Os `setChanged` que o upgrade provocou: o NBT dos condutores marcados volta ao block entity.
+fn flush_dirty_all(game: &mut Game<'_>, dimension: &'static str) {
+    with_owner(dimension, |owner| flush_dirty(game, owner, dimension));
 }
 
 /// A sonda do calor (`MBQ`, só na cópia de teste): o calor de cada condutor e a temperatura média, a perda e a troca de cada rede neste tick.

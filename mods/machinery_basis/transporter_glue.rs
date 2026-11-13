@@ -6,6 +6,7 @@
 // diz quais blocos são transportadores e o tipo de cada um em `transporters_register`.
 use crate::game::Game;
 use crate::game::machinery_basis as basis;
+use crate::game::machinery_transmitter_client as client;
 use crate::game::machinery_basis::{TransmitterEvent, TransmitterKind, arr, sim_pos};
 use horizon_client::containers::BlockEntity;
 use horizon_core::random::RandomSource;
@@ -57,6 +58,7 @@ thread_local! {
 /// `id` (o `ModBlockEntity.id`) passa a ser um transportador: os eventos do jogo dele vão ao dono dos transportadores, e `stats` dá o tier e o tipo.
 pub fn transporters_register(id: &str, stats: TransporterStats) {
     basis::transmitters_register(SINK_OWNER, id, transporters_event);
+    client::register_source(client::TagSource { tag: transporter_tag, positions: transporter_positions });
     let mut kinds = KINDS.lock().unwrap_or_else(|e| e.into_inner());
     if !kinds.iter().any(|known| *known as usize == stats as usize) {
         kinds.push(stats);
@@ -332,6 +334,8 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
         let at = arr(pos);
         basis::publish_arms(&mut self.game.borrow_mut(), at, view, "MBW");
         VIEWS.with_borrow_mut(|views| views.insert((self.dimension, at), view.clone()));
+        // `sendUpdatePacket`: o cliente recebe o pacote de atualização (as pilhas, a cor e os modos) no começo do tick seguinte.
+        client::dirty(self.dimension, at);
     }
 
     fn set_changed(&mut self, pos: SimPos) {
@@ -455,8 +459,58 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
     });
     handlers_flush(game, dimension);
     if let Some(pos) = removed {
+        client::gone(dimension, pos);
         VIEWS.with_borrow_mut(|views| views.remove(&(dimension, pos)));
     }
+}
+
+/// O pacote de atualização do transportador em `pos` (`writeReducedUpdatedTag`: as conexões, a rede, as pilhas em trânsito, a cor e os modos), para o cliente.
+fn transporter_tag(_game: &Game<'_>, dimension: &'static str, pos: [i32; 3]) -> Option<client::TagOut> {
+    let (tag, capacity) = with_owner(dimension, |owner| owner.client_update(sim_pos(pos), &encode_item)).flatten()?;
+    Some(client::TagOut { kind: machinery_basis_core::transmission::client::ClientKind::Items, capacity, tag })
+}
+
+fn transporter_positions() -> Vec<(&'static str, [i32; 3])> {
+    OWNERS.with(|owners| {
+        owners
+            .try_borrow()
+            .map(|owners| owners.iter().flat_map(|(dimension, owner)| owner.positions().into_iter().map(move |pos| (*dimension, arr(pos)))).collect())
+            .unwrap_or_default()
+    })
+}
+
+/// `ItemAlloy.useOn` num transportador: a liga de nível `alloy_level` sobe os `LogisticalTransporter` da rede que `canUpgrade` aceita (`blocks` dá o bloco de cada nível, do básico ao
+/// supremo; o restritivo e o desviador não são `IUpgradeableTransmitter`). `None` se o bloco clicado não é do dono; senão se algum subiu (a liga se gasta).
+pub(in crate::game) fn transporter_alloy(game: &mut Game<'_>, pos: [i32; 3], alloy_level: i32, blocks: &[&str]) -> Option<bool> {
+    let dimension = game.native_dimension();
+    let level_of = |game: &Game<'_>, at: SimPos| -> Option<i32> {
+        let block = game.native_block(arr(at));
+        blocks.iter().position(|id| *id == block).map(|level| level as i32)
+    };
+    let mut run = {
+        let game_ref: &Game<'_> = game;
+        with_owner(dimension, |owner| owner.alloy_start(sim_pos(pos), alloy_level, &|at| level_of(game_ref, at)))??
+    };
+    let upgraded_block = *blocks.get(usize::try_from(alloy_level).ok()?)?;
+    for target in run.targets.clone() {
+        let data = {
+            let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            with_owner(dimension, |owner| owner.alloy_take(&mut world, &mut run, target)).flatten()
+        };
+        let Some(data) = data else {
+            continue;
+        };
+        basis::alloy_replace(game, arr(target), upgraded_block);
+        let given = with_owner(dimension, |owner| owner.alloy_give(&mut run, target, data)).unwrap_or(false);
+        if given && run.full() {
+            break;
+        }
+    }
+    {
+        let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+        with_owner(dimension, |owner| owner.alloy_finish(&mut world, &run));
+    }
+    Some(run.did_upgrade())
 }
 
 /// Só com a sonda ligada (a cópia de teste, `enviar_fontes.sh`; nunca no repositório): o NBT de um transportador com `probe_set: {raw: [I;6], mode: [I;6], color: n, delay: n}` põe os tipos de conexão
