@@ -11,6 +11,7 @@ use horizon_client::containers::BlockEntity;
 use horizon_core::random::RandomSource;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::containers::ItemResource;
+use machinery_basis_core::item_handler::ItemHandler;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::{BlockPos as SimPos, ChunkPos};
 use machinery_basis_core::transmission::connection::ConnectionType;
@@ -147,10 +148,53 @@ fn decode_item(tag: &LibCompound) -> Option<ItemResource> {
 // ---------------------------------------------------------------------------------------------------------------------------
 // Os vizinhos com inventário. O Horizon não desfaz uma inserção, então o dono usa um espelho dos slots que o lado alcança; o fim do evento aplica o que mudou.
 
+/// Os itens que a rede pode oferecer a um vizinho no evento que vem: os que os transportadores levam e os que os vizinhos guardam. O Horizon não simula a inserção, então a regra de
+/// cada slot (`isValid` do slot da máquina) é perguntada de antemão para eles (`machinery_slot_accepts`).
+fn offered_resources(game: &Game<'_>, dimension: &'static str) -> Vec<ItemResource> {
+    let mut out: Vec<ItemResource> = Vec::new();
+    let mut add = |resource: ItemResource| {
+        if !out.contains(&resource) {
+            out.push(resource);
+        }
+    };
+    with_owner(dimension, |owner| {
+        for pos in owner.positions() {
+            if let Some(base) = owner.transporter_at(pos) {
+                for (_, stack) in base.transit_stacks() {
+                    if let Some(item) = stack.borrow().item_type() {
+                        add(item.clone());
+                    }
+                }
+            }
+        }
+    });
+    HANDLERS.with_borrow(|handlers| {
+        for ((dim, _, _), handler) in handlers.iter() {
+            if *dim == dimension {
+                for index in 0..handler.size() {
+                    if let Some(resource) = handler.resource(index) {
+                        add(resource);
+                    }
+                }
+            }
+        }
+    });
+    let _ = game;
+    out
+}
+
+thread_local! {
+    /// O que `offered_resources` achou antes do evento em andamento.
+    static OFFERED: RefCell<Vec<ItemResource>> = const { RefCell::new(Vec::new()) };
+}
+
 /// Os slots do contêiner do bloco em `pos` que o lado `side` dele alcança, ou `None` se ali não há contêiner (um bloco sem slots, outra dimensão, um chunk que não carregou, o tile
-/// que está no tick).
+/// que está no tick). Cada slot traz o que o jogo recusa nele entre os itens que a rede pode oferecer.
 fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<Vec<MirrorSlot>> {
-    let slots = game.native_container_slots(dimension, pos, basis::direction(side))?;
+    let reached = basis::direction(side);
+    let slots = game.native_container_slots(dimension, pos, reached)?;
+    let offered: Vec<(ItemResource, Option<horizon_client::items::ItemStack>)> =
+        OFFERED.with_borrow(|list| list.iter().map(|resource| (resource.clone(), basis::stack_of_resource(resource, 1))).collect());
     Some(
         slots
             .into_iter()
@@ -158,6 +202,11 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
                 index: slot.slot,
                 contents: slot.stack.as_ref().map(|stack| (basis::item_resource(game, stack), stack.count)),
                 can_take: slot.can_take,
+                refuses: offered
+                    .iter()
+                    .filter(|(_, stack)| stack.as_ref().is_some_and(|stack| !game.machinery_slot_accepts(pos, slot.slot, stack, reached)))
+                    .map(|(resource, _)| resource.clone())
+                    .collect(),
             })
             .collect(),
     )
@@ -165,6 +214,8 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
 
 /// Antes de um evento que anda pilhas ou calcula caminhos: os espelhos leem os contêineres de novo.
 fn handlers_refresh(game: &Game<'_>, dimension: &'static str) {
+    let offered = offered_resources(game, dimension);
+    OFFERED.with_borrow_mut(|list| *list = offered);
     HANDLERS.with_borrow_mut(|handlers| {
         // Quem só a tabela guarda já não está no cache de nenhum transportador.
         handlers.retain(|_, handler| Rc::strong_count(handler) > 1);
@@ -202,7 +253,10 @@ fn handlers_flush(game: &mut Game<'_>, dimension: &'static str) {
                         horizon_client::items::ItemStack::new(&resource.id, count)
                     });
                     if let Some(rest) = game.native_insert_item(pos, face, stack) {
-                        eprintln!("mekanism: {} x{} recusados pelo vizinho {pos:?} se perderam", rest.item, rest.count);
+                        // O que o vizinho recusou (a regra do slot mudou entre a pergunta e a entrega) não se perde: cai ao lado dele.
+                        eprintln!("mekanism: {} x{} recusados pelo vizinho {pos:?}, soltos no mundo", rest.item, rest.count);
+                        let at = [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 1.0, f64::from(pos[2]) + 0.5];
+                        game.spawn_item(rest, at, [0.0; 3], 10);
                     }
                 }
             }
@@ -422,8 +476,8 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
     }
 }
 
-/// Só com a sonda ligada (a cópia de teste, `enviar_fontes.sh`; nunca no repositório): o NBT de um transportador com `probe_set: {raw: [I;6], mode: [I;6], color: n}` põe os tipos de conexão
-/// crus (o Configurator do original faz um por clique), o modo do desviador de cada lado e a cor (`-1`: nenhuma), e a chave some. Serve ao teste em jogo montar a cena do rastro sem o
+/// Só com a sonda ligada (a cópia de teste, `enviar_fontes.sh`; nunca no repositório): o NBT de um transportador com `probe_set: {raw: [I;6], mode: [I;6], color: n, delay: n}` põe os tipos de conexão
+/// crus (e o `delay` do puxar, como o teste do rastro) (o Configurator do original faz um por clique), o modo do desviador de cada lado e a cor (`-1`: nenhuma), e a chave some. Serve ao teste em jogo montar a cena do rastro sem o
 /// jogador; o Configurator de verdade tem o roteiro dele.
 fn probe_apply(game: &mut Game<'_>, dimension: &'static str) {
     let positions: Vec<[i32; 3]> = with_owner(dimension, |owner| owner.positions().into_iter().map(arr).collect()).unwrap_or_default();
@@ -444,8 +498,19 @@ fn probe_apply(game: &mut Game<'_>, dimension: &'static str) {
             Some(Tag::Int(color)) => Some(*color),
             _ => None,
         };
+        let delay = match set.get(&JavaString::from("delay")) {
+            Some(Tag::Int(delay)) => Some(*delay),
+            _ => None,
+        };
         with_owner(dimension, |owner| {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
+            // O `restore_counters` do teste do rastro: o `delay` de quem puxa, para a cena começar na fase do original.
+            if let Some(delay) = delay {
+                owner.with_transporter(&world, sim_pos(pos), |base, _| {
+                    let (_, delay_count, next_id) = base.counters();
+                    base.restore_counters(delay, delay_count, next_id);
+                });
+            }
             if let Some(color) = color {
                 owner.set_color(&mut world, sim_pos(pos), u8::try_from(color).ok());
             }

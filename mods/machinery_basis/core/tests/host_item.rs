@@ -17,6 +17,7 @@ fn slot(index: usize, contents: Option<(ItemResource, u32)>, can_take: bool) -> 
         index,
         contents,
         can_take,
+        refuses: Vec::new(),
     }
 }
 
@@ -71,4 +72,25 @@ fn refresh_reads_the_container_again_and_follows_a_new_size() {
     assert_eq!(handler.size(), 2);
     assert_eq!(handler.amount(0), 4);
     assert!(handler.changes().is_empty());
+}
+
+#[test]
+fn a_slot_the_game_refuses_an_item_in_does_not_receive_it() {
+    let handler = HostItemHandler::new(vec![MirrorSlot {
+        index: 3,
+        contents: None,
+        can_take: true,
+        refuses: vec![stone()],
+    }]);
+    let root = Transaction::open_root();
+    assert_eq!(handler.insert(&stone(), 5, &root), 0);
+    assert_eq!(handler.insert(&dirt(), 5, &root), 5);
+    root.commit();
+    assert_eq!(
+        handler.changes(),
+        vec![SlotChange::Put {
+            resource: dirt(),
+            count: 5
+        }]
+    );
 }

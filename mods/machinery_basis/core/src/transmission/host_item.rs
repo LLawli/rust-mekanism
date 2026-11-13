@@ -17,6 +17,9 @@ pub struct MirrorSlot {
     pub contents: Option<(ItemResource, u32)>,
     /// O jogo deixa tirar do slot por este lado (`can_take`).
     pub can_take: bool,
+    /// Os recursos que o jogo recusa neste slot (`isValid` do slot do bloco, a regra da máquina para a entrada). O Horizon não simula a inserção, então quem lê o contêiner
+    /// pergunta de antemão pelos itens que a rede pode oferecer (os em trânsito e os que os vizinhos guardam).
+    pub refuses: Vec<ItemResource>,
 }
 
 /// O que mudou num slot, para o jogo aplicar. Primeiro as retiradas, depois as colocações.
@@ -34,6 +37,7 @@ pub struct HostItemHandler {
     /// O índice do jogo de cada slot do espelho.
     index: RefCell<Vec<usize>>,
     can_take: RefCell<Vec<bool>>,
+    refuses: RefCell<Vec<Vec<ItemResource>>>,
     /// O que cada slot do espelho guardava quando foi lido.
     original: RefCell<Vec<Option<(ItemResource, u32)>>>,
 }
@@ -44,6 +48,7 @@ impl HostItemHandler {
             container: RefCell::new(VanillaContainer::new(0, Rc::new(|| {}))),
             index: RefCell::new(Vec::new()),
             can_take: RefCell::new(Vec::new()),
+            refuses: RefCell::new(Vec::new()),
             original: RefCell::new(Vec::new()),
         };
         handler.refresh(slots);
@@ -67,6 +72,7 @@ impl HostItemHandler {
         }
         *self.index.borrow_mut() = slots.iter().map(|slot| slot.index).collect();
         *self.can_take.borrow_mut() = slots.iter().map(|slot| slot.can_take).collect();
+        *self.refuses.borrow_mut() = slots.iter().map(|slot| slot.refuses.clone()).collect();
         *self.original.borrow_mut() = slots.into_iter().map(|slot| slot.contents).collect();
     }
 
@@ -153,6 +159,15 @@ impl ItemHandler for HostItemHandler {
         amount: u32,
         transaction: &Transaction,
     ) -> u32 {
+        // O slot da máquina que o jogo recusa para este item (`isValid`) não recebe.
+        if self
+            .refuses
+            .borrow()
+            .get(index)
+            .is_some_and(|refused| refused.contains(resource))
+        {
+            return 0;
+        }
         self.container
             .borrow()
             .insert_at(index, resource, amount, transaction)
