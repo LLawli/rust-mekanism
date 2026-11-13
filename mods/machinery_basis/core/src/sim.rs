@@ -1,5 +1,6 @@
 //! Mundo simulado dos testes: o relógio, o sinal de redstone e os blocos vizinhos que expõem itens, na ordem em que o jogo
 //! roda um tick. Os chunks (carga, descarga, blocos e block entities que somem e voltam) estão em `chunks`.
+pub mod block_entity_order;
 pub mod chunks;
 pub mod java_hash;
 pub mod neighbor_replay;

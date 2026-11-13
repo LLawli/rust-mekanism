@@ -3134,6 +3134,31 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     }
 }
 
+/// A ordem dos block entities de cada chunk como o `Object2ObjectOpenHashMap` do original a tem (todos os tipos, na ordem em que entraram e saíram): o chunk que sai percorre os de mod
+/// nessa ordem, e contar só os de mod erra quando o chunk tem um baú ou um funil (medido em `transmitter_events_chunks_mixed.jsonl`, decisão 187).
+static BLOCK_ENTITY_ORDER: LazyLock<Mutex<machinery_basis_core::sim::block_entity_order::BlockEntityOrder>> = LazyLock::new(Default::default);
+
+fn sim_pos(pos: [i32; 3]) -> machinery_basis_core::sim::chunks::BlockPos {
+    machinery_basis_core::sim::chunks::BlockPos::new(pos[0], pos[1], pos[2])
+}
+
+/// O que a fila anotou (na ordem) entra no mapa de cada chunk: `put` quando o block entity entra, `remove` quando sai, um mapa novo quando o chunk carrega.
+fn transmitters_note_order(dimension: &str, raws: &[transmitters::Raw]) {
+    let mut order = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner());
+    for raw in raws {
+        match raw {
+            transmitters::Raw::Added { pos, .. } | transmitters::Raw::AddedLater { pos } => order.put(dimension, sim_pos(*pos)),
+            transmitters::Raw::Removed { pos, .. } => order.remove(dimension, sim_pos(*pos)),
+            transmitters::Raw::LoadChunk(blocks) => {
+                if let Some((first, _)) = blocks.first() {
+                    order.load(dimension, (first[0] >> 4, first[2] >> 4), blocks.iter().map(|(pos, _)| sim_pos(*pos)));
+                }
+            }
+            transmitters::Raw::Neighbor { .. } => {}
+        }
+    }
+}
+
 /// `get_or_insert_with` anota só a posição (o block entity nasce de uma closure): o tipo vem do que está lá agora (`transmitters::resolve`).
 fn transmitters_resolve(game: &Game<'_>, raws: Vec<transmitters::Raw>) -> Vec<transmitters::Raw> {
     let entities = &game.world.block_entities;
@@ -3159,6 +3184,7 @@ pub(in crate::game) fn transmitters_flush(game: &mut Game<'_>) {
     }
     if !raws.is_empty() {
         let raws = transmitters_resolve(game, raws);
+        transmitters_note_order(game.native_dimension(), &raws);
         let events = transmitters::translate(game.native_dimension(), raws);
         transmitters_deliver(game, events);
     }
@@ -3192,7 +3218,9 @@ pub(in crate::game) fn transmitters_flush_operation(game: &mut Game<'_>) {
     // O block entity que o `setBlock` criou depois do aviso (o Horizon o insere depois do `with_level`) entra antes do aviso da operação anterior, como no original.
     let mut now = others;
     now.extend(transmitters::take_held());
-    let events = transmitters::translate(game.native_dimension(), transmitters_resolve(game, now));
+    let now = transmitters_resolve(game, now);
+    transmitters_note_order(game.native_dimension(), &now);
+    let events = transmitters::translate(game.native_dimension(), now);
     transmitters::hold(neighbors);
     transmitters_deliver(game, events);
 }
@@ -3228,7 +3256,9 @@ pub(in crate::game) fn transmitters_placed(game: &mut Game<'_>, pos: [i32; 3]) {
     let raws = transmitters::take();
     let held = transmitters::take_held();
     let dimension = game.native_dimension();
-    let events = transmitters::translate(dimension, transmitters_resolve(game, raws));
+    let raws = transmitters_resolve(game, raws);
+    transmitters_note_order(dimension, &raws);
+    let events = transmitters::translate(dimension, raws);
     transmitters_deliver(game, events);
     let events = transmitters::placed(dimension, pos);
     transmitters_deliver(game, events);
@@ -3253,19 +3283,21 @@ pub(in crate::game) fn transmitters_chunk_unloading(game: &mut Game<'_>, dimensi
     }
     transmitters_flush(game);
     let entities = &game.world.block_entities;
-    let middle = (f64::from(chunk[0] * 16 + 8), f64::from(chunk[1] * 16 + 8));
-    let here = entities
-        .mods_near(middle.0, middle.1, 8.0)
-        .copied()
-        .filter(|pos| transmitters::chunk_of([pos.0, pos.1, pos.2]) == chunk);
-    let blocks: Vec<([i32; 3], Option<String>)> = horizon_client::block_entities::chunk_map_order(here)
+    // Todos os block entities do chunk, de qualquer tipo, na ordem do mapa do original (o mapa guarda a história de cada um).
+    let present: Vec<machinery_basis_core::sim::chunks::BlockPos> = entities
+        .iter()
+        .filter(|(pos, _)| transmitters::chunk_of([pos.0, pos.1, pos.2]) == chunk)
+        .map(|(pos, _)| sim_pos([pos.0, pos.1, pos.2]))
+        .collect();
+    let ordered = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner()).unload(dimension, (chunk[0], chunk[1]), &present);
+    let blocks: Vec<([i32; 3], Option<String>)> = ordered
         .into_iter()
         .map(|pos| {
-            let id = match entities.get(&pos) {
+            let id = match entities.get(&(pos.x, pos.y, pos.z)) {
                 Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
                 _ => None,
             };
-            ([pos.0, pos.1, pos.2], id)
+            ([pos.x, pos.y, pos.z], id)
         })
         .collect();
     let events = transmitters::chunk_unloading(dimension, chunk, &blocks);
@@ -3336,6 +3368,7 @@ pub(in crate::game) fn transmitters_reset(game: &mut Game<'_>) {
     if !transmitters::is_active() {
         return;
     }
+    BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner()).clear();
     let events = transmitters::reset();
     transmitters_deliver(game, events);
     crate::game::machinery_transmitter_client::reset(game);
