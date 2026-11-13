@@ -9,7 +9,9 @@ use super::{DimensionId, Hashed, NetworkId, TransmitterHost, TransmitterId, Uuid
 use crate::sides::Face;
 use crate::sim::chunks::{BlockPos, MAX_VIEW_DISTANCE};
 use crate::sim::open_hash::OpenHashSet;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::rc::Rc;
 
 /// `Transmitter.setTransmitterNetwork(network, requestNow)` no servidor: troca a rede, marca o órfão (`orphaned = network == null`) e
 /// pede a atualização agora, ou devolve `true` se quem chamou deve pedi-la depois.
@@ -29,6 +31,46 @@ pub fn set_transmitter_network<A>(
         false
     } else {
         true
+    }
+}
+
+/// A chave de uma rede no conjunto único: de que registro (um por família e por dimensão) e qual rede dele.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MirrorKey {
+    pub registry: u64,
+    pub network: NetworkId,
+}
+
+/// O `networks` do original é um só `ObjectOpenHashSet` estático, de todas as famílias e dimensões, e a ordem do iterador dele (a do `toComponents`) vem do `hashCode` do UUID de cada rede e do
+/// histórico de entradas e saídas. O port tem um registro por família e por dimensão; este espelho recebe cada entrada e saída de todos, nas mesmas chamadas (`registerNetwork`,
+/// `removeNetwork`, `reset`), e dá a ordem do conjunto único. É por thread (a do jogo, ou a de um teste), como o campo estático é da JVM.
+#[derive(Clone, Default)]
+pub struct NetworkMirror {
+    set: Rc<RefCell<OpenHashSet<Hashed<MirrorKey>>>>,
+}
+
+thread_local! {
+    static CURRENT_MIRROR: NetworkMirror = NetworkMirror::default();
+    static NEXT_REGISTRY: std::cell::Cell<u64> = const { std::cell::Cell::new(1) };
+}
+
+impl NetworkMirror {
+    /// O espelho da thread: o que todo registro novo desta thread usa.
+    pub fn current() -> Self {
+        CURRENT_MIRROR.with(Clone::clone)
+    }
+
+    /// As redes na ordem do iterador do conjunto único.
+    pub fn in_order(&self) -> Vec<MirrorKey> {
+        self.set.borrow().in_order().into_iter().map(|k| k.id).collect()
+    }
+
+    fn insert(&self, key: Hashed<MirrorKey>) {
+        self.set.borrow_mut().insert(key);
+    }
+
+    fn remove(&self, key: Hashed<MirrorKey>) {
+        self.set.borrow_mut().remove(key);
     }
 }
 
@@ -59,6 +101,24 @@ pub struct TransmitterNetworkRegistry<A> {
     uuids: Box<dyn FnMut() -> Uuid>,
     /// As mensagens que o original põe no log como erro ou aviso.
     log: Vec<String>,
+    /// `MekanismAPI.debug`: com ele ligado o registro escreve as mensagens de `info` (`take_debug_log`). Quem dono o liga (o jogo lê o estado global a cada tick).
+    debug: bool,
+    /// As mensagens `Mekanism.logger.info` do registro com a depuração ligada.
+    debug_log: Vec<String>,
+    /// Este registro, entre os da thread (a chave no espelho).
+    id: u64,
+    mirror: NetworkMirror,
+}
+
+impl<A> Drop for TransmitterNetworkRegistry<A> {
+    fn drop(&mut self) {
+        for key in self.networks.in_order() {
+            self.mirror.remove(Hashed {
+                id: MirrorKey { registry: self.id, network: key.id },
+                hash: key.hash,
+            });
+        }
+    }
 }
 
 impl<A: Clone + 'static> Default for TransmitterNetworkRegistry<A> {
@@ -78,11 +138,62 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
             arena: Vec::new(),
             uuids: Box::new(uuids),
             log: Vec::new(),
+            debug: false,
+            debug_log: Vec::new(),
+            id: NEXT_REGISTRY.with(|next| {
+                let id = next.get();
+                next.set(id + 1);
+                id
+            }),
+            mirror: NetworkMirror::current(),
+        }
+    }
+
+    /// Liga ou desliga o `MekanismAPI.debug` deste registro.
+    pub fn set_debug(&mut self, on: bool) {
+        self.debug = on;
+    }
+
+    /// As mensagens de `info` que a depuração escreveu desde a última chamada.
+    pub fn take_debug_log(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.debug_log)
+    }
+
+    /// `if (MekanismAPI.debug) Mekanism.logger.info(...)`.
+    fn debug_info(&mut self, message: impl FnOnce() -> String) {
+        if self.debug {
+            self.debug_log.push(message());
+        }
+    }
+
+    /// A chave deste registro no espelho dos registros.
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// As redes registradas (`networks`), com a contagem de transmissores (`transmittersSize`) e de aceitadores (`getAcceptorCount`) de cada uma.
+    pub fn network_summaries(&self) -> Vec<(NetworkId, usize, usize)> {
+        self.networks_in_order()
+            .into_iter()
+            .map(|id| {
+                let network = self.network(id);
+                (id, network.transmitters_size(), network.acceptor_count())
+            })
+            .collect()
+    }
+
+    fn mirror_key(&self, key: Hashed<NetworkId>) -> Hashed<MirrorKey> {
+        Hashed {
+            id: MirrorKey { registry: self.id, network: key.id },
+            hash: key.hash,
         }
     }
 
     /// `reset()`: o que o servidor faz ao parar. As redes antigas ficam na lista, sem registro.
     pub fn reset(&mut self) {
+        for key in self.networks.in_order() {
+            self.mirror.remove(self.mirror_key(key));
+        }
         self.networks.clear();
         self.networks_to_change.clear();
         self.invalid_transmitters.clear();
@@ -256,6 +367,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
     pub fn register_network(&mut self, network: NetworkId) {
         let key = self.network_key(network);
         self.networks.insert(key);
+        self.mirror.insert(self.mirror_key(key));
         self.network_mut(network).registered = true;
     }
 
@@ -263,6 +375,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
     pub(crate) fn remove_network(&mut self, network: NetworkId) {
         let key = self.network_key(network);
         self.networks.remove(key);
+        self.mirror.remove(self.mirror_key(key));
         self.networks_to_change.remove(key);
         self.network_mut(network).registered = false;
     }
@@ -328,11 +441,21 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
                 continue;
             }
             let changed = std::mem::take(&mut data.changed_ticket_chunks);
+            self.debug_info(|| format!("Dealing with {} changed chunks", changed.len()));
             for (chunk, loaded) in changed {
                 let chunk_transmitters = self.tracked_in_chunk(dimension, chunk);
+                let count = chunk_transmitters.len();
                 for transmitter in chunk_transmitters {
                     host.chunk_accessibility_change(self, transmitter, loaded);
                 }
+                // `ChunkPos.getX` e `getZ`: os 32 bits baixos e os 32 altos do `ChunkPos.pack`.
+                let (x, z) = (chunk as i32, (chunk >> 32) as i32);
+                self.debug_info(|| {
+                    format!(
+                        "{} {count} transmitters in chunk: {x}, {z}",
+                        if loaded { "Loaded" } else { "Unloaded" }
+                    )
+                });
             }
         }
     }
@@ -344,6 +467,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
         // Copia os inválidos, para que os que o `invalidate` registrar como órfãos entrem de fato como órfãos, e não sejam tirados
         // da lista de inválidos.
         let to_invalidate = std::mem::take(&mut self.invalid_transmitters).in_order();
+        self.debug_info(|| format!("Dealing with {} invalid Transmitters", to_invalidate.len()));
         for invalid in to_invalidate {
             self.remove_invalid_transmitter(host, invalid.id);
         }
@@ -375,6 +499,7 @@ impl<A: Clone + 'static> TransmitterNetworkRegistry<A> {
                 continue;
             }
             let orphans = std::mem::take(&mut data.new_orphan_transmitters);
+            self.debug_info(|| format!("Dealing with {} orphan Transmitters", orphans.len()));
             for orphan in orphans.values() {
                 if host.is_valid(*orphan) && host.is_orphan(*orphan) {
                     let finder = OrphanPathFinder::new(&*host, *orphan);
@@ -437,9 +562,17 @@ impl<A: Clone + 'static> OrphanPathFinder<A> {
             self.iterate(host, registry, orphan_transmitters, from);
         }
         let found = self.networks_found.in_order();
+        let connected_count = self.connected_transmitters.len();
         let network = if found.len() == 1 {
+            registry.debug_info(|| format!("Adding {connected_count} transmitters to single found network"));
             found[0].id
         } else {
+            if found.is_empty() {
+                registry.debug_info(|| format!("No networks found. Creating new network for {connected_count} transmitters"));
+            } else {
+                let merging = found.len();
+                registry.debug_info(|| format!("Merging {merging} networks with {connected_count} new transmitters"));
+            }
             let found: Vec<NetworkId> = found.into_iter().map(|key| key.id).collect();
             registry.create_network_by_merging(host, &found)
         };

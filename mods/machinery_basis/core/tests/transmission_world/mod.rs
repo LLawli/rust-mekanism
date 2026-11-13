@@ -467,6 +467,10 @@ impl World {
         &self.level.hooks.registry
     }
 
+    pub fn registry_mut(&mut self) -> &mut TransmitterNetworkRegistry<Cube> {
+        &mut self.level.hooks.registry
+    }
+
     pub fn place_cable(&mut self, x: i32) {
         let pos = self.cable(x);
         assert!(self.level.set_block(pos, Some(CABLE)), "cabo {x}");
