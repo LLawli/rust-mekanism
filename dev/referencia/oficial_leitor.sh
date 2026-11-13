@@ -1,7 +1,7 @@
 #!/bin/bash
 # Roda a `CenaLeitor` (o chat do Network Reader depois do clique) no cliente oficial (`runGameTestClient`, num gamescope headless: nenhuma janela abre no desktop) com as etapas de
 # `cenas/leitor.txt` e devolve os prints. A árvore volta como estava: a `CenaLeitor.java` e o `cena-leitor` saem, o `cena-cabo` e o `options.txt` voltam. Roda no desktop.
-# Uso: oficial_leitor.sh testes/CenaLeitor.java cenas/leitor.txt PASTA_DOS_PRINTS
+# Uso: oficial_leitor.sh testes/CenaLeitor.java cenas/leitor.txt PASTA_DOS_PRINTS   (cenas/leitor_debug.txt: o `/mek debug` e o leitor com a depuração)
 # Pega `~/.cache/rust-mekanism/mekanism-ref.lock` (o checkout do original e o gradle) com `mkdir`, espera em laço de `mkdir` a cada 5 s (nunca `pgrep`) e a solta ao
 # sair. O gradle passa pelo `lim-build` (uma vaga de build, 4 núcleos). O jogo é mudo: o volume mestre vai a 0 (o `options.txt` volta ao fim).
 set -u

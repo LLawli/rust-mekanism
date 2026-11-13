@@ -3,6 +3,7 @@ package mekanism.common.tests.network;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import mekanism.api.MekanismAPI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,6 +18,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
+import mekanism.common.lib.transmitter.DynamicNetwork;
+import mekanism.common.lib.transmitter.TransmitterNetworkRegistry;
+import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.phys.BlockHitResult;
@@ -31,6 +35,9 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 ///
 ///   nome=cabo bloco=mekanism:basic_universal_cable baus=0 sneak=0
 ///   nome=gerador bloco=mekanismgenerators:heat_generator linha=0 sneak=1
+///
+/// `comando` roda esse comando (o `_` vira espaço, `mek_debug`) como o jogador, com a permissão de dono, no lugar do clique; `feedback=1` liga o `send_command_feedback` antes dele (o padrão da cena é desligado, para o chat
+/// só ter o que o clique escreve); `debug=0|1` põe o `MekanismAPI.debug` antes do clique; `alvo=pedra` clica numa pedra posta à direita da linha (um bloco sem block entity).
 ///
 /// `bloco`: o bloco da linha de três (o clique é no do meio), `linha=0` põe só o bloco no meio, `bau=1` põe um baú no fim da linha, `sneak` agacha o jogador no clique, `espera` os tiques depois do
 /// clique até o print (padrão 40). O clique é o de `ServerPlayerGameMode.useItemOn` (o do servidor, como o dos rastros): o chat chega ao cliente e aparece no print.
@@ -79,6 +86,27 @@ public class CenaLeitor {
         loaded = true;
     }
 
+    @SuppressWarnings("unchecked")
+    private static void limparRedes(MinecraftServer server) {
+        try {
+            java.lang.reflect.Field field = TransmitterNetworkRegistry.class.getDeclaredField("networks");
+            field.setAccessible(true);
+            java.util.Set<DynamicNetwork<?, ?, ?>> networks = new java.util.ArrayList<>((java.util.Set<DynamicNetwork<?, ?, ?>>) field.get(null)).stream().collect(java.util.stream.Collectors.toSet());
+            Mekanism.logger.info("cena: redes antes da limpeza: {}", networks.size());
+            for (DynamicNetwork<?, ?, ?> network : networks) {
+                for (Object transmitter : new ArrayList<Object>(network.getTransmitters())) {
+                    mekanism.common.content.network.transmitter.Transmitter<?, ?, ?> t = (mekanism.common.content.network.transmitter.Transmitter<?, ?, ?>) transmitter;
+                    if (t.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {
+                        Mekanism.logger.info("cena: rede velha em {} {}", level.dimension().identifier(), t.getBlockPos());
+                        level.setBlockAndUpdate(t.getBlockPos(), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            Mekanism.logger.error("cena-leitor: limpeza", e);
+        }
+    }
+
     private static void run(MinecraftServer server, String command) {
         server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
     }
@@ -110,6 +138,8 @@ public class CenaLeitor {
             server.execute(() -> run(server, "gamerule send_command_feedback false"));
             server.execute(() -> run(server, "fill 292 -61 -8 308 -40 12 minecraft:air"));
             server.execute(() -> run(server, "fill 292 -62 -8 308 -62 12 minecraft:grass_block"));
+            // Redes que o mundo de teste guarda de outras cenas (o `runs/client` é um só): o registro do `/mek debug` as lista, então elas saem (cada transmissor vira ar) e o log diz quantas eram.
+            server.execute(() -> limparRedes(server));
         }
         if (ticks < 40) {
             return;
@@ -130,6 +160,7 @@ public class CenaLeitor {
             n = 0;
             final Etapa e = atual;
             server.execute(() -> {
+                run(server, "gamerule send_command_feedback false");
                 run(server, "gamemode creative @a");
                 run(server, "clear @a");
                 run(server, "item replace entity @a hotbar.0 with mekanism:network_reader 1");
@@ -141,6 +172,9 @@ public class CenaLeitor {
                 if (e.get("bau", "0").equals("1")) {
                     run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:chest", X + 3, Y, Z));
                 }
+                if (e.get("alvo", "").equals("pedra")) {
+                    run(server, String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", X + 3, Y, Z));
+                }
                 run(server, String.format(Locale.ROOT, "tp @a %s %s %s 0 40", X + 1.5 + (e.get("bau", "0").equals("1") ? 1.0 : 0.0), Y + 2.5, Z - 1.4));
             });
             return;
@@ -150,8 +184,18 @@ public class CenaLeitor {
             final Etapa e = atual;
             server.execute(() -> {
                 ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+                if (e.campos().containsKey("debug")) {
+                    MekanismAPI.debug = e.get("debug", "0").equals("1");
+                }
+                if (!e.get("comando", "").isEmpty()) {
+                    if (e.get("feedback", "0").equals("1")) {
+                        run(server, "gamerule send_command_feedback true");
+                    }
+                    server.getCommands().performPrefixedCommand(player.createCommandSourceStack().withPermission(LevelBasedPermissionSet.OWNER), e.get("comando", "").replace('_', ' '));
+                    return;
+                }
                 player.setShiftKeyDown(e.get("sneak", "0").equals("1"));
-                int dx = e.get("bau", "0").equals("1") && e.get("alvo", "bau").equals("bau") ? 3 : 1;
+                int dx = e.get("alvo", "bau").equals("pedra") || (e.get("bau", "0").equals("1") && e.get("alvo", "bau").equals("bau")) ? 3 : 1;
                 BlockPos pos = new BlockPos(X + dx, Y, Z);
                 BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos).relative(Direction.NORTH, 0.5), Direction.NORTH, pos, false);
                 player.gameMode.useItemOn(player, player.level(), player.getItemInHand(InteractionHand.MAIN_HAND), InteractionHand.MAIN_HAND, hit);

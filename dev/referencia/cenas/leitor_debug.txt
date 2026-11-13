@@ -1,0 +1,5 @@
+nome=debug_ligado comando=mek_debug feedback=1 linha=0 bloco=mekanism:basic_universal_cable
+nome=debug_desligado comando=mek_debug feedback=1 linha=0 bloco=mekanism:basic_universal_cable
+nome=pedra_debug bloco=mekanism:basic_universal_cable alvo=pedra sneak=1 debug=1
+nome=cabo_debug bloco=mekanism:basic_universal_cable alvo=meio sneak=1 debug=1
+nome=pedra_sem_debug bloco=mekanism:basic_universal_cable alvo=pedra sneak=1 debug=0
