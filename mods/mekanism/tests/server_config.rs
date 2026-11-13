@@ -122,6 +122,42 @@ fn the_default_text_of_each_key_is_the_one_the_original_wrote() {
     }
 }
 
+/// A parte de `[transmitters]` do texto, do comentário da seção até o fim do arquivo.
+fn transmitters_part(text: &str) -> String {
+    let start = text
+        .find("#Settings for configuring Transmitters\n")
+        .expect("a seção [transmitters]");
+    text[start..].to_owned()
+}
+
+/// A seção `[transmitters.items]` (os Logistical Transporters, que ainda não estão na especificação do port) tirada do texto do original,
+/// com a linha em branco que a separa da anterior.
+fn without_items_section(original: &str) -> String {
+    let start = original
+        .find("\n\t#Settings for configuring Logistical Transporters\n")
+        .expect("a seção [transmitters.items]");
+    let end = original
+        .find("\n\t#Settings for configuring Thermodynamic Conductors\n")
+        .expect("a seção [transmitters.heat]");
+    format!("{}{}", &original[..start], &original[end..])
+}
+
+/// `[transmitters.energy]`, `.fluid`, `.chemical` e `.heat` byte a byte: o texto, a ordem das chaves e das seções, as linhas em branco e as
+/// tabulações do `tiers.toml` que o original escreveu sozinho (o teste de cada chave não vê uma linha em branco a menos nem uma seção fora de ordem).
+#[test]
+fn the_transmitter_sections_of_tiers_are_the_original_byte_for_byte() {
+    let original = reference("tiers");
+    let port = TIERS_CONFIG.default_text();
+    assert_eq!(
+        transmitters_part(&port),
+        without_items_section(&transmitters_part(&original))
+    );
+    for section in ["energy", "fluid", "chemical", "heat"] {
+        let name = format!("transmitters.{section}");
+        assert_eq!(header(&port, &name), header(&original, &name), "{name}");
+    }
+}
+
 #[test]
 fn the_files_the_original_wrote_read_clean_with_the_defaults() {
     for (name, _, spec) in FILES {
