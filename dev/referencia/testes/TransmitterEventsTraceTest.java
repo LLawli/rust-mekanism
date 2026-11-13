@@ -28,6 +28,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -283,6 +284,42 @@ public class TransmitterEventsTraceTest {
                   .thenExecute(() -> {
                       Recorder.begin("ops", helper, new int[]{0, 0, 0, 7, 3, 5});
                       Script.start(steps, 42);
+                  })
+                  .thenWaitUntil(() -> waitScript(helper))
+                  .thenExecute(Recorder::finish)
+                  .thenSucceed();
+        });
+    }
+
+    /// Um pistão empurra um cabo? Com um cabo na frente de um pistão alimentado por um bloco de redstone, e depois com uma máquina atrás do cabo: o rastro mostra que nada acontece
+    /// aos cabos (`PistonBaseBlock.isPushable` recusa o que tem block entity), então nenhum evento chega à rede.
+    @GameTest(template = FLOOR, timeoutTicks = TIMEOUT, batch = "trace_transmitter_events_piston")
+    @TestHolder(description = "Records the events of a powered piston with a cable in front of it.")
+    public static void piston(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            ServerLevel level = helper.getLevel();
+            List<Step> steps = List.of(
+                  new Step(3, () -> {
+                      Recorder.mark("a cable and a piston facing it");
+                      level.setBlock(helper.absolutePos(new BlockPos(3, 1, 2)), cable(), 3);
+                      level.setBlock(helper.absolutePos(new BlockPos(3, 1, 3)), Blocks.PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, Direction.NORTH), 3);
+                  }),
+                  new Step(6, () -> {
+                      Recorder.mark("power the piston with a redstone block");
+                      level.setBlock(helper.absolutePos(new BlockPos(2, 1, 3)), Blocks.REDSTONE_BLOCK.defaultBlockState(), 3);
+                  }),
+                  new Step(12, () -> {
+                      Recorder.mark("piston in the other direction: pushes the cable away from the machine row");
+                      level.setBlock(helper.absolutePos(new BlockPos(5, 1, 2)), cable(), 3);
+                      level.setBlock(helper.absolutePos(new BlockPos(6, 1, 2)), Blocks.PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, Direction.WEST), 3);
+                      level.setBlock(helper.absolutePos(new BlockPos(6, 1, 3)), Blocks.REDSTONE_BLOCK.defaultBlockState(), 3);
+                  })
+            );
+            helper.startSequence()
+                  .thenExecute(() -> {
+                      Recorder.begin("piston", helper, new int[]{0, 0, 0, 7, 3, 5});
+                      Script.start(steps, 20);
                   })
                   .thenWaitUntil(() -> waitScript(helper))
                   .thenExecute(Recorder::finish)

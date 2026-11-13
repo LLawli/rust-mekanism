@@ -47,6 +47,8 @@ enum Block {
 struct Level {
     blocks: HashMap<BlockPos, Block>,
     unloaded: HashSet<BlockPos>,
+    /// Os blocos que dão sinal de redstone (um bloco de redstone: sem block entity).
+    powered: HashSet<BlockPos>,
     published: Vec<(BlockPos, CableView)>,
     changed: Vec<BlockPos>,
     side_changes: Vec<(BlockPos, Face, ConnectionType, ConnectionType)>,
@@ -57,8 +59,10 @@ impl OwnerWorld for Level {
         !self.unloaded.contains(&pos)
     }
 
-    fn is_getting_powered(&self, _pos: BlockPos) -> bool {
-        false
+    fn is_getting_powered(&self, pos: BlockPos) -> bool {
+        Face::ALL
+            .iter()
+            .any(|side| self.powered.contains(&pos.relative(*side)))
     }
 
     fn energy_handler(&self, pos: BlockPos, _side: Face) -> Option<Acceptor> {
@@ -111,12 +115,20 @@ enum Change {
     Cable(BlockPos),
     Machine(BlockPos, i64),
     Air(BlockPos),
+    /// Um bloco de redstone entra (sem block entity: só avisa os vizinhos).
+    Power(BlockPos),
+    /// O bloco de redstone sai.
+    Unpower(BlockPos),
 }
 
 impl Change {
     fn pos(self) -> BlockPos {
         match self {
-            Change::Cable(pos) | Change::Machine(pos, _) | Change::Air(pos) => pos,
+            Change::Cable(pos)
+            | Change::Machine(pos, _)
+            | Change::Air(pos)
+            | Change::Power(pos)
+            | Change::Unpower(pos) => pos,
         }
     }
 }
@@ -168,6 +180,12 @@ impl Sim {
             Change::Air(pos) => {
                 self.level.blocks.remove(&pos);
             }
+            Change::Power(pos) => {
+                self.level.powered.insert(pos);
+            }
+            Change::Unpower(pos) => {
+                self.level.powered.remove(&pos);
+            }
         }
     }
 
@@ -186,6 +204,30 @@ impl Sim {
             runs_normally: true,
         });
         self.time += 1;
+    }
+
+    /// Como `fingerprint`, com o id de cada rede trocado pela ordem em que aparece: o id é o contador do registro, e uma rede que o original desfez e refez tem outro.
+    fn canonical(&self) -> String {
+        let text = self.fingerprint();
+        let mut seen: Vec<String> = Vec::new();
+        let mut out = String::new();
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("NetworkId(") {
+            out += &rest[..at];
+            let tail = &rest[at + "NetworkId(".len()..];
+            let end = tail.find(')').unwrap();
+            let id = tail[..end].to_owned();
+            let index = seen
+                .iter()
+                .position(|known| *known == id)
+                .unwrap_or_else(|| {
+                    seen.push(id);
+                    seen.len() - 1
+                });
+            out += &format!("Net#{index}");
+            rest = &tail[end + 1..];
+        }
+        out + rest
     }
 
     /// Tudo o que o dono e o jogo mostram, em texto, para comparar duas execuções.
@@ -241,6 +283,7 @@ fn sorted(mut list: Vec<BlockPos>) -> Vec<BlockPos> {
 struct Shadow {
     blocks: HashMap<BlockPos, bool>,
     tracked: HashSet<BlockPos>,
+    powered: HashSet<BlockPos>,
 }
 
 impl Shadow {
@@ -259,6 +302,8 @@ impl Shadow {
             Change::Cable(_) => Some(true),
             Change::Machine(..) => Some(false),
             Change::Air(_) => None,
+            Change::Power(pos) => return !self.powered.contains(&pos),
+            Change::Unpower(pos) => return self.powered.contains(&pos),
         };
         self.blocks.get(&change.pos()).copied() != new
     }
@@ -267,6 +312,17 @@ impl Shadow {
     fn others(&mut self, change: Change) -> Vec<Event> {
         let pos = change.pos();
         let mut out = Vec::new();
+        match change {
+            Change::Power(pos) => {
+                self.powered.insert(pos);
+                return out;
+            }
+            Change::Unpower(pos) => {
+                self.powered.remove(&pos);
+                return out;
+            }
+            _ => {}
+        }
         if let Some(old) = self.blocks.remove(&pos) {
             if old {
                 self.tracked.remove(&pos);
@@ -285,7 +341,7 @@ impl Shadow {
                 self.blocks.insert(pos, false);
                 self.capabilities_at(pos, &mut out);
             }
-            Change::Air(_) => {}
+            Change::Air(_) | Change::Power(_) | Change::Unpower(_) => {}
         }
         out
     }
@@ -319,6 +375,8 @@ enum Step {
     Op(Vec<Change>),
     Ticks(u32),
     Push(BlockPos, i32),
+    /// O clique direito do Configurator num cabo: liga ou desliga o redstone reativo.
+    Reactive(BlockPos),
 }
 
 const SIZE: u64 = 4;
@@ -328,10 +386,12 @@ fn random_pos(rng: &mut Rng) -> BlockPos {
 }
 
 fn random_change(rng: &mut Rng, pos: BlockPos) -> Change {
-    match rng.next(10) {
+    match rng.next(12) {
         0..=4 => Change::Cable(pos),
         5..=6 => Change::Machine(pos, rng.next(2_000) as i64),
-        _ => Change::Air(pos),
+        7..=8 => Change::Air(pos),
+        9..=10 => Change::Power(pos),
+        _ => Change::Unpower(pos),
     }
 }
 
@@ -356,6 +416,9 @@ fn scenario(seed: u64, repeat_positions: bool) -> Vec<Step> {
                 1_000 + rng.next(6_000) as i32,
             ));
         }
+        if rng.next(3) == 0 {
+            steps.push(Step::Reactive(random_pos(&mut rng)));
+        }
         steps.push(Step::Ticks(rng.next(4) as u32));
     }
     steps.push(Step::Ticks(3));
@@ -367,7 +430,9 @@ fn scenario(seed: u64, repeat_positions: bool) -> Vec<Step> {
 enum Mode {
     /// O original de um `setBlock` por vez (uma explosão, uma fila de comandos `/setblock`): cada mudança chama os eventos dela, os avisos de vizinho no fim, antes da seguinte.
     Immediate,
-    /// O original de `/fill` e `/clone`: a primeira passada muda os blocos (só os block entities avisam) e a segunda avisa os vizinhos de cada posição, com tudo no lugar.
+    /// `Immediate` com cada invalidação de capability entregue três vezes: o `BlockCapabilityCache` do original só avisa de novo depois de um `getCapability`, e o port avisa a cada invalidação.
+    ImmediateRepeated,
+    /// O original de `/fill' e `/clone`: a primeira passada muda os blocos (só os block entities avisam) e a segunda avisa os vizinhos de cada posição, com tudo no lugar.
     TwoPass,
     /// A operação inteira muda o mundo e depois os eventos de `Immediate` saem todos.
     Batched,
@@ -376,6 +441,9 @@ enum Mode {
     /// O port: cada mudança é uma operação do Horizon (o block entity que sai antes do `setBlock`, o aviso dos vizinhos dentro dele, o block entity que entra depois), a fila esvazia
     /// no fim de cada `with_level` (`transmitters_flush_operation`) com os avisos da operação anterior, e o resto nos pontos do tick.
     Port,
+    /// O port com a injeção que esta frente pesou e não pôs: um HEAD cancelável em `Game::place_state` que esvazia a fila inteira (os avisos segurados também) no fim de cada bloco posto
+    /// por comando, em vez de esperar a operação seguinte ou o fim do tick.
+    PortEager,
 }
 
 /// O que as injeções anotam (`Raw` do `transmitter_events.rs`): `true` é um cabo.
@@ -483,6 +551,15 @@ impl PortQueue {
             return;
         }
         let pos = change.pos();
+        if matches!(change, Change::Power(_) | Change::Unpower(_)) {
+            // Um bloco sem block entity: só o `level_set` e o aviso dos vizinhos.
+            sim.apply(change);
+            for side in Face::ALL {
+                self.queue.push(Raw::Neighbor(pos.relative(side)));
+            }
+            self.flush_operation(sim);
+            return;
+        }
         match sim.level.blocks.get(&pos) {
             Some(Block::Cable) => self.queue.push(Raw::Removed(pos, true)),
             Some(Block::Machine(_)) => self.queue.push(Raw::Removed(pos, false)),
@@ -496,6 +573,7 @@ impl PortQueue {
             Change::Machine(..) | Change::Air(_) => {
                 sim.level.blocks.remove(&pos);
             }
+            Change::Power(_) | Change::Unpower(_) => unreachable!(),
         }
         for side in Face::ALL {
             self.queue.push(Raw::Neighbor(pos.relative(side)));
@@ -508,24 +586,32 @@ impl PortQueue {
                 sim.apply(change);
                 self.queue.push(Raw::Added(pos, false));
             }
-            Change::Air(_) => {}
+            Change::Air(_) | Change::Power(_) | Change::Unpower(_) => {}
         }
     }
 }
 
 /// Roda o cenário e devolve a impressão do estado depois de cada tick.
 fn run_mode(steps: &[Step], mode: Mode) -> Vec<String> {
+    run_mode_in(steps, mode, canonical_ids())
+}
+
+/// `canonical`: sem o id das redes na impressão.
+fn run_mode_in(steps: &[Step], mode: Mode, canonical: bool) -> Vec<String> {
     let mut sim = Sim::new();
     let mut shadow = Shadow::default();
     let mut port = PortQueue::default();
     let mut prints = Vec::new();
     for step in steps {
         match step {
-            Step::Op(op) if mode == Mode::Port => {
+            Step::Op(op) if matches!(mode, Mode::Port | Mode::PortEager) => {
                 for change in op {
                     let changes = shadow.changes(*change);
                     shadow.others(*change);
                     port.place(&mut sim, *change, changes);
+                    if mode == Mode::PortEager {
+                        port.flush(&mut sim);
+                    }
                 }
             }
             Step::Op(op) => {
@@ -535,13 +621,19 @@ fn run_mode(steps: &[Step], mode: Mode) -> Vec<String> {
                     .filter(|change| shadow.changes(*change))
                     .collect();
                 match mode {
-                    Mode::Immediate => {
+                    Mode::Immediate | Mode::ImmediateRepeated => {
                         for change in &op {
                             let others = shadow.others(*change);
                             let neighbors = shadow.neighbors(change.pos());
                             sim.apply(*change);
                             for event in others.into_iter().chain(neighbors) {
-                                sim.send(event);
+                                let times = match event {
+                                    Event::Capability(..) if mode == Mode::ImmediateRepeated => 3,
+                                    _ => 1,
+                                };
+                                for _ in 0..times {
+                                    sim.send(event.clone());
+                                }
                             }
                         }
                     }
@@ -579,25 +671,38 @@ fn run_mode(steps: &[Step], mode: Mode) -> Vec<String> {
                             sim.send(event);
                         }
                     }
-                    Mode::Port => unreachable!(),
+                    Mode::Port | Mode::PortEager => unreachable!(),
                 }
             }
             Step::Ticks(count) => {
                 for _ in 0..*count {
-                    if mode == Mode::Port {
+                    let port_like = matches!(mode, Mode::Port | Mode::PortEager);
+                    if port_like {
                         port.flush(&mut sim);
                     }
                     sim.tick_with(|sim| {
-                        if mode == Mode::Port {
+                        if port_like {
                             port.flush(sim);
                         }
                     });
-                    prints.push(sim.fingerprint());
+                    prints.push(if canonical {
+                        sim.canonical()
+                    } else {
+                        sim.fingerprint()
+                    });
                 }
+            }
+            Step::Reactive(pos) => {
+                // Um clique do jogador: o que a fila tem já saiu.
+                if matches!(mode, Mode::Port | Mode::PortEager) {
+                    port.flush(&mut sim);
+                }
+                let Sim { owner, level, .. } = &mut sim;
+                owner.right_click(level, *pos);
             }
             Step::Push(pos, amount) => {
                 // Quem empurra energia para um cabo é um ticker (uma máquina, um cubo), que anda depois da fila do começo do tick.
-                if mode == Mode::Port {
+                if matches!(mode, Mode::Port | Mode::PortEager) {
                     port.flush(&mut sim);
                 }
                 sim.owner.insert_external(*pos, *amount);
@@ -621,6 +726,12 @@ fn differing(from: Mode, to: Mode, repeat: bool, seeds: u64) -> Vec<u64> {
             first_difference(&run_mode(&steps, from), &run_mode(&steps, to)).is_some()
         })
         .collect()
+}
+
+/// Os cenários aleatórios comparam sem o id das redes (o do original muda quando um cabo reativo pisca, o caso de `a_redstone_block_that_changes_sides_in_one_operation_only_changes_the_id_of_the_network`);
+/// `RAW_IDS=1` compara com ele.
+fn canonical_ids() -> bool {
+    std::env::var("RAW_IDS").is_err()
 }
 
 fn seeds() -> u64 {
@@ -661,6 +772,19 @@ fn the_comparison_sees_a_wrong_order_of_events() {
     );
 }
 
+/// O `BlockCapabilityCache` do original só avisa de novo depois de um `getCapability`, e o port repete a entrega a cada invalidação: o aviso é idempotente (`markDirtyAcceptor`), então
+/// entregar três vezes o que o original entrega uma não muda o que o dono mostra.
+#[test]
+fn a_capability_told_again_changes_nothing() {
+    let different = differing(Mode::Immediate, Mode::ImmediateRepeated, true, seeds());
+    assert!(
+        different.is_empty(),
+        "{} cenários diferem: {:?}",
+        different.len(),
+        &different[..different.len().min(12)]
+    );
+}
+
 /// O original de `/fill` e de `/clone` avisa os vizinhos numa segunda passada; o Horizon muda e avisa bloco a bloco, e o port entrega cada aviso na operação seguinte.
 #[test]
 fn the_port_order_of_a_fill_gives_the_state_the_two_pass_original_gives() {
@@ -682,6 +806,20 @@ fn the_port_order_of_one_set_block_after_another_gives_the_state_the_original_gi
         different.len(),
         &different[..different.len().min(12)]
     );
+}
+
+/// A injeção que esvaziaria a fila no fim de cada `place_state` não muda o que o dono mostra (nem o que o port já entrega): fica sem ela.
+#[test]
+fn flushing_the_queue_at_the_end_of_each_placed_block_would_change_nothing() {
+    let different = differing(Mode::Port, Mode::PortEager, false, seeds());
+    assert!(
+        different.is_empty(),
+        "{} cenários diferem: {:?}",
+        different.len(),
+        &different[..different.len().min(12)]
+    );
+    let against_the_original = differing(Mode::TwoPass, Mode::PortEager, false, seeds());
+    assert!(against_the_original.is_empty());
 }
 
 /// Reduz um cenário que difere ao menor que ainda difere (tira um passo ou uma mudança de cada vez).
@@ -730,6 +868,7 @@ fn show_the_smallest_difference() {
         "Immediate" => Mode::Immediate,
         "TwoPass" => Mode::TwoPass,
         "Batched" => Mode::Batched,
+        "PortEager" => Mode::PortEager,
         _ => Mode::Port,
     };
     let from = mode(&std::env::var("FROM").unwrap_or_else(|_| "Immediate".into()));
@@ -752,4 +891,73 @@ fn show_the_smallest_difference() {
         }
     }
     eprintln!("nenhum cenário difere");
+}
+
+/// Um bloco de redstone que muda de lado numa operação só (um pistão que o empurra, um `/clone` que o move): o cabo reativo do meio da linha, ligado, vê no original o sinal cair e voltar
+/// (as duas mudanças chamam o aviso do vizinho uma depois da outra); o port entrega os avisos com o mundo já mudado, e o cabo nunca vê o sinal cair.
+fn glitch_scenario(energy: i32) -> Vec<Step> {
+    let cable = |x| Change::Cable(BlockPos::new(x, 0, 1));
+    let spot = |x, z| BlockPos::new(x, 0, z);
+    vec![
+        Step::Op(vec![cable(0), cable(1), cable(2), cable(3), cable(4)]),
+        Step::Ticks(2),
+        Step::Reactive(spot(2, 1)),
+        Step::Push(spot(0, 1), energy),
+        Step::Ticks(3),
+        Step::Op(vec![Change::Power(spot(2, 0))]),
+        Step::Ticks(3),
+        Step::Op(vec![Change::Unpower(spot(2, 0)), Change::Power(spot(2, 2))]),
+        Step::Ticks(4),
+    ]
+}
+
+/// A diferença que sobra (decisão 187): o cabo reativo do original pisca (o sinal cai e volta no meio da operação) e a rede dele é desfeita e refeita, com outro id no registro; a
+/// energia, as ligações e o que cada cabo mostra, tick a tick, são os mesmos. O port lê o sinal no fim da operação (H34) e não vê o sinal cair.
+#[test]
+fn a_redstone_block_that_changes_sides_in_one_operation_only_changes_the_id_of_the_network() {
+    for energy in [1, 2, 7, 1_201, 3_001, 3_999, 24_000] {
+        let steps = glitch_scenario(energy);
+        let original = run_mode_in(&steps, Mode::Immediate, false);
+        let port = run_mode_in(&steps, Mode::Port, false);
+        assert!(
+            first_difference(&original, &port).is_some(),
+            "o original refaz a rede, com outro id (energia {energy})"
+        );
+        let original = run_mode_in(&steps, Mode::Immediate, true);
+        let port = run_mode_in(&steps, Mode::Port, true);
+        assert_eq!(
+            original, port,
+            "sem o id das redes é igual (energia {energy})"
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn hunt_an_energy_difference_in_the_blink() {
+    let mut found = Vec::new();
+    for energy in 1..4000 {
+        let steps = glitch_scenario(energy);
+        let a: Vec<String> = run_mode(&steps, Mode::Immediate);
+        let b: Vec<String> = run_mode(&steps, Mode::Port);
+        // Sem o id das redes.
+        let strip = |text: &String| {
+            let mut out = String::new();
+            let mut rest = text.as_str();
+            while let Some(at) = rest.find("NetworkId(") {
+                out += &rest[..at];
+                let tail = &rest[at + 10..];
+                rest = &tail[tail.find(')').unwrap() + 1..];
+            }
+            out + rest
+        };
+        if a.iter().map(strip).collect::<Vec<_>>() != b.iter().map(strip).collect::<Vec<_>>() {
+            found.push(energy);
+        }
+    }
+    eprintln!(
+        "energias que mudam algo além do id: {} {:?}",
+        found.len(),
+        &found[..found.len().min(10)]
+    );
 }
