@@ -1326,3 +1326,24 @@ helper = "transmitter_save.rs"
 bindings = [
   { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
 ]
+
+# O contorno de uma forma de contexto que é a união de várias caixas (`BlockTransmitter.getShape` com o Configurator num braço `PUSH` ou `PULL`: `SIDES_PUSH` e `SIDES_PULL` são três
+# caixas empilhadas). O `context_outline` do Horizon devolve uma caixa só, e o laço do contorno (`Game::render`, o `extractBlockOutline`) desenha as 12 arestas do cubo unitário
+# (`cube_edges()`) escaladas por ela; o corpo do laço tem fechamentos e nada nele aceita injeção. O módulo `outline-edges` guarda, por thread, as arestas da forma (em fração da caixa
+# que o `context_outline` devolveu) e o RETURN de `cube_edges` as entrega no lugar do cubo, uma vez: o contorno sai pelo mesmo desenho do Horizon (largura, cor, contraste alto,
+# a cor do PvP, a ordem com o terreno translúcido). Alvo cru, H179.
+[[module]]
+id = "outline-edges"
+file = "crates/horizon-items/src/blocks.rs"
+name = "machinery_outline_edges"
+source = "outline_edges.rs"
+visibility = "pub"
+
+[[injection]]
+id = "outline_edges"
+target = "horizon_items::blocks::cube_edges"
+kind = "RETURN"
+helper = "outline_edges_return.rs"
+bindings = [
+  { name = "value", ty = "Vec<[f64; 6]>", value = "$value" },
+]

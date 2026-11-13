@@ -756,44 +756,78 @@ fn mode_timer_start() {
 // ---------------------------------------------------------------------------------------------------------------------------
 // A seleção parcial dos transmissores com o Configurator na mão (decisão 1).
 
-/// `BlockTransmitter.getShape` com o Configurator em uma das mãos (`CollisionContext.isHoldingItem`): a caixa que o olhar toca
-/// (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), e o centro se nenhuma. Sem o Configurator, ou em outro bloco, o
-/// Horizonte segue com a forma inteira. As caixas são as peças de `transmitter_pieces_at`, em coordenadas do bloco (o braço `PUSH` e o `PULL` valem pela menor caixa que os contém: o
-/// cliente só conhece o braço normal, veja lá).
+/// O que `BlockTransmitter.getShape` devolve a quem mira o bloco `pos` com o Configurator em uma das mãos (`CollisionContext.isHoldingItem`).
+enum Looked {
+    /// Sem o Configurator na mão, ou o bloco não é um transmissor: o Horizonte segue com a forma inteira.
+    No,
+    /// Sem mira, ou sem as peças do transmissor: `getCenter`.
+    Center([f64; 6]),
+    /// A peça que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), com o centro se nenhuma.
+    Piece(rules::TransmitterPiece),
+}
+
+fn looked(game: &Game<'_>, pos: [i32; 3], state: horizon_world::registry::BlockStateId) -> Looked {
+    let holding = [game.held(), game.offhand.as_ref()].into_iter().flatten().any(|stack| &*stack.item == rules::CONFIGURATOR_ITEM);
+    if !holding {
+        return Looked::No;
+    }
+    let facts = game.res.facts().get(state);
+    let Some(center) = rules::transmitter_center(&facts.name) else {
+        return Looked::No;
+    };
+    let Some((origin, direction)) = game.aim() else {
+        return Looked::Center(center);
+    };
+    let Some(pieces) = transmitter_pieces_at(game, pos) else {
+        return Looked::Center(center);
+    };
+    let reach = game.reach();
+    let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
+    let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
+    Looked::Piece(rules::partial_piece(&pieces, local, end).clone())
+}
+
+/// `BlockTransmitter.getShape` com o Configurator em uma das mãos: a caixa que o olhar toca, e o centro se nenhuma. Sem o Configurator, ou em outro bloco, o
+/// Horizonte segue com a forma inteira. As caixas são as peças de `transmitter_pieces_at`, em coordenadas do bloco. O braço `PUSH` e o `PULL` são três caixas (`SIDES_PUSH` e
+/// `SIDES_PULL`): a caixa que o `context_outline` devolve é a menor que as contém, e as arestas da união vão por `machinery_outline_edges` (H179).
 pub(in crate::game) fn partial_outline(
     game: &Game<'_>,
     pos: [i32; 3],
     state: horizon_world::registry::BlockStateId,
 ) -> core::ops::ControlFlow<Option<[f64; 6]>> {
-    let holding = [game.held(), game.offhand.as_ref()].into_iter().flatten().any(|stack| &*stack.item == rules::CONFIGURATOR_ITEM);
-    if !holding {
-        return core::ops::ControlFlow::Continue(());
-    }
-    let facts = game.res.facts().get(state);
-    let Some(center) = rules::transmitter_center(&facts.name) else {
-        return core::ops::ControlFlow::Continue(());
-    };
-    let Some((origin, direction)) = game.aim() else {
-        return core::ops::ControlFlow::Break(Some(center));
-    };
-    let Some(pieces) = transmitter_pieces_at(game, pos) else {
-        return core::ops::ControlFlow::Break(Some(center));
-    };
-    let reach = game.reach();
-    let local = [origin[0] - f64::from(pos[0]), origin[1] - f64::from(pos[1]), origin[2] - f64::from(pos[2])];
-    let end: [f64; 3] = std::array::from_fn(|axis| local[axis] + direction[axis] * reach);
-    let shape = rules::partial_shape(&pieces, local, end);
-    if basis::transmitter_probe_enabled() {
-        // A sonda do contorno (`MBO`): a caixa que o contorno mostra, para a mira de cada quadro (só quando muda).
-        static LAST: std::sync::Mutex<Option<([i32; 3], [i64; 6])>> = std::sync::Mutex::new(None);
-        let rounded: [i64; 6] = shape.map(|value| (value * 10_000.0).round() as i64);
-        let mut last = LAST.lock().unwrap_or_else(|error| error.into_inner());
-        if *last != Some((pos, rounded)) {
-            *last = Some((pos, rounded));
-            eprintln!("MBO {{\"p\":[{},{},{}],\"box\":{:?}}}", pos[0], pos[1], pos[2], shape);
+    // Toda chamada arma ou desarma as arestas do contorno: o `cube_edges()` que o laço do contorno chama logo depois da caixa é o desta chamada.
+    horizon_client::blocks::machinery_outline_edges::disarm();
+    match looked(game, pos, state) {
+        Looked::No => core::ops::ControlFlow::Continue(()),
+        Looked::Center(center) => core::ops::ControlFlow::Break(Some(center)),
+        Looked::Piece(piece) => {
+            let shape = piece.bounds();
+            if let Some(edges) = piece.outline_edges() {
+                horizon_client::blocks::machinery_outline_edges::arm(edges);
+            }
+            if basis::transmitter_probe_enabled() {
+                // A sonda do contorno (`MBO`): a caixa que o contorno mostra, para a mira de cada quadro (só quando muda).
+                static LAST: std::sync::Mutex<Option<([i32; 3], [i64; 6])>> = std::sync::Mutex::new(None);
+                let rounded: [i64; 6] = shape.map(|value| (value * 10_000.0).round() as i64);
+                let mut last = LAST.lock().unwrap_or_else(|error| error.into_inner());
+                if *last != Some((pos, rounded)) {
+                    *last = Some((pos, rounded));
+                    eprintln!("MBO {{\"p\":[{},{},{}],\"box\":{:?},\"parts\":{}}}", pos[0], pos[1], pos[2], shape, piece.boxes.len());
+                }
+            }
+            core::ops::ControlFlow::Break(Some(shape))
         }
     }
-    core::ops::ControlFlow::Break(Some(shape))
+}
+
+/// As caixas de seleção do braço `PUSH` ou `PULL` que o olhar toca, em coordenadas do mundo: o raio de seleção (`outline_boxes`) lê a forma de três caixas, como o `VoxelShape.clip`
+/// do original, e não a caixa que as contém. Só nesses braços: o resto (o braço normal, o centro) é uma caixa só e segue por `context_outline`.
+pub(in crate::game) fn partial_boxes(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let Looked::Piece(piece) = looked(game, pos, state) else {
+        return None;
+    };
+    (piece.boxes.len() > 1).then(|| piece.boxes.iter().map(|part| std::array::from_fn(|index| f64::from(pos[index % 3]) + part[index])).collect())
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

@@ -74,6 +74,7 @@ pub mod two_input_recipe;
 pub mod units;
 pub mod upgrade;
 pub mod upgrade_window;
+pub mod voxel_edges;
 pub mod warning;
 pub mod window;
 pub mod window_session;

@@ -41,6 +41,7 @@ use machinery_basis_core::transmission::thermodynamic_conductor::TierValues;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use machinery_basis_core::upgrade::{UpgradeData, UpgradeTags, UpgradeTypes};
+use machinery_basis_core::voxel_edges::union_edges_in;
 use machinery_basis_core::warning::{ErrorMask, WarningTracker};
 use machinery_basis_core::window::WindowType;
 use serde_json::Value;
@@ -4551,6 +4552,13 @@ impl TransmitterPiece {
         }
         bounds
     }
+
+    /// As arestas que o contorno desenha da peça quando ela é a união de várias caixas (o braço `PUSH` e o `PULL`: `VoxelShape.forAllEdges` da forma de três caixas), em fração de
+    /// `bounds()`, que é a caixa que o `context_outline` devolve. Uma peça de uma caixa só (o braço normal e o centro) não precisa delas: o cubo unitário escalado por `bounds()` já é o
+    /// contorno dela.
+    pub fn outline_edges(&self) -> Option<Vec<[f64; 6]>> {
+        (self.boxes.len() > 1).then(|| union_edges_in(&self.boxes, &self.bounds()))
+    }
 }
 
 /// As caixas de `box(x, y, z, ...)` do braço que sai para baixo (`SIDES`, `SIDES_PULL` e `SIDES_PUSH` de `BlockSmallTransmitter` e `BlockLargeTransmitter`), em pixels:
@@ -4650,11 +4658,19 @@ pub fn side_looking_at(
     looked_piece(pieces, origin, end)?.side
 }
 
-/// `BlockTransmitter.getShape` com o Configurator na mão: a caixa da peça que o raio toca (a menor que a contém, nos braços `PUSH` e `PULL`), e o centro se nenhuma.
+/// `BlockTransmitter.getShape` com o Configurator na mão: a peça que o raio toca, e o centro se nenhuma (`getCenter`).
+pub fn partial_piece(
+    pieces: &[TransmitterPiece],
+    origin: [f64; 3],
+    end: [f64; 3],
+) -> &TransmitterPiece {
+    looked_piece(pieces, origin, end)
+        .unwrap_or_else(|| pieces.last().expect("o centro está na lista"))
+}
+
+/// A caixa da peça que o raio toca (a menor que a contém, nos braços `PUSH` e `PULL`), e o centro se nenhuma: o que o `context_outline` do Horizon devolve.
 pub fn partial_shape(pieces: &[TransmitterPiece], origin: [f64; 3], end: [f64; 3]) -> [f64; 6] {
-    let piece = looked_piece(pieces, origin, end)
-        .unwrap_or_else(|| pieces.last().expect("o centro está na lista"));
-    piece.bounds()
+    partial_piece(pieces, origin, end).bounds()
 }
 
 /// `VoxelShape.clip` de uma caixa: a distância (como fração do raio) até a caixa, se o raio de `origin` a `end` a atravessa.
