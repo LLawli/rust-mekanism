@@ -9,6 +9,10 @@ use horizon_client::world_primitives::{WorldPrimitives, vertex_color};
 /// Os primitivos do quadro quando a sobreposição está na tela. Outros mods que também desenham primitivos deixam o caminho do jogo valer (sem sobreposição naquele quadro).
 pub(super) fn geometry(game: &mut Game<'_>, camera: glam::DVec3, alpha: f64) -> Option<PrimitiveGeometry> {
     let request = crate::game::mekanism_configurator::overlay_request(game)?;
+    // A sobreposição do desviador é geometria do block entity (`diversion_submit`), na ordem do original: antes do terreno translúcido.
+    if request.diversion {
+        return None;
+    }
     let corners = crate::game::mekanism_configurator::overlay_vertices(game, &request, camera.to_array())?;
     let mut primitives = WorldPrimitives::default();
     game.native_world_primitives(alpha as f32, camera.to_array(), &mut primitives);

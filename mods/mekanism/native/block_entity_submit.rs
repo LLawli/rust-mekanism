@@ -4,4 +4,5 @@ fn mekanism_submit(
     draw: &mut crate::game::native_block_entity_draw::BlockEntityDraw,
 ) {
     crate::game::mekanism_cube::submit(game, pos, draw);
+    crate::game::mekanism_configurator::diversion_submit(game, pos, draw);
 }

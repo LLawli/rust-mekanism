@@ -586,6 +586,36 @@ fn the_configurator_cycles_the_mode_of_a_diversion_transporter() {
     assert_eq!(world.overlays.len(), before, "o restritivo não manda aviso");
 }
 
+/// O que a sobreposição do Configurator lê (`transporter.getTransmitter().modes[face.ordinal()]`): o modo de cada lado do desviador, que o clique troca; o logístico e o restritivo
+/// não têm modos.
+#[test]
+fn the_diversion_modes_are_what_the_overlay_reads() {
+    let diversion = TransporterKind::Diversion {
+        modes: [DiversionControl::Disabled; 6],
+    };
+    let (mut owner, mut world) = line(&[logistical(), diversion, TransporterKind::Restrictive]);
+    assert_eq!(
+        owner.transporter_at(at(1)).unwrap().diversion_modes(),
+        Some([DiversionControl::Disabled; 6])
+    );
+    assert!(owner.right_click(&mut world, at(1), Face::Up, None));
+    assert!(owner.right_click(&mut world, at(1), Face::Up, None));
+    let mut expected = [DiversionControl::Disabled; 6];
+    expected[Face::Up as usize] = DiversionControl::Low;
+    assert_eq!(
+        owner.transporter_at(at(1)).unwrap().diversion_modes(),
+        Some(expected)
+    );
+    owner.set_diversion_mode(&mut world, at(1), Face::South, DiversionControl::High);
+    expected[Face::South as usize] = DiversionControl::High;
+    assert_eq!(
+        owner.transporter_at(at(1)).unwrap().diversion_modes(),
+        Some(expected)
+    );
+    assert_eq!(owner.transporter_at(at(0)).unwrap().diversion_modes(), None);
+    assert_eq!(owner.transporter_at(at(2)).unwrap().diversion_modes(), None);
+}
+
 /// A capability de item (`TransporterItemHandler`): existe onde `exposesInsertCap` vale, e só põe algo com rede.
 #[test]
 fn the_item_capability_exists_where_the_side_accepts() {

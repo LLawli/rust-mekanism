@@ -1274,10 +1274,11 @@ fn overlay_find(game: &Game<'_>) -> Option<OverlayRequest> {
     Some(OverlayRequest { pos: hit.pos, face, sprite: rules::overlay_sprite(kind), argb: rules::overlay_argb(data_type), y_rot: f64::from(game.yaw), diversion: false })
 }
 
-/// Os vértices da sobreposição, relativos à câmera, no formato dos primitivos do mundo: um quadrilátero do sprite, com a cor do tipo de dado.
+/// Os vértices da sobreposição da face de uma máquina, relativos à câmera, no formato dos primitivos do mundo: um quadrilátero do sprite, com a cor do tipo de dado. A do
+/// desviador não passa por aqui (`diversion_submit`).
 pub(in crate::game) fn overlay_vertices(game: &Game<'_>, request: &OverlayRequest, camera: [f64; 3]) -> Option<[[f32; 3]; 4]> {
     let _ = game.gui.atlas.sprites.get(request.sprite.as_str())?;
-    let corners = if request.diversion { face_overlay::diversion_vertices(request.face, request.y_rot) } else { face_overlay::vertices(request.face, request.y_rot) };
+    let corners = face_overlay::vertices(request.face, request.y_rot);
     Some(std::array::from_fn(|index| {
         let position = corners[index].position;
         [
@@ -1287,6 +1288,36 @@ pub(in crate::game) fn overlay_vertices(game: &Game<'_>, request: &OverlayReques
         ]
     }))
 }
+
+/// A sobreposição do desviador (`ConfiguratorOverlayHandler` com `isDiversion`), desenhada como geometria do block entity dele (`block_entity_submit`) e não como primitivo do
+/// mundo: o original a submete antes do contorno padrão (mesma fase, o `render` devolve `false` e o contorno fica por cima), e a geometria do block entity sai antes do contorno
+/// no Horizon, enquanto os primitivos saem depois de tudo. Medido contra o original (`dev/referencia/cenas/desviador.txt`): de lado 0 pixel de diferença (a mesma mistura, sem o
+/// arredondamento a mais do primitivo); de frente sobram as duas linhas em que o contorno cruza o desenho, e o valor do pixel é o do desenho sem contorno: o quadrilátero do block entity
+/// escreve profundidade (o do original, `RenderTypes.eyes`, não) e esconde o contorno, que está 0,005 atrás dele (inferido dos valores, decisão 177, H204). Os vértices são os de `face_overlay::diversion_vertices` em coordenadas do bloco, com a
+/// luz cheia (`LightCoordsUtil.FULL_BRIGHT`) e a cor branca a 80 % sem o sombreado dos modelos (`eyes` não tem sombreado).
+pub(in crate::game) fn diversion_submit(game: &Game<'_>, pos: [i32; 3], draw: &mut crate::game::native_block_entity_draw::BlockEntityDraw) {
+    if !is_diversion(game, pos) {
+        return;
+    }
+    let Some(request) = overlay_find(game).filter(|request| request.diversion && request.pos == pos) else {
+        return;
+    };
+    let corners = face_overlay::diversion_vertices(request.face, request.y_rot).map(|vertex| vertex.position);
+    let light = draw.light;
+    draw.light = DIVERSION_LIGHT;
+    let start = draw.vertices_mut().len();
+    if game.native_draw_quad(draw, &request.sprite, corners, [0.0, 0.0, 16.0, 16.0], 0x00FF_FFFF) {
+        // Os vértices levam o alfa no byte de cima e o branco sem sombreado.
+        let color = (request.argb >> 24) << 24 | 0x00FF_FFFF;
+        for vertex in &mut draw.vertices_mut()[start..] {
+            vertex.color = color;
+        }
+    }
+    draw.light = light;
+}
+
+/// `LightCoordsUtil.FULL_BRIGHT`, em 16 vezes o céu (bits 0 a 8) e o bloco (bits 8 a 16).
+const DIVERSION_LIGHT: u32 = 0xF0F0;
 
 /// `RenderPipelines.EYES`: o contorno padrão não sai enquanto a sobreposição está na tela.
 pub(in crate::game) fn block_highlight(pos: [i32; 3], canceled: &mut bool) {
