@@ -132,17 +132,25 @@ def bytes_de(arquivo):
 
 
 def novas(arquivo, de, prefixos):
-    """As linhas `prefixos` do log escritas depois do byte `de`, como `(prefixo, json)`, e o novo tamanho."""
-    out = subprocess.run(["ssh", "desktop", f"tail -c +{de + 1} {c.DOIS}/{arquivo}.log | grep -a '^M' "], capture_output=True, text=True, timeout=120).stdout
+    """As linhas `prefixos` do log escritas depois do byte `de`, como `(prefixo, json)`, e o novo tamanho (o tamanho do arquivo na hora da leitura, e não o das linhas lidas)."""
+    f = f"{c.DOIS}/{arquivo}.log"
+    out = subprocess.run(["ssh", "desktop", f"f={f}; s=$(stat -c %s $f); tail -c +{de + 1} $f | head -c $((s - {de})) | grep -a '^M'; echo \"#SIZE $s\""], capture_output=True, text=True, timeout=120).stdout
     linhas = []
+    tamanho = de
     for linha in out.splitlines():
+        if linha.startswith("#SIZE "):
+            tamanho = int(linha.split()[1])
+            continue
         prefixo, _, resto = linha.partition(" ")
         if prefixo in prefixos:
             try:
                 linhas.append((prefixo, json.loads(resto)))
             except ValueError:
                 pass
-    return linhas, de + len(out.encode())
+    return linhas, tamanho
+
+
+ELIDIR = 12
 
 
 def pilhas(ticks=150):
@@ -165,6 +173,8 @@ def pilhas(ticks=150):
         time.sleep(0.9)
         linhas_a, de_a = novas("a", de_a, {"MBI"})
         linhas_b, de_b = novas("b", de_b, {"MBH", "MBG"})
+        if os.environ.get("DEPURAR"):
+            print("passo", passo, "convidado:", [(r.get("k", "tag"), r["p"][0], r["transit"]) for _, r in linhas_b], "| servidor tp1:", [r["stacks"] for _, r in linhas_a if r["p"] == list(at(1))], "t", [r["t"] for _, r in linhas_a][:1])
         for prefixo, r in linhas_b:
             if prefixo == "MBH":
                 packets[r["k"]] += 1
@@ -175,6 +185,9 @@ def pilhas(ticks=150):
             if tuple(r["p"]) in guest:
                 servidor[tuple(r["p"])] = sorted((s[0], s[1], s[2]) for s in r["stacks"])
         for p, want in servidor.items():
+            if passo <= ELIDIR:
+                # O log do convidado sai em blocos (o stderr do segundo cliente só enche o bloco depois de alguns ticks): nos primeiros passos a linha chega depois. O passo ELIDIR + 1 já tem tudo.
+                continue
             compared += 1
             have = guest[p]
             if want != have:
