@@ -3256,6 +3256,114 @@ const TRANSMITTER_PROBE: bool = false;
 /// sonda dos eventos (`TRANSMITTER_PROBE`) escreve milhares de linhas por passada e atrasa o servidor a um quarto da velocidade: o carregamento dos chunks corre em tempo real, e a comparação por tick
 /// com o original só vale com o servidor andando a 20 por segundo. `enviar_fontes.sh` liga esta (modo `setups`) e deixa a dos eventos desligada.
 const SETUPS_PROBE: bool = false;
+/// O perfil por etapa do tick dos transmissores (frente `rede-desempenho`, decisão 202): o tempo e a contagem de cada etapa, somados e escritos no `stderr` (`MBF {json}`) a cada `PERF_WINDOW`
+/// passadas do servidor. O repositório o deixa desligado (`PERF_PROBE = false` faz de `perf_span` um valor sem relógio); `enviar_fontes.sh WS PASTA perfil` o liga na cópia de teste. Não há
+/// `perf` no container (`perf_event_paranoid` 3), então a medida é por marcas de tempo.
+const PERF_PROBE: bool = false;
+/// De quantas em quantas passadas do servidor o perfil sai.
+const PERF_WINDOW: i64 = 40;
+/// Os sinks que o perfil separa por dono (a ordem de registro); os de índice maior caem no último.
+const PERF_SINKS: usize = 6;
+/// As etapas do perfil, na ordem dos índices `PERF_*`.
+const PERF_NAMES: [&str; 53] = [
+    "tick", "start_flush", "start_client_flush", "upd_all", "upd_transporter_client", "upd_flush", "upd_track", "upd_deliver", "end_idle", "end_flush", "end_post", "end_packets",
+    "sink0_upd", "sink1_upd", "sink2_upd", "sink3_upd", "sink4_upd", "sink5_upd",
+    "sink0_post", "sink1_post", "sink2_post", "sink3_post", "sink4_post", "sink5_post",
+    "sink0_other", "sink1_other", "sink2_other", "sink3_other", "sink4_other", "sink5_other",
+    "res_retry", "res_refresh", "res_handle", "res_flush", "res_post_pre", "cab_retry", "cab_refresh", "cab_inboxes", "cab_handle", "cab_flush",
+    "heat_retry", "heat_handle", "tra_retry", "tra_refresh", "tra_handle", "tra_flush", "res_post_post", "tra_offered", "tra_mirror", "hook_mek", "hook_gen", "tra_slots", "tra_refuses",
+];
+pub(in crate::game) const PERF_TICK: usize = 0;
+const PERF_START_FLUSH: usize = 1;
+const PERF_START_CLIENT_FLUSH: usize = 2;
+const PERF_UPD_ALL: usize = 3;
+const PERF_UPD_TRANSPORTER_CLIENT: usize = 4;
+const PERF_UPD_FLUSH: usize = 5;
+const PERF_UPD_TRACK: usize = 6;
+const PERF_UPD_DELIVER: usize = 7;
+const PERF_END_IDLE: usize = 8;
+const PERF_END_FLUSH: usize = 9;
+const PERF_END_POST: usize = 10;
+const PERF_END_PACKETS: usize = 11;
+const PERF_SINK_UPD: usize = 12;
+const PERF_SINK_POST: usize = 18;
+const PERF_SINK_OTHER: usize = 24;
+pub(in crate::game) const PERF_RES_RETRY: usize = 30;
+pub(in crate::game) const PERF_RES_REFRESH: usize = 31;
+pub(in crate::game) const PERF_RES_HANDLE: usize = 32;
+pub(in crate::game) const PERF_RES_FLUSH: usize = 33;
+pub(in crate::game) const PERF_RES_POST_PRE: usize = 34;
+const PERF_CAB_RETRY: usize = 35;
+const PERF_CAB_REFRESH: usize = 36;
+const PERF_CAB_INBOXES: usize = 37;
+const PERF_CAB_HANDLE: usize = 38;
+const PERF_CAB_FLUSH: usize = 39;
+pub(in crate::game) const PERF_HEAT_RETRY: usize = 40;
+pub(in crate::game) const PERF_HEAT_HANDLE: usize = 41;
+pub(in crate::game) const PERF_TRA_RETRY: usize = 42;
+pub(in crate::game) const PERF_TRA_REFRESH: usize = 43;
+pub(in crate::game) const PERF_TRA_HANDLE: usize = 44;
+pub(in crate::game) const PERF_TRA_FLUSH: usize = 45;
+pub(in crate::game) const PERF_RES_POST_POST: usize = 46;
+pub(in crate::game) const PERF_TRA_OFFERED: usize = 47;
+pub(in crate::game) const PERF_TRA_MIRROR: usize = 48;
+pub(in crate::game) const PERF_HOOK_MEK: usize = 49;
+pub(in crate::game) const PERF_HOOK_GEN: usize = 50;
+pub(in crate::game) const PERF_TRA_SLOTS: usize = 51;
+pub(in crate::game) const PERF_TRA_REFUSES: usize = 52;
+static PERF_NS: [AtomicU64; PERF_NAMES.len()] = [const { AtomicU64::new(0) }; PERF_NAMES.len()];
+static PERF_COUNT: [AtomicU64; PERF_NAMES.len()] = [const { AtomicU64::new(0) }; PERF_NAMES.len()];
+static PERF_MARK: Mutex<Option<Instant>> = Mutex::new(None);
+/// O começo do tick do servidor em andamento (a etapa `tick` vai dele até o fim da passada).
+static PERF_TICK_START: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// O fim de uma passada com transmissores: fecha a etapa `tick` e, na janela, escreve o perfil.
+fn perf_tick_end() {
+    if !PERF_PROBE {
+        return;
+    }
+    if let Some(start) = PERF_TICK_START.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        PERF_NS[PERF_TICK].fetch_add(u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX), Ordering::Relaxed);
+        PERF_COUNT[PERF_TICK].fetch_add(1, Ordering::Relaxed);
+    }
+    perf_report(TRANSMITTER_PASS.load(Ordering::Relaxed));
+}
+
+/// Uma etapa em andamento: o tempo entre `perf_span` e o fim do escopo entra na soma dela.
+pub(in crate::game) struct PerfSpan(usize, Option<Instant>);
+
+pub(in crate::game) fn perf_span(stage: usize) -> PerfSpan {
+    PerfSpan(stage, PERF_PROBE.then(Instant::now))
+}
+
+impl Drop for PerfSpan {
+    fn drop(&mut self) {
+        if let Some(start) = self.1 {
+            PERF_NS[self.0].fetch_add(u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX), Ordering::Relaxed);
+            PERF_COUNT[self.0].fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// O fim de uma passada: a cada `PERF_WINDOW` passadas escreve a média por tick de cada etapa (ms por tick e ocorrências por tick) e o tempo de parede por tick, e zera as somas.
+fn perf_report(pass: i64) {
+    if !PERF_PROBE || pass % PERF_WINDOW != 0 {
+        return;
+    }
+    let now = Instant::now();
+    let wall = PERF_MARK.lock().unwrap_or_else(|e| e.into_inner()).replace(now).map(|before| now.duration_since(before).as_secs_f64() * 1000.0 / PERF_WINDOW as f64);
+    let sinks: Vec<&'static str> = TRANSMITTER_SINKS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(name, _)| *name).collect();
+    let mut fields = Vec::new();
+    for (index, name) in PERF_NAMES.iter().enumerate() {
+        let ns = PERF_NS[index].swap(0, Ordering::Relaxed);
+        let count = PERF_COUNT[index].swap(0, Ordering::Relaxed);
+        if count > 0 {
+            fields.push(format!("\"{name}\":[{:.3},{:.1}]", ns as f64 / 1e6 / PERF_WINDOW as f64, count as f64 / PERF_WINDOW as f64));
+        }
+    }
+    eprintln!("MBF {{\"t\":{pass},\"wall\":{:.3},\"sinks\":{sinks:?},\"s\":{{{}}}}}", wall.unwrap_or(0.0), fields.join(","));
+}
+
 /// As passadas do `server_tick` desde que o jogo abriu (a sonda numera por elas, e não pelo `game_time`, que o `/tick freeze` para).
 static TRANSMITTER_PASS: AtomicI64 = AtomicI64::new(0);
 /// A sonda leve da decisão 198: o que cada chunk já deu desde que o mundo abriu (a primeira vez de `clearRemoved` e de `tick` por chunk, para saber em que passada cada um entrou), para
@@ -3364,7 +3472,13 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
             // Os tickets de acessibilidade (decisão 196), as únicas ocorrências que a sonda leve conta uma a uma: o chunk, o lado do anel e a passada.
             eprintln!("MBK {{\"t\":{},\"cx\":{},\"cz\":{},\"loaded\":{loaded}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
         }
-        for sink in &sinks {
+        let class = match event {
+            TransmitterEvent::Transmitter { kind: TransmitterKind::Update, .. } => PERF_SINK_UPD,
+            TransmitterEvent::ServerTickPost { .. } => PERF_SINK_POST,
+            _ => PERF_SINK_OTHER,
+        };
+        for (index, sink) in sinks.iter().enumerate() {
+            let _span = perf_span(class + index.min(PERF_SINKS - 1));
             sink(game, event);
         }
     }
@@ -3471,18 +3585,29 @@ pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: Block
 /// O ticker de um block entity de mod (o gancho `block_entity_tick`): o `onUpdateServer` dos transmissores.
 pub(in crate::game) fn transmitters_update(game: &mut Game<'_>, pos: [i32; 3], id: &str) {
     // `TileEntityTransmitter.tickClient`: o transportador do cliente (a janela do anfitrião e o convidado) avança as pilhas dele.
-    crate::game::machinery_transporters::transporter_client_tick(game, pos, id);
+    {
+        let _span = perf_span(PERF_UPD_TRANSPORTER_CLIENT);
+        crate::game::machinery_transporters::transporter_client_tick(game, pos, id);
+    }
     if !transmitters::is_active() || !transmitters::is_registered(id) {
         if TRANSMITTER_PROBE && transmitters::is_active() && (id.contains("cable") || id.contains("pipe")) {
             eprintln!("MBT {{\"e\":\"drop_unregistered\",\"id\":{id:?},\"p\":{pos:?}}}");
         }
         return;
     }
-    transmitters_flush(game);
-    let events = transmitters::update(game.native_dimension(), pos);
+    let _all = perf_span(PERF_UPD_ALL);
+    {
+        let _span = perf_span(PERF_UPD_FLUSH);
+        transmitters_flush(game);
+    }
+    let events = {
+        let _span = perf_span(PERF_UPD_TRACK);
+        transmitters::update(game.native_dimension(), pos)
+    };
     if TRANSMITTER_PROBE && events.is_empty() {
         eprintln!("MBT {{\"e\":\"drop_unwatched\",\"id\":{id:?},\"p\":{pos:?}}}");
     }
+    let _span = perf_span(PERF_UPD_DELIVER);
     transmitters_deliver(game, events);
 }
 
@@ -3581,8 +3706,13 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             if (TRANSMITTER_PROBE || SETUPS_PROBE) && transmitters::is_active() {
                 eprintln!("MBT {{\"t\":{},\"e\":\"pre\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed));
             }
-            transmitters_flush(game);
+            *PERF_TICK_START.lock().unwrap_or_else(|e| e.into_inner()) = PERF_PROBE.then(Instant::now);
+            {
+                let _span = perf_span(PERF_START_FLUSH);
+                transmitters_flush(game);
+            }
             // O `sendUpdatePacket` do tick anterior sai agora, com o estado de agora (a transmissão de mudanças dos chunks).
+            let _span = perf_span(PERF_START_CLIENT_FLUSH);
             crate::game::machinery_transmitter_client::flush(game);
         }
         ServerTickPhase::ServerTickEnd { world_running } => {
@@ -3612,11 +3742,17 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 eprintln!("MBC {{\"t\":{},\"ms\":{ms},\"carregados\":{},\"dim\":\"{}\",\"fila\":\"{row}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed), game.world.chunks.len(), game.dim.id());
             }
             // Os níveis parados que descarregam neste tick saem antes do `Post`, como no original (o `ServerLevel.tick` vem antes do `ServerTickEvent.Post`).
-            let post_levels = idle_levels_end_of_tick(game);
+            let post_levels = {
+                let _span = perf_span(PERF_END_IDLE);
+                idle_levels_end_of_tick(game)
+            };
             if !transmitters::is_active() {
                 return;
             }
-            transmitters_flush(game);
+            {
+                let _span = perf_span(PERF_END_FLUSH);
+                transmitters_flush(game);
+            }
             // Os chunks que entraram ou saíram do anel acessível neste tick (o `ChunkTicketLevelUpdatedEvent`, que o registro anota e trata no `Post`).
             let dim = game.native_dimension().to_owned();
             let events = transmitters::accessibility(&dim, |chunk| chunk_accessible(game, &dim, chunk));
@@ -3624,9 +3760,16 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             // O `onTick` do registro (um só no original) trata todas as dimensões: cada nível que o servidor ticou e que tem transmissor recebe o `ServerTickPost` dele, e os parados que
             // ainda estão carregados (o que descarrega neste tick inclusive, onde o original trata os transmissores inválidos).
             let dims = post_levels;
-            transmitters::deliver_server_tick_post(&mut TickLevels { game, dims }, world_running);
+            {
+                let _span = perf_span(PERF_END_POST);
+                transmitters::deliver_server_tick_post(&mut TickLevels { game, dims }, world_running);
+            }
             // Os pacotes de movimento das pilhas (`PacketTransporterSync` e `PacketTransporterBatch`) do tick saem agora.
-            crate::game::machinery_transmitter_client::flush_packets(game);
+            {
+                let _span = perf_span(PERF_END_PACKETS);
+                crate::game::machinery_transmitter_client::flush_packets(game);
+            }
+            perf_tick_end();
         }
         _ => {}
     }
@@ -4063,7 +4206,18 @@ pub(in crate::game) fn registry_networks() -> Vec<(machinery_basis_core::side_co
 /// O sink dos eventos dos cabos: traduz o evento do jogo para o do dono.
 fn cables_event(game: &mut Game<'_>, event: &TransmitterEvent) {
     let dimension = game.native_dimension();
-    cables_retry_pending(game, dimension);
+    // O `Update` de um block entity que não é deste dono (cada tick entrega o de cada transmissor a todos os donos) não faz nada nele (`update` sai no `live`), e sem `ClearRemoved` esperando
+    // nada mais do que o evento faria roda: nem a espera, nem o espelho dos vizinhos, nem a entrega. Sai antes de tudo isso (decisão 202).
+    if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::Update, .. } = event
+        && CABLE_PENDING.with_borrow(transmitters::PendingClears::is_empty)
+        && !CABLES.with(|cables| cables.try_borrow().ok().and_then(|cables| cables.get(dimension).map(|owner| owner.cable_at(sim_pos(*pos)).is_some())).unwrap_or(true))
+    {
+        return;
+    }
+    {
+        let _span = perf_span(PERF_CAB_RETRY);
+        cables_retry_pending(game, dimension);
+    }
     cables_deliver(game, dimension, event);
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
@@ -4115,10 +4269,13 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
     // `onChunkUnloaded` toma a parte do cabo e o chunk vai para o disco: o NBT sai agora, antes do `setRemoved` que o tira do dono.
     let unloaded = if let CableEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
     // Quem puxa (`Update`) ou distribui (`ServerTickPost`) fala com os vizinhos pelos aceitadores, que leem o buffer deles antes e escrevem depois.
-    match &event {
-        CableEvent::Update(pos) => acceptors_refresh(game, dimension, Some(arr(*pos))),
-        CableEvent::ServerTickPost { .. } => acceptors_refresh(game, dimension, None),
-        _ => {}
+    {
+        let _span = perf_span(PERF_CAB_REFRESH);
+        match &event {
+            CableEvent::Update(pos) => acceptors_refresh(game, dimension, Some(arr(*pos))),
+            CableEvent::ServerTickPost { .. } => acceptors_refresh(game, dimension, None),
+            _ => {}
+        }
     }
     if post {
         // As capabilities que mudaram durante o tick chegam aos cabos vizinhos antes do `onTick` do registro.
@@ -4140,6 +4297,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         }
         // O que entrou em cada cabo depois do tick dele chega ao contêiner (a rede só emite o que já guarda).
         let time = game.world.game_time;
+        let _span = perf_span(PERF_CAB_INBOXES);
         let inboxes: Vec<([i32; 3], i32)> = with_owner(dimension, |owner| owner.positions().into_iter().map(|pos| (arr(pos), cable_inbox_value(game, arr(pos)))).collect()).unwrap_or_default();
         with_owner(dimension, |owner| {
             for (pos, inbox) in inboxes {
@@ -4149,6 +4307,7 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         });
     }
     let mut scale_packets = Vec::new();
+    let handle_span = perf_span(PERF_CAB_HANDLE);
     let dirty = with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
@@ -4183,6 +4342,8 @@ fn cables_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Transmit
         }
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
+    drop(handle_span);
+    let _flush_span = perf_span(PERF_CAB_FLUSH);
     acceptors_flush(game, dimension);
     // `Mekanism.onEnergyTransferred`: o `PacketNetworkScale` de cada evento de transferência, a quem está no raio da rede.
     if !scale_packets.is_empty() {

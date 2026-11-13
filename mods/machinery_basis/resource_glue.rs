@@ -662,7 +662,18 @@ pub(in crate::game) fn tube_networks() -> Vec<(machinery_basis_core::transmissio
 /// O sink dos eventos dos transmissores: traduz o evento do jogo para o do dono.
 fn sink<F: Family>(game: &mut Game<'_>, event: &TransmitterEvent) {
     let dimension = game.native_dimension();
-    retry_pending::<F>(game, dimension);
+    // O `Update` de um block entity que não é deste dono (cada tick entrega o de cada transmissor a todos os donos) não faz nada nele (`update` sai no `live`), e sem `ClearRemoved` esperando
+    // nada mais do que o evento faria roda: nem a espera, nem o espelho dos vizinhos, nem a entrega. Sai antes de tudo isso (decisão 202).
+    if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::Update, .. } = event
+        && F::pending().with_borrow(Pending::is_empty)
+        && !owns::<F>(dimension, *pos)
+    {
+        return;
+    }
+    {
+        let _span = basis::perf_span(basis::PERF_RES_RETRY);
+        retry_pending::<F>(game, dimension);
+    }
     deliver::<F>(game, dimension, event);
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
@@ -672,6 +683,11 @@ fn sink<F: Family>(game: &mut Game<'_>, event: &TransmitterEvent) {
             F::pending().with_borrow_mut(|pending| pending.wait(dimension, *pos, now));
         }
     }
+}
+
+/// O dono da dimensão tem o transmissor em `pos`? Um dono ocupado (um evento dentro de outro) conta como se tivesse: o caminho de sempre decide.
+fn owns<F: Family>(dimension: &'static str, pos: [i32; 3]) -> bool {
+    F::owners().with(|owners| owners.try_borrow().ok().and_then(|owners| owners.get(dimension).map(|owner| owner.pipe_at(sim_pos(pos)).is_some())).unwrap_or(true))
 }
 
 /// O block entity em `pos` é um transmissor da família (ou ainda não está no mundo, e então a pergunta é de outro dono).
@@ -719,11 +735,15 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
     let unloaded = if let OwnerEvent::ChunkUnloaded(pos) = &event { Some(arr(*pos)) } else { None };
     let removed = if let OwnerEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
     // Quem puxa (`Update`) ou distribui (`ServerTickPost`) fala com os vizinhos pelos aceitadores, que leem o contêiner deles antes e escrevem depois.
-    match &event {
-        OwnerEvent::Update(pos) => handlers_refresh::<F>(game, dimension, Some(arr(*pos))),
-        OwnerEvent::ServerTickPost { .. } => handlers_refresh::<F>(game, dimension, None),
-        _ => {}
+    {
+        let _span = basis::perf_span(basis::PERF_RES_REFRESH);
+        match &event {
+            OwnerEvent::Update(pos) => handlers_refresh::<F>(game, dimension, Some(arr(*pos))),
+            OwnerEvent::ServerTickPost { .. } => handlers_refresh::<F>(game, dimension, None),
+            _ => {}
+        }
     }
+    let pre_span = basis::perf_span(basis::PERF_RES_POST_PRE);
     if post && basis::setups_probe_enabled() {
         // O tile que está no tick está fora do mundo: o empurrão da sonda espera o fim do tick, antes do `onTick` do registro.
         let positions: Vec<[i32; 3]> = with_owner::<F, _>(dimension, |owner| owner.positions().into_iter().map(arr).collect()).unwrap_or_default();
@@ -753,7 +773,9 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         with_owner::<F, _>(dimension, |owner| owner.set_game_time(time));
     }
     let runs_normally = matches!(event, OwnerEvent::ServerTickPost { runs_normally: true });
+    drop(pre_span);
     let mut scale_packets = Vec::new();
+    let handle_span = basis::perf_span(basis::PERF_RES_HANDLE);
     let dirty = with_owner::<F, _>(dimension, |owner| {
         {
             let mut world = GameWorld::<F>::new(&mut *game, dimension);
@@ -790,7 +812,11 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         }
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
+    drop(handle_span);
+    let flush_span = basis::perf_span(basis::PERF_RES_FLUSH);
     handlers_flush::<F>(game, dimension);
+    drop(flush_span);
+    let _post_span = basis::perf_span(basis::PERF_RES_POST_POST);
     // `Mekanism.onLiquidTransferred` e `onChemicalTransferred`: o `PacketNetworkScale` e o do conteúdo saem juntos, a quem está no raio da rede.
     if !scale_packets.is_empty() {
         let packets = scale_packets

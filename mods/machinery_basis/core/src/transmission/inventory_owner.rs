@@ -806,6 +806,18 @@ impl InventoryTransmitters {
         self.st.slots[self.st.live(pos)?.0 as usize].net()
     }
 
+    /// O tipo de cada pilha em trânsito de cada transportador vivo, sem ordem prometida e sem ordenar as posições (`positions` ordena a cada chamada, e quem pergunta a cada evento paga
+    /// por isso: decisão 202).
+    pub fn for_each_transit_item(&self, mut visit: impl FnMut(&ItemResource)) {
+        for slot in self.st.slots.iter().filter(|slot| !slot.dead) {
+            for (_, stack) in slot.base.transit_stacks() {
+                if let Some(item) = stack.borrow().item_type() {
+                    visit(item);
+                }
+            }
+        }
+    }
+
     /// As posições dos transportadores vivos, em ordem.
     pub fn positions(&self) -> Vec<BlockPos> {
         let mut list: Vec<BlockPos> = self.st.by_pos.keys().copied().collect();

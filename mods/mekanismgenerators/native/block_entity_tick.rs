@@ -3,5 +3,6 @@ fn mekanismgenerators_tick(
     pos: [i32; 3],
     entity: &mut horizon_client::containers::ModBlockEntity,
 ) {
+    let _span = crate::game::machinery_basis::perf_span(crate::game::machinery_basis::PERF_HOOK_GEN);
     crate::game::mekanismgenerators_glue::tick(game, pos, entity);
 }

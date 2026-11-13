@@ -256,7 +256,18 @@ pub(in crate::game) fn conductor_networks() -> Vec<(machinery_basis_core::transm
 /// O sink dos eventos dos transmissores: traduz o evento do jogo para o do dono dos condutores.
 fn conductors_event(game: &mut Game<'_>, event: &TransmitterEvent) {
     let dimension = game.native_dimension();
-    conductors_retry_pending(game, dimension);
+    // O `Update` de um block entity que não é deste dono (cada tick entrega o de cada transmissor a todos os donos) não faz nada nele (`update` sai no `live`), e sem `ClearRemoved` esperando
+    // nada mais do que o evento faria roda: nem a espera, nem o espelho dos vizinhos, nem a entrega. Sai antes de tudo isso (decisão 202).
+    if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::Update, .. } = event
+        && PENDING.with_borrow(Vec::is_empty)
+        && !CONDUCTORS.with(|owners| owners.try_borrow().ok().and_then(|owners| owners.get(dimension).map(|owner| owner.conductor_at(sim_pos(*pos)).is_some())).unwrap_or(true))
+    {
+        return;
+    }
+    {
+        let _span = basis::perf_span(basis::PERF_HEAT_RETRY);
+        conductors_retry_pending(game, dimension);
+    }
     conductors_deliver(game, dimension, event);
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
@@ -308,6 +319,7 @@ fn conductors_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tran
     let removed = if let HeatEvent::Removed(pos) = &event { Some(arr(*pos)) } else { None };
     let post = matches!(event, HeatEvent::ServerTickPost { .. });
     let runs_normally = matches!(event, HeatEvent::ServerTickPost { runs_normally: true });
+    let _span = basis::perf_span(basis::PERF_HEAT_HANDLE);
     with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };

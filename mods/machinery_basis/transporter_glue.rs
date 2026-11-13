@@ -192,17 +192,7 @@ fn offered_resources(game: &Game<'_>, dimension: &'static str) -> Vec<ItemResour
             out.push(resource);
         }
     };
-    with_owner(dimension, |owner| {
-        for pos in owner.positions() {
-            if let Some(base) = owner.transporter_at(pos) {
-                for (_, stack) in base.transit_stacks() {
-                    if let Some(item) = stack.borrow().item_type() {
-                        add(item.clone());
-                    }
-                }
-            }
-        }
-    });
+    with_owner(dimension, |owner| owner.for_each_transit_item(|item| add(item.clone())));
     HANDLERS.with_borrow(|handlers| {
         for ((dim, _, _), handler) in handlers.iter() {
             if *dim == dimension {
@@ -220,16 +210,18 @@ fn offered_resources(game: &Game<'_>, dimension: &'static str) -> Vec<ItemResour
 
 thread_local! {
     /// O que `offered_resources` achou antes do evento em andamento.
-    static OFFERED: RefCell<Vec<ItemResource>> = const { RefCell::new(Vec::new()) };
+    static OFFERED: RefCell<Vec<(ItemResource, Option<horizon_client::items::ItemStack>)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Os slots do contêiner do bloco em `pos` que o lado `side` dele alcança, ou `None` se ali não há contêiner (um bloco sem slots, outra dimensão, um chunk que não carregou, o tile
 /// que está no tick). Cada slot traz o que o jogo recusa nele entre os itens que a rede pode oferecer.
 fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<Vec<MirrorSlot>> {
     let reached = basis::direction(side);
-    let slots = game.native_container_slots(dimension, pos, reached)?;
-    let offered: Vec<(ItemResource, Option<horizon_client::items::ItemStack>)> =
-        OFFERED.with_borrow(|list| list.iter().map(|resource| (resource.clone(), basis::stack_of_resource(resource, 1))).collect());
+    let slots_span = basis::perf_span(basis::PERF_TRA_SLOTS);
+    let slots = game.native_container_slots(dimension, pos, reached);
+    drop(slots_span);
+    let slots = slots?;
+    let _refuses_span = basis::perf_span(basis::PERF_TRA_REFUSES);
     Some(
         slots
             .into_iter()
@@ -237,11 +229,13 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
                 index: slot.slot,
                 contents: slot.stack.as_ref().map(|stack| (basis::item_resource(game, stack), stack.count)),
                 can_take: slot.can_take,
-                refuses: offered
-                    .iter()
-                    .filter(|(_, stack)| stack.as_ref().is_some_and(|stack| !game.machinery_slot_accepts(pos, slot.slot, stack, reached)))
-                    .map(|(resource, _)| resource.clone())
-                    .collect(),
+                refuses: OFFERED.with_borrow(|offered| {
+                    offered
+                        .iter()
+                        .filter(|(_, stack)| stack.as_ref().is_some_and(|stack| !game.machinery_slot_accepts(pos, slot.slot, stack, reached)))
+                        .map(|(resource, _)| resource.clone())
+                        .collect()
+                }),
             })
             .collect(),
     )
@@ -249,8 +243,12 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
 
 /// Antes de um evento que anda pilhas ou calcula caminhos: os espelhos leem os contêineres de novo.
 fn handlers_refresh(game: &Game<'_>, dimension: &'static str) {
+    let offered_span = basis::perf_span(basis::PERF_TRA_OFFERED);
     let offered = offered_resources(game, dimension);
-    OFFERED.with_borrow_mut(|list| *list = offered);
+    // Cada item oferecido vira a pilha de um item uma vez por espelho, e não uma vez por contêiner (`stack_of_resource` não depende do jogo).
+    OFFERED.with_borrow_mut(|list| *list = offered.into_iter().map(|resource| { let stack = basis::stack_of_resource(&resource, 1); (resource, stack) }).collect());
+    drop(offered_span);
+    let _mirror_span = basis::perf_span(basis::PERF_TRA_MIRROR);
     HANDLERS.with_borrow_mut(|handlers| {
         // Quem só a tabela guarda já não está no cache de nenhum transportador.
         handlers.retain(|_, handler| Rc::strong_count(handler) > 1);
@@ -448,7 +446,18 @@ pub(in crate::game) fn transporter_networks() -> Vec<(machinery_basis_core::tran
 /// O sink dos eventos dos transmissores: traduz o evento do jogo para o do dono dos transportadores.
 fn transporters_event(game: &mut Game<'_>, event: &TransmitterEvent) {
     let dimension = game.native_dimension();
-    transporters_retry_pending(game, dimension);
+    // O `Update` de um block entity que não é deste dono (cada tick entrega o de cada transmissor a todos os donos) não faz nada nele (`update` sai no `live`), e sem `ClearRemoved` esperando
+    // nada mais do que o evento faria roda: nem a espera, nem o espelho dos vizinhos, nem a entrega. Sai antes de tudo isso (decisão 202).
+    if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::Update, .. } = event
+        && PENDING.with_borrow(Vec::is_empty)
+        && !OWNERS.with(|owners| owners.try_borrow().ok().and_then(|owners| owners.get(dimension).map(|owner| owner.transporter_at(sim_pos(*pos)).is_some())).unwrap_or(true))
+    {
+        return;
+    }
+    {
+        let _span = basis::perf_span(basis::PERF_TRA_RETRY);
+        transporters_retry_pending(game, dimension);
+    }
     transporters_deliver(game, dimension, event);
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
@@ -501,6 +510,7 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
     // Quem anda pilhas (`Update`) ou calcula caminhos pela rede inteira lê os contêineres dos vizinhos, que o espelho copia antes.
     let reads_neighbors = matches!(event, TransporterEvent::Update(_) | TransporterEvent::ServerTickPost { .. } | TransporterEvent::Removed(_));
     if reads_neighbors {
+        let _span = basis::perf_span(basis::PERF_TRA_REFRESH);
         handlers_refresh(game, dimension);
     }
     if basis::transmitter_probe_enabled() && matches!(event, TransporterEvent::ServerTickPost { .. }) {
@@ -511,6 +521,7 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
         TransporterEvent::Update(pos) if basis::transmitter_probe_enabled() => Some(*pos),
         _ => None,
     };
+    let handle_span = basis::perf_span(basis::PERF_TRA_HANDLE);
     with_owner(dimension, |owner| {
         {
             let mut world = GameWorld { game: RefCell::new(&mut *game), dimension };
@@ -523,6 +534,8 @@ fn transporters_deliver(game: &mut Game<'_>, dimension: &'static str, event: &Tr
             transit_probe(game, owner, pos);
         }
     });
+    drop(handle_span);
+    let _flush_span = basis::perf_span(basis::PERF_TRA_FLUSH);
     handlers_flush(game, dimension);
     if let Some(pos) = removed {
         client::gone(dimension, pos);

@@ -356,6 +356,36 @@ fn transit_total(owner: &InventoryTransmitters, length: i32) -> u32 {
         .sum()
 }
 
+/// `for_each_transit_item` (o que a cola pergunta a cada evento, sem ordenar as posições) vê as mesmas pilhas que o passeio por `positions` e `transit_stacks`, a cada tick, com a linha
+/// carregando itens e depois de um transportador sair (decisão 202).
+#[test]
+fn the_unsorted_walk_over_the_transit_items_sees_what_the_sorted_one_sees() {
+    let (mut owner, mut world) = line(&[logistical(), logistical(), logistical()]);
+    let mut seen_in_transit = 0;
+    for step in 0..120 {
+        tick(&mut owner, &mut world, 1, 3);
+        if step == 90 {
+            owner.handle(&mut world, Event::Removed(at(1)));
+        }
+        let mut sorted: Vec<ItemResource> = Vec::new();
+        for pos in owner.positions() {
+            for (_, stack) in owner.transporter_at(pos).unwrap().transit_stacks() {
+                if let Some(item) = stack.borrow().item_type() {
+                    sorted.push(item.clone());
+                }
+            }
+        }
+        let mut walked: Vec<ItemResource> = Vec::new();
+        owner.for_each_transit_item(|item| walked.push(item.clone()));
+        let key = |item: &ItemResource| format!("{item:?}");
+        sorted.sort_by_key(key);
+        walked.sort_by_key(key);
+        assert_eq!(walked, sorted, "passo {step}");
+        seen_in_transit += walked.len();
+    }
+    assert!(seen_in_transit > 0, "a linha nunca teve nada em trânsito: o teste não olhou nada");
+}
+
 /// O NBT do transportador com pilhas em trânsito volta ao ser lido (`LogisticalTransporterBase.write` e `read`, a cor, as ligações): as pilhas entram com ids novos.
 #[test]
 fn the_transit_list_and_the_color_survive_a_save_and_a_reload() {
