@@ -293,6 +293,43 @@ fn the_conductors_follow_the_order_of_the_tiers_and_the_file_changes_the_three_v
     assert_eq!(values[3].heat_capacity, 1.0);
 }
 
+#[test]
+fn the_tubes_follow_the_order_of_the_tiers_and_the_file_changes_capacity_and_rate() {
+    use machinery_basis_core::transmission::pressurized_tube::TubeTier;
+    use mekanism_rules::{PRESSURIZED_TUBES, tube_capacities, tube_rates, tube_tier};
+    assert_eq!(tube_tier("mekanism:basic_pressurized_tube"), Some(0));
+    assert_eq!(tube_tier("mekanism:ultimate_pressurized_tube"), Some(3));
+    assert_eq!(tube_tier("mekanism:basic_mechanical_pipe"), None);
+    assert_eq!(PRESSURIZED_TUBES.len(), TubeTier::ALL.len());
+    // Os padrões do arquivo são os de `TubeTier.getBaseCapacity` e `getBaseTransferRate`, os que a lib já tinha.
+    let defaults = TIERS_CONFIG.defaults();
+    assert_eq!(
+        tube_capacities(&defaults).to_vec(),
+        TubeTier::ALL.map(TubeTier::capacity).to_vec()
+    );
+    assert_eq!(
+        tube_rates(&defaults).to_vec(),
+        TubeTier::ALL.map(TubeTier::transfer_rate).to_vec()
+    );
+    // Antes de o arquivo ser lido, `ServerConfig` tem os padrões de `TubeTier`.
+    assert_eq!(
+        mekanism_rules::ServerConfig::DEFAULT.tubes.to_vec(),
+        TubeTier::ALL.map(TubeTier::capacity).to_vec()
+    );
+    assert_eq!(
+        mekanism_rules::ServerConfig::DEFAULT.tube_rates.to_vec(),
+        TubeTier::ALL.map(TubeTier::transfer_rate).to_vec()
+    );
+    let loaded = TIERS_CONFIG.load(
+        "[transmitters.chemical]\n\tadvancedCapacity = 50000\n\telitePullAmount = 12000\n\tbasicPullAmount = 0\n",
+    );
+    assert_eq!(
+        tube_capacities(&loaded),
+        [4_000, 50_000, 256_000, 1_024_000]
+    );
+    assert_eq!(tube_rates(&loaded), [1, 2_000, 12_000, 256_000]);
+}
+
 // ---- O efeito de cada chave ----
 
 fn machine_with(usage: i32) -> ProgressMachine {

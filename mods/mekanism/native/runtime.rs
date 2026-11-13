@@ -9,7 +9,7 @@ use machinery_basis_core::client_config::{
 };
 use machinery_basis_core::components::Components;
 use machinery_basis_core::container_sync::{Mirror, StackValue, Tracked};
-use machinery_basis_core::containers::{Access, InventorySlot, ItemResource};
+use machinery_basis_core::containers::{Access, AutomationType, InventorySlot, ItemResource};
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
@@ -36,6 +36,7 @@ use machinery_basis_core::tile_trackers::{
 };
 use machinery_basis_core::tooltip;
 use machinery_basis_core::transmission::connection::ConnectionType;
+use machinery_basis_core::transmission::host_resource::ResourceSnapshot;
 use machinery_basis_core::transmission::thermodynamic_conductor::TierValues;
 use machinery_basis_core::two_input_recipe::{ItemChemicalCache, ItemChemicalToItemRecipe};
 use machinery_basis_core::units::{energy_fraction, stored_mb};
@@ -809,6 +810,86 @@ pub const TIERS_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `TierConfig.addPressurizedTubesCategory`: a capacidade (`<tier>Capacity`, `1..Long.MAX_VALUE`) e a vazão (`<tier>PullAmount`, `1..Integer.MAX_VALUE`) de cada tubo pressurizado, com
+        // o texto de `TierTranslations.create(TubeTier)`.
+        ClientSection {
+            name: "transmitters.chemical",
+            comment: "Settings for configuring Pressurized Tubes",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic pressurized tubes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 4_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicPullAmount",
+                    comment: "Pump rate of Basic pressurized tubes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 750,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced pressurized tubes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 16_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedPullAmount",
+                    comment: "Pump rate of Advanced pressurized tubes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 2_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite pressurized tubes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 256_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "elitePullAmount",
+                    comment: "Pump rate of Elite pressurized tubes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 64_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate pressurized tubes in mB.",
+                    setting: ClientSetting::Long {
+                        default: 1_024_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimatePullAmount",
+                    comment: "Pump rate of Ultimate pressurized tubes in mB/t.",
+                    setting: ClientSetting::Int {
+                        default: 256_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
         // `TierConfig.addThermodynamicConductorsCategory`: a condução inversa (`<tier>InverseConduction`, `1..Double.MAX_VALUE`), a capacidade de calor (`<tier>HeatCapacity`, `1..Double.MAX_VALUE`) e a
         // isolação (`<tier>Insulation`, `0..Double.MAX_VALUE`) de cada condutor termodinâmico, com o texto de `TierTranslations.create(ConductorTier)`.
         ClientSection {
@@ -1077,6 +1158,57 @@ pub const DEFAULT_CONDUCTOR_VALUES: [TierValues; 4] = [
 pub const DEFAULT_PIPE_CAPACITIES: [i64; 4] = [2_000, 8_000, 32_000, 128_000];
 pub const DEFAULT_PIPE_RATES: [i32; 4] = [250, 1_000, 8_000, 32_000];
 
+/// `TubeTier`: o id de cada tubo pressurizado, na ordem dos tiers.
+pub const PRESSURIZED_TUBES: [&str; 4] = [
+    "mekanism:basic_pressurized_tube",
+    "mekanism:advanced_pressurized_tube",
+    "mekanism:elite_pressurized_tube",
+    "mekanism:ultimate_pressurized_tube",
+];
+
+/// Qual tubo pressurizado é o bloco, na ordem de [`PRESSURIZED_TUBES`].
+pub fn tube_tier(block: &str) -> Option<usize> {
+    PRESSURIZED_TUBES.iter().position(|id| *id == block)
+}
+
+/// As capacidades dos quatro tubos (`TubeTier.getCapacity`: o valor do arquivo, ou o padrão sem ele), na ordem de [`PRESSURIZED_TUBES`].
+pub fn tube_capacities(loaded: &ClientLoaded) -> [i64; 4] {
+    const KEYS: [&str; 4] = [
+        "basicCapacity",
+        "advancedCapacity",
+        "eliteCapacity",
+        "ultimateCapacity",
+    ];
+    let mut out = DEFAULT_TUBE_CAPACITIES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .long(&TIERS_CONFIG, "transmitters.chemical", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// As vazões dos quatro tubos (`TubeTier.getTransferRate`: o valor do arquivo, ou o padrão sem ele).
+pub fn tube_rates(loaded: &ClientLoaded) -> [i32; 4] {
+    const KEYS: [&str; 4] = [
+        "basicPullAmount",
+        "advancedPullAmount",
+        "elitePullAmount",
+        "ultimatePullAmount",
+    ];
+    let mut out = DEFAULT_TUBE_RATES;
+    for (slot, key) in out.iter_mut().zip(KEYS) {
+        *slot = loaded
+            .int(&TIERS_CONFIG, "transmitters.chemical", key)
+            .unwrap_or(*slot);
+    }
+    out
+}
+
+/// Os padrões de `TubeTier` (`getBaseCapacity` e `getBaseTransferRate`).
+pub const DEFAULT_TUBE_CAPACITIES: [i64; 4] = [4_000, 16_000, 256_000, 1_024_000];
+pub const DEFAULT_TUBE_RATES: [i32; 4] = [750, 2_000, 64_000, 256_000];
+
 /// O que os arquivos de servidor dizem às mecânicas portadas do Mekanism, de uma vez.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ServerConfig {
@@ -1086,6 +1218,8 @@ pub struct ServerConfig {
     pub pipe_rates: [i32; 4],
     /// `ConductorTier`: a condução inversa, a capacidade de calor e a isolação de cada condutor termodinâmico.
     pub conductors: [TierValues; 4],
+    pub tubes: [i64; 4],
+    pub tube_rates: [i32; 4],
     pub cubes: [i64; 5],
     /// `EnergyCubeTier.getTransferRate`, na mesma ordem.
     pub cube_rates: [i32; 5],
@@ -1100,6 +1234,8 @@ impl ServerConfig {
         pipes: DEFAULT_PIPE_CAPACITIES,
         pipe_rates: DEFAULT_PIPE_RATES,
         conductors: DEFAULT_CONDUCTOR_VALUES,
+        tubes: DEFAULT_TUBE_CAPACITIES,
+        tube_rates: DEFAULT_TUBE_RATES,
         cubes: DEFAULT_CUBE_CAPACITIES,
         cube_rates: DEFAULT_CUBE_RATES,
         cells: DEFAULT_CELL_CAPACITIES,
@@ -2475,6 +2611,45 @@ pub fn infusing_cache(
 /// O mesmo índice sobre uma lista que não muda.
 pub fn infusing_cache_of(recipes: Vec<Rc<ItemChemicalToItemRecipe>>) -> Rc<ItemChemicalCache> {
     ItemChemicalToItemRecipe::cache_of(recipes, EMPTY_CHEMICAL)
+}
+
+/// O que um tubo pressurizado vizinho vê no tanque de infusão do Metallurgic Infuser pelo lado `face` do bloco (`TileEntityMekanism.getCapability` com `Capabilities.CHEMICAL.block()`):
+/// `None` onde a capability está desligada (`TileComponentConfig.isCapabilityDisabled`: o `DataType` do lado é `NONE`), e senão o tanque com as regras do lado
+/// (`ConfigHolder.canInsert` e `canExtract` do `SlotInfo`) e as dele (`BasicChemicalTank.create(MAX_INFUSE, alwaysTrueBi, (chemical, _) -> containsRecipeBA(inputSlot.resource(), chemical),
+/// containsRecipeB, ..)`: só entra de fora o químico que uma receita usa com o item do slot de entrada, e quem está fora sempre pode tirar). O tanque é o vivo da máquina, e a
+/// regra de entrada o lê na hora de inserir.
+pub fn infusion_tank_view(
+    machine: &ProgressMachine,
+    face: Face,
+) -> Option<ResourceSnapshot<ChemicalResource>> {
+    let side = machine.chemical_side()?;
+    let config = machine.side_config();
+    if config.is_capability_disabled(TransmissionType::Chemical, machine.facing(), Some(face)) {
+        return None;
+    }
+    let info = config.slot_info(TransmissionType::Chemical, machine.facing(), Some(face))?;
+    let tank = side.tank.clone();
+    Some(ResourceSnapshot {
+        contents: tank.contents(),
+        capacity: tank.capacity_for(None),
+        accepts: {
+            let tank = tank.clone();
+            Rc::new(move |chemical: &ChemicalResource| {
+                tank.is_valid_for_insertion(chemical, AutomationType::External)
+            })
+        },
+        can_insert: info.can_input,
+        can_extract: info.can_output,
+        creative: false,
+    })
+}
+
+/// O que cada lado do tanque de infusão deixa fazer (`None` sem capability, e senão se entra e se sai), na ordem de `Face::ALL`. Quem anda a máquina diz isso aos tubos vizinhos
+/// a cada tick, e só uma mudança os avisa (`TileComponentConfig.sideChanged` invalida a capability).
+pub fn infusion_tank_faces(machine: &ProgressMachine) -> [Option<(bool, bool)>; 6] {
+    Face::ALL.map(|face| {
+        infusion_tank_view(machine, face).map(|view| (view.can_insert, view.can_extract))
+    })
 }
 
 /// O Metallurgic Infuser como a lib o recebe, também usado pelo teste dos rastros.
