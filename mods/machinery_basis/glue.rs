@@ -3521,7 +3521,8 @@ pub(in crate::game) fn content_destroying(game: &mut Game<'_>, pos: [i32; 3], sp
     let components = content_components(game, entity, pos, spec);
     BROKEN_CONTENT.with_borrow_mut(|broken| broken.insert(pos, components));
     if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
-        for slot in entity.items.iter_mut().take(spec.item_slots) {
+        // Todos os slots, os virtuais da janela de upgrades também: o conteúdo deles vai no `mekanism:upgrades`, e o Horizon soltaria o que sobrasse.
+        for slot in entity.items.iter_mut() {
             *slot = None;
         }
     }

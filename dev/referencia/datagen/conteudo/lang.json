@@ -1,0 +1,7 @@
+{
+  "tooltip.mekanism.inventory": "Inventory: %1$s",
+  "tooltip.mekanism.no_fluid": "No fluid stored.",
+  "boolean.mekanism.yes": "yes",
+  "boolean.mekanism.no": "no",
+  "generic.mekanism.list": "- %1$s"
+}

@@ -500,8 +500,17 @@ fn the_names_are_the_originals() {
     for (key, value) in debug.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os do tooltip do conteúdo guardado no item (`Inventory: yes`, `No fluid stored.`, `- Speed`: a frente `item-conteudo`), copiados da datagen do original.
+    let content = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/conteudo/lang.json"),
+    );
+    for (key, value) in content.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
-        if fluids.get(key).is_some()
+        if content.get(key).is_some()
+            || fluids.get(key).is_some()
             || screens.get(key).is_some()
             || cables.get(key).is_some()
             || reader.get(key).is_some()

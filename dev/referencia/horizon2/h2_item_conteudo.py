@@ -13,7 +13,9 @@ import json, os, re, subprocess, sys, time
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("H_NAME", "horizon2")
 NAME = os.environ["H_NAME"]
-SHOTS = f"/home/luka/.local/share/jogo-isolado/{NAME}/data/shots/item_conteudo"
+SHOTS_HOST = f"/home/luka/.local/share/jogo-isolado/{NAME}/data/shots/item_conteudo"
+# Dentro do container o caminho é sempre o do `horizon`.
+SHOTS = "/home/luka/.local/share/jogo-isolado/horizon/data/shots/item_conteudo"
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.cache/rust-mekanism/wa/item-conteudo")
 captions = []
 failures = []
@@ -70,7 +72,7 @@ def expect(label, ok, detail=""):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    subprocess.run(["ssh", "desktop", f"rm -rf {SHOTS}; mkdir -p {SHOTS}"], check=True)
+    subprocess.run(["ssh", "desktop", f"rm -rf {SHOTS_HOST}; mkdir -p {SHOTS_HOST}"], check=True)
     ctl("wait-ready")
     time.sleep(5)
     cmd("gamemode creative")
@@ -101,6 +103,7 @@ def main():
         ctl("select", "1")
         ctl("tp", str(pos[0]), "101", str(pos[2] + 3))
         ctl("select", "1")
+        ctl("tp", str(pos[0]), "101", str(pos[2] + 3))
         print(ctl("place", *map(str, pos), "--item", item))
         time.sleep(1.5)
         tile = cmd("data get block {} {} {}".format(*pos))
@@ -114,6 +117,7 @@ def main():
         cmd("give @s minecraft:diamond_pickaxe")
         ctl("select", "minecraft:diamond_pickaxe")
         cmd("kill @e[type=minecraft:item]")
+        ctl("tp", str(pos[0]), "101", str(pos[2] + 3))
         print(ctl("break", *map(str, pos)))
         time.sleep(1.2)
         item_nbt = cmd("data get entity @e[type=minecraft:item,limit=1,sort=nearest] Item")
@@ -124,10 +128,10 @@ def main():
             expect(f"{short}: o item solto leva o tanque", "mekanism:chemicals" in item_nbt, item_nbt[:400])
         if "heat" in short:
             expect(f"{short}: o item solto leva a lava e o calor", "mekanism:fluids" in item_nbt and "mekanism:heat" in item_nbt, item_nbt[:400])
-        # nenhum item solto a mais: a cobblestone, o ferro, o carvão e a redstone ficaram no item
-        loose = cmd("execute if entity @e[type=minecraft:item,nbt={Item:{id:\"minecraft:cobblestone\"}}]")
-        expect(f"{short}: a pedra não cai no chão", "Test passed" not in loose and "passed" not in loose.lower(), loose)
         shot(f"quebrada_{short}", f"{short} quebrada: o item solto leva o conteúdo e nada cai no chão")
+        # nenhum item solto a mais: o `kill` conta o que está no chão (a máquina e mais nada), e a pedra, o ferro, o carvão e a redstone ficaram no item
+        killed = cmd("kill @e[type=minecraft:item]")
+        expect(f"{short}: só o item da máquina está no chão", killed.startswith("Killed ") and "entities" not in killed, killed)
         # repor o item solto
         cmd("gamemode creative")
         cmd("clear @s mekanism:" + short.replace("mekanismgenerators:", ""))
