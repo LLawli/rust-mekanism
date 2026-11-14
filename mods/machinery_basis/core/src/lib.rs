@@ -27,6 +27,7 @@ pub mod gui;
 pub mod heat;
 pub mod identity_hash;
 pub mod item_chemical_constant_recipe;
+pub mod item_content;
 pub mod item_energy;
 pub mod item_handler;
 pub mod item_hud;
