@@ -1,0 +1,46 @@
+{
+  "parent": "mekanism:block/transmitter/large/logistical_transporter/transporter_glass_lime",
+  "textures": {
+    "center_glass_down": "#side_glass",
+    "center_glass_up": "#side_glass",
+    "center_glass_north": "#side_glass",
+    "center_glass_south": "#side_glass",
+    "center_glass_east": "#side_glass",
+    "center_glass_west": "#side_glass"
+  },
+  "transform": {
+    "rotation": [
+      -0.0,
+      0.70710677,
+      -0.0,
+      -0.70710677
+    ],
+    "origin": "center"
+  },
+  "visibility": {
+    "downNONE": true,
+    "downNORMAL": false,
+    "downPUSH": false,
+    "downPULL": false,
+    "upNONE": false,
+    "upNORMAL": false,
+    "upPUSH": false,
+    "upPULL": false,
+    "northNONE": false,
+    "northNORMAL": false,
+    "northPUSH": false,
+    "northPULL": false,
+    "southNONE": false,
+    "southNORMAL": false,
+    "southPUSH": false,
+    "southPULL": false,
+    "westNONE": false,
+    "westNORMAL": false,
+    "westPUSH": false,
+    "westPULL": false,
+    "eastNONE": false,
+    "eastNORMAL": false,
+    "eastPUSH": false,
+    "eastPULL": false
+  }
+}

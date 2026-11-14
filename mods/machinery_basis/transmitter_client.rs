@@ -220,7 +220,7 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
                 extra.and_then(|extra| extra.heat).map_or("null".to_owned(), |heat| format!("{heat:?}")),
                 extra.and_then(|extra| extra.color).map_or("null".to_owned(), |color| color.to_string()),
                 extra
-                    .map(|extra| extra.transit.iter().map(|stack| format!("[{},{:?},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1))).collect::<Vec<_>>().join(","))
+                    .map(|extra| extra.transit_in_order().into_iter().map(|stack| format!("[{},{:?},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1))).collect::<Vec<_>>().join(","))
                     .unwrap_or_default()
             );
         }
@@ -229,7 +229,7 @@ fn probe(who: &str, levels: &HashMap<String, ClientTransmitters>, dimension: &st
             let transit = levels
                 .get(dimension)
                 .and_then(|level| level.extra_at(*pos))
-                .map(|extra| extra.transit.iter().map(|stack| format!("[{},{:?},{},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1), stack.progress)).collect::<Vec<_>>().join(","))
+                .map(|extra| extra.transit_in_order().into_iter().map(|stack| format!("[{},{:?},{},{}]", stack.index, stack.item.as_ref().map_or("", |item| item.0.as_str()), stack.item.as_ref().map_or(0, |item| item.1), stack.progress)).collect::<Vec<_>>().join(","))
                 .unwrap_or_default();
             eprintln!("MBH {{\"who\":\"{who}\",\"dim\":\"{dimension}\",\"p\":[{},{},{}],\"k\":\"{kind}\",\"transit\":[{transit}]}}", pos.x, pos.y, pos.z);
         }
@@ -478,6 +478,8 @@ pub(in crate::game) fn network_at(dimension: &str, pos: [i32; 3]) -> Option<Clie
 pub struct ModelFamily {
     pub block: String,
     pub diversion: bool,
+    /// Se o blockstate tem as partes do vidro (`glass` do `mekanism:special/transmitter`: o transportador logístico, que o pinta).
+    pub glass: bool,
 }
 
 static MODEL_FAMILIES: Mutex<Vec<ModelFamily>> = Mutex::new(Vec::new());
@@ -503,7 +505,7 @@ pub(in crate::game) fn index_model_states(game: &Game<'_>) {
             states.push((index as u32, family as u16));
         }
     }
-    model::set_families(families.iter().map(|family| family.diversion).collect(), states);
+    model::set_families(families.iter().map(|family| family.diversion).collect(), families.iter().map(|family| family.glass).collect(), states);
 }
 
 /// A seção de chunk que contém `pos`, para refazer o desenho (`requestModelDataUpdate`).
@@ -533,11 +535,30 @@ pub(in crate::game) fn model_tick(game: &mut Game<'_>) {
     }
     for pos in changes {
         let at = [pos.x, pos.y, pos.z];
-        let connections = view_at(&dimension, at).map(|view| view.kind.map(|kind| kind.ordinal() as u8));
-        if model::set_data(at, connections) {
+        let data = view_at(&dimension, at).map(|view| model::ModelData {
+            connections: view.kind.map(|kind| kind.ordinal() as u8),
+            color: color_at(&dimension, at),
+        });
+        if model::set_data(at, data) {
             dirty_section(game, at);
         }
     }
+}
+
+/// A cor do transportador em `pos` que o cliente leu do pacote de atualização (`LogisticalTransporter.getColor`, `EnumColor.ordinal()`): o vidro dela (`needsGlass`).
+fn color_at(dimension: &str, pos: [i32; 3]) -> Option<u8> {
+    client_run(|levels| levels.get(dimension)?.extra_at(sim_pos(pos))?.color)
+}
+
+/// As pilhas em trânsito do transportador em `pos` do cliente, na ordem do `getTransit()` (o desenho delas, `RenderLogisticalTransporter`).
+pub(in crate::game) fn transit_at(dimension: &str, pos: [i32; 3]) -> Vec<machinery_basis_core::transmission::client::ClientStack> {
+    client_run(|levels| {
+        levels
+            .get(dimension)
+            .and_then(|level| level.extra_at(sim_pos(pos)))
+            .map(|extra| extra.transit_in_order().into_iter().cloned().collect())
+            .unwrap_or_default()
+    })
 }
 
 /// O mundo fechou: o módulo esquece o dado de todas as posições.

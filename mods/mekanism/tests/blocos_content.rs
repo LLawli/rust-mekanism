@@ -4,6 +4,8 @@
 mod common;
 
 use common::craft::{TIERS5, blocos, cables, content, json, rastro, structure_scope, transmitters};
+use machinery_basis_core::config_window::ENUM_COLOR_RGB;
+use machinery_basis_core::side_config::ENUM_COLOR_NAMES;
 use mekanism_rules::{transmitter_icon_sprite, transmitter_models};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -60,6 +62,8 @@ fn generated(relative: &str) -> bool {
         || (relative.starts_with("assets/mekanism/items/")
             && (in_set(energy_cubes()) || in_set(fluid_tanks())))
         || relative.starts_with("assets/mekanism/models/block/transmitter_part/")
+        || (relative.starts_with("assets/mekanism/models/block/transmitter_glass_large_") && relative.ends_with(".mtl"))
+        || relative.starts_with("assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass_")
         || relative.starts_with("assets/mekanism/models/block/fluid_tank/")
         || (relative.starts_with("assets/mekanism/textures/block/models/fluid_tank_side_")
             && TIERS5.iter().any(|tier| id.ends_with(&format!("_{tier}"))))
@@ -436,7 +440,7 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
         let parts = state["multipart"].as_array().unwrap();
         let per_side = if hide { 6 } else { 4 };
         let glass = want["glass"].as_str();
-        assert_eq!(parts.len(), sides.len() * per_side * (1 + usize::from(glass.is_some())), "{id}");
+        assert_eq!(parts.len(), sides.len() * per_side * (1 + 18 * usize::from(glass.is_some())), "{id}");
         for (i, side) in sides.iter().enumerate() {
             for (j, (name, _)) in visual.iter().take(per_side).enumerate() {
                 let part = &parts[i * per_side + j];
@@ -531,49 +535,38 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
             }
         }
         assert_eq!(models, if hide { 36 } else { 24 }, "{id}");
-        // O vidro (`glass` do blockstate do original, só no transportador logístico): as mesmas partes depois das do corpo, cada uma com o vidro por pai, as texturas de centro do vidro
-        // trocadas pela do braço (`#side_glass`, `NoneSegmentRemap`) no trecho reto e a mesma rotação da girada; tudo o que o blockstate cita existe.
-        if let Some(glass) = glass {
+        // O vidro (`glass` do blockstate do original, só no transportador logístico): depois das 36 partes do corpo, as 36 de cada uma das 18 cores, de cor em cor e na mesma ordem de lado e
+        // estado; cada uma tem o vidro da cor por pai, as texturas de centro do vidro trocadas pela do braço (`#side_glass`, `NoneSegmentRemap`) no trecho reto e a mesma rotação da girada.
+        if glass.is_some() {
             assert!(hide, "{id}");
-            for (i, side) in sides.iter().enumerate() {
-                for (j, (name, _)) in visual.iter().enumerate() {
-                    let entry = &parts[sides.len() * per_side + i * per_side + j];
-                    assert_eq!(
-                        entry["apply"],
-                        serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/glass_{side}_{name}")}),
-                        "{id}"
-                    );
-                    assert_eq!(entry["when"], serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}), "{id} glass_{side}_{name}");
-                    let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/{id}/glass_{side}_{name}.json")));
-                    assert_eq!(model["parent"], glass, "{id} glass_{side}_{name}");
-                    let part = visual[j].1;
-                    for (group, shown) in model["visibility"].as_object().unwrap() {
-                        assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{part}"), "{id} glass_{side}_{name} {group}");
-                    }
-                    if name.starts_with("none_contiguous") {
-                        let textures = model["textures"].as_object().unwrap();
-                        assert_eq!(textures.len(), 6, "{id}");
-                        for slot in ["down", "up", "north", "south", "east", "west"] {
-                            assert_eq!(textures[&format!("center_glass_{slot}")], "#side_glass", "{id} {side}_{name}");
+            let body = sides.len() * per_side;
+            for (color_index, color) in ENUM_COLOR_NAMES.iter().enumerate() {
+                for (i, side) in sides.iter().enumerate() {
+                    for (j, (name, part)) in visual.iter().enumerate() {
+                        let entry = &parts[body + color_index * body + i * per_side + j];
+                        assert_eq!(
+                            entry["apply"],
+                            serde_json::json!({"model": format!("mekanism:block/transmitter_part/logistical_glass/{color}/{side}_{name}")}),
+                            "{id}"
+                        );
+                        assert_eq!(entry["when"], serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}), "{id} {color} {side}_{name}");
+                        let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/logistical_glass/{color}/{side}_{name}.json")));
+                        assert_eq!(model["parent"], format!("mekanism:block/transmitter/large/logistical_transporter/transporter_glass_{color}"), "{color} {side}_{name}");
+                        for (group, shown) in model["visibility"].as_object().unwrap() {
+                            assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{part}"), "{color} {side}_{name} {group}");
                         }
-                    } else {
-                        assert!(model.get("textures").is_none(), "{id} glass_{side}_{name}");
+                        if name.starts_with("none_contiguous") {
+                            let textures = model["textures"].as_object().unwrap();
+                            assert_eq!(textures.len(), 6, "{color}");
+                            for slot in ["down", "up", "north", "south", "east", "west"] {
+                                assert_eq!(textures[&format!("center_glass_{slot}")], "#side_glass", "{color} {side}_{name}");
+                            }
+                        } else {
+                            assert!(model.get("textures").is_none(), "{color} {side}_{name}");
+                        }
+                        assert_eq!(model.get("transform").is_some(), *name == "none_contiguous_rotated", "{color} {side}_{name}");
                     }
-                    assert_eq!(model.get("transform").is_some(), *name == "none_contiguous_rotated", "{id} glass_{side}_{name}");
                 }
-            }
-            let model = json(&content().join("assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass.json"));
-            assert_eq!(model["loader"], "neoforge:obj");
-            for file in [
-                "assets/mekanism/models/block/transmitter_glass_large.mtl",
-                "assets/mekanism/models/block/transporter_box.json",
-                "assets/mekanism/textures/block/transporter_box.png",
-                "assets/mekanism/textures/block/models/multipart/logistical_transporter_glass_colored.png",
-                "assets/mekanism/textures/block/models/multipart/logistical_transporter_vertical_glass_colored.png",
-                "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_glass_colored.png",
-                "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_vertical_glass_colored.png",
-            ] {
-                assert!(files.contains(file), "{file}");
             }
         }
         // O corpo herda um modelo `neoforge:obj` do original; o OBJ tem as 24 partes e o `.mtl` que ele nomeia está ao lado.
@@ -867,4 +860,40 @@ fn the_transmitter_items_of_the_original_carry_their_type_icon() {
     }
     assert_eq!(transmitter_icon_sprite("minecraft:stick"), None);
     assert_eq!(transmitter_icon_sprite("mekanism:basic_energy_cube"), None);
+}
+
+/// O vidro do transportador pintado: o Horizon não tem tinta de bloco por posição (H237), então cada uma das 18 cores tem o `transporter_glass` do original com o `.mtl` dele e o `Kd` trocado
+/// pelo produto da tinta (`EnumColor.getRgbCode`, o pixel de `colormap/primary.png`) pelo `Kd 0.8` do original, na conta do mesher (`tint * kd / 255`, inteira) e no `float` que o NeoForge
+/// trunca (`(int)(x * 255.0F)`). O OBJ, o resto do `.mtl` e as texturas são os do original.
+#[test]
+fn the_glass_of_each_color_has_the_tint_times_the_kd_of_the_original() {
+    // A caixa colorida das pilhas e as quatro texturas do vidro são as do original.
+    let files = manifest();
+    for file in [
+        "assets/mekanism/models/block/transporter_box.json",
+        "assets/mekanism/textures/block/transporter_box.png",
+        "assets/mekanism/textures/block/models/multipart/logistical_transporter_glass_colored.png",
+        "assets/mekanism/textures/block/models/multipart/logistical_transporter_vertical_glass_colored.png",
+        "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_glass_colored.png",
+        "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_vertical_glass_colored.png",
+    ] {
+        assert!(files.contains(file), "{file}");
+    }
+    for (index, color) in ENUM_COLOR_NAMES.iter().enumerate() {
+        let model = json(&content().join(format!("assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass_{color}.json")));
+        assert_eq!(model["mtl_override"], format!("mekanism:models/block/transmitter_glass_large_{color}.mtl"), "{color}");
+        assert_eq!(model["flip_v"], true, "{color}");
+        let text = std::fs::read_to_string(content().join(format!("assets/mekanism/models/block/transmitter_glass_large_{color}.mtl"))).unwrap();
+        let kd: Vec<&str> = text.lines().filter(|line| line.starts_with("Kd ")).collect();
+        assert_eq!(kd.len(), 9, "{color}");
+        let rgb = ENUM_COLOR_RGB[index];
+        let want: Vec<i32> = [16, 8, 0].map(|shift| ((rgb >> shift & 255) * 204 / 255) as i32).to_vec();
+        for line in kd {
+            let got: Vec<i32> = line.split_whitespace().skip(1).map(|word| (word.parse::<f32>().unwrap() * 255.0) as i32).collect();
+            assert_eq!(got, want, "{color} {line}");
+        }
+        // O resto do `.mtl` é o do original (a tinta 0 de cada material e os mapas de textura).
+        assert_eq!(text.matches("neoforge_TintIndex 0").count(), 9, "{color}");
+        assert!(text.contains("map_Kd #side_glass_opaque"), "{color}");
+    }
 }

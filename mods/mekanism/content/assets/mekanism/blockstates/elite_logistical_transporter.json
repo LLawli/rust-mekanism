@@ -492,7 +492,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_normal"
       }
     },
     {
@@ -507,7 +507,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_push"
       }
     },
     {
@@ -522,7 +522,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_pull"
       }
     },
     {
@@ -537,7 +537,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_none"
       }
     },
     {
@@ -552,7 +552,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_none_contiguous"
       }
     },
     {
@@ -567,7 +567,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_down_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/down_none_contiguous_rotated"
       }
     },
     {
@@ -582,7 +582,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_normal"
       }
     },
     {
@@ -597,7 +597,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_push"
       }
     },
     {
@@ -612,7 +612,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_pull"
       }
     },
     {
@@ -627,7 +627,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_none"
       }
     },
     {
@@ -642,7 +642,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_none_contiguous"
       }
     },
     {
@@ -657,7 +657,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_up_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/up_none_contiguous_rotated"
       }
     },
     {
@@ -672,7 +672,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_normal"
       }
     },
     {
@@ -687,7 +687,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_push"
       }
     },
     {
@@ -702,7 +702,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_pull"
       }
     },
     {
@@ -717,7 +717,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_none"
       }
     },
     {
@@ -732,7 +732,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_none_contiguous"
       }
     },
     {
@@ -747,7 +747,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_north_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/north_none_contiguous_rotated"
       }
     },
     {
@@ -762,7 +762,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_normal"
       }
     },
     {
@@ -777,7 +777,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_push"
       }
     },
     {
@@ -792,7 +792,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_pull"
       }
     },
     {
@@ -807,7 +807,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_none"
       }
     },
     {
@@ -822,7 +822,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_none_contiguous"
       }
     },
     {
@@ -837,7 +837,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_south_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/south_none_contiguous_rotated"
       }
     },
     {
@@ -852,7 +852,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_normal"
       }
     },
     {
@@ -867,7 +867,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_push"
       }
     },
     {
@@ -882,7 +882,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_pull"
       }
     },
     {
@@ -897,7 +897,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_none"
       }
     },
     {
@@ -912,7 +912,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_none_contiguous"
       }
     },
     {
@@ -927,7 +927,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_west_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/west_none_contiguous_rotated"
       }
     },
     {
@@ -942,7 +942,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_normal"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_normal"
       }
     },
     {
@@ -957,7 +957,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_push"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_push"
       }
     },
     {
@@ -972,7 +972,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_pull"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_pull"
       }
     },
     {
@@ -987,7 +987,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_none"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_none"
       }
     },
     {
@@ -1002,7 +1002,7 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_none_contiguous"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_none_contiguous"
       }
     },
     {
@@ -1017,7 +1017,9187 @@
         ]
       },
       "apply": {
-        "model": "mekanism:block/transmitter_part/elite_logistical_transporter/glass_east_none_contiguous_rotated"
+        "model": "mekanism:block/transmitter_part/logistical_glass/black/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/blue/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/green/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/cyan/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/dark_red/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/purple/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/orange/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_gray/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/gray/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/light_blue/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/lime/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/aqua/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/red/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/magenta/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/yellow/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/white/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/brown/east_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_pull"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/logistical_glass/pink/east_none_contiguous_rotated"
       }
     }
   ]

@@ -148,16 +148,30 @@ fn the_selection_indexes_the_multipart_of_the_blockstate_side_by_side() {
     use model::{NONE, NONE_CONTIGUOUS, NORMAL, PULL, PUSH};
     assert_eq!(model::parts_per_side(false), 6);
     assert_eq!(model::parts_per_side(true), 4);
-    assert_eq!(model::selection([NONE; 6], false), [3, 9, 15, 21, 27, 33]);
+    assert_eq!(model::selection([NONE; 6], false, None), [3, 9, 15, 21, 27, 33]);
     assert_eq!(
-        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false),
+        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false, None),
         [0, 7, 14, 21, 28, 30]
     );
-    assert_eq!(model::selection([NONE; 6], true), [3, 7, 11, 15, 19, 23]);
+    assert_eq!(model::selection([NONE; 6], true, None), [3, 7, 11, 15, 19, 23]);
     assert_eq!(
-        model::selection([NORMAL, PUSH, PULL, NONE, NORMAL, PUSH], true),
+        model::selection([NORMAL, PUSH, PULL, NONE, NORMAL, PUSH], true, None),
         [0, 5, 10, 15, 16, 21]
     );
+    // Com o vidro, cada lado leva o corpo e depois o vidro da cor (as partes do vidro de cada cor vêm depois das 36 do corpo, de cor em cor, na mesma ordem).
+    assert_eq!(
+        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false, Some(0)),
+        [0, 36, 7, 43, 14, 50, 21, 57, 28, 64, 30, 66]
+    );
+    assert_eq!(
+        model::selection([NONE; 6], false, Some(17)),
+        [3, 36 + 17 * 36 + 3, 9, 36 + 17 * 36 + 9, 15, 36 + 17 * 36 + 15, 21, 36 + 17 * 36 + 21, 27, 36 + 17 * 36 + 27, 33, 36 + 17 * 36 + 33]
+    );
+    assert_eq!(model::GLASS_COLORS, 18);
+}
+
+fn data(connections: [u8; 6]) -> model::ModelData {
+    model::ModelData { connections, color: None }
 }
 
 /// O módulo guarda estado global: os testes que o usam andam um de cada vez.
@@ -168,7 +182,7 @@ fn the_parts_of_a_transmitter_are_asked_by_state_and_position_of_the_block_the_m
     let _guard = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     model::clear_data();
     // Dois transmissores (o desviador é a família 1), no estado 7 e 9; o 8 não é de transmissor.
-    model::set_families(vec![false, true], vec![(7, 0), (9, 1)]);
+    model::set_families(vec![false, true], vec![false, false], vec![(7, 0), (9, 1)]);
     let make = |choice: usize, parts: Vec<usize>| (choice, parts);
     // Sem bloco anotado (outra thread, ou o catálogo chamado fora do mesher) não há o que escolher.
     assert!(
@@ -182,7 +196,7 @@ fn the_parts_of_a_transmitter_are_asked_by_state_and_position_of_the_block_the_m
     // Sem o dado da block entity: o modelo do blockstate segue.
     assert!(model::select(7, Some(4), make).is_none());
     const N: u8 = model::CONNECTION_NONE;
-    model::set_data([17, 2, 35], Some([N, N, 0, 1, N, N]));
+    model::set_data([17, 2, 35], Some(data([N, N, 0, 1, N, N])));
     // Um estado que não é de transmissor, ou sem escolha de blockstate, também deixa o blockstate.
     assert!(model::select(8, Some(4), make).is_none());
     assert!(model::select(7, None, make).is_none());
@@ -208,15 +222,45 @@ fn the_parts_of_a_transmitter_are_asked_by_state_and_position_of_the_block_the_m
     assert_eq!(model::data_count(), 0);
 }
 
+/// O vidro do transportador logístico pintado (`TransmitterBlockStateModel.collectParts`): com cor as partes têm o vidro da cor de cada lado, sem cor ou em outro bloco, não.
+#[test]
+fn a_painted_transporter_adds_the_glass_parts_of_its_color() {
+    let _guard = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    model::clear_data();
+    // A família 0 é um transportador (com vidro), a 1 o desviador (sem).
+    model::set_families(vec![false, true], vec![true, false], vec![(7, 0), (9, 1)]);
+    let make = |choice: usize, parts: Vec<usize>| (choice, parts);
+    model::note_section([0, 0, 0]);
+    model::note_block(1, 1, 1);
+    const N: u8 = model::CONNECTION_NONE;
+    // Sem cor: o corpo só.
+    model::set_data([1, 1, 1], Some(data([N; 6])));
+    assert_eq!(*model::select(7, Some(0), make).unwrap(), (0, vec![3, 9, 15, 21, 27, 33]));
+    // Pintado de vermelho (`EnumColor.RED`, 12): o corpo e o vidro da cor por lado.
+    model::set_data([1, 1, 1], Some(model::ModelData { connections: [N; 6], color: Some(12) }));
+    let base = 36 + 12 * 36;
+    assert_eq!(
+        *model::select(7, Some(0), make).unwrap(),
+        (0, vec![3, base + 3, 9, base + 9, 15, base + 15, 21, base + 21, 27, base + 27, 33, base + 33])
+    );
+    // Outra cor é outro conjunto de partes.
+    model::set_data([1, 1, 1], Some(model::ModelData { connections: [N; 6], color: Some(1) }));
+    assert_eq!(model::select(7, Some(0), make).unwrap().1[1], 36 + 36 + 3);
+    // O desviador não tem vidro, mesmo com cor no dado: só o corpo.
+    assert_eq!(*model::select(9, Some(0), make).unwrap(), (0, vec![3, 7, 11, 15, 19, 23]));
+}
+
 #[test]
 fn set_data_tells_whether_the_connections_changed_and_clear_forgets_them_all() {
     let _guard = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     model::clear_data();
-    assert!(model::set_data([0, 0, 0], Some([0, 1, 2, 3, 0, 1])));
-    assert!(!model::set_data([0, 0, 0], Some([0, 1, 2, 3, 0, 1])));
-    assert!(model::set_data([0, 0, 0], Some([0, 1, 2, 3, 0, 2])));
-    assert!(model::set_data([5, 0, 0], Some([3; 6])));
-    assert_eq!(model::data_at([0, 0, 0]), Some([0, 1, 2, 3, 0, 2]));
+    assert!(model::set_data([0, 0, 0], Some(data([0, 1, 2, 3, 0, 1]))));
+    assert!(!model::set_data([0, 0, 0], Some(data([0, 1, 2, 3, 0, 1]))));
+    assert!(model::set_data([0, 0, 0], Some(data([0, 1, 2, 3, 0, 2]))));
+    assert!(model::set_data([5, 0, 0], Some(data([3; 6]))));
+    assert_eq!(model::data_at([0, 0, 0]), Some(data([0, 1, 2, 3, 0, 2])));
+    // Mudar só a cor muda o dado (`refreshModelData`).
+    assert!(model::set_data([0, 0, 0], Some(model::ModelData { connections: [0, 1, 2, 3, 0, 2], color: Some(4) })));
     assert_eq!(model::data_count(), 2);
     model::clear_data();
     assert_eq!(model::data_count(), 0);

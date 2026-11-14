@@ -71,12 +71,33 @@ pub fn parts_per_side(diversion: bool) -> usize {
     if diversion { 4 } else { STATUS_NAMES.len() }
 }
 
-/// O índice, no `multipart` do blockstate, da parte de cada lado com o estado visual dado.
-pub fn selection(statuses: [u8; 6], diversion: bool) -> Vec<usize> {
+/// As 18 cores do vidro (`EnumColor.VALUES`): cada uma tem as partes dele no `multipart` do blockstate (o Horizon não tem tinta de bloco por posição, H237: o `Kd` do vidro de cada cor
+/// leva o produto da tinta pelo `Kd` do original).
+pub const GLASS_COLORS: usize = 18;
+
+/// O índice, no `multipart` do blockstate, da parte de cada lado com o estado visual dado. Com o vidro (`glass`, a cor do transportador logístico pintado, `EnumColor.ordinal()`) cada lado
+/// leva também a parte do vidro (`TransmitterBlockStateModel.collectParts`: `addPart(baseParts, ...)` e, com `needsGlass`, `addPart(glassParts, ...)`, por lado): depois das partes do corpo
+/// vêm as do vidro de cada cor, de cor em cor, na mesma ordem de lado e estado.
+pub fn selection(statuses: [u8; 6], diversion: bool, glass: Option<u8>) -> Vec<usize> {
     let per_side = parts_per_side(diversion);
-    (0..SIDES.len())
-        .map(|side| side * per_side + usize::from(statuses[side]))
-        .collect()
+    let body = SIDES.len() * per_side;
+    let mut parts = Vec::with_capacity(if glass.is_some() { 2 * SIDES.len() } else { SIDES.len() });
+    for side in 0..SIDES.len() {
+        let index = side * per_side + usize::from(statuses[side]);
+        parts.push(index);
+        if let Some(color) = glass {
+            parts.push(body + usize::from(color).min(GLASS_COLORS - 1) * body + index);
+        }
+    }
+    parts
+}
+
+/// O que a block entity dá ao desenho de uma posição: o `ConnectionType` de cada lado e, se o transmissor tem cor (`TransmitterModelData.getHasColor`, o transportador logístico pintado),
+/// a cor dele (`EnumColor.ordinal()`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelData {
+    pub connections: [u8; 6],
+    pub color: Option<u8>,
 }
 
 struct Table {
@@ -84,11 +105,13 @@ struct Table {
     states: Vec<u16>,
     /// Por família: se a block entity dá o dado do desviador (`TransmitterModelData.Diversion`, que nunca junta os trechos retos).
     diversion: Vec<bool>,
+    /// Por família: se o blockstate tem o vidro (`glass`, só o transportador logístico).
+    glass: Vec<bool>,
 }
 
 static TABLE: RwLock<Option<Arc<Table>>> = RwLock::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(1);
-static DATA: RwLock<Option<HashMap<[i32; 3], [u8; 6]>>> = RwLock::new(None);
+static DATA: RwLock<Option<HashMap<[i32; 3], ModelData>>> = RwLock::new(None);
 /// Os conjuntos de partes já pedidos (cada um vira uma seleção do blockstate que vive até o fim do processo: poucas centenas).
 type Leaked = HashMap<(usize, Vec<usize>), &'static (dyn Any + Send + Sync)>;
 static SELECTIONS: Mutex<Option<Leaked>> = Mutex::new(None);
@@ -100,8 +123,9 @@ thread_local! {
     static BLOCK: Cell<Option<[i32; 3]>> = const { Cell::new(None) };
 }
 
-/// A tabela dos estados de transmissor: `states` é o `(estado, família)` de cada um e `diversion` diz, por família, se ela dá o dado do desviador. Refeita a cada carga de dados.
-pub fn set_families(diversion: Vec<bool>, states: Vec<(u32, u16)>) {
+/// A tabela dos estados de transmissor: `states` é o `(estado, família)` de cada um, `diversion` diz, por família, se ela dá o dado do desviador e `glass` se o blockstate dela tem o
+/// vidro. Refeita a cada carga de dados.
+pub fn set_families(diversion: Vec<bool>, glass: Vec<bool>, states: Vec<(u32, u16)>) {
     let size = states
         .iter()
         .map(|(state, _)| *state as usize + 1)
@@ -114,23 +138,24 @@ pub fn set_families(diversion: Vec<bool>, states: Vec<(u32, u16)>) {
     *TABLE.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(Table {
         states: by_state,
         diversion,
+        glass,
     }));
     GENERATION.fetch_add(1, Ordering::Release);
 }
 
 /// O dado do modelo da block entity em `pos`: o `ConnectionType` de cada lado (`updateModelData`, `myTransmitter.getConnectionType(side)`; o estado visual sai disso em `select`, pela
-/// família). `None` tira o dado (a block entity saiu, ou o chunk). Devolve se mudou algo.
-pub fn set_data(pos: [i32; 3], connections: Option<[u8; 6]>) -> bool {
-    let mut data = DATA.write().unwrap_or_else(|e| e.into_inner());
-    let data = data.get_or_insert_with(HashMap::new);
-    match connections {
-        Some(connections) => data.insert(pos, connections) != Some(connections),
-        None => data.remove(&pos).is_some(),
+/// família) e a cor do transmissor (`setHasColor`). `None` tira o dado (a block entity saiu, ou o chunk). Devolve se mudou algo.
+pub fn set_data(pos: [i32; 3], data: Option<ModelData>) -> bool {
+    let mut all = DATA.write().unwrap_or_else(|e| e.into_inner());
+    let all = all.get_or_insert_with(HashMap::new);
+    match data {
+        Some(data) => all.insert(pos, data) != Some(data),
+        None => all.remove(&pos).is_some(),
     }
 }
 
 /// O dado de `pos`, se há.
-pub fn data_at(pos: [i32; 3]) -> Option<[u8; 6]> {
+pub fn data_at(pos: [i32; 3]) -> Option<ModelData> {
     DATA.read()
         .unwrap_or_else(|e| e.into_inner())
         .as_ref()?
@@ -172,7 +197,7 @@ pub fn select<T: Any + Send + Sync>(
     let choice = choice?;
     let local = BLOCK.with(Cell::get)?;
     let generation = GENERATION.load(Ordering::Acquire);
-    let diversion = LOCAL.with(|cache| {
+    let (diversion, glass) = LOCAL.with(|cache| {
         let mut cache = cache.borrow_mut();
         if cache.0 != generation {
             *cache = (
@@ -186,7 +211,7 @@ pub fn select<T: Any + Send + Sync>(
             .get(state as usize)
             .copied()
             .filter(|family| *family != u16::MAX)?;
-        Some(table.diversion[usize::from(family)])
+        Some((table.diversion[usize::from(family)], table.glass[usize::from(family)]))
     })?;
     let origin = SECTION.with(Cell::get);
     let pos = [
@@ -194,7 +219,10 @@ pub fn select<T: Any + Send + Sync>(
         origin[1] + local[1],
         origin[2] + local[2],
     ];
-    let parts = selection(visual_statuses(data_at(pos)?, diversion), diversion);
+    let data = data_at(pos)?;
+    // Sem cor o transportador não tem vidro (`needsGlass = glassParts != null && getHasColor()`).
+    let glass = data.color.filter(|_| glass);
+    let parts = selection(visual_statuses(data.connections, diversion), diversion, glass);
     let mut selections = SELECTIONS.lock().unwrap_or_else(|e| e.into_inner());
     let selections = selections.get_or_insert_with(HashMap::new);
     let key = (choice, parts);

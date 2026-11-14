@@ -579,18 +579,66 @@ def transmitter_part_model(parent, side, status, quaternion):
     return model
 
 
-def glass_part_model(glass, side, status, quaternion):
-    """Uma parte do vidro (`transporter_glass`, o modelo `glass` do blockstate do original): as mesmas 24 partes do OBJ do vidro, uma por lado e estado visual. O `NoneSegmentRemap` troca as
-    texturas de centro do vidro (`center_glass_<lado>`, que `isDirectional` pega) pela do braço do vidro (`#side_glass`), e a parte girada leva a mesma rotação do corpo."""
+# As 18 `EnumColor` na ordem do `ordinal` (`getSerializedName`, o nome do arquivo de cada cor do vidro).
+ENUM_COLORS = ("black", "blue", "green", "cyan", "dark_red", "purple", "orange", "light_gray", "gray", "light_blue", "lime", "aqua", "red", "magenta", "yellow", "white", "brown", "pink")
+GLASS_MODEL = "mekanism:block/transmitter/large/logistical_transporter/transporter_glass"
+KD_GLASS = 204  # `(int)(0.8F * 255.0F)`: o `Kd 0.8 0.8 0.8` do `.mtl` do vidro, que a tinta multiplica.
+
+
+def enum_color_rgb(index):
+    """`EnumColor.getRgbCode`: o pixel de `textures/colormap/primary.png` que `MekanismRenderer.parseColorAtlas` lê (`EnumColor.VALUES`, um pixel cada, 16 por linha)."""
+    width, _, rgba = ler_png(f"{RES}/assets/mekanism/textures/colormap/primary.png")
+    i = (index % 16 + (index // 16) * width) * 4
+    return rgba[i], rgba[i + 1], rgba[i + 2]
+
+
+def glass_kd(index):
+    """O `Kd` de cada canal do vidro de uma cor: a tinta (`LogisticalTransporterBlockTintSource`, `EnumColor.getPackedColor`) vezes o `Kd` do material do original (204 de 255), na conta inteira
+    do mesher (`tint * kd / 255`). O Horizon não tem tinta de bloco por posição (H237: o alvo cru `Mesher::tint` foi recusado, `E_INVALID_BINDING`), então cada cor tem o vidro com o produto
+    no `Kd`, que o `.mtl` escreve em `float` (o meio degrau acima, porque o NeoForge trunca `(int)(x * 255.0F)`)."""
+    return [(channel * KD_GLASS // 255 + 0.5) / 255 for channel in enum_color_rgb(index)]
+
+
+def glass_mtl(index):
+    """O `.mtl` do vidro do original (`transmitter_glass_large.mtl`) com o `Kd` da cor no lugar do `0.8 0.8 0.8`."""
+    text = open(f"{RES}/assets/mekanism/models/block/transmitter_glass_large.mtl").read()
+    kd = " ".join(f"{value:.9f}" for value in glass_kd(index))
+    assert text.count("Kd 0.8 0.8 0.8") == 9
+    return text.replace("Kd 0.8 0.8 0.8", f"Kd {kd}")
+
+
+def glass_model(index):
+    """O `transporter_glass` do original com o `.mtl` da cor."""
+    model = read_json(f"{RES}/assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass.json")
+    model["mtl_override"] = f"mekanism:models/block/transmitter_glass_large_{ENUM_COLORS[index]}.mtl"
+    return model
+
+
+def glass_part_model(index, side, status, quaternion):
+    """Uma parte do vidro de uma cor (as mesmas 24 partes do OBJ, uma por lado e estado visual). O `NoneSegmentRemap` troca as texturas de centro do vidro (`center_glass_<lado>`, que
+    `isDirectional` pega) pela do braço do vidro (`#side_glass`), e a parte girada leva a mesma rotação do corpo."""
     part = VISUAL_STATUSES[status][1]
     visibility = {f"{s}{t}": s == side and t == part for s in SIDES for t in STATUSES}
-    model = {"parent": glass}
+    model = {"parent": f"{GLASS_MODEL}_{ENUM_COLORS[index]}"}
     if VISUAL_STATUSES[status][0].startswith("none_contiguous"):
         model["textures"] = {f"center_glass_{d}": "#side_glass" for d in ("down", "up", "north", "south", "east", "west")}
     if VISUAL_STATUSES[status][0] == "none_contiguous_rotated":
         model["transform"] = {"rotation": quaternion, "origin": "center"}
     model["visibility"] = visibility
     return model
+
+
+def glass_assets():
+    """O vidro do transportador logístico, uma vez para os quatro tiers: o modelo e o `.mtl` de cada cor, e as partes de cada cor (`logistical_glass/<cor>/<lado>_<estado>`)."""
+    quaternions = icon_transforms()
+    files = {}
+    for index, color in enumerate(ENUM_COLORS):
+        files[f"assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass_{color}.json"] = glass_model(index)
+        files[f"assets/mekanism/models/block/transmitter_glass_large_{color}.mtl"] = glass_mtl(index)
+        for side in SIDES:
+            for status, (name, _) in enumerate(VISUAL_STATUSES):
+                files[f"assets/mekanism/models/block/transmitter_part/logistical_glass/{color}/{side}_{name}.json"] = glass_part_model(index, side, status, quaternions[side])
+    return files
 
 
 def transmitter_assets(block):
@@ -612,13 +660,13 @@ def transmitter_assets(block):
             if name != "none":
                 entry = {"when": {"AND": [{side: "true"}, {side: "false"}]}, **entry}
             multipart.append(entry)
-    # O vidro do transportador logístico (`glass` do blockstate): as partes dele vêm depois das do corpo, na mesma ordem, e só valem quando a injeção as escolhe (o transportador tem cor).
-    glass = read_json(f"{GEN}/assets/mekanism/blockstates/{block}.json")["variants"][""].get("glass")
-    if glass:
-        for side in SIDES:
-            for status, (name, _) in enumerate(VISUAL_STATUSES):
-                files[f"assets/mekanism/models/block/transmitter_part/{block}/glass_{side}_{name}.json"] = glass_part_model(glass, side, status, quaternions[side])
-                multipart.append({"when": {"AND": [{side: "true"}, {side: "false"}]}, "apply": {"model": f"mekanism:block/transmitter_part/{block}/glass_{side}_{name}"}})
+    # O vidro do transportador logístico (`glass` do blockstate): as partes de cada uma das 18 cores vêm depois das do corpo, de cor em cor e na mesma ordem de lado e estado, e só valem
+    # quando a injeção `transmitter_model_state` as escolhe (o transportador tem a cor).
+    if read_json(f"{GEN}/assets/mekanism/blockstates/{block}.json")["variants"][""].get("glass"):
+        for color in ENUM_COLORS:
+            for side in SIDES:
+                for name, _ in VISUAL_STATUSES:
+                    multipart.append({"when": {"AND": [{side: "true"}, {side: "false"}]}, "apply": {"model": f"mekanism:block/transmitter_part/logistical_glass/{color}/{side}_{name}"}})
     files[f"assets/mekanism/blockstates/{block}.json"] = {"multipart": multipart}
     return files, set()
 
@@ -724,6 +772,8 @@ def generated_assets():
         textures |= tex
     for block in FLUID_TANKS:
         files.update(fluid_tank_assets(block))
+    files.update(glass_assets())
+    textures |= set(read_json(f"{RES}/assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass.json")["textures"].values()) - {"#side_glass"}
     return files, textures
 
 
@@ -762,10 +812,9 @@ def assets_plan():
     # Os dois modelos do tanque de fluido que os de cada tier herdam (o blockstate de cada tier é escrito, não copiado).
     for name in ("mekanism:block/fluid_tank", "mekanism:block/fluid_tank_active"):
         visit(name)
-    # O vidro do transportador logístico (`glass` do blockstate, o OBJ do vidro e o `.mtl` que ele nomeia) e a caixa colorida das pilhas (`RenderLogisticalTransporter`,
+    # A caixa colorida das pilhas (`RenderLogisticalTransporter`,
     # `MekanismModelCache.TRANSPORTER_BOX`): o desenho das pilhas a pede como modelo avulso.
-    for name in ("mekanism:block/transmitter/large/logistical_transporter/transporter_glass", "mekanism:block/transporter_box"):
-        visit(name)
+    visit("mekanism:block/transporter_box")
     generated, extra = generated_assets()
     textures |= extra
     for name, source in models.items():
@@ -800,6 +849,12 @@ def adapt_blockstate(text):
 def copy_assets():
     files, generated = assets_plan()
     for relative, value in sorted(generated.items()):
+        if isinstance(value, str):
+            # Texto (o `.mtl` do vidro de cada cor).
+            os.makedirs(os.path.dirname(os.path.join(CONTENT, relative)), exist_ok=True)
+            with open(os.path.join(CONTENT, relative), "w") as handle:
+                handle.write(value)
+            continue
         write_json(os.path.join(CONTENT, relative), value, indent=2)
     for relative, (width, height, rgba) in sorted(baked_textures().items()):
         gravar_png(os.path.join(CONTENT, relative), width, height, rgba)
