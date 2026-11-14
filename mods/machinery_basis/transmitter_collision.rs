@@ -89,3 +89,8 @@ pub fn shape_at(pos: [i32; 3]) -> Option<VoxelShape> {
 pub fn boxes_at(pos: [i32; 3]) -> Option<Vec<Aabb>> {
     shape_at(pos).map(|shape| shape.boxes().to_vec())
 }
+
+/// Se há alguma forma guardada: sem nenhuma, quem lê a forma de uma célula segue o caminho do Horizon sem tocar a trava.
+pub fn any() -> bool {
+    COUNT.load(Ordering::Relaxed) != 0
+}

@@ -1499,6 +1499,19 @@ bindings = [
 ]
 
 [[injection]]
+id = "transmitter_arrow_clip"
+target = "horizon_client_lib::arrows::ArrowScene<'_,'_>::clip"
+kind = "HEAD"
+cancellable = true
+helper = "transmitter_arrow_clip.rs"
+bindings = [
+  { name = "scene", ty = "&ArrowScene<'_, '_>", value = "&*self" },
+  { name = "from", ty = "Vec3", value = "from" },
+  { name = "to", ty = "Vec3", value = "to" },
+  { name = "ignored", ty = "Option<BlockPos>", value = "ignored" },
+]
+
+[[injection]]
 id = "transmitter_landing"
 target = "horizon_client_lib::landing::<MotionWorld<'_,'_,'_> as BlockPushWorld>::collision_shape"
 kind = "HEAD"
