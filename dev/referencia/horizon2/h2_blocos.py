@@ -374,6 +374,26 @@ def alinha_o_tempo(nome):
     print("tempo", nome, "alvo", alvo, "port", atual, "passos", passos)
 
 
+# O ponto de cada braço de um transmissor, em coordenadas do bloco (o `getSideLookingAt` do original escolhe o braço pela mira) e quantos cliques do Configurator levam do `NORMAL` ao tipo.
+BRACO = {"down": (0.5, 0.15, 0.5), "up": (0.5, 0.85, 0.5), "north": (0.5, 0.5, 0.15), "south": (0.5, 0.5, 0.85), "west": (0.15, 0.5, 0.5), "east": (0.85, 0.5, 0.5)}
+CLIQUES = {"normal": 0, "push": 1, "pull": 2, "none": 3}
+
+
+def conexao(texto):
+    """`#conexao X Y Z lado=tipo ...` (o `CenaBlocos` do original põe o tipo cru por `Transmitter.setConnectionTypeRaw`): o port o põe pelo Configurator agachado, que cicla `NORMAL`, `PUSH`,
+    `PULL` e `NONE` a cada clique. A mira vem de cima do braço (o ponto do braço, três blocos acima), onde nem o centro nem o vizinho a cortam."""
+    import h2_ajustes_jogo as aj
+
+    palavras = texto.split()
+    pos = tuple(int(v) for v in palavras[1:4])
+    for par in palavras[4:]:
+        lado, tipo = par.split("=")
+        ponto = BRACO[lado]
+        for _ in range(CLIQUES[tipo]):
+            olho = (pos[0] + ponto[0], pos[1] + 3.0, pos[2] + ponto[2])
+            aj.click_at(pos, ponto, olho)
+
+
 def cena(out, nomes=(), roteiro="blocos.json"):
     if os.environ.get("IGUALAR_OPCOES"):
         # As opções do cliente do original (`options.txt` da run do `mekanism-ref`): o campo de visão, o brilho, a oclusão ambiente. Sem elas o mundo sai com outra vista.
@@ -384,6 +404,8 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         h.ctl("options-set", "guiScale", "4")
         h.ctl("key", "1", "tap")
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
+    if any(c.startswith("#conexao ") for shot in spec["shots"] for c in shot["cmds"]):
+        h.ctl("give", "mekanism:configurator", "1")
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
     subprocess.run(["ssh", "desktop", f"mkdir -p {out}"], check=True)
@@ -407,6 +429,9 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 cmd = comando_do_cubo(cmd, shot["cmds"])
             if cmd.startswith("#esperar "):
                 time.sleep(int(cmd.split()[1]) / 20.0)
+                continue
+            if cmd.startswith("#conexao "):
+                conexao(cmd)
                 continue
             h.command(cmd)
         alinha_o_tempo(shot["name"])

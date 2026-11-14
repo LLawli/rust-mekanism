@@ -101,6 +101,10 @@ public class CenaBlocos {
             server.execute(() -> cube(server, command));
             return;
         }
+        if (command.startsWith("#conexao ")) {
+            server.execute(() -> connection(server, command));
+            return;
+        }
         server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command));
     }
 
@@ -123,6 +127,20 @@ public class CenaBlocos {
             config.sideChanged(type, side);
         }
         tile.markForSave();
+    }
+
+    /// `#conexao X Y Z lado=tipo [lado=tipo ...]`: o tipo cru de cada lado do transmissor em `x y z` (`Transmitter.setConnectionTypeRaw`, o que o Configurator faz a cada clique): `normal`, `push`,
+    /// `pull` ou `none`. O port faz o mesmo com o clique do Configurator (`horizon2/h2_cabo_modelo.py`).
+    private static void connection(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.transmitter.TileEntityTransmitter) server.overworld().getBlockEntity(pos);
+        for (int i = 4; i < words.length; i++) {
+            String[] pair = words[i].split("=");
+            var side = net.minecraft.core.Direction.byName(pair[0]);
+            var type = mekanism.common.lib.transmitter.ConnectionType.valueOf(pair[1].toUpperCase());
+            tile.getTransmitter().setConnectionTypeRaw(side, type);
+        }
     }
 
     private static void shot(Minecraft minecraft, String name) {
