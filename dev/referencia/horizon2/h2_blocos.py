@@ -394,6 +394,57 @@ def conexao(texto):
             aj.click_at(pos, ponto, olho)
 
 
+# A tela da máquina (176 por 166) no meio da janela de 1920 por 1080 com `guiScale` 4: a janela tem 480 por 270 pixels de GUI.
+CANTO_DA_TELA = ((480 - 176) // 2, (270 - 166) // 2)
+_item_da_mao = [None]
+
+
+def item_cena(cmd):
+    """As diretivas de `testes/CenaItem.java` no port (`cenas/item_conteudo.json`): o item na mão (`item replace`), o inventário com o cursor no slot da barra, a tela fechada, o item posto e a tela
+    aberta pelo clique direito, o bloco quebrado em sobrevivência (o item solto vai ao chão, como `destroyBlock`) e o cursor e o clique em pixels de GUI da tela da máquina."""
+    if cmd.startswith("item replace entity @a hotbar.0 with "):
+        h.command(cmd.replace("@a", "@s", 1))
+        _item_da_mao[0] = cmd.split(" with ", 1)[1].split("[", 1)[0]
+        h.ctl("select", "1")
+        return
+    palavras = cmd.split()
+    if palavras[0] == "#inventario":
+        h.ctl("open-inventory")
+        time.sleep(1.0)
+        slots = [w for w in json.loads(h.ctl("ui")).get("widgets", []) if w.get("kind") == "slot"]
+        base = max(w["bounds"][1] for w in slots)
+        barra = sorted((w for w in slots if w["bounds"][1] == base), key=lambda w: w["bounds"][0])
+        x, y, _, _ = barra[int(palavras[1])]["bounds"]
+        h.ctl("scroll-at", str(int(x + 8)), str(int(y + 8)), "0")
+    elif palavras[0] == "#tela":
+        h.ctl("close")
+    elif palavras[0] == "#colocar":
+        x, y, z = palavras[1:4]
+        h.ctl("select", "1")
+        print(h.ctl("place", x, str(int(y) + 1), z, "--item", _item_da_mao[0]).strip())
+    elif palavras[0] == "#abrir":
+        h.ctl("select", "1")
+        for _ in range(4):
+            h.ctl("interact", *palavras[1:4])
+            time.sleep(0.8)
+            if '"screen":"container"' in h.ctl("screen").replace(" ", ""):
+                break
+    elif palavras[0] == "#quebrar":
+        # `Block.dropResources` com a mesma tabela de loot que o `destroyBlock` do original; a picareta sai da barra logo depois.
+        h.command("item replace entity @s hotbar.8 with minecraft:diamond_pickaxe")
+        h.ctl("select", "9")
+        print(h.ctl("break", *palavras[1:4]).strip())
+        h.command("clear @s minecraft:diamond_pickaxe")
+        h.ctl("select", "1")
+    elif palavras[0] in ("#cursor", "#clicar"):
+        gx, gy = (int(v) for v in palavras[1].split(","))
+        px, py = CANTO_DA_TELA[0] + gx, CANTO_DA_TELA[1] + gy
+        if palavras[0] == "#cursor":
+            h.ctl("scroll-at", str(px), str(py), "0")
+        else:
+            h.ctl("click-at", str(px), str(py))
+
+
 def cor(texto):
     """`#cor X Y Z ORDINAL` (o `CenaBlocos` do original põe a cor do transportador por `LogisticalTransporter.setColor`): o port a põe pelo Configurator agachado no centro do transportador
     (`TileEntityTransmitter.onSneakRightClick`: sem braço na mira e com a conexão do lado clicado ligada, chama `onConfigure`), que passa à cor seguinte: o primeiro clique dá a preta
@@ -441,6 +492,9 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 cmd = comando_do_cubo(cmd, shot["cmds"])
             if cmd.startswith("#esperar "):
                 time.sleep(int(cmd.split()[1]) / 20.0)
+                continue
+            if cmd.startswith(("#inventario ", "#tela", "#colocar ", "#abrir ", "#quebrar ", "#cursor ", "#clicar ")) or cmd.startswith("item replace entity @a hotbar.0 with "):
+                item_cena(cmd)
                 continue
             if cmd.startswith("#conexao "):
                 conexao(cmd)

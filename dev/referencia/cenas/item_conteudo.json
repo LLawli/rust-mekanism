@@ -1,0 +1,411 @@
+{
+ "hud": true,
+ "setup": [
+  "difficulty peaceful",
+  "time set noon",
+  "weather clear",
+  "gamemode survival",
+  "gamerule advance_time false",
+  "gamerule advance_weather false",
+  "fill 52 -60 70 100 -52 90 minecraft:air",
+  "kill @e[type=minecraft:item]"
+ ],
+ "clear": "weather clear",
+ "shots": [
+  {
+   "name": "tooltip_enrichment_chamber",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:speed\"}},amount:5L},output:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:energy\"}},amount:7L}},mekanism:items={containers:[{type:{id:\"minecraft:cobblestone\"},amount:17L},{type:{id:\"minecraft:iron_ingot\"},amount:9L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_enrichment_chamber",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 60 -61 80",
+    "#esperar 20",
+    "#abrir 60 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_enrichment_chamber",
+   "cmds": [
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "quebrada_enrichment_chamber",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#quebrar 60 -60 80",
+    "#esperar 5"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_depois_enrichment_chamber",
+   "cmds": [
+    "execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~",
+    "#esperar 30",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_depois_enrichment_chamber",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 60 -61 80",
+    "#esperar 20",
+    "#abrir 60 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_enrichment_chamber",
+   "cmds": [
+    "#tela",
+    "#quebrar 60 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_crusher",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:crusher[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:speed\"}},amount:5L},output:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:energy\"}},amount:7L}},mekanism:items={containers:[{type:{id:\"minecraft:cobblestone\"},amount:17L},{type:{id:\"minecraft:iron_ingot\"},amount:9L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 64.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_crusher",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 64 -61 80",
+    "#esperar 20",
+    "#abrir 64 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_crusher",
+   "cmds": [
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "quebrada_crusher",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#quebrar 64 -60 80",
+    "#esperar 5"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_depois_crusher",
+   "cmds": [
+    "execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~",
+    "#esperar 30",
+    "tp @a 64.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_depois_crusher",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 64 -61 80",
+    "#esperar 20",
+    "#abrir 64 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_crusher",
+   "cmds": [
+    "#tela",
+    "#quebrar 64 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_energized_smelter",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:energized_smelter[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:speed\"}},amount:5L},output:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:energy\"}},amount:7L}},mekanism:items={containers:[{type:{id:\"minecraft:cobblestone\"},amount:17L},{type:{id:\"minecraft:iron_ingot\"},amount:9L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 68.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_energized_smelter",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 68 -61 80",
+    "#esperar 20",
+    "#abrir 68 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_energized_smelter",
+   "cmds": [
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "quebrada_energized_smelter",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#quebrar 68 -60 80",
+    "#esperar 5"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_depois_energized_smelter",
+   "cmds": [
+    "execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~",
+    "#esperar 30",
+    "tp @a 68.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_depois_energized_smelter",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 68 -61 80",
+    "#esperar 20",
+    "#abrir 68 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_energized_smelter",
+   "cmds": [
+    "#tela",
+    "#quebrar 68 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_metallurgic_infuser",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:metallurgic_infuser[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:speed\"}},amount:5L},output:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:energy\"}},amount:7L}},mekanism:items={containers:[{},{type:{id:\"minecraft:cobblestone\"},amount:17L},{type:{id:\"minecraft:iron_ingot\"},amount:9L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:chemicals={containers:[{type:\"mekanism:bio\",amount:150L}]},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 72.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_metallurgic_infuser",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 72 -61 80",
+    "#esperar 20",
+    "#abrir 72 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_metallurgic_infuser",
+   "cmds": [
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "quebrada_metallurgic_infuser",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#quebrar 72 -60 80",
+    "#esperar 5"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_depois_metallurgic_infuser",
+   "cmds": [
+    "execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~",
+    "#esperar 30",
+    "tp @a 72.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_depois_metallurgic_infuser",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 72 -61 80",
+    "#esperar 20",
+    "#abrir 72 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_metallurgic_infuser",
+   "cmds": [
+    "#tela",
+    "#quebrar 72 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_heat_generator",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:coal\"},amount:17L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:1500L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 76.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_heat_generator",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 76 -61 80",
+    "#esperar 20",
+    "#abrir 76 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_heat_generator",
+   "cmds": [
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "quebrada_heat_generator",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#quebrar 76 -60 80",
+    "#esperar 5"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tooltip_depois_heat_generator",
+   "cmds": [
+    "execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~",
+    "#esperar 30",
+    "tp @a 76.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "tela_depois_heat_generator",
+   "cmds": [
+    "#tela",
+    "#esperar 5",
+    "#colocar 76 -61 80",
+    "#esperar 20",
+    "#abrir 76 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_heat_generator",
+   "cmds": [
+    "#tela",
+    "#quebrar 76 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  }
+ ]
+}

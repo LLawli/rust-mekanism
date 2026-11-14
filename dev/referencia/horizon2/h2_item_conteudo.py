@@ -2,6 +2,9 @@
 """Em jogo (container `horizon2`, H_NAME=horizon2): o conteúdo guardado no item da máquina (frente `item-conteudo`, Fase 5).
 
     h2_item_conteudo.py [DIRETORIO_DOS_PRINTS]
+    h2_item_conteudo.py video        o roteiro do vídeo (uma Enrichment Chamber com upgrades e itens: a tela aberta antes, quebrada, o tooltip do item, posta de novo e a tela aberta depois); grave com
+                                     `gravar-jogo rec item-conteudo cena.mp4 50 <container>` aberto uns 2 s antes
+    h2_item_conteudo.py efeito       o efeito dos upgrades do item depois de posto (o item com 2 de velocidade, posto por jogador: a energia e o progresso de tick em tick contra `placed_run_<máquina>_speed2.jsonl`)
 
 Para cada máquina (a Enrichment Chamber, o Crusher, o Energized Smelter, o Metallurgic Infuser e o Heat Generator): dá o item com os componentes que o original solta
 (`mekanism:upgrades`, `items`, `chemicals` ou `fluids` e `heat`, `redstone_control`, `energy`), põe o bloco, confere o que o tile guardou (`component_upgrade`, `items`, o tanque, o
@@ -16,30 +19,13 @@ NAME = os.environ["H_NAME"]
 SHOTS_HOST = f"/home/luka/.local/share/jogo-isolado/{NAME}/data/shots/item_conteudo"
 # Dentro do container o caminho é sempre o do `horizon`.
 SHOTS = "/home/luka/.local/share/jogo-isolado/horizon/data/shots/item_conteudo"
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.cache/rust-mekanism/wa/item-conteudo")
+OUT = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] not in ("efeito", "video") else os.path.expanduser("~/.cache/rust-mekanism/wa/item-conteudo")
 captions = []
 failures = []
 
-UP = ('mekanism:upgrades={upgrades:{"mekanism:speed":3,"mekanism:energy":2},'
-      'input:{type:{id:"mekanism:upgrade",components:{"mekanism:upgrade_type":"mekanism:speed"}},amount:5L},'
-      'output:{type:{id:"mekanism:upgrade",components:{"mekanism:upgrade_type":"mekanism:energy"}},amount:7L}}')
-UP_MUFFLING = ('mekanism:upgrades={upgrades:{"mekanism:muffling":1},'
-               'input:{type:{id:"mekanism:upgrade",components:{"mekanism:upgrade_type":"mekanism:muffling"}},amount:3L},output:{}}')
-COBBLE = '{type:{id:"minecraft:cobblestone"},amount:17L}'
-IRON = '{type:{id:"minecraft:iron_ingot"},amount:9L}'
-REDSTONE = '{type:{id:"minecraft:redstone"},amount:5L}'
-COAL = '{type:{id:"minecraft:coal"},amount:17L}'
-COMMON = 'mekanism:redstone_control="high",mekanism:energy=200L'
-MACHINES = [
-    ("mekanism:enrichment_chamber", (2, 101, 0), f"{UP},mekanism:items={{containers:[{COBBLE},{IRON},{REDSTONE}]}},{COMMON}", "Speed", 3),
-    ("mekanism:crusher", (6, 101, 0), f"{UP},mekanism:items={{containers:[{COBBLE},{IRON},{REDSTONE}]}},{COMMON}", "Speed", 3),
-    ("mekanism:energized_smelter", (10, 101, 0), f"{UP},mekanism:items={{containers:[{COBBLE},{IRON},{REDSTONE}]}},{COMMON}", "Speed", 3),
-    ("mekanism:metallurgic_infuser", (2, 101, 4),
-     f'{UP},mekanism:items={{containers:[{{}},{COBBLE},{IRON},{REDSTONE}]}},mekanism:chemicals={{containers:[{{type:"mekanism:bio",amount:150L}}]}},{COMMON}', "Speed", 3),
-    ("mekanismgenerators:heat_generator", (6, 101, 4),
-     f'{UP_MUFFLING},mekanism:items={{containers:[{COAL},{REDSTONE}]}},mekanism:fluids={{containers:[{{type:{{id:"minecraft:lava"}},amount:1500L}}]}},'
-     f'mekanism:heat={{heat:4000.0d,heat_capacity:10.0d}},mekanism:redstone_control="high",mekanism:energy=200L', "Muffling", 1),
-]
+sys.path.insert(0, TOOLS)
+import h2_identity as hid  # noqa: E402
+from item_conteudo_dados import MACHINES  # noqa: E402
 
 
 def ctl(*args):
@@ -140,5 +126,135 @@ def main():
     json.dump(captions, open(os.path.join(OUT, "legendas.json"), "w"), ensure_ascii=False, indent=1)
     print("falhas:", failures)
 
+# Os ticks depois da carga de energia que o rastro `placed_run_*_speed2.jsonl` tem na linha `t = 3 + k`: o consumo por tick, o progresso e a saída pronta.
+EFEITO = {
+    "enrichment_chamber": ("clay", 0, 1, 1792),
+    "crusher": ("cobblestone", 0, 1, 2912),
+    "energized_smelter": ("sand", 0, 1, 1792),
+}
+EFEITO_PASSOS = [0, 1, 2, 10, 50, 100, 105, 110, 111, 112, 113, 120]
+SPEED2 = 'mekanism:upgrades={upgrades:{"mekanism:speed":2},input:{},output:{}}'
 
-main()
+
+def lido(pos, out_slot):
+    energy = progress = None
+    chat = cmd("data get block {} {} {} energy".format(*pos))
+    found = re.search(r"(-?\d+)\D*$", chat)
+    if found:
+        energy = int(found.group(1))
+    chat = cmd("data get block {} {} {} progress".format(*pos))
+    found = re.search(r"(-?\d+)\D*$", chat)
+    if found:
+        progress = int(found.group(1))
+    output = ["", 0]
+    for slot, id_, _name, _data, count in hid.read_items(pos):
+        if slot == out_slot:
+            output = [id_, count]
+    return energy, progress, output
+
+
+def efeito():
+    """Uma operação de cada máquina posta de um item com 2 de velocidade (o item que o original solta), de tick em tick, contra o rastro do original."""
+    rastros = os.path.join(TOOLS, "..", "rastros")
+    ctl("wait-ready")
+    cmd("gamemode creative")
+    cmd("fill -4 100 -8 16 100 10 minecraft:stone")
+    cmd("fill -4 101 -8 16 106 10 minecraft:air")
+    for index, (name, (entrada, in_slot, out_slot, burst)) in enumerate(EFEITO.items()):
+        item = f"mekanism:{name}"
+        pos = (2 + 4 * index, 101, 0)
+        rows = {}
+        for line in open(os.path.join(rastros, f"placed_run_{name}_speed2.jsonl")):
+            row = json.loads(line)
+            if "t" in row:
+                rows[row["t"]] = row
+        cmd("tick unfreeze")
+        cmd(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
+        cmd("clear @s")
+        cmd(f"give @s {item}[{SPEED2}]")
+        ctl("select", "1")
+        ctl("tp", str(pos[0]), "101", str(pos[2] + 3))
+        print(ctl("place", *map(str, pos), "--item", item).strip())
+        time.sleep(1.5)
+        cmd("tick freeze")
+        cmd(f'data merge block {pos[0]} {pos[1]} {pos[2]} {{Items:[{{Slot:{in_slot}b,id:"minecraft:{entrada}",count:5}}]}}')
+        cmd(f"data merge block {pos[0]} {pos[1]} {pos[2]} {{energy:{burst}}}")
+        done = 0
+        bad = 0
+        for target in EFEITO_PASSOS:
+            if target > done:
+                before = json.loads(ctl("state"))["ticks"]
+                cmd(f"tick step {target - done}")
+                for _ in range(200):
+                    time.sleep(0.3)
+                    if json.loads(ctl("state"))["ticks"] >= before + target - done:
+                        break
+                done = target
+            energy, progress, output = lido(pos, out_slot)
+            want = rows[3 + target]
+            same = energy == want["energy"] and progress == want["progress"] and output == want["output"]
+            bad += not same
+            print(f"{name} k={target:3d} port energia={energy} progresso={progress} saida={output} | original energia={want['energy']} progresso={want['progress']} saida={want['output']} {'ok' if same else 'DIFERE'}")
+        expect(f"{name}: a máquina posta do item com velocidade 2 anda como o original ({len(EFEITO_PASSOS)} marcas)", bad == 0)
+        cmd(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
+    cmd("tick unfreeze")
+    print("falhas:", failures)
+
+
+def video():
+    """O roteiro do vídeo, com pausas para a tela se ver. A máquina é a primeira de `MACHINES` (a Enrichment Chamber com 3 de velocidade, 2 de energia, três pilhas e modo de redstone)."""
+    import h2_blocos as hb
+
+    item, _pos, components, _label, _total = MACHINES[0]
+    x, y, z = 60, -60, 80
+    stand = f"{x + 0.5} {y} {z + 3.5} 180 20"
+    ctl("wait-ready")
+    for c in ("gamemode survival", "weather clear", "time set noon", "gamerule advance_time false", "gamerule advance_weather false", "gamerule spawn_mobs false", "kill @e[type=!minecraft:player]",
+              f"fill {x - 8} {y} {z - 8} {x + 8} {y + 6} {z + 8} minecraft:air", "clear @s"):
+        cmd(c)
+    ctl("options-set", "guiScale", "4")
+    ctl("options-set", "chatVisibility", "2")
+    cmd(f"tp @s {stand}")
+    time.sleep(1.0)
+    # antes: o item posto e a tela aberta, com a aba de upgrades
+    hb.item_cena(f"item replace entity @a hotbar.0 with {item}[{components}]")
+    hb.item_cena(f"#colocar {x} {y - 1} {z}")
+    time.sleep(1.5)
+    hb.item_cena(f"#abrir {x} {y} {z}")
+    time.sleep(3.0)
+    hb.item_cena("#clicar 190,19")
+    time.sleep(4.0)
+    hb.item_cena("#tela")
+    time.sleep(1.0)
+    # quebrada: o item cai, e a mão o pega
+    hb.item_cena(f"#quebrar {x} {y} {z}")
+    time.sleep(2.0)
+    cmd("execute as @a at @e[type=minecraft:item,limit=1] run tp @a ~ ~ ~")
+    time.sleep(2.0)
+    cmd(f"tp @s {stand}")
+    time.sleep(1.0)
+    # o tooltip do item que a mão pegou
+    hb.item_cena("#inventario 0")
+    time.sleep(6.0)
+    hb.item_cena("#tela")
+    time.sleep(1.0)
+    # posta de novo, e a tela depois
+    hb.item_cena(f"#colocar {x} {y - 1} {z}")
+    time.sleep(1.5)
+    hb.item_cena(f"#abrir {x} {y} {z}")
+    time.sleep(3.0)
+    hb.item_cena("#clicar 190,19")
+    time.sleep(5.0)
+    hb.item_cena("#tela")
+    hb.item_cena(f"#quebrar {x} {y} {z}")
+    time.sleep(1.0)
+    cmd("kill @e[type=minecraft:item]")
+    cmd("clear @s")
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "efeito":
+    efeito()
+elif len(sys.argv) > 1 and sys.argv[1] == "video":
+    video()
+else:
+    main()
