@@ -29,6 +29,16 @@
     "#esperar 10"
    ],
    "tp": "60.0 -58.0 70.0 0 10"
+  },
+  {
+   "name": "transportador_hotbar_ultimate",
+   "cmds": [
+    "item replace entity @a hotbar.0 with mekanism:ultimate_universal_cable 1",
+    "item replace entity @a hotbar.1 with mekanism:ultimate_pressurized_tube 1",
+    "item replace entity @a hotbar.2 with mekanism:ultimate_thermodynamic_conductor 1",
+    "#esperar 10"
+   ],
+   "tp": "60.0 -58.0 70.0 0 10"
   }
  ]
 }

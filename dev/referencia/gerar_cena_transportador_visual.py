@@ -22,13 +22,17 @@ SETUP = ["difficulty peaceful", "time set 6000", "weather clear", "gamemode crea
 CLEAR = "fill 52 -60 78 120 -52 96 minecraft:air"
 
 
-def linha(x0, z0, cor):
+COMPONENTES = ["minecraft:diamond_sword[enchantments={sharpness:5}]", "minecraft:iron_pickaxe[damage=100]", "minecraft:stick[custom_name='Nome']", "minecraft:enchanted_book", "minecraft:diamond_sword[enchantments={sharpness:5}]",
+               "minecraft:iron_pickaxe[damage=100]", "minecraft:golden_apple", "minecraft:apple"]
+
+
+def linha(x0, z0, cor, itens=ITENS):
     """Um baú, três transportadores em x, a curva para o sul, mais dois, a curva para o leste e outros dois, e o baú de chegada."""
     caminho = [(x0 + 1, z0), (x0 + 2, z0), (x0 + 3, z0), (x0 + 3, z0 + 1), (x0 + 3, z0 + 2), (x0 + 4, z0 + 2), (x0 + 5, z0 + 2)]
     cmds = [f"setblock {x0} {Y} {z0} minecraft:chest"]
     cmds += [f"setblock {x} {Y} {z} mekanism:basic_logistical_transporter" for x, z in caminho]
     cmds.append(f"setblock {x0 + 6} {Y} {z0 + 2} minecraft:chest")
-    cmds += [f"item replace block {x0} {Y} {z0} container.{i} with {item} 16" for i, item in enumerate(ITENS)]
+    cmds += [f"item replace block {x0} {Y} {z0} container.{i} with {item} 16" for i, item in enumerate(itens)]
     cmds.append("#esperar 20")
     cmds += [f"#cor {x} {Y} {z} {cor}" for x, z in caminho]
     cmds.append("#esperar 10")
@@ -39,6 +43,8 @@ def main():
     cmds_a, primeiro_a = linha(60, Z, 4)
     cmds_b, primeiro_b = linha(70, Z, 1)
     linha_cmds = cmds_a + cmds_b + ["tick freeze", f"#conexao {primeiro_a[0]} {Y} {primeiro_a[1]} west=pull", f"#conexao {primeiro_b[0]} {Y} {primeiro_b[1]} west=pull", f"tick step {PASSOS}", f"#esperar {PASSOS * 2 + 20}"]
+    cmds_c, primeiro_c = linha(80, Z, 4, COMPONENTES)
+    componentes = ["tick unfreeze"] + cmds_c + ["tick freeze", f"#conexao {primeiro_c[0]} {Y} {primeiro_c[1]} west=pull", f"tick step {PASSOS}", f"#esperar {PASSOS * 2 + 20}"]
     vidro = []
     for k in range(len(CORES_DO_VIDRO)):
         vidro += [f"setblock {56 + 2 * k} {Y} {Z} mekanism:basic_logistical_transporter"]
@@ -52,6 +58,7 @@ def main():
         "shots": [
             {"name": "transportador_linha", "cmds": linha_cmds, "tp": "68.0 -50.0 83.0 0 90"},
             {"name": "transportador_vidro", "cmds": ["tick unfreeze"] + vidro, "tp": "61.0 -53.5 82.5 0 90"},
+            {"name": "transportador_componentes", "cmds": componentes, "tp": "83.0 -53.0 83.0 0 90"},
         ],
     }
     with open(os.path.join(HERE, "cenas/transportador_visual.json"), "w") as handle:
@@ -64,7 +71,12 @@ def main():
         "setup": SETUP + ["clear @a"] + [f"item replace entity @a hotbar.{i} with {item} 1" for i, item in enumerate(itens)],
         "clear": "fill 52 -60 78 56 -52 80 minecraft:air",
         "hud": True,
-        "shots": [{"name": "transportador_hotbar", "cmds": ["#esperar 10"], "tp": "60.0 -58.0 70.0 0 10"}],
+        "shots": [
+            {"name": "transportador_hotbar", "cmds": ["#esperar 10"], "tp": "60.0 -58.0 70.0 0 10"},
+            # os quatro tiers: o primeiro tiro mostra basic, advanced e elite dos três tipos (nove), este o ultimate deles (os doze itens)
+            {"name": "transportador_hotbar_ultimate", "cmds": [f"item replace entity @a hotbar.{i} with mekanism:ultimate_{kind} 1" for i, kind in enumerate(kinds)] + ["#esperar 10"],
+             "tp": "60.0 -58.0 70.0 0 10"},
+        ],
     }
     with open(os.path.join(HERE, "cenas/transportador_hotbar.json"), "w") as handle:
         json.dump(hotbar, handle, indent=1)

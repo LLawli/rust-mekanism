@@ -847,10 +847,35 @@ pub(in crate::game) fn stack_box_register(models: &mut Vec<String>, model: &'sta
     }
 }
 
-/// A pilha do jogo que o cliente guarda de uma pilha em trânsito: o item e a quantidade um (o desenho não mostra a quantidade).
-fn drawn_item(stack: &machinery_basis_core::transmission::client::ClientStack) -> Option<horizon_client::items::ItemStack> {
+/// O NBT do jogo de uma tag da lib (os `components` do `ItemResource.CODEC` no pacote do transportador).
+fn game_tag(tag: &machinery_basis_core::transmission::transmitter::Tag) -> Tag {
+    use machinery_basis_core::transmission::transmitter::Tag as Lib;
+    match tag {
+        Lib::Byte(v) => Tag::Byte(*v),
+        Lib::Short(v) => Tag::Short(*v),
+        Lib::Int(v) => Tag::Int(*v),
+        Lib::Long(v) => Tag::Long(*v),
+        Lib::Float(v) => Tag::Float(v.to_bits()),
+        Lib::Double(v) => Tag::Double(v.to_bits()),
+        Lib::String(v) => Tag::String(JavaString::from(v.as_str())),
+        Lib::ByteArray(v) => Tag::ByteArray(v.iter().map(|b| *b as u8).collect()),
+        Lib::IntArray(v) => Tag::IntArray(v.clone()),
+        Lib::LongArray(v) => Tag::LongArray(v.clone()),
+        Lib::List(v) => Tag::List(v.iter().map(game_tag).collect()),
+        Lib::Compound(v) => Tag::Compound(v.iter().map(|(key, value)| (JavaString::from(key.as_str()), game_tag(value))).collect()),
+    }
+}
+
+/// `ItemResource.toStack(1)` da pilha em trânsito (`RenderLogisticalTransporter`: `stack.itemStack`, com o dano e os componentes que o pacote leva): o item, a quantidade um (o desenho
+/// não mostra a quantidade) e o `components` do recurso (o brilho do encantamento, o dano, o nome) pelo mesmo decodificador que o NBT do tile usa.
+pub(in crate::game) fn drawn_item(stack: &machinery_basis_core::transmission::client::ClientStack) -> Option<horizon_client::items::ItemStack> {
     let (id, _) = stack.item.as_ref()?;
-    Some(horizon_client::items::ItemStack::new(id, 1))
+    let components = stack.components.as_ref().map(game_tag);
+    let (damage, extra) = horizon_client::item_data::decode_components(components.as_ref());
+    let mut item = horizon_client::items::ItemStack::new(id, 1);
+    item.damage = damage;
+    item.extra = extra;
+    Some(item)
 }
 
 /// `RenderLogisticalTransporter.submit`: para cada pilha desenhada (`drawn_stacks`: a posição interpolada, sem as repetidas), a caixa colorida se ela tem cor (`TRANSPORTER_BOX` tingida com
