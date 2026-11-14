@@ -35,6 +35,7 @@ public class CenaItem {
 
     private static List<Action> plan;
     private static int ticks;
+    private static int hoverHotbar = -1;
 
     @SubscribeEvent
     public static void onTick(ClientTickEvent.Post event) {
@@ -47,6 +48,10 @@ public class CenaItem {
             plan = build(minecraft, server);
         }
         ticks++;
+        // O jogo recentra o cursor ao abrir uma tela: o cursor do slot é posto de novo a cada tick, para o tooltip estar lá quando o print sai.
+        if (hoverHotbar >= 0 && minecraft.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen screen) {
+            placeCursor(minecraft, screen, hoverHotbar);
+        }
         for (Action action : plan) {
             if (action.tick == ticks) {
                 action.run.run();
@@ -110,7 +115,10 @@ public class CenaItem {
             String[] words = command.split("\\s+");
             switch (words[0]) {
                 case "#inventario" -> inventory(minecraft, Integer.parseInt(words[1]));
-                case "#tela" -> minecraft.setScreen(null);
+                case "#tela" -> {
+                    hoverHotbar = -1;
+                    minecraft.gui.setScreen(null);
+                }
                 case "#colocar" -> useOn(minecraft, pos(words), true);
                 case "#abrir" -> useOn(minecraft, pos(words), false);
                 case "#quebrar" -> server.execute(() -> server.overworld().destroyBlock(pos(words), true, server.getPlayerList().getPlayers().get(0)));
@@ -136,7 +144,12 @@ public class CenaItem {
     /// `#inventario N`: a tela do inventário aberta com o cursor no centro do slot `N` da barra de atalhos (o tooltip do item aparece).
     private static void inventory(Minecraft minecraft, int hotbar) {
         var screen = new net.minecraft.client.gui.screens.inventory.InventoryScreen(minecraft.player);
-        minecraft.setScreen(screen);
+        minecraft.gui.setScreen(screen);
+        hoverHotbar = hotbar;
+        placeCursor(minecraft, screen, hotbar);
+    }
+
+    private static void placeCursor(Minecraft minecraft, net.minecraft.client.gui.screens.inventory.InventoryScreen screen, int hotbar) {
         try {
             var left = net.minecraft.client.gui.screens.inventory.AbstractContainerScreen.class.getDeclaredField("leftPos");
             var top = net.minecraft.client.gui.screens.inventory.AbstractContainerScreen.class.getDeclaredField("topPos");

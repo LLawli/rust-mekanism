@@ -235,7 +235,11 @@ def video():
     time.sleep(1.0)
     # o tooltip do item que a mão pegou
     hb.item_cena("#inventario 0")
-    time.sleep(6.0)
+    time.sleep(3.0)
+    # a tecla de detalhes (Left Shift) mostra os detalhes do item, como no original
+    ctl("key", "shift", "down")
+    time.sleep(4.0)
+    ctl("key", "shift", "up")
     hb.item_cena("#tela")
     time.sleep(1.0)
     # posta de novo, e a tela depois

@@ -4,7 +4,7 @@
   "difficulty peaceful",
   "time set noon",
   "weather clear",
-  "gamemode survival",
+  "gamemode survival @a",
   "gamerule advance_time false",
   "gamerule advance_weather false",
   "fill 52 -60 70 100 -52 90 minecraft:air",

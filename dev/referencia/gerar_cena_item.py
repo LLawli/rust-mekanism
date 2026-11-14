@@ -42,7 +42,7 @@ def shots():
 def main():
     scene = dict(
         hud=True,
-        setup=["difficulty peaceful", "time set noon", "weather clear", "gamemode survival", "gamerule advance_time false", "gamerule advance_weather false",
+        setup=["difficulty peaceful", "time set noon", "weather clear", "gamemode survival @a", "gamerule advance_time false", "gamerule advance_weather false",
                "fill 52 -60 70 100 -52 90 minecraft:air", "kill @e[type=minecraft:item]"],
         clear="weather clear",
         shots=shots(),
