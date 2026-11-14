@@ -208,8 +208,18 @@ fn the_contents_model_sits_inside_the_block_once_moved_by_the_pose_translation()
     }
     assert!(vertices > 100, "{vertices} vertices");
     for axis in 0..3 {
-        assert!(low[axis] >= 0.0 && high[axis] <= 1.0, "axis {axis}: {} to {}", low[axis], high[axis]);
+        assert!(
+            low[axis] >= 0.0 && high[axis] <= 1.0,
+            "axis {axis}: {} to {}",
+            low[axis],
+            high[axis]
+        );
         // O conteúdo chega às duas faces do bloco: o modelo cobre o bloco todo, e não só um canto dele.
-        assert!(high[axis] - low[axis] > 0.9, "axis {axis}: {} to {}", low[axis], high[axis]);
+        assert!(
+            high[axis] - low[axis] > 0.9,
+            "axis {axis}: {} to {}",
+            low[axis],
+            high[axis]
+        );
     }
 }
