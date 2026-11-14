@@ -219,6 +219,7 @@ public class CenaReabrir {
         passos.add(noMenu());
         passos.add(zera());
         passos.add(espera(40));
+        passos.add(zera());
         passos.add(abre());
         passos.add(zera());
         for (int t : new int[]{1, 10, 40, 100}) {

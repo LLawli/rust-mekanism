@@ -517,7 +517,7 @@ def contorno():
     nome, arquivo = os.environ["NOME"], os.environ.get("ARQUIVO", "forma-contorno.mp4")
     segura = float(os.environ.get("SEGURA", "7"))
     poses = lista_cameras()
-    segundos = int(len(poses) * (segura + 1.5) + 12)
+    segundos = int(len(poses) * (segura + 1.5) + 20)
     n.sky()
     cmd("tick unfreeze")
     cmd("gamemode creative @s")

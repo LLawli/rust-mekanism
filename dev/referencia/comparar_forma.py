@@ -103,6 +103,13 @@ def contorno_so(pose, regiao, port_com, port_sem, orig_com, orig_sem, saida, lim
     out["so_original"] = pixels_de(cor, "#0000FF")
     out["so_port"] = pixels_de(cor, "#FFFF00")
     # Os maiores grupos de cada lado (area, x, y, largura, altura no recorte da região): a causa se acha ampliando essa caixa nos dois quadros.
+    # Quantos desses pixels têm um pixel do outro jogo a 1 de distância (a linha um pixel ao lado: serrilhado ou espessura) e quantos não têm (uma linha que só um jogo desenha, ou outra coisa no quadro).
+    for nome, a, b in (("so_port_longe", mp, mo), ("so_original_longe", mo, mp)):
+        magick(b, "-alpha", "off", "-morphology", "Dilate", "Square:1", f"{cor}.dil.png")
+        magick(a, "-alpha", "off", f"{cor}.dil.png", "-compose", "MinusSrc", "-composite", f"{cor}.longe.png")
+        out[nome] = conta(f"{cor}.longe.png")
+        os.remove(f"{cor}.dil.png")
+        os.remove(f"{cor}.longe.png")
     out["grupos_so_port"] = componentes(cor, "#FFFF00")[:6]
     out["grupos_so_original"] = componentes(cor, "#0000FF")[:6]
     magick(cor, "-filter", "point", "-resize", "200%", f"{saida}/{pose}_contorno.png")
