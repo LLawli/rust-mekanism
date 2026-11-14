@@ -69,10 +69,30 @@ impl BlockEntityOrder {
         chunk: (i32, i32),
         present: &[BlockPos],
     ) -> Vec<BlockPos> {
-        let mut map = self
+        let map = self
             .chunks
             .remove(&(dimension.to_owned(), chunk.0, chunk.1))
             .unwrap_or_default();
+        Self::reconcile(map, present)
+    }
+
+    /// A ordem de `unload` sem tirar o mapa do chunk: o Horizon solta um chunk que o original segura (decisão 199), e o mapa dele segue com a mesma história até o original soltá-lo.
+    pub fn peek(&self, dimension: &str, chunk: (i32, i32), present: &[BlockPos]) -> Vec<BlockPos> {
+        let map = self
+            .chunks
+            .get(&(dimension.to_owned(), chunk.0, chunk.1))
+            .cloned()
+            .unwrap_or_default();
+        Self::reconcile(map, present)
+    }
+
+    /// O original soltou o chunk que o Horizon já tinha soltado: o mapa dele sai.
+    pub fn forget(&mut self, dimension: &str, chunk: (i32, i32)) {
+        self.chunks
+            .remove(&(dimension.to_owned(), chunk.0, chunk.1));
+    }
+
+    fn reconcile(mut map: OpenHashMap<BlockPos, ()>, present: &[BlockPos]) -> Vec<BlockPos> {
         let known = map.keys_in_order();
         for pos in &known {
             if !present.contains(pos) {

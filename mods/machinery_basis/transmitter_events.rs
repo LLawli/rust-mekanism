@@ -18,6 +18,12 @@
 // redstone reativo pisca). A ordem em que o chunk que sai visita os block entities é a do mapa de todos eles (`BlockEntityOrder` da lib, decisão 188): `chunk_unloading` recebe
 // todos, de qualquer tipo, nessa ordem.
 //
+// O chunk que o Horizon solta e o original ainda segura (decisão 199): o `LevelChunk` do original só sai da memória quando o ticket de carga passa do nível `RETAINED_LEVEL` (o
+// `ChunkHolder` vai para `toDrop` com o nível acima de `ChunkLevel.MAX_LEVEL`); entre o 33 e esse nível ele é "inacessível" mas segue com os block entities, que não recebem
+// `onChunkUnloaded` nem `setRemoved`, e o ticket de "carregado" os traz de volta à rede sem `clearRemoved` quando o chunk volta ao anel. O Horizon solta o chunk no raio residente
+// dele, menor que esse: o `Tracker` segura os transmissores do chunk solto (`chunk_unloading_with`), não dá o `clearRemoved` de novo se o chunk volta (os que seguia continuam seguidos) e só
+// entrega a saída de verdade quando o original soltaria o chunk (`release_held`).
+//
 // Só `std`: o teste do `machinery_basis_core` compila este arquivo como está (`tests/transmitter_events.rs`).
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -43,6 +49,47 @@ fn step(pos: Pos, side: usize) -> Pos {
 /// O chunk de uma posição (`ChunkPos`, em chunks).
 pub fn chunk_of(pos: Pos) -> [i32; 2] {
     [pos[0] >> 4, pos[2] >> 4]
+}
+
+/// O nível de ticket de carga em que o original ainda segura o `LevelChunk` com os block entities (`ChunkLevel.MAX_LEVEL`: 33 mais o raio de dependências até o estado `FULL`); o chunk de
+/// nível maior é solto (`ChunkMap.processUnloads`: `setLoaded(false)`, `ChunkEvent.Unload` e `ServerLevel.unload`).
+pub const RETAINED_LEVEL: i32 = 44;
+
+/// Os tickets de carga de um nível (`DistanceManager`, o que o `ticket_levels` do Horizon modela): cada jogador segura o nível 31 no raio da distância de visão, e o nível sobe um por chunk
+/// a partir dali; um chunk forçado segura o 31, um ticket de portal o 30 e a arena do dragão o 24, e o nível sobe um por chunk a partir do centro. O chunk toma o menor.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LoadingTickets {
+    pub players: Vec<[i32; 2]>,
+    pub forced: Vec<[i32; 2]>,
+    pub portal: Vec<[i32; 2]>,
+    pub dragon: Option<[i32; 2]>,
+    pub view_distance: i32,
+}
+
+impl LoadingTickets {
+    /// O nível de ticket de carga do chunk (`ChunkHolder.getTicketLevel`), sem teto: o `ticket_levels` do Horizon corta o nível em 33, e o que importa aqui é o de depois dele.
+    pub fn level(&self, chunk: [i32; 2]) -> i32 {
+        let distance = |at: &[i32; 2]| (chunk[0] - at[0]).abs().max((chunk[1] - at[1]).abs());
+        let mut level = i32::MAX;
+        for player in &self.players {
+            level = level.min(31 + (distance(player) - self.view_distance).max(0));
+        }
+        for forced in &self.forced {
+            level = level.min(31 + distance(forced));
+        }
+        for portal in &self.portal {
+            level = level.min(30 + distance(portal));
+        }
+        if let Some(arena) = &self.dragon {
+            level = level.min(24 + distance(arena));
+        }
+        level
+    }
+
+    /// O original ainda segura o chunk na memória, com os block entities?
+    pub fn retains(&self, chunk: [i32; 2]) -> bool {
+        self.level(chunk) <= RETAINED_LEVEL
+    }
 }
 
 /// O que o dono de um transmissor recebe.
@@ -350,6 +397,37 @@ pub fn chunk_unloading(dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String
     out
 }
 
+/// O mesmo, quando o original seguraria o chunk que o Horizon solta (`hold`, decisão 199): os transmissores ficam seguidos até `release_held`.
+pub fn chunk_unloading_with(dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)], hold: bool) -> Vec<Event> {
+    let mut out = Vec::new();
+    lock(&TRACKER).chunk_unloading_with(dim, chunk, blocks, hold, &mut out);
+    out
+}
+
+/// Os chunks segurados da dimensão (os que o Horizon soltou e o original ainda teria).
+pub fn held_chunks(dim: &str) -> Vec<[i32; 2]> {
+    lock(&TRACKER).held_chunks(dim)
+}
+
+/// O chunk está segurado (o Horizon o soltou e o original ainda o teria)?
+pub fn is_held(dim: &str, chunk: [i32; 2]) -> bool {
+    lock(&TRACKER).held.contains_key(&(dim.to_owned(), chunk))
+}
+
+/// O original solta os chunks segurados que `retains` já não segura: os chunks e a saída de verdade deles, em ordem de posição.
+pub fn release_held(dim: &str, retains: impl Fn([i32; 2]) -> bool) -> (Vec<[i32; 2]>, Vec<Event>) {
+    let mut out = Vec::new();
+    let mut released = Vec::new();
+    let mut tracker = lock(&TRACKER);
+    for chunk in tracker.held_chunks(dim) {
+        if !retains(chunk) {
+            tracker.release_held(dim, chunk, &mut out);
+            released.push(chunk);
+        }
+    }
+    (released, out)
+}
+
 pub fn placed(dim: &str, pos: Pos) -> Vec<Event> {
     let mut out = Vec::new();
     lock(&TRACKER).simple(dim, pos, Kind::PlacedByItem, &mut out);
@@ -380,6 +458,7 @@ pub fn reset() -> Vec<Event> {
     tracker.loading.clear();
     tracker.seen.clear();
     tracker.access.clear();
+    tracker.held.clear();
     if DROP_PROBE {
         let (queued, loads) = queue_load();
         eprintln!("MBD {{\"reset_clears\":{queued},\"loads\":{loads}}}");
@@ -447,11 +526,22 @@ pub struct Tracker {
     /// Se cada chunk carregado está no anel acessível do original (nível de ticket 32 ou menos, `ChunkMap.MAX_VIEW_DISTANCE`), pelo último ticket dado: o chunk que sai do anel (o jogador se
     /// afastou) fica carregado por mais tempo (nível 33), e os transmissores dele já saíram da rede (`chunkAccessibilityChange(false)`).
     access: HashMap<(String, [i32; 2]), bool>,
+    /// Os chunks que o Horizon soltou e o original ainda segura (decisão 199), com os block entities de cada um, na ordem do mapa do chunk: os transmissores deles seguem seguidos (`tracked`,
+    /// `present`), sem `onChunkUnloaded` nem `setRemoved`, até o chunk voltar ou o original soltá-lo.
+    held: HashMap<(String, [i32; 2]), BlockList>,
 }
 
 impl Tracker {
     pub fn new() -> Self {
-        Self { ids: HashSet::new(), tracked: HashMap::new(), present: HashMap::new(), loading: HashMap::new(), seen: HashSet::new(), access: HashMap::new() }
+        Self {
+            ids: HashSet::new(),
+            tracked: HashMap::new(),
+            present: HashMap::new(),
+            loading: HashMap::new(),
+            seen: HashSet::new(),
+            access: HashMap::new(),
+            held: HashMap::new(),
+        }
     }
 
     pub fn with_ids(ids: &[&str]) -> Self {
@@ -556,6 +646,8 @@ impl Tracker {
     }
 
     pub fn chunk_loaded_with(&mut self, dim: &str, chunk: [i32; 2], accessible: bool, out: &mut Vec<Event>) {
+        // O chunk que o original segurou volta: os block entities dele seguem os mesmos (nada de `clearRemoved`: `added` não repete quem não saiu), e só o ticket os leva à rede.
+        self.held.remove(&(dim.to_owned(), chunk));
         self.access.insert((dim.to_owned(), chunk), accessible);
         if accessible {
             out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: true });
@@ -585,6 +677,41 @@ impl Tracker {
     }
 
     pub fn chunk_unloading(&mut self, dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)], out: &mut Vec<Event>) {
+        self.chunk_unloading_with(dim, chunk, blocks, false, out);
+    }
+
+    /// O Horizon solta o chunk; `hold` diz que o original o seguraria (o nível de ticket até `RETAINED_LEVEL`): os transmissores dele ficam como estão, só o ticket de saída do anel sai se o
+    /// chunk ainda estava dentro dele, e a saída de verdade espera `release_held`.
+    pub fn chunk_unloading_with(&mut self, dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)], hold: bool, out: &mut Vec<Event>) {
+        if !hold {
+            self.held.remove(&(dim.to_owned(), chunk));
+            self.unload(dim, chunk, blocks, out);
+            return;
+        }
+        if let Some(state) = self.access.get_mut(&(dim.to_owned(), chunk))
+            && std::mem::replace(state, false)
+        {
+            out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: false });
+        }
+        self.loading.remove(&(dim.to_owned(), chunk));
+        self.held.insert((dim.to_owned(), chunk), blocks.to_vec());
+    }
+
+    /// Os chunks segurados da dimensão, em ordem de posição.
+    pub fn held_chunks(&self, dim: &str) -> Vec<[i32; 2]> {
+        let mut chunks: Vec<[i32; 2]> = self.held.keys().filter(|(held_dim, _)| held_dim == dim).map(|(_, chunk)| *chunk).collect();
+        chunks.sort_unstable();
+        chunks
+    }
+
+    /// O original solta o chunk segurado: a saída que o Horizon adiou (`ChunkEvent.Unload`, o `onChunkUnloaded` de todos e o `setRemoved` de todos).
+    pub fn release_held(&mut self, dim: &str, chunk: [i32; 2], out: &mut Vec<Event>) {
+        if let Some(blocks) = self.held.remove(&(dim.to_owned(), chunk)) {
+            self.unload(dim, chunk, &blocks, out);
+        }
+    }
+
+    fn unload(&mut self, dim: &str, chunk: [i32; 2], blocks: &[(Pos, Option<String>)], out: &mut Vec<Event>) {
         // O chunk que já saiu do anel acessível não dá o ticket outra vez ao sair (o nível já passou de 32); sem registro conta como dentro.
         if self.access.remove(&(dim.to_owned(), chunk)).unwrap_or(true) {
             out.push(Event::Ticket { dim: dim.to_owned(), chunk, loaded: false });

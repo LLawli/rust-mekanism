@@ -35,7 +35,7 @@ use machinery_basis_core::temperature;
 use machinery_basis_core::upgrade::{self, UpgradeSaved, UpgradeTags, UpgradeTypes};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Instant;
 
@@ -307,7 +307,11 @@ impl Game<'_> {
             let extra = std::mem::take(&mut self.streaming.extra);
             let before = self.world.chunks.len();
             self.streaming.radius = -1;
+            // O nível que ninguém segura solta tudo: nada fica segurado para o original (decisão 199), nem o que o Horizon já tinha soltado antes.
+            RELEASE_ALL.store(true, Ordering::Relaxed);
             self.update_world();
+            transmitters_release_held(self, dim.id(), true);
+            RELEASE_ALL.store(false, Ordering::Relaxed);
             self.streaming.radius = radius;
             self.streaming.extra = extra;
             if TRANSMITTER_PROBE {
@@ -348,7 +352,10 @@ impl Game<'_> {
                 continue;
             }
             let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
+            RELEASE_ALL.store(true, Ordering::Relaxed);
             self.native_chunks_changed(&chunks);
+            transmitters_release_held(self, dim.id(), true);
+            RELEASE_ALL.store(false, Ordering::Relaxed);
         }
         if self.dim != back {
             let _ = self.enter_level(None, back);
@@ -3497,7 +3504,11 @@ fn transmitters_note_order(dimension: &str, raws: &[transmitters::Raw]) {
             transmitters::Raw::Removed { pos, .. } => order.remove(dimension, sim_pos(*pos)),
             transmitters::Raw::LoadChunk(blocks) => {
                 if let Some((first, _)) = blocks.first() {
-                    order.load(dimension, (first[0] >> 4, first[2] >> 4), blocks.iter().map(|(pos, _)| sim_pos(*pos)));
+                    let chunk = (first[0] >> 4, first[2] >> 4);
+                    // O chunk que o original segurou volta com o mesmo mapa (os mesmos block entities, na mesma ordem): o mapa dele não recomeça (decisão 199).
+                    if !transmitters::is_held(dimension, [chunk.0, chunk.1]) {
+                        order.load(dimension, chunk, blocks.iter().map(|(pos, _)| sim_pos(*pos)));
+                    }
                 }
             }
             transmitters::Raw::Neighbor { .. } => {}
@@ -3665,12 +3676,42 @@ fn chunk_accessible(game: &Game<'_>, dimension: &str, chunk: [i32; 2]) -> bool {
     dimension != game.native_dimension() || game.tickets.levels().loaded_ticking(chunk[0], chunk[1])
 }
 
-/// O chunk vai sair (o gancho `chunk_unload`, que o jogo chama com os block entities ainda no lugar): os block entities de mod do chunk, na ordem do mapa dele.
+/// O chunk está num nível que o original segura (decisão 199)? Os tickets de carga do nível no lugar (`ChunkTickets::mb_sources`, o que `update_chunk_tickets` montou) dão o nível de ticket do
+/// chunk como o `DistanceManager` o daria, sem o teto de 33 do `ticket_levels` do Horizon; até `RETAINED_LEVEL` o `LevelChunk` segue na memória do original, com os block entities. De outro nível
+/// que o do lugar os tickets não valem, e o chunk não é segurado.
+fn chunk_retained(game: &Game<'_>, dimension: &str, chunk: [i32; 2]) -> bool {
+    if dimension != game.native_dimension() || RELEASE_ALL.load(Ordering::Relaxed) || mb_hold_off() {
+        return false;
+    }
+    let Some(sources) = game.tickets.mb_sources() else {
+        return false;
+    };
+    let tickets = transmitters::LoadingTickets {
+        players: sources.players.iter().map(|&(x, z)| [x, z]).collect(),
+        forced: sources.forced.iter().map(|&(x, z)| [x, z]).collect(),
+        portal: sources.portal.iter().map(|&(x, z)| [x, z]).collect(),
+        dragon: sources.dragon.map(|(x, z)| [x, z]),
+        view_distance: sources.view_distance,
+    };
+    tickets.retains(chunk)
+}
+
+/// Só na cópia de teste (`SETUPS_PROBE`): o arquivo `/tmp/mb_sem_retencao` desliga o que a decisão 199 segura, para medir o mesmo build com e sem ele. Fora da cópia de teste é a constante `false`.
+fn mb_hold_off() -> bool {
+    SETUPS_PROBE && std::path::Path::new("/tmp/mb_sem_retencao").exists()
+}
+
+/// O nível está soltando todos os chunks (o servidor fecha, ou o nível que o jogador deixou descarrega): nada fica segurado.
+static RELEASE_ALL: AtomicBool = AtomicBool::new(false);
+
+/// O chunk vai sair (o gancho `chunk_unload`, que o jogo chama com os block entities ainda no lugar): os block entities de mod do chunk, na ordem do mapa dele. Se o original ainda segurasse o chunk
+/// (`chunk_retained`), os transmissores dele ficam como estão (decisão 199) e a saída de verdade espera `transmitters_release_held`.
 pub(in crate::game) fn transmitters_chunk_unloading(game: &mut Game<'_>, dimension: &str, chunk: [i32; 2]) {
     if !transmitters::is_active() || game.remote.is_some() {
         return;
     }
     transmitters_flush(game);
+    let hold = chunk_retained(game, dimension, chunk);
     let entities = &game.world.block_entities;
     // Todos os block entities do chunk, de qualquer tipo, na ordem do mapa do original (o mapa guarda a história de cada um).
     let present: Vec<machinery_basis_core::sim::chunks::BlockPos> = entities
@@ -3678,7 +3719,10 @@ pub(in crate::game) fn transmitters_chunk_unloading(game: &mut Game<'_>, dimensi
         .filter(|(pos, _)| transmitters::chunk_of([pos.0, pos.1, pos.2]) == chunk)
         .map(|(pos, _)| sim_pos([pos.0, pos.1, pos.2]))
         .collect();
-    let ordered = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner()).unload(dimension, (chunk[0], chunk[1]), &present);
+    let ordered = {
+        let mut order = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner());
+        if hold { order.peek(dimension, (chunk[0], chunk[1]), &present) } else { order.unload(dimension, (chunk[0], chunk[1]), &present) }
+    };
     let blocks: Vec<([i32; 3], Option<String>)> = ordered
         .into_iter()
         .map(|pos| {
@@ -3689,7 +3733,27 @@ pub(in crate::game) fn transmitters_chunk_unloading(game: &mut Game<'_>, dimensi
             ([pos.x, pos.y, pos.z], id)
         })
         .collect();
-    let events = transmitters::chunk_unloading(dimension, chunk, &blocks);
+    let events = transmitters::chunk_unloading_with(dimension, chunk, &blocks, hold);
+    if SETUPS_PROBE && hold {
+        eprintln!("MBH {{\"t\":{},\"cx\":{},\"cz\":{},\"hold\":true}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
+    }
+    transmitters_deliver(game, events);
+}
+
+/// O original solta os chunks segurados que já não segura (o nível de ticket passou de `RETAINED_LEVEL`: o `ChunkMap.processUnloads` do `ChunkHolder` que foi para `toDrop`): a saída de verdade deles,
+/// o `ChunkEvent.Unload` e o `onChunkUnloaded` e `setRemoved` de cada transmissor, no fim do tick do nível, antes do `Post`. Só os do nível no lugar; `all` solta todos os da dimensão (o nível
+/// descarrega, ou o servidor fecha).
+pub(in crate::game) fn transmitters_release_held(game: &mut Game<'_>, dimension: &str, all: bool) {
+    if !transmitters::is_active() || game.remote.is_some() {
+        return;
+    }
+    let (released, events) = transmitters::release_held(dimension, |chunk| !all && chunk_retained(game, dimension, chunk));
+    {
+        let mut order = BLOCK_ENTITY_ORDER.lock().unwrap_or_else(|e| e.into_inner());
+        for chunk in &released {
+            order.forget(dimension, (chunk[0], chunk[1]));
+        }
+    }
     transmitters_deliver(game, events);
 }
 
@@ -3753,6 +3817,9 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
                 let _span = perf_span(PERF_END_FLUSH);
                 transmitters_flush(game);
             }
+            // Os chunks que o Horizon soltou e o original segurava, e que o original solta agora (o nível de ticket passou do limite): a saída de verdade, antes do `Post` do tick.
+            let held_dim = game.native_dimension().to_owned();
+            transmitters_release_held(game, &held_dim, false);
             // Os chunks que entraram ou saíram do anel acessível neste tick (o `ChunkTicketLevelUpdatedEvent`, que o registro anota e trata no `Post`).
             let dim = game.native_dimension().to_owned();
             let events = transmitters::accessibility(&dim, |chunk| chunk_accessible(game, &dim, chunk));

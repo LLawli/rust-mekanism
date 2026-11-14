@@ -12,7 +12,7 @@ import json
 import sys
 
 FAMILIAS = (("Energy", "En"), ("Fluid", "Fl"), ("Chemical", "Ch"), ("Heat", "He"))
-JANELAS = ("abre1", "fluxo", "afasta", "volta", "abre2")
+JANELAS = ("abre1", "fluxo", "afasta", "volta", "leitor", "abre2")
 
 
 def ler(caminho):

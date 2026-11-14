@@ -250,7 +250,7 @@ def abertura(saida, tag, ticks, espera):
     return todas
 
 
-def leitor_distante():
+def leitor_distante(saida):
     """O Network Reader num cabo distante (x = 100, o chunk 6), depois de o jogador ter ido e voltado como no original: o print `setups_port_leitor.png` (o do original é o
     `setups_oficial_leitor.png` da `CenaSetups`, a mesma cena), e o jogador volta ao começo. A pasta de saída é `LOCAL` (padrão ~/.cache/rust-mekanism/wa/setups-reais)."""
     import h2_ajustes_jogo as a
@@ -258,6 +258,7 @@ def leitor_distante():
     a.SHOTS = "/home/luka/.cache/rust-mekanism/setups-reais/prints"
     a.LOCAL = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/setups-reais"))
     stand = (100.5, -60.0, -3.0)
+    inicio = base.log_total()
     ctl("give", nr.READER, "1")
     cmd("tp @s %.2f %.2f %.2f 0 20" % stand)
     espera_ticks(80)
@@ -266,6 +267,9 @@ def leitor_distante():
     ctl("options-set", "guiScale", "3")
     nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False)
     a.shot("setups_port_leitor")
+    # A janela `leitor` do original (100 ticks desde o `tp`, decisão 199): a rede de energia e a fila de chunks tick a tick.
+    espera_ticks(30)
+    janela(saida, "leitor", inicio, 100)
     cmd("tp @s 2.5 -60 -6")
     espera_ticks(60)
 
@@ -295,7 +299,7 @@ def roteiro(caminho):
     espera_ticks(320)
     janela(saida, "volta", inicio, 300)
     marca(saida, "depois_de_voltar")
-    leitor_distante()
+    leitor_distante(saida)
     sair()
     abertura(saida, "abre2", 80, 100)
     sair()

@@ -1198,6 +1198,16 @@ bindings = [
   { name = "output", ty = "&mut Vec<ModelQuad>", value = "&mut *output" },
 ]
 
+# Os tickets de carga que o `ChunkTickets` do Horizon guarda (`Sources`: jogadores, chunks forçados, portais, a arena do dragão e a distância de visão), em campo privado. O `Levels` corta o
+# nível de carga em 33, e a `machinery_basis` precisa do nível de um chunk que o original ainda segura na memória, até 44 (`ChunkLevel.MAX_LEVEL`): o módulo é só um leitor de campo, que
+# enxerta um método no próprio `ChunkTickets`. Alvo cru (módulo), H223 (um método público que devolva os tickets ou o nível de ticket de um chunk sem o teto).
+[[module]]
+id = "ticket-sources"
+file = "crates/horizon-client/src/ticket_levels.rs"
+name = "machinery_ticket_sources"
+source = "ticket_sources.rs"
+visibility = "pub"
+
 # ---- os eventos do jogo que a rede de transmissores recebe (frente `rede-ganchos`, Fase 3) ----
 # `TileEntityTransmitter` e `TransmitterNetworkRegistry` vivem de eventos que o Horizon não dá a um block entity de mod: o `clearRemoved` (`LevelChunk.setBlockEntity`), o `setRemoved`
 # (`LevelChunk.removeBlockEntity`), a entrada de um chunk inteiro e o `onChunkUnloaded`. O módulo guarda a fila e a tradução (`transmitter_events.rs`); quatro alvos crus no

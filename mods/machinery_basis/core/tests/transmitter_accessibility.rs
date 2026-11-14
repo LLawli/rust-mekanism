@@ -13,6 +13,7 @@ use machinery_basis_core::transmission::owner::{
     Acceptor, CableInfo, CableView, EnergyTransmitters, Event, OwnerWorld,
 };
 use machinery_basis_core::transmission::{DimensionId, Uuid};
+use events::LoadingTickets;
 use std::collections::BTreeSet;
 use std::sync::{Mutex, MutexGuard};
 
@@ -20,6 +21,8 @@ const CABLE: &str = "test:cable";
 const OW: &str = "minecraft:overworld";
 /// Os chunks da linha: do 0 ao 13, como a pista de energia dos setups reais (o chunk 0 tem 15 cabos, de x = 1 a 15).
 const CHUNKS: i32 = 14;
+/// A linha longa da decisão 199: até o chunk 23, onde o Network Reader em x = 100 lê 383 transmissores no original.
+const LONG: i32 = 24;
 
 static SERIAL: Mutex<()> = Mutex::new(());
 
@@ -38,6 +41,10 @@ fn chunk_of(x: i32) -> i32 {
 struct Game {
     loaded: BTreeSet<i32>,
     ring: BTreeSet<i32>,
+    /// Os chunks da linha.
+    chunks: i32,
+    /// Onde os block entities andam (a distância de simulação), além de carregados e no anel; `None` anda em todo o anel.
+    ticking: Option<BTreeSet<i32>>,
 }
 
 impl OwnerWorld for Game {
@@ -54,7 +61,7 @@ impl OwnerWorld for Game {
     }
 
     fn cable_info(&mut self, pos: BlockPos) -> Option<CableInfo> {
-        (pos.z == 0 && (1..CHUNKS * 16).contains(&pos.x)).then_some(CableInfo {
+        (pos.z == 0 && (1..self.chunks * 16).contains(&pos.x)).then_some(CableInfo {
             capacity: 8_000,
             saved: None,
         })
@@ -67,6 +74,9 @@ struct World {
     owner: EnergyTransmitters,
     game: Game,
     pass: i64,
+    /// Os `clearRemoved` e os `setRemoved` que o dono recebeu.
+    clears: usize,
+    removals: usize,
 }
 
 fn cable_pos(x: i32) -> [i32; 3] {
@@ -100,6 +110,10 @@ fn owner_event(event: &GameEvent) -> Option<Event> {
 
 impl World {
     fn new() -> Self {
+        Self::with_chunks(CHUNKS)
+    }
+
+    fn with_chunks(chunks: i32) -> Self {
         let mut uuid = 0i32;
         let mut tile = 0i32;
         Self {
@@ -117,25 +131,53 @@ impl World {
             game: Game {
                 loaded: BTreeSet::new(),
                 ring: BTreeSet::new(),
+                chunks,
+                ticking: None,
             },
             pass: 0,
+            clears: 0,
+            removals: 0,
         }
     }
 
     fn deliver(&mut self, events: Vec<GameEvent>) {
         for event in &events {
             if let Some(event) = owner_event(event) {
+                match event {
+                    Event::ClearRemoved(_) => self.clears += 1,
+                    Event::Removed(_) => self.removals += 1,
+                    _ => {}
+                }
                 self.owner.handle(&mut self.game, event);
             }
         }
     }
 
+    /// Os cabos de um chunk da linha, como o jogo os lista.
+    fn blocks_of(&self, chunk: i32) -> Vec<([i32; 3], Option<String>)> {
+        (chunk * 16..chunk * 16 + 16)
+            .filter(|x| (1..self.game.chunks * 16).contains(x))
+            .map(|x| (cable_pos(x), Some(CABLE.to_owned())))
+            .collect()
+    }
+
+    /// O Horizon solta o chunk (o `chunk_unload` com os block entities ainda no lugar); `hold` diz que o original o seguraria.
+    fn unload(&mut self, chunk: i32, hold: bool) {
+        let blocks = self.blocks_of(chunk);
+        let events = events::chunk_unloading_with(OW, [chunk, 0], &blocks, hold);
+        self.deliver(events);
+        self.game.loaded.remove(&chunk);
+    }
+
+    /// O fim do tick do nível: o original solta o que já não segura (`tickets.retains`), antes dos tickets do anel e do `Post`.
+    fn release(&mut self, tickets: &LoadingTickets) {
+        let (_, events) = events::release_held(OW, |chunk| tickets.retains(chunk));
+        self.deliver(events);
+    }
+
     /// O chunk carrega (o `chunk_load` do Horizon): os cabos dele entram na fila e o `ChunkEvent.Load` sai com o lado do anel em que o chunk está agora.
     fn load(&mut self, chunk: i32) {
-        let blocks: Vec<_> = (chunk * 16..chunk * 16 + 16)
-            .filter(|x| (1..CHUNKS * 16).contains(x))
-            .map(|x| (cable_pos(x), Some(CABLE.to_owned())))
-            .collect();
+        let blocks = self.blocks_of(chunk);
         let first = events::translate(OW, vec![Raw::LoadChunk(blocks)]);
         assert!(first.is_empty());
         self.game.loaded.insert(chunk);
@@ -154,10 +196,11 @@ impl World {
             .iter()
             .copied()
             .filter(|chunk| self.game.ring.contains(chunk))
+            .filter(|chunk| self.game.ticking.as_ref().is_none_or(|set| set.contains(chunk)))
             .collect();
         for chunk in walking {
             for x in chunk * 16..chunk * 16 + 16 {
-                if (1..CHUNKS * 16).contains(&x) {
+                if (1..self.game.chunks * 16).contains(&x) {
                     let events = events::update(OW, cable_pos(x));
                     self.deliver(events);
                 }
@@ -188,15 +231,20 @@ impl World {
     }
 }
 
-/// O número de cabos dos chunks de `first` a `last`.
-fn cables_in(first: i32, last: i32) -> usize {
+/// O número de cabos dos chunks de `first` a `last` numa linha de `chunks` chunks.
+fn cables_of(chunks: i32, first: i32, last: i32) -> usize {
     (first..=last)
         .map(|chunk| {
             (chunk * 16..chunk * 16 + 16)
-                .filter(|x| (1..CHUNKS * 16).contains(x))
+                .filter(|x| (1..chunks * 16).contains(x))
                 .count()
         })
         .sum()
+}
+
+/// O número de cabos dos chunks de `first` a `last` da linha de `CHUNKS` chunks.
+fn cables_in(first: i32, last: i32) -> usize {
+    cables_of(CHUNKS, first, last)
 }
 
 #[test]
@@ -309,4 +357,148 @@ fn a_ring_that_flickers_while_the_chunks_load_ends_with_one_network() {
             CHUNKS - 2
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// O chunk que o Horizon solta e o original segura (decisão 199): o roteiro dos setups reais (afastar, voltar, `tp` a x = 100)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/// A distância de visão do servidor, a de simulação e o raio de chunks que o Horizon mantém (visão mais 4).
+const VIEW: i32 = 16;
+const SIMULATION: i32 = 13;
+const RESIDENT: i32 = VIEW + 4;
+
+fn tickets_of(player: i32) -> LoadingTickets {
+    LoadingTickets {
+        players: vec![[player, 0]],
+        view_distance: VIEW,
+        ..LoadingTickets::default()
+    }
+}
+
+impl World {
+    /// O jogador vai ao chunk `player`: o Horizon carrega os chunks do raio residente (primeiro fora do anel de antes, como o original, que os carrega no nível 33 e só depois os promove)
+    /// e solta os que saíram dele (segurando os que o original ainda teria, se `hold`); o anel acessível (nível 32 ou menos) e a simulação seguem o jogador, e o original solta o que já
+    /// não segura. `ticks` passadas de servidor depois.
+    fn follow(&mut self, player: i32, hold: bool, ticks: usize) {
+        let tickets = tickets_of(player);
+        for chunk in 0..self.game.chunks {
+            let resident = (chunk - player).abs() <= RESIDENT;
+            if resident && !self.game.loaded.contains(&chunk) {
+                self.load(chunk);
+            } else if !resident && self.game.loaded.contains(&chunk) {
+                self.unload(chunk, hold && tickets.retains([chunk, 0]));
+            }
+        }
+        self.game.ring = (0..self.game.chunks)
+            .filter(|chunk| tickets.level([*chunk, 0]) <= 32)
+            .collect();
+        self.game.ticking = Some(
+            (0..self.game.chunks)
+                .filter(|chunk| (chunk - player).abs() <= SIMULATION)
+                .collect(),
+        );
+        for _ in 0..ticks {
+            self.release(&tickets);
+            self.tick();
+        }
+    }
+}
+
+#[test]
+fn the_ticket_levels_are_the_distance_managers_up_to_the_level_the_original_drops_the_chunk() {
+    let tickets = tickets_of(0);
+    assert_eq!(tickets.level([0, 0]), 31);
+    assert_eq!(tickets.level([VIEW, 0]), 31);
+    assert_eq!(tickets.level([VIEW + 1, 0]), 32, "o anel acessível");
+    assert_eq!(tickets.level([VIEW + 2, 0]), 33, "o chunk inteiro, inacessível");
+    assert_eq!(tickets.level([VIEW + 2, 5]), 33, "a distância é a de Chebyshev");
+    assert!(tickets.retains([29, 0]), "o nível 44 ainda é segurado");
+    assert!(!tickets.retains([30, 0]), "o 45 o original solta");
+    let mut tickets = tickets_of(0);
+    tickets.forced = vec![[100, 0]];
+    tickets.portal = vec![[-50, 0]];
+    tickets.dragon = Some([0, 200]);
+    assert_eq!(tickets.level([100, 0]), 31, "um chunk forçado segura o 31");
+    assert_eq!(tickets.level([110, 0]), 41);
+    assert_eq!(tickets.level([-50, 0]), 30, "o ticket de portal é o 30");
+    assert_eq!(tickets.level([-44, 0]), 36);
+    assert_eq!(tickets.level([0, 200]), 24, "a arena do dragão é o 24");
+    assert_eq!(tickets.level([0, 210]), 34);
+    assert_eq!(LoadingTickets::default().level([0, 0]), i32::MAX, "sem tickets, o chunk não é segurado");
+}
+
+#[test]
+fn the_roteiro_of_the_setups_reais_ends_with_the_whole_line_in_the_network() {
+    // O afastar, o voltar e o `tp` a x = 100 do original (decisão 199): os chunks 21 a 23 saem do raio residente do Horizon quando o jogador volta ao chunk 0 e o original os segura
+    // (nível 36 a 38). No chunk 6 eles voltam ao anel acessível sem `clearRemoved`: o ticket de "carregado" os leva à rede, como no original (383 cabos), e não esperam um tick que
+    // a distância de simulação não dá.
+    let _world = begin();
+    let mut world = World::with_chunks(LONG);
+    world.follow(0, true, 6);
+    // Os chunks 14 a 17 estão no anel mas fora da simulação: os cabos deles nunca andaram, e o ticket não os acha (decisão 189). Só entram na rede depois de andar, com o jogador longe.
+    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 13)], "o começo, no chunk 0 (223 no original)");
+    world.follow(20, true, 6);
+    assert_eq!(world.networks(), vec![cables_of(LONG, 3, 23)], "afastado, no chunk 20");
+    world.follow(0, true, 6);
+    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 17)], "de volta ao chunk 0 (287 no original)");
+    assert_eq!(events::held_chunks(OW), vec![[21, 0], [22, 0], [23, 0]], "os chunks 21 a 23 o Horizon soltou e o original segura");
+    let clears = world.clears;
+    let removals = world.removals;
+    world.follow(6, true, 6);
+    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 23)], "no chunk 6, o Network Reader lê a linha inteira");
+    assert_eq!(world.clears, clears, "os cabos que voltam não recebem outro `clearRemoved`");
+    assert_eq!(world.removals, removals, "e nenhum `setRemoved` os tirou antes");
+    assert!(events::held_chunks(OW).is_empty());
+}
+
+#[test]
+fn the_chunks_the_original_still_holds_are_released_when_it_drops_them() {
+    let _world = begin();
+    let mut world = World::with_chunks(LONG);
+    world.follow(0, true, 6);
+    world.follow(20, true, 6);
+    world.follow(0, true, 6);
+    assert_eq!(events::held_chunks(OW).len(), 3);
+    let removals = world.removals;
+    // O jogador vai longe: o nível de ticket dos chunks 21 a 23 passa de 44 e o original os solta (`ChunkEvent.Unload`, `onChunkUnloaded` e `setRemoved` de cada cabo).
+    let far = tickets_of(200);
+    world.release(&far);
+    assert!(events::held_chunks(OW).is_empty());
+    assert_eq!(world.removals - removals, cables_of(LONG, 21, 23));
+    assert!(world
+        .owner
+        .positions()
+        .iter()
+        .all(|pos| pos.x >> 4 < 21), "os cabos dos chunks soltos saíram do dono");
+}
+
+#[test]
+fn a_chunk_the_original_no_longer_holds_is_unloaded_at_once() {
+    // Sem segurar (`hold` falso, o chunk já passou do nível 44 quando o Horizon o solta), a saída é a de sempre, no mesmo tick.
+    let _world = begin();
+    let mut world = World::with_chunks(LONG);
+    world.follow(0, false, 6);
+    world.follow(20, false, 6);
+    let removals = world.removals;
+    world.follow(0, false, 6);
+    assert!(events::held_chunks(OW).is_empty());
+    assert_eq!(world.removals - removals, cables_of(LONG, 21, 23));
+}
+
+#[test]
+fn a_chunk_the_horizon_drops_inside_the_ring_leaves_the_network_and_waits_held() {
+    // O jogador se afasta de uma vez (`tp`): chunks que estavam no anel acessível saem do raio residente do Horizon no mesmo tick. O original tira os cabos da rede (o ticket passa de 32)
+    // e segura os chunks (nível até 44): sem o ticket de saída do anel, os cabos soltos seguiriam na rede.
+    let _world = begin();
+    let mut world = World::with_chunks(LONG);
+    world.follow(0, true, 6);
+    world.follow(20, true, 6);
+    assert_eq!(world.networks(), vec![cables_of(LONG, 3, 23)]);
+    world.follow(-3, true, 6);
+    assert_eq!(
+        events::held_chunks(OW),
+        (18..LONG).map(|chunk| [chunk, 0]).collect::<Vec<_>>()
+    );
+    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 14)]);
 }
