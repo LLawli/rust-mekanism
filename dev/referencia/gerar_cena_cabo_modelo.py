@@ -41,7 +41,7 @@ def trios(name, blocks):
     for x, y, z in tracked:
         cmds.append(f"#conexao {x} {y} {z} east=push south=pull")
     cmds.append("#esperar 20")
-    return {"name": name, "cmds": cmds, "tp": "66.0 -56.6 75.5 0 28"}
+    return {"name": name, "cmds": cmds, "tp": "66.0 -57.4 75.0 0 14"}
 
 
 def run(x, y, z, axis, block, n=4):
@@ -68,8 +68,10 @@ def main():
     for names, blocks in zip(("cabos", "tubos", "condutores", "canos", "transportadores"), families):
         shots.append(trios(f"cabo_modelo_{names}", blocks))
     shots.append(trios("cabo_modelo_restritivo_e_desviador", TAIL))
-    shots.append({"name": "cabo_modelo_retos_x", "cmds": straights("x"), "tp": "62.0 -50.0 75.0 0 50"})
-    shots.append({"name": "cabo_modelo_retos_z", "cmds": straights("z"), "tp": "65.0 -52.0 75.0 0 40"})
+    shots.append({"name": "cabo_modelo_retos_x", "cmds": straights("x"), "tp": "62.0 -47.0 84.0 0 90"})
+    shots.append({"name": "cabo_modelo_retos_x_obliquo", "cmds": straights("x"), "tp": "62.0 -55.0 75.0 0 38"})
+    shots.append({"name": "cabo_modelo_retos_z", "cmds": straights("z"), "tp": "65.0 -47.0 80.5 0 90"})
+    shots.append({"name": "cabo_modelo_retos_z_obliquo", "cmds": straights("z"), "tp": "65.0 -55.5 74.0 0 30"})
     shots.append({"name": "cabo_modelo_retos_y", "cmds": straights("y"), "tp": "65.0 -58.0 74.0 0 5"})
     alone = []
     for k, block in enumerate(("basic_universal_cable", "basic_mechanical_pipe")):
@@ -77,7 +79,7 @@ def main():
         alone += [put(x, Y, Z, f"mekanism:{block}"),  # sozinho: o centro inteiro, `NONE` nas seis faces
                   put(x + 2, Y, Z, f"mekanism:{block}"), put(x + 3, Y, Z, f"mekanism:{block}"), put(x + 3, Y, Z + 1, f"mekanism:{block}"),  # L
                   put(x + 5, Y, Z + 3, f"mekanism:{block}"), put(x + 4, Y, Z + 3, f"mekanism:{block}"), put(x + 6, Y, Z + 3, f"mekanism:{block}"), put(x + 5, Y, Z + 4, f"mekanism:{block}")]  # T
-    shots.append({"name": "cabo_modelo_isolados", "cmds": alone, "tp": "66.0 -54.0 77.0 0 35"})
+    shots.append({"name": "cabo_modelo_isolados", "cmds": alone, "tp": "66.0 -54.5 77.0 0 25"})
     out = {"setup": spec["setup"], "clear": spec["clear"], "shots": shots}
     with open(os.path.join(HERE, "cenas/cabo_modelo.json"), "w") as handle:
         json.dump(out, handle, indent=1)
