@@ -239,6 +239,25 @@ fn what_a_neighbor_pushes_goes_to_the_network_container_and_the_buffer_of_a_pipe
 }
 
 #[test]
+fn a_neighbor_swapped_for_another_container_keeps_the_arm() {
+    let mut sim = Sim::new();
+    sim.place_pipe(0, None);
+    sim.place_tank(1, lava_tank(0));
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert!(sim.view(0).connected[Face::East as usize]);
+    // `Level.setBlock` troca o bloco do vizinho por outro com contêiner: a capability se invalida e o cano relê (o caldeirão de água vira o vazio).
+    let handler = Rc::new(HostHandler::new(lava_tank(0)));
+    sim.level.blocks.insert(Sim::pos(1), Block::Tank(handler));
+    sim.neighbors(Sim::pos(1));
+    for _ in 0..3 {
+        sim.tick();
+    }
+    assert!(sim.view(0).connected[Face::East as usize]);
+}
+
+#[test]
 fn the_configurator_cycles_the_arm_and_none_takes_it_away_from_both_pipes() {
     let mut sim = Sim::new();
     // Antes de a rede nascer o cano não aceita de fora (o contêiner que `canInsert` pede é o da rede).

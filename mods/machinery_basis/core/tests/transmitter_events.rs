@@ -78,6 +78,36 @@ fn machine_next_to_a_cable_only_invalidates_the_capability() {
 }
 
 #[test]
+fn a_block_without_block_entity_placed_next_to_a_cable_invalidates_its_capability() {
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    run(&mut tracker, OW, vec![added([3, 1, 2], "cable")]);
+    // O caldeirão a leste do cabo não tem block entity: `Level.setBlock` invalida a capability da posição, e o cabo a vê no leste (5).
+    let placed = run(&mut tracker, OW, vec![Raw::BlockChanged { pos: [4, 1, 2] }]);
+    assert_eq!(placed, vec![cable(OW, [3, 1, 2], Kind::Capability(5))]);
+    // Longe de qualquer cabo, nada.
+    assert_eq!(
+        run(&mut tracker, OW, vec![Raw::BlockChanged { pos: [9, 1, 2] }]),
+        vec![]
+    );
+}
+
+#[test]
+fn a_block_entity_already_present_does_not_invalidate_twice() {
+    let mut tracker = Tracker::with_ids(&["cable"]);
+    run(&mut tracker, OW, vec![added([3, 1, 2], "cable")]);
+    // A máquina que entrou já invalidou pela entrada (`added`): a troca de bloco da mesma posição não repete.
+    let events = run(
+        &mut tracker,
+        OW,
+        vec![
+            added([4, 1, 2], "machine"),
+            Raw::BlockChanged { pos: [4, 1, 2] },
+        ],
+    );
+    assert_eq!(events, vec![cable(OW, [3, 1, 2], Kind::Capability(5))]);
+}
+
+#[test]
 fn removed_cable_leaves_and_stops_hearing() {
     let mut tracker = Tracker::with_ids(&["cable"]);
     run(
