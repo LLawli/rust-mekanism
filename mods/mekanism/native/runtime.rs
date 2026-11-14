@@ -2841,6 +2841,7 @@ pub fn infusion_tank_view(
         can_insert: info.can_input,
         can_extract: info.can_output,
         creative: false,
+        increment: 1,
     })
 }
 

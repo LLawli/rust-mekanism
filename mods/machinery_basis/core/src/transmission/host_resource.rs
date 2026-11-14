@@ -29,6 +29,9 @@ pub struct ResourceSnapshot<R: Resource> {
     pub can_extract: bool,
     /// O tanque criativo (`isCreative`): `insert` e `extract` dão o resultado sem mudar nada.
     pub creative: bool,
+    /// O passo em que o contêiner aceita e entrega (1: qualquer quantidade): o `CauldronWrapper` só move múltiplos de `totalAmount / gcd(maxLevel, totalAmount)`, e o que não completa um passo
+    /// fica de fora.
+    pub increment: u64,
 }
 
 impl<R: Resource> ResourceSnapshot<R> {
@@ -41,6 +44,7 @@ impl<R: Resource> ResourceSnapshot<R> {
             can_insert: false,
             can_extract: false,
             creative: false,
+            increment: 1,
         }
     }
 }
@@ -56,6 +60,7 @@ pub struct HostHandler<R: Resource> {
     tank: ResourceTank<R>,
     rules: Rc<Rules<R>>,
     creative: Cell<bool>,
+    increment: Cell<u64>,
     /// O conteúdo do espelho quando o jogo o entregou.
     before: RefCell<StackContents<R>>,
 }
@@ -87,6 +92,7 @@ impl<R: Resource> HostHandler<R> {
             tank,
             rules,
             creative: Cell::new(snapshot.creative),
+            increment: Cell::new(snapshot.increment),
             before: RefCell::new(StackContents::default()),
         };
         handler.refresh(snapshot);
@@ -99,6 +105,7 @@ impl<R: Resource> HostHandler<R> {
         self.rules.can_extract.set(snapshot.can_extract);
         *self.rules.accepts.borrow_mut() = snapshot.accepts;
         self.creative.set(snapshot.creative);
+        self.increment.set(snapshot.increment);
         self.tank.set_capacity(snapshot.capacity);
         self.tank.set_contents(
             snapshot.contents.resource.clone(),
@@ -135,6 +142,22 @@ impl<R: Resource> ResourceInsert<R> for HostHandler<R> {
                 .tank
                 .insert(resource, amount, &simulation, AutomationType::External);
         }
+        let step = self.increment.get();
+        if step > 1 {
+            // O que o contêiner aceitaria, em passos inteiros: um passo incompleto não entra (`CauldronWrapper.insert`).
+            let fits = {
+                let simulation = Transaction::open(Some(transaction));
+                self.tank
+                    .insert(resource, amount, &simulation, AutomationType::External)
+            };
+            let whole = (fits as u64 / step * step) as i32;
+            if whole == 0 {
+                return 0;
+            }
+            return self
+                .tank
+                .insert(resource, whole, transaction, AutomationType::External);
+        }
         self.tank
             .insert(resource, amount, transaction, AutomationType::External)
     }
@@ -163,6 +186,22 @@ impl<R: Resource> ResourceExtract<R> for HostHandler<R> {
             return self
                 .tank
                 .extract(resource, amount, &simulation, AutomationType::External);
+        }
+        let step = self.increment.get();
+        if step > 1 {
+            // O que o contêiner entregaria, em passos inteiros (`CauldronWrapper.extract`).
+            let has = {
+                let simulation = Transaction::open(Some(transaction));
+                self.tank
+                    .extract(resource, amount, &simulation, AutomationType::External)
+            };
+            let whole = (has as u64 / step * step) as i32;
+            if whole == 0 {
+                return 0;
+            }
+            return self
+                .tank
+                .extract(resource, whole, transaction, AutomationType::External);
         }
         self.tank
             .extract(resource, amount, transaction, AutomationType::External)
@@ -193,7 +232,47 @@ mod tests {
             can_insert: true,
             can_extract: false,
             creative: false,
+            increment: 1,
         }
+    }
+
+    /// O caldeirão (`CauldronWrapper`): um balde de capacidade, água e lava, e só passos inteiros (`increment` 1.000).
+    fn cauldron(resource: Option<FluidResource>, amount: u64) -> ResourceSnapshot<FluidResource> {
+        ResourceSnapshot {
+            contents: StackContents::new(resource, amount),
+            capacity: 1_000,
+            accepts: Rc::new(|fluid| matches!(&*fluid.id, "minecraft:water" | "minecraft:lava")),
+            can_insert: true,
+            can_extract: true,
+            creative: false,
+            increment: 1_000,
+        }
+    }
+
+    #[test]
+    fn a_cauldron_only_moves_whole_buckets() {
+        // Vazio: 1.500 de água entram como um balde; 600 não completam o passo.
+        let handler = HostHandler::new(cauldron(None, 0));
+        let transaction = Transaction::open_root();
+        assert_eq!(handler.insert(&water(), 600, &transaction), 0);
+        assert_eq!(handler.insert(&water(), 1_500, &transaction), 1_000);
+        transaction.commit();
+        assert_eq!(
+            handler.changed(),
+            Some(StackContents::new(Some(water()), 1_000))
+        );
+        // Cheio: tira o balde inteiro, nunca um pedaço, e a lava não entra na água.
+        let handler = HostHandler::new(cauldron(Some(water()), 1_000));
+        {
+            let transaction = Transaction::open_root();
+            assert_eq!(handler.insert(&lava(), 1_000, &transaction), 0);
+            assert_eq!(handler.extract(&water(), 400, &transaction), 0);
+            assert_eq!(handler.extract(&water(), 4_000, &transaction), 1_000);
+        }
+        // Um nível só (333): não completa um balde, não sai.
+        let handler = HostHandler::new(cauldron(Some(water()), 333));
+        let transaction = Transaction::open_root();
+        assert_eq!(handler.extract(&water(), 4_000, &transaction), 0);
     }
 
     #[test]

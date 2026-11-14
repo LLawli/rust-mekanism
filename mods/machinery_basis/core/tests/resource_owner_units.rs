@@ -191,6 +191,7 @@ fn source(handler_fluid: FluidResource) -> ResourceSnapshot<FluidResource> {
         can_insert: true,
         can_extract: true,
         creative: true,
+        increment: 1,
     }
 }
 
@@ -203,6 +204,7 @@ fn lava_tank(amount: u64) -> ResourceSnapshot<FluidResource> {
         can_insert: true,
         can_extract: false,
         creative: false,
+        increment: 1,
     }
 }
 

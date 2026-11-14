@@ -46,27 +46,36 @@ def place(block_item, x):
 
 
 def video(out, seconds, container):
-    """O jogador põe os cabos um a um (o som do bloco posto) e o modelo de cada um muda com os vizinhos: o centro sozinho, o braço `NORMAL`, o trecho reto (o `hideContiguousJoin`: o centro
-    da linha mostra a textura do braço) e a junção em T. A câmera é a do jogador, parada ao norte da linha."""
+    """O Configurator troca o tipo do braço leste de um cabo que dá numa máquina (`PUSH`, `PULL`, `NONE`, `NORMAL`) e o modelo muda. O jogador fica parado a 3 blocos em cima do braço, de
+    cabeça para baixo (`/tp` com o pitch 90, sem `look-at`, que faz a câmera derivar), agachado, e o clique cai no braço (a máquina é só um bloco ao lado, fora da mira). O som é o do
+    bloco posto: o jogador põe o cabo do meio antes."""
     clear_noon()
     cmd("fill %d %d %d %d %d %d minecraft:air" % (X - 4, Y, Z - 4, X + 8, Y + 4, Z + 4))
     cmd("gamemode creative")
     cmd("tick unfreeze")
-    h.ctl("give", "mekanism:basic_universal_cable", "16")
-    cmd("tp @s %.2f %.2f %.2f 0 28" % (X + 2.5, Y, Z - 3.0))
+    cmd(f"setblock {X} {Y} {Z} mekanism:basic_universal_cable")
+    cmd(f"setblock {X + 2} {Y} {Z} mekanism:enrichment_chamber")
+    h.ctl("give", "mekanism:basic_universal_cable", "4")
+    h.ctl("give", "mekanism:configurator", "1")
+    arm = (X + 1 + aj.ARM["east"][0], Y + 3.0, Z + 0.5)
+    cmd("tp @s %.2f %.2f %.2f 0 90" % arm)
     time.sleep(3.0)
     gravar = f"{GRAVADOR} rec cabo-modelo {out} {seconds}" + (f" {container}" if container else "")
     proc = subprocess.Popen(["ssh", "desktop", gravar])
     time.sleep(2.5)
-    for x in (X, X + 1, X + 2, X + 3):
-        place("mekanism:basic_universal_cable", x)
-        time.sleep(2.5)
-    # Uma junção em T: o cabo do meio ganha o braço do sul.
     h.ctl("select", "mekanism:basic_universal_cable")
-    h.ctl("look-at", "%.2f" % (X + 1.5), "%.2f" % Y, "%.2f" % (Z + 1.5))
+    h.ctl("look-at", "%.2f" % (X + 1.5), "%.2f" % Y, "%.2f" % (Z + 0.5))
     time.sleep(1.0)
     h.ctl("mouse", "right", "click")
-    time.sleep(3.0)
+    time.sleep(2.5)
+    cmd("tp @s %.2f %.2f %.2f 0 90" % arm)
+    h.ctl("select", "mekanism:configurator")
+    h.ctl("key", "shift", "down")
+    time.sleep(1.5)
+    for _ in range(4):
+        h.ctl("mouse", "right", "click")
+        time.sleep(2.5)
+    h.ctl("key", "shift", "up")
     proc.wait()
 
 

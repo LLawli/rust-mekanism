@@ -269,6 +269,7 @@ fn lava_tank_probe(
         can_insert: true,
         can_extract: false,
         creative: false,
+        increment: 1,
     })
 }
 

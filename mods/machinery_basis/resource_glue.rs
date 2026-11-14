@@ -78,6 +78,14 @@ trait Family: Sized + 'static {
     /// O tanque criativo que o bloco de teste faz no lugar do que ainda não está portado (só com a sonda ligada).
     fn probe_source(block: &str) -> Option<ResourceSnapshot<Self::R>>;
     fn exposed(side: Self::Side) -> bool;
+    /// Um vizinho do vanilla que o NeoForge dá uma capability sem block entity (o caldeirão, `CauldronWrapper`): o contêiner dele agora, em qualquer lado, ou `None`.
+    fn vanilla(_game: &Game<'_>, _block: &str, _pos: [i32; 3]) -> Option<ResourceSnapshot<Self::R>> {
+        None
+    }
+    /// Grava no vizinho do vanilla o que a rede mudou; `false` se `block` não é um.
+    fn vanilla_write(_game: &mut Game<'_>, _dimension: &'static str, _block: &str, _pos: [i32; 3], _contents: &StackContents<Self::R>) -> bool {
+        false
+    }
     fn read(probe: Self::Probe, game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<ResourceSnapshot<Self::R>>;
     /// O `saveShare` que o Horizon guardou (`StackHelper.storeNonEmpty` com o `CODEC` do recurso).
     fn read_stored(nbt: &Compound) -> Option<StackContents<Self::R>>;
@@ -114,6 +122,22 @@ impl<F: Family> Copy for Neighbor<F> {}
 
 fn lock<T>(mutex: &'static Mutex<T>) -> std::sync::MutexGuard<'static, T> {
     mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// A capacidade de um caldeirão (`CauldronFluidContent.totalAmount`: um balde) e o fluido e os níveis de cada um (`CauldronFluidContent.init`: o vazio, a água com 3 níveis e a lava com 1).
+const CAULDRON_AMOUNT: u64 = 1000;
+
+fn cauldron(block: &str) -> Option<(Option<&'static str>, u8)> {
+    match block {
+        "minecraft:cauldron" => Some((None, 1)),
+        "minecraft:water_cauldron" => Some((Some("minecraft:water"), 3)),
+        "minecraft:lava_cauldron" => Some((Some("minecraft:lava"), 1)),
+        _ => None,
+    }
+}
+
+fn gcd(a: u64, b: u64) -> u64 {
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -210,6 +234,51 @@ impl Family for Pipes {
 
     fn exposed(side: bool) -> bool {
         side
+    }
+
+    fn vanilla(game: &Game<'_>, block: &str, pos: [i32; 3]) -> Option<ResourceSnapshot<FluidResource>> {
+        let (fluid, levels) = cauldron(block)?;
+        let level: u64 = match (fluid, levels) {
+            (None, _) => 0,
+            (Some(_), 1) => 1,
+            _ => game.native_block_property(pos, "level")?.parse().ok()?,
+        };
+        let amount = CAULDRON_AMOUNT * level / u64::from(levels);
+        let contents = StackContents::new(fluid.map(FluidResource::new), amount);
+        // `CauldronWrapper.insert`/`extract`: só passos de `totalAmount / gcd(maxLevel, totalAmount)` (o balde inteiro na água, de 3 níveis; o de lava tem 1 nível); `isValid`: a água e a lava.
+        let increment = CAULDRON_AMOUNT / gcd(3, CAULDRON_AMOUNT);
+        Some(ResourceSnapshot {
+            contents,
+            capacity: CAULDRON_AMOUNT,
+            accepts: Rc::new(|fluid: &FluidResource| matches!(&*fluid.id, "minecraft:water" | "minecraft:lava")),
+            can_insert: true,
+            can_extract: true,
+            creative: false,
+            increment,
+        })
+    }
+
+    fn vanilla_write(game: &mut Game<'_>, dimension: &'static str, block: &str, pos: [i32; 3], contents: &StackContents<FluidResource>) -> bool {
+        if cauldron(block).is_none() {
+            return false;
+        }
+        // `setLevel`: nível 0 volta ao caldeirão vazio; senão o bloco do fluido com o nível que cabe na quantidade (`Level.setBlock(.., 0)`: sem aviso aos vizinhos).
+        let (name, level) = match contents.resource.as_ref().filter(|_| contents.amount > 0) {
+            None => ("minecraft:cauldron", None),
+            Some(fluid) if &*fluid.id == "minecraft:lava" => ("minecraft:lava_cauldron", None),
+            Some(_) => ("minecraft:water_cauldron", Some(((contents.amount * 3 + CAULDRON_AMOUNT / 2) / CAULDRON_AMOUNT).clamp(1, 3))),
+        };
+        let state = game.with_level(|_, level_ref, _| {
+            let mut state = level_ref.registry.default_state(name)?;
+            if let Some(level) = level {
+                state = level_ref.native_state_with_property(state, "level", &level.to_string())?;
+            }
+            Some(state)
+        });
+        match state {
+            Some(state) => game.native_set_block(dimension, pos, state, 2),
+            None => false,
+        }
     }
 
     fn read(probe: FluidProbe, game: &Game<'_>, dimension: &'static str, pos: [i32; 3], _side: Face) -> Option<ResourceSnapshot<FluidResource>> {
@@ -397,6 +466,7 @@ fn creative_tank<R: Resource>(resource: R) -> ResourceSnapshot<R> {
         can_insert: true,
         can_extract: true,
         creative: true,
+        increment: 1,
     }
 }
 
@@ -475,6 +545,9 @@ fn snapshot<F: Family>(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], 
     {
         return Some(source);
     }
+    if let Some(snapshot) = F::vanilla(game, &block, pos) {
+        return Some(snapshot);
+    }
     let neighbor = {
         let shared = lock(F::shared());
         let exposed = shared
@@ -527,6 +600,10 @@ fn handlers_flush<F: Family>(game: &mut Game<'_>, dimension: &'static str) {
             continue;
         };
         let block = game.native_block(pos);
+        if F::vanilla_write(game, dimension, &block, pos, &contents) {
+            handler.settle();
+            continue;
+        }
         let write = lock(F::shared()).neighbors.iter().find(|known| known.block == &*block).map(|known| known.write);
         if let Some(write) = write {
             write(game, dimension, pos, contents);

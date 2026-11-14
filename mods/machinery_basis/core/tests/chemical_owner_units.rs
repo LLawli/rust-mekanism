@@ -183,6 +183,7 @@ fn source(id: &str) -> ResourceSnapshot<ChemicalResource> {
         can_insert: true,
         can_extract: true,
         creative: true,
+        increment: 1,
     }
 }
 
@@ -195,6 +196,7 @@ fn infusion_tank(amount: u64) -> ResourceSnapshot<ChemicalResource> {
         can_insert: true,
         can_extract: false,
         creative: false,
+        increment: 1,
     }
 }
 
