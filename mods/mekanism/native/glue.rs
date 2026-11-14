@@ -2418,6 +2418,8 @@ fn sync_creative_energy(game: &mut Game<'_>) {
 
 pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
     horizon_client::animate_tick::machinery_animate::register("mekanism", machine_animator);
+    // O convidado de LAN não registra os blocos como o anfitrião (`block_registered`), e a forma de colisão dos transmissores que ele refaz do espelho precisa das medidas do mod.
+    basis::transmitter_shape_register(transmitter_boxes_of);
     sync_creative_energy(game);
     if !game.native_window() {
         return;

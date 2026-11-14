@@ -569,6 +569,7 @@ pub(in crate::game) fn collision_refresh(game: &Game<'_>) {
     let dimension = game.native_dimension();
     let views = client_run(|levels| levels.get(dimension).map(|level| level.special_views()).unwrap_or_default());
     let mut now = std::collections::HashSet::new();
+    let mut incomplete = false;
     for (pos, kinds) in views {
         let at = [pos.x, pos.y, pos.z];
         let state = game.world.block(at[0], at[1], at[2]);
@@ -576,7 +577,13 @@ pub(in crate::game) fn collision_refresh(game: &Game<'_>) {
         if let Some(boxes) = crate::game::machinery_basis::transmitter_shape_boxes(&name, &kinds) {
             horizon_client::collisions::machinery_transmitter_collision::set(dimension, at, Some(boxes));
             now.insert((dimension, at));
+        } else {
+            // O bloco ainda não chegou ao mundo do convidado (o pacote do transmissor vem antes do chunk): tenta de novo no quadro seguinte.
+            incomplete = true;
         }
+    }
+    if incomplete {
+        COLLISION_SEEN.with(|seen| seen.set(revision.wrapping_sub(1)));
     }
     COLLISION_SET.with(|set| {
         let mut set = set.borrow_mut();
