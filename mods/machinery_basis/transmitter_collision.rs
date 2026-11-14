@@ -17,6 +17,9 @@ use std::{
 static SHAPES: Mutex<Option<HashMap<(&'static str, [i32; 3]), Vec<[f64; 6]>>>> = Mutex::new(None);
 /// O número de formas guardadas: sem nenhuma, a varredura de colisão não toca a trava.
 static COUNT: AtomicUsize = AtomicUsize::new(0);
+/// A sonda da cópia de teste (`enviar_fontes.sh` não a liga: o roteiro `h2_cabo_forma.py` a liga na cópia): `MBC` a thread, o nível dela e se a forma guardada serviu, nas primeiras buscas de uma posição que tem forma guardada.
+const COLLISION_PROBE: bool = false;
+static PROBED: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
     static LEVEL: Cell<&'static str> = const { Cell::new("") };
@@ -61,6 +64,15 @@ pub fn shape_at(pos: [i32; 3]) -> Option<VoxelShape> {
         return None;
     }
     let level = LEVEL.with(Cell::get);
+    if COLLISION_PROBE && PROBED.load(Ordering::Relaxed) < 400 {
+        let guard = table();
+        let known = guard.as_ref().is_some_and(|map| map.keys().any(|(_, at)| *at == pos));
+        if known {
+            PROBED.fetch_add(1, Ordering::Relaxed);
+            let hit = guard.as_ref().is_some_and(|map| map.contains_key(&(level, pos)));
+            eprintln!("MBC {{\"thread\":\"{}\",\"level\":\"{level}\",\"p\":{pos:?},\"hit\":{hit}}}", std::thread::current().name().unwrap_or("?"));
+        }
+    }
     let boxes = table().as_ref()?.get(&(level, pos))?.clone();
     let mut shape = VoxelShape::empty();
     for part in boxes {

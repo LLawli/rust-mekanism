@@ -1463,7 +1463,7 @@ bindings = [
   { name = "value", ty = "Vec<[f64; 6]>", value = "$value" },
 ]
 
-# A forma de colisão de um transmissor por instância (`BlockTransmitter.getCollisionShape`, frente `cabo-forma`, decisão 209): o centro e um braço por lado ligado, cada um com a forma do
+# A forma de colisão de um transmissor por instância (`BlockTransmitter.getCollisionShape`, frente `cabo-forma`, decisão 210): o centro e um braço por lado ligado, cada um com a forma do
 # tipo dele (`getSideForType`), e o `PUSH` e o `PULL` são três caixas mais estreitas que o braço normal. O Horizon tem uma forma de colisão por estado de bloco (`pipe_shape`: o braço
 # normal de cada lado ligado), e o estado não sabe o tipo de cada lado. O módulo guarda as caixas da forma dos transmissores com algum lado `PUSH` ou `PULL`, por dimensão e posição,
 # e o HEAD cancelável de `SceneCollisions::context_shape` (o único ponto por onde a varredura de colisão de bloco pede a forma de uma célula: o jogador, o item solto, os mobs) as entrega
