@@ -1208,6 +1208,38 @@ name = "machinery_ticket_sources"
 source = "ticket_sources.rs"
 visibility = "pub"
 
+# As partes do modelo do transmissor por instância (frente `cabo-modelo`, Fase 4). O `TransmitterBlockStateModel` do original escolhe, para cada um dos seis lados, uma parte do OBJ pelo
+# `ModelData` da block entity (`TransmitterModelData`: `NORMAL`, `PUSH`, `PULL`, `NONE` e as duas partes do trecho reto, `hideContiguousJoin`); o mesher do Horizon escolhe o modelo só pelo
+# estado do bloco, que não tem `PUSH` nem `PULL` (as conexões por lado do bloco que conecta são booleanas). O módulo (código puro, `core/tests/transmitter_model_module.rs`) guarda a conta do
+# dado do modelo, a tabela dos estados de transmissor e o dado de cada posição; o HEAD cancelável de `StateModels::models_at` (o mesher a chama com a posição do bloco) troca os modelos do
+# blockstate pelas partes cozidas como modelos avulsos (`standalone_models`, o hook que o `mekanism` já usa), e o hook `tick` leva ao módulo o dado do cliente dos transmissores. Alvo cru, H228.
+[[module]]
+id = "transmitter-model"
+file = "crates/horizon-client-render/src/models/catalog.rs"
+name = "machinery_transmitter_model"
+source = "transmitter_model.rs"
+visibility = "pub"
+
+[[injection]]
+id = "transmitter_model_parts"
+target = "horizon_client_render::models::catalog::StateModels::models_at"
+kind = "HEAD"
+cancellable = true
+helper = "transmitter_model_parts.rs"
+bindings = [
+  { name = "handled", ty = "bool", value = "machinery_transmitter_model::fill(state.0, [position.x, position.y, position.z], move |name| self.standalone(name), &mut *out)" },
+]
+
+[[injection]]
+id = "transmitter_model_tick"
+hook = "tick"
+hook_version = 1
+kind = "HEAD"
+helper = "transmitter_model_tick.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
 # ---- os eventos do jogo que a rede de transmissores recebe (frente `rede-ganchos`, Fase 3) ----
 # `TileEntityTransmitter` e `TransmitterNetworkRegistry` vivem de eventos que o Horizon não dá a um block entity de mod: o `clearRemoved` (`LevelChunk.setBlockEntity`), o `setRemoved`
 # (`LevelChunk.removeBlockEntity`), a entrada de um chunk inteiro e o `onChunkUnloaded`. O módulo guarda a fila e a tradução (`transmitter_events.rs`); quatro alvos crus no

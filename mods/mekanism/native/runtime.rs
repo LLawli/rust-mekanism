@@ -204,7 +204,8 @@ pub const LOCAL_CONFIG_NAMESPACE: &str = "Mekanism";
 /// `WindowPositions`.
 pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
     sections: &[
-        // `ClientConfig.java:61-71`: `accessibility`. O original traz também `opaqueTransmitters` (os transmissores ainda não têm conteúdo para mostrar).
+        // `ClientConfig.java:61-71`: `accessibility`. `opaqueTransmitters` (`.gameRestart()`) só diz se o conteúdo do transmissor se desenha (`RenderTransmitterBase.shouldRenderTransmitter`):
+        // o modelo dos blocos é o mesmo nos dois valores (as partes `_Opaque` do `.mtl` não têm face no OBJ).
         ClientSection {
             name: "accessibility",
             comment: "Settings for configuring Accessibility settings provided by Mekanism. Note: Some settings such as HUD scale, may be located throughout the rest of this config.",
@@ -212,6 +213,11 @@ pub const CLIENT_CONFIG: ClientSpec = ClientSpec {
                 ClientEntry {
                     key: "whiteRadialText",
                     comment: "Tries to force all text rendered as part of radial menus to be white instead of the color of the slice's mode.",
+                    setting: ClientSetting::Bool { default: false },
+                },
+                ClientEntry {
+                    key: "opaqueTransmitters",
+                    comment: "If true, renders sides for Universal Cables, Mechanical Pipes, Pressurized Tubes, Logistical Transporters, and Thermodynamic Conductors instead of rendering their contents. If transmitters are causing you fps issues, this should hopefully help.",
                     setting: ClientSetting::Bool { default: false },
                 },
                 ClientEntry {
@@ -320,6 +326,14 @@ pub fn energy_color(loaded: &ClientLoaded) -> i32 {
     loaded
         .int(&CLIENT_CONFIG, "rendering", "energyColor")
         .unwrap_or(ENERGY_COLOR)
+}
+
+/// `MekanismConfig.client.opaqueTransmitters` (`accessibility`, `false` por padrão, só vale ao reiniciar o jogo): se o conteúdo dos transmissores deixa de se desenhar
+/// (`RenderTransmitterBase.shouldRenderTransmitter`). Não troca nenhum modelo.
+pub fn opaque_transmitters(loaded: &ClientLoaded) -> bool {
+    loaded
+        .bool(&CLIENT_CONFIG, "accessibility", "opaqueTransmitters")
+        .unwrap_or(false)
 }
 
 pub fn machine_effects(loaded: &ClientLoaded) -> bool {
@@ -4540,6 +4554,48 @@ fn transmitter_is_large(block: &str) -> Option<bool> {
     } else {
         None
     }
+}
+
+/// Um transmissor para o desenho do modelo por instância (`TransmitterBlockStateModel`): o bloco, o começo do nome dos modelos das partes que o port escreve por lado e por estado visual
+/// (`<prefixo>/<lado>_<estado>`), o `hideContiguousJoin` do blockstate e se a block entity dá o dado do modelo do desviador (`TileEntityDiversionTransporter.initModelData`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransmitterModel {
+    pub block: String,
+    pub prefix: String,
+    pub hide_contiguous_join: bool,
+    pub diversion: bool,
+}
+
+/// Os 22 transmissores, na ordem do original (`MekanismBlocks`: os cabos, os canos, os tubos, os condutores, os transportadores, o restritivo e o desviador). Só o desviador desliga o
+/// `hideContiguousJoin` (`diversion_transporter.json` da datagen) e dá o dado `Diversion`.
+pub fn transmitter_models() -> Vec<TransmitterModel> {
+    let mut blocks: Vec<String> = Vec::new();
+    for kind in [
+        "universal_cable",
+        "mechanical_pipe",
+        "pressurized_tube",
+        "thermodynamic_conductor",
+        "logistical_transporter",
+    ] {
+        for tier in ["basic", "advanced", "elite", "ultimate"] {
+            blocks.push(format!("mekanism:{tier}_{kind}"));
+        }
+    }
+    blocks.push(RESTRICTIVE_TRANSPORTER.to_owned());
+    blocks.push(DIVERSION_TRANSPORTER.to_owned());
+    blocks
+        .into_iter()
+        .map(|block| {
+            let diversion = block == DIVERSION_TRANSPORTER;
+            let name = block.strip_prefix("mekanism:").unwrap_or(&block).to_owned();
+            TransmitterModel {
+                prefix: format!("mekanism:block/transmitter_part/{name}"),
+                hide_contiguous_join: !diversion,
+                diversion,
+                block,
+            }
+        })
+        .collect()
 }
 
 /// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.

@@ -17,6 +17,7 @@ use machinery_basis_core::transmission::client::{
 use machinery_basis_core::transmission::inventory_owner::TransporterPacket;
 use machinery_basis_core::transmission::transmitter::Compound;
 use std::collections::HashMap;
+use horizon_world::registry::BlockStateId;
 use std::sync::Mutex;
 
 /// O que uma família dá de um transmissor para o pacote de atualização.
@@ -388,6 +389,7 @@ pub(in crate::game) fn reset(game: &mut Game<'_>) {
     lock(&QUEUE).clear();
     watched_run(HashMap::clear);
     client_run(HashMap::clear);
+    model_reset();
     let players: Vec<u128> = game.native_server_players().iter().map(|player| player.uuid).collect();
     for player in players {
         let _ = game.native_net_send_to_player(player, RESET_CHANNEL, &[]);
@@ -420,7 +422,10 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
                 }
             });
         }
-        RESET_CHANNEL => client_run(HashMap::clear),
+        RESET_CHANNEL => {
+            client_run(HashMap::clear);
+            model_reset();
+        }
         _ => {}
     }
 }
@@ -446,4 +451,102 @@ pub(in crate::game) fn modes_at(dimension: &str, pos: [i32; 3]) -> Option<[machi
 /// A rede do cliente do transmissor em `pos` (o conteúdo que o desenho da Fase 4 lê: a escala, a energia e o último tipo).
 pub(in crate::game) fn network_at(dimension: &str, pos: [i32; 3]) -> Option<ClientNetwork> {
     client_run(|levels| levels.get(dimension)?.network_at(sim_pos(pos)).cloned())
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// As partes do modelo por instância (frente `cabo-modelo`, Fase 4). O `TransmitterBlockStateModel` do original escolhe, para cada lado, uma parte do OBJ pelo `ModelData` da block
+// entity (`TransmitterModelData`: o `ConnectionType` de cada lado, com `PUSH` e `PULL`); o mesher do Horizon escolhe o modelo só pelo estado do bloco. O módulo `machinery_transmitter_model`
+// (`transmitter_model.rs`, no `models/catalog.rs` do `horizon-client-render`) guarda o dado de cada posição e a tabela dos estados de transmissor, e o HEAD de `ModelCatalog::models_at`
+// (`transmitter_model_parts`) pede a ele as partes. Aqui o dado vem do cliente dos transmissores (o do anfitrião e o do convidado): a cada tique, as posições que mudaram
+// (`ClientTransmitters::take_model_changes`: o tile entrou ou saiu, ou o pacote de atualização mudou as conexões) levam o dado novo ao módulo, e a seção do chunk é refeita
+// (`requestModelDataUpdate`).
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/// Um transmissor para o desenho: o bloco, o começo do nome dos modelos das partes (`<prefixo>/<lado>_<estado>`), o `hideContiguousJoin` do blockstate (sem ele o modelo não tem as partes
+/// do trecho reto) e se a block entity dá o dado do desviador (`TileEntityDiversionTransporter.initModelData`).
+#[derive(Clone)]
+pub struct ModelFamily {
+    pub block: String,
+    pub prefix: String,
+    pub hide_contiguous_join: bool,
+    pub diversion: bool,
+}
+
+static MODEL_FAMILIES: Mutex<Vec<ModelFamily>> = Mutex::new(Vec::new());
+/// A dimensão que o módulo desenha: o dado de uma posição vale para a dimensão que o jogador vê.
+static MODEL_DIMENSION: Mutex<Option<String>> = Mutex::new(None);
+
+/// O mod diz os transmissores dele (uma vez, no `standalone_models`) e recebe os nomes dos modelos que o jogo tem de cozinhar: um por lado e por estado visual (os do trecho reto só
+/// onde o `hideContiguousJoin` está ligado).
+pub(in crate::game) fn register_model_families(families: Vec<ModelFamily>, models: &mut Vec<String>) {
+    use horizon_client::models::catalog::machinery_transmitter_model as model;
+    for family in &families {
+        let names = model::Family::new(&family.prefix, family.diversion);
+        for side in 0..model::SIDES.len() {
+            for status in model::NORMAL..=model::NONE_CONTIGUOUS_ROTATED {
+                if !family.hide_contiguous_join && (status == model::NONE_CONTIGUOUS || status == model::NONE_CONTIGUOUS_ROTATED) {
+                    continue;
+                }
+                models.push(names.part(side, status).to_owned());
+            }
+        }
+    }
+    *lock(&MODEL_FAMILIES) = families;
+}
+
+/// A tabela dos estados de transmissor do módulo, refeita a cada carga de dados (`server_data_loaded`): cada estado de cada bloco registrado.
+pub(in crate::game) fn index_model_states(game: &Game<'_>) {
+    use horizon_client::models::catalog::machinery_transmitter_model as model;
+    let families = lock(&MODEL_FAMILIES).clone();
+    let registry = game.pack.assets.registry;
+    let mut states = Vec::new();
+    for index in 0..registry.len() {
+        let Some(state) = registry.state(BlockStateId(index as u32)) else {
+            continue;
+        };
+        if let Some(family) = families.iter().position(|family| family.block.as_str() == &*state.name) {
+            states.push((index as u32, family as u16));
+        }
+    }
+    model::set_families(families.iter().map(|family| model::Family::new(&family.prefix, family.diversion)).collect(), states);
+}
+
+/// A seção de chunk que contém `pos`, para refazer o desenho (`requestModelDataUpdate`).
+fn dirty_section(game: &mut Game<'_>, pos: [i32; 3]) {
+    let layout = game.world.layout();
+    let section = (pos[1] - layout.min_y()) >> 4;
+    if (0..layout.height() / 16).contains(&section) {
+        game.world.dirty_sections.insert((pos[0] >> 4, section, pos[2] >> 4));
+    }
+}
+
+/// O tique do cliente: o dado do modelo das posições que mudaram vai ao módulo. Ao trocar de dimensão o dado todo é refeito do cliente da dimensão nova.
+pub(in crate::game) fn model_tick(game: &mut Game<'_>) {
+    use horizon_client::models::catalog::machinery_transmitter_model as model;
+    let dimension = game.native_dimension().to_owned();
+    let rebuilt = lock(&MODEL_DIMENSION).as_deref() != Some(dimension.as_str());
+    let changes: Vec<SimPos> = client_run(|levels| {
+        let Some(level) = levels.get_mut(&dimension) else {
+            return Vec::new();
+        };
+        let changes = level.take_model_changes();
+        if rebuilt { level.tile_positions() } else { changes }
+    });
+    if rebuilt {
+        model::clear_data();
+        *lock(&MODEL_DIMENSION) = Some(dimension.clone());
+    }
+    for pos in changes {
+        let at = [pos.x, pos.y, pos.z];
+        let connections = view_at(&dimension, at).map(|view| view.kind.map(|kind| kind.ordinal() as u8));
+        if model::set_data(at, connections) {
+            dirty_section(game, at);
+        }
+    }
+}
+
+/// O mundo fechou: o módulo esquece o dado de todas as posições.
+fn model_reset() {
+    horizon_client::models::catalog::machinery_transmitter_model::clear_data();
+    *lock(&MODEL_DIMENSION) = None;
 }

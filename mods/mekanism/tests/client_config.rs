@@ -5,7 +5,8 @@ use machinery_basis_core::sound::{
     SoundConfig, TileSound, TileSoundEngine, TileTickableSound, TileView,
 };
 use mekanism_rules::{
-    CLIENT_CONFIG, WINDOW_TYPES, client_default_text, machine_effects, sound_config,
+    CLIENT_CONFIG, WINDOW_TYPES, client_default_text, machine_effects, opaque_transmitters,
+    sound_config,
 };
 use std::path::Path;
 
@@ -19,24 +20,14 @@ fn original() -> String {
     .unwrap()
 }
 
-/// A seção `accessibility` do arquivo do original, sem `opaqueTransmitters` (os transmissores ainda não têm o que mostrar no lugar do conteúdo).
+/// A seção `accessibility` do arquivo do original, as três chaves.
 fn original_accessibility_section() -> String {
     let text = original();
     let start = text
         .find("#Settings for configuring Accessibility settings")
         .unwrap();
     let end = text[start..].find("\n\n").unwrap() + start + 1;
-    let mut kept = Vec::new();
-    let mut lines = text[start..end].lines().peekable();
-    while let Some(line) = lines.next() {
-        if line.trim_start().starts_with("#If true, renders sides for") {
-            // O comentário e a chave `opaqueTransmitters` vão juntos.
-            lines.next();
-            continue;
-        }
-        kept.push(line);
-    }
-    kept.join("\n") + "\n"
+    text[start..end].to_owned()
 }
 
 /// A seção `hud` do arquivo do original, com as três chaves que os efeitos leem (`enabled`, `scale` e `reverse`): o resto é do HUD do MekaSuit.
@@ -362,5 +353,28 @@ fn a_file_from_the_original_keeps_everything_it_does_not_read() {
     assert_eq!(
         written,
         original().replace("baseVolume = 1.0", "baseVolume = 10.0")
+    );
+}
+
+/// `opaqueTransmitters` (`ClientConfig.java:67-69`): `false` por padrão, lido da seção `accessibility` e de mais nenhuma.
+#[test]
+fn opaque_transmitters_is_read_from_the_accessibility_section_and_defaults_to_off() {
+    assert!(!opaque_transmitters(&CLIENT_CONFIG.load(&original())));
+    assert!(!opaque_transmitters(&CLIENT_CONFIG.load("")));
+    let on = original().replace("opaqueTransmitters = false", "opaqueTransmitters = true");
+    assert!(opaque_transmitters(&CLIENT_CONFIG.load(&on)));
+    // Uma chave com o nome certo na seção errada não vale.
+    assert!(!opaque_transmitters(
+        &CLIENT_CONFIG.load("[hud]\n\topaqueTransmitters = true\n")
+    ));
+    // O valor errado volta ao padrão e o arquivo é escrito de novo.
+    let wrong = original().replace("opaqueTransmitters = false", "opaqueTransmitters = 5");
+    let loaded = CLIENT_CONFIG.load(&wrong);
+    assert!(loaded.corrected);
+    assert!(!opaque_transmitters(&loaded));
+    assert!(
+        CLIENT_CONFIG
+            .rewrite(&wrong, &loaded)
+            .contains("opaqueTransmitters = false")
     );
 }
