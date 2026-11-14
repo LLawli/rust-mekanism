@@ -183,7 +183,7 @@ public class CenaBlocos {
             fluid.getContainer().setContents(resource, Math.round(fraction * fluid.getCapacity()), null);
         } else {
             var chemical = (mekanism.common.content.network.ChemicalNetwork) network;
-            var resource = mekanism.api.chemical.ChemicalResource.of(server.registryAccess().getOrThrow(net.minecraft.resources.ResourceKey.create(mekanism.common.registries.MekanismRegistries.Keys.CHEMICAL, key)));
+            var resource = mekanism.api.chemical.ChemicalResource.of(server.registryAccess().getOrThrow(net.minecraft.resources.ResourceKey.create(mekanism.api.MekanismRegistries.Keys.CHEMICAL, key)));
             chemical.getContainer().setContents(resource, Math.round(fraction * chemical.getCapacity()), null);
         }
         var buffered = (mekanism.common.lib.transmitter.DynamicBufferedResourceNetwork<?, ?, ?, ?>) network;
