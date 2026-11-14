@@ -4,6 +4,7 @@
 mod common;
 
 use common::craft::{TIERS5, blocos, cables, content, json, rastro, structure_scope, transmitters};
+use mekanism_rules::transmitter_models;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -396,61 +397,124 @@ fn numbers(value: &Value) -> Value {
     }
 }
 
-/// O transmissor do original é uma variante `mekanism:special/transmitter` que o Horizon recusa; o port põe, por lado, a parte `NORMAL` (lado ligado) ou `NONE` do OBJ do modelo do
-/// original (`TransmitterBlockStateModel.collectParts`), em um modelo-filho com `visibility` de todas as 24 partes. O item, o modelo do corpo, o OBJ e o `.mtl` são cópias.
+/// O transmissor do original é uma variante `mekanism:special/transmitter` que o Horizon recusa. O blockstate do port é o que o original mostra sem o dado da block entity (a parte `NONE` de
+/// cada lado, na ordem dos lados), e o dado por instância entra pela injeção `transmitter_model_parts`: um modelo por lado e por estado visual do `TransmitterModelData`
+/// (`VisualConnectionStatus`: `NORMAL`, `PUSH`, `PULL`, `NONE` e as duas partes do trecho reto, estas só onde o `hideContiguousJoin` do blockstate está ligado), cada um com `visibility` das
+/// 24 partes do OBJ. A parte do trecho reto troca as texturas de centro pela do braço (`NoneSegmentRemap`) e a girada ainda leva a rotação de `makeIconStatusTransform`. O item, o modelo do
+/// corpo, o OBJ e o `.mtl` são cópias.
 #[test]
 fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
+    let icons = rastro("transmitter_model_parts.json");
     let rastro = rastro("estrutura_modelos.json");
     let files = manifest();
     let sides = ["down", "up", "north", "south", "west", "east"];
     let statuses = ["NONE", "NORMAL", "PUSH", "PULL"];
+    // `VisualConnectionStatus.VALUES` e a parte do OBJ que cada um mostra.
+    let visual = [
+        ("normal", "NORMAL"),
+        ("push", "PUSH"),
+        ("pull", "PULL"),
+        ("none", "NONE"),
+        ("none_contiguous", "NONE"),
+        ("none_contiguous_rotated", "NONE"),
+    ];
     let mut ids = transmitters();
     ids.extend(cables());
     assert_eq!(ids.len(), 22);
+    let mut hiding = 0;
     for id in ids {
         let want = &rastro["transmitters"][&id];
+        let hide = want["hide_contiguous_join"].as_bool().unwrap();
+        hiding += usize::from(hide);
         assert!(
             files.contains(&format!("assets/mekanism/items/{id}.json")),
             "{id}: o item é o do original"
         );
         let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
         let parts = state["multipart"].as_array().unwrap();
-        assert_eq!(parts.len(), 12, "{id}");
+        assert_eq!(parts.len(), sides.len(), "{id}");
         for (i, side) in sides.iter().enumerate() {
-            for (j, (connected, status)) in
-                [("true", "NORMAL"), ("false", "NONE")].iter().enumerate()
-            {
-                let part = &parts[i * 2 + j];
-                assert_eq!(
-                    part["when"],
-                    serde_json::json!({ *side: *connected }),
-                    "{id}"
+            assert_eq!(
+                parts[i],
+                serde_json::json!({"apply": {"model": format!("mekanism:block/transmitter_part/{id}/{side}_none")}}),
+                "{id}"
+            );
+        }
+        let mut models = 0;
+        for side in sides {
+            for (name, part) in visual {
+                let contiguous = name.starts_with("none_contiguous");
+                let path = format!(
+                    "assets/mekanism/models/block/transmitter_part/{id}/{side}_{name}.json"
                 );
-                let name = format!("{side}_{}", status.to_lowercase());
-                assert_eq!(
-                    part["apply"],
-                    serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/{name}")}),
-                    "{id}"
-                );
-                let model = json(&content().join(format!(
-                    "assets/mekanism/models/block/transmitter_part/{id}/{name}.json"
-                )));
-                assert_eq!(model["parent"], want["model"], "{id} {name}");
+                if contiguous && !hide {
+                    assert!(
+                        !content().join(&path).exists(),
+                        "{id}: sem o `hideContiguousJoin` o modelo não tem {path}"
+                    );
+                    continue;
+                }
+                models += 1;
+                let model = json(&content().join(&path));
+                assert_eq!(model["parent"], want["model"], "{id} {side}_{name}");
                 let visibility = model["visibility"].as_object().unwrap();
                 assert_eq!(
                     visibility.len(),
                     sides.len() * statuses.len(),
-                    "{id} {name}"
+                    "{id} {side}_{name}"
                 );
                 for (group, shown) in visibility {
                     assert_eq!(
                         shown.as_bool().unwrap(),
-                        *group == format!("{side}{status}"),
-                        "{id} {name} {group}"
+                        *group == format!("{side}{part}"),
+                        "{id} {side}_{name} {group}"
+                    );
+                }
+                // O trecho reto mostra o centro com a textura do braço (`#center_<lado>` vira `#side`); a girada gira em volta do centro do bloco, como `makeIconStatusTransform`.
+                let keys: Vec<&str> = model
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .collect();
+                match name {
+                    "none_contiguous" => {
+                        assert_eq!(keys, ["parent", "textures", "visibility"], "{id} {side}")
+                    }
+                    "none_contiguous_rotated" => {
+                        assert_eq!(
+                            keys,
+                            ["parent", "textures", "transform", "visibility"],
+                            "{id} {side}"
+                        )
+                    }
+                    _ => assert_eq!(keys, ["parent", "visibility"], "{id} {side}_{name}"),
+                }
+                if contiguous {
+                    let slots = ["down", "up", "north", "south", "east", "west"]
+                        .map(|slot| format!("center_{slot}"));
+                    let textures = model["textures"].as_object().unwrap();
+                    assert_eq!(textures.len(), slots.len(), "{id} {side}_{name}");
+                    for slot in slots {
+                        assert_eq!(textures[&slot], "#side", "{id} {side}_{name} {slot}");
+                    }
+                }
+                if name == "none_contiguous_rotated" {
+                    let icon = icons["icon_transforms"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|icon| icon["side"] == side)
+                        .unwrap();
+                    assert_eq!(
+                        model["transform"],
+                        serde_json::json!({"rotation": icon["quaternion"], "origin": "center"}),
+                        "{id} {side}"
                     );
                 }
             }
         }
+        assert_eq!(models, if hide { 36 } else { 24 }, "{id}");
         // O corpo herda um modelo `neoforge:obj` do original; o OBJ tem as 24 partes e o `.mtl` que ele nomeia está ao lado.
         let mut model = want["model"].as_str().unwrap().to_owned();
         let obj = loop {
@@ -492,6 +556,8 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
         let mtl_path = obj_path.rsplit_once('/').unwrap().0.to_owned() + "/" + mtl;
         assert!(files.contains(&mtl_path), "{mtl_path}");
     }
+    // Só o desviador desliga o `hideContiguousJoin`.
+    assert_eq!(hiding, 21);
 }
 
 /// O cubo de energia: o `EnergyCubeModel` junta o quadro e, por lado, o LED apagado (sem block entity todo lado é `INACTIVE`); o item (`RenderEnergyCubeItem`) usa a configuração de
@@ -685,5 +751,32 @@ fn the_fluid_tanks_use_the_glass_of_their_tier_and_the_items_show_the_block_mode
                 "{block}: a textura do tier é a do original multiplicada pela cor"
             );
         }
+    }
+}
+
+/// A tabela que o jogo usa para pedir as partes (`transmitter_models`) é a dos 22 transmissores: o prefixo dos modelos que o port escreve, o `hideContiguousJoin` do blockstate do original e o
+/// dado do desviador (`TileEntityDiversionTransporter.initModelData`).
+#[test]
+fn the_model_table_of_the_game_lists_the_22_transmitters_with_what_the_original_says() {
+    let rastro = rastro("estrutura_modelos.json");
+    let table = transmitter_models();
+    let mut ids = transmitters();
+    ids.extend(cables());
+    assert_eq!(table.len(), 22);
+    assert_eq!(table.len(), ids.len());
+    for id in ids {
+        let row = table
+            .iter()
+            .find(|row| row.block == format!("mekanism:{id}"))
+            .unwrap_or_else(|| panic!("{id}"));
+        assert_eq!(row.prefix, format!("mekanism:block/transmitter_part/{id}"));
+        assert_eq!(
+            row.hide_contiguous_join,
+            rastro["transmitters"][&id]["hide_contiguous_join"]
+                .as_bool()
+                .unwrap(),
+            "{id}"
+        );
+        assert_eq!(row.diversion, id == "diversion_transporter", "{id}");
     }
 }

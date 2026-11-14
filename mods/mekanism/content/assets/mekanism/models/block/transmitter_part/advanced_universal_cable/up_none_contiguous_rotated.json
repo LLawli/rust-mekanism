@@ -1,0 +1,46 @@
+{
+  "parent": "mekanism:block/transmitter/small/universal_cable/advanced",
+  "textures": {
+    "center_down": "#side",
+    "center_up": "#side",
+    "center_north": "#side",
+    "center_south": "#side",
+    "center_east": "#side",
+    "center_west": "#side"
+  },
+  "transform": {
+    "rotation": [
+      -0.0,
+      -0.70710677,
+      -0.0,
+      -0.70710677
+    ],
+    "origin": "center"
+  },
+  "visibility": {
+    "downNONE": false,
+    "downNORMAL": false,
+    "downPUSH": false,
+    "downPULL": false,
+    "upNONE": true,
+    "upNORMAL": false,
+    "upPUSH": false,
+    "upPULL": false,
+    "northNONE": false,
+    "northNORMAL": false,
+    "northPUSH": false,
+    "northPULL": false,
+    "southNONE": false,
+    "southNORMAL": false,
+    "southPUSH": false,
+    "southPULL": false,
+    "westNONE": false,
+    "westNORMAL": false,
+    "westPUSH": false,
+    "westPULL": false,
+    "eastNONE": false,
+    "eastNORMAL": false,
+    "eastPUSH": false,
+    "eastPULL": false
+  }
+}

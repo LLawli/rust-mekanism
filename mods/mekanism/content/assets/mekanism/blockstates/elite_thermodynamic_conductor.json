@@ -1,97 +1,31 @@
 {
   "multipart": [
     {
-      "when": {
-        "down": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/down_normal"
-      }
-    },
-    {
-      "when": {
-        "down": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/down_none"
       }
     },
     {
-      "when": {
-        "up": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/up_normal"
-      }
-    },
-    {
-      "when": {
-        "up": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/up_none"
       }
     },
     {
-      "when": {
-        "north": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/north_normal"
-      }
-    },
-    {
-      "when": {
-        "north": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/north_none"
       }
     },
     {
-      "when": {
-        "south": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/south_normal"
-      }
-    },
-    {
-      "when": {
-        "south": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/south_none"
       }
     },
     {
-      "when": {
-        "west": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/west_normal"
-      }
-    },
-    {
-      "when": {
-        "west": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/west_none"
       }
     },
     {
-      "when": {
-        "east": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/east_normal"
-      }
-    },
-    {
-      "when": {
-        "east": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/elite_thermodynamic_conductor/east_none"
       }

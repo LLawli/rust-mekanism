@@ -1,97 +1,31 @@
 {
   "multipart": [
     {
-      "when": {
-        "down": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/down_normal"
-      }
-    },
-    {
-      "when": {
-        "down": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/down_none"
       }
     },
     {
-      "when": {
-        "up": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/up_normal"
-      }
-    },
-    {
-      "when": {
-        "up": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/up_none"
       }
     },
     {
-      "when": {
-        "north": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/north_normal"
-      }
-    },
-    {
-      "when": {
-        "north": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/north_none"
       }
     },
     {
-      "when": {
-        "south": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/south_normal"
-      }
-    },
-    {
-      "when": {
-        "south": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/south_none"
       }
     },
     {
-      "when": {
-        "west": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/west_normal"
-      }
-    },
-    {
-      "when": {
-        "west": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/west_none"
       }
     },
     {
-      "when": {
-        "east": "true"
-      },
-      "apply": {
-        "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/east_normal"
-      }
-    },
-    {
-      "when": {
-        "east": "false"
-      },
       "apply": {
         "model": "mekanism:block/transmitter_part/advanced_mechanical_pipe/east_none"
       }

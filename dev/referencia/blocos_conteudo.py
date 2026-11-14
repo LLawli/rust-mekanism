@@ -531,11 +531,16 @@ def read_json(path):
         return json.load(handle)
 
 
-# As partes do OBJ do transmissor (`o downNONE`, `o downNORMAL`...): `TransmitterBlockStateModel.getPartName` junta o lado (`Direction.getSerializedName`) e o estado visual da
-# conexão (`VisualConnectionStatus.partName`). Sem block entity o original põe `NONE` em todo lado (`collectParts`, "Fallback to all none if no data"); com a conexão do chorus
-# plant do Horizon o lado ligado é `NORMAL`. `PUSH` e `PULL` esperam o `ConnectionType` da Fase 3, e os `NONE_CONTIGUOUS` (o `hideContiguousJoin`) a Fase 4.
+# As partes do OBJ do transmissor (`o downNONE`, `o downNORMAL`...): `TransmitterBlockStateModel.getPartName` junta o lado (`Direction.getSerializedName`) e o nome da parte do estado visual da
+# conexão (`VisualConnectionStatus.partName`), e o `ModelData` da block entity escolhe uma parte por lado (`collectParts`: o estado visual de cada lado, `TransmitterModelData`). Sem block
+# entity (sem o dado) o original põe `NONE` em todo lado ("Fallback to all none if no data"). O port tem um modelo por lado e por estado visual: `NORMAL`, `PUSH`, `PULL`, `NONE`, e as
+# duas partes do trecho reto, `NONE_CONTIGUOUS` e `NONE_CONTIGUOUS_ROTATED` (o `hideContiguousJoin`, ligado em todo transmissor menos o desviador).
 SIDES = ("down", "up", "north", "south", "west", "east")
 STATUSES = ("NONE", "NORMAL", "PUSH", "PULL")
+# Os estados visuais (`VisualConnectionStatus.VALUES`) e o nome da parte que cada um mostra no OBJ.
+VISUAL_STATUSES = (("normal", "NORMAL"), ("push", "PUSH"), ("pull", "PULL"), ("none", "NONE"), ("none_contiguous", "NONE"), ("none_contiguous_rotated", "NONE"))
+# O que `NoneSegmentRemap` troca no trecho reto: toda referência de textura que termina em direção (`isDirectional`) vira `#side` (o OBJ referencia `#center_<lado>` nos materiais da parte `NONE`).
+DIRECTIONAL_SLOTS = ("center_down", "center_up", "center_north", "center_south", "center_east", "center_west")
 
 
 def transmitter_parent(block):
@@ -546,24 +551,49 @@ def transmitter_parent(block):
     return f"mekanism:block/transmitter/large/{block}"
 
 
-def transmitter_part_model(parent, side, status):
-    """Um modelo-filho que mostra só a parte `side` + `status` do OBJ: `visibility` com as 24 partes, como os modelos de item da datagen (`items/<id>`)."""
-    visibility = {f"{s}{t}": s == side and t == status for s in SIDES for t in STATUSES}
-    return {"parent": parent, "visibility": visibility}
+def hide_contiguous_join(block):
+    """`hideContiguousJoin` do blockstate do original (`Codec.BOOL.optionalFieldOf("hideContiguousJoin", true)`)."""
+    variant = read_json(f"{GEN}/assets/mekanism/blockstates/{block}.json")["variants"][""]
+    assert variant["type"] == "mekanism:special/transmitter", block
+    return variant.get("hideContiguousJoin", True)
+
+
+def icon_transforms():
+    """`makeIconStatusTransform` de cada lado, como o original o gravou: o quaternion (`rastros/transmitter_model_parts.json`, `testes/TransmitterModelTraceTest.java`)."""
+    with open(os.path.join(HERE, "rastros/transmitter_model_parts.json")) as handle:
+        return {entry["side"]: entry["quaternion"] for entry in json.load(handle)["icon_transforms"]}
+
+
+def transmitter_part_model(parent, side, status, quaternion):
+    """Um modelo-filho que mostra só a parte `side` + `status` do OBJ: `visibility` com as 24 partes, como os modelos de item da datagen (`items/<id>`). Nas partes do trecho reto o
+    `NoneSegmentRemap` troca as texturas de centro pela do braço (`#side`) e a `ROTATED` ainda gira a parte 270 graus em volta do eixo do lado, ao contrário (`makeIconStatusTransform`,
+    `ComposedModelState`): o `transform` de raiz do NeoForge, em volta do centro do bloco."""
+    part = VISUAL_STATUSES[status][1]
+    visibility = {f"{s}{t}": s == side and t == part for s in SIDES for t in STATUSES}
+    model = {"parent": parent}
+    if VISUAL_STATUSES[status][0].startswith("none_contiguous"):
+        model["textures"] = {slot: "#side" for slot in DIRECTIONAL_SLOTS}
+    if VISUAL_STATUSES[status][0] == "none_contiguous_rotated":
+        model["transform"] = {"rotation": quaternion, "origin": "center"}
+    model["visibility"] = visibility
+    return model
 
 
 def transmitter_assets(block):
     """O blockstate do transmissor: o original usa `mekanism:special/transmitter` (`TransmitterBlockStateModel`), que escolhe a parte do OBJ de cada lado pelo dado do modelo da block
-    entity, e o Horizon recusa o tipo. O port junta, por lado, o modelo-filho da parte `NORMAL` (lado ligado) ou `NONE` (desligado), em um `multipart` sobre as seis conexões do chorus
-    plant, e o modelo, o OBJ, o `.mtl` e o item são os do original."""
+    entity, e o Horizon recusa o tipo. O blockstate do port é o que o original mostra sem o dado (a parte `NONE` de todo lado, na ordem dos lados), e o dado por instância entra pela
+    injeção `transmitter_model_parts` (o mesher pede as partes por posição), com um modelo por lado e estado visual; o modelo, o OBJ, o `.mtl` e o item são os do original."""
     parent = transmitter_parent(block)
+    hide = hide_contiguous_join(block)
+    quaternions = icon_transforms()
     files = {}
     multipart = []
     for side in SIDES:
-        for connected, status in (("true", "NORMAL"), ("false", "NONE")):
-            name = f"{side}_{status.lower()}"
-            files[f"assets/mekanism/models/block/transmitter_part/{block}/{name}.json"] = transmitter_part_model(parent, side, status)
-            multipart.append({"when": {side: connected}, "apply": {"model": f"mekanism:block/transmitter_part/{block}/{name}"}})
+        for status, (name, _) in enumerate(VISUAL_STATUSES):
+            if not hide and name.startswith("none_contiguous"):
+                continue
+            files[f"assets/mekanism/models/block/transmitter_part/{block}/{side}_{name}.json"] = transmitter_part_model(parent, side, status, quaternions[side])
+        multipart.append({"apply": {"model": f"mekanism:block/transmitter_part/{block}/{side}_none"}})
     files[f"assets/mekanism/blockstates/{block}.json"] = {"multipart": multipart}
     return files, set()
 

@@ -1,7 +1,9 @@
-// Os 22 transmissores desenhados pelo OBJ do original, no `horizon-assets` do pin, com o texto das injeções `obj_material_parse` e `obj_material_quads` e do módulo `obj-material` posto à mão
-// (`dev/referencia/obj_horizon_assets.py` monta a cópia e roda este teste): cada uma das 12 partes de cada transmissor (o lado ligado e o desligado) tem os quads do objeto do OBJ
-// (`transmitter_small.obj.mek` e `transmitter_large.obj.mek`), a cor `Kd 0.8` do `.mtl` em todos e o índice de tinta -1; o item tem as seis partes `NONE`; e a parte `downNORMAL` do cabo tem as posições
-// e os uv do OBJ, com o v virado. Não roda no gate (precisa do código do Horizon). Sem as injeções a cor sai vazia e o teste falha.
+// Os 22 transmissores desenhados pelo OBJ do original, no `horizon-assets` do pin, com o texto das injeções `obj_material_parse` e `obj_material_quads` e do módulo `obj-material`, e as do
+// `transform` de modelo, postos à mão (`dev/referencia/obj_horizon_assets.py` monta a cópia e roda este teste): cada parte de cada transmissor (um modelo por lado e por estado visual do
+// `TransmitterModelData`: `NORMAL`, `PUSH`, `PULL`, `NONE` e as duas do trecho reto onde há) tem os quads do objeto do OBJ (`transmitter_small.obj.mek` e `transmitter_large.obj.mek`), a cor
+// `Kd 0.8` do `.mtl` em todos e o índice de tinta -1; o centro do trecho reto usa o sprite do braço (`#side`, o `NoneSegmentRemap`) e o girado tem as posições da `Transformation` de
+// `makeIconStatusTransform` (`rastros/transmitter_model_parts.json`, o original); o item tem as seis partes `NONE`; e a parte `downNORMAL` do cabo tem as posições e os uv do OBJ, com o v
+// virado. Não roda no gate (precisa do código do Horizon). Sem as injeções a cor sai vazia e o teste falha.
 use horizon_assets::{
     bake::{BlockModelTransform, bake_block_model},
     model::CuboidModel,
@@ -82,6 +84,21 @@ fn ids() -> Vec<String> {
     v
 }
 
+/// `VisualConnectionStatus.VALUES`: o fim do nome do modelo e a parte do OBJ que cada um mostra.
+const VISUAL: [(&str, &str); 6] = [
+    ("normal", "NORMAL"),
+    ("push", "PUSH"),
+    ("pull", "PULL"),
+    ("none", "NONE"),
+    ("none_contiguous", "NONE"),
+    ("none_contiguous_rotated", "NONE"),
+];
+
+fn rastro(name: &str) -> serde_json::Value {
+    let path = PathBuf::from(std::env::var("RASTROS").expect("RASTROS: dev/referencia/rastros")).join(name);
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
 #[test]
 fn every_part_bakes_with_the_obj_geometry_the_kd_and_a_real_sprite() {
     let lib = ModelLibrary::new(models())
@@ -99,13 +116,20 @@ fn every_part_bakes_with_the_obj_geometry_the_kd_and_a_real_sprite() {
         } else {
             &large
         };
+        // Só o desviador não tem as partes do trecho reto (`hideContiguousJoin` falso).
+        let straight = id != "diversion_transporter";
         for side in SIDES {
-            for (status, suffix) in [("NORMAL", "normal"), ("NONE", "none")] {
+            let mut centre: Vec<String> = Vec::new();
+            for (suffix, part) in VISUAL {
+                let contiguous = suffix.starts_with("none_contiguous");
                 let name = format!("mekanism:block/transmitter_part/{id}/{side}_{suffix}");
+                if contiguous && !straight {
+                    continue;
+                }
                 let model = lib.resolve(&name).unwrap();
                 let quads =
                     bake_block_model(&model, BlockModelTransform::new([0; 3], false)).unwrap();
-                assert_eq!(quads.len(), counts[&format!("{side}{status}")], "{name}");
+                assert_eq!(quads.len(), counts[&format!("{side}{part}")], "{name}");
                 for q in &quads {
                     assert_eq!(q.color, Some(0xFFCC_CCCCu32 as i32), "{name}");
                     assert_eq!(q.tint_index, -1, "{name}");
@@ -116,10 +140,19 @@ fn every_part_bakes_with_the_obj_geometry_the_kd_and_a_real_sprite() {
                         "{name} {}",
                         q.material.sprite
                     );
+                    // O centro (`NONE`) usa a textura de centro; no trecho reto o `NoneSegmentRemap` põe a do braço (`#side`, o arquivo `_vertical`).
+                    let vertical = q.material.sprite.ends_with("_vertical");
+                    if part == "NONE" {
+                        assert_eq!(vertical, contiguous, "{name} {}", q.material.sprite);
+                    }
+                }
+                if part == "NONE" {
+                    centre.push(suffix.to_owned());
                 }
                 total_quads += quads.len();
                 checked += 1;
             }
+            assert_eq!(centre.len(), if straight { 3 } else { 1 }, "{id} {side}");
         }
         // O item: as seis partes NONE.
         let item = lib.resolve(&format!("mekanism:item/{id}")).unwrap();
@@ -128,9 +161,57 @@ fn every_part_bakes_with_the_obj_geometry_the_kd_and_a_real_sprite() {
         assert_eq!(quads.len(), want, "{id} item");
         assert!(quads.iter().all(|q| q.color == Some(0xFFCC_CCCCu32 as i32)));
     }
-    assert_eq!(checked, 22 * 12);
+    assert_eq!(checked, 21 * 36 + 24);
     println!("{checked} partes, {total_quads} quads");
     let _ = STATUSES;
+}
+
+/// A parte girada do trecho reto: os vértices do centro (`NONE`) levados pela `Transformation` de `makeIconStatusTransform` (a matriz que o original gravou), em volta do centro do bloco.
+#[test]
+fn the_rotated_straight_part_has_the_vertices_of_the_none_part_turned_like_the_original() {
+    let lib = ModelLibrary::new(models())
+        .unwrap()
+        .with_assets(Arc::new(Root(content())));
+    let transforms = rastro("transmitter_model_parts.json");
+    let mut moved = 0;
+    for entry in transforms["icon_transforms"].as_array().unwrap() {
+        let side = entry["side"].as_str().unwrap();
+        let rows: Vec<Vec<f32>> = entry["matrix"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row.as_array().unwrap().iter().map(|v| v.as_f64().unwrap() as f32).collect())
+            .collect();
+        for id in ["basic_universal_cable", "ultimate_mechanical_pipe"] {
+            let bake = |suffix: &str| {
+                let model = lib.resolve(&format!("mekanism:block/transmitter_part/{id}/{side}_{suffix}")).unwrap();
+                bake_block_model(&model, BlockModelTransform::new([0; 3], false)).unwrap()
+            };
+            let flat = bake("none_contiguous");
+            let turned = bake("none_contiguous_rotated");
+            assert_eq!(flat.len(), turned.len(), "{id} {side}");
+            assert!(!flat.is_empty());
+            for (a, b) in flat.iter().zip(&turned) {
+                for (p, q) in a.positions.iter().zip(&b.positions) {
+                    let v = [p[0] - 0.5, p[1] - 0.5, p[2] - 0.5];
+                    let want: Vec<f32> = rows
+                        .iter()
+                        .map(|row| row[0] * v[0] + row[1] * v[1] + row[2] * v[2] + row[3] + 0.5)
+                        .collect();
+                    for axis in 0..3 {
+                        assert!((q[axis] - want[axis]).abs() < 1e-5, "{id} {side} {p:?} -> {q:?} contra {want:?}");
+                    }
+                    if p != q {
+                        moved += 1;
+                    }
+                }
+                // Os uv seguem o vértice: a textura gira com a face.
+                assert_eq!(a.uv, b.uv, "{id} {side}");
+            }
+        }
+    }
+    // Girar não é ficar no lugar: o teste pode falhar.
+    assert!(moved > 0);
 }
 
 /// A parte `downNORMAL` do cabo: posições e uv do OBJ, na mesma ordem das faces, com o v virado (`flip_v`).
