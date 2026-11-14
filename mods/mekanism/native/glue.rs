@@ -2999,20 +2999,26 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     // `ATTACHED_ENERGY` (`registerComponentAppenderAfter`): `STORED_ENERGY.translateColored(BRIGHT_GREEN, GRAY, EnergyDisplay.of(handler))`, a energia e a capacidade do item.
     // `registerComponentAppenderAfter(UPGRADES, ...)`: os upgrades instalados vêm antes da energia; o tanque e o `Inventory` das máquinas, depois.
     let machine = machine_of(&stack.item);
-    if machine.is_some() {
+    // `ItemTooltipUtils.shouldDisplayDetails`: o cliente só mostra os detalhes da máquina (os componentes de `registerComponentAppender*`) com a tecla de detalhes (Left Shift) apertada.
+    let details = game.has_shift_down();
+    let hidden = machine.is_some() && !details;
+    if machine.is_some() && details {
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
         // `registerComponentAppenderAfter(FACTORY_TYPE, ...)`: a linha do tipo de receita vem depois dos upgrades e antes da energia (o rastro do original).
         if let Some(factory) = factory_type(&stack.item) {
             lines.push(basis::content_recipe_type_line(factory));
         }
     }
-    if let Some(capacity) = item_energy_capacity(&stack.item) {
+    if let Some(capacity) = item_energy_capacity(&stack.item).filter(|_| !hidden) {
         // `ItemBlockTooltip`: a capacidade da máquina leva os upgrades de energia do item (`UpgradeAmount.getMaxEnergy`).
         let capacity = if machine.is_some() { basis::content_max_energy(game, stack, capacity, ENERGY_UPGRADE) } else { capacity };
         lines.push(basis::stored_energy_line(game, stack, capacity, &STORED_ENERGY_LINE));
     }
-    if let Some(machine) = machine {
+    if let Some(machine) = machine.filter(|_| details) {
         lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
+    }
+    if machine.is_some() {
+        lines.extend(basis::content_hold_lines(details));
     }
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {

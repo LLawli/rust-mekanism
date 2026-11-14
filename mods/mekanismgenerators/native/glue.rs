@@ -192,23 +192,28 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     if &*stack.item != rules::HEAT_GENERATOR {
         return;
     }
-    // `registerComponentAppenderAfter`: os upgrades antes da energia, o fluido e `Inventory` depois.
-    lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
-    lines.push(basis::stored_energy_line(
-        game,
-        stack,
-        heat_config().energy_capacity,
-        &basis::StoredEnergyLine {
-            component: rules::ENERGY_COMPONENT,
-            label: rules::STORED_ENERGY_LANG,
-            label_color: rules::STORED_ENERGY_COLOR,
-            arg_color: rules::STORED_ENERGY_ARG_COLOR,
-            unit: rules::ENERGY_UNIT_LANG,
-            fraction: rules::FRACTION_LANG,
-            infinite: rules::INFINITE_LANG,
-        },
-    ));
-    lines.extend(basis::content_stored_lines(game, stack, false, true));
+    // `ItemTooltipUtils.shouldDisplayDetails`: os detalhes só aparecem com a tecla de detalhes (Left Shift) apertada, e a dica da descrição vem depois deles.
+    let details = game.has_shift_down();
+    if details {
+        // `registerComponentAppenderAfter`: os upgrades antes da energia, o fluido e `Inventory` depois.
+        lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
+        lines.push(basis::stored_energy_line(
+            game,
+            stack,
+            heat_config().energy_capacity,
+            &basis::StoredEnergyLine {
+                component: rules::ENERGY_COMPONENT,
+                label: rules::STORED_ENERGY_LANG,
+                label_color: rules::STORED_ENERGY_COLOR,
+                arg_color: rules::STORED_ENERGY_ARG_COLOR,
+                unit: rules::ENERGY_UNIT_LANG,
+                fraction: rules::FRACTION_LANG,
+                infinite: rules::INFINITE_LANG,
+            },
+        ));
+        lines.extend(basis::content_stored_lines(game, stack, false, true));
+    }
+    lines.extend(basis::content_hold_lines(details));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {

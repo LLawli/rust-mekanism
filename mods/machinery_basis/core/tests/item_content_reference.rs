@@ -195,13 +195,21 @@ fn tooltip_capacity(row: &Value) -> i64 {
         .map(|line| line["text"].as_str().unwrap())
         .find(|text| text.starts_with("Stored energy: "))
         .unwrap();
-    line.split('/').nth(1).unwrap().trim_end_matches(" FE").parse().unwrap()
+    line.split('/')
+        .nth(1)
+        .unwrap()
+        .trim_end_matches(" FE")
+        .parse()
+        .unwrap()
 }
 
 /// A capacidade do tooltip do item com 2 de energia (de no máximo 8) é `getMaxEnergy` sobre a do item sem upgrade, nas quatro máquinas e nos quatro cenários.
 #[test]
 fn the_capacity_of_the_tooltip_follows_the_energy_upgrades_of_the_item() {
-    for (machine, _) in MACHINES.iter().filter(|(machine, _)| *machine != "heat_generator") {
+    for (machine, _) in MACHINES
+        .iter()
+        .filter(|(machine, _)| *machine != "heat_generator")
+    {
         let rows = rows(machine);
         let empty = tooltip_capacity(&rows[0]);
         assert_eq!(rows[0]["scenario"], "empty");

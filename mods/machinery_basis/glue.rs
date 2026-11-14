@@ -3603,6 +3603,24 @@ pub(in crate::game) fn content_upgrade_lines(
         .collect()
 }
 
+/// `MekanismDataComponents.registerComponentAppenderAfterAll(DETAILS, ...)` e `registerComponentAppenderAfter(DESCRIPTION, ...)`: sem a tecla de detalhes a dica `Hold Left Shift for details.`
+/// (`GRAY` com a tecla em `INDIGO`), e a dica `Hold SHIFT + N for a description.` (`GRAY`, a tecla em `AQUA`). A descrição em si (com o N apertado) precisa de rastreio da tecla N, que o
+/// port não tem.
+pub(in crate::game) fn content_hold_lines(details: bool) -> Vec<(horizon_client::mod_api::Text, u32)> {
+    use horizon_client::mod_api::Text;
+    let hint = |key: &str, key_name: &str, color: u32| {
+        let template = horizon_client::lang::get(key).to_string();
+        let (head, tail) = template.split_once("%1$s").unwrap_or((template.as_str(), ""));
+        (Text::colored(head, CONTENT_GRAY).append(Text::colored(key_name, color)).append(Text::colored(tail, CONTENT_GRAY)), u32::MAX)
+    };
+    let mut lines = Vec::new();
+    if !details {
+        lines.push(hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO));
+    }
+    lines.push(hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA));
+    lines
+}
+
 /// A capacidade de energia que o tooltip de uma máquina mostra: `UpgradeAware.getUpgradeCount(energy).getMaxEnergy(def)` (`ItemBlockTooltip`), a padrão `def` vezes o multiplicador máximo
 /// elevado à fração de upgrades de energia (`upgrade_id`) que o item leva. Sem o upgrade instalado é a padrão.
 pub(in crate::game) fn content_max_energy(game: &Game<'_>, stack: &ItemStack, def: i64, upgrade_id: &str) -> i64 {

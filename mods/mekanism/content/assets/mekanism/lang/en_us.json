@@ -343,6 +343,8 @@
   "tooltip.mekanism.upgrade.max_installed": "Maximum Installed: %1$s",
   "tooltip.mekanism.upgrade.type": "Upgrade Type: %1$s",
   "upgrade.mekanism.display.level": "- %1$s: x%2$s",
+  "tooltip.mekanism.hold_for_details": "Hold %1$s for details.",
+  "tooltip.mekanism.hold_for_description": "Hold %1$s for a description.",
   "factory.mekanism.type": "Recipe type: %1$s",
   "factory.mekanism.enriching": "Enriching",
   "factory.mekanism.crushing": "Crushing",

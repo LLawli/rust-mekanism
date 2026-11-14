@@ -8,5 +8,7 @@
   "factory.mekanism.enriching": "Enriching",
   "factory.mekanism.crushing": "Crushing",
   "factory.mekanism.smelting": "Smelting",
-  "factory.mekanism.infusing": "Infusing"
+  "factory.mekanism.infusing": "Infusing",
+  "tooltip.mekanism.hold_for_details": "Hold %1$s for details.",
+  "tooltip.mekanism.hold_for_description": "Hold %1$s for a description."
 }
