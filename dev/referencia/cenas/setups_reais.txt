@@ -64,6 +64,12 @@ cmd tp @a 330.5 -60 6.5
 == volta
 cmd tp @a 2.5 -60 -6
 
+== lejos_vai
+cmd tp @a 400.5 -60 6.5
+
+== lejos_volta
+cmd tp @a 2.5 -60 -6
+
 == leitor
 cmd gamerule send_command_feedback false
 cmd give @a mekanism:network_reader

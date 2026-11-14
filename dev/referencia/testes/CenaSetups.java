@@ -261,6 +261,28 @@ public class CenaSetups {
         return sb.append(']').toString();
     }
 
+    /// Os `LevelChunk` que os `ChunkHolder` guardam numa janela de 141 por 141 chunks em volta da origem (decisão 199): `todos` os que existem (nível 33 ou menos, e os de 34 a 44 que o original segura) e os que têm nível acima de 33.
+    private static String memoria(ServerLevel level) {
+        int todos = 0;
+        int acima = 0;
+        for (int cx = -70; cx <= 70; cx++) {
+            for (int cz = -70; cz <= 70; cz++) {
+                ChunkHolder holder = level.getChunkSource().chunkMap.getUpdatingChunkIfPresent(ChunkPos.pack(cx, cz));
+                if (holder == null) {
+                    continue;
+                }
+                ChunkAccess chunk = holder.getLatestChunk();
+                if (chunk instanceof LevelChunk || chunk instanceof ImposterProtoChunk) {
+                    todos++;
+                    if (holder.getTicketLevel() > 33) {
+                        acima++;
+                    }
+                }
+            }
+        }
+        return "{\"lc\":" + todos + ",\"lc_acima33\":" + acima + "}";
+    }
+
     @SubscribeEvent
     public static void onChunkLoad(ChunkEvent.Load event) {
         if (obs > 0 && Files.exists(ATIVA) && !event.getLevel().isClientSide()) {
@@ -361,7 +383,7 @@ public class CenaSetups {
     private static String estado(MinecraftServer server) {
         ServerLevel level = server.overworld();
         StringBuilder sb = new StringBuilder();
-        sb.append("\"niveis\":").append(niveis(level)).append(",\"carregados\":").append(level.getChunkSource().getLoadedChunksCount()).append(",\"cheios\":").append(cheios(level)).append(",\"fila\":").append(q(fila(level)));
+        sb.append("\"memoria\":").append(memoria(level)).append(",\"niveis\":").append(niveis(level)).append(",\"carregados\":").append(level.getChunkSource().getLoadedChunksCount()).append(",\"cheios\":").append(cheios(level)).append(",\"fila\":").append(q(fila(level)));
         sb.append(",\"redes\":").append(redesJson());
         sb.append(",\"gerador\":").append(energia(level, new BlockPos(0, Y, 0)));
         sb.append(",\"cubos\":[");
@@ -706,6 +728,17 @@ public class CenaSetups {
         passos.add(zera());
         passos.add(depoisDeEntrar(320));
         passos.add(marca("depois_de_voltar"));
+        // 4a. A máquina de um chunk que o original segura mas o Horizon solta (decisão 199): vai a 400 blocos, volta, e lê a energia das Enrichment Chambers antes, longe e depois.
+        passos.add(marca("antes_lejos"));
+        passos.add(observa("lejos", 300));
+        roda("lejos_vai");
+        passos.add(zera());
+        passos.add(depoisDeEntrar(100));
+        passos.add(marca("lejos_no_meio"));
+        roda("lejos_volta");
+        passos.add(zera());
+        passos.add(depoisDeEntrar(150));
+        passos.add(marca("depois_lejos"));
         // 4b. O Network Reader num cabo distante (x = 100, chunk 6): o print que se empilha com o do port.
         passos.add(vistaDoLeitor());
         passos.add(observa("leitor", 100));
