@@ -8,4 +8,5 @@ fn mekanism_standalone_models(models: &mut Vec<String>) {
         .map(|model| crate::game::machinery_transmitter_client::ModelFamily { block: model.block, diversion: model.diversion })
         .collect();
     crate::game::machinery_transmitter_client::register_model_families(families);
+    crate::game::mekanism_glue::register_transmitter_contents(models);
 }

@@ -1,0 +1,37 @@
+{
+  "loader": "neoforge:obj",
+  "model": "mekanism:models/block/transmitter_contents.obj.mek",
+  "flip_v": true,
+  "shade_quads": false,
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "mekanism:mek_liquid/energy",
+    "contents": "mekanism:mek_liquid/energy"
+  },
+  "visibility": {
+    "downNONE": false,
+    "downNORMAL": false,
+    "downPULL": false,
+    "downPUSH": false,
+    "eastNONE": false,
+    "eastNORMAL": false,
+    "eastPULL": false,
+    "eastPUSH": false,
+    "northNONE": false,
+    "northNORMAL": false,
+    "northPULL": false,
+    "northPUSH": false,
+    "southNONE": false,
+    "southNORMAL": false,
+    "southPULL": true,
+    "southPUSH": false,
+    "upNONE": false,
+    "upNORMAL": false,
+    "upPULL": false,
+    "upPUSH": false,
+    "westNONE": false,
+    "westNORMAL": false,
+    "westPULL": false,
+    "westPUSH": false
+  }
+}

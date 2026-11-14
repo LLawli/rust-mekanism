@@ -2274,6 +2274,7 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
         rules::CLIENT_CONFIG_FILE => {
             let loaded = basis::read_config(config, &rules::CLIENT_CONFIG, None);
             basis::set_machine_effects(rules::machine_effects(&loaded));
+            crate::game::machinery_transmitter_contents::set_opaque(rules::opaque_transmitters(&loaded));
             ENERGY_COLOR.store(rules::energy_color(&loaded), std::sync::atomic::Ordering::Relaxed);
             *CLIENT_CONFIG.lock().unwrap_or_else(|error| error.into_inner()) = Some(loaded);
         }
@@ -3661,4 +3662,66 @@ thread_local! {
 /// O RETURN de `Game::bucket_target`: anota o bloco que o balde vai encher.
 pub(in crate::game) fn bucket_target_seen(target: [i32; 3]) {
     BUCKET_TARGET.with(|cell| cell.set(Some(target)));
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O conteúdo animado dos transmissores (`RenderUniversalCable` e as outras três): o que o mod diz à `machinery_basis`.
+
+/// `HeatAPI.DEFAULT_HEAT_CAPACITY`, o que um condutor sem nível no arquivo teria (nunca chega a valer: os 22 nomes vêm da tabela de transmissores).
+const DEFAULT_CONDUCTOR_HEAT_CAPACITY: f64 = 1.0;
+
+/// `tier.getHeatCapacity()` do condutor: o que o arquivo `tiers.toml` diz (o padrão é 5).
+fn conductor_heat_capacity(block: &str) -> f64 {
+    conductor_stats_of(block).map_or(DEFAULT_CONDUCTOR_HEAT_CAPACITY, |(_, values)| values.heat_capacity)
+}
+
+/// O fluido do cano para o desenho: o sprite e a cor do original (`rules::contents_fluid`), com a cor e a luz do arquivo do fluido.
+fn contents_fluid(id: &str) -> Option<crate::game::machinery_transmitter_contents::FluidLook> {
+    let liquids = machinery_basis_core::liquid_data::current();
+    let spec = liquids.iter().find(|spec| spec.id == id).map(|spec| (spec.color, u32::from(spec.light)));
+    let fluid = rules::contents_fluid(id, spec)?;
+    Some(crate::game::machinery_transmitter_contents::FluidLook { sprite: fluid.sprite, rgb: fluid.rgb, light: fluid.light, lighter_than_air: fluid.lighter_than_air })
+}
+
+/// O químico do tubo para o desenho: o ícone e a cor dele (`Chemical.icon`, `tint`).
+fn contents_chemical(id: &str) -> Option<crate::game::machinery_transmitter_contents::ChemicalLook> {
+    let resources = machinery_basis_core::resource::current();
+    let resource = resources.get(id)?;
+    let (sprite, rgb) = rules::contents_chemical(resource.icon.as_deref(), resource.tint);
+    Some(crate::game::machinery_transmitter_contents::ChemicalLook { sprite, rgb, light: 0 })
+}
+
+/// Uma vez no começo do jogo: os 22 transmissores, o que cada um mostra e os 24 modelos avulsos do conteúdo.
+pub(in crate::game) fn register_transmitter_contents(models: &mut Vec<String>) {
+    use crate::game::machinery_transmitter_contents::{Family, Kind, Provider};
+    let families = rules::transmitter_models()
+        .into_iter()
+        .filter_map(|model| {
+            let kind = if is_cable(&model.block) {
+                Kind::Energy
+            } else if is_pipe(&model.block) {
+                Kind::Fluid
+            } else if is_tube(&model.block) {
+                Kind::Chemical
+            } else if is_conductor(&model.block) {
+                Kind::Heat
+            } else {
+                return None;
+            };
+            Some(Family { block: model.block, kind, base_color: machinery_basis_core::transmitter_contents::CONDUCTOR_BASE_COLOR })
+        })
+        .collect();
+    crate::game::machinery_transmitter_contents::register(
+        Provider {
+            families,
+            energy_sprite: rules::ENERGY_SPRITE.to_owned(),
+            heat_sprite: rules::HEAT_SPRITE.to_owned(),
+            model_prefix: rules::CONTENTS_MODEL_PREFIX.to_owned(),
+            heat_capacity: conductor_heat_capacity,
+            fluid: contents_fluid,
+            chemical: contents_chemical,
+        },
+        models,
+    );
 }

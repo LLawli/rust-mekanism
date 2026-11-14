@@ -58,6 +58,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_transmitter_client"
 source = "transmitter_client.rs"
 
+# O conteúdo animado dos transmissores (frente `cabo-conteudo`, Fase 4): o desenho de `RenderTransmitterBase` e das quatro famílias como geometria de block entity (`block_entity_submit`), com o
+# sprite e a cor por instância. Código nosso no `Game`.
+[[module]]
+id = "transmitter-contents"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_transmitter_contents"
+source = "transmitter_contents.rs"
+
 # A mecânica de janela e a janela de upgrades. O módulo mora em `native_hooks.rs` porque a tela aberta (`OpenNativeScreen`) tem campos
 # privados de lá.
 # Os fluidos de mod como bloco de líquido: o `FlowingFluid`, o balde e o dispensador (H47). Código nosso no `Game`, que lê o mundo pelos mesmos

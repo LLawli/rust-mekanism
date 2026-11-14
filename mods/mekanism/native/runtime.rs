@@ -4557,6 +4557,97 @@ fn transmitter_is_large(block: &str) -> Option<bool> {
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// O conteúdo animado dos transmissores (frente `cabo-conteudo`, Fase 4): o que cada fluido e cada químico mostram (`MekanismRenderer.getFluidTexture`, `getColorARGB`).
+
+/// O prefixo dos 24 modelos avulsos do conteúdo (`TransmitterContentsManager`, `<prefixo>/<lado><TIPO>`).
+pub const CONTENTS_MODEL_PREFIX: &str = "mekanism:block/transmitter_contents";
+/// `MekanismRenderer.ENERGY_ICON_LOCATION` e `RenderThermodynamicConductor.HEAT_ICON_LOCATION`.
+pub const ENERGY_SPRITE: &str = "mekanism:mek_liquid/energy";
+pub const HEAT_SPRITE: &str = "mekanism:mek_liquid/heat";
+/// O sprite sem cor própria dos fluidos e dos químicos (`liquid.png`, que o original tinge no vértice).
+pub const LIQUID_SPRITE: &str = "mekanism:mek_liquid/liquid";
+/// Os fluidos do Mekanism com textura própria já tingida no pixel (`textures/mek_liquid/<nome>.png`: o Horizon não tinge o modelo, ver `test_texturas_fluidos.py`); os outros usam
+/// `liquid.png` com a cor do fluido nos vértices.
+pub const FLUIDS_WITH_OWN_TEXTURE: [&str; 16] = [
+    "brine",
+    "chlorine",
+    "ethene",
+    "hydrofluoric_acid",
+    "hydrogen_chloride",
+    "lithium",
+    "nutritional_paste",
+    "oxygen",
+    "sodium",
+    "steam",
+    "sulfur_dioxide",
+    "sulfur_trioxide",
+    "sulfuric_acid",
+    "superheated_sodium",
+    "uranium_hexafluoride",
+    "uranium_oxide",
+];
+/// `MekanismUtils.lighterThanAirGas`: o fluido da tag `c:gaseous` com `isLighterThanAir`, só o vapor.
+pub const LIGHTER_THAN_AIR_FLUIDS: [&str; 1] = ["mekanism:steam"];
+
+/// O fluido de um cano como o desenho o lê.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContentsFluid {
+    pub sprite: String,
+    pub rgb: u32,
+    pub light: u32,
+    pub lighter_than_air: bool,
+}
+
+/// `getFluidTexture(fluid, STILL)`, a cor do `FluidTintSource` (`getColorARGB(FluidResource)`) e a luz (`FluidType.getLightLevel`) de um fluido. `spec` é a cor e a luz do arquivo
+/// `machinery_basis/liquid` do fluido, se ele tem. A água não tem tinta no jogo sem mundo (`BlockTintSources.water().color(state)` é `-1`); `None` para um fluido que o port não conhece.
+pub fn contents_fluid(id: &str, spec: Option<(u32, u32)>) -> Option<ContentsFluid> {
+    let white = 0xFF_FF_FF;
+    match id {
+        "minecraft:water" => {
+            return Some(ContentsFluid {
+                sprite: "minecraft:block/water_still".to_owned(),
+                rgb: white,
+                light: 0,
+                lighter_than_air: false,
+            });
+        }
+        "minecraft:lava" => {
+            return Some(ContentsFluid {
+                sprite: "minecraft:block/lava_still".to_owned(),
+                rgb: white,
+                light: 15,
+                lighter_than_air: false,
+            });
+        }
+        _ => {}
+    }
+    let (color, light) = spec?;
+    let lighter_than_air = LIGHTER_THAN_AIR_FLUIDS.contains(&id);
+    let own = id
+        .strip_prefix("mekanism:")
+        .filter(|name| FLUIDS_WITH_OWN_TEXTURE.contains(name));
+    Some(match own {
+        Some(name) => ContentsFluid {
+            sprite: format!("mekanism:mek_liquid/{name}"),
+            rgb: white,
+            light,
+            lighter_than_air,
+        },
+        None => ContentsFluid {
+            sprite: LIQUID_SPRITE.to_owned(),
+            rgb: color,
+            light,
+            lighter_than_air,
+        },
+    })
+}
+
+/// `Chemical.icon` e `tint` de um químico para o tubo; o ícone que falta vira `liquid.png`.
+pub fn contents_chemical(icon: Option<&str>, tint: u32) -> (String, u32) {
+    (icon.unwrap_or(LIQUID_SPRITE).to_owned(), tint & 0xFF_FFFF)
+}
+
 /// Um transmissor para o desenho do modelo por instância (`TransmitterBlockStateModel`): o bloco, o começo do nome dos modelos das partes que o port escreve por lado e por estado visual
 /// (`<prefixo>/<lado>_<estado>`), o `hideContiguousJoin` do blockstate e se a block entity dá o dado do modelo do desviador (`TileEntityDiversionTransporter.initModelData`).
 #[derive(Clone, Debug, PartialEq, Eq)]

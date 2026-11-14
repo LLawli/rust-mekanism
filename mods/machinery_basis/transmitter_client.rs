@@ -448,6 +448,11 @@ pub(in crate::game) fn modes_at(dimension: &str, pos: [i32; 3]) -> Option<[machi
     })
 }
 
+/// `ThermodynamicConductor.buffer.getHeat()` que o cliente leu do pacote de atualização do condutor em `pos` (`handleUpdateTag`); `None` até o primeiro pacote ou se não é condutor.
+pub(in crate::game) fn heat_at(dimension: &str, pos: [i32; 3]) -> Option<f64> {
+    client_run(|levels| levels.get(dimension)?.extra_at(sim_pos(pos))?.heat)
+}
+
 /// A rede do cliente do transmissor em `pos` (o conteúdo que o desenho da Fase 4 lê: a escala, a energia e o último tipo).
 pub(in crate::game) fn network_at(dimension: &str, pos: [i32; 3]) -> Option<ClientNetwork> {
     client_run(|levels| levels.get(dimension)?.network_at(sim_pos(pos)).cloned())
