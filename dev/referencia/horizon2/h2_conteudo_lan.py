@@ -23,7 +23,7 @@ def host_cmd(texto):
 
 
 def pose_texto(faixa):
-    return "%.2f %.2f %.2f 0 20" % (cc.BASE[0] + 1.5, cc.BASE[1] + 1.4, cc.BASE[2] + cc.FAIXAS[faixa] - 2.4)
+    return "%.2f %.2f %.2f 0 20" % (cc.BASE[0] + 1.5, cc.BASE[1], cc.BASE[2] + cc.FAIXAS[faixa] - 2.4)  # no chão nos dois: o anfitrião voa e o convidado cai, e os olhos ficariam em alturas diferentes
 
 
 def tirar(quem, destino, nome):
@@ -56,13 +56,14 @@ def rodar(destino):
 
 
 def comparar(destino):
-    from PIL import Image, ImageChops
+    """Os pixels diferentes de cada par (`magick compare -metric AE -fuzz 3%`) dentro da faixa dos blocos (linhas 330 a 760); a LAN abre dois clientes na mesma tela do container, então o recorte tira o céu."""
     for nome in sorted(f[len("anfitriao_"):-4] for f in os.listdir(destino) if f.startswith("anfitriao_")):
-        a = Image.open(f"{destino}/anfitriao_{nome}.png").convert("RGB")
-        b = Image.open(f"{destino}/convidado_{nome}.png").convert("RGB")
-        diff = ImageChops.difference(a, b).convert("L").point(lambda v: 255 if v > 8 else 0)
-        n = sum(1 for p in diff.getdata() if p)
-        print(f"{nome}: {n} pixels diferentes de {a.size[0] * a.size[1]} ({100.0 * n / (a.size[0] * a.size[1]):.3f} %)")
+        a, b = f"{destino}/anfitriao_{nome}.png", f"{destino}/convidado_{nome}.png"
+        for origem, copia in ((a, "/tmp/lan_a.png"), (b, "/tmp/lan_b.png")):
+            subprocess.run(["magick", origem, "-crop", "1920x430+0+330", "+repage", copia], check=True)
+        saida = subprocess.run(["magick", "compare", "-metric", "AE", "-fuzz", "3%", "/tmp/lan_a.png", "/tmp/lan_b.png", "null:"], capture_output=True, text=True)
+        n = round(float((saida.stderr or "0").split()[0]))
+        print(f"{nome}: {n} pixels diferentes de {1920 * 430} ({100.0 * n / (1920 * 430):.3f} %)")
 
 
 if __name__ == "__main__":

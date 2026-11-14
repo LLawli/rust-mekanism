@@ -17,7 +17,7 @@ import h2_identity as h
 BASE = (0, 150, 0)
 GAMERULES = ("advance_time", "advance_weather")
 FAIXAS = {"cabo": 0, "agua": 4, "lava": 8, "tubo": 12, "condutor": 16}
-CAPACIDADE = {"agua": 4000, "lava": 4000, "tubo": 16000}
+CAPACIDADE = {"agua": 8000, "lava": 8000, "tubo": 16000}
 SHOTS = os.environ.get("SHOTS", "~/.cache/rust-mekanism/cabo-conteudo/prints")
 LOCAL = os.environ.get("LOCAL", os.path.expanduser("~/.cache/rust-mekanism/wa/cabo-conteudo"))
 LAVA = 'energy:0,machinery_basis:{v:1,tanks:[{resource:"minecraft:lava",amount:1000L}]}'

@@ -191,19 +191,6 @@
    "tp": "61.5 -61.12 82.5 0 0"
   },
   {
-   "name": "por_baixo_agua_100",
-   "cmds": [
-    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
-    "#esperar 20",
-    "#rede 61 -60 82 fluido minecraft:water 1.00",
-    "#esperar 60"
-   ],
-   "tp": "61.5 -61.0 80.2 0 -35"
-  },
-  {
    "name": "anim_agua_0",
    "cmds": [
     "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
@@ -306,6 +293,45 @@
     "#esperar 81"
    ],
    "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "outro_lado_agua_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 61 -60 82 fluido minecraft:water 1.00",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 84.4 180 25"
+  },
+  {
+   "name": "da_ponta_agua_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 61 -60 82 fluido minecraft:water 1.00",
+    "#esperar 80"
+   ],
+   "tp": "57.4 -59.3 82.5 -90 25"
+  },
+  {
+   "name": "de_cima_agua_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 61 -60 82 fluido minecraft:water 1.00",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -58.0 82.5 0 90"
   }
  ]
 }

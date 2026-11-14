@@ -445,10 +445,10 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 h.command("data merge block %s %s %s {component_config:{eject0:1b}}" % (x, y, z))
                 continue
             if cmd.startswith("#rede "):
-                # `#rede X Y Z fluido|quimico ID FRACAO` (`testes/CenaBlocos.java`): a fração da capacidade da rede de quatro transmissores (1.000 por cano, 4.000 por tubo) empurrada pela `probe_push`.
+                # `#rede X Y Z fluido|quimico ID FRACAO` (`testes/CenaBlocos.java`): a fração da capacidade da rede de quatro transmissores (2.000 por cano, 4.000 por tubo; o original loga `capacity` 8.000 e 16.000) empurrada pela `probe_push`.
                 _, x, y, z, tipo, recurso, fracao = cmd.split()
                 if tipo == "fluido":
-                    h.command('data merge block %s %s %s {probe_push:{fluid:"%s",amount:%d}}' % (x, y, z, recurso, round(float(fracao) * 4000)))
+                    h.command('data merge block %s %s %s {probe_push:{fluid:"%s",amount:%d}}' % (x, y, z, recurso, round(float(fracao) * 8000)))
                 else:
                     h.command('data merge block %s %s %s {probe_push:{chem:"%s",amount:%d}}' % (x, y, z, recurso, round(float(fracao) * 16000)))
                 continue
