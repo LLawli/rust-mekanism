@@ -17,6 +17,7 @@ pub mod nbt;
 pub mod node;
 pub mod pathfinder;
 pub mod pos;
+pub mod render;
 pub mod stack;
 pub mod world;
 

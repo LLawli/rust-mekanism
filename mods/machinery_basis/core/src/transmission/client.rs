@@ -19,6 +19,8 @@ use super::connection::{TransmissionSet, TransmissionType};
 use super::transmitter::{Compound, Effect, NetworkId, Tag, Transmitter, UpdateTagNetwork};
 use super::{DimensionId, NetworkId as ServerNetworkId};
 use crate::sim::chunks::BlockPos;
+use crate::sim::open_hash::OpenHashMap;
+use crate::transporter::movement::IntKey;
 use std::collections::HashMap;
 
 /// O canal dos pacotes dos transmissores entre o servidor e o cliente: o pacote de atualização (`getUpdateTag`/`handleUpdateTag`), a saída de um transmissor, o
@@ -355,7 +357,7 @@ impl ClientStack {
 
 /// O que o cliente guarda de um transmissor além das conexões e da rede: o `buffer` do condutor (`setHeat(getDoubleOr(HEAT_STORED, getHeat()))`) e o `transit` e a cor do
 /// transportador. O desenho da Fase 4 lê daqui.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct ClientExtra {
     /// `ThermodynamicConductor.buffer.getHeat()` depois do último pacote; `None` até o primeiro, que a conta de `getHeat` do cliente nunca viu.
     pub heat: Option<f64>,
@@ -363,11 +365,25 @@ pub struct ClientExtra {
     pub color: Option<u8>,
     /// `DiversionTransporter.modes` (`readModes`), um por lado; `None` se o pacote não tem a chave.
     pub modes: Option<[i32; 6]>,
-    /// `LogisticalTransporterBase.transit`.
-    pub transit: Vec<ClientStack>,
+    /// `LogisticalTransporterBase.transit`, o `Int2ObjectOpenHashMap` do original: quem desenha as pilhas as percorre na ordem da tabela (`getTransit()`), a mesma de `sim::open_hash`.
+    pub transit: OpenHashMap<IntKey, ClientStack>,
+}
+
+impl PartialEq for ClientExtra {
+    fn eq(&self, other: &Self) -> bool {
+        self.heat == other.heat
+            && self.color == other.color
+            && self.modes == other.modes
+            && self.transit_in_order() == other.transit_in_order()
+    }
 }
 
 impl ClientExtra {
+    /// `getTransit()`: as pilhas na ordem do iterador do `Int2ObjectOpenHashMap`.
+    pub fn transit_in_order(&self) -> Vec<&ClientStack> {
+        self.transit.entries_in_order().into_iter().map(|(_, stack)| stack).collect()
+    }
+
     /// `PacketTransporterSync.handle` e as atualizações de `PacketTransporterBatch.handle`: `transporter.addStack(id, stack)`, a pilha do pacote no lugar da que tinha o mesmo
     /// índice. O `STREAM_CODEC` lê o progresso zero como 5.
     fn put_stack(&mut self, index: i32, input: &Compound) {
@@ -375,21 +391,20 @@ impl ClientExtra {
         if stack.progress == 0 {
             stack.progress = 5;
         }
-        match self.transit.iter_mut().find(|known| known.index == index) {
-            Some(known) => *known = stack,
-            None => self.transit.push(stack),
-        }
+        self.transit.insert(IntKey(index), stack);
     }
 
     /// `transporter.deleteStack(id)`.
     fn delete_stack(&mut self, index: i32) {
-        self.transit.retain(|stack| stack.index != index);
+        self.transit.remove(IntKey(index));
     }
 
     /// `LogisticalTransporterBase.onUpdateClient`: cada pilha avança `speed` (`tier.getSpeed()`) até 100.
     fn tick_client(&mut self, speed: i32) {
-        for stack in &mut self.transit {
-            stack.progress = (stack.progress + speed).min(100);
+        for key in self.transit.keys_in_order() {
+            if let Some(stack) = self.transit.get_mut(key) {
+                stack.progress = (stack.progress + speed).min(100);
+            }
         }
     }
 
@@ -405,7 +420,7 @@ impl ClientExtra {
                 false
             }
             ClientKind::Items => {
-                self.transit.clear();
+                self.transit.clear_keeping_table();
                 if let Some(Tag::List(items)) = tag.get("items") {
                     for item in items {
                         let Tag::Compound(input) = item else {
@@ -413,8 +428,7 @@ impl ClientExtra {
                         };
                         // Um pacote sem índice é ignorado.
                         if let Some(index) = input.get("index").and_then(Tag::int_value) {
-                            self.transit.retain(|stack| stack.index != index);
-                            self.transit.push(ClientStack::read(index, input));
+                            self.transit.insert(IntKey(index), ClientStack::read(index, input));
                         }
                     }
                 }
