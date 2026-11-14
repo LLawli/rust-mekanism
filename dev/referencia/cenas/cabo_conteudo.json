@@ -30,7 +30,6 @@
     "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
-    "#esperar 20",
     "#esperar 80"
    ],
    "tp": "62.0 -59.3 79.6 0 25"
@@ -68,11 +67,10 @@
     "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 60 -60 83 mekanism:basic_fluid_tank",
     "#esperar 20",
+    "data merge block 60 -60 83 {fluid_tanks:[{container:0b,stored:{type:\"minecraft:water\",amount:4000}}]}",
     "#conexao 60 -60 82 south=pull",
-    "#conexao 61 -60 82 south=pull",
     "#esperar 80"
    ],
    "tp": "62.0 -59.3 79.6 0 25"
@@ -114,15 +112,10 @@
     "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 62 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 63 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 60 -60 83 mekanism:basic_fluid_tank",
     "#esperar 20",
+    "data merge block 60 -60 83 {fluid_tanks:[{container:0b,stored:{type:\"minecraft:water\",amount:8000}}]}",
     "#conexao 60 -60 82 south=pull",
-    "#conexao 61 -60 82 south=pull",
-    "#conexao 62 -60 82 south=pull",
-    "#conexao 63 -60 82 south=pull",
     "#esperar 80"
    ],
    "tp": "62.0 -59.3 79.6 0 25"
@@ -176,15 +169,10 @@
     "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
     "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 62 -60 83 minecraft:water_cauldron[level=3]",
-    "setblock 63 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 60 -60 83 mekanism:basic_fluid_tank",
     "#esperar 20",
+    "data merge block 60 -60 83 {fluid_tanks:[{container:0b,stored:{type:\"minecraft:water\",amount:8000}}]}",
     "#conexao 60 -60 82 south=pull",
-    "#conexao 61 -60 82 south=pull",
-    "#conexao 62 -60 82 south=pull",
-    "#conexao 63 -60 82 south=pull",
     "#esperar 80",
     "#esperar 7"
    ],

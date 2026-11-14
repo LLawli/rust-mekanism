@@ -433,6 +433,12 @@ def cena(out, nomes=(), roteiro="blocos.json"):
             if cmd.startswith("#conexao "):
                 conexao(cmd)
                 continue
+            if cmd.startswith("#fluido "):
+                # Só do port (`cenas/cabo_conteudo_port.json`): o NBT do Fluid Tank do port (`machinery_basis.tanks`); o original usa o `fluid_tanks` dele no próprio roteiro.
+                time.sleep(1.5)
+                _, x, y, z, fluido, quantidade = cmd.split()
+                h.command('data merge block %s %s %s {machinery_basis:{v:1,tanks:[{resource:"%s",amount:%sL}]}}' % (x, y, z, fluido, quantidade))
+                continue
             if cmd.startswith("#ejetar "):
                 # O `eject` da energia do cubo (`ConfigInfo.setEjecting` no original), desligado por padrão.
                 _, x, y, z = cmd.split()

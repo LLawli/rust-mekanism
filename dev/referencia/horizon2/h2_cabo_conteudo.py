@@ -4,6 +4,7 @@
     H_NAME=horizon2 h2_cabo_conteudo.py montar       # as faixas: o cabo com um cubo de energia criativo, o cano de água e o de lava (por um caldeirão e `probe_push`), o tubo de hidrogênio e o condutor
     H_NAME=horizon2 h2_cabo_conteudo.py foto NOME    # um print da faixa que `FAIXA` diz (cabo, agua, lava, tubo, condutor), do mesmo ponto
     H_NAME=horizon2 h2_cabo_conteudo.py nivel FAIXA 0.5   # empurra a fração `0.5` da capacidade na rede da faixa (cano e tubo) e espera um tick
+    H_NAME=horizon2 h2_cabo_conteudo.py video SAIDA.mp4 SEGUNDOS CONTAINER   # o vídeo com som: o cabo enche e esvazia, e o cano, o tubo e o condutor mostram o conteúdo (`enviar_fontes.sh ... sonda`)
     H_NAME=horizon2 h2_cabo_conteudo.py devolver     # devolve as gamerules e limpa a cena
 
 A cena é a do vídeo e dos recortes: clima limpo e meio-dia, ciclos parados. O print vai para `SHOTS` no desktop e para `LOCAL` no notebook."""
@@ -104,6 +105,62 @@ def foto(nome, faixa):
     print(f"{LOCAL}/{nome}.png")
 
 
+GRAVADOR = "~/.cache/rust-mekanism/gravar-jogo"
+NOME_GRAVADOR = os.environ.get("GRAVADOR_NOME", "cabo-conteudo")
+
+
+def pose(faixa, passo=0.0):
+    """A câmera fixa da faixa (`/tp` com yaw e pitch, sem `look-at`, que faz a câmera derivar), a 2,4 blocos do eixo, olhando um pouco para baixo."""
+    cmd("tp @s %.2f %.2f %.2f 0 20" % (BASE[0] + 1.5 + passo, BASE[1] + 1.4, BASE[2] + FAIXAS[faixa] - 2.4))
+
+
+def esvaziar(faixa, bloco):
+    """Tira os blocos da faixa um a um, do fim para o cubo: a rede perde a parte de cada um."""
+    # O `setblock` não toca som: o som do bloco que sai e do que entra vem do `playsound` do mesmo evento do bloco de metal (o que o jogo toca ao quebrar e ao pôr).
+    for x in (3, 2, 1, 0):
+        cmd("setblock %s minecraft:air" % txt(at(x, 0, FAIXAS[faixa])))
+        cmd("playsound minecraft:block.metal.break block @s %s 1 1" % txt(at(x, 0, FAIXAS[faixa])))
+        time.sleep(0.7)
+    for x in range(4):
+        cmd("setblock %s %s" % (txt(at(x, 0, FAIXAS[faixa])), bloco))
+        cmd("playsound minecraft:block.metal.place block @s %s 1 1" % txt(at(x, 0, FAIXAS[faixa])))
+
+
+def video(out, segundos, container):
+    """Roteiro de cerca de 45 s: o cabo enche com o cubo criativo e esvazia, o cano de água enche em quatro passos, o tubo de hidrogênio também, e o condutor esquenta com o Heat Generator."""
+    montar()
+    cmd("data merge block %s {component_config:{eject0:0b}}" % txt(at(-1, 0, FAIXAS["cabo"])))
+    esvaziar("cabo", "mekanism:basic_universal_cable")
+    cmd("tick unfreeze")
+    pose("cabo")
+    time.sleep(3.0)
+    gravar = f"{GRAVADOR} rec {NOME_GRAVADOR} {out} {segundos}" + (f" {container}" if container else "")
+    proc = subprocess.Popen(["ssh", "desktop", gravar])
+    time.sleep(2.5)
+    cmd("data merge block %s {component_config:{eject0:1b}}" % txt(at(-1, 0, FAIXAS["cabo"])))
+    time.sleep(6.0)
+    cmd("data merge block %s {component_config:{eject0:0b}}" % txt(at(-1, 0, FAIXAS["cabo"])))
+    esvaziar("cabo", "mekanism:basic_universal_cable")
+    time.sleep(1.5)
+    for faixa, n in (("agua", 4), ("tubo", 4)):
+        pose(faixa)
+        time.sleep(1.5)
+        for passo in range(n):
+            empurrar(faixa, 0.25)
+            time.sleep(1.8)
+        time.sleep(1.5)
+    pose("lava")
+    time.sleep(1.0)
+    for passo in range(4):
+        empurrar("lava", 0.25)
+        time.sleep(1.2)
+    pose("condutor")
+    time.sleep(2.0)
+    aquecer()
+    time.sleep(8.0)
+    proc.wait()
+
+
 def devolver():
     cmd("tick unfreeze")
     cmd("fill %d %d %d %d %d %d minecraft:air" % (BASE[0] - 6, BASE[1] - 1, BASE[2] - 6, BASE[0] + 12, BASE[1] + 8, BASE[2] + 22))
@@ -121,6 +178,8 @@ def main():
         empurrar(sys.argv[2], float(sys.argv[3]))
     elif what == "aquecer":
         aquecer()
+    elif what == "video":
+        video(sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else 45, sys.argv[4] if len(sys.argv) > 4 else "")
     elif what == "devolver":
         devolver()
 
