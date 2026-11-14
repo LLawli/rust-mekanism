@@ -49,9 +49,9 @@ manual em mundo fica para o que só o jogo mostra, como visual e som.
 
 Vale para toda sessão e todo subagente, e o prompt de quem compila tem de repetir esta regra.
 
-- No máximo 1 build por vez no notebook. No desktop há 1 vaga, para build ou jogo (um ou outro, nunca os dois ao mesmo tempo).
+- No máximo 1 build por vez no notebook. No desktop há 2 vagas, cada uma para um build ou um jogo.
   Um teste de multiplayer abre os dois clientes dentro de uma vaga. Jogo só no desktop, nos containers de teste `horizon` e `horizon2`.
-  (Regra do usuário: 2 vagas em 2026-11-12, 1 vaga na tarde do mesmo dia, de volta a 2 em 2026-11-13, 1 vaga de novo na tarde de 2026-11-13, 2 vagas na noite de 2026-11-13 e 1 vaga de novo mais tarde na mesma noite; os limites só mudam quando ele disser.)
+  (Regra do usuário: 2 vagas em 2026-11-12, 1 vaga na tarde do mesmo dia, de volta a 2 em 2026-11-13, 1 vaga de novo na tarde de 2026-11-13, 2 vagas na noite de 2026-11-13, 1 vaga de novo mais tarde na mesma noite e 2 vagas depois disso; os limites só mudam quando ele disser.)
 - O jogo é sempre headless: `gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080`, sem `-f`. Nunca `--backend wayland` nem nada que abra
   janela no desktop, que o usuário está usando. Prints e vídeo saem pelo `horizon-ctl`. Nunca mate um gamescope que não seja do teste.
 - O jogo de teste também é mudo: todo cliente, do port e do original, manda o áudio para um sink nulo do PipeWire (criado antes, removido ao fim)
