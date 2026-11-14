@@ -38,6 +38,9 @@ else
 fi
 rm -rf "$M/infuser" "$M/conteudo"
 tar -C "$M" -xf "$P/fontes.tar"
+# O mtime vem de quem enviou (`enviar_fontes.sh`). Se outra frente enviou e compilou depois, o rlib dela é mais novo que estes
+# fontes e o cargo o reusa com o código errado (o cache Rust é um só para `horizon` e `horizon2`). O mtime da extração vence.
+find "$M/infuser" -name '*.rs' -exec touch {} +
 JOGO_CMD=true "$HOME/.local/bin/$NAME" offline
 docker update --cpus 4 --memory 6g --memory-swap 6g "$NAME"
 "$HOME/.cache/rust-mekanism/lim-build" env JOGO_CMD="env CARGO_BUILD_JOBS=${JOBS:-4} horizon-launcher native-build ~/Games/Horizon/mods/infuser --instance horizon --profile dev --trust-native-code" "$HOME/.local/bin/$NAME" offline
