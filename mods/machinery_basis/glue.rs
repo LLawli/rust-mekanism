@@ -3511,7 +3511,7 @@ fn transmitters_note_order(dimension: &str, raws: &[transmitters::Raw]) {
                     }
                 }
             }
-            transmitters::Raw::Neighbor { .. } => {}
+            transmitters::Raw::Neighbor { .. } | transmitters::Raw::BlockChanged { .. } => {}
         }
     }
 }
@@ -3591,6 +3591,13 @@ pub(in crate::game) fn transmitters_flush_operation(game: &mut Game<'_>) {
 /// O aviso de vizinho do bloco em `pos` (o gancho `neighbor_changed`): anota a ocorrência, que a fila entrega na ordem.
 pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: BlockPos) {
     transmitters::push(transmitters::Raw::Neighbor { dim: dimension.to_owned(), pos: [pos.x, pos.y, pos.z] });
+}
+
+/// `Level.setBlock` trocou o bloco em `pos` por outro (o gancho `block_changed`): a capability da posição foi invalidada, e o transmissor vizinho a lê de novo.
+pub(in crate::game) fn transmitters_block_changed(level: &GameLevel<'_>, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
+    if level.native_state_block(old) != level.native_state_block(new) {
+        transmitters::push(transmitters::Raw::BlockChanged { pos: [pos.x, pos.y, pos.z] });
+    }
 }
 
 /// O ticker de um block entity de mod (o gancho `block_entity_tick`): o `onUpdateServer` dos transmissores.

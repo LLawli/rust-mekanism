@@ -132,6 +132,8 @@ pub enum Raw {
     /// `load_chunk`: os block entities do chunk, na ordem em que o jogo os recebeu.
     LoadChunk(BlockList),
     Neighbor { dim: String, pos: Pos },
+    /// `Level.setBlock` trocou o bloco em `pos` (o gancho `block_changed`): o NeoForge invalida a capability da posição, que os transmissores vizinhos ouvem.
+    BlockChanged { pos: Pos },
 }
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -209,6 +211,7 @@ pub fn push_from(source: usize, raw: Raw) {
             Raw::Added { pos, .. } | Raw::AddedLater { pos } | Raw::Removed { pos, .. } => ("one", Some(*pos)),
             Raw::LoadChunk(blocks) => ("chunk", blocks.first().map(|(pos, _)| *pos)),
             Raw::Neighbor { pos, .. } => ("neighbor", Some(*pos)),
+            Raw::BlockChanged { pos } => ("changed", Some(*pos)),
         };
         eprintln!("MBD {{\"drop\":\"{kind}\",\"at\":{at:?},\"source\":{source},\"known\":{}}}", SERVER_SOURCE.load(Ordering::Relaxed));
     }
@@ -627,6 +630,12 @@ impl Tracker {
                 }
             }
             Raw::Neighbor { dim, pos } => self.simple(&dim, pos, Kind::Neighbor, out),
+            // O block entity que entra ou sai já invalida a capability (`added`, `removed`): só o bloco sem block entity (o caldeirão) precisa deste aviso.
+            Raw::BlockChanged { pos } => {
+                if !self.present.get(dim).is_some_and(|set| set.contains(&pos)) {
+                    self.capabilities_at(dim, pos, out);
+                }
+            }
         }
     }
 

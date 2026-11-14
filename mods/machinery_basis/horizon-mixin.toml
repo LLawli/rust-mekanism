@@ -828,6 +828,7 @@ bindings = [
   { name = "level", ty = "&GameLevel<'_>", value = "self" },
   { name = "dimension", ty = "LevelDimension", value = "dimension" },
   { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "old", ty = "BlockStateId", value = "old" },
   { name = "new", ty = "BlockStateId", value = "new" },
 ]
 
