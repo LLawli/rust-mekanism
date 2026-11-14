@@ -1,0 +1,28 @@
+{"rodada": 1, "e": "marca", "nome": "tp_nether", "gt": 430}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 1, "gt": 431, "descarregados": {"minecraft:overworld": 1369}, "redes": 6}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 2, "gt": 432, "descarregados": {"minecraft:overworld": 1369}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 3, "gt": 433, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 4, "gt": 434, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 5, "gt": 435, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "no_nether", "k": 6, "gt": 436, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "marca", "nome": "tp_overworld", "gt": 494}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 1, "gt": 495, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 2, "gt": 496, "descarregados": {}, "redes": 1}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 3, "gt": 497, "descarregados": {}, "redes": 6}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 4, "gt": 498, "descarregados": {}, "redes": 6}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 5, "gt": 499, "descarregados": {}, "redes": 6}
+{"rodada": 1, "e": "obs", "tag": "de_volta", "k": 6, "gt": 500, "descarregados": {}, "redes": 6}
+{"rodada": 2, "e": "marca", "nome": "tp_nether", "gt": 422}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 1, "gt": 423, "descarregados": {"minecraft:overworld": 1369}, "redes": 6}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 2, "gt": 424, "descarregados": {"minecraft:overworld": 1369}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 3, "gt": 425, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 4, "gt": 426, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 5, "gt": 427, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "no_nether", "k": 6, "gt": 428, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "marca", "nome": "tp_overworld", "gt": 486}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 1, "gt": 487, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 2, "gt": 488, "descarregados": {}, "redes": 1}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 3, "gt": 489, "descarregados": {}, "redes": 6}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 4, "gt": 490, "descarregados": {}, "redes": 6}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 5, "gt": 491, "descarregados": {}, "redes": 6}
+{"rodada": 2, "e": "obs", "tag": "de_volta", "k": 6, "gt": 492, "descarregados": {}, "redes": 6}

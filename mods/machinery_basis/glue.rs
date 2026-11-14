@@ -277,7 +277,7 @@ impl Game<'_> {
         static LAST: Mutex<String> = Mutex::new(String::new());
         let mut line = String::new();
         for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
-            let streaming = if dim == self.dim { Some(&self.streaming) } else { self.levels.parked.get(&dim).map(|p| &p.streaming) };
+            let streaming = (dim == self.dim).then_some(&self.streaming);
             let guests = self.lan.as_ref().map_or(0, |h| h.hub.guests.iter().filter(|g| g.dimension == dim.id()).count());
             line.push_str(&format!(
                 " {}:{{held:{},guests:{guests},viewers:{},bed:{},forced:{},mod_forced:{},tests:{},pregen:{},arrivals:{},portal:{},vehicle:{},trips:{}}}",
@@ -356,6 +356,16 @@ impl Game<'_> {
                     self.world.chunks.len(),
                     self.streaming.forced.len() + self.streaming.mod_forced.len()
                 );
+            }
+        }
+        // Os chunks da volta de um nível descarregado que esperavam a entrega (`ARRIVAL_DELAY_TICKS`): entram no registro agora, antes do `Post` do tick.
+        for (id, chunk) in &step.loads {
+            let dim = Dim::from_id(id);
+            if self.mb_level_open(dim) && (dim == self.dim || self.enter_level(None, dim).is_ok()) && self.world.chunks.contains_key(&(chunk[0], chunk[1])) {
+                if TRANSMITTER_PROBE {
+                    eprintln!("MBT {{\"t\":{},\"e\":\"arrival_load\",\"dim\":\"{id}\",\"cx\":{},\"cz\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
+                }
+                transmitters_chunk_loaded_now(self, id, *chunk);
             }
         }
         if self.dim != back {
@@ -3703,6 +3713,15 @@ pub(in crate::game) fn transmitters_chunk_loaded(game: &mut Game<'_>, dimension:
         return;
     }
     transmitters_flush(game);
+    // O nível que acabou de descarregar e voltou refaz as redes dois ticks depois do `tp` no original, e o port já o faria um antes: a entrega espera o fim do tick seguinte (decisão 218).
+    if IDLE_LEVELS.with_borrow_mut(|levels| levels.delay_arrival_load(dimension, chunk)) {
+        return;
+    }
+    transmitters_chunk_loaded_now(game, dimension, chunk);
+}
+
+/// A entrega do `ChunkEvent.Load` de um chunk, sem espera.
+fn transmitters_chunk_loaded_now(game: &mut Game<'_>, dimension: &str, chunk: [i32; 2]) {
     let accessible = chunk_accessible(game, dimension, chunk);
     let events = transmitters::chunk_loaded_with(dimension, chunk, accessible);
     probe_chunk_load(chunk, accessible, &events);
