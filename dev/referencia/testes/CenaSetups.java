@@ -51,6 +51,11 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ImposterProtoChunk;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.server.level.ChunkHolder;
+import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.BlockHitResult;
@@ -216,6 +221,60 @@ public class CenaSetups {
         return sb.toString();
     }
 
+    /// A memória do servidor por chunk da linha (decisão 199): de cada (cx, 0) de 0 a `NIVEIS_ATE`, `[cx, nível do ticket, tipo do chunk que o `ChunkHolder` guarda, block entities, removidos]`.
+    /// O tipo é `L` para um `LevelChunk`, `I` para o `ImposterProtoChunk` que o embrulha, `P<n>` para um `ProtoChunk` no estado de índice `n` e `-` sem chunk; sem holder, o chunk não está na tabela.
+    private static final int NIVEIS_ATE = 36;
+
+    private static String niveis(ServerLevel level) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean primeiro = true;
+        for (int cx = 0; cx <= NIVEIS_ATE; cx++) {
+            ChunkHolder holder = level.getChunkSource().chunkMap.getUpdatingChunkIfPresent(ChunkPos.pack(cx, 0));
+            if (holder == null) {
+                continue;
+            }
+            ChunkAccess chunk = holder.getLatestChunk();
+            String tipo = "-";
+            int bes = 0;
+            int removidos = 0;
+            LevelChunk nivel = null;
+            if (chunk instanceof LevelChunk lc) {
+                tipo = "L";
+                nivel = lc;
+            } else if (chunk instanceof ImposterProtoChunk imposter) {
+                tipo = "I";
+                nivel = imposter.getWrapped();
+            } else if (chunk != null) {
+                tipo = "P" + chunk.getPersistedStatus().getIndex();
+            }
+            if (nivel != null) {
+                for (BlockEntity be : nivel.getBlockEntities().values()) {
+                    bes++;
+                    if (be.isRemoved()) {
+                        removidos++;
+                    }
+                }
+            }
+            sb.append(primeiro ? "" : ",").append('[').append(cx).append(',').append(holder.getTicketLevel()).append(',').append(q(tipo)).append(',').append(bes).append(',').append(removidos).append(']');
+            primeiro = false;
+        }
+        return sb.append(']').toString();
+    }
+
+    @SubscribeEvent
+    public static void onChunkLoad(ChunkEvent.Load event) {
+        if (obs > 0 && Files.exists(ATIVA) && !event.getLevel().isClientSide()) {
+            escreve("{\"e\":\"chunk\",\"tag\":" + q(obsTag) + ",\"k\":" + (obsK + 1) + ",\"ev\":\"load\",\"cx\":" + event.getChunk().getPos().x() + ",\"cz\":" + event.getChunk().getPos().z() + "}");
+        }
+    }
+
+    @SubscribeEvent
+    public static void onChunkUnload(ChunkEvent.Unload event) {
+        if (obs > 0 && Files.exists(ATIVA) && !event.getLevel().isClientSide()) {
+            escreve("{\"e\":\"chunk\",\"tag\":" + q(obsTag) + ",\"k\":" + (obsK + 1) + ",\"ev\":\"unload\",\"cx\":" + event.getChunk().getPos().x() + ",\"cz\":" + event.getChunk().getPos().z() + "}");
+        }
+    }
+
     private static long energia(ServerLevel level, BlockPos pos) {
         if (!level.hasChunkAt(pos)) {
             return -1;
@@ -302,7 +361,7 @@ public class CenaSetups {
     private static String estado(MinecraftServer server) {
         ServerLevel level = server.overworld();
         StringBuilder sb = new StringBuilder();
-        sb.append("\"carregados\":").append(level.getChunkSource().getLoadedChunksCount()).append(",\"cheios\":").append(cheios(level)).append(",\"fila\":").append(q(fila(level)));
+        sb.append("\"niveis\":").append(niveis(level)).append(",\"carregados\":").append(level.getChunkSource().getLoadedChunksCount()).append(",\"cheios\":").append(cheios(level)).append(",\"fila\":").append(q(fila(level)));
         sb.append(",\"redes\":").append(redesJson());
         sb.append(",\"gerador\":").append(energia(level, new BlockPos(0, Y, 0)));
         sb.append(",\"cubos\":[");
