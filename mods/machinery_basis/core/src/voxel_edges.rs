@@ -40,7 +40,8 @@ pub fn union_edges(boxes: &[[f64; 6]]) -> Vec<Edge> {
                 let at = [i, j, k];
                 cells[(i * sizes[1] + j) * sizes[2] + k] = boxes.iter().any(|bounds| {
                     (0..3).all(|axis| {
-                        bounds[axis] <= grid[axis][at[axis]] && grid[axis][at[axis] + 1] <= bounds[axis + 3]
+                        bounds[axis] <= grid[axis][at[axis]]
+                            && grid[axis][at[axis] + 1] <= bounds[axis + 3]
                     })
                 });
             }

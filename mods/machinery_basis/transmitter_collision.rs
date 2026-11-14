@@ -14,7 +14,10 @@ use std::{
     },
 };
 
-static SHAPES: Mutex<Option<HashMap<(&'static str, [i32; 3]), Vec<[f64; 6]>>>> = Mutex::new(None);
+/// As caixas de cada transmissor com forma guardada, por dimensão e posição.
+type Table = HashMap<(&'static str, [i32; 3]), Vec<[f64; 6]>>;
+
+static SHAPES: Mutex<Option<Table>> = Mutex::new(None);
 /// O número de formas guardadas: sem nenhuma, a varredura de colisão não toca a trava.
 static COUNT: AtomicUsize = AtomicUsize::new(0);
 /// A sonda da cópia de teste (`enviar_fontes.sh` não a liga: o roteiro `h2_cabo_forma.py` a liga na cópia): `MBC` a thread, o nível dela e se a forma guardada serviu, nas primeiras buscas de uma posição que tem forma guardada.
@@ -25,7 +28,7 @@ thread_local! {
     static LEVEL: Cell<&'static str> = const { Cell::new("") };
 }
 
-fn table() -> std::sync::MutexGuard<'static, Option<HashMap<(&'static str, [i32; 3]), Vec<[f64; 6]>>>> {
+fn table() -> std::sync::MutexGuard<'static, Option<Table>> {
     SHAPES.lock().unwrap_or_else(|error| error.into_inner())
 }
 

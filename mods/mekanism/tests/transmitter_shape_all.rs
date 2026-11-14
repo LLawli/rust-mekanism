@@ -90,7 +90,11 @@ fn six(value: &Value) -> [f64; 6] {
 #[test]
 fn the_real_shape_of_every_combination_is_the_original() {
     let lines = trace();
-    assert_eq!(lines.len(), 8192, "4096 combinações do pequeno e 4096 do grande");
+    assert_eq!(
+        lines.len(),
+        8192,
+        "4096 combinações do pequeno e 4096 do grande"
+    );
     let mut detailed = 0;
     for line in &lines {
         let large = line["large"].as_u64().unwrap() == 1;
@@ -130,7 +134,10 @@ fn the_real_shape_of_every_combination_is_the_original() {
             );
         }
     }
-    assert!(detailed >= 2 * 64, "as combinações com as listas inteiras: {detailed}");
+    assert!(
+        detailed >= 2 * 64,
+        "as combinações com as listas inteiras: {detailed}"
+    );
 }
 
 #[test]

@@ -30,7 +30,9 @@ mod horizon_core {
                 Self(Vec::new())
             }
             pub fn from_box(aabb: Aabb) -> Result<Self, ()> {
-                Ok(Self(vec![[aabb.0.0, aabb.0.1, aabb.0.2, aabb.1.0, aabb.1.1, aabb.1.2]]))
+                Ok(Self(vec![[
+                    aabb.0.0, aabb.0.1, aabb.0.2, aabb.1.0, aabb.1.1, aabb.1.2,
+                ]]))
             }
             pub fn join(&self, other: &Self, _: ShapeOp) -> Result<Self, ()> {
                 Ok(Self([self.0.clone(), other.0.clone()].concat()))
@@ -76,7 +78,10 @@ fn the_shape_is_per_dimension_and_per_position() {
     let pos = at(1);
     collision::set(OVERWORLD, pos, Some(vec![CENTER]));
     collision::enter(NETHER);
-    assert!(collision::shape_at(pos).is_none(), "o Nether não tem o cabo do overworld");
+    assert!(
+        collision::shape_at(pos).is_none(),
+        "o Nether não tem o cabo do overworld"
+    );
     collision::enter(OVERWORLD);
     assert!(collision::shape_at(pos).is_some());
     assert!(collision::shape_at(at(2)).is_none(), "outra posição");
@@ -103,7 +108,9 @@ fn a_thread_reads_the_level_it_is_in() {
 fn a_thread_that_never_entered_a_level_reads_nothing() {
     let pos = at(4);
     collision::set(OVERWORLD, pos, Some(vec![CENTER]));
-    let silent = std::thread::spawn(move || collision::shape_at(pos).is_none()).join().unwrap();
+    let silent = std::thread::spawn(move || collision::shape_at(pos).is_none())
+        .join()
+        .unwrap();
     assert!(silent);
     collision::set(OVERWORLD, pos, None);
 }
