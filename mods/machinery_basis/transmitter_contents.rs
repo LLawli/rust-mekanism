@@ -92,6 +92,15 @@ pub(in crate::game) fn register(provider: Provider, models: &mut Vec<String>) {
     *lock(&PROVIDER) = Some(provider);
 }
 
+/// O cliente só tem a block entity de um transmissor, e então o desenha, se o servidor mandar uma cópia (`native_block_entity_update_tag`): o convidado de LAN a recebe vazia, e o que o
+/// desenho lê (a escala, o último tipo, o calor, as conexões) vem do `ClientTransmitters` dele (decisão 151).
+pub(in crate::game) fn update_tag(entity: &horizon_client::containers::ModBlockEntity, tag: &mut Option<horizon_world::nbt::Compound>) {
+    let known = lock(&PROVIDER).as_ref().is_some_and(|provider| provider.families.iter().any(|family| family.block == *entity.id));
+    if known {
+        *tag = Some(horizon_world::nbt::Compound::default());
+    }
+}
+
 /// `ModConfigEvent`: `opaqueTransmitters`.
 pub(in crate::game) fn set_opaque(opaque: bool) {
     OPAQUE.store(opaque, Ordering::Relaxed);
