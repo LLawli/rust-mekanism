@@ -6,6 +6,7 @@
 mod events {
     include!("../../transmitter_events.rs");
 }
+use events::LoadingTickets;
 use events::{Event as GameEvent, Kind, Raw};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::{BlockPos, ChunkPos};
@@ -13,7 +14,6 @@ use machinery_basis_core::transmission::owner::{
     Acceptor, CableInfo, CableView, EnergyTransmitters, Event, OwnerWorld,
 };
 use machinery_basis_core::transmission::{DimensionId, Uuid};
-use events::LoadingTickets;
 use std::collections::BTreeSet;
 use std::sync::{Mutex, MutexGuard};
 
@@ -196,7 +196,12 @@ impl World {
             .iter()
             .copied()
             .filter(|chunk| self.game.ring.contains(chunk))
-            .filter(|chunk| self.game.ticking.as_ref().is_none_or(|set| set.contains(chunk)))
+            .filter(|chunk| {
+                self.game
+                    .ticking
+                    .as_ref()
+                    .is_none_or(|set| set.contains(chunk))
+            })
             .collect();
         for chunk in walking {
             for x in chunk * 16..chunk * 16 + 16 {
@@ -411,8 +416,16 @@ fn the_ticket_levels_are_the_distance_managers_up_to_the_level_the_original_drop
     assert_eq!(tickets.level([0, 0]), 31);
     assert_eq!(tickets.level([VIEW, 0]), 31);
     assert_eq!(tickets.level([VIEW + 1, 0]), 32, "o anel acessível");
-    assert_eq!(tickets.level([VIEW + 2, 0]), 33, "o chunk inteiro, inacessível");
-    assert_eq!(tickets.level([VIEW + 2, 5]), 33, "a distância é a de Chebyshev");
+    assert_eq!(
+        tickets.level([VIEW + 2, 0]),
+        33,
+        "o chunk inteiro, inacessível"
+    );
+    assert_eq!(
+        tickets.level([VIEW + 2, 5]),
+        33,
+        "a distância é a de Chebyshev"
+    );
     assert!(tickets.retains([29, 0]), "o nível 44 ainda é segurado");
     assert!(!tickets.retains([30, 0]), "o 45 o original solta");
     let mut tickets = tickets_of(0);
@@ -425,7 +438,11 @@ fn the_ticket_levels_are_the_distance_managers_up_to_the_level_the_original_drop
     assert_eq!(tickets.level([-44, 0]), 36);
     assert_eq!(tickets.level([0, 200]), 24, "a arena do dragão é o 24");
     assert_eq!(tickets.level([0, 210]), 34);
-    assert_eq!(LoadingTickets::default().level([0, 0]), i32::MAX, "sem tickets, o chunk não é segurado");
+    assert_eq!(
+        LoadingTickets::default().level([0, 0]),
+        i32::MAX,
+        "sem tickets, o chunk não é segurado"
+    );
 }
 
 #[test]
@@ -437,18 +454,44 @@ fn the_roteiro_of_the_setups_reais_ends_with_the_whole_line_in_the_network() {
     let mut world = World::with_chunks(LONG);
     world.follow(0, true, 6);
     // Os chunks 14 a 17 estão no anel mas fora da simulação: os cabos deles nunca andaram, e o ticket não os acha (decisão 189). Só entram na rede depois de andar, com o jogador longe.
-    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 13)], "o começo, no chunk 0 (223 no original)");
+    assert_eq!(
+        world.networks(),
+        vec![cables_of(LONG, 0, 13)],
+        "o começo, no chunk 0 (223 no original)"
+    );
     world.follow(20, true, 6);
-    assert_eq!(world.networks(), vec![cables_of(LONG, 3, 23)], "afastado, no chunk 20");
+    assert_eq!(
+        world.networks(),
+        vec![cables_of(LONG, 3, 23)],
+        "afastado, no chunk 20"
+    );
     world.follow(0, true, 6);
-    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 17)], "de volta ao chunk 0 (287 no original)");
-    assert_eq!(events::held_chunks(OW), vec![[21, 0], [22, 0], [23, 0]], "os chunks 21 a 23 o Horizon soltou e o original segura");
+    assert_eq!(
+        world.networks(),
+        vec![cables_of(LONG, 0, 17)],
+        "de volta ao chunk 0 (287 no original)"
+    );
+    assert_eq!(
+        events::held_chunks(OW),
+        vec![[21, 0], [22, 0], [23, 0]],
+        "os chunks 21 a 23 o Horizon soltou e o original segura"
+    );
     let clears = world.clears;
     let removals = world.removals;
     world.follow(6, true, 6);
-    assert_eq!(world.networks(), vec![cables_of(LONG, 0, 23)], "no chunk 6, o Network Reader lê a linha inteira");
-    assert_eq!(world.clears, clears, "os cabos que voltam não recebem outro `clearRemoved`");
-    assert_eq!(world.removals, removals, "e nenhum `setRemoved` os tirou antes");
+    assert_eq!(
+        world.networks(),
+        vec![cables_of(LONG, 0, 23)],
+        "no chunk 6, o Network Reader lê a linha inteira"
+    );
+    assert_eq!(
+        world.clears, clears,
+        "os cabos que voltam não recebem outro `clearRemoved`"
+    );
+    assert_eq!(
+        world.removals, removals,
+        "e nenhum `setRemoved` os tirou antes"
+    );
     assert!(events::held_chunks(OW).is_empty());
 }
 
@@ -466,11 +509,10 @@ fn the_chunks_the_original_still_holds_are_released_when_it_drops_them() {
     world.release(&far);
     assert!(events::held_chunks(OW).is_empty());
     assert_eq!(world.removals - removals, cables_of(LONG, 21, 23));
-    assert!(world
-        .owner
-        .positions()
-        .iter()
-        .all(|pos| pos.x >> 4 < 21), "os cabos dos chunks soltos saíram do dono");
+    assert!(
+        world.owner.positions().iter().all(|pos| pos.x >> 4 < 21),
+        "os cabos dos chunks soltos saíram do dono"
+    );
 }
 
 #[test]
