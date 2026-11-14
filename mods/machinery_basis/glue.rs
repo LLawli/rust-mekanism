@@ -271,6 +271,37 @@ impl Game<'_> {
         true
     }
 
+    /// Sonda de `tp-dimensao`: por que cada nível segurado está segurado (as cláusulas de `levels_to_tick`), escrito só quando o motivo muda.
+    fn mb_probe_hold(&self, held: &[crate::game::Dim]) {
+        use crate::game::Dim;
+        static LAST: Mutex<String> = Mutex::new(String::new());
+        let mut line = String::new();
+        for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
+            let streaming = if dim == self.dim { Some(&self.streaming) } else { self.levels.parked.get(&dim).map(|p| &p.streaming) };
+            let guests = self.lan.as_ref().map_or(0, |h| h.hub.guests.iter().filter(|g| g.dimension == dim.id()).count());
+            line.push_str(&format!(
+                " {}:{{held:{},guests:{guests},viewers:{},bed:{},forced:{},mod_forced:{},tests:{},pregen:{},arrivals:{},portal:{},vehicle:{},trips:{}}}",
+                dim.id(),
+                held.contains(&dim),
+                self.mod_container_viewers.keys().any(|(k, _)| *k == dim.id()),
+                self.player_bed_levels().any(|b| b == dim),
+                streaming.map_or(0, |s| s.forced.len()),
+                streaming.map_or(0, |s| s.mod_forced.len()),
+                self.game_tests.has_tests_in(dim),
+                self.pregen_level() == Some(dim),
+                self.arrival_chunks(dim).len(),
+                self.portal_ticket_chunks(dim).len(),
+                self.vehicle_waits_in(dim),
+                self.server_trips.len(),
+            ));
+        }
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if *last != line {
+            eprintln!("MBT {{\"t\":{},\"e\":\"hold\",\"dim\":\"{}\",\"razoes\":\"{}\"}}", TRANSMITTER_PASS.load(Ordering::Relaxed), self.dim.id(), line.trim());
+            *last = line;
+        }
+    }
+
     /// O nível está aberto: o que está no lugar ou um dos parados.
     fn mb_level_open(&self, dim: crate::game::Dim) -> bool {
         dim == self.dim || self.lod_source_in(dim).is_some()
@@ -292,6 +323,9 @@ impl Game<'_> {
             }
         }
         let held_ids: Vec<&str> = held.iter().map(|dim| dim.id()).collect();
+        if TRANSMITTER_PROBE {
+            self.mb_probe_hold(&held);
+        }
         let step = IDLE_LEVELS.with_borrow_mut(|levels| levels.end_of_tick(&held_ids));
         let back = self.dim;
         if TRANSMITTER_PROBE && !step.waiting.is_empty() {
