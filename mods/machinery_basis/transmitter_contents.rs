@@ -118,10 +118,23 @@ fn light_with_emission(light: u32, emission: u32) -> u32 {
     sky * 16 | block * 16 << 8
 }
 
-/// O retângulo do sprite no atlas (`u0`, `v0`, `u1`, `v1`): o nome como o modelo o cita, ou sem o `minecraft:` (o vanilla é `block/water_still`).
-fn rect_of(game: &Game<'_>, name: &str) -> Option<[f32; 4]> {
+/// Quantas vezes a sonda já escreveu um sprite que falta (o desenho roda a cada quadro: só as primeiras).
+static MISSING_LOGGED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// O nome do sprite no atlas: como o modelo o cita, ou sem o `minecraft:` (o vanilla é `block/water_still`). Com a sonda ligada, o que falta sai no log (`MBC`).
+fn sprite_key(game: &Game<'_>, name: &str) -> Option<String> {
     let sprites = &game.gui.atlas.sprites;
-    sprites.get(name).or_else(|| sprites.get(name.strip_prefix("minecraft:")?)).map(|rect| [rect.u0, rect.v0, rect.u1, rect.v1])
+    let key = if sprites.contains_key(name) { Some(name) } else { name.strip_prefix("minecraft:").filter(|short| sprites.contains_key(*short)) };
+    if key.is_none() && crate::game::machinery_basis::transmitter_probe_enabled() && MISSING_LOGGED.fetch_add(1, Ordering::Relaxed) < 40 {
+        eprintln!("MBC {{\"missing_sprite\":{name:?}}}");
+    }
+    key.map(str::to_owned)
+}
+
+/// O retângulo do sprite no atlas (`u0`, `v0`, `u1`, `v1`).
+fn rect_of(game: &Game<'_>, name: &str) -> Option<[f32; 4]> {
+    let key = sprite_key(game, name)?;
+    game.gui.atlas.sprites.get(&key).map(|rect| [rect.u0, rect.v0, rect.u1, rect.v1])
 }
 
 /// Desenha os grupos do modelo de conteúdo (`submitBlockModel` do `RenderTransmitterBase.submit`) com `sprite` no lugar do sprite do modelo, a cor `argb` (o alfa vai nos vértices) e
@@ -132,6 +145,9 @@ fn draw_groups(game: &Game<'_>, draw: &mut BlockEntityDraw, provider: &Provider,
     };
     let kept = draw.light;
     draw.light = light;
+    // `RenderTransmitterBase.submit`: `poseStack.translate(0.5, 0.5, 0.5)` antes do modelo, cujos vértices estão em torno do centro do bloco (-0,5 a 0,5).
+    draw.push();
+    draw.translate(contents::CONTENTS_MODEL_ORIGIN);
     for group in groups {
         let start = draw.vertices_mut().len();
         if !game.native_draw_model(draw, &format!("{}/{}", provider.model_prefix, group.to_lowercase()), 0xFF_FFFF) {
@@ -143,11 +159,16 @@ fn draw_groups(game: &Game<'_>, draw: &mut BlockEntityDraw, provider: &Provider,
             vertex.color = vertex_color(argb, CONTENTS_KD);
         }
     }
+    draw.pop();
     draw.light = kept;
 }
 
 /// Os cubos do cano (`RenderMechanicalPipe.submit`, `RenderResizableCuboid.renderCube`): o fluido parado, com a altura do estágio.
 fn draw_pipe_cubes(game: &Game<'_>, draw: &mut BlockEntityDraw, frame: &contents::PipeFrame, sprite: &str, argb: u32, light: u32) {
+    let Some(sprite) = sprite_key(game, sprite) else {
+        return;
+    };
+    let sprite = sprite.as_str();
     let kept = draw.light;
     draw.light = light;
     for cuboid in contents::pipe_cuboids(frame) {

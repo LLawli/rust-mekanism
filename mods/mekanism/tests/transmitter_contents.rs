@@ -186,3 +186,30 @@ fn a_chemical_keeps_the_light_level_of_its_file() {
     }
     assert!(with_light >= 5, "{with_light}");
 }
+
+#[test]
+fn the_contents_model_sits_inside_the_block_once_moved_by_the_pose_translation() {
+    // O OBJ do conteúdo está em torno da origem (-0,5 a 0,5): sem o `translate(0.5, 0.5, 0.5)` do `RenderTransmitterBase.submit` o conteúdo sai meio bloco para baixo, para o norte e para oeste.
+    let obj =
+        fs::read_to_string(content().join("models/block/transmitter_contents.obj.mek")).unwrap();
+    let origin = machinery_basis_core::transmitter_contents::CONTENTS_MODEL_ORIGIN;
+    let mut vertices = 0;
+    let (mut low, mut high) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for line in obj.lines().filter_map(|line| line.strip_prefix("v ")) {
+        let coordinates: Vec<f32> = line
+            .split_whitespace()
+            .map(|word| word.parse().unwrap())
+            .collect();
+        for axis in 0..3 {
+            low[axis] = low[axis].min(coordinates[axis] + origin[axis]);
+            high[axis] = high[axis].max(coordinates[axis] + origin[axis]);
+        }
+        vertices += 1;
+    }
+    assert!(vertices > 100, "{vertices} vertices");
+    for axis in 0..3 {
+        assert!(low[axis] >= 0.0 && high[axis] <= 1.0, "axis {axis}: {} to {}", low[axis], high[axis]);
+        // O conteúdo chega às duas faces do bloco: o modelo cobre o bloco todo, e não só um canto dele.
+        assert!(high[axis] - low[axis] > 0.9, "axis {axis}: {} to {}", low[axis], high[axis]);
+    }
+}

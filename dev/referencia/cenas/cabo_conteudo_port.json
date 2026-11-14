@@ -1,0 +1,190 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 70 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "cabo_vazio",
+   "cmds": [
+    "setblock 59 -60 82 mekanism:basic_energy_cube[facing=east]",
+    "setblock 60 -60 82 mekanism:basic_universal_cable",
+    "setblock 61 -60 82 mekanism:basic_universal_cable",
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_universal_cable",
+    "#esperar 20",
+    "#cubo 59 -60 82 0.0000000 front=output left=output right=output back=output top=output bottom=output",
+    "#ejetar 59 -60 82",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cano_vazio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "tubo_vazio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cabo_meio",
+   "cmds": [
+    "setblock 59 -60 82 mekanism:basic_energy_cube[facing=east]",
+    "setblock 60 -60 82 mekanism:basic_universal_cable",
+    "setblock 61 -60 82 mekanism:basic_universal_cable",
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_universal_cable",
+    "#esperar 20",
+    "#cubo 59 -60 82 0.0020000 front=output left=output right=output back=output top=output bottom=output",
+    "#ejetar 59 -60 82",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cano_meio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
+    "#esperar 20",
+    "#conexao 60 -60 82 south=pull",
+    "#conexao 61 -60 82 south=pull",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "tubo_meio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#quimico 60 -60 82 mekanism:hydrogen 8000",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cabo_cheio",
+   "cmds": [
+    "setblock 59 -60 82 mekanism:basic_energy_cube[facing=east]",
+    "setblock 60 -60 82 mekanism:basic_universal_cable",
+    "setblock 61 -60 82 mekanism:basic_universal_cable",
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_universal_cable",
+    "#esperar 20",
+    "#cubo 59 -60 82 0.0040000 front=output left=output right=output back=output top=output bottom=output",
+    "#ejetar 59 -60 82",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cano_cheio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 62 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 63 -60 83 minecraft:water_cauldron[level=3]",
+    "#esperar 20",
+    "#conexao 60 -60 82 south=pull",
+    "#conexao 61 -60 82 south=pull",
+    "#conexao 62 -60 82 south=pull",
+    "#conexao 63 -60 82 south=pull",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "tubo_cheio",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#quimico 60 -60 82 mekanism:hydrogen 16000",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "condutor",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_thermodynamic_conductor",
+    "setblock 61 -60 82 mekanism:basic_thermodynamic_conductor",
+    "setblock 62 -60 82 mekanism:basic_thermodynamic_conductor",
+    "setblock 63 -60 82 mekanism:basic_thermodynamic_conductor",
+    "#esperar 80"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cabo_cheio_b",
+   "cmds": [
+    "setblock 59 -60 82 mekanism:basic_energy_cube[facing=east]",
+    "setblock 60 -60 82 mekanism:basic_universal_cable",
+    "setblock 61 -60 82 mekanism:basic_universal_cable",
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_universal_cable",
+    "#esperar 20",
+    "#cubo 59 -60 82 0.0040000 front=output left=output right=output back=output top=output bottom=output",
+    "#ejetar 59 -60 82",
+    "#esperar 80",
+    "#esperar 7"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "cano_cheio_b",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 60 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 61 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 62 -60 83 minecraft:water_cauldron[level=3]",
+    "setblock 63 -60 83 minecraft:water_cauldron[level=3]",
+    "#esperar 20",
+    "#conexao 60 -60 82 south=pull",
+    "#conexao 61 -60 82 south=pull",
+    "#conexao 62 -60 82 south=pull",
+    "#conexao 63 -60 82 south=pull",
+    "#esperar 80",
+    "#esperar 7"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  }
+ ]
+}

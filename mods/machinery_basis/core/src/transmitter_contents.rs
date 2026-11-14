@@ -70,6 +70,9 @@ pub fn fluid_tint(color: u32, lighter_than_air: bool, scale: f32) -> u32 {
 }
 
 /// `RenderMechanicalPipe.STAGES`.
+/// `RenderTransmitterBase.submit`: `poseStack.translate(0.5, 0.5, 0.5)` antes do modelo de conteúdo, cujos vértices (o OBJ `transmitter_contents`) estão em torno do centro do bloco.
+pub const CONTENTS_MODEL_ORIGIN: [f32; 3] = [0.5, 0.5, 0.5];
+
 pub const STAGES: i32 = 100;
 /// `RenderMechanicalPipe.HEIGHT`.
 pub const HEIGHT: f32 = 0.45;

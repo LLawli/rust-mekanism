@@ -404,7 +404,7 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         h.ctl("options-set", "guiScale", "4")
         h.ctl("key", "1", "tap")
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
-    if any(c.startswith("#conexao ") for shot in spec["shots"] for c in shot["cmds"]):
+    if any(c.startswith("#conexao ") for shot in spec["shots"] for c in shot["cmds"]):  # `#quimico X Y Z ID N` (só do port) empurra pela `probe_push`
         h.ctl("give", "mekanism:configurator", "1")
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
@@ -432,6 +432,16 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 continue
             if cmd.startswith("#conexao "):
                 conexao(cmd)
+                continue
+            if cmd.startswith("#ejetar "):
+                # O `eject` da energia do cubo (`ConfigInfo.setEjecting` no original), desligado por padrão.
+                _, x, y, z = cmd.split()
+                h.command("data merge block %s %s %s {component_config:{eject0:1b}}" % (x, y, z))
+                continue
+            if cmd.startswith("#quimico "):
+                # Só do port (`cenas/cabo_conteudo_port.json`): o original puxa de um Chemical Tank, e o port, que ainda não o tem, empurra pela sonda (`enviar_fontes.sh ... sonda`).
+                _, x, y, z, quimico, quantidade = cmd.split()
+                h.command('data merge block %s %s %s {probe_push:{chem:"%s",amount:%s}}' % (x, y, z, quimico, quantidade))
                 continue
             h.command(cmd)
         alinha_o_tempo(shot["name"])

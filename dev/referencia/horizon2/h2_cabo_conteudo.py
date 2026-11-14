@@ -89,9 +89,9 @@ def aquecer():
 
 def enquadrar(faixa):
     z = FAIXAS[faixa]
-    cmd("tp @s %.2f %.2f %.2f" % (BASE[0] + 1.5, BASE[1] + 1.6, BASE[2] + z - 3.0))
+    cmd("tp @s %.2f %.2f %.2f" % (BASE[0] + 1.5, BASE[1] + 1.4, BASE[2] + z - 2.4))
     wait(12)
-    h.ctl("look-at", "%.2f" % (BASE[0] + 1.5), "%.2f" % (BASE[1] + 0.3), "%.2f" % (BASE[2] + z + 0.5))
+    h.ctl("look-at", "%.2f" % (BASE[0] + 1.5), "%.2f" % (BASE[1] + 0.5), "%.2f" % (BASE[2] + z + 0.5))
     wait(6)
 
 

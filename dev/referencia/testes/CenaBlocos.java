@@ -101,6 +101,10 @@ public class CenaBlocos {
             server.execute(() -> cube(server, command));
             return;
         }
+        if (command.startsWith("#ejetar ")) {
+            server.execute(() -> eject(server, command));
+            return;
+        }
         if (command.startsWith("#conexao ")) {
             server.execute(() -> connection(server, command));
             return;
@@ -126,6 +130,17 @@ public class CenaBlocos {
             config.getConfig(type).setDataType(dataType, side);
             config.sideChanged(type, side);
         }
+        tile.markForSave();
+    }
+
+    /// `#ejetar X Y Z`: liga o `eject` da energia do Energy Cube em `x y z` (`ConfigInfo.setEjecting`, desligado por padrão): com os lados em saída, o cubo passa a empurrar a energia para o cabo vizinho.
+    /// O port faz o mesmo por `component_config:{eject0:1b}` (`horizon2/h2_blocos.py`).
+    private static void eject(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.TileEntityEnergyCube) server.overworld().getBlockEntity(pos);
+        var type = tile.getConfig().getTransmissions().stream().filter(t -> t.getSerializedName().equals("energy")).findFirst().orElseThrow();
+        tile.getConfig().getConfig(type).setEjecting(true);
         tile.markForSave();
     }
 
