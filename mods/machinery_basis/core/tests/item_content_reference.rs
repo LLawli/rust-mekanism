@@ -185,3 +185,39 @@ fn the_tooltip_says_if_the_item_holds_a_stack() {
         }
     }
 }
+
+/// O `Stored energy: X FE/Y FE` do tooltip (`Y`, a capacidade).
+fn tooltip_capacity(row: &Value) -> i64 {
+    let line = row["drops"][0]["tooltip"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| line["text"].as_str().unwrap())
+        .find(|text| text.starts_with("Stored energy: "))
+        .unwrap();
+    line.split('/').nth(1).unwrap().trim_end_matches(" FE").parse().unwrap()
+}
+
+/// A capacidade do tooltip do item com 2 de energia (de no máximo 8) é `getMaxEnergy` sobre a do item sem upgrade, nas quatro máquinas e nos quatro cenários.
+#[test]
+fn the_capacity_of_the_tooltip_follows_the_energy_upgrades_of_the_item() {
+    for (machine, _) in MACHINES.iter().filter(|(machine, _)| *machine != "heat_generator") {
+        let rows = rows(machine);
+        let empty = tooltip_capacity(&rows[0]);
+        assert_eq!(rows[0]["scenario"], "empty");
+        for row in &rows[1..] {
+            let upgrades = components(row)
+                .get("mekanism:upgrades")
+                .and_then(|upgrades| upgrades["upgrades"].get("mekanism:energy"))
+                .and_then(Value::as_i64)
+                .unwrap() as i32;
+            assert_eq!(
+                content::upgraded_max_energy(empty, upgrades, 8, 10.0),
+                tooltip_capacity(row),
+                "{machine} {}",
+                row["scenario"]
+            );
+        }
+        assert_eq!(content::upgraded_max_energy(empty, 0, 0, 10.0), empty);
+    }
+}

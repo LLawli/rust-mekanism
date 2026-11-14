@@ -176,3 +176,13 @@ pub fn has_inventory(items: Option<&Value>) -> bool {
         .and_then(Value::as_array)
         .is_some_and(|list| list.iter().any(|stored| !is_empty_stack(stored)))
 }
+
+/// `UpgradeAware.UpgradeAmount.getMaxEnergy(def)`: a capacidade de energia que o item de uma máquina mostra no tooltip (`EnergyDisplay.of(handler)`), `def` vezes o multiplicador
+/// máximo elevado a `stored / max` (os upgrades de energia instalados sobre o máximo do tipo), em `clampToLong`. Sem o tipo instalado (`max == 0`, `UpgradeAmount.EMPTY`) é o padrão.
+pub fn upgraded_max_energy(def: i64, stored: i32, max: i32, max_multiplier: f64) -> i64 {
+    if max == 0 {
+        return def;
+    }
+    // Em Rust a conversão de `f64` para `i64` satura, como `MathUtils.clampToLong`.
+    (def as f64 * max_multiplier.powf(f64::from(stored) / f64::from(max))) as i64
+}

@@ -235,6 +235,9 @@ fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
     }
 }
 
+/// `UpgradeIds.ENERGY`.
+const ENERGY_UPGRADE: &str = "mekanism:energy";
+
 /// O `FactoryType` do `.component(FACTORY_TYPE, ...)` do bloco da máquina (`MekanismBlocks.java:285`, `:334`, `:369`, `:409`).
 fn factory_type(block: &str) -> Option<&'static str> {
     match block {
@@ -3004,6 +3007,8 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         }
     }
     if let Some(capacity) = item_energy_capacity(&stack.item) {
+        // `ItemBlockTooltip`: a capacidade da máquina leva os upgrades de energia do item (`UpgradeAmount.getMaxEnergy`).
+        let capacity = if machine.is_some() { basis::content_max_energy(game, stack, capacity, ENERGY_UPGRADE) } else { capacity };
         lines.push(basis::stored_energy_line(game, stack, capacity, &STORED_ENERGY_LINE));
     }
     if let Some(machine) = machine {

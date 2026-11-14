@@ -3603,6 +3603,25 @@ pub(in crate::game) fn content_upgrade_lines(
         .collect()
 }
 
+/// A capacidade de energia que o tooltip de uma máquina mostra: `UpgradeAware.getUpgradeCount(energy).getMaxEnergy(def)` (`ItemBlockTooltip`), a padrão `def` vezes o multiplicador máximo
+/// elevado à fração de upgrades de energia (`upgrade_id`) que o item leva. Sem o upgrade instalado é a padrão.
+pub(in crate::game) fn content_max_energy(game: &Game<'_>, stack: &ItemStack, def: i64, upgrade_id: &str) -> i64 {
+    let Ok(Some(Tag::Compound(component))) = game.native_component(stack, CONTENT_UPGRADES) else {
+        return def;
+    };
+    let Some(Tag::Compound(totals)) = component.get(&JavaString::from(UPGRADES_KEY)) else {
+        return def;
+    };
+    let Some(Tag::Int(stored)) = totals.get(&JavaString::from(upgrade_id)) else {
+        return def;
+    };
+    let types = upgrade::current_types();
+    let Some(kind) = types.get(upgrade_id) else {
+        return def;
+    };
+    content::upgraded_max_energy(def, *stored, kind.max, machinery_basis_core::settings::max_upgrade_multiplier_f64())
+}
+
 /// `FactoryType.addToTooltip` (o `FACTORY_TYPE` do item, `MekanismBlocks.java:285` e vizinhas): `Recipe type: Enriching`, `FACTORY_TYPE.translateColored(INDIGO, GRAY, this)`. O `factory`
 /// é o nome do tipo (`enriching`, `crushing`, `smelting`, `infusing`).
 pub(in crate::game) fn content_recipe_type_line(factory: &str) -> (horizon_client::mod_api::Text, u32) {
