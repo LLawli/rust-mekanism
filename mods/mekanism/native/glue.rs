@@ -1704,6 +1704,8 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     result_take_after(game, pos, entity, spec);
     basis::name_apply_pending(entity, pos);
     basis::side_apply_pending(entity, pos);
+    let id = entity.id.clone();
+    with_content(&id, |spec| basis::content_apply_pending(entity, pos, spec));
     let alive = LIVE_MACHINES.with_borrow_mut(|machines| machines.remove(&key));
     // O tile é o mesmo se o Horizon ainda guarda a marca que o tick anterior pôs (um tile lido do disco nasce sem ela).
     let continuing = (!entity.data.is_empty())
@@ -1981,6 +1983,7 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::CONFIGURATOR_MODE_COMPONENT.to_owned());
     types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
     types.push(rules::ENERGY_COMPONENT.to_owned());
+    types.extend(basis::CONTENT_COMPONENTS.map(str::to_owned));
 }
 
 /// `getInventorySlots` da máquina: a entrada, a saída, a energia e o slot do químico (os dois slots de upgrade são virtuais).
@@ -2480,6 +2483,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     basis::name_destroying(game, pos, &is_machine_id);
     basis::side_destroying(game, pos, &side_spec);
     basis::energy_destroying(game, pos, &is_machine_id);
+    destroy_content(game, pos);
     let key = (game.native_dimension(), pos);
     let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
     if let Some(drops) = drops {
@@ -2495,6 +2499,7 @@ pub(in crate::game) fn explosion_detonate(game: &mut Game<'_>, blocks: &[[i32; 3
         if machine_of(&game.native_block(pos)).is_none() {
             continue;
         }
+        destroy_content(game, pos);
         let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&(dimension, pos)).map(|live| live.machine.recipes_to_award_on_removal().drops));
         if let Some(drops) = drops {
             pop_experience(game, center_of(pos), &drops);
@@ -2874,6 +2879,8 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
+        // `applyImplicitComponents`: os upgrades, os slots, o tanque e o modo de redstone do item entram no tile antes de a capacidade ser lida.
+        with_content(&block, |spec| basis::content_placed(game, stack, pos, spec));
         let capacity = placed_capacity(game, pos, &block);
         // `applyImplicitComponents` -> `copyToTile`: o item traz a energia, limitada à capacidade do tile de agora. Sem o tile no mundo, ela espera o primeiro tick.
         basis::energy_placed(game, stack, pos, rules::ENERGY_COMPONENT, capacity.unwrap_or(i64::MAX));
@@ -2904,6 +2911,60 @@ pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod
     basis::name_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
     basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_machine_id);
+    if let Some(item) = drops.iter().map(|stack| stack.item.to_string()).find(|item| is_machine_id(item)) {
+        with_content(&item, |spec| basis::content_loot(game, context, drops, spec));
+    }
+}
+
+/// O que cada máquina guarda no item (`loot_table/blocks/<máquina>.json`: `mekanism:items`, `upgrades`, `redstone_control` e, no Metallurgic Infuser, `chemicals`): os slots da
+/// máquina (sem os dois virtuais da janela de upgrades) e o tanque de infusão.
+fn with_content<R>(block: &str, run: impl FnOnce(&basis::ContentSpec<'_>) -> R) -> Option<R> {
+    let machine = machine_of(block)?;
+    let infusion = machine.slots.infusion.is_some();
+    let spec = basis::ContentSpec {
+        is_ours: &is_machine_id,
+        item_slots: if infusion { rules::SLOTS } else { rules::ELECTRIC_SLOTS },
+        collect: &move |_, entity, _| if infusion { chemical_collect(entity) } else { Vec::new() },
+        apply: &move |entity, of| {
+            if infusion {
+                chemical_apply(entity, of);
+            }
+        },
+    };
+    Some(run(&spec))
+}
+
+/// `ContainerType.CHEMICAL`: o tanque de infusão no `chemical_tanks` do tile e no componente `mekanism:chemicals`.
+fn chemical_collect(entity: &ModBlockEntity) -> Vec<(&'static str, Tag)> {
+    use machinery_basis_core::item_content as content;
+    let saved = entity.nbt.get(&JavaString::from(CHEMICAL_TANKS)).map(basis::tag_value);
+    let containers = content::containers_from_saved(saved.as_ref(), 1);
+    content::containers_collect(&containers).map(|value| (basis::CONTENT_CHEMICALS, basis::value_tag(&value, ""))).into_iter().collect()
+}
+
+fn chemical_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&str) -> Option<Tag>) {
+    use machinery_basis_core::item_content as content;
+    let Some(component) = of(basis::CONTENT_CHEMICALS) else {
+        return;
+    };
+    let Some(containers) = content::containers_apply(&basis::tag_value(&component), 1) else {
+        return;
+    };
+    let key = JavaString::from(CHEMICAL_TANKS);
+    match content::containers_to_saved(&containers) {
+        Some(saved) => {
+            entity.nbt.insert(key, basis::value_tag(&saved, ""));
+        }
+        None => {
+            entity.nbt.remove(&key);
+        }
+    }
+}
+
+/// O conteúdo do tile que vai ser quebrado vai para o item e sai dele (o original não solta nada no chão).
+fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
+    let block = game.native_block(pos);
+    with_content(&block, |spec| basis::content_destroying(game, pos, spec));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
@@ -2921,8 +2982,16 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
     use horizon_client::mod_api::Text;
     // `ATTACHED_ENERGY` (`registerComponentAppenderAfter`): `STORED_ENERGY.translateColored(BRIGHT_GREEN, GRAY, EnergyDisplay.of(handler))`, a energia e a capacidade do item.
+    // `registerComponentAppenderAfter(UPGRADES, ...)`: os upgrades instalados vêm antes da energia; o tanque e o `Inventory` das máquinas, depois.
+    let machine = machine_of(&stack.item);
+    if machine.is_some() {
+        lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
+    }
     if let Some(capacity) = item_energy_capacity(&stack.item) {
         lines.push(basis::stored_energy_line(game, stack, capacity, &STORED_ENERGY_LINE));
+    }
+    if let Some(machine) = machine {
+        lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
     }
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {

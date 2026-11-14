@@ -3307,6 +3307,385 @@ pub(in crate::game) fn stored_energy_line(
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// O conteúdo guardado no item (frente `item-conteudo`, Fase 5): `TileEntityMekanism.collectImplicitComponents` e `applyImplicitComponents`. A máquina quebrada leva no item
+// os upgrades (`mekanism:upgrades`), os slots (`mekanism:items`), os tanques (`mekanism:chemicals`, `mekanism:fluids`), o calor (`mekanism:heat`) e o modo de redstone
+// (`mekanism:redstone_control`), e o item posto os devolve ao tile. A conta de cada componente é `machinery_basis_core::item_content`, conferida contra o rastro do original.
+// Nada disto cai no chão: o original não solta o conteúdo do tile (`TileEntityMekanism.preRemoveSideEffects` não esvazia nada), então os slots saem do tile ao quebrar.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+use machinery_basis_core::item_content as content;
+
+pub const CONTENT_UPGRADES: &str = "mekanism:upgrades";
+pub const CONTENT_ITEMS: &str = "mekanism:items";
+pub const CONTENT_CHEMICALS: &str = "mekanism:chemicals";
+pub const CONTENT_FLUIDS: &str = "mekanism:fluids";
+pub const CONTENT_HEAT: &str = "mekanism:heat";
+pub const CONTENT_REDSTONE: &str = "mekanism:redstone_control";
+/// Os componentes de conteúdo, para o mod registrá-los.
+pub const CONTENT_COMPONENTS: [&str; 6] = [CONTENT_UPGRADES, CONTENT_ITEMS, CONTENT_CHEMICALS, CONTENT_FLUIDS, CONTENT_HEAT, CONTENT_REDSTONE];
+const CONTROL_TYPE_KEY: &str = "control_type";
+
+/// O que um bloco guarda no item. `collect` e `apply` são os componentes que só o mod sabe (os tanques e o calor), cada um na forma do componente do original.
+pub(in crate::game) struct ContentSpec<'a> {
+    pub is_ours: &'a dyn Fn(&str) -> bool,
+    /// `ContainerType.ITEM`: quantos slots do tile vão para o item (os de `entity.items` antes dos virtuais da janela de upgrades).
+    pub item_slots: usize,
+    pub collect: &'a dyn Fn(&Game<'_>, &ModBlockEntity, [i32; 3]) -> Vec<(&'static str, Tag)>,
+    pub apply: &'a dyn Fn(&mut ModBlockEntity, &dyn Fn(&str) -> Option<Tag>),
+}
+
+thread_local! {
+    /// Os componentes de conteúdo do item que o jogador acabou de pôr, para o tile que o Horizon ainda não criou.
+    static PENDING_CONTENT: std::cell::RefCell<HashMap<[i32; 3], Vec<(String, Tag)>>> = std::cell::RefCell::new(HashMap::new());
+    /// O conteúdo do tile que vai ser quebrado, guardado antes de o Horizon tirá-lo do mundo.
+    static BROKEN_CONTENT: std::cell::RefCell<HashMap<[i32; 3], Vec<(&'static str, Tag)>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// O `Tag` como o JSON do rastro: os inteiros viram números, e o formato do componente é o que a conta de `item_content` espera.
+pub(in crate::game) fn tag_value(tag: &Tag) -> serde_json::Value {
+    use serde_json::{Number, Value};
+    match tag {
+        Tag::Byte(value) => Value::from(*value),
+        Tag::Short(value) => Value::from(*value),
+        Tag::Int(value) => Value::from(*value),
+        Tag::Long(value) => Value::from(*value),
+        Tag::Float(bits) => Number::from_f64(f64::from(f32::from_bits(*bits))).map_or(Value::Null, Value::Number),
+        Tag::Double(bits) => Number::from_f64(f64::from_bits(*bits)).map_or(Value::Null, Value::Number),
+        Tag::String(text) => Value::String(text.to_string_lossy()),
+        Tag::List(list) => Value::Array(list.iter().map(tag_value).collect()),
+        Tag::Compound(map) => Value::Object(map.iter().map(|(key, value)| (key.to_string_lossy(), tag_value(value))).collect()),
+        _ => Value::Null,
+    }
+}
+
+/// O contrário, com a largura que cada campo tem no original: `amount` é `long`, `container` é `byte`, o calor é `double`, o resto cabe num `int`.
+pub(in crate::game) fn value_tag(value: &serde_json::Value, key: &str) -> Tag {
+    use serde_json::Value;
+    match value {
+        Value::Number(number) => match key {
+            "amount" => Tag::Long(number.as_i64().unwrap_or(0)),
+            "container" => Tag::Byte(number.as_i64().and_then(|n| i8::try_from(n).ok()).unwrap_or(0)),
+            "heat" | "heat_capacity" => Tag::Double(number.as_f64().unwrap_or(0.0).to_bits()),
+            _ => match number.as_i64() {
+                Some(whole) => i32::try_from(whole).map_or(Tag::Long(whole), Tag::Int),
+                None => Tag::Double(number.as_f64().unwrap_or(0.0).to_bits()),
+            },
+        },
+        Value::Array(list) => Tag::List(list.iter().map(|item| value_tag(item, key)).collect()),
+        Value::Object(map) => Tag::Compound(map.iter().map(|(name, item)| (JavaString::from(name.as_str()), value_tag(item, name))).collect()),
+        Value::String(text) => Tag::String(JavaString::from(text.as_str())),
+        Value::Bool(flag) => Tag::Byte(i8::from(*flag)),
+        Value::Null => Tag::Compound(Compound::default()),
+    }
+}
+
+/// `LargeResourceStack.codec` de um `ItemResource`: `{type: {id, components}, amount}`, com os componentes da pilha como o `ItemResource.CODEC` os grava.
+fn item_stored(stack: &ItemStack) -> Tag {
+    let mut kind = Compound::default();
+    kind.insert(JavaString::from(ITEM_ID_KEY), Tag::String(JavaString::from(&*stack.item)));
+    if let Some(components) = encode_components(stack)
+        && matches!(&components, Tag::Compound(map) if !map.is_empty())
+    {
+        kind.insert(JavaString::from(COMPONENTS_KEY), components);
+    }
+    let mut stored = Compound::default();
+    stored.insert(JavaString::from(TYPE_KEY), Tag::Compound(kind));
+    stored.insert(JavaString::from(AMOUNT_KEY), Tag::Long(i64::from(stack.count)));
+    Tag::Compound(stored)
+}
+
+/// O contrário: a pilha de um contêiner de item do componente, ou `None` se ele está vazio ou não se lê.
+fn stack_of_stored(stored: &Tag) -> Option<ItemStack> {
+    let Tag::Compound(stored) = stored else {
+        return None;
+    };
+    let Some(Tag::Compound(kind)) = stored.get(&JavaString::from(TYPE_KEY)) else {
+        return None;
+    };
+    let Some(Tag::String(id)) = kind.get(&JavaString::from(ITEM_ID_KEY)) else {
+        return None;
+    };
+    let amount = match stored.get(&JavaString::from(AMOUNT_KEY)) {
+        Some(Tag::Long(amount)) => u32::try_from(*amount).ok()?,
+        Some(Tag::Int(amount)) => u32::try_from(*amount).ok()?,
+        _ => return None,
+    };
+    if amount == 0 {
+        return None;
+    }
+    let (damage, extra) = decode_components(kind.get(&JavaString::from(COMPONENTS_KEY)));
+    Some(ItemStack { item: Arc::from(id.to_string_lossy().as_str()), count: amount, damage, extra })
+}
+
+fn containers_tag(containers: Vec<Tag>) -> Tag {
+    let mut component = Compound::default();
+    component.insert(JavaString::from("containers"), Tag::List(containers));
+    Tag::Compound(component)
+}
+
+/// Os componentes de conteúdo que o tile dá ao item (`collectImplicitComponents`), só os que diferem do padrão do item.
+fn content_components(game: &Game<'_>, entity: &ModBlockEntity, pos: [i32; 3], spec: &ContentSpec<'_>) -> Vec<(&'static str, Tag)> {
+    let mut out = Vec::new();
+    let nbt = |key: &str| entity.nbt.get(&JavaString::from(key));
+    let upgrades = nbt(COMPONENT_UPGRADE).map(tag_value);
+    if let Some(value) = content::upgrades_collect(upgrades.as_ref()) {
+        out.push((CONTENT_UPGRADES, value_tag(&value, "")));
+    }
+    let slots: Vec<Option<&ItemStack>> = (0..spec.item_slots)
+        .map(|slot| entity.items.get(slot).and_then(Option::as_ref).filter(|stack| stack.count > 0))
+        .collect();
+    let judged: Vec<serde_json::Value> =
+        slots.iter().map(|stack| if stack.is_some() { serde_json::json!({"type": {}, "amount": 1}) } else { serde_json::json!({}) }).collect();
+    if content::containers_collect(&judged).is_some() {
+        let stored = slots.iter().map(|stack| stack.map_or_else(|| Tag::Compound(Compound::default()), item_stored)).collect();
+        out.push((CONTENT_ITEMS, containers_tag(stored)));
+    }
+    let control = match nbt(CONTROL_TYPE_KEY) {
+        Some(Tag::String(name)) => name.to_string_lossy(),
+        _ => content::REDSTONE_DISABLED.to_owned(),
+    };
+    if let Some(value) = content::redstone_collect(&control) {
+        out.push((CONTENT_REDSTONE, value_tag(&value, "")));
+    }
+    out.extend((spec.collect)(game, entity, pos));
+    out
+}
+
+/// O tile ganha o conteúdo do item (`applyImplicitComponents`): os upgrades e os slots entram no NBT e em `entity.items`, e o mod põe o que é dele.
+fn content_apply(entity: &mut ModBlockEntity, components: &[(String, Tag)], spec: &ContentSpec<'_>) {
+    let of = |id: &str| components.iter().find(|(name, _)| name == id).map(|(_, tag)| tag.clone());
+    if let Some(upgrades) = of(CONTENT_UPGRADES) {
+        let key = JavaString::from(COMPONENT_UPGRADE);
+        match content::upgrades_apply(&tag_value(&upgrades)) {
+            Some(value) => {
+                entity.nbt.insert(key, value_tag(&value, ""));
+            }
+            None => {
+                entity.nbt.remove(&key);
+            }
+        }
+    }
+    if let Some(items) = of(CONTENT_ITEMS)
+        && content::containers_apply(&tag_value(&items), spec.item_slots).is_some()
+        && let Tag::Compound(map) = &items
+        && let Some(Tag::List(list)) = map.get(&JavaString::from("containers"))
+    {
+        if entity.items.len() < spec.item_slots {
+            entity.items.resize(spec.item_slots, None);
+        }
+        for (slot, stored) in list.iter().enumerate() {
+            entity.items[slot] = stack_of_stored(stored);
+        }
+    }
+    if let Some(Tag::String(name)) = of(CONTENT_REDSTONE) {
+        entity.nbt.insert(JavaString::from(CONTROL_TYPE_KEY), Tag::String(name));
+    }
+    (spec.apply)(entity, &of);
+}
+
+/// O item posto traz o conteúdo: com o tile já no mundo ele entra agora (a capacidade que `placed_capacity` lê já conta os upgrades); sem ele espera o primeiro tick.
+pub(in crate::game) fn content_placed(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], spec: &ContentSpec<'_>) {
+    let carried: Vec<(String, Tag)> = CONTENT_COMPONENTS
+        .iter()
+        .filter_map(|id| game.native_component(stack, id).ok().flatten().map(|tag| ((*id).to_owned(), tag.clone())))
+        .collect();
+    if carried.is_empty() {
+        PENDING_CONTENT.with_borrow_mut(|pending| pending.remove(&pos));
+        return;
+    }
+    if let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        content_apply(entity, &carried, spec);
+        game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        return;
+    }
+    PENDING_CONTENT.with_borrow_mut(|pending| pending.insert(pos, carried));
+}
+
+/// O tile nasceu: o conteúdo do item que o colocou entra nele.
+pub(in crate::game) fn content_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3], spec: &ContentSpec<'_>) {
+    if let Some(carried) = PENDING_CONTENT.with_borrow_mut(|pending| pending.remove(&pos)) {
+        content_apply(entity, &carried, spec);
+    }
+}
+
+/// O jogador (ou uma explosão) vai quebrar o tile em `pos`: o conteúdo que o item solto leva é guardado enquanto o tile existe, e os slots saem dele, porque o original não
+/// os solta no chão (vão para o item).
+pub(in crate::game) fn content_destroying(game: &mut Game<'_>, pos: [i32; 3], spec: &ContentSpec<'_>) {
+    use horizon_client::containers::BlockEntity;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    if !(spec.is_ours)(&entity.id) {
+        return;
+    }
+    let components = content_components(game, entity, pos, spec);
+    BROKEN_CONTENT.with_borrow_mut(|broken| broken.insert(pos, components));
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        for slot in entity.items.iter_mut().take(spec.item_slots) {
+            *slot = None;
+        }
+    }
+}
+
+/// `copy_components` da tabela de loot: o item solto leva o conteúdo do tile. O que [`content_destroying`] guardou vale mais que o tile (que já saiu do mundo ou foi esvaziado).
+pub(in crate::game) fn content_loot(
+    game: &Game<'_>,
+    context: &horizon_client::mod_api::NativeLootDrops<'_>,
+    drops: &mut [ItemStack],
+    spec: &ContentSpec<'_>,
+) {
+    use horizon_client::containers::BlockEntity;
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    if !drops.iter().any(|stack| (spec.is_ours)(&stack.item)) {
+        return;
+    }
+    let kept = BROKEN_CONTENT.with_borrow_mut(|broken| broken.remove(&pos));
+    let components = kept.or_else(|| match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(BlockEntity::Mod(entity)) if (spec.is_ours)(&entity.id) => Some(content_components(game, entity, pos, spec)),
+        _ => None,
+    });
+    let Some(components) = components else {
+        return;
+    };
+    for stack in drops.iter_mut().filter(|stack| (spec.is_ours)(&stack.item)) {
+        for (id, tag) in &components {
+            if let Err(error) = game.native_set_component(stack, id, tag.clone()) {
+                eprintln!("machinery_basis: o item solto não leva {id}: {error}");
+            }
+        }
+    }
+}
+
+/// `MekanismDataComponents.registerComponentAppenderAfter(UPGRADES, ...)`: uma linha por upgrade instalado (`UpgradeDisplay`), `- Speed: x3`, ou `- Muffling` quando o tipo só cabe um.
+pub(in crate::game) fn content_upgrade_lines(
+    game: &Game<'_>,
+    stack: &ItemStack,
+    enum_color: fn(&str) -> u32,
+) -> Vec<(horizon_client::mod_api::Text, u32)> {
+    use horizon_client::mod_api::Text;
+    let Ok(Some(Tag::Compound(component))) = game.native_component(stack, CONTENT_UPGRADES) else {
+        return Vec::new();
+    };
+    let Some(Tag::Compound(totals)) = component.get(&JavaString::from(UPGRADES_KEY)) else {
+        return Vec::new();
+    };
+    let types = upgrade::current_types();
+    let mut installed: Vec<(String, i32)> = totals
+        .iter()
+        .filter_map(|(id, total)| match total {
+            Tag::Int(total) => Some((id.to_string_lossy(), *total)),
+            _ => None,
+        })
+        .collect();
+    // `Object2IntOpenHashMap<Holder<Upgrade>>` itera na ordem do hash de identidade do `Holder`, que muda de uma execução para outra: o original não tem ordem fixa a copiar
+    // (decisão 225), e o port lista na do registro, a mesma da janela de upgrades.
+    installed.sort_by_key(|(id, _)| types.ids().position(|known| known == id).unwrap_or(usize::MAX));
+    installed
+        .into_iter()
+        .filter_map(|(id, total)| {
+            let kind = types.get(&id)?;
+            let name = Text::translate(&content_name_key("upgrade", &id), &[]);
+            let color = enum_color(&kind.color) & 0xFF_FF_FF;
+            let line = if kind.max > 1 && total > 0 {
+                Text::translate("upgrade.mekanism.display.level", &[name, Text::colored(total.to_string(), CONTENT_GRAY)])
+            } else {
+                Text::translate("generic.mekanism.list", &[name])
+            };
+            Some((line.with_style(&horizon_client::text::Style::color(color)), u32::MAX))
+        })
+        .collect()
+}
+
+/// `EnumColor.GRAY`, `ORANGE`, `PINK`, `AQUA` e `DARK_RED`.
+const CONTENT_GRAY: u32 = 0xCF_CF_CF;
+const CONTENT_ORANGE: u32 = 0xFF_A1_60;
+const CONTENT_PINK: u32 = 0xD5_5E_CB;
+const CONTENT_AQUA: u32 = 0x30_FF_F9;
+const CONTENT_DARK_RED: u32 = 0xC9_07_1F;
+
+/// As linhas dos componentes `ATTACHED_CHEMICALS`, `ATTACHED_FLUIDS` e `ATTACHED_ITEMS` do item de uma máquina (`ResourceContainerType.addStoredResource` e `HAS_INVENTORY`), depois da
+/// energia: o químico ou o fluido guardado (`Biomass: 150 mB`) ou o aviso de vazio, e `Inventory: yes|no`. `chemicals` e `fluids` dizem se o item guarda tanque desse tipo.
+pub(in crate::game) fn content_stored_lines(
+    game: &Game<'_>,
+    stack: &ItemStack,
+    chemicals: bool,
+    fluids: bool,
+) -> Vec<(horizon_client::mod_api::Text, u32)> {
+    use horizon_client::mod_api::Text;
+    let stored_of = |id: &str| -> Option<(String, i64)> {
+        let Ok(Some(Tag::Compound(component))) = game.native_component(stack, id) else {
+            return None;
+        };
+        let Some(Tag::List(list)) = component.get(&JavaString::from("containers")) else {
+            return None;
+        };
+        list.iter().find_map(|stored| {
+            let Tag::Compound(stored) = stored else {
+                return None;
+            };
+            let amount = match stored.get(&JavaString::from(AMOUNT_KEY)) {
+                Some(Tag::Long(amount)) => *amount,
+                Some(Tag::Int(amount)) => i64::from(*amount),
+                _ => return None,
+            };
+            let name = match stored.get(&JavaString::from(TYPE_KEY)) {
+                Some(Tag::String(id)) => id.to_string_lossy(),
+                Some(Tag::Compound(kind)) => match kind.get(&JavaString::from(ITEM_ID_KEY)) {
+                    Some(Tag::String(id)) => id.to_string_lossy(),
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            (amount > 0).then_some((name, amount))
+        })
+    };
+    let mut lines = Vec::new();
+    let stored_line = |name_key: String, amount: i64, color: u32| {
+        let text = Text::translate("generic.mekanism.stored.mb", &[Text::translate(&name_key, &[]), Text::colored(thousands(amount), CONTENT_GRAY)]);
+        (text.with_style(&horizon_client::text::Style::color(color)), u32::MAX)
+    };
+    let empty_line = |key: &str| (Text::translate(key, &[]).with_style(&horizon_client::text::Style::color(CONTENT_DARK_RED)), u32::MAX);
+    if chemicals {
+        match stored_of(CONTENT_CHEMICALS) {
+            Some((id, amount)) => lines.push(stored_line(content_name_key("chemical", &id), amount, CONTENT_ORANGE)),
+            None => lines.push(empty_line("tooltip.mekanism.no_chemical")),
+        }
+    }
+    if fluids {
+        match stored_of(CONTENT_FLUIDS) {
+            Some((id, amount)) => lines.push(stored_line(content_name_key("block", &id), amount, CONTENT_PINK)),
+            None => lines.push(empty_line("tooltip.mekanism.no_fluid")),
+        }
+    }
+    let items = game.native_component(stack, CONTENT_ITEMS).ok().flatten().map(tag_value);
+    let answer = if content::has_inventory(items.as_ref()) { "boolean.mekanism.yes" } else { "boolean.mekanism.no" };
+    let line = Text::translate("tooltip.mekanism.inventory", &[Text::translate(answer, &[]).with_style(&horizon_client::text::Style::color(CONTENT_GRAY))]);
+    lines.push((line.with_style(&horizon_client::text::Style::color(CONTENT_AQUA)), u32::MAX));
+    lines
+}
+
+/// A chave de tradução de um id (`upgrade.mekanism.speed`, `chemical.mekanism.bio`, `block.minecraft.lava`).
+fn content_name_key(kind: &str, id: &str) -> String {
+    let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
+    format!("{kind}.{namespace}.{}", path.replace('/', "."))
+}
+
+/// `TextUtils.format(long)`: o número com o separador de milhar (`1,500`).
+fn thousands(amount: i64) -> String {
+    let digits = amount.abs().to_string();
+    let mut out = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    if amount < 0 { format!("-{out}") } else { out }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // Os eventos do jogo que a rede de transmissores recebe (frente `rede-ganchos`, Fase 3). Um tipo de block entity se registra como transmissor com
 // `transmitters_register(id, sink)` e o `sink` recebe, na ordem do original, `clearRemoved`, `onAdded`, `onChunkUnloaded`, `setRemoved`, o tick, o aviso do
 // vizinho, a capability invalidada, o ticket do chunk e o `ServerTickEvent.Post`. A lib não conhece nenhum id. Os eventos saem da fila do módulo

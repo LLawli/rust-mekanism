@@ -172,7 +172,9 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     if is_generator(&game.native_block(pos)) {
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
-        // `applyImplicitComponents` -> `copyToTile`: o item traz a energia, limitada à capacidade do gerador.
+        // `applyImplicitComponents` -> `copyToTile`: o item traz os upgrades, os slots, a lava e o calor.
+        basis::content_placed(game, stack, pos, &content_spec());
+        // O item traz a energia, limitada à capacidade do gerador.
         basis::energy_placed(game, stack, pos, rules::ENERGY_COMPONENT, heat_config().energy_capacity);
         // O tile novo guarda `currentRedstoneLevel = 0`: um comparador que olhe agora não lê o nível de um gerador que esteve ali antes.
         COMPARATOR_LEVELS.with_borrow_mut(|levels| levels.insert((game.native_dimension(), pos), 0));
@@ -182,6 +184,7 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_generator_id);
     basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_generator_id);
+    basis::content_loot(game, context, drops, &content_spec());
 }
 
 /// A linha `STORED_ENERGY` do tooltip do Heat Generator (`ContainerType.ENERGY`, a capacidade de `generator-storage.heatGenerator`).
@@ -189,6 +192,8 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     if &*stack.item != rules::HEAT_GENERATOR {
         return;
     }
+    // `registerComponentAppenderAfter`: os upgrades antes da energia, o fluido e `Inventory` depois.
+    lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
     lines.push(basis::stored_energy_line(
         game,
         stack,
@@ -203,6 +208,7 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
             infinite: rules::INFINITE_LANG,
         },
     ));
+    lines.extend(basis::content_stored_lines(game, stack, false, true));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
@@ -219,6 +225,54 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     if !canceled && is_generator(&game.native_block(pos)) {
         basis::name_destroying(game, pos, &is_generator_id);
         basis::energy_destroying(game, pos, &is_generator_id);
+        basis::content_destroying(game, pos, &content_spec());
+    }
+}
+
+/// O que o Heat Generator guarda no item (`loot_table/blocks/heat_generator.json`: `mekanism:items`, `fluids`, `heat`, `upgrades`, `redstone_control` e a energia): os dois slots, a lava e o calor.
+fn content_spec() -> basis::ContentSpec<'static> {
+    basis::ContentSpec { is_ours: &is_generator_id, item_slots: rules::SLOTS_SPEC.len(), collect: &content_collect, apply: &content_apply }
+}
+
+/// A lava (`ContainerType.FLUID`, o componente `mekanism:fluids`) e o calor (`ContainerType.HEAT`, `mekanism:heat`, só quando não está na temperatura ambiente, `Mth.equal`).
+fn content_collect(game: &Game<'_>, entity: &ModBlockEntity, pos: [i32; 3]) -> Vec<(&'static str, Tag)> {
+    use machinery_basis_core::item_content as content;
+    let mut out = Vec::new();
+    let tank = &basis::load_tanks(entity, &lava_tank())[0];
+    let stored = match tank.resource() {
+        Some(id) if tank.amount() > 0 => serde_json::json!({"type": {"id": id}, "amount": tank.amount()}),
+        _ => serde_json::json!({}),
+    };
+    if let Some(value) = content::containers_collect(&[stored]) {
+        out.push((basis::CONTENT_FLUIDS, basis::value_tag(&value, "")));
+    }
+    if let (Some(Tag::Double(bits)), Some(ambient)) = (entity.nbt.get(&JavaString::from(HEAT_KEY)), basis::ambient_temperature(game, pos)) {
+        let heat = f64::from_bits(*bits);
+        let at_ambient = (heat / rules::HEAT_CAPACITY - ambient).abs() < 1.0e-5;
+        if let Some(value) = content::heat_collect(heat, rules::HEAT_CAPACITY, at_ambient) {
+            out.push((basis::CONTENT_HEAT, basis::value_tag(&value, "")));
+        }
+    }
+    out
+}
+
+/// O contrário: a lava e o calor do item entram no tile (`copyToContainer`).
+fn content_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&str) -> Option<Tag>) {
+    use machinery_basis_core::item_content as content;
+    if let Some(fluids) = of(basis::CONTENT_FLUIDS)
+        && let Some(list) = content::containers_apply(&basis::tag_value(&fluids), 1)
+    {
+        let capacity = lava_tank()[0];
+        let stored = &list[0];
+        let id = stored["type"]["id"].as_str().map(str::to_owned);
+        let amount = stored["amount"].as_u64().unwrap_or(0);
+        let tank = machinery_basis_core::tank::Tank::restored(id.filter(|_| amount > 0), amount, capacity);
+        basis::save_tanks(entity, &[tank]);
+    }
+    if let Some(heat) = of(basis::CONTENT_HEAT)
+        && let (Some(heat), _) = content::heat_apply(&basis::tag_value(&heat))
+    {
+        entity.nbt.insert(JavaString::from(HEAT_KEY), Tag::Double(heat.to_bits()));
     }
 }
 
@@ -793,6 +847,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     // A capability de fluido do `lavaTank`: todo lado menos a frente (`RelativeSide.LEFT, RIGHT, BACK, TOP, BOTTOM`).
     let front = basis::front(game, pos);
     crate::game::machinery_resources::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));
+    basis::content_apply_pending(entity, pos, &content_spec());
     basis::energy_apply_pending(entity, pos, heat_config().energy_capacity);
     // `TileEntityMekanism.tickServer`: o componente de upgrades anda antes do atraso do estado ativo e do `onUpdateServer`.
     let (upgrade_sync, was_powered, mut ambient_cache) = tick_upgrades(game, pos, entity);

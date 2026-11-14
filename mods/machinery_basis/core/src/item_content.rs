@@ -34,10 +34,18 @@ fn is_empty_stack(stored: &Value) -> bool {
 /// (igual a `UpgradeAware.EMPTY`, o padrão do item de bloco).
 pub fn upgrades_collect(component_upgrade: Option<&Value>) -> Option<Value> {
     let component = component_upgrade?;
-    let totals = component.get(UPGRADES).filter(|totals| totals.as_object().is_some_and(|map| !map.is_empty())).cloned();
+    let totals = component
+        .get(UPGRADES)
+        .filter(|totals| totals.as_object().is_some_and(|map| !map.is_empty()))
+        .cloned();
     let mut input = json!({});
     let mut output = json!({});
-    for entry in component.get(ITEMS).and_then(Value::as_array).into_iter().flatten() {
+    for entry in component
+        .get(ITEMS)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
         let stored = entry.get(STORED).cloned().unwrap_or_else(|| json!({}));
         match entry.get(CONTAINER).and_then(Value::as_i64) {
             Some(0) => input = stored,
@@ -55,7 +63,10 @@ pub fn upgrades_collect(component_upgrade: Option<&Value>) -> Option<Value> {
 /// guardar (o `write` do componente apaga o filho).
 pub fn upgrades_apply(component: &Value) -> Option<Value> {
     let mut out = Map::new();
-    if let Some(totals) = component.get(UPGRADES).filter(|totals| totals.as_object().is_some_and(|map| !map.is_empty())) {
+    if let Some(totals) = component
+        .get(UPGRADES)
+        .filter(|totals| totals.as_object().is_some_and(|map| !map.is_empty()))
+    {
         out.insert(UPGRADES.to_owned(), totals.clone());
     }
     let mut items = Vec::new();
@@ -73,29 +84,54 @@ pub fn upgrades_apply(component: &Value) -> Option<Value> {
 
 /// `ResourceContainerType.attachedCopyOf`: a lista de contêineres, cada um `{}` (vazio) ou `{type, amount}`. `None` com todos vazios.
 pub fn containers_collect(containers: &[Value]) -> Option<Value> {
-    containers.iter().any(|stored| !is_empty_stack(stored)).then(|| {
-        let list = containers
-            .iter()
-            .map(|stored| if is_empty_stack(stored) { json!({}) } else { stored.clone() })
-            .collect();
-        json!({ CONTAINERS: Value::Array(list) })
-    })
+    containers
+        .iter()
+        .any(|stored| !is_empty_stack(stored))
+        .then(|| {
+            let list = containers
+                .iter()
+                .map(|stored| {
+                    if is_empty_stack(stored) {
+                        json!({})
+                    } else {
+                        stored.clone()
+                    }
+                })
+                .collect();
+            json!({ CONTAINERS: Value::Array(list) })
+        })
 }
 
 /// `ResourceContainerType.copyToContainers`: o conteúdo de cada um dos `size` contêineres do tile, ou `None` se a contagem do item não é a do tile (nada muda).
 pub fn containers_apply(component: &Value, size: usize) -> Option<Vec<Value>> {
     let list = component.get(CONTAINERS)?.as_array()?;
-    (list.len() == size).then(|| list.iter().map(|stored| if is_empty_stack(stored) { json!({}) } else { stored.clone() }).collect())
+    (list.len() == size).then(|| {
+        list.iter()
+            .map(|stored| {
+                if is_empty_stack(stored) {
+                    json!({})
+                } else {
+                    stored.clone()
+                }
+            })
+            .collect()
+    })
 }
 
 /// `ContainerType.saveTo`: a lista que o tile guarda (`[{container, stored}]`) vira a lista densa de `size` contêineres, os que faltam vazios.
 pub fn containers_from_saved(saved: Option<&Value>, size: usize) -> Vec<Value> {
     let mut out = vec![json!({}); size];
     for entry in saved.and_then(Value::as_array).into_iter().flatten() {
-        let (Some(index), Some(stored)) = (entry.get(CONTAINER).and_then(Value::as_u64), entry.get(STORED)) else {
+        let (Some(index), Some(stored)) = (
+            entry.get(CONTAINER).and_then(Value::as_u64),
+            entry.get(STORED),
+        ) else {
             continue;
         };
-        if let Some(slot) = usize::try_from(index).ok().and_then(|index| out.get_mut(index)) {
+        if let Some(slot) = usize::try_from(index)
+            .ok()
+            .and_then(|index| out.get_mut(index))
+        {
             *slot = stored.clone();
         }
     }
@@ -126,11 +162,17 @@ pub fn heat_collect(heat: f64, capacity: f64, ambient: bool) -> Option<Value> {
 /// `HeatContainerType.copyToContainer`: o calor e a capacidade do item (`None` no calor quando o item só traz a capacidade).
 pub fn heat_apply(component: &Value) -> (Option<f64>, f64) {
     let heat = component.get(HEAT_STORED).and_then(Value::as_f64);
-    let capacity = component.get(HEAT_CAPACITY).and_then(Value::as_f64).unwrap_or(1.0);
+    let capacity = component
+        .get(HEAT_CAPACITY)
+        .and_then(Value::as_f64)
+        .unwrap_or(1.0);
     (heat, capacity)
 }
 
 /// `ItemBlockTooltip`, o componente `ATTACHED_ITEMS` (`MekanismLang.HAS_INVENTORY`): se o item guarda alguma pilha. Sem o componente (o padrão, tudo vazio) é `false`.
 pub fn has_inventory(items: Option<&Value>) -> bool {
-    items.and_then(|component| component.get(CONTAINERS)).and_then(Value::as_array).is_some_and(|list| list.iter().any(|stored| !is_empty_stack(stored)))
+    items
+        .and_then(|component| component.get(CONTAINERS))
+        .and_then(Value::as_array)
+        .is_some_and(|list| list.iter().any(|stored| !is_empty_stack(stored)))
 }
