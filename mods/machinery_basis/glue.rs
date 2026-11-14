@@ -4090,11 +4090,40 @@ pub(in crate::game) fn publish_arms(game: &mut Game<'_>, at: [i32; 3], view: &Ca
         let value = if view.connected[side as usize] { "true" } else { "false" };
         game.native_set_block_property_with(at, side.name(), value, ARM_FLAGS);
     }
+    publish_collision(game, at, view);
     if TRANSMITTER_PROBE {
         let kinds: Vec<&str> = view.kind.iter().map(|kind| kind.serialized_name()).collect();
         let raws: Vec<&str> = view.raw.iter().map(|kind| kind.serialized_name()).collect();
         eprintln!("{probe} {{\"p\":[{},{},{}],\"conn\":{:?},\"kind\":{:?},\"raw\":{:?},\"net\":{}}}", at[0], at[1], at[2], view.connected, kinds, raws, view.has_network);
     }
+}
+
+/// As caixas da forma inteira de um transmissor (`BlockTransmitter.getRealShape`) pelo id do bloco e o tipo visível de cada lado, na ordem de `Direction`; `None` se o bloco não tem a
+/// forma que o mod declara. O mod diz as caixas de cada bloco em `transmitter_shape_register` (a lib não conhece nenhum id nem medida).
+pub type TransmitterShape = fn(&str, &[ConnectionType; 6]) -> Option<Vec<[f64; 6]>>;
+
+static TRANSMITTER_SHAPE: std::sync::OnceLock<TransmitterShape> = std::sync::OnceLock::new();
+
+/// O mod diz como é a forma de seleção e de colisão de um transmissor dele (`getSideForType` de cada tipo de conexão e o centro).
+pub fn transmitter_shape_register(shape: TransmitterShape) {
+    let _ = TRANSMITTER_SHAPE.set(shape);
+}
+
+/// A forma de colisão por instância do transmissor em `at` (`BlockTransmitter.getCollisionShape`, `machinery_transmitter_collision`): o estado do Horizon só sabe quais lados têm
+/// braço, e o braço `PUSH` e o `PULL` não são o braço normal. Só os transmissores com algum lado `PUSH` ou `PULL` guardam a forma (nos outros a forma do estado, o centro e o braço normal de
+/// cada lado ligado, é a mesma, volume a volume: `transmitter_shape_all.rs`).
+fn publish_collision(game: &Game<'_>, at: [i32; 3], view: &CableView) {
+    let dimension = game.native_dimension();
+    horizon_client::collisions::machinery_transmitter_collision::enter(dimension);
+    let special = view.kind.iter().any(|kind| matches!(kind, ConnectionType::Push | ConnectionType::Pull));
+    let boxes = if special {
+        let state = game.world.block(at[0], at[1], at[2]);
+        let name = game.res.facts().get(state).name.clone();
+        TRANSMITTER_SHAPE.get().and_then(|shape| shape(&name, &view.kind))
+    } else {
+        None
+    };
+    horizon_client::collisions::machinery_transmitter_collision::set(dimension, at, boxes);
 }
 
 /// O evento do jogo como o dono dos transmissores o recebe (decisão 107). É o mesmo para os cabos, os canos, os tubos, os condutores e os transportadores; `None` é o

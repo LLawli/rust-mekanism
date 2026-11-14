@@ -273,6 +273,8 @@ pub(in crate::game) fn flush(game: &mut Game<'_>) {
 
 /// `setRemoved` de um transmissor: o cliente larga a rede dele no começo do tick seguinte, antes de qualquer atualização que o mesmo lugar peça depois.
 pub(in crate::game) fn gone(dimension: &'static str, pos: [i32; 3]) {
+    // A forma de colisão por instância do transmissor (`machinery_transmitter_collision`) some com ele.
+    horizon_client::collisions::machinery_transmitter_collision::set(dimension, pos, None);
     let mut queue = lock(&QUEUE);
     queue.retain(|item| *item != Pending::Update(dimension, pos));
     queue.push(Pending::Gone(dimension, pos));
@@ -386,6 +388,7 @@ fn watch(game: &mut Game<'_>) {
 
 /// O mundo fechou: o `clientNetworks` do anfitrião esvazia e o dos convidados também.
 pub(in crate::game) fn reset(game: &mut Game<'_>) {
+    horizon_client::collisions::machinery_transmitter_collision::clear();
     lock(&QUEUE).clear();
     watched_run(HashMap::clear);
     client_run(HashMap::clear);

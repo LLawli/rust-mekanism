@@ -320,6 +320,15 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     if is_cable(block) {
         basis::cables_register("mekanism", block, cable_capacity_of);
     }
+    // A forma de colisão por instância dos cinco transmissores (`BlockSmallTransmitter` e `BlockLargeTransmitter`, `getSideForType`): o `PUSH` e o `PULL` têm braço de três caixas.
+    if rules::transmitter_center(block).is_some() {
+        basis::transmitter_shape_register(transmitter_boxes_of);
+    }
+}
+
+/// As caixas da forma inteira do transmissor `block` com o tipo visível de cada lado `kinds` (`BlockTransmitter.getRealShape`).
+fn transmitter_boxes_of(block: &str, kinds: &[machinery_basis_core::transmission::connection::ConnectionType; 6]) -> Option<Vec<[f64; 6]>> {
+    rules::transmitter_shape(block, kinds).map(|piece| piece.boxes)
 }
 
 /// `ISideConfiguration` de uma máquina ou do cubo em `pos`, no que o transportador lê: `getEjector().hasStrictInput()` e `getInputColor(RelativeSide.fromDirections(direction, side))` por lado

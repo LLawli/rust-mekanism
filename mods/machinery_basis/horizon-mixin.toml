@@ -1463,6 +1463,28 @@ bindings = [
   { name = "value", ty = "Vec<[f64; 6]>", value = "$value" },
 ]
 
+# A forma de colisão de um transmissor por instância (`BlockTransmitter.getCollisionShape`, frente `cabo-forma`, decisão 209): o centro e um braço por lado ligado, cada um com a forma do
+# tipo dele (`getSideForType`), e o `PUSH` e o `PULL` são três caixas mais estreitas que o braço normal. O Horizon tem uma forma de colisão por estado de bloco (`pipe_shape`: o braço
+# normal de cada lado ligado), e o estado não sabe o tipo de cada lado. O módulo guarda as caixas da forma dos transmissores com algum lado `PUSH` ou `PULL`, por dimensão e posição,
+# e o HEAD cancelável de `SceneCollisions::context_shape` (o único ponto por onde a varredura de colisão de bloco pede a forma de uma célula: o jogador, o item solto, os mobs) as entrega
+# no lugar da forma do estado. Alvo cru, H231.
+[[module]]
+id = "transmitter-collision"
+file = "crates/horizon-client-render/src/collisions.rs"
+name = "machinery_transmitter_collision"
+source = "transmitter_collision.rs"
+visibility = "pub"
+
+[[injection]]
+id = "transmitter_collision"
+target = "horizon_client_render::collisions::<SceneCollisions<'_,'_> as BlockCollisionWorld>::context_shape"
+kind = "HEAD"
+cancellable = true
+helper = "transmitter_collision_head.rs"
+bindings = [
+  { name = "position", ty = "BlockPos", value = "p" },
+]
+
 # O carregamento dos chunks por tick (decisão 196): o `Streaming` do Horizon dimensiona o trabalho em voo pelos `workers` dele (a geração, 3 por worker), o que traz uns 9 chunks por tick; o
 # original carrega o que os workers aguentam, sem teto por tick. O HEAD de `Streaming::update` sobe o `workers` para o mínimo de 16 (só sobe: a conta é idempotente). Alvo cru, H222.
 [[injection]]
