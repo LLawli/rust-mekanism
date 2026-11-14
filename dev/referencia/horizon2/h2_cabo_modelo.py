@@ -28,32 +28,45 @@ def clear_noon():
 
 def cena():
     cmd("fill %d %d %d %d %d %d minecraft:air" % (X - 4, Y, Z - 4, X + 8, Y + 4, Z + 4))
+    # Como os tiros da cena: o cabo do meio entre outro cabo e uma máquina, e uma segunda máquina ao sul.
     cmd(f"setblock {X} {Y} {Z} mekanism:basic_universal_cable")
     cmd(f"setblock {X + 1} {Y} {Z} mekanism:basic_universal_cable")
     cmd(f"setblock {X + 2} {Y} {Z} mekanism:enrichment_chamber")
+    cmd(f"setblock {X + 1} {Y} {Z + 1} mekanism:enrichment_chamber")
+
+
+def place(block_item, x):
+    """Põe um bloco como jogador (o som do bloco posto): olha o topo do chão sob `x` e o botão direito."""
+    h.ctl("select", block_item)
+    h.ctl("look-at", "%.2f" % (x + 0.5), "%.2f" % Y, "%.2f" % (Z + 0.5))
+    time.sleep(1.0)
+    h.ctl("mouse", "right", "click")
+    time.sleep(1.0)
+    print("posto em", x, h.ctl("block", str(x), str(Y), str(Z)).split('"state"')[0][:80])
 
 
 def video(out, seconds, container):
+    """O jogador põe os cabos um a um (o som do bloco posto) e o modelo de cada um muda com os vizinhos: o centro sozinho, o braço `NORMAL`, o trecho reto (o `hideContiguousJoin`: o centro
+    da linha mostra a textura do braço) e a junção em T. A câmera é a do jogador, parada ao norte da linha."""
     clear_noon()
-    cena()
+    cmd("fill %d %d %d %d %d %d minecraft:air" % (X - 4, Y, Z - 4, X + 8, Y + 4, Z + 4))
     cmd("gamemode creative")
-    h.ctl("give", "mekanism:configurator", "1")
-    middle = (X + 1, Y, Z)
-    eye = (middle[0] + 0.5, middle[1] + 1.0, middle[2] - 2.6)
-    cmd("tp @s %.2f %.2f %.2f 0 18" % eye)
+    cmd("tick unfreeze")
+    h.ctl("give", "mekanism:basic_universal_cable", "16")
+    cmd("tp @s %.2f %.2f %.2f 0 28" % (X + 2.5, Y, Z - 3.0))
     time.sleep(3.0)
     gravar = f"{GRAVADOR} rec cabo-modelo {out} {seconds}" + (f" {container}" if container else "")
     proc = subprocess.Popen(["ssh", "desktop", gravar])
     time.sleep(2.5)
-    # O braço leste do cabo do meio, que dá na máquina: `PUSH`, `PULL`, `NONE` e de volta a `NORMAL`.
-    for _ in range(4):
-        aj.click_at(middle, aj.ARM["east"], eye)
-        time.sleep(2.0)
-    # A máquina sai e um cabo entra no lugar: o centro vira trecho reto (o `hideContiguousJoin`), e a ponta do outro lado volta a ser um braço só.
-    cmd(f"setblock {X + 2} {Y} {Z} mekanism:basic_universal_cable")
+    for x in (X, X + 1, X + 2, X + 3):
+        place("mekanism:basic_universal_cable", x)
+        time.sleep(2.5)
+    # Uma junção em T: o cabo do meio ganha o braço do sul.
+    h.ctl("select", "mekanism:basic_universal_cable")
+    h.ctl("look-at", "%.2f" % (X + 1.5), "%.2f" % Y, "%.2f" % (Z + 1.5))
+    time.sleep(1.0)
+    h.ctl("mouse", "right", "click")
     time.sleep(3.0)
-    cmd(f"setblock {X + 2} {Y} {Z} minecraft:air")
-    time.sleep(2.5)
     proc.wait()
 
 

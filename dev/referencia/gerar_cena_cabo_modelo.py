@@ -69,9 +69,7 @@ def main():
         shots.append(trios(f"cabo_modelo_{names}", blocks))
     shots.append(trios("cabo_modelo_restritivo_e_desviador", TAIL))
     shots.append({"name": "cabo_modelo_retos_x", "cmds": straights("x"), "tp": "62.0 -47.0 84.0 0 90"})
-    shots.append({"name": "cabo_modelo_retos_x_obliquo", "cmds": straights("x"), "tp": "62.0 -55.0 75.0 0 38"})
     shots.append({"name": "cabo_modelo_retos_z", "cmds": straights("z"), "tp": "65.0 -47.0 80.5 0 90"})
-    shots.append({"name": "cabo_modelo_retos_z_obliquo", "cmds": straights("z"), "tp": "65.0 -55.5 74.0 0 30"})
     shots.append({"name": "cabo_modelo_retos_y", "cmds": straights("y"), "tp": "65.0 -58.0 74.0 0 5"})
     alone = []
     for k, block in enumerate(("basic_universal_cable", "basic_mechanical_pipe")):

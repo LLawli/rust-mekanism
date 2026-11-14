@@ -209,40 +209,6 @@
    "tp": "62.0 -47.0 84.0 0 90"
   },
   {
-   "name": "cabo_modelo_retos_x_obliquo",
-   "cmds": [
-    "setblock 60 -60 78 mekanism:basic_universal_cable",
-    "setblock 61 -60 78 mekanism:basic_universal_cable",
-    "setblock 62 -60 78 mekanism:basic_universal_cable",
-    "setblock 63 -60 78 mekanism:basic_universal_cable",
-    "setblock 60 -60 80 mekanism:basic_pressurized_tube",
-    "setblock 61 -60 80 mekanism:basic_pressurized_tube",
-    "setblock 62 -60 80 mekanism:basic_pressurized_tube",
-    "setblock 63 -60 80 mekanism:basic_pressurized_tube",
-    "setblock 60 -60 82 mekanism:basic_thermodynamic_conductor",
-    "setblock 61 -60 82 mekanism:basic_thermodynamic_conductor",
-    "setblock 62 -60 82 mekanism:basic_thermodynamic_conductor",
-    "setblock 63 -60 82 mekanism:basic_thermodynamic_conductor",
-    "setblock 60 -60 84 mekanism:basic_mechanical_pipe",
-    "setblock 61 -60 84 mekanism:basic_mechanical_pipe",
-    "setblock 62 -60 84 mekanism:basic_mechanical_pipe",
-    "setblock 63 -60 84 mekanism:basic_mechanical_pipe",
-    "setblock 60 -60 86 mekanism:basic_logistical_transporter",
-    "setblock 61 -60 86 mekanism:basic_logistical_transporter",
-    "setblock 62 -60 86 mekanism:basic_logistical_transporter",
-    "setblock 63 -60 86 mekanism:basic_logistical_transporter",
-    "setblock 60 -60 88 mekanism:restrictive_transporter",
-    "setblock 61 -60 88 mekanism:restrictive_transporter",
-    "setblock 62 -60 88 mekanism:restrictive_transporter",
-    "setblock 63 -60 88 mekanism:restrictive_transporter",
-    "setblock 60 -60 90 mekanism:diversion_transporter",
-    "setblock 61 -60 90 mekanism:diversion_transporter",
-    "setblock 62 -60 90 mekanism:diversion_transporter",
-    "setblock 63 -60 90 mekanism:diversion_transporter"
-   ],
-   "tp": "62.0 -55.0 75.0 0 38"
-  },
-  {
    "name": "cabo_modelo_retos_z",
    "cmds": [
     "setblock 59 -60 79 mekanism:basic_universal_cable",
@@ -275,40 +241,6 @@
     "setblock 71 -60 82 mekanism:diversion_transporter"
    ],
    "tp": "65.0 -47.0 80.5 0 90"
-  },
-  {
-   "name": "cabo_modelo_retos_z_obliquo",
-   "cmds": [
-    "setblock 59 -60 79 mekanism:basic_universal_cable",
-    "setblock 59 -60 80 mekanism:basic_universal_cable",
-    "setblock 59 -60 81 mekanism:basic_universal_cable",
-    "setblock 59 -60 82 mekanism:basic_universal_cable",
-    "setblock 61 -60 79 mekanism:basic_pressurized_tube",
-    "setblock 61 -60 80 mekanism:basic_pressurized_tube",
-    "setblock 61 -60 81 mekanism:basic_pressurized_tube",
-    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
-    "setblock 63 -60 79 mekanism:basic_thermodynamic_conductor",
-    "setblock 63 -60 80 mekanism:basic_thermodynamic_conductor",
-    "setblock 63 -60 81 mekanism:basic_thermodynamic_conductor",
-    "setblock 63 -60 82 mekanism:basic_thermodynamic_conductor",
-    "setblock 65 -60 79 mekanism:basic_mechanical_pipe",
-    "setblock 65 -60 80 mekanism:basic_mechanical_pipe",
-    "setblock 65 -60 81 mekanism:basic_mechanical_pipe",
-    "setblock 65 -60 82 mekanism:basic_mechanical_pipe",
-    "setblock 67 -60 79 mekanism:basic_logistical_transporter",
-    "setblock 67 -60 80 mekanism:basic_logistical_transporter",
-    "setblock 67 -60 81 mekanism:basic_logistical_transporter",
-    "setblock 67 -60 82 mekanism:basic_logistical_transporter",
-    "setblock 69 -60 79 mekanism:restrictive_transporter",
-    "setblock 69 -60 80 mekanism:restrictive_transporter",
-    "setblock 69 -60 81 mekanism:restrictive_transporter",
-    "setblock 69 -60 82 mekanism:restrictive_transporter",
-    "setblock 71 -60 79 mekanism:diversion_transporter",
-    "setblock 71 -60 80 mekanism:diversion_transporter",
-    "setblock 71 -60 81 mekanism:diversion_transporter",
-    "setblock 71 -60 82 mekanism:diversion_transporter"
-   ],
-   "tp": "65.0 -55.5 74.0 0 30"
   },
   {
    "name": "cabo_modelo_retos_y",

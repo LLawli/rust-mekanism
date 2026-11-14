@@ -129,7 +129,7 @@ public class CenaBlocos {
         tile.markForSave();
     }
 
-    /// `#conexao X Y Z lado=tipo [lado=tipo ...]`: o tipo cru de cada lado do transmissor em `x y z` (`Transmitter.setConnectionTypeRaw`, o que o Configurator faz a cada clique): `normal`, `push`,
+    /// `#conexao X Y Z lado=tipo [lado=tipo ...]`: o tipo cru de cada lado do transmissor em `x y z` (`Transmitter.setConnectionTypeRaw` e o resto do que o Configurator faz a cada clique): `normal`, `push`,
     /// `pull` ou `none`. O port faz o mesmo com o clique do Configurator (`horizon2/h2_cabo_modelo.py`).
     private static void connection(MinecraftServer server, String command) {
         String[] words = command.split("\\s+");
@@ -139,7 +139,12 @@ public class CenaBlocos {
             String[] pair = words[i].split("=");
             var side = net.minecraft.core.Direction.byName(pair[0]);
             var type = mekanism.common.lib.transmitter.ConnectionType.valueOf(pair[1].toUpperCase());
+            // O que o Configurator faz a cada clique (`TileEntityTransmitter.onSneakRightClick`): o tipo cru, o aviso de modo, as conexões e o pacote de atualização (sem ele o cliente não sabe).
             tile.getTransmitter().setConnectionTypeRaw(side, type);
+            tile.getTransmitter().onModeChange(net.minecraft.core.Direction.from3DDataValue(side.ordinal()));
+            tile.getTransmitter().refreshConnections();
+            tile.getTransmitter().notifyTileChange();
+            tile.sendUpdatePacket();
         }
     }
 

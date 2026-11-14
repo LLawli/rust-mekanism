@@ -3,7 +3,7 @@
 # põe os de `fontes.tar` (veja `enviar_fontes.sh`) e faz o `native-build` do container `horizon`, com 4 núcleos e 6 GB, apagando o build de teste anterior. A trava FICA
 # com quem chamou: solte-a com `rm -rf ~/.cache/rust-mekanism/horizon.lock` ao fim do teste. Uso: [H_NAME=horizon2] construir_horizon.sh PASTA   (PASTA em ~/.cache/rust-mekanism;
 # `H_NAME` escolhe o container, a trava, a pasta de mods e a de versões dele; `H_NAME=auto` pega a trava que estiver livre, a do `horizon2` primeiro, e grava o nome em `PASTA/container`). O `fim`
-# da PASTA ganha o código de saída quando o script acaba, falhando ou não.
+# da PASTA ganha o código de saída quando o script acaba, falhando ou não. `JOBS=2` refaz o build com 2 jobs do cargo dentro do container (o de 4 pode morrer por memória no teto de 6 GB, `OOMKilled`).
 set -eu
 NAME=${H_NAME:-horizon}
 P=$HOME/.cache/rust-mekanism/$1
@@ -40,7 +40,7 @@ rm -rf "$M/infuser" "$M/conteudo"
 tar -C "$M" -xf "$P/fontes.tar"
 JOGO_CMD=true "$HOME/.local/bin/$NAME" offline
 docker update --cpus 4 --memory 6g --memory-swap 6g "$NAME"
-"$HOME/.cache/rust-mekanism/lim-build" env JOGO_CMD="horizon-launcher native-build ~/Games/Horizon/mods/infuser --instance horizon --profile dev --trust-native-code" "$HOME/.local/bin/$NAME" offline
+"$HOME/.cache/rust-mekanism/lim-build" env JOGO_CMD="env CARGO_BUILD_JOBS=${JOBS:-4} horizon-launcher native-build ~/Games/Horizon/mods/infuser --instance horizon --profile dev --trust-native-code" "$HOME/.local/bin/$NAME" offline
 echo "EXIT $?"
 NOVO=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$V/../instances.json" | head -1)
 echo "novo $NOVO"

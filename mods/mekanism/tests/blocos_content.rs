@@ -397,8 +397,8 @@ fn numbers(value: &Value) -> Value {
     }
 }
 
-/// O transmissor do original é uma variante `mekanism:special/transmitter` que o Horizon recusa. O blockstate do port é o que o original mostra sem o dado da block entity (a parte `NONE` de
-/// cada lado, na ordem dos lados), e o dado por instância entra pela injeção `transmitter_model_parts`: um modelo por lado e por estado visual do `TransmitterModelData`
+/// O transmissor do original é uma variante `mekanism:special/transmitter` que o Horizon recusa. O blockstate do port é um `multipart` com todas as partes, e o que o original mostra sem o dado da block entity (a parte `NONE` de
+/// cada lado) é o que vale por padrão; o dado por instância entra pela injeção `transmitter_model_state`: um modelo por lado e por estado visual do `TransmitterModelData`
 /// (`VisualConnectionStatus`: `NORMAL`, `PUSH`, `PULL`, `NONE` e as duas partes do trecho reto, estas só onde o `hideContiguousJoin` do blockstate está ligado), cada um com `visibility` das
 /// 24 partes do OBJ. A parte do trecho reto troca as texturas de centro pela do braço (`NoneSegmentRemap`) e a girada ainda leva a rotação de `makeIconStatusTransform`. O item, o modelo do
 /// corpo, o OBJ e o `.mtl` são cópias.
