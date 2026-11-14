@@ -79,6 +79,20 @@ impl<K: OpenKey, V> OpenHashMap<K, V> {
         }
     }
 
+    /// O construtor `(int expected)`: `n = arraySize(expected, .75f)`. `new Object2IntOpenHashMap<>(outro)` o chama com `outro.size()`.
+    pub fn with_expected(expected: usize) -> Self {
+        let n = array_size(expected);
+        Self {
+            keys: vec![None; n],
+            values: (0..n).map(|_| None).collect(),
+            null_value: None,
+            mask: n - 1,
+            max_fill: max_fill(n),
+            min_n: n,
+            size: 0,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.size
     }

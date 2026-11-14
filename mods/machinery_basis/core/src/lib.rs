@@ -78,6 +78,7 @@ pub mod transporter;
 pub mod two_input_recipe;
 pub mod units;
 pub mod upgrade;
+pub mod upgrade_order;
 pub mod upgrade_window;
 pub mod voxel_edges;
 pub mod warning;

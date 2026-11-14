@@ -3580,9 +3580,13 @@ pub(in crate::game) fn content_upgrade_lines(
             _ => None,
         })
         .collect();
-    // `Object2IntOpenHashMap<Holder<Upgrade>>` itera na ordem do hash de identidade do `Holder`, que muda de uma execução para outra: o original não tem ordem fixa a copiar
-    // (decisão 225), e o port lista na do registro, a mesma da janela de upgrades.
+    // `Object2IntOpenHashMap<Holder<Upgrade>>` itera na ordem do hash de identidade do `Holder`, que o HotSpot sorteia a cada execução e mantém nela (decisão 225): o port
+    // sorteia o da `ResourceKey` de cada tipo, uma vez por processo, e percorre as tabelas do fastutil (`upgrade_order`), então a ordem não pisca.
     installed.sort_by_key(|(id, _)| types.ids().position(|known| known == id).unwrap_or(usize::MAX));
+    let hashes: Vec<i32> = installed.iter().map(|(id, _)| machinery_basis_core::identity_hash::identity_hash(&format!("upgrade:{id}"))).collect();
+    let order = machinery_basis_core::upgrade_order::tooltip_order(&hashes);
+    let mut slots: Vec<Option<(String, i32)>> = installed.into_iter().map(Some).collect();
+    let installed: Vec<(String, i32)> = order.into_iter().filter_map(|index| slots[index].take()).collect();
     installed
         .into_iter()
         .filter_map(|(id, total)| {
@@ -3599,12 +3603,21 @@ pub(in crate::game) fn content_upgrade_lines(
         .collect()
 }
 
+/// `FactoryType.addToTooltip` (o `FACTORY_TYPE` do item, `MekanismBlocks.java:285` e vizinhas): `Recipe type: Enriching`, `FACTORY_TYPE.translateColored(INDIGO, GRAY, this)`. O `factory`
+/// é o nome do tipo (`enriching`, `crushing`, `smelting`, `infusing`).
+pub(in crate::game) fn content_recipe_type_line(factory: &str) -> (horizon_client::mod_api::Text, u32) {
+    use horizon_client::mod_api::Text;
+    let kind = Text::translate(&format!("factory.mekanism.{factory}"), &[]).with_style(&horizon_client::text::Style::color(CONTENT_GRAY));
+    (Text::translate("factory.mekanism.type", &[kind]).with_style(&horizon_client::text::Style::color(CONTENT_INDIGO)), u32::MAX)
+}
+
 /// `EnumColor.GRAY`, `ORANGE`, `PINK`, `AQUA` e `DARK_RED`.
 const CONTENT_GRAY: u32 = 0xCF_CF_CF;
 const CONTENT_ORANGE: u32 = 0xFF_A1_60;
 const CONTENT_PINK: u32 = 0xD5_5E_CB;
 const CONTENT_AQUA: u32 = 0x30_FF_F9;
 const CONTENT_DARK_RED: u32 = 0xC9_07_1F;
+const CONTENT_INDIGO: u32 = 0x55_9E_FF;
 
 /// As linhas dos componentes `ATTACHED_CHEMICALS`, `ATTACHED_FLUIDS` e `ATTACHED_ITEMS` do item de uma máquina (`ResourceContainerType.addStoredResource` e `HAS_INVENTORY`), depois da
 /// energia: o químico ou o fluido guardado (`Biomass: 150 mB`) ou o aviso de vazio, e `Inventory: yes|no`. `chemicals` e `fluids` dizem se o item guarda tanque desse tipo.
