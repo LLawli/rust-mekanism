@@ -292,7 +292,13 @@ fn transporter_click(game: &mut Game<'_>, pos: [i32; 3], face: Face, sneaking: b
 fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::TransmitterPiece>> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let facts = game.res.facts().get(state);
-    let kinds = basis::cable_arm_kinds(game, pos)
+    rules::transmitter_pieces(&facts.name, &transmitter_kinds_at(game, pos))
+}
+
+/// O tipo visível de conexão de cada lado do transmissor em `pos` (`Transmitter.getConnectionType`), na ordem de `Direction`: o do dono, no anfitrião; o do pacote de atualização, no
+/// cliente (`handleUpdateTag`); e, sem nenhum dos dois, o braço normal onde a propriedade de lado do bloco diz que há braço.
+pub(in crate::game) fn transmitter_kinds_at(game: &Game<'_>, pos: [i32; 3]) -> [machinery_basis_core::transmission::connection::ConnectionType; 6] {
+    basis::cable_arm_kinds(game, pos)
         .or_else(|| crate::game::machinery_resources::pipe_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_resources::tube_arm_kinds(game, pos))
         .or_else(|| crate::game::machinery_heat::conductor_arm_kinds(game, pos))
@@ -300,15 +306,14 @@ fn transmitter_pieces_at(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<rules::Tr
         // O cliente (o contorno) sabe o tipo de cada lado pelo pacote de atualização do transmissor (`handleUpdateTag`): `PUSH` e `PULL` têm as três caixas deles.
         .or_else(|| crate::game::machinery_transmitter_client::view_at(game.native_dimension(), pos).map(|view| view.kind))
         .unwrap_or_else(|| {
-        let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
-        for side in Face::ALL {
-            if game.native_block_property(pos, side.name()).as_deref() == Some("true") {
-                kinds[side as usize] = machinery_basis_core::transmission::connection::ConnectionType::Normal;
+            let mut kinds = [machinery_basis_core::transmission::connection::ConnectionType::None; 6];
+            for side in Face::ALL {
+                if game.native_block_property(pos, side.name()).as_deref() == Some("true") {
+                    kinds[side as usize] = machinery_basis_core::transmission::connection::ConnectionType::Normal;
+                }
             }
-        }
-        kinds
-    });
-    rules::transmitter_pieces(&facts.name, &kinds)
+            kinds
+        })
 }
 
 /// O clique de um modo de configurar num tubo pressurizado (a mesma capability `IConfigurable` do transmissor).
@@ -765,25 +770,31 @@ fn mode_timer_start() {
 // ---------------------------------------------------------------------------------------------------------------------------
 // A seleção parcial dos transmissores com o Configurator na mão (decisão 1).
 
-/// O que `BlockTransmitter.getShape` devolve a quem mira o bloco `pos` com o Configurator em uma das mãos (`CollisionContext.isHoldingItem`).
+/// O que `BlockTransmitter.getShape` devolve a quem mira o bloco `pos`.
 enum Looked {
-    /// Sem o Configurator na mão, ou o bloco não é um transmissor: o Horizonte segue com a forma inteira.
+    /// O bloco não é um transmissor: o Horizonte segue com a forma dele.
     No,
-    /// Sem mira, ou sem as peças do transmissor: `getCenter`.
+    /// Sem o Configurator na mão (ou sem entidade na mira): `getRealShape`, o centro e o braço de cada lado ligado, cada um com a forma do tipo dele (`getSideForType`). Não é
+    /// a forma por estado do Horizon: o braço `PUSH` e o `PULL` são três caixas, e o estado só sabe "há braço".
+    Whole(rules::TransmitterPiece),
+    /// Com o Configurator na mão e sem mira, ou sem as peças do transmissor: `getCenter`.
     Center([f64; 6]),
-    /// A peça que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), com o centro se nenhuma.
+    /// Com o Configurator na mão, a peça que o olhar toca (`MultipartUtils.collisionRayTrace` sobre `getCollisionBoxes`, o centro e uma por lado ligado), com o centro se nenhuma.
     Piece(rules::TransmitterPiece),
 }
 
 fn looked(game: &Game<'_>, pos: [i32; 3], state: horizon_world::registry::BlockStateId) -> Looked {
-    let holding = [game.held(), game.offhand.as_ref()].into_iter().flatten().any(|stack| &*stack.item == rules::CONFIGURATOR_ITEM);
-    if !holding {
-        return Looked::No;
-    }
     let facts = game.res.facts().get(state);
     let Some(center) = rules::transmitter_center(&facts.name) else {
         return Looked::No;
     };
+    let holding = [game.held(), game.offhand.as_ref()].into_iter().flatten().any(|stack| &*stack.item == rules::CONFIGURATOR_ITEM);
+    if !holding {
+        return match rules::transmitter_shape(&facts.name, &transmitter_kinds_at(game, pos)) {
+            Some(shape) => Looked::Whole(shape),
+            None => Looked::No,
+        };
+    }
     let Some((origin, direction)) = game.aim() else {
         return Looked::Center(center);
     };
@@ -796,9 +807,9 @@ fn looked(game: &Game<'_>, pos: [i32; 3], state: horizon_world::registry::BlockS
     Looked::Piece(rules::partial_piece(&pieces, local, end).clone())
 }
 
-/// `BlockTransmitter.getShape` com o Configurator em uma das mãos: a caixa que o olhar toca, e o centro se nenhuma. Sem o Configurator, ou em outro bloco, o
-/// Horizonte segue com a forma inteira. As caixas são as peças de `transmitter_pieces_at`, em coordenadas do bloco. O braço `PUSH` e o `PULL` são três caixas (`SIDES_PUSH` e
-/// `SIDES_PULL`): a caixa que o `context_outline` devolve é a menor que as contém, e as arestas da união vão por `machinery_outline_edges` (H179).
+/// `BlockTransmitter.getShape`: sem o Configurator, a forma inteira (`getRealShape`); com ele, a caixa que o olhar toca, e o centro se nenhuma. As caixas são as de
+/// `transmitter_shape` e de `transmitter_pieces_at`, em coordenadas do bloco. A forma de uma peça com várias caixas (o braço `PUSH` e o `PULL`, ou o transmissor inteiro com braços) vai
+/// pela menor caixa que a contém, que é o que o `context_outline` devolve, e pelas arestas da união em `machinery_outline_edges` (H179).
 pub(in crate::game) fn partial_outline(
     game: &Game<'_>,
     pos: [i32; 3],
@@ -809,7 +820,7 @@ pub(in crate::game) fn partial_outline(
     match looked(game, pos, state) {
         Looked::No => core::ops::ControlFlow::Continue(()),
         Looked::Center(center) => core::ops::ControlFlow::Break(Some(center)),
-        Looked::Piece(piece) => {
+        Looked::Whole(piece) | Looked::Piece(piece) => {
             let shape = piece.bounds();
             if let Some(edges) = piece.outline_edges() {
                 horizon_client::blocks::machinery_outline_edges::arm(edges);
@@ -829,14 +840,17 @@ pub(in crate::game) fn partial_outline(
     }
 }
 
-/// As caixas de seleção do braço `PUSH` ou `PULL` que o olhar toca, em coordenadas do mundo: o raio de seleção (`outline_boxes`) lê a forma de três caixas, como o `VoxelShape.clip`
-/// do original, e não a caixa que as contém. Só nesses braços: o resto (o braço normal, o centro) é uma caixa só e segue por `context_outline`.
+/// As caixas de seleção que o raio lê (`outline_boxes`), em coordenadas do mundo: a forma inteira do transmissor sem o Configurator, e com ele as da peça que o olhar toca
+/// (o braço `PUSH` ou `PULL`, de três caixas), como o `VoxelShape.clip` do original, e não a caixa que as contém. A peça de uma caixa só (o braço normal, o centro) segue por
+/// `context_outline`.
 pub(in crate::game) fn partial_boxes(game: &Game<'_>, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
-    let Looked::Piece(piece) = looked(game, pos, state) else {
-        return None;
+    let piece = match looked(game, pos, state) {
+        Looked::Whole(piece) => piece,
+        Looked::Piece(piece) if piece.boxes.len() > 1 => piece,
+        _ => return None,
     };
-    (piece.boxes.len() > 1).then(|| piece.boxes.iter().map(|part| std::array::from_fn(|index| f64::from(pos[index % 3]) + part[index])).collect())
+    Some(piece.boxes.iter().map(|part| std::array::from_fn(|index| f64::from(pos[index % 3]) + part[index])).collect())
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

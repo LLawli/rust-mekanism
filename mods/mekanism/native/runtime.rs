@@ -4812,6 +4812,23 @@ pub fn transmitter_pieces(
     Some(pieces)
 }
 
+/// `BlockTransmitter.getRealShape`: a forma inteira do transmissor, a de seleção sem o Configurator (`getShape`), a de colisão (`getCollisionShape`, que nem o Configurator troca) e a
+/// visual (a de colisão, que o `BlockBehaviour.getVisualShape` devolve e o Mekanism não troca nos transmissores). É o centro e o braço de cada lado cujo tipo visível
+/// (`Transmitter.getConnectionType`) não é `NONE`, cada braço com a forma do tipo dele (`getSideForType`: o `PUSH` e o `PULL` não são o braço normal); `kinds` está na ordem de
+/// `Direction`. Um transmissor sem braço é o centro. A peça devolvida não tem lado: as caixas dela são o centro e os braços, e `outline_edges` dá as arestas da união
+/// (`VoxelShapeUtils.batchCombine(center, OR, true, shapes)`, o `forAllEdges` dela). `None` se o bloco não é um transmissor.
+pub fn transmitter_shape(block: &str, kinds: &[ConnectionType; 6]) -> Option<TransmitterPiece> {
+    let large = transmitter_is_large(block)?;
+    let mut boxes = vec![transmitter_center(block)?];
+    for side in Face::ALL {
+        let kind = kinds[side as usize];
+        if kind != ConnectionType::None {
+            boxes.extend(arm_boxes(large, kind, side));
+        }
+    }
+    Some(TransmitterPiece { side: None, boxes })
+}
+
 /// `MultipartUtils.collisionRayTrace`: a peça mais perto que o raio de `origin` a `end` atravessa (a primeira em empate). Cada peça vale pela caixa dela que o raio toca antes.
 pub fn looked_piece(
     pieces: &[TransmitterPiece],

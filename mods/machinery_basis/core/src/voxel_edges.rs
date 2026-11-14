@@ -31,17 +31,26 @@ pub fn union_edges(boxes: &[[f64; 6]]) -> Vec<Edge> {
         coordinates(boxes, 2),
     ];
     let sizes = grid.clone().map(|values| values.len() - 1);
-    // A célula `(i, j, k)` vai de `grid[0][i]` a `grid[0][i + 1]` e assim por diante: cheia se alguma caixa a cobre inteira. Fora da grade, vazia (`isFullWide`).
+    // A célula `(i, j, k)` vai de `grid[0][i]` a `grid[0][i + 1]` e assim por diante: cheia se alguma caixa a cobre inteira (a grade inteira é calculada uma vez, porque cada célula é
+    // lida por quatro retas de vértices por eixo). Fora da grade, vazia (`isFullWide`).
+    let mut cells = vec![false; sizes[0] * sizes[1] * sizes[2]];
+    for i in 0..sizes[0] {
+        for j in 0..sizes[1] {
+            for k in 0..sizes[2] {
+                let at = [i, j, k];
+                cells[(i * sizes[1] + j) * sizes[2] + k] = boxes.iter().any(|bounds| {
+                    (0..3).all(|axis| {
+                        bounds[axis] <= grid[axis][at[axis]] && grid[axis][at[axis] + 1] <= bounds[axis + 3]
+                    })
+                });
+            }
+        }
+    }
     let full = |cell: [i64; 3]| -> bool {
         if (0..3).any(|axis| cell[axis] < 0 || cell[axis] >= sizes[axis] as i64) {
             return false;
         }
-        let at = cell.map(|index| index as usize);
-        boxes.iter().any(|bounds| {
-            (0..3).all(|axis| {
-                bounds[axis] <= grid[axis][at[axis]] && grid[axis][at[axis] + 1] <= bounds[axis + 3]
-            })
-        })
+        cells[(cell[0] as usize * sizes[1] + cell[1] as usize) * sizes[2] + cell[2] as usize]
     };
     let mut edges = Vec::new();
     // O segmento anda em z, depois em y, depois em x (a ordem do rastro do original); os dois eixos de fora, `a` e `b`, são os dois seguintes em ordem cíclica.
