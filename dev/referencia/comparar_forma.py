@@ -53,7 +53,7 @@ def mascara(com, sem, regiao, saida, limiar):
     """O contorno de um jogo: os pixels que mudam entre o quadro com o contorno e o mesmo quadro sem ele (a mira, no meio, fica de fora). Escreve a máscara (branco = contorno) e devolve quantos pixels."""
     x, y, w, h = regiao
     mira = (960 - x, 540 - y)
-    r = magick(com, sem, "-compose", "difference", "-composite", "-crop", f"{w}x{h}+{x}+{y}", "+repage", "-colorspace", "Gray", "-threshold", f"{limiar}%",
+    r = magick(com, sem, "-alpha", "off", "-compose", "difference", "-composite", "-crop", f"{w}x{h}+{x}+{y}", "+repage", "-colorspace", "Gray", "-threshold", f"{limiar}%",
                "-fill", "black", "-draw", f"rectangle {mira[0] - 26},{mira[1] - 26} {mira[0] + 26},{mira[1] + 26}", saida)
     if r.returncode:
         sys.exit(r.stderr)
@@ -61,8 +61,32 @@ def mascara(com, sem, regiao, saida, limiar):
 
 
 def conta(png):
-    r = magick(png, "-format", "%[fx:round(mean*w*h)]", "info:")
+    r = magick(png, "-alpha", "off", "-format", "%[fx:round(mean*w*h)]", "info:")
     return int(float(r.stdout))
+
+
+def pixels_de(png, cor):
+    """Quantos pixels têm exatamente a cor (`#rrggbb`), pelo histograma da imagem (não por `mean`: a média dos três canais conta um pixel amarelo como dois terços)."""
+    for linha in magick(png, "-format", "%c", "histogram:info:-").stdout.splitlines():
+        if cor.upper() in linha.upper():
+            return int(linha.split(":")[0])
+    return 0
+
+
+def componentes(cor_png, cor, minimo=1):
+    """Os grupos de pixels (vizinhança de 8) da cor `#rrggbb` na imagem das máscaras: lista de (area, x, y, largura, altura), do maior ao menor. É por onde se acha a causa dos pixels que só um jogo tem:
+    cada grupo tem uma caixa, que se amplia no quadro dos dois jogos."""
+    r = magick(cor_png, "-fill", "black", "+opaque", cor, "-fill", "white", "-opaque", cor, "-colorspace", "Gray", "-define", "connected-components:verbose=true", "-define", "connected-components:area-threshold=%d" % minimo,
+               "-connected-components", "8", "null:")
+    out = []
+    for linha in r.stdout.splitlines():
+        partes = linha.split()
+        if len(partes) < 5 or not partes[0].endswith(":") or "gray(255)" not in linha and "srgb(255,255,255)" not in linha:
+            continue
+        w, rest = partes[1].split("x")
+        h, ox, oy = rest.replace("+", " ").split()
+        out.append((int(float(partes[3])), int(ox), int(oy), int(w), int(h)))
+    return sorted(out, reverse=True)
 
 
 def contorno_so(pose, regiao, port_com, port_sem, orig_com, orig_sem, saida, limiar):
@@ -72,16 +96,17 @@ def contorno_so(pose, regiao, port_com, port_sem, orig_com, orig_sem, saida, lim
     n_port = mascara(port_com, port_sem, regiao, mp, limiar)
     n_orig = mascara(orig_com, orig_sem, regiao, mo, limiar)
     out = {"port": n_port, "original": n_orig}
-    tmp = f"{saida}/.{pose}_c.png"
-    magick(mp, mo, "-compose", "Multiply", "-composite", tmp)
-    out["em_comum_exato"] = conta(tmp)
-    os.remove(tmp)
-    # A imagem: um canal por jogo (vermelho e verde o port, azul o original): branco nos dois, amarelo só no port, azul só no original.
-    magick(mp, mp, mo, "-channel", "RGB", "-combine", "-filter", "point", "-resize", "200%", f"{saida}/{pose}_contorno.png")
-    # O que cada jogo tem e o outro não, pixel a pixel, contado na própria imagem (ampliada 2 vezes: 4 pixels por pixel): azul puro só no original, amarelo puro só no port. Uma ou duas
-    # linhas de diferença do renderer do Horizon (H204) entram aqui.
-    for nome, cor in (("so_original", "#0000ff"), ("so_port", "#ffff00")):
-        out[nome] = round(float(magick(f"{saida}/{pose}_contorno.png", "-fill", "black", "+opaque", cor, "-format", "%[fx:mean*w*h]", "info:").stdout) / 4 / 255 * 255)
+    # A imagem: um canal por jogo (vermelho e verde o port, azul o original): branco nos dois, amarelo só no port, azul só no original. A contagem é do quadro sem ampliar, pelo histograma.
+    cor = f"{saida}/.{pose}_cor.png"
+    magick(mp, mp, mo, "-channel", "RGB", "-combine", cor)
+    out["em_comum_exato"] = pixels_de(cor, "#FFFFFF")
+    out["so_original"] = pixels_de(cor, "#0000FF")
+    out["so_port"] = pixels_de(cor, "#FFFF00")
+    # Os maiores grupos de cada lado (area, x, y, largura, altura no recorte da região): a causa se acha ampliando essa caixa nos dois quadros.
+    out["grupos_so_port"] = componentes(cor, "#FFFF00")[:6]
+    out["grupos_so_original"] = componentes(cor, "#0000FF")[:6]
+    magick(cor, "-filter", "point", "-resize", "200%", f"{saida}/{pose}_contorno.png")
+    os.remove(cor)
     os.remove(mp)
     os.remove(mo)
     return out
