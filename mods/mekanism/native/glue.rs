@@ -1348,7 +1348,8 @@ fn born(
     let side = basis::read_side_nbt(entity);
     progress.restore_side_config(side.config.as_ref(), side.ejector.as_ref(), false);
     if (origin.placed && !has_saved(entity)) || (origin.recalculated_before && !progress.capacity_recalculated()) {
-        progress.apply_item_components(&UpgradeSaved::default());
+        // `applyImplicitComponents`: os upgrades que o item trouxe (o `component_upgrade` que `content_placed` pôs no NBT; vazio sem eles) e os dois slots de upgrade.
+        progress.apply_item_components(&basis::read_upgrades(game, entity));
     }
     progress.set_experience_lookup(experience_of(&basis::machine_recipes(game, &machine.recipes)));
     // Quem já tinha a tela aberta antes de o objeto existir: as sessões são aplicadas uma vez, aqui, num objeto novo.

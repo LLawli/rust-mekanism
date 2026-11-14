@@ -6,6 +6,12 @@ fn mekanism_command_component(state: &mut ItemState<'_, '_>) -> core::ops::Contr
         && matches!(
             id.as_str(),
             "mekanism:upgrade_type" | "mekanism:side_config" | "mekanism:ejector" | "mekanism:configurator_mode" | "mekanism:configuration_data" | "mekanism:energy"
+                | "mekanism:upgrades"
+                | "mekanism:items"
+                | "mekanism:chemicals"
+                | "mekanism:fluids"
+                | "mekanism:heat"
+                | "mekanism:redstone_control"
         )
     {
         return core::ops::ControlFlow::Break(Ok(id));
