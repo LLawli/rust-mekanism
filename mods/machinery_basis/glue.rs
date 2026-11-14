@@ -701,6 +701,11 @@ pub(in crate::game) fn update_shape(
     new: &mut Option<BlockStateId>,
 ) {
     crate::game::machinery_liquid::update_shape(level, ticks, pos, state, direction, around, new);
+    let transmitter = level.native_state_block(state).is_some_and(transmitters::keeps_state_on_neighbor_shape);
+    if SWAP_PROBE && transmitter {
+        let props = level.registry.state(state).map(|s| s.properties.clone());
+        eprintln!("MBS {{\"e\":\"update_shape\",\"p\":[{},{},{}],\"dir\":\"{direction:?}\",\"around\":{:?},\"liquid_new\":{},\"props\":{:?}}}", pos.x, pos.y, pos.z, level.native_state_block(around), new.is_some(), props);
+    }
     if new.is_some() {
         return;
     }
@@ -714,8 +719,8 @@ pub(in crate::game) fn update_shape(
         let delay = tick_delay(fluid, matches!(level.dimension, LevelDimension::Nether));
         level.native_schedule_fluid_tick(ticks, [pos.x, pos.y, pos.z], fluid, delay);
     }
-    if is_cable_state(level, state) {
-        // As conexões do cabo são do `Transmitter`, e não da forma: um vizinho que muda não troca o braço (o dono o faz, `sendUpdatePacket`).
+    if transmitter {
+        // As conexões do transmissor são do `Transmitter`, e não da forma: um vizinho que muda não troca o braço (o dono o faz, `sendUpdatePacket`).
         let _ = (direction, around);
         *new = Some(state);
     }
@@ -3259,6 +3264,8 @@ pub type TransmitterSink = fn(&mut Game<'_>, &TransmitterEvent);
 static TRANSMITTER_SINKS: Mutex<Vec<(&'static str, TransmitterSink)>> = Mutex::new(Vec::new());
 /// O rastro dos eventos no `stderr` (`MBT {json}`), para comparar com `transmitter_events_*.jsonl`. O repositório o deixa desligado; `enviar_fontes.sh` o liga na cópia de teste.
 const TRANSMITTER_PROBE: bool = false;
+/// A sonda da troca de vizinho (frente `troca-vizinho`): a ordem dos avisos `block_changed`, `Neighbor` e `Capability`, e cada vez que um transmissor publica os braços (`MBS {json}`), sem o caldeirão criativo da sonda dos eventos. `enviar_fontes.sh WS PASTA troca` a liga na cópia de teste.
+const SWAP_PROBE: bool = false;
 /// A sonda leve dos setups reais (decisão 196): só a passada (`pre`), a fila de chunks (`MBC`) e a rede de cada família por tick (`MBE`, `MBP`, `MTN`, `MBQ`), sem uma linha por evento de block entity. A
 /// sonda dos eventos (`TRANSMITTER_PROBE`) escreve milhares de linhas por passada e atrasa o servidor a um quarto da velocidade: o carregamento dos chunks corre em tempo real, e a comparação por tick
 /// com o original só vale com o servidor andando a 20 por segundo. `enviar_fontes.sh` liga esta (modo `setups`) e deixa a dos eventos desligada.
@@ -3467,6 +3474,9 @@ fn transmitters_deliver(game: &mut Game<'_>, events: Vec<TransmitterEvent>) {
     }
     let sinks: Vec<TransmitterSink> = TRANSMITTER_SINKS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, sink)| *sink).collect();
     for event in &events {
+        if SWAP_PROBE && let TransmitterEvent::Transmitter { pos, kind, .. } = event && !matches!(kind, TransmitterKind::Update) {
+            eprintln!("MBS {{\"e\":\"deliver\",\"kind\":\"{kind:?}\",\"p\":[{},{},{}]}}", pos[0], pos[1], pos[2]);
+        }
         if TRANSMITTER_PROBE {
             transmitter_probe(game, event);
         } else if SETUPS_PROBE && let TransmitterEvent::Transmitter { pos, kind, .. } = event {
@@ -3590,11 +3600,17 @@ pub(in crate::game) fn transmitters_flush_operation(game: &mut Game<'_>) {
 
 /// O aviso de vizinho do bloco em `pos` (o gancho `neighbor_changed`): anota a ocorrência, que a fila entrega na ordem.
 pub(in crate::game) fn transmitters_neighbor(dimension: &'static str, pos: BlockPos) {
+    if SWAP_PROBE {
+        eprintln!("MBS {{\"e\":\"neighbor_hook\",\"p\":[{},{},{}]}}", pos.x, pos.y, pos.z);
+    }
     transmitters::push(transmitters::Raw::Neighbor { dim: dimension.to_owned(), pos: [pos.x, pos.y, pos.z] });
 }
 
 /// `Level.setBlock` trocou o bloco em `pos` por outro (o gancho `block_changed`): a capability da posição foi invalidada, e o transmissor vizinho a lê de novo.
 pub(in crate::game) fn transmitters_block_changed(level: &GameLevel<'_>, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
+    if SWAP_PROBE {
+        eprintln!("MBS {{\"e\":\"block_changed_hook\",\"p\":[{},{},{}],\"old\":{:?},\"new\":{:?}}}", pos.x, pos.y, pos.z, level.native_state_block(old), level.native_state_block(new));
+    }
     if level.native_state_block(old) != level.native_state_block(new) {
         transmitters::push(transmitters::Raw::BlockChanged { pos: [pos.x, pos.y, pos.z] });
     }
@@ -3995,6 +4011,9 @@ pub(in crate::game) fn arr(pos: SimPos) -> [i32; 3] {
 /// O que os cinco transmissores publicam de uma conexão: o braço de cada lado vira a propriedade do bloco (só para os clientes, `ARM_FLAGS`), e com a sonda ligada a vista sai no
 /// stderr com a etiqueta `probe` (`MBV`, `MBW`, `MTV`, `MBH`).
 pub(in crate::game) fn publish_arms(game: &mut Game<'_>, at: [i32; 3], view: &CableView, probe: &str) {
+    if SWAP_PROBE {
+        eprintln!("MBS {{\"e\":\"publish\",\"p\":[{},{},{}],\"conn\":{:?},\"raw\":{:?}}}", at[0], at[1], at[2], view.connected, view.raw.iter().map(|kind| kind.serialized_name()).collect::<Vec<_>>());
+    }
     for side in Face::ALL {
         let value = if view.connected[side as usize] { "true" } else { "false" };
         game.native_set_block_property_with(at, side.name(), value, ARM_FLAGS);

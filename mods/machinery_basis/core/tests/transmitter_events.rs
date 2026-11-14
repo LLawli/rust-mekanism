@@ -715,3 +715,24 @@ fn the_client_mirror_does_not_drain_the_queue_the_server_filled() {
         "o que o servidor anotou segue na fila para quem o entrega"
     );
 }
+
+#[test]
+fn the_block_of_every_registered_transmitter_keeps_its_state_when_a_neighbor_changes() {
+    let _only = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    // O cano, o tubo, o condutor e o transportador, como o cabo: `BlockTransmitter.updateShape` não troca o estado, e o braço (a propriedade de lado) é só do dono. Medido em jogo: o cano com
+    // um caldeirão a leste perdia o braço quando o caldeirão virava outro (`setblock`), sem que o dono publicasse nada.
+    for id in [
+        "mekanism:basic_universal_cable",
+        "mekanism:basic_mechanical_pipe",
+        "mekanism:basic_pressurized_tube",
+        "mekanism:basic_thermodynamic_conductor",
+        "mekanism:basic_logistical_transporter",
+    ] {
+        events::register(id);
+        assert!(events::keeps_state_on_neighbor_shape(id), "{id}");
+    }
+    // O que não é transmissor (o caldeirão, uma máquina) segue a forma de sempre.
+    for id in ["minecraft:water_cauldron", "mekanism:enrichment_chamber"] {
+        assert!(!events::keeps_state_on_neighbor_shape(id), "{id}");
+    }
+}

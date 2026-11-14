@@ -191,6 +191,12 @@ pub fn is_registered(id: &str) -> bool {
     lock(&TRACKER).ids.contains(id)
 }
 
+/// `BlockTransmitter.updateShape`: o bloco de um transmissor (cabo, cano, tubo, condutor ou transportador) não troca o estado quando um vizinho muda. As conexões de cada lado são do `Transmitter`
+/// (a block entity), e o dono as publica nas propriedades de lado; o bloco que recalculasse o estado pelo vizinho apagaria o braço de um caldeirão trocado por outro, sem o dono saber.
+pub fn keeps_state_on_neighbor_shape(block: &str) -> bool {
+    is_registered(block)
+}
+
 /// O `BlockEntities` do servidor se apresenta (o começo de cada tick do servidor): dali em diante só o que ele anota entra na fila.
 pub fn set_server_source(source: usize) {
     SERVER_SOURCE.store(source, Ordering::Relaxed);
