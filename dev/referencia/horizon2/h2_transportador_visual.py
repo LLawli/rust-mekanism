@@ -55,7 +55,7 @@ def video(out, seconds, container):
     linha()
     cmd("tp @s %.2f %.2f %.2f 0 90" % (X0 + 3.5, Y + 9.0, Z + 1.5))
     time.sleep(3.0)
-    gravar = f"{GRAVADOR} rec transportador-visual {out} {seconds}" + (f" {container}" if container else "")
+    gravar = f"{GRAVADOR} rec {os.environ.get('GRAV_NOME', 'transportador-visual')} {out} {seconds}" + (f" {container}" if container else "")
     proc = subprocess.Popen(["ssh", "desktop", gravar])
     time.sleep(3.0)
     blocos.conexao(f"#conexao {CAMINHO[0][0]} {Y} {CAMINHO[0][1]} west=pull")

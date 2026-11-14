@@ -56,9 +56,10 @@ def main():
         "setup": SETUP,
         "clear": CLEAR,
         "shots": [
-            {"name": "transportador_linha", "cmds": linha_cmds, "tp": "68.0 -50.0 83.0 0 90"},
+            {"name": "transportador_linha", "cmds": linha_cmds, "tp": "63.5 -48.0 83.5 0 90"},
+            {"name": "transportador_linha_b", "cmds": [], "tp": "73.5 -48.0 83.5 0 90"},
             {"name": "transportador_vidro", "cmds": ["tick unfreeze"] + vidro, "tp": "61.0 -53.5 82.5 0 90"},
-            {"name": "transportador_componentes", "cmds": componentes, "tp": "83.0 -53.0 83.0 0 90"},
+            {"name": "transportador_componentes", "cmds": componentes, "tp": "83.5 -48.0 83.5 0 90"},
         ],
     }
     with open(os.path.join(HERE, "cenas/transportador_visual.json"), "w") as handle:
