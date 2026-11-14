@@ -179,8 +179,10 @@ def video():
     espera(15)
     print("tick query:", cmd("tick query"), flush=True)
     a.shot("rede_desempenho_tela")
-    for categoria in ("master", "block", "ui", "player"):
+    for categoria in ("master", "block", "ui", "player", "record", "neutral"):
         ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    antes = mbf_total()
+    print("status antes:", ctl("status", check=False)[:300], flush=True)
     proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} rede_desempenho.mp4 40 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
     import h2_network_reader as nr
     ctl("give", nr.READER, "1")
@@ -198,6 +200,11 @@ def video():
         proc.wait()
     finally:
         ctl("options-set", "soundCategory_master", "0.0")
+    janelas = mbf_linhas(max(mbf_total() - antes, 1))
+    paredes = [j["wall"] for j in janelas if j.get("wall")]
+    if paredes:
+        print("trecho gravado: %d janelas de 40 passadas, parede media %.1f ms por tick = %.1f ticks por segundo (minimo %.1f)" % (len(paredes), sum(paredes) / len(paredes), 1000.0 * len(paredes) / sum(paredes), 1000.0 / max(paredes)), flush=True)
+    print("status depois:", ctl("status", check=False)[:300], flush=True)
     print("tick query (fim):", cmd("tick query"), flush=True)
 
 
