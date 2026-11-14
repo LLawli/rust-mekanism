@@ -19,7 +19,7 @@ BASE = (0, 150, 0)
 CABLE = "mekanism:basic_universal_cable"
 CHAMBER = "mekanism:enrichment_chamber"
 PASTA = os.environ.get("PASTA", "~/.cache/rust-mekanism/restos")
-IGNORED = {"pre", "post", "onLoad", "ticket", "tick", "origin", "mark", "load", "unload"}
+IGNORED = {"pre", "post", "onLoad", "ticket", "tick", "origin", "mark", "load", "unload", "cable_clear"}
 
 
 def abs_pos(rel):
