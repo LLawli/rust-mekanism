@@ -264,6 +264,16 @@ fn inside(rect: [f32; 4], at: [f32; 2]) -> bool {
     gui::contains(rect, at)
 }
 
+/// `TransmitterTypeDecorator.render`: o sprite `transmitter_icon/<bloco>` do item, 16 por 16 sobre o ícone (`blitSprite(GUI_TEXTURED, texture, xOffset, yOffset, 16, 16)`), depois da barra, da
+/// quantidade e da recarga que o jogo já desenhou.
+pub(in crate::game) fn item_decorations(game: &Game<'_>, stack: &horizon_client::items::ItemStack, x: f32, y: f32, batch: &mut HudBatch) {
+    if let Some(sprite) = rules::transmitter_icon_sprite(&stack.item)
+        && let Some([w, h]) = game.native_sprite_size(&sprite)
+    {
+        game.native_sprite(batch, &sprite, [0.0, 0.0, w, h], [x, y, 16.0, 16.0]);
+    }
+}
+
 fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 4]) {
     let [_, _, w, h] = rect;
     game.native_sprite(batch, sprite, [0.0, 0.0, w, h], rect);

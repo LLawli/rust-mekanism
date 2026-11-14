@@ -6,4 +6,5 @@ fn mekanism_submit(
     crate::game::mekanism_cube::submit(game, pos, draw);
     crate::game::mekanism_configurator::diversion_submit(game, pos, draw);
     crate::game::machinery_transmitter_contents::submit(game, pos, draw);
+    crate::game::machinery_transporters::submit(game, pos, draw);
 }

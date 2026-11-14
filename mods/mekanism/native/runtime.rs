@@ -4671,13 +4671,15 @@ pub fn contents_chemical(icon: Option<&str>, tint: u32) -> (String, u32) {
 }
 
 /// Um transmissor para o desenho do modelo por instância (`TransmitterBlockStateModel`): o bloco, o começo do nome dos modelos das partes que o port escreve por lado e por estado visual
-/// (`<prefixo>/<lado>_<estado>`), o `hideContiguousJoin` do blockstate e se a block entity dá o dado do modelo do desviador (`TileEntityDiversionTransporter.initModelData`).
+/// (`<prefixo>/<lado>_<estado>`), o `hideContiguousJoin` do blockstate, se a block entity dá o dado do modelo do desviador (`TileEntityDiversionTransporter.initModelData`) e se o blockstate
+/// tem o vidro (`glass`: os quatro transportadores logísticos, que se pintam; as partes dele vêm depois das do corpo, `<prefixo>/glass_<lado>_<estado>`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransmitterModel {
     pub block: String,
     pub prefix: String,
     pub hide_contiguous_join: bool,
     pub diversion: bool,
+    pub glass: bool,
 }
 
 /// Os 22 transmissores, na ordem do original (`MekanismBlocks`: os cabos, os canos, os tubos, os condutores, os transportadores, o restritivo e o desviador). Só o desviador desliga o
@@ -4701,15 +4703,33 @@ pub fn transmitter_models() -> Vec<TransmitterModel> {
         .into_iter()
         .map(|block| {
             let diversion = block == DIVERSION_TRANSPORTER;
+            let glass = block.ends_with("_logistical_transporter");
             let name = block.strip_prefix("mekanism:").unwrap_or(&block).to_owned();
             TransmitterModel {
                 prefix: format!("mekanism:block/transmitter_part/{name}"),
                 hide_contiguous_join: !diversion,
                 diversion,
+                glass,
                 block,
             }
         })
         .collect()
+}
+
+/// Os blocos que o `TransmitterTypeDecorator` enfeita (`ClientRegistration.registerItemDecorations`: os tubos pressurizados, os condutores termodinâmicos e os cabos universais, os quatro tiers
+/// de cada; os canos e os transportadores não têm).
+pub const TRANSMITTER_ICON_KINDS: [&str; 3] = ["pressurized_tube", "thermodynamic_conductor", "universal_cable"];
+
+/// `TransmitterTypeDecorator`: o sprite que o item de `item` (`mekanism:<tier>_<tipo>`) leva por cima, `mekanism:gui/sprites/transmitter_icon/<id>` (`Mekanism.rl("transmitter_icon/" +
+/// blockId.getPath())`, que `blitSprite` lê do atlas de GUI); `None` se o item não tem o ícone.
+pub fn transmitter_icon_sprite(item: &str) -> Option<String> {
+    let path = item.strip_prefix("mekanism:")?;
+    let (tier, kind) = path.split_once('_')?;
+    if ["basic", "advanced", "elite", "ultimate"].contains(&tier) && TRANSMITTER_ICON_KINDS.contains(&kind) {
+        Some(format!("mekanism:gui/sprites/transmitter_icon/{path}"))
+    } else {
+        None
+    }
 }
 
 /// `BlockSmallTransmitter` e `BlockLargeTransmitter`: o centro (`box(5..11)` e `box(4..12)`) em coordenadas do bloco, pelo id; `None` se o bloco não é um transmissor.

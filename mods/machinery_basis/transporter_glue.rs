@@ -830,3 +830,72 @@ pub(in crate::game) fn eject_into(
     handlers_flush(game, dimension);
     response
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O desenho das pilhas em trânsito (`RenderLogisticalTransporter`, frente `transportador-visual`, Fase 4). O cliente guarda as pilhas (`ClientExtra.transit`, `PacketTransporterSync` e
+// `PacketTransporterBatch`) e as move a cada tick; aqui cada transportador desenha as dele como geometria do block entity (`block_entity_submit`), na posição do `partialTick`.
+// ---------------------------------------------------------------------------------------------------------------------------
+
+/// O modelo avulso da caixa colorida que o desenho põe sob a pilha com cor (`MekanismModelCache.TRANSPORTER_BOX`): o mod o diz.
+static STACK_BOX: Mutex<Option<&'static str>> = Mutex::new(None);
+
+/// O mod diz o modelo da caixa das pilhas coloridas, e ele entra nos modelos avulsos que o jogo assa (`ModelEvent.RegisterStandalone`).
+pub(in crate::game) fn stack_box_register(models: &mut Vec<String>, model: &'static str) {
+    *STACK_BOX.lock().unwrap_or_else(|e| e.into_inner()) = Some(model);
+    if !models.iter().any(|known| known == model) {
+        models.push(model.to_owned());
+    }
+}
+
+/// A pilha do jogo que o cliente guarda de uma pilha em trânsito: o item e a quantidade um (o desenho não mostra a quantidade).
+fn drawn_item(stack: &machinery_basis_core::transmission::client::ClientStack) -> Option<horizon_client::items::ItemStack> {
+    let (id, _) = stack.item.as_ref()?;
+    Some(horizon_client::items::ItemStack::new(id, 1))
+}
+
+/// `RenderLogisticalTransporter.submit`: para cada pilha desenhada (`drawn_stacks`: a posição interpolada, sem as repetidas), a caixa colorida se ela tem cor (`TRANSPORTER_BOX` tingida com
+/// `EnumColor.getPackedColor`, deslocada `(-0,5, -0,25, -0,5)`), e o item a um quarto do tamanho, 0,25 acima do ponto, reduzido a uma unidade se o modelo passa de uma (`getModelBoundingBox`).
+pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut crate::game::native_block_entity_draw::BlockEntityDraw) {
+    use horizon_assets::item_model::DisplayContext;
+    use machinery_basis_core::transporter::render::drawn_stacks;
+    let block = game.native_block(pos);
+    let Some((tier, _)) = transporter_stats(&block) else {
+        return;
+    };
+    let transit = client::transit_at(game.native_dimension(), pos);
+    if transit.is_empty() {
+        return;
+    }
+    let refs: Vec<_> = transit.iter().collect();
+    let packed = SimPos::new(pos[0], pos[1], pos[2]).as_long();
+    let box_model = *STACK_BOX.lock().unwrap_or_else(|e| e.into_inner());
+    for drawn in drawn_stacks(&refs, packed, tier.speed(), draw.partial) {
+        draw.push();
+        draw.translate(drawn.position);
+        if let (Some(color), Some(model)) = (drawn.color, box_model) {
+            draw.push();
+            draw.translate([-0.5, -0.25, -0.5]);
+            game.native_draw_model(draw, model, machinery_basis_core::config_window::color_argb(color) & 0xFF_FFFF);
+            draw.pop();
+        }
+        if let Some(stack) = drawn_item(drawn.stack) {
+            let item = game.resolve_item(&stack, DisplayContext::None, None, drawn.seed);
+            if !item.is_empty() {
+                let (low, high) = item.bounding_box();
+                let size = [high.x - low.x, high.y - low.y, high.z - low.z].map(f64::from);
+                let largest = size[0].max(size[1].max(size[2]));
+                // Um modelo maior que uma unidade desce a uma (`TODO: Do we want to scale up tiny models?`, os pequenos ficam).
+                if largest > 1.0 {
+                    let scale = (1.0 / largest) as f32;
+                    draw.scale([scale; 3]);
+                    draw.translate([0.0, 0.25, 0.0]);
+                }
+                draw.translate([0.0, 0.25, 0.0]);
+                draw.scale([0.25; 3]);
+                let (pose, light) = (draw.pose(), draw.light);
+                game.submit_item_world(&item, pose, light, draw.vertices_mut());
+            }
+        }
+        draw.pop();
+    }
+}

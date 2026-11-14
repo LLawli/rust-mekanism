@@ -352,6 +352,22 @@ bindings = [
   { name = "bar", ty = "&mut Option<(i32, u32)>", value = "&mut *bar" },
 ]
 
+# O ícone do tipo de transmissor sobre o item (`TransmitterTypeDecorator`, `IItemDecorator` dos tubos, dos condutores e dos cabos): o hook de decoração de item do catálogo, depois da barra, da
+# quantidade e da recarga (frente `transportador-visual`).
+[[injection]]
+id = "item_decorations"
+hook = "item_decorations"
+hook_version = 1
+kind = "HEAD"
+helper = "item_decorations.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "x", ty = "f32", value = "x" },
+  { name = "y", ty = "f32", value = "y" },
+  { name = "batch", ty = "&mut horizon_client::hud::HudBatch", value = "&mut *batch" },
+]
+
 # O componente que guarda o tipo do upgrade no item.
 [[injection]]
 id = "component_types"
