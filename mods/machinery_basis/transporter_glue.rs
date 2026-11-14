@@ -212,7 +212,7 @@ thread_local! {
     /// O que `offered_resources` achou antes do evento em andamento.
     static OFFERED: RefCell<Vec<(ItemResource, Option<horizon_client::items::ItemStack>)>> = const { RefCell::new(Vec::new()) };
     /// O que cada contêiner do vanilla recusa dos itens oferecidos (o bloco em que valeu e, por slot, os recusados); vale enquanto o bloco e os itens oferecidos são os mesmos.
-    static REFUSES_MEMO: RefCell<HashMap<(&'static str, [i32; 3], usize), (String, Vec<Vec<ItemResource>>)>> = RefCell::new(HashMap::new());
+    static REFUSES_MEMO: RefCell<machinery_basis_core::transmission::host_item::RefusalMemo<(&'static str, [i32; 3], usize)>> = RefCell::new(Default::default());
 }
 
 /// Os slots do contêiner do bloco em `pos` que o lado `side` dele alcança, ou `None` se ali não há contêiner (um bloco sem slots, outra dimensão, um chunk que não carregou, o tile
@@ -224,14 +224,11 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
     drop(slots_span);
     let slots = slots?;
     let _refuses_span = basis::perf_span(basis::PERF_TRA_REFUSES);
-    // A regra de slot de um contêiner do vanilla (baú, funil, forno) só depende do item, do slot e do lado: é a mesma enquanto o bloco e a lista dos itens oferecidos são os mesmos. A de um
-    // block entity de mod (uma máquina) lê o estado dela, e é perguntada a cada vez (decisão 202).
-    let plain = !matches!(game.world.block_entities.get(&(pos[0], pos[1], pos[2])), Some(BlockEntity::Mod(_)));
+    // A regra de slot de um baú, funil ou barril só depende do item (`static_slot_rule`): fica guardada enquanto o bloco e os itens oferecidos são os mesmos. A de um forno, de uma bancada
+    // de poções, de um crafter ou de uma máquina de mod muda com o conteúdo, e é perguntada a cada vez (decisão 202).
     let key = (dimension, pos, side as usize);
-    let block = plain.then(|| game.native_block(pos).to_string());
-    let known: Option<Vec<Vec<ItemResource>>> = block.as_ref().and_then(|block| {
-        REFUSES_MEMO.with_borrow(|memo| memo.get(&key).filter(|(cached_block, refuses)| cached_block == block && refuses.len() == slots.len()).map(|(_, refuses)| refuses.clone()))
-    });
+    let block = game.native_block(pos).to_string();
+    let known: Option<Vec<Vec<ItemResource>>> = REFUSES_MEMO.with_borrow(|memo| memo.get(&key, &block, slots.len()).cloned());
     let refuses: Vec<Vec<ItemResource>> = known.unwrap_or_else(|| {
         let computed: Vec<Vec<ItemResource>> = slots
             .iter()
@@ -245,9 +242,7 @@ fn mirror_slots(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: F
                 })
             })
             .collect();
-        if let Some(block) = block {
-            REFUSES_MEMO.with_borrow_mut(|memo| memo.insert(key, (block, computed.clone())));
-        }
+        REFUSES_MEMO.with_borrow_mut(|memo| memo.put(key, &block, computed.clone()));
         computed
     });
     Some(
@@ -272,7 +267,7 @@ fn handlers_refresh(game: &Game<'_>, dimension: &'static str) {
     OFFERED.with_borrow_mut(|list| {
         // Os itens oferecidos mudaram: o que os contêineres recusavam deles já não vale.
         if list.len() != offered.len() || list.iter().zip(&offered).any(|((old, _), new)| old != new) {
-            REFUSES_MEMO.with_borrow_mut(HashMap::clear);
+            REFUSES_MEMO.with_borrow_mut(|memo| memo.clear());
             *list = offered.into_iter().map(|resource| { let stack = basis::stack_of_resource(&resource, 1); (resource, stack) }).collect();
         }
     });

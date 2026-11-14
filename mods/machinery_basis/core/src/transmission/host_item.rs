@@ -6,6 +6,8 @@ use crate::containers::ItemResource;
 use crate::item_handler::{ItemHandler, VanillaContainer};
 use crate::transaction::Transaction;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::rc::Rc;
 
 /// Um slot do contêiner do jogo que o lado alcança.
@@ -20,6 +22,58 @@ pub struct MirrorSlot {
     /// Os recursos que o jogo recusa neste slot (`isValid` do slot do bloco, a regra da máquina para a entrada). O Horizon não simula a inserção, então quem lê o contêiner
     /// pergunta de antemão pelos itens que a rede pode oferecer (os em trânsito e os que os vizinhos guardam).
     pub refuses: Vec<ItemResource>,
+}
+
+/// A regra de slot do contêiner do bloco `block` (`Container.canPlaceItem`) só depende do item e do slot, nunca do que os slots guardam nem de outro estado do block entity? Vale para o baú, o
+/// baú preso, o barril, o funil, o lançador e o dispensador (`canPlaceItem` do `Container`: sempre `true`) e para a caixa de shulker (`ShulkerBoxBlockEntity.canPlaceItemThroughFace`: só
+/// o item). Não vale para o forno (`AbstractFurnaceBlockEntity.canPlaceItem`: o slot do combustível olha o balde que já está nele), a bancada de poções (`BrewingStandBlockEntity.canPlaceItem`:
+/// o slot tem de estar vazio), o toca-discos, a estante de livros e o crafter (os slots desligados), nem para uma máquina de mod: a regra deles muda com o conteúdo.
+pub fn static_slot_rule(block: &str) -> bool {
+    matches!(
+        block,
+        "minecraft:chest"
+            | "minecraft:trapped_chest"
+            | "minecraft:barrel"
+            | "minecraft:hopper"
+            | "minecraft:dropper"
+            | "minecraft:dispenser"
+    ) || block == "minecraft:shulker_box"
+        || (block.starts_with("minecraft:") && block.ends_with("_shulker_box"))
+}
+
+/// O que cada contêiner recusa dos itens oferecidos, guardado enquanto vale: só para o bloco de regra estática ([`static_slot_rule`]), e só enquanto o bloco é o mesmo, o número de slots é o
+/// mesmo e quem o usa o esvazia quando a lista de itens oferecidos muda ([`Self::clear`]). Um bloco de regra que muda com o conteúdo nunca entra: a pergunta é refeita a cada vez.
+pub struct RefusalMemo<K> {
+    entries: HashMap<K, (String, Vec<Vec<ItemResource>>)>,
+}
+
+impl<K: Hash + Eq> Default for RefusalMemo<K> {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+}
+
+impl<K: Hash + Eq> RefusalMemo<K> {
+    /// O que se guardou para `key`, se ainda vale para o bloco `block` com `slots` slots.
+    pub fn get(&self, key: &K, block: &str, slots: usize) -> Option<&Vec<Vec<ItemResource>>> {
+        let (cached_block, refuses) = self.entries.get(key)?;
+        (static_slot_rule(block) && cached_block == block && refuses.len() == slots)
+            .then_some(refuses)
+    }
+
+    /// Guarda o que `block` recusou, se a regra dele é estática; senão não guarda nada.
+    pub fn put(&mut self, key: K, block: &str, refuses: Vec<Vec<ItemResource>>) {
+        if static_slot_rule(block) {
+            self.entries.insert(key, (block.to_owned(), refuses));
+        }
+    }
+
+    /// Esquece tudo (os itens oferecidos mudaram).
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 /// O que mudou num slot, para o jogo aplicar. Primeiro as retiradas, depois as colocações.

@@ -2,7 +2,9 @@
 use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::item_handler::ItemHandler;
 use machinery_basis_core::transaction::Transaction;
-use machinery_basis_core::transmission::host_item::{HostItemHandler, MirrorSlot, SlotChange};
+use machinery_basis_core::transmission::host_item::{
+    HostItemHandler, MirrorSlot, RefusalMemo, SlotChange, static_slot_rule,
+};
 
 fn dirt() -> ItemResource {
     ItemResource::new("minecraft:dirt", 64)
@@ -118,4 +120,72 @@ fn a_mid_event_read_keeps_what_the_event_already_changed() {
     handler.refresh_if_clean(vec![slot(0, Some((dirt(), 20)), true)]);
     assert_eq!(handler.amount(0), 20);
     assert!(handler.changes().is_empty());
+}
+
+/// O modelo do forno do original: o slot do combustível (1) aceita um balde só se o que já está nele não é um balde (`AbstractFurnaceBlockEntity.canPlaceItem`). A recusa de um balde muda
+/// quando o slot enche ou esvazia por fora (um funil, o jogador), sem que o bloco nem os itens oferecidos mudem: o que a guarda a deixaria velha.
+fn furnace_refuses_bucket(fuel_slot_holds_bucket: bool) -> Vec<Vec<ItemResource>> {
+    let bucket = ItemResource::new("minecraft:bucket", 16);
+    vec![
+        Vec::new(),
+        if fuel_slot_holds_bucket {
+            vec![bucket]
+        } else {
+            Vec::new()
+        },
+        Vec::new(),
+    ]
+}
+
+#[test]
+fn the_refusal_memo_never_keeps_the_answer_of_a_container_whose_rule_follows_its_contents() {
+    let mut memo: RefusalMemo<u32> = RefusalMemo::default();
+    // O forno com o combustível vazio: o balde entra. O memo recebe, e não guarda.
+    memo.put(1, "minecraft:furnace", furnace_refuses_bucket(false));
+    // Um funil põe um balde no slot do combustível: agora o balde é recusado. O memo não pode devolver o "entra" de antes.
+    assert!(
+        memo.get(&1, "minecraft:furnace", 3).is_none(),
+        "o forno é perguntado a cada vez"
+    );
+    // O mesmo vale para a bancada de poções, o toca-discos, a estante, o crafter e a máquina de mod.
+    for block in [
+        "minecraft:brewing_stand",
+        "minecraft:jukebox",
+        "minecraft:chiseled_bookshelf",
+        "minecraft:crafter",
+        "mekanism:enrichment_chamber",
+        "minecraft:blast_furnace",
+    ] {
+        memo.put(2, block, vec![Vec::new()]);
+        assert!(memo.get(&2, block, 1).is_none(), "{block}");
+        assert!(!static_slot_rule(block), "{block}");
+    }
+}
+
+#[test]
+fn the_refusal_memo_keeps_what_a_chest_a_hopper_or_a_shulker_box_refuses_while_the_block_stays() {
+    let mut memo: RefusalMemo<u32> = RefusalMemo::default();
+    for (key, block) in [
+        "minecraft:chest",
+        "minecraft:trapped_chest",
+        "minecraft:barrel",
+        "minecraft:hopper",
+        "minecraft:dropper",
+        "minecraft:dispenser",
+        "minecraft:shulker_box",
+        "minecraft:red_shulker_box",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let key = key as u32;
+        let refused = vec![vec![dirt()], Vec::new()];
+        memo.put(key, block, refused.clone());
+        assert_eq!(memo.get(&key, block, 2), Some(&refused), "{block}");
+        // Outro bloco no lugar, ou outro número de slots (um baú que virou duplo): a resposta não vale.
+        assert!(memo.get(&key, "minecraft:furnace", 2).is_none(), "{block}");
+        assert!(memo.get(&key, block, 3).is_none(), "{block}");
+    }
+    memo.clear();
+    assert!(memo.get(&0, "minecraft:chest", 2).is_none());
 }
