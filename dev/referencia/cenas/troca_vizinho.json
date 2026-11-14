@@ -1,0 +1,88 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air",
+  "fill 20 -60 91 160 -50 110 minecraft:air",
+  "fill 20 -60 111 160 -50 130 minecraft:air",
+  "fill 20 -60 131 160 -50 150 minecraft:air",
+  "fill 20 -60 151 160 -50 170 minecraft:air",
+  "fill 20 -60 171 160 -50 190 minecraft:air",
+  "fill 20 -60 191 160 -50 210 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 120 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "troca_vizinho_cabo_normal",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_energy_cube",
+    "#cubo 63 -60 82 0.5 front=input left=input right=input back=input top=input bottom=input",
+    "#esperar 20",
+    "#conexao 62 -60 82 east=normal",
+    "#esperar 20"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  },
+  {
+   "name": "troca_vizinho_cabo_push",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_energy_cube",
+    "#cubo 63 -60 82 0.5 front=input left=input right=input back=input top=input bottom=input",
+    "#esperar 20",
+    "#conexao 62 -60 82 east=push",
+    "#esperar 20"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  },
+  {
+   "name": "troca_vizinho_cabo_pull",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_energy_cube",
+    "#cubo 63 -60 82 0.5 front=input left=input right=input back=input top=input bottom=input",
+    "#esperar 20",
+    "#conexao 62 -60 82 east=pull",
+    "#esperar 20"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  },
+  {
+   "name": "troca_vizinho_cabo_none",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:basic_universal_cable",
+    "setblock 63 -60 82 mekanism:basic_energy_cube",
+    "#cubo 63 -60 82 0.5 front=input left=input right=input back=input top=input bottom=input",
+    "#esperar 20",
+    "#conexao 62 -60 82 east=none",
+    "#esperar 20"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  },
+  {
+   "name": "troca_vizinho_cano_antes",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:ultimate_mechanical_pipe",
+    "setblock 63 -60 82 minecraft:water_cauldron[level=3]",
+    "#esperar 40"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  },
+  {
+   "name": "troca_vizinho_cano_depois",
+   "cmds": [
+    "setblock 62 -60 82 mekanism:ultimate_mechanical_pipe",
+    "setblock 63 -60 82 minecraft:water_cauldron[level=3]",
+    "#esperar 40",
+    "setblock 63 -60 82 minecraft:lava_cauldron",
+    "#esperar 40"
+   ],
+   "tp": "62.75 -58.12 79.5 0 45"
+  }
+ ]
+}

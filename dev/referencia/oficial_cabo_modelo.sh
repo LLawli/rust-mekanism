@@ -27,7 +27,7 @@ restore() {
 }
 trap 'rc=$?; restore; echo $rc > "$FIM"' EXIT
 # O `oficial_blocos.sh` recusa (`OCUPADO`, saída 3) se o container `mekanism-ref` está de pé: um dono anterior que não esperou os 5 minutos ociosos. Com a trava na mão, espera ele sumir.
-for valor in false true; do
+for valor in ${VALORES:-false true}; do
   for _ in $(seq 60); do docker ps --format '{{.Names}}' | grep -qx mekanism-ref || break; sleep 10; done
   sed -i "s/^\topaqueTransmitters = .*/\topaqueTransmitters = $valor/" "$TOML"
   grep -c "opaqueTransmitters = $valor" "$TOML"
