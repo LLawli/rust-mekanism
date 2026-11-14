@@ -27,6 +27,8 @@ pub struct Resource {
     /// Sem `icon`, quem desenha usa a cor lisa.
     pub icon: Option<String>,
     pub tint: u32,
+    /// `Chemical.lightLevel` (`light_level` no arquivo, 0 a 15): o brilho com que o desenho do conteúdo do tubo clareia a luz do bloco.
+    pub light: u8,
 }
 
 /// `tint` sem valor: o sprite sai como é.
@@ -86,12 +88,17 @@ impl Resource {
                 .map(|rgb| 0xFF_00_00_00 | rgb)
                 .ok_or(ResourceError::BadColor)?,
         };
+        let light = json
+            .get("light_level")
+            .and_then(Value::as_u64)
+            .map_or(0, |level| level.min(15) as u8);
         Ok(Self {
             id: id.to_owned(),
             kind: kind.to_owned(),
             color,
             icon,
             tint,
+            light,
         })
     }
 }
@@ -159,6 +166,7 @@ pub fn encode_sync(registry: &Registry) -> Vec<u8> {
                 "color": resource.color,
                 "icon": resource.icon,
                 "tint": resource.tint,
+                "light": resource.light,
             })
         })
         .collect();
@@ -179,6 +187,10 @@ pub fn decode_sync(bytes: &[u8]) -> Option<Registry> {
                 icon => Some(icon.as_str()?.to_owned()),
             },
             tint: u32::try_from(entry.get("tint")?.as_u64()?).ok()?,
+            light: entry
+                .get("light")
+                .and_then(Value::as_u64)
+                .map_or(0, |level| level.min(15) as u8),
         });
     }
     Some(Registry::from_resources(resources))
@@ -280,6 +292,7 @@ mod tests {
                 color: 0x12_34_56,
                 icon: Some("mekanism:mek_chemical/infuse_type/bio".into()),
                 tint: 0xFF_AB_CD_EF,
+                light: 15,
             },
             Resource {
                 id: "mekanism:hydrogen".into(),
@@ -287,6 +300,7 @@ mod tests {
                 color: 0xFF_FF_FF,
                 icon: None,
                 tint: NO_TINT,
+                light: 0,
             },
         ]);
         assert_eq!(decode_sync(&encode_sync(&registry)), Some(registry));
@@ -312,6 +326,7 @@ mod tests {
                 color: 0xFF_FFFF,
                 icon: None,
                 tint: NO_TINT,
+                light: 0,
             })
         );
     }
@@ -406,6 +421,7 @@ mod tests {
                 color: 0,
                 icon: None,
                 tint: NO_TINT,
+                light: 0,
             }])
         };
         set_source("fonte_a", one("a:um"));

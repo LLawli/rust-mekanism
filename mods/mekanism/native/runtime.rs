@@ -3457,6 +3457,10 @@ pub fn chemical_resource(id: &str, json: &Value) -> Option<Resource> {
         color,
         icon: json.get("icon").and_then(Value::as_str).map(str::to_owned),
         tint: chemical_tint(json).unwrap_or(machinery_basis_core::resource::NO_TINT),
+        light: json
+            .get("light_level")
+            .and_then(Value::as_u64)
+            .map_or(0, |level| level.min(15) as u8),
     })
 }
 
@@ -4587,6 +4591,8 @@ pub const FLUIDS_WITH_OWN_TEXTURE: [&str; 16] = [
     "uranium_hexafluoride",
     "uranium_oxide",
 ];
+/// Os quatro fluidos do Mekanism Generators, todos com textura própria já tingida (`mekanismgenerators:mek_liquid/<nome>`).
+pub const GENERATORS_FLUIDS: [&str; 4] = ["bioethanol", "deuterium", "fusion_fuel", "tritium"];
 /// `MekanismUtils.lighterThanAirGas`: o fluido da tag `c:gaseous` com `isLighterThanAir`, só o vapor.
 pub const LIGHTER_THAN_AIR_FLUIDS: [&str; 1] = ["mekanism:steam"];
 
@@ -4624,6 +4630,17 @@ pub fn contents_fluid(id: &str, spec: Option<(u32, u32)>) -> Option<ContentsFlui
     }
     let (color, light) = spec?;
     let lighter_than_air = LIGHTER_THAN_AIR_FLUIDS.contains(&id);
+    if let Some(name) = id
+        .strip_prefix("mekanismgenerators:")
+        .filter(|name| GENERATORS_FLUIDS.contains(name))
+    {
+        return Some(ContentsFluid {
+            sprite: format!("mekanismgenerators:mek_liquid/{name}"),
+            rgb: white,
+            light,
+            lighter_than_air: false,
+        });
+    }
     let own = id
         .strip_prefix("mekanism:")
         .filter(|name| FLUIDS_WITH_OWN_TEXTURE.contains(name));

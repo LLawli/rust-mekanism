@@ -3689,7 +3689,7 @@ fn contents_chemical(id: &str) -> Option<crate::game::machinery_transmitter_cont
     let resources = machinery_basis_core::resource::current();
     let resource = resources.get(id)?;
     let (sprite, rgb) = rules::contents_chemical(resource.icon.as_deref(), resource.tint);
-    Some(crate::game::machinery_transmitter_contents::ChemicalLook { sprite, rgb, light: 0 })
+    Some(crate::game::machinery_transmitter_contents::ChemicalLook { sprite, rgb, light: u32::from(resource.light) })
 }
 
 /// Uma vez no começo do jogo: os 22 transmissores, o que cada um mostra e os 24 modelos avulsos do conteúdo.

@@ -185,7 +185,13 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEn
         }
         Kind::Heat => {
             let heat = crate::game::machinery_transmitter_client::heat_at(dimension, pos);
-            let temperature = heat.map_or(machinery_basis_core::heat::AMBIENT_TEMP, |heat| heat / (provider.heat_capacity)(&family.block));
+            let capacity = (provider.heat_capacity)(&family.block);
+            // `BasicHeatCapacitor.getHeat`: sem o primeiro pacote o calor se inicializa com `capacidade * ar` (o ar do bioma na posição, `max(0, ...)`).
+            let heat = heat.unwrap_or_else(|| {
+                let ambient = crate::game::machinery_basis::ambient_temperature(game, pos).unwrap_or(machinery_basis_core::heat::AMBIENT_TEMP);
+                (capacity * ambient).max(0.0)
+            });
+            let temperature = heat / capacity;
             let color = lock(&HEAT_COLORS).get_or_insert_with(Default::default).color_from_temp(temperature, family.base_color);
             let groups = contents::contents_groups(contents::all_sides(view.kind));
             draw_groups(game, draw, provider, &groups, &provider.heat_sprite, color.argb(), FULL_BRIGHT);

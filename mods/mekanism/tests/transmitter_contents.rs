@@ -139,3 +139,47 @@ fn a_chemical_shows_its_icon_with_the_tint_without_the_alpha() {
         (rules::LIQUID_SPRITE.to_owned(), 0x00_FF_00)
     );
 }
+
+#[test]
+fn the_generators_fluids_use_their_own_textures_with_the_light_of_the_file() {
+    let ethanol =
+        rules::contents_fluid("mekanismgenerators:bioethanol", Some((0x12_34_56, 15))).unwrap();
+    assert_eq!(
+        (
+            ethanol.sprite.as_str(),
+            ethanol.rgb,
+            ethanol.light,
+            ethanol.lighter_than_air
+        ),
+        (
+            "mekanismgenerators:mek_liquid/bioethanol",
+            0xFF_FFFF,
+            15,
+            false
+        )
+    );
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../mekanismgenerators/content/assets/mekanismgenerators/textures/mek_liquid");
+    for name in rules::GENERATORS_FLUIDS {
+        assert!(dir.join(format!("{name}.png")).exists(), "{name}");
+    }
+}
+
+#[test]
+fn a_chemical_keeps_the_light_level_of_its_file() {
+    let dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("content/data/mekanism/mekanism/chemical");
+    let mut with_light = 0;
+    for entry in fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let json: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let id = format!("mekanism:{}", path.file_stem().unwrap().to_str().unwrap());
+        let Some(resource) = rules::chemical_resource(&id, &json) else {
+            continue;
+        };
+        let expected = json.get("light_level").and_then(Value::as_u64).unwrap_or(0) as u8;
+        assert_eq!(resource.light, expected, "{id}");
+        with_light += usize::from(expected > 0);
+    }
+    assert!(with_light >= 5, "{with_light}");
+}
