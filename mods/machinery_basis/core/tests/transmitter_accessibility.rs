@@ -548,3 +548,37 @@ fn a_chunk_the_horizon_drops_inside_the_ring_leaves_the_network_and_waits_held()
     );
     assert_eq!(world.networks(), vec![cables_of(LONG, 0, 14)]);
 }
+
+#[test]
+fn the_ticket_levels_and_the_drop_level_match_the_originals_trace() {
+    // `dev/referencia/rastros/setups_niveis.jsonl` (`CenaSetups.java`, o cliente do original, decisão 199): de cada chunk da linha o nível de ticket do `ChunkHolder` e o que ele guarda
+    // (`L` o `LevelChunk` com os block entities) com o jogador no chunk 0 e no chunk 6, e os chunks (cz = 0) que o `ChunkMap.processUnloads` soltou.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros/setups_niveis.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let mut levels_checked = 0;
+    let mut retained_checked = 0;
+    let mut unloaded_checked = 0;
+    for line in text.lines() {
+        let row: serde_json::Value = serde_json::from_str(line).expect("json");
+        let tickets = tickets_of(row["jogador_chunk"].as_i64().expect("jogador") as i32);
+        assert_eq!(row["vista"].as_i64(), Some(i64::from(VIEW)));
+        for entry in row["niveis"].as_array().into_iter().flatten() {
+            let chunk = entry[0].as_i64().expect("cx") as i32;
+            assert_eq!(i64::from(tickets.level([chunk, 0])), entry[1].as_i64().expect("nível"), "chunk {chunk}");
+            levels_checked += 1;
+            if entry[2] == "L" {
+                // O chunk inteiro que o original tinha na memória é o que a lib segura.
+                assert!(tickets.retains([chunk, 0]), "chunk {chunk} com `LevelChunk` e nível {}", entry[1]);
+                retained_checked += 1;
+            }
+        }
+        for chunk in row["descarregados_cz0"].as_array().into_iter().flatten() {
+            let chunk = chunk[1].as_i64().expect("cx") as i32;
+            assert!(!tickets.retains([chunk, 0]), "o original soltou o chunk {chunk}");
+            unloaded_checked += 1;
+        }
+    }
+    assert!(levels_checked >= 40, "níveis conferidos: {levels_checked}");
+    assert!(retained_checked >= 30, "chunks segurados conferidos: {retained_checked}");
+    assert_eq!(unloaded_checked, 9);
+}
