@@ -440,7 +440,11 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
         let parts = state["multipart"].as_array().unwrap();
         let per_side = if hide { 6 } else { 4 };
         let glass = want["glass"].as_str();
-        assert_eq!(parts.len(), sides.len() * per_side * (1 + 18 * usize::from(glass.is_some())), "{id}");
+        assert_eq!(
+            parts.len(),
+            sides.len() * per_side * (1 + 18 * usize::from(glass.is_some())),
+            "{id}"
+        );
         for (i, side) in sides.iter().enumerate() {
             for (j, (name, _)) in visual.iter().take(per_side).enumerate() {
                 let part = &parts[i * per_side + j];
@@ -549,22 +553,44 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
                             serde_json::json!({"model": format!("mekanism:block/transmitter_part/logistical_glass/{color}/{side}_{name}")}),
                             "{id}"
                         );
-                        assert_eq!(entry["when"], serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}), "{id} {color} {side}_{name}");
+                        assert_eq!(
+                            entry["when"],
+                            serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}),
+                            "{id} {color} {side}_{name}"
+                        );
                         let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/logistical_glass/{color}/{side}_{name}.json")));
-                        assert_eq!(model["parent"], format!("mekanism:block/transmitter/large/logistical_transporter/transporter_glass_{color}"), "{color} {side}_{name}");
+                        assert_eq!(
+                            model["parent"],
+                            format!(
+                                "mekanism:block/transmitter/large/logistical_transporter/transporter_glass_{color}"
+                            ),
+                            "{color} {side}_{name}"
+                        );
                         for (group, shown) in model["visibility"].as_object().unwrap() {
-                            assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{part}"), "{color} {side}_{name} {group}");
+                            assert_eq!(
+                                shown.as_bool().unwrap(),
+                                *group == format!("{side}{part}"),
+                                "{color} {side}_{name} {group}"
+                            );
                         }
                         if name.starts_with("none_contiguous") {
                             let textures = model["textures"].as_object().unwrap();
                             assert_eq!(textures.len(), 6, "{color}");
                             for slot in ["down", "up", "north", "south", "east", "west"] {
-                                assert_eq!(textures[&format!("center_glass_{slot}")], "#side_glass", "{color} {side}_{name}");
+                                assert_eq!(
+                                    textures[&format!("center_glass_{slot}")],
+                                    "#side_glass",
+                                    "{color} {side}_{name}"
+                                );
                             }
                         } else {
                             assert!(model.get("textures").is_none(), "{color} {side}_{name}");
                         }
-                        assert_eq!(model.get("transform").is_some(), *name == "none_contiguous_rotated", "{color} {side}_{name}");
+                        assert_eq!(
+                            model.get("transform").is_some(),
+                            *name == "none_contiguous_rotated",
+                            "{color} {side}_{name}"
+                        );
                     }
                 }
             }
@@ -833,7 +859,11 @@ fn the_model_table_of_the_game_lists_the_22_transmitters_with_what_the_original_
         );
         assert_eq!(row.diversion, id == "diversion_transporter", "{id}");
         // O vidro é o `glass` do blockstate do original: só os quatro transportadores logísticos.
-        assert_eq!(row.glass, !rastro["transmitters"][&id]["glass"].is_null(), "{id}");
+        assert_eq!(
+            row.glass,
+            !rastro["transmitters"][&id]["glass"].is_null(),
+            "{id}"
+        );
     }
 }
 
@@ -842,21 +872,45 @@ fn the_model_table_of_the_game_lists_the_22_transmitters_with_what_the_original_
 #[test]
 fn the_transmitter_items_of_the_original_carry_their_type_icon() {
     let decorated = [
-        "basic_pressurized_tube", "advanced_pressurized_tube", "elite_pressurized_tube", "ultimate_pressurized_tube",
-        "basic_thermodynamic_conductor", "advanced_thermodynamic_conductor", "elite_thermodynamic_conductor", "ultimate_thermodynamic_conductor",
-        "basic_universal_cable", "advanced_universal_cable", "elite_universal_cable", "ultimate_universal_cable",
+        "basic_pressurized_tube",
+        "advanced_pressurized_tube",
+        "elite_pressurized_tube",
+        "ultimate_pressurized_tube",
+        "basic_thermodynamic_conductor",
+        "advanced_thermodynamic_conductor",
+        "elite_thermodynamic_conductor",
+        "ultimate_thermodynamic_conductor",
+        "basic_universal_cable",
+        "advanced_universal_cable",
+        "elite_universal_cable",
+        "ultimate_universal_cable",
     ];
     let files = manifest();
     for id in decorated {
-        assert_eq!(transmitter_icon_sprite(&format!("mekanism:{id}")), Some(format!("mekanism:gui/sprites/transmitter_icon/{id}")), "{id}");
+        assert_eq!(
+            transmitter_icon_sprite(&format!("mekanism:{id}")),
+            Some(format!("mekanism:gui/sprites/transmitter_icon/{id}")),
+            "{id}"
+        );
         let path = format!("assets/mekanism/textures/gui/sprites/transmitter_icon/{id}.png");
         assert!(content().join(&path).is_file(), "{path}");
         assert!(files.contains(&path), "{path} não é o do original");
     }
-    let icons = std::fs::read_dir(content().join("assets/mekanism/textures/gui/sprites/transmitter_icon")).unwrap().count();
+    let icons =
+        std::fs::read_dir(content().join("assets/mekanism/textures/gui/sprites/transmitter_icon"))
+            .unwrap()
+            .count();
     assert_eq!(icons, decorated.len());
-    for other in transmitters().into_iter().chain(cables()).filter(|id| !decorated.contains(&id.as_str())) {
-        assert_eq!(transmitter_icon_sprite(&format!("mekanism:{other}")), None, "{other}");
+    for other in transmitters()
+        .into_iter()
+        .chain(cables())
+        .filter(|id| !decorated.contains(&id.as_str()))
+    {
+        assert_eq!(
+            transmitter_icon_sprite(&format!("mekanism:{other}")),
+            None,
+            "{other}"
+        );
     }
     assert_eq!(transmitter_icon_sprite("minecraft:stick"), None);
     assert_eq!(transmitter_icon_sprite("mekanism:basic_energy_cube"), None);
@@ -881,15 +935,31 @@ fn the_glass_of_each_color_has_the_tint_times_the_kd_of_the_original() {
     }
     for (index, color) in ENUM_COLOR_NAMES.iter().enumerate() {
         let model = json(&content().join(format!("assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass_{color}.json")));
-        assert_eq!(model["mtl_override"], format!("mekanism:models/block/transmitter_glass_large_{color}.mtl"), "{color}");
+        assert_eq!(
+            model["mtl_override"],
+            format!("mekanism:models/block/transmitter_glass_large_{color}.mtl"),
+            "{color}"
+        );
         assert_eq!(model["flip_v"], true, "{color}");
-        let text = std::fs::read_to_string(content().join(format!("assets/mekanism/models/block/transmitter_glass_large_{color}.mtl"))).unwrap();
-        let kd: Vec<&str> = text.lines().filter(|line| line.starts_with("Kd ")).collect();
+        let text = std::fs::read_to_string(content().join(format!(
+            "assets/mekanism/models/block/transmitter_glass_large_{color}.mtl"
+        )))
+        .unwrap();
+        let kd: Vec<&str> = text
+            .lines()
+            .filter(|line| line.starts_with("Kd "))
+            .collect();
         assert_eq!(kd.len(), 9, "{color}");
         let rgb = ENUM_COLOR_RGB[index];
-        let want: Vec<i32> = [16, 8, 0].map(|shift| ((rgb >> shift & 255) * 204 / 255) as i32).to_vec();
+        let want: Vec<i32> = [16, 8, 0]
+            .map(|shift| ((rgb >> shift & 255) * 204 / 255) as i32)
+            .to_vec();
         for line in kd {
-            let got: Vec<i32> = line.split_whitespace().skip(1).map(|word| (word.parse::<f32>().unwrap() * 255.0) as i32).collect();
+            let got: Vec<i32> = line
+                .split_whitespace()
+                .skip(1)
+                .map(|word| (word.parse::<f32>().unwrap() * 255.0) as i32)
+                .collect();
             assert_eq!(got, want, "{color} {line}");
         }
         // O resto do `.mtl` é o do original (a tinta 0 de cada material e os mapas de textura).

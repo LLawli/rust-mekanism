@@ -486,7 +486,7 @@ impl Scenario {
         let mut client = ClientTransmitters::new();
         client.add_tile(pos, ClientKind::Items, 0);
         client.on_transporter_sync(pos, id, stack);
-        let got: ClientStack = client.extra_at(pos).unwrap().transit[0].clone();
+        let got: ClientStack = client.extra_at(pos).unwrap().transit_in_order()[0].clone();
         let hex = hex.as_str().unwrap();
         let bytes: Vec<u8> = (0..hex.len() / 2)
             .map(|at| u8::from_str_radix(&hex[at * 2..at * 2 + 2], 16).unwrap())

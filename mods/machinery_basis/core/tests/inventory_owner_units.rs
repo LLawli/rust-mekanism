@@ -881,7 +881,7 @@ fn the_update_packet_carries_the_stacks_and_the_color_and_the_client_keeps_them(
         count,
         "uma pilha do cliente por pilha do servidor"
     );
-    for stack in &extra.transit {
+    for stack in extra.transit_in_order() {
         let (id, amount) = stack.item.clone().expect("o item");
         assert_eq!(id, "minecraft:iron_pickaxe");
         assert!(amount > 0);
@@ -897,7 +897,11 @@ fn the_update_packet_carries_the_stacks_and_the_color_and_the_client_keeps_them(
         .iter()
         .map(|(id, _)| *id)
         .collect();
-    let mut indices: Vec<i32> = extra.transit.iter().map(|stack| stack.index).collect();
+    let mut indices: Vec<i32> = extra
+        .transit_in_order()
+        .into_iter()
+        .map(|stack| stack.index)
+        .collect();
     indices.sort_unstable();
     let mut expected = server;
     expected.sort_unstable();
@@ -1044,8 +1048,8 @@ fn client_stacks(client: &ClientTransmitters, pos: BlockPos) -> Vec<Seen> {
     let mut out: Vec<Seen> = client
         .extra_at(pos)
         .unwrap()
-        .transit
-        .iter()
+        .transit_in_order()
+        .into_iter()
         .map(|stack| {
             let (item, amount) = stack.item.clone().expect("pilha sem item");
             (stack.index, item, amount as u32, stack.next, stack.previous)
@@ -1156,7 +1160,7 @@ fn the_sync_packet_carries_the_stack_as_the_stream_codec_does() {
         id,
         stack,
     });
-    let seen = &client.extra_at(at(0)).unwrap().transit[0];
+    let seen = client.extra_at(at(0)).unwrap().transit_in_order()[0];
     assert_eq!(seen.item, Some(("minecraft:dirt".into(), 1)));
     assert!(seen.progress > 0, "progresso 0 vira 5 no cliente");
     assert!(seen.next.is_some() && seen.previous.is_some(), "{seen:?}");

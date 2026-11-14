@@ -502,12 +502,15 @@ fn a_batch_replaces_the_stack_with_the_same_index_then_deletes_and_the_client_ti
     client.add_tile(pos, ClientKind::Items, 0);
     client.on_transporter_sync(pos, 3, &stack_tag("minecraft:dirt", 1, 0));
     client.on_transporter_sync(pos, 4, &stack_tag("minecraft:gravel", 2, 50));
-    let transit = &client.extra_at(pos).unwrap().transit;
+    let transit = client.extra_at(pos).unwrap().transit_in_order();
     assert_eq!(transit.len(), 2);
-    assert_eq!(transit[0].progress, 5, "o progresso zero do fio vira 5");
+    // A ordem é a da tabela do `Int2ObjectOpenHashMap` (a chave 4 antes da 3).
+    assert_eq!(transit[0].index, 4);
+    let dirt = transit.iter().find(|stack| stack.index == 3).unwrap();
+    assert_eq!(dirt.progress, 5, "o progresso zero do fio vira 5");
     // O lote troca a pilha 3 (outro progresso) e tira a 4.
     client.on_transporter_batch(pos, &[4], &[(3, stack_tag("minecraft:dirt", 1, 40))]);
-    let transit = &client.extra_at(pos).unwrap().transit;
+    let transit = client.extra_at(pos).unwrap().transit_in_order();
     assert_eq!(transit.len(), 1);
     assert_eq!((transit[0].index, transit[0].progress), (3, 40));
     // Uma saída e uma atualização do mesmo índice no mesmo lote: a atualização entra e a saída a tira.
@@ -515,10 +518,16 @@ fn a_batch_replaces_the_stack_with_the_same_index_then_deletes_and_the_client_ti
     assert!(client.extra_at(pos).unwrap().transit.is_empty());
     client.on_transporter_sync(pos, 9, &stack_tag("minecraft:dirt", 1, 90));
     client.tick_client_at(pos, 5);
-    assert_eq!(client.extra_at(pos).unwrap().transit[0].progress, 95);
+    assert_eq!(
+        client.extra_at(pos).unwrap().transit_in_order()[0].progress,
+        95
+    );
     client.tick_client_at(pos, 5);
     client.tick_client_at(pos, 5);
-    assert_eq!(client.extra_at(pos).unwrap().transit[0].progress, 100);
+    assert_eq!(
+        client.extra_at(pos).unwrap().transit_in_order()[0].progress,
+        100
+    );
     // O que não é transportador não guarda pilha.
     client.add_tile(at(1, 0), ClientKind::Energy, 10);
     client.on_transporter_sync(at(1, 0), 1, &stack_tag("minecraft:dirt", 1, 5));

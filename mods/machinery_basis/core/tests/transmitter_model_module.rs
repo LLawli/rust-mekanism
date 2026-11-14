@@ -148,30 +148,60 @@ fn the_selection_indexes_the_multipart_of_the_blockstate_side_by_side() {
     use model::{NONE, NONE_CONTIGUOUS, NORMAL, PULL, PUSH};
     assert_eq!(model::parts_per_side(false), 6);
     assert_eq!(model::parts_per_side(true), 4);
-    assert_eq!(model::selection([NONE; 6], false, None), [3, 9, 15, 21, 27, 33]);
     assert_eq!(
-        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false, None),
+        model::selection([NONE; 6], false, None),
+        [3, 9, 15, 21, 27, 33]
+    );
+    assert_eq!(
+        model::selection(
+            [NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL],
+            false,
+            None
+        ),
         [0, 7, 14, 21, 28, 30]
     );
-    assert_eq!(model::selection([NONE; 6], true, None), [3, 7, 11, 15, 19, 23]);
+    assert_eq!(
+        model::selection([NONE; 6], true, None),
+        [3, 7, 11, 15, 19, 23]
+    );
     assert_eq!(
         model::selection([NORMAL, PUSH, PULL, NONE, NORMAL, PUSH], true, None),
         [0, 5, 10, 15, 16, 21]
     );
     // Com o vidro, cada lado leva o corpo e depois o vidro da cor (as partes do vidro de cada cor vêm depois das 36 do corpo, de cor em cor, na mesma ordem).
     assert_eq!(
-        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false, Some(0)),
+        model::selection(
+            [NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL],
+            false,
+            Some(0)
+        ),
         [0, 36, 7, 43, 14, 50, 21, 57, 28, 64, 30, 66]
     );
     assert_eq!(
         model::selection([NONE; 6], false, Some(17)),
-        [3, 36 + 17 * 36 + 3, 9, 36 + 17 * 36 + 9, 15, 36 + 17 * 36 + 15, 21, 36 + 17 * 36 + 21, 27, 36 + 17 * 36 + 27, 33, 36 + 17 * 36 + 33]
+        [
+            3,
+            36 + 17 * 36 + 3,
+            9,
+            36 + 17 * 36 + 9,
+            15,
+            36 + 17 * 36 + 15,
+            21,
+            36 + 17 * 36 + 21,
+            27,
+            36 + 17 * 36 + 27,
+            33,
+            36 + 17 * 36 + 33
+        ]
     );
     assert_eq!(model::GLASS_COLORS, 18);
 }
 
 fn data(connections: [u8; 6]) -> model::ModelData {
-    model::ModelData { connections, color: None }
+    model::ModelData {
+        connections,
+        color: None,
+    }
 }
 
 /// O módulo guarda estado global: os testes que o usam andam um de cada vez.
@@ -235,19 +265,53 @@ fn a_painted_transporter_adds_the_glass_parts_of_its_color() {
     const N: u8 = model::CONNECTION_NONE;
     // Sem cor: o corpo só.
     model::set_data([1, 1, 1], Some(data([N; 6])));
-    assert_eq!(*model::select(7, Some(0), make).unwrap(), (0, vec![3, 9, 15, 21, 27, 33]));
+    assert_eq!(
+        *model::select(7, Some(0), make).unwrap(),
+        (0, vec![3, 9, 15, 21, 27, 33])
+    );
     // Pintado de vermelho (`EnumColor.RED`, 12): o corpo e o vidro da cor por lado.
-    model::set_data([1, 1, 1], Some(model::ModelData { connections: [N; 6], color: Some(12) }));
+    model::set_data(
+        [1, 1, 1],
+        Some(model::ModelData {
+            connections: [N; 6],
+            color: Some(12),
+        }),
+    );
     let base = 36 + 12 * 36;
     assert_eq!(
         *model::select(7, Some(0), make).unwrap(),
-        (0, vec![3, base + 3, 9, base + 9, 15, base + 15, 21, base + 21, 27, base + 27, 33, base + 33])
+        (
+            0,
+            vec![
+                3,
+                base + 3,
+                9,
+                base + 9,
+                15,
+                base + 15,
+                21,
+                base + 21,
+                27,
+                base + 27,
+                33,
+                base + 33
+            ]
+        )
     );
     // Outra cor é outro conjunto de partes.
-    model::set_data([1, 1, 1], Some(model::ModelData { connections: [N; 6], color: Some(1) }));
+    model::set_data(
+        [1, 1, 1],
+        Some(model::ModelData {
+            connections: [N; 6],
+            color: Some(1),
+        }),
+    );
     assert_eq!(model::select(7, Some(0), make).unwrap().1[1], 36 + 36 + 3);
     // O desviador não tem vidro, mesmo com cor no dado: só o corpo.
-    assert_eq!(*model::select(9, Some(0), make).unwrap(), (0, vec![3, 7, 11, 15, 19, 23]));
+    assert_eq!(
+        *model::select(9, Some(0), make).unwrap(),
+        (0, vec![3, 7, 11, 15, 19, 23])
+    );
 }
 
 #[test]
@@ -260,7 +324,13 @@ fn set_data_tells_whether_the_connections_changed_and_clear_forgets_them_all() {
     assert!(model::set_data([5, 0, 0], Some(data([3; 6]))));
     assert_eq!(model::data_at([0, 0, 0]), Some(data([0, 1, 2, 3, 0, 2])));
     // Mudar só a cor muda o dado (`refreshModelData`).
-    assert!(model::set_data([0, 0, 0], Some(model::ModelData { connections: [0, 1, 2, 3, 0, 2], color: Some(4) })));
+    assert!(model::set_data(
+        [0, 0, 0],
+        Some(model::ModelData {
+            connections: [0, 1, 2, 3, 0, 2],
+            color: Some(4)
+        })
+    ));
     assert_eq!(model::data_count(), 2);
     model::clear_data();
     assert_eq!(model::data_count(), 0);

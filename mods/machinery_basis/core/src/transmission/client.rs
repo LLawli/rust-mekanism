@@ -381,7 +381,11 @@ impl PartialEq for ClientExtra {
 impl ClientExtra {
     /// `getTransit()`: as pilhas na ordem do iterador do `Int2ObjectOpenHashMap`.
     pub fn transit_in_order(&self) -> Vec<&ClientStack> {
-        self.transit.entries_in_order().into_iter().map(|(_, stack)| stack).collect()
+        self.transit
+            .entries_in_order()
+            .into_iter()
+            .map(|(_, stack)| stack)
+            .collect()
     }
 
     /// `PacketTransporterSync.handle` e as atualizações de `PacketTransporterBatch.handle`: `transporter.addStack(id, stack)`, a pilha do pacote no lugar da que tinha o mesmo
@@ -428,7 +432,8 @@ impl ClientExtra {
                         };
                         // Um pacote sem índice é ignorado.
                         if let Some(index) = input.get("index").and_then(Tag::int_value) {
-                            self.transit.insert(IntKey(index), ClientStack::read(index, input));
+                            self.transit
+                                .insert(IntKey(index), ClientStack::read(index, input));
                         }
                     }
                 }

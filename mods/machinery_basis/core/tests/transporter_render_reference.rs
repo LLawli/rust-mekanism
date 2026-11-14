@@ -9,7 +9,11 @@ use machinery_basis_core::transporter::render::{client_side, drawn_stacks, stack
 use std::path::Path;
 
 fn rastro() -> String {
-    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros/transporter_render_position.jsonl")).unwrap()
+    std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dev/referencia/rastros/transporter_render_position.jsonl"),
+    )
+    .unwrap()
 }
 
 fn stack(index: i32, item: Option<&str>, progress: i32, color: Option<u8>) -> ClientStack {
@@ -69,7 +73,14 @@ fn identical_stacks_in_the_same_spot_are_drawn_once_and_empty_ones_not_at_all() 
     let other_progress = stack(4, Some("minecraft:stick"), 41, None);
     let other_item = stack(5, Some("minecraft:coal"), 40, None);
     let empty = stack(6, None, 40, None);
-    let transit = [&a, &same, &other_color, &other_progress, &other_item, &empty];
+    let transit = [
+        &a,
+        &same,
+        &other_color,
+        &other_progress,
+        &other_item,
+        &empty,
+    ];
     let drawn = drawn_stacks(&transit, 0, 5, 0.5);
     let indexes: Vec<i32> = drawn.iter().map(|d| d.stack.index).collect();
     assert_eq!(indexes, vec![1, 3, 4, 5]);
@@ -84,6 +95,6 @@ fn partial_tick_moves_the_stack_by_the_speed_of_the_tier() {
     let slow = drawn_stacks(&[&a], 0, 5, 1.0)[0].position;
     let fast = drawn_stacks(&[&a], 0, 20, 1.0)[0].position;
     // `DOWN`: só o y anda, de -0,5 em direção a +0,5 do passo, a 0,25.
-    assert_eq!(slow, [0.5, 0.25 + (-1.0) * (5.0f32 / 100.0 - 0.5), 0.5]);
+    assert_eq!(slow, [0.5, 0.25 - (5.0f32 / 100.0 - 0.5), 0.5]);
     assert!(fast[1] < slow[1]);
 }

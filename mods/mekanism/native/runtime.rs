@@ -4718,14 +4718,20 @@ pub fn transmitter_models() -> Vec<TransmitterModel> {
 
 /// Os blocos que o `TransmitterTypeDecorator` enfeita (`ClientRegistration.registerItemDecorations`: os tubos pressurizados, os condutores termodinâmicos e os cabos universais, os quatro tiers
 /// de cada; os canos e os transportadores não têm).
-pub const TRANSMITTER_ICON_KINDS: [&str; 3] = ["pressurized_tube", "thermodynamic_conductor", "universal_cable"];
+pub const TRANSMITTER_ICON_KINDS: [&str; 3] = [
+    "pressurized_tube",
+    "thermodynamic_conductor",
+    "universal_cable",
+];
 
 /// `TransmitterTypeDecorator`: o sprite que o item de `item` (`mekanism:<tier>_<tipo>`) leva por cima, `mekanism:gui/sprites/transmitter_icon/<id>` (`Mekanism.rl("transmitter_icon/" +
 /// blockId.getPath())`, que `blitSprite` lê do atlas de GUI); `None` se o item não tem o ícone.
 pub fn transmitter_icon_sprite(item: &str) -> Option<String> {
     let path = item.strip_prefix("mekanism:")?;
     let (tier, kind) = path.split_once('_')?;
-    if ["basic", "advanced", "elite", "ultimate"].contains(&tier) && TRANSMITTER_ICON_KINDS.contains(&kind) {
+    if ["basic", "advanced", "elite", "ultimate"].contains(&tier)
+        && TRANSMITTER_ICON_KINDS.contains(&kind)
+    {
         Some(format!("mekanism:gui/sprites/transmitter_icon/{path}"))
     } else {
         None

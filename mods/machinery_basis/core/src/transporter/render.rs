@@ -12,7 +12,12 @@ pub fn step(side: Face) -> [f32; 3] {
 
 /// `TransporterStack.getSide(transporter)` no cliente: `getPrev` e `getNext` valem `clientPrev` e `clientNext` (o pacote de atualização os leva, `Long.MAX_VALUE` sem posição).
 /// Na primeira metade do caminho o lado é o de onde a pilha veio, na segunda o para onde vai; sem lado (posições que não são vizinhas) o original devolve `DOWN`.
-pub fn client_side(progress: i32, previous: Option<i64>, next: Option<i64>, transporter: i64) -> Face {
+pub fn client_side(
+    progress: i32,
+    previous: Option<i64>,
+    next: Option<i64>,
+    transporter: i64,
+) -> Face {
     let mut side = None;
     if progress < 50 {
         let prev = previous.unwrap_or(NO_POS);
@@ -48,15 +53,30 @@ pub struct DrawnStack<'a> {
 
 /// `RenderLogisticalTransporter.extractRenderState`, as pilhas: `transit` na ordem do `getTransit()`, `speed` o `getSpeed()` do tier e `partial_tick` o do quadro. Não desenha a pilha vazia,
 /// e as pilhas do mesmo item, com a mesma cor e no mesmo `progress` viram uma só (o tamanho da pilha não conta).
-pub fn drawn_stacks<'a>(transit: &[&'a ClientStack], transporter: i64, speed: i32, partial_tick: f32) -> Vec<DrawnStack<'a>> {
+pub fn drawn_stacks<'a>(
+    transit: &[&'a ClientStack],
+    transporter: i64,
+    speed: i32,
+    partial_tick: f32,
+) -> Vec<DrawnStack<'a>> {
     let partial = partial_tick * speed as f32;
-    let mut seen: Vec<(i32, &str, Option<&crate::transmission::transmitter::Tag>, Option<u8>)> = Vec::new();
+    let mut seen: Vec<(
+        i32,
+        &str,
+        Option<&crate::transmission::transmitter::Tag>,
+        Option<u8>,
+    )> = Vec::new();
     let mut drawn = Vec::new();
     for stack in transit {
         let Some((id, _)) = &stack.item else {
             continue;
         };
-        let key = (stack.progress, id.as_str(), stack.components.as_ref(), stack.color);
+        let key = (
+            stack.progress,
+            id.as_str(),
+            stack.components.as_ref(),
+            stack.color,
+        );
         if seen.contains(&key) {
             continue;
         }

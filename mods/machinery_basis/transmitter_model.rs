@@ -81,9 +81,13 @@ pub const GLASS_COLORS: usize = 18;
 pub fn selection(statuses: [u8; 6], diversion: bool, glass: Option<u8>) -> Vec<usize> {
     let per_side = parts_per_side(diversion);
     let body = SIDES.len() * per_side;
-    let mut parts = Vec::with_capacity(if glass.is_some() { 2 * SIDES.len() } else { SIDES.len() });
-    for side in 0..SIDES.len() {
-        let index = side * per_side + usize::from(statuses[side]);
+    let mut parts = Vec::with_capacity(if glass.is_some() {
+        2 * SIDES.len()
+    } else {
+        SIDES.len()
+    });
+    for (side, status) in statuses.iter().enumerate() {
+        let index = side * per_side + usize::from(*status);
         parts.push(index);
         if let Some(color) = glass {
             parts.push(body + usize::from(color).min(GLASS_COLORS - 1) * body + index);
@@ -211,7 +215,10 @@ pub fn select<T: Any + Send + Sync>(
             .get(state as usize)
             .copied()
             .filter(|family| *family != u16::MAX)?;
-        Some((table.diversion[usize::from(family)], table.glass[usize::from(family)]))
+        Some((
+            table.diversion[usize::from(family)],
+            table.glass[usize::from(family)],
+        ))
     })?;
     let origin = SECTION.with(Cell::get);
     let pos = [
@@ -222,7 +229,11 @@ pub fn select<T: Any + Send + Sync>(
     let data = data_at(pos)?;
     // Sem cor o transportador não tem vidro (`needsGlass = glassParts != null && getHasColor()`).
     let glass = data.color.filter(|_| glass);
-    let parts = selection(visual_statuses(data.connections, diversion), diversion, glass);
+    let parts = selection(
+        visual_statuses(data.connections, diversion),
+        diversion,
+        glass,
+    );
     let mut selections = SELECTIONS.lock().unwrap_or_else(|e| e.into_inner());
     let selections = selections.get_or_insert_with(HashMap::new);
     let key = (choice, parts);
