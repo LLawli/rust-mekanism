@@ -1485,6 +1485,29 @@ bindings = [
   { name = "position", ty = "BlockPos", value = "p" },
 ]
 
+# A forma de colisão por instância também nas leituras que não passam por `context_shape` (decisão 211, H231): a flecha no chão (`ArrowScene::collision_boxes`) e o pouso e o empurrão
+# de bloco (`MotionWorld::collision_shape`, `BlockPushWorld`) chamam `collision_shape` direto. O raio da câmera (`VisualRays`) e o da explosão (`ColliderRays`) recusam toda injeção
+# (`E_INVALID_BINDING`, `E_UNSUPPORTED_CONTROL_FLOW`: medido, veja a decisão 211). Alvos crus, H231.
+[[injection]]
+id = "transmitter_arrow"
+target = "horizon_client_lib::arrows::ArrowScene<'_,'_>::collision_boxes"
+kind = "HEAD"
+cancellable = true
+helper = "transmitter_arrow.rs"
+bindings = [
+  { name = "p", ty = "BlockPos", value = "p" },
+]
+
+[[injection]]
+id = "transmitter_landing"
+target = "horizon_client_lib::landing::<MotionWorld<'_,'_,'_> as BlockPushWorld>::collision_shape"
+kind = "HEAD"
+cancellable = true
+helper = "transmitter_landing.rs"
+bindings = [
+  { name = "p", ty = "BlockPos", value = "p" },
+]
+
 # O carregamento dos chunks por tick (decisão 196): o `Streaming` do Horizon dimensiona o trabalho em voo pelos `workers` dele (a geração, 3 por worker), o que traz uns 9 chunks por tick; o
 # original carrega o que os workers aguentam, sem teto por tick. O HEAD de `Streaming::update` sobe o `workers` para o mínimo de 16 (só sobe: a conta é idempotente). Alvo cru, H222.
 [[injection]]

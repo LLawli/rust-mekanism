@@ -21,6 +21,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.phys.AABB;
@@ -232,13 +233,23 @@ public class CenaForma {
             case "item" -> server.execute(() -> run(server, String.format(Locale.ROOT,
                   "summon item %s %s %s {Item:{id:\"minecraft:stone\",count:1},Motion:[0.0,0.0,0.0],PickupDelay:32767s,Tags:[\"forma\",\"%s\"]}",
                   num(OX + a.num("x")), num(OY + a.num("y")), num(OZ + a.num("z")), a.get("nome", "x").replace('.', '_'))));
+            case "flecha" -> server.execute(() -> run(server, String.format(Locale.ROOT,
+                  "summon arrow %s %s %s {Motion:[0.0,-0.5,0.0],Tags:[\"forma\",\"flecha\",\"%s\"]}",
+                  num(OX + a.num("x")), num(OY + a.num("y")), num(OZ + a.num("z")), a.get("nome", "x").replace('.', '_'))));
             case "ler" -> server.execute(() -> {
+                for (Entity arrow : server.overworld().getEntities((Entity) null, new AABB(OX - 20, OY - 5, OZ - 20, OX + 40, OY + 20, OZ + 60))) {
+                    if (arrow.entityTags().contains("flecha")) {
+                        String nome = arrow.entityTags().stream().filter(t -> !t.equals("forma") && !t.equals("flecha")).findFirst().orElse("?");
+                        Mekanism.logger.info("cena: flecha {} {} {} {}", nome, arrow.getX(), arrow.getY(), arrow.getZ());
+                    }
+                }
                 for (ItemEntity item : server.overworld().getEntitiesOfClass(ItemEntity.class, new AABB(OX - 20, OY - 5, OZ - 20, OX + 40, OY + 20, OZ + 60))) {
                     String nome = item.entityTags().stream().filter(t -> !t.equals("forma")).findFirst().orElse("?");
                     Mekanism.logger.info("cena: item {} {} {} {}", nome, item.getX(), item.getY(), item.getZ());
                 }
             });
             case "mata" -> server.execute(() -> run(server, "kill @e[type=item]"));
+            case "mataflecha" -> server.execute(() -> run(server, "kill @e[tag=flecha]"));
             case "cai" -> {
                 server.execute(() -> run(server, String.format(Locale.ROOT, "tp @a %s %s %s %s 0", num(OX + a.num("x")), num(OY + a.num("y")), num(OZ + a.num("z")), num(a.num("yaw")))));
                 esperando = a;

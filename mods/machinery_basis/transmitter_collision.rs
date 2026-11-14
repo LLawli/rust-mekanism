@@ -84,3 +84,8 @@ pub fn shape_at(pos: [i32; 3]) -> Option<VoxelShape> {
     }
     shape.optimized().ok()
 }
+
+/// As caixas da forma guardada (`shape_at`), em coordenadas do bloco: o que a flecha lê (`ArrowScene::collision_boxes`).
+pub fn boxes_at(pos: [i32; 3]) -> Option<Vec<Aabb>> {
+    shape_at(pos).map(|shape| shape.boxes().to_vec())
+}

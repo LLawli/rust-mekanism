@@ -72,6 +72,16 @@ def lista_itens():
     return [(n, round(x, 4), round(y, 4), round(z, 4)) for n, x, y, z in out]
 
 
+def lista_flechas():
+    """As flechas que caem sobre a ponta de cada braço do cabo pequeno (`itens_do_braco`): o oeste (`PUSH`), o leste (`PULL`) e o sul (`NORMAL`), da ponta e a 0,27 dela. Lidas
+    como `flecha`; a flecha parada no chão fica onde `ArrowScene.collision_boxes` a deixa."""
+    out = []
+    for braco in ("W", "E", "S"):
+        for nome, x, y, z in itens_do_braco("pequeno", braco, (0, 0, 0), [0.07, 0.27], [0.0]):
+            out.append(("flecha." + nome, x, y + 0.2, z))
+    return out
+
+
 def lista_pessoas():
     """(nome, x, y, z, yaw, ticks): ticks 0 é o jogador que cai e para; os outros andam para o sul (yaw 0) por `ticks` tiques e param de encontro ao que houver."""
     out = []
@@ -132,9 +142,12 @@ def gerar():
         print(f"a=camera nome={nome} x={x} y={y} z={z} ax={ax} ay={ay} az={az} espera=50")
     for nome, x, y, z in lista_itens():
         print(f"a=item nome={nome} x={x} y={y} z={z}")
+    for nome, x, y, z in lista_flechas():
+        print(f"a=flecha nome={nome} x={x} y={y} z={z}")
     print("a=espera n=100")
     print("a=ler")
     print("a=mata")
+    print("a=mataflecha")
     for nome, x, y, z, yaw, t in lista_pessoas():
         if t == 0:
             print(f"a=cai nome={nome} x={x} y={y} z={z} yaw={yaw}")
@@ -220,6 +233,22 @@ def itens(saida):
     cmd("kill @e[type=item]")
     json.dump({"origem": origem(), "itens": res}, open(saida, "w"), indent=1)
     print(f"{sum(1 for v in res.values() if v)} lidos de {len(pontos)} em {time.time() - t0:.1f} s")
+
+
+def flechas(saida):
+    h, aj = port()
+    cmd, wait = aj.cmd, aj.wait
+    cmd("kill @e[tag=flecha]")
+    cmd("tick unfreeze")
+    pontos = lista_flechas()
+    for n, x, y, z in pontos:
+        w = mundo((x, y, z))
+        cmd('summon arrow %.4f %.4f %.4f {Motion:[0.0,-0.5,0.0],Tags:["forma","flecha","%s"]}' % (*w, n.replace(".", "_")))
+    wait(100)
+    res = {n: ler_pos('@e[tag=%s,limit=1]' % n.replace(".", "_")) for n, x, y, z in pontos}
+    cmd("kill @e[tag=flecha]")
+    json.dump({"origem": origem(), "itens": res}, open(saida, "w"), indent=1)
+    print(f"{sum(1 for v in res.values() if v)} flechas lidas de {len(pontos)}")
 
 
 def pessoa(saida):
@@ -540,7 +569,7 @@ def comparar(port_json, latest):
         m = re.search(r"cena: origem (-?\d+) (-?\d+) (-?\d+)", linha)
         if m:
             origem_o = tuple(int(v) for v in m.groups())
-        m = re.search(r"cena: (item|pessoa) (\S+) (-?[0-9.E-]+) (-?[0-9.E-]+) (-?[0-9.E-]+)", linha)
+        m = re.search(r"cena: (item|pessoa|flecha) (\S+) (-?[0-9.E-]+) (-?[0-9.E-]+) (-?[0-9.E-]+)", linha)
         if m:
             ori[m.group(2)] = tuple(float(m.group(i)) for i in (3, 4, 5))
     chaves = dados.get("itens") or dados.get("pessoas")
@@ -571,6 +600,8 @@ if __name__ == "__main__":
         montar()
     elif modo == "itens":
         itens(sys.argv[2])
+    elif modo == "flechas":
+        flechas(sys.argv[2])
     elif modo == "pessoa":
         pessoa(sys.argv[2])
     elif modo == "repete":

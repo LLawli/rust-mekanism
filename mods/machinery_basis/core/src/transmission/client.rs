@@ -510,6 +510,27 @@ impl ClientTransmitters {
         })
     }
 
+    /// Os transmissores que têm algum lado `PUSH` ou `PULL` e o tipo visível de cada lado: o que o cliente de quem não simula o mundo (o convidado de LAN) precisa para a forma de
+    /// colisão por instância, que o dono do anfitrião publica por conta própria.
+    pub fn special_views(&self) -> Vec<(BlockPos, [super::connection::ConnectionType; 6])> {
+        use super::connection::ConnectionType;
+        let mut out: Vec<_> = self
+            .tiles
+            .iter()
+            .filter_map(|(pos, tile)| {
+                let kind: [ConnectionType; 6] = std::array::from_fn(|index| {
+                    tile.transmitter
+                        .get_connection_type(crate::sides::Face::ALL[index])
+                });
+                kind.iter()
+                    .any(|k| matches!(k, ConnectionType::Push | ConnectionType::Pull))
+                    .then_some((*pos, kind))
+            })
+            .collect();
+        out.sort_by_key(|(pos, _)| (pos.x, pos.y, pos.z));
+        out
+    }
+
     /// O que o pacote de atualização deixou no tile em `pos` além das conexões: o calor do condutor, as pilhas e a cor do transportador.
     pub fn extra_at(&self, pos: BlockPos) -> Option<&ClientExtra> {
         self.tiles.get(&pos).map(|tile| &tile.extra)

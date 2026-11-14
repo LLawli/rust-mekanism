@@ -2458,6 +2458,7 @@ impl Game<'_> {
         // (`main`), que nunca passa por `Game::enter_level` nem por `publish_arms` e ficava sem nível, com a forma do estado (medido em jogo, 2026-11-14: o jogador sobre o braço `PULL` ficava
         // 0,03 acima do original e oscilava, porque o servidor, que tem o nível, discordava). O quadro diz o nível do jogo desta thread.
         horizon_client::collisions::machinery_transmitter_collision::enter(self.native_dimension());
+        crate::game::machinery_transmitter_client::collision_refresh(self);
         frame(self);
         // A tela de máquina fechada limpa o estado do fundo (`container_dim`).
         horizon_client::hud::machinery_container_dim::set(self.mb_screen_owns_dim());

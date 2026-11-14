@@ -5,14 +5,14 @@
 
 mod horizon_core {
     pub mod geometry {
-        #[derive(Clone, Copy)]
+        #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct Vec3(pub f64, pub f64, pub f64);
         impl Vec3 {
             pub fn new(x: f64, y: f64, z: f64) -> Self {
                 Self(x, y, z)
             }
         }
-        #[derive(Clone, Copy)]
+        #[derive(Clone, Copy, Debug, PartialEq)]
         pub struct Aabb(pub Vec3, pub Vec3);
         impl Aabb {
             pub fn new(min: Vec3, max: Vec3) -> Self {
@@ -36,6 +36,12 @@ mod horizon_core {
             }
             pub fn join(&self, other: &Self, _: ShapeOp) -> Result<Self, ()> {
                 Ok(Self([self.0.clone(), other.0.clone()].concat()))
+            }
+            pub fn boxes(&self) -> Vec<Aabb> {
+                self.0
+                    .iter()
+                    .map(|b| Aabb(Vec3(b[0], b[1], b[2]), Vec3(b[3], b[4], b[5])))
+                    .collect()
             }
             pub fn optimized(&self) -> Result<Self, ()> {
                 Ok(self.clone())
@@ -112,5 +118,24 @@ fn a_thread_that_never_entered_a_level_reads_nothing() {
         .join()
         .unwrap();
     assert!(silent);
+    collision::set(OVERWORLD, pos, None);
+}
+
+#[test]
+fn the_arrow_reads_the_boxes_of_the_stored_shape() {
+    let pos = at(5);
+    collision::enter(OVERWORLD);
+    assert!(collision::boxes_at(pos).is_none());
+    collision::set(OVERWORLD, pos, Some(vec![CENTER, ARM]));
+    let aabb = |b: [f64; 6]| {
+        horizon_core::geometry::Aabb::new(
+            horizon_core::geometry::Vec3::new(b[0], b[1], b[2]),
+            horizon_core::geometry::Vec3::new(b[3], b[4], b[5]),
+        )
+    };
+    assert_eq!(
+        collision::boxes_at(pos),
+        Some(vec![aabb(CENTER), aabb(ARM)])
+    );
     collision::set(OVERWORLD, pos, None);
 }

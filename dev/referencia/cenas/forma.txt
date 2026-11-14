@@ -365,9 +365,16 @@ a=item nome=esquina.W.p0 x=0.07 y=1.6 z=30.5
 a=item nome=esquina.W.p1 x=0.2 y=1.6 z=30.5
 a=item nome=esquina.N.p0 x=0.5 y=1.6 z=30.07
 a=item nome=esquina.N.p1 x=0.5 y=1.6 z=30.2
+a=flecha nome=flecha.pequeno.W.p0d0 x=0.07 y=1.8 z=0.5
+a=flecha nome=flecha.pequeno.W.p1d0 x=0.27 y=1.8 z=0.5
+a=flecha nome=flecha.pequeno.E.p0d0 x=0.93 y=1.8 z=0.5
+a=flecha nome=flecha.pequeno.E.p1d0 x=0.73 y=1.8 z=0.5
+a=flecha nome=flecha.pequeno.S.p0d0 x=0.5 y=1.8 z=0.93
+a=flecha nome=flecha.pequeno.S.p1d0 x=0.5 y=1.8 z=0.73
 a=espera n=100
 a=ler
 a=mata
+a=mataflecha
 a=cai nome=pequeno.cai.braco_W x=0.31 y=2.0 z=0.5 yaw=0
 a=cai nome=pequeno.cai.braco_E x=0.69 y=2.0 z=0.5 yaw=0
 a=cai nome=pequeno.cai.braco_S x=0.5 y=2.0 z=0.69 yaw=0

@@ -406,6 +406,7 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
             let Some(ops) = decode_batch(data) else {
                 return;
             };
+            COLLISION_REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             client_run(|levels| {
                 for op in &ops {
                     let mut at = String::new();
@@ -426,6 +427,7 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
             });
         }
         RESET_CHANNEL => {
+            COLLISION_REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             client_run(HashMap::clear);
             model_reset();
         }
@@ -542,4 +544,47 @@ pub(in crate::game) fn model_tick(game: &mut Game<'_>) {
 fn model_reset() {
     horizon_client::mesher::machinery_transmitter_model::clear_data();
     *lock(&MODEL_DIMENSION) = None;
+}
+
+/// Quantas vezes o espelho do cliente de um convidado mudou (`net_from_server`): a forma de colisão por instância dele se refaz quando muda.
+static COLLISION_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// A revisão que a thread já refez, e as posições de que ela guardou a forma.
+    static COLLISION_SEEN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static COLLISION_SET: std::cell::RefCell<std::collections::HashSet<(&'static str, [i32; 3])>> = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// A forma de colisão por instância (`machinery_transmitter_collision`) de quem não simula o mundo, o convidado de LAN: o anfitrião a publica no `publish_arms` do dono dele, que o convidado
+/// não tem; os tipos de cada lado chegam pelo pacote de atualização (o espelho do cliente), e daqui a tabela do processo do convidado se refaz quando o espelho muda. O anfitrião e o
+/// jogo de uma pessoa só (que simulam) ficam com o `publish_arms`.
+pub(in crate::game) fn collision_refresh(game: &Game<'_>) {
+    if game.serving.is_some() || game.options.dedicated.is_some() {
+        return;
+    }
+    let revision = COLLISION_REVISION.load(std::sync::atomic::Ordering::Relaxed);
+    if COLLISION_SEEN.with(|seen| seen.replace(revision)) == revision {
+        return;
+    }
+    let dimension = game.native_dimension();
+    let views = client_run(|levels| levels.get(dimension).map(|level| level.special_views()).unwrap_or_default());
+    let mut now = std::collections::HashSet::new();
+    for (pos, kinds) in views {
+        let at = [pos.x, pos.y, pos.z];
+        let state = game.world.block(at[0], at[1], at[2]);
+        let name = game.res.facts().get(state).name.clone();
+        if let Some(boxes) = crate::game::machinery_basis::transmitter_shape_boxes(&name, &kinds) {
+            horizon_client::collisions::machinery_transmitter_collision::set(dimension, at, Some(boxes));
+            now.insert((dimension, at));
+        }
+    }
+    COLLISION_SET.with(|set| {
+        let mut set = set.borrow_mut();
+        for (level, at) in set.iter() {
+            if !now.contains(&(*level, *at)) {
+                horizon_client::collisions::machinery_transmitter_collision::set(level, *at, None);
+            }
+        }
+        *set = now;
+    });
 }

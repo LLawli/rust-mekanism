@@ -72,17 +72,20 @@ def contorno_so(pose, regiao, port_com, port_sem, orig_com, orig_sem, saida, lim
     n_port = mascara(port_com, port_sem, regiao, mp, limiar)
     n_orig = mascara(orig_com, orig_sem, regiao, mo, limiar)
     out = {"port": n_port, "original": n_orig}
+    # Os pixels de um contorno que o outro não tem nem a 1 pixel de distância: `a` menos `b` dilatado em 1 pixel (`MinusSrc` tira o segundo operando do primeiro).
     for nome, a, b in (("so_port_a_mais_de_1px", mp, mo), ("so_original_a_mais_de_1px", mo, mp)):
-        tmp = f"{saida}/.{pose}_t.png"
-        magick(a, "(", b, "-morphology", "Dilate", "Square:1", "-negate", ")", "-compose", "Multiply", "-composite", tmp)
+        dilatado, tmp = f"{saida}/.{pose}_d.png", f"{saida}/.{pose}_t.png"
+        magick(b, "-morphology", "Dilate", "Square:1", dilatado)
+        magick(a, dilatado, "-compose", "MinusSrc", "-composite", tmp)
         out[nome] = conta(tmp)
         os.remove(tmp)
+        os.remove(dilatado)
     tmp = f"{saida}/.{pose}_c.png"
     magick(mp, mo, "-compose", "Multiply", "-composite", tmp)
     out["em_comum_exato"] = conta(tmp)
     os.remove(tmp)
-    # A imagem: o contorno do port em vermelho, o do original em azul, o que coincide em branco.
-    magick(mo, "-fill", "blue", "-opaque", "white", mp, "-fill", "red", "-opaque", "white", "-compose", "Screen", "-composite", "-filter", "point", "-resize", "200%", f"{saida}/{pose}_contorno.png")
+    # A imagem: um canal por jogo (vermelho e verde o port, azul o original): branco nos dois, amarelo só no port, azul só no original.
+    magick(mp, mp, mo, "-channel", "RGB", "-combine", "-filter", "point", "-resize", "200%", f"{saida}/{pose}_contorno.png")
     os.remove(mp)
     os.remove(mo)
     return out

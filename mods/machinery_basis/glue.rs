@@ -4109,6 +4109,11 @@ pub fn transmitter_shape_register(shape: TransmitterShape) {
     let _ = TRANSMITTER_SHAPE.set(shape);
 }
 
+/// As caixas da forma do transmissor `block` com os tipos `kinds`, pelo que o mod registrou (`transmitter_shape_register`).
+pub(in crate::game) fn transmitter_shape_boxes(block: &str, kinds: &[ConnectionType; 6]) -> Option<Vec<[f64; 6]>> {
+    TRANSMITTER_SHAPE.get().and_then(|shape| shape(block, kinds))
+}
+
 /// A forma de colisão por instância do transmissor em `at` (`BlockTransmitter.getCollisionShape`, `machinery_transmitter_collision`): o estado do Horizon só sabe quais lados têm
 /// braço, e o braço `PUSH` e o `PULL` não são o braço normal. Só os transmissores com algum lado `PUSH` ou `PULL` guardam a forma (nos outros a forma do estado, o centro e o braço normal de
 /// cada lado ligado, é a mesma, volume a volume: `transmitter_shape_all.rs`).
