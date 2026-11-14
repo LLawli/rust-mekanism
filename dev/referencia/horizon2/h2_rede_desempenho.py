@@ -182,12 +182,18 @@ def video():
     for categoria in ("master", "block", "ui", "player"):
         ctl("options-set", f"soundCategory_{categoria}", "1.0")
     proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} rede_desempenho.mp4 40 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
+    import h2_network_reader as nr
+    ctl("give", nr.READER, "1")
+    ctl("select", nr.READER)
     try:
         espera(4)
         cmd("tick query")
-        espera(14)
+        # O clique do Network Reader num cabo da pista (o som da interface e o texto da rede no chat), duas vezes, com `tick query` entre eles.
+        nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        espera(10)
         cmd("tick query")
-        espera(14)
+        nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        espera(10)
         cmd("tick query")
         proc.wait()
     finally:
