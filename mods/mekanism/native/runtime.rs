@@ -4605,15 +4605,20 @@ pub struct ContentsFluid {
     pub lighter_than_air: bool,
 }
 
+/// `FluidTintSources.water().color(FluidState)`, a tinta da água do `FluidModel` (sem o alfa).
+pub const WATER_TINT: u32 = 0x3F_76_E4;
+
 /// `getFluidTexture(fluid, STILL)`, a cor do `FluidTintSource` (`getColorARGB(FluidResource)`) e a luz (`FluidType.getLightLevel`) de um fluido. `spec` é a cor e a luz do arquivo
-/// `machinery_basis/liquid` do fluido, se ele tem. A água não tem tinta no jogo sem mundo (`BlockTintSources.water().color(state)` é `-1`); `None` para um fluido que o port não conhece.
+/// `machinery_basis/liquid` do fluido, se ele tem. A água leva `0xFF3F76E4`: `MekanismRenderer.getColorARGB(TypedInstance<Fluid>)` chama `tintSource.color(defaultFluidState())`, e o
+/// `FluidTintSources.water()` do NeoForge devolve essa cor para o `FluidState` (o `-1` é só do `color(BlockState)`, que o Mekanism não usa); a lava não tem `FluidTintSource` e fica branca.
+/// `None` para um fluido que o port não conhece.
 pub fn contents_fluid(id: &str, spec: Option<(u32, u32)>) -> Option<ContentsFluid> {
     let white = 0xFF_FF_FF;
     match id {
         "minecraft:water" => {
             return Some(ContentsFluid {
                 sprite: "minecraft:block/water_still".to_owned(),
-                rgb: white,
+                rgb: WATER_TINT,
                 light: 0,
                 lighter_than_air: false,
             });

@@ -103,7 +103,7 @@ fn a_fluid_shows_the_sprite_the_tint_and_the_light_of_the_original() {
             water.light,
             water.lighter_than_air
         ),
-        ("minecraft:block/water_still", 0xFFFFFF, 0, false)
+        ("minecraft:block/water_still", 0x3F_76_E4, 0, false)
     );
     let lava = rules::contents_fluid("minecraft:lava", None).unwrap();
     assert_eq!(

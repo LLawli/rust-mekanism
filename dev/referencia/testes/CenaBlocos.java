@@ -105,6 +105,10 @@ public class CenaBlocos {
             server.execute(() -> eject(server, command));
             return;
         }
+        if (command.startsWith("#rede ")) {
+            server.execute(() -> network(server, command));
+            return;
+        }
         if (command.startsWith("#conexao ")) {
             server.execute(() -> connection(server, command));
             return;
@@ -161,6 +165,29 @@ public class CenaBlocos {
             tile.getTransmitter().notifyTileChange();
             tile.sendUpdatePacket();
         }
+    }
+
+    /// `#rede X Y Z fluido|quimico ID FRACAO`: põe na rede do transmissor em `x y z` o recurso `ID` com `FRACAO` da capacidade da rede, pelo contêiner dela (`DynamicBufferedResourceNetwork.getContainer().setContents`,
+    /// o que um tanque que empurra faz por baixo), e escreve no log o recurso, a quantidade, a capacidade e a escala do servidor (`cena-rede`), para o port ser conferido contra o mesmo número.
+    /// O port faz o mesmo por `data merge block ... {probe_push:{...}}` (`horizon2/h2_cabo_conteudo.py`).
+    private static void network(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.transmitter.TileEntityTransmitter) server.overworld().getBlockEntity(pos);
+        double fraction = Double.parseDouble(words[6]);
+        var key = net.minecraft.resources.Identifier.parse(words[5]);
+        var network = tile.getTransmitter().getTransmitterNetworkNN();
+        if (words[4].equals("fluido")) {
+            var fluid = (mekanism.common.content.network.FluidNetwork) network;
+            var resource = net.neoforged.neoforge.transfer.fluid.FluidResource.of(net.minecraft.core.registries.BuiltInRegistries.FLUID.getValue(key));
+            fluid.getContainer().setContents(resource, Math.round(fraction * fluid.getCapacity()), null);
+        } else {
+            var chemical = (mekanism.common.content.network.ChemicalNetwork) network;
+            var resource = mekanism.api.chemical.ChemicalResource.of(server.registryAccess().getOrThrow(net.minecraft.resources.ResourceKey.create(mekanism.common.registries.MekanismRegistries.Keys.CHEMICAL, key)));
+            chemical.getContainer().setContents(resource, Math.round(fraction * chemical.getCapacity()), null);
+        }
+        var buffered = (mekanism.common.lib.transmitter.DynamicBufferedResourceNetwork<?, ?, ?, ?>) network;
+        Mekanism.logger.info("cena-rede: {} {} {} amount {} capacity {} scale {}", words[4], words[5], words[6], buffered.getContainer().amountAsLong(), buffered.getCapacity(), buffered.currentScale);
     }
 
     private static void shot(Minecraft minecraft, String name) {

@@ -1,0 +1,168 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air"
+ ],
+ "clear": "fill 52 -60 78 70 -52 90 minecraft:air",
+ "shots": [
+  {
+   "name": "rede_tubo_hidrogenio_0",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:hydrogen 0.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_tubo_hidrogenio_50",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:hydrogen 0.50",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_tubo_hidrogenio_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:hydrogen 1.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_tubo_cloro_0",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:chlorine 0.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_tubo_cloro_50",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:chlorine 0.50",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_tubo_cloro_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 61 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 62 -60 82 mekanism:basic_pressurized_tube",
+    "setblock 63 -60 82 mekanism:basic_pressurized_tube",
+    "#esperar 20",
+    "#rede 60 -60 82 quimico mekanism:chlorine 1.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_agua_0",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:water 0.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_agua_50",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:water 0.50",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_agua_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:water 1.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_lava_0",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:lava 0.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_lava_50",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:lava 0.50",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  },
+  {
+   "name": "rede_cano_lava_100",
+   "cmds": [
+    "setblock 60 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 61 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 62 -60 82 mekanism:basic_mechanical_pipe",
+    "setblock 63 -60 82 mekanism:basic_mechanical_pipe",
+    "#esperar 20",
+    "#rede 60 -60 82 fluido minecraft:lava 1.00",
+    "#esperar 60"
+   ],
+   "tp": "62.0 -59.3 79.6 0 25"
+  }
+ ]
+}
