@@ -579,6 +579,20 @@ def transmitter_part_model(parent, side, status, quaternion):
     return model
 
 
+def glass_part_model(glass, side, status, quaternion):
+    """Uma parte do vidro (`transporter_glass`, o modelo `glass` do blockstate do original): as mesmas 24 partes do OBJ do vidro, uma por lado e estado visual. O `NoneSegmentRemap` troca as
+    texturas de centro do vidro (`center_glass_<lado>`, que `isDirectional` pega) pela do braço do vidro (`#side_glass`), e a parte girada leva a mesma rotação do corpo."""
+    part = VISUAL_STATUSES[status][1]
+    visibility = {f"{s}{t}": s == side and t == part for s in SIDES for t in STATUSES}
+    model = {"parent": glass}
+    if VISUAL_STATUSES[status][0].startswith("none_contiguous"):
+        model["textures"] = {f"center_glass_{d}": "#side_glass" for d in ("down", "up", "north", "south", "east", "west")}
+    if VISUAL_STATUSES[status][0] == "none_contiguous_rotated":
+        model["transform"] = {"rotation": quaternion, "origin": "center"}
+    model["visibility"] = visibility
+    return model
+
+
 def transmitter_assets(block):
     """O blockstate do transmissor: o original usa `mekanism:special/transmitter` (`TransmitterBlockStateModel`), que escolhe a parte do OBJ de cada lado pelo dado do modelo da block
     entity, e o Horizon recusa o tipo. O blockstate do port é um `multipart` com todas as partes, uma por lado e estado visual, na ordem lado e estado (a injeção `transmitter_model_state`
@@ -598,6 +612,13 @@ def transmitter_assets(block):
             if name != "none":
                 entry = {"when": {"AND": [{side: "true"}, {side: "false"}]}, **entry}
             multipart.append(entry)
+    # O vidro do transportador logístico (`glass` do blockstate): as partes dele vêm depois das do corpo, na mesma ordem, e só valem quando a injeção as escolhe (o transportador tem cor).
+    glass = read_json(f"{GEN}/assets/mekanism/blockstates/{block}.json")["variants"][""].get("glass")
+    if glass:
+        for side in SIDES:
+            for status, (name, _) in enumerate(VISUAL_STATUSES):
+                files[f"assets/mekanism/models/block/transmitter_part/{block}/glass_{side}_{name}.json"] = glass_part_model(glass, side, status, quaternions[side])
+                multipart.append({"when": {"AND": [{side: "true"}, {side: "false"}]}, "apply": {"model": f"mekanism:block/transmitter_part/{block}/glass_{side}_{name}"}})
     files[f"assets/mekanism/blockstates/{block}.json"] = {"multipart": multipart}
     return files, set()
 
@@ -740,6 +761,10 @@ def assets_plan():
                 visit(name)
     # Os dois modelos do tanque de fluido que os de cada tier herdam (o blockstate de cada tier é escrito, não copiado).
     for name in ("mekanism:block/fluid_tank", "mekanism:block/fluid_tank_active"):
+        visit(name)
+    # O vidro do transportador logístico (`glass` do blockstate, o OBJ do vidro e o `.mtl` que ele nomeia) e a caixa colorida das pilhas (`RenderLogisticalTransporter`,
+    # `MekanismModelCache.TRANSPORTER_BOX`): o desenho das pilhas a pede como modelo avulso.
+    for name in ("mekanism:block/transmitter/large/logistical_transporter/transporter_glass", "mekanism:block/transporter_box"):
         visit(name)
     generated, extra = generated_assets()
     textures |= extra

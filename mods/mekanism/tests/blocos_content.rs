@@ -4,7 +4,7 @@
 mod common;
 
 use common::craft::{TIERS5, blocos, cables, content, json, rastro, structure_scope, transmitters};
-use mekanism_rules::transmitter_models;
+use mekanism_rules::{transmitter_icon_sprite, transmitter_models};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -435,7 +435,8 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
         let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
         let parts = state["multipart"].as_array().unwrap();
         let per_side = if hide { 6 } else { 4 };
-        assert_eq!(parts.len(), sides.len() * per_side, "{id}");
+        let glass = want["glass"].as_str();
+        assert_eq!(parts.len(), sides.len() * per_side * (1 + usize::from(glass.is_some())), "{id}");
         for (i, side) in sides.iter().enumerate() {
             for (j, (name, _)) in visual.iter().take(per_side).enumerate() {
                 let part = &parts[i * per_side + j];
@@ -530,6 +531,51 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
             }
         }
         assert_eq!(models, if hide { 36 } else { 24 }, "{id}");
+        // O vidro (`glass` do blockstate do original, só no transportador logístico): as mesmas partes depois das do corpo, cada uma com o vidro por pai, as texturas de centro do vidro
+        // trocadas pela do braço (`#side_glass`, `NoneSegmentRemap`) no trecho reto e a mesma rotação da girada; tudo o que o blockstate cita existe.
+        if let Some(glass) = glass {
+            assert!(hide, "{id}");
+            for (i, side) in sides.iter().enumerate() {
+                for (j, (name, _)) in visual.iter().enumerate() {
+                    let entry = &parts[sides.len() * per_side + i * per_side + j];
+                    assert_eq!(
+                        entry["apply"],
+                        serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/glass_{side}_{name}")}),
+                        "{id}"
+                    );
+                    assert_eq!(entry["when"], serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}), "{id} glass_{side}_{name}");
+                    let model = json(&content().join(format!("assets/mekanism/models/block/transmitter_part/{id}/glass_{side}_{name}.json")));
+                    assert_eq!(model["parent"], glass, "{id} glass_{side}_{name}");
+                    let part = visual[j].1;
+                    for (group, shown) in model["visibility"].as_object().unwrap() {
+                        assert_eq!(shown.as_bool().unwrap(), *group == format!("{side}{part}"), "{id} glass_{side}_{name} {group}");
+                    }
+                    if name.starts_with("none_contiguous") {
+                        let textures = model["textures"].as_object().unwrap();
+                        assert_eq!(textures.len(), 6, "{id}");
+                        for slot in ["down", "up", "north", "south", "east", "west"] {
+                            assert_eq!(textures[&format!("center_glass_{slot}")], "#side_glass", "{id} {side}_{name}");
+                        }
+                    } else {
+                        assert!(model.get("textures").is_none(), "{id} glass_{side}_{name}");
+                    }
+                    assert_eq!(model.get("transform").is_some(), *name == "none_contiguous_rotated", "{id} glass_{side}_{name}");
+                }
+            }
+            let model = json(&content().join("assets/mekanism/models/block/transmitter/large/logistical_transporter/transporter_glass.json"));
+            assert_eq!(model["loader"], "neoforge:obj");
+            for file in [
+                "assets/mekanism/models/block/transmitter_glass_large.mtl",
+                "assets/mekanism/models/block/transporter_box.json",
+                "assets/mekanism/textures/block/transporter_box.png",
+                "assets/mekanism/textures/block/models/multipart/logistical_transporter_glass_colored.png",
+                "assets/mekanism/textures/block/models/multipart/logistical_transporter_vertical_glass_colored.png",
+                "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_glass_colored.png",
+                "assets/mekanism/textures/block/models/multipart/opaque/logistical_transporter_vertical_glass_colored.png",
+            ] {
+                assert!(files.contains(file), "{file}");
+            }
+        }
         // O corpo herda um modelo `neoforge:obj` do original; o OBJ tem as 24 partes e o `.mtl` que ele nomeia está ao lado.
         let mut model = want["model"].as_str().unwrap().to_owned();
         let obj = loop {
@@ -793,5 +839,32 @@ fn the_model_table_of_the_game_lists_the_22_transmitters_with_what_the_original_
             "{id}"
         );
         assert_eq!(row.diversion, id == "diversion_transporter", "{id}");
+        // O vidro é o `glass` do blockstate do original: só os quatro transportadores logísticos.
+        assert_eq!(row.glass, !rastro["transmitters"][&id]["glass"].is_null(), "{id}");
     }
+}
+
+/// `TransmitterTypeDecorator.registerDecorators` (`ClientRegistration.registerItemDecorations`): os 12 itens dos tubos pressurizados, dos condutores termodinâmicos e dos cabos universais
+/// (os quatro tiers de cada) levam o sprite `transmitter_icon/<id>`; os canos, os transportadores e o resto não. Os 12 PNG são os do original (o hash de `craft_datagen.json`).
+#[test]
+fn the_transmitter_items_of_the_original_carry_their_type_icon() {
+    let decorated = [
+        "basic_pressurized_tube", "advanced_pressurized_tube", "elite_pressurized_tube", "ultimate_pressurized_tube",
+        "basic_thermodynamic_conductor", "advanced_thermodynamic_conductor", "elite_thermodynamic_conductor", "ultimate_thermodynamic_conductor",
+        "basic_universal_cable", "advanced_universal_cable", "elite_universal_cable", "ultimate_universal_cable",
+    ];
+    let files = manifest();
+    for id in decorated {
+        assert_eq!(transmitter_icon_sprite(&format!("mekanism:{id}")), Some(format!("mekanism:gui/sprites/transmitter_icon/{id}")), "{id}");
+        let path = format!("assets/mekanism/textures/gui/sprites/transmitter_icon/{id}.png");
+        assert!(content().join(&path).is_file(), "{path}");
+        assert!(files.contains(&path), "{path} não é o do original");
+    }
+    let icons = std::fs::read_dir(content().join("assets/mekanism/textures/gui/sprites/transmitter_icon")).unwrap().count();
+    assert_eq!(icons, decorated.len());
+    for other in transmitters().into_iter().chain(cables()).filter(|id| !decorated.contains(&id.as_str())) {
+        assert_eq!(transmitter_icon_sprite(&format!("mekanism:{other}")), None, "{other}");
+    }
+    assert_eq!(transmitter_icon_sprite("minecraft:stick"), None);
+    assert_eq!(transmitter_icon_sprite("mekanism:basic_energy_cube"), None);
 }
