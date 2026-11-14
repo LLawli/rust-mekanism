@@ -358,20 +358,35 @@ impl Game<'_> {
                 );
             }
         }
-        // Os chunks da volta de um nível descarregado que esperavam a entrega (`ARRIVAL_DELAY_TICKS`): entram no registro agora, antes do `Post` do tick.
-        for (id, chunk) in &step.loads {
-            let dim = Dim::from_id(id);
+        // Os chunks da volta de um nível descarregado que esperavam (`ARRIVAL_DELAY_TICKS`) entram no registro no começo do tick seguinte (`mb_deliver_arrival_loads`).
+        ARRIVAL_LOADS.with_borrow_mut(|loads| loads.extend(step.loads.iter().cloned()));
+        if self.dim != back {
+            let _ = self.enter_level(None, back);
+        }
+        machinery_basis_core::level_idle::IdleLevels::post_levels(&held_ids, &step).iter().map(|id| Dim::from_id(id)).collect()
+    }
+
+    /// O começo do tick seguinte ao fim em que a espera da volta venceu: o `ChunkEvent.Load` dos chunks que o nível carregou ao voltar chega ao registro, e o `Post` deste tick refaz as redes (dois
+    /// ticks depois do `tp`, como o original, `ARRIVAL_DELAY_TICKS`).
+    pub(in crate::game) fn mb_deliver_arrival_loads(&mut self) {
+        use crate::game::Dim;
+        let due = ARRIVAL_LOADS.with_borrow_mut(std::mem::take);
+        if due.is_empty() || self.remote.is_some() {
+            return;
+        }
+        let back = self.dim;
+        for (id, chunk) in due {
+            let dim = Dim::from_id(&id);
             if self.mb_level_open(dim) && (dim == self.dim || self.enter_level(None, dim).is_ok()) && self.world.chunks.contains_key(&(chunk[0], chunk[1])) {
                 if TRANSMITTER_PROBE {
                     eprintln!("MBT {{\"t\":{},\"e\":\"arrival_load\",\"dim\":\"{id}\",\"cx\":{},\"cz\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), chunk[0], chunk[1]);
                 }
-                transmitters_chunk_loaded_now(self, id, *chunk);
+                transmitters_chunk_loaded_now(self, &id, chunk);
             }
         }
         if self.dim != back {
             let _ = self.enter_level(None, back);
         }
-        machinery_basis_core::level_idle::IdleLevels::post_levels(&held_ids, &step).iter().map(|id| Dim::from_id(id)).collect()
     }
 
     /// O servidor fecha (`MinecraftServer.stopServer`: `deactivateTicketsOnClosing`, os ticks até `hasWork` acabar): cada nível solta os chunks pelo caminho de sempre, o `ChunkEvent.Unload` e o
@@ -3437,6 +3452,8 @@ fn probe_first(kind: u8, name: &str, pos: [i32; 3]) {
     }
 }
 thread_local! {
+    /// Os chunks da volta de um nível descarregado cuja espera venceu e que entram no registro no começo do tick seguinte.
+    static ARRIVAL_LOADS: RefCell<Vec<(String, [i32; 2])>> = const { RefCell::new(Vec::new()) };
     /// Os níveis que o servidor já andou com alguém e ainda não soltaram os chunks (decisão 193).
     static IDLE_LEVELS: RefCell<machinery_basis_core::level_idle::IdleLevels> = RefCell::new(machinery_basis_core::level_idle::IdleLevels::new());
 }
@@ -3850,6 +3867,7 @@ pub(in crate::game) fn transmitters_tick(game: &mut Game<'_>, phase: horizon_cli
             {
                 let _span = perf_span(PERF_START_FLUSH);
                 transmitters_flush(game);
+                game.mb_deliver_arrival_loads();
             }
             // O `sendUpdatePacket` do tick anterior sai agora, com o estado de agora (a transmissão de mudanças dos chunks).
             let _span = perf_span(PERF_START_CLIENT_FLUSH);
@@ -3962,6 +3980,7 @@ fn idle_levels_end_of_tick(game: &mut Game<'_>) -> Vec<crate::game::Dim> {
 pub(in crate::game) fn world_closing(game: &mut Game<'_>) {
     game.mb_close_levels();
     IDLE_LEVELS.with_borrow_mut(machinery_basis_core::level_idle::IdleLevels::reset);
+    ARRIVAL_LOADS.with_borrow_mut(Vec::clear);
 }
 
 /// O mundo fechou (`ServerStoppedEvent`, o `reset` do registro).

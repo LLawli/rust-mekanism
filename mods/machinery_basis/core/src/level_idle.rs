@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 
 /// Os ticks que o port espera, depois de carregar os chunks de um nível que voltou a ter jogador, para entregar o `ChunkEvent.Load` deles aos mods. No original o jogador volta ao
 /// Overworld descarregado no tick M (o `/tp` roda entre dois ticks) e as redes dos cabos do chunk (0, 0) se refazem no `ServerTickEvent.Post` do tick M + 2, nas três rodadas medidas
-/// (`descarga_nivel.jsonl`, 505 e 508; duas rodadas novas, 494 e 497, 486 e 489): o chunk sai do disco e entra no mundo nesse intervalo. No port o nível só carrega no primeiro tick
-/// depois da chegada (M + 1, o jogador chega no fim da passada do comando) e as redes se refaziam no mesmo tick; com a espera de 1 elas voltam em M + 2.
+/// (`descarga_nivel.jsonl`, 505 e 508; `descarga_nivel_rodadas.jsonl`, 494 e 497, 486 e 489): o chunk sai do disco e entra no mundo nesse intervalo. No port o nível só carrega no primeiro
+/// tick depois da chegada (M + 1, o jogador chega no fim da passada do comando) e as redes se refaziam no mesmo tick; a entrega no começo do tick seguinte (a espera de 1) as devolve em M + 2.
 pub const ARRIVAL_DELAY_TICKS: u32 = 1;
 
 /// Os ticks sem ninguém até o nível descarregar: o primeiro tick sem o jogador não descarrega, o segundo sim (o 442 e o 443 do rastro).
@@ -27,7 +27,7 @@ pub struct Step {
     pub unload: Vec<String>,
     /// Os níveis parados que ainda estão carregados neste tick (os que esperam e os que acabaram de descarregar): o `Post` do original trata os transmissores deles.
     pub waiting: Vec<String>,
-    /// Os chunks carregados na volta de um nível descarregado cuja entrega aos mods vence neste tick (`ARRIVAL_DELAY_TICKS`).
+    /// Os chunks carregados na volta de um nível descarregado cuja entrega aos mods vence no fim deste tick (`ARRIVAL_DELAY_TICKS`): quem chama os entrega no começo do tick seguinte.
     pub loads: Vec<(String, [i32; 2])>,
 }
 
@@ -71,7 +71,8 @@ impl IdleLevels {
             }
         }
         // A janela da volta acaba no fim do tick em que os primeiros chunks carregaram.
-        self.returning.retain(|dim, loaded| !(*loaded && occupied.contains(&dim.as_str())));
+        self.returning
+            .retain(|dim, loaded| !(*loaded && occupied.contains(&dim.as_str())));
         for (left, dim, chunk) in std::mem::take(&mut self.delayed) {
             if left <= 1 {
                 step.loads.push((dim, chunk));
@@ -82,15 +83,18 @@ impl IdleLevels {
         step
     }
 
-    /// Um chunk de `dim` carregou: se o nível acabou de descarregar e voltou, a entrega aos mods espera `ARRIVAL_DELAY_TICKS` (devolve `true` e a guarda aqui, `end_of_tick` a devolve no
-    /// tick em que vence); senão devolve `false` e quem chama entrega já.
+    /// Um chunk de `dim` carregou: se o nível acabou de descarregar e voltou, a entrega aos mods espera `ARRIVAL_DELAY_TICKS` (devolve `true` e a guarda aqui, `end_of_tick` a devolve no fim
+    /// do tick em que vence); senão devolve `false` e quem chama entrega já.
     pub fn delay_arrival_load(&mut self, dim: &str, chunk: [i32; 2]) -> bool {
+        if ARRIVAL_DELAY_TICKS == 0 {
+            return false;
+        }
         let Some(loaded) = self.returning.get_mut(dim) else {
             return false;
         };
         *loaded = true;
-        // O fim do tick em que o chunk carregou já conta um: a entrega sai no fim do tick `ARRIVAL_DELAY_TICKS` depois dele.
-        self.delayed.push((ARRIVAL_DELAY_TICKS + 1, dim.to_owned(), chunk));
+        self.delayed
+            .push((ARRIVAL_DELAY_TICKS, dim.to_owned(), chunk));
         true
     }
 

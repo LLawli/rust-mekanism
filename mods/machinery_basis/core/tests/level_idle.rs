@@ -193,19 +193,25 @@ fn networks_back_after_return() -> (i64, i64) {
         .expect("o marco da volta");
     let back = rows
         .iter()
-        .find(|r| r["e"] == "obs" && r["tag"] == "de_volta" && r["redes"].as_i64().unwrap_or(0) >= 6)
+        .find(|r| {
+            r["e"] == "obs" && r["tag"] == "de_volta" && r["redes"].as_i64().unwrap_or(0) >= 6
+        })
         .and_then(|r| r["gt"].as_i64())
         .expect("as redes voltam");
     // O `tp` roda entre dois ticks: o tick do comando é o seguinte ao marco.
     (marked + 1, back)
 }
 
-/// O port: o jogador chega no fim do tick `m` (o do comando), o nível carrega no `m + 1` e entrega o `ChunkEvent.Load` ao registro quando o modelo manda; devolve o tick da entrega.
+/// O port: o jogador chega no fim do tick `m` (o do comando), o nível carrega no `m + 1`, o modelo manda entregar no fim desse tick e a cola entrega no começo do seguinte (o `Post` desse
+/// tick refaz as redes); devolve o tick da entrega.
 fn port_delivery_tick(m: i64) -> i64 {
     let mut levels = IdleLevels::new();
     levels.end_of_tick(&[OVERWORLD, NETHER]);
     levels.end_of_tick(&[NETHER]);
-    assert_eq!(levels.end_of_tick(&[NETHER]).unload, vec![OVERWORLD.to_owned()]);
+    assert_eq!(
+        levels.end_of_tick(&[NETHER]).unload,
+        vec![OVERWORLD.to_owned()]
+    );
     // Chegada: o Overworld volta a ser segurado no fim do tick do comando.
     levels.end_of_tick(&[OVERWORLD, NETHER]);
     // O tick seguinte carrega o chunk (0, 0).
@@ -213,8 +219,12 @@ fn port_delivery_tick(m: i64) -> i64 {
     let mut tick = m + 1;
     loop {
         let step = levels.end_of_tick(&[OVERWORLD, NETHER]);
-        if step.loads.iter().any(|(dim, chunk)| dim == OVERWORLD && *chunk == [0, 0]) {
-            return tick;
+        if step
+            .loads
+            .iter()
+            .any(|(dim, chunk)| dim == OVERWORLD && *chunk == [0, 0])
+        {
+            return tick + 1;
         }
         tick += 1;
         assert!(tick < m + 10, "a entrega nunca vence");
@@ -224,7 +234,11 @@ fn port_delivery_tick(m: i64) -> i64 {
 #[test]
 fn the_networks_come_back_on_the_tick_the_original_rebuilds_them_after_the_return() {
     let (command, back) = networks_back_after_return();
-    assert_eq!(back, command + 2, "o original refaz as redes dois ticks depois do tick do comando");
+    assert_eq!(
+        back,
+        command + 2,
+        "o original refaz as redes dois ticks depois do tick do comando"
+    );
     assert_eq!(
         port_delivery_tick(command),
         back,
@@ -233,7 +247,8 @@ fn the_networks_come_back_on_the_tick_the_original_rebuilds_them_after_the_retur
 }
 
 #[test]
-fn only_the_chunks_loaded_when_a_level_returns_wait_and_a_level_that_never_unloaded_delivers_at_once() {
+fn only_the_chunks_loaded_when_a_level_returns_wait_and_a_level_that_never_unloaded_delivers_at_once()
+ {
     let mut levels = IdleLevels::new();
     levels.end_of_tick(&[OVERWORLD, NETHER]);
     // Nunca descarregou: nada espera.
@@ -242,10 +257,12 @@ fn only_the_chunks_loaded_when_a_level_returns_wait_and_a_level_that_never_unloa
     levels.end_of_tick(&[NETHER]);
     levels.end_of_tick(&[OVERWORLD, NETHER]);
     assert!(levels.delay_arrival_load(OVERWORLD, [0, 0]));
-    // O fim do tick em que carregou encerra a janela: os chunks que carregam depois entregam já.
-    levels.end_of_tick(&[OVERWORLD, NETHER]);
+    // O fim do tick em que carregou entrega o chunk que esperava e encerra a janela: os chunks que carregam depois entregam já.
+    assert_eq!(
+        levels.end_of_tick(&[OVERWORLD, NETHER]).loads,
+        vec![(OVERWORLD.to_owned(), [0, 0])]
+    );
     assert!(!levels.delay_arrival_load(OVERWORLD, [1, 0]));
-    assert_eq!(levels.end_of_tick(&[OVERWORLD, NETHER]).loads, vec![(OVERWORLD.to_owned(), [0, 0])]);
 }
 
 #[test]
@@ -260,23 +277,53 @@ fn closing_the_world_forgets_the_chunks_that_wait() {
     assert!(!levels.delay_arrival_load(OVERWORLD, [0, 0]));
 }
 
-const ROUNDS: &str = include_str!("../../../../dev/referencia/rastros/descarga_nivel_rodadas.jsonl");
+const ROUNDS: &str =
+    include_str!("../../../../dev/referencia/rastros/descarga_nivel_rodadas.jsonl");
 
 /// Duas rodadas a mais do original (2026-11-14, a mesma `CenaReset`): o nível descarrega no tick seguinte ao do comando e as redes voltam dois ticks depois dele, nas duas, como na rodada
 /// do rastro principal. Os lotes da descarga diferem (a segunda rodada solta os 1.369 chunks de uma vez), o tick não.
 #[test]
-fn two_more_rounds_of_the_original_unload_one_tick_after_the_command_and_rebuild_two_ticks_after_the_return() {
+fn two_more_rounds_of_the_original_unload_one_tick_after_the_command_and_rebuild_two_ticks_after_the_return()
+ {
     let rows = rows(ROUNDS);
     for round in [1, 2] {
-        let of = |e: &str| rows.iter().filter(|r| r["rodada"] == round && r["e"] == e).cloned().collect::<Vec<_>>();
+        let of = |e: &str| {
+            rows.iter()
+                .filter(|r| r["rodada"] == round && r["e"] == e)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
         let marks = of("marca");
-        let gt = |name: &str| marks.iter().find(|r| r["nome"] == name).and_then(|r| r["gt"].as_i64()).expect("marco") + 1;
+        let gt = |name: &str| {
+            marks
+                .iter()
+                .find(|r| r["nome"] == name)
+                .and_then(|r| r["gt"].as_i64())
+                .expect("marco")
+                + 1
+        };
         let (down, up) = (gt("tp_nether"), gt("tp_overworld"));
         let obs = of("obs");
         // Primeiro tick em que as redes caem (de 6 para 1) e primeiro em que voltam a 6.
-        let fell = obs.iter().find(|r| r["tag"] == "no_nether" && r["redes"].as_i64() == Some(1)).and_then(|r| r["gt"].as_i64()).expect("as redes caem");
-        let back = obs.iter().find(|r| r["tag"] == "de_volta" && r["redes"].as_i64().unwrap_or(0) >= 6).and_then(|r| r["gt"].as_i64()).expect("as redes voltam");
-        assert_eq!(fell, down + 1, "rodada {round}: o `Post` do tick que descarrega trata os inválidos");
-        assert_eq!(back, up + 2, "rodada {round}: as redes voltam dois ticks depois do tick do comando");
+        let fell = obs
+            .iter()
+            .find(|r| r["tag"] == "no_nether" && r["redes"].as_i64() == Some(1))
+            .and_then(|r| r["gt"].as_i64())
+            .expect("as redes caem");
+        let back = obs
+            .iter()
+            .find(|r| r["tag"] == "de_volta" && r["redes"].as_i64().unwrap_or(0) >= 6)
+            .and_then(|r| r["gt"].as_i64())
+            .expect("as redes voltam");
+        assert_eq!(
+            fell,
+            down + 1,
+            "rodada {round}: o `Post` do tick que descarrega trata os inválidos"
+        );
+        assert_eq!(
+            back,
+            up + 2,
+            "rodada {round}: as redes voltam dois ticks depois do tick do comando"
+        );
     }
 }
