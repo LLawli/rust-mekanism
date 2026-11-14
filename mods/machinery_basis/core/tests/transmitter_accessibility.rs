@@ -212,9 +212,9 @@ impl World {
             }
         }
         let ring = self.game.ring.clone();
-        let loaded = self.game.loaded.clone();
+        // Como a cola: o anel diz se o chunk está nele (os tickets do Horizon), sem olhar se o chunk está carregado; o chunk segurado o rastreador não pergunta.
         let events = events::accessibility(OW, |chunk| {
-            loaded.contains(&chunk[0]) && ring.contains(&chunk[0])
+            ring.contains(&chunk[0])
         });
         self.deliver(events);
         self.deliver(vec![GameEvent::ServerTickPost {
@@ -387,14 +387,7 @@ impl World {
     /// não segura. `ticks` passadas de servidor depois.
     fn follow(&mut self, player: i32, hold: bool, ticks: usize) {
         let tickets = tickets_of(player);
-        for chunk in 0..self.game.chunks {
-            let resident = (chunk - player).abs() <= RESIDENT;
-            if resident && !self.game.loaded.contains(&chunk) {
-                self.load(chunk);
-            } else if !resident && self.game.loaded.contains(&chunk) {
-                self.unload(chunk, hold && tickets.retains([chunk, 0]));
-            }
-        }
+        // Os tickets de carga mudam primeiro (o jogador se moveu): o chunk que carrega já nasce no lado do anel em que está, como na cola (`chunk_accessible`).
         self.game.ring = (0..self.game.chunks)
             .filter(|chunk| tickets.level([*chunk, 0]) <= 32)
             .collect();
@@ -403,6 +396,17 @@ impl World {
                 .filter(|chunk| (chunk - player).abs() <= SIMULATION)
                 .collect(),
         );
+        // Uma passada com o anel novo e os chunks ainda como estavam (o Horizon carrega e solta nas passadas seguintes): o ticket de um chunk segurado não pode chegar antes de ele voltar.
+        self.release(&tickets);
+        self.tick();
+        for chunk in 0..self.game.chunks {
+            let resident = (chunk - player).abs() <= RESIDENT;
+            if resident && !self.game.loaded.contains(&chunk) {
+                self.load(chunk);
+            } else if !resident && self.game.loaded.contains(&chunk) {
+                self.unload(chunk, hold && tickets.retains([chunk, 0]));
+            }
+        }
         for _ in 0..ticks {
             self.release(&tickets);
             self.tick();

@@ -662,7 +662,9 @@ impl Tracker {
     pub fn accessibility(&mut self, dim: &str, accessible: impl Fn([i32; 2]) -> bool, out: &mut Vec<Event>) {
         let mut changed: Vec<([i32; 2], bool)> = Vec::new();
         for ((chunk_dim, chunk), state) in &self.access {
-            if chunk_dim == dim {
+            // O chunk segurado (o Horizon o soltou) não está no mundo: ele volta ao anel quando carregar de novo, com o ticket do `chunk_loaded_with`. Um ticket antes disso juntaria os
+            // transmissores como órfãos sem os vizinhos no mundo (cada um numa rede de um: medido em jogo, 48 redes de um cabo no `tp` a x = 100).
+            if chunk_dim == dim && !self.held.contains_key(&(chunk_dim.clone(), *chunk)) {
                 let now = accessible(*chunk);
                 if now != *state {
                     changed.push((*chunk, now));
