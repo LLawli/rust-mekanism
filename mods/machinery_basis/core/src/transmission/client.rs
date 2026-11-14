@@ -458,6 +458,9 @@ pub struct ClientTransmitters {
     networks: HashMap<u128, ClientNetwork>,
     tiles: HashMap<BlockPos, ClientTile>,
     next_generation: u64,
+    /// As posições cujo dado do modelo (`TransmitterModelData`) o original refaria: o tile entrou ou saiu do mundo, ou o pacote de atualização mudou o que o modelo lê
+    /// (`updateModelData`, `requestModelDataUpdate`). O desenho as esvazia a cada tique (`take_model_changes`).
+    model_changes: std::collections::HashSet<BlockPos>,
 }
 
 impl ClientTransmitters {
@@ -568,6 +571,20 @@ impl ClientTransmitters {
         self.tiles.len()
     }
 
+    /// A posição de cada tile do cliente, em ordem.
+    pub fn tile_positions(&self) -> Vec<BlockPos> {
+        let mut positions: Vec<BlockPos> = self.tiles.keys().copied().collect();
+        positions.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+        positions
+    }
+
+    /// As posições cujo dado do modelo mudou desde a última chamada, em ordem (o desenho lê `view_at` de cada uma: sem tile, o dado sai).
+    pub fn take_model_changes(&mut self) -> Vec<BlockPos> {
+        let mut changes: Vec<BlockPos> = self.model_changes.drain().collect();
+        changes.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+        changes
+    }
+
     /// O tile do transmissor entra no mundo do cliente (`clearRemoved` no cliente: `onWorldJoin` só marca `loaded`; o tile novo tira o
     /// anterior da mesma posição só quando ele sai).
     pub fn add_tile(&mut self, pos: BlockPos, kind: ClientKind, capacity: i64) {
@@ -593,6 +610,7 @@ impl ClientTransmitters {
             extra: ClientExtra::default(),
         };
         self.tiles.insert(pos, tile);
+        self.model_changes.insert(pos);
     }
 
     /// `TileEntityTransmitter.setRemoved` no cliente (`onWorldSeparate`): se estava carregado, `setTransmitterNetwork(null)`.
@@ -600,6 +618,7 @@ impl ClientTransmitters {
         let Some(mut tile) = self.tiles.remove(&pos) else {
             return;
         };
+        self.model_changes.insert(pos);
         if tile.loaded {
             tile.loaded = false;
             let mut effects = Vec::new();
@@ -649,6 +668,9 @@ impl ClientTransmitters {
             }
         }
         self.tiles.insert(pos, tile);
+        if update.refresh_model_data {
+            self.model_changes.insert(pos);
+        }
         update.refresh_model_data
     }
 
