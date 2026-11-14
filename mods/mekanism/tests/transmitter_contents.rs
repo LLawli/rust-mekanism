@@ -27,7 +27,7 @@ fn there_is_one_standalone_model_per_obj_group_with_only_that_group_visible() {
             .tap_sorted()
     );
     for group in &groups {
-        let path = content().join(format!("models/block/transmitter_contents/{group}.json"));
+        let path = content().join(format!("models/block/transmitter_contents/{}.json", group.to_lowercase()));
         let model: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(model["loader"], "neoforge:obj");
         assert_eq!(

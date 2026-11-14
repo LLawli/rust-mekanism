@@ -84,7 +84,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// O mod diz os transmissores dele (uma vez, no começo do jogo) e os modelos avulsos que o jogo tem de assar para eles.
 pub(in crate::game) fn register(provider: Provider, models: &mut Vec<String>) {
     for group in contents::all_groups() {
-        let name = format!("{}/{group}", provider.model_prefix);
+        let name = format!("{}/{}", provider.model_prefix, group.to_lowercase());
         if !models.contains(&name) {
             models.push(name);
         }
@@ -134,7 +134,7 @@ fn draw_groups(game: &Game<'_>, draw: &mut BlockEntityDraw, provider: &Provider,
     draw.light = light;
     for group in groups {
         let start = draw.vertices_mut().len();
-        if !game.native_draw_model(draw, &format!("{}/{group}", provider.model_prefix), 0xFF_FFFF) {
+        if !game.native_draw_model(draw, &format!("{}/{}", provider.model_prefix, group.to_lowercase()), 0xFF_FFFF) {
             continue;
         }
         for vertex in &mut draw.vertices_mut()[start..] {

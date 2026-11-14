@@ -46,7 +46,7 @@ def main():
             "textures": {"particle": SPRITE, "contents": SPRITE},
             "visibility": {outro: outro == nome for outro in nomes},
         }
-        with open(f"{PASTA}/{nome}.json", "w", encoding="utf-8") as arquivo:
+        with open(f"{PASTA}/{nome.lower()}.json", "w", encoding="utf-8") as arquivo:
             json.dump(modelo, arquivo, indent=2)
             arquivo.write("\n")
     print(f"{len(nomes)} modelos de conteúdo")
