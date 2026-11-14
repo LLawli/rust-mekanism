@@ -356,12 +356,56 @@ def midia():
     print("print:", prints)
 
 
+def midia_199():
+    """O vídeo com som da decisão 199: o jogador vai a 330 blocos e volta ao começo (fora da gravação: os chunks 21 a 23 saem do raio do Horizon e o original os segura), e na gravação o `tp` a x = 100 e o
+    clique do Network Reader no cabo (100, -60, 0), que lê 383 transmissores. `SOCK` é o nome do `gravar-jogo start`, `LOCAL` a pasta de saída; o jogo no título, aberto com `JOGO_PW_SOCK`, o mundo
+    `SetupsA` já construído e o sink conferido por `audio_nulo.sh`."""
+    import h2_ajustes_jogo as a
+    import h2_network_reader as nr
+    sock = os.environ["SOCK"]
+    a.SHOTS = "/home/luka/.cache/rust-mekanism/rede-inacessivel/prints"
+    a.LOCAL = os.path.expanduser(os.environ.get("LOCAL", "~/.cache/rust-mekanism/wa/rede-inacessivel"))
+    stand = (100.5, -60.0, -3.0)
+    abrir(MUNDO)
+    espera_ticks(80)
+    cmd("gamerule advance_time false")
+    cmd("gamerule advance_weather false")
+    cmd("time set noon")
+    cmd("weather clear")
+    cmd("gamemode creative @s")
+    ctl("options-set", "chatVisibility", "0")
+    ctl("options-set", "guiScale", "3")
+    ctl("give", nr.READER, "1")
+    cmd("tp @s 330.5 -60 6.5")
+    espera_ticks(120)
+    cmd("tp @s 2.5 -60 -6")
+    espera_ticks(120)
+    for categoria in ("master", "block", "ui", "player"):
+        ctl("options-set", f"soundCategory_{categoria}", "1.0")
+    proc = subprocess.Popen(["ssh", "desktop", f"~/.cache/rust-mekanism/gravar-jogo rec {sock} setups_199.mp4 45 {os.environ['H_NAME']}"], stdout=subprocess.DEVNULL)
+    time.sleep(3.0)
+    try:
+        espera_ticks(20)
+        cmd("tp @s %.2f %.2f %.2f 0 20" % stand)
+        espera_ticks(70)
+        ctl("select", nr.READER)
+        ctl("options-set", "chatVisibility", "0")
+        nr.clicar((100, Y, 0), (0.5, 0.5, 0.5), sneak=False, stand=stand)
+        espera_ticks(110)
+        proc.wait()
+    finally:
+        ctl("options-set", "soundCategory_master", "0.0")
+        cmd("tp @s 2.5 -60 -6")
+
+
 def main():
     what = sys.argv[1] if len(sys.argv) > 1 else ""
     if what == "roteiro":
         roteiro(sys.argv[2])
     elif what == "midia":
         midia()
+    elif what == "midia199":
+        midia_199()
     elif what == "limpar":
         ctl("world-delete", MUNDO, "--confirm")
     else:
