@@ -3,5 +3,10 @@
   "tooltip.mekanism.no_fluid": "No fluid stored.",
   "boolean.mekanism.yes": "yes",
   "boolean.mekanism.no": "no",
-  "generic.mekanism.list": "- %1$s"
+  "generic.mekanism.list": "- %1$s",
+  "factory.mekanism.type": "Recipe type: %1$s",
+  "factory.mekanism.enriching": "Enriching",
+  "factory.mekanism.crushing": "Crushing",
+  "factory.mekanism.smelting": "Smelting",
+  "factory.mekanism.infusing": "Infusing"
 }

@@ -235,6 +235,17 @@ fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
     }
 }
 
+/// O `FactoryType` do `.component(FACTORY_TYPE, ...)` do bloco da máquina (`MekanismBlocks.java:285`, `:334`, `:369`, `:409`).
+fn factory_type(block: &str) -> Option<&'static str> {
+    match block {
+        rules::ENRICHMENT_CHAMBER => Some("enriching"),
+        rules::CRUSHER => Some("crushing"),
+        rules::ENERGIZED_SMELTER => Some("smelting"),
+        rules::INFUSER => Some("infusing"),
+        _ => None,
+    }
+}
+
 fn is_infuser(block: &str) -> bool {
     block == rules::INFUSER
 }
@@ -2987,6 +2998,10 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     let machine = machine_of(&stack.item);
     if machine.is_some() {
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
+        // `registerComponentAppenderAfter(FACTORY_TYPE, ...)`: a linha do tipo de receita vem depois dos upgrades e antes da energia (o rastro do original).
+        if let Some(factory) = factory_type(&stack.item) {
+            lines.push(basis::content_recipe_type_line(factory));
+        }
     }
     if let Some(capacity) = item_energy_capacity(&stack.item) {
         lines.push(basis::stored_energy_line(game, stack, capacity, &STORED_ENERGY_LINE));
