@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- O braço de um cano, tubo, condutor ou transportador não some mais quando o bloco vizinho é trocado por outro (um caldeirão por outro com `setblock`, até a troca de um nível de água): o `updateShape` do bloco de todo transmissor guarda o estado, como já fazia o do cabo de energia, e as conexões seguem do `Transmitter` (Fase 4, frente `troca-vizinho`, decisão 222; 20 casos de troca conferidos contra o original).
+
 ### Changed
 - O servidor anda a 20 ticks por segundo com mais de mil transmissores carregados (Fase 3, frente `rede-desempenho`, decisão 202): com a construção de cinco pistas de `cenas/setups_reais.txt` (cabos, canos, tubos, condutores e transportadores) o port andava a 6,8 ticks por segundo contra 20 do original, e agora anda a 20 (o trabalho do tick caiu de 148 para 42 ms). O `Update` de cada transmissor era entregue e preparado nos cinco donos de rede, e o espelho dos contêineres do transportador era refeito a cada um deles; agora só o dono do block entity o recebe, o espelho lê as pilhas em trânsito sem ordenar, e o que um baú, funil ou barril recusa fica guardado (o forno, a bancada de poções e as máquinas, cuja regra muda com o conteúdo, são perguntados sempre). Nada muda no comportamento (os rastros de referência passam iguais). A cópia de teste ganha o perfil por etapa (`enviar_fontes.sh perfil`, linhas `MBF`) e `h2_rede_desempenho.py` mede o roteiro; `transmitters_tick_cost.rs` mede a lib sem o jogo.
 
