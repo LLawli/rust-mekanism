@@ -113,6 +113,10 @@ public class CenaBlocos {
             server.execute(() -> connection(server, command));
             return;
         }
+        if (command.startsWith("#cor ")) {
+            server.execute(() -> color(server, command));
+            return;
+        }
         server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command));
     }
 
@@ -135,6 +139,19 @@ public class CenaBlocos {
             config.sideChanged(type, side);
         }
         tile.markForSave();
+    }
+
+    /// `#cor X Y Z ORDINAL`: a cor do transportador logístico em `x y z` (`EnumColor.ordinal()`, `LogisticalTransporter.setColor` e o resto do que `onConfigure` faz). O port o põe pelo clique do
+    /// Configurator agachado no centro (`onSneakRightClick`, `onConfigure`), que passa à cor seguinte (`horizon2/h2_blocos.py`).
+    private static void color(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.transmitter.TileEntityTransmitter) server.overworld().getBlockEntity(pos);
+        var transporter = (mekanism.common.content.network.transmitter.LogisticalTransporter) tile.getTransmitter();
+        transporter.setColor(mekanism.api.text.EnumColor.BY_ID.apply(Integer.parseInt(words[4])));
+        tile.markForSave();
+        transporter.notifyTileChange();
+        tile.sendUpdatePacket();
     }
 
     /// `#ejetar X Y Z`: liga o `eject` da energia do Energy Cube em `x y z` (`ConfigInfo.setEjecting`, desligado por padrão): com os lados em saída, o cubo passa a empurrar a energia para o cabo vizinho.

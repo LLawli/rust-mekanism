@@ -394,6 +394,18 @@ def conexao(texto):
             aj.click_at(pos, ponto, olho)
 
 
+def cor(texto):
+    """`#cor X Y Z ORDINAL` (o `CenaBlocos` do original põe a cor do transportador por `LogisticalTransporter.setColor`): o port a põe pelo Configurator agachado no centro do transportador
+    (`TileEntityTransmitter.onSneakRightClick`: sem braço na mira e com a conexão do lado clicado ligada, chama `onConfigure`), que passa à cor seguinte: o primeiro clique dá a preta
+    (`TransporterUtils.increment(null)`), então `ORDINAL + 1` cliques. A mira vem de cima do centro."""
+    import h2_ajustes_jogo as aj
+
+    palavras = texto.split()
+    pos = tuple(int(v) for v in palavras[1:4])
+    for _ in range(int(palavras[4]) + 1):
+        aj.click_at(pos, (0.5, 0.5, 0.5), (pos[0] + 0.5, pos[1] + 3.0, pos[2] + 0.5))
+
+
 def cena(out, nomes=(), roteiro="blocos.json"):
     if os.environ.get("IGUALAR_OPCOES"):
         # As opções do cliente do original (`options.txt` da run do `mekanism-ref`): o campo de visão, o brilho, a oclusão ambiente. Sem elas o mundo sai com outra vista.
@@ -404,7 +416,7 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         h.ctl("options-set", "guiScale", "4")
         h.ctl("key", "1", "tap")
     spec = json.load(open(os.path.join(ROOT, "dev/referencia/cenas", roteiro)))
-    if any(c.startswith("#conexao ") for shot in spec["shots"] for c in shot["cmds"]):  # `#quimico X Y Z ID N` (só do port) empurra pela `probe_push`
+    if any(c.startswith(("#conexao ", "#cor ")) for shot in spec["shots"] for c in shot["cmds"]):  # `#quimico X Y Z ID N` (só do port) empurra pela `probe_push`
         h.ctl("give", "mekanism:configurator", "1")
     if nomes:
         spec["shots"] = [shot for shot in spec["shots"] if shot["name"] in nomes]
@@ -456,6 +468,9 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 # Só do port (`cenas/cabo_conteudo_port.json`): o original puxa de um Chemical Tank, e o port, que ainda não o tem, empurra pela sonda (`enviar_fontes.sh ... sonda`).
                 _, x, y, z, quimico, quantidade = cmd.split()
                 h.command('data merge block %s %s %s {probe_push:{chem:"%s",amount:%s}}' % (x, y, z, quimico, quantidade))
+                continue
+            if cmd.startswith("#cor "):
+                cor(cmd)
                 continue
             h.command(cmd)
         alinha_o_tempo(shot["name"])

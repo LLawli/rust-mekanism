@@ -1,0 +1,34 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air",
+  "fill 20 -60 91 160 -50 110 minecraft:air",
+  "fill 20 -60 111 160 -50 130 minecraft:air",
+  "clear @a",
+  "item replace entity @a hotbar.0 with mekanism:basic_universal_cable 1",
+  "item replace entity @a hotbar.1 with mekanism:advanced_universal_cable 1",
+  "item replace entity @a hotbar.2 with mekanism:elite_universal_cable 1",
+  "item replace entity @a hotbar.3 with mekanism:basic_pressurized_tube 1",
+  "item replace entity @a hotbar.4 with mekanism:advanced_pressurized_tube 1",
+  "item replace entity @a hotbar.5 with mekanism:elite_pressurized_tube 1",
+  "item replace entity @a hotbar.6 with mekanism:basic_thermodynamic_conductor 1",
+  "item replace entity @a hotbar.7 with mekanism:advanced_thermodynamic_conductor 1",
+  "item replace entity @a hotbar.8 with mekanism:elite_thermodynamic_conductor 1"
+ ],
+ "clear": "fill 52 -60 78 56 -52 80 minecraft:air",
+ "hud": true,
+ "shots": [
+  {
+   "name": "transportador_hotbar",
+   "cmds": [
+    "#esperar 10"
+   ],
+   "tp": "60.0 -58.0 70.0 0 10"
+  }
+ ]
+}
