@@ -1,12 +1,16 @@
-// Entra em `crates/horizon-client-render/src/models/catalog.rs` como `pub mod machinery_transmitter_model` (`visibility = "pub"`). As partes do modelo de um transmissor por instância: o
+// Entra em `crates/horizon-client-render/src/mesher.rs` como `pub mod machinery_transmitter_model` (`visibility = "pub"`). As partes do modelo de um transmissor por instância: o
 // `TransmitterBlockStateModel` do original escolhe, para cada um dos seis lados, uma parte do OBJ pelo `ModelData` da block entity (`TransmitterModelData`), e o mesher do Horizon só
-// escolhe o modelo pelo estado do bloco. A conta do dado do modelo (`getVisualStatus`, o que o `hideContiguousJoin` esconde), a tabela dos estados que são de transmissor e o dado de cada
-// posição ficam aqui; o HEAD de `ModelCatalog::models_at` pede as partes a `fill`. O código é puro e só de `std`: o mesmo arquivo entra no teste de `machinery_basis`
-// (`core/tests/transmitter_model_module.rs`), que o confere contra o original (`rastros/transmitter_model_visual.jsonl`, `testes/TransmitterModelTraceTest.java`).
-use std::cell::RefCell;
+// escolhe o modelo pelo estado do bloco. O blockstate do port é um `multipart` com as 36 partes (um modelo por lado e estado visual; só as `NONE` valem por padrão, o que o original
+// mostra sem dado), e a escolha por instância é a do `StateModels::state`: o HEAD dele pergunta a `select` quais partes valem para o bloco que o mesher está desenhando. O `StateModels`
+// não recebe a posição, que o mesher anota por thread (`note_section` no começo de `mesh_reusing` e `note_block` em `hidden`, que o laço chama com as coordenadas de cada bloco logo antes de
+// pedir o modelo). A conta do dado do modelo (`getVisualStatus`, o que o `hideContiguousJoin` esconde), a tabela dos estados que são de transmissor e o dado de cada posição ficam aqui.
+// O código é puro e só de `std`: o mesmo arquivo entra no teste de `machinery_basis` (`core/tests/transmitter_model_module.rs`), que o confere contra o original
+// (`rastros/transmitter_model_visual.jsonl`, `testes/TransmitterModelTraceTest.java`).
+use std::any::Any;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// `ConnectionType.ordinal()`: `NORMAL`, `PUSH`, `PULL` e `NONE`.
 pub const CONNECTION_NONE: u8 = 3;
@@ -61,51 +65,43 @@ pub fn visual_statuses(connections: [u8; 6], diversion: bool) -> [u8; 6] {
     })
 }
 
-/// A família de um transmissor: o nome dos modelos das partes (`<prefixo>/<lado>_<estado>`) e se o dado do modelo dela é o do desviador (`TransmitterModelData.Diversion`, que nunca junta
-/// os trechos retos).
-pub struct Family {
-    names: Vec<String>,
-    diversion: bool,
+/// Quantas partes o blockstate de uma família tem por lado, e o índice de uma delas na ordem do `multipart` (lado, depois estado visual): sem o `hideContiguousJoin` (o desviador) o
+/// modelo não tem as duas partes do trecho reto.
+pub fn parts_per_side(diversion: bool) -> usize {
+    if diversion { 4 } else { STATUS_NAMES.len() }
 }
 
-impl Family {
-    /// Os nomes dos 36 modelos (seis lados, seis estados), na ordem lado e estado.
-    pub fn new(prefix: &str, diversion: bool) -> Family {
-        Family {
-            diversion,
-            names: SIDES
-                .iter()
-                .flat_map(|side| {
-                    STATUS_NAMES
-                        .iter()
-                        .map(move |name| format!("{prefix}/{side}_{name}"))
-                })
-                .collect(),
-        }
-    }
-
-    /// O modelo da parte de um lado e estado.
-    pub fn part(&self, side: usize, status: u8) -> &str {
-        &self.names[side * STATUS_NAMES.len() + usize::from(status)]
-    }
+/// O índice, no `multipart` do blockstate, da parte de cada lado com o estado visual dado.
+pub fn selection(statuses: [u8; 6], diversion: bool) -> Vec<usize> {
+    let per_side = parts_per_side(diversion);
+    (0..SIDES.len())
+        .map(|side| side * per_side + usize::from(statuses[side]))
+        .collect()
 }
 
 struct Table {
-    /// `states[estado]` é o índice em `families`, ou `u16::MAX` se o estado não é de transmissor.
+    /// `states[estado]` é o índice em `diversion`, ou `u16::MAX` se o estado não é de transmissor.
     states: Vec<u16>,
-    families: Vec<Family>,
+    /// Por família: se a block entity dá o dado do desviador (`TransmitterModelData.Diversion`, que nunca junta os trechos retos).
+    diversion: Vec<bool>,
 }
 
 static TABLE: RwLock<Option<Arc<Table>>> = RwLock::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(1);
 static DATA: RwLock<Option<HashMap<[i32; 3], [u8; 6]>>> = RwLock::new(None);
+/// Os conjuntos de partes já pedidos (cada um vira uma seleção do blockstate que vive até o fim do processo: poucas centenas).
+type Leaked = HashMap<(usize, Vec<usize>), &'static (dyn Any + Send + Sync)>;
+static SELECTIONS: Mutex<Option<Leaked>> = Mutex::new(None);
 
 thread_local! {
     static LOCAL: RefCell<(u64, Option<Arc<Table>>)> = const { RefCell::new((0, None)) };
+    /// A origem da seção que o mesher desenha nesta thread e as coordenadas locais do último bloco que ele examinou.
+    static SECTION: Cell<[i32; 3]> = const { Cell::new([0; 3]) };
+    static BLOCK: Cell<Option<[i32; 3]>> = const { Cell::new(None) };
 }
 
-/// A tabela dos estados de transmissor: `states[i]` é o `(estado, família)` de cada um, refeita a cada carga de dados.
-pub fn set_families(families: Vec<Family>, states: Vec<(u32, u16)>) {
+/// A tabela dos estados de transmissor: `states` é o `(estado, família)` de cada um e `diversion` diz, por família, se ela dá o dado do desviador. Refeita a cada carga de dados.
+pub fn set_families(diversion: Vec<bool>, states: Vec<(u32, u16)>) {
     let size = states
         .iter()
         .map(|(state, _)| *state as usize + 1)
@@ -117,13 +113,13 @@ pub fn set_families(families: Vec<Family>, states: Vec<(u32, u16)>) {
     }
     *TABLE.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(Table {
         states: by_state,
-        families,
+        diversion,
     }));
     GENERATION.fetch_add(1, Ordering::Release);
 }
 
-/// O dado do modelo da block entity em `pos`: o `ConnectionType` de cada lado (`updateModelData`, `myTransmitter.getConnectionType(side)`; o estado visual sai disso em `fill`, pela família).
-/// `None` tira o dado (a block entity saiu, ou o chunk). Devolve se mudou algo.
+/// O dado do modelo da block entity em `pos`: o `ConnectionType` de cada lado (`updateModelData`, `myTransmitter.getConnectionType(side)`; o estado visual sai disso em `select`, pela
+/// família). `None` tira o dado (a block entity saiu, ou o chunk). Devolve se mudou algo.
 pub fn set_data(pos: [i32; 3], connections: Option<[u8; 6]>) -> bool {
     let mut data = DATA.write().unwrap_or_else(|e| e.into_inner());
     let data = data.get_or_insert_with(HashMap::new);
@@ -155,48 +151,57 @@ pub fn data_count() -> usize {
         .map_or(0, HashMap::len)
 }
 
-/// `TransmitterBlockStateModel.collectParts`: as partes do transmissor em `pos`, uma por lado, na ordem de `EnumUtils.DIRECTIONS`. `lookup` dá o modelo cozido de um nome. Devolve `false`,
-/// sem tocar em `out`, se o estado não é de transmissor ou a block entity ainda não deu o dado do modelo: o modelo do blockstate (o `NONE` de todo lado, o que o original faz sem dado)
-/// segue. Uma parte sem modelo cozido é pulada, como o `partTable.get` nulo do original.
-pub fn fill<'a, M>(
+/// O começo de `Mesher::mesh_reusing`: a origem da seção (`chunk.x * 16`, o `y` da base da seção e `chunk.z * 16`) que o mesher vai desenhar nesta thread.
+pub fn note_section(origin: [i32; 3]) {
+    SECTION.with(|section| section.set(origin));
+}
+
+/// `hidden(rows, x, y, z)`, que o laço do mesher chama com as coordenadas locais de cada bloco antes de pedir o modelo dele.
+pub fn note_block(x: i32, y: i32, z: i32) {
+    BLOCK.with(|block| block.set(Some([x, y, z])));
+}
+
+/// O HEAD de `StateModels::state`: as partes do bloco que o mesher está desenhando, se o estado é de transmissor e a block entity já deu o dado do modelo. `choice` é a escolha de
+/// blockstate do estado (o primeiro campo do par que `state` devolve), e `make` monta o par com as partes (o `multipart` do blockstate). Cada conjunto de partes é montado uma vez e fica.
+/// `None` deixa o modelo do blockstate (o `NONE` de todo lado, o que o original mostra sem dado).
+pub fn select<T: Any + Send + Sync>(
     state: u32,
-    pos: [i32; 3],
-    lookup: impl Fn(&str) -> Option<&'a M>,
-    out: &mut Vec<&'a M>,
-) -> bool {
+    choice: Option<usize>,
+    make: impl FnOnce(usize, Vec<usize>) -> T,
+) -> Option<&'static T> {
+    let choice = choice?;
+    let local = BLOCK.with(Cell::get)?;
     let generation = GENERATION.load(Ordering::Acquire);
-    LOCAL.with(|local| {
-        let mut local = local.borrow_mut();
-        if local.0 != generation {
-            *local = (
+    let diversion = LOCAL.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.0 != generation {
+            *cache = (
                 generation,
                 TABLE.read().unwrap_or_else(|e| e.into_inner()).clone(),
             );
         }
-        let Some(table) = local.1.as_ref() else {
-            return false;
-        };
-        let Some(family) = table
+        let table = cache.1.as_ref()?;
+        let family = table
             .states
             .get(state as usize)
             .copied()
-            .filter(|family| *family != u16::MAX)
-        else {
-            return false;
-        };
-        let Some(connections) = data_at(pos) else {
-            return false;
-        };
-        let family = &table.families[usize::from(family)];
-        let statuses = visual_statuses(connections, family.diversion);
-        let parts: Vec<&'a M> = (0..SIDES.len())
-            .filter_map(|side| lookup(family.part(side, statuses[side])))
-            .collect();
-        if parts.is_empty() {
-            return false;
-        }
-        out.clear();
-        out.extend(parts);
-        true
-    })
+            .filter(|family| *family != u16::MAX)?;
+        Some(table.diversion[usize::from(family)])
+    })?;
+    let origin = SECTION.with(Cell::get);
+    let pos = [
+        origin[0] + local[0],
+        origin[1] + local[1],
+        origin[2] + local[2],
+    ];
+    let parts = selection(visual_statuses(data_at(pos)?, diversion), diversion);
+    let mut selections = SELECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let selections = selections.get_or_insert_with(HashMap::new);
+    let key = (choice, parts);
+    if let Some(known) = selections.get(&key) {
+        return known.downcast_ref::<T>();
+    }
+    let value: &'static (dyn Any + Send + Sync) = Box::leak(Box::new(make(choice, key.1.clone())));
+    selections.insert(key, value);
+    value.downcast_ref::<T>()
 }

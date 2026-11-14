@@ -581,8 +581,9 @@ def transmitter_part_model(parent, side, status, quaternion):
 
 def transmitter_assets(block):
     """O blockstate do transmissor: o original usa `mekanism:special/transmitter` (`TransmitterBlockStateModel`), que escolhe a parte do OBJ de cada lado pelo dado do modelo da block
-    entity, e o Horizon recusa o tipo. O blockstate do port é o que o original mostra sem o dado (a parte `NONE` de todo lado, na ordem dos lados), e o dado por instância entra pela
-    injeção `transmitter_model_parts` (o mesher pede as partes por posição), com um modelo por lado e estado visual; o modelo, o OBJ, o `.mtl` e o item são os do original."""
+    entity, e o Horizon recusa o tipo. O blockstate do port é um `multipart` com todas as partes, uma por lado e estado visual, na ordem lado e estado (a injeção `transmitter_model_state`
+    escolhe as de cada bloco pelo índice, `lado * partes por lado + estado`): só as `NONE` valem por padrão, o que o original mostra sem o dado, e as outras levam uma condição que nenhum
+    estado cumpre. O modelo, o OBJ, o `.mtl` e o item são os do original."""
     parent = transmitter_parent(block)
     hide = hide_contiguous_join(block)
     quaternions = icon_transforms()
@@ -593,7 +594,10 @@ def transmitter_assets(block):
             if not hide and name.startswith("none_contiguous"):
                 continue
             files[f"assets/mekanism/models/block/transmitter_part/{block}/{side}_{name}.json"] = transmitter_part_model(parent, side, status, quaternions[side])
-        multipart.append({"apply": {"model": f"mekanism:block/transmitter_part/{block}/{side}_none"}})
+            entry = {"apply": {"model": f"mekanism:block/transmitter_part/{block}/{side}_{name}"}}
+            if name != "none":
+                entry = {"when": {"AND": [{side: "true"}, {side: "false"}]}, **entry}
+            multipart.append(entry)
     files[f"assets/mekanism/blockstates/{block}.json"] = {"multipart": multipart}
     return files, set()
 

@@ -5,6 +5,10 @@
 // `makeIconStatusTransform` (`rastros/transmitter_model_parts.json`, o original); o item tem as seis partes `NONE`; e a parte `downNORMAL` do cabo tem as posições e os uv do OBJ, com o v
 // virado. Não roda no gate (precisa do código do Horizon). Sem as injeções a cor sai vazia e o teste falha.
 use horizon_assets::{
+    blockstate::{
+        BlockStateDefinition,
+        bind::{Properties, PropertySchema, PropertyValues, SelectedModels},
+    },
     bake::{BlockModelTransform, bake_block_model},
     model::CuboidModel,
     resolve::{AssetReader, ModelLibrary},
@@ -164,6 +168,43 @@ fn every_part_bakes_with_the_obj_geometry_the_kd_and_a_real_sprite() {
     assert_eq!(checked, 21 * 36 + 24);
     println!("{checked} partes, {total_quads} quads");
     let _ = STATUSES;
+}
+
+/// O blockstate de cada transmissor é um `multipart` que o Horizon aceita (as condições `AND` que nenhum estado cumpre) e, ligado aos estados do bloco (os seis lados e o `fluid_logged`), escolhe
+/// por padrão as seis partes `NONE`: os índices `lado * partes por lado + 3`.
+#[test]
+fn the_blockstate_of_every_transmitter_selects_the_none_part_of_each_side_by_default() {
+    let sides = ["down", "up", "north", "south", "west", "east"];
+    let mut schema: PropertySchema = BTreeMap::new();
+    for side in sides {
+        schema.insert(
+            side.to_owned(),
+            PropertyValues::Named(["false", "true"].iter().map(|v| (*v).to_owned()).collect()),
+        );
+    }
+    schema.insert(
+        "fluid_logged".to_owned(),
+        PropertyValues::Named(["empty", "water", "lava"].iter().map(|v| (*v).to_owned()).collect()),
+    );
+    let mut states: Vec<Properties> = Vec::new();
+    for connected in [false, true] {
+        let mut state = Properties::new();
+        for side in sides {
+            state.insert(side.to_owned(), connected.to_string());
+        }
+        state.insert("fluid_logged".to_owned(), "empty".to_owned());
+        states.push(state);
+    }
+    for id in ids() {
+        let text = std::fs::read_to_string(content().join(format!("assets/mekanism/blockstates/{id}.json"))).unwrap();
+        let bound = BlockStateDefinition::from_json(&text).unwrap().bind(&schema, &states).unwrap();
+        let per_side = if id == "diversion_transporter" { 4 } else { 6 };
+        let want: Vec<usize> = (0..6).map(|side| side * per_side + 3).collect();
+        assert_eq!(bound.len(), 2, "{id}");
+        for selected in bound {
+            assert_eq!(selected, Some(SelectedModels::Multipart(want.clone())), "{id}");
+        }
+    }
 }
 
 /// A parte girada do trecho reto: os vértices do centro (`NONE`) levados pela `Transformation` de `makeIconStatusTransform` (a matriz que o original gravou), em volta do centro do bloco.

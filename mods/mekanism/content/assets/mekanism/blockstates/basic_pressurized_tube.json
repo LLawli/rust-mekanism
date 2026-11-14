@@ -1,8 +1,128 @@
 {
   "multipart": [
     {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/up_pull"
       }
     },
     {
@@ -11,8 +131,158 @@
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/south_pull"
       }
     },
     {
@@ -21,13 +291,193 @@
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_none"
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_pressurized_tube/east_none_contiguous_rotated"
       }
     }
   ]

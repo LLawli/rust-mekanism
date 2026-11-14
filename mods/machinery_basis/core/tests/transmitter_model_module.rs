@@ -114,21 +114,11 @@ fn the_names_of_the_parts_follow_the_obj_groups_of_the_original() {
         &std::fs::read_to_string(rastros().join("transmitter_model_parts.json")).unwrap(),
     )
     .unwrap();
-    let family = model::Family::new("mekanism:block/transmitter_part/x", false);
-    // Os nomes dos grupos do OBJ (`ALL_PART_GROUPS`) são o lado e o `partName()` de cada estado; o modelo de cada parte mostra só o dele.
+    // Os nomes dos grupos do OBJ (`ALL_PART_GROUPS`) são o lado e o `partName()` de cada estado.
     let mut groups: Vec<String> = Vec::new();
-    for (side, name) in model::SIDES.iter().enumerate() {
-        for (status, entry) in parts["statuses"].as_array().unwrap().iter().enumerate() {
-            let part = entry["part"].as_str().unwrap();
-            groups.push(format!("{name}{part}"));
-            let status = status as u8;
-            assert_eq!(
-                family.part(side, status),
-                format!(
-                    "mekanism:block/transmitter_part/x/{name}_{}",
-                    model::STATUS_NAMES[usize::from(status)]
-                )
-            );
+    for name in model::SIDES {
+        for entry in parts["statuses"].as_array().unwrap() {
+            groups.push(format!("{name}{}", entry["part"].as_str().unwrap()));
         }
     }
     groups.sort();
@@ -152,98 +142,69 @@ fn the_names_of_the_parts_follow_the_obj_groups_of_the_original() {
     }
 }
 
+/// O índice de cada parte no `multipart` do blockstate: lado, depois estado visual; o desviador não tem as duas partes do trecho reto.
+#[test]
+fn the_selection_indexes_the_multipart_of_the_blockstate_side_by_side() {
+    use model::{NONE, NONE_CONTIGUOUS, NORMAL, PULL, PUSH};
+    assert_eq!(model::parts_per_side(false), 6);
+    assert_eq!(model::parts_per_side(true), 4);
+    assert_eq!(model::selection([NONE; 6], false), [3, 9, 15, 21, 27, 33]);
+    assert_eq!(
+        model::selection([NORMAL, PUSH, PULL, NONE, NONE_CONTIGUOUS, NORMAL], false),
+        [0, 7, 14, 21, 28, 30]
+    );
+    assert_eq!(model::selection([NONE; 6], true), [3, 7, 11, 15, 19, 23]);
+    assert_eq!(
+        model::selection([NORMAL, PUSH, PULL, NONE, NORMAL, PUSH], true),
+        [0, 5, 10, 15, 16, 21]
+    );
+}
+
 /// O módulo guarda estado global: os testes que o usam andam um de cada vez.
 static GLOBAL: Mutex<()> = Mutex::new(());
 
 #[test]
-fn the_parts_of_a_transmitter_are_asked_by_state_and_position_one_per_side() {
+fn the_parts_of_a_transmitter_are_asked_by_state_and_position_of_the_block_the_mesher_draws() {
     let _guard = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
     model::clear_data();
     // Dois transmissores (o desviador é a família 1), no estado 7 e 9; o 8 não é de transmissor.
-    model::set_families(
-        vec![
-            model::Family::new("p/cable", false),
-            model::Family::new("p/diversion", true),
-        ],
-        vec![(7, 0), (9, 1)],
+    model::set_families(vec![false, true], vec![(7, 0), (9, 1)]);
+    let make = |choice: usize, parts: Vec<usize>| (choice, parts);
+    // Sem bloco anotado (outra thread, ou o catálogo chamado fora do mesher) não há o que escolher.
+    assert!(
+        std::thread::spawn(|| model::select(7, Some(4), |choice, parts| (choice, parts)).is_none())
+            .join()
+            .unwrap()
     );
-    // Os modelos cozidos: um por nome das duas famílias (o `lookup` do catálogo).
-    let baked: Vec<String> = [("p/cable", false), ("p/diversion", true)]
-        .iter()
-        .flat_map(|(prefix, diversion)| {
-            let family = model::Family::new(prefix, *diversion);
-            let mut names = Vec::new();
-            for side in 0..6 {
-                for status in 0..6 {
-                    names.push(family.part(side, status).to_owned());
-                }
-            }
-            names
-        })
-        .collect();
-    assert_eq!(baked.len(), 72);
-    let lookup = |name: &str| baked.iter().find(|candidate| candidate.as_str() == name);
-    let parts = |out: &Vec<&String>| {
-        out.iter()
-            .map(|part| part.as_str().to_owned())
-            .collect::<Vec<String>>()
-    };
-    let before = String::from("antes");
-    let mut out: Vec<&String> = vec![&before];
-    // Sem o dado da block entity: o modelo do blockstate segue e `out` fica como estava.
-    assert!(!model::fill(7, [1, 2, 3], lookup, &mut out));
-    assert_eq!(parts(&out), ["antes"]);
-    // Um estado que não é de transmissor nem lê o dado.
-    model::set_data([1, 2, 3], Some([0; 6]));
-    assert!(!model::fill(8, [1, 2, 3], lookup, &mut out));
-    assert_eq!(parts(&out), ["antes"]);
-    // O dado de outra posição não vale.
-    assert!(!model::fill(7, [1, 2, 4], lookup, &mut out));
-    assert_eq!(parts(&out), ["antes"]);
-    // Norte e sul ligados (`NORMAL` e `PUSH`), o resto sem conexão: as seis partes, na ordem dos lados.
+    // O mesher desenha a seção de origem (16, 0, 32) e o bloco local (1, 2, 3): a posição é (17, 2, 35).
+    model::note_section([16, 0, 32]);
+    model::note_block(1, 2, 3);
+    // Sem o dado da block entity: o modelo do blockstate segue.
+    assert!(model::select(7, Some(4), make).is_none());
     const N: u8 = model::CONNECTION_NONE;
-    model::set_data([1, 2, 3], Some([N, N, 0, 1, N, N]));
-    assert!(model::fill(7, [1, 2, 3], lookup, &mut out));
-    assert_eq!(
-        parts(&out),
-        [
-            "p/cable/down_none_contiguous",
-            "p/cable/up_none_contiguous",
-            "p/cable/north_normal",
-            "p/cable/south_push",
-            "p/cable/west_none_contiguous_rotated",
-            "p/cable/east_none_contiguous_rotated",
-        ]
-    );
-    // O mesmo dado no desviador: o centro aparece inteiro.
-    assert!(model::fill(9, [1, 2, 3], lookup, &mut out));
-    assert_eq!(
-        parts(&out),
-        [
-            "p/diversion/down_none",
-            "p/diversion/up_none",
-            "p/diversion/north_normal",
-            "p/diversion/south_push",
-            "p/diversion/west_none",
-            "p/diversion/east_none",
-        ]
-    );
-    // Uma parte sem modelo cozido é pulada (`partTable.get` nulo); sem nenhuma, o blockstate segue.
-    let only_north = |name: &str| {
-        baked
-            .iter()
-            .find(|candidate| candidate.as_str() == name && name.ends_with("north_normal"))
-    };
-    assert!(model::fill(7, [1, 2, 3], only_north, &mut out));
-    assert_eq!(parts(&out), ["p/cable/north_normal"]);
-    let none = |_: &str| None::<&String>;
-    out.push(&before);
-    assert!(!model::fill(7, [1, 2, 3], none, &mut out));
-    assert_eq!(parts(&out), ["p/cable/north_normal", "antes"]);
+    model::set_data([17, 2, 35], Some([N, N, 0, 1, N, N]));
+    // Um estado que não é de transmissor, ou sem escolha de blockstate, também deixa o blockstate.
+    assert!(model::select(8, Some(4), make).is_none());
+    assert!(model::select(7, None, make).is_none());
+    // Norte e sul ligados (`NORMAL` e `PUSH`), o resto sem conexão: o trecho reto, e as partes são as dos índices do `multipart`.
+    let cable = model::select(7, Some(4), make).unwrap();
+    assert_eq!(*cable, (4, vec![4, 10, 12, 19, 29, 35]));
+    // O desviador dá o centro inteiro (`NONE`) onde o cabo dá o trecho reto, com quatro partes por lado.
+    let diversion = model::select(9, Some(2), make).unwrap();
+    assert_eq!(*diversion, (2, vec![3, 7, 8, 13, 19, 23]));
+    // Cada conjunto de partes é montado uma vez e fica: o mesmo pedido devolve o mesmo endereço.
+    assert!(std::ptr::eq(
+        cable,
+        model::select(7, Some(4), make).unwrap()
+    ));
+    // Outro bloco da seção, sem dado, deixa o blockstate; e o dado de outra posição não vale.
+    model::note_block(1, 2, 4);
+    assert!(model::select(7, Some(4), make).is_none());
     // O dado sai com a block entity.
-    assert!(model::set_data([1, 2, 3], None));
-    assert!(!model::set_data([1, 2, 3], None));
-    assert!(!model::fill(7, [1, 2, 3], lookup, &mut out));
+    model::note_block(1, 2, 3);
+    assert!(model::set_data([17, 2, 35], None));
+    assert!(!model::set_data([17, 2, 35], None));
+    assert!(model::select(7, Some(4), make).is_none());
     assert_eq!(model::data_count(), 0);
 }
 

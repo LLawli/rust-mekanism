@@ -1,8 +1,128 @@
 {
   "multipart": [
     {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "down": "true"
+          },
+          {
+            "down": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/down_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/up_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/up_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/up_pull"
       }
     },
     {
@@ -11,8 +131,158 @@
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/up_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "up": "true"
+          },
+          {
+            "up": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/up_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "north": "true"
+          },
+          {
+            "north": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/north_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/south_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/south_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/south_pull"
       }
     },
     {
@@ -21,13 +291,193 @@
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/south_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "south": "true"
+          },
+          {
+            "south": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/south_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_none"
       }
     },
     {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "west": "true"
+          },
+          {
+            "west": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/west_none_contiguous_rotated"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_normal"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_push"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_pull"
+      }
+    },
+    {
       "apply": {
         "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_none"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_none_contiguous"
+      }
+    },
+    {
+      "when": {
+        "AND": [
+          {
+            "east": "true"
+          },
+          {
+            "east": "false"
+          }
+        ]
+      },
+      "apply": {
+        "model": "mekanism:block/transmitter_part/basic_thermodynamic_conductor/east_none_contiguous_rotated"
       }
     }
   ]

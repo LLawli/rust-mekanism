@@ -430,15 +430,30 @@ fn the_transmitters_draw_the_obj_of_the_original_part_by_part() {
             files.contains(&format!("assets/mekanism/items/{id}.json")),
             "{id}: o item é o do original"
         );
+        // O blockstate é um `multipart` com todas as partes, lado e depois estado visual (`lado * partes por lado + estado`, o índice que a injeção `transmitter_model_state` escolhe): só as
+        // `NONE` valem por padrão, o que o original mostra sem o dado; as outras levam uma condição que nenhum estado cumpre.
         let state = json(&content().join(format!("assets/mekanism/blockstates/{id}.json")));
         let parts = state["multipart"].as_array().unwrap();
-        assert_eq!(parts.len(), sides.len(), "{id}");
+        let per_side = if hide { 6 } else { 4 };
+        assert_eq!(parts.len(), sides.len() * per_side, "{id}");
         for (i, side) in sides.iter().enumerate() {
-            assert_eq!(
-                parts[i],
-                serde_json::json!({"apply": {"model": format!("mekanism:block/transmitter_part/{id}/{side}_none")}}),
-                "{id}"
-            );
+            for (j, (name, _)) in visual.iter().take(per_side).enumerate() {
+                let part = &parts[i * per_side + j];
+                assert_eq!(
+                    part["apply"],
+                    serde_json::json!({"model": format!("mekanism:block/transmitter_part/{id}/{side}_{name}")}),
+                    "{id}"
+                );
+                if *name == "none" {
+                    assert!(part.get("when").is_none(), "{id} {side}");
+                } else {
+                    assert_eq!(
+                        part["when"],
+                        serde_json::json!({"AND": [{*side: "true"}, {*side: "false"}]}),
+                        "{id} {side}_{name}"
+                    );
+                }
+            }
         }
         let mut models = 0;
         for side in sides {
