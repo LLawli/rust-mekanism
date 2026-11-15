@@ -533,6 +533,7 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiSecurityTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.GuiRedstoneControlTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiSideConfigurationTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiTransporterConfigTab)
                       && !isArmorHolder(screen, element)

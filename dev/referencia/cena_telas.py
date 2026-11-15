@@ -318,6 +318,27 @@ def casos_seguranca():
     return out
 
 
+# A aba de redstone (`GuiRedstoneControlTab`, 26 por 26 em (176, 137); o botão de 18 por 18 em (179, 141)): o cursor e o clique no centro do botão. O clique esquerdo avança o modo
+# (`DISABLED`, `HIGH`, `LOW`); sem sinal, `HIGH` mostra o aviso (a aba desenhada com o padrão de `warning` e a aba de avisos da esquerda).
+ABA_REDSTONE = (188, 150)
+
+
+def casos_redstone():
+    out = []
+    for m in ("chamber", "infuser", "generator", "cubo"):
+        extra = dict(lava="500") if m == "generator" else {}
+        clique = f"{ABA_REDSTONE[0]},{ABA_REDSTONE[1]}"
+        out += [
+            caso(f"{m}_red_desligada", m, energia="0", **extra),
+            caso(f"{m}_red_desligada_hover", m, energia="0", hover=ABA_REDSTONE, **extra),
+            caso(f"{m}_red_alta", m, energia="0", clicar=clique, **extra),
+            caso(f"{m}_red_alta_hover", m, energia="0", clicar=clique, hover=ABA_REDSTONE, **extra),
+            caso(f"{m}_red_baixa", m, energia="0", clicar=f"{clique};{clique}", **extra),
+            caso(f"{m}_red_baixa_hover", m, energia="0", clicar=f"{clique};{clique}", hover=ABA_REDSTONE, **extra),
+        ]
+    return out
+
+
 def casos_cubo():
     """O Energy Cube (frente `cubo-pixel`): vazio, parcial, cheio, o criativo, a aba de energia, as janelas de lados e de transporte e o cursor sobre o medidor.
     As abas de segurança, redstone e livro ficam como o `CenaTelas` as deixa (as que o port não tem, ocultas)."""
@@ -558,7 +579,7 @@ def nbt_da_configuracao(c):
 
 
 def todos_os_casos():
-    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo() + casos_seguranca()
+    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo() + casos_seguranca() + casos_redstone()
 
 
 def casos_do_roteiro(so=None):
