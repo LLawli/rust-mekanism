@@ -126,28 +126,21 @@ pub fn issue_lang_key(sync: RedstoneSync) -> Option<&'static str> {
 pub const ISSUES_LANG: &str = "gui.mekanism.issues";
 pub const ISSUES_COLOR: u32 = 0xFF_DD_4F;
 
-/// `warning.png` (16 por 16, `gui.scaling` do tipo `tile`): uma linha por entrada, o bit `x` aceso é a cor clara de `STRIPE_LIGHT`. O sprite do original é a fonte; o teste
-/// `dev/referencia/test_aba_redstone.py` o confere.
-pub const WARNING_ROWS: [u16; 16] = [
-    0xe1e1, 0xf0f0, 0x7878, 0x3c3c, 0x1e1e, 0x0f0f, 0x8787, 0xc3c3, 0xe1e1, 0xf0f0, 0x7878, 0x3c3c,
-    0x1e1e, 0x0f0f, 0x8787, 0xc3c3,
-];
-/// As duas cores do `warning.png` (a clara, com o bit aceso, e a escura), em ARGB.
-pub const STRIPE_LIGHT: u32 = 0xFF_DF_D3_4F;
-pub const STRIPE_DARK: u32 = 0xFF_42_42_42;
-/// O lado do ladrilho do `warning.png`.
-pub const WARNING_TILE: i32 = 16;
+/// O sprite do padrão de aviso (`GuiElement.WARNING_TEXTURE`, `warning.png`, 16 por 16, `gui.scaling` do tipo `tile`): o padrão ladrilha a partir do canto de cima e da
+/// esquerda do retângulo em que é desenhado.
+pub const WARNING_PATTERN_TILE: [f32; 2] = [16.0, 16.0];
 
-/// A cor do padrão de aviso no pixel (`x`, `y`) do retângulo em que ele é desenhado, que ladrilha a partir do canto de cima e da esquerda
-/// (`blitSprite` de um sprite `tile`).
-pub fn warning_color(x: i32, y: i32) -> u32 {
-    let row = WARNING_ROWS[y.rem_euclid(WARNING_TILE) as usize];
-    if row >> x.rem_euclid(WARNING_TILE) & 1 == 1 {
-        STRIPE_LIGHT
-    } else {
-        STRIPE_DARK
-    }
+/// Uma camada do suporte de uma aba inset com aviso (`GuiInsetElement.draw`), na ordem em que o original as desenha.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WarningLayer {
+    /// `blitSprite(GUI_TEXTURED, getResource(), ...)`: o suporte sem cor, com o blend de sempre.
+    HolderPlain,
+    /// `blitSprite(GUI_TEXTURED_DST_COLOR, WARNING_TEXTURE, ...)`: o padrão sobre o retângulo todo, multiplicado pelo que já está no quadro (`DST_COLOR`, `ZERO`).
+    PatternMultiplied,
 }
+
+/// As camadas do suporte com aviso, em ordem.
+pub const WARNING_LAYERS: [WarningLayer; 2] = [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied];
 
 #[cfg(test)]
 mod tests {
@@ -217,10 +210,8 @@ mod tests {
     }
 
     #[test]
-    fn the_warning_pattern_tiles_every_sixteen_pixels() {
-        assert_eq!(warning_color(0, 0), STRIPE_LIGHT);
-        assert_eq!(warning_color(1, 0), STRIPE_DARK);
-        assert_eq!(warning_color(16, 16), STRIPE_LIGHT);
-        assert_eq!(warning_color(25, 25), warning_color(9, 9));
+    fn a_warning_holder_is_plain_and_then_multiplied_by_the_pattern() {
+        assert_eq!(WARNING_LAYERS, [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied]);
+        assert_eq!(WARNING_PATTERN_TILE, [16.0, 16.0]);
     }
 }

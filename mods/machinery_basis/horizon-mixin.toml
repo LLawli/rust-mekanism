@@ -1531,3 +1531,42 @@ helper = "stream_budget.rs"
 bindings = [
   { name = "streaming", ty = "&mut Streaming", value = "&mut *self" },
 ]
+
+# O blend `DST_COLOR` do Mekanism (`GUI_DST_COLOR`, `GUI_TEXTURED_DST_COLOR`, `BlendFunction(DST_COLOR, ZERO)`): o `HudBatch` só tem os blends do enum `Blend`. O módulo
+# `machinery_multiply` (`hud.rs`, vê os campos privados do `HudRenderer`) guarda o pipeline, e quem desenha marca os vértices com `Blend::CitGlint(255)` (`mark_since`). O HEAD
+# de `prepare` cria o pipeline quando o lote tem marca, e o HEAD cancelável de `draw_range` desenha o lote em passos, na ordem, com o blend novo nas marcas (o `draw_range` se
+# chama de novo para os pedaços sem marca, que não o fazem voltar). Alvos crus, H273.
+[[module]]
+id = "multiply-blend"
+file = "crates/horizon-client-render/src/hud.rs"
+name = "machinery_multiply"
+source = "multiply_blend.rs"
+visibility = "pub"
+
+[[injection]]
+id = "multiply_prepare"
+target = "horizon_client_render::hud::HudRenderer::prepare"
+kind = "HEAD"
+helper = "multiply_prepare.rs"
+bindings = [
+  { name = "hud", ty = "&HudRenderer", value = "&*self" },
+  { name = "device", ty = "&wgpu::Device", value = "device" },
+  { name = "batch", ty = "&HudBatch", value = "batch" },
+]
+
+[[injection]]
+id = "multiply_draw"
+target = "horizon_client_render::hud::HudRenderer::draw_range"
+kind = "HEAD"
+cancellable = true
+helper = "multiply_draw.rs"
+bindings = [
+  { name = "hud", ty = "&HudRenderer", value = "&*self" },
+  { name = "encoder", ty = "&mut wgpu::CommandEncoder", value = "&mut *encoder" },
+  { name = "target", ty = "&wgpu::TextureView", value = "target" },
+  { name = "depth", ty = "&wgpu::TextureView", value = "depth" },
+  { name = "batch", ty = "&HudBatch", value = "batch" },
+  { name = "size", ty = "[u32; 2]", value = "size" },
+  { name = "vertices", ty = "std::ops::Range<u32>", value = "vertices.clone()" },
+  { name = "timing", ty = "Option<&mut crate::gfx::pack_timing::PassTiming>", value = "timing.as_deref_mut()" },
+]

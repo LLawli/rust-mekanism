@@ -2431,9 +2431,8 @@ pub(in crate::game) fn inset_tab(
 }
 
 /// [`inset_tab`] com o estilo do suporte. O aviso do original (`GuiInsetElement.draw`) desenha o suporte sem cor e multiplica a área toda pelo padrão de `warning`
-/// com o blend `DST_COLOR` (o que está atrás vezes o padrão); o `HudBatch` não tem esse blend, então cada pixel do suporte é desenhado com o padrão como cor, e
-/// o vértice multiplica a textura como o blend multiplicaria o suporte. Os pixels transparentes do suporte (os cantos), onde o original multiplicaria o mundo atrás, ficam
-/// como estão.
+/// com o blend `DST_COLOR` (o que está atrás vezes o padrão): o suporte branco e, por cima, o padrão ladrilhado sobre o retângulo todo, marcado com
+/// `machinery_multiply` (o módulo do `hud.rs` que o desenha com o blend `(DST_COLOR, ZERO)`, na ordem do lote).
 #[allow(clippy::too_many_arguments)]
 pub(in crate::game) fn inset_tab_styled(
     game: &Game<'_>,
@@ -2460,13 +2459,13 @@ pub(in crate::game) fn inset_tab_styled(
     match holder_style {
         HolderStyle::Tint(tint) => nine(batch, &holder_sprite, HOLDER_SLICE, holder, tint),
         HolderStyle::Warning => {
-            for cell in gui::nine_slice_cells(HOLDER_SLICE, holder) {
-                // O recorte do suporte é 1 por 1 em 1 por 1 (os cantos, as bordas e o miolo repetidos, sem esticar): cada pixel leva a cor do padrão na posição dele.
-                for dy in 0..cell.dst[3] as i32 {
-                    for dx in 0..cell.dst[2] as i32 {
-                        let (x, y) = (cell.dst[0] + dx as f32, cell.dst[1] + dy as f32);
-                        let argb = machinery_basis_core::redstone_tab::warning_color((x - holder[0]) as i32, (y - holder[1]) as i32);
-                        sprite_tinted(game, batch, &holder_sprite, [cell.src[0] + dx as f32, cell.src[1] + dy as f32, 1.0, 1.0], [x, y, 1.0, 1.0], argb);
+            for layer in machinery_basis_core::redstone_tab::WARNING_LAYERS {
+                match layer {
+                    machinery_basis_core::redstone_tab::WarningLayer::HolderPlain => nine(batch, &holder_sprite, HOLDER_SLICE, holder, 0xFF_FF_FF_FF),
+                    machinery_basis_core::redstone_tab::WarningLayer::PatternMultiplied => {
+                        let start = batch.vertices.len();
+                        tiled_sprite(game, batch, &format!("{ns}:gui/sprites/warning"), machinery_basis_core::redstone_tab::WARNING_PATTERN_TILE, holder, None);
+                        horizon_client::hud::machinery_multiply::mark_since(batch, start);
                     }
                 }
             }
