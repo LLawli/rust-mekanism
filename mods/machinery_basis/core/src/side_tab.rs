@@ -121,9 +121,12 @@ pub const SECURITY_TAB_Y: i32 = 34;
 /// `SpecialColors.TAB_SECURITY`: a cor do suporte da aba de segurança.
 pub const SECURITY_TAB_TINT: u32 = 0xFF_FF_A1_60;
 
-/// A aba de segurança, na lateral direita.
-pub fn security_tab(image_width: i32) -> InsetTab {
-    InsetTab::right(image_width, SECURITY_TAB_Y, XP_TAB_HEIGHT)
+/// `GuiEnergyCube.addSecurityTab`: `new GuiSecurityTab(this, tile, 6)`, no lugar da aba de upgrades que o cubo não tem (o botão fica em (179, 10)).
+pub const SECURITY_TAB_CUBE_Y: i32 = 6;
+
+/// A aba de segurança, na lateral direita, em `y` (`SECURITY_TAB_Y` nas máquinas e no Heat Generator, `SECURITY_TAB_CUBE_Y` no cubo de energia).
+pub fn security_tab(image_width: i32, y: i32) -> InsetTab {
+    InsetTab::right(image_width, y, XP_TAB_HEIGHT)
 }
 
 /// `y -= 28` quando o livro de receitas não está na tela (`isRecipeBookDisabled() || !supportsRecipeBook`): a aba sobe para onde ele ficaria.
@@ -190,6 +193,15 @@ mod tests {
             left: true,
         };
         assert_eq!(left.button(), [-21.0, 10.0, 18.0, 18.0]);
+        // The security tab: y = 34 in the machines and 6 in the energy cube (`GuiEnergyCube.addSecurityTab`).
+        assert_eq!(
+            security_tab(176, SECURITY_TAB_Y).button(),
+            [179.0, 38.0, 18.0, 18.0]
+        );
+        assert_eq!(
+            security_tab(176, SECURITY_TAB_CUBE_Y).button(),
+            [179.0, 10.0, 18.0, 18.0]
+        );
         // The upgrade tab, `GuiUpgradeWindowTab` at (imageWidth, 6): the same button the window code hit-tests.
         assert_eq!(
             InsetTab::right(176, 6, 26).button(),

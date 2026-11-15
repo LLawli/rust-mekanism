@@ -2716,8 +2716,8 @@ pub const SECURITY_PREVIOUS_BUTTON: i32 = 101;
 
 /// `GuiSecurityTab.onClick`: o clique esquerdo ou o direito no botão da aba (fora de uma janela por cima) vira o botão de menu; só o dono muda o modo, e o servidor
 /// confere isso de novo (`incrementSecurityMode`). `at` é o cursor relativo ao canto da tela.
-pub(in crate::game) fn security_screen_click(game: &Game<'_>, image_width: i32, at: [f32; 2], right: bool) -> Option<i32> {
-    let tab = machinery_basis_core::side_tab::security_tab(image_width);
+pub(in crate::game) fn security_screen_click(game: &Game<'_>, image_width: i32, tab_y: i32, at: [f32; 2], right: bool) -> Option<i32> {
+    let tab = machinery_basis_core::side_tab::security_tab(image_width, tab_y);
     (!game.mb_window_covers(at) && tab.is_mouse_over(true, true, at)).then_some(if right { SECURITY_PREVIOUS_BUTTON } else { SECURITY_NEXT_BUTTON })
 }
 
@@ -2731,9 +2731,9 @@ fn security_icon(mode: sec::SecurityMode) -> &'static str {
 }
 
 /// `GuiSecurityTab` desenhada: o suporte tingido, o botão e o sprite do modo (`getSecurityMode(..., true)`), com o fundo em foco sob o mouse.
-pub(in crate::game) fn security_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], view: &sec::SecurityView, image_width: i32) {
+pub(in crate::game) fn security_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], view: &sec::SecurityView, image_width: i32, tab_y: i32) {
     use machinery_basis_core::side_tab::{ButtonLook, SECURITY_TAB_TINT, security_tab};
-    let tab = security_tab(image_width);
+    let tab = security_tab(image_width, tab_y);
     let cursor = game.native_cursor();
     let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
     let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
@@ -2759,10 +2759,11 @@ pub(in crate::game) fn security_widget_tooltip(
     batch: &mut HudBatch,
     view: &sec::SecurityView,
     image_width: i32,
+    tab_y: i32,
     at: [f32; 2],
     cursor: (f32, f32),
 ) -> bool {
-    let tab = machinery_basis_core::side_tab::security_tab(image_width);
+    let tab = machinery_basis_core::side_tab::security_tab(image_width, tab_y);
     if game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
         return false;
     }

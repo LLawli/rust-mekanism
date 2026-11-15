@@ -983,7 +983,7 @@ pub(in crate::game) fn screen_draw(
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
     game.mb_window_draw_tab(batch, block, origin);
     // `GuiMekanismTile.addGenericTabs`: a aba de segurança, depois a de upgrades (a de redstone, que vem entre as duas, o port ainda não tem).
-    basis::security_draw(game, batch, origin, &rules::security(&game.mb_mirror(block)), WIDTH as i32);
+    basis::security_draw(game, batch, origin, &rules::security(&game.mb_mirror(block)), WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = read.lava;
     let scaled = gui::gauge_level(lava, heat_config().tank(), LAVA_GAUGE[3] as i32);
@@ -1018,7 +1018,7 @@ fn draw_armor_bar(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2]) {
 /// `GuiSecurityTab.onClick`: os dois botões do mouse na aba de segurança do Heat Generator viram o botão de menu do servidor.
 pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
     if is_generator(block)
-        && let Some(id) = basis::security_screen_click(game, WIDTH as i32, at, right)
+        && let Some(id) = basis::security_screen_click(game, WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, right)
     {
         *button = Some(id);
     }
@@ -1077,7 +1077,7 @@ pub(in crate::game) fn widget_tooltip(
     let mirror = game.mb_mirror(block);
     let read = rules::ScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
-    if basis::security_widget_tooltip(game, batch, &rules::security(&mirror), WIDTH as i32, at, cursor) {
+    if basis::security_widget_tooltip(game, batch, &rules::security(&mirror), WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
         return true;
     }
     // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.

@@ -3438,7 +3438,7 @@ pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], 
     }
     // `GuiSecurityTab.onClick`: os dois botões do mouse, na aba de segurança das máquinas e dos cubos.
     if (machine_of(block).is_some() || rules::cube_tier(block).is_some())
-        && let Some(id) = basis::security_screen_click(game, rules::SCREEN_IMAGE_WIDTH, at, right)
+        && let Some(id) = basis::security_screen_click(game, rules::SCREEN_IMAGE_WIDTH, if rules::cube_tier(block).is_some() { machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y } else { machinery_basis_core::side_tab::SECURITY_TAB_Y }, at, right)
     {
         *button = Some(id);
         return;
@@ -3497,7 +3497,7 @@ pub(in crate::game) fn widget_tooltip(
     let mirror = game.mb_mirror(block);
     let read = rules::ScreenData::read(machine.screen, &mirror);
     let translate = |key: &str| lang::get(key);
-    if basis::security_widget_tooltip(game, batch, &rules::machine_security(machine.screen, &mirror), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
+    if basis::security_widget_tooltip(game, batch, &rules::machine_security(machine.screen, &mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
         return true;
     }
     // `GuiXpContainmentTab`: `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, que `Tooltip.create` quebra em 170 pixels. A janela de upgrades
@@ -3614,7 +3614,7 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, mirror: &Mirror, batch: &mut
     sprite_rect(game, batch, DUMP_SPRITE, at(DUMP_RECT));
     // `GuiMekanism.init` a põe por último, depois de todos os elementos.
     game.mb_window_draw_tab(batch, machine.block, origin);
-    basis::security_draw(game, batch, origin, &rules::machine_security(machine.screen, mirror), rules::SCREEN_IMAGE_WIDTH);
+    basis::security_draw(game, batch, origin, &rules::machine_security(machine.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     draw_xp_tab(game, batch, origin, &read);
     draw_energy_tab(game, batch, origin);
     if view.tab() {
@@ -3691,7 +3691,7 @@ fn draw_electric(
         view.element(rules::ScreenElement::Progress),
     );
     game.mb_window_draw_tab(batch, electric.block, origin);
-    basis::security_draw(game, batch, origin, &rules::machine_security(electric.screen, mirror), rules::SCREEN_IMAGE_WIDTH);
+    basis::security_draw(game, batch, origin, &rules::machine_security(electric.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     draw_xp_tab(game, batch, origin, &read);
     draw_energy_tab(game, batch, origin);
     if view.tab() {
@@ -3766,7 +3766,7 @@ fn draw_cube(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, or
     let scaled = rules::cube_gauge_level(read.energy, capacity, gauge[3] as i32);
     let fill = (scaled > 0).then_some((rules::CUBE_ENERGY_SPRITE, rules::CUBE_ENERGY_FRAME, 0xFF_FF_FF_FFu32));
     basis::gauge(game, batch, &CUBE_GAUGE_STYLE, at(gauge), scaled, fill);
-    basis::security_draw(game, batch, origin, &rules::cube_security(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH);
+    basis::security_draw(game, batch, origin, &rules::cube_security(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y);
     draw_energy_tab(game, batch, origin);
 }
 
@@ -3778,7 +3778,7 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
     let mirror = game.mb_mirror(block);
     let read = rules::CubeScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
-    if basis::security_widget_tooltip(game, batch, &rules::cube_security(&mirror), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
+    if basis::security_widget_tooltip(game, batch, &rules::cube_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y, at, cursor) {
         return true;
     }
     let wrap = |lines: Vec<String>| -> Vec<(String, Option<u32>)> {

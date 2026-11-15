@@ -2158,7 +2158,13 @@ pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_e
             mirror.boolean((screen.indexes)().xp_containment)
         }),
         // `GuiSecurityTab`: o botão de dentro, sempre ativo e visível (a máquina tem dono ou não).
-        Element::always(machinery_basis_core::side_tab::security_tab(SCREEN_IMAGE_WIDTH).button()),
+        Element::always(
+            machinery_basis_core::side_tab::security_tab(
+                SCREEN_IMAGE_WIDTH,
+                machinery_basis_core::side_tab::SECURITY_TAB_Y,
+            )
+            .button(),
+        ),
         Element::always(ENERGY_TAB.rect),
     ]
 }
