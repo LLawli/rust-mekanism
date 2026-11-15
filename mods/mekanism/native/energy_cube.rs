@@ -387,6 +387,20 @@ pub(in crate::game) fn energy_stored(game: &Game<'_>, pos: [i32; 3], energy: i32
     });
 }
 
+/// `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`: `setControlType(getControlType().getNext(supportsMode))` no objeto vivo do cubo, e no NBT, de onde um cubo que ainda não andou o lê.
+pub(in crate::game) fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, forward: bool) {
+    let key = (game.native_dimension(), pos);
+    let next = LIVE_CUBES.with_borrow_mut(|cubes| {
+        cubes.get_mut(&key).map(|live| {
+            let next = machinery_basis_core::redstone_tab::cycle(live.cube.tile().control_type(), forward);
+            live.cube.tile_mut().set_control_type(next);
+            next
+        })
+    });
+    let next = next.unwrap_or_else(|| machinery_basis_core::redstone_tab::cycle(basis::redstone_read(entity), forward));
+    basis::redstone_write(entity, next);
+}
+
 /// `TileEntityEnergyCube.writeConfigurationData`: o que o cartão de configuração e o Configurator copiam do cubo.
 pub(in crate::game) fn write_configuration_data(game: &Game<'_>, pos: [i32; 3]) -> Option<horizon_world::nbt::Compound> {
     let key = (game.native_dimension(), pos);

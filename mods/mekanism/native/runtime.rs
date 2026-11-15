@@ -2026,6 +2026,21 @@ pub fn cube_security(mirror: &Mirror) -> machinery_basis_core::security::Securit
     machinery_basis_core::security::SecurityView::read(mirror, frequency, mode)
 }
 
+static CUBE_REDSTONE_INDEXES: LazyLock<(usize, usize, usize)> = LazyLock::new(|| {
+    let list = cube_trackers();
+    (
+        position_of(&list, source::CONTROL_TYPE),
+        position_of(&list, source::POWERED),
+        position_of(&list, source::WAS_POWERED),
+    )
+});
+
+/// O controle de redstone que o cliente lê do menu do cubo (`GuiRedstoneControlTab`).
+pub fn cube_redstone(mirror: &Mirror) -> RedstoneSync {
+    let (control, powered, was_powered) = *CUBE_REDSTONE_INDEXES;
+    machinery_basis_core::redstone_tab::read(mirror, control, powered, was_powered)
+}
+
 /// O que o cliente lê do espelho do menu do cubo.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CubeScreenData {
@@ -2148,7 +2163,7 @@ pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
 }
 
 /// Os elementos que a tela de uma máquina tem fora da imagem de 176 por 166 e que `GuiMekanism.findElementOver` acha (os que a tela do port
-/// desenha; a redstone, a configuração de itens e de transporte e o livro de receitas do original ainda não existem aqui):
+/// desenha; o livro de receitas do original ainda não existe aqui):
 /// - `GuiEnergyTab` (`addGuiElements` de `GuiElectricMachine` e de `GuiMetallurgicInfuser`): -26, 137, 26 por 26, sempre ativa e visível.
 /// - `GuiWarningTab` (`GuiMekanism.addWarningTab`, à esquerda): -26, 109, 26 por 26, visível só com algum aviso (`updateVisibility`).
 /// - `GuiXpContainmentTab`: o botão de dentro (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18, não o suporte de 26), visível só
@@ -2172,6 +2187,8 @@ pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_e
             )
             .button(),
         ),
+        // `GuiRedstoneControlTab`: o botão de dentro em (179, 141), sempre ativo e visível.
+        Element::always(machinery_basis_core::redstone_tab::tab(SCREEN_IMAGE_WIDTH).button()),
         Element::always(ENERGY_TAB.rect),
     ]
 }

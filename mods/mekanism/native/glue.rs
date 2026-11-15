@@ -599,7 +599,11 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
         // `GuiEnergyCube`: a barra de armadura à direita e a aba de energia. Os dois slots do cubo; sem slots virtuais (o cubo não tem upgrades).
         crate::game::machinery_armor_bar::declare(block, rules::cube_armor_bar_declaration);
         machinery_basis_core::screen_elements::declare_once(block, || {
-            vec![machinery_basis_core::screen_elements::Element::always(rules::ENERGY_TAB.rect)]
+            vec![
+                machinery_basis_core::screen_elements::Element::always(machinery_basis_core::redstone_tab::tab(rules::SCREEN_IMAGE_WIDTH).button()),
+                machinery_basis_core::screen_elements::Element::always(machinery_basis_core::side_tab::security_tab(rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y).button()),
+                machinery_basis_core::screen_elements::Element::always(rules::ENERGY_TAB.rect),
+            ]
         });
         *screen = Some(NativeScreen {
             width: WIDTH,
@@ -3411,6 +3415,15 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
     if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some()) && basis::security_menu_button(game, entity, id) {
         return;
     }
+    // `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`: a aba de redstone das máquinas e dos cubos; quem não tem acesso é ignorado.
+    if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some())
+        && let Some(change) = basis::redstone_menu_button(game, entity, id)
+    {
+        if let Some(forward) = change {
+            step_control(game, pos, entity, forward);
+        }
+        return;
+    }
     if id == XP_BUTTON {
         collect_xp(game, pos, entity);
         return;
@@ -3423,6 +3436,24 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
     if !read_tank(entity).is_empty() {
         write_tank(entity, &TankContents::default());
     }
+}
+
+/// `setControlType(getControlType().getNext(supportsMode))` (ou `getPrevious`) no objeto vivo da máquina ou do cubo, e no NBT, de onde um tile que ainda não andou o lê.
+fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, forward: bool) {
+    if rules::cube_tier(&entity.id).is_some() {
+        crate::game::mekanism_cube::step_control(game, pos, entity, forward);
+        return;
+    }
+    let key = (game.native_dimension(), pos);
+    let next = LIVE_MACHINES.with_borrow_mut(|machines| {
+        machines.get_mut(&key).map(|live| {
+            let next = machinery_basis_core::redstone_tab::cycle(live.machine.tile().control_type(), forward);
+            live.machine.tile_mut().set_control_type(next);
+            next
+        })
+    });
+    let next = next.unwrap_or_else(|| machinery_basis_core::redstone_tab::cycle(basis::redstone_read(entity), forward));
+    basis::redstone_write(entity, next);
 }
 
 /// `PacketGuiInteract.COLLECT_XP`: `SupportsXpContainment.popExperience(player)`, que só age com `hasXpContainment()`. As bolas nascem no
@@ -3458,6 +3489,13 @@ pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], 
     // `GuiSecurityTab.onClick`: os dois botões do mouse, na aba de segurança das máquinas e dos cubos.
     if (machine_of(block).is_some() || rules::cube_tier(block).is_some())
         && let Some(id) = basis::security_screen_click(game, rules::SCREEN_IMAGE_WIDTH, if rules::cube_tier(block).is_some() { machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y } else { machinery_basis_core::side_tab::SECURITY_TAB_Y }, at, right)
+    {
+        *button = Some(id);
+        return;
+    }
+    // `GuiRedstoneControlTab.onClick`: os dois botões do mouse, na aba de redstone das máquinas e dos cubos.
+    if (machine_of(block).is_some() || rules::cube_tier(block).is_some())
+        && let Some(id) = basis::redstone_screen_click(game, rules::SCREEN_IMAGE_WIDTH, at, right)
     {
         *button = Some(id);
         return;
@@ -3517,6 +3555,10 @@ pub(in crate::game) fn widget_tooltip(
     let read = rules::ScreenData::read(machine.screen, &mirror);
     let translate = |key: &str| lang::get(key);
     if basis::security_widget_tooltip(game, batch, &rules::machine_security(machine.screen, &mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
+        return true;
+    }
+    // `GuiRedstoneControlTab.updateTooltip`: o texto do modo de agora.
+    if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(read.redstone.control_type)), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
         return true;
     }
     // `GuiXpContainmentTab`: `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, que `Tooltip.create` quebra em 170 pixels. A janela de upgrades
@@ -3634,6 +3676,7 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, mirror: &Mirror, batch: &mut
     // `GuiMekanism.init` a põe por último, depois de todos os elementos.
     game.mb_window_draw_tab(batch, machine.block, origin);
     basis::security_draw(game, batch, origin, &rules::machine_security(machine.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
+    basis::redstone_draw(game, batch, origin, read.redstone, rules::SCREEN_IMAGE_WIDTH);
     draw_xp_tab(game, batch, origin, &read);
     draw_energy_tab(game, batch, origin);
     if view.tab() {
@@ -3711,6 +3754,7 @@ fn draw_electric(
     );
     game.mb_window_draw_tab(batch, electric.block, origin);
     basis::security_draw(game, batch, origin, &rules::machine_security(electric.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
+    basis::redstone_draw(game, batch, origin, read.redstone, rules::SCREEN_IMAGE_WIDTH);
     draw_xp_tab(game, batch, origin, &read);
     draw_energy_tab(game, batch, origin);
     if view.tab() {
@@ -3786,6 +3830,7 @@ fn draw_cube(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, or
     let fill = (scaled > 0).then_some((rules::CUBE_ENERGY_SPRITE, rules::CUBE_ENERGY_FRAME, 0xFF_FF_FF_FFu32));
     basis::gauge(game, batch, &CUBE_GAUGE_STYLE, at(gauge), scaled, fill);
     basis::security_draw(game, batch, origin, &rules::cube_security(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y);
+    basis::redstone_draw(game, batch, origin, rules::cube_redstone(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH);
     draw_energy_tab(game, batch, origin);
 }
 
@@ -3798,6 +3843,10 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
     let read = rules::CubeScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
     if basis::security_widget_tooltip(game, batch, &rules::cube_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y, at, cursor) {
+        return true;
+    }
+    let redstone = rules::cube_redstone(&mirror);
+    if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(redstone.control_type)), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
         return true;
     }
     let wrap = |lines: Vec<String>| -> Vec<(String, Option<u32>)> {

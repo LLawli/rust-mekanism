@@ -2405,6 +2405,13 @@ pub(in crate::game) fn warning_tab(game: &Game<'_>, batch: &mut HudBatch, sprite
     game.native_sprite(batch, sprite, [0.0, 0.0, w, h], [origin[0] + x, origin[1] + y, w, h]);
 }
 
+/// O suporte de uma aba inset: tingido (`GuiSideHolder.draw`) ou, com um aviso, branco e multiplicado pelo padrão de `warning` (`GuiInsetElement.draw`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum HolderStyle {
+    Tint(u32),
+    Warning,
+}
+
 /// `GuiInsetElement.drawBackground`, a cada quadro: o fundo do botão, o suporte (`holder_left` ou `holder_right`) tingido por `tint` por cima
 /// dele, o fundo outra vez e o ícone de 18 por 18 sobre o botão (`GuiSideHolder.drawBackground` e depois a própria). Os sprites do fundo e do
 /// suporte são `<ns>:gui/sprites/button`, `button_focus`, `button_inactive` e `holder_*`; `icon` é o nome inteiro do sprite do ícone.
@@ -2420,6 +2427,24 @@ pub(in crate::game) fn inset_tab(
     icon: &str,
     look: machinery_basis_core::side_tab::ButtonLook,
 ) {
+    inset_tab_styled(game, batch, ns, tab, origin, HolderStyle::Tint(tint), icon, look);
+}
+
+/// [`inset_tab`] com o estilo do suporte. O aviso do original (`GuiInsetElement.draw`) desenha o suporte sem cor e multiplica a área toda pelo padrão de `warning`
+/// com o blend `DST_COLOR` (o que está atrás vezes o padrão); o `HudBatch` não tem esse blend, então cada pixel do suporte é desenhado com o padrão como cor, e
+/// o vértice multiplica a textura como o blend multiplicaria o suporte. Os pixels transparentes do suporte (os cantos), onde o original multiplicaria o mundo atrás, ficam
+/// como estão.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn inset_tab_styled(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    ns: &str,
+    tab: machinery_basis_core::side_tab::InsetTab,
+    origin: [f32; 2],
+    holder_style: HolderStyle,
+    icon: &str,
+    look: machinery_basis_core::side_tab::ButtonLook,
+) {
     let shift = |rect: gui::Rect| [origin[0] + rect[0], origin[1] + rect[1], rect[2], rect[3]];
     let button = shift(tab.button());
     let holder = shift(tab.holder());
@@ -2432,7 +2457,21 @@ pub(in crate::game) fn inset_tab(
     };
     use machinery_basis_core::upgrade_window::{BUTTON_SLICE, HOLDER_SLICE};
     nine(batch, &background, BUTTON_SLICE, button, 0xFF_FF_FF_FF);
-    nine(batch, &holder_sprite, HOLDER_SLICE, holder, tint);
+    match holder_style {
+        HolderStyle::Tint(tint) => nine(batch, &holder_sprite, HOLDER_SLICE, holder, tint),
+        HolderStyle::Warning => {
+            for cell in gui::nine_slice_cells(HOLDER_SLICE, holder) {
+                // O recorte do suporte é 1 por 1 em 1 por 1 (os cantos, as bordas e o miolo repetidos, sem esticar): cada pixel leva a cor do padrão na posição dele.
+                for dy in 0..cell.dst[3] as i32 {
+                    for dx in 0..cell.dst[2] as i32 {
+                        let (x, y) = (cell.dst[0] + dx as f32, cell.dst[1] + dy as f32);
+                        let argb = machinery_basis_core::redstone_tab::warning_color((x - holder[0]) as i32, (y - holder[1]) as i32);
+                        sprite_tinted(game, batch, &holder_sprite, [cell.src[0] + dx as f32, cell.src[1] + dy as f32, 1.0, 1.0], [x, y, 1.0, 1.0], argb);
+                    }
+                }
+            }
+        }
+    }
     nine(batch, &background, BUTTON_SLICE, button, 0xFF_FF_FF_FF);
     let [_, _, w, h] = button;
     sprite_tinted(game, batch, icon, [0.0, 0.0, w, h], button, 0xFF_FF_FF_FF);
@@ -2888,6 +2927,91 @@ pub(in crate::game) fn security_menu_button(game: &Game<'_>, entity: &mut ModBlo
         }
     }
     true
+}
+
+/// O modo de controle de redstone que o NBT do tile guarda (`controlType`, `RedstoneControl.CODEC`).
+pub(in crate::game) fn redstone_read(entity: &ModBlockEntity) -> machinery_basis_core::tile::RedstoneControl {
+    match entity.nbt.get(&JavaString::from("control_type")) {
+        Some(Tag::String(name)) => machinery_basis_core::tile::RedstoneControl::from_serialized_name(&name.to_string_lossy()),
+        _ => machinery_basis_core::tile::RedstoneControl::Disabled,
+    }
+}
+
+/// `TileEntityMekanism.setControlType`: grava o modo no NBT do tile, de onde o objeto vivo de um tile que ainda não andou o lê.
+pub(in crate::game) fn redstone_write(entity: &mut ModBlockEntity, mode: machinery_basis_core::tile::RedstoneControl) {
+    entity.nbt.insert(JavaString::from("control_type"), Tag::String(JavaString::from(mode.serialized_name())));
+}
+
+/// Os botões de menu da aba de redstone (`PacketGuiInteract(NEXT_REDSTONE_CONTROL)` e `PREVIOUS_REDSTONE_CONTROL`), longe dos da segurança e dos de cada mod.
+pub const REDSTONE_NEXT_BUTTON: i32 = 102;
+pub const REDSTONE_PREVIOUS_BUTTON: i32 = 103;
+
+/// `GuiRedstoneControlTab.onClick`: o clique esquerdo (próximo modo) ou o direito (anterior) no botão da aba, fora de uma janela por cima, vira o botão de menu.
+/// Qualquer jogador clica; é o servidor que confere o acesso. `at` é o cursor relativo ao canto da tela.
+pub(in crate::game) fn redstone_screen_click(game: &Game<'_>, image_width: i32, at: [f32; 2], right: bool) -> Option<i32> {
+    let tab = machinery_basis_core::redstone_tab::tab(image_width);
+    (!game.mb_window_covers(at) && tab.is_mouse_over(true, true, at)).then_some(if right { REDSTONE_PREVIOUS_BUTTON } else { REDSTONE_NEXT_BUTTON })
+}
+
+/// `GuiRedstoneControlTab` desenhada: o suporte tingido (ou, com um aviso, o padrão de `warning`), o botão e o sprite do modo, com o fundo em foco sob o mouse.
+pub(in crate::game) fn redstone_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], sync: machinery_basis_core::tile::RedstoneSync, image_width: i32) {
+    use machinery_basis_core::redstone_tab as rt;
+    use machinery_basis_core::side_tab::ButtonLook;
+    let tab = rt::tab(image_width);
+    let cursor = game.native_cursor();
+    let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
+    let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
+    let holder = if rt::warning(sync) { HolderStyle::Warning } else { HolderStyle::Tint(rt::TAB_TINT) };
+    inset_tab_styled(game, batch, "mekanism", tab, origin, holder, redstone_icon(sync.control_type), ButtonLook::of(true, hovered));
+}
+
+/// O ícone da aba (`getOverlay`): o sprite do modo no atlas da tela (o mesmo nome que `redstone_tab::overlay` diz, em literais para o teste dos sprites os ver).
+fn redstone_icon(control: machinery_basis_core::tile::RedstoneControl) -> &'static str {
+    use machinery_basis_core::tile::RedstoneControl;
+    match control {
+        RedstoneControl::Disabled => "mekanism:gui/sprites/redstone_control/disabled",
+        RedstoneControl::High => "mekanism:gui/sprites/redstone_control/high",
+        RedstoneControl::Low => "mekanism:gui/sprites/redstone_control/low",
+        RedstoneControl::Pulse => "mekanism:gui/sprites/redstone_control/pulse",
+    }
+}
+
+/// `GuiRedstoneControlTab.updateTooltip`: o texto do modo, que `Tooltip.create` quebra em 170 pixels, sobre o botão. `text` é o texto já traduzido. Devolve se desenhou.
+pub(in crate::game) fn redstone_widget_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    text: &str,
+    image_width: i32,
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    let tab = machinery_basis_core::redstone_tab::tab(image_width);
+    if game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
+        return false;
+    }
+    let lines: Vec<(String, Option<u32>)> = machinery_basis_core::upgrade_window::wrap_lines(text, REDSTONE_TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece))
+        .into_iter()
+        .map(|line| (line, None))
+        .collect();
+    let [bx, by, bw, bh] = tab.button();
+    menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + bx, cursor.1 - at[1] + by, bw, bh]);
+    true
+}
+
+/// `Tooltip.create`: a largura em que o texto de um tooltip de widget quebra.
+const REDSTONE_TOOLTIP_WRAP: f32 = 170.0;
+
+/// `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`, no servidor: `PacketUtils.blockEntity` só entrega o tile a quem passa em `canAccess` (quem não passa é
+/// ignorado, sem mensagem) e então `setControlType(getControlType().getNext(supportsMode))`. Devolve `None` se o botão não é da redstone, `Some(None)` se é e o jogador não age ou não
+/// tem acesso, e `Some(Some(avançar))` se o modo deve mudar.
+pub(in crate::game) fn redstone_menu_button(game: &Game<'_>, entity: &ModBlockEntity, id: i32) -> Option<Option<bool>> {
+    let forward = match id {
+        REDSTONE_NEXT_BUTTON => true,
+        REDSTONE_PREVIOUS_BUTTON => false,
+        _ => return None,
+    };
+    let allowed = acting_uuid(game).is_some_and(|player| machinery_basis_core::redstone_tab::can_click(&security_read(entity), player));
+    Some(allowed.then_some(forward))
 }
 
 /// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor

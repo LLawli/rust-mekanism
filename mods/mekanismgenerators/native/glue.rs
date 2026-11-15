@@ -1033,7 +1033,8 @@ pub(in crate::game) fn screen_draw(
     }
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
     game.mb_window_draw_tab(batch, block, origin);
-    // `GuiMekanismTile.addGenericTabs`: a aba de segurança, depois a de upgrades (a de redstone, que vem entre as duas, o port ainda não tem).
+    // `GuiMekanismTile.addGenericTabs`: a aba de upgrades, a de redstone e a de segurança, nesta ordem.
+    basis::redstone_draw(game, batch, origin, rules::redstone(&game.mb_mirror(block)), WIDTH as i32);
     basis::security_draw(game, batch, origin, &rules::security(&game.mb_mirror(block)), WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = read.lava;
@@ -1066,20 +1067,44 @@ fn draw_armor_bar(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2]) {
     }
 }
 
-/// `GuiSecurityTab.onClick`: os dois botões do mouse na aba de segurança do Heat Generator viram o botão de menu do servidor.
+/// `GuiSecurityTab.onClick` e `GuiRedstoneControlTab.onClick`: os dois botões do mouse nas abas de segurança e de redstone do Heat Generator viram o botão de menu do servidor.
 pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
-    if is_generator(block)
-        && let Some(id) = basis::security_screen_click(game, WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, right)
-    {
+    if !is_generator(block) {
+        return;
+    }
+    if let Some(id) = basis::redstone_screen_click(game, WIDTH as i32, at, right) {
+        *button = Some(id);
+    } else if let Some(id) = basis::security_screen_click(game, WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, right) {
         *button = Some(id);
     }
 }
 
-/// `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE` no servidor: o dono do Heat Generator troca o modo.
-pub(in crate::game) fn menu_button(game: &mut Game<'_>, _pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) {
-    if is_generator_id(&entity.id) {
-        basis::security_menu_button(game, entity, id);
+/// `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE` (o dono do Heat Generator troca o modo) e `NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL` (quem tem acesso
+/// troca o modo de redstone) no servidor.
+pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) {
+    if !is_generator_id(&entity.id) {
+        return;
     }
+    if let Some(change) = basis::redstone_menu_button(game, entity, id) {
+        if let Some(forward) = change {
+            step_control(game, pos, entity, forward);
+        }
+        return;
+    }
+    basis::security_menu_button(game, entity, id);
+}
+
+/// `setControlType(getControlType().getNext(supportsMode))` (ou `getPrevious`): o modo no NBT, de onde o tick seguinte refaz o tile, e na vista que a tela sincroniza, que o Java
+/// já tem mudada na hora.
+fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, forward: bool) {
+    let key = (game.native_dimension(), pos);
+    let next = machinery_basis_core::redstone_tab::cycle(basis::redstone_read(entity), forward);
+    basis::redstone_write(entity, next);
+    UPGRADES.with_borrow_mut(|tiles| {
+        if let Some(view) = tiles.get_mut(&key).and_then(|memory| memory.view.as_mut()) {
+            view.state.tile.set_control_type(next);
+        }
+    });
 }
 
 /// O clique na aba de calor (`GuiHeatTab.onClick`), antes de a tela fazer qualquer coisa com ele (hook
@@ -1128,6 +1153,10 @@ pub(in crate::game) fn widget_tooltip(
     let mirror = game.mb_mirror(block);
     let read = rules::ScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
+    let redstone = rules::redstone(&mirror);
+    if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(redstone.control_type)), WIDTH as i32, at, cursor) {
+        return true;
+    }
     if basis::security_widget_tooltip(game, batch, &rules::security(&mirror), WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
         return true;
     }

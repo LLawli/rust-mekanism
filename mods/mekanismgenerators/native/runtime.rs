@@ -318,6 +318,8 @@ pub const HEAT_TAB: machinery_basis_core::side_tab::InfoTab =
     machinery_basis_core::side_tab::InfoTab {
         rect: [-26.0, 109.0, 26.0, 26.0],
     };
+/// `GuiMekanism.imageWidth` da tela do Heat Generator: onde começam as abas da direita.
+pub const SCREEN_IMAGE_WIDTH: i32 = 176;
 /// `GeneratorsContainerTypes.java:29`: o Heat Generator registra `.armorSideBar(-20, 11, 0)` (o `x`, o `y` e o `offhandOffset` de
 /// `ContainerBuilder.armorSideBar`), e `MekanismContainer.addArmorSlots` põe os quatro slots de armadura e o da mão a partir dali.
 pub const ARMOR_BAR_X: i32 = -20;
@@ -338,12 +340,21 @@ pub fn armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
     }
 }
 
-/// Os elementos da tela que ficam fora da imagem de 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor e a de
-/// energia, ambas sempre ativas e visíveis.
+/// Os elementos da tela que ficam fora da imagem de 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor, os botões das abas de
+/// redstone e de segurança e a aba de energia, todos sempre ativos e visíveis.
 pub fn screen_elements() -> Vec<machinery_basis_core::screen_elements::Element> {
-    [HEAT_TAB.rect, ENERGY_TAB.rect]
-        .map(machinery_basis_core::screen_elements::Element::always)
-        .to_vec()
+    [
+        HEAT_TAB.rect,
+        machinery_basis_core::redstone_tab::tab(SCREEN_IMAGE_WIDTH).button(),
+        machinery_basis_core::side_tab::security_tab(
+            SCREEN_IMAGE_WIDTH,
+            machinery_basis_core::side_tab::SECURITY_TAB_Y,
+        )
+        .button(),
+        ENERGY_TAB.rect,
+    ]
+    .map(machinery_basis_core::screen_elements::Element::always)
+    .to_vec()
 }
 
 /// `GuiHeatTab.getResource`: `Mekanism.rl("tab/heat_info_" + type.getTabName())`, no atlas de sprites da tela.
@@ -976,6 +987,21 @@ static SECURITY_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
 pub fn security(mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
     let (frequency, mode) = *SECURITY_INDEXES;
     machinery_basis_core::security::SecurityView::read(mirror, frequency, mode)
+}
+
+static REDSTONE_INDEXES: LazyLock<(usize, usize, usize)> = LazyLock::new(|| {
+    let list = heat_generator_trackers();
+    (
+        position_of(&list, source::CONTROL_TYPE),
+        position_of(&list, source::POWERED),
+        position_of(&list, source::WAS_POWERED),
+    )
+});
+
+/// O controle de redstone que o cliente lê do menu do Heat Generator (`GuiRedstoneControlTab`).
+pub fn redstone(mirror: &Mirror) -> machinery_basis_core::tile::RedstoneSync {
+    let (control, powered, was_powered) = *REDSTONE_INDEXES;
+    machinery_basis_core::redstone_tab::read(mirror, control, powered, was_powered)
 }
 
 /// O que o cliente lê do espelho do menu do Heat Generator.

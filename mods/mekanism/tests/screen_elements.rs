@@ -90,6 +90,11 @@ fn security_button(x: i32, y: i32) -> bool {
     (179..197).contains(&x) && (38..56).contains(&y)
 }
 
+/// O botão da aba de redstone (`GuiRedstoneControlTab`: 176, 137; o botão em (179, 141)), 18 por 18.
+fn redstone_button(x: i32, y: i32) -> bool {
+    (179..197).contains(&x) && (141..159).contains(&y)
+}
+
 fn inside_image(x: i32, y: i32) -> bool {
     (0..IMAGE[0]).contains(&x) && (0..IMAGE[1]).contains(&y)
 }
@@ -141,8 +146,9 @@ fn the_declared_elements_are_the_ones_the_original_finds_under_the_mouse() {
         let mirror = mirror_of(spec, tracked, xp, warning);
         let mut outside_hits = 0;
         for (x, y) in original.points() {
-            // O rastro foi gravado com a aba de segurança oculta (a cena a esconde): o botão dela, que o port tem, fica fora da comparação.
-            if security_button(x, y) {
+            // O rastro foi gravado com as abas de segurança e de redstone ocultas (a cena as esconde): os botões delas, que o port tem, ficam fora da comparação
+            // (o modo `completo`, que as mostra, os confere em `the_redstone_button_is_what_the_original_finds`).
+            if security_button(x, y) || redstone_button(x, y) {
                 continue;
             }
             let port = inside_image(x, y)
@@ -157,6 +163,37 @@ fn the_declared_elements_are_the_ones_the_original_finds_under_the_mouse() {
     }
     // 4 máquinas em 4 estados.
     assert_eq!(cases, 16);
+}
+
+/// O botão da aba de redstone no original (o modo `completo`, com todas as abas visíveis): os 18 por 18 de dentro respondem, e o suporte de 26 por 26 em volta, não.
+/// O port declara o mesmo botão, sempre ativo e visível.
+#[test]
+fn the_redstone_button_is_what_the_original_finds() {
+    let grids = trace();
+    for machine in ["chamber", "crusher", "smelter", "infuser"] {
+        for state in ["base", "xp", "aviso", "xp_aviso"] {
+            let case = format!("{machine}_fora_{state}");
+            let full = grid(&grids, &case, "completo");
+            let (spec, tracked, xp, warning) = machine_of(&case).unwrap();
+            let menu = format!("test:screen_elements:redstone:{case}");
+            screen_elements::declare(&menu, machine_elements(spec));
+            let mirror = mirror_of(spec, tracked, xp, warning);
+            for (x, y) in full.points().filter(|(x, y)| (176..210).contains(x) && (132..166).contains(y)) {
+                assert_eq!(
+                    full.over(x, y) && redstone_button(x, y),
+                    redstone_button(x, y),
+                    "{case} em ({x}, {y}): o original responde no botão inteiro"
+                );
+                if redstone_button(x, y) {
+                    assert!(screen_elements::over_element(&menu, [x as f32, y as f32], &mirror), "{case} em ({x}, {y})");
+                }
+            }
+            // O suporte em volta (3 pixels à esquerda, 5 à direita, 4 em cima e embaixo) não é elemento.
+            for (x, y) in [(177, 150), (198, 150), (188, 139), (188, 160)] {
+                assert!(!full.over(x, y), "{case} em ({x}, {y})");
+            }
+        }
+    }
 }
 
 /// Cada aba responde só quando o original a mostra: o mesmo ponto sobre a aba de xp ou a de avisos muda com o estado, no original e no port.
@@ -185,7 +222,7 @@ fn the_xp_tab_and_the_warning_tab_follow_their_state() {
 }
 
 /// O que o port não desenha: o original tem mais elementos (`completo`), e tudo o que o port responde o original responde também. O que
-/// sobra no original e falta no port é a lista de faltas (configuração, transporte, segurança, livro de receitas, redstone).
+/// sobra no original e falta no port é a lista de faltas (configuração, transporte, livro de receitas).
 #[test]
 fn the_port_never_claims_more_than_the_original_has() {
     let grids = trace();
@@ -203,9 +240,9 @@ fn the_port_never_claims_more_than_the_original_has() {
             assert!(!port || full.over(x, y), "{} em ({x}, {y})", hidden.case);
             missing += usize::from(!inside_image(x, y) && full.over(x, y) && !port);
         }
-        // Falta de verdade: a configuração, o transporte, o livro, a redstone e a aba de upgrades (que é da janela da lib).
+        // Falta de verdade: a configuração, o transporte, o livro e a aba de upgrades (que é da janela da lib).
         assert!(
-            missing >= 5 * 18 * 18,
+            missing >= 4 * 18 * 18,
             "{} faltas em {}",
             missing,
             hidden.case
