@@ -82,7 +82,7 @@ def roteiro():
     esperar(14)
     camera()
     encher()
-    time.sleep(21)
+    time.sleep(14)
     # Um transportador do meio quebrado como um jogador: o som do bloco e as pilhas no chão.
     meio = CAMINHO[2]
     cmd(f"tp @s {meio[0] + 0.5} {Y + 1.0} {meio[1] - 2.6} 0 20")
