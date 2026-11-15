@@ -10,6 +10,8 @@
   "fill 100 -60 52 123 -52 90 minecraft:air",
   "fill 20 -60 91 160 -50 110 minecraft:air",
   "fill 20 -60 111 160 -50 130 minecraft:air",
+  "fill 20 -60 131 160 -50 150 minecraft:air",
+  "fill 20 -61 52 160 -61 130 minecraft:stone",
   "clear @a",
   "item replace entity @a hotbar.0 with mekanism:basic_universal_cable 1",
   "item replace entity @a hotbar.1 with mekanism:advanced_universal_cable 1",

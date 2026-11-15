@@ -34,6 +34,8 @@ public class CenaBlocos {
     }
 
     private static List<Action> plan;
+    /// `"clientes": [[x, y, z], ...]` no roteiro: os transportadores cujas pilhas do CLIENTE (o que o desenho lê) vão para o log a cada print (`cena-cliente`).
+    private static final List<net.minecraft.core.BlockPos> WATCH = new ArrayList<>();
     private static int ticks;
 
     @SubscribeEvent
@@ -62,6 +64,12 @@ public class CenaBlocos {
             throw new IllegalStateException(e);
         }
         List<Action> actions = new ArrayList<>();
+        if (spec.has("clientes")) {
+            for (JsonElement entry : spec.getAsJsonArray("clientes")) {
+                JsonArray xyz = entry.getAsJsonArray();
+                WATCH.add(new net.minecraft.core.BlockPos(xyz.get(0).getAsInt(), xyz.get(1).getAsInt(), xyz.get(2).getAsInt()));
+            }
+        }
         int at = 20;
         for (JsonElement command : spec.getAsJsonArray("setup")) {
             actions.add(new Action(at++, () -> run(server, command.getAsString())));
@@ -249,6 +257,16 @@ public class CenaBlocos {
     private static void shot(Minecraft minecraft, String name) {
         // O núcleo do cubo gira com o tempo do jogo (`gameTime + partialTick`): o tempo do print vai no log, e o port o alcança com `tick step` (`h2_blocos.py`).
         Mekanism.logger.info("cena: {} gametime {}", name, minecraft.level.getGameTime());
+        for (var pos : WATCH) {
+            if (minecraft.level.getBlockEntity(pos) instanceof mekanism.common.tile.transmitter.TileEntityTransmitter tile
+                  && tile.getTransmitter() instanceof mekanism.common.content.network.transmitter.LogisticalTransporterBase transporter) {
+                StringBuilder stacks = new StringBuilder();
+                for (var stack : transporter.getTransit()) {
+                    stacks.append(" [").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItemType().getItem())).append(" progress ").append(stack.progress).append("]");
+                }
+                Mekanism.logger.info("cena-cliente: {} {} {} {} gametime {} stacks{}", name, pos.getX(), pos.getY(), pos.getZ(), minecraft.level.getGameTime(), stacks);
+            }
+        }
         Screenshot.grab(minecraft.gameDirectory, name + ".png", minecraft.gameRenderer.mainRenderTarget(), 1, message -> Mekanism.logger.info("cena: {}", message.getString()));
     }
 }

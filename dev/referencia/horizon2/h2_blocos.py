@@ -552,6 +552,10 @@ def cena(out, nomes=(), roteiro="blocos.json"):
         time.sleep(2.5)
         h.ctl("screenshot", f"{out}/porte_{shot['name']}.png")
         print("print", shot["name"])
+        # `REPETIR=N`: N prints a mais do mesmo estado parado, com 1,3 s entre eles (se o `partialTick` do desenho muda com o tempo, as pilhas saem em lugares diferentes).
+        for r in range(int(os.environ.get("REPETIR", "0"))):
+            time.sleep(1.3)
+            h.ctl("screenshot", f"{out}/porte_{shot['name']}_r{r + 1}.png")
     if not spec.get("hud"):
         h.ctl("key", "f1", "tap")
     h.command("tick unfreeze")

@@ -18,7 +18,7 @@ PASSOS = 47
 CORES_DO_VIDRO = [0, 1, 4, 12, 15, 17]
 ITENS = ["minecraft:cobblestone", "minecraft:redstone", "minecraft:diamond", "minecraft:stick", "minecraft:oak_log", "minecraft:coal", "minecraft:apple", "minecraft:iron_ingot"]
 SETUP = ["difficulty peaceful", "time set 6000", "weather clear", "gamemode creative", "attribute @a minecraft:gravity base set 0", "fill 52 -60 52 75 -52 90 minecraft:air", "fill 76 -60 52 99 -52 90 minecraft:air",
-         "fill 100 -60 52 123 -52 90 minecraft:air", "fill 20 -60 91 160 -50 110 minecraft:air", "fill 20 -60 111 160 -50 130 minecraft:air", "fill 20 -61 52 160 -61 130 minecraft:stone"]
+         "fill 100 -60 52 123 -52 90 minecraft:air", "fill 20 -60 91 160 -50 110 minecraft:air", "fill 20 -60 111 160 -50 130 minecraft:air", "fill 20 -60 131 160 -50 150 minecraft:air", "fill 20 -61 52 160 -61 130 minecraft:stone"]
 CLEAR = "fill 52 -60 78 120 -52 96 minecraft:air"
 
 
@@ -30,9 +30,10 @@ def linha(x0, z0, cor, itens=ITENS):
     """Um baú, três transportadores em x, a curva para o sul, mais dois, a curva para o leste e outros dois, e o baú de chegada."""
     caminho = [(x0 + 1, z0), (x0 + 2, z0), (x0 + 3, z0), (x0 + 3, z0 + 1), (x0 + 3, z0 + 2), (x0 + 4, z0 + 2), (x0 + 5, z0 + 2)]
     cmds = [f"setblock {x0} {Y} {z0} minecraft:chest"]
+    # A espada, a picareta e o livro encantado empilham a um: com 16 o `item replace` falha ("can only stack up to 1") e o baú ficava sem eles, nos dois jogos.
     cmds += [f"setblock {x} {Y} {z} mekanism:basic_logistical_transporter" for x, z in caminho]
     cmds.append(f"setblock {x0 + 6} {Y} {z0 + 2} minecraft:chest")
-    cmds += [f"item replace block {x0} {Y} {z0} container.{i} with {item} 16" for i, item in enumerate(itens)]
+    cmds += [f"item replace block {x0} {Y} {z0} container.{i} with {item} {1 if any(n in item for n in ('sword', 'pickaxe', 'enchanted_book')) else 16}" for i, item in enumerate(itens)]
     cmds.append("#esperar 20")
     if cor is not None:
         cmds += [f"#cor {x} {Y} {z} {cor}" for x, z in caminho]
@@ -72,16 +73,33 @@ TRANSITO = ["#transito 61 -60 82", "#transito 62 -60 82", "#transito 63 -60 82"]
 # De cima, sobre o meio dos três primeiros transportadores, e de lado, ao norte da fileira e na altura das pilhas (z 82, a 2,5 blocos).
 TP_CIMA = "62.5 -58.2 82.5 0 90"
 TP_LADO = "62.5 -61.2 80.0 0 0"
+# De perto, a 1,6 bloco da fileira: o brilho do encantamento e o item ocupam uns 120 pixels.
+TP_PERTO = "61.9 -61.1 80.9 0 0"
+
+
+# O `anyItem` do original lê o baú de baixo para cima (`TransitRequest.definedItem`, `for i = size - 1`): a espada, no último slot, sai primeiro, depois o graveto com nome, o livro, a picareta.
+PILHAS_ITENS = ["minecraft:apple", "minecraft:golden_apple", "minecraft:iron_pickaxe[damage=100]", "minecraft:enchanted_book", "minecraft:stick[custom_name='Nome']", "minecraft:diamond_sword[enchantments={sharpness:5}]"]
 
 
 def pilhas_json():
-    cmds, primeiro = linha(60, Z, None, COMPONENTES)
+    cmds, primeiro = linha(60, Z, None, PILHAS_ITENS)
     base = {"name": "fila_base", "cmds": ["gamemode creative @a"] + cmds + ["tick freeze", f"#conexao {primeiro[0]} {Y} {primeiro[1]} west=pull"] + TRANSITO + ["gamemode spectator @a"], "tp": TP_CIMA}
     shots = [base]
     for k in range(1, PASSOS_DA_FILA + 1):
         shots.append({"name": f"fila_cima_{k:02d}", "cmds": ["tick step 1"] + TRANSITO + ["#esperar 8"], "tp": TP_CIMA})
         shots.append({"name": f"fila_lado_{k:02d}", "cmds": [], "tp": TP_LADO})
-    roteiro = {"setup": SETUP, "clear": SEM_LIMPEZA, "shots": shots}
+        shots.append({"name": f"fila_perto_{k:02d}", "cmds": [], "tp": TP_PERTO})
+    # O pedido do usuário (2026-11-15): o interior do tubo azul parecia cheio de água no vídeo, sobre grama. A linha azul (`dark_blue`) com as pilhas em movimento, sobre a pedra (z 100, o chão
+    # igual nos dois jogos) e sobre a grama (z 140, fora do `fill` de pedra), de cima e de lado, três ticks por tiro.
+    for nome, z0 in (("azul_pedra", 100), ("azul_grama", 140)):
+        cmds_b, primeiro_b = linha(60, z0, 1)
+        transito = [f"#transito {x} {Y} {z0}" for x in (61, 62, 63)]
+        tp_cima, tp_lado = f"62.5 -58.2 {z0 + 0.5} 0 90", f"62.5 -61.2 {z0 - 2.0} 0 0"
+        shots.append({"name": f"{nome}_base", "cmds": ["tick unfreeze", "gamemode creative @a"] + cmds_b + ["tick freeze", f"#conexao {primeiro_b[0]} {Y} {primeiro_b[1]} west=pull"] + transito + ["gamemode spectator @a"], "tp": tp_cima})
+        for k in range(1, 9):
+            shots.append({"name": f"{nome}_cima_{k:02d}", "cmds": ["tick step 3"] + transito + ["#esperar 8"], "tp": tp_cima})
+            shots.append({"name": f"{nome}_lado_{k:02d}", "cmds": [], "tp": tp_lado})
+    roteiro = {"setup": SETUP, "clear": SEM_LIMPEZA, "shots": shots, "clientes": [[x, Y, Z] for x in (61, 62, 63)]}
     with open(os.path.join(HERE, "cenas/transportador_pilhas.json"), "w") as handle:
         json.dump(roteiro, handle, indent=1)
         handle.write("\n")
