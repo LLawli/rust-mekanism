@@ -5,6 +5,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- O nome do item das fábricas e dos cubos de energia leva a cor do tier (`BaseTier.getTextColor`, via `ItemRegistryObject.getNameColor`): as 36 fábricas e os 5 cubos mostravam o nome branco, o original o mostra na cor do tier (Fase 5, frente `maquina-sobras`, decisão 234)
+- A cena de lava da conferência (`gerar_cena_lava.py`) esvaziava o tanque com uma regex que não casava o id entre aspas, e o nível vazio saía como 1.500 mB; agora casa, e as regiões de comparação da janela de upgrades, do medidor de lava e do tooltip deixam de fora o mundo atrás da tela (frente `maquina-sobras`, decisão 243)
 - A lava do Heat Generator passa do medidor quando o item traz mais que a capacidade do tanque, como o original (Fase 5, frente `maquina-sobras`, decisão 243): o tanque restaurado de um item, da rede ou do NBT não limita mais a quantidade, e `Tank::room` não passa de zero
 - A ordem dos upgrades de uma máquina recarregada do disco é a do original em todas as amostras do rastro (decisão 233): o tile guarda a ordem de escrita das chaves em `machinery_basis.upgrade_order` e a lê de volta (eram 48 de 4.144 amostras diferentes)
 - O convidado de LAN desenha os braços dos transmissores, não só o centro (Fase 4, frente `transmissor-sobras`, decisão 238): a tabela dos estados de transmissor só era montada em quem carrega os dados do servidor; o cliente do convidado a monta do registro que recebeu (1,6 a 2,2 % dos pixels diferentes do anfitrião viraram 0,003 a 0,16 %)
