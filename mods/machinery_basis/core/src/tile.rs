@@ -80,6 +80,20 @@ impl RedstoneControl {
         }
     }
 
+    /// `IIncrementalEnum.getNext` e `getPrevious` com o predicado `supportsMode`: o vizinho (com a volta) que a máquina aceita; se nenhum o aceita, o próprio modo.
+    pub fn cycle(self, forward: bool, supports: impl Fn(Self) -> bool) -> Self {
+        let step =
+            |mode: Self| Self::from_ordinal((mode.ordinal() + if forward { 1 } else { 3 }) % 4);
+        let mut next = step(self);
+        while !supports(next) {
+            if next == self {
+                return next;
+            }
+            next = step(next);
+        }
+        next
+    }
+
     /// `ordinal`, que `SyncableEnum` manda: a ordem das variantes é a do `enum` do Java.
     pub fn ordinal(self) -> i32 {
         self as i32
