@@ -362,6 +362,43 @@ pub fn tooltip_lines(
     lines
 }
 
+/// `GuiSecurityTab`: o sprite do modo (`getOverlay`: o `PUBLIC` é o próprio fundo da aba, `security/public`; `PRIVATE` é `security/private` e `TRUSTED` é `security/protected`).
+pub fn tab_overlay(mode: SecurityMode) -> &'static str {
+    match mode {
+        SecurityMode::Public => "mekanism:security/public",
+        SecurityMode::Private => "mekanism:security/private",
+        SecurityMode::Trusted => "mekanism:security/protected",
+    }
+}
+
+/// `GuiSecurityTab.updateTooltip`: as linhas do tooltip da aba, `Security: <modo>` e `Owner: <nome>` (o dono em verde para o dono e em vermelho para os outros, `OwnerDisplay`),
+/// sem a linha `(Overridden)` que só a Security Desk liga. Um tile sem dono mostra `No Owner` em vermelho.
+pub fn tab_tooltip_lines(
+    viewer: Option<u128>,
+    owner: Option<(u128, &str)>,
+    mode: SecurityMode,
+) -> Vec<TooltipLine> {
+    let mut lines = vec![security_line(mode)];
+    lines.push(match owner {
+        Some((owner, name)) => owner_line(viewer, owner, name),
+        None => TooltipLine {
+            key: "owner.mekanism.none",
+            color: COLOR_RED,
+            arg: Arg::Literal(String::new()),
+            arg_color: COLOR_RED,
+        },
+    });
+    lines
+}
+
+/// `GuiSecurityTab.onClick`: o botão esquerdo avança o modo e o direito o devolve; só o dono manda o pacote (`ownerMatches`), e só esses dois botões valem
+/// (`isValidClickButton`). `Some(avançar)` se o clique vira um pacote.
+pub fn tab_click(state: &SecurityState, player: u128, button: u8) -> Option<bool> {
+    const LEFT: u8 = 0;
+    const RIGHT: u8 = 1;
+    (state.owner_matches(player) && (button == LEFT || button == RIGHT)).then_some(button == LEFT)
+}
+
 /// `SecurityUtils.displayNoAccess`: `MekanismUtils.logFormat(RED, NO_ACCESS)`, o texto que o jogador recebe ao ser recusado.
 pub const NO_ACCESS_KEY: &str = "security.mekanism.no_access";
 
@@ -561,6 +598,31 @@ mod tests {
         assert_eq!(
             tooltip_lines(SecurityConfig::default(), None, None, SecurityMode::Public).len(),
             1
+        );
+    }
+
+    #[test]
+    fn the_tab_clicks_only_for_the_owner_with_the_left_or_right_button() {
+        let state = SecurityState {
+            owner: Some(1),
+            mode: SecurityMode::Public,
+        };
+        assert_eq!(tab_click(&state, 1, 0), Some(true));
+        assert_eq!(tab_click(&state, 1, 1), Some(false));
+        assert_eq!(tab_click(&state, 1, 2), None);
+        assert_eq!(tab_click(&state, 2, 0), None);
+        assert_eq!(
+            tab_overlay(SecurityMode::Trusted),
+            "mekanism:security/protected"
+        );
+        let lines = tab_tooltip_lines(Some(2), Some((1, "Ana")), SecurityMode::Private);
+        assert_eq!(
+            (lines[0].key, lines[1].arg_color),
+            ("tooltip.mekanism.security", COLOR_RED)
+        );
+        assert_eq!(
+            tab_tooltip_lines(None, None, SecurityMode::Public)[1].key,
+            "owner.mekanism.none"
         );
     }
 }
