@@ -27,6 +27,8 @@ REGIOES = {
     "aba": (560, 260, 800, 400),
     # o medidor de lava do Heat Generator (frente `maquina-sobras`, `cenas/heat_lava.json`) e o que ele desenha acima de si quando o tanque passa da capacidade, até o topo da tela
     "lava": (780, 0, 360, 500),
+    # o tooltip de um item com `DETAILS` (frente `maquina-sobras`, `cenas/detalhes_itens.json`): até 9 linhas, que sobem do cursor (674, 810) quando a caixa passa da altura
+    "detalhe": (690, 250, 900, 600),
 }
 
 

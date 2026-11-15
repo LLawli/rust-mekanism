@@ -31,7 +31,9 @@ trap 'restore; [ -e "$C/neoforge-client.toml.antes-item" ] && mv "$C/neoforge-cl
 sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$R/options.txt"
 cp "$JAVA" "$N/CenaItem.java"
 cp "$CENA" "$R/cena-item.json"
-"$C/lim-build" env JOGO_CMD='gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080 -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
+# `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo` a segura); passar de novo por `lim-build` esperaria por ela para sempre.
+LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
+$LIM env JOGO_CMD='gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080 -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
 echo "EXIT $?"
 cp "$R"/screenshots/oficial_*.png "$SAIDA"/ 2>/dev/null; rm -f "$R"/screenshots/oficial_*.png
 ls "$SAIDA" | wc -l
