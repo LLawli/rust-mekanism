@@ -2680,6 +2680,18 @@ pub(in crate::game) fn security_deny(game: &mut Game<'_>, player: u128) {
     game.native_tell(player, line);
 }
 
+/// `IBlockSecurityUtils.canAccessOrDisplayError(player, level, pos, tile)` do jogador que age: sem acesso, a mensagem vermelha e `false`. Quem não tem dono, ou não age, passa.
+pub(in crate::game) fn security_access_or_error(game: &mut Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {
+    let Some(player) = acting_uuid(game) else {
+        return true;
+    };
+    if security_can_access(game, pos, is_ours, player) {
+        return true;
+    }
+    security_deny(game, player);
+    false
+}
+
 /// `TileEntityMekanism.openGui`: o menu de um tile com dono recusa quem não tem acesso (`canAccessOrDisplayError`: a mensagem e nada abre). Devolve se a abertura deve ser
 /// cancelada.
 pub(in crate::game) fn security_open(game: &mut Game<'_>, player: u128, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {

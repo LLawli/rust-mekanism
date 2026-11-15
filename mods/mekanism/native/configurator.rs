@@ -167,6 +167,16 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     if mode.transmission().is_some() && glue::is_transporter_block(&block) {
         return transporter_click(game, pos, face, sneaking);
     }
+    // `IBlockSecurityUtils.canAccessOrDisplayError`: o jogador sem acesso a um tile do Mekanism não configura (agachado, que é quando troca o lado, ou sempre num tile sem
+    // configuração de lados), não esvazia, não gira e não desmonta, e recebe a mensagem (`InteractionResult.FAIL`, que toma o clique).
+    let guarded = is_mekanism_tile(&block)
+        && match mode.transmission() {
+            Some(_) => sneaking || !(cube::is_cube(&block) || glue::is_machine_block(&block)),
+            None => matches!(mode, ConfiguratorMode::Empty | ConfiguratorMode::Rotate | ConfiguratorMode::Wrench),
+        };
+    if guarded && !basis::security_access_or_error(game, pos, &|id| is_mekanism_tile(id)) {
+        return true;
+    }
     if let Some(kind) = mode.transmission() {
         if cube::is_cube(&block) {
             let click = cube::with_cube(game, pos, |cube| {
