@@ -56,14 +56,17 @@ def video(out, seconds, container):
     cmd("tick unfreeze")
     h.ctl("give", "mekanism:configurator", "1")
     linha()
-    cmd("tp @s %.2f %.2f %.2f 0 90" % (X0 + 3.5, Y + 9.0, Z + 1.5))
+    cmd("tp @s %.2f %.2f %.2f 0 90" % (X0 + 3.5, Y + 3.0, Z + 1.5))
     time.sleep(3.0)
     gravar = f"{GRAVADOR} rec {os.environ.get('GRAV_NOME', 'transportador-visual')} {out} {seconds}" + (f" {container}" if container else "")
     proc = subprocess.Popen(["ssh", "desktop", gravar])
     time.sleep(3.0)
     blocos.conexao(f"#conexao {CAMINHO[0][0]} {Y} {CAMINHO[0][1]} west=pull")
-    cmd("tp @s %.2f %.2f %.2f 0 90" % (X0 + 3.5, Y + 9.0, Z + 1.5))
+    # espectador: o jogador fica parado no ar, sem gravidade nem deriva, olhando a linha de cima (a mesma câmera de `pilhas_*` em `transportador_visual.json`)
+    cmd("gamemode spectator")
+    cmd("tp @s %.2f %.2f %.2f 0 90" % (X0 + 3.5, Y + 4.0, Z + 1.0))
     proc.wait()
+    cmd("gamemode creative")
 
 
 def devolver():

@@ -44,7 +44,7 @@ def regiao_de(texto, padrao):
 
 
 def vidro(args):
-    base = regiao_de(args.regiao, (340, 390, 480, 300))
+    base = regiao_de(args.regiao, (570, 470, 180, 140))
     os.makedirs(args.saida, exist_ok=True)
     for cor, nome in enumerate(NOMES_DAS_CORES):
         tiro, k = divmod(cor, 3)
@@ -59,7 +59,7 @@ def vidro(args):
 
 
 def passos(args):
-    regiao = regiao_de(args.regiao, (200, 300, 1520, 480))
+    regiao = regiao_de(args.regiao, None)
     quantos = len([f for f in os.listdir(args.original) if f.startswith(f"oficial_{args.prefixo}_")])
     print("linhas: passo do original; colunas: passo do port")
     for i in range(quantos):
@@ -84,7 +84,7 @@ def main():
     sub = parser.add_subparsers(dest="modo", required=True)
     v = sub.add_parser("vidro")
     v.add_argument("original"); v.add_argument("port"); v.add_argument("saida")
-    v.add_argument("--regiao"); v.add_argument("--passo-x", type=int, default=480); v.add_argument("--escala", type=int, default=1)
+    v.add_argument("--regiao"); v.add_argument("--passo-x", type=int, default=300); v.add_argument("--escala", type=int, default=1)
     v.set_defaults(f=vidro)
     s = sub.add_parser("passos")
     s.add_argument("original"); s.add_argument("port"); s.add_argument("prefixo"); s.add_argument("--regiao")

@@ -16,11 +16,10 @@ import h2_dois as d
 import h2_blocos as blocos
 import gerar_cena_transportador_visual as g
 
-PASSOS_BASE = 36
+PASSOS_BASE = 8
 TIROS = 4
-POSE = "83.5 -51.5 83.0 0 90"  # a mesma câmera de cima de `componentes_*` em `transportador_visual.json`
+POSE = "83.5 -56.0 83.0 0 90"  # a mesma câmera de cima de `componentes_*` em `transportador_visual.json`
 LONGE = (200, -50, 200)
-GRAVIDADE = "minecraft:gravity"
 
 
 def host_cmd(texto):
@@ -44,7 +43,7 @@ def montar():
     for texto in g.SETUP:
         host_cmd(texto)
     h.ctl("give", "mekanism:configurator", "1")
-    cmds, primeiro = g.linha(80, g.Z, 4, g.COMPONENTES)
+    cmds, primeiro = g.linha(80, g.Z, None, g.COMPONENTES)
     for texto in cmds:
         if texto.startswith("#esperar "):
             time.sleep(int(texto.split()[1]) / 20.0)
@@ -56,12 +55,17 @@ def montar():
     blocos.conexao(f"#conexao {primeiro[0]} {g.Y} {primeiro[1]} west=pull")
 
 
+def hud():
+    for quem in (d.host, d.guest):
+        quem("key", "f1", "tap")
+
+
 def rodar(destino):
     montar()
-    host_cmd("gamemode creative Convidado")
-    # sem gravidade: o jogador parado no ar não cai entre o `tp` e o print (o anfitrião voa, o convidado cai)
-    for quem in ("@s", "Convidado"):
-        host_cmd(f"attribute {quem} {GRAVIDADE} base set 0")
+    # espectadores: sem gravidade, sem mão e sem barra, e o `tp` fica onde foi posto nos dois clientes (o anfitrião voa e o convidado cai, e os olhos ficariam em alturas diferentes)
+    host_cmd("gamemode spectator Convidado")
+    host_cmd("gamemode spectator @s")
+    hud()
     host_cmd(f"tick step {PASSOS_BASE}")
     time.sleep(PASSOS_BASE / 20.0 + 2.0)
     for k in range(TIROS):
@@ -78,8 +82,9 @@ def rodar(destino):
         print("par", nome)
         host_cmd("tick step 1")
         time.sleep(1.0)
-    for quem in ("@s", "Convidado"):
-        host_cmd(f"attribute {quem} {GRAVIDADE} base reset")
+    hud()
+    host_cmd("gamemode creative Convidado")
+    host_cmd("gamemode creative @s")
     host_cmd("tick unfreeze")
 
 
