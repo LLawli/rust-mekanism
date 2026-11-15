@@ -78,3 +78,29 @@ fn the_description_key_gives_the_text_the_original_shows() {
         );
     }
 }
+
+/// O nome do item de um bloco com tier leva a cor do tier (`ItemRegistryObject.getNameColor`): as fábricas e os cubos de energia do rastro, e só eles entre os itens com `DETAILS`.
+#[test]
+fn the_tiered_blocks_with_details_get_the_color_of_the_tier() {
+    use mekanism_rules::{name_color, tier_block_color};
+    let mut tiered = 0;
+    for row in trace()
+        .iter()
+        .filter(|row| of_mekanism(row) && row["details"] == true)
+    {
+        let item = row["item"].as_str().unwrap();
+        let expected = item.ends_with("_factory") || item.ends_with("_energy_cube");
+        assert_eq!(tier_block_color(item).is_some(), expected, "{item}");
+        if expected {
+            tiered += 1;
+            assert!(name_color(item).is_some(), "{item}");
+        }
+    }
+    assert_eq!(tiered, 41);
+    assert_eq!(name_color("mekanism:basic_energy_cube"), Some(0x5FFFB8));
+    assert_eq!(
+        name_color("mekanism:ultimate_infusing_factory"),
+        Some(0xF787FF)
+    );
+    assert_eq!(name_color("mekanism:creative_energy_cube"), Some(0x585858));
+}

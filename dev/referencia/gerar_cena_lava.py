@@ -18,7 +18,7 @@ NIVEIS = [("vazia", 0), ("meia", 500), ("cheia", 1000), ("sobre", 5000)]
 def componentes(total):
     item, _pos, components, _label, _total = [m for m in MACHINES if m[0].endswith("heat_generator")][0]
     if total == 0:
-        components = re.sub(r"mekanism:fluids=\{containers:\[\{type:\{id:\"minecraft:lava\"\},amount:\d+L\}\]\},", "", components)
+        components = re.sub(r'mekanism:fluids=\{containers:\[\{type:\{id:"minecraft:lava"\},amount:\d+L\}\]\},', "", components)
     else:
         components = re.sub(r"amount:1500L", f"amount:{total}L", components)
     return item, components

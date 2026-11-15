@@ -3650,11 +3650,31 @@ pub fn description_key(item: &str) -> String {
     format!("description.mekanism.{name}")
 }
 
+/// `ItemRegistryObject.getNameColor` (`:91-104`): o item de um bloco com tier (`Attribute.getBaseTier`) leva a cor do tier no nome (`BaseTier.getTextColor`: Basic `0x5FFFB8`, Advanced
+/// `0xFF806A`, Elite `0x4BF8FF`, Ultimate `0xF787FF`, Creative `0x585858`). Aqui os blocos com tier que têm `DETAILS`: as 36 fábricas e os 5 cubos de energia.
+pub fn tier_block_color(item: &str) -> Option<u32> {
+    let name = item.strip_prefix("mekanism:")?;
+    if !(name.ends_with("_factory") || name.ends_with("_energy_cube")) {
+        return None;
+    }
+    match name.split('_').next()? {
+        "basic" => Some(0x5FFFB8),
+        "advanced" => Some(0xFF806A),
+        "elite" => Some(0x4BF8FF),
+        "ultimate" => Some(0xF787FF),
+        "creative" => Some(0x585858),
+        _ => None,
+    }
+}
+
 /// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
 /// circuitos, os quatro discos do QIO e os quatro instaladores de tier (`BaseTier.getTextColor`, `BaseTier.java:22-25`; o instalador pela cor do tier de destino,
 /// `registerInstaller`, `MekanismItems.java:299-302`), os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`) e o Configurator (`EnumColor.AQUA`, `MekanismItems.java:93-94`).
 /// O Horizon lê o `item_name` só do dado de cada pilha, não do componente padrão do item, então a cor vai pelo hook do tooltip (`glue::tooltip`).
 pub fn name_color(item: &str) -> Option<u32> {
+    if let Some(color) = tier_block_color(item) {
+        return Some(color);
+    }
     match item {
         "mekanism:basic_control_circuit"
         | "mekanism:qio_drive_base"
