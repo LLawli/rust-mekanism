@@ -52,6 +52,23 @@ fn line_break(text: &str, max_width: f32, width: &dyn Fn(&str) -> f32) -> usize 
     next_char
 }
 
+/// `ClientHooks.gatherTooltipComponentsFromElements` (NeoForge): a largura em que as linhas de um tooltip de item são cortadas, ou `None` quando o texto cabe. `widest` é a linha mais
+/// larga (`Font.width`, inteiro), `mouse_x` o cursor e `screen_width` a tela, em pixels de GUI. O tooltip fica à direita do cursor (`mouse_x + 12`); se não cabe, à esquerda
+/// (`mouse_x - 16 - widest`); se também não cabe, as linhas são cortadas no espaço do lado maior (`Font.split`, `split_lines`).
+pub fn item_wrap_width(widest: i32, mouse_x: i32, screen_width: i32) -> Option<i32> {
+    if mouse_x + 12 + widest + 4 <= screen_width {
+        return None;
+    }
+    if mouse_x - 16 - widest >= 4 {
+        return None;
+    }
+    Some(if mouse_x > screen_width / 2 {
+        mouse_x - 12 - 8
+    } else {
+        screen_width - 16 - mouse_x
+    })
+}
+
 /// `MenuTooltipPositioner.positionTooltip`: onde cai o canto de cima e da esquerda do texto de um tooltip de widget
 /// (`WidgetTooltipHolder.createTooltipPositioner`), que fica ao lado do cursor mas por cima ou por baixo do widget, e não sobre ele.
 /// Tudo em pixels de GUI inteiros: `screen` e `size` são largura e altura, `mouse` o cursor e `widget` o `ScreenRectangle`
@@ -133,6 +150,23 @@ pub fn hold_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_item_tooltip_wraps_only_when_neither_side_of_the_cursor_fits() {
+        // Cabe à direita: 168 + 12 + 296 + 4 = 480.
+        assert_eq!(item_wrap_width(296, 168, 480), None);
+        // Não cabe à direita (320 + 12 + 160 + 4 = 496) e cabe à esquerda (320 - 16 - 160 = 144).
+        assert_eq!(item_wrap_width(160, 320, 480), None);
+        // Nenhum lado cabe com o cursor em 168 e 300 de largura: 168 - 16 - 300 < 4.
+        assert_eq!(item_wrap_width(300, 168, 480), Some(296));
+        // Nenhum lado cabe, cursor na metade esquerda: o espaço à direita (480 - 16 - 168).
+        assert_eq!(item_wrap_width(400, 168, 480), Some(296));
+        // Cursor na metade direita: o espaço à esquerda (400 - 12 - 8).
+        assert_eq!(item_wrap_width(500, 400, 480), Some(380));
+        // O limite à esquerda: 4 cabe, 3 não.
+        assert_eq!(item_wrap_width(300, 320, 480), None);
+        assert_eq!(item_wrap_width(301, 320, 480), Some(300));
+    }
 
     /// Seis pixels por caractere, o que basta para conferir onde as linhas fecham.
     fn six(text: &str) -> f32 {

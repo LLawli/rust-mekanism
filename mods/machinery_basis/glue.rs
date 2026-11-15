@@ -3657,12 +3657,25 @@ pub(in crate::game) fn content_hold_lines(game: &Game<'_>, details: bool, descri
     };
     hold_lines(true, true, details, description_key_down(game))
         .into_iter()
-        .map(|line| match line {
-            HoldLine::DetailsHint => hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO),
-            HoldLine::DescriptionHint => hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA),
-            HoldLine::Description => (Text::translate(description_key, &[]), u32::MAX),
+        .flat_map(|line| match line {
+            HoldLine::DetailsHint => vec![hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO)],
+            HoldLine::DescriptionHint => vec![hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA)],
+            HoldLine::Description => description_lines(game, description_key),
         })
         .collect()
+}
+
+/// A descrição do item (`DESCRIPTION`) cortada como o NeoForge corta o tooltip de um item (`ClientHooks.gatherTooltipComponentsFromElements`): o Horizon desenha as linhas como o
+/// mod as entrega, e a descrição é a linha mais larga, então o corte (`tooltip::item_wrap_width`, pelo cursor e pela largura da tela) vale para ela. O cursor de `Game` já está em pixels de GUI.
+fn description_lines(game: &Game<'_>, key: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
+    use horizon_client::mod_api::Text;
+    let whole = vec![(Text::translate(key, &[]), u32::MAX)];
+    let Some(renderer) = game.renderer.as_ref() else { return whole };
+    let screen = HudBatch::new([renderer.config.width, renderer.config.height]).width as i32;
+    let text = horizon_client::lang::get(key).to_string();
+    let width = |piece: &str| game.native_text_width(piece);
+    let Some(limit) = tooltip::item_wrap_width(width(&text).ceil() as i32, game.cursor.0 as i32, screen) else { return whole };
+    tooltip::split_lines(&text, limit as f32, &width).into_iter().map(|line| (Text::literal(line.as_str()), u32::MAX)).collect()
 }
 
 /// A capacidade de energia que o tooltip de uma máquina mostra: `UpgradeAware.getUpgradeCount(energy).getMaxEnergy(def)` (`ItemBlockTooltip`), a padrão `def` vezes o multiplicador máximo

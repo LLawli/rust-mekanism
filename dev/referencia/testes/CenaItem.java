@@ -128,7 +128,12 @@ public class CenaItem {
                 // lê `isDown()` primeiro). Só do original: o port as recebe como teclas físicas pelo `horizon-ctl key`.
                 case "#tecla" -> {
                     mekanism.client.key.MekanismKeyHandler.detailsKey.setDown(!words[1].equals("nenhuma"));
-                    mekanism.client.key.MekanismKeyHandler.descriptionKey.setDown(words[1].equals("descricao"));
+                    // O `descriptionKey` é Shift mais N: `KeyMapping.isDown` do NeoForge exige o modificador Shift de verdade (`KeyModifier.SHIFT.isActive`), que o `setDown` não faz. Enquanto a descrição
+                    // está apertada o modificador vira `NONE` (o `isDown` passa a valer o `setDown`), e nos outros tiros volta a `SHIFT`, para o texto da dica (`SHIFT + N`) ser o do jogo.
+                    var description = mekanism.client.key.MekanismKeyHandler.descriptionKey;
+                    boolean pressed = words[1].equals("descricao");
+                    description.setKeyModifierAndCode(pressed ? net.neoforged.neoforge.client.settings.KeyModifier.NONE : net.neoforged.neoforge.client.settings.KeyModifier.SHIFT, description.getKey());
+                    description.setDown(pressed);
                 }
                 default -> throw new IllegalArgumentException(command);
             }
