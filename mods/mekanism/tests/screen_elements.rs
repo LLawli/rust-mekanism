@@ -1,7 +1,7 @@
 //! O clique sobre as abas laterais das quatro máquinas contra o que o cliente oficial responde: `GuiMekanism.hasClickedOutside` numa grade de
 //! pixels de GUI inteiros ao redor da tela (`rastros/fora.jsonl`, gravado pela `CenaTelas` com `fora=1`), em cada estado (sem e com o upgrade
 //! de xp, sem e com a aba de avisos). Cada linha do rastro é um estado e um modo:
-//! - `completo`: o que o original tem, com as abas que o port não desenha (configuração, transporte, segurança, livro de receitas e redstone);
+//! - `completo`: o que o original tem, com as abas que o port não desenha (hoje só a janela de upgrades, de lados e de transporte; a segurança, a redstone e o livro, a aba, já estão);
 //! - `oculto`: as abas que o port não tem escondidas, como a cena de pixel;
 //! - `sem_upgrades`: o mesmo sem a aba de upgrades, que a janela de upgrades da lib responde (`windows.rs`), então o que sobra é o que
 //!   `screen_elements` declara.
@@ -90,6 +90,11 @@ fn security_button(x: i32, y: i32) -> bool {
     (179..197).contains(&x) && (38..56).contains(&y)
 }
 
+/// O botão da aba do livro de receitas (`GuiRecipeBookWindowTab`: 176, 62; o botão em (179, 66)), 18 por 18. O rastro foi gravado com ela oculta; `recipe_book_tab.rs` a confere no `completo`.
+fn recipe_book_button(x: i32, y: i32) -> bool {
+    (179..197).contains(&x) && (66..84).contains(&y)
+}
+
 /// O botão da aba de redstone (`GuiRedstoneControlTab`: 176, 137; o botão em (179, 141)), 18 por 18.
 fn redstone_button(x: i32, y: i32) -> bool {
     (179..197).contains(&x) && (141..159).contains(&y)
@@ -146,9 +151,9 @@ fn the_declared_elements_are_the_ones_the_original_finds_under_the_mouse() {
         let mirror = mirror_of(spec, tracked, xp, warning);
         let mut outside_hits = 0;
         for (x, y) in original.points() {
-            // O rastro foi gravado com as abas de segurança e de redstone ocultas (a cena as esconde): os botões delas, que o port tem, ficam fora da comparação
+            // O rastro foi gravado com as abas de segurança, de redstone e do livro ocultas (a cena as esconde): os botões delas, que o port tem, ficam fora da comparação
             // (o modo `completo`, que as mostra, os confere em `the_redstone_button_is_what_the_original_finds`).
-            if security_button(x, y) || redstone_button(x, y) {
+            if security_button(x, y) || redstone_button(x, y) || recipe_book_button(x, y) {
                 continue;
             }
             let port = inside_image(x, y)
@@ -228,7 +233,7 @@ fn the_xp_tab_and_the_warning_tab_follow_their_state() {
 }
 
 /// O que o port não desenha: o original tem mais elementos (`completo`), e tudo o que o port responde o original responde também. O que
-/// sobra no original e falta no port é a lista de faltas (configuração, transporte, livro de receitas).
+/// sobra no original e falta no port é a lista de faltas (a janela de upgrades, de lados e de transporte).
 #[test]
 fn the_port_never_claims_more_than_the_original_has() {
     let grids = trace();
@@ -246,9 +251,9 @@ fn the_port_never_claims_more_than_the_original_has() {
             assert!(!port || full.over(x, y), "{} em ({x}, {y})", hidden.case);
             missing += usize::from(!inside_image(x, y) && full.over(x, y) && !port);
         }
-        // Falta de verdade: a configuração, o transporte, o livro e a aba de upgrades (que é da janela da lib).
+        // Falta de verdade: a configuração, o transporte e a aba de upgrades (que é da janela da lib).
         assert!(
-            missing >= 4 * 18 * 18,
+            missing >= 3 * 18 * 18,
             "{} faltas em {}",
             missing,
             hidden.case

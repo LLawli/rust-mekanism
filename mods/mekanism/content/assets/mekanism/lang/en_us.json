@@ -336,6 +336,7 @@
   "gui.mekanism.upgrades.effect": "Effect: %1$sx",
   "gui.mekanism.upgrades.no_selection": "No selection.",
   "gui.mekanism.upgrades.supported": "Supported:",
+  "gui.mekanism.recipe_book": "Recipe Book",
   "gui.mekanism.using": "Using: %1$s/t",
   "tab.mekanism.xp_containment": "Collect all stored experience.",
   "owner.mekanism.format": "Owner: %1$s",

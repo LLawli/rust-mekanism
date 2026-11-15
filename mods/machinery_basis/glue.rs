@@ -3039,6 +3039,39 @@ pub(in crate::game) fn redstone_widget_tooltip(
 /// `Tooltip.create`: a largura em que o texto de um tooltip de widget quebra.
 const REDSTONE_TOOLTIP_WRAP: i32 = 170;
 
+/// `GuiRecipeBookWindowTab` desenhada: o suporte (branco, `TAB_RECIPE_BOOK`), o botão e o ícone `button/recipe_book`, com o fundo em foco sob o mouse e nenhuma janela por cima.
+/// A aba só fica inativa com a janela do livro aberta (`disableTab`), que o port ainda não tem.
+pub(in crate::game) fn recipe_book_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], image_width: i32, icon: &str) {
+    use machinery_basis_core::side_tab::{ButtonLook, RECIPE_BOOK_TAB_TINT, recipe_book_tab};
+    let tab = recipe_book_tab(image_width);
+    let cursor = game.native_cursor();
+    let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
+    let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
+    inset_tab(game, batch, "mekanism", tab, origin, RECIPE_BOOK_TAB_TINT, icon, ButtonLook::of(true, hovered));
+}
+
+/// `GuiRecipeBookWindowTab`: `setTooltip(MekanismLang.RECIPE_BOOK)`, que `Tooltip.create` quebra em 170 pixels, sobre o botão. `text` é o texto já traduzido. Devolve se desenhou.
+pub(in crate::game) fn recipe_book_widget_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    text: &str,
+    image_width: i32,
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    let tab = machinery_basis_core::side_tab::recipe_book_tab(image_width);
+    if game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
+        return false;
+    }
+    let lines: Vec<(String, Option<u32>)> = machinery_basis_core::upgrade_window::wrap_lines(text, REDSTONE_TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece))
+        .into_iter()
+        .map(|line| (line, None))
+        .collect();
+    let [bx, by, bw, bh] = tab.button();
+    menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + bx, cursor.1 - at[1] + by, bw, bh]);
+    true
+}
+
 /// `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`, no servidor: `PacketUtils.blockEntity` só entrega o tile a quem passa em `canAccess` (quem não passa é
 /// ignorado, sem mensagem) e então `setControlType(getControlType().getNext(supportsMode))`. Devolve `None` se o botão não é da redstone, `Some(None)` se é e o jogador não age ou não
 /// tem acesso, e `Some(Some(avançar))` se o modo deve mudar.

@@ -129,6 +129,18 @@ pub fn security_tab(image_width: i32, y: i32) -> InsetTab {
     InsetTab::right(image_width, y, XP_TAB_HEIGHT)
 }
 
+/// `GuiRecipeBookWindowTab`: `this(gui, recipeBook, false, 62, ...)` põe o suporte em (`imageWidth`, 62), 26 de largura e 26 de altura (o `height` do construtor de
+/// `GuiWindowCreatorTab`), com o botão de 18 por 18 em (179, 66). Está no `GuiMekanismTile.addGenericTabs` das telas de máquina com receitas (`IRecipeLookupHandler`),
+/// entre a aba de upgrades e a de redstone.
+pub const RECIPE_BOOK_TAB_Y: i32 = 62;
+/// `SpecialColors.TAB_RECIPE_BOOK`: `GUI_OBJECTS.register()` sem cor própria, o 29º pixel de `colormap/gui_objects.png` (índice 28), que o arquivo do Mekanism deixa branco.
+pub const RECIPE_BOOK_TAB_TINT: u32 = 0xFF_FF_FF_FF;
+
+/// A aba do livro de receitas, na lateral direita em [`RECIPE_BOOK_TAB_Y`].
+pub fn recipe_book_tab(image_width: i32) -> InsetTab {
+    InsetTab::right(image_width, RECIPE_BOOK_TAB_Y, XP_TAB_HEIGHT)
+}
+
 /// `y -= 28` quando o livro de receitas não está na tela (`isRecipeBookDisabled() || !supportsRecipeBook`): a aba sobe para onde ele ficaria.
 pub const XP_TAB_RECIPE_BOOK_SHIFT: i32 = 28;
 
@@ -263,6 +275,15 @@ mod tests {
             XpTab::new(176, 90, true).tab.button(),
             [179.0, 94.0, 18.0, 18.0]
         );
+    }
+
+    #[test]
+    fn the_recipe_book_tab_sits_at_62_and_the_xp_tab_is_28_below_it() {
+        assert_eq!(recipe_book_tab(176).holder(), [176.0, 62.0, 26.0, 26.0]);
+        assert_eq!(recipe_book_tab(176).button(), [179.0, 66.0, 18.0, 18.0]);
+        // Without the book the xp tab climbs to where the book would be: 90 - 28.
+        assert_eq!(XpTab::new(176, 90, false).tab.y, RECIPE_BOOK_TAB_Y);
+        assert_eq!(XpTab::new(176, 90, true).tab.y - RECIPE_BOOK_TAB_Y, XP_TAB_RECIPE_BOOK_SHIFT);
     }
 
     #[test]

@@ -1931,6 +1931,11 @@ pub const XP_TAB_ICON: &str = "mekanism:gui/sprites/tab/xp_containment";
 /// `MekanismLang.XP_CONTAINMENT_TAB`, o tooltip da aba.
 pub const XP_TAB_TOOLTIP: &str = "tab.mekanism.xp_containment";
 
+/// `GuiRecipeBookWindowTab`: `super(Mekanism.rl("button/recipe_book"), ...)`, o ícone de 18 por 18 sobre o botão.
+pub const RECIPE_BOOK_TAB_ICON: &str = "mekanism:gui/sprites/button/recipe_book";
+/// `MekanismLang.RECIPE_BOOK` (`gui.mekanism.recipe_book`), o tooltip da aba e o título da janela do livro.
+pub const RECIPE_BOOK_TAB_TOOLTIP: &str = "gui.mekanism.recipe_book";
+
 /// `GuiEnergyTab`: `super(Mekanism.rl("tab/energy_info"), gui, -26, 137, 26, 26)`, um elemento de textura na lateral esquerda, sem clique.
 pub const ENERGY_TAB: machinery_basis_core::side_tab::InfoTab =
     machinery_basis_core::side_tab::InfoTab {
@@ -2157,15 +2162,21 @@ pub fn energy_tab_tooltip(
     )
 }
 
+/// A aba do livro de receitas das telas das máquinas.
+pub fn recipe_book_tab() -> machinery_basis_core::side_tab::InsetTab {
+    machinery_basis_core::side_tab::recipe_book_tab(SCREEN_IMAGE_WIDTH)
+}
+
 /// A aba de xp das telas das máquinas.
 pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
     machinery_basis_core::side_tab::XpTab::new(SCREEN_IMAGE_WIDTH, XP_TAB_Y, true)
 }
 
 /// Os elementos que a tela de uma máquina tem fora da imagem de 176 por 166 e que `GuiMekanism.findElementOver` acha (os que a tela do port
-/// desenha; o livro de receitas do original ainda não existe aqui):
+/// desenha; a janela do livro de receitas do original ainda não existe aqui, só a aba):
 /// - `GuiEnergyTab` (`addGuiElements` de `GuiElectricMachine` e de `GuiMetallurgicInfuser`): -26, 137, 26 por 26, sempre ativa e visível.
 /// - `GuiWarningTab` (`GuiMekanism.addWarningTab`, à esquerda): -26, 109, 26 por 26, visível só com algum aviso (`updateVisibility`).
+/// - `GuiRecipeBookWindowTab`: o botão de dentro em (179, 66), sempre ativo e visível (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18).
 /// - `GuiXpContainmentTab`: o botão de dentro (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18, não o suporte de 26), visível só
 ///   com o upgrade de xp instalado (`hasXpContainment`).
 ///
@@ -2179,6 +2190,8 @@ pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_e
         Element::when(xp_tab().tab.button(), move |mirror| {
             mirror.boolean((screen.indexes)().xp_containment)
         }),
+        // `GuiRecipeBookWindowTab`: o botão de dentro em (179, 66), sempre ativo e visível (sem janela do livro aberta, que o port ainda não tem).
+        Element::always(recipe_book_tab().button()),
         // `GuiSecurityTab`: o botão de dentro, sempre ativo e visível (a máquina tem dono ou não).
         Element::always(
             machinery_basis_core::side_tab::security_tab(

@@ -3564,6 +3564,10 @@ pub(in crate::game) fn widget_tooltip(
     if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(read.redstone.control_type)), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
         return true;
     }
+    // `GuiRecipeBookWindowTab`: `setTooltip(MekanismLang.RECIPE_BOOK)`.
+    if basis::recipe_book_widget_tooltip(game, batch, &translate(rules::RECIPE_BOOK_TAB_TOOLTIP), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
+        return true;
+    }
     // `GuiXpContainmentTab`: `setTooltip(MekanismLang.XP_CONTAINMENT_TAB)`, que `Tooltip.create` quebra em 170 pixels. A janela de upgrades
     // por cima do botão o esconde (`isMouseOverCheckWindows`).
     let xp_tab = rules::xp_tab();
@@ -3678,6 +3682,7 @@ fn draw_infuser(game: &Game<'_>, machine: &Machine, mirror: &Mirror, batch: &mut
     sprite_rect(game, batch, DUMP_SPRITE, at(DUMP_RECT));
     // `GuiMekanism.init` a põe por último, depois de todos os elementos.
     game.mb_window_draw_tab(batch, machine.block, origin);
+    basis::recipe_book_draw(game, batch, origin, rules::SCREEN_IMAGE_WIDTH, rules::RECIPE_BOOK_TAB_ICON);
     basis::security_draw(game, batch, origin, &rules::machine_security(machine.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     basis::redstone_draw(game, batch, origin, read.redstone, rules::SCREEN_IMAGE_WIDTH);
     draw_xp_tab(game, batch, origin, &read);
@@ -3756,6 +3761,7 @@ fn draw_electric(
         view.element(rules::ScreenElement::Progress),
     );
     game.mb_window_draw_tab(batch, electric.block, origin);
+    basis::recipe_book_draw(game, batch, origin, rules::SCREEN_IMAGE_WIDTH, rules::RECIPE_BOOK_TAB_ICON);
     basis::security_draw(game, batch, origin, &rules::machine_security(electric.screen, mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     basis::redstone_draw(game, batch, origin, read.redstone, rules::SCREEN_IMAGE_WIDTH);
     draw_xp_tab(game, batch, origin, &read);
