@@ -115,7 +115,7 @@ pub fn warning_tab_rect(image_width: i32, left: bool) -> crate::gui::Rect {
 /// `MekanismLang.ISSUE_*` do aviso de redstone (`WarningType.REDSTONE_SIGNAL_ABSENT`, `REDSTONE_SIGNAL_PRESENT`, `REDSTONE_PULSE_REQUIRED`) que `getWarnings` traduz no tooltip
 /// da aba de avisos, ou `None` sem aviso.
 pub fn issue_lang_key(sync: RedstoneSync) -> Option<&'static str> {
-    warning(sync).then(|| match sync.control_type {
+    warning(sync).then_some(match sync.control_type {
         RedstoneControl::High => "gui.mekanism.issues.redstone_signal_absent",
         RedstoneControl::Low => "gui.mekanism.issues.redstone_signal_present",
         _ => "gui.mekanism.issues.redstone_pulse_required",
