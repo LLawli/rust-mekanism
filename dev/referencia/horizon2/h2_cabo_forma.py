@@ -559,6 +559,33 @@ def contorno():
 
 
 
+def quadros(pose, destino, quantos, intervalo):
+    """`quadros POSE DESTINO N [INTERVALO]`: N screenshots da pose de câmera `POSE` (de `lista_cameras`, mão vazia, interface escondida com F1), um a cada INTERVALO s, sem mexer na câmera entre eles; os
+    PNG vão para a pasta DESTINO do desktop (`<pose>_<i>.png`). É o que mostra se um quadro do port cintila (z-fighting do modelo, frente `transmissor-sobras`, decisão 231 (2))."""
+    h, aj = port()
+    cmd, wait = aj.cmd, aj.wait
+    alvo = next(p for p in lista_cameras() if p[0] == pose)
+    _, x, y, z, ax, ay, az = alvo
+    cmd("tick unfreeze")
+    cmd("gamemode creative @s")
+    cmd("clear @s")
+    cmd("tp @s %.4f %.4f %.4f 0 0" % mundo((x, y, z)))
+    wait(12)
+    h.ctl("look-at", *("%.4f" % v for v in mundo((ax, ay, az))))
+    wait(8)
+    h.ctl("key", "f1", "down")
+    h.ctl("key", "f1", "up")
+    time.sleep(2.0)
+    subprocess.run(["ssh", "desktop", f"mkdir -p {destino}"], check=True)
+    for i in range(quantos):
+        caminho = f"/tmp/{pose}_{i}.png"
+        h.ctl("screenshot", caminho)
+        subprocess.run(["ssh", "desktop", f"docker exec {os.environ.get('H_NAME', 'horizon2')} cat {caminho} > {destino}/{pose}_{i}.png"], check=True)
+        time.sleep(intervalo)
+    h.ctl("key", "f1", "down")
+    h.ctl("key", "f1", "up")
+
+
 def comparar(port_json, latest):
     dados = json.load(open(port_json))
     o = dados["origem"]
@@ -628,6 +655,8 @@ if __name__ == "__main__":
         video()
     elif modo == "contorno":
         contorno()
+    elif modo == "quadros":
+        quadros(sys.argv[2], sys.argv[3], int(sys.argv[4]), float(sys.argv[5]) if len(sys.argv) > 5 else 1.0)
     elif modo == "comparar":
         comparar(sys.argv[2], sys.argv[3])
     else:

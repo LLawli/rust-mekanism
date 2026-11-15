@@ -109,6 +109,10 @@ public class CenaBlocos {
             server.execute(() -> network(server, command));
             return;
         }
+        if (command.startsWith("#rede-ler ")) {
+            server.execute(() -> networkRead(server, command));
+            return;
+        }
         if (command.startsWith("#conexao ")) {
             server.execute(() -> connection(server, command));
             return;
@@ -205,6 +209,15 @@ public class CenaBlocos {
         }
         var buffered = (mekanism.common.lib.transmitter.DynamicBufferedResourceNetwork<?, ?, ?, ?>) network;
         Mekanism.logger.info("cena-rede: {} {} {} amount {} capacity {} scale {}", words[4], words[5], words[6], buffered.getContainer().amountAsLong(), buffered.getCapacity(), buffered.currentScale);
+    }
+
+    /// `#rede-ler X Y Z`: escreve no log (`cena-rede-lida`) o que a rede do transmissor em `x y z` tem agora, sem mexer nela: a quantidade, a capacidade e a escala (`currentScale`), para o cano que puxa de um caldeirão (frente `transmissor-sobras`, decisão 229 (b)) ser conferido contra o port.
+    private static void networkRead(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.transmitter.TileEntityTransmitter) server.overworld().getBlockEntity(pos);
+        var buffered = (mekanism.common.lib.transmitter.DynamicBufferedResourceNetwork<?, ?, ?, ?>) tile.getTransmitter().getTransmitterNetworkNN();
+        Mekanism.logger.info("cena-rede-lida: {} {} {} amount {} capacity {} scale {} transmitters {}", words[1], words[2], words[3], buffered.getContainer().amountAsLong(), buffered.getCapacity(), buffered.currentScale, buffered.transmittersSize());
     }
 
     private static void shot(Minecraft minecraft, String name) {

@@ -46,7 +46,9 @@ find "$M/infuser" -name '*.rs' -exec touch {} +
 find "$(dirname "$V")/native/stage" "$(dirname "$V")"/native/patched/*/native-crates -name '*.rs' -exec touch {} + 2>/dev/null || true
 JOGO_CMD=true "$HOME/.local/bin/$NAME" offline
 docker update --cpus 4 --memory 6g --memory-swap 6g "$NAME"
-"$HOME/.cache/rust-mekanism/lim-build" env JOGO_CMD="env CARGO_BUILD_JOBS=${JOBS:-2} horizon-launcher native-build ~/Games/Horizon/mods/infuser --instance horizon --profile dev --trust-native-code" "$HOME/.local/bin/$NAME" offline
+# `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo` a segura para o build e para o jogo do teste); passar de novo por `lim-build` esperaria por ela para sempre.
+LIM="$HOME/.cache/rust-mekanism/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
+$LIM env JOGO_CMD="env CARGO_BUILD_JOBS=${JOBS:-2} horizon-launcher native-build ~/Games/Horizon/mods/infuser --instance horizon --profile dev --trust-native-code" "$HOME/.local/bin/$NAME" offline
 echo "EXIT $?"
 NOVO=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$V/../instances.json" | head -1)
 echo "novo $NOVO"

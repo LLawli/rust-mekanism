@@ -16,7 +16,8 @@ FIM=$SAIDA.fim
 rm -f "$FIM"
 mkdir -p "$SAIDA"
 trap 'echo $? > "$FIM"' EXIT
-until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
+# `LOCK_MEU=1`: quem chama já pegou a trava (e a vaga) e a deixa para este script soltar.
+if [ "${LOCK_MEU:-}" != 1 ]; then until mkdir "$LOCK" 2>/dev/null; do sleep 5; done; fi
 echo "$DONO" > "$LOCK/dono"
 echo "TRAVA $(date +%T)"
 cp "$TOML" "$C/client.toml.antes-cabo-modelo"

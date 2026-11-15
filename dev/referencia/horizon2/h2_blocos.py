@@ -499,6 +499,8 @@ def cena(out, nomes=(), roteiro="blocos.json"):
             if cmd.startswith("#conexao "):
                 conexao(cmd)
                 continue
+            if cmd.startswith("#rede-ler "):
+                continue  # só do original (`cena-rede-lida` no log); o port loga a escala da rede do cliente na sonda `MBS`
             if cmd.startswith("#fluido "):
                 # Só do port (`cenas/cabo_conteudo_port.json`): o NBT do Fluid Tank do port (`machinery_basis.tanks`); o original usa o `fluid_tanks` dele no próprio roteiro.
                 time.sleep(1.5)
