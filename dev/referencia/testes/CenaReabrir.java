@@ -44,7 +44,17 @@ public class CenaReabrir {
     private static final int OZ = 0;
     private static final String CUBO_DADOS = "{component_config:{config0:[I;4,4,4,4,4,4],eject0:0b},energy_amount:9223372036854775807L}";
     // (x, y, z) relativos à origem
-    private static final int[][] CABOS = {{0, 0, 0}, {0, 0, 1}, {0, 0, 24}, {1, 0, 24}, {2, 0, 24}, {0, 0, 30}, {1, 0, 30}, {0, 0, 31}};
+    private static final int[][] CABOS = {{0, 0, 0}, {0, 0, 1}, {0, 0, 24}, {1, 0, 24}, {2, 0, 24}, {0, 0, 30}, {1, 0, 30}, {0, 0, 31},
+          // A segunda rodada (frente `rede-reabrir`): a reta de cinco cabos com um cubo na ponta leste, a cruz de cinco cabos e um cabo entre dois cubos.
+          {20, 0, 0}, {21, 0, 0}, {22, 0, 0}, {23, 0, 0}, {24, 0, 0},
+          {20, 0, 10}, {19, 0, 10}, {21, 0, 10}, {20, 0, 9}, {20, 0, 11},
+          {21, 0, 20},
+          // O cabo ao lado de um Energy Cube básico, seis casos (cada lado em `NONE`, `INPUT` e `OUTPUT`, com o `eject` desligado e ligado): o cubo em (40, 0, 3 i), o cabo a leste dele.
+          {41, 0, 0}, {41, 0, 3}, {41, 0, 6}, {41, 0, 9}, {41, 0, 12}, {41, 0, 15}};
+    // A configuração de lados de cada cubo básico: `DataType.ordinal()` dos seis lados (0 `NONE`, 1 `INPUT`, 4 `OUTPUT`) e o `eject`.
+    private static final int[][] CASOS_CUBO = {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {4, 0}, {4, 1}};
+    // Os cubos de energia da cena (o dos dois lados do cabo do meio, o da ponta da reta e os dois do cabo entre dois cubos).
+    private static final int[][] CUBOS = {{-1, 0, 0}, {1, 0, 0}, {25, 0, 0}, {20, 0, 20}, {22, 0, 20}};
 
     private static final List<BooleanSupplier> passos = new ArrayList<>();
     private static boolean montado;
@@ -171,20 +181,26 @@ public class CenaReabrir {
         run(server, "gamerule advance_time false");
         run(server, "gamerule advance_weather false");
         run(server, "gamerule send_command_feedback false");
-        run(server, String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", OX - 8, OY - 1, OZ - 8, OX + 12, OY - 1, OZ + 40));
-        run(server, String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air", OX - 8, OY, OZ - 8, OX + 12, OY + 8, OZ + 40));
-        int[][] blocos = {{0, 0, 0}, {0, 0, 1}, {0, 0, 24}, {1, 0, 24}, {2, 0, 24}, {0, 0, 30}, {1, 0, 30}, {0, 0, 31}};
-        for (int[] b : blocos) {
+        run(server, String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:stone", OX - 8, OY - 1, OZ - 8, OX + 48, OY - 1, OZ + 40));
+        run(server, String.format(Locale.ROOT, "fill %d %d %d %d %d %d minecraft:air", OX - 8, OY, OZ - 8, OX + 48, OY + 8, OZ + 40));
+        for (int[] b : CABOS) {
             run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:basic_universal_cable", OX + b[0], OY + b[1], OZ + b[2]));
         }
-        for (int dx : new int[]{-1, 1}) {
-            run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:creative_energy_cube", OX + dx, OY, OZ));
+        for (int[] b : CUBOS) {
+            run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:creative_energy_cube", OX + b[0], OY + b[1], OZ + b[2]));
+        }
+        for (int i = 0; i < CASOS_CUBO.length; i++) {
+            run(server, String.format(Locale.ROOT, "setblock %d %d %d mekanism:basic_energy_cube", OX + 40, OY, OZ + 3 * i));
         }
     }
 
     private static void dados(MinecraftServer server) {
-        for (int dx : new int[]{-1, 1}) {
-            run(server, String.format(Locale.ROOT, "data merge block %d %d %d %s", OX + dx, OY, OZ, CUBO_DADOS));
+        for (int[] b : CUBOS) {
+            run(server, String.format(Locale.ROOT, "data merge block %d %d %d %s", OX + b[0], OY + b[1], OZ + b[2], CUBO_DADOS));
+        }
+        for (int i = 0; i < CASOS_CUBO.length; i++) {
+            int d = CASOS_CUBO[i][0];
+            run(server, String.format(Locale.ROOT, "data merge block %d %d %d {component_config:{config0:[I;%d,%d,%d,%d,%d,%d],eject0:%db}}", OX + 40, OY, OZ + 3 * i, d, d, d, d, d, d, CASOS_CUBO[i][1]));
         }
     }
 
