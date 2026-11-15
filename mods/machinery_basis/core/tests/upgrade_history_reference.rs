@@ -244,3 +244,56 @@ fn a_sorted_nbt_reloads_like_the_original_except_for_bucket_ties() {
         "{different} de {total} amostras diferem"
     );
 }
+
+/// O tile posto vazio, sem passar por um item (`UpgradeComponent::new` sem `restore_item`: a tabela de 32 posições do `new Object2IntOpenHashMap<>()`), com os tipos instalados
+/// um a um: o rastro de `upgrade_history_3.jsonl` grava os campos `bare_*` de cada amostra (a ordem do tile, a da janela, a do arquivo e a do tile recarregado).
+fn bare_tile_of(row: &Value) -> UpgradeComponent {
+    let component = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
+    for name in names(&row["installed"]) {
+        assert_eq!(component.add_upgrades(&id(&name), 1), 1);
+    }
+    component
+}
+
+#[test]
+fn a_tile_placed_empty_keeps_the_order_of_the_original_in_every_sample() {
+    let mut total = 0;
+    for (n, row) in rows(3).iter().enumerate() {
+        use_hashes(row);
+        let tile = bare_tile_of(row);
+        let installed = names(&row["installed"]);
+        assert_eq!(
+            in_order(&tile),
+            names(&row["bare_tile"]),
+            "amostra {n} ({installed:?})"
+        );
+        let ids = data().type_ids();
+        let sync = UpgradeSync::of(&tile);
+        let listed: Vec<String> = sync
+            .installed(&ids)
+            .into_iter()
+            .map(|index| bare(&ids[index]))
+            .collect();
+        assert_eq!(
+            listed,
+            names(&row["bare_window"]),
+            "janela, amostra {n} ({installed:?})"
+        );
+        let saved = tile.saved();
+        assert_eq!(
+            saved.file_order,
+            names(&row["bare_file"]),
+            "arquivo, amostra {n} ({installed:?})"
+        );
+        let reloaded = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
+        reloaded.restore(&saved);
+        assert_eq!(
+            in_order(&reloaded),
+            names(&row["bare_reloaded"]),
+            "recarregado, amostra {n} ({installed:?})"
+        );
+        total += 1;
+    }
+    fixed_hashes(&[]);
+    assert_eq!(total, 2072);
+}

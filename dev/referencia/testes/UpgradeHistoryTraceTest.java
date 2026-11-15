@@ -114,8 +114,13 @@ public class UpgradeHistoryTraceTest {
                     root.addProperty("details", stack.has(MekanismDataComponents.DETAILS));
                     root.addProperty("description", stack.has(MekanismDataComponents.DESCRIPTION));
                     JsonArray tooltip = new JsonArray();
-                    for (Component line : stack.getTooltipLines(Item.TooltipContext.of(level), player, TooltipFlag.Default.NORMAL)) {
-                        tooltip.add(line.getString());
+                    try {
+                        for (Component line : stack.getTooltipLines(Item.TooltipContext.of(level), player, TooltipFlag.Default.NORMAL)) {
+                            tooltip.add(line.getString());
+                        }
+                    } catch (RuntimeException e) {
+                        // O módulo de ferramentas lê a configuração dele, que o servidor de teste não carregou: o item entra no rastro sem linhas e com o erro.
+                        root.addProperty("error", e.getMessage());
                     }
                     root.add("tooltip", tooltip);
                     lines.add(root.toString());

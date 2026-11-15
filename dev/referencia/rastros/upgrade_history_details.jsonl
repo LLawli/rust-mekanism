@@ -1,0 +1,763 @@
+{"item":"mekanism:robit","details":false,"description":false,"tooltip":["Robit","Name: Robit","Skin: Default","Security: Public","Stored energy: 0 FE/100 kFE","Inventory: no"]}
+{"item":"mekanism:energy_tablet","details":false,"description":false,"tooltip":["Energy Tablet","Stored energy: 0 FE/1 MFE"]}
+{"item":"mekanism:configurator","details":false,"description":false,"tooltip":["Configurator","State: Configurate (Items)"]}
+{"item":"mekanism:network_reader","details":false,"description":false,"tooltip":["Network Reader"]}
+{"item":"mekanism:dictionary","details":false,"description":true,"tooltip":["Dictionary","A tool used for viewing the tags of various components such as: items, blocks, and fluids."]}
+{"item":"mekanism:portable_teleporter","details":false,"description":false,"tooltip":["Portable Teleporter","Stored energy: 0 FE/1 MFE"]}
+{"item":"mekanism:configuration_card","details":false,"description":false,"tooltip":["Configuration Card","Data: None"]}
+{"item":"mekanism:crafting_formula","details":false,"description":false,"tooltip":["Crafting Formula"]}
+{"item":"mekanism:seismic_reader","details":false,"description":true,"tooltip":["Seismic Reader","A portable machine that uses seismic vibrations to provide information on differing layers of the world."]}
+{"item":"mekanism:gauge_dropper","details":false,"description":false,"tooltip":["Gauge Dropper","Empty"]}
+{"item":"mekanism:geiger_counter","details":false,"description":false,"tooltip":["Geiger Counter"]}
+{"item":"mekanism:dosimeter","details":false,"description":false,"tooltip":["Dosimeter"]}
+{"item":"mekanism:canteen","details":false,"description":false,"tooltip":["Canteen","Nutritional Paste: 0 mB"]}
+{"item":"mekanism:portable_qio_dashboard","details":false,"description":false,"tooltip":["Portable QIO Dashboard"]}
+{"item":"mekanism:qio_drive_base","details":false,"description":false,"tooltip":["QIO Drive","Items: 0 / 16,000","Types: 0 / 128"]}
+{"item":"mekanism:qio_drive_hyper_dense","details":false,"description":false,"tooltip":["Hyper-Dense QIO Drive","Items: 0 / 128,000","Types: 0 / 256"]}
+{"item":"mekanism:qio_drive_time_dilating","details":false,"description":false,"tooltip":["Time-Dilating QIO Drive","Items: 0 / 1,048,000","Types: 0 / 1,024"]}
+{"item":"mekanism:qio_drive_supermassive","details":false,"description":false,"tooltip":["Supermassive QIO Drive","Items: 0 / 16,000,000,000","Types: 0 / 8,192"]}
+{"item":"mekanism:hazmat_mask","details":false,"description":false,"tooltip":["Hazmat Mask"]}
+{"item":"mekanism:hazmat_gown","details":false,"description":false,"tooltip":["Hazmat Gown"]}
+{"item":"mekanism:hazmat_pants","details":false,"description":false,"tooltip":["Hazmat Pants"]}
+{"item":"mekanism:hazmat_boots","details":false,"description":false,"tooltip":["Hazmat Boots"]}
+{"item":"mekanism:mekasuit_helmet","details":false,"description":false,"tooltip":["MekaSuit Helmet","No Modules Installed","Stored energy: 0 FE/16 MFE","No fluid stored.","","When on Head:","+3 Armor","+3 Armor Toughness","+10% Knockback Resistance"]}
+{"item":"mekanism:mekasuit_bodyarmor","details":false,"description":false,"tooltip":["MekaSuit Bodyarmor","No Modules Installed","Stored energy: 0 FE/16 MFE","No chemicals stored.","","When on Chest:","+8 Armor","+3 Armor Toughness","+10% Knockback Resistance"]}
+{"item":"mekanism:mekasuit_pants","details":false,"description":false,"tooltip":["MekaSuit Pants","No Modules Installed","Stored energy: 0 FE/16 MFE","","When on Legs:","+6 Armor","+3 Armor Toughness","+10% Knockback Resistance"]}
+{"item":"mekanism:mekasuit_boots","details":false,"description":false,"tooltip":["MekaSuit Boots","No Modules Installed","Stored energy: 0 FE/16 MFE","","When on Feet:","+3 Armor","+3 Armor Toughness","+10% Knockback Resistance"]}
+{"item":"mekanism:module_base","details":false,"description":false,"tooltip":["Module Base"]}
+{"item":"mekanism:module","details":false,"description":false,"tooltip":["Module"]}
+{"item":"mekanism:upgrade","details":false,"description":false,"tooltip":["Upgrade"]}
+{"item":"mekanism:basic_tier_installer","details":false,"description":false,"tooltip":["Basic Tier Installer"]}
+{"item":"mekanism:advanced_tier_installer","details":false,"description":false,"tooltip":["Advanced Tier Installer"]}
+{"item":"mekanism:elite_tier_installer","details":false,"description":false,"tooltip":["Elite Tier Installer"]}
+{"item":"mekanism:ultimate_tier_installer","details":false,"description":false,"tooltip":["Ultimate Tier Installer"]}
+{"item":"mekanism:basic_control_circuit","details":false,"description":false,"tooltip":["Basic Control Circuit"]}
+{"item":"mekanism:advanced_control_circuit","details":false,"description":false,"tooltip":["Advanced Control Circuit"]}
+{"item":"mekanism:elite_control_circuit","details":false,"description":false,"tooltip":["Elite Control Circuit"]}
+{"item":"mekanism:ultimate_control_circuit","details":false,"description":false,"tooltip":["Ultimate Control Circuit"]}
+{"item":"mekanism:alloy_infused","details":false,"description":false,"tooltip":["Infused Alloy"]}
+{"item":"mekanism:alloy_reinforced","details":false,"description":false,"tooltip":["Reinforced Alloy"]}
+{"item":"mekanism:alloy_atomic","details":false,"description":false,"tooltip":["Atomic Alloy"]}
+{"item":"mekanism:enriched_carbon","details":false,"description":false,"tooltip":["Enriched Carbon"]}
+{"item":"mekanism:enriched_redstone","details":false,"description":false,"tooltip":["Enriched Redstone"]}
+{"item":"mekanism:enriched_diamond","details":false,"description":false,"tooltip":["Enriched Diamond"]}
+{"item":"mekanism:enriched_refined_obsidian","details":false,"description":false,"tooltip":["Enriched Obsidian"]}
+{"item":"mekanism:enriched_gold","details":false,"description":false,"tooltip":["Enriched Gold"]}
+{"item":"mekanism:enriched_tin","details":false,"description":false,"tooltip":["Enriched Tin"]}
+{"item":"mekanism:hdpe_pellet","details":false,"description":false,"tooltip":["HDPE Pellet"]}
+{"item":"mekanism:hdpe_rod","details":false,"description":false,"tooltip":["HDPE Rod"]}
+{"item":"mekanism:hdpe_sheet","details":false,"description":false,"tooltip":["HDPE Sheet"]}
+{"item":"mekanism:hdpe_stick","details":false,"description":false,"tooltip":["PlaStick"]}
+{"item":"mekanism:electrolytic_core","details":false,"description":false,"tooltip":["Electrolytic Core"]}
+{"item":"mekanism:teleportation_core","details":false,"description":false,"tooltip":["Teleportation Core"]}
+{"item":"mekanism:pellet_antimatter","details":false,"description":false,"tooltip":["Antimatter Pellet"]}
+{"item":"mekanism:pellet_plutonium","details":false,"description":false,"tooltip":["Plutonium Pellet"]}
+{"item":"mekanism:pellet_polonium","details":false,"description":false,"tooltip":["Polonium Pellet"]}
+{"item":"mekanism:reprocessed_fissile_fragment","details":false,"description":false,"tooltip":["Reprocessed Fissile Fragment"]}
+{"item":"mekanism:enriched_iron","details":false,"description":false,"tooltip":["Enriched Iron"]}
+{"item":"mekanism:sawdust","details":false,"description":false,"tooltip":["Sawdust"]}
+{"item":"mekanism:salt","details":false,"description":false,"tooltip":["Salt"]}
+{"item":"mekanism:substrate","details":false,"description":false,"tooltip":["Substrate"]}
+{"item":"mekanism:bio_fuel","details":false,"description":false,"tooltip":["Bio Fuel"]}
+{"item":"mekanism:dye_base","details":false,"description":false,"tooltip":["Dye Base"]}
+{"item":"mekanism:fluorite_gem","details":false,"description":false,"tooltip":["Fluorite"]}
+{"item":"mekanism:yellow_cake_uranium","details":false,"description":false,"tooltip":["Yellow Cake Uranium"]}
+{"item":"mekanism:dirty_netherite_scrap","details":false,"description":false,"tooltip":["Dirty Netherite Scrap"]}
+{"item":"mekanism:dust_bronze","details":false,"description":false,"tooltip":["Bronze Dust"]}
+{"item":"mekanism:dust_lapis_lazuli","details":false,"description":false,"tooltip":["Lapis Lazuli Dust"]}
+{"item":"mekanism:dust_coal","details":false,"description":false,"tooltip":["Coal Dust"]}
+{"item":"mekanism:dust_charcoal","details":false,"description":false,"tooltip":["Charcoal Dust"]}
+{"item":"mekanism:dust_quartz","details":false,"description":false,"tooltip":["Quartz Dust"]}
+{"item":"mekanism:dust_emerald","details":false,"description":false,"tooltip":["Emerald Dust"]}
+{"item":"mekanism:dust_diamond","details":false,"description":false,"tooltip":["Diamond Dust"]}
+{"item":"mekanism:dust_netherite","details":false,"description":false,"tooltip":["Netherite Dust"]}
+{"item":"mekanism:dust_steel","details":false,"description":false,"tooltip":["Steel Dust"]}
+{"item":"mekanism:dust_sulfur","details":false,"description":false,"tooltip":["Sulfur Dust"]}
+{"item":"mekanism:dust_lithium","details":false,"description":false,"tooltip":["Lithium Dust"]}
+{"item":"mekanism:dust_refined_obsidian","details":false,"description":false,"tooltip":["Refined Obsidian Dust"]}
+{"item":"mekanism:dust_obsidian","details":false,"description":false,"tooltip":["Obsidian Dust"]}
+{"item":"mekanism:dust_fluorite","details":false,"description":false,"tooltip":["Fluorite Dust"]}
+{"item":"mekanism:ingot_bronze","details":false,"description":false,"tooltip":["Bronze Ingot"]}
+{"item":"mekanism:ingot_refined_obsidian","details":false,"description":false,"tooltip":["Refined Obsidian Ingot"]}
+{"item":"mekanism:ingot_refined_glowstone","details":false,"description":false,"tooltip":["Refined Glowstone Ingot"]}
+{"item":"mekanism:ingot_steel","details":false,"description":false,"tooltip":["Steel Ingot"]}
+{"item":"mekanism:nugget_refined_obsidian","details":false,"description":false,"tooltip":["Refined Obsidian Nugget"]}
+{"item":"mekanism:nugget_bronze","details":false,"description":false,"tooltip":["Bronze Nugget"]}
+{"item":"mekanism:nugget_refined_glowstone","details":false,"description":false,"tooltip":["Refined Glowstone Nugget"]}
+{"item":"mekanism:nugget_steel","details":false,"description":false,"tooltip":["Steel Nugget"]}
+{"item":"mekanism:atomic_disassembler","details":false,"description":false,"tooltip":["Atomic Disassembler","Stored energy: 0 FE/1 MFE","Mode: Normal","Efficiency: 20","","When in Main Hand:"," 5 Attack Damage"," 1.6 Attack Speed"]}
+{"item":"mekanism:electric_bow","details":false,"description":false,"tooltip":["Electric Bow","Stored energy: 0 FE/120 kFE","Fire Mode: off"]}
+{"item":"mekanism:flamethrower","details":false,"description":false,"tooltip":["Flamethrower","Hydrogen: 0 mB","Mode: Combat"]}
+{"item":"mekanism:meka_tool","details":false,"description":false,"tooltip":["Meka-Tool","No Modules Installed","Stored energy: 0 FE/16 MFE","","When in Main Hand:"," 5 Attack Damage"," 1.6 Attack Speed"]}
+{"item":"mekanism:free_runners","details":false,"description":false,"tooltip":["Free Runners","Stored energy: 0 FE/64 kFE","Mode: Regular","","When on Feet:","+1 Movement Efficiency"]}
+{"item":"mekanism:free_runners_armored","details":false,"description":false,"tooltip":["Armored Free Runners","Stored energy: 0 FE/64 kFE","Mode: Regular","","When on Feet:","+3 Armor","+2 Armor Toughness","+1 Movement Efficiency"]}
+{"item":"mekanism:scuba_mask","details":false,"description":false,"tooltip":["Scuba Mask"]}
+{"item":"mekanism:scuba_tank","details":false,"description":false,"tooltip":["Scuba Tank","Oxygen: 0 mB","Flowing: no"]}
+{"item":"mekanism:jetpack","details":false,"description":false,"tooltip":["Jetpack","Hydrogen: 0 mB","Mode: Regular"]}
+{"item":"mekanism:jetpack_armored","details":false,"description":false,"tooltip":["Armored Jetpack","Hydrogen: 0 mB","Mode: Regular","","When on Chest:","+8 Armor","+2 Armor Toughness"]}
+{"item":"mekanism:hdpe_elytra","details":false,"description":false,"tooltip":["HDPE Reinforced Elytra","","When on Chest:","Enables Gliding Flight"]}
+{"item":"mekanism:shard_iron","details":false,"description":false,"tooltip":["Iron Shard"]}
+{"item":"mekanism:shard_gold","details":false,"description":false,"tooltip":["Gold Shard"]}
+{"item":"mekanism:shard_osmium","details":false,"description":false,"tooltip":["Osmium Shard"]}
+{"item":"mekanism:shard_copper","details":false,"description":false,"tooltip":["Copper Shard"]}
+{"item":"mekanism:shard_tin","details":false,"description":false,"tooltip":["Tin Shard"]}
+{"item":"mekanism:shard_lead","details":false,"description":false,"tooltip":["Lead Shard"]}
+{"item":"mekanism:shard_uranium","details":false,"description":false,"tooltip":["Uranium Shard"]}
+{"item":"mekanism:crystal_iron","details":false,"description":false,"tooltip":["Iron Crystal"]}
+{"item":"mekanism:crystal_gold","details":false,"description":false,"tooltip":["Gold Crystal"]}
+{"item":"mekanism:crystal_osmium","details":false,"description":false,"tooltip":["Osmium Crystal"]}
+{"item":"mekanism:crystal_copper","details":false,"description":false,"tooltip":["Copper Crystal"]}
+{"item":"mekanism:crystal_tin","details":false,"description":false,"tooltip":["Tin Crystal"]}
+{"item":"mekanism:crystal_lead","details":false,"description":false,"tooltip":["Lead Crystal"]}
+{"item":"mekanism:crystal_uranium","details":false,"description":false,"tooltip":["Uranium Crystal"]}
+{"item":"mekanism:dust_iron","details":false,"description":false,"tooltip":["Iron Dust"]}
+{"item":"mekanism:dust_gold","details":false,"description":false,"tooltip":["Gold Dust"]}
+{"item":"mekanism:dust_osmium","details":false,"description":false,"tooltip":["Osmium Dust"]}
+{"item":"mekanism:dust_copper","details":false,"description":false,"tooltip":["Copper Dust"]}
+{"item":"mekanism:dust_tin","details":false,"description":false,"tooltip":["Tin Dust"]}
+{"item":"mekanism:dust_lead","details":false,"description":false,"tooltip":["Lead Dust"]}
+{"item":"mekanism:dust_uranium","details":false,"description":false,"tooltip":["Uranium Dust"]}
+{"item":"mekanism:dirty_dust_iron","details":false,"description":false,"tooltip":["Dirty Iron Dust"]}
+{"item":"mekanism:dirty_dust_gold","details":false,"description":false,"tooltip":["Dirty Gold Dust"]}
+{"item":"mekanism:dirty_dust_osmium","details":false,"description":false,"tooltip":["Dirty Osmium Dust"]}
+{"item":"mekanism:dirty_dust_copper","details":false,"description":false,"tooltip":["Dirty Copper Dust"]}
+{"item":"mekanism:dirty_dust_tin","details":false,"description":false,"tooltip":["Dirty Tin Dust"]}
+{"item":"mekanism:dirty_dust_lead","details":false,"description":false,"tooltip":["Dirty Lead Dust"]}
+{"item":"mekanism:dirty_dust_uranium","details":false,"description":false,"tooltip":["Dirty Uranium Dust"]}
+{"item":"mekanism:clump_iron","details":false,"description":false,"tooltip":["Iron Clump"]}
+{"item":"mekanism:clump_gold","details":false,"description":false,"tooltip":["Gold Clump"]}
+{"item":"mekanism:clump_osmium","details":false,"description":false,"tooltip":["Osmium Clump"]}
+{"item":"mekanism:clump_copper","details":false,"description":false,"tooltip":["Copper Clump"]}
+{"item":"mekanism:clump_tin","details":false,"description":false,"tooltip":["Tin Clump"]}
+{"item":"mekanism:clump_lead","details":false,"description":false,"tooltip":["Lead Clump"]}
+{"item":"mekanism:clump_uranium","details":false,"description":false,"tooltip":["Uranium Clump"]}
+{"item":"mekanism:ingot_osmium","details":false,"description":false,"tooltip":["Osmium Ingot"]}
+{"item":"mekanism:ingot_tin","details":false,"description":false,"tooltip":["Tin Ingot"]}
+{"item":"mekanism:ingot_lead","details":false,"description":false,"tooltip":["Lead Ingot"]}
+{"item":"mekanism:ingot_uranium","details":false,"description":false,"tooltip":["Uranium Ingot"]}
+{"item":"mekanism:raw_osmium","details":false,"description":false,"tooltip":["Raw Osmium"]}
+{"item":"mekanism:raw_tin","details":false,"description":false,"tooltip":["Raw Tin"]}
+{"item":"mekanism:raw_lead","details":false,"description":false,"tooltip":["Raw Lead"]}
+{"item":"mekanism:raw_uranium","details":false,"description":false,"tooltip":["Raw Uranium"]}
+{"item":"mekanism:nugget_osmium","details":false,"description":false,"tooltip":["Osmium Nugget"]}
+{"item":"mekanism:nugget_tin","details":false,"description":false,"tooltip":["Tin Nugget"]}
+{"item":"mekanism:nugget_lead","details":false,"description":false,"tooltip":["Lead Nugget"]}
+{"item":"mekanism:nugget_uranium","details":false,"description":false,"tooltip":["Uranium Nugget"]}
+{"item":"mekanism:basic_smelting_factory","details":true,"description":true,"tooltip":["Basic Smelting Factory","Security: Public","Recipe type: Smelting","Stored energy: 0 FE/30 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_enriching_factory","details":true,"description":true,"tooltip":["Basic Enriching Factory","Security: Public","Recipe type: Enriching","Stored energy: 0 FE/30 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_crushing_factory","details":true,"description":true,"tooltip":["Basic Crushing Factory","Security: Public","Recipe type: Crushing","Stored energy: 0 FE/48 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_compressing_factory","details":true,"description":true,"tooltip":["Basic Compressing Factory","Security: Public","Recipe type: Compressing","Stored energy: 0 FE/90 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_combining_factory","details":true,"description":true,"tooltip":["Basic Combining Factory","Security: Public","Recipe type: Combining","Stored energy: 0 FE/30 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_purifying_factory","details":true,"description":true,"tooltip":["Basic Purifying Factory","Security: Public","Recipe type: Purifying","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_injecting_factory","details":true,"description":true,"tooltip":["Basic Injecting Factory","Security: Public","Recipe type: Injecting","Stored energy: 0 FE/90 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_infusing_factory","details":true,"description":true,"tooltip":["Basic Infusing Factory","Security: Public","Recipe type: Infusing","Stored energy: 0 FE/30 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:basic_sawing_factory","details":true,"description":true,"tooltip":["Basic Sawing Factory","Security: Public","Recipe type: Sawing","Stored energy: 0 FE/30 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_smelting_factory","details":true,"description":true,"tooltip":["Advanced Smelting Factory","Security: Public","Recipe type: Smelting","Stored energy: 0 FE/50 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_enriching_factory","details":true,"description":true,"tooltip":["Advanced Enriching Factory","Security: Public","Recipe type: Enriching","Stored energy: 0 FE/50 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_crushing_factory","details":true,"description":true,"tooltip":["Advanced Crushing Factory","Security: Public","Recipe type: Crushing","Stored energy: 0 FE/80 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_compressing_factory","details":true,"description":true,"tooltip":["Advanced Compressing Factory","Security: Public","Recipe type: Compressing","Stored energy: 0 FE/150 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_combining_factory","details":true,"description":true,"tooltip":["Advanced Combining Factory","Security: Public","Recipe type: Combining","Stored energy: 0 FE/50 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_purifying_factory","details":true,"description":true,"tooltip":["Advanced Purifying Factory","Security: Public","Recipe type: Purifying","Stored energy: 0 FE/100 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_injecting_factory","details":true,"description":true,"tooltip":["Advanced Injecting Factory","Security: Public","Recipe type: Injecting","Stored energy: 0 FE/150 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_infusing_factory","details":true,"description":true,"tooltip":["Advanced Infusing Factory","Security: Public","Recipe type: Infusing","Stored energy: 0 FE/50 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:advanced_sawing_factory","details":true,"description":true,"tooltip":["Advanced Sawing Factory","Security: Public","Recipe type: Sawing","Stored energy: 0 FE/50 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_smelting_factory","details":true,"description":true,"tooltip":["Elite Smelting Factory","Security: Public","Recipe type: Smelting","Stored energy: 0 FE/70 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_enriching_factory","details":true,"description":true,"tooltip":["Elite Enriching Factory","Security: Public","Recipe type: Enriching","Stored energy: 0 FE/70 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_crushing_factory","details":true,"description":true,"tooltip":["Elite Crushing Factory","Security: Public","Recipe type: Crushing","Stored energy: 0 FE/112 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_compressing_factory","details":true,"description":true,"tooltip":["Elite Compressing Factory","Security: Public","Recipe type: Compressing","Stored energy: 0 FE/210 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_combining_factory","details":true,"description":true,"tooltip":["Elite Combining Factory","Security: Public","Recipe type: Combining","Stored energy: 0 FE/70 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_purifying_factory","details":true,"description":true,"tooltip":["Elite Purifying Factory","Security: Public","Recipe type: Purifying","Stored energy: 0 FE/140 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_injecting_factory","details":true,"description":true,"tooltip":["Elite Injecting Factory","Security: Public","Recipe type: Injecting","Stored energy: 0 FE/210 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_infusing_factory","details":true,"description":true,"tooltip":["Elite Infusing Factory","Security: Public","Recipe type: Infusing","Stored energy: 0 FE/70 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:elite_sawing_factory","details":true,"description":true,"tooltip":["Elite Sawing Factory","Security: Public","Recipe type: Sawing","Stored energy: 0 FE/70 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_smelting_factory","details":true,"description":true,"tooltip":["Ultimate Smelting Factory","Security: Public","Recipe type: Smelting","Stored energy: 0 FE/90 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_enriching_factory","details":true,"description":true,"tooltip":["Ultimate Enriching Factory","Security: Public","Recipe type: Enriching","Stored energy: 0 FE/90 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_crushing_factory","details":true,"description":true,"tooltip":["Ultimate Crushing Factory","Security: Public","Recipe type: Crushing","Stored energy: 0 FE/144 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_compressing_factory","details":true,"description":true,"tooltip":["Ultimate Compressing Factory","Security: Public","Recipe type: Compressing","Stored energy: 0 FE/270 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_combining_factory","details":true,"description":true,"tooltip":["Ultimate Combining Factory","Security: Public","Recipe type: Combining","Stored energy: 0 FE/90 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_purifying_factory","details":true,"description":true,"tooltip":["Ultimate Purifying Factory","Security: Public","Recipe type: Purifying","Stored energy: 0 FE/180 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_injecting_factory","details":true,"description":true,"tooltip":["Ultimate Injecting Factory","Security: Public","Recipe type: Injecting","Stored energy: 0 FE/270 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_infusing_factory","details":true,"description":true,"tooltip":["Ultimate Infusing Factory","Security: Public","Recipe type: Infusing","Stored energy: 0 FE/90 FE","No chemicals stored.","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:ultimate_sawing_factory","details":true,"description":true,"tooltip":["Ultimate Sawing Factory","Security: Public","Recipe type: Sawing","Stored energy: 0 FE/90 FE","Inventory: no","A machine that serves as an upgrade to regular machinery, allowing for multiple processing operations to occur at once."]}
+{"item":"mekanism:block_osmium","details":false,"description":false,"tooltip":["Block of Osmium"]}
+{"item":"mekanism:block_raw_osmium","details":false,"description":false,"tooltip":["Block of Raw Osmium"]}
+{"item":"mekanism:block_tin","details":false,"description":false,"tooltip":["Block of Tin"]}
+{"item":"mekanism:block_raw_tin","details":false,"description":false,"tooltip":["Block of Raw Tin"]}
+{"item":"mekanism:block_lead","details":false,"description":false,"tooltip":["Block of Lead"]}
+{"item":"mekanism:block_raw_lead","details":false,"description":false,"tooltip":["Block of Raw Lead"]}
+{"item":"mekanism:block_uranium","details":false,"description":false,"tooltip":["Block of Uranium"]}
+{"item":"mekanism:block_raw_uranium","details":false,"description":false,"tooltip":["Block of Raw Uranium"]}
+{"item":"mekanism:tin_ore","details":false,"description":true,"tooltip":["Tin Ore","A lightweight, yet sturdy, conductive material."]}
+{"item":"mekanism:deepslate_tin_ore","details":false,"description":true,"tooltip":["Deepslate Tin Ore","A lightweight, yet sturdy, conductive material."]}
+{"item":"mekanism:osmium_ore","details":false,"description":true,"tooltip":["Osmium Ore","A strong mineral that can be found at nearly any height in the world. It is known to have many uses in the construction of machinery."]}
+{"item":"mekanism:deepslate_osmium_ore","details":false,"description":true,"tooltip":["Deepslate Osmium Ore","A strong mineral that can be found at nearly any height in the world. It is known to have many uses in the construction of machinery."]}
+{"item":"mekanism:uranium_ore","details":false,"description":true,"tooltip":["Uranium Ore","A common, heavy metal, which can yield massive amounts of energy when properly processed. In its naturally-occurring form, it is not radioactive enough to cause harm."]}
+{"item":"mekanism:deepslate_uranium_ore","details":false,"description":true,"tooltip":["Deepslate Uranium Ore","A common, heavy metal, which can yield massive amounts of energy when properly processed. In its naturally-occurring form, it is not radioactive enough to cause harm."]}
+{"item":"mekanism:fluorite_ore","details":false,"description":true,"tooltip":["Fluorite Ore","A mineral found relatively deep under the world's surface. The crystals can be processed into Hydrofluoric Acid, an essential chemical for Uranium processing."]}
+{"item":"mekanism:deepslate_fluorite_ore","details":false,"description":true,"tooltip":["Deepslate Fluorite Ore","A mineral found relatively deep under the world's surface. The crystals can be processed into Hydrofluoric Acid, an essential chemical for Uranium processing."]}
+{"item":"mekanism:lead_ore","details":false,"description":true,"tooltip":["Lead Ore","A somewhat rare metal that is excellent at resisting radioactive particles."]}
+{"item":"mekanism:deepslate_lead_ore","details":false,"description":true,"tooltip":["Deepslate Lead Ore","A somewhat rare metal that is excellent at resisting radioactive particles."]}
+{"item":"mekanism:block_charcoal","details":false,"description":false,"tooltip":["Block of Charcoal"]}
+{"item":"mekanism:block_bronze","details":false,"description":false,"tooltip":["Block of Bronze"]}
+{"item":"mekanism:block_steel","details":false,"description":false,"tooltip":["Block of Steel"]}
+{"item":"mekanism:block_fluorite","details":false,"description":false,"tooltip":["Block of Fluorite"]}
+{"item":"mekanism:block_refined_obsidian","details":false,"description":false,"tooltip":["Refined Obsidian"]}
+{"item":"mekanism:block_refined_glowstone","details":false,"description":false,"tooltip":["Refined Glowstone"]}
+{"item":"mekanism:basic_bin","details":false,"description":true,"tooltip":["Basic Bin","Empty","Capacity: 4,096 Items","A block used to store large quantities of a single type of item."]}
+{"item":"mekanism:advanced_bin","details":false,"description":true,"tooltip":["Advanced Bin","Empty","Capacity: 8,192 Items","A block used to store large quantities of a single type of item."]}
+{"item":"mekanism:elite_bin","details":false,"description":true,"tooltip":["Elite Bin","Empty","Capacity: 32,768 Items","A block used to store large quantities of a single type of item."]}
+{"item":"mekanism:ultimate_bin","details":false,"description":true,"tooltip":["Ultimate Bin","Empty","Capacity: 262,144 Items","A block used to store large quantities of a single type of item."]}
+{"item":"mekanism:creative_bin","details":false,"description":true,"tooltip":["Creative Bin","Empty","Capacity: Infinite","A block used to store large quantities of a single type of item."]}
+{"item":"mekanism:teleporter_frame","details":false,"description":true,"tooltip":["Teleporter Frame","The frame used to construct the Teleporter multiblock, allowing a portal to be generated within the structure."]}
+{"item":"mekanism:steel_casing","details":false,"description":true,"tooltip":["Steel Casing","A sturdy, steel-based casing used as a foundation for machinery."]}
+{"item":"mekanism:dynamic_tank","details":false,"description":true,"tooltip":["Dynamic Tank","The casing used in the Dynamic Tank multiblock, a structure capable of storing great amounts of fluid and chemicals."]}
+{"item":"mekanism:structural_glass","details":false,"description":true,"tooltip":["Structural Glass","An advanced, reinforced material of glass that drops when broken and can be used in the structure of any applicable multiblock."]}
+{"item":"mekanism:dynamic_valve","details":false,"description":true,"tooltip":["Dynamic Valve","A valve that can be placed on a Dynamic Tank multiblock, allowing for fluids and chemicals to be inserted and extracted via external piping."]}
+{"item":"mekanism:thermal_evaporation_controller","details":false,"description":true,"tooltip":["Thermal Evaporation Controller","The controller for a Thermal Evaporation Plant, acting as the master block of the structure. Only one of these should be placed on a multiblock."]}
+{"item":"mekanism:thermal_evaporation_valve","details":false,"description":true,"tooltip":["Thermal Evaporation Valve","A valve that can be placed on a Thermal Evaporation Plant multiblock, allowing for fluids to be inserted and extracted via external piping."]}
+{"item":"mekanism:thermal_evaporation_block","details":false,"description":true,"tooltip":["Thermal Evaporation Block","A copper-alloyed casing used in the structure of a Thermal Evaporation Plant, using its advanced material to conduct the great amounts of heat necessary for processing."]}
+{"item":"mekanism:induction_casing","details":false,"description":true,"tooltip":["Induction Casing","A type of energy-resistant casing used in the creation of an Energized Induction Matrix multiblock."]}
+{"item":"mekanism:induction_port","details":false,"description":true,"tooltip":["Induction Port","A port that can be placed on an Energized Induction Matrix multiblock, allowing for energy to be inserted from and output to external cabling."]}
+{"item":"mekanism:basic_induction_cell","details":false,"description":true,"tooltip":["Basic Induction Cell","Capacity: 8 GFE","Stored energy: 0 FE/8 GFE","A highly conductive energy capacitor capable of storing massive amounts of energy in a single block. Housed in an Energized Induction Matrix to expand the multiblock's energy storage."]}
+{"item":"mekanism:advanced_induction_cell","details":false,"description":true,"tooltip":["Advanced Induction Cell","Capacity: 64 GFE","Stored energy: 0 FE/64 GFE","A highly conductive energy capacitor capable of storing massive amounts of energy in a single block. Housed in an Energized Induction Matrix to expand the multiblock's energy storage."]}
+{"item":"mekanism:elite_induction_cell","details":false,"description":true,"tooltip":["Elite Induction Cell","Capacity: 512 GFE","Stored energy: 0 FE/512 GFE","A highly conductive energy capacitor capable of storing massive amounts of energy in a single block. Housed in an Energized Induction Matrix to expand the multiblock's energy storage."]}
+{"item":"mekanism:ultimate_induction_cell","details":false,"description":true,"tooltip":["Ultimate Induction Cell","Capacity: 4 TFE","Stored energy: 0 FE/4 TFE","A highly conductive energy capacitor capable of storing massive amounts of energy in a single block. Housed in an Energized Induction Matrix to expand the multiblock's energy storage."]}
+{"item":"mekanism:basic_induction_provider","details":false,"description":true,"tooltip":["Basic Induction Provider","Output Rate: 256 kFE","An advanced complex of coolant systems, conductors and transformers capable of expanding the Energized Induction Matrix's maximum rate of energy transfer."]}
+{"item":"mekanism:advanced_induction_provider","details":false,"description":true,"tooltip":["Advanced Induction Provider","Output Rate: 2.04 MFE","An advanced complex of coolant systems, conductors and transformers capable of expanding the Energized Induction Matrix's maximum rate of energy transfer."]}
+{"item":"mekanism:elite_induction_provider","details":false,"description":true,"tooltip":["Elite Induction Provider","Output Rate: 16.38 MFE","An advanced complex of coolant systems, conductors and transformers capable of expanding the Energized Induction Matrix's maximum rate of energy transfer."]}
+{"item":"mekanism:ultimate_induction_provider","details":false,"description":true,"tooltip":["Ultimate Induction Provider","Output Rate: 131.07 MFE","An advanced complex of coolant systems, conductors and transformers capable of expanding the Energized Induction Matrix's maximum rate of energy transfer."]}
+{"item":"mekanism:superheating_element","details":false,"description":true,"tooltip":["Superheating Element","A modular, somewhat dangerous radiator that is capable of emitting massive amounts of heat to its surroundings."]}
+{"item":"mekanism:pressure_disperser","details":false,"description":true,"tooltip":["Pressure Disperser","A block used to disperse steam throughout a multiblock structure. These should form a gapless, horizontal plane in order to properly control steam flow."]}
+{"item":"mekanism:boiler_casing","details":false,"description":true,"tooltip":["Boiler Casing","A pressure-resistant, dense casing used in the creation of a Thermoelectric Boiler multiblock."]}
+{"item":"mekanism:boiler_valve","details":false,"description":true,"tooltip":["Boiler Valve","A valve that can be placed on a Thermoelectric Boiler multiblock, allowing for the insertion of energy and water along with the extraction of produced steam."]}
+{"item":"mekanism:security_desk","details":true,"description":true,"tooltip":["Security Desk","Inventory: no","A central control hub for managing the security of all your owned machinery."]}
+{"item":"mekanism:radioactive_waste_barrel","details":false,"description":true,"tooltip":["Radioactive Waste Barrel","Capacity: 512,000 mB","Decay Rate: 0.05 mB/t","Actual Decay Rate: 1 mB / 20 ticks","A barrel that can be used to 'safely' store radioactive waste. WARNING: breaking this barrel will release its contents into the atmosphere."]}
+{"item":"mekanism:industrial_alarm","details":true,"description":true,"tooltip":["Industrial Alarm","Not just your everyday alarm... this is an 'industrial' alarm!"]}
+{"item":"mekanism:enrichment_chamber","details":true,"description":true,"tooltip":["Enrichment Chamber","Security: Public","Recipe type: Enriching","Stored energy: 0 FE/20 FE","Inventory: no","A simple machine used to enrich ores into two of their dust counterparts, as well as perform many other operations."]}
+{"item":"mekanism:osmium_compressor","details":true,"description":true,"tooltip":["Osmium Compressor","Security: Public","Recipe type: Compressing","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","A fairly advanced machine used to compress osmium into various dusts in order to create their ingot counterparts."]}
+{"item":"mekanism:combiner","details":true,"description":true,"tooltip":["Combiner","Security: Public","Recipe type: Combining","Stored energy: 0 FE/20 FE","Inventory: no","A machine used to combine items together. For example, raw ores and cobblestone to form their ore counterparts."]}
+{"item":"mekanism:crusher","details":true,"description":true,"tooltip":["Crusher","Security: Public","Recipe type: Crushing","Stored energy: 0 FE/32 FE","Inventory: no","A machine used to crush ingots into their dust counterparts, as well as perform many other operations."]}
+{"item":"mekanism:digital_miner","details":true,"description":true,"tooltip":["Digital Miner","Security: Public","Stored energy: 0 FE/160 FE","Inventory: no","A highly-advanced, filter-based, auto-miner that can mine whatever block you tell it to within a 32 block (max) radius."]}
+{"item":"mekanism:metallurgic_infuser","details":true,"description":true,"tooltip":["Metallurgic Infuser","Security: Public","Recipe type: Infusing","Stored energy: 0 FE/20 FE","No chemicals stored.","Inventory: no","A machine used to infuse various materials into (generally) metals to create metal alloys and other compounds."]}
+{"item":"mekanism:purification_chamber","details":true,"description":true,"tooltip":["Purification Chamber","Security: Public","Recipe type: Purifying","Stored energy: 0 FE/40 FE","No chemicals stored.","Inventory: no","An advanced machine capable of processing ores into three clumps, serving as the initial stage of 300% ore processing."]}
+{"item":"mekanism:energized_smelter","details":true,"description":true,"tooltip":["Energized Smelter","Security: Public","Recipe type: Smelting","Stored energy: 0 FE/20 FE","Inventory: no","A simple machine that serves as a Mekanism-based furnace that runs off of energy."]}
+{"item":"mekanism:teleporter","details":true,"description":true,"tooltip":["Teleporter","Security: Public","Stored energy: 0 FE/1 kFE","Inventory: no","A machine capable of teleporting players to various locations defined by another teleporter."]}
+{"item":"mekanism:electric_pump","details":true,"description":true,"tooltip":["Electric Pump","Security: Public","Stored energy: 0 FE/8 FE","No fluid stored.","Inventory: no","An advanced, upgradeable pump, capable of extracting any type of fluid."]}
+{"item":"mekanism:personal_barrel","details":true,"description":true,"tooltip":["Personal Barrel","Security: Public","A 54-slot barrel that can be opened anywhere- even from your own inventory."]}
+{"item":"mekanism:personal_chest","details":true,"description":true,"tooltip":["Personal Chest","Security: Public","A 54-slot chest that can be opened from your own inventory."]}
+{"item":"mekanism:chargepad","details":true,"description":true,"tooltip":["Chargepad","Stored energy: 0 FE/4.09 kFE","A universal chargepad that can charge any energized item from any mod."]}
+{"item":"mekanism:logistical_sorter","details":true,"description":true,"tooltip":["Logistical Sorter","Security: Public","A filter-based, advanced sorting machine that can auto-eject specified items out of and into adjacent inventories and Logistical Transporters."]}
+{"item":"mekanism:rotary_condensentrator","details":true,"description":true,"tooltip":["Rotary Condensentrator","Security: Public","Stored energy: 0 FE/8 FE","No chemicals stored.","No fluid stored.","Inventory: no","A machine capable of converting chemicals into their fluid form and vice versa."]}
+{"item":"mekanism:chemical_oxidizer","details":true,"description":true,"tooltip":["Chemical Oxidizer","Security: Public","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","A machine capable of oxidizing solid materials into gas phase."]}
+{"item":"mekanism:chemical_infuser","details":true,"description":true,"tooltip":["Chemical Infuser","Security: Public","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","A machine that produces a new chemicals by infusing two others."]}
+{"item":"mekanism:chemical_injection_chamber","details":true,"description":true,"tooltip":["Chemical Injection Chamber","Security: Public","Recipe type: Injecting","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","An elite machine capable of processing ores into four shards, serving as the initial stage of 400% ore processing."]}
+{"item":"mekanism:electrolytic_separator","details":true,"description":true,"tooltip":["Electrolytic Separator","Security: Public","Stored energy: 0 FE/16 FE","No chemicals stored.","No fluid stored.","Inventory: no","A machine that uses the process of electrolysis to split apart a certain fluid into two different chemicals."]}
+{"item":"mekanism:precision_sawmill","details":true,"description":true,"tooltip":["Precision Sawmill","Security: Public","Recipe type: Sawing","Stored energy: 0 FE/20 FE","Inventory: no","A machine used to process logs and other wood-based items more efficiently, as well as to obtain sawdust."]}
+{"item":"mekanism:chemical_dissolution_chamber","details":true,"description":true,"tooltip":["Chemical Dissolution Chamber","Security: Public","Stored energy: 0 FE/64 FE","No chemicals stored.","Inventory: no","An ultimate machine used to chemically dissolve all impurities of an ore, leaving an unprocessed slurry behind."]}
+{"item":"mekanism:chemical_washer","details":true,"description":true,"tooltip":["Chemical Washer","Security: Public","Stored energy: 0 FE/20 FE","No chemicals stored.","No fluid stored.","Inventory: no","An ultimate machine that cleans unprocessed slurry and prepares it for crystallization."]}
+{"item":"mekanism:chemical_crystallizer","details":true,"description":true,"tooltip":["Chemical Crystallizer","Security: Public","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","An ultimate machine used to crystallize purified ore slurry into ore crystals."]}
+{"item":"mekanism:seismic_vibrator","details":true,"description":true,"tooltip":["Seismic Vibrator","Security: Public","Stored energy: 0 FE/20 FE","Inventory: no","A machine that uses seismic vibrations to provide information on differing layers of the world."]}
+{"item":"mekanism:pressurized_reaction_chamber","details":true,"description":true,"tooltip":["Pressurized Reaction Chamber","Security: Public","Stored energy: 0 FE/8 FE","No chemicals stored.","No fluid stored.","Inventory: no","An advanced machine that processes a solid, liquid and chemical mixture and creates both a chemical and solid product."]}
+{"item":"mekanism:isotopic_centrifuge","details":true,"description":true,"tooltip":["Isotopic Centrifuge","Security: Public","Stored energy: 0 FE/32 FE","No chemicals stored.","Inventory: no","A machine with one single purpose: to spin its contents really, REALLY fast."]}
+{"item":"mekanism:nutritional_liquifier","details":true,"description":true,"tooltip":["Nutritional Liquifier","Security: Public","Stored energy: 0 FE/32 FE","No fluid stored.","Inventory: no","A machine that is capable of processing any foods into non-dangerous, easily-digestible Nutritional Paste."]}
+{"item":"mekanism:basic_fluid_tank","details":false,"description":true,"tooltip":["Basic Fluid Tank","Security: Public","No fluid stored.","Capacity: 32,000 mB","Inventory: no","Bucket Mode: no","A handy, sturdy, portable tank that lets you carry multiple buckets of fluid wherever you please. Also doubles as a bucket!"]}
+{"item":"mekanism:advanced_fluid_tank","details":false,"description":true,"tooltip":["Advanced Fluid Tank","Security: Public","No fluid stored.","Capacity: 64,000 mB","Inventory: no","Bucket Mode: no","A handy, sturdy, portable tank that lets you carry multiple buckets of fluid wherever you please. Also doubles as a bucket!"]}
+{"item":"mekanism:elite_fluid_tank","details":false,"description":true,"tooltip":["Elite Fluid Tank","Security: Public","No fluid stored.","Capacity: 128,000 mB","Inventory: no","Bucket Mode: no","A handy, sturdy, portable tank that lets you carry multiple buckets of fluid wherever you please. Also doubles as a bucket!"]}
+{"item":"mekanism:ultimate_fluid_tank","details":false,"description":true,"tooltip":["Ultimate Fluid Tank","Security: Public","No fluid stored.","Capacity: 256,000 mB","Inventory: no","Bucket Mode: no","A handy, sturdy, portable tank that lets you carry multiple buckets of fluid wherever you please. Also doubles as a bucket!"]}
+{"item":"mekanism:creative_fluid_tank","details":false,"description":true,"tooltip":["Creative Fluid Tank","Security: Public","No fluid stored.","Capacity: Infinite","Inventory: no","Bucket Mode: no","A handy, sturdy, portable tank that lets you carry multiple buckets of fluid wherever you please. Also doubles as a bucket!"]}
+{"item":"mekanism:fluidic_plenisher","details":true,"description":true,"tooltip":["Fluidic Plenisher","Security: Public","Stored energy: 0 FE/8 FE","No fluid stored.","Inventory: no","A machine that is capable of creating entire lakes by filling ravines with fluids."]}
+{"item":"mekanism:laser","details":true,"description":true,"tooltip":["Laser","Security: Public","Stored energy: 0 FE/80 FE","An advanced form of linear energy transfer that utilizes an extremely collimated beam of light."]}
+{"item":"mekanism:laser_amplifier","details":true,"description":true,"tooltip":["Laser Amplifier","Security: Public","Stored energy: 0 FE/5 MFE","A block that can be used to merge, redirect and amplify laser beams, with fine controls over when to fire."]}
+{"item":"mekanism:laser_tractor_beam","details":true,"description":true,"tooltip":["Laser Tractor Beam","Security: Public","Stored energy: 0 FE/5 MFE","Inventory: no","A block used to merge and redirect laser beams. Collects drops from blocks it has broken."]}
+{"item":"mekanism:quantum_entangloporter","details":true,"description":true,"tooltip":["Quantum Entangloporter","Security: Public","A highly-advanced block capable of transmitting any practical resource across long distances and dimensions."]}
+{"item":"mekanism:solar_neutron_activator","details":true,"description":true,"tooltip":["Solar Neutron Activator","Security: Public","No chemicals stored.","Inventory: no","A machine that directs the neutron radiation of the sun into its internal reservoir, allowing for the slow creation of various isotopes."]}
+{"item":"mekanism:oredictionificator","details":true,"description":true,"tooltip":["Oredictionificator","Security: Public","Inventory: no","A machine used to unify and translate between various items and blocks using item tags."]}
+{"item":"mekanism:resistive_heater","details":true,"description":true,"tooltip":["Resistive Heater","Security: Public","Stored energy: 0 FE/400 FE","Inventory: no","A condensed, coiled resistor capable of converting electrical energy directly into heat energy."]}
+{"item":"mekanism:formulaic_assemblicator","details":true,"description":true,"tooltip":["Formulaic Assemblicator","Security: Public","Stored energy: 0 FE/20 FE","Inventory: no","A machine that uses energy to rapidly craft items and blocks from Crafting Formulas. Doubles as an advanced crafting bench."]}
+{"item":"mekanism:fuelwood_heater","details":true,"description":true,"tooltip":["Fuelwood Heater","Security: Public","Inventory: no","A machine that is capable of producing large quantities of heat energy by burning combustible items."]}
+{"item":"mekanism:modification_station","details":true,"description":true,"tooltip":["Modification Station","Security: Public","Stored energy: 0 FE/40 FE","Inventory: no","An advanced workbench capable of installing and removing modules from modular equipment (i.e. MekaSuit!)"]}
+{"item":"mekanism:antiprotonic_nucleosynthesizer","details":true,"description":true,"tooltip":["Antiprotonic Nucleosynthesizer","Security: Public","Stored energy: 0 FE/60 FE","No chemicals stored.","Inventory: no","A machine which uses bits of antimatter and mass amounts of energy to atomically transmute various resources."]}
+{"item":"mekanism:pigment_extractor","details":true,"description":true,"tooltip":["Pigment Extractor","Security: Public","Stored energy: 0 FE/20 FE","No chemicals stored.","Inventory: no","A machine used to extract pigments from blocks and items."]}
+{"item":"mekanism:pigment_mixer","details":true,"description":true,"tooltip":["Pigment Mixer","Security: Public","Stored energy: 0 FE/20 FE","No chemicals stored.","Inventory: no","A sturdy machine capable of mixing two pigments together to produce a new pigment."]}
+{"item":"mekanism:painting_machine","details":true,"description":true,"tooltip":["Painting Machine","Security: Public","Stored energy: 0 FE/20 FE","No chemicals stored.","Inventory: no","A machine used to color blocks and items via a careful application of a stored pigment."]}
+{"item":"mekanism:sps_casing","details":false,"description":true,"tooltip":["SPS Casing","Reinforced casing capable of resisting intense chemical and thermal effects from phase-shifting reactions."]}
+{"item":"mekanism:sps_port","details":false,"description":true,"tooltip":["SPS Port","Stored energy: 0 FE/1 GFE","A port used for the transfer of energy and substances in the Supercritical Phase Shifter."]}
+{"item":"mekanism:supercharged_coil","details":false,"description":true,"tooltip":["Supercharged Coil","Used in Supercritical Phase Shifter multiblock to supply large quantities of energy. Must be attached to a SPS Port."]}
+{"item":"mekanism:dimensional_stabilizer","details":true,"description":true,"tooltip":["Dimensional Stabilizer","Security: Public","Stored energy: 0 FE/60 FE","Inventory: no","A machine that prevents areas of the world from disappearing when not observed."]}
+{"item":"mekanism:qio_drive_array","details":true,"description":true,"tooltip":["QIO Drive Array","Security: Public","Inventory: no","The foundation of any Quantum Item Orchestration system. QIO Drives are stored here."]}
+{"item":"mekanism:qio_dashboard","details":true,"description":true,"tooltip":["QIO Dashboard","Security: Public","Inventory: no","A placeable monitor used to access an Quantum Item Orchestration system's contents."]}
+{"item":"mekanism:qio_importer","details":true,"description":true,"tooltip":["QIO Importer","Security: Public","A QIO-linked item import unit. Place on a block and import its contents to your QIO system."]}
+{"item":"mekanism:qio_exporter","details":true,"description":true,"tooltip":["QIO Exporter","Security: Public","A QIO-linked item export unit. Place on a block and export contents from your QIO system to the block."]}
+{"item":"mekanism:qio_redstone_adapter","details":true,"description":true,"tooltip":["QIO Redstone Adapter","Security: Public","A QIO-linked redstone adapter. Use to monitor your QIO system's contents."]}
+{"item":"mekanism:basic_energy_cube","details":true,"description":true,"tooltip":["Basic Energy Cube","Security: Public","Stored energy: 0 FE/4 MFE","Capacity: 4 MFE","Inventory: no","An advanced device for storing and distributing energy."]}
+{"item":"mekanism:advanced_energy_cube","details":true,"description":true,"tooltip":["Advanced Energy Cube","Security: Public","Stored energy: 0 FE/16 MFE","Capacity: 16 MFE","Inventory: no","An advanced device for storing and distributing energy."]}
+{"item":"mekanism:elite_energy_cube","details":true,"description":true,"tooltip":["Elite Energy Cube","Security: Public","Stored energy: 0 FE/64 MFE","Capacity: 64 MFE","Inventory: no","An advanced device for storing and distributing energy."]}
+{"item":"mekanism:ultimate_energy_cube","details":true,"description":true,"tooltip":["Ultimate Energy Cube","Security: Public","Stored energy: 0 FE/256 MFE","Capacity: 256 MFE","Inventory: no","An advanced device for storing and distributing energy."]}
+{"item":"mekanism:creative_energy_cube","details":true,"description":true,"tooltip":["Creative Energy Cube","Security: Public","Stored energy: 0 FE/Infinite","Capacity: Infinite","Inventory: no","An advanced device for storing and distributing energy."]}
+{"item":"mekanism:basic_universal_cable","details":false,"description":true,"tooltip":["Basic Universal Cable","Capacity: 8 kFE/t","","Capable of transferring:","- FE (NeoForge)","A simple way of distributing energy throughout a transmitter network."]}
+{"item":"mekanism:advanced_universal_cable","details":false,"description":true,"tooltip":["Advanced Universal Cable","Capacity: 128 kFE/t","","Capable of transferring:","- FE (NeoForge)","A simple way of distributing energy throughout a transmitter network."]}
+{"item":"mekanism:elite_universal_cable","details":false,"description":true,"tooltip":["Elite Universal Cable","Capacity: 1.02 MFE/t","","Capable of transferring:","- FE (NeoForge)","A simple way of distributing energy throughout a transmitter network."]}
+{"item":"mekanism:ultimate_universal_cable","details":false,"description":true,"tooltip":["Ultimate Universal Cable","Capacity: 8.19 MFE/t","","Capable of transferring:","- FE (NeoForge)","A simple way of distributing energy throughout a transmitter network."]}
+{"item":"mekanism:basic_mechanical_pipe","details":false,"description":true,"tooltip":["Basic Mechanical Pipe","Capacity: 2,000 mB/t","Pump Rate: 250 mB/t","","Capable of transferring:","- Fluids (NeoForge)","A simple way of distributing fluids throughout a transmitter network."]}
+{"item":"mekanism:advanced_mechanical_pipe","details":false,"description":true,"tooltip":["Advanced Mechanical Pipe","Capacity: 8,000 mB/t","Pump Rate: 1,000 mB/t","","Capable of transferring:","- Fluids (NeoForge)","A simple way of distributing fluids throughout a transmitter network."]}
+{"item":"mekanism:elite_mechanical_pipe","details":false,"description":true,"tooltip":["Elite Mechanical Pipe","Capacity: 32,000 mB/t","Pump Rate: 8,000 mB/t","","Capable of transferring:","- Fluids (NeoForge)","A simple way of distributing fluids throughout a transmitter network."]}
+{"item":"mekanism:ultimate_mechanical_pipe","details":false,"description":true,"tooltip":["Ultimate Mechanical Pipe","Capacity: 128,000 mB/t","Pump Rate: 32,000 mB/t","","Capable of transferring:","- Fluids (NeoForge)","A simple way of distributing fluids throughout a transmitter network."]}
+{"item":"mekanism:basic_pressurized_tube","details":false,"description":true,"tooltip":["Basic Pressurized Tube","Capacity: 4,000 mB/t","Pump Rate: 750 mB/t","","Capable of transferring:","- Chemicals (Mekanism)","A simple way of distributing chemicals throughout a transmitter network."]}
+{"item":"mekanism:advanced_pressurized_tube","details":false,"description":true,"tooltip":["Advanced Pressurized Tube","Capacity: 16,000 mB/t","Pump Rate: 2,000 mB/t","","Capable of transferring:","- Chemicals (Mekanism)","A simple way of distributing chemicals throughout a transmitter network."]}
+{"item":"mekanism:elite_pressurized_tube","details":false,"description":true,"tooltip":["Elite Pressurized Tube","Capacity: 256,000 mB/t","Pump Rate: 64,000 mB/t","","Capable of transferring:","- Chemicals (Mekanism)","A simple way of distributing chemicals throughout a transmitter network."]}
+{"item":"mekanism:ultimate_pressurized_tube","details":false,"description":true,"tooltip":["Ultimate Pressurized Tube","Capacity: 1,024,000 mB/t","Pump Rate: 256,000 mB/t","","Capable of transferring:","- Chemicals (Mekanism)","A simple way of distributing chemicals throughout a transmitter network."]}
+{"item":"mekanism:basic_logistical_transporter","details":false,"description":true,"tooltip":["Basic Logistical Transporter","Speed: 1.0 m/s","Pump Rate: 2.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:advanced_logistical_transporter","details":false,"description":true,"tooltip":["Advanced Logistical Transporter","Speed: 2.0 m/s","Pump Rate: 32.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:elite_logistical_transporter","details":false,"description":true,"tooltip":["Elite Logistical Transporter","Speed: 4.0 m/s","Pump Rate: 64.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:ultimate_logistical_transporter","details":false,"description":true,"tooltip":["Ultimate Logistical Transporter","Speed: 10.0 m/s","Pump Rate: 128.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:restrictive_transporter","details":false,"description":true,"tooltip":["Restrictive Transporter","Speed: 1.0 m/s","Pump Rate: 2.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","- Only used if no other paths available","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:diversion_transporter","details":false,"description":true,"tooltip":["Diversion Transporter","Speed: 1.0 m/s","Pump Rate: 2.0/s","","Capable of transferring:","- Items (universal)","- Blocks (universal)","- Controllable by redstone","A simple way of transporting items along the transmitter network."]}
+{"item":"mekanism:basic_thermodynamic_conductor","details":false,"description":true,"tooltip":["Basic Thermodynamic Conductor","Conduction: 5.0","Insulation: 10.0","Heat Capacity: 1.0","","Capable of transferring:","- Heat (Mekanism)","A simple way of transferring heat from one location to another."]}
+{"item":"mekanism:advanced_thermodynamic_conductor","details":false,"description":true,"tooltip":["Advanced Thermodynamic Conductor","Conduction: 5.0","Insulation: 400.0","Heat Capacity: 1.0","","Capable of transferring:","- Heat (Mekanism)","A simple way of transferring heat from one location to another."]}
+{"item":"mekanism:elite_thermodynamic_conductor","details":false,"description":true,"tooltip":["Elite Thermodynamic Conductor","Conduction: 5.0","Insulation: 8000.0","Heat Capacity: 1.0","","Capable of transferring:","- Heat (Mekanism)","A simple way of transferring heat from one location to another."]}
+{"item":"mekanism:ultimate_thermodynamic_conductor","details":false,"description":true,"tooltip":["Ultimate Thermodynamic Conductor","Conduction: 5.0","Insulation: 100000.0","Heat Capacity: 1.0","","Capable of transferring:","- Heat (Mekanism)","A simple way of transferring heat from one location to another."]}
+{"item":"mekanism:basic_chemical_tank","details":false,"description":true,"tooltip":["Basic Chemical Tank","Security: Public","No chemicals stored.","Capacity: 64,000 mB","Inventory: no","A portable tank that lets you carry chemicals wherever you please."]}
+{"item":"mekanism:advanced_chemical_tank","details":false,"description":true,"tooltip":["Advanced Chemical Tank","Security: Public","No chemicals stored.","Capacity: 256,000 mB","Inventory: no","A portable tank that lets you carry chemicals wherever you please."]}
+{"item":"mekanism:elite_chemical_tank","details":false,"description":true,"tooltip":["Elite Chemical Tank","Security: Public","No chemicals stored.","Capacity: 1,024,000 mB","Inventory: no","A portable tank that lets you carry chemicals wherever you please."]}
+{"item":"mekanism:ultimate_chemical_tank","details":false,"description":true,"tooltip":["Ultimate Chemical Tank","Security: Public","No chemicals stored.","Capacity: 8,192,000 mB","Inventory: no","A portable tank that lets you carry chemicals wherever you please."]}
+{"item":"mekanism:creative_chemical_tank","details":false,"description":true,"tooltip":["Creative Chemical Tank","Security: Public","No chemicals stored.","Capacity: Infinite","Inventory: no","A portable tank that lets you carry chemicals wherever you please."]}
+{"item":"mekanism:cardboard_box","details":false,"description":false,"tooltip":["Cardboard Box","Block data: no"]}
+{"item":"mekanism:block_salt","details":false,"description":false,"tooltip":["Salt Block"]}
+{"item":"mekanism:block_bio_fuel","details":false,"description":false,"tooltip":["Block of Bio Fuel"]}
+{"item":"mekanism:hydrogen_bucket","details":false,"description":false,"tooltip":["Liquid Hydrogen Bucket"]}
+{"item":"mekanism:oxygen_bucket","details":false,"description":false,"tooltip":["Liquid Oxygen Bucket"]}
+{"item":"mekanism:chlorine_bucket","details":false,"description":false,"tooltip":["Liquid Chlorine Bucket"]}
+{"item":"mekanism:sulfur_dioxide_bucket","details":false,"description":false,"tooltip":["Liquid Sulfur Dioxide Bucket"]}
+{"item":"mekanism:sulfur_trioxide_bucket","details":false,"description":false,"tooltip":["Liquid Sulfur Trioxide Bucket"]}
+{"item":"mekanism:sulfuric_acid_bucket","details":false,"description":false,"tooltip":["Liquid Sulfuric Acid Bucket"]}
+{"item":"mekanism:hydrogen_chloride_bucket","details":false,"description":false,"tooltip":["Liquid Hydrogen Chloride Bucket"]}
+{"item":"mekanism:hydrofluoric_acid_bucket","details":false,"description":false,"tooltip":["Liquid Hydrofluoric Acid Bucket"]}
+{"item":"mekanism:uranium_oxide_bucket","details":false,"description":false,"tooltip":["Liquid Uranium Oxide Bucket"]}
+{"item":"mekanism:uranium_hexafluoride_bucket","details":false,"description":false,"tooltip":["Liquid Uranium Hexafluoride Bucket"]}
+{"item":"mekanism:ethene_bucket","details":false,"description":false,"tooltip":["Liquid Ethene Bucket"]}
+{"item":"mekanism:sodium_bucket","details":false,"description":false,"tooltip":["Liquid Sodium Bucket"]}
+{"item":"mekanism:superheated_sodium_bucket","details":false,"description":false,"tooltip":["Liquid Superheated Sodium Bucket"]}
+{"item":"mekanism:brine_bucket","details":false,"description":false,"tooltip":["Brine Bucket"]}
+{"item":"mekanism:lithium_bucket","details":false,"description":false,"tooltip":["Liquid Lithium Bucket"]}
+{"item":"mekanism:steam_bucket","details":false,"description":false,"tooltip":["Liquid Steam Bucket"]}
+{"item":"mekanism:heavy_water_bucket","details":false,"description":false,"tooltip":["Heavy Water Bucket"]}
+{"item":"mekanism:nutritional_paste_bucket","details":false,"description":false,"tooltip":["Nutritional Paste Bucket"]}
+{"item":"mekanismadditions:baby_bogged_spawn_egg","details":false,"description":false,"tooltip":["Baby Bogged Spawn Egg"]}
+{"item":"mekanismadditions:baby_creeper_spawn_egg","details":false,"description":false,"tooltip":["Baby Creeper Spawn Egg"]}
+{"item":"mekanismadditions:baby_enderman_spawn_egg","details":false,"description":false,"tooltip":["Baby Enderman Spawn Egg"]}
+{"item":"mekanismadditions:baby_parched_spawn_egg","details":false,"description":false,"tooltip":["Baby Parched Spawn Egg"]}
+{"item":"mekanismadditions:baby_skeleton_spawn_egg","details":false,"description":false,"tooltip":["Baby Skeleton Spawn Egg"]}
+{"item":"mekanismadditions:baby_stray_spawn_egg","details":false,"description":false,"tooltip":["Baby Stray Spawn Egg"]}
+{"item":"mekanismadditions:baby_wither_skeleton_spawn_egg","details":false,"description":false,"tooltip":["Baby Wither Skeleton Spawn Egg"]}
+{"item":"mekanismadditions:walkie_talkie","details":false,"description":false,"tooltip":["Walkie-Talkie","off","Channel: 1","Voice server disabled."]}
+{"item":"mekanismadditions:white_balloon","details":false,"description":false,"tooltip":["White Balloon"]}
+{"item":"mekanismadditions:orange_balloon","details":false,"description":false,"tooltip":["Orange Balloon"]}
+{"item":"mekanismadditions:magenta_balloon","details":false,"description":false,"tooltip":["Magenta Balloon"]}
+{"item":"mekanismadditions:light_blue_balloon","details":false,"description":false,"tooltip":["Light Blue Balloon"]}
+{"item":"mekanismadditions:yellow_balloon","details":false,"description":false,"tooltip":["Yellow Balloon"]}
+{"item":"mekanismadditions:lime_balloon","details":false,"description":false,"tooltip":["Lime Balloon"]}
+{"item":"mekanismadditions:pink_balloon","details":false,"description":false,"tooltip":["Pink Balloon"]}
+{"item":"mekanismadditions:gray_balloon","details":false,"description":false,"tooltip":["Gray Balloon"]}
+{"item":"mekanismadditions:light_gray_balloon","details":false,"description":false,"tooltip":["Light Gray Balloon"]}
+{"item":"mekanismadditions:cyan_balloon","details":false,"description":false,"tooltip":["Cyan Balloon"]}
+{"item":"mekanismadditions:purple_balloon","details":false,"description":false,"tooltip":["Purple Balloon"]}
+{"item":"mekanismadditions:blue_balloon","details":false,"description":false,"tooltip":["Blue Balloon"]}
+{"item":"mekanismadditions:brown_balloon","details":false,"description":false,"tooltip":["Brown Balloon"]}
+{"item":"mekanismadditions:green_balloon","details":false,"description":false,"tooltip":["Green Balloon"]}
+{"item":"mekanismadditions:red_balloon","details":false,"description":false,"tooltip":["Red Balloon"]}
+{"item":"mekanismadditions:black_balloon","details":false,"description":false,"tooltip":["Black Balloon"]}
+{"item":"mekanismadditions:dark_red_balloon","details":false,"description":false,"tooltip":["Dark Red Balloon"]}
+{"item":"mekanismadditions:aqua_balloon","details":false,"description":false,"tooltip":["Aqua Balloon"]}
+{"item":"mekanismadditions:obsidian_tnt","details":false,"description":false,"tooltip":["Obsidian TNT"]}
+{"item":"mekanismadditions:white_glow_panel","details":false,"description":true,"tooltip":["White Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:orange_glow_panel","details":false,"description":true,"tooltip":["Orange Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:magenta_glow_panel","details":false,"description":true,"tooltip":["Magenta Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:light_blue_glow_panel","details":false,"description":true,"tooltip":["Light Blue Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:yellow_glow_panel","details":false,"description":true,"tooltip":["Yellow Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:lime_glow_panel","details":false,"description":true,"tooltip":["Lime Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:pink_glow_panel","details":false,"description":true,"tooltip":["Pink Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:gray_glow_panel","details":false,"description":true,"tooltip":["Gray Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:light_gray_glow_panel","details":false,"description":true,"tooltip":["Light Gray Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:cyan_glow_panel","details":false,"description":true,"tooltip":["Cyan Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:purple_glow_panel","details":false,"description":true,"tooltip":["Purple Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:blue_glow_panel","details":false,"description":true,"tooltip":["Blue Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:brown_glow_panel","details":false,"description":true,"tooltip":["Brown Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:green_glow_panel","details":false,"description":true,"tooltip":["Green Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:red_glow_panel","details":false,"description":true,"tooltip":["Red Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:black_glow_panel","details":false,"description":true,"tooltip":["Black Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:dark_red_glow_panel","details":false,"description":true,"tooltip":["Dark Red Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:aqua_glow_panel","details":false,"description":true,"tooltip":["Aqua Glow Panel","A modern, ever-lasting light source. Now in many colors!"]}
+{"item":"mekanismadditions:white_plastic","details":false,"description":false,"tooltip":["White Plastic Block"]}
+{"item":"mekanismadditions:orange_plastic","details":false,"description":false,"tooltip":["Orange Plastic Block"]}
+{"item":"mekanismadditions:magenta_plastic","details":false,"description":false,"tooltip":["Magenta Plastic Block"]}
+{"item":"mekanismadditions:light_blue_plastic","details":false,"description":false,"tooltip":["Light Blue Plastic Block"]}
+{"item":"mekanismadditions:yellow_plastic","details":false,"description":false,"tooltip":["Yellow Plastic Block"]}
+{"item":"mekanismadditions:lime_plastic","details":false,"description":false,"tooltip":["Lime Plastic Block"]}
+{"item":"mekanismadditions:pink_plastic","details":false,"description":false,"tooltip":["Pink Plastic Block"]}
+{"item":"mekanismadditions:gray_plastic","details":false,"description":false,"tooltip":["Gray Plastic Block"]}
+{"item":"mekanismadditions:light_gray_plastic","details":false,"description":false,"tooltip":["Light Gray Plastic Block"]}
+{"item":"mekanismadditions:cyan_plastic","details":false,"description":false,"tooltip":["Cyan Plastic Block"]}
+{"item":"mekanismadditions:purple_plastic","details":false,"description":false,"tooltip":["Purple Plastic Block"]}
+{"item":"mekanismadditions:blue_plastic","details":false,"description":false,"tooltip":["Blue Plastic Block"]}
+{"item":"mekanismadditions:brown_plastic","details":false,"description":false,"tooltip":["Brown Plastic Block"]}
+{"item":"mekanismadditions:green_plastic","details":false,"description":false,"tooltip":["Green Plastic Block"]}
+{"item":"mekanismadditions:red_plastic","details":false,"description":false,"tooltip":["Red Plastic Block"]}
+{"item":"mekanismadditions:black_plastic","details":false,"description":false,"tooltip":["Black Plastic Block"]}
+{"item":"mekanismadditions:dark_red_plastic","details":false,"description":false,"tooltip":["Dark Red Plastic Block"]}
+{"item":"mekanismadditions:aqua_plastic","details":false,"description":false,"tooltip":["Aqua Plastic Block"]}
+{"item":"mekanismadditions:white_slick_plastic","details":false,"description":false,"tooltip":["White Slick Plastic Block"]}
+{"item":"mekanismadditions:orange_slick_plastic","details":false,"description":false,"tooltip":["Orange Slick Plastic Block"]}
+{"item":"mekanismadditions:magenta_slick_plastic","details":false,"description":false,"tooltip":["Magenta Slick Plastic Block"]}
+{"item":"mekanismadditions:light_blue_slick_plastic","details":false,"description":false,"tooltip":["Light Blue Slick Plastic Block"]}
+{"item":"mekanismadditions:yellow_slick_plastic","details":false,"description":false,"tooltip":["Yellow Slick Plastic Block"]}
+{"item":"mekanismadditions:lime_slick_plastic","details":false,"description":false,"tooltip":["Lime Slick Plastic Block"]}
+{"item":"mekanismadditions:pink_slick_plastic","details":false,"description":false,"tooltip":["Pink Slick Plastic Block"]}
+{"item":"mekanismadditions:gray_slick_plastic","details":false,"description":false,"tooltip":["Gray Slick Plastic Block"]}
+{"item":"mekanismadditions:light_gray_slick_plastic","details":false,"description":false,"tooltip":["Light Gray Slick Plastic Block"]}
+{"item":"mekanismadditions:cyan_slick_plastic","details":false,"description":false,"tooltip":["Cyan Slick Plastic Block"]}
+{"item":"mekanismadditions:purple_slick_plastic","details":false,"description":false,"tooltip":["Purple Slick Plastic Block"]}
+{"item":"mekanismadditions:blue_slick_plastic","details":false,"description":false,"tooltip":["Blue Slick Plastic Block"]}
+{"item":"mekanismadditions:brown_slick_plastic","details":false,"description":false,"tooltip":["Brown Slick Plastic Block"]}
+{"item":"mekanismadditions:green_slick_plastic","details":false,"description":false,"tooltip":["Green Slick Plastic Block"]}
+{"item":"mekanismadditions:red_slick_plastic","details":false,"description":false,"tooltip":["Red Slick Plastic Block"]}
+{"item":"mekanismadditions:black_slick_plastic","details":false,"description":false,"tooltip":["Black Slick Plastic Block"]}
+{"item":"mekanismadditions:dark_red_slick_plastic","details":false,"description":false,"tooltip":["Dark Red Slick Plastic Block"]}
+{"item":"mekanismadditions:aqua_slick_plastic","details":false,"description":false,"tooltip":["Aqua Slick Plastic Block"]}
+{"item":"mekanismadditions:white_plastic_glow","details":false,"description":false,"tooltip":["White Glow Plastic Block"]}
+{"item":"mekanismadditions:orange_plastic_glow","details":false,"description":false,"tooltip":["Orange Glow Plastic Block"]}
+{"item":"mekanismadditions:magenta_plastic_glow","details":false,"description":false,"tooltip":["Magenta Glow Plastic Block"]}
+{"item":"mekanismadditions:light_blue_plastic_glow","details":false,"description":false,"tooltip":["Light Blue Glow Plastic Block"]}
+{"item":"mekanismadditions:yellow_plastic_glow","details":false,"description":false,"tooltip":["Yellow Glow Plastic Block"]}
+{"item":"mekanismadditions:lime_plastic_glow","details":false,"description":false,"tooltip":["Lime Glow Plastic Block"]}
+{"item":"mekanismadditions:pink_plastic_glow","details":false,"description":false,"tooltip":["Pink Glow Plastic Block"]}
+{"item":"mekanismadditions:gray_plastic_glow","details":false,"description":false,"tooltip":["Gray Glow Plastic Block"]}
+{"item":"mekanismadditions:light_gray_plastic_glow","details":false,"description":false,"tooltip":["Light Gray Glow Plastic Block"]}
+{"item":"mekanismadditions:cyan_plastic_glow","details":false,"description":false,"tooltip":["Cyan Glow Plastic Block"]}
+{"item":"mekanismadditions:purple_plastic_glow","details":false,"description":false,"tooltip":["Purple Glow Plastic Block"]}
+{"item":"mekanismadditions:blue_plastic_glow","details":false,"description":false,"tooltip":["Blue Glow Plastic Block"]}
+{"item":"mekanismadditions:brown_plastic_glow","details":false,"description":false,"tooltip":["Brown Glow Plastic Block"]}
+{"item":"mekanismadditions:green_plastic_glow","details":false,"description":false,"tooltip":["Green Glow Plastic Block"]}
+{"item":"mekanismadditions:red_plastic_glow","details":false,"description":false,"tooltip":["Red Glow Plastic Block"]}
+{"item":"mekanismadditions:black_plastic_glow","details":false,"description":false,"tooltip":["Black Glow Plastic Block"]}
+{"item":"mekanismadditions:dark_red_plastic_glow","details":false,"description":false,"tooltip":["Dark Red Glow Plastic Block"]}
+{"item":"mekanismadditions:aqua_plastic_glow","details":false,"description":false,"tooltip":["Aqua Glow Plastic Block"]}
+{"item":"mekanismadditions:white_reinforced_plastic","details":false,"description":false,"tooltip":["White Reinforced Plastic Block"]}
+{"item":"mekanismadditions:orange_reinforced_plastic","details":false,"description":false,"tooltip":["Orange Reinforced Plastic Block"]}
+{"item":"mekanismadditions:magenta_reinforced_plastic","details":false,"description":false,"tooltip":["Magenta Reinforced Plastic Block"]}
+{"item":"mekanismadditions:light_blue_reinforced_plastic","details":false,"description":false,"tooltip":["Light Blue Reinforced Plastic Block"]}
+{"item":"mekanismadditions:yellow_reinforced_plastic","details":false,"description":false,"tooltip":["Yellow Reinforced Plastic Block"]}
+{"item":"mekanismadditions:lime_reinforced_plastic","details":false,"description":false,"tooltip":["Lime Reinforced Plastic Block"]}
+{"item":"mekanismadditions:pink_reinforced_plastic","details":false,"description":false,"tooltip":["Pink Reinforced Plastic Block"]}
+{"item":"mekanismadditions:gray_reinforced_plastic","details":false,"description":false,"tooltip":["Gray Reinforced Plastic Block"]}
+{"item":"mekanismadditions:light_gray_reinforced_plastic","details":false,"description":false,"tooltip":["Light Gray Reinforced Plastic Block"]}
+{"item":"mekanismadditions:cyan_reinforced_plastic","details":false,"description":false,"tooltip":["Cyan Reinforced Plastic Block"]}
+{"item":"mekanismadditions:purple_reinforced_plastic","details":false,"description":false,"tooltip":["Purple Reinforced Plastic Block"]}
+{"item":"mekanismadditions:blue_reinforced_plastic","details":false,"description":false,"tooltip":["Blue Reinforced Plastic Block"]}
+{"item":"mekanismadditions:brown_reinforced_plastic","details":false,"description":false,"tooltip":["Brown Reinforced Plastic Block"]}
+{"item":"mekanismadditions:green_reinforced_plastic","details":false,"description":false,"tooltip":["Green Reinforced Plastic Block"]}
+{"item":"mekanismadditions:red_reinforced_plastic","details":false,"description":false,"tooltip":["Red Reinforced Plastic Block"]}
+{"item":"mekanismadditions:black_reinforced_plastic","details":false,"description":false,"tooltip":["Black Reinforced Plastic Block"]}
+{"item":"mekanismadditions:dark_red_reinforced_plastic","details":false,"description":false,"tooltip":["Dark Red Reinforced Plastic Block"]}
+{"item":"mekanismadditions:aqua_reinforced_plastic","details":false,"description":false,"tooltip":["Aqua Reinforced Plastic Block"]}
+{"item":"mekanismadditions:white_plastic_road","details":false,"description":false,"tooltip":["White Plastic Road"]}
+{"item":"mekanismadditions:orange_plastic_road","details":false,"description":false,"tooltip":["Orange Plastic Road"]}
+{"item":"mekanismadditions:magenta_plastic_road","details":false,"description":false,"tooltip":["Magenta Plastic Road"]}
+{"item":"mekanismadditions:light_blue_plastic_road","details":false,"description":false,"tooltip":["Light Blue Plastic Road"]}
+{"item":"mekanismadditions:yellow_plastic_road","details":false,"description":false,"tooltip":["Yellow Plastic Road"]}
+{"item":"mekanismadditions:lime_plastic_road","details":false,"description":false,"tooltip":["Lime Plastic Road"]}
+{"item":"mekanismadditions:pink_plastic_road","details":false,"description":false,"tooltip":["Pink Plastic Road"]}
+{"item":"mekanismadditions:gray_plastic_road","details":false,"description":false,"tooltip":["Gray Plastic Road"]}
+{"item":"mekanismadditions:light_gray_plastic_road","details":false,"description":false,"tooltip":["Light Gray Plastic Road"]}
+{"item":"mekanismadditions:cyan_plastic_road","details":false,"description":false,"tooltip":["Cyan Plastic Road"]}
+{"item":"mekanismadditions:purple_plastic_road","details":false,"description":false,"tooltip":["Purple Plastic Road"]}
+{"item":"mekanismadditions:blue_plastic_road","details":false,"description":false,"tooltip":["Blue Plastic Road"]}
+{"item":"mekanismadditions:brown_plastic_road","details":false,"description":false,"tooltip":["Brown Plastic Road"]}
+{"item":"mekanismadditions:green_plastic_road","details":false,"description":false,"tooltip":["Green Plastic Road"]}
+{"item":"mekanismadditions:red_plastic_road","details":false,"description":false,"tooltip":["Red Plastic Road"]}
+{"item":"mekanismadditions:black_plastic_road","details":false,"description":false,"tooltip":["Black Plastic Road"]}
+{"item":"mekanismadditions:dark_red_plastic_road","details":false,"description":false,"tooltip":["Dark Red Plastic Road"]}
+{"item":"mekanismadditions:aqua_plastic_road","details":false,"description":false,"tooltip":["Aqua Plastic Road"]}
+{"item":"mekanismadditions:white_plastic_transparent","details":false,"description":false,"tooltip":["White Transparent Plastic Block"]}
+{"item":"mekanismadditions:orange_plastic_transparent","details":false,"description":false,"tooltip":["Orange Transparent Plastic Block"]}
+{"item":"mekanismadditions:magenta_plastic_transparent","details":false,"description":false,"tooltip":["Magenta Transparent Plastic Block"]}
+{"item":"mekanismadditions:light_blue_plastic_transparent","details":false,"description":false,"tooltip":["Light Blue Transparent Plastic Block"]}
+{"item":"mekanismadditions:yellow_plastic_transparent","details":false,"description":false,"tooltip":["Yellow Transparent Plastic Block"]}
+{"item":"mekanismadditions:lime_plastic_transparent","details":false,"description":false,"tooltip":["Lime Transparent Plastic Block"]}
+{"item":"mekanismadditions:pink_plastic_transparent","details":false,"description":false,"tooltip":["Pink Transparent Plastic Block"]}
+{"item":"mekanismadditions:gray_plastic_transparent","details":false,"description":false,"tooltip":["Gray Transparent Plastic Block"]}
+{"item":"mekanismadditions:light_gray_plastic_transparent","details":false,"description":false,"tooltip":["Light Gray Transparent Plastic Block"]}
+{"item":"mekanismadditions:cyan_plastic_transparent","details":false,"description":false,"tooltip":["Cyan Transparent Plastic Block"]}
+{"item":"mekanismadditions:purple_plastic_transparent","details":false,"description":false,"tooltip":["Purple Transparent Plastic Block"]}
+{"item":"mekanismadditions:blue_plastic_transparent","details":false,"description":false,"tooltip":["Blue Transparent Plastic Block"]}
+{"item":"mekanismadditions:brown_plastic_transparent","details":false,"description":false,"tooltip":["Brown Transparent Plastic Block"]}
+{"item":"mekanismadditions:green_plastic_transparent","details":false,"description":false,"tooltip":["Green Transparent Plastic Block"]}
+{"item":"mekanismadditions:red_plastic_transparent","details":false,"description":false,"tooltip":["Red Transparent Plastic Block"]}
+{"item":"mekanismadditions:black_plastic_transparent","details":false,"description":false,"tooltip":["Black Transparent Plastic Block"]}
+{"item":"mekanismadditions:dark_red_plastic_transparent","details":false,"description":false,"tooltip":["Dark Red Transparent Plastic Block"]}
+{"item":"mekanismadditions:aqua_plastic_transparent","details":false,"description":false,"tooltip":["Aqua Transparent Plastic Block"]}
+{"item":"mekanismadditions:white_plastic_stairs","details":false,"description":false,"tooltip":["White Plastic Stairs"]}
+{"item":"mekanismadditions:orange_plastic_stairs","details":false,"description":false,"tooltip":["Orange Plastic Stairs"]}
+{"item":"mekanismadditions:magenta_plastic_stairs","details":false,"description":false,"tooltip":["Magenta Plastic Stairs"]}
+{"item":"mekanismadditions:light_blue_plastic_stairs","details":false,"description":false,"tooltip":["Light Blue Plastic Stairs"]}
+{"item":"mekanismadditions:yellow_plastic_stairs","details":false,"description":false,"tooltip":["Yellow Plastic Stairs"]}
+{"item":"mekanismadditions:lime_plastic_stairs","details":false,"description":false,"tooltip":["Lime Plastic Stairs"]}
+{"item":"mekanismadditions:pink_plastic_stairs","details":false,"description":false,"tooltip":["Pink Plastic Stairs"]}
+{"item":"mekanismadditions:gray_plastic_stairs","details":false,"description":false,"tooltip":["Gray Plastic Stairs"]}
+{"item":"mekanismadditions:light_gray_plastic_stairs","details":false,"description":false,"tooltip":["Light Gray Plastic Stairs"]}
+{"item":"mekanismadditions:cyan_plastic_stairs","details":false,"description":false,"tooltip":["Cyan Plastic Stairs"]}
+{"item":"mekanismadditions:purple_plastic_stairs","details":false,"description":false,"tooltip":["Purple Plastic Stairs"]}
+{"item":"mekanismadditions:blue_plastic_stairs","details":false,"description":false,"tooltip":["Blue Plastic Stairs"]}
+{"item":"mekanismadditions:brown_plastic_stairs","details":false,"description":false,"tooltip":["Brown Plastic Stairs"]}
+{"item":"mekanismadditions:green_plastic_stairs","details":false,"description":false,"tooltip":["Green Plastic Stairs"]}
+{"item":"mekanismadditions:red_plastic_stairs","details":false,"description":false,"tooltip":["Red Plastic Stairs"]}
+{"item":"mekanismadditions:black_plastic_stairs","details":false,"description":false,"tooltip":["Black Plastic Stairs"]}
+{"item":"mekanismadditions:dark_red_plastic_stairs","details":false,"description":false,"tooltip":["Dark Red Plastic Stairs"]}
+{"item":"mekanismadditions:aqua_plastic_stairs","details":false,"description":false,"tooltip":["Aqua Plastic Stairs"]}
+{"item":"mekanismadditions:white_plastic_slab","details":false,"description":false,"tooltip":["White Plastic Slab"]}
+{"item":"mekanismadditions:orange_plastic_slab","details":false,"description":false,"tooltip":["Orange Plastic Slab"]}
+{"item":"mekanismadditions:magenta_plastic_slab","details":false,"description":false,"tooltip":["Magenta Plastic Slab"]}
+{"item":"mekanismadditions:light_blue_plastic_slab","details":false,"description":false,"tooltip":["Light Blue Plastic Slab"]}
+{"item":"mekanismadditions:yellow_plastic_slab","details":false,"description":false,"tooltip":["Yellow Plastic Slab"]}
+{"item":"mekanismadditions:lime_plastic_slab","details":false,"description":false,"tooltip":["Lime Plastic Slab"]}
+{"item":"mekanismadditions:pink_plastic_slab","details":false,"description":false,"tooltip":["Pink Plastic Slab"]}
+{"item":"mekanismadditions:gray_plastic_slab","details":false,"description":false,"tooltip":["Gray Plastic Slab"]}
+{"item":"mekanismadditions:light_gray_plastic_slab","details":false,"description":false,"tooltip":["Light Gray Plastic Slab"]}
+{"item":"mekanismadditions:cyan_plastic_slab","details":false,"description":false,"tooltip":["Cyan Plastic Slab"]}
+{"item":"mekanismadditions:purple_plastic_slab","details":false,"description":false,"tooltip":["Purple Plastic Slab"]}
+{"item":"mekanismadditions:blue_plastic_slab","details":false,"description":false,"tooltip":["Blue Plastic Slab"]}
+{"item":"mekanismadditions:brown_plastic_slab","details":false,"description":false,"tooltip":["Brown Plastic Slab"]}
+{"item":"mekanismadditions:green_plastic_slab","details":false,"description":false,"tooltip":["Green Plastic Slab"]}
+{"item":"mekanismadditions:red_plastic_slab","details":false,"description":false,"tooltip":["Red Plastic Slab"]}
+{"item":"mekanismadditions:black_plastic_slab","details":false,"description":false,"tooltip":["Black Plastic Slab"]}
+{"item":"mekanismadditions:dark_red_plastic_slab","details":false,"description":false,"tooltip":["Dark Red Plastic Slab"]}
+{"item":"mekanismadditions:aqua_plastic_slab","details":false,"description":false,"tooltip":["Aqua Plastic Slab"]}
+{"item":"mekanismadditions:white_plastic_fence","details":false,"description":false,"tooltip":["White Plastic Barrier"]}
+{"item":"mekanismadditions:orange_plastic_fence","details":false,"description":false,"tooltip":["Orange Plastic Barrier"]}
+{"item":"mekanismadditions:magenta_plastic_fence","details":false,"description":false,"tooltip":["Magenta Plastic Barrier"]}
+{"item":"mekanismadditions:light_blue_plastic_fence","details":false,"description":false,"tooltip":["Light Blue Plastic Barrier"]}
+{"item":"mekanismadditions:yellow_plastic_fence","details":false,"description":false,"tooltip":["Yellow Plastic Barrier"]}
+{"item":"mekanismadditions:lime_plastic_fence","details":false,"description":false,"tooltip":["Lime Plastic Barrier"]}
+{"item":"mekanismadditions:pink_plastic_fence","details":false,"description":false,"tooltip":["Pink Plastic Barrier"]}
+{"item":"mekanismadditions:gray_plastic_fence","details":false,"description":false,"tooltip":["Gray Plastic Barrier"]}
+{"item":"mekanismadditions:light_gray_plastic_fence","details":false,"description":false,"tooltip":["Light Gray Plastic Barrier"]}
+{"item":"mekanismadditions:cyan_plastic_fence","details":false,"description":false,"tooltip":["Cyan Plastic Barrier"]}
+{"item":"mekanismadditions:purple_plastic_fence","details":false,"description":false,"tooltip":["Purple Plastic Barrier"]}
+{"item":"mekanismadditions:blue_plastic_fence","details":false,"description":false,"tooltip":["Blue Plastic Barrier"]}
+{"item":"mekanismadditions:brown_plastic_fence","details":false,"description":false,"tooltip":["Brown Plastic Barrier"]}
+{"item":"mekanismadditions:green_plastic_fence","details":false,"description":false,"tooltip":["Green Plastic Barrier"]}
+{"item":"mekanismadditions:red_plastic_fence","details":false,"description":false,"tooltip":["Red Plastic Barrier"]}
+{"item":"mekanismadditions:black_plastic_fence","details":false,"description":false,"tooltip":["Black Plastic Barrier"]}
+{"item":"mekanismadditions:dark_red_plastic_fence","details":false,"description":false,"tooltip":["Dark Red Plastic Barrier"]}
+{"item":"mekanismadditions:aqua_plastic_fence","details":false,"description":false,"tooltip":["Aqua Plastic Barrier"]}
+{"item":"mekanismadditions:white_plastic_fence_gate","details":false,"description":false,"tooltip":["White Plastic Gate"]}
+{"item":"mekanismadditions:orange_plastic_fence_gate","details":false,"description":false,"tooltip":["Orange Plastic Gate"]}
+{"item":"mekanismadditions:magenta_plastic_fence_gate","details":false,"description":false,"tooltip":["Magenta Plastic Gate"]}
+{"item":"mekanismadditions:light_blue_plastic_fence_gate","details":false,"description":false,"tooltip":["Light Blue Plastic Gate"]}
+{"item":"mekanismadditions:yellow_plastic_fence_gate","details":false,"description":false,"tooltip":["Yellow Plastic Gate"]}
+{"item":"mekanismadditions:lime_plastic_fence_gate","details":false,"description":false,"tooltip":["Lime Plastic Gate"]}
+{"item":"mekanismadditions:pink_plastic_fence_gate","details":false,"description":false,"tooltip":["Pink Plastic Gate"]}
+{"item":"mekanismadditions:gray_plastic_fence_gate","details":false,"description":false,"tooltip":["Gray Plastic Gate"]}
+{"item":"mekanismadditions:light_gray_plastic_fence_gate","details":false,"description":false,"tooltip":["Light Gray Plastic Gate"]}
+{"item":"mekanismadditions:cyan_plastic_fence_gate","details":false,"description":false,"tooltip":["Cyan Plastic Gate"]}
+{"item":"mekanismadditions:purple_plastic_fence_gate","details":false,"description":false,"tooltip":["Purple Plastic Gate"]}
+{"item":"mekanismadditions:blue_plastic_fence_gate","details":false,"description":false,"tooltip":["Blue Plastic Gate"]}
+{"item":"mekanismadditions:brown_plastic_fence_gate","details":false,"description":false,"tooltip":["Brown Plastic Gate"]}
+{"item":"mekanismadditions:green_plastic_fence_gate","details":false,"description":false,"tooltip":["Green Plastic Gate"]}
+{"item":"mekanismadditions:red_plastic_fence_gate","details":false,"description":false,"tooltip":["Red Plastic Gate"]}
+{"item":"mekanismadditions:black_plastic_fence_gate","details":false,"description":false,"tooltip":["Black Plastic Gate"]}
+{"item":"mekanismadditions:dark_red_plastic_fence_gate","details":false,"description":false,"tooltip":["Dark Red Plastic Gate"]}
+{"item":"mekanismadditions:aqua_plastic_fence_gate","details":false,"description":false,"tooltip":["Aqua Plastic Gate"]}
+{"item":"mekanismadditions:white_plastic_glow_stairs","details":false,"description":false,"tooltip":["White Glow Plastic Stairs"]}
+{"item":"mekanismadditions:orange_plastic_glow_stairs","details":false,"description":false,"tooltip":["Orange Glow Plastic Stairs"]}
+{"item":"mekanismadditions:magenta_plastic_glow_stairs","details":false,"description":false,"tooltip":["Magenta Glow Plastic Stairs"]}
+{"item":"mekanismadditions:light_blue_plastic_glow_stairs","details":false,"description":false,"tooltip":["Light Blue Glow Plastic Stairs"]}
+{"item":"mekanismadditions:yellow_plastic_glow_stairs","details":false,"description":false,"tooltip":["Yellow Glow Plastic Stairs"]}
+{"item":"mekanismadditions:lime_plastic_glow_stairs","details":false,"description":false,"tooltip":["Lime Glow Plastic Stairs"]}
+{"item":"mekanismadditions:pink_plastic_glow_stairs","details":false,"description":false,"tooltip":["Pink Glow Plastic Stairs"]}
+{"item":"mekanismadditions:gray_plastic_glow_stairs","details":false,"description":false,"tooltip":["Gray Glow Plastic Stairs"]}
+{"item":"mekanismadditions:light_gray_plastic_glow_stairs","details":false,"description":false,"tooltip":["Light Gray Glow Plastic Stairs"]}
+{"item":"mekanismadditions:cyan_plastic_glow_stairs","details":false,"description":false,"tooltip":["Cyan Glow Plastic Stairs"]}
+{"item":"mekanismadditions:purple_plastic_glow_stairs","details":false,"description":false,"tooltip":["Purple Glow Plastic Stairs"]}
+{"item":"mekanismadditions:blue_plastic_glow_stairs","details":false,"description":false,"tooltip":["Blue Glow Plastic Stairs"]}
+{"item":"mekanismadditions:brown_plastic_glow_stairs","details":false,"description":false,"tooltip":["Brown Glow Plastic Stairs"]}
+{"item":"mekanismadditions:green_plastic_glow_stairs","details":false,"description":false,"tooltip":["Green Glow Plastic Stairs"]}
+{"item":"mekanismadditions:red_plastic_glow_stairs","details":false,"description":false,"tooltip":["Red Glow Plastic Stairs"]}
+{"item":"mekanismadditions:black_plastic_glow_stairs","details":false,"description":false,"tooltip":["Black Glow Plastic Stairs"]}
+{"item":"mekanismadditions:dark_red_plastic_glow_stairs","details":false,"description":false,"tooltip":["Dark Red Glow Plastic Stairs"]}
+{"item":"mekanismadditions:aqua_plastic_glow_stairs","details":false,"description":false,"tooltip":["Aqua Glow Plastic Stairs"]}
+{"item":"mekanismadditions:white_plastic_glow_slab","details":false,"description":false,"tooltip":["White Glow Plastic Slab"]}
+{"item":"mekanismadditions:orange_plastic_glow_slab","details":false,"description":false,"tooltip":["Orange Glow Plastic Slab"]}
+{"item":"mekanismadditions:magenta_plastic_glow_slab","details":false,"description":false,"tooltip":["Magenta Glow Plastic Slab"]}
+{"item":"mekanismadditions:light_blue_plastic_glow_slab","details":false,"description":false,"tooltip":["Light Blue Glow Plastic Slab"]}
+{"item":"mekanismadditions:yellow_plastic_glow_slab","details":false,"description":false,"tooltip":["Yellow Glow Plastic Slab"]}
+{"item":"mekanismadditions:lime_plastic_glow_slab","details":false,"description":false,"tooltip":["Lime Glow Plastic Slab"]}
+{"item":"mekanismadditions:pink_plastic_glow_slab","details":false,"description":false,"tooltip":["Pink Glow Plastic Slab"]}
+{"item":"mekanismadditions:gray_plastic_glow_slab","details":false,"description":false,"tooltip":["Gray Glow Plastic Slab"]}
+{"item":"mekanismadditions:light_gray_plastic_glow_slab","details":false,"description":false,"tooltip":["Light Gray Glow Plastic Slab"]}
+{"item":"mekanismadditions:cyan_plastic_glow_slab","details":false,"description":false,"tooltip":["Cyan Glow Plastic Slab"]}
+{"item":"mekanismadditions:purple_plastic_glow_slab","details":false,"description":false,"tooltip":["Purple Glow Plastic Slab"]}
+{"item":"mekanismadditions:blue_plastic_glow_slab","details":false,"description":false,"tooltip":["Blue Glow Plastic Slab"]}
+{"item":"mekanismadditions:brown_plastic_glow_slab","details":false,"description":false,"tooltip":["Brown Glow Plastic Slab"]}
+{"item":"mekanismadditions:green_plastic_glow_slab","details":false,"description":false,"tooltip":["Green Glow Plastic Slab"]}
+{"item":"mekanismadditions:red_plastic_glow_slab","details":false,"description":false,"tooltip":["Red Glow Plastic Slab"]}
+{"item":"mekanismadditions:black_plastic_glow_slab","details":false,"description":false,"tooltip":["Black Glow Plastic Slab"]}
+{"item":"mekanismadditions:dark_red_plastic_glow_slab","details":false,"description":false,"tooltip":["Dark Red Glow Plastic Slab"]}
+{"item":"mekanismadditions:aqua_plastic_glow_slab","details":false,"description":false,"tooltip":["Aqua Glow Plastic Slab"]}
+{"item":"mekanismadditions:white_plastic_transparent_stairs","details":false,"description":false,"tooltip":["White Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:orange_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Orange Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:magenta_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Magenta Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:light_blue_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Light Blue Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:yellow_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Yellow Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:lime_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Lime Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:pink_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Pink Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:gray_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Gray Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:light_gray_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Light Gray Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:cyan_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Cyan Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:purple_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Purple Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:blue_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Blue Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:brown_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Brown Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:green_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Green Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:red_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Red Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:black_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Black Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:dark_red_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Dark Red Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:aqua_plastic_transparent_stairs","details":false,"description":false,"tooltip":["Aqua Transparent Plastic Stairs"]}
+{"item":"mekanismadditions:white_plastic_transparent_slab","details":false,"description":false,"tooltip":["White Transparent Plastic Slab"]}
+{"item":"mekanismadditions:orange_plastic_transparent_slab","details":false,"description":false,"tooltip":["Orange Transparent Plastic Slab"]}
+{"item":"mekanismadditions:magenta_plastic_transparent_slab","details":false,"description":false,"tooltip":["Magenta Transparent Plastic Slab"]}
+{"item":"mekanismadditions:light_blue_plastic_transparent_slab","details":false,"description":false,"tooltip":["Light Blue Transparent Plastic Slab"]}
+{"item":"mekanismadditions:yellow_plastic_transparent_slab","details":false,"description":false,"tooltip":["Yellow Transparent Plastic Slab"]}
+{"item":"mekanismadditions:lime_plastic_transparent_slab","details":false,"description":false,"tooltip":["Lime Transparent Plastic Slab"]}
+{"item":"mekanismadditions:pink_plastic_transparent_slab","details":false,"description":false,"tooltip":["Pink Transparent Plastic Slab"]}
+{"item":"mekanismadditions:gray_plastic_transparent_slab","details":false,"description":false,"tooltip":["Gray Transparent Plastic Slab"]}
+{"item":"mekanismadditions:light_gray_plastic_transparent_slab","details":false,"description":false,"tooltip":["Light Gray Transparent Plastic Slab"]}
+{"item":"mekanismadditions:cyan_plastic_transparent_slab","details":false,"description":false,"tooltip":["Cyan Transparent Plastic Slab"]}
+{"item":"mekanismadditions:purple_plastic_transparent_slab","details":false,"description":false,"tooltip":["Purple Transparent Plastic Slab"]}
+{"item":"mekanismadditions:blue_plastic_transparent_slab","details":false,"description":false,"tooltip":["Blue Transparent Plastic Slab"]}
+{"item":"mekanismadditions:brown_plastic_transparent_slab","details":false,"description":false,"tooltip":["Brown Transparent Plastic Slab"]}
+{"item":"mekanismadditions:green_plastic_transparent_slab","details":false,"description":false,"tooltip":["Green Transparent Plastic Slab"]}
+{"item":"mekanismadditions:red_plastic_transparent_slab","details":false,"description":false,"tooltip":["Red Transparent Plastic Slab"]}
+{"item":"mekanismadditions:black_plastic_transparent_slab","details":false,"description":false,"tooltip":["Black Transparent Plastic Slab"]}
+{"item":"mekanismadditions:dark_red_plastic_transparent_slab","details":false,"description":false,"tooltip":["Dark Red Transparent Plastic Slab"]}
+{"item":"mekanismadditions:aqua_plastic_transparent_slab","details":false,"description":false,"tooltip":["Aqua Transparent Plastic Slab"]}
+{"item":"mekanismtools:wood_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:stone_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:copper_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:iron_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:gold_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:diamond_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:netherite_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:bronze_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:lapis_lazuli_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:osmium_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_glowstone_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:refined_obsidian_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_helmet","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_chestplate","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_leggings","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_boots","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_horse_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_nautilus_armor","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_axe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_hoe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_paxel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_pickaxe","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_shield","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_shovel","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_sword","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismtools:steel_spear","details":false,"description":false,"error":"Cannot get config value before config is loaded.","tooltip":[]}
+{"item":"mekanismgenerators:solar_panel","details":false,"description":false,"tooltip":["Solar Panel"]}
+{"item":"mekanismgenerators:hohlraum","details":false,"description":false,"tooltip":["Hohlraum","D-T Fuel: 0 mB","Insufficient Fuel"]}
+{"item":"mekanismgenerators:turbine_blade","details":false,"description":false,"tooltip":["Turbine Blade"]}
+{"item":"mekanismgenerators:heat_generator","details":true,"description":true,"tooltip":["Heat Generator","Security: Public","Stored energy: 0 FE/240 FE","No fluid stored.","Inventory: no","A generator that uses the heat of lava or other burnable resources to produce energy."]}
+{"item":"mekanismgenerators:solar_generator","details":true,"description":true,"tooltip":["Solar Generator","Security: Public","Stored energy: 0 FE/40 FE","Inventory: no","A generator that uses the power of the sun to produce energy."]}
+{"item":"mekanismgenerators:gas_burning_generator","details":true,"description":true,"tooltip":["Gas-Burning Generator","Security: Public","Stored energy: 0 FE/2 kFE","No chemicals stored.","Inventory: no","A generator that harnesses the varying molecular gases to produce energy."]}
+{"item":"mekanismgenerators:bio_generator","details":true,"description":true,"tooltip":["Bio-Generator","Security: Public","Stored energy: 0 FE/600 FE","No fluid stored.","Inventory: no","A generator that burns organic materials of the world to produce energy."]}
+{"item":"mekanismgenerators:advanced_solar_generator","details":true,"description":true,"tooltip":["Advanced Solar Generator","Security: Public","Stored energy: 0 FE/240 FE","Inventory: no","An advanced generator that directly absorbs the sun's rays with little loss to produce energy."]}
+{"item":"mekanismgenerators:wind_generator","details":true,"description":true,"tooltip":["Wind Generator","Security: Public","Stored energy: 0 FE/100 FE","Inventory: no","A generator that uses the strength of the wind to produce energy, with greater efficiency at higher levels."]}
+{"item":"mekanismgenerators:turbine_rotor","details":false,"description":true,"tooltip":["Turbine Rotor","The steel rod that is used to house Turbine Blades within an Industrial Turbine."]}
+{"item":"mekanismgenerators:rotational_complex","details":false,"description":true,"tooltip":["Rotational Complex","A connector that is placed on the highest Turbine Rotor of an Industrial Turbine to carry kinetic energy into its Electromagnetic Coils."]}
+{"item":"mekanismgenerators:electromagnetic_coil","details":false,"description":true,"tooltip":["Electromagnetic Coil","A block that converts kinetic energy from a Rotational Complex into usable electricity. These can be placed in any arrangement above your Rotational Complex, as long as they are all touching each other and the complex itself."]}
+{"item":"mekanismgenerators:turbine_casing","details":false,"description":true,"tooltip":["Turbine Casing","Pressure-resistant casing used in the creation of an Industrial Turbine."]}
+{"item":"mekanismgenerators:turbine_valve","details":false,"description":true,"tooltip":["Turbine Valve","A type of Turbine Casing that includes a port for the transfer of energy and steam."]}
+{"item":"mekanismgenerators:turbine_vent","details":false,"description":true,"tooltip":["Turbine Vent","A type of Turbine Casing with an integrated vent for the release of steam. These should be placed on the level of or above the turbine's Rotational Complex."]}
+{"item":"mekanismgenerators:saturating_condenser","details":false,"description":true,"tooltip":["Saturating Condenser","A block that condenses steam processed by an Industrial Turbine into reusable water. These can be placed in any arrangement above your rotational complex."]}
+{"item":"mekanismgenerators:reactor_glass","details":false,"description":true,"tooltip":["Reactor Glass","Reinforced glass that can be used in the Fission Reactor and Fusion Reactor multiblocks (as well as any others!)."]}
+{"item":"mekanismgenerators:fission_reactor_casing","details":false,"description":true,"tooltip":["Fission Reactor Casing","Lead-infused steel casing used to create a Fission Reactor. Mostly heat-resistant, mostly radiation-resistant, and mostly safe!"]}
+{"item":"mekanismgenerators:fission_reactor_port","details":false,"description":true,"tooltip":["Fission Reactor Port","A port which can be placed on a Fission Reactor multiblock to transfer coolant, fuel, and waste."]}
+{"item":"mekanismgenerators:fission_reactor_logic_adapter","details":true,"description":true,"tooltip":["Fission Reactor Logic Adapter","A block that can be used to monitor or control the Fission Reactor with redstone.","Redstone mode: Disabled"]}
+{"item":"mekanismgenerators:fission_fuel_assembly","details":false,"description":true,"tooltip":["Fission Fuel Assembly","A cluster of fuel rods used to house fission fuel within a Fission Reactor. These can be stacked on top of each other."]}
+{"item":"mekanismgenerators:control_rod_assembly","details":false,"description":true,"tooltip":["Control Rod Assembly","A collection of control rods used to halt a fission chain reaction. Placed on top of a tower of Fission Fuel Assemblies."]}
+{"item":"mekanismgenerators:fusion_reactor_controller","details":false,"description":true,"tooltip":["Fusion Reactor Controller","The controlling block for the entire Fusion Reactor structure."]}
+{"item":"mekanismgenerators:fusion_reactor_frame","details":false,"description":true,"tooltip":["Fusion Reactor Frame","Reinforced framing that can be used in the Fusion Reactor multiblock."]}
+{"item":"mekanismgenerators:fusion_reactor_port","details":false,"description":true,"tooltip":["Fusion Reactor Port","A block of reinforced framing that is capable of managing both the chemical and energy transfer of the Fusion Reactor."]}
+{"item":"mekanismgenerators:fusion_reactor_logic_adapter","details":true,"description":true,"tooltip":["Fusion Reactor Logic Adapter","A block that can be used to allow basic monitoring of a Fusion Reactor using redstone.","Redstone mode: Disabled","Active cooling: off"]}
+{"item":"mekanismgenerators:laser_focus_matrix","details":false,"description":true,"tooltip":["Laser Focus Matrix","A panel of Fusion Reactor Glass that is capable of absorbing optical energy and thereby heating up the Fusion Reactor."]}
+{"item":"mekanismgenerators:bioethanol_bucket","details":false,"description":false,"tooltip":["Bioethanol Bucket"]}
+{"item":"mekanismgenerators:deuterium_bucket","details":false,"description":false,"tooltip":["Liquid Deuterium Bucket"]}
+{"item":"mekanismgenerators:fusion_fuel_bucket","details":false,"description":false,"tooltip":["Liquid D-T Fuel Bucket"]}
+{"item":"mekanismgenerators:tritium_bucket","details":false,"description":false,"tooltip":["Liquid Tritium Bucket"]}
