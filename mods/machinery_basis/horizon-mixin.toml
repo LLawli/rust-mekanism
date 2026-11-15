@@ -1567,6 +1567,6 @@ bindings = [
   { name = "depth", ty = "&wgpu::TextureView", value = "depth" },
   { name = "batch", ty = "&HudBatch", value = "batch" },
   { name = "size", ty = "[u32; 2]", value = "size" },
-  { name = "vertices", ty = "std::ops::Range<u32>", value = "vertices.clone()" },
-  { name = "timing", ty = "Option<&mut crate::gfx::pack_timing::PassTiming>", value = "timing.as_deref_mut()" },
+  { name = "vertices", ty = "&std::ops::Range<u32>", value = "&vertices" },
+  { name = "timing", ty = "&mut Option<&mut crate::gfx::pack_timing::PassTiming>", value = "&mut timing" },
 ]

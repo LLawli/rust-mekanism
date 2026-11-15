@@ -14,6 +14,33 @@ pub fn mark_since(batch: &mut HudBatch, start: usize) {
     batch.blend_since(start, MARK);
 }
 
+/// `vs_main` e o caminho de sprite de `fs_main` de `hud.wgsl`, sem o resto (o módulo não pode incluir o arquivo: `E_MODULE`). Os bindings são os 0 a 2 do grupo do
+/// `HudRenderer` (o uniforme de tamanho, o atlas e o amostrador), que o `layout` dele tem entre os seis.
+const SHADER: &str = r#"
+struct Hud { size: vec4<f32> }
+@group(0) @binding(0) var<uniform> hud: Hud;
+@group(0) @binding(1) var atlas: texture_2d<f32>;
+@group(0) @binding(2) var atlas_sampler: sampler;
+struct Out {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
+}
+@vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @location(2) color: vec4<f32>, @location(3) depth: f32, @location(4) glint_uv: vec2<f32>) -> Out {
+    let pixels = pos * hud.size.z;
+    var out: Out;
+    out.clip = vec4(pixels.x / hud.size.x * 2.0 - 1.0, 1.0 - pixels.y / hud.size.y * 2.0, depth, 1.0);
+    out.uv = uv;
+    out.color = color;
+    return out;
+}
+@fragment fn fs_main(in: Out) -> @location(0) vec4<f32> {
+    let c = textureSample(atlas, atlas_sampler, in.uv) * in.color;
+    if c.a < 0.004 { discard; }
+    return c;
+}
+"#;
+
 /// O pipeline e o `HudRenderer` (o endereço dele) para o qual foi feito.
 static PIPELINE: Mutex<Option<(usize, wgpu::RenderPipeline)>> = Mutex::new(None);
 
@@ -59,7 +86,7 @@ pub fn prepare(hud: &HudRenderer, device: &wgpu::Device, batch: &HudBatch) {
     }
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Horizon HUD multiply"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("hud.wgsl").into()),
+        source: wgpu::ShaderSource::Wgsl(SHADER.into()),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("HUD multiply layout"),

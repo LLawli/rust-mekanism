@@ -140,7 +140,8 @@ pub enum WarningLayer {
 }
 
 /// As camadas do suporte com aviso, em ordem.
-pub const WARNING_LAYERS: [WarningLayer; 2] = [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied];
+pub const WARNING_LAYERS: [WarningLayer; 2] =
+    [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied];
 
 #[cfg(test)]
 mod tests {
@@ -211,7 +212,10 @@ mod tests {
 
     #[test]
     fn a_warning_holder_is_plain_and_then_multiplied_by_the_pattern() {
-        assert_eq!(WARNING_LAYERS, [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied]);
+        assert_eq!(
+            WARNING_LAYERS,
+            [WarningLayer::HolderPlain, WarningLayer::PatternMultiplied]
+        );
         assert_eq!(WARNING_PATTERN_TILE, [16.0, 16.0]);
     }
 }
