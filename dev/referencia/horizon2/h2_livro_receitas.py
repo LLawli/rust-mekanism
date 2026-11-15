@@ -5,7 +5,7 @@ com um item no cursor: o item não solta (`over_element`) e o botão toca o som 
     NOME=<nome do gravar-jogo start> [SEGUNDOS=30] [ARQUIVO=livro_receitas.mp4] h2_livro_receitas.py        grava o vídeo com som e confere cada passo (a saída diz `ok` ou `FALHA`)
     h2_livro_receitas.py                                                                                     só confere, sem gravar
 
-O clique é o do botão esquerdo no centro do botão da aba, em (188, 75). O som que fica ligado é só o `master` (o clique de UI, `SimpleSoundInstance.forUI`, é da categoria `MASTER`), e só depois
+O clique é o do botão esquerdo no centro do botão da aba, em (188, 75). O som que fica ligado é o `master` e a categoria `ui` (o clique do botão), e só depois
 de o stream do container estar no sink nulo (como `h2_aba_redstone.py`)."""
 
 import os
@@ -118,6 +118,8 @@ def main():
         return
     for categoria in n.SOUND_OFF + ("record",):
         h.ctl("options-set", f"soundCategory_{categoria}", "0")
+    # O clique de UI do Horizon toca na categoria `ui` (`audio.play_button_click`), que `SOUND_OFF` desliga: só ela e o master ficam ligados.
+    h.ctl("options-set", "soundCategory_ui", "1.0")
     n.mute()
     ligado = False
     for _ in range(60):
