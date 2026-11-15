@@ -51,7 +51,10 @@ fn bare(id: &str) -> String {
 
 fn data() -> Rc<UpgradeData> {
     let types: Vec<(String, i32)> = TYPES.iter().map(|(name, max)| (id(name), *max)).collect();
-    let borrowed: Vec<(&str, i32)> = types.iter().map(|(name, max)| (name.as_str(), *max)).collect();
+    let borrowed: Vec<(&str, i32)> = types
+        .iter()
+        .map(|(name, max)| (name.as_str(), *max))
+        .collect();
     let supported: Vec<&str> = borrowed.iter().map(|(name, _)| *name).collect();
     Rc::new(UpgradeData::from_parts(
         "mekanism:upgrade",
@@ -152,7 +155,11 @@ fn the_reloaded_table_is_the_one_built_from_the_order_of_the_file() {
                 .into_iter()
                 .map(|key: UpgradeKey| bare(&key.id()))
                 .collect();
-            assert_eq!(reloaded, names(&row["reloaded"]), "execução {run} amostra {n}");
+            assert_eq!(
+                reloaded,
+                names(&row["reloaded"]),
+                "execução {run} amostra {n}"
+            );
         }
     }
     fixed_hashes(&[]);

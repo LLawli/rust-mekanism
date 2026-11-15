@@ -750,6 +750,13 @@ fn the_upgrade_map_order_of_the_original_changes_per_run_and_the_client_reads_ev
             bytes.push(registry.iter().position(|id| id == name).unwrap() as u8);
             bytes.push(1);
         }
-        assert_eq!(read_upgrade_map(0, &bytes), wanted, "ordem {order:?}");
+        // As contagens são as mesmas em qualquer ordem, e o cliente guarda a ordem em que leu (a do mapa do tile, decisão 233).
+        let read = read_upgrade_map(0, &bytes);
+        assert_eq!(read.counts, wanted.counts, "ordem {order:?}");
+        let written: Vec<usize> = order
+            .iter()
+            .map(|name| registry.iter().position(|id| id == name).unwrap())
+            .collect();
+        assert_eq!(read.written_order(), written, "ordem {order:?}");
     }
 }

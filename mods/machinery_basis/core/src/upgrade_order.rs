@@ -31,8 +31,9 @@ const COMPOUND_CAPACITY: usize = 16;
 
 /// `String.hashCode`: `s[0]*31^(n-1) + ... + s[n-1]`, sobre as unidades UTF-16.
 pub fn string_hash(text: &str) -> i32 {
-    text.encode_utf16()
-        .fold(0i32, |hash, unit| hash.wrapping_mul(31).wrapping_add(i32::from(unit)))
+    text.encode_utf16().fold(0i32, |hash, unit| {
+        hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+    })
 }
 
 thread_local! {
@@ -88,10 +89,14 @@ impl UpgradeKey {
 
 /// A ordem em que o `HashMap` do NBT devolve as chaves de texto depois de inseri-las na ordem dada (o que o arquivo guarda e o que a leitura reinsere).
 pub fn file_order(ids: &[String]) -> Vec<String> {
-    hash_set_order(ids.iter().map(String::as_str), string_hash, COMPOUND_CAPACITY)
-        .into_iter()
-        .map(str::to_owned)
-        .collect()
+    hash_set_order(
+        ids.iter().map(String::as_str),
+        string_hash,
+        COMPOUND_CAPACITY,
+    )
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
 }
 
 /// O mapa que `UPGRADES_CODEC` monta ao ler: `new Object2IntOpenHashMap<>(mapa)`, a tabela do tamanho do mapa e as entradas na ordem do `HashMap` do NBT.
@@ -120,7 +125,10 @@ pub fn window_order(tile_order: &[String]) -> Vec<String> {
     for id in tile_order {
         map.insert(UpgradeKey::of(id), ());
     }
-    map.keys_in_order().into_iter().map(UpgradeKey::id).collect()
+    map.keys_in_order()
+        .into_iter()
+        .map(UpgradeKey::id)
+        .collect()
 }
 
 /// A ordem das linhas do tooltip de um item lido do disco: o mapa do item (`new Object2IntOpenHashMap<>(upgrades)`, na ordem do `HashMap` do NBT) e o que o cliente decodifica
@@ -131,7 +139,11 @@ pub fn item_tooltip_order(sorted: &[(String, i32)]) -> Vec<String> {
     for key in item.keys_in_order() {
         decoded.insert(key, ());
     }
-    decoded.keys_in_order().into_iter().map(UpgradeKey::id).collect()
+    decoded
+        .keys_in_order()
+        .into_iter()
+        .map(UpgradeKey::id)
+        .collect()
 }
 
 /// Um `Holder<Upgrade>` na tabela: o hash de identidade dele e a posição na lista de quem chama (dois `Holder` com o mesmo hash continuam dois).

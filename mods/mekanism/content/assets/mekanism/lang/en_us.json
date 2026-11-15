@@ -1,6 +1,10 @@
 {
   "block.mekanism.osmium_ore": "Osmium Ore",
   "block.mekanism.deepslate_osmium_ore": "Deepslate Osmium Ore",
+  "description.mekanism.crusher": "A machine used to crush ingots into their dust counterparts, as well as perform many other operations.",
+  "description.mekanism.energized_smelter": "A simple machine that serves as a Mekanism-based furnace that runs off of energy.",
+  "description.mekanism.enrichment_chamber": "A simple machine used to enrich ores into two of their dust counterparts, as well as perform many other operations.",
+  "description.mekanism.metallurgic_infuser": "A machine used to infuse various materials into (generally) metals to create metal alloys and other compounds.",
   "direction.mekanism.down": "Down",
   "direction.mekanism.east": "East",
   "direction.mekanism.north": "North",

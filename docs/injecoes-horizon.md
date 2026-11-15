@@ -124,6 +124,8 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H46 `piglin_currency` | hook | nenhuma (o lingote de glowstone refinado não é moeda de troca) | pedido |
 | H47 fluidos de mod no motor | contrato | o módulo `liquid-glue`, o módulo `water-like`, as injeções `fluid_state` e as oito `fluid_entity_*` e os hooks `tick_block`, `dispense_item`, `block_changed` e `block_spread` (o `FlowingFluid` portado na lib, bloco com `level`, a física de entidade do jogador, do mob e do item) | em uso (2 módulos, 9 cruas, 4 hooks) |
 | H48 tinta constante no modelo de bloco | dado | nenhuma (22 pares de texturas cozidas com a cor, a água pesada fica sem a cor, e as 10 do vidro dos tanques de fluido) | pedido |
+| H258 estado de uma tecla qualquer (`is_key_down(KeyCode)` ou o conjunto de teclas físicas) | hook | nenhuma injeção nova: o `tooltip` do `mekanism` e do `mekanismgenerators` lê `Game::physical_keys` (campo privado do `Game`, de dentro dos módulos do mod) para o Shift mais N da descrição (decisão 234) | pedido |
+| H259 `Compound` do NBT com a ordem de inserção (hoje `BTreeMap`, ordenado) | dado | nenhuma injeção: o NBT guarda a ordem alfabética e o mapa de upgrades recarregado parte dela, não da ordem do arquivo do original (decisão 233; 1,2 % das amostras diferem) | pedido |
 | H60 variante de blockstate de mod com modelo de reserva e item especial de mod | dado | nenhuma (modelos escritos à mão para o cubo de energia, o tanque de fluido e os transmissores, decisão 26) | pedido |
 
 | H99 desenhista de item de mod por quadro (`SpecialModelRenderer`: a pilha, os componentes e o `gameTime` como argumento, para o núcleo do cubo de energia no item da barra e da mão) | hook | `energy_cube_item_core` (cru, RETURN de `Game::resolve_item_in_hand`: uma camada de item a mais, o núcleo) | em uso |
@@ -2231,6 +2233,14 @@ um desenho de item em escala que amostre como o `GuiRenderer` do 26.x. Sem ele n
   ícone do slot e da barra de atalhos sai vazio, com ou sem um `Model` explícito de `minecraft:builtin/missing`. Visto em 2026-11-06 com
   `/give @s mekanism:upgrade` (sem `upgrade_type`).
 - **Pedido:** que o renderer desenhe a camada `Missing` (o cubo de `missing_model()`) no ícone de item, como o do mundo.
+
+### A tecla N da descrição (decisão 234): leitura de campo privado, sem injeção nova
+
+- **O que o original faz:** `MekKeyHandler.isKeyPressed(MekanismKeyHandler.descriptionKey)` (Shift mais N) decide se o tooltip das máquinas mostra a descrição (`description.<namespace>.<bloco>`) ou a dica `Hold SHIFT + N for a description.`.
+- **O que o Horizon dá:** `Game::has_shift_down` (os modificadores) e nenhum acesso a uma tecla qualquer: nenhum hook do catálogo nem a API de mod entrega o estado do N.
+- **Formas tentadas:** (1) um HEAD em `Game::key_pressed` (`fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()>`) e em `debug_key` para guardar o N: descartado sem rodar o `plan` porque o `Game` já guarda o que se queria, e uma injeção a mais seria estado duplicado; (2) **a que entrou:** o `Game` mantém `physical_keys: HashSet<KeyCode>` (`game.rs:2492`), atualizado por `window_event` (as janelas) e por `control_key_down` (o socket de controle). O módulo do mod é compilado dentro de `game.rs`, então `game.physical_keys.contains(&KeyCode::KeyN)` é uma leitura de campo privado de dentro do mod (`machinery_basis::description_key_down`), sem `[[injection]]` nem `[[module]]` novos: as contagens deste documento não mudam.
+- **Risco:** o campo mudar de nome ou de tipo no Horizon; o `native-build` falha e o conserto é uma linha. Teclas soltas por um evento perdido (o comentário de `has_shift_down` no Horizon) deixariam o N preso; o Shift não, porque `modifiers` é a palavra viva.
+- **Hook que a substituiria:** H258, `is_key_down(KeyCode)` no contrato de mod.
 
 ## Como manter o documento
 

@@ -1306,6 +1306,9 @@ mod tests {
         let same = [nbt.input.clone(), nbt.output.clone()];
         let quiet = rebuild(data(), &nbt, Some(&same), still.clone());
         let after = quiet.transient();
-        assert_eq!((after.ticks, after.can_check), (still.ticks, still.can_check));
+        assert_eq!(
+            (after.ticks, after.can_check),
+            (still.ticks, still.can_check)
+        );
     }
 }

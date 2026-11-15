@@ -25,6 +25,8 @@ REGIOES = {
     "tela": (500, 200, 810, 680),
     # a janela de upgrades (abre à esquerda e sobre a tela)
     "aba": (560, 260, 800, 400),
+    # o medidor de lava do Heat Generator (frente `maquina-sobras`, `cenas/heat_lava.json`) e o que ele desenha acima de si quando o tanque passa da capacidade, até o topo da tela
+    "lava": (780, 0, 360, 500),
 }
 
 

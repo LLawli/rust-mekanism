@@ -1,14 +1,18 @@
 {
-  "tooltip.mekanism.inventory": "Inventory: %1$s",
-  "tooltip.mekanism.no_fluid": "No fluid stored.",
-  "boolean.mekanism.yes": "yes",
   "boolean.mekanism.no": "no",
-  "generic.mekanism.list": "- %1$s",
-  "factory.mekanism.type": "Recipe type: %1$s",
-  "factory.mekanism.enriching": "Enriching",
+  "boolean.mekanism.yes": "yes",
+  "description.mekanism.crusher": "A machine used to crush ingots into their dust counterparts, as well as perform many other operations.",
+  "description.mekanism.energized_smelter": "A simple machine that serves as a Mekanism-based furnace that runs off of energy.",
+  "description.mekanism.enrichment_chamber": "A simple machine used to enrich ores into two of their dust counterparts, as well as perform many other operations.",
+  "description.mekanism.metallurgic_infuser": "A machine used to infuse various materials into (generally) metals to create metal alloys and other compounds.",
   "factory.mekanism.crushing": "Crushing",
-  "factory.mekanism.smelting": "Smelting",
+  "factory.mekanism.enriching": "Enriching",
   "factory.mekanism.infusing": "Infusing",
+  "factory.mekanism.smelting": "Smelting",
+  "factory.mekanism.type": "Recipe type: %1$s",
+  "generic.mekanism.list": "- %1$s",
+  "tooltip.mekanism.hold_for_description": "Hold %1$s for a description.",
   "tooltip.mekanism.hold_for_details": "Hold %1$s for details.",
-  "tooltip.mekanism.hold_for_description": "Hold %1$s for a description."
+  "tooltip.mekanism.inventory": "Inventory: %1$s",
+  "tooltip.mekanism.no_fluid": "No fluid stored."
 }

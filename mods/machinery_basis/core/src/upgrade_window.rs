@@ -477,10 +477,7 @@ mod tests {
         assert_eq!(listed, [1, 3, 4, 7]);
         assert_eq!(sync.count(3), 8);
         assert_eq!(sync.count(40), 0);
-        assert_eq!(
-            UpgradeSync::default().installed(&ids),
-            Vec::<usize>::new()
-        );
+        assert_eq!(UpgradeSync::default().installed(&ids), Vec::<usize>::new());
     }
 
     #[test]
