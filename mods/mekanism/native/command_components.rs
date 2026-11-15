@@ -12,6 +12,8 @@ fn mekanism_command_component(state: &mut ItemState<'_, '_>) -> core::ops::Contr
                 | "mekanism:fluids"
                 | "mekanism:heat"
                 | "mekanism:redstone_control"
+                | "mekanism:owner"
+                | "mekanism:security"
         )
     {
         return core::ops::ControlFlow::Break(Ok(id));
