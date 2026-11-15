@@ -56,6 +56,7 @@ pub mod resource;
 pub mod resource_tank;
 pub mod screen_elements;
 pub mod scroll_list;
+pub mod security;
 pub mod settings;
 pub mod side_config;
 pub mod side_tab;
