@@ -65,7 +65,30 @@ def com_lado(tiros, prefixo, tp_lado):
     return saida
 
 
+# A fila de pilhas parada tick a tick (frente `transportador-sobras`, terceira rodada): a linha de itens com componentes (a espada encantada sai primeiro, depois a picareta gasta, o graveto com
+# nome, o livro encantado), o servidor parado, e um tiro de cima e um de lado, de perto, a cada `tick step 1`, com o `progress` de cada pilha no log dos dois jogos (`#transito`, a sonda `MBI`).
+PASSOS_DA_FILA = 24
+TRANSITO = ["#transito 61 -60 82", "#transito 62 -60 82", "#transito 63 -60 82"]
+# De cima, sobre o meio dos três primeiros transportadores, e de lado, ao norte da fileira e na altura das pilhas (z 82, a 2,5 blocos).
+TP_CIMA = "62.5 -58.2 82.5 0 90"
+TP_LADO = "62.5 -61.2 80.0 0 0"
+
+
+def pilhas_json():
+    cmds, primeiro = linha(60, Z, None, COMPONENTES)
+    base = {"name": "fila_base", "cmds": ["gamemode creative @a"] + cmds + ["tick freeze", f"#conexao {primeiro[0]} {Y} {primeiro[1]} west=pull"] + TRANSITO + ["gamemode spectator @a"], "tp": TP_CIMA}
+    shots = [base]
+    for k in range(1, PASSOS_DA_FILA + 1):
+        shots.append({"name": f"fila_cima_{k:02d}", "cmds": ["tick step 1"] + TRANSITO + ["#esperar 8"], "tp": TP_CIMA})
+        shots.append({"name": f"fila_lado_{k:02d}", "cmds": [], "tp": TP_LADO})
+    roteiro = {"setup": SETUP, "clear": SEM_LIMPEZA, "shots": shots}
+    with open(os.path.join(HERE, "cenas/transportador_pilhas.json"), "w") as handle:
+        json.dump(roteiro, handle, indent=1)
+        handle.write("\n")
+
+
 def main():
+    pilhas_json()
     # Sem cor, a pilha não leva a caixa tingida e o item aparece (com a cor, a caixa de cima o esconde): as pilhas e os componentes saem na linha sem cor, e a caixa na linha pintada.
     cmds_a, primeiro_a = linha(60, Z, None)
     base_a = cmds_a + ["tick freeze", f"#conexao {primeiro_a[0]} {Y} {primeiro_a[1]} west=pull", f"tick step {PASSOS_BASE}", f"#esperar {PASSOS_BASE * 2 + 20}"]

@@ -121,6 +121,10 @@ public class CenaBlocos {
             server.execute(() -> color(server, command));
             return;
         }
+        if (command.startsWith("#transito ")) {
+            server.execute(() -> transit(server, command));
+            return;
+        }
         server.execute(() -> server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command));
     }
 
@@ -156,6 +160,28 @@ public class CenaBlocos {
         tile.markForSave();
         transporter.notifyTileChange();
         tile.sendUpdatePacket();
+    }
+
+    /// `#transito X Y Z`: escreve no log (`cena-transito`) o tempo do servidor, o `delay` do transportador logístico em `x y z` e as pilhas em trânsito na ordem do `Int2ObjectOpenHashMap` (o item,
+    /// a quantidade e o `progress`), para o tick em que a pilha sai do baú e o `progress` de cada tiro serem comparados com a sonda `MBI` do port (`horizon2/h2_blocos.py`).
+    private static void transit(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        var tile = (mekanism.common.tile.transmitter.TileEntityTransmitter) server.overworld().getBlockEntity(pos);
+        var transporter = (mekanism.common.content.network.transmitter.LogisticalTransporterBase) tile.getTransmitter();
+        int delay;
+        try {
+            var field = mekanism.common.content.network.transmitter.LogisticalTransporterBase.class.getDeclaredField("delay");
+            field.setAccessible(true);
+            delay = field.getInt(transporter);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        StringBuilder stacks = new StringBuilder();
+        for (var stack : transporter.getTransit()) {
+            stacks.append(" [").append(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItemType().getItem())).append(" x").append(stack.size()).append(" progress ").append(stack.progress).append("]");
+        }
+        Mekanism.logger.info("cena-transito: {} {} {} gametime {} delay {} stacks{}", words[1], words[2], words[3], server.overworld().getGameTime(), delay, stacks);
     }
 
     /// `#ejetar X Y Z`: liga o `eject` da energia do Energy Cube em `x y z` (`ConfigInfo.setEjecting`, desligado por padrão): com os lados em saída, o cubo passa a empurrar a energia para o cabo vizinho.

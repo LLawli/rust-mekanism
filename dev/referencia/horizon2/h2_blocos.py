@@ -514,6 +514,11 @@ def cena(out, nomes=(), roteiro="blocos.json"):
                 continue
             if cmd.startswith("#rede-ler "):
                 continue  # só do original (`cena-rede-lida` no log); o port loga a escala da rede do cliente na sonda `MBS`
+            if cmd.startswith("#transito "):
+                # Só o tempo do jogo: as pilhas em trânsito (o `progress` de cada uma) vão para o `game.log` pela sonda `MBI` (`enviar_fontes.sh ... sonda`), a cada tick em que o transportador anda; o original
+                # as escreve no log por este comando (`cena-transito`).
+                print("transito", cmd, h.command("time query gametime"))
+                continue
             if cmd.startswith("#fluido "):
                 # Só do port (`cenas/cabo_conteudo_port.json`): o NBT do Fluid Tank do port (`machinery_basis.tanks`); o original usa o `fluid_tanks` dele no próprio roteiro.
                 time.sleep(1.5)

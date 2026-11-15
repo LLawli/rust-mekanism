@@ -1,0 +1,434 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "attribute @a minecraft:gravity base set 0",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air",
+  "fill 20 -60 91 160 -50 110 minecraft:air",
+  "fill 20 -60 111 160 -50 130 minecraft:air",
+  "fill 20 -61 52 160 -61 130 minecraft:stone"
+ ],
+ "clear": "fill 52 -60 140 52 -60 140 minecraft:air",
+ "shots": [
+  {
+   "name": "fila_base",
+   "cmds": [
+    "gamemode creative @a",
+    "setblock 60 -60 82 minecraft:chest",
+    "setblock 61 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 62 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 63 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 63 -60 83 mekanism:basic_logistical_transporter",
+    "setblock 63 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 64 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 65 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 66 -60 84 minecraft:chest",
+    "item replace block 60 -60 82 container.0 with minecraft:diamond_sword[enchantments={sharpness:5}] 16",
+    "item replace block 60 -60 82 container.1 with minecraft:iron_pickaxe[damage=100] 16",
+    "item replace block 60 -60 82 container.2 with minecraft:stick[custom_name='Nome'] 16",
+    "item replace block 60 -60 82 container.3 with minecraft:enchanted_book 16",
+    "item replace block 60 -60 82 container.4 with minecraft:diamond_sword[enchantments={sharpness:5}] 16",
+    "item replace block 60 -60 82 container.5 with minecraft:iron_pickaxe[damage=100] 16",
+    "item replace block 60 -60 82 container.6 with minecraft:golden_apple 16",
+    "item replace block 60 -60 82 container.7 with minecraft:apple 16",
+    "#esperar 20",
+    "#esperar 10",
+    "tick freeze",
+    "#conexao 61 -60 82 west=pull",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "gamemode spectator @a"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_cima_01",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_01",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_02",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_02",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_03",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_03",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_04",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_04",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_05",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_05",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_06",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_06",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_07",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_07",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_08",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_08",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_09",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_09",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_10",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_10",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_11",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_11",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_12",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_12",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_13",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_13",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_14",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_14",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_15",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_15",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_16",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_16",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_17",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_17",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_18",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_18",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_19",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_19",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_20",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_20",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_21",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_21",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_22",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_22",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_23",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_23",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  },
+  {
+   "name": "fila_cima_24",
+   "cmds": [
+    "tick step 1",
+    "#transito 61 -60 82",
+    "#transito 62 -60 82",
+    "#transito 63 -60 82",
+    "#esperar 8"
+   ],
+   "tp": "62.5 -58.2 82.5 0 90"
+  },
+  {
+   "name": "fila_lado_24",
+   "cmds": [],
+   "tp": "62.5 -61.2 80.0 0 0"
+  }
+ ]
+}
