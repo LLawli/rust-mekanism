@@ -9,12 +9,18 @@ fn root(path: &str) -> PathBuf {
 }
 
 fn trace() -> Vec<Value> {
-    let text = std::fs::read_to_string(root("../../dev/referencia/rastros/upgrade_history_details.jsonl")).expect("rastro");
-    text.lines().map(|line| serde_json::from_str(line).expect("linha JSON")).collect()
+    let text = std::fs::read_to_string(root(
+        "../../dev/referencia/rastros/upgrade_history_details.jsonl",
+    ))
+    .expect("rastro");
+    text.lines()
+        .map(|line| serde_json::from_str(line).expect("linha JSON"))
+        .collect()
 }
 
 fn lang() -> Value {
-    let text = std::fs::read_to_string(root("content/assets/mekanism/lang/en_us.json")).expect("lang");
+    let text =
+        std::fs::read_to_string(root("content/assets/mekanism/lang/en_us.json")).expect("lang");
     serde_json::from_str(&text).expect("JSON do lang")
 }
 
@@ -24,7 +30,12 @@ fn of_mekanism(row: &Value) -> bool {
 
 #[test]
 fn the_details_items_are_the_ones_of_the_original() {
-    let mut expected: Vec<&str> = trace().iter().filter(|row| of_mekanism(row) && row["details"] == true).map(|row| row["item"].as_str().unwrap().to_owned()).map(|s| &*Box::leak(s.into_boxed_str())).collect();
+    let mut expected: Vec<&str> = trace()
+        .iter()
+        .filter(|row| of_mekanism(row) && row["details"] == true)
+        .map(|row| row["item"].as_str().unwrap().to_owned())
+        .map(|s| &*Box::leak(s.into_boxed_str()))
+        .collect();
     let mut have: Vec<&str> = DETAILS_ITEMS.to_vec();
     expected.sort_unstable();
     have.sort_unstable();
@@ -45,12 +56,25 @@ fn only_the_details_items_hide_the_details() {
 #[test]
 fn the_description_key_gives_the_text_the_original_shows() {
     let lang = lang();
-    for row in trace().iter().filter(|row| of_mekanism(row) && row["details"] == true) {
+    for row in trace()
+        .iter()
+        .filter(|row| of_mekanism(row) && row["details"] == true)
+    {
         let item = row["item"].as_str().unwrap();
         assert_eq!(row["description"], true, "{item}");
         let key = description_key(item);
-        let text = lang[&key].as_str().unwrap_or_else(|| panic!("{item}: falta {key} no lang"));
-        let lines: Vec<&str> = row["tooltip"].as_array().unwrap().iter().map(|line| line.as_str().unwrap()).collect();
-        assert!(lines.contains(&text), "{item}: {key} = {text:?} não está em {lines:?}");
+        let text = lang[&key]
+            .as_str()
+            .unwrap_or_else(|| panic!("{item}: falta {key} no lang"));
+        let lines: Vec<&str> = row["tooltip"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|line| line.as_str().unwrap())
+            .collect();
+        assert!(
+            lines.contains(&text),
+            "{item}: {key} = {text:?} não está em {lines:?}"
+        );
     }
 }

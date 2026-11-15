@@ -110,13 +110,22 @@ pub enum HoldLine {
 
 /// Quais linhas de dica um item mostra: `has_details` (o item tem o componente `DETAILS`), `has_description` (tem o `DESCRIPTION`), `details_down` (a tecla de detalhes, Left Shift) e
 /// `description_down` (Shift mais N).
-pub fn hold_lines(has_details: bool, has_description: bool, details_down: bool, description_down: bool) -> Vec<HoldLine> {
+pub fn hold_lines(
+    has_details: bool,
+    has_description: bool,
+    details_down: bool,
+    description_down: bool,
+) -> Vec<HoldLine> {
     let mut lines = Vec::new();
     if has_details && !details_down {
         lines.push(HoldLine::DetailsHint);
     }
     if has_description {
-        lines.push(if description_down { HoldLine::Description } else { HoldLine::DescriptionHint });
+        lines.push(if description_down {
+            HoldLine::Description
+        } else {
+            HoldLine::DescriptionHint
+        });
     }
     lines
 }
@@ -199,10 +208,16 @@ mod tests {
     #[test]
     fn the_hold_lines_follow_the_details_and_description_keys() {
         use HoldLine::*;
-        assert_eq!(hold_lines(true, true, false, false), [DetailsHint, DescriptionHint]);
+        assert_eq!(
+            hold_lines(true, true, false, false),
+            [DetailsHint, DescriptionHint]
+        );
         assert_eq!(hold_lines(true, true, true, false), [DescriptionHint]);
         assert_eq!(hold_lines(true, true, true, true), [Description]);
-        assert_eq!(hold_lines(true, true, false, true), [DetailsHint, Description]);
+        assert_eq!(
+            hold_lines(true, true, false, true),
+            [DetailsHint, Description]
+        );
         assert_eq!(hold_lines(false, true, false, false), [DescriptionHint]);
         assert_eq!(hold_lines(true, false, false, false), [DetailsHint]);
         assert!(hold_lines(false, false, false, false).is_empty());
