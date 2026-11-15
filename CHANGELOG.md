@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- A descrição do item com Shift mais N é cortada em linhas como o NeoForge corta o tooltip de um item (Fase 5, frente `maquina-sobras`, decisão 247): o port a desenhava numa linha só, que passava da tela; agora fica nas mesmas duas linhas do original, pela regra de `ClientHooks.gatherTooltipComponentsFromElements` (o lado do cursor com espaço, ou o corte no espaço do lado maior)
 - O nome do item das fábricas e dos cubos de energia leva a cor do tier (`BaseTier.getTextColor`, via `ItemRegistryObject.getNameColor`): as 36 fábricas e os 5 cubos mostravam o nome branco, o original o mostra na cor do tier (Fase 5, frente `maquina-sobras`, decisão 234)
 - A cena de lava da conferência (`gerar_cena_lava.py`) esvaziava o tanque com uma regex que não casava o id entre aspas, e o nível vazio saía como 1.500 mB; agora casa, e as regiões de comparação da janela de upgrades, do medidor de lava e do tooltip deixam de fora o mundo atrás da tela (frente `maquina-sobras`, decisão 243)
 - A lava do Heat Generator passa do medidor quando o item traz mais que a capacidade do tanque, como o original (Fase 5, frente `maquina-sobras`, decisão 243): o tanque restaurado de um item, da rede ou do NBT não limita mais a quantidade, e `Tank::room` não passa de zero

@@ -1,0 +1,932 @@
+{
+ "hud": true,
+ "setup": [
+  "difficulty peaceful",
+  "time set noon",
+  "weather clear",
+  "gamemode survival @a",
+  "gamerule advance_time false",
+  "gamerule advance_weather false",
+  "fill 52 -61 70 100 -61 90 minecraft:stone",
+  "fill 52 -60 70 100 -52 90 minecraft:air",
+  "kill @e[type=minecraft:item]"
+ ],
+ "clear": "weather clear",
+ "shots": [
+  {
+   "name": "lava_vazia",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 60 -61 80",
+    "#esperar 20",
+    "#abrir 60 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_lava_vazia",
+   "cmds": [
+    "#tela",
+    "#quebrar 60 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "lava_meia",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:500L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 64.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 64 -61 80",
+    "#esperar 20",
+    "#abrir 64 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_lava_meia",
+   "cmds": [
+    "#tela",
+    "#quebrar 64 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "lava_cheia",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:1000L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 68.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 68 -61 80",
+    "#esperar 20",
+    "#abrir 68 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_lava_cheia",
+   "cmds": [
+    "#tela",
+    "#quebrar 68 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "lava_sobre",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:5000L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 72.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 72 -61 80",
+    "#esperar 20",
+    "#abrir 72 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_lava_sobre",
+   "cmds": [
+    "#tela",
+    "#quebrar 72 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "lava_carvao",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{type:{id:\"mekanism:upgrade\",components:{\"mekanism:upgrade_type\":\"mekanism:muffling\"}},amount:3L},output:{}},mekanism:items={containers:[{type:{id:\"minecraft:coal\"},amount:17L},{type:{id:\"minecraft:redstone\"},amount:5L}]},mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:500L}]},mekanism:heat={heat:4000.0d,heat_capacity:10.0d},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 76.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 76 -61 80",
+    "#esperar 20",
+    "#abrir 76 -60 80",
+    "#esperar 30"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_lava_carvao",
+   "cmds": [
+    "#tela",
+    "#quebrar 76 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_enrichment_chamber_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_enrichment_chamber_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_enrichment_chamber_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_crusher_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:crusher",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_crusher_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_crusher_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_energized_smelter_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:energized_smelter",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_energized_smelter_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_energized_smelter_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_metallurgic_infuser_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:metallurgic_infuser",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_metallurgic_infuser_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_metallurgic_infuser_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_heat_generator_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanismgenerators:heat_generator",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_heat_generator_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_heat_generator_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_energy_cube_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:basic_energy_cube",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_energy_cube_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_energy_cube_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_creative_energy_cube_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:creative_energy_cube",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_creative_energy_cube_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_creative_energy_cube_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_personal_chest_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:personal_chest",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_personal_chest_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_personal_chest_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_security_desk_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:security_desk",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_security_desk_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_security_desk_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_industrial_alarm_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:industrial_alarm",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_industrial_alarm_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_industrial_alarm_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_logistical_sorter_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:logistical_sorter",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_logistical_sorter_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_logistical_sorter_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_digital_miner_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:digital_miner",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_digital_miner_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_digital_miner_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_teleporter_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:teleporter",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_teleporter_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_teleporter_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_smelting_factory_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:basic_smelting_factory",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_smelting_factory_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_basic_smelting_factory_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_ultimate_infusing_factory_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:ultimate_infusing_factory",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_ultimate_infusing_factory_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_ultimate_infusing_factory_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_laser_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:laser",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_laser_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_laser_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_qio_dashboard_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanism:qio_dashboard",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_qio_dashboard_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_qio_dashboard_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_solar_generator_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanismgenerators:solar_generator",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_solar_generator_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_solar_generator_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_wind_generator_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanismgenerators:wind_generator",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_wind_generator_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_wind_generator_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_fission_reactor_logic_adapter_nenhuma",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "item replace entity @a hotbar.0 with mekanismgenerators:fission_reactor_logic_adapter",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#inventario 0",
+    "#tecla nenhuma",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_fission_reactor_logic_adapter_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla detalhes",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "detalhe_fission_reactor_logic_adapter_descricao",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "#inventario 0",
+    "#tecla descricao",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_detalhes",
+   "cmds": [
+    "#tela",
+    "#tecla nenhuma",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  }
+ ]
+}

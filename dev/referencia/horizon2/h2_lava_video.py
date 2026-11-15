@@ -3,7 +3,7 @@
 
     h2_lava_video.py
 
-O Heat Generator posto com a lava em 500, 1.000 e 5.000 mB (o chão de pedra e o ar em volta primeiro, porque o gerador puxa a lava dos vizinhos (a caverna do mundo `limpo` tem lava ao lado); o item da cena `cenas/heat_lava.json`, com carvão para o tanque não ser queimado: sem combustível o gerador gasta a lava, e um `data merge` com a tela aberta não muda o tanque que o tile já leu). O último nível passa da capacidade (decisão 243). Grave com `gravar-jogo rec <ws> lava.mp4 50 <container>` aberto uns 2 s antes.
+O Heat Generator posto com a lava em 500, 1.000 e 5.000 mB (o chão de pedra e o ar em volta primeiro, porque o gerador puxa a lava dos vizinhos (a caverna do mundo `limpo` tem lava ao lado); o item da cena `cenas/heat_lava.json`, sem carvão: com carvão o `fillOrBurn` do gerador enche o tanque de 1.000 mB antes do print, nos dois jogos, e os níveis de 500 e 1.000 mB saem iguais). O último nível passa da capacidade (decisão 243). Grave com `gravar-jogo rec <ws> lava.mp4 50 <container>` aberto uns 2 s antes.
 """
 import json, os, subprocess, sys, time
 
