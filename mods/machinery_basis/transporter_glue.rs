@@ -437,7 +437,12 @@ impl InventoryOwnerWorld for GameWorld<'_, '_> {
 /// bloco; fora dos transportadores não faz nada.
 pub(in crate::game) fn transporter_client_tick(game: &Game<'_>, pos: [i32; 3], id: &str) {
     if let Some((tier, _)) = transporter_stats(id) {
+        let before = if DRAW_PROBE { client::transit_at(game.native_dimension(), pos).iter().map(|s| s.progress).collect::<Vec<_>>() } else { Vec::new() };
         client::tick_transporter(game.native_dimension(), pos, tier.speed());
+        if DRAW_PROBE && !before.is_empty() {
+            let after: Vec<i32> = client::transit_at(game.native_dimension(), pos).iter().map(|s| s.progress).collect();
+            eprintln!("MBK {{\"t\":{},\"p\":{pos:?},\"before\":{before:?},\"after\":{after:?},\"dim\":{:?}}}", game.world.game_time, game.native_dimension());
+        }
     }
 }
 

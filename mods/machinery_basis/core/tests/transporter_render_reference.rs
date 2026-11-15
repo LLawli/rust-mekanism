@@ -98,3 +98,38 @@ fn partial_tick_moves_the_stack_by_the_speed_of_the_tier() {
     assert_eq!(slow, [0.5, 0.25 - (5.0f32 / 100.0 - 0.5), 0.5]);
     assert!(fast[1] < slow[1]);
 }
+
+/// Com o jogo parado (`tick freeze` e `tick step`) o `partialTick` do desenho é 1,0 nos dois jogos (original: `DeltaTracker.Timer.getGameTimeDeltaPartialTick` devolve 1,0 se o relógio está
+/// congelado, medido por `cena-partial` em `testes/CenaBlocos.java`, 15 prints; port: `MBR`, a sonda do desenho): `drawn_stacks` com `partial_tick` 1,0 dá a posição que o original calculou com o
+/// `partial` valendo o `getSpeed()` do tier (`partialTick * getSpeed()`), em todo tier, lado e progresso do rastro (decisão 246, quarta rodada: a posição na tela só muda de uma execução para
+/// outra pela idade da pilha, que depende da fase do `delay` do puxar quando o jogo congela, e não pelo desenho).
+#[test]
+fn a_frozen_game_draws_the_stack_where_the_original_does_with_a_full_partial_tick() {
+    let at = BlockPos::new(10, 64, -3).as_long();
+    let mut checked = 0;
+    for line in rastro().lines() {
+        let row: Vec<i64> = serde_json::from_str(line).unwrap();
+        let [speed, prev, next, progress, partial, _, x, y, z] = row[..] else {
+            panic!("{line}");
+        };
+        if f32::from_bits(partial as u32) != speed as f32 {
+            continue;
+        }
+        let relative = |side: i64| match side {
+            -1 => None,
+            side => Some(relative_pos(at, Face::ALL[side as usize])),
+        };
+        let mut a = stack(1, Some("minecraft:diamond_sword"), progress as i32, None);
+        (a.previous, a.next) = (relative(prev), relative(next));
+        let drawn = drawn_stacks(&[&a], at, speed as i32, 1.0);
+        let want = [x, y, z].map(|bits| f32::from_bits(bits as u32));
+        assert_eq!(
+            drawn[0].position.map(f32::to_bits),
+            want.map(f32::to_bits),
+            "{line}"
+        );
+        checked += 1;
+    }
+    // 4 tiers, 7 origens, 7 destinos e 10 progressos, com o `partial` igual à velocidade.
+    assert_eq!(checked, 4 * 7 * 7 * 10);
+}
