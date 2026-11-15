@@ -2721,9 +2721,13 @@ pub(in crate::game) fn security_screen_click(game: &Game<'_>, image_width: i32, 
     (!game.mb_window_covers(at) && tab.is_mouse_over(true, true, at)).then_some(if right { SECURITY_PREVIOUS_BUTTON } else { SECURITY_NEXT_BUTTON })
 }
 
-/// O ícone da aba (`getOverlay`): o sprite do modo no atlas da tela.
-fn security_icon(mode: sec::SecurityMode) -> String {
-    format!("mekanism:gui/sprites/{}", sec::tab_overlay(mode).trim_start_matches("mekanism:"))
+/// O ícone da aba (`getOverlay`): o sprite do modo no atlas da tela (`security/public`, `private` e `protected`; o mesmo nome que `sec::tab_overlay` diz).
+fn security_icon(mode: sec::SecurityMode) -> &'static str {
+    match mode {
+        sec::SecurityMode::Public => "mekanism:gui/sprites/security/public",
+        sec::SecurityMode::Private => "mekanism:gui/sprites/security/private",
+        sec::SecurityMode::Trusted => "mekanism:gui/sprites/security/protected",
+    }
 }
 
 /// `GuiSecurityTab` desenhada: o suporte tingido, o botão e o sprite do modo (`getSecurityMode(..., true)`), com o fundo em foco sob o mouse.
@@ -2734,7 +2738,7 @@ pub(in crate::game) fn security_draw(game: &Game<'_>, batch: &mut HudBatch, orig
     let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
     let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
     let mode = if sec::SecurityConfig::default().allow_protection { view.mode } else { sec::SecurityMode::Public };
-    inset_tab(game, batch, "mekanism", tab, origin, SECURITY_TAB_TINT, &security_icon(mode), ButtonLook::of(true, hovered));
+    inset_tab(game, batch, "mekanism", tab, origin, SECURITY_TAB_TINT, security_icon(mode), ButtonLook::of(true, hovered));
 }
 
 /// O texto de uma linha de tooltip de segurança: o rótulo na cor dele e o argumento na do argumento.
