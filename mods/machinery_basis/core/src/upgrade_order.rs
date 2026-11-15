@@ -118,6 +118,24 @@ pub fn entries_from_disk(sorted: &[(String, i32)]) -> Vec<(String, i32)> {
         .collect()
 }
 
+/// As entradas de um conjunto de ids lido do disco quando o tile guardou a ordem em que o original escreveria o arquivo (`file`, a de [`file_order`] sobre a tabela da sessão que o
+/// gravou): o `HashMap` do NBT relê as chaves nessa ordem e a devolve igual, então ela é a ordem das entradas (decisão 233). Vale só se `file` tem exatamente os ids de `known`
+/// (um NBT editado à mão, ou um que outro mod mexeu, cai na ordem alfabética de [`entries_from_disk`]).
+pub fn entries_from_file(known: &[(String, i32)], file: &[String]) -> Vec<(String, i32)> {
+    let same_set = file.len() == known.len()
+        && file.iter().all(|id| known.iter().any(|(known, _)| known == id))
+        && file
+            .iter()
+            .enumerate()
+            .all(|(index, id)| !file[..index].contains(id));
+    if !same_set {
+        return entries_from_disk(known);
+    }
+    file.iter()
+        .filter_map(|id| known.iter().find(|(known, _)| known == id).cloned())
+        .collect()
+}
+
 /// O mapa que o cliente decodifica da janela de upgrades (`SyncableStreamCodec.upgradeMap`: `Object2IntOpenHashMap::new` com o tamanho, as entradas na ordem do mapa do tile):
 /// a ordem de `getInstalledTypes()`.
 pub fn window_order(tile_order: &[String]) -> Vec<String> {

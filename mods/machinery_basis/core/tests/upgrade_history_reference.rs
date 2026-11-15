@@ -165,6 +165,49 @@ fn the_reloaded_table_is_the_one_built_from_the_order_of_the_file() {
     fixed_hashes(&[]);
 }
 
+/// O tile guarda junto do NBT a ordem em que o original escreveria o arquivo (`UpgradeSaved.file_order`, H259): o que `saved()` leva ao disco é a ordem `file` do rastro, e um tile novo que
+/// lê esse NBT (os totais ordenados, como o do Horizon, e essa ordem) monta a tabela do tile recarregado do original, nas 4.144 amostras e sem exceção.
+#[test]
+fn a_tile_reloaded_with_the_written_order_is_the_original_in_every_sample() {
+    let mut total = 0;
+    for run in [1, 2] {
+        for (n, row) in rows(run).iter().enumerate() {
+            use_hashes(row);
+            let saved = tile_of(row).saved();
+            assert_eq!(saved.file_order, names(&row["file"]), "execução {run} amostra {n}");
+            let reloaded = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
+            reloaded.restore(&saved);
+            assert_eq!(
+                in_order(&reloaded),
+                names(&row["reloaded"]),
+                "execução {run} amostra {n} ({:?})",
+                names(&row["installed"])
+            );
+            total += 1;
+        }
+    }
+    fixed_hashes(&[]);
+    assert_eq!(total, 4144);
+}
+
+/// Sem a ordem (um NBT que a perdeu, ou editado à mão) a leitura cai na ordem alfabética, e o que difere é o que o `HashMap` empata. Nenhum item guarda a ordem.
+#[test]
+fn a_nbt_without_the_written_order_falls_back_to_the_sorted_one() {
+    let row = &rows(1)[0];
+    use_hashes(row);
+    let mut saved = tile_of(row).saved();
+    saved.file_order.clear();
+    let reloaded = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
+    reloaded.restore(&saved);
+    assert_eq!(in_order(&reloaded).len(), names(&row["installed"]).len());
+    // Uma ordem que não é a do conjunto (um tipo a mais, um a menos) vale a alfabética, como se não houvesse.
+    saved.file_order = vec![id("speed")];
+    let again = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
+    again.restore(&saved);
+    assert_eq!(in_order(&again), in_order(&reloaded));
+    fixed_hashes(&[]);
+}
+
 /// O NBT do port é ordenado e não guarda a ordem do arquivo: o `HashMap` parte da ordem alfabética, e a ordem de depois de recarregar só difere da do original quando duas chaves
 /// caem no mesmo balde do `HashMap` e na mesma posição da tabela. Medido nas amostras: quantas são e que nenhuma outra difere.
 #[test]

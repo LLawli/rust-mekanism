@@ -1306,6 +1306,8 @@ pub(in crate::game) fn resource_from_tag(game: &Game<'_>, id: &str, components: 
 const COMPONENT_UPGRADE: &str = "component_upgrade";
 /// `SerializationConstants.UPGRADES` e `ITEMS`: o mapa de upgrades instalados e a lista dos dois slots.
 const UPGRADES_KEY: &str = "upgrades";
+/// A ordem de escrita das chaves de `upgrades` (decisão 233, H259), guardada no compound da lib (`SAVED`) e não no do original.
+const UPGRADE_ORDER_KEY: &str = "upgrade_order";
 const ITEMS_KEY: &str = "items";
 /// `ContainerType.ITEM.saveTo` e `LargeResourceStack.codec`: `{container: byte, stored: {type: {id, components}, amount}}`.
 const CONTAINER_KEY: &str = "container";
@@ -1347,6 +1349,15 @@ pub(in crate::game) fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -
                 saved.upgrades.insert(id.to_string_lossy(), *total);
             }
         }
+    }
+    if let Some(Tag::List(order)) = saved(entity).and_then(|lib| lib.get(&JavaString::from(UPGRADE_ORDER_KEY))) {
+        saved.file_order = order
+            .iter()
+            .filter_map(|id| match id {
+                Tag::String(id) => Some(id.to_string_lossy()),
+                _ => None,
+            })
+            .collect();
     }
     if let Some(Tag::List(items)) = component.get(&JavaString::from(ITEMS_KEY)) {
         for entry in items {
@@ -1428,6 +1439,27 @@ pub(in crate::game) fn write_upgrades(entity: &mut ModBlockEntity, saved: &Upgra
         entity.nbt.remove(&key);
     } else {
         entity.nbt.insert(key, Tag::Compound(component));
+    }
+    write_upgrade_order(entity, &saved.file_order);
+}
+
+/// A ordem em que o original escreveria as chaves de `upgrades`: o NBT do Horizon é ordenado, então ela vai numa lista do compound da lib. Sem ordem (sem upgrades, ou um
+/// `saved` de item) a chave some, e o compound da lib some junto se ficou vazio.
+fn write_upgrade_order(entity: &mut ModBlockEntity, order: &[String]) {
+    let key = JavaString::from(SAVED);
+    let mut lib = saved(entity).cloned().unwrap_or_default();
+    if order.is_empty() {
+        if lib.remove(&JavaString::from(UPGRADE_ORDER_KEY)).is_none() {
+            return;
+        }
+    } else {
+        let list = order.iter().map(|id| Tag::String(JavaString::from(id.as_str()))).collect();
+        lib.insert(JavaString::from(UPGRADE_ORDER_KEY), Tag::List(list));
+    }
+    if lib.is_empty() {
+        entity.nbt.remove(&key);
+    } else {
+        entity.nbt.insert(key, Tag::Compound(lib));
     }
 }
 

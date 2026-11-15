@@ -7,7 +7,7 @@ use crate::containers::{
 };
 use crate::sim::open_hash::OpenHashMap;
 use crate::transaction::{Callback, Transaction};
-use crate::upgrade_order::{UpgradeKey, entries_from_disk, loaded_map};
+use crate::upgrade_order::{UpgradeKey, entries_from_disk, entries_from_file, file_order, loaded_map};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
@@ -376,6 +376,10 @@ impl UpgradeData {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UpgradeSaved {
     pub upgrades: BTreeMap<String, i32>,
+    /// A ordem em que o original escreveria as chaves de `upgrades` no arquivo (o `HashMap` do `CompoundTag`, [`file_order`] sobre a tabela do tile). O NBT do Horizon é ordenado e
+    /// não a guarda, então o tile a leva junto, fora do compound do original (`machinery_basis.upgrade_order`), e a leitura a usa no lugar da ordem alfabética (decisão 233, H259).
+    /// Vazia num item e num NBT que não a trouxe.
+    pub file_order: Vec<String>,
     pub input: SlotContents,
     pub output: SlotContents,
 }
@@ -684,8 +688,14 @@ impl UpgradeComponent {
 
     /// `serialize`.
     pub fn saved(&self) -> UpgradeSaved {
+        let ids: Vec<String> = self
+            .installed_in_order()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         UpgradeSaved {
             upgrades: self.installed(),
+            file_order: file_order(&ids),
             input: self.0.upgrade_slot.contents(),
             output: self.0.upgrade_output_slot.contents(),
         }
@@ -703,7 +713,12 @@ impl UpgradeComponent {
             .collect();
         let mut installed = self.0.installed.borrow_mut();
         if from_item || !known.is_empty() {
-            *installed = loaded_map(&entries_from_disk(&known));
+            let entries = if from_item {
+                entries_from_disk(&known)
+            } else {
+                entries_from_file(&known, &saved.file_order)
+            };
+            *installed = loaded_map(&entries);
         } else {
             installed.clear_keeping_table();
         }
