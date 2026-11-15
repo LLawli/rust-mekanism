@@ -300,7 +300,7 @@ def casos_seguranca():
     out = []
     for m in ("chamber", "infuser", "generator", "cubo"):
         tela = MAQUINAS[m]["tela"]
-        extra = dict(lava="500") if m == "generator" else {}
+        extra = {}
         out += [
             caso(f"{m}_seg_publica", m, energia="0", **extra),
             caso(f"{m}_seg_hover", m, energia="0", hover=ABA_SEGURANCA, **extra),

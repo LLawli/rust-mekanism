@@ -27,7 +27,9 @@ trap restore EXIT
 cp "$JAVA" "$N/CenaTelas.java"
 cp "$CENA" "$R/cena-telas"
 LARGURA=${LARGURA:-1280}; ALTURA=${ALTURA:-720}; JANELA="-W $LARGURA -H $ALTURA -w $LARGURA -h $ALTURA"
-"$C/lim-build" env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
+# `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo` a segura); passar de novo por `lim-build` esperaria por ela para sempre.
+LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
+$LIM env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
 echo "EXIT $?"
 [ -s "$R/fora_rastro.jsonl" ] && cp "$R/fora_rastro.jsonl" "$SAIDA" && rm -f "$R/fora_rastro.jsonl"
 # Os prints que a cena tira ficam em screenshots/ com o nome `oficial_<caso>_e<escala>.png`: apague-os pelo nome.

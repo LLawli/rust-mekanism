@@ -759,4 +759,18 @@ mod tests {
         assert_eq!(frequency_sync(None, "Alex"), (0, vec![0]));
         assert_eq!(frequency_owner(&bytes[..10]), None);
     }
+
+    #[test]
+    fn the_effective_mode_is_public_with_the_protection_off() {
+        let state = SecurityState {
+            owner: Some(1),
+            mode: SecurityMode::Private,
+        };
+        let off = SecurityConfig {
+            allow_protection: false,
+            ops_bypass: false,
+        };
+        assert_eq!(state.effective_mode(SecurityConfig::default()), SecurityMode::Private);
+        assert_eq!(state.effective_mode(off), SecurityMode::Public);
+    }
 }
