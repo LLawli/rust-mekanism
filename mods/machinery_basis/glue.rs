@@ -1339,6 +1339,8 @@ fn upgrade_slot_contents(game: &Game<'_>, stored: &Compound) -> SlotContents {
 
 /// `TileComponentUpgrade.deserialize`: `upgrades` (o mapa de tipo para total) e os dois slots, na lista `items`.
 pub(in crate::game) fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -> UpgradeSaved {
+    // Antes de o local `saved` sombrear a função `saved`.
+    let order_tag = saved(entity).and_then(|lib| lib.get(&JavaString::from(UPGRADE_ORDER_KEY)));
     let mut saved = UpgradeSaved::default();
     let Some(Tag::Compound(component)) = entity.nbt.get(&JavaString::from(COMPONENT_UPGRADE)) else {
         return saved;
@@ -1350,7 +1352,7 @@ pub(in crate::game) fn read_upgrades(game: &Game<'_>, entity: &ModBlockEntity) -
             }
         }
     }
-    if let Some(Tag::List(order)) = saved(entity).and_then(|lib| lib.get(&JavaString::from(UPGRADE_ORDER_KEY))) {
+    if let Some(Tag::List(order)) = order_tag {
         saved.file_order = order
             .iter()
             .filter_map(|id| match id {
