@@ -878,6 +878,22 @@ pub(in crate::game) fn drawn_item(stack: &machinery_basis_core::transmission::cl
     Some(item)
 }
 
+/// A sonda do desenho (`MBR`): o `partial` que o Horizon entrega ao desenho das pilhas, o tempo do jogo e o `progress` de cada pilha, uma linha a cada mudança. O repositório a deixa desligada;
+/// `enviar_fontes.sh WS PASTA sonda` a liga na cópia de teste (frente `transportador-sobras`, decisão 246, quarta rodada).
+const DRAW_PROBE: bool = false;
+static DRAW_PROBE_LAST: Mutex<Option<HashMap<[i32; 3], (u32, i64, Vec<i32>)>>> = Mutex::new(None);
+
+fn draw_probe(game_time: i64, pos: [i32; 3], partial: f32, stacks: &[&machinery_basis_core::transmission::client::ClientStack]) {
+    let progress: Vec<i32> = stacks.iter().map(|s| s.progress).collect();
+    let key = (partial.to_bits(), game_time, progress.clone());
+    let mut guard = DRAW_PROBE_LAST.lock().unwrap_or_else(|e| e.into_inner());
+    let last = guard.get_or_insert_with(HashMap::new);
+    if last.get(&pos) != Some(&key) {
+        eprintln!("MBR {{\"t\":{game_time},\"p\":{pos:?},\"partial\":{partial},\"progress\":{progress:?}}}");
+        last.insert(pos, key);
+    }
+}
+
 /// `RenderLogisticalTransporter.submit`: para cada pilha desenhada (`drawn_stacks`: a posição interpolada, sem as repetidas), a caixa colorida se ela tem cor (`TRANSPORTER_BOX` tingida com
 /// `EnumColor.getPackedColor`, deslocada `(-0,5, -0,25, -0,5)`), e o item a um quarto do tamanho, 0,25 acima do ponto, reduzido a uma unidade se o modelo passa de uma (`getModelBoundingBox`).
 pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut crate::game::native_block_entity_draw::BlockEntityDraw) {
@@ -894,6 +910,9 @@ pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut crate::
     let refs: Vec<_> = transit.iter().collect();
     let packed = SimPos::new(pos[0], pos[1], pos[2]).as_long();
     let box_model = *STACK_BOX.lock().unwrap_or_else(|e| e.into_inner());
+    if DRAW_PROBE {
+        draw_probe(game.world.game_time as i64, pos, draw.partial, &refs);
+    }
     for drawn in drawn_stacks(&refs, packed, tier.speed(), draw.partial) {
         draw.push();
         draw.translate(drawn.position);

@@ -105,7 +105,24 @@ def pilhas_json():
         handle.write("\n")
 
 
+# A cena curta do `partialTick` (quarta rodada, decisão 246): só o tiro de perto de cada `tick step 1`, 14 passos, para repetir o mesmo estado parado muitas vezes e ler o `partialTick`
+# e o `progress` do desenho (`cena-partial` e `cena-cliente` no original, `MBR` no port).
+PASSOS_DO_PARTIAL = 14
+
+
+def partial_json():
+    cmds, primeiro = linha(60, Z, None, PILHAS_ITENS)
+    shots = [{"name": "fila_base", "cmds": ["gamemode creative @a"] + cmds + ["tick freeze", f"#conexao {primeiro[0]} {Y} {primeiro[1]} west=pull"] + TRANSITO + ["gamemode spectator @a"], "tp": TP_PERTO}]
+    for k in range(1, PASSOS_DO_PARTIAL + 1):
+        shots.append({"name": f"fila_perto_{k:02d}", "cmds": ["tick step 1"] + TRANSITO + ["#esperar 8"], "tp": TP_PERTO})
+    roteiro = {"setup": SETUP, "clear": SEM_LIMPEZA, "shots": shots, "clientes": [[x, Y, Z] for x in (61, 62, 63)]}
+    with open(os.path.join(HERE, "cenas/transportador_partial.json"), "w") as handle:
+        json.dump(roteiro, handle, indent=1)
+        handle.write("\n")
+
+
 def main():
+    partial_json()
     pilhas_json()
     # Sem cor, a pilha não leva a caixa tingida e o item aparece (com a cor, a caixa de cima o esconde): as pilhas e os componentes saem na linha sem cor, e a caixa na linha pintada.
     cmds_a, primeiro_a = linha(60, Z, None)

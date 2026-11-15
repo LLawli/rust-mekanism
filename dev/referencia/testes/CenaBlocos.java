@@ -257,6 +257,10 @@ public class CenaBlocos {
     private static void shot(Minecraft minecraft, String name) {
         // O núcleo do cubo gira com o tempo do jogo (`gameTime + partialTick`): o tempo do print vai no log, e o port o alcança com `tick step` (`h2_blocos.py`).
         Mekanism.logger.info("cena: {} gametime {}", name, minecraft.level.getGameTime());
+        // O `partialTick` que o desenho das pilhas recebe (`Minecraft.renderFrame`: `getGameTimeDeltaPartialTick(false)`, que é 1,0 se o `DeltaTracker` está congelado) e o estado do relógio de ticks do cliente
+        // (frente `transportador-sobras`, quarta rodada, decisão 246): com o jogo parado por `tick freeze` o port entrega 1,0.
+        var rate = minecraft.level.tickRateManager();
+        Mekanism.logger.info("cena-partial: {} partial {} runsNormally {} frozen {} stepping {}", name, minecraft.getDeltaTracker().getGameTimeDeltaPartialTick(false), rate.runsNormally(), rate.isFrozen(), rate.isSteppingForward());
         for (var pos : WATCH) {
             if (minecraft.level.getBlockEntity(pos) instanceof mekanism.common.tile.transmitter.TileEntityTransmitter tile
                   && tile.getTransmitter() instanceof mekanism.common.content.network.transmitter.LogisticalTransporterBase transporter) {
