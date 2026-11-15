@@ -294,19 +294,22 @@ def casos_gerador():
 # A aba de segurança (`GuiSecurityTab`, 26 por 26 em (176, 34); o botão de 18 por 18 em (179, 38)): o cursor e o clique no centro do botão. O clique do dono avança o modo
 # (`PUBLIC`, `PRIVATE`, `TRUSTED`), e o tooltip diz o modo e o dono.
 ABA_SEGURANCA = (188, 47)
+# No cubo de energia a aba fica em y = 6 (`GuiEnergyCube.addSecurityTab`): o botão em (179, 10).
+ABA_SEGURANCA_CUBO = (188, 19)
 
 
 def casos_seguranca():
     out = []
     for m in ("chamber", "infuser", "generator", "cubo"):
-        tela = MAQUINAS[m]["tela"]
+        aba = ABA_SEGURANCA_CUBO if m == "cubo" else ABA_SEGURANCA
+        clique = f"{aba[0]},{aba[1]}"
         extra = {}
         out += [
             caso(f"{m}_seg_publica", m, energia="0", **extra),
-            caso(f"{m}_seg_hover", m, energia="0", hover=ABA_SEGURANCA, **extra),
-            caso(f"{m}_seg_privada", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", **extra),
-            caso(f"{m}_seg_privada_hover", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", hover=ABA_SEGURANCA, **extra),
-            caso(f"{m}_seg_confiavel_hover", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]};{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", hover=ABA_SEGURANCA, **extra),
+            caso(f"{m}_seg_hover", m, energia="0", hover=aba, **extra),
+            caso(f"{m}_seg_privada", m, energia="0", clicar=clique, **extra),
+            caso(f"{m}_seg_privada_hover", m, energia="0", clicar=clique, hover=aba, **extra),
+            caso(f"{m}_seg_confiavel_hover", m, energia="0", clicar=f"{clique};{clique}", hover=aba, **extra),
         ]
     return out
 

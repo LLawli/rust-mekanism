@@ -23,7 +23,7 @@ LOCK=$C/mekanism-ref.lock
 SYNC=$D/dois-sync
 W=$C/dois-clientes
 mkdir -p "$W"
-# `LOCK_MEU=1`: quem chama já pegou a trava e a solta sozinho; `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo`), e passar de novo por `lim-build` esperaria por ela para sempre.
+# `LOCK_MEU=1`: quem chama já pegou a trava e a solta quem chama; `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo`), e passar de novo por `lim-build` esperaria por ela para sempre.
 if [ "${LOCK_MEU:-}" != 1 ]; then until mkdir "$LOCK" 2>/dev/null; do sleep 60; done; echo "$DONO" > "$LOCK/dono"; fi
 LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
 echo "TRAVA $(date +%T)"
