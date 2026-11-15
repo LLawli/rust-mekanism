@@ -3580,13 +3580,14 @@ pub(in crate::game) fn content_upgrade_lines(
             _ => None,
         })
         .collect();
-    // `Object2IntOpenHashMap<Holder<Upgrade>>` itera na ordem do hash de identidade do `Holder`, que o HotSpot sorteia a cada execução e mantém nela (decisão 225): o port
-    // sorteia o da `ResourceKey` de cada tipo, uma vez por processo, e percorre as tabelas do fastutil (`upgrade_order`), então a ordem não pisca.
-    installed.sort_by_key(|(id, _)| types.ids().position(|known| known == id).unwrap_or(usize::MAX));
-    let hashes: Vec<i32> = installed.iter().map(|(id, _)| machinery_basis_core::identity_hash::identity_hash(&format!("upgrade:{id}"))).collect();
-    let order = machinery_basis_core::upgrade_order::tooltip_order(&hashes);
-    let mut slots: Vec<Option<(String, i32)>> = installed.into_iter().map(Some).collect();
-    let installed: Vec<(String, i32)> = order.into_iter().filter_map(|index| slots[index].take()).collect();
+    // `Object2IntOpenHashMap<Holder<Upgrade>>` itera na ordem do hash de identidade do `Holder`, que o HotSpot sorteia a cada execução e mantém nela (decisões 225 e 233): o port
+    // sorteia o da `ResourceKey` de cada tipo, uma vez por processo, e refaz as tabelas do fastutil a partir da ordem do `HashMap` do NBT (`upgrade_order::item_tooltip_order`).
+    installed.retain(|(id, total)| types.get(id).is_some() && *total > 0);
+    let order = machinery_basis_core::upgrade_order::item_tooltip_order(&installed);
+    let installed: Vec<(String, i32)> = order
+        .into_iter()
+        .filter_map(|id| installed.iter().find(|(known, _)| *known == id).cloned())
+        .collect();
     installed
         .into_iter()
         .filter_map(|(id, total)| {
@@ -3603,10 +3604,16 @@ pub(in crate::game) fn content_upgrade_lines(
         .collect()
 }
 
+/// `MekKeyHandler.isKeyPressed(MekanismKeyHandler.descriptionKey)`: a tecla da descrição é Shift mais N (`KeyModifier.SHIFT`, tecla N). O Horizon não dá o estado de uma tecla qualquer a um
+/// mod, mas o `Game` guarda as teclas físicas apertadas (`physical_keys`, das janelas e do socket de controle), e este módulo é dele: a leitura é de estrutura privada (decisão 234).
+pub(in crate::game) fn description_key_down(game: &Game<'_>) -> bool {
+    game.has_shift_down() && game.physical_keys.contains(&crate::game::KeyCode::KeyN)
+}
+
 /// `MekanismDataComponents.registerComponentAppenderAfterAll(DETAILS, ...)` e `registerComponentAppenderAfter(DESCRIPTION, ...)`: sem a tecla de detalhes a dica `Hold Left Shift for details.`
-/// (`GRAY` com a tecla em `INDIGO`), e a dica `Hold SHIFT + N for a description.` (`GRAY`, a tecla em `AQUA`). A descrição em si (com o N apertado) precisa de rastreio da tecla N, que o
-/// port não tem.
-pub(in crate::game) fn content_hold_lines(details: bool) -> Vec<(horizon_client::mod_api::Text, u32)> {
+/// (`GRAY` com a tecla em `INDIGO`); depois dela, com Shift mais N a descrição do bloco (`description.<namespace>.<bloco>`, o componente sem estilo) e sem eles a dica
+/// `Hold SHIFT + N for a description.` (`GRAY`, a tecla em `AQUA`).
+pub(in crate::game) fn content_hold_lines(game: &Game<'_>, details: bool, block: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
     use horizon_client::mod_api::Text;
     let hint = |key: &str, key_name: &str, color: u32| {
         let template = horizon_client::lang::get(key).to_string();
@@ -3617,7 +3624,11 @@ pub(in crate::game) fn content_hold_lines(details: bool) -> Vec<(horizon_client:
     if !details {
         lines.push(hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO));
     }
-    lines.push(hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA));
+    if description_key_down(game) {
+        lines.push((Text::translate(&content_name_key("description", block), &[]), u32::MAX));
+    } else {
+        lines.push(hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA));
+    }
     lines
 }
 

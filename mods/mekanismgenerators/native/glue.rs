@@ -213,7 +213,7 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         ));
         lines.extend(basis::content_stored_lines(game, stack, false, true));
     }
-    lines.extend(basis::content_hold_lines(details));
+    lines.extend(basis::content_hold_lines(game, details, &stack.item));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
@@ -735,7 +735,7 @@ fn tick_upgrades(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity
     let mut memory = remembered.unwrap_or_else(UpgradeMemory::new);
     let nbt = basis::read_upgrades(game, entity);
     let menu = (!fresh).then(|| menu_contents(game, entity));
-    let component = upgrade::rebuild(upgrade_data(game), &nbt, menu.as_ref(), memory.transient);
+    let component = upgrade::rebuild(upgrade_data(game), &nbt, menu.as_ref(), memory.transient.clone());
     component.tick_server();
     let saved = component.saved();
     if saved != nbt {
@@ -771,7 +771,7 @@ fn act_upgrades<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&Upgrade
         _ => return None,
     };
     let mut memory = UPGRADES.with_borrow_mut(|tiles| tiles.remove(&key));
-    let transient = memory.as_ref().map_or_else(UpgradeTransient::default, |memory| memory.transient);
+    let transient = memory.as_ref().map_or_else(UpgradeTransient::default, |memory| memory.transient.clone());
     let component = upgrade::rebuild(upgrade_data(game), &nbt, Some(&menu), transient);
     let result = act(&component);
     let saved = component.saved();

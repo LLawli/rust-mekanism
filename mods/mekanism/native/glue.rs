@@ -3018,7 +3018,7 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
     }
     if machine.is_some() {
-        lines.extend(basis::content_hold_lines(details));
+        lines.extend(basis::content_hold_lines(game, details, &stack.item));
     }
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {

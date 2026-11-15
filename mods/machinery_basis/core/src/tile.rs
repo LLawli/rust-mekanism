@@ -1241,7 +1241,7 @@ impl ProgressMachine {
     /// e a capacidade passa de 4 ticks de consumo para a dos ticks da receita (`MachineEnergyContainer.updateMaxEnergy`). O `setBlock`
     /// de um comando ou de uma estrutura não passa por aqui.
     pub fn apply_item_components(&mut self, item: &UpgradeSaved) {
-        self.upgrades.restore(item);
+        self.upgrades.restore_item(item);
     }
 
     /// Se `updateMaxEnergy` já rodou neste objeto. Quem refaz o objeto sem refazer o tile (o mod guarda os objetos vivos num cache, e o

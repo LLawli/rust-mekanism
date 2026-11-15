@@ -816,7 +816,7 @@ pub(in crate::game) fn mouse_pressed(
                 state.pending.push(Action::Close(Kind::Upgrade));
                 state.click_sound = true;
             } else if button == 0 {
-                let installed = sync.installed();
+                let installed = sync.installed(&spec_types(spec));
                 if open.list.press_thumb(rel, installed.len()) {
                     // O polegar tratou o clique.
                 } else if let Some(row) = open.list.click_row(rel, installed.len()) {
@@ -1009,7 +1009,7 @@ pub(in crate::game) fn mouse_scrolled(
         return;
     };
     let mouse = mouse_of(view);
-    let total = read_sync(game).installed().len();
+    let total = read_sync(game).installed_count();
     let mut state = client();
     // `GuiMekanism.mouseScrolled` só oferece a roda à janela do topo.
     let Some(open) = state.windows.first_mut() else {
@@ -1311,7 +1311,7 @@ fn draw_upgrade_window(
     let order = data.type_ids();
     let types = upgrade::current_types();
     let sync = read_sync(game);
-    let installed = sync.installed();
+    let installed = sync.installed(&order);
     let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
     let (w, h) = (open.window.width as f32, open.window.height as f32);
     let cursor = game.native_cursor();
@@ -1971,7 +1971,7 @@ pub(in crate::game) fn tooltip(
             let win = |r: [i32; 4]| shifted(r, origin[0] + wx, origin[1] + wy);
             let order = spec_types(spec);
             let sync = read_sync(game);
-            let installed = sync.installed();
+            let installed = sync.installed(&order);
             if in_rect(CLOSE, rel_i) {
                 lines.push((lang::get("gui.mekanism.close"), None));
                 rect = win(CLOSE);

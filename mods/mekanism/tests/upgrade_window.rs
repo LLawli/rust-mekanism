@@ -339,7 +339,7 @@ impl Client {
 /// O que o cliente leu é o que o servidor tem: os mesmos `upgradeTicks`, os mesmos tipos instalados e a mesma contagem de cada um.
 fn assert_same_upgrades(read: &UpgradeSync, sync: &UpgradeSync) {
     assert_eq!(read.ticks, sync.ticks);
-    assert_eq!(read.installed(), sync.installed());
+    assert_eq!(read.written_order(), sync.written_order());
     for index in 0..sync.counts.len() {
         assert_eq!(read.count(index), sync.count(index), "tipo {index}");
     }
@@ -595,7 +595,7 @@ fn the_upgrade_window_adds_its_data_only_to_the_player_who_opened_it() {
     assert_eq!(viewer.start_window(), [first, first + 1]);
     assert_eq!(viewer.receive(&sent), 2);
     let installed = UpgradeSync::of(machine.upgrades());
-    assert_eq!(installed.installed().len(), 1);
+    assert_eq!(installed.installed_count(), 1);
     assert_same_upgrades(&viewer.upgrades().unwrap(), &installed);
 
     // O outro jogador segue com a lista do construtor, e a janela dele não existe.
@@ -631,7 +631,7 @@ fn the_upgrade_window_adds_its_data_only_to_the_player_who_opened_it() {
     assert_eq!(viewer.receive(&for_viewer), for_viewer.len());
     assert_eq!(other.receive(&for_other), for_other.len());
     let installed = UpgradeSync::of(machine.upgrades());
-    assert_eq!(installed.installed().len(), 2);
+    assert_eq!(installed.installed_count(), 2);
     assert_same_upgrades(&viewer.upgrades().unwrap(), &installed);
     assert!(other.upgrades().is_none());
 
@@ -1011,6 +1011,7 @@ fn the_upgrade_map_reaches_the_client_for_every_type_and_count() {
             let mut sync = UpgradeSync {
                 ticks: -3,
                 counts: vec![0; UPGRADE_TYPES],
+                tile_order: Vec::new(),
             };
             sync.counts[index] = count;
             let Synced::Codec { bytes, .. } = upgrade_map(&sync) else {

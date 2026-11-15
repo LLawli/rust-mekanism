@@ -76,15 +76,13 @@ impl TrackedSource for MachineSync<'_> {
 
 /// `SyncableStreamCodec.upgradeMap` sobre as contagens por tipo (a ordem do registro): o `hashCode` do mapa (zero se vazio, como o de
 /// um `Object2IntMap` vazio) e os bytes do `ByteBufCodecs.map(Upgrade.STREAM_CODEC, VAR_INT)`: o tamanho, e o id do registro e a
-/// contagem de cada tipo instalado. O Java escreve os tipos na ordem do mapa de hash (que muda de uma execução para a outra); aqui
-/// vão na ordem do registro.
+/// contagem de cada tipo instalado. O Java escreve os tipos na ordem do mapa do tile (que muda de uma execução para a outra); aqui
+/// vão na ordem da tabela do tile (`UpgradeSync::tile_order`).
 pub fn upgrade_map(sync: &UpgradeSync) -> Value {
     let installed: Vec<(usize, i32)> = sync
-        .counts
-        .iter()
-        .copied()
-        .enumerate()
-        .filter(|(_, count)| *count > 0)
+        .written_order()
+        .into_iter()
+        .map(|index| (index, sync.count(index)))
         .collect();
     let mut hash: i32 = 0;
     let mut bytes = Vec::new();
@@ -113,6 +111,7 @@ pub fn read_upgrade_map(ticks: i32, bytes: &[u8]) -> UpgradeSync {
         None
     }
     let mut counts: Vec<i32> = Vec::new();
+    let mut tile_order: Vec<usize> = Vec::new();
     let mut rest = bytes;
     let mut read = || -> Option<()> {
         let size = next(&mut rest)?;
@@ -123,13 +122,19 @@ pub fn read_upgrade_map(ticks: i32, bytes: &[u8]) -> UpgradeSync {
                 counts.resize(index + 1, 0);
             }
             counts[index] = count;
+            tile_order.push(index);
         }
         rest.is_empty().then_some(())
     };
     if read().is_none() {
         counts.clear();
+        tile_order.clear();
     }
-    UpgradeSync { ticks, counts }
+    UpgradeSync {
+        ticks,
+        counts,
+        tile_order,
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +160,7 @@ mod tests {
         let sync = UpgradeSync {
             ticks: 7,
             counts: vec![0, 3, 0, 0, 0, 2, 0, 0],
+            tile_order: vec![5, 1],
         };
         let Value::Codec { bytes, .. } = upgrade_map(&sync) else {
             unreachable!()
@@ -164,11 +170,12 @@ mod tests {
         assert_eq!(read.count(1), 3);
         assert_eq!(read.count(5), 2);
         assert_eq!(read.count(4), 0);
-        assert_eq!(read.installed(), [1, 5]);
+        // Os tipos vão na ordem da tabela do tile, e o cliente os lê nela.
+        assert_eq!(read.written_order(), [5, 1]);
         assert_eq!(read_upgrade_map(0, &[0]), UpgradeSync::default());
         // Bytes cortados: o cliente não lê nada.
         assert_eq!(
-            read_upgrade_map(4, &[1, 5]).installed(),
+            read_upgrade_map(4, &[1, 5]).written_order(),
             Vec::<usize>::new()
         );
     }
@@ -178,6 +185,7 @@ mod tests {
         let empty = UpgradeSync {
             ticks: 0,
             counts: vec![0; 8],
+            tile_order: Vec::new(),
         };
         assert_eq!(
             upgrade_map(&empty),

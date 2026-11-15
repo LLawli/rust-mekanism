@@ -69,7 +69,7 @@ impl HeatTile {
             self.data.clone(),
             &self.nbt,
             Some(&self.menu),
-            self.transient,
+            self.transient.clone(),
         );
         component.tick_server();
         self.store(&component);
@@ -81,7 +81,7 @@ impl HeatTile {
             self.data.clone(),
             &self.nbt,
             Some(&self.menu),
-            self.transient,
+            self.transient.clone(),
         );
         let result = act(&component);
         self.store(&component);
@@ -94,7 +94,7 @@ impl HeatTile {
             self.data.clone(),
             &self.nbt,
             Some(&self.menu),
-            self.transient,
+            self.transient.clone(),
         )
     }
 
@@ -207,7 +207,7 @@ fn state(tile: &HeatTile, t: &Value, marks: &Value) -> Value {
     for index in 0..sync.counts.len() {
         assert_eq!(read.count(index), sync.count(index), "tipo {index}");
     }
-    assert_eq!(read.installed(), sync.installed());
+    assert_eq!(read.written_order(), sync.written_order());
     json!({
         "t": t,
         "marks": marks,
@@ -597,7 +597,11 @@ fn the_upgrade_window_adds_data_only_to_the_player_who_opened_it() {
     // Um upgrade instalado: só quem tem a janela vê o mapa mudar, e o outro jogador não recebe nenhum dado.
     let mut counts = vec![0; common::declared_types()];
     counts[0] = 1;
-    server.upgrades = UpgradeSync { ticks: 7, counts };
+    server.upgrades = UpgradeSync {
+        ticks: 7,
+        counts,
+        tile_order: Vec::new(),
+    };
     let mut dirty = BTreeMap::new();
     for player in [PLAYER, OTHER] {
         let sync = &mut sessions.session_mut(CONTAINER, player).unwrap().sync;

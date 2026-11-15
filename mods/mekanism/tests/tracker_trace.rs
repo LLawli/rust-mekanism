@@ -737,6 +737,7 @@ fn the_upgrade_map_order_of_the_original_changes_per_run_and_the_client_reads_ev
     let sync = UpgradeSync {
         ticks: 0,
         counts: vec![1; registry.len()],
+        tile_order: Vec::new(),
     };
     let Sync::Codec { bytes: ours, .. } = upgrade_map(&sync) else {
         panic!("o mapa de upgrades não é um codec");

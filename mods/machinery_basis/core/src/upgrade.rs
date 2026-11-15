@@ -5,7 +5,9 @@ use crate::components::Components;
 use crate::containers::{
     Access, AutomationType, InventorySlot, ItemResource, ItemTest, SlotChecks, SlotContents,
 };
+use crate::sim::open_hash::OpenHashMap;
 use crate::transaction::{Callback, Transaction};
+use crate::upgrade_order::{UpgradeKey, entries_from_disk, loaded_map};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
@@ -393,7 +395,8 @@ type SharedData = Rc<RefCell<Rc<UpgradeData>>>;
 struct Inner {
     data: SharedData,
     /// `upgrades`.
-    installed: RefCell<BTreeMap<Rc<str>, i32>>,
+    /// A tabela do fastutil, com a ordem de iteração do original (decisão 233).
+    installed: RefCell<OpenHashMap<UpgradeKey, i32>>,
     /// `upgradeTicks`.
     upgrade_ticks: Cell<i32>,
     /// `canCheckUpgrades`: só um slot de entrada que mudou, ou uma remoção, o liga de novo.
@@ -479,7 +482,7 @@ impl UpgradeComponent {
             upgrade_slot: input_slot(&data, input_listener),
             upgrade_output_slot: output_slot(&data, output_listener),
             data,
-            installed: RefCell::new(BTreeMap::new()),
+            installed: RefCell::new(OpenHashMap::new()),
             upgrade_ticks: Cell::new(0),
             can_check,
             recalculate,
@@ -516,7 +519,12 @@ impl UpgradeComponent {
 
     /// `getUpgrades`.
     pub fn get_upgrades(&self, upgrade: &str) -> i32 {
-        self.0.installed.borrow().get(upgrade).copied().unwrap_or(0)
+        self.0
+            .installed
+            .borrow()
+            .get(UpgradeKey::of(upgrade))
+            .copied()
+            .unwrap_or(0)
     }
 
     /// `supports`.
@@ -526,11 +534,17 @@ impl UpgradeComponent {
 
     /// `getInstalledTypes`, com quantos de cada.
     pub fn installed(&self) -> BTreeMap<String, i32> {
+        self.installed_in_order().into_iter().collect()
+    }
+
+    /// `getInstalledTypes()` com quantos de cada, na ordem da tabela do tile (`Object2IntMaps.fastIterator`).
+    pub fn installed_in_order(&self) -> Vec<(String, i32)> {
         self.0
             .installed
             .borrow()
-            .iter()
-            .map(|(id, total)| (id.to_string(), *total))
+            .entries_in_order()
+            .into_iter()
+            .map(|(key, total)| (key.id(), *total))
             .collect()
     }
 
@@ -555,7 +569,10 @@ impl UpgradeComponent {
 
     /// `setUpgrades`: guarda, avisa o tile e marca para salvar.
     fn set_upgrades(&self, upgrade: &Rc<str>, total: i32) {
-        self.0.installed.borrow_mut().insert(upgrade.clone(), total);
+        self.0
+            .installed
+            .borrow_mut()
+            .insert(UpgradeKey::of(upgrade), total);
         (self.0.recalculate)(self, upgrade, total);
         self.bump();
     }
@@ -605,11 +622,14 @@ impl UpgradeComponent {
             // Cabe ao menos um no slot de saída: tira de verdade e põe lá.
             transaction.commit();
             if installed == removed {
-                self.0.installed.borrow_mut().remove(&id);
+                self.0.installed.borrow_mut().remove(UpgradeKey::of(&id));
                 (self.0.recalculate)(self, upgrade, 0);
             } else {
                 let total = installed - removed;
-                self.0.installed.borrow_mut().insert(id, total);
+                self.0
+                    .installed
+                    .borrow_mut()
+                    .insert(UpgradeKey::of(&id), total);
                 (self.0.recalculate)(self, upgrade, total);
             }
             self.bump();
@@ -671,21 +691,37 @@ impl UpgradeComponent {
         }
     }
 
+    /// A tabela que `deserialize` (o NBT) ou `applyImplicitComponents` (o item) monta (decisão 233): `new Object2IntOpenHashMap<>(mapa)`, a tabela do tamanho do mapa e as
+    /// entradas na ordem do `HashMap` do NBT; sem upgrades no NBT, `deserialize` só esvazia a tabela (`clear()`, que não encolhe), e o item sempre troca por uma nova.
+    fn load_table(&self, data: &UpgradeData, saved: &UpgradeSaved, from_item: bool) {
+        // O `UPGRADES_CODEC` só lê tipos que existem, com um total positivo.
+        let known: Vec<(String, i32)> = saved
+            .upgrades
+            .iter()
+            .filter(|(id, total)| data.types.contains_key(id.as_str()) && **total > 0)
+            .map(|(id, total)| (id.clone(), *total))
+            .collect();
+        let mut installed = self.0.installed.borrow_mut();
+        if from_item || !known.is_empty() {
+            *installed = loaded_map(&entries_from_disk(&known));
+        } else {
+            installed.clear_keeping_table();
+        }
+    }
+
+    /// `applyImplicitComponents` com o `UPGRADES` do item: a máquina posta de um item (os upgrades, os dois slots) recalcula cada tipo que aceita.
+    pub fn restore_item(&self, saved: &UpgradeSaved) {
+        self.restore_from(saved, true);
+    }
+
     /// `deserialize`: lê os upgrades, recalcula cada tipo que a tag aceita e só então carrega os slots.
     pub fn restore(&self, saved: &UpgradeSaved) {
+        self.restore_from(saved, false);
+    }
+
+    fn restore_from(&self, saved: &UpgradeSaved, from_item: bool) {
         let data = self.data();
-        {
-            let mut installed = self.0.installed.borrow_mut();
-            installed.clear();
-            for (id, total) in &saved.upgrades {
-                // O `UPGRADES_CODEC` só lê tipos que existem, com um total positivo.
-                if let Some((known, _)) = data.types.get_key_value(id.as_str())
-                    && *total > 0
-                {
-                    installed.insert(known.clone(), *total);
-                }
-            }
-        }
+        self.load_table(&data, saved, from_item);
         for upgrade in data.supported() {
             (self.0.recalculate)(self, upgrade, self.get_upgrades(upgrade));
         }
@@ -704,10 +740,29 @@ impl UpgradeComponent {
 /// O que o componente guarda só na memória, fora do NBT: `upgradeTicks` e `canCheckUpgrades`. Um tile com objeto vivo os tem no
 /// próprio componente; um tile que se refaz do NBT a cada tick (o Heat Generator) os leva de um tick ao seguinte, e o que o Java faz ao
 /// carregar o mundo (`upgradeTicks = 0` e `canCheckUpgrades = true`) é o [`Default`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct UpgradeTransient {
     pub ticks: i32,
     pub can_check: bool,
+    /// A tabela do fastutil com a história de inserção da sessão (decisão 233): o NBT só guarda os totais, e a ordem do original depende de como a tabela cresceu.
+    pub table: Option<OpenHashMap<UpgradeKey, i32>>,
+}
+
+impl PartialEq for UpgradeTransient {
+    fn eq(&self, other: &Self) -> bool {
+        let entries = |table: &Option<OpenHashMap<UpgradeKey, i32>>| {
+            table.as_ref().map(|table| {
+                table
+                    .entries_in_order()
+                    .into_iter()
+                    .map(|(key, total)| (key, *total))
+                    .collect::<Vec<_>>()
+            })
+        };
+        self.ticks == other.ticks
+            && self.can_check == other.can_check
+            && entries(&self.table) == entries(&other.table)
+    }
 }
 
 impl Default for UpgradeTransient {
@@ -715,6 +770,7 @@ impl Default for UpgradeTransient {
         Self {
             ticks: 0,
             can_check: true,
+            table: None,
         }
     }
 }
@@ -725,6 +781,7 @@ impl UpgradeComponent {
         UpgradeTransient {
             ticks: self.0.upgrade_ticks.get(),
             can_check: self.0.can_check.get(),
+            table: Some(self.0.installed.borrow().clone()),
         }
     }
 
@@ -732,6 +789,25 @@ impl UpgradeComponent {
     pub fn set_transient(&self, transient: UpgradeTransient) {
         self.0.upgrade_ticks.set(transient.ticks);
         self.0.can_check.set(transient.can_check);
+        // A tabela da sessão vale enquanto tem os mesmos totais que o NBT acabou de dar: o que mudou por fora (o menu, um comando) volta pela ordem do NBT.
+        if let Some(table) = transient.table {
+            let same = |a: &OpenHashMap<UpgradeKey, i32>, b: &OpenHashMap<UpgradeKey, i32>| {
+                let sorted = |map: &OpenHashMap<UpgradeKey, i32>| {
+                    let mut entries: Vec<(String, i32)> = map
+                        .entries_in_order()
+                        .into_iter()
+                        .map(|(key, total)| (key.id(), *total))
+                        .collect();
+                    entries.sort();
+                    entries
+                };
+                sorted(a) == sorted(b)
+            };
+            let mut installed = self.0.installed.borrow_mut();
+            if same(&table, &installed) {
+                *installed = table;
+            }
+        }
     }
 }
 
@@ -1194,7 +1270,8 @@ mod tests {
             rebuilt.transient(),
             UpgradeTransient {
                 ticks: 0,
-                can_check: false
+                can_check: false,
+                table: rebuilt.transient().table
             }
         );
         // Sem levar a memória, cada tick recomeça e nada instala.
@@ -1220,13 +1297,15 @@ mod tests {
         let still = UpgradeTransient {
             ticks: 0,
             can_check: false,
+            table: None,
         };
-        let edited = rebuild(data(), &nbt, Some(&menu), still);
+        let edited = rebuild(data(), &nbt, Some(&menu), still.clone());
         assert_eq!(edited.upgrade_slot().resource(), Some(upgrade(ENERGY)));
         assert!(edited.transient().can_check);
         // O menu igual ao NBT não mexe na memória.
         let same = [nbt.input.clone(), nbt.output.clone()];
-        let quiet = rebuild(data(), &nbt, Some(&same), still);
-        assert_eq!(quiet.transient(), still);
+        let quiet = rebuild(data(), &nbt, Some(&same), still.clone());
+        let after = quiet.transient();
+        assert_eq!((after.ticks, after.can_check), (still.ticks, still.can_check));
     }
 }

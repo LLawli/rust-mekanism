@@ -16,9 +16,123 @@
 //! 3. o que o cliente monta ao decodificar o item (`UpgradeAware.STREAM_CODEC`, `ByteBufCodecs.map(_ -> new Object2IntOpenHashMap<>(), ...)`): 32 posições, as entradas na
 //!    ordem do item.
 //!
-//! O que o port não sabe é a ordem das instalações do tile (o histórico não fica no NBT, e no original também só vale na sessão em que se instalou): ele usa a do registro.
-//! Só importa quando duas chaves colidem na tabela de 32.
+//! A tabela do tile é guardada em memória, a mesma que o original guarda (decisão 233): [`UpgradeKey`] é a chave, e o componente (`upgrade.rs`) insere nela na ordem em que os
+//! tipos entram na sessão. Depois de recarregar do disco o original a refaz na ordem do `HashMap<String, Tag>` do NBT (`UPGRADES_CODEC`: `Codec.unboundedMap` e
+//! `new Object2IntOpenHashMap<>(mapa)`), que o port reproduz com [`file_order`] e o `String.hashCode` das chaves de texto.
+use crate::identity_hash::identity_hash;
+use crate::sim::java_hash::hash_set_order;
 use crate::sim::open_hash::{OpenHashMap, OpenKey, mix_int};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+/// `HashMap` do `CompoundTag`: `Maps.newHashMap()`, 16 posições.
+const COMPOUND_CAPACITY: usize = 16;
+
+/// `String.hashCode`: `s[0]*31^(n-1) + ... + s[n-1]`, sobre as unidades UTF-16.
+pub fn string_hash(text: &str) -> i32 {
+    text.encode_utf16()
+        .fold(0i32, |hash, unit| hash.wrapping_mul(31).wrapping_add(i32::from(unit)))
+}
+
+thread_local! {
+    /// Os hashes que um teste fixa para os tipos desta thread (os que o original deu, gravados no rastro), no lugar do sorteio.
+    static FIXED: RefCell<HashMap<String, i32>> = RefCell::new(HashMap::new());
+}
+
+/// Os tipos dados passam a ter, nesta thread, o hash dado (os do rastro do original). `fixed_hashes(&[])` volta ao sorteio.
+pub fn fixed_hashes(hashes: &[(String, i32)]) {
+    FIXED.with_borrow_mut(|fixed| *fixed = hashes.iter().cloned().collect());
+}
+
+/// O `hashCode` do `Holder<Upgrade>` de um tipo (o `System.identityHashCode` da `ResourceKey`, sorteado uma vez por processo, decisão 225).
+pub fn upgrade_hash(id: &str) -> i32 {
+    FIXED
+        .with_borrow(|fixed| fixed.get(id).copied())
+        .unwrap_or_else(|| identity_hash(&format!("upgrade:{id}")))
+}
+
+static IDS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Um tipo de upgrade na tabela do tile: o hash de identidade dele e um número de ordem (dois tipos com o mesmo hash continuam dois, como dois objetos).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct UpgradeKey {
+    hash: i32,
+    ordinal: u32,
+}
+
+impl OpenKey for UpgradeKey {
+    fn mixed(self) -> i32 {
+        mix_int(self.hash)
+    }
+}
+
+impl UpgradeKey {
+    pub fn of(id: &str) -> Self {
+        let mut ids = IDS.lock().unwrap_or_else(|e| e.into_inner());
+        let ordinal = ids.iter().position(|known| known == id).unwrap_or_else(|| {
+            ids.push(id.to_owned());
+            ids.len() - 1
+        });
+        Self {
+            hash: upgrade_hash(id),
+            ordinal: u32::try_from(ordinal).unwrap_or(u32::MAX),
+        }
+    }
+
+    pub fn id(self) -> String {
+        let ids = IDS.lock().unwrap_or_else(|e| e.into_inner());
+        ids[self.ordinal as usize].clone()
+    }
+}
+
+/// A ordem em que o `HashMap` do NBT devolve as chaves de texto depois de inseri-las na ordem dada (o que o arquivo guarda e o que a leitura reinsere).
+pub fn file_order(ids: &[String]) -> Vec<String> {
+    hash_set_order(ids.iter().map(String::as_str), string_hash, COMPOUND_CAPACITY)
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+/// O mapa que `UPGRADES_CODEC` monta ao ler: `new Object2IntOpenHashMap<>(mapa)`, a tabela do tamanho do mapa e as entradas na ordem do `HashMap` do NBT.
+pub fn loaded_map(entries_in_file_order: &[(String, i32)]) -> OpenHashMap<UpgradeKey, i32> {
+    let mut map = OpenHashMap::with_expected(entries_in_file_order.len());
+    for (id, total) in entries_in_file_order {
+        map.insert(UpgradeKey::of(id), *total);
+    }
+    map
+}
+
+/// As entradas de um conjunto de ids lido do disco, na ordem em que o original as insere: a do `HashMap` do NBT. O NBT do port é ordenado e não guarda a ordem do arquivo, então
+/// a inserção no `HashMap` parte da ordem alfabética; só difere quando duas chaves caem no mesmo balde.
+pub fn entries_from_disk(sorted: &[(String, i32)]) -> Vec<(String, i32)> {
+    let ids: Vec<String> = sorted.iter().map(|(id, _)| id.clone()).collect();
+    file_order(&ids)
+        .into_iter()
+        .filter_map(|id| sorted.iter().find(|(known, _)| *known == id).cloned())
+        .collect()
+}
+
+/// O mapa que o cliente decodifica da janela de upgrades (`SyncableStreamCodec.upgradeMap`: `Object2IntOpenHashMap::new` com o tamanho, as entradas na ordem do mapa do tile):
+/// a ordem de `getInstalledTypes()`.
+pub fn window_order(tile_order: &[String]) -> Vec<String> {
+    let mut map: OpenHashMap<UpgradeKey, ()> = OpenHashMap::with_expected(tile_order.len());
+    for id in tile_order {
+        map.insert(UpgradeKey::of(id), ());
+    }
+    map.keys_in_order().into_iter().map(UpgradeKey::id).collect()
+}
+
+/// A ordem das linhas do tooltip de um item lido do disco: o mapa do item (`new Object2IntOpenHashMap<>(upgrades)`, na ordem do `HashMap` do NBT) e o que o cliente decodifica
+/// (`UpgradeAware.STREAM_CODEC`, 32 posições).
+pub fn item_tooltip_order(sorted: &[(String, i32)]) -> Vec<String> {
+    let item = loaded_map(&entries_from_disk(sorted));
+    let mut decoded: OpenHashMap<UpgradeKey, ()> = OpenHashMap::new();
+    for key in item.keys_in_order() {
+        decoded.insert(key, ());
+    }
+    decoded.keys_in_order().into_iter().map(UpgradeKey::id).collect()
+}
 
 /// Um `Holder<Upgrade>` na tabela: o hash de identidade dele e a posição na lista de quem chama (dois `Holder` com o mesmo hash continuam dois).
 #[derive(Clone, Copy, PartialEq, Eq)]

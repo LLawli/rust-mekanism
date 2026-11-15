@@ -4,6 +4,7 @@
 
 use crate::gui::NineSlice;
 use crate::upgrade::UpgradeComponent;
+use crate::upgrade_order::window_order;
 
 /// O `gui.scaling` dos sprites de nove partes que a janela desenha, como os `.png.mcmeta` do Mekanism dizem (um teste confere cada
 /// um contra o arquivo do mod): `holder_right`, `shadow`, `button`, `button_digital`, `element_holder`, `inner_screen`,
@@ -219,18 +220,22 @@ pub fn effect_text(
 pub struct UpgradeSync {
     pub ticks: i32,
     pub counts: Vec<i32>,
+    /// A ordem em que o servidor escreve o mapa (a da tabela do tile, `Object2IntMaps.fastIterator`): índices do registro. Vazia quando quem montou só sabe as contagens (a
+    /// ordem do registro).
+    pub tile_order: Vec<usize>,
 }
 
 impl UpgradeSync {
     /// `getSpecificSyncableData`: o `upgradeTicks` e o mapa de upgrades do componente, com uma contagem por tipo na ordem do registro.
     pub fn of(component: &UpgradeComponent) -> Self {
+        let ids = component.data().type_ids();
         Self {
             ticks: component.upgrade_ticks(),
-            counts: component
-                .data()
-                .type_ids()
+            counts: ids.iter().map(|id| component.get_upgrades(id)).collect(),
+            tile_order: component
+                .installed_in_order()
                 .iter()
-                .map(|id| component.get_upgrades(id))
+                .filter_map(|(id, _)| ids.iter().position(|known| known == id))
                 .collect(),
         }
     }
@@ -240,13 +245,32 @@ impl UpgradeSync {
         self.counts.get(index).copied().unwrap_or(0)
     }
 
-    /// `getInstalledTypes()`: os índices com ao menos um instalado, na ordem do registro.
-    pub fn installed(&self) -> Vec<usize> {
-        self.counts
+    /// Os índices com ao menos um instalado, na ordem em que o servidor escreve o mapa (a da tabela do tile; sem ela, a do registro).
+    pub fn written_order(&self) -> Vec<usize> {
+        let installed = |index: &usize| self.count(*index) > 0;
+        if self.tile_order.is_empty() {
+            (0..self.counts.len()).filter(installed).collect()
+        } else {
+            self.tile_order.iter().copied().filter(installed).collect()
+        }
+    }
+
+    /// Quantos tipos estão instalados.
+    pub fn installed_count(&self) -> usize {
+        self.counts.iter().filter(|count| **count > 0).count()
+    }
+
+    /// `getInstalledTypes()` no cliente: o mapa que ele decodifica (`Object2IntOpenHashMap::new` com o tamanho, as entradas na ordem em que o servidor as escreveu), com os
+    /// índices do registro. `ids` são os ids do registro, na ordem dele.
+    pub fn installed(&self, ids: &[String]) -> Vec<usize> {
+        let written: Vec<String> = self
+            .written_order()
+            .into_iter()
+            .filter_map(|index| ids.get(index).cloned())
+            .collect();
+        window_order(&written)
             .iter()
-            .enumerate()
-            .filter(|(_, count)| **count > 0)
-            .map(|(index, _)| index)
+            .filter_map(|id| ids.iter().position(|known| known == id))
             .collect()
     }
 }
@@ -439,15 +463,24 @@ mod tests {
     }
 
     #[test]
-    fn the_sync_lists_what_is_installed_in_registry_order() {
+    fn the_sync_lists_what_is_installed_in_the_order_of_the_client_map() {
+        let ids: Vec<String> = (0..8).map(|n| format!("mekanism:type_{n}")).collect();
         let sync = UpgradeSync {
             ticks: 20,
             counts: vec![0, 3, 0, 8, 1, 0, 0, 64],
+            tile_order: Vec::new(),
         };
-        assert_eq!(sync.installed(), [1, 3, 4, 7]);
+        assert_eq!(sync.written_order(), [1, 3, 4, 7]);
+        assert_eq!(sync.installed_count(), 4);
+        let mut listed = sync.installed(&ids);
+        listed.sort_unstable();
+        assert_eq!(listed, [1, 3, 4, 7]);
         assert_eq!(sync.count(3), 8);
         assert_eq!(sync.count(40), 0);
-        assert_eq!(UpgradeSync::default().installed(), Vec::<usize>::new());
+        assert_eq!(
+            UpgradeSync::default().installed(&ids),
+            Vec::<usize>::new()
+        );
     }
 
     #[test]
