@@ -559,6 +559,13 @@ mod tests {
     }
 
     #[test]
+    fn a_gauge_does_not_clamp_an_overfilled_tank() {
+        // `GuiTankGauge.getScaledLevel` não limita: 5.000 mB num tanque de 1.000 dão cinco vezes a altura (decisão 243).
+        assert_eq!(gauge_level(1000, 1000, 50), 48);
+        assert_eq!(gauge_level(5000, 1000, 50), 240);
+    }
+
+    #[test]
     fn a_fill_going_up_keeps_the_last_row_of_the_sprite_on_the_base() {
         // 30 de altura com mosaico de 16: o mosaico começa 2 acima, e a primeira linha perde as duas de cima.
         let cells = tiled_fill(

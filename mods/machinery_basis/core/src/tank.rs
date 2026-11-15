@@ -26,9 +26,10 @@ impl Tank {
         }
     }
 
-    /// Reconstrói um tanque salvo. O que excede a capacidade se perde, e vazio não guarda recurso.
+    /// Reconstrói um tanque salvo, ou o que um item traz. A quantidade fica como veio, mesmo acima da capacidade: no original
+    /// `ResourceContainerType.copyToContainers` põe o conteúdo com `setContents`, que não limita (só `clampContents`, que o tile
+    /// não chama, o faria), então um item com 5.000 mB num tanque de 1.000 enche o tile com 5.000 (decisão 243). Vazio não guarda recurso.
     pub fn restored(resource: Option<String>, amount: u64, capacity: u64) -> Self {
-        let amount = amount.min(capacity);
         Self {
             resource: resource.filter(|_| amount > 0),
             amount,
@@ -52,8 +53,9 @@ impl Tank {
         self.amount == 0
     }
 
+    /// O que ainda cabe: `capacity - amount` do original, sem passar de zero num tanque acima da capacidade (`needed <= 0`, nada entra).
     pub fn room(&self) -> u64 {
-        self.capacity - self.amount
+        self.capacity.saturating_sub(self.amount)
     }
 
     /// Coloca até `amount` de `resource` e diz quanto entrou.
@@ -147,9 +149,19 @@ mod tests {
     }
 
     #[test]
+    fn an_overfilled_tank_takes_nothing_and_gives_everything_back() {
+        let mut over = Tank::restored(Some(GAS.into()), 5_000, 1_000);
+        assert_eq!(over.insert(GAS, 10, Action::Execute), 0);
+        assert_eq!(over.extract(4_000, Action::Execute), 4_000);
+        assert_eq!(over.amount(), 1_000);
+        assert_eq!(over.insert(GAS, 10, Action::Execute), 0);
+    }
+
+    #[test]
     fn a_restored_tank_stays_valid() {
         let over = Tank::restored(Some(GAS.into()), 500, 100);
-        assert_eq!(over.amount(), 100);
+        assert_eq!(over.amount(), 500);
+        assert_eq!(over.room(), 0);
         let empty = Tank::restored(Some(GAS.into()), 0, 100);
         assert_eq!(empty.resource(), None);
     }
