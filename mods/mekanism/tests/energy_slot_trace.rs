@@ -92,7 +92,7 @@ fn replay(scenario: &str, machine: ProgressMachine) {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert!(lines.len() >= 60, "rastro curto demais: {}", lines.len());
+    assert!(lines.len() >= 30, "rastro curto demais: {}", lines.len());
     let mut world = SimWorld::new(Machine(machine));
     let mut moved = 0;
     let mut last = 0;

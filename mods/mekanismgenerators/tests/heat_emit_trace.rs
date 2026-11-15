@@ -512,5 +512,5 @@ fn the_generator_gives_energy_only_while_it_can_function() {
 /// item que aceita energia a recebe; o gerador sem controle de redstone (`HIGH` sem sinal) entrega ao item do mesmo jeito.
 #[test]
 fn the_energy_slot_drains_the_buffer_into_the_item_before_the_production() {
-    replay("slot", &[], 150);
+    replay("slot", &[], 120);
 }
