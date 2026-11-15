@@ -174,7 +174,11 @@ fn a_tile_reloaded_with_the_written_order_is_the_original_in_every_sample() {
         for (n, row) in rows(run).iter().enumerate() {
             use_hashes(row);
             let saved = tile_of(row).saved();
-            assert_eq!(saved.file_order, names(&row["file"]), "execução {run} amostra {n}");
+            assert_eq!(
+                saved.file_order,
+                names(&row["file"]),
+                "execução {run} amostra {n}"
+            );
             let reloaded = UpgradeComponent::new(data(), Rc::new(|| {}), Box::new(|_, _, _| {}));
             reloaded.restore(&saved);
             assert_eq!(

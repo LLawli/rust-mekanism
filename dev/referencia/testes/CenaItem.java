@@ -124,6 +124,12 @@ public class CenaItem {
                 case "#quebrar" -> server.execute(() -> server.overworld().destroyBlock(pos(words), true, server.getPlayerList().getPlayers().get(0)));
                 case "#cursor" -> cursor(minecraft, words[1]);
                 case "#clicar" -> click(minecraft, words[1]);
+                // `#tecla nenhuma|detalhes|descricao`: as teclas de detalhes (Left Shift) e de descrição (Shift mais N) do Mekanism apertadas, como `KeyMapping.setDown` (o `MekKeyHandler.isKeyPressed`
+                // lê `isDown()` primeiro). Só do original: o port as recebe como teclas físicas pelo `horizon-ctl key`.
+                case "#tecla" -> {
+                    mekanism.client.key.MekanismKeyHandler.detailsKey.setDown(!words[1].equals("nenhuma"));
+                    mekanism.client.key.MekanismKeyHandler.descriptionKey.setDown(words[1].equals("descricao"));
+                }
                 default -> throw new IllegalArgumentException(command);
             }
             return;

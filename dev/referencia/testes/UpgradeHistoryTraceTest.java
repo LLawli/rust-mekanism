@@ -33,6 +33,8 @@ import mekanism.api.upgrade.Upgrade;
 import mekanism.api.upgrade.UpgradeIds;
 import mekanism.common.capabilities.energy.BasicEnergyContainer;
 import mekanism.common.registries.MekanismBlocks;
+import mekanism.common.registries.MekanismDataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import mekanism.common.tests.helpers.MekGameTestHelper;
 import mekanism.common.tile.base.TileEntityMekanism;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
@@ -70,7 +72,7 @@ import net.neoforged.testframework.gametest.StructureTemplateBuilder;
 /// Grava a ordem do mapa de upgrades do tile (`TileComponentUpgrade.upgrades`) para a ordem de instalação de cada subconjunto (decisão 233): todas as ordens de 2 a 4 dos oito tipos
 /// (2.072 amostras), com o `hashCode` de cada `Holder<Upgrade>` da execução, a ordem do mapa do tile depois das instalações, a das chaves do `upgrades` do NBT gravado em
 /// bytes e lido de volta (`NbtIo`, como o chunk), a do mapa depois de `deserialize` (o tile recarregado) e a do mapa que o cliente decodifica da janela de upgrades
-/// (`SyncableStreamCodec.upgradeMap`: `Object2IntOpenHashMap::new` com o tamanho). `upgrade_history.jsonl`, uma linha por amostra.
+/// (`SyncableStreamCodec.upgradeMap`: `Object2IntOpenHashMap::new` com o tamanho). `upgrade_history.jsonl`, uma linha por amostra. Os mesmos quatro campos com o prefixo `bare_` são os de um tile que não passou por um item (a tabela de 32 posições, `new Object2IntOpenHashMap<>()`), gravados desde a execução 3.
 @ForEachTest(groups = "trace")
 public class UpgradeHistoryTraceTest {
 
@@ -87,6 +89,45 @@ public class UpgradeHistoryTraceTest {
         test.onGameTest(MekGameTestHelper.class, helper -> {
             var sequence = helper.startSequence();
             sequence.thenExecute(() -> run(helper));
+            sequence.thenSucceed();
+        });
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_upgrade_history")
+    @TestHolder(description = "Records which items carry the details component, and the tooltip lines the server builds for each (frente maquina-sobras: the other items with details).")
+    public static void detailsItems(final DynamicTest test) {
+        test.registerGameTestTemplate(() -> StructureTemplateBuilder.withSize(6, 3, 3).fill(3, 0, 1, 3, 0, 1, Blocks.STONE.defaultBlockState()));
+        test.onGameTest(MekGameTestHelper.class, helper -> {
+            var sequence = helper.startSequence();
+            sequence.thenExecute(() -> {
+                ServerLevel level = helper.getLevel();
+                Player player = helper.makeMockPlayerLookingAt(FLOOR, Direction.UP);
+                List<String> lines = new ArrayList<>();
+                for (Item item : BuiltInRegistries.ITEM) {
+                    var key = BuiltInRegistries.ITEM.getKey(item);
+                    if (!key.getNamespace().startsWith("mekanism")) {
+                        continue;
+                    }
+                    ItemStack stack = new ItemStack(item);
+                    JsonObject root = new JsonObject();
+                    root.addProperty("item", key.toString());
+                    root.addProperty("details", stack.has(MekanismDataComponents.DETAILS));
+                    root.addProperty("description", stack.has(MekanismDataComponents.DESCRIPTION));
+                    JsonArray tooltip = new JsonArray();
+                    for (Component line : stack.getTooltipLines(Item.TooltipContext.of(level), player, TooltipFlag.Default.NORMAL)) {
+                        tooltip.add(line.getString());
+                    }
+                    root.add("tooltip", tooltip);
+                    lines.add(root.toString());
+                }
+                try {
+                    Path file = Path.of("trace", "upgrade_history_details.jsonl");
+                    Files.createDirectories(file.getParent());
+                    Files.write(file, lines);
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
             sequence.thenSucceed();
         });
     }
@@ -134,11 +175,6 @@ public class UpgradeHistoryTraceTest {
             field.setAccessible(true);
             net.minecraft.network.codec.StreamCodec<RegistryFriendlyByteBuf, Object2IntMap<Holder<Upgrade>>> codec = ByteBufCodecs.map(Object2IntOpenHashMap::new, Upgrade.STREAM_CODEC, ByteBufCodecs.VAR_INT);
             for (List<ResourceKey<Upgrade>> order : samples) {
-                // O tile no estado em que a máquina posta nasce de um item sem upgrades: `new Object2IntOpenHashMap<>(UpgradeAware.EMPTY.upgrades())`.
-                field.set(component, new Object2IntOpenHashMap<Holder<Upgrade>>(it.unimi.dsi.fastutil.objects.Object2IntMaps.<Holder<Upgrade>>emptyMap()));
-                for (ResourceKey<Upgrade> key : order) {
-                    component.addUpgrades(registries, lookup.getOrThrow(key), 1);
-                }
                 JsonObject root = new JsonObject();
                 JsonArray installed = new JsonArray();
                 order.forEach(key -> installed.add(key.identifier().getPath()));
@@ -148,26 +184,11 @@ public class UpgradeHistoryTraceTest {
                     hashes.addProperty(key.identifier().getPath(), lookup.getOrThrow(key).hashCode());
                 }
                 root.add("hashes", hashes);
-                var tileMap = (Object2IntMap<Holder<Upgrade>>) field.get(component);
-                root.add("tile", toArray(names(tileMap.keySet())));
-                var buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), registries);
-                codec.encode(buf, tileMap);
-                root.add("window", toArray(names(codec.decode(buf).keySet())));
-                CompoundTag saved;
-                try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(mekanism.common.Mekanism.logger)) {
-                    TagValueOutput output = TagValueOutput.createWithContext(reporter, registries);
-                    component.serialize(output);
-                    saved = output.buildResult();
-                }
-                var bytes = new ByteArrayOutputStream();
-                NbtIo.write(saved, new DataOutputStream(bytes));
-                CompoundTag read = NbtIo.read(new DataInputStream(new ByteArrayInputStream(bytes.toByteArray())));
-                root.add("file", toArray(new ArrayList<>(read.getCompoundOrEmpty("upgrades").keySet())));
-                try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(mekanism.common.Mekanism.logger)) {
-                    component.deserialize(TagValueInput.create(reporter, registries, read));
-                }
-                var reloaded = (Object2IntMap<Holder<Upgrade>>) field.get(component);
-                root.add("reloaded", toArray(names(reloaded.keySet())));
+                // O tile no estado em que a máquina posta nasce de um item sem upgrades: `new Object2IntOpenHashMap<>(UpgradeAware.EMPTY.upgrades())`.
+                measure("", root, field, component, registries, lookup, order, codec,
+                      new Object2IntOpenHashMap<Holder<Upgrade>>(it.unimi.dsi.fastutil.objects.Object2IntMaps.<Holder<Upgrade>>emptyMap()));
+                // O tile que não passou por um item (a block entity criada sem `applyImplicitComponents`: `setBlock` e a construção do tile): `new Object2IntOpenHashMap<>()`, 32 posições.
+                measure("bare_", root, field, component, registries, lookup, order, codec, new Object2IntOpenHashMap<Holder<Upgrade>>());
                 lines.add(root.toString());
             }
         } catch (ReflectiveOperationException | IOException e) {
@@ -181,6 +202,40 @@ public class UpgradeHistoryTraceTest {
             throw new IllegalStateException(e);
         }
         helper.setBlock(SPOT, Blocks.AIR.defaultBlockState());
+    }
+
+
+    /// Instala `order` um a um num tile que parte de `start`, e grava (com o `prefix`) a ordem do mapa do tile (`tile`), a da janela (`window`), a das chaves do NBT gravado em bytes
+    /// (`file`) e a do tile depois de `deserialize` (`reloaded`).
+    @SuppressWarnings("unchecked")
+    private static void measure(String prefix, JsonObject root, Field field, mekanism.common.tile.component.TileComponentUpgrade component, RegistryAccess registries,
+          net.minecraft.core.HolderLookup.RegistryLookup<Upgrade> lookup, List<ResourceKey<Upgrade>> order,
+          net.minecraft.network.codec.StreamCodec<RegistryFriendlyByteBuf, Object2IntMap<Holder<Upgrade>>> codec, Object2IntOpenHashMap<Holder<Upgrade>> start)
+          throws ReflectiveOperationException, IOException {
+        field.set(component, start);
+        for (ResourceKey<Upgrade> key : order) {
+            component.addUpgrades(registries, lookup.getOrThrow(key), 1);
+        }
+        var tileMap = (Object2IntMap<Holder<Upgrade>>) field.get(component);
+        root.add(prefix + "tile", toArray(names(tileMap.keySet())));
+        var buf = new RegistryFriendlyByteBuf(Unpooled.buffer(), registries);
+        codec.encode(buf, tileMap);
+        root.add(prefix + "window", toArray(names(codec.decode(buf).keySet())));
+        CompoundTag saved;
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(mekanism.common.Mekanism.logger)) {
+            TagValueOutput output = TagValueOutput.createWithContext(reporter, registries);
+            component.serialize(output);
+            saved = output.buildResult();
+        }
+        var bytes = new ByteArrayOutputStream();
+        NbtIo.write(saved, new DataOutputStream(bytes));
+        CompoundTag read = NbtIo.read(new DataInputStream(new ByteArrayInputStream(bytes.toByteArray())));
+        root.add(prefix + "file", toArray(new ArrayList<>(read.getCompoundOrEmpty("upgrades").keySet())));
+        try (ProblemReporter.ScopedCollector reporter = new ProblemReporter.ScopedCollector(mekanism.common.Mekanism.logger)) {
+            component.deserialize(TagValueInput.create(reporter, registries, read));
+        }
+        var reloaded = (Object2IntMap<Holder<Upgrade>>) field.get(component);
+        root.add(prefix + "reloaded", toArray(names(reloaded.keySet())));
     }
 
     private static JsonArray toArray(List<String> values) {

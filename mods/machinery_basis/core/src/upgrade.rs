@@ -7,7 +7,9 @@ use crate::containers::{
 };
 use crate::sim::open_hash::OpenHashMap;
 use crate::transaction::{Callback, Transaction};
-use crate::upgrade_order::{UpgradeKey, entries_from_disk, entries_from_file, file_order, loaded_map};
+use crate::upgrade_order::{
+    UpgradeKey, entries_from_disk, entries_from_file, file_order, loaded_map,
+};
 use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};

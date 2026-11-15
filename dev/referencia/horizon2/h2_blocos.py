@@ -416,6 +416,15 @@ def item_cena(cmd):
         barra = sorted((w for w in slots if w["bounds"][1] == base), key=lambda w: w["bounds"][0])
         x, y, _, _ = barra[int(palavras[1])]["bounds"]
         h.ctl("scroll-at", str(int(x + 8)), str(int(y + 8)), "0")
+    elif palavras[0] == "#tecla":
+        # `#tecla nenhuma|detalhes|descricao`: Left Shift (detalhes) e Shift mais N (descrição) como teclas físicas, o que o original faz com `KeyMapping.setDown`.
+        quais = {"nenhuma": (), "detalhes": ("shift",), "descricao": ("shift", "n")}[palavras[1]]
+        for tecla in ("n", "shift"):
+            if tecla not in quais:
+                h.ctl("key", tecla, "up")
+        for tecla in quais:
+            h.ctl("key", tecla, "down")
+        time.sleep(0.8)
     elif palavras[0] == "#tela":
         h.ctl("close")
     elif palavras[0] == "#colocar":
@@ -493,7 +502,7 @@ def cena(out, nomes=(), roteiro="blocos.json"):
             if cmd.startswith("#esperar "):
                 time.sleep(int(cmd.split()[1]) / 20.0)
                 continue
-            if cmd.startswith(("#inventario ", "#tela", "#colocar ", "#abrir ", "#quebrar ", "#cursor ", "#clicar ")) or cmd.startswith("item replace entity @a hotbar.0 with "):
+            if cmd.startswith(("#inventario ", "#tela", "#colocar ", "#abrir ", "#quebrar ", "#cursor ", "#clicar ", "#tecla ")) or cmd.startswith("item replace entity @a hotbar.0 with "):
                 item_cena(cmd)
                 continue
             if cmd.startswith("#conexao "):

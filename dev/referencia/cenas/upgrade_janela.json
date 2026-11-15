@@ -1,0 +1,234 @@
+{
+ "hud": true,
+ "setup": [
+  "difficulty peaceful",
+  "time set noon",
+  "weather clear",
+  "gamemode survival @a",
+  "gamerule advance_time false",
+  "gamerule advance_weather false",
+  "fill 52 -61 70 100 -61 90 minecraft:stone",
+  "fill 52 -60 70 100 -52 90 minecraft:air",
+  "kill @e[type=minecraft:item]"
+ ],
+ "clear": "weather clear",
+ "shots": [
+  {
+   "name": "aba_speed",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:speed\":3},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 60.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 60 -61 80",
+    "#esperar 20",
+    "#abrir 60 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_speed",
+   "cmds": [
+    "#tela",
+    "#quebrar 60 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "60.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_energy",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:energy\":2},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 64.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 64 -61 80",
+    "#esperar 20",
+    "#abrir 64 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_energy",
+   "cmds": [
+    "#tela",
+    "#quebrar 64 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "64.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_muffling",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:muffling\":1},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 68.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 68 -61 80",
+    "#esperar 20",
+    "#abrir 68 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_muffling",
+   "cmds": [
+    "#tela",
+    "#quebrar 68 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "68.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_speed_energy",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 72.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 72 -61 80",
+    "#esperar 20",
+    "#abrir 72 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_speed_energy",
+   "cmds": [
+    "#tela",
+    "#quebrar 72 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "72.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_speed_muffling",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:muffling\":1},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 76.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 76 -61 80",
+    "#esperar 20",
+    "#abrir 76 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_speed_muffling",
+   "cmds": [
+    "#tela",
+    "#quebrar 76 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "76.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_energy_muffling",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:energy\":2,\"mekanism:muffling\":1},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 80.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 80 -61 80",
+    "#esperar 20",
+    "#abrir 80 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "80.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_energy_muffling",
+   "cmds": [
+    "#tela",
+    "#quebrar 80 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "80.5 -60 83.5 180 20"
+  },
+  {
+   "name": "aba_speed_energy_muffling",
+   "cmds": [
+    "#tela",
+    "clear @a",
+    "kill @e[type=minecraft:item]",
+    "item replace entity @a hotbar.0 with mekanism:enrichment_chamber[mekanism:upgrades={upgrades:{\"mekanism:speed\":3,\"mekanism:energy\":2,\"mekanism:muffling\":1},input:{},output:{}},mekanism:redstone_control=\"high\",mekanism:energy=200L]",
+    "#esperar 10",
+    "tp @a 84.5 -60 83.5 180 20",
+    "#esperar 10",
+    "#colocar 84 -61 80",
+    "#esperar 20",
+    "#abrir 84 -60 80",
+    "#esperar 30",
+    "#clicar 190,19",
+    "#esperar 10"
+   ],
+   "tp": "84.5 -60 83.5 180 20"
+  },
+  {
+   "name": "fim_speed_energy_muffling",
+   "cmds": [
+    "#tela",
+    "#quebrar 84 -60 80",
+    "#esperar 10",
+    "kill @e[type=minecraft:item]",
+    "clear @a",
+    "#esperar 5"
+   ],
+   "tp": "84.5 -60 83.5 180 20"
+  }
+ ]
+}

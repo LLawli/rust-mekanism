@@ -123,7 +123,9 @@ pub fn entries_from_disk(sorted: &[(String, i32)]) -> Vec<(String, i32)> {
 /// (um NBT editado à mão, ou um que outro mod mexeu, cai na ordem alfabética de [`entries_from_disk`]).
 pub fn entries_from_file(known: &[(String, i32)], file: &[String]) -> Vec<(String, i32)> {
     let same_set = file.len() == known.len()
-        && file.iter().all(|id| known.iter().any(|(known, _)| known == id))
+        && file
+            .iter()
+            .all(|id| known.iter().any(|(known, _)| known == id))
         && file
             .iter()
             .enumerate()
