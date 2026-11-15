@@ -5,8 +5,12 @@
 //!
 //! Cada linha do rastro é um tick, gravada depois do tick do tile (e do `onTick` do registro) e das marcas do cenário: o teste roda o tick e só depois aplica as marcas.
 use machinery_basis_core::containers::AutomationType;
+use machinery_basis_core::containers::InventorySlot;
+use machinery_basis_core::containers::ItemResource;
 use machinery_basis_core::distribution::EnergyInsert;
 use machinery_basis_core::energy_cube::EnergyNeighbours;
+use machinery_basis_core::energy_cube::ItemEnergy;
+use machinery_basis_core::energy_cube::ItemEnergySpec;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::BlockPos;
 use machinery_basis_core::tile::RedstoneControl;
@@ -16,7 +20,9 @@ use machinery_basis_core::transmission::owner::{
     Acceptor, CableInfo, CableView, EnergyTransmitters, Event, OwnerWorld,
 };
 use machinery_basis_core::transmission::{DimensionId, Uuid};
-use mekanismgenerators_rules::{ENERGY_CAPACITY, State, Surroundings, step_emitting};
+use mekanismgenerators_rules::{
+    ENERGY_CAPACITY, State, Surroundings, drain_into_slot, emit_energy, step, step_emitting,
+};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -228,12 +234,24 @@ fn pos_of(x: &str, y: &str, z: &str) -> BlockPos {
     BlockPos::new(x.parse().unwrap(), y.parse().unwrap(), z.parse().unwrap())
 }
 
-fn apply(world: &World, state: &mut State, names: &mut Vec<(String, BlockPos)>, mark: &str) {
+fn apply(
+    world: &World,
+    state: &mut State,
+    slot: &InventorySlot,
+    names: &mut Vec<(String, BlockPos)>,
+    mark: &str,
+) {
     let words: Vec<&str> = mark.split(' ').collect();
     match words.as_slice() {
         ["lava", amount] => state.lava = amount.parse().unwrap(),
         ["energy", amount] => state.energy = amount.parse().unwrap(),
         ["control", kind] => state.tile.set_control_type(control_of(kind)),
+        // O slot de energia (`EnergyInventorySlot.drain`): o item, a energia da pilha e a quantidade.
+        ["slot", name, energy, count] => slot.set_contents(
+            Some(slot_resource(name, energy.parse().unwrap())),
+            count.parse().unwrap(),
+            None,
+        ),
         ["chamber", name, x, y, z, max, stored] => {
             let pos = pos_of(x, y, z);
             world.place_machine(pos, max.parse().unwrap(), stored.parse().unwrap());
@@ -248,6 +266,82 @@ fn apply(world: &World, state: &mut State, names: &mut Vec<(String, BlockPos)>, 
         }
         _ => panic!("marca desconhecida: {mark}"),
     }
+}
+
+/// Os itens do cenário do slot, com o namespace que o recurso tem no jogo.
+fn slot_resource(name: &str, energy: i64) -> ItemResource {
+    let id = if name == "stick" {
+        name.to_owned()
+    } else {
+        format!("mekanism:{name}")
+    };
+    let stack = if name == "basic_energy_cube" { 64 } else { 1 };
+    if energy == 0 {
+        ItemResource::new(&id, stack)
+    } else {
+        ItemResource::with_component(
+            &id,
+            stack,
+            mekanism_rules::ENERGY_COMPONENT,
+            &energy.to_string(),
+        )
+    }
+}
+
+/// O handler de energia dos itens do cenário: o equipamento, o cubo e o item da Enrichment Chamber, como o Mekanism os dá, com a energia no componente do recurso.
+fn slot_items() -> ItemEnergy {
+    use machinery_basis_core::components::Components;
+    let config = mekanism_rules::ServerConfig::DEFAULT;
+    ItemEnergy {
+        lookup: Rc::new(move |resource: &ItemResource| {
+            let energy = resource
+                .components
+                .get(mekanism_rules::ENERGY_COMPONENT)
+                .and_then(|text| text.trim_end_matches('L').parse::<i64>().ok())
+                .unwrap_or(0);
+            mekanism_rules::item_energy_spec(&resource.id, energy, &config).or_else(|| {
+                (&*resource.id == "mekanism:enrichment_chamber").then(|| -> ItemEnergySpec {
+                    mekanism_rules::machine_item_spec(
+                        energy,
+                        i64::from(mekanism_rules::energy_capacity(
+                            mekanism_rules::ENRICHMENT_USAGE,
+                        )),
+                    )
+                })
+            })
+        }),
+        write: Rc::new(|resource: &ItemResource, energy: i64| {
+            let text = energy.to_string();
+            let mut entries: Vec<(&str, &str)> = resource
+                .components
+                .iter()
+                .filter(|(id, _)| *id != mekanism_rules::ENERGY_COMPONENT)
+                .collect();
+            if energy != 0 {
+                entries.push((mekanism_rules::ENERGY_COMPONENT, text.as_str()));
+            }
+            Some(ItemResource::with_components(
+                &resource.id,
+                resource.max_stack_size,
+                Components::new(entries),
+            ))
+        }),
+        conversions: machinery_basis_core::energy_conversion::EnergyConversion::cache_of(Vec::new()),
+    }
+}
+
+/// O slot como o rastro o grava: o caminho do item, a quantidade e a energia da pilha.
+fn slot_line(slot: &InventorySlot) -> Value {
+    let Some(resource) = slot.resource() else {
+        return serde_json::json!(["", 0, 0]);
+    };
+    let energy = resource
+        .components
+        .get(mekanism_rules::ENERGY_COMPONENT)
+        .and_then(|text| text.parse::<i64>().ok())
+        .unwrap_or(0);
+    let path = resource.id.rsplit(':').next().unwrap();
+    serde_json::json!([path, slot.amount(), energy])
 }
 
 fn replay(scenario: &str, cables: &[(i32, i32)], minimum_lines: usize) {
@@ -277,6 +371,11 @@ fn replay(scenario: &str, cables: &[(i32, i32)], minimum_lines: usize) {
     state.heat.heat = lines[0]["heat_before"].as_f64().unwrap();
     let mut names: Vec<(String, BlockPos)> = Vec::new();
     let mut emitted = 0i64;
+    // O cenário `slot` grava também o slot de energia: a ordem do tick é a entrega, o slot e a produção.
+    let with_slot = lines[0].get("energy_slot").is_some();
+    let slot = InventorySlot::new(None);
+    let items = slot_items();
+    let mut drained_to_item = 0i64;
     for expected in &lines {
         let t = expected["t"].as_u64().unwrap();
         let faces: Vec<f64> = expected["ambient_faces"]
@@ -295,15 +394,36 @@ fn replay(scenario: &str, cables: &[(i32, i32)], minimum_lines: usize) {
         // O primeiro tick gravado já aconteceu quando o cenário começa: o estado dele é o semeado.
         if t > 0 {
             let before = state.energy;
-            produced =
-                step_emitting(&mut state, &around, &Neighbours { world: &world }, FRONT).energy;
+            if with_slot {
+                emit_energy(&mut state, &Neighbours { world: &world }, FRONT);
+                let full = state.energy;
+                drain_into_slot(&mut state, &items, &slot);
+                drained_to_item += i64::from(full) - i64::from(state.energy);
+                produced = step(&mut state, &around).energy;
+            } else {
+                produced =
+                    step_emitting(&mut state, &around, &Neighbours { world: &world }, FRONT).energy;
+            }
             emitted += i64::from(before) + i64::from(produced) - i64::from(state.energy);
             world.tick_cables();
         }
         for mark in expected["marks"].as_array().unwrap() {
-            apply(&world, &mut state, &mut names, mark.as_str().unwrap());
+            apply(
+                &world,
+                &mut state,
+                &slot,
+                &mut names,
+                mark.as_str().unwrap(),
+            );
         }
         let context = format!("{scenario} t {t}");
+        if with_slot {
+            assert_eq!(
+                slot_line(&slot),
+                expected["energy_slot"],
+                "{context}: o slot de energia"
+            );
+        }
         assert_eq!(
             i64::from(state.energy),
             expected["energy"].as_i64().unwrap(),
@@ -353,7 +473,14 @@ fn replay(scenario: &str, cables: &[(i32, i32)], minimum_lines: usize) {
             }
         }
     }
-    assert!(emitted > 0, "{scenario}: o gerador nunca entregou nada");
+    if with_slot {
+        assert!(
+            drained_to_item > 1_000,
+            "{scenario}: o slot nunca recebeu energia"
+        );
+    } else {
+        assert!(emitted > 0, "{scenario}: o gerador nunca entregou nada");
+    }
 }
 
 #[test]
@@ -379,4 +506,11 @@ fn a_cable_beside_the_generator_that_is_not_the_front_gets_nothing() {
 #[test]
 fn the_generator_gives_energy_only_while_it_can_function() {
     replay("control", &[], 120);
+}
+
+/// O slot de energia (`EnergyInventorySlot.drain`): a cada tick o buffer entrega ao item o que a taxa de carga dele deixa, depois da entrega ao vizinho e antes da produção, e só um
+/// item que aceita energia a recebe; o gerador sem controle de redstone (`HIGH` sem sinal) entrega ao item do mesmo jeito.
+#[test]
+fn the_energy_slot_drains_the_buffer_into_the_item_before_the_production() {
+    replay("slot", &[], 150);
 }

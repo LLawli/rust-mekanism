@@ -2502,7 +2502,8 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
             })
         })
         .collect();
-    game.mb_tile_sounds(dimension, &tiles, sound_config());
+    crate::game::machinery_tile_sound::publish_sound_config(sound_config());
+    game.mb_tile_sounds(RULES_OWNER, dimension, &tiles, sound_config());
 }
 
 /// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.

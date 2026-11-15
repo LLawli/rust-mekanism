@@ -9,8 +9,7 @@ use crate::chemical::{
     fill_tank_or_convert,
 };
 use crate::containers::{
-    Access, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks,
-    redstone_signal,
+    Access, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks, redstone_signal,
 };
 use crate::ejector::{AttachedEjector, EjectorData, NoOtherEject, TileComponentEjector};
 use crate::energy_cube::ItemEnergy;
@@ -1522,7 +1521,11 @@ mod tests {
                 amount: 500,
                 capacity: 1_000,
                 rate: 100,
-                can_extract: if &*item.id == "tablet" { Access::Any } else { Access::ManualOnly },
+                can_extract: if &*item.id == "tablet" {
+                    Access::Any
+                } else {
+                    Access::ManualOnly
+                },
                 can_insert: Access::Any,
                 creative: false,
             })

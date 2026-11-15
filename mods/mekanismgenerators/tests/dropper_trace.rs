@@ -7,16 +7,17 @@
 //! (`item_instance`). A regra de cada slot é a do Java: o de combustível (`FluidFuelInventorySlot.forFuel`) aceita o que tem `COOKING_FUEL` ou enche o
 //! tanque (o balde de lava) e só deixa sair o que não é nem uma coisa nem outra; o de energia (`EnergyInventorySlot.drain`) aceita o que `canDrain` e só
 //! deixa sair o que não.
-use machinery_basis_core::sides::Face;
 use machinery_basis_core::containers::{Access, ItemResource};
 use machinery_basis_core::energy_conversion::EnergyConversion;
 use machinery_basis_core::energy_cube::{ItemEnergy, ItemEnergySpec};
+use machinery_basis_core::sides::Face;
 use mekanismgenerators_rules::{
-    ENERGY_SLOT, FUEL_SLOT, HeatConfig, fuel_slot_extractable, fuel_slot_insertable, item_instance, slot_can_drain,
+    ENERGY_SLOT, FUEL_SLOT, HeatConfig, fuel_slot_extractable, fuel_slot_insertable, item_instance,
+    slot_can_drain,
 };
-use std::rc::Rc;
 use serde_json::Value;
 use std::path::Path;
+use std::rc::Rc;
 
 const FACES: [&str; 6] = ["down", "up", "north", "south", "west", "east"];
 /// Os combustíveis do cenário (o componente `cooking_fuel`): o carvão, o graveto, o `bio_fuel` do Mekanism e o balde de lava.
@@ -67,7 +68,12 @@ fn items() -> ItemEnergy {
 /// `EnergyInventorySlot.canDrain` do slot de energia com `stored` no buffer.
 fn energy_can_drain(stored: i64, id: &str) -> bool {
     let stored = i32::try_from(stored).unwrap();
-    slot_can_drain(&items(), stored, HeatConfig::DEFAULT.energy_capacity, &ItemResource::new(id, 64))
+    slot_can_drain(
+        &items(),
+        stored,
+        HeatConfig::DEFAULT.energy_capacity,
+        &ItemResource::new(id, 64),
+    )
 }
 
 fn is_fuel(id: &str) -> bool {

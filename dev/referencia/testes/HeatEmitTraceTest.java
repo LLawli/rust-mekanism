@@ -9,10 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import mekanism.api.RelativeSide;
+import mekanism.api.energy.IEnergyContainer;
 import mekanism.api.heat.HeatAPI;
 import mekanism.common.block.attribute.Attribute;
 import mekanism.common.capabilities.Capabilities;
 import mekanism.common.capabilities.energy.MachineEnergyContainer;
+import mekanism.common.component.containers.type.ContainerType;
 import mekanism.common.capabilities.heat.BasicHeatCapacitor;
 import mekanism.common.content.network.EnergyNetwork;
 import mekanism.common.lib.transmitter.TransmissionType;
@@ -24,17 +26,26 @@ import mekanism.common.tile.component.config.DataType;
 import mekanism.common.tile.interfaces.IRedstoneControl.RedstoneControl;
 import mekanism.common.tile.interfaces.ISideConfiguration;
 import mekanism.common.tile.transmitter.TileEntityUniversalCable;
+import mekanism.common.registries.MekanismItems;
+import mekanism.common.util.EnergyUtils;
+import mekanism.common.util.ItemAccessUtils;
 import mekanism.common.util.WorldUtils;
 import mekanism.generators.common.registries.GeneratorsBlocks;
 import mekanism.generators.common.tile.TileEntityHeatGenerator;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.transfer.access.ItemAccess;
+import net.neoforged.neoforge.transfer.energy.EnergyHandler;
 import net.neoforged.neoforge.transfer.fluid.FluidResource;
+import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.testframework.DynamicTest;
 import net.neoforged.testframework.annotation.ForEachTest;
 import net.neoforged.testframework.annotation.TestHolder;
@@ -187,6 +198,58 @@ public class HeatEmitTraceTest {
         );
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_heat_emit")
+    @TestHolder(description = "Records the energy slot of the Heat Generator (EnergyInventorySlot.drain, drainContainerIntoSlot at the start of onUpdateServer after the emit): a tablet, a nearly full tablet, a stack of 2 cube items, equipment and a machine item that take energy, a stick, and the redstone control off.")
+    public static void slot(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("slot");
+        trace.recordSlot = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(2, () -> {
+                  trace.mark("lava 10000");
+                  trace.setLava(10_000);
+                  trace.mark("energy 200");
+                  trace.setEnergy(200);
+                  trace.mark("slot energy_tablet 0 1");
+                  trace.setSlot("energy_tablet", 0, 1);
+              })
+              .thenExecuteAfter(25, () -> {
+                  trace.mark("slot energy_tablet 999900 1");
+                  trace.setSlot("energy_tablet", 999_900, 1);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("slot basic_energy_cube 0 2");
+                  trace.setSlot("basic_energy_cube", 0, 2);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("slot atomic_disassembler 0 1");
+                  trace.setSlot("atomic_disassembler", 0, 1);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("slot enrichment_chamber 0 1");
+                  trace.setSlot("enrichment_chamber", 0, 1);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("slot stick 0 1");
+                  trace.setSlot("stick", 0, 1);
+              })
+              .thenExecuteAfter(8, () -> {
+                  trace.mark("control HIGH");
+                  trace.setControl(RedstoneControl.HIGH);
+                  trace.mark("slot energy_tablet 0 1");
+                  trace.setSlot("energy_tablet", 0, 1);
+              })
+              .thenExecuteAfter(25, () -> {
+                  trace.mark("energy 150");
+                  trace.setEnergy(150);
+              })
+              .thenExecuteAfter(25, trace::write)
+              .thenSucceed()
+        );
+    }
+
     private static class Trace {
 
         private final String name;
@@ -197,6 +260,8 @@ public class HeatEmitTraceTest {
         private MekGameTestHelper helper;
         private int tick;
         private double heatBefore;
+        /// Records the energy slot too: item path, count and the energy of the stack.
+        boolean recordSlot;
 
         Trace(String name) {
             this.name = name;
@@ -231,6 +296,37 @@ public class HeatEmitTraceTest {
 
         void setEnergy(long energy) {
             tile().energyContainer().setEnergy(energy, null);
+        }
+
+        private static Item slotItem(String name) {
+            return switch (name) {
+                case "energy_tablet" -> MekanismItems.ENERGY_TABLET.asItem();
+                case "atomic_disassembler" -> MekanismItems.ATOMIC_DISASSEMBLER.asItem();
+                case "basic_energy_cube" -> MekanismBlocks.BASIC_ENERGY_CUBE.asItem();
+                case "enrichment_chamber" -> MekanismBlocks.ENRICHMENT_CHAMBER.asItem();
+                case "stick" -> Items.STICK;
+                default -> throw new IllegalArgumentException(name);
+            };
+        }
+
+        /// The stack with `energy` in its `mekanism:energy` component, through the item's own energy handler.
+        private static ItemStack stackWith(Item item, long energy, int count) {
+            ItemAccess access = ItemAccessUtils.sideEffectFreeAccess(ItemResource.of(item));
+            EnergyHandler handler = ContainerType.ENERGY.getCapOrUnexposed(access);
+            if (handler == null || energy == 0) {
+                return new ItemStack(item, count);
+            }
+            IEnergyContainer container = EnergyUtils.getEnergyContainer(handler);
+            container.setEnergy(energy, null);
+            ItemStack stack = ItemAccessUtils.asStack(access);
+            stack.setCount(count);
+            return stack;
+        }
+
+        /// The energy slot (index 1, `getInitialInventory` puts the fuel slot first).
+        void setSlot(String item, long energy, int count) {
+            ItemStack stack = stackWith(slotItem(item), energy, count);
+            tile().getInventorySlots().get(1).setContents(ItemResource.of(stack), count, null);
         }
 
         void setControl(RedstoneControl control) {
@@ -319,7 +415,13 @@ public class HeatEmitTraceTest {
                 line.append(first ? "" : ",").append("\"net").append(i).append("\":").append(networkEnergy(cables.get(i)));
                 first = false;
             }
-            line.append("}}");
+            line.append('}');
+            if (recordSlot) {
+                ItemStack stack = tile.getInventorySlots().get(1).asItemStack();
+                line.append(",\"energy_slot\":[\"").append(stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath()).append("\",")
+                      .append(stack.getCount()).append(',').append(stack.isEmpty() ? 0 : ContainerType.ENERGY.getOrZero(ItemResource.of(stack))).append(']');
+            }
+            line.append('}');
             lines.add(line.toString());
         }
 

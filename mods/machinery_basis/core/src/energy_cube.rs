@@ -1435,4 +1435,159 @@ mod tests {
         let receivers = Receivers(RefCell::new(vec![(Face::North, 0, 700)]));
         assert_eq!(send_to_acceptors(&receivers, &[Face::North], 1000), 700);
     }
+    fn spec(amount: i64, extract: Access) -> ItemEnergySpec {
+        ItemEnergySpec {
+            amount,
+            capacity: 1_000_000,
+            rate: 5_000,
+            can_extract: extract,
+            can_insert: Access::Any,
+            creative: false,
+        }
+    }
+
+    /// O handler de energia de teste: o `tablet` entrega e recebe, o `tool` só entrega a quem é `MANUAL`; a energia está no componente `energy`.
+    fn items() -> ItemEnergy {
+        let amount = |resource: &ItemResource| {
+            resource
+                .components
+                .get("energy")
+                .map_or(0, |text| text.parse::<i64>().unwrap())
+        };
+        ItemEnergy {
+            lookup: Rc::new(move |resource: &ItemResource| match &*resource.id {
+                "tablet" => Some(spec(amount(resource), Access::Any)),
+                "tool" => Some(spec(amount(resource), Access::ManualOnly)),
+                _ => None,
+            }),
+            write: Rc::new(|resource: &ItemResource, energy: i64| {
+                Some(ItemResource::with_component(
+                    &resource.id,
+                    resource.max_stack_size,
+                    "energy",
+                    &energy.to_string(),
+                ))
+            }),
+            conversions: crate::energy_conversion::EnergyConversion::cache_of(Vec::new()),
+        }
+    }
+
+    fn slot_of(id: &str, energy: i64, count: u32) -> InventorySlot {
+        let slot = InventorySlot::new(None);
+        slot.set_contents(
+            Some(ItemResource::with_component(
+                id,
+                64,
+                "energy",
+                &energy.to_string(),
+            )),
+            count,
+            None,
+        );
+        slot
+    }
+
+    fn energy_in(slot: &InventorySlot) -> i64 {
+        slot.resource()
+            .unwrap()
+            .components
+            .get("energy")
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_machine_container_fills_from_the_item_by_the_item_rate_and_stops_when_the_item_is_empty() {
+        let machine = crate::containers::EnergyContainer::input(100_000, 50, None);
+        let slot = slot_of("tablet", 12_000, 1);
+        let items = items();
+        assert!(items.fill_container_from_slot(&slot, &machine, None));
+        assert_eq!((machine.amount(), energy_in(&slot)), (5_000, 7_000));
+        items.fill_container_or_convert(&slot, &machine, None);
+        items.fill_container_or_convert(&slot, &machine, None);
+        assert_eq!((machine.amount(), energy_in(&slot)), (12_000, 0));
+        // Sem energia no item o `extract` dá zero e nada muda.
+        assert!(!items.fill_container_from_slot(&slot, &machine, None));
+        assert_eq!(machine.amount(), 12_000);
+    }
+
+    #[test]
+    fn the_item_that_only_gives_energy_to_manual_automation_gives_nothing_to_a_slot() {
+        let machine = crate::containers::EnergyContainer::input(100_000, 50, None);
+        let slot = slot_of("tool", 50_000, 1);
+        assert!(!items().fill_container_from_slot(&slot, &machine, None));
+        assert_eq!((machine.amount(), energy_in(&slot)), (0, 50_000));
+    }
+
+    #[test]
+    fn a_stack_gives_by_item_and_a_container_with_little_room_takes_only_the_room() {
+        let machine = crate::containers::EnergyContainer::input(100_000, 50, None);
+        machine.set_energy(99_998, None);
+        let slot = slot_of("tablet", 1_000, 1);
+        assert!(items().fill_container_from_slot(&slot, &machine, None));
+        assert_eq!((machine.amount(), energy_in(&slot)), (100_000, 998));
+        // Uma pilha de 2: cada item entrega a parte dele do que o contêiner cabe.
+        let machine = crate::containers::EnergyContainer::input(100_000, 50, None);
+        let pair = slot_of("tablet", 10_000, 2);
+        assert!(items().fill_container_from_slot(&pair, &machine, None));
+        assert_eq!(machine.amount(), 10_000);
+        assert_eq!(energy_in(&pair), 5_000);
+    }
+
+    #[test]
+    fn a_generator_buffer_drains_into_the_item_by_the_item_rate_and_keeps_what_does_not_fit() {
+        let buffer = crate::containers::EnergyContainer::new(
+            240,
+            0,
+            Access::Any,
+            Access::InternalOnly,
+            None,
+        );
+        buffer.set_energy(200, None);
+        let slot = slot_of("tablet", 999_900, 1);
+        items().drain_container_into_slot(&slot, &buffer, None);
+        // O item cabe 100 (capacidade 1 000 000): o buffer perde só o que entrou.
+        assert_eq!((buffer.amount(), energy_in(&slot)), (100, 1_000_000));
+        items().drain_container_into_slot(&slot, &buffer, None);
+        assert_eq!((buffer.amount(), energy_in(&slot)), (100, 1_000_000));
+        // Um item sem handler de energia não recebe nada.
+        let stick = slot_of("stick", 0, 1);
+        items().drain_container_into_slot(&stick, &buffer, None);
+        assert_eq!(buffer.amount(), 100);
+    }
+
+    #[test]
+    fn the_drain_slot_takes_what_can_still_receive_energy() {
+        let buffer = crate::containers::EnergyContainer::new(
+            240,
+            0,
+            Access::Any,
+            Access::InternalOnly,
+            None,
+        );
+        let items = items();
+        let item = |id: &str, energy: i64| {
+            ItemResource::with_component(id, 64, "energy", &energy.to_string())
+        };
+        // Buffer vazio: o item que não está cheio, mesmo que não aceite nada agora.
+        assert!(items.can_drain(&buffer, &item("tablet", 0)));
+        assert!(items.can_drain(&buffer, &item("tablet", 999_999)));
+        assert!(!items.can_drain(&buffer, &item("tablet", 1_000_000)));
+        // Com energia: o contêiner tem de poder dar e o item aceitar.
+        buffer.set_energy(50, None);
+        assert!(items.can_drain(&buffer, &item("tablet", 0)));
+        assert!(!items.can_drain(&buffer, &item("tablet", 1_000_000)));
+        // Item sem handler (graveto, carvão, balde): nunca.
+        assert!(!items.can_drain(&buffer, &item("stick", 0)));
+        let shut = crate::containers::EnergyContainer::new(
+            240,
+            0,
+            Access::ManualOnly,
+            Access::InternalOnly,
+            None,
+        );
+        shut.set_energy(50, None);
+        assert!(!items.can_drain(&shut, &item("tablet", 0)));
+    }
 }

@@ -13,4 +13,5 @@ path = "native/runtime.rs"
 machinery-basis-core = { path = "../machinery_basis/core" }
 
 [dev-dependencies]
+mekanism-rules = { path = "../mekanism" }
 serde_json = { version = "1", features = ["float_roundtrip"] }

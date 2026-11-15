@@ -4,11 +4,11 @@ use machinery_basis_core::active_fx::{FxParticle, Particle, face_position};
 use machinery_basis_core::client_config::{
     Entry, Loaded, Lookup, Section, Setting, Spec, Value as ConfigScalar,
 };
-use machinery_basis_core::containers::{Access, EnergyContainer, InventorySlot, ItemResource};
-use machinery_basis_core::energy_cube::{ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::container_sync::{
     Kind, Mirror, StackValue, Tracked, TrackedSource, Value,
 };
+use machinery_basis_core::containers::{Access, EnergyContainer, InventorySlot, ItemResource};
+use machinery_basis_core::energy_cube::{ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::heat::Capacitor;
 use machinery_basis_core::machine_sync::upgrade_map;
@@ -40,6 +40,8 @@ pub fn has_details(item: &str) -> bool {
 }
 
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
+/// `GeneratorsSounds.HEAT_GENERATOR` (`GeneratorsBlockTypes.java:65`, `.withSound`).
+pub const HEAT_GENERATOR_SOUND: &str = "mekanismgenerators:tile.generator.heat";
 
 /// `GeneratorsBlockTypes.java:69`: `SMOKE` e `FLAME` em `(rand * 0,6 - 0,3, rand * 6/16, -0,52)` relativo ao centro do bloco, na face de trás (o
 /// `facing` gira a posição). O Heat Generator não é um `Machine`, então não tem as partículas de `Machine.java:23`.
@@ -752,12 +754,12 @@ pub fn slot_can_drain(items: &ItemEnergy, stored: i32, capacity: i64, item: &Ite
     items.can_drain(&energy_buffer(stored, capacity), item)
 }
 
-/// `energySlot.drainContainerIntoSlot(null)` do `onUpdateServer` do Heat Generator: o buffer entrega ao item do slot o que a taxa de carga dele deixa, e a energia do buffer que
-/// sobra é o que volta.
-pub fn drain_slot(items: &ItemEnergy, slot: &InventorySlot, stored: i32, capacity: i64) -> i32 {
-    let buffer = energy_buffer(stored, capacity);
+/// `energySlot.drainContainerIntoSlot(null)` do `onUpdateServer` do Heat Generator, que vem depois do `super.onUpdateServer` (a entrega ao vizinho) e antes de o combustível entrar e da
+/// produção: o buffer entrega ao item do slot o que a taxa de carga dele deixa, e o item guarda a energia nova. `producingEnergy` parte do buffer de depois disto (`prev`).
+pub fn drain_into_slot(state: &mut State, items: &ItemEnergy, slot: &InventorySlot) {
+    let buffer = energy_buffer(state.energy, state.config.energy_capacity);
     items.drain_container_into_slot(slot, &buffer, None);
-    buffer.amount_as_int()
+    state.energy = buffer.amount_as_int();
 }
 
 /// O handler de energia do item do Heat Generator (`ItemBlockTooltip.getDefaultEnergyContainer`: `BasicEnergyContainer.manualOnly` para tirar, qualquer um para pôr, a taxa de

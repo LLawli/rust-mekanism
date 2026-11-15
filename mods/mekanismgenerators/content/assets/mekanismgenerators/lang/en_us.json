@@ -60,5 +60,6 @@
   "item.mekanismgenerators.solar_panel": "Solar Panel",
   "item.mekanismgenerators.hohlraum": "Hohlraum",
   "item.mekanismgenerators.turbine_blade": "Turbine Blade",
+  "sound_event.mekanismgenerators.tile.generator.heat": "Heat generator hums",
   "constants.mekanismgenerators.mod_name": "Mekanism: Generators"
 }

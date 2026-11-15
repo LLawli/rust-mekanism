@@ -161,6 +161,47 @@ pub fn item_energy() -> machinery_basis_core::energy_cube::ItemEnergy {
     mekanism_rules::item_energy_of(energy_conversions())
 }
 
+/// O handler de energia dos itens como o jogo o monta (`basis::item_energy_handler` sobre `rules::item_energy_spec` e `machine_item_spec`): o equipamento e os cubos pela configuração
+/// padrão, o item da Enrichment Chamber como máquina, a energia no componente `mekanism:energy` do recurso e as conversões dos arquivos. Os recursos têm o id com o namespace.
+pub fn gear_item_energy() -> machinery_basis_core::energy_cube::ItemEnergy {
+    use machinery_basis_core::components::Components;
+    let config = mekanism_rules::ServerConfig::DEFAULT;
+    machinery_basis_core::energy_cube::ItemEnergy {
+        lookup: Rc::new(move |resource: &ItemResource| {
+            let energy = resource
+                .components
+                .get(mekanism_rules::ENERGY_COMPONENT)
+                .and_then(|text| text.trim_end_matches('L').parse::<i64>().ok())
+                .unwrap_or(0);
+            mekanism_rules::item_energy_spec(&resource.id, energy, &config).or_else(|| {
+                (&*resource.id == "mekanism:enrichment_chamber").then(|| {
+                    mekanism_rules::machine_item_spec(
+                        energy,
+                        i64::from(mekanism_rules::energy_capacity(ENRICHMENT_USAGE)),
+                    )
+                })
+            })
+        }),
+        write: Rc::new(|resource: &ItemResource, energy: i64| {
+            let text = energy.to_string();
+            let mut entries: Vec<(&str, &str)> = resource
+                .components
+                .iter()
+                .filter(|(id, _)| *id != mekanism_rules::ENERGY_COMPONENT)
+                .collect();
+            if energy != 0 {
+                entries.push((mekanism_rules::ENERGY_COMPONENT, text.as_str()));
+            }
+            Some(ItemResource::with_components(
+                &resource.id,
+                resource.max_stack_size,
+                Components::new(entries),
+            ))
+        }),
+        conversions: energy_conversions(),
+    }
+}
+
 /// O `getInputCache` de `ENERGY_CONVERSION` lido dos arquivos que o port entrega (`recipe/energy_conversion`), na ordem de pasta
 /// do jogo (o nome do arquivo), com as tags `c:` do conteúdo. Nada escrito à mão.
 pub fn energy_conversions() -> Rc<EnergyConversionCache> {

@@ -27,6 +27,8 @@ pub(in crate::game) struct SoundTile {
 }
 
 struct Entry {
+    /// O mod que mandou o tile (`mb_tile_sounds`): cada mod pede por si, e o que um não manda mais não é do outro.
+    owner: &'static str,
     tile: TileSound,
     playing: Option<Playing>,
     last_factor: f32,
@@ -214,7 +216,7 @@ thread_local! {
     /// Os sons que ficaram tocando depois de o tile sair (`SoundHandler.soundMap`): com `enableMachineSounds` desligado o `updateSound` do tile que sai
     /// volta antes do `stopTileSound`, e a instância segue sendo tickada pelo motor sem dono (fator 1) até o jogador sair do alcance. Um tile novo no mesmo
     /// bloco a encontra em `startTileSound` e a usa.
-    static ORPHANS: RefCell<HashMap<(&'static str, [i32; 3]), Playing>> = RefCell::new(HashMap::new());
+    static ORPHANS: RefCell<HashMap<(&'static str, [i32; 3]), (&'static str, Playing)>> = RefCell::new(HashMap::new());
 }
 
 /// `ThreadLocalRandom.nextInt(TICKS_PER_SECOND)`: o instante em que o som confere o silenciador.
@@ -383,12 +385,12 @@ impl Game<'_> {
     }
 
     /// Um tick do cliente para os tiles com som de uma dimensão. Um tile que já estava aqui e não vem mais foi removido.
-    pub(in crate::game) fn mb_tile_sounds(&mut self, dimension: &str, tiles: &[SoundTile], config: SoundConfig) {
+    pub(in crate::game) fn mb_tile_sounds(&mut self, owner: &'static str, dimension: &str, tiles: &[SoundTile], config: SoundConfig) {
         let gone: Vec<(&'static str, [i32; 3])> = SOUNDS.with_borrow(|sounds| {
             sounds
-                .keys()
-                .filter(|(owner, pos)| *owner == dimension && !tiles.iter().any(|tile| tile.key == (*owner, *pos)))
-                .copied()
+                .iter()
+                .filter(|((dim, pos), entry)| entry.owner == owner && *dim == dimension && !tiles.iter().any(|tile| tile.key == (*dim, *pos)))
+                .map(|(key, _)| *key)
                 .collect()
         });
         for key in gone {
@@ -405,7 +407,7 @@ impl Game<'_> {
                 &mut adapter,
             );
             if let Some(orphan) = entry.playing.take() {
-                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, orphan));
+                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, (owner, orphan)));
             }
         }
         let now = self.world.game_time;
@@ -418,8 +420,9 @@ impl Game<'_> {
                 continue;
             }
             let mut entry = SOUNDS.with_borrow_mut(|sounds| sounds.remove(&tile.key)).unwrap_or_else(|| Entry {
+                owner,
                 tile: TileSound::default(),
-                playing: ORPHANS.with_borrow_mut(|orphans| orphans.remove(&tile.key)),
+                playing: ORPHANS.with_borrow_mut(|orphans| orphans.remove(&tile.key)).map(|(_, playing)| playing),
                 last_factor: tile.volume_factor,
                 seen: None,
             });
@@ -438,16 +441,17 @@ impl Game<'_> {
             SOUNDS.with_borrow_mut(|sounds| sounds.insert(tile.key, entry));
         }
         // Os sons sem tile: o motor os tica com o fator 1 (`getTileVolumeFactor` não acha tile).
-        let orphans: Vec<(&'static str, [i32; 3])> =
-            ORPHANS.with_borrow(|orphans| orphans.keys().filter(|(owner, _)| *owner == dimension).copied().collect());
+        let orphans: Vec<(&'static str, [i32; 3])> = ORPHANS.with_borrow(|orphans| {
+            orphans.iter().filter(|((dim, _), (from, _))| *dim == dimension && *from == owner).map(|(key, _)| *key).collect()
+        });
         for key in orphans {
-            let Some(orphan) = ORPHANS.with_borrow_mut(|orphans| orphans.remove(&key)) else {
+            let Some((from, orphan)) = ORPHANS.with_borrow_mut(|orphans| orphans.remove(&key)) else {
                 continue;
             };
             let mut playing = Some(orphan);
             self.tick_playing(key.1, &mut playing, 1.0, now, normal);
             if let Some(orphan) = playing {
-                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, orphan));
+                ORPHANS.with_borrow_mut(|orphans| orphans.insert(key, (from, orphan)));
             }
         }
     }
@@ -479,6 +483,19 @@ impl Game<'_> {
             sound.volume = instance.volume;
         }
     }
+}
+
+/// `MekanismConfig.client` do som (`enableMachineSounds` e `baseSoundVolume`), que o Mekanism lê do `client.toml` e o Mekanism Generators também obedece: o mod dono da configuração a
+/// publica a cada tick do cliente, e os outros mods a leem daqui.
+static SOUND_CONFIG: std::sync::Mutex<Option<SoundConfig>> = std::sync::Mutex::new(None);
+
+pub(in crate::game) fn publish_sound_config(config: SoundConfig) {
+    *SOUND_CONFIG.lock().unwrap_or_else(|e| e.into_inner()) = Some(config);
+}
+
+/// A configuração de som que o dono publicou, ou a padrão antes da primeira.
+pub(in crate::game) fn published_sound_config() -> SoundConfig {
+    SOUND_CONFIG.lock().unwrap_or_else(|e| e.into_inner()).unwrap_or_default()
 }
 
 /// O dia de hoje, no fuso do jogador: `YearlyDate.now()` do feriado.

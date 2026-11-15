@@ -165,9 +165,42 @@ fn heat_generator_animator(
     basis::animate_active_block(engine, ctx, state, pos, &|block| (block == rules::HEAT_GENERATOR).then_some(&rules::HEAT_GENERATOR_FX[..]));
 }
 
-/// O `tick` do cliente: registra o animador do Heat Generator (registrar de novo não faz nada).
-pub(in crate::game) fn client_tick() {
+/// O `tick` do cliente: registra o animador do Heat Generator (registrar de novo não faz nada) e toca o som em laço dos geradores acesos
+/// (`TileEntityMekanism.tickClient` -> `updateSound`).
+pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
     horizon_client::animate_tick::machinery_animate::register("mekanismgenerators", heat_generator_animator);
+    if !game.native_window() {
+        return;
+    }
+    let dimension = game.native_dimension();
+    let (types, data) = (upgrade::current_types(), upgrade_data(game));
+    let muffling_max = types.get(rules::MUFFLING_UPGRADE).map(|kind| kind.max);
+    let supports = data.supports(rules::MUFFLING_UPGRADE);
+    let tiles: Vec<crate::game::machinery_tile_sound::SoundTile> = game
+        .world
+        .block_entities
+        .iter()
+        .filter_map(|(&(x, y, z), entity)| {
+            let BlockEntity::Mod(entity) = entity else {
+                return None;
+            };
+            if !is_generator(&entity.id) {
+                return None;
+            }
+            let pos = [x, y, z];
+            let muffling = muffling_max.filter(|_| supports).map(|max| (crate::game::machinery_tile_sound::muffling_count(dimension, pos), max));
+            Some(crate::game::machinery_tile_sound::SoundTile {
+                key: (dimension, pos),
+                // `canPlaySound()` é `getActive()`, que no cliente é o estado `lit` do bloco.
+                lit: game.native_block_property(pos, LIT).as_deref() == Some("true"),
+                fully_muffled: machinery_basis_core::sound::fully_muffled(muffling),
+                volume_factor: machinery_basis_core::sound::volume_factor(muffling),
+                // `HolidayManager.filterSound`: o som do Heat Generator não está entre os que o feriado troca, então vale o próprio.
+                sound: rules::HEAT_GENERATOR_SOUND.to_owned(),
+            })
+        })
+        .collect();
+    game.mb_tile_sounds(RULES_OWNER, dimension, &tiles, crate::game::machinery_tile_sound::published_sound_config());
 }
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
@@ -630,7 +663,8 @@ struct UpgradeMemory {
     /// O que o último tick deixou para o `broadcastChanges` ler (o objeto vivo do Java): o menu mostra o estado do fim do tick.
     view: Option<View>,
     /// Quantos upgrades de silêncio o cliente já sabe que o tile tem (`MUFFLING_COUNT` do pacote de atualização).
-    muffling_sent: i32,
+    /// O que o servidor sabe da contagem de upgrades de silêncio e o que o cliente sabe: só a subida avisa o cliente (`MufflingSync`).
+    muffling: machinery_basis_core::sound::MufflingSync,
     /// A lava que o tanque tinha no fim do último tick: o `makesComparatorDirty` do Heat Generator é o tanque de fluido (`TileEntityHeatGenerator.java:236-238`),
     /// então o comparador só relê quando a lava mudou desde a última leitura (`TileEntityMekanism.java:645`). `None` num objeto novo: o Java
     /// também nasce sem a marca (`updateComparators = false`) e só uma mudança dentro do primeiro tick a acende.
@@ -646,7 +680,7 @@ impl UpgradeMemory {
             ambient: AmbientCache::default(),
             view: None,
             // Um tile novo avisa o cliente na primeira vez, mesmo com zero: o `getUpdateTag` do Java sempre leva a contagem.
-            muffling_sent: -1,
+            muffling: Default::default(),
             lava_seen: None,
         }
     }
@@ -733,12 +767,16 @@ fn menu_contents(game: &Game<'_>, entity: &ModBlockEntity) -> [machinery_basis_c
     [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT].map(|index| basis::slot_contents(game, entity.items.get(index).and_then(Option::as_ref)))
 }
 
-/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há.
-fn sync_muffling(game: &mut Game<'_>, dimension: &str, pos: [i32; 3], memory: &mut UpgradeMemory, component: &UpgradeComponent) {
-    let count = component.get_upgrades(rules::MUFFLING_UPGRADE);
-    if count != memory.muffling_sent {
-        memory.muffling_sent = count;
-        game.mb_muffling_changed(dimension, pos, count);
+/// `TileComponentUpgrade.setUpgrades` → `sendUpdatePacket`: o cliente só quer saber quantos upgrades de silêncio há, e só é avisado quando um upgrade ENTRA. `removeUpgrade`
+/// não chama `sendUpdatePacket` (`TileComponentUpgrade.java:167-189`): o cliente segue com a contagem velha até um pacote do bloco (o `lit` que muda, em `tick`). A contagem
+/// verdadeira vai à tabela do servidor, que quem entra depois recebe.
+fn sync_muffling(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], memory: &mut UpgradeMemory, component: &UpgradeComponent) {
+    let step = memory.muffling.tick(component.get_upgrades(rules::MUFFLING_UPGRADE));
+    if let Some(server) = step.server {
+        game.mb_muffling_server(dimension, pos, server);
+    }
+    if let Some(send) = step.send {
+        game.mb_muffling_changed(dimension, pos, send);
     }
 }
 
@@ -938,6 +976,13 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let lit = state.tile.block_active();
     if lit != block_active {
         game.native_set_block_property(pos, LIT, if lit { "true" } else { "false" });
+        // O pacote de dados do bloco que acompanha a mudança de estado (`ChunkHolder.broadcastBlockEntityIfNeeded` chama `getUpdatePacket`, que leva o `MUFFLING_COUNT`) leva ao
+        // cliente a contagem verdadeira.
+        let dimension = game.native_dimension();
+        let count = UPGRADES.with_borrow_mut(|tiles| tiles.get_mut(&(dimension, pos)).and_then(|memory| memory.muffling.block_update()));
+        if let Some(count) = count {
+            game.mb_muffling_changed(dimension, pos, count);
+        }
     }
 
     // `TileEntityMekanism.tickServer`, o fim (`:645-655`): o comparador relê o tanque de lava se ele mudou desde a última leitura
@@ -1353,7 +1398,7 @@ fn drain_energy_slot(game: &Game<'_>, entity: &mut ModBlockEntity, state: &mut r
     let slot = InventorySlot::new(None);
     let resource = basis::energy_slot_resource(game, &stack);
     slot.set_contents(Some(resource.clone()), stack.count, None);
-    state.energy = rules::drain_slot(&items(), &slot, state.energy, state.config.energy_capacity);
+    rules::drain_into_slot(state, &items(), &slot);
     let contents = slot.contents();
     if let Some(after) = contents.resource.filter(|after| *after != resource) {
         entity.items[ENERGY_SLOT] = Some(basis::energy_slot_stack(game, Some(&stack), &after, contents.amount));

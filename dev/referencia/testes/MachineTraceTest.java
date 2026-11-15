@@ -49,6 +49,12 @@ import mekanism.common.network.to_server.PacketGuiInteract.GuiInteraction;
 import mekanism.common.network.to_server.PacketRemoveUpgrade;
 import mekanism.common.network.to_server.PacketWindowSelect;
 import mekanism.common.registration.impl.ContainerTypeRegistryObject;
+import mekanism.api.energy.IEnergyContainer;
+import mekanism.common.component.containers.type.ContainerType;
+import mekanism.common.util.EnergyUtils;
+import mekanism.common.util.ItemAccessUtils;
+import net.neoforged.neoforge.transfer.access.ItemAccess;
+import net.neoforged.neoforge.transfer.energy.EnergyHandler;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.registries.MekanismContainerTypes;
 import mekanism.common.registries.MekanismItems;
@@ -677,6 +683,84 @@ public class MachineTraceTest {
                   trace.setSlot(3, Items.REDSTONE, 3);
               })
               .thenExecuteAfter(30, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the energy slot filling the container from an item with energy (EnergyInventorySlot.fillContainerFromSlot): a tablet with a lot of energy, the same tablet nearly empty, equipment and a machine item that do not give energy out, a stack of 2 cube items, the container with room for only part of it, and an empty tablet.")
+    public static void chamberEnergyItems(final DynamicTest test) {
+        template(test);
+        Trace trace = new Trace("chamber_energy_items");
+        trace.recordEnergySlot = true;
+        trace.recordEnergySlotEnergy = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("max energy 100000, energy slot energy_tablet 1000000 1");
+                  trace.setMaxEnergy(100_000);
+                  trace.setEnergyItem(2, MekanismItems.ENERGY_TABLET.asItem(), 1_000_000, 1);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("energy slot energy_tablet 12345 1");
+                  trace.setEnergyItem(2, MekanismItems.ENERGY_TABLET.asItem(), 12_345, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy 0, energy slot atomic_disassembler 500000 1");
+                  trace.setEnergy(0);
+                  trace.setEnergyItem(2, MekanismItems.ATOMIC_DISASSEMBLER.asItem(), 500_000, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy slot enrichment_chamber 5000 1");
+                  trace.setEnergyItem(2, MekanismBlocks.ENRICHMENT_CHAMBER.asItem(), 5_000, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy slot basic_energy_cube 2000000 2");
+                  trace.setEnergyItem(2, MekanismBlocks.BASIC_ENERGY_CUBE.asItem(), 2_000_000, 2);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("energy 99998, energy slot energy_tablet 1000000 1");
+                  trace.setEnergy(99_998);
+                  trace.setEnergyItem(2, MekanismItems.ENERGY_TABLET.asItem(), 1_000_000, 1);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy 0, energy slot energy_tablet 0 1");
+                  trace.setEnergy(0);
+                  trace.setEnergyItem(2, MekanismItems.ENERGY_TABLET.asItem(), 0, 1);
+              })
+              .thenExecuteAfter(10, trace::write)
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_machine")
+    @TestHolder(description = "Records the Metallurgic Infuser energy slot filling the container from a tablet, and then converting redstone: the item is tried first and the conversion only when it fails.")
+    public static void infuserEnergyItems(final DynamicTest test) {
+        template(test, MekanismBlocks.METALLURGIC_INFUSER::defaultState);
+        Trace trace = new Trace("infuser_energy_items");
+        trace.inputSlot = 1;
+        trace.outputSlot = 2;
+        trace.energySlot = 3;
+        trace.recordEnergySlot = true;
+        trace.recordEnergySlotEnergy = true;
+        test.eventListeners().forge().addListener((final ServerTickEvent.Post event) -> trace.record());
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> trace.start(helper))
+              .thenExecuteAfter(5, () -> {
+                  trace.mark("max energy 100000, energy slot energy_tablet 30000 1");
+                  trace.setMaxEnergy(100_000);
+                  trace.setEnergyItem(3, MekanismItems.ENERGY_TABLET.asItem(), 30_000, 1);
+              })
+              .thenExecuteAfter(12, () -> {
+                  trace.mark("energy slot redstone 3");
+                  trace.setSlot(3, Items.REDSTONE, 3);
+              })
+              .thenExecuteAfter(10, () -> {
+                  trace.mark("energy slot basic_energy_cube 9000 1");
+                  trace.setEnergyItem(3, MekanismBlocks.BASIC_ENERGY_CUBE.asItem(), 9_000, 1);
+              })
+              .thenExecuteAfter(10, trace::write)
               .thenSucceed()
         );
     }
@@ -2395,6 +2479,8 @@ public class MachineTraceTest {
         boolean recordUpgrades;
         /// Grava o conteúdo do slot de energia (`EnergyInventorySlot`), no índice `energySlot`.
         boolean recordEnergySlot;
+        /// Acrescenta a energia da pilha do slot de energia (`mekanism:energy`) depois da quantidade.
+        boolean recordEnergySlotEnergy;
         int energySlot = 2;
         BlockPos pos = CHAMBER;
         int inputSlot = INPUT;
@@ -2737,6 +2823,20 @@ public class MachineTraceTest {
 
         void setSlot(int slot, Item item, int count) {
             machine().getInventorySlots().get(slot).setContents(ItemResource.of(item), count, null);
+        }
+
+        /// The stack with `energy` in its `mekanism:energy` component, built through the item's own energy handler.
+        void setEnergyItem(int slot, Item item, long energy, int count) {
+            ItemAccess access = ItemAccessUtils.sideEffectFreeAccess(ItemResource.of(item));
+            EnergyHandler handler = ContainerType.ENERGY.getCapOrUnexposed(access);
+            ItemStack stack = new ItemStack(item, count);
+            if (handler != null && energy != 0) {
+                IEnergyContainer container = EnergyUtils.getEnergyContainer(handler);
+                container.setEnergy(energy, null);
+                stack = ItemAccessUtils.asStack(access);
+                stack.setCount(count);
+            }
+            machine().getInventorySlots().get(slot).setContents(ItemResource.of(stack), count, null);
         }
 
         void clearSlot(int slot) {
@@ -3148,6 +3248,10 @@ public class MachineTraceTest {
             if (recordEnergySlot) {
                 line.append(",\"energy_slot\":[");
                 slot(line, chamber.getInventorySlots().get(energySlot));
+                if (recordEnergySlotEnergy) {
+                    ItemStack stack = chamber.getInventorySlots().get(energySlot).asItemStack();
+                    line.append(',').append(stack.isEmpty() ? 0 : ContainerType.ENERGY.getOrZero(ItemResource.of(stack)));
+                }
                 line.append(']');
             }
             if (recordChest) {

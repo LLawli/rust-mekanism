@@ -1,0 +1,8 @@
+{
+  "tile.generator.heat": {
+    "sounds": [
+      "mekanismgenerators:generator/heat"
+    ],
+    "subtitle": "sound_event.mekanismgenerators.tile.generator.heat"
+  }
+}
