@@ -59,12 +59,25 @@ def rodar(destino):
 GRAVADOR = "~/.cache/rust-mekanism/transmissor-sobras/gravar-jogo"  # a cópia do `gravar-jogo` com `PICK` (qual nó do gamescope grava)
 
 
+def esvaziar_ouvido(faixa, bloco):
+    """`cc.esvaziar` com o som do bloco que sai e do que entra tocado para o convidado (o `@s` do `cc.esvaziar` é o anfitrião, que fica longe e mudo no vídeo do convidado)."""
+    for x in (3, 2, 1, 0):
+        p = cc.txt(cc.at(x, 0, cc.FAIXAS[faixa]))
+        host_cmd("setblock %s minecraft:air" % p)
+        host_cmd("playsound minecraft:block.metal.break block Convidado %s 1 1" % p)
+        time.sleep(0.7)
+    for x in range(4):
+        p = cc.txt(cc.at(x, 0, cc.FAIXAS[faixa]))
+        host_cmd("setblock %s %s" % (p, bloco))
+        host_cmd("playsound minecraft:block.metal.place block Convidado %s 1 1" % p)
+
+
 def video(saida, segundos, container):
     """O convidado de LAN vendo os braços e o conteúdo, com som (`gravar-jogo rec`: o container tem de ter nascido com `JOGO_PW_SOCK`, e o gravador pega o nó do gamescope que `PICK` diz, `tail` para o
     segundo cliente, o convidado). A cena já está montada (`rodar`); o convidado fica de frente para cada faixa e o anfitrião enche as redes."""
     nome = os.environ.get("GRAVADOR_NOME", "transmissor-sobras")
     host_cmd("data merge block %s {component_config:{eject0:0b}}" % cc.txt(cc.at(-1, 0, cc.FAIXAS["cabo"])))
-    cc.esvaziar("cabo", "mekanism:basic_universal_cable")
+    esvaziar_ouvido("cabo", "mekanism:basic_universal_cable")
     host_cmd("tp Convidado " + pose_texto("cabo"))
     host_cmd("tp @s %d %d %d" % LONGE)
     time.sleep(3.0)
@@ -80,6 +93,7 @@ def video(saida, segundos, container):
         time.sleep(2.0)
         for _ in range(passos):
             cc.empurrar(faixa, 0.25)
+            host_cmd("playsound minecraft:block.note_block.chime block Convidado %s 1 1" % cc.txt(cc.at(1, 0, cc.FAIXAS[faixa])))
             time.sleep(1.6)
     host_cmd("tp Convidado " + pose_texto("condutor"))
     time.sleep(2.0)

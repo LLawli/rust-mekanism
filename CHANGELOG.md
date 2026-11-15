@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- O convidado de LAN desenha os braços dos transmissores, não só o centro (Fase 4, frente `transmissor-sobras`, decisão 238): a tabela dos estados de transmissor só era montada em quem carrega os dados do servidor; o cliente do convidado a monta do registro que recebeu (1,6 a 2,2 % dos pixels diferentes do anfitrião viraram 0,003 a 0,16 %)
 - A água dentro de um cano é azul como no original (`0xFF3F76E4`, a tinta que o `FluidTintSource` da água devolve para o `FluidState`); o port a desenhava cinza, sem tinta
 - O braço de um cano, tubo, condutor ou transportador não some mais quando o bloco vizinho é trocado por outro (um caldeirão por outro com `setblock`, até a troca de um nível de água): o `updateShape` do bloco de todo transmissor guarda o estado, como já fazia o do cabo de energia, e as conexões seguem do `Transmitter` (Fase 4, frente `troca-vizinho`, decisão 222; 20 casos de troca conferidos contra o original).
 
