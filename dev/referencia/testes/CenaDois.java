@@ -173,6 +173,11 @@ public class CenaDois {
                 minecraft.player.closeContainer();
                 return "true";
             }
+            case "agachar" -> {
+                // A tecla de agachar do cliente: o jogo manda o estado ao servidor no tick seguinte (`ServerboundPlayerInputPacket`).
+                minecraft.options.keyShift.setDown(a[1].equals("1"));
+                return "true";
+            }
             case "foto" -> {
                 Screenshot.grab(minecraft.gameDirectory, "oficial_dois_" + a[1] + ".png", minecraft.gameRenderer.mainRenderTarget(), 1,
                       message -> Mekanism.logger.info("dois: {}", message.getString()));
@@ -387,6 +392,14 @@ public class CenaDois {
             case "srv" -> {
                 String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length));
                 server.execute(() -> run(server, comando));
+            }
+            case "nbt" -> {
+                // O tile do servidor inteiro (`saveWithFullMetadata`), numa linha do log: a configuração de lados, o dono e o modo de segurança.
+                BlockPos at = new BlockPos(Integer.parseInt(a[2]), Integer.parseInt(a[3]), Integer.parseInt(a[4]));
+                server.execute(() -> {
+                    var entity = server.overworld().getBlockEntity(at);
+                    log("nbt " + a[1] + " " + (entity == null ? "null" : entity.saveWithFullMetadata(server.overworld().registryAccess())));
+                });
             }
             case "congela" -> server.execute(() -> run(server, "tick freeze"));
             case "descongela" -> server.execute(() -> run(server, "tick unfreeze"));

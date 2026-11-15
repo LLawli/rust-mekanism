@@ -1,0 +1,33 @@
+# O convidado de LAN usa o Configurator num bloco sem dono (`PUBLIC`), agachado e de pé (frente `seguranca`, 3.ª rodada, decisão 253): o original troca o lado? O `nbt` grava o tile
+# do servidor (`component_config`) antes e depois de cada clique. Roda no original (`oficial_dois.sh`, `testes/CenaDois.java`).
+lan 25599
+espera_convidado
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+congela
+srv tp Convidado 300.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 -1.0 0 0
+espera 20
+montar chamber 300
+espera 10
+srv give Convidado mekanism:configurator
+espera 10
+nbt antes 300 -60 3
+espera 5
+conv agachar 1
+espera 10
+conv abrir 300 -60 3
+espera 10
+conv agachar 0
+espera 10
+nbt convidado_agachado 300 -60 3
+espera 5
+conv abrir 300 -60 3
+espera 10
+nbt convidado_de_pe 300 -60 3
+espera 5
+fim

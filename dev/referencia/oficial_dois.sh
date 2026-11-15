@@ -23,8 +23,9 @@ LOCK=$C/mekanism-ref.lock
 SYNC=$D/dois-sync
 W=$C/dois-clientes
 mkdir -p "$W"
-until mkdir "$LOCK" 2>/dev/null; do sleep 60; done
-echo "$DONO" > "$LOCK/dono"
+# `LOCK_MEU=1`: quem chama já pegou a trava e a solta sozinho; `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo`), e passar de novo por `lim-build` esperaria por ela para sempre.
+if [ "${LOCK_MEU:-}" != 1 ]; then until mkdir "$LOCK" 2>/dev/null; do sleep 60; done; echo "$DONO" > "$LOCK/dono"; fi
+LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
 echo "TRAVA $(date +%T)"
 restore() {
   # Só o que é meu: o convidado e o anfitrião que subi (pelos PIDs guardados).
@@ -36,7 +37,7 @@ restore() {
   sleep 5
   for p in $(docker top mekanism-ref -o pid,args 2>/dev/null | grep -E "devlaunch.[M]ain|gradle-wrapper|gamescope|[X]wayland|GradleDaemon|gradle.*launcher" | awk '{print $1}'); do kill -9 "$p" 2>/dev/null; done
   rm -rf "$RB" "$SYNC" "$D/dois-guest"
-  rm -rf "$LOCK"
+  [ "${LOCK_MEU:-}" = 1 ] || rm -rf "$LOCK"
   echo "RESTAURADO $(date +%T)"
 }
 trap restore EXIT
@@ -56,7 +57,7 @@ cp "$JAVA" "$N/CenaDois.java"
 cp "$ROTEIRO" "$R/cena-dois"
 JANELA="-W 1920 -H 1080 -w 1920 -h 1080"
 # O anfitrião: o gradle compila, abre o mundo e roda a cena. O PID guardado é o do `lim-build` (o `exec` o troca pelo `flock` e depois pelo `docker exec`).
-( "$C/lim-build" env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_anfitriao.log" 2>&1 & echo $! > "$W/anfitriao.pid"; wait )  &
+( $LIM env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_anfitriao.log" 2>&1 & echo $! > "$W/anfitriao.pid"; wait )  &
 ESPERA=$!
 # Espera a LAN abrir (o log do anfitrião), no máximo 25 minutos, de 10 em 10 s, por arquivo.
 for i in $(seq 150); do
