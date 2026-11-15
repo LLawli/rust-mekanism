@@ -23,6 +23,8 @@ cmd = aj.cmd
 # O caminho do `gerar_cena_transportador_visual.py`: três em x, a curva para o sul, mais dois, a curva para o leste e outros dois.
 CAMINHO = [(X0 + 1, Z), (X0 + 2, Z), (X0 + 3, Z), (X0 + 3, Z + 1), (X0 + 3, Z + 2), (X0 + 4, Z + 2), (X0 + 5, Z + 2)]
 AZUL = 1
+# O segundo bloco da linha é um desviador (`mekanism:diversion_transporter`, sem vidro no original: o `blockstate` dele não tem `glass`), os outros seis são logísticos básicos de vidro azul.
+DESVIADOR = CAMINHO[1]
 
 
 def clear_noon():
@@ -36,13 +38,14 @@ def linha():
     cmd("fill %d %d %d %d %d %d minecraft:air" % (X0 - 2, Y, Z - 2, X0 + 10, Y + 4, Z + 6))
     cmd(f"setblock {X0} {Y} {Z} minecraft:chest")
     for x, z in CAMINHO:
-        cmd(f"setblock {x} {Y} {z} mekanism:basic_logistical_transporter")
+        cmd(f"setblock {x} {Y} {z} " + ("mekanism:diversion_transporter" if (x, z) == DESVIADOR else "mekanism:basic_logistical_transporter"))
     cmd(f"setblock {X0 + 6} {Y} {Z + 2} minecraft:chest")
     for i, item in enumerate(ITENS):
         cmd(f"item replace block {X0} {Y} {Z} container.{i} with {item} 16")
     time.sleep(1.5)
     for x, z in CAMINHO:
-        blocos.cor(f"#cor {x} {Y} {z} {AZUL}")
+        if (x, z) != DESVIADOR:
+            blocos.cor(f"#cor {x} {Y} {z} {AZUL}")
 
 
 def video(out, seconds, container):

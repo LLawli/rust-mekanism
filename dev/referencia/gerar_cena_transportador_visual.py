@@ -39,28 +39,44 @@ def linha(x0, z0, cor, itens=ITENS):
     return cmds, caminho[0]
 
 
+# O vidro das 18 `EnumColor`: três transportadores por tiro (a 6,5 blocos de altura a janela mostra uns 8 blocos de largura, e o `tp` fica no do meio).
+VIDRO_Z = 70
+VIDRO_X0 = 52
+POR_TIRO = 3
+# Nada a limpar entre os tiros (o `clear` do roteiro apaga o que o tiro anterior montou: um bloco de ar longe da cena).
+SEM_LIMPEZA = "fill 52 -60 140 52 -60 140 minecraft:air"
+# A fila de passos: depois de `PASSOS_BASE` ticks com o servidor parado, um tiro a cada `tick step 1`. Os dois jogos não começam a puxar no mesmo tick, e o tiro de cada passo deixa achar,
+# a posteriori, o par (passo do original, passo do port) em que as pilhas estão no mesmo lugar.
+PASSOS_BASE = 30
+TIROS_DE_PASSO = 12
+
+
+def tiros_de_passo(prefixo, tp):
+    return [{"name": f"{prefixo}_{k:02d}", "cmds": ["tick step 1", "#esperar 8"], "tp": tp} for k in range(TIROS_DE_PASSO)]
+
+
 def main():
     cmds_a, primeiro_a = linha(60, Z, 4)
-    cmds_b, primeiro_b = linha(70, Z, 1)
-    linha_cmds = cmds_a + cmds_b + ["tick freeze", f"#conexao {primeiro_a[0]} {Y} {primeiro_a[1]} west=pull", f"#conexao {primeiro_b[0]} {Y} {primeiro_b[1]} west=pull", f"tick step {PASSOS}", f"#esperar {PASSOS * 2 + 20}"]
+    base_a = cmds_a + ["tick freeze", f"#conexao {primeiro_a[0]} {Y} {primeiro_a[1]} west=pull", f"tick step {PASSOS_BASE}", f"#esperar {PASSOS_BASE * 2 + 20}"]
     cmds_c, primeiro_c = linha(80, Z, 4, COMPONENTES)
-    componentes = ["tick unfreeze"] + cmds_c + ["tick freeze", f"#conexao {primeiro_c[0]} {Y} {primeiro_c[1]} west=pull", f"tick step {PASSOS}", f"#esperar {PASSOS * 2 + 20}"]
-    vidro = []
-    for k in range(len(CORES_DO_VIDRO)):
-        vidro += [f"setblock {56 + 2 * k} {Y} {Z} mekanism:basic_logistical_transporter"]
-    vidro.append("#esperar 20")
-    for k, cor in enumerate(CORES_DO_VIDRO):
-        vidro.append(f"#cor {56 + 2 * k} {Y} {Z} {cor}")
-    vidro.append("#esperar 20")
+    base_c = ["tick unfreeze"] + cmds_c + ["tick freeze", f"#conexao {primeiro_c[0]} {Y} {primeiro_c[1]} west=pull", f"tick step {PASSOS_BASE}", f"#esperar {PASSOS_BASE * 2 + 20}"]
+    tp_a = "63.5 -51.5 83.0 0 90"
+    tp_c = "83.5 -51.5 83.0 0 90"
+    vidro_tiros = []
+    n = len(range(18))
+    for j in range(n // POR_TIRO):
+        cmds = []
+        if j == 0:
+            cmds += [f"setblock {VIDRO_X0 + 2 * k} {Y} {VIDRO_Z} mekanism:basic_logistical_transporter" for k in range(n)] + ["#esperar 20"]
+            cmds += [f"#cor {VIDRO_X0 + 2 * k} {Y} {VIDRO_Z} {k}" for k in range(n)] + ["#esperar 20"]
+        meio = VIDRO_X0 + 2 * (POR_TIRO * j + 1) + 0.5
+        vidro_tiros.append({"name": f"transportador_vidro_{j}", "cmds": cmds, "tp": f"{meio} -53.5 {VIDRO_Z + 0.5} 0 90"})
     roteiro = {
         "setup": SETUP,
-        "clear": CLEAR,
-        "shots": [
-            {"name": "transportador_linha", "cmds": linha_cmds, "tp": "63.5 -48.0 83.5 0 90"},
-            {"name": "transportador_linha_b", "cmds": [], "tp": "73.5 -48.0 83.5 0 90"},
-            {"name": "transportador_vidro", "cmds": ["tick unfreeze"] + vidro, "tp": "61.0 -53.5 82.5 0 90"},
-            {"name": "transportador_componentes", "cmds": componentes, "tp": "83.5 -48.0 83.5 0 90"},
-        ],
+        "clear": SEM_LIMPEZA,
+        "shots": vidro_tiros
+        + [{"name": "pilhas_base", "cmds": base_a, "tp": tp_a}] + tiros_de_passo("pilhas", tp_a)
+        + [{"name": "componentes_base", "cmds": base_c, "tp": tp_c}] + tiros_de_passo("componentes", tp_c),
     }
     with open(os.path.join(HERE, "cenas/transportador_visual.json"), "w") as handle:
         json.dump(roteiro, handle, indent=1)
