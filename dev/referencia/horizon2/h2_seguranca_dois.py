@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A segurança com dois jogadores em jogo (frente `seguranca`, decisões 250 a 253): o anfitrião põe uma Enrichment Chamber (vira o dono) e o convidado de LAN, sem acesso, usa o
 Configurator (agachado), o cartão de configuração e a chave inglesa, abre a tela e quebra. Roda no container que tem a trava (`H_NAME=horizon` ou `horizon2`), com os dois clientes de
-`abrir_dois.sh` e a LAN aberta. O mundo é o plano `spike`, com a máquina em y -59.
+`abrir_dois.sh` e a LAN aberta. O mundo é o plano `spike`, com a máquina em y -60.
 
 Cada linha impressa começa com OK ou DIFF. Etapas (uma por chamada, ou `all`):
   publico    num bloco sem dono o convidado, agachado, troca o lado com o Configurator (de pé não troca)
@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import h2_dois as d
 
 GUEST = d.GUEST_NAME
-POS = (74, -59, 64)
-OTHER = (78, -59, 64)
+POS = (74, -60, 64)
+OTHER = (78, -60, 64)
 CHAMBER = "mekanism:enrichment_chamber"
 CONFIGURATOR = "mekanism:configurator"
 CARD = "mekanism:configuration_card"
@@ -93,7 +93,7 @@ def click(role, pos, face, shift):
 
 
 def chat_of(role):
-    return who(role)("chat")
+    return who(role)("messages")
 
 
 def setup():
@@ -106,8 +106,8 @@ def setup():
     for pos in (POS, OTHER):
         hcmd(f"setblock {pos[0]} {pos[1]} {pos[2]} minecraft:air")
     time.sleep(0.5)
-    hcmd(f"tp {GUEST} 76.5 -59 60.5 0 20")
-    hcmd("tp @s 76.5 -59 61.5 0 20")
+    hcmd(f"tp {GUEST} 74.5 -60 61.5 0 20")
+    hcmd("tp @s 75.5 -60 61.5 0 20")
     time.sleep(1.0)
     # O dono põe a máquina (o jogador que põe vira o dono, `TileComponentSecurity.setOwnerUUID`).
     hcmd("clear @s")
@@ -137,9 +137,9 @@ def publico():
     ok &= report("owner" in data(POS, "component_security"), f"o dono ficou no tile: {data(POS, 'component_security')[:90]}")
     give("convidado", f'{CONFIGURATOR}[{MODE}="configurate_items"]')
     before = sides(POS)
-    click("convidado", POS, "east", shift=False)
+    click("convidado", POS, "north", shift=False)
     ok &= report(sides(POS) == before, "o convidado de pé não troca o lado")
-    click("convidado", POS, "east", shift=True)
+    click("convidado", POS, "north", shift=True)
     after = sides(POS)
     ok &= report(after != before, f"o convidado agachado troca o lado: {before} -> {after}")
     return ok
@@ -151,17 +151,17 @@ def privado():
     ok &= report(mode_of(POS) == "private", f"o dono passou o modo a private pela aba: {mode_of(POS)}")
     # abrir a tela
     who("convidado")("close")
-    click("convidado", POS, "east", shift=False)
+    click("convidado", POS, "north", shift=False)
     ok &= report(screen_open("convidado") in NO_SCREEN, f"o convidado não abre a tela: {screen_open('convidado')}")
     # o Configurator agachado
     give("convidado", f'{CONFIGURATOR}[{MODE}="configurate_items"]')
     before = sides(POS)
-    click("convidado", POS, "east", shift=True)
+    click("convidado", POS, "north", shift=True)
     ok &= report(sides(POS) == before, "o convidado agachado não troca o lado")
     ok &= report("access" in chat_of("convidado").lower(), "a mensagem de sem acesso chegou ao convidado")
     # a chave inglesa desmonta
     give("convidado", f'{CONFIGURATOR}[{MODE}="wrench"]')
-    click("convidado", POS, "east", shift=True)
+    click("convidado", POS, "north", shift=True)
     ok &= report(block_is(POS, CHAMBER), "o convidado não desmonta a máquina com a chave inglesa")
     # o cartão copia
     give("convidado", CARD)
@@ -179,8 +179,15 @@ def dono():
     ok = True
     give("dono", f'{CONFIGURATOR}[{MODE}="configurate_items"]')
     before = sides(POS)
-    click("dono", POS, "east", shift=True)
+    click("dono", POS, "north", shift=True)
     ok &= report(sides(POS) != before, f"o dono agachado troca o lado: {before} -> {sides(POS)}")
+    give("dono", CARD)
+    click("dono", POS, "north", shift=True)
+    held = js(d.host("state")).get("held") or {}
+    ok &= report("data_name" in json.dumps(held), "o dono copia os dados com o cartão (o controle da recusa do convidado)")
+    give("dono", f'{CONFIGURATOR}[{MODE}="wrench"]')
+    click("dono", POS, "north", shift=True)
+    ok &= report(not block_is(POS, CHAMBER), "o dono desmonta a máquina com a chave inglesa (o controle da recusa do convidado)")
     return ok
 
 

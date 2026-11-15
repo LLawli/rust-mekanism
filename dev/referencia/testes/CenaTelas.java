@@ -603,7 +603,8 @@ public class CenaTelas {
         }
         BlockPos pos = new BlockPos(caso.x(), Y, Z);
         BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), Direction.NORTH, pos, false);
-        minecraft.gameMode.useItemOn(minecraft.player, InteractionHand.MAIN_HAND, hit);
+        var result = minecraft.gameMode.useItemOn(minecraft.player, InteractionHand.MAIN_HAND, hit);
+        Mekanism.logger.info("cena: {} abrir {}", caso.name(), result);
     }
 
     /// O cursor: `MouseHandler` guarda a posição em pixels da janela, e o jogo a escala para a GUI na hora de desenhar. Sem `hover`,

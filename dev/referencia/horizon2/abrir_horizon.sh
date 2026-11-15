@@ -9,4 +9,4 @@ C=${PASTA:-$HOME/.cache/rust-mekanism/restos}
 M=$HOME/Games/Horizon/mods  # dentro do container o horizon2 vê a pasta dele neste caminho
 sed -i 's/^soundCategory_master:.*/soundCategory_master:0.0/' "$D/options.txt"
 cd "$C"
-( JOGO_CMD="gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080 -r ${FPS:-15} -- env -u WAYLAND_DISPLAY jogar --world $MUNDO --creative --fullscreen --width 1920 --height 1080 --control-socket \$HORIZON_CONTROL --dev-mod $M/conteudo/mekanism --dev-mod $M/conteudo/mekanismgenerators" nohup "$HOME/.local/bin/$NAME" offline > game.log 2>&1 & echo $! > game.pid )
+( JOGO_CMD="gamescope --backend headless -W 1920 -H 1080 -w 1920 -h 1080 -r ${FPS:-15} -- env -u WAYLAND_DISPLAY jogar --world $MUNDO --creative ${JOGAR_EXTRA:-} --fullscreen --width 1920 --height 1080 --control-socket \$HORIZON_CONTROL --dev-mod $M/conteudo/mekanism --dev-mod $M/conteudo/mekanismgenerators" nohup "$HOME/.local/bin/$NAME" offline > game.log 2>&1 & echo $! > game.pid )
