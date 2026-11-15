@@ -498,7 +498,7 @@ public class CenaTelas {
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
     }
 
-    /// O port ainda não tem as abas de livro e redstone (as de configuração e de transporte ficam visíveis desde 2026-11-11): no original da cena elas ficam invisíveis, para a
+    /// O port tem as abas de livro, segurança, redstone, configuração e transporte (o livro desde 2026-11-15, frente `livro-receitas`): só as abas que ainda lhe faltam ficam invisíveis no original da cena, para a
     /// imagem mostrar o que o port tem. A aba de avisos, a de upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a
     /// posição e a visibilidade que o original dá. O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(-26, 6, 98)`, `isArmorHolder`)
     /// também fica visível desde 2026-11-07, quando o port o desenhou: antes ficava oculto, e o comparador só via os slots.
@@ -532,6 +532,7 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.window.GuiRecipeBookWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiSecurityTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiRedstoneControlTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiSideConfigurationTab)

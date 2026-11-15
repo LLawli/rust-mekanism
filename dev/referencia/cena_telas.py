@@ -339,9 +339,37 @@ def casos_redstone():
     return out
 
 
+# A aba do livro de receitas (`GuiRecipeBookWindowTab`, 26 por 26 em (176, 62); o botão de 18 por 18 em (179, 66)): só as quatro máquinas (`IRecipeLookupHandler`) a têm.
+# O cursor no centro do botão dá o fundo em foco e o tooltip `Recipe Book`; o clique abre a janela do livro no original, que o port ainda não tem (decisão 260), então não há caso de clique.
+LIVRO_BOTAO = (188, 75)
+LIVRO_BORDA = (198, 75)
+# Com a janela de upgrades aberta (`ABA`), atrás dela o botão não tem foco nem tooltip (`isMouseOverCheckWindows`); fora dela tem.
+LIVRO_ATRAS_DA_JANELA = (183, 75)
+LIVRO_FORA_DA_JANELA = (192, 75)
+
+
+def casos_livro():
+    out = []
+    for m in ("chamber", "crusher", "smelter", "infuser"):
+        out += [
+            caso(f"{m}_livro", m, energia="0"),
+            caso(f"{m}_livro_hover", m, energia="0", hover=LIVRO_BOTAO),
+        ]
+    out += [
+        # O suporte em volta do botão não responde: sem foco e sem tooltip.
+        caso("chamber_livro_hover_borda", "chamber", energia="0", hover=LIVRO_BORDA),
+        # A aba de xp vem 28 abaixo, com o livro na tela (`y = 90`), e as duas têm foco quando o cursor está sobre cada uma.
+        caso("chamber_livro_xp", "chamber", energia="0", upgrades=XP, hover=LIVRO_BOTAO),
+        caso("infuser_livro_xp", "infuser", energia="0", upgrades=XP),
+        caso("chamber_livro_janela_atras", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_ATRAS_DA_JANELA),
+        caso("chamber_livro_janela_fora", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_FORA_DA_JANELA),
+    ]
+    return out
+
+
 def casos_cubo():
     """O Energy Cube (frente `cubo-pixel`): vazio, parcial, cheio, o criativo, a aba de energia, as janelas de lados e de transporte e o cursor sobre o medidor.
-    As abas de segurança, redstone e livro ficam como o `CenaTelas` as deixa (as que o port não tem, ocultas)."""
+    As abas de segurança, redstone e livro ficam como o `CenaTelas` as deixa (o cubo não tem a do livro)."""
     items = ("input", "output", "none", "input", "output", "none")
     energia = ("none", "input", "output", "input", "output", "none")
     lados_cubo = lados(items=items, energy=energia)
@@ -579,7 +607,7 @@ def nbt_da_configuracao(c):
 
 
 def todos_os_casos():
-    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo() + casos_seguranca() + casos_redstone()
+    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo() + casos_seguranca() + casos_redstone() + casos_livro()
 
 
 def casos_do_roteiro(so=None):

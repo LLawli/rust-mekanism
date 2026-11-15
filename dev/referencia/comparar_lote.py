@@ -428,7 +428,7 @@ def principal(argv):
             regioes = regioes_do_caso(c, a, b, escala)
             resultado, diferenca = ct.comparar(
                 a, b, tela, escala, regioes=regioes, mascarar_abas=False,
-                margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] or c["maquina"].startswith("cubo") else 0, prioridade=prioridade_do_caso(c, regioes, janela),
+                margem=28 if "_aba_" in c["nome"] or "_xp_" in c["nome"] or "_livro" in c["nome"] or c["maquina"].startswith("cubo") else 0, prioridade=prioridade_do_caso(c, regioes, janela),
                 ausentes=ausentes_do_caso(c, visivel), limite_mundo=LIMITE_MUNDO_POR_LUZ[cena_telas.luz_do_caso(c)],
                 particulas=CAIXA_DO_CUBO if c["maquina"].startswith("cubo") else CAIXA_DAS_PARTICULAS if com_particulas(c) else None,
                 classe_da_caixa="cubo_no_mundo" if c["maquina"].startswith("cubo") else "particulas_da_maquina",
