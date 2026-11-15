@@ -12,14 +12,14 @@ Uso: H_NAME=horizon h2_som_medida.py CENARIOS LOG_NO_DESKTOP SAIDA [nome ...]
   SAIDA          o arquivo no notebook: um bloco `=== nome` por cenário
 Cenários que mudam o silêncio com o jogo andando (`ev=T:muffling:N`) só valem para subir (o item de upgrade em cima da máquina); tirar o upgrade passa pela tela.
 """
-import json, os, shlex, subprocess, sys, time
+import json, os, shlex, subprocess, sys, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import h2_identity as h
 
 POS = (70, -60, 60)
 CENTER = (POS[0] + 0.5, POS[1] + 0.5, POS[2] + 0.5)
-CONFIG = "~/.local/share/jogo-isolado/horizon/data/horizon/config/Mekanism/client.toml"
+CONFIG = f"~/.local/share/jogo-isolado/{os.environ.get('H_NAME', 'horizon')}/data/horizon/config/Mekanism/client.toml"
 BLOCK = {
     "chamber": "mekanism:enrichment_chamber",
     "crusher": "mekanism:crusher",
@@ -139,7 +139,22 @@ def remove_muffling():
     h.ctl("close")
 
 
+# O Heat Generator queima o balde de lava em 10 ticks (`heatGenerationFluidRate` 100 mB por tick): para ficar aceso o tempo do cenário o tanque é reposto a cada 0,15 s por uma thread,
+# porque um passo longo do cenário (instalar o upgrade pela tela leva segundos) deixaria o tanque secar entre dois `energia:1` marcados. O original repõe no tick marcado (`ev=T:energia:1`).
+REFILL = {"on": False, "stop": threading.Event()}
+
+
+def refill_loop():
+    pos = " ".join(map(str, POS))
+    while not REFILL["stop"].is_set():
+        if REFILL["on"]:
+            h.command(f"data merge block {pos} {{{LAVA}}}")
+        REFILL["stop"].wait(0.15)
+
+
 def power(machine, on):
+    if machine == "heat_generator":
+        REFILL["on"] = on
     slot, item = ENTRADA[machine]
     pos = " ".join(map(str, POS))
     if machine == "heat_generator":
@@ -160,6 +175,7 @@ def power(machine, on):
 
 def run(sc, log):
     machine = sc["maquina"]
+    REFILL["on"] = False
     write_config(sc["base"], sc["enable"])
     time.sleep(2.5)
     place(machine)
@@ -177,6 +193,10 @@ def run(sc, log):
         wait = t0 + when - time.monotonic()
         if wait > 0:
             time.sleep(wait)
+        else:
+            # Um passo longo antes deste (instalar ou tirar o upgrade pela tela leva segundos) o atrasou: o relógio do cenário recua o mesmo tanto, para os intervalos entre os eventos serem
+            # os marcados (o original os roda no tick marcado). Sem isto o `energia:0` e o `energia:1` do cenário `silencio_tirado_religa` saíam um atrás do outro, sem o gerador apagar.
+            t0 -= wait
         what, value = ev[1], ev[2]
         print(f"  {time.monotonic() - t0:6.2f}s {what} {value}", flush=True)
         if what == "liga":
@@ -220,6 +240,7 @@ def main():
     silenciar()
     h.ctl("options-set", "soundCategory_music", "0")
     h.command("gamemode creative")
+    threading.Thread(target=refill_loop, daemon=True).start()
     for sc in scenarios:
         if only and sc["nome"] not in only:
             continue
@@ -227,6 +248,7 @@ def main():
         text = run(sc, sys.argv[2])
         out.write(f"=== {sc['nome']}\n{text}\n")
         out.flush()
+    REFILL["stop"].set()
     ssh(f"printf %s {shlex.quote(antes)} > {CONFIG}")
 
 

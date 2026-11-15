@@ -362,7 +362,7 @@ def principal(argv):
     os.makedirs(saida, exist_ok=True)
     visivel = ler_visibilidade(os.path.join(original, "oficial.log"))
     mundo_max = 0
-    casos = [c for c in cena_telas.todos_os_casos() if (not so or c["nome"] in so) and "so_oficial" not in c["args"]]
+    casos = [c for c in cena_telas.todos_os_casos() + (cena_telas.casos_slot_energia() if so else []) if (not so or c["nome"] in so) and "so_oficial" not in c["args"]]
     resultados = []
     falhas = 0
     realmente = 0  # estados com diferença fora dos resíduos
