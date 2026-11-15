@@ -11,6 +11,7 @@ empilha os recortes (original em cima, port embaixo) com `empilhar_recortes.py`.
         um par só
 """
 import argparse
+import re
 import os
 import subprocess
 import sys
@@ -60,7 +61,7 @@ def vidro(args):
 
 def passos(args):
     regiao = regiao_de(args.regiao, None)
-    quantos = len([f for f in os.listdir(args.original) if f.startswith(f"oficial_{args.prefixo}_")])
+    quantos = len([f for f in os.listdir(args.original) if re.fullmatch(rf"oficial_{re.escape(args.prefixo)}_\d+\.png", f)])
     print("linhas: passo do original; colunas: passo do port")
     for i in range(quantos):
         a = os.path.join(args.original, f"oficial_{args.prefixo}_{i:02d}.png")

@@ -1,0 +1,266 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "attribute @a minecraft:gravity base set 0",
+  "fill 52 -60 52 75 -52 90 minecraft:air",
+  "fill 76 -60 52 99 -52 90 minecraft:air",
+  "fill 100 -60 52 123 -52 90 minecraft:air",
+  "fill 20 -60 91 160 -50 110 minecraft:air",
+  "fill 20 -60 111 160 -50 130 minecraft:air",
+  "fill 20 -61 52 160 -61 130 minecraft:stone"
+ ],
+ "clear": "fill 52 -60 140 52 -60 140 minecraft:air",
+ "shots": [
+  {
+   "name": "componentes_base",
+   "cmds": [
+    "gamemode creative @a",
+    "tick unfreeze",
+    "setblock 80 -60 82 minecraft:chest",
+    "setblock 81 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 82 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 83 -60 82 mekanism:basic_logistical_transporter",
+    "setblock 83 -60 83 mekanism:basic_logistical_transporter",
+    "setblock 83 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 84 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 85 -60 84 mekanism:basic_logistical_transporter",
+    "setblock 86 -60 84 minecraft:chest",
+    "item replace block 80 -60 82 container.0 with minecraft:diamond_sword[enchantments={sharpness:5}] 16",
+    "item replace block 80 -60 82 container.1 with minecraft:iron_pickaxe[damage=100] 16",
+    "item replace block 80 -60 82 container.2 with minecraft:stick[custom_name='Nome'] 16",
+    "item replace block 80 -60 82 container.3 with minecraft:enchanted_book 16",
+    "item replace block 80 -60 82 container.4 with minecraft:diamond_sword[enchantments={sharpness:5}] 16",
+    "item replace block 80 -60 82 container.5 with minecraft:iron_pickaxe[damage=100] 16",
+    "item replace block 80 -60 82 container.6 with minecraft:golden_apple 16",
+    "item replace block 80 -60 82 container.7 with minecraft:apple 16",
+    "#esperar 20",
+    "#esperar 10",
+    "tick freeze",
+    "#conexao 81 -60 82 west=pull",
+    "tick step 8",
+    "#esperar 36",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_00",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_00",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_01",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_01",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_02",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_02",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_03",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_03",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_04",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_04",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_05",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_05",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_06",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_06",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_07",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_07",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_08",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_08",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_09",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_09",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_10",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_10",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
+   "name": "componentes_11",
+   "cmds": [
+    "gamemode creative @a",
+    "tick step 1",
+    "#esperar 8",
+    "gamemode spectator @a"
+   ],
+   "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_11",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  }
+ ]
+}

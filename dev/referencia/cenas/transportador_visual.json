@@ -9,7 +9,8 @@
   "fill 76 -60 52 99 -52 90 minecraft:air",
   "fill 100 -60 52 123 -52 90 minecraft:air",
   "fill 20 -60 91 160 -50 110 minecraft:air",
-  "fill 20 -60 111 160 -50 130 minecraft:air"
+  "fill 20 -60 111 160 -50 130 minecraft:air",
+  "fill 20 -61 52 160 -61 130 minecraft:stone"
  ],
  "clear": "fill 52 -60 140 52 -60 140 minecraft:air",
  "shots": [
@@ -362,6 +363,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_00",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_01",
    "cmds": [
     "gamemode creative @a",
@@ -370,6 +379,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_01",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   },
   {
    "name": "componentes_02",
@@ -382,6 +399,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_02",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_03",
    "cmds": [
     "gamemode creative @a",
@@ -390,6 +415,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_03",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   },
   {
    "name": "componentes_04",
@@ -402,6 +435,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_04",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_05",
    "cmds": [
     "gamemode creative @a",
@@ -410,6 +451,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_05",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   },
   {
    "name": "componentes_06",
@@ -422,6 +471,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_06",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_07",
    "cmds": [
     "gamemode creative @a",
@@ -430,6 +487,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_07",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   },
   {
    "name": "componentes_08",
@@ -442,6 +507,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_08",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_09",
    "cmds": [
     "gamemode creative @a",
@@ -450,6 +523,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_09",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   },
   {
    "name": "componentes_10",
@@ -462,6 +543,14 @@
    "tp": "83.5 -56.0 83.0 0 90"
   },
   {
+   "name": "componentes_lado_10",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
+  },
+  {
    "name": "componentes_11",
    "cmds": [
     "gamemode creative @a",
@@ -470,6 +559,14 @@
     "gamemode spectator @a"
    ],
    "tp": "83.5 -56.0 83.0 0 90"
+  },
+  {
+   "name": "componentes_lado_11",
+   "cmds": [
+    "gamemode creative @a",
+    "gamemode spectator @a"
+   ],
+   "tp": "82.5 -59.6 80.2 0 0"
   }
  ]
 }

@@ -485,6 +485,10 @@ def cena(out, nomes=(), roteiro="blocos.json"):
     # Só do port: o mundo novo nasce com mobs (queimam à luz do dia e entram no print); o original não tem nenhum.
     for cmd in ("gamerule spawn_mobs false", "gamerule advance_time false", "gamerule advance_weather false", "kill @e[type=!minecraft:player]"):
         h.command(cmd)
+    # O jogador perto da área da cena: um `setblock` ou `fill` num chunk fora do anel carregado falha sem erro (o mundo reaberto devolve o jogador onde ele saiu, e o vidro e as pilhas saíam sem
+    # nada posto: o Configurator clicava o chão, o que o plano contou como "vidro sem tinta"). `data get block` não serve para conferir a cor: o NBT do bloco só leva o estado do dono ao salvar.
+    h.command("tp @s 70.5 -59 80.5")
+    time.sleep(3)
     for cmd in spec["setup"]:
         h.command(cmd)
     h.command("kill @e[type=!minecraft:player]")

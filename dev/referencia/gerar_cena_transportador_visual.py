@@ -18,7 +18,7 @@ PASSOS = 47
 CORES_DO_VIDRO = [0, 1, 4, 12, 15, 17]
 ITENS = ["minecraft:cobblestone", "minecraft:redstone", "minecraft:diamond", "minecraft:stick", "minecraft:oak_log", "minecraft:coal", "minecraft:apple", "minecraft:iron_ingot"]
 SETUP = ["difficulty peaceful", "time set 6000", "weather clear", "gamemode creative", "attribute @a minecraft:gravity base set 0", "fill 52 -60 52 75 -52 90 minecraft:air", "fill 76 -60 52 99 -52 90 minecraft:air",
-         "fill 100 -60 52 123 -52 90 minecraft:air", "fill 20 -60 91 160 -50 110 minecraft:air", "fill 20 -60 111 160 -50 130 minecraft:air"]
+         "fill 100 -60 52 123 -52 90 minecraft:air", "fill 20 -60 91 160 -50 110 minecraft:air", "fill 20 -60 111 160 -50 130 minecraft:air", "fill 20 -61 52 160 -61 130 minecraft:stone"]
 CLEAR = "fill 52 -60 78 120 -52 96 minecraft:air"
 
 
@@ -56,6 +56,15 @@ def tiros_de_passo(prefixo, tp, quantos=TIROS_DE_PASSO):
     return [{"name": f"{prefixo}_{k:02d}", "cmds": ["tick step 1", "#esperar 8"], "tp": tp} for k in range(quantos)]
 
 
+def com_lado(tiros, prefixo, tp_lado):
+    """Depois de cada tiro de passo, um tiro da mesma pose parada (sem comando: o servidor segue em `tick freeze`) com a câmera de lado: de cima a caixa tingida esconde o item, e de lado se vê
+    o brilho do encantamento e o nome na pilha."""
+    saida = []
+    for k, tiro in enumerate(tiros):
+        saida += [tiro, {"name": f"{prefixo}_lado_{k:02d}", "cmds": [], "tp": tp_lado}]
+    return saida
+
+
 def main():
     # Sem cor, a pilha não leva a caixa tingida e o item aparece (com a cor, a caixa de cima o esconde): as pilhas e os componentes saem na linha sem cor, e a caixa na linha pintada.
     cmds_a, primeiro_a = linha(60, Z, None)
@@ -67,6 +76,7 @@ def main():
     tp_a = "63.5 -56.0 83.0 0 90"
     tp_b = "63.5 -56.0 91.0 0 90"
     tp_c = "83.5 -56.0 83.0 0 90"
+    tp_c_lado = "82.5 -59.6 80.2 0 0"  # de lado: ao norte da primeira fileira da linha (z 82), olhando para o sul, na altura das pilhas
     vidro_tiros = []
     n = len(range(18))
     for j in range(n // POR_TIRO):
@@ -88,10 +98,15 @@ def main():
         "shots": espectador(vidro_tiros
         + [{"name": "pilhas_base", "cmds": base_a, "tp": tp_a}] + tiros_de_passo("pilhas", tp_a)
         + [{"name": "caixas_base", "cmds": base_b, "tp": tp_b}] + tiros_de_passo("caixas", tp_b, 3)
-        + [{"name": "componentes_base", "cmds": base_c, "tp": tp_c}] + tiros_de_passo("componentes", tp_c)),
+        + [{"name": "componentes_base", "cmds": base_c, "tp": tp_c}] + com_lado(tiros_de_passo("componentes", tp_c), "componentes", tp_c_lado)),
     }
     with open(os.path.join(HERE, "cenas/transportador_visual.json"), "w") as handle:
         json.dump(roteiro, handle, indent=1)
+        handle.write("\n")
+    # Só a linha de componentes, para repetir a pose de lado sem os 171 cliques do vidro.
+    so_componentes = dict(roteiro, shots=[tiro for tiro in roteiro["shots"] if tiro["name"].startswith("componentes")])
+    with open(os.path.join(HERE, "cenas/transportador_componentes.json"), "w") as handle:
+        json.dump(so_componentes, handle, indent=1)
         handle.write("\n")
     tiers = ("basic", "advanced", "elite", "ultimate")
     kinds = ("universal_cable", "pressurized_tube", "thermodynamic_conductor")
