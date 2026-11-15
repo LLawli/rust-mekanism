@@ -487,6 +487,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
     // O contêiner do tipo de bloco só diz a contagem de slots e o menu: as faces, as entradas e as saídas são da instância (H2), e quem
     // responde por elas é `ITEM_INSTANCES`.
     basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
+    basis::register_item_energy(RULES_OWNER, ENERGY_ITEMS);
     *container = Some(ModContainer {
         slots,
         menu: Some(block.to_owned()),
@@ -494,11 +495,24 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
     });
 }
 
-/// Os itens com handler de energia daqui (o equipamento e os cubos): outro bloco com slot de energia, como o Heat Generator, pergunta a `machinery_basis`.
-const ENERGY_ITEMS: basis::ItemEnergyProvider = basis::ItemEnergyProvider { component: rules::ENERGY_COMPONENT, spec: energy_item_spec };
+/// Os itens com handler de energia daqui (o equipamento, os cubos e as máquinas): outro bloco com slot de energia, como o Heat Generator, pergunta a `machinery_basis`.
+const ENERGY_ITEMS: basis::ItemEnergyProvider =
+    basis::ItemEnergyProvider { component: rules::ENERGY_COMPONENT, spec: energy_item_spec, upgraded: Some(energy_item_capacity) };
 
-fn energy_item_spec(item: &str, energy: i64) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
-    rules::item_energy_spec(item, energy, &server_config())
+/// `ItemBlockTooltip.getDefaultEnergyContainer`: o equipamento e os cubos pela configuração, e a máquina com a capacidade que ela tem (`capacity` quando o item leva upgrades de
+/// energia, a padrão sem eles), a taxa de carga sendo `MekanismUtils.calculateUsage` dela.
+fn energy_item_spec(item: &str, energy: i64, capacity: Option<i64>) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
+    if let Some(spec) = rules::item_energy_spec(item, energy, &server_config()) {
+        return Some(spec);
+    }
+    let machine = machine_of(item)?;
+    Some(rules::machine_item_spec(energy, capacity.unwrap_or_else(|| i64::from(rules::energy_capacity(machine.energy_per_tick())))))
+}
+
+/// `UpgradeBasedUnsignedLongCache`: a capacidade de uma máquina com os upgrades de energia que a pilha leva.
+fn energy_item_capacity(game: &Game<'_>, stack: &ItemStack) -> Option<i64> {
+    let machine = machine_of(&stack.item)?;
+    Some(basis::content_max_energy(game, stack, i64::from(rules::energy_capacity(machine.energy_per_tick())), ENERGY_UPGRADE))
 }
 
 /// Quem responde pelas faces de item das máquinas daqui (H2): a configuração de lados que o tile guarda, com a frente do bloco.
@@ -825,7 +839,7 @@ fn center_of(pos: [i32; 3]) -> [f64; 3] {
 
 /// `ItemResource.of(stack)`: o item, a pilha máxima e os componentes que o distinguem (nome, dados, dano...).
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
-    basis::item_resource(game, stack)
+    basis::energy_slot_resource(game, stack)
 }
 
 /// O ingrediente de uma receita do jogo e, se é um `neoforge:components`, os componentes dele.
@@ -1086,6 +1100,8 @@ fn build_indexes(game: &Game<'_>, machine: &Machine) -> Indexes {
                     core_energy_conversions(&loaded)
                 },
             );
+        // O handler de energia dos itens (`Capabilities.ENERGY` do item) que o slot de energia da máquina usa, com o índice de conversões.
+        let energy = basis::item_energy_handler(energy);
         match machine.slots.infusion {
         None => {
             let book = books
@@ -1337,7 +1353,7 @@ fn born(
     let mut progress = match indexes {
         Indexes::Electric { recipes, energy } => {
             let mut config = rules::electric_config(machine.energy_per_tick(), recipes.clone(), check_offset, upgrades);
-            config.energy_conversion = energy.clone();
+            config.items = energy.clone();
             ProgressMachine::electric(config)
         }
         Indexes::Infuser { recipes, conversions, energy } => {
@@ -1348,7 +1364,7 @@ fn born(
                 check_offset,
                 upgrades,
             );
-            config.energy_conversion = energy.clone();
+            config.items = energy.clone();
             ProgressMachine::chemical(config)
         }
     };
@@ -1419,6 +1435,8 @@ fn slot_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, sl
     let new = contents.resource.map(|resource| {
         let mut stack = match current {
             Some(old) if resource_of(game, old) == resource => old.clone(),
+            // O recurso que o handler de energia fez (a energia nova do item) não passou por uma pilha do jogo: a pilha dele é a que o slot tinha, com a energia nova.
+            _ if basis::has_item_energy(&resource.id) => basis::energy_slot_stack(game, current, &resource, contents.amount),
             _ => basis::stack_of_resource(&resource, contents.amount).unwrap_or_else(|| {
                 eprintln!("mekanism: o recurso {} perdeu os componentes ao sair do slot", resource.id);
                 ItemStack::new(&resource.id, contents.amount)

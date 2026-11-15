@@ -8,10 +8,13 @@
 //! tanque (o balde de lava) e só deixa sair o que não é nem uma coisa nem outra; o de energia (`EnergyInventorySlot.drain`) aceita o que `canDrain` e só
 //! deixa sair o que não.
 use machinery_basis_core::sides::Face;
-use machinery_basis_core::tile::{ItemEnergy, energy_can_drain};
+use machinery_basis_core::containers::{Access, ItemResource};
+use machinery_basis_core::energy_conversion::EnergyConversion;
+use machinery_basis_core::energy_cube::{ItemEnergy, ItemEnergySpec};
 use mekanismgenerators_rules::{
-    ENERGY_SLOT, FUEL_SLOT, fuel_slot_extractable, fuel_slot_insertable, item_instance,
+    ENERGY_SLOT, FUEL_SLOT, HeatConfig, fuel_slot_extractable, fuel_slot_insertable, item_instance, slot_can_drain,
 };
+use std::rc::Rc;
 use serde_json::Value;
 use std::path::Path;
 
@@ -43,12 +46,28 @@ fn split(phase: &str, prefix: &str) -> (Face, String, i64) {
     (face(side), id.to_owned(), energy.parse().unwrap())
 }
 
-fn energy_item(id: &str) -> Option<ItemEnergy> {
-    (id == "energy_tablet").then_some(ItemEnergy {
-        amount: 0,
-        capacity: TABLET_CAPACITY,
-        accepts_energy: true,
-    })
+/// O handler de energia dos itens do cenário: o Energy Tablet (`basicCreator(alwaysTrue, alwaysTrue, ..)`, a taxa de carga de `gear.toml`), e mais nenhum.
+fn items() -> ItemEnergy {
+    ItemEnergy {
+        lookup: Rc::new(|item: &ItemResource| {
+            (&*item.id == "energy_tablet").then_some(ItemEnergySpec {
+                amount: 0,
+                capacity: TABLET_CAPACITY,
+                rate: 5_000,
+                can_extract: Access::Any,
+                can_insert: Access::Any,
+                creative: false,
+            })
+        }),
+        write: Rc::new(|_, _| None),
+        conversions: EnergyConversion::cache_of(Vec::new()),
+    }
+}
+
+/// `EnergyInventorySlot.canDrain` do slot de energia com `stored` no buffer.
+fn energy_can_drain(stored: i64, id: &str) -> bool {
+    let stored = i32::try_from(stored).unwrap();
+    slot_can_drain(&items(), stored, HeatConfig::DEFAULT.energy_capacity, &ItemResource::new(id, 64))
 }
 
 fn is_fuel(id: &str) -> bool {
@@ -63,7 +82,7 @@ fn fills_tank(id: &str) -> bool {
 fn accepts(slot: usize, id: &str, stored: i64) -> bool {
     match slot {
         FUEL_SLOT => fuel_slot_insertable(is_fuel(id), fills_tank(id)),
-        ENERGY_SLOT => energy_can_drain(stored, true, energy_item(id)),
+        ENERGY_SLOT => energy_can_drain(stored, id),
         _ => false,
     }
 }
@@ -72,7 +91,7 @@ fn accepts(slot: usize, id: &str, stored: i64) -> bool {
 fn extractable(slot: usize, id: &str, stored: i64) -> bool {
     match slot {
         FUEL_SLOT => fuel_slot_extractable(is_fuel(id), fills_tank(id)),
-        ENERGY_SLOT => !energy_can_drain(stored, true, energy_item(id)),
+        ENERGY_SLOT => !energy_can_drain(stored, id),
         _ => false,
     }
 }

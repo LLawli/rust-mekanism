@@ -60,7 +60,7 @@ fn infuser() -> ProgressMachine {
         0,
         common::upgrade_data(),
     );
-    config.energy_conversion = common::energy_conversions();
+    config.items = common::item_energy();
     config.machine.upgrades.max_upgrade_multiplier = MULTIPLIER.get().into();
     ProgressMachine::chemical(config)
 }

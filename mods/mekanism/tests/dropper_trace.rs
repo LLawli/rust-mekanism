@@ -78,7 +78,7 @@ fn smelting_inputs() -> Vec<String> {
 fn indexes_of(name: &str) -> Indexes {
     let electric = |recipes| Indexes::Electric {
         recipes: ItemToItemRecipe::cache_of(recipes),
-        energy: common::energy_conversions(),
+        energy: common::item_energy(),
     };
     match name {
         "enrichment_chamber" => electric(common::item_recipes_of_type("mekanism:enriching")),
@@ -104,7 +104,7 @@ fn indexes_of(name: &str) -> Indexes {
             Indexes::Infuser {
                 recipes: infusing_cache_of(recipes),
                 conversions: ChemicalConversion::cache_of(conversions),
-                energy: common::energy_conversions(),
+                energy: common::item_energy(),
             }
         }
     }

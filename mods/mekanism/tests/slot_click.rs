@@ -59,14 +59,14 @@ fn infuser_indexes() -> Indexes {
     Indexes::Infuser {
         recipes: infusing_cache_of(recipes),
         conversions: ChemicalConversion::cache_of(conversions),
-        energy: common::energy_conversions(),
+        energy: common::item_energy(),
     }
 }
 
 fn electric_indexes(recipes: Vec<Rc<ItemToItemRecipe>>) -> Indexes {
     Indexes::Electric {
         recipes: ItemToItemRecipe::cache_of(recipes),
-        energy: common::energy_conversions(),
+        energy: common::item_energy(),
     }
 }
 

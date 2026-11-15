@@ -13,7 +13,7 @@ use machinery_basis_core::containers::{
     Access, AutomationType, InventorySlot, ItemResource, SlotChecks, SlotContents, room_for,
 };
 use machinery_basis_core::quick_move::{QuickMenu, Region, quick_move};
-use machinery_basis_core::tile::{ProgressMachine, energy_can_drain};
+use machinery_basis_core::tile::ProgressMachine;
 use machinery_basis_core::transaction::Transaction;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -347,8 +347,8 @@ fn a_shift_click_stacks_only_the_same_item_and_components() {
 
 /// O menu do Heat Generator com os índices do Java: dois slots virtuais da janela de upgrades (que o gerador tem no original, e que
 /// só existem com a janela escolhida, o que o cenário não faz), o combustível (2), a energia (3), o inventário (4 a 30) e a barra
-/// (31 a 39). O slot de combustível aceita o que queima (`coal`, `stick` e o balde de lava) e o de energia o que `energy_can_drain`: nenhum item
-/// portado tem handler de energia.
+/// (31 a 39). O slot de combustível aceita o que queima (`coal`, `stick` e o balde de lava) e o de energia o que `canDrain`: nenhum item
+/// do cenário tem handler de energia.
 struct HeatMenu {
     fuel: InventorySlot,
     energy: InventorySlot,
@@ -378,9 +378,8 @@ impl HeatMenu {
             Access::Any,
             Access::Any,
             SlotChecks {
-                can_insert: Some(std::rc::Rc::new(|_: &ItemResource| {
-                    energy_can_drain(0, true, None)
-                })),
+                // Nenhum item do cenário tem handler de energia: `canDrain` é falso para todos.
+                can_insert: Some(std::rc::Rc::new(|_: &ItemResource| false)),
                 ..Default::default()
             },
             None,

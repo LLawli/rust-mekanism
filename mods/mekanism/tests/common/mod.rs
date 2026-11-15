@@ -156,6 +156,11 @@ fn vanilla_tag(path: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// O handler de energia dos itens com as conversões dos arquivos e nenhum item que guarde energia: o que as máquinas dos rastros de antes usam.
+pub fn item_energy() -> machinery_basis_core::energy_cube::ItemEnergy {
+    mekanism_rules::item_energy_of(energy_conversions())
+}
+
 /// O `getInputCache` de `ENERGY_CONVERSION` lido dos arquivos que o port entrega (`recipe/energy_conversion`), na ordem de pasta
 /// do jogo (o nome do arquivo), com as tags `c:` do conteúdo. Nada escrito à mão.
 pub fn energy_conversions() -> Rc<EnergyConversionCache> {
@@ -237,7 +242,7 @@ pub fn chamber(valid: &str) -> ProgressMachine {
         0,
         upgrade_data(),
     );
-    config.energy_conversion = energy_conversions();
+    config.items = item_energy();
     ProgressMachine::electric(config)
 }
 
@@ -268,7 +273,7 @@ pub fn infuser() -> ProgressMachine {
         0,
         upgrade_data(),
     );
-    config.energy_conversion = energy_conversions();
+    config.items = item_energy();
     ProgressMachine::chemical(config)
 }
 
@@ -320,7 +325,7 @@ pub fn infuser_from_content() -> ProgressMachine {
         0,
         upgrade_data(),
     );
-    config.energy_conversion = energy_conversions();
+    config.items = item_energy();
     ProgressMachine::chemical(config)
 }
 
@@ -334,7 +339,7 @@ pub fn infuser_from_content_by_type() -> ProgressMachine {
         0,
         upgrade_data(),
     );
-    config.energy_conversion = energy_conversions();
+    config.items = item_energy();
     ProgressMachine::chemical(config)
 }
 
@@ -485,7 +490,7 @@ pub fn bare_machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
             0,
             data.clone(),
         );
-        config.energy_conversion = energy_conversions();
+        config.items = item_energy();
         ProgressMachine::electric(config)
     };
     match name {
@@ -500,7 +505,7 @@ pub fn bare_machine(name: &str, data: &Rc<UpgradeData>) -> ProgressMachine {
                 0,
                 data.clone(),
             );
-            config.energy_conversion = energy_conversions();
+            config.items = item_energy();
             ProgressMachine::chemical(config)
         }
         other => panic!("máquina fora da lista: {other}"),

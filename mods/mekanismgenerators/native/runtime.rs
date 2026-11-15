@@ -4,6 +4,8 @@ use machinery_basis_core::active_fx::{FxParticle, Particle, face_position};
 use machinery_basis_core::client_config::{
     Entry, Loaded, Lookup, Section, Setting, Spec, Value as ConfigScalar,
 };
+use machinery_basis_core::containers::{Access, EnergyContainer, InventorySlot, ItemResource};
+use machinery_basis_core::energy_cube::{ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::container_sync::{
     Kind, Mirror, StackValue, Tracked, TrackedSource, Value,
 };
@@ -735,6 +737,40 @@ pub fn upgrade_data(
         tags,
         MUFFLING_ONLY,
     ))
+}
+
+/// `BasicEnergyContainer.output(storage, listener)` (`TileEntityGenerator.getInitialEnergyContainer`): qualquer um tira, só quem é interno põe. O buffer do gerador é um `i32` no
+/// Horizon; o contêiner é refeito dele para o slot de energia, que fala em transações.
+pub fn energy_buffer(stored: i32, capacity: i64) -> EnergyContainer {
+    let container = EnergyContainer::new(capacity, 0, Access::Any, Access::InternalOnly, None);
+    container.set_energy(i64::from(stored), None);
+    container
+}
+
+/// `EnergyInventorySlot.canDrain(storage, energyHandler)` do slot de energia do gerador (`EnergyInventorySlot.drain`): `stored` é a energia do buffer e `item` o handler do item.
+pub fn slot_can_drain(items: &ItemEnergy, stored: i32, capacity: i64, item: &ItemResource) -> bool {
+    items.can_drain(&energy_buffer(stored, capacity), item)
+}
+
+/// `energySlot.drainContainerIntoSlot(null)` do `onUpdateServer` do Heat Generator: o buffer entrega ao item do slot o que a taxa de carga dele deixa, e a energia do buffer que
+/// sobra é o que volta.
+pub fn drain_slot(items: &ItemEnergy, slot: &InventorySlot, stored: i32, capacity: i64) -> i32 {
+    let buffer = energy_buffer(stored, capacity);
+    items.drain_container_into_slot(slot, &buffer, None);
+    buffer.amount_as_int()
+}
+
+/// O handler de energia do item do Heat Generator (`ItemBlockTooltip.getDefaultEnergyContainer`: `BasicEnergyContainer.manualOnly` para tirar, qualquer um para pôr, a taxa de
+/// carga `calculateUsage(capacity)`). A capacidade do item é a do buffer do gerador, e o gerador não aceita o upgrade de energia.
+pub fn item_energy_spec(item: &str, amount: i64, config: &HeatConfig) -> Option<ItemEnergySpec> {
+    (item == HEAT_GENERATOR).then(|| ItemEnergySpec {
+        amount,
+        capacity: config.energy_capacity,
+        rate: machinery_basis_core::item_energy::calculate_usage(config.energy_capacity),
+        can_extract: Access::ManualOnly,
+        can_insert: Access::Any,
+        creative: false,
+    })
 }
 
 /// Os dois slots virtuais da janela de upgrades vêm depois dos do gerador (`TileComponentUpgrade`: entrada e saída).

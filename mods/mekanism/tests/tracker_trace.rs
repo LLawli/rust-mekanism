@@ -103,7 +103,7 @@ fn machine_of(kind: Kind, offset: u64) -> ProgressMachine {
                 offset,
                 common::upgrade_data(),
             );
-            config.energy_conversion = common::energy_conversions();
+            config.items = common::item_energy();
             ProgressMachine::electric(config)
         }
         Kind::Infuser => {
@@ -115,7 +115,7 @@ fn machine_of(kind: Kind, offset: u64) -> ProgressMachine {
                 offset,
                 common::upgrade_data(),
             );
-            config.energy_conversion = common::energy_conversions();
+            config.items = common::item_energy();
             ProgressMachine::chemical(config)
         }
     }

@@ -1790,13 +1790,7 @@ pub fn shows_energy_bar(item: &str) -> bool {
 
 /// `MekanismUtils.calculateUsage`: `max(1, (int) (0.005 * capacity))` com o corte em `int`.
 pub fn calculate_usage(capacity: i64) -> i32 {
-    let usage = 0.005 * (capacity as f64);
-    let clamped = if usage >= f64::from(i32::MAX) {
-        i32::MAX
-    } else {
-        usage as i32
-    };
-    clamped.max(1)
+    machinery_basis_core::item_energy::calculate_usage(capacity)
 }
 
 /// Os itens que não são de bloco e guardam energia (`addAttachedContainerCapabilities(ContainerType.ENERGY, ..)` de `MekanismItems`): a capacidade e a taxa pela configuração.
@@ -1890,6 +1884,19 @@ pub fn item_energy_spec(item: &str, amount: i64, config: &ServerConfig) -> Optio
         can_insert: Access::Any,
         creative: tier == energy_cube::CREATIVE,
     })
+}
+
+/// O handler de energia do item de uma máquina (`ItemBlockTooltip.getDefaultEnergyContainer`: `BasicEnergyContainer.manualOnly` para tirar, qualquer um para pôr, a taxa de
+/// carga `calculateUsage(capacity)`).
+pub fn machine_item_spec(amount: i64, capacity: i64) -> ItemEnergySpec {
+    ItemEnergySpec {
+        amount,
+        capacity,
+        rate: calculate_usage(capacity),
+        can_extract: Access::ManualOnly,
+        can_insert: Access::Any,
+        creative: false,
+    }
 }
 
 /// O `TileEntityEnergyCube` de um tier: a capacidade e a taxa do arquivo, e o handler de energia dos itens.
@@ -2830,7 +2837,7 @@ pub fn electric_config(
             electric_side_config(),
         ),
         recipes,
-        energy_conversion: no_energy_conversion(),
+        items: no_item_energy(),
     }
 }
 
@@ -2838,6 +2845,20 @@ pub fn electric_config(
 /// do jogo (`glue.rs` o põe em `energy_conversion`), e o que os testes sem conversão usam.
 pub fn no_energy_conversion() -> Rc<EnergyConversionCache> {
     EnergyConversion::cache_of(Vec::new())
+}
+
+/// O handler de energia dos itens sem item nenhum e sem conversão: o que as máquinas têm antes de quem as monta dar o do jogo (`glue.rs` o põe em `items`).
+pub fn no_item_energy() -> ItemEnergy {
+    item_energy_of(no_energy_conversion())
+}
+
+/// O handler de energia dos itens sem item que guarde energia, com o índice de conversões dado: o que os testes usam.
+pub fn item_energy_of(conversions: Rc<EnergyConversionCache>) -> ItemEnergy {
+    ItemEnergy {
+        lookup: Rc::new(|_| None),
+        write: Rc::new(|_, _| None),
+        conversions,
+    }
 }
 
 /// O `getInputCache` de `MekanismRecipeType.METALLURGIC_INFUSING` (`InputRecipeCache.ItemChemical`): o índice do químico não guarda
@@ -2912,7 +2933,7 @@ pub fn infuser_config(
         recipes,
         conversions,
         tank_capacity: TANK_CAPACITY,
-        energy_conversion: no_energy_conversion(),
+        items: no_item_energy(),
     }
 }
 
@@ -3009,18 +3030,18 @@ pub fn trace_line(
 pub enum Indexes {
     Electric {
         recipes: Rc<ItemToItemCache>,
-        energy: Rc<EnergyConversionCache>,
+        energy: ItemEnergy,
     },
     Infuser {
         recipes: Rc<ItemChemicalCache>,
         conversions: Rc<ConversionCache>,
-        energy: Rc<EnergyConversionCache>,
+        energy: ItemEnergy,
     },
 }
 
 impl Indexes {
     /// `MekanismRecipeType.ENERGY_CONVERSION.getInputCache()`, que as quatro máquinas partilham.
-    pub fn energy(&self) -> &Rc<EnergyConversionCache> {
+    pub fn energy(&self) -> &ItemEnergy {
         match self {
             Self::Electric { energy, .. } | Self::Infuser { energy, .. } => energy,
         }

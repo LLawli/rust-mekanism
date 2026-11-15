@@ -317,7 +317,7 @@ fn indexes_of(name: &str) -> Indexes {
         return Indexes::Infuser {
             recipes: infusing_cache_of(recipes),
             conversions: ChemicalConversion::cache_of(conversions),
-            energy: common::energy_conversions(),
+            energy: common::item_energy(),
         };
     }
     let valid = valid_input(name);
@@ -332,7 +332,7 @@ fn indexes_of(name: &str) -> Indexes {
     });
     Indexes::Electric {
         recipes: ItemToItemRecipe::cache_of(vec![recipe]),
-        energy: common::energy_conversions(),
+        energy: common::item_energy(),
     }
 }
 

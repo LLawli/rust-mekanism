@@ -28,7 +28,7 @@ fn machine() -> ProgressMachine {
         0,
         common::upgrade_data(),
     );
-    config.energy_conversion = common::energy_conversions();
+    config.items = common::item_energy();
     ProgressMachine::electric(config)
 }
 

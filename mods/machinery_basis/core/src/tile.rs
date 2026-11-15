@@ -9,11 +9,11 @@ use crate::chemical::{
     fill_tank_or_convert,
 };
 use crate::containers::{
-    Access, AutomationType, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks,
+    Access, EnergyContainer, InventorySlot, ItemResource, ItemTest, SlotChecks,
     redstone_signal,
 };
 use crate::ejector::{AttachedEjector, EjectorData, NoOtherEject, TileComponentEjector};
-use crate::energy_conversion::{EnergyConversionCache, fill_container_or_convert};
+use crate::energy_cube::ItemEnergy;
 use crate::experience::ExperienceDrop;
 use crate::item_chemical_constant_recipe::{
     ChemicalUsageMultiplier, ItemChemicalConstantUsageRecipe,
@@ -375,9 +375,9 @@ pub struct ConfigurationData {
 pub struct ElectricMachineConfig {
     pub machine: MachineConfig,
     pub recipes: Rc<ItemToItemCache>,
-    /// O `getInputCache` de `ENERGY_CONVERSION`, que o slot de energia consulta (`canFillOrConvert`) e converte
+    /// O handler de energia dos itens e o `getInputCache` de `ENERGY_CONVERSION`, que o slot de energia consulta (`canFillOrConvert`) e usa
     /// (`fillContainerOrConvert`).
-    pub energy_conversion: Rc<EnergyConversionCache>,
+    pub items: ItemEnergy,
 }
 
 /// Uma máquina de progresso com um item, um tanque de químico e o slot que o enche (`TileEntityMetallurgicInfuser`). `recipes` e
@@ -389,8 +389,8 @@ pub struct ChemicalMachineConfig {
     pub conversions: Rc<ConversionCache>,
     /// `MAX_INFUSE`.
     pub tank_capacity: u64,
-    /// Como em [`ElectricMachineConfig::energy_conversion`].
-    pub energy_conversion: Rc<EnergyConversionCache>,
+    /// Como em [`ElectricMachineConfig::items`].
+    pub items: ItemEnergy,
 }
 
 /// O que o tile guarda e as closures das receitas e dos contêineres alcançam.
@@ -637,61 +637,11 @@ impl<R: RecipeId + 'static> MonitorOps for RecipeCacheLookupMonitor<R> {
     }
 }
 
-/// `EnergyInventorySlot.canFillOrConvert`. `fills` diz se o item tem um handler de energia de onde sai algum (`canFill`: nenhum
-/// item portado tem) e `converts` se há receita de `ENERGY_CONVERSION` para o tipo dele. A conversão ainda pede que o contêiner
-/// aceite inserção manual.
-pub fn energy_can_fill_or_convert(
-    container: &EnergyContainer,
-    fills: &dyn Fn(&ItemResource) -> bool,
-    converts: &dyn Fn(&ItemResource) -> bool,
-    item: &ItemResource,
-) -> bool {
-    if fills(item) && container.is_valid_for_extraction(AutomationType::Internal) {
-        return true;
-    }
-    converts(item) && container.is_valid_for_insertion(AutomationType::Manual)
-}
-
 /// `EnergyInventorySlot.canFillOrConvert` de uma máquina cujo contêiner é o `MachineEnergyContainer.input` (o das quatro portadas),
 /// para quem pergunta sem ter a máquina na mão: o menu e as regras de inserção do jogo. O contêiner é o mesmo que `Parts::new`
-/// cria, então a pergunta pela inserção manual dele é a verdadeira.
-pub fn machine_energy_slot_accepts(
-    conversions: &EnergyConversionCache,
-    item: &ItemResource,
-) -> bool {
-    let container = EnergyContainer::input(0, 0, None);
-    energy_can_fill_or_convert(
-        &container,
-        &|_| false,
-        &|item| conversions.find_type_based_recipe(item).is_some(),
-        item,
-    )
-}
-
-/// O handler de energia de um item: quanto guarda, quanto cabe, e se aceita energia se o contêiner lhe der tudo o que tem
-/// (`energyHandler.insert(storage.getCapacityAsInt(), simulation) > 0`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ItemEnergy {
-    pub amount: i64,
-    pub capacity: i64,
-    pub accepts_energy: bool,
-}
-
-/// `EnergyInventorySlot.canDrain(storage, energyHandler)`, o que o slot de energia de um gerador (`EnergyInventorySlot.drain`) pede para
-/// aceitar o item: com o contêiner vazio, o item não estar cheio; com energia nele, o contêiner poder dar (`isValidForExtraction`
-/// interno) e o item aceitar algo. Sem handler de energia (`None`, o caso de todo item portado) o slot não aceita nada.
-pub fn energy_can_drain(
-    container_amount: i64,
-    container_extractable: bool,
-    item: Option<ItemEnergy>,
-) -> bool {
-    let Some(item) = item else {
-        return false;
-    };
-    if container_amount == 0 {
-        return item.amount < item.capacity;
-    }
-    container_extractable && item.accepts_energy
+/// cria, então as perguntas por extração interna e por inserção manual são as verdadeiras.
+pub fn machine_energy_slot_accepts(items: &ItemEnergy, item: &ItemResource) -> bool {
+    items.can_fill_or_convert(&EnergyContainer::input(0, 0, None), item)
 }
 
 /// Os erros que os handlers de entrada de uma máquina de item e químico dão a quem não tem o bastante. O Metallurgic Infuser os monta cruzados
@@ -728,13 +678,13 @@ struct Parts {
     energy: EnergyContainer,
     output: InventorySlot,
     energy_slot: InventorySlot,
-    energy_conversion: Rc<EnergyConversionCache>,
+    items: ItemEnergy,
     upgrades: UpgradeComponent,
     side_config: SideConfigSpec,
 }
 
 impl Parts {
-    fn new(config: &MachineConfig, energy_conversion: Rc<EnergyConversionCache>) -> Self {
+    fn new(config: &MachineConfig, items: ItemEnergy) -> Self {
         let flags = MonitorFlags::new();
         let shared = Rc::new(Shared {
             tile: RefCell::new(TileBase::new(config.deactivation_delay)),
@@ -794,15 +744,8 @@ impl Parts {
             Access::Any,
             Access::Any,
             SlotChecks::fill_or_convert({
-                let (energy, conversions) = (energy.clone(), energy_conversion.clone());
-                Rc::new(move |item: &ItemResource| {
-                    energy_can_fill_or_convert(
-                        &energy,
-                        &|_| false,
-                        &|item| conversions.find_type_based_recipe(item).is_some(),
-                        item,
-                    )
-                })
+                let (energy, items) = (energy.clone(), items.clone());
+                Rc::new(move |item: &ItemResource| items.can_fill_or_convert(&energy, item))
             }),
             Some(tile_changed.clone()),
             None,
@@ -829,7 +772,7 @@ impl Parts {
             energy,
             output,
             energy_slot,
-            energy_conversion,
+            items,
             upgrades,
             side_config: config.side_config.clone(),
         }
@@ -843,7 +786,7 @@ pub struct ProgressMachine {
     input: InventorySlot,
     output: InventorySlot,
     energy_slot: InventorySlot,
-    energy_conversion: Rc<EnergyConversionCache>,
+    items: ItemEnergy,
     chemical: Option<ChemicalSide>,
     /// `getInventorySlots`, na ordem do Java: é a média deles que dá o nível do comparador.
     inventory_slots: Vec<InventorySlot>,
@@ -860,7 +803,7 @@ pub struct ProgressMachine {
 impl ProgressMachine {
     /// `TileEntityElectricMachine`.
     pub fn electric(config: ElectricMachineConfig) -> Self {
-        let parts = Parts::new(&config.machine, config.energy_conversion.clone());
+        let parts = Parts::new(&config.machine, config.items.clone());
         // `InputInventorySlot.at(this::containsRecipe, recipeCacheListener, ..)`: o item só entra se alguma receita o usa.
         let recipes = config.recipes;
         let validator: ItemTest = {
@@ -903,7 +846,7 @@ impl ProgressMachine {
 
     /// `TileEntityMetallurgicInfuser`.
     pub fn chemical(config: ChemicalMachineConfig) -> Self {
-        let parts = Parts::new(&config.machine, config.energy_conversion.clone());
+        let parts = Parts::new(&config.machine, config.items.clone());
         let recipes = config.recipes;
         // O slot de entrada pergunta pelo tanque e o tanque pelo slot: o tanque entra aqui quando existir.
         let tank_cell: Rc<RefCell<Option<ChemicalTank>>> = Rc::new(RefCell::new(None));
@@ -1016,7 +959,7 @@ impl ProgressMachine {
             input,
             output: parts.output,
             energy_slot: parts.energy_slot,
-            energy_conversion: parts.energy_conversion,
+            items: parts.items,
             chemical,
             inventory_slots,
             monitor,
@@ -1392,12 +1335,8 @@ impl ProgressMachine {
             neighbours,
             &mut NoOtherEject,
         );
-        fill_container_or_convert(
-            &self.energy_slot,
-            &self.energy,
-            &self.energy_conversion,
-            None,
-        );
+        self.items
+            .fill_container_or_convert(&self.energy_slot, &self.energy, None);
         if let Some(side) = &self.chemical {
             fill_tank_or_convert(&side.slot, &side.tank, &side.conversions, None);
         }
@@ -1520,55 +1459,80 @@ fn redstone_level_of(slots: &[InventorySlot]) -> i32 {
 mod tests {
     use super::*;
     use crate::energy_conversion::EnergyConversion;
+    use crate::energy_cube::ItemEnergySpec;
 
-    fn conversions() -> Rc<EnergyConversionCache> {
-        EnergyConversion::cache_of(vec![EnergyConversion {
-            id: String::new(),
-            input: crate::cached_recipe::ItemIngredient::item("redstone"),
-            input_count: 1,
-            output: 10_000,
-        }])
+    /// O handler de energia de teste: `redstone` converte em 10 000, e `tablet` e `cell` têm contêiner de energia (o `cell` só tira de dentro, como a máquina posta).
+    fn items() -> ItemEnergy {
+        ItemEnergy {
+            lookup: Rc::new(|item: &ItemResource| {
+                let (capacity, extract) = match &*item.id {
+                    "tablet" => (1_000, Access::Any),
+                    "cell" => (1_000, Access::ManualOnly),
+                    _ => return None,
+                };
+                Some(ItemEnergySpec {
+                    amount: 0,
+                    capacity,
+                    rate: 100,
+                    can_extract: extract,
+                    can_insert: Access::Any,
+                    creative: false,
+                })
+            }),
+            write: Rc::new(|item: &ItemResource, _| Some(item.clone())),
+            conversions: EnergyConversion::cache_of(vec![EnergyConversion {
+                id: String::new(),
+                input: crate::cached_recipe::ItemIngredient::item("redstone"),
+                input_count: 1,
+                output: 10_000,
+            }]),
+        }
     }
 
     #[test]
     fn the_energy_slot_of_a_machine_takes_what_converts_and_nothing_else() {
-        let cache = conversions();
+        let items = items();
         assert!(machine_energy_slot_accepts(
-            &cache,
+            &items,
             &ItemResource::new("redstone", 64)
         ));
         assert!(!machine_energy_slot_accepts(
-            &cache,
+            &items,
             &ItemResource::new("stick", 64)
         ));
     }
 
     #[test]
     fn a_container_that_refuses_manual_insertion_makes_the_conversion_unacceptable() {
-        let cache = conversions();
+        let items = items();
         let redstone = ItemResource::new("redstone", 64);
-        let converts = |item: &ItemResource| cache.find_type_based_recipe(item).is_some();
         let open = EnergyContainer::input(20, 5, None);
-        assert!(energy_can_fill_or_convert(
-            &open,
-            &|_| false,
-            &converts,
-            &redstone
-        ));
+        assert!(items.can_fill_or_convert(&open, &redstone));
         let shut = EnergyContainer::new(20, 5, Access::Any, Access::InternalOnly, None);
-        assert!(!energy_can_fill_or_convert(
-            &shut,
-            &|_| false,
-            &converts,
-            &redstone
-        ));
-        // Um item que enche o contêiner entra pelo outro caminho, se o contêiner deixa tirar de dentro.
-        assert!(energy_can_fill_or_convert(
-            &open,
-            &|_| true,
-            &|_| false,
-            &ItemResource::new("battery", 1)
-        ));
+        assert!(!items.can_fill_or_convert(&shut, &redstone));
+    }
+
+    #[test]
+    fn an_item_with_energy_to_give_is_taken_only_by_an_extraction_the_container_allows() {
+        let items = items();
+        // O `lookup` de teste dá os itens vazios: um item sem energia não tem o que dar (`canFill`: extrair ao menos 1).
+        let mut full = items.clone();
+        full.lookup = Rc::new(|item: &ItemResource| {
+            Some(ItemEnergySpec {
+                amount: 500,
+                capacity: 1_000,
+                rate: 100,
+                can_extract: if &*item.id == "tablet" { Access::Any } else { Access::ManualOnly },
+                can_insert: Access::Any,
+                creative: false,
+            })
+        });
+        let open = EnergyContainer::input(20, 5, None);
+        // `EnergyInventorySlot.canFill` pede `isValidForExtraction(INTERNAL)` do contêiner e extrair do item como `EXTERNAL`: o tablet entrega, o item de máquina não.
+        assert!(full.can_fill_or_convert(&open, &ItemResource::new("tablet", 1)));
+        assert!(!full.can_fill_or_convert(&open, &ItemResource::new("cell", 1)));
+        let locked = EnergyContainer::new(20, 5, Access::ManualOnly, Access::Any, None);
+        assert!(!full.can_fill_or_convert(&locked, &ItemResource::new("tablet", 1)));
     }
 
     const RULES: UpgradeRules = UpgradeRules {
@@ -1642,27 +1606,5 @@ mod tests {
         let mut tile = TileBase::new(0);
         tile.set_control_type(RedstoneControl::Pulse);
         assert_eq!(tile.control_type(), RedstoneControl::Disabled);
-    }
-
-    #[test]
-    fn the_drain_slot_takes_what_can_still_receive_energy() {
-        let tablet = |amount, accepts_energy| {
-            Some(ItemEnergy {
-                amount,
-                capacity: 1_000,
-                accepts_energy,
-            })
-        };
-        // Sem energia no contêiner: o item que não está cheio, mesmo que não aceite nada agora.
-        assert!(energy_can_drain(0, true, tablet(0, false)));
-        assert!(energy_can_drain(0, false, tablet(999, false)));
-        assert!(!energy_can_drain(0, true, tablet(1_000, true)));
-        // Com energia: o contêiner tem de poder dar e o item aceitar.
-        assert!(energy_can_drain(50, true, tablet(1_000, true)));
-        assert!(!energy_can_drain(50, false, tablet(0, true)));
-        assert!(!energy_can_drain(50, true, tablet(0, false)));
-        // Item sem handler de energia (stick, coal, balde): nunca.
-        assert!(!energy_can_drain(0, true, None));
-        assert!(!energy_can_drain(50, true, None));
     }
 }

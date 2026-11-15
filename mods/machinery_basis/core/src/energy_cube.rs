@@ -411,6 +411,84 @@ impl CubeEnergy {
 // O handler de energia de um item (`Capabilities.ENERGY` do item): o que a pilha guarda, com a taxa e os predicados do contêiner
 // dela (`ComponentBackedEnergyContainer`: `canExtract`, `canInsert` e o limite que o `MANUAL` não sofre).
 
+/// O que `EnergyInventorySlot` pede do `IEnergyContainer` do tile: o cubo (`CubeEnergy`), as máquinas (`EnergyContainer`) e o buffer
+/// de um gerador implementam, e as regras de carga e descarga do slot valem para todos.
+pub trait SlotEnergy {
+    fn amount(&self) -> i64;
+    fn capacity(&self) -> i64;
+    fn is_valid_for_insertion(&self, automation: AutomationType) -> bool;
+    fn is_valid_for_extraction(&self, automation: AutomationType) -> bool;
+    fn insert(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32;
+    fn extract(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32;
+
+    /// `IEnergyContainer.isEmpty`.
+    fn is_empty(&self) -> bool {
+        self.amount() == 0
+    }
+
+    /// `getNeededAsInt`.
+    fn needed_as_int(&self) -> i32 {
+        saturated((self.capacity() - self.amount()).max(0))
+    }
+
+    /// `getAmountAsInt`.
+    fn amount_as_int(&self) -> i32 {
+        saturated(self.amount())
+    }
+}
+
+impl SlotEnergy for CubeEnergy {
+    fn amount(&self) -> i64 {
+        CubeEnergy::amount(self)
+    }
+
+    fn capacity(&self) -> i64 {
+        CubeEnergy::capacity(self)
+    }
+
+    fn is_valid_for_insertion(&self, automation: AutomationType) -> bool {
+        CubeEnergy::is_valid_for_insertion(self, automation)
+    }
+
+    fn is_valid_for_extraction(&self, automation: AutomationType) -> bool {
+        CubeEnergy::is_valid_for_extraction(self, automation)
+    }
+
+    fn insert(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+        CubeEnergy::insert(self, amount, transaction, automation)
+    }
+
+    fn extract(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+        CubeEnergy::extract(self, amount, transaction, automation)
+    }
+}
+
+impl SlotEnergy for crate::containers::EnergyContainer {
+    fn amount(&self) -> i64 {
+        crate::containers::EnergyContainer::amount(self)
+    }
+
+    fn capacity(&self) -> i64 {
+        crate::containers::EnergyContainer::capacity(self)
+    }
+
+    fn is_valid_for_insertion(&self, automation: AutomationType) -> bool {
+        crate::containers::EnergyContainer::is_valid_for_insertion(self, automation)
+    }
+
+    fn is_valid_for_extraction(&self, automation: AutomationType) -> bool {
+        crate::containers::EnergyContainer::is_valid_for_extraction(self, automation)
+    }
+
+    fn insert(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+        crate::containers::EnergyContainer::insert(self, amount, transaction, automation)
+    }
+
+    fn extract(&self, amount: i32, transaction: &Transaction, automation: AutomationType) -> i32 {
+        crate::containers::EnergyContainer::extract(self, amount, transaction, automation)
+    }
+}
+
 /// O contêiner de energia de um item, por unidade (o handler multiplica pela pilha).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemEnergySpec {
@@ -515,7 +593,7 @@ impl ItemEnergy {
     }
 
     /// `EnergyInventorySlot.canFill`.
-    pub fn can_fill(&self, container: Option<&CubeEnergy>, item: &ItemResource) -> bool {
+    pub fn can_fill(&self, container: Option<&dyn SlotEnergy>, item: &ItemResource) -> bool {
         let Some(handler) = self.handler(item, 1) else {
             return false;
         };
@@ -526,7 +604,7 @@ impl ItemEnergy {
     }
 
     /// `EnergyInventorySlot.canDrain`.
-    pub fn can_drain(&self, container: &CubeEnergy, item: &ItemResource) -> bool {
+    pub fn can_drain(&self, container: &dyn SlotEnergy, item: &ItemResource) -> bool {
         let Some(handler) = self.handler(item, 1) else {
             return false;
         };
@@ -543,7 +621,7 @@ impl ItemEnergy {
     }
 
     /// `EnergyInventorySlot.canFillOrConvert`.
-    pub fn can_fill_or_convert(&self, container: &CubeEnergy, item: &ItemResource) -> bool {
+    pub fn can_fill_or_convert(&self, container: &dyn SlotEnergy, item: &ItemResource) -> bool {
         if self.can_fill(Some(container), item) {
             return true;
         }
@@ -555,7 +633,7 @@ impl ItemEnergy {
     pub fn fill_container_from_slot(
         &self,
         slot: &InventorySlot,
-        container: &CubeEnergy,
+        container: &dyn SlotEnergy,
         transaction: Option<&Transaction>,
     ) -> bool {
         let contents = slot.contents();
@@ -600,7 +678,7 @@ impl ItemEnergy {
     pub fn fill_container_or_convert(
         &self,
         slot: &InventorySlot,
-        container: &CubeEnergy,
+        container: &dyn SlotEnergy,
         transaction: Option<&Transaction>,
     ) {
         if self.fill_container_from_slot(slot, container, transaction) {
@@ -627,7 +705,7 @@ impl ItemEnergy {
     pub fn drain_container_into_slot(
         &self,
         slot: &InventorySlot,
-        container: &CubeEnergy,
+        container: &dyn SlotEnergy,
         transaction: Option<&Transaction>,
     ) {
         let contents = slot.contents();

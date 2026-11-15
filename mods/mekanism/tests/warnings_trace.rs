@@ -137,7 +137,7 @@ fn world(kind: Kind, offset: u64, base: u64, smelting: Vec<Rc<ItemToItemRecipe>>
                 offset,
                 common::upgrade_data(),
             );
-            config.energy_conversion = common::energy_conversions();
+            config.items = common::item_energy();
             ProgressMachine::electric(config)
         }
         Kind::Infuser => {
@@ -149,7 +149,7 @@ fn world(kind: Kind, offset: u64, base: u64, smelting: Vec<Rc<ItemToItemRecipe>>
                 offset,
                 common::upgrade_data(),
             );
-            config.energy_conversion = common::energy_conversions();
+            config.items = common::item_energy();
             ProgressMachine::chemical(config)
         }
     };

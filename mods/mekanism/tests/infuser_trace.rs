@@ -90,7 +90,7 @@ fn infuser() -> SimWorld<Infuser> {
         common::upgrade_data(),
     );
     // As receitas `energy_conversion` que o port entrega, como o jogo as dá a toda máquina.
-    config.energy_conversion = common::energy_conversions();
+    config.items = common::item_energy();
     SimWorld::new(Infuser(ProgressMachine::chemical(config)))
 }
 

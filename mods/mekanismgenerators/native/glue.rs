@@ -23,7 +23,10 @@ use machinery_basis_core::side_tab;
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::slot_view::{SlotOverlay, SlotType, slot_type};
 use machinery_basis_core::tank::{Action, Tank};
-use machinery_basis_core::tile::{ItemEnergy, RedstoneControl, SavedState, TileBase, energy_can_drain};
+use machinery_basis_core::containers::InventorySlot;
+use machinery_basis_core::energy_conversion::EnergyConversion;
+use machinery_basis_core::energy_cube::ItemEnergy;
+use machinery_basis_core::tile::{RedstoneControl, SavedState, TileBase};
 use machinery_basis_core::upgrade::{self, UpgradeComponent, UpgradeTransient};
 use machinery_basis_core::container_sync::TrackedSource;
 use machinery_basis_core::upgrade_window::{UpgradeSync, UpgradeWindowSpec};
@@ -423,6 +426,7 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
         machinery_basis_core::screen_elements::declare_once(rules::MENU, rules::screen_elements);
         // As faces, as entradas e as saídas são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
         basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
+        basis::register_item_energy(RULES_OWNER, ENERGY_ITEMS);
         *container = Some(ModContainer {
             slots: rules::MENU_SLOTS,
             menu: Some(rules::MENU.to_owned()),
@@ -914,6 +918,8 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let dimension = game.native_dimension();
     let front = basis::front(game, pos);
     rules::emit_energy(&mut state, &basis::GameEnergy::new(game, dimension, pos), front);
+    // `TileEntityHeatGenerator.onUpdateServer`: o slot de energia entrega ao item antes de o combustível entrar, e o `prev` de `producingEnergy` já é o do buffer depois disso.
+    drain_energy_slot(game, entity, &mut state);
     // `simulateAdjacent` só pelo lado de baixo (`getAdjacent`): o condutor termodinâmico embaixo recebe o calor, e o capacitor dele confirma no fim do `onUpdateServer`.
     let produced = rules::step_with(&mut state, &around, &mut |capacitor| crate::game::machinery_heat::heat_adjacent(game, pos, Face::Down, capacitor));
     if basis::MEDIR {
@@ -1130,7 +1136,7 @@ fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &I
     }
     match slot {
         FUEL_SLOT => rules::fuel_slot_extractable(facts.cooking_fuel, fills_tank(stack)),
-        ENERGY_SLOT => !energy_can_drain(stored_energy(entity), true, item_energy(stack)),
+        ENERGY_SLOT => !energy_can_drain(stored_energy(entity), stack),
         _ => false,
     }
 }
@@ -1148,7 +1154,7 @@ fn item_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: u
     }
     Some(match slot {
         FUEL_SLOT => rules::fuel_slot_insertable(is_fuel(game, stack), fills_tank(stack)),
-        ENERGY_SLOT => energy_can_drain(stored_energy(entity), true, item_energy(stack)),
+        ENERGY_SLOT => energy_can_drain(stored_energy(entity), stack),
         _ => false,
     })
 }
@@ -1192,7 +1198,7 @@ pub(in crate::game) fn menu_click_before(game: &Game<'_>, host: &crate::game::la
             // `EnergyInventorySlot.drain`: o handler de energia é o da pilha (a energia que ela guarda decide se está cheia).
             ENERGY_SLOT => stack
                 .downcast_ref::<ItemStack>()
-                .is_some_and(|stack| energy_can_drain(stored, true, item_energy(stack))),
+                .is_some_and(|stack| energy_can_drain(stored, stack)),
             _ => false,
         }),
     );
@@ -1262,7 +1268,11 @@ impl GeneratorMenu<'_, '_> {
     fn accepts(&self, slot: usize, stack: &ItemStack) -> bool {
         match slot {
             FUEL_SLOT => rules::fuel_slot_insertable(is_fuel(self.game, stack), fills_tank(stack)),
-            ENERGY_SLOT => energy_can_drain(stored_energy(self.entity), true, item_energy(stack)),
+            ENERGY_SLOT => {
+                // A capacidade que os upgrades de energia do item dão, vista pelo jogo, entra na conta do handler.
+                basis::energy_slot_resource(self.game, stack);
+                energy_can_drain(stored_energy(self.entity), stack)
+            }
             rules::UPGRADE_SLOT => rules::accepts_upgrade(&self.upgrades, &stack.item, self.upgrade_type(stack).as_deref()),
             _ => false,
         }
@@ -1315,11 +1325,39 @@ impl GeneratorMenu<'_, '_> {
     }
 }
 
-/// O handler de energia do item (`Capabilities.ENERGY`), como `EnergyInventorySlot.canDrain` o usa: a energia e a capacidade dele, e se aceita algo do gerador (`insert` da capacidade
-/// do contêiner dele). Quem sabe quais itens têm handler é o mod dono do item (`machinery_basis::register_item_energy`).
-fn item_energy(stack: &ItemStack) -> Option<ItemEnergy> {
-    let spec = basis::item_energy_spec_of(stack)?;
-    Some(ItemEnergy { amount: spec.amount, capacity: spec.capacity, accepts_energy: spec.accepts_external(heat_config().energy_capacity_int()) })
+/// O handler de energia dos itens (`Capabilities.ENERGY`): quem sabe quais itens têm handler é o mod dono do item (`machinery_basis::register_item_energy`), e o Heat Generator
+/// responde pelo próprio item (`ENERGY_ITEMS`). O slot de energia do gerador não converte item em energia, então o índice de conversões é vazio.
+fn items() -> ItemEnergy {
+    basis::item_energy_handler(EnergyConversion::cache_of(Vec::new()))
+}
+
+/// `EnergyInventorySlot.canDrain(storage, energyHandler)` do slot de energia (`EnergyInventorySlot.drain`), com o buffer do gerador (`BasicEnergyContainer.output`) com `stored`.
+fn energy_can_drain(stored: i64, stack: &ItemStack) -> bool {
+    let stored = i32::try_from(stored).unwrap_or(i32::MAX);
+    rules::slot_can_drain(&items(), stored, heat_config().energy_capacity, &basis::item_resource_with_limit(stack, 1))
+}
+
+/// Os itens com handler de energia daqui: o próprio Heat Generator (`ItemBlockTooltip.getDefaultEnergyContainer`).
+const ENERGY_ITEMS: basis::ItemEnergyProvider = basis::ItemEnergyProvider { component: rules::ENERGY_COMPONENT, spec: energy_item_spec, upgraded: None };
+
+fn energy_item_spec(item: &str, energy: i64, _capacity: Option<i64>) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
+    rules::item_energy_spec(item, energy, &heat_config())
+}
+
+/// `energySlot.drainContainerIntoSlot(null)`, o primeiro passo do Heat Generator depois do `super.onUpdateServer`: o buffer entrega ao item do slot de energia o que a taxa de carga
+/// dele deixa. O slot é o do tile (`entity.items`), e o item que ele guarda ganha a energia nova.
+fn drain_energy_slot(game: &Game<'_>, entity: &mut ModBlockEntity, state: &mut rules::State) {
+    let Some(stack) = entity.items.get(ENERGY_SLOT).cloned().flatten() else {
+        return;
+    };
+    let slot = InventorySlot::new(None);
+    let resource = basis::energy_slot_resource(game, &stack);
+    slot.set_contents(Some(resource.clone()), stack.count, None);
+    state.energy = rules::drain_slot(&items(), &slot, state.energy, state.config.energy_capacity);
+    let contents = slot.contents();
+    if let Some(after) = contents.resource.filter(|after| *after != resource) {
+        entity.items[ENERGY_SLOT] = Some(basis::energy_slot_stack(game, Some(&stack), &after, contents.amount));
+    }
 }
 
 fn stored_energy(entity: &ModBlockEntity) -> i64 {

@@ -52,7 +52,7 @@ fn electric(usage: i32, input: &str, output: &str, count: u32) -> ProgressMachin
         0,
         common::upgrade_data(),
     );
-    config.energy_conversion = common::energy_conversions();
+    config.items = common::item_energy();
     ProgressMachine::electric(config)
 }
 

@@ -1775,8 +1775,11 @@ pub struct ItemFacts {
 #[derive(Clone, Copy)]
 pub struct ItemEnergyProvider {
     pub component: &'static str,
-    /// O item (id) e a energia que a pilha guarda: o handler dele, ou `None` se não tem.
-    pub spec: fn(&str, i64) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec>,
+    /// O item (id), a energia que a pilha guarda e a capacidade que a pilha tem além da padrão (os upgrades de energia de uma máquina, de `upgraded`): o handler dele, ou `None` se
+    /// não tem.
+    pub spec: fn(&str, i64, Option<i64>) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec>,
+    /// A capacidade da pilha quando ela depende de algo que só o jogo vê (`UpgradeBasedUnsignedLongCache`, os upgrades de energia que o item leva). `None` usa a padrão.
+    pub upgraded: Option<fn(&Game<'_>, &ItemStack) -> Option<i64>>,
 }
 
 static ITEM_ENERGY: Mutex<Vec<(&'static str, ItemEnergyProvider)>> = Mutex::new(Vec::new());
@@ -1790,18 +1793,112 @@ pub(in crate::game) fn register_item_energy(owner: &'static str, provider: ItemE
     }
 }
 
-/// O handler de energia de uma pilha (um item só), sem o jogo: a energia vem do texto do componente, o mesmo que o slot do cubo lê.
+/// O handler de energia de uma pilha (um item só), sem o jogo: a energia vem do texto do componente, o mesmo que o slot de energia lê, e a capacidade dos upgrades de energia da pilha é a
+/// que a última passagem por [`energy_slot_resource`] registrou.
 pub(in crate::game) fn item_energy_spec_of(stack: &ItemStack) -> Option<machinery_basis_core::energy_cube::ItemEnergySpec> {
-    let providers: Vec<ItemEnergyProvider> = ITEM_ENERGY.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect();
     let resource = item_resource_with_limit(stack, 1);
-    providers.iter().find_map(|provider| {
-        let energy = resource
-            .components
-            .get(provider.component)
-            .and_then(|text| text.trim_end_matches(['L', 'l']).parse::<i64>().ok())
-            .map_or(0, |energy| energy.max(0));
-        (provider.spec)(&stack.item, energy)
+    registered_item_energy().into_iter().find_map(|provider| {
+        let (energy, capacity) = energy_of_resource(&resource, provider.component);
+        (provider.spec)(&stack.item, energy, capacity)
     })
+}
+
+thread_local! {
+    /// A energia de cada conjunto de componentes que passou por um slot de energia: o handler de energia de um item lê dela, porque o texto do componente é do Horizon.
+    static ENERGY_BY_KEY: std::cell::RefCell<BTreeMap<String, (i64, Option<i64>)>> = const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+fn registered_item_energy() -> Vec<ItemEnergyProvider> {
+    ITEM_ENERGY.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, p)| *p).collect()
+}
+
+/// O componente de energia que o `item` guarda, pelo mod que responde por ele (`ItemEnergyProvider.spec` devolve algo).
+fn energy_component_of(item: &str) -> Option<&'static str> {
+    registered_item_energy().into_iter().find(|provider| (provider.spec)(item, 0, None).is_some()).map(|provider| provider.component)
+}
+
+/// Se o item tem handler de energia (`Capabilities.ENERGY` do item).
+pub(in crate::game) fn has_item_energy(item: &str) -> bool {
+    energy_component_of(item).is_some()
+}
+
+/// O `ItemResource` de uma pilha de um slot de energia, e a energia dela registrada para o handler (`ContainerType.ENERGY.getOrZero`).
+pub(in crate::game) fn energy_slot_resource(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
+    let resource = item_resource(game, stack);
+    if !resource.components.is_empty()
+        && let Some(provider) = registered_item_energy().into_iter().find(|provider| (provider.spec)(&stack.item, 0, None).is_some())
+    {
+        let energy = item_energy_of(game, stack, provider.component);
+        let capacity = provider.upgraded.and_then(|upgraded| upgraded(game, stack));
+        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(resource.components.key().to_owned(), (energy, capacity)));
+    }
+    resource
+}
+
+/// A energia e a capacidade própria (dos upgrades) que o recurso de um slot de energia carrega.
+fn energy_of_resource(resource: &ItemResource, component: &str) -> (i64, Option<i64>) {
+    if let Some(known) = ENERGY_BY_KEY.with_borrow(|table| table.get(resource.components.key()).copied()) {
+        return known;
+    }
+    let energy = resource
+        .components
+        .get(component)
+        .and_then(|text| text.trim_end_matches(['L', 'l']).parse::<i64>().ok())
+        // `item_energy_of`: o componente nunca vale menos que zero (`ContainerType.ENERGY.getOrZero`).
+        .map_or(0, |energy| energy.max(0));
+    (energy, None)
+}
+
+/// O mesmo item com a energia nova: os componentes que ele tinha e o da energia (ou sem ele, se zero).
+fn resource_with_energy(resource: &ItemResource, component: &str, energy: i64, capacity: Option<i64>) -> ItemResource {
+    let text = energy.to_string();
+    let mut entries: Vec<(&str, &str)> = resource.components.iter().filter(|(id, _)| *id != component).collect();
+    if energy != 0 {
+        entries.push((component, text.as_str()));
+    }
+    let made = ItemResource::with_components(&resource.id, resource.max_stack_size, Components::new(entries));
+    if energy != 0 {
+        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(made.components.key().to_owned(), (energy, capacity)));
+    }
+    made
+}
+
+/// O handler de energia dos itens (`Capabilities.ENERGY` do item) que o slot de energia de qualquer bloco usa, com o índice de conversões que o bloco consulta. Cada mod diz
+/// quais itens têm handler (`register_item_energy`).
+pub(in crate::game) fn item_energy_handler(
+    conversions: std::rc::Rc<machinery_basis_core::energy_conversion::EnergyConversionCache>,
+) -> machinery_basis_core::energy_cube::ItemEnergy {
+    machinery_basis_core::energy_cube::ItemEnergy {
+        lookup: std::rc::Rc::new(|resource: &ItemResource| {
+            registered_item_energy().into_iter().find_map(|provider| {
+                let (energy, capacity) = energy_of_resource(resource, provider.component);
+                (provider.spec)(&resource.id, energy, capacity)
+            })
+        }),
+        write: std::rc::Rc::new(|resource: &ItemResource, energy: i64| {
+            let component = energy_component_of(&resource.id)?;
+            let (_, capacity) = energy_of_resource(resource, component);
+            Some(resource_with_energy(resource, component, energy, capacity))
+        }),
+        conversions,
+    }
+}
+
+/// A pilha que o slot de energia devolve ao tile: uma que passou por uma pilha do jogo, ou, para o recurso que o handler de energia fez (a energia nova do item e nenhuma pilha do
+/// jogo por trás), a que o slot tinha com a energia nova.
+pub(in crate::game) fn energy_slot_stack(game: &Game<'_>, current: Option<&ItemStack>, resource: &ItemResource, count: u32) -> ItemStack {
+    if let Some(stack) = stack_of_resource(resource, count) {
+        return stack;
+    }
+    let mut base = match current {
+        Some(old) if *old.item == *resource.id => old.clone(),
+        _ => ItemStack::new(&resource.id, count),
+    };
+    if let Some(component) = energy_component_of(&resource.id) {
+        set_item_energy(game, &mut base, component, energy_of_resource(resource, component).0);
+    }
+    base.count = count;
+    base
 }
 
 static ITEM_INSTANCES: Mutex<Vec<(&'static str, ItemInstances)>> = Mutex::new(Vec::new());

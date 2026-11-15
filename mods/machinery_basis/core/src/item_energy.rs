@@ -62,6 +62,17 @@ pub fn energy_display(energy: i64, max: i64, unit: &str, fraction: &str, infinit
     crate::units::format_lang(fraction, &[&stored, &capacity])
 }
 
+/// `MekanismUtils.calculateUsage`: `max(1, (int) (0.005 * capacity))` com o corte em `int`.
+pub fn calculate_usage(capacity: i64) -> i32 {
+    let usage = 0.005 * (capacity as f64);
+    let clamped = if usage >= f64::from(i32::MAX) {
+        i32::MAX
+    } else {
+        usage as i32
+    };
+    clamped.max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

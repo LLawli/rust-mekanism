@@ -58,8 +58,6 @@ struct LiveCube {
 thread_local! {
     static LIVE_CUBES: RefCell<HashMap<(&'static str, [i32; 3]), LiveCube>> = RefCell::new(HashMap::new());
     static LAST_SWEEP: std::cell::Cell<i64> = const { std::cell::Cell::new(i64::MIN) };
-    /// A energia de cada conjunto de componentes que passou por um slot do cubo: o handler de energia de um item lê dela, porque o texto do componente é do Horizon.
-    static ENERGY_BY_KEY: RefCell<HashMap<String, i64>> = RefCell::new(HashMap::new());
 }
 
 pub(in crate::game) fn tier_of(block: &str) -> Option<usize> {
@@ -78,40 +76,9 @@ pub(in crate::game) fn side_spec(block: &str) -> Option<basis::SideSpec> {
 // ---------------------------------------------------------------------------------------------------------------------------
 // O handler de energia dos itens.
 
-/// A energia que a pilha guarda, e o recurso dela com a conta registrada.
+/// O recurso da pilha com a energia dela registrada para o handler (`basis::energy_slot_resource`).
 fn resource_of(game: &Game<'_>, stack: &ItemStack) -> ItemResource {
-    let resource = basis::item_resource(game, stack);
-    if !resource.components.is_empty() {
-        let energy = basis::item_energy_of(game, stack, rules::ENERGY_COMPONENT);
-        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(resource.components.key().to_owned(), energy));
-    }
-    resource
-}
-
-fn energy_of(resource: &ItemResource) -> i64 {
-    if let Some(known) = ENERGY_BY_KEY.with_borrow(|table| table.get(resource.components.key()).copied()) {
-        return known;
-    }
-    resource
-        .components
-        .get(rules::ENERGY_COMPONENT)
-        .and_then(|text| text.trim_end_matches(['L', 'l']).parse::<i64>().ok())
-        // `item_energy_of`: o componente nunca vale menos que zero (`ContainerType.ENERGY.getOrZero`).
-        .map_or(0, |energy| energy.max(0))
-}
-
-/// O mesmo item com a energia nova: os componentes que ele tinha e o da energia (ou sem ele, se zero).
-fn with_energy(resource: &ItemResource, energy: i64) -> ItemResource {
-    let text = energy.to_string();
-    let mut entries: Vec<(&str, &str)> = resource.components.iter().filter(|(id, _)| *id != rules::ENERGY_COMPONENT).collect();
-    if energy != 0 {
-        entries.push((rules::ENERGY_COMPONENT, text.as_str()));
-    }
-    let made = ItemResource::with_components(&resource.id, resource.max_stack_size, Components::new(entries));
-    if energy != 0 {
-        ENERGY_BY_KEY.with_borrow_mut(|table| table.insert(made.components.key().to_owned(), energy));
-    }
-    made
+    basis::energy_slot_resource(game, stack)
 }
 
 fn items(game: &Game<'_>) -> ItemEnergy {
@@ -119,12 +86,7 @@ fn items(game: &Game<'_>) -> ItemEnergy {
 }
 
 fn items_with(conversions: Rc<machinery_basis_core::energy_conversion::EnergyConversionCache>) -> ItemEnergy {
-    let config = glue::server_config();
-    ItemEnergy {
-        lookup: Rc::new(move |resource: &ItemResource| rules::item_energy_spec(&resource.id, energy_of(resource), &config)),
-        write: Rc::new(|resource: &ItemResource, energy: i64| Some(with_energy(resource, energy))),
-        conversions,
-    }
+    basis::item_energy_handler(conversions)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -272,23 +234,13 @@ fn slot_to_entity(game: &Game<'_>, entity: &mut ModBlockEntity, index: usize, sl
     if same {
         return;
     }
-    let new = contents.resource.map(|resource| {
-        let mut stack = match current {
-            Some(old) if resource_of(game, old) == resource => old.clone(),
-            _ => match basis::stack_of_resource(&resource, contents.amount) {
-                Some(stack) => stack,
-                None => {
-                    let mut base = match current {
-                        Some(old) if *old.item == *resource.id => old.clone(),
-                        _ => ItemStack::new(&resource.id, contents.amount),
-                    };
-                    basis::set_item_energy(game, &mut base, rules::ENERGY_COMPONENT, energy_of(&resource));
-                    base
-                }
-            },
-        };
-        stack.count = contents.amount;
-        stack
+    let new = contents.resource.map(|resource| match current {
+        Some(old) if resource_of(game, old) == resource => {
+            let mut stack = old.clone();
+            stack.count = contents.amount;
+            stack
+        }
+        _ => basis::energy_slot_stack(game, current, &resource, contents.amount),
     });
     entity.items[index] = new;
 }
