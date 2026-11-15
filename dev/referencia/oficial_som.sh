@@ -13,8 +13,8 @@ R=$HOME/.local/share/jogo-isolado/mekanism-ref/src/runs/client
 N=$HOME/.local/share/jogo-isolado/mekanism-ref/src/src/gameTest/java/mekanism/common/tests/network
 C=$HOME/.cache/rust-mekanism
 LOCK=$C/mekanism-ref.lock
-until mkdir "$LOCK" 2>/dev/null; do sleep 60; done
-echo "$DONO" > "$LOCK/dono"
+# `LOCK_MEU=1`: quem chama já pegou a trava `mekanism-ref.lock` e a deixa para este script soltar.
+if [ "${LOCK_MEU:-}" != 1 ]; then until mkdir "$LOCK" 2>/dev/null; do sleep 60; done; echo "$DONO" > "$LOCK/dono"; fi
 echo "TRAVA $(date +%T)"
 restore() {
   rm -f "$N/CenaSomMedida.java" "$R/cena-som-medida" "$R/som-medido.jsonl" "$R/som-audio-espera" "$R/som-audio-ok" "$R/som-audio-mudo"
@@ -40,6 +40,8 @@ rm -f "$R/som-audio-ok" "$R/som-audio-mudo"
 cp "$JAVA" "$N/CenaSomMedida.java"
 cp "$CENA" "$R/cena-som-medida"
 LARGURA=${LARGURA:-1920}; ALTURA=${ALTURA:-1080}; JANELA="-W $LARGURA -H $ALTURA -w $LARGURA -h $ALTURA"
-"$C/lim-build" env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
+# `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo` a segura); passar de novo por `lim-build` esperaria por ela para sempre.
+LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
+$LIM env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref"
 echo "EXIT $?"
 [ -s "$R/som-medido.jsonl" ] && cp "$R/som-medido.jsonl" "$SAIDA"

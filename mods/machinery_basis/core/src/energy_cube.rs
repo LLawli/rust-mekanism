@@ -684,21 +684,12 @@ impl ItemEnergy {
         if self.fill_container_from_slot(slot, container, transaction) {
             return;
         }
-        let contents = slot.contents();
-        let Some(resource) = contents.resource.clone() else {
-            return;
-        };
-        let Some(conversion) = self.conversions.find_first_recipe(&contents) else {
-            return;
-        };
-        let sub = Transaction::open(transaction);
-        let needed = conversion.input_count;
-        let output = conversion.output;
-        if slot.extract(&resource, needed, &sub, AutomationType::Internal) == needed
-            && container.insert(output, &sub, AutomationType::Manual) == output
-        {
-            sub.commit();
-        }
+        crate::energy_conversion::convert_to_energy(
+            slot,
+            container,
+            &self.conversions,
+            transaction,
+        );
     }
 
     /// `drainContainerIntoSlot`.

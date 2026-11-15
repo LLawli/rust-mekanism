@@ -85,7 +85,7 @@ configuração de lados (`TileComponentConfig::item_face`, o `ConfigHolder`) ou 
 outra máquina agem pelas faces de cada instância, e a regra acompanha a rotação. É assim nas quatro máquinas configuráveis, no cubo de energia (`SlotRules`: os slots de
 carga e de descarga lendo a energia que o tile guarda) e no Heat Generator (lados fixos, e os slots de combustível e de energia). Não existe uma máquina que imite o
 hopper no tick dela: o Horizon move os itens, no ritmo do próprio hopper (1 item a cada 8 ticks). Quem tem um item com handler de energia (`Capabilities.ENERGY` do item) o
-registra em `register_item_energy`, e o slot de energia de outro bloco o consulta (`item_energy_spec_of`). Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
+registra em `register_item_energy` (com a capacidade que a pilha tem, `upgraded`), e o slot de energia de qualquer bloco o consulta pelo `item_energy_handler`, o `ItemEnergy` da lib (`energy_cube`), que carrega e descarrega o item pela taxa dele (`fillContainerFromSlot`, `drainContainerIntoSlot`) sobre qualquer contêiner que implemente `SlotEnergy`: o das máquinas, o do cubo e o buffer do gerador. Energia: o `ModEnergyBuffer` do bloco é um só, e a injeção
 `energy_capacity` (H1) responde pela instância, com a capacidade e as faces que entram e saem (`ConfigHolder.canInsert/canExtract` do
 `DataType` do lado).
 
@@ -217,7 +217,7 @@ de energia só marcam para salvar, a saída despausa).
 | `chemical::ChemicalTank`, `fluid::FluidTank` | `BasicChemicalTank` e `BasicFluidTank`: o mesmo contêiner, para químico e para fluido |
 | `chemical::ChemicalAttributeValidator` | `ChemicalAttributeValidator` (`DEFAULT`, `ALWAYS_ALLOW`, `create`, `createStrict` e o `process` sobrescrito) |
 | `chemical::fill_tank_or_convert`, `fill_tank_from_slot` | `ChemicalInventorySlot.fillTankOrConvert` e `fillTankFromSlot` |
-| `energy_conversion::EnergyConversion`, `fill_container_or_convert` | `ItemStackToEnergyRecipe` (o índice `SingleItem` do tipo `energy_conversion`) e `EnergyInventorySlot.fillContainerOrConvert`, sem a parte de item com capability de energia, que nenhum item portado tem |
+| `energy_conversion::EnergyConversion`, `energy_cube::ItemEnergy`, `SlotEnergy` | `ItemStackToEnergyRecipe` (o índice `SingleItem` do tipo `energy_conversion`) e `EnergyInventorySlot` inteiro: `canFill`, `canDrain`, `canFillOrConvert`, `fillContainerFromSlot`, `fillContainerOrConvert` e `drainContainerIntoSlot`, contra o handler de energia do item (`ItemEnergySpec`) e qualquer contêiner de energia (`SlotEnergy`) |
 | `resource_tank::fill_container_from_slot` | `ResourceHandlerSlot.fillContainerFromSlot`, sobre a capability de recurso do item |
 | `recipe_handlers` | `InputResourceHandler`, `IOutputHandler` e o `OutputHelper` de slot, de tanque de químico e de tanque de fluido |
 | `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |

@@ -1,10 +1,11 @@
 //! Porte de `ItemStackToEnergyRecipe` (o tipo de receita `energy_conversion`) e de `EnergyInventorySlot.fillContainerOrConvert`:
-//! um item que vira energia no contêiner da máquina.
+//! um item que vira energia no contêiner da máquina (a conversão que `EnergyInventorySlot.fillContainerOrConvert` tenta depois de o item não dar energia).
 //!
 //! A lib não conhece nenhum item: quem usa traz as receitas como dados. O índice é o `getInputCache` do tipo
 //! (`InputRecipeCache.SingleItem`), o mesmo das conversões de item em químico.
 use crate::cached_recipe::ItemIngredient;
-use crate::containers::{AutomationType, EnergyContainer, InventorySlot, SlotContents};
+use crate::containers::{AutomationType, InventorySlot, SlotContents};
+use crate::energy_cube::SlotEnergy;
 use crate::recipe_cache::{
     ComponentSensitiveInputCache, InputIngredient, SingleInputRecipe, SingleInputRecipeCache,
 };
@@ -62,16 +63,12 @@ impl EnergyConversion {
     }
 }
 
-/// `EnergyInventorySlot.fillContainerOrConvert(null)`.
-///
-/// O Java primeiro tenta encher o contêiner do item (`fillContainerFromSlot`), que pede a capability de energia dele. Nenhum item
-/// portado tem energia, então esse passo sempre falha e vai direto à conversão: `findFirstRecipe` acha a primeira receita para o
-/// que o slot tem, quantidade incluída, e só se o slot dá o que ela pede e o contêiner aceita **tudo** o que ela produz
-/// (`insert(output, .., MANUAL) == output`) a troca vale. `Manual` passa por cima do limite de taxa de quem insere, que aqui não
-/// existe, mas o `canInsert` do contêiner ainda vale.
-pub fn fill_container_or_convert(
+/// A parte de conversão de `EnergyInventorySlot.fillContainerOrConvert`, que `ItemEnergy::fill_container_or_convert` chama quando o item não deu energia
+/// (`fillContainerFromSlot` falhou): `findFirstRecipe` acha a primeira receita para o que o slot tem, quantidade incluída, e só se o slot dá o que ela pede e o contêiner aceita **tudo**
+/// o que ela produz (`insert(output, .., MANUAL) == output`) a troca vale. `Manual` passa por cima do limite de taxa de quem insere, mas o `canInsert` do contêiner ainda vale.
+pub fn convert_to_energy(
     slot: &InventorySlot,
-    container: &EnergyContainer,
+    container: &dyn SlotEnergy,
     conversions: &EnergyConversionCache,
     transaction: Option<&Transaction>,
 ) {
@@ -100,7 +97,7 @@ pub fn fill_container_or_convert(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::containers::{Access, ItemResource};
+    use crate::containers::{Access, EnergyContainer, ItemResource};
 
     fn conversions() -> Rc<EnergyConversionCache> {
         EnergyConversion::cache_of(vec![
@@ -132,20 +129,20 @@ mod tests {
     #[test]
     fn one_item_becomes_its_energy_each_call() {
         let (slot, energy) = (slot_with("redstone", 3), container(100_000));
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (2, 10_000));
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (1, 20_000));
     }
 
     #[test]
     fn the_item_stays_when_the_container_cannot_take_all_of_it() {
         let (slot, energy) = (slot_with("redstone", 3), container(9_999));
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (3, 0));
         let (slot, energy) = (slot_with("redstone", 3), container(20_000));
         energy.set_energy(10_001, None);
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (3, 10_001));
     }
 
@@ -153,24 +150,24 @@ mod tests {
     fn it_takes_exactly_the_room_there_is() {
         let (slot, energy) = (slot_with("redstone", 3), container(20_000));
         energy.set_energy(10_000, None);
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (2, 20_000));
     }
 
     #[test]
     fn a_block_gives_nine_times_as_much() {
         let (slot, energy) = (slot_with("redstone_block", 2), container(100_000));
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (1, 90_000));
     }
 
     #[test]
     fn an_item_with_no_recipe_or_an_empty_slot_changes_nothing() {
         let (slot, energy) = (slot_with("stick", 2), container(100_000));
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (2, 0));
         let empty = InventorySlot::new(None);
-        fill_container_or_convert(&empty, &energy, &conversions(), None);
+        convert_to_energy(&empty, &energy, &conversions(), None);
         assert_eq!(energy.amount(), 0);
     }
 
@@ -183,10 +180,10 @@ mod tests {
             output: 7,
         }]);
         let (slot, energy) = (slot_with("redstone", 1), container(100));
-        fill_container_or_convert(&slot, &energy, &cache, None);
+        convert_to_energy(&slot, &energy, &cache, None);
         assert_eq!((slot.amount(), energy.amount()), (1, 0));
         let slot = slot_with("redstone", 3);
-        fill_container_or_convert(&slot, &energy, &cache, None);
+        convert_to_energy(&slot, &energy, &cache, None);
         assert_eq!((slot.amount(), energy.amount()), (1, 7));
     }
 
@@ -195,7 +192,7 @@ mod tests {
         let energy =
             EnergyContainer::new(100_000, 5, Access::NotExternal, Access::InternalOnly, None);
         let slot = slot_with("redstone", 1);
-        fill_container_or_convert(&slot, &energy, &conversions(), None);
+        convert_to_energy(&slot, &energy, &conversions(), None);
         assert_eq!((slot.amount(), energy.amount()), (1, 0));
     }
 
@@ -203,7 +200,7 @@ mod tests {
     fn a_rolled_back_outer_transaction_undoes_the_conversion() {
         let (slot, energy) = (slot_with("redstone", 2), container(100_000));
         let outer = Transaction::open_root();
-        fill_container_or_convert(&slot, &energy, &conversions(), Some(&outer));
+        convert_to_energy(&slot, &energy, &conversions(), Some(&outer));
         assert_eq!((slot.amount(), energy.amount()), (1, 10_000));
         drop(outer);
         assert_eq!((slot.amount(), energy.amount()), (2, 0));

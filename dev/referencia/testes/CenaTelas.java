@@ -13,6 +13,13 @@ import java.util.Map;
 import mekanism.api.chemical.Chemical;
 import mekanism.api.chemical.ChemicalResource;
 import mekanism.api.chemical.ChemicalIds;
+import mekanism.api.energy.IEnergyContainer;
+import mekanism.common.component.containers.type.ContainerType;
+import mekanism.common.util.EnergyUtils;
+import mekanism.common.util.ItemAccessUtils;
+import net.neoforged.neoforge.transfer.access.ItemAccess;
+import net.neoforged.neoforge.transfer.energy.EnergyHandler;
+import net.minecraft.world.item.ItemStack;
 import mekanism.common.Mekanism;
 import mekanism.common.capabilities.energy.BasicEnergyContainer;
 import mekanism.common.registries.MekanismBlocks;
@@ -335,8 +342,41 @@ public class CenaTelas {
         tile.getInventorySlots().get(slot).setContents(ItemResource.of(item), count, null);
     }
 
+    /// `ranhura=ITEM:ENERGIA` põe no slot de energia que enche a máquina (o de descarga do cubo, o de energia do gerador e das máquinas) um item com `ENERGIA` no componente
+    /// `mekanism:energy`, e `carga=ITEM:ENERGIA` no slot de carga do cubo, como o item de um jogador (o handler de energia do próprio item).
+    private static void energySlot(TileEntityMekanism tile, String spec, boolean charge) {
+        String[] parts = spec.split(":");
+        String id = parts[0] + ":" + parts[1];
+        long energy = Long.parseLong(parts[2]);
+        var item = BuiltInRegistries.ITEM.getValue(Identifier.parse(id));
+        ItemAccess access = ItemAccessUtils.sideEffectFreeAccess(ItemResource.of(item));
+        EnergyHandler handler = ContainerType.ENERGY.getCapOrUnexposed(access);
+        ItemStack stack = new ItemStack(item, 1);
+        if (handler != null && energy != 0) {
+            IEnergyContainer container = EnergyUtils.getEnergyContainer(handler);
+            container.setEnergy(energy, null);
+            stack = ItemAccessUtils.asStack(access);
+            stack.setCount(1);
+        }
+        int slot;
+        if (tile instanceof mekanism.common.tile.TileEntityEnergyCube) {
+            slot = charge ? 1 : 0;
+        } else if (tile instanceof TileEntityHeatGenerator) {
+            slot = 1;
+        } else {
+            slot = tile instanceof TileEntityMetallurgicInfuser ? 3 : 2;
+        }
+        tile.getInventorySlots().get(slot).setContents(ItemResource.of(stack), 1, null);
+    }
+
     private static void state(MinecraftServer server, Caso caso) {
         TileEntityMekanism tile = tile(server, caso);
+        if (caso.args().containsKey("ranhura")) {
+            energySlot(tile, caso.args().get("ranhura"), false);
+        }
+        if (caso.args().containsKey("carga")) {
+            energySlot(tile, caso.args().get("carga"), true);
+        }
         boolean infuser = tile instanceof TileEntityMetallurgicInfuser;
         int inputSlot = infuser ? 1 : 0;
         int outputSlot = infuser ? 2 : 1;

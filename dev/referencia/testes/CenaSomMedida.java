@@ -15,6 +15,10 @@ import mekanism.common.config.MekanismConfig;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.tests.MekanismTests;
 import mekanism.common.tile.base.TileEntityMekanism;
+import mekanism.generators.common.registries.GeneratorsBlocks;
+import mekanism.generators.common.tile.TileEntityHeatGenerator;
+import net.minecraft.world.level.material.Fluids;
+import net.neoforged.neoforge.transfer.fluid.FluidResource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.core.BlockPos;
@@ -145,6 +149,7 @@ public class CenaSomMedida {
             case "crusher" -> MekanismBlocks.CRUSHER.defaultState();
             case "smelter" -> MekanismBlocks.ENERGIZED_SMELTER.defaultState();
             case "infuser" -> MekanismBlocks.METALLURGIC_INFUSER.defaultState();
+            case "heat_generator" -> GeneratorsBlocks.HEAT_GENERATOR.defaultState();
             default -> MekanismBlocks.ENRICHMENT_CHAMBER.defaultState();
         };
         return state.trySetValue(BlockStateProperties.HORIZONTAL_FACING, Direction.SOUTH);
@@ -175,6 +180,16 @@ public class CenaSomMedida {
     private static void energia(MinecraftServer server, Cenario c, boolean liga) {
         TileEntityMekanism tile = tile(server);
         BasicEnergyContainer container = (BasicEnergyContainer) tile.getEnergyContainer();
+        if (tile instanceof TileEntityHeatGenerator generator) {
+            // O Heat Generator liga com lava no tanque e um Energy Tablet vazio no slot de energia, que leva o buffer a cada tick (sem ele o buffer enche e o gerador para); desliga sem lava.
+            if (liga) {
+                generator.lavaTank.setContents(FluidResource.of(Fluids.LAVA), 1000, null);
+                generator.getInventorySlots().get(1).setContents(ItemResource.of(mekanism.common.registries.MekanismItems.ENERGY_TABLET.asItem()), 1, null);
+            } else {
+                generator.lavaTank.setContents(FluidResource.EMPTY, 0, null);
+            }
+            return;
+        }
         if (!liga) {
             container.setEnergy(0, null);
             return;

@@ -29,3 +29,12 @@ nome=afastando_voltando ev=60:jogador:30;-0.5;0 ev=140:jogador:3;-0.5;0 desliga=
 nome=congelado ev=100:tick:freeze ev=140:tick:unfreeze
 # O silêncio tirado com a máquina acesa não chega ao cliente; o próximo `lit` (um pacote do bloco) o leva: apaga em 140 e acende em 170.
 nome=silencio_tirado_religa ev=60:muffling:1 ev=100:muffling:0 ev=140:energia:0 ev=170:energia:1 desliga=600 fim=330
+# O Heat Generator (`GeneratorsSounds.HEAT_GENERATOR`): liga com lava e um tablet no slot de energia e desliga sem lava, e o silêncio entra e sai como nas máquinas.
+nome=gerador maquina=heat_generator
+nome=gerador_silencio_1 maquina=heat_generator muffling=1
+nome=gerador_silencio_depois maquina=heat_generator muffling=0 ev=100:muffling:1
+nome=gerador_silencio_tirado maquina=heat_generator muffling=1 ev=100:muffling:0 fim=300
+nome=gerador_silencio_tocando_tirado maquina=heat_generator muffling=0 ev=80:muffling:1 ev=160:muffling:0 desliga=400 fim=460
+nome=gerador_silencio_tirado_religa maquina=heat_generator ev=60:muffling:1 ev=100:muffling:0 ev=140:energia:0 ev=170:energia:1 desliga=600 fim=330
+nome=gerador_base_0_5 maquina=heat_generator base=0.5
+nome=gerador_maquinas_off maquina=heat_generator enable=false

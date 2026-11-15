@@ -66,6 +66,10 @@ MAQUINAS = {
 SAIDA_CHEIA = {"chamber": "clay_ball", "crusher": "gravel", "smelter": "glass", "infuser": "dirt"}
 
 
+# Os índices do slot que enche (`ranhura`) e do de carga (`carga`) em cada tela: o cubo tem o de descarga no 0 e o de carga no 1; o gerador, a energia no 1; as máquinas, no 2 (o infuser, no 3).
+SLOT_DE_ENERGIA = {"electric": (2, None), "infuser": (3, None), "generator": (1, None), "cubo": (0, 1)}
+
+
 def caso(identificador, maquina, /, **args):
     return dict(nome=identificador, maquina=maquina, args=args)
 
@@ -357,6 +361,31 @@ def casos_cubo():
     return out
 
 
+def casos_slot_energia():
+    """O slot de energia funcional (frente `slot-energia`, `EnergyInventorySlot.fillContainerFromSlot` e `drainContainerIntoSlot`): o item com energia no slot, a máquina ou o cubo
+    enchendo dele e o gerador esvaziando nele, com a barra de energia da tela e a do item, e o tooltip do item sob o cursor (a energia exata). `ranhura` é o slot que enche (descarga
+    do cubo, energia do gerador e das máquinas) e `carga` o de carga do cubo. O tablet tem 1.000.000 e a taxa de 5.000 por tick; o Free Runners, 64.000."""
+    runners = "mekanism:free_runners:30000"
+    return [
+        caso("chamber_slot_tablet_antes", "chamber", energia="0", ranhura="mekanism:energy_tablet:30000", passos="1"),
+        caso("chamber_slot_tablet_depois", "chamber", energia="0", ranhura="mekanism:energy_tablet:30000", passos="2"),
+        caso("chamber_slot_tablet_hover", "chamber", energia="0", ranhura="mekanism:energy_tablet:30000", passos="2", hover=HOVER["electric"]["slot_energia"]),
+        caso("chamber_slot_equipamento_hover", "chamber", energia="0", ranhura="mekanism:atomic_disassembler:500000", passos="5", hover=HOVER["electric"]["slot_energia"]),
+        caso("infuser_slot_tablet_depois", "infuser", energia="0", ranhura="mekanism:energy_tablet:30000", passos="2"),
+        caso("generator_slot_antes", "generator", energia="200", lava="1000", ranhura=runners, passos="1"),
+        caso("generator_slot_depois", "generator", energia="200", lava="1000", ranhura=runners, passos="60"),
+        caso("generator_slot_hover_antes", "generator", energia="200", lava="1000", ranhura=runners, passos="1", hover=HOVER["generator"]["slot_energia"]),
+        caso("generator_slot_hover_depois", "generator", energia="200", lava="1000", ranhura=runners, passos="60", hover=HOVER["generator"]["slot_energia"]),
+        caso("generator_slot_cheio_hover", "generator", energia="200", lava="1000", ranhura="mekanism:free_runners:64000", passos="5", hover=HOVER["generator"]["slot_energia"]),
+        caso("cubo_slot_descarga_antes", "cubo", energia="0", ranhura="mekanism:energy_tablet:600000", passos="1"),
+        caso("cubo_slot_descarga_depois", "cubo", energia="0", ranhura="mekanism:energy_tablet:600000", passos="100"),
+        caso("cubo_slot_descarga_hover", "cubo", energia="0", ranhura="mekanism:energy_tablet:600000", passos="100", hover=HOVER["cubo"]["slot_descarga"]),
+        caso("cubo_slot_carga_antes", "cubo", energia="1500000", carga="mekanism:energy_tablet:0", passos="1"),
+        caso("cubo_slot_carga_depois", "cubo", energia="1500000", carga="mekanism:energy_tablet:0", passos="100"),
+        caso("cubo_slot_carga_hover", "cubo", energia="1500000", carga="mekanism:energy_tablet:0", passos="100", hover=HOVER["cubo"]["slot_carga"]),
+    ]
+
+
 def casos_controle():
     """O controle da luz do mundo atrás da tela: uma fonte vanilla (`minecraft:light`) de nível 4, 8, 12 e 15 ao lado de uma máquina parada, nos dois
     jogos. Sem nenhum bloco do Mekanism emitindo, a diferença do mundo que sobra é de como o jogo desenha a luz, não da luz do port."""
@@ -535,7 +564,7 @@ def todos_os_casos():
 def casos_do_roteiro(so=None):
     """Os casos que os dois jogos rodam: a tabela (`todos_os_casos`) e, só se `so` os pede pelo nome, os controles da luz (`casos_controle`), que não
     entram no lote porque comparam o mundo sem tela e a luz, não a tela."""
-    tudo = todos_os_casos() + (casos_controle() + casos_fora() if so else [])
+    tudo = todos_os_casos() + (casos_controle() + casos_fora() + casos_slot_energia() if so else [])
     return [c for c in tudo if not so or c["nome"] in so]
 
 
@@ -625,6 +654,12 @@ def nbt_itens(c, maquina):
             itens.append(f'{{Slot:{slot}b,id:"{item}",count:{n}}}')
     # Os itens dos dois slots de upgrade entram depois do tick em que a máquina nasce, como o `CenaTelas` (`state` roda depois do `tick step 1` da
     # montagem): um item que já está no slot quando o objeto nasce conta o tick do nascimento, e a seta de instalação sai um tick adiante (medido em 2026-11-08, `docs/plano-paridade.md`, item `MekanismContainer`, "Em jogo").
+    # O slot de energia (`ranhura`, o que enche) e o de carga do cubo (`carga`): o item com a energia no componente `mekanism:energy`, como o handler dele a guarda.
+    for chave, slot in (("ranhura", SLOT_DE_ENERGIA[MAQUINAS[maquina]["tela"]][0]), ("carga", SLOT_DE_ENERGIA[MAQUINAS[maquina]["tela"]][1])):
+        if chave in c["args"]:
+            item, energia = c["args"][chave].rsplit(":", 1)
+            componentes = f',components:{{"mekanism:energy":{energia}L}}' if int(energia) else ""
+            itens.append(f'{{Slot:{slot}b,id:"{item}",count:1{componentes}}}')
     entrada_up, saida_up = MAQUINAS[maquina]["upgrade"]
     for chave, slot in (("upgradeentrada", entrada_up), ("upgradesaida", saida_up)):
         if chave in c["args"]:

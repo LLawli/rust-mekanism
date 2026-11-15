@@ -25,6 +25,7 @@ BLOCK = {
     "crusher": "mekanism:crusher",
     "smelter": "mekanism:energized_smelter",
     "infuser": "mekanism:metallurgic_infuser",
+    "heat_generator": "mekanismgenerators:heat_generator",
 }
 # Onde o item de entrada vai (o slot do menu de cada máquina) e qual item entra.
 ENTRADA = {
@@ -32,8 +33,11 @@ ENTRADA = {
     "crusher": (0, "minecraft:cobblestone"),
     "smelter": (0, "minecraft:raw_iron"),
     "infuser": (1, "minecraft:iron_ingot"),
+    # O Heat Generator liga com lava no tanque e um tablet vazio no slot de energia (índice 1), que leva o buffer a cada tick; o slot de combustível fica vazio.
+    "heat_generator": (1, "mekanism:energy_tablet"),
 }
-ENERGIA = {"chamber": 1000, "crusher": 1600, "smelter": 1000, "infuser": 1000}
+ENERGIA = {"chamber": 1000, "crusher": 1600, "smelter": 1000, "infuser": 1000, "heat_generator": 0}
+LAVA = 'machinery_basis:{v:1,tanks:[{resource:"minecraft:lava",amount:1000L}]}'
 TICK = 0.05
 
 
@@ -138,6 +142,12 @@ def remove_muffling():
 def power(machine, on):
     slot, item = ENTRADA[machine]
     pos = " ".join(map(str, POS))
+    if machine == "heat_generator":
+        if on:
+            h.command(f'data merge block {pos} {{Items:[{{Slot:{slot}b,id:"{item}",count:1}}],{LAVA}}}')
+        else:
+            h.command(f"data merge block {pos} {{machinery_basis:{{v:1,tanks:[]}}}}")
+        return
     if on:
         extra = ""
         if machine == "infuser":
