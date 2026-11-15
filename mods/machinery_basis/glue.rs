@@ -2458,6 +2458,223 @@ pub(in crate::game) fn name_container_opened(game: &mut Game<'_>, player: u128, 
     game.mb_name_open(player, dimension, pos, name.as_ref());
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// A segurança de um tile (`TileComponentSecurity`, frente `seguranca`, decisões 250 a 253): o dono e o modo no NBT, vindos do item (`mekanism:owner` e `mekanism:security`) ou de
+// quem pôs o bloco (`BlockMekanism.setPlacedBy`), de volta ao item solto, e a recusa a quem não tem acesso. A conta é `machinery_basis_core::security`.
+
+use machinery_basis_core::security as sec;
+
+/// Os componentes do item que a segurança lê e grava (`MekanismDataComponents.OWNER` e `SECURITY`), para o mod registrá-los.
+pub const SECURITY_COMPONENTS: [&str; 2] = [sec::OWNER_COMPONENT, sec::SECURITY_COMPONENT];
+
+thread_local! {
+    /// O dono e o modo do item que acabou de ser posto, para o tile que o Horizon ainda não criou.
+    static PENDING_SECURITY: std::cell::RefCell<HashMap<[i32; 3], sec::SecurityState>> = std::cell::RefCell::new(HashMap::new());
+    /// O dono e o modo do tile que o jogador está quebrando, guardados por [`security_destroying`] antes de o Horizon tirá-lo do mundo.
+    static BROKEN_SECURITY: std::cell::RefCell<Option<([i32; 3], sec::SecurityState)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// O JSON da conta como o NBT: a lista de quatro inteiros do dono é um `IntArray` (`UUIDUtil.CODEC`), o resto segue o formato.
+fn security_tag(key: &str, value: &serde_json::Value) -> Tag {
+    use serde_json::Value;
+    match value {
+        Value::Array(list) if key == sec::OWNER_UUID => Tag::IntArray(list.iter().filter_map(|part| part.as_i64().and_then(|n| i32::try_from(n).ok())).collect()),
+        Value::Object(map) => Tag::Compound(map.iter().map(|(name, item)| (JavaString::from(name.as_str()), security_tag(name, item))).collect()),
+        Value::String(text) => Tag::String(JavaString::from(text.as_str())),
+        other => value_tag(other, key),
+    }
+}
+
+/// O `Tag` da conta como o JSON dela (`IntArray` vira a lista de inteiros).
+fn security_json(tag: &Tag) -> serde_json::Value {
+    match tag {
+        Tag::IntArray(ints) => serde_json::Value::from(ints.clone()),
+        Tag::Compound(map) => serde_json::Value::Object(map.iter().map(|(key, value)| (key.to_string_lossy(), security_json(value))).collect()),
+        other => tag_value(other),
+    }
+}
+
+/// O dono e o modo que o tile guarda (`TileComponentSecurity.deserialize`).
+pub(in crate::game) fn security_read(entity: &ModBlockEntity) -> sec::SecurityState {
+    let component = entity.nbt.get(&JavaString::from(sec::COMPONENT_SECURITY)).map(security_json);
+    sec::deserialize(component.as_ref())
+}
+
+/// `TileComponentSecurity.serialize` e a frequência de segurança no `component_frequency`.
+pub(in crate::game) fn security_write(entity: &mut ModBlockEntity, state: &sec::SecurityState) {
+    let (security, frequency) = sec::serialize(state);
+    for (key, value) in [(sec::COMPONENT_SECURITY, security), (sec::COMPONENT_FREQUENCY, frequency)] {
+        let key = JavaString::from(key);
+        match value {
+            Some(value) => {
+                entity.nbt.insert(key, security_tag("", &value));
+            }
+            None => {
+                entity.nbt.remove(&key);
+            }
+        }
+    }
+}
+
+/// O UUID do jogador que age (`placer`, `player`), no servidor.
+fn acting_uuid(game: &Game<'_>) -> Option<u128> {
+    game.native_acting_player().map(|player| player.uuid)
+}
+
+/// O dono e o modo que o item `stack` leva (`applyImplicitComponents`), a partir do estado de um tile novo.
+fn security_of_stack(game: &Game<'_>, stack: &ItemStack) -> sec::SecurityState {
+    let component = |id: &str| game.native_component(stack, id).ok().flatten().map(security_json);
+    sec::apply(sec::SecurityState::default(), component(sec::OWNER_COMPONENT).as_ref(), component(sec::SECURITY_COMPONENT).as_ref())
+}
+
+/// `applyImplicitComponents` e `BlockMekanism.setPlacedBy`: o tile novo ganha o dono e o modo do item, e sem dono o de quem o pôs.
+pub(in crate::game) fn security_placed(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
+    use horizon_client::containers::BlockEntity;
+    if !is_ours(&game.native_block(pos)) {
+        return;
+    }
+    let mut state = security_of_stack(game, stack);
+    state.placed_by(acting_uuid(game));
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
+        security_write(entity, &state);
+        game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        PENDING_SECURITY.with_borrow_mut(|pending| pending.remove(&pos));
+    } else {
+        PENDING_SECURITY.with_borrow_mut(|pending| pending.insert(pos, state));
+    }
+}
+
+/// O tile nasceu: o dono e o modo do item que o colocou (ou de quem o pôs) entram no NBT dele.
+pub(in crate::game) fn security_apply_pending(entity: &mut ModBlockEntity, pos: [i32; 3]) {
+    if let Some(state) = PENDING_SECURITY.with_borrow_mut(|pending| pending.remove(&pos)) {
+        security_write(entity, &state);
+    }
+}
+
+/// O tile em `pos` vai ser quebrado: o dono e o modo que o item solto leva (`copy_components`) são guardados enquanto o tile existe.
+pub(in crate::game) fn security_destroying(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) {
+    use horizon_client::containers::BlockEntity;
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        && is_ours(&entity.id)
+    {
+        BROKEN_SECURITY.with_borrow_mut(|slot| *slot = Some((pos, security_read(entity))));
+    }
+}
+
+/// `copy_components` de `owner` e `security`: o item solto leva o dono e o modo (o modo só se não é `PUBLIC`, o padrão do item).
+pub(in crate::game) fn security_loot(
+    game: &Game<'_>,
+    context: &horizon_client::mod_api::NativeLootDrops<'_>,
+    drops: &mut [ItemStack],
+    is_ours: &dyn Fn(&str) -> bool,
+) {
+    let Some((pos, _)) = context.block else {
+        return;
+    };
+    if !drops.iter().any(|stack| is_ours(&stack.item)) {
+        return;
+    }
+    let kept = BROKEN_SECURITY.with_borrow_mut(|slot| match slot {
+        Some((at, _)) if *at == pos => slot.take().map(|(_, state)| state),
+        _ => None,
+    });
+    let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        Some(horizon_client::containers::BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(security_read(entity)),
+        _ => None,
+    };
+    let Some(state) = live.or(kept) else {
+        return;
+    };
+    let (owner, mode) = sec::collect(&state);
+    for stack in drops.iter_mut().filter(|stack| is_ours(&stack.item)) {
+        for (id, value) in [(sec::OWNER_COMPONENT, &owner), (sec::SECURITY_COMPONENT, &mode)] {
+            if let Some(value) = value
+                && let Err(error) = game.native_set_component(stack, id, security_tag(sec::OWNER_UUID, value))
+            {
+                eprintln!("machinery_basis: o item solto não leva {id}: {error}");
+            }
+        }
+    }
+}
+
+/// O UUID de quem vê o tooltip: o jogador deste cliente (o perfil da sessão remota, ou o do mundo local).
+fn viewer_uuid(game: &Game<'_>) -> Option<u128> {
+    game.remote.as_ref().map(|remote| remote.profile).or_else(|| game.level.player_uuid.map(horizon_client::lan::playerdata::ints_uuid))
+}
+
+/// `OwnerDisplay.getOwnerName` no cliente: o nome do jogador deste cliente se ele é o dono, o de um jogador que o cliente conhece, ou `<uuid>`.
+fn owner_name(game: &Game<'_>, owner: u128, viewer: Option<u128>) -> String {
+    if viewer == Some(owner) {
+        return game.options.player_name();
+    }
+    let known = game.remote.as_ref().and_then(|remote| remote.level_players.iter().find(|(_, uuid)| **uuid == owner).and_then(|(id, uuid)| remote.level_player_name(*id, uuid).map(str::to_owned)));
+    known.unwrap_or_else(|| format!("<{}>", uuid_text(owner)))
+}
+
+/// `UUID.toString`: `8-4-4-4-12` em hexadecimal.
+fn uuid_text(uuid: u128) -> String {
+    let hex = format!("{uuid:032x}");
+    format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
+}
+
+/// `registerComponentAppenderBefore(OWNER, SECURITY, ...)` e `registerComponentAppenderBeforeAll(SECURITY, ...)`: as linhas `Owner:` e `Security:` do item, que vêm logo depois do nome
+/// (o rastro `item_content_*.jsonl`). A cor do rótulo é a de `EnumColor` e a do argumento depende do modo e de quem vê.
+pub(in crate::game) fn security_tooltip_lines(game: &Game<'_>, stack: &ItemStack) -> Vec<(horizon_client::mod_api::Text, u32)> {
+    use horizon_client::mod_api::Text;
+    use horizon_client::text::Style;
+    let state = security_of_stack(game, stack);
+    let viewer = viewer_uuid(game);
+    let owner = state.owner.map(|owner| (owner, owner_name(game, owner, viewer)));
+    sec::tooltip_lines(sec::SecurityConfig::default(), viewer, owner.as_ref().map(|(owner, name)| (*owner, name.as_str())), state.mode)
+        .into_iter()
+        .map(|line| {
+            let arg = match &line.arg {
+                sec::Arg::Literal(text) => Text::literal(text.as_str()),
+                sec::Arg::Translate(key) => Text::translate(key, &[]),
+            }
+            .with_style(&Style::color(line.arg_color));
+            (Text::translate(line.key, &[arg]).with_style(&Style::color(line.color)), u32::MAX)
+        })
+        .collect()
+}
+
+/// `SecurityUtils.canAccess` do jogador que age sobre o tile em `pos`: o servidor não tem a lista de confiança (a Security Desk não existe no port) nem operadores com atalho
+/// (`opsBypassRestrictions` é falso por padrão). Um tile sem dono ou sem segurança sempre dá acesso.
+pub(in crate::game) fn security_can_access(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool, player: u128) -> bool {
+    use horizon_client::containers::BlockEntity;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return true;
+    };
+    if !is_ours(&entity.id) {
+        return true;
+    }
+    security_read(entity).can_access_player(sec::SecurityConfig::default(), player, false, false, &|_, _| false)
+}
+
+/// `SecurityUtils.displayNoAccess`: a mensagem vermelha `[Mekanism] You don't have access.` ao jogador.
+pub(in crate::game) fn security_deny(game: &mut Game<'_>, player: u128) {
+    use horizon_client::mod_api::Text;
+    let line = Text::translate("constants.mekanism.log_format", &[Text::translate("constants.mekanism.mod_name", &[]), Text::translate(sec::NO_ACCESS_KEY, &[])])
+        .with_style(&horizon_client::text::Style::color(sec::COLOR_RED));
+    game.native_tell(player, line);
+}
+
+/// `TileEntityMekanism.openGui`: o menu de um tile com dono recusa quem não tem acesso (`canAccessOrDisplayError`: a mensagem e nada abre). Devolve se a abertura deve ser
+/// cancelada.
+pub(in crate::game) fn security_open(game: &mut Game<'_>, player: u128, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {
+    if security_can_access(game, pos, is_ours, player) {
+        return false;
+    }
+    security_deny(game, player);
+    true
+}
+
+/// `BlockMekanism.getDestroyProgress`: quem não acessa o tile não o quebra, e nenhuma mensagem sai (o progresso é zero). Um jogador em criativo quebra sem ler o progresso
+/// (`ServerPlayerGameMode.handleBlockBreakAction` destrói direto), então o original deixa o criativo quebrar. Devolve se a quebra deve ser cancelada.
+pub(in crate::game) fn security_break(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {
+    !is_creative(game) && acting_uuid(game).is_some_and(|player| !security_can_access(game, pos, is_ours, player))
+}
+
 /// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor
 /// mas por cima ou por baixo do `widget` (`MenuTooltipPositioner`), em vez de sobre o cursor como o tooltip de um item. O hook
 /// `native_screen_tooltip` só entrega texto com os códigos `§` do vanilla, que não têm as cores de `EnumColor`, e posiciona sempre
@@ -3388,6 +3605,7 @@ pub(in crate::game) fn tag_value(tag: &Tag) -> serde_json::Value {
         Tag::String(text) => Value::String(text.to_string_lossy()),
         Tag::List(list) => Value::Array(list.iter().map(tag_value).collect()),
         Tag::Compound(map) => Value::Object(map.iter().map(|(key, value)| (key.to_string_lossy(), tag_value(value))).collect()),
+        Tag::IntArray(ints) => Value::from(ints.clone()),
         _ => Value::Null,
     }
 }

@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- O componente de segurança dos blocos (Fase 5, frente `seguranca`, decisões 250 e 251): quem põe uma máquina, o Heat Generator ou um cubo de energia vira o dono; o dono e o modo vão no item solto (`mekanism:owner` e `mekanism:security`) e voltam ao bloco posto; o tooltip ganha `Owner:` e `Security:` depois do nome (com Left Shift); quem não tem acesso a um bloco `PRIVATE` (ou `TRUSTED`, sem a Security Desk) não abre a tela, e recebe `[Mekanism] You don't have access.`, nem o quebra. Faltam a aba de segurança, o Configurator e o Wrench recusados, os dados do menu e a Security Desk.
+
 ### Fixed
 - A descrição do item com Shift mais N é cortada em linhas como o NeoForge corta o tooltip de um item (Fase 5, frente `maquina-sobras`, decisão 247): o port a desenhava numa linha só, que passava da tela; agora fica nas mesmas duas linhas do original, pela regra de `ClientHooks.gatherTooltipComponentsFromElements` (o lado do cursor com espaço, ou o corte no espaço do lado maior)
 - O nome do item das fábricas e dos cubos de energia leva a cor do tier (`BaseTier.getTextColor`, via `ItemRegistryObject.getNameColor`): as 36 fábricas e os 5 cubos mostravam o nome branco, o original o mostra na cor do tier (Fase 5, frente `maquina-sobras`, decisão 234)

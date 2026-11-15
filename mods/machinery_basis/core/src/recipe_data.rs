@@ -66,8 +66,9 @@ pub fn apply_energy(total: i64, capacity: i64, stored: i64) -> i64 {
 }
 
 /// `SecurityMode`, na ordem do enum. A conta do modo (próximo, nome, cor) está em `security`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SecurityMode {
+    #[default]
     Public,
     Private,
     Trusted,

@@ -1718,6 +1718,7 @@ fn tick_machine(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity,
     flush_deferred_awards(game);
     result_take_after(game, pos, entity, spec);
     basis::name_apply_pending(entity, pos);
+    basis::security_apply_pending(entity, pos);
     basis::side_apply_pending(entity, pos);
     let id = entity.id.clone();
     with_content(&id, |spec| basis::content_apply_pending(entity, pos, spec));
@@ -1999,6 +2000,7 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
     types.push(rules::ENERGY_COMPONENT.to_owned());
     types.extend(basis::CONTENT_COMPONENTS.map(str::to_owned));
+    types.extend(basis::SECURITY_COMPONENTS.map(str::to_owned));
 }
 
 /// `getInventorySlots` da máquina: a entrada, a saída, a energia e o slot do químico (os dois slots de upgrade são virtuais).
@@ -2485,8 +2487,17 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
 }
 
 /// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.
-pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
+pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
+    let canceled_before = *canceled;
+    let block = game.native_block(pos);
+    // `BlockMekanism.getDestroyProgress`: quem não acessa o bloco não o quebra (progresso zero, sem mensagem).
+    if !canceled_before && (machine_of(&block).is_some() || crate::game::mekanism_cube::is_cube(&block)) && basis::security_break(game, pos, &is_machine_id) {
+        *canceled = true;
+        return;
+    }
+    let canceled = canceled_before;
     if !canceled && crate::game::mekanism_cube::is_cube(&game.native_block(pos)) {
+        basis::security_destroying(game, pos, &is_machine_id);
         basis::name_destroying(game, pos, &is_machine_id);
         basis::side_destroying(game, pos, &side_spec);
         basis::energy_destroying(game, pos, &is_machine_id);
@@ -2495,6 +2506,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     if canceled || machine_of(&game.native_block(pos)).is_none() {
         return;
     }
+    basis::security_destroying(game, pos, &is_machine_id);
     basis::name_destroying(game, pos, &is_machine_id);
     basis::side_destroying(game, pos, &side_spec);
     basis::energy_destroying(game, pos, &is_machine_id);
@@ -2884,6 +2896,7 @@ pub(in crate::game) fn set_configuration_data(game: &mut Game<'_>, pos: [i32; 3]
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_machine_id);
+    basis::security_placed(game, stack, pos, &is_machine_id);
     basis::side_placed(game, stack, pos, SIDE_COMPONENTS, &side_spec);
     let block = game.native_block(pos);
     if crate::game::mekanism_cube::is_cube(&block) {
@@ -2924,6 +2937,7 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_machine_id);
+    basis::security_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
     basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_machine_id);
     if let Some(item) = drops.iter().map(|stack| stack.item.to_string()).find(|item| is_machine_id(item)) {
@@ -2982,7 +2996,16 @@ fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
     with_content(&block, |spec| basis::content_destroying(game, pos, spec));
 }
 
-pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
+pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>, cancel: &mut bool) {
+    // `TileEntityMekanism.openGui`: sem acesso a mensagem sai e o menu não abre.
+    if !*cancel
+        && let Some(at) = pos
+        && (is_machine(&game.native_block(at)) || crate::game::mekanism_cube::is_cube(&game.native_block(at)))
+        && basis::security_open(game, player, at, &is_machine_id)
+    {
+        *cancel = true;
+        return;
+    }
     basis::name_container_opened(game, player, pos, &is_machine_id);
     // `MekanismTileContainer.openInventory`: o jogador entra no `playersUsing` e recebe os dados do menu.
     if let Some(pos) = pos {
@@ -3004,6 +3027,11 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     // O componente `DETAILS` não é só das máquinas: os cubos de energia, os tanques, o Digital Miner e o resto dos 91 itens do rastro também o levam.
     let has_details = rules::has_details(&stack.item);
     let hidden = has_details && !details;
+    // `OWNER` e `SECURITY` (`createSimpleAppender`, `TooltipHideType.ANY`): o item com `DETAILS` só mostra as duas linhas com a tecla de detalhes, e elas vêm logo depois do nome.
+    if (machine.is_some() || crate::game::mekanism_cube::is_cube(&stack.item)) && (!has_details || details) {
+        let at = lines.len().min(1);
+        lines.splice(at..at, basis::security_tooltip_lines(game, stack));
+    }
     if machine.is_some() && details {
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
         // `registerComponentAppenderAfter(FACTORY_TYPE, ...)`: a linha do tipo de receita vem depois dos upgrades e antes da energia (o rastro do original).

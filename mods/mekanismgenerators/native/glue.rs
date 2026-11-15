@@ -169,6 +169,7 @@ pub(in crate::game) fn client_tick() {
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
     basis::name_placed(game, stack, pos, &is_generator_id);
+    basis::security_placed(game, stack, pos, &is_generator_id);
     if is_generator(&game.native_block(pos)) {
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
         basis::on_added(game, pos);
@@ -183,6 +184,7 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_generator_id);
+    basis::security_loot(game, context, drops, &is_generator_id);
     basis::energy_loot(game, context, drops, rules::ENERGY_COMPONENT, &is_generator_id);
     basis::content_loot(game, context, drops, &content_spec());
 }
@@ -195,6 +197,9 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     // `ItemTooltipUtils.shouldDisplayDetails`: os detalhes só aparecem com a tecla de detalhes (Left Shift) apertada, e a dica da descrição vem depois deles.
     let details = game.has_shift_down();
     if details && &*stack.item == rules::HEAT_GENERATOR {
+        // `OWNER` e `SECURITY`: logo depois do nome, antes dos upgrades.
+        let at = lines.len().min(1);
+        lines.splice(at..at, basis::security_tooltip_lines(game, stack));
         // `registerComponentAppenderAfter`: os upgrades antes da energia, o fluido e `Inventory` depois.
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
         lines.push(basis::stored_energy_line(
@@ -216,7 +221,15 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     lines.extend(basis::content_hold_lines(game, details, &format!("description.{}", stack.item.replace([':', '/'], "."))));
 }
 
-pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {
+pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>, cancel: &mut bool) {
+    if !*cancel
+        && let Some(at) = pos
+        && is_generator(&game.native_block(at))
+        && basis::security_open(game, player, at, &is_generator_id)
+    {
+        *cancel = true;
+        return;
+    }
     basis::name_container_opened(game, player, pos, &is_generator_id);
     // `MekanismTileContainer.openInventory`: o jogador recebe os dados do menu.
     if let Some(pos) = pos
@@ -226,8 +239,14 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
     }
 }
 
-pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: bool) {
+pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
+    if !*canceled && is_generator(&game.native_block(pos)) && basis::security_break(game, pos, &is_generator_id) {
+        *canceled = true;
+        return;
+    }
+    let canceled = *canceled;
     if !canceled && is_generator(&game.native_block(pos)) {
+        basis::security_destroying(game, pos, &is_generator_id);
         basis::name_destroying(game, pos, &is_generator_id);
         basis::energy_destroying(game, pos, &is_generator_id);
         basis::content_destroying(game, pos, &content_spec());
@@ -849,6 +868,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         return;
     }
     basis::name_apply_pending(entity, pos);
+    basis::security_apply_pending(entity, pos);
     // A capability de fluido do `lavaTank`: todo lado menos a frente (`RelativeSide.LEFT, RIGHT, BACK, TOP, BOTTOM`).
     let front = basis::front(game, pos);
     crate::game::machinery_resources::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));

@@ -322,6 +322,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         entity.items.resize(SLOTS, None);
     }
     basis::name_apply_pending(entity, pos);
+    basis::security_apply_pending(entity, pos);
     basis::side_apply_pending(entity, pos);
     let alive = LIVE_CUBES.with_borrow_mut(|cubes| cubes.remove(&key));
     let mut live = match alive {
