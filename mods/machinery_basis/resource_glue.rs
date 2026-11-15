@@ -540,7 +540,9 @@ pub fn chemical_faces_set(dimension: &'static str, pos: [i32; 3], block: &str, f
 /// O contêiner do bloco em `pos` visto pelo lado `side` dele, ou `None` se a capability não existe ali.
 fn snapshot<F: Family>(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<ResourceSnapshot<F::R>> {
     let block = game.native_block(pos);
+    // `/tmp/mb_caldeirao_vanilla` (só na cópia de teste): o caldeirão fica o do vanilla (`CauldronWrapper`) mesmo com a sonda ligada, para medir a rede de um cano que puxa dele (decisão 238).
     if basis::transmitter_probe_enabled()
+        && !std::path::Path::new("/tmp/mb_caldeirao_vanilla").exists()
         && let Some(source) = F::probe_source(&block)
     {
         return Some(source);
