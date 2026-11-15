@@ -522,6 +522,10 @@ pub(in crate::game) fn model_tick(game: &mut Game<'_>) {
     use horizon_client::mesher::machinery_transmitter_model as model;
     let dimension = game.native_dimension().to_owned();
     let rebuilt = lock(&MODEL_DIMENSION).as_deref() != Some(dimension.as_str());
+    // O convidado de LAN não passa por `server_data_loaded` (os dados são do anfitrião): sem a tabela ele desenharia só o centro de cada transmissor. O registro que ele recebeu serve.
+    if !model::has_table() {
+        index_model_states(game);
+    }
     let changes: Vec<SimPos> = client_run(|levels| {
         let Some(level) = levels.get_mut(&dimension) else {
             return Vec::new();
@@ -564,6 +568,7 @@ pub(in crate::game) fn transit_at(dimension: &str, pos: [i32; 3]) -> Vec<machine
 /// O mundo fechou: o módulo esquece o dado de todas as posições.
 fn model_reset() {
     horizon_client::mesher::machinery_transmitter_model::clear_data();
+    horizon_client::mesher::machinery_transmitter_model::clear_table();
     *lock(&MODEL_DIMENSION) = None;
 }
 

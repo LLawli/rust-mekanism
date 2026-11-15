@@ -416,3 +416,16 @@ fn the_client_asks_for_the_model_data_when_a_tile_comes_changes_or_leaves() {
     assert_eq!(client.take_model_changes(), vec![here]);
     assert!(client.tile_positions().is_empty());
 }
+
+/// O convidado de LAN monta a tabela dos estados sozinho (a decisão 238): sem ela a seleção cai no `multipart` padrão, só o centro de cada bloco. `has_table` é o que o tique do cliente
+/// pergunta, e o mundo que fecha a apaga para a próxima conexão refazer a dela do registro novo.
+#[test]
+fn the_table_of_the_states_exists_only_after_a_client_built_it_and_goes_with_the_world() {
+    let _guard = GLOBAL.lock().unwrap_or_else(|e| e.into_inner());
+    model::clear_table();
+    assert!(!model::has_table());
+    model::set_families(vec![false], vec![false], vec![(3, 0)]);
+    assert!(model::has_table());
+    model::clear_table();
+    assert!(!model::has_table());
+}

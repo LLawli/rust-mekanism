@@ -147,6 +147,18 @@ pub fn set_families(diversion: Vec<bool>, glass: Vec<bool>, states: Vec<(u32, u1
     GENERATION.fetch_add(1, Ordering::Release);
 }
 
+/// Se a tabela dos estados de transmissor já existe: o convidado de LAN não carrega os dados do servidor (`server_data_loaded` só roda em quem simula o mundo), então o cliente dele a monta
+/// sozinho do registro que recebeu (`transmitter_client::model_tick`), e sem ela toda seleção cai no `multipart` padrão, só o centro de cada bloco.
+pub fn has_table() -> bool {
+    TABLE.read().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
+/// A tabela some (o mundo fechou): a próxima conexão monta a dela do registro novo.
+pub fn clear_table() {
+    *TABLE.write().unwrap_or_else(|e| e.into_inner()) = None;
+    GENERATION.fetch_add(1, Ordering::Release);
+}
+
 /// O dado do modelo da block entity em `pos`: o `ConnectionType` de cada lado (`updateModelData`, `myTransmitter.getConnectionType(side)`; o estado visual sai disso em `select`, pela
 /// família) e a cor do transmissor (`setHasColor`). `None` tira o dado (a block entity saiu, ou o chunk). Devolve se mudou algo.
 pub fn set_data(pos: [i32; 3], data: Option<ModelData>) -> bool {
