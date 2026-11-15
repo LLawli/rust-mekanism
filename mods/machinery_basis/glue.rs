@@ -2845,6 +2845,45 @@ pub(in crate::game) fn security_break(game: &Game<'_>, pos: [i32; 3], is_ours: &
     acting_uuid(game).is_some_and(|player| !security_can_access(game, pos, is_ours, player))
 }
 
+/// `GuiWarningTab` de uma tela que só tem o aviso de redstone (o Heat Generator, à direita, e o cubo de energia, à esquerda): o sprite `tab/warning_info_<lado>` em y = 109 quando a aba
+/// de redstone avisa (`updateVisibility`: `warningTracker.hasWarning()`).
+pub(in crate::game) fn redstone_warning_tab_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], sync: machinery_basis_core::tile::RedstoneSync, image_width: i32, left: bool) {
+    if !machinery_basis_core::redstone_tab::warning(sync) {
+        return;
+    }
+    let [x, y, w, h] = machinery_basis_core::redstone_tab::warning_tab_rect(image_width, left);
+    let sprite = if left { "mekanism:gui/sprites/tab/warning_info_left" } else { "mekanism:gui/sprites/tab/warning_info_right" };
+    game.native_sprite(batch, sprite, [0.0, 0.0, w, h], [origin[0] + x, origin[1] + y, w, h]);
+}
+
+/// `GuiWarningTab.updateTooltip`: `Issues:` em amarelo e uma linha por aviso, cada uma cortada em 170 pixels. Devolve se desenhou (o cursor sobre a aba visível).
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn redstone_warning_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    sync: machinery_basis_core::tile::RedstoneSync,
+    image_width: i32,
+    left: bool,
+    translate: &dyn Fn(&str) -> String,
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    use machinery_basis_core::redstone_tab as rt;
+    let Some(issue) = rt::issue_lang_key(sync) else {
+        return false;
+    };
+    let rect = rt::warning_tab_rect(image_width, left);
+    if !gui::contains(rect, at) {
+        return false;
+    }
+    let width = |piece: &str| game.native_text_width(piece);
+    let mut lines: Vec<(String, Option<u32>)> = tooltip::split_lines(&translate(rt::ISSUES_LANG), tooltip::MAX_WIDTH, &width).into_iter().map(|line| (line, Some(rt::ISSUES_COLOR))).collect();
+    lines.extend(tooltip::split_lines(&translate(issue), tooltip::MAX_WIDTH, &width).into_iter().map(|line| (line, None)));
+    let [x, y, w, h] = rect;
+    menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
+    true
+}
+
 /// O botão de menu que a aba de segurança manda ao servidor (`PacketGuiInteract(NEXT_SECURITY_MODE)`), e o do clique direito (`PREVIOUS_SECURITY_MODE`). Os ids ficam longe
 /// dos botões de cada mod (o despejo e a experiência do Mekanism).
 pub const SECURITY_NEXT_BUTTON: i32 = 100;
@@ -2999,7 +3038,7 @@ pub(in crate::game) fn redstone_widget_tooltip(
 }
 
 /// `Tooltip.create`: a largura em que o texto de um tooltip de widget quebra.
-const REDSTONE_TOOLTIP_WRAP: f32 = 170.0;
+const REDSTONE_TOOLTIP_WRAP: i32 = 170;
 
 /// `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`, no servidor: `PacketUtils.blockEntity` só entrega o tile a quem passa em `canAccess` (quem não passa é
 /// ignorado, sem mensagem) e então `setControlType(getControlType().getNext(supportsMode))`. Devolve `None` se o botão não é da redstone, `Some(None)` se é e o jogador não age ou não

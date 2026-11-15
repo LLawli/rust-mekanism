@@ -87,14 +87,29 @@ fn the_click_of_each_player_leaves_the_mode_the_original_leaves() {
                 owner: Some(owner),
                 mode,
             };
-            let want = |key: String| clicks[&key].as_str().unwrap_or_else(|| panic!("sem {key}")).to_owned();
+            let want = |key: String| {
+                clicks[&key]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("sem {key}"))
+                    .to_owned()
+            };
             assert_eq!(
-                name(server_click(&owner_state(SecurityMode::Public), owner, start, forward)),
+                name(server_click(
+                    &owner_state(SecurityMode::Public),
+                    owner,
+                    start,
+                    forward
+                )),
                 want(format!("owner_{way}")),
                 "{block} dono {way} de {start:?}"
             );
             assert_eq!(
-                name(server_click(&owner_state(SecurityMode::Private), owner, start, forward)),
+                name(server_click(
+                    &owner_state(SecurityMode::Private),
+                    owner,
+                    start,
+                    forward
+                )),
                 want(format!("owner_private_{way}")),
                 "{block} dono privado {way} de {start:?}"
             );
@@ -124,13 +139,17 @@ fn the_access_that_lets_the_click_through_is_the_one_of_the_original() {
             let access = &row["access"];
             assert_eq!(
                 can_click(&state, owner),
-                access[format!("owner_{}", mode_name(mode))].as_bool().unwrap(),
+                access[format!("owner_{}", mode_name(mode))]
+                    .as_bool()
+                    .unwrap(),
                 "{block} dono {}",
                 mode_name(mode)
             );
             assert_eq!(
                 can_click(&state, other),
-                access[format!("other_{}", mode_name(mode))].as_bool().unwrap(),
+                access[format!("other_{}", mode_name(mode))]
+                    .as_bool()
+                    .unwrap(),
                 "{block} outro {}",
                 mode_name(mode)
             );
@@ -177,10 +196,15 @@ fn the_nbt_the_item_and_the_placed_back_tile_follow_the_clicked_mode() {
         let component = redstone_collect(clicked.serialized_name());
         let dropped = &row["drop"]["components"]["mekanism:redstone_control"];
         match component {
-            Some(Value::String(mode)) => assert_eq!(dropped.as_str(), Some(mode.as_str()), "{block}"),
+            Some(Value::String(mode)) => {
+                assert_eq!(dropped.as_str(), Some(mode.as_str()), "{block}")
+            }
             _ => assert!(dropped.is_null(), "{block} {}: {dropped}", row["start"]),
         }
-        let back = dropped.as_str().map_or(RedstoneControl::Disabled, RedstoneControl::from_serialized_name);
+        let back = dropped.as_str().map_or(
+            RedstoneControl::Disabled,
+            RedstoneControl::from_serialized_name,
+        );
         assert_eq!(name(back), row["placed_back"].as_str().unwrap(), "{block}");
     });
 }
@@ -202,12 +226,34 @@ fn the_tile_state_after_each_click_is_the_one_of_the_original() {
                     powered,
                     was_powered: false,
                 };
-                assert_eq!(name(mode), step["control"].as_str().unwrap(), "{block} {key} {index}");
-                assert_eq!(sync.is_activated(), step["activated"].as_bool().unwrap(), "{block} {key} {index}");
-                assert_eq!(sync.is_activated(), step["can_function"].as_bool().unwrap(), "{block} {key} {index}");
-                assert_eq!(powered, step["powered"].as_bool().unwrap(), "{block} {key} {index}");
-                assert!(!step["was_powered"].as_bool().unwrap(), "{block} {key} {index}");
-                assert_eq!(redstone_tab::warning(sync), mode != RedstoneControl::Disabled && !sync.is_activated());
+                assert_eq!(
+                    name(mode),
+                    step["control"].as_str().unwrap(),
+                    "{block} {key} {index}"
+                );
+                assert_eq!(
+                    sync.is_activated(),
+                    step["activated"].as_bool().unwrap(),
+                    "{block} {key} {index}"
+                );
+                assert_eq!(
+                    sync.is_activated(),
+                    step["can_function"].as_bool().unwrap(),
+                    "{block} {key} {index}"
+                );
+                assert_eq!(
+                    powered,
+                    step["powered"].as_bool().unwrap(),
+                    "{block} {key} {index}"
+                );
+                assert!(
+                    !step["was_powered"].as_bool().unwrap(),
+                    "{block} {key} {index}"
+                );
+                assert_eq!(
+                    redstone_tab::warning(sync),
+                    mode != RedstoneControl::Disabled && !sync.is_activated()
+                );
             }
         }
     });

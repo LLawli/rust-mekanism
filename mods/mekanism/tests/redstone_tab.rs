@@ -22,7 +22,11 @@ fn the_sprites_of_the_tab_are_the_ones_of_the_original_byte_for_byte() {
         ("redstone_control/high.png", 156, 0x2b5a_6f85_c937_312c),
         ("redstone_control/low.png", 177, 0x9f92_013a_69d4_9020),
         ("redstone_control/pulse.png", 148, 0xc69d_7e9d_b9b8_362e),
-        ("redstone_control/pulse.png.mcmeta", 121, 0xd7dd_b1a6_8d4d_6d47),
+        (
+            "redstone_control/pulse.png.mcmeta",
+            121,
+            0xd7dd_b1a6_8d4d_6d47,
+        ),
         ("holder_right.png", 128, 0xbae0_8f40_b35a_d540),
         ("warning.png", 110, 0x668a_64a3_e2da_b264),
     ];
@@ -41,15 +45,22 @@ fn every_mode_names_a_sprite_that_exists() {
         RedstoneControl::Low,
         RedstoneControl::Pulse,
     ] {
-        let name = redstone_tab::overlay(mode).strip_prefix("mekanism:").unwrap();
+        let name = redstone_tab::overlay(mode)
+            .strip_prefix("mekanism:")
+            .unwrap();
         assert!(sprites().join(format!("{name}.png")).is_file(), "{name}");
     }
 }
 
 fn english(key: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("content/assets/mekanism/lang/en_us.json");
-    let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    json[key].as_str().unwrap_or_else(|| panic!("sem {key}")).to_owned()
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("content/assets/mekanism/lang/en_us.json");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    json[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("sem {key}"))
+        .to_owned()
 }
 
 /// `MekanismLang.REDSTONE_CONTROL_*` do `en_us.json` que a datagen do original escreve.
@@ -70,7 +81,10 @@ fn the_tooltip_of_each_mode_is_the_text_of_the_original() {
 #[test]
 fn the_tab_sits_at_the_same_place_in_every_screen() {
     assert_eq!(mekanism_rules::SCREEN_IMAGE_WIDTH, 176);
-    assert_eq!(redstone_tab::tab(mekanism_rules::SCREEN_IMAGE_WIDTH).holder(), [176.0, 137.0, 26.0, 26.0]);
+    assert_eq!(
+        redstone_tab::tab(mekanism_rules::SCREEN_IMAGE_WIDTH).holder(),
+        [176.0, 137.0, 26.0, 26.0]
+    );
     assert_eq!(redstone_tab::tab(176).button(), [179.0, 141.0, 18.0, 18.0]);
     assert_eq!(redstone_tab::TAB_TINT, 0xFFC9_071F);
 }

@@ -96,7 +96,18 @@ fn the_screen_keeps_the_tabs_outside_the_image_but_not_the_holder_margin() {
     assert!(!over(-15.0, 163.0));
     // `GuiHeatTab` e `GuiEnergyTab` são as mesmas constantes que o desenho e o tooltip usam.
     let rects: Vec<_> = rules::screen_elements().iter().map(|e| e.rect()).collect();
-    assert_eq!(rects, [rules::HEAT_TAB.rect, rules::ENERGY_TAB.rect]);
+    // E os botões das abas de redstone (179, 141) e de segurança (179, 38) à direita, entre elas.
+    assert_eq!(
+        rects,
+        [
+            rules::HEAT_TAB.rect,
+            [179.0, 141.0, 18.0, 18.0],
+            [179.0, 38.0, 18.0, 18.0],
+            rules::ENERGY_TAB.rect,
+            // A aba de avisos à direita, que só responde com o aviso de redstone.
+            [176.0, 109.0, 26.0, 26.0]
+        ]
+    );
 }
 
 #[test]

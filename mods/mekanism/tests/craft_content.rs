@@ -516,9 +516,18 @@ fn the_names_are_the_originals() {
     for (key, value) in security.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os da aba de redstone (`Redstone Detection: ...`: a frente `aba-redstone`), copiados da datagen do original.
+    let redstone = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/redstone/lang.json"),
+    );
+    for (key, value) in redstone.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     for (key, value) in ours {
         if content.get(key).is_some()
             || security.get(key).is_some()
+            || redstone.get(key).is_some()
             || fluids.get(key).is_some()
             || screens.get(key).is_some()
             || cables.get(key).is_some()

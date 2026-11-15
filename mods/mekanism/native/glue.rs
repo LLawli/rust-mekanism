@@ -602,6 +602,9 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
             vec![
                 machinery_basis_core::screen_elements::Element::always(machinery_basis_core::redstone_tab::tab(rules::SCREEN_IMAGE_WIDTH).button()),
                 machinery_basis_core::screen_elements::Element::always(machinery_basis_core::side_tab::security_tab(rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y).button()),
+                machinery_basis_core::screen_elements::Element::when(machinery_basis_core::redstone_tab::warning_tab_rect(rules::SCREEN_IMAGE_WIDTH, true), |mirror| {
+                    machinery_basis_core::redstone_tab::warning(rules::cube_redstone(mirror))
+                }),
                 machinery_basis_core::screen_elements::Element::always(rules::ENERGY_TAB.rect),
             ]
         });
@@ -3830,7 +3833,10 @@ fn draw_cube(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, or
     let fill = (scaled > 0).then_some((rules::CUBE_ENERGY_SPRITE, rules::CUBE_ENERGY_FRAME, 0xFF_FF_FF_FFu32));
     basis::gauge(game, batch, &CUBE_GAUGE_STYLE, at(gauge), scaled, fill);
     basis::security_draw(game, batch, origin, &rules::cube_security(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_CUBE_Y);
-    basis::redstone_draw(game, batch, origin, rules::cube_redstone(&game.mb_mirror(block)), rules::SCREEN_IMAGE_WIDTH);
+    let redstone = rules::cube_redstone(&game.mb_mirror(block));
+    basis::redstone_draw(game, batch, origin, redstone, rules::SCREEN_IMAGE_WIDTH);
+    // `GuiMekanism.addWarningTab`: a aba de avisos da esquerda, com o aviso de redstone que a aba acima tem.
+    basis::redstone_warning_tab_draw(game, batch, origin, redstone, rules::SCREEN_IMAGE_WIDTH, true);
     draw_energy_tab(game, batch, origin);
 }
 
@@ -3846,6 +3852,9 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
         return true;
     }
     let redstone = rules::cube_redstone(&mirror);
+    if basis::redstone_warning_tooltip(game, batch, redstone, rules::SCREEN_IMAGE_WIDTH, true, &translate, at, cursor) {
+        return true;
+    }
     if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(redstone.control_type)), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
         return true;
     }

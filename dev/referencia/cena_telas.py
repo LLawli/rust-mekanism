@@ -822,9 +822,9 @@ def caminho_no_desktop(caminho):
 
 def iguais_no_recorte(a, b, recorte):
     """Se os dois prints são iguais dentro do `recorte` (esquerda, topo, direita, base, em pixels da imagem), comparado no desktop (PIL). O que o Energy Cube desenha
-    no mundo atrás da tela (o núcleo gira com o `partial` do cliente, que o Horizon não prende com o `tick freeze`) fica fora do recorte, que é a tela e as abas."""
+    no mundo atrás da tela (o núcleo gira com o `partial` do cliente, que o Horizon não prende com o `tick freeze`) fica fora do recorte, que é a tela e as abas; o recorte aceita 1 nível de diferença por canal, o ruído do mundo escuro entre a barra de armadura e o painel do gerador."""
     codigo = ("from PIL import Image, ImageChops; import sys; a, b = (Image.open(p).convert('RGB').crop(%r) for p in sys.argv[1:3]); "
-              "print('igual' if ImageChops.difference(a, b).getbbox() is None else 'diferente')" % (tuple(recorte),))
+              "print('igual' if max(e[1] for e in ImageChops.difference(a, b).getextrema()) <= 1 else 'diferente')" % (tuple(recorte),))
     a, b = caminho_no_desktop(a), caminho_no_desktop(b)
     saida = subprocess.run(["ssh", "desktop", f"python3 -c {shlex.quote(codigo)} {shlex.quote(a)} {shlex.quote(b)}"], capture_output=True, text=True).stdout.strip()
     return saida == "igual"
@@ -889,7 +889,7 @@ def tira_port(c, x, escala, destino):
         alvo = f"{destino}/port_{c['nome']}_e{escala}{sufixo}.png"
         if c["args"].get("clicar"):
             # O cubo: só a tela e as abas valem (o núcleo atrás gira).
-            recorte = ((gui_l - 176) // 2 - 28, (gui_a - 166) // 2, (gui_l - 176) // 2 + 204, (gui_a - 166) // 2 + 166) if c["maquina"].startswith("cubo") else None
+            recorte = ((gui_l - 176) // 2 - 28, (gui_a - 166) // 2, (gui_l - 176) // 2 + 204, (gui_a - 166) // 2 + 166) if c["maquina"].startswith("cubo") or c["maquina"] == "generator" else None
             if recorte:
                 recorte = tuple(v * escala for v in recorte)
             espera_estado_estavel(alvo, destino, recorte=recorte)

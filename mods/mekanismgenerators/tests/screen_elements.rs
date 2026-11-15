@@ -54,17 +54,37 @@ fn the_security_and_redstone_buttons_are_what_the_original_finds() {
     let (client, _) = common::client_of(&common::Server::new(0.0), false);
     for case in ["generator_fora_base", "generator_fora_lava"] {
         let (x0, y0, _, _, rows) = grid(case, "completo");
-        let java = |x: i32, y: i32| rows[(y - y0) as usize].iter().any(|[a, b]| (*a..*b).contains(&x));
+        let java = |x: i32, y: i32| {
+            rows[(y - y0) as usize]
+                .iter()
+                .any(|[a, b]| (*a..*b).contains(&x))
+        };
         assert_eq!(x0, -32);
         for y in 30..160 {
             for x in 176..210 {
                 if tab_button(x, y) {
                     assert!(java(x, y), "{case} em ({x}, {y})");
-                    assert!(screen_elements::over_element(rules::MENU, [x as f32, y as f32], &client.mirror), "{case} em ({x}, {y})");
+                    assert!(
+                        screen_elements::over_element(
+                            rules::MENU,
+                            [x as f32, y as f32],
+                            &client.mirror
+                        ),
+                        "{case} em ({x}, {y})"
+                    );
                 }
             }
         }
-        for (x, y) in [(177, 48), (198, 48), (188, 36), (188, 57), (177, 150), (198, 150), (188, 139), (188, 160)] {
+        for (x, y) in [
+            (177, 48),
+            (198, 48),
+            (188, 36),
+            (188, 57),
+            (177, 150),
+            (198, 150),
+            (188, 139),
+            (188, 160),
+        ] {
             assert!(!java(x, y), "{case} em ({x}, {y})");
         }
     }

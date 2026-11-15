@@ -1034,7 +1034,10 @@ pub(in crate::game) fn screen_draw(
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
     game.mb_window_draw_tab(batch, block, origin);
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades, a de redstone e a de segurança, nesta ordem.
-    basis::redstone_draw(game, batch, origin, rules::redstone(&game.mb_mirror(block)), WIDTH as i32);
+    let redstone = rules::redstone(&game.mb_mirror(block));
+    basis::redstone_draw(game, batch, origin, redstone, WIDTH as i32);
+    // `GuiHeatGenerator.addWarningTab`: a aba de avisos à direita, com o aviso de redstone que a aba acima tem.
+    basis::redstone_warning_tab_draw(game, batch, origin, redstone, WIDTH as i32, false);
     basis::security_draw(game, batch, origin, &rules::security(&game.mb_mirror(block)), WIDTH as i32, machinery_basis_core::side_tab::SECURITY_TAB_Y);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = read.lava;
@@ -1154,6 +1157,9 @@ pub(in crate::game) fn widget_tooltip(
     let read = rules::ScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
     let redstone = rules::redstone(&mirror);
+    if basis::redstone_warning_tooltip(game, batch, redstone, WIDTH as i32, false, &translate, at, cursor) {
+        return true;
+    }
     if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(redstone.control_type)), WIDTH as i32, at, cursor) {
         return true;
     }

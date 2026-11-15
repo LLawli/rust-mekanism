@@ -178,14 +178,20 @@ fn the_redstone_button_is_what_the_original_finds() {
             let menu = format!("test:screen_elements:redstone:{case}");
             screen_elements::declare(&menu, machine_elements(spec));
             let mirror = mirror_of(spec, tracked, xp, warning);
-            for (x, y) in full.points().filter(|(x, y)| (176..210).contains(x) && (132..166).contains(y)) {
+            for (x, y) in full
+                .points()
+                .filter(|(x, y)| (176..210).contains(x) && (132..166).contains(y))
+            {
                 assert_eq!(
                     full.over(x, y) && redstone_button(x, y),
                     redstone_button(x, y),
                     "{case} em ({x}, {y}): o original responde no botão inteiro"
                 );
                 if redstone_button(x, y) {
-                    assert!(screen_elements::over_element(&menu, [x as f32, y as f32], &mirror), "{case} em ({x}, {y})");
+                    assert!(
+                        screen_elements::over_element(&menu, [x as f32, y as f32], &mirror),
+                        "{case} em ({x}, {y})"
+                    );
                 }
             }
             // O suporte em volta (3 pixels à esquerda, 5 à direita, 4 em cima e embaixo) não é elemento.

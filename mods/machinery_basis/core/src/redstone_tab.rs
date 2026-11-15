@@ -101,6 +101,31 @@ pub fn warning(sync: RedstoneSync) -> bool {
     sync.control_type != RedstoneControl::Disabled && !sync.is_activated()
 }
 
+/// `GuiWarningTab`: o suporte de 26 por 26 em y = 109, à esquerda (`-26`) ou, no Heat Generator (`GuiHeatGenerator.addWarningTab`), à direita (`imageWidth`), que aparece
+/// quando o tile tem um aviso de redstone e as telas sem outros avisos (o gerador e o cubo) não têm mais nada a mostrar nele.
+pub fn warning_tab_rect(image_width: i32, left: bool) -> crate::gui::Rect {
+    [
+        if left { -26.0 } else { image_width as f32 },
+        109.0,
+        26.0,
+        26.0,
+    ]
+}
+
+/// `MekanismLang.ISSUE_*` do aviso de redstone (`WarningType.REDSTONE_SIGNAL_ABSENT`, `REDSTONE_SIGNAL_PRESENT`, `REDSTONE_PULSE_REQUIRED`) que `getWarnings` traduz no tooltip
+/// da aba de avisos, ou `None` sem aviso.
+pub fn issue_lang_key(sync: RedstoneSync) -> Option<&'static str> {
+    warning(sync).then(|| match sync.control_type {
+        RedstoneControl::High => "gui.mekanism.issues.redstone_signal_absent",
+        RedstoneControl::Low => "gui.mekanism.issues.redstone_signal_present",
+        _ => "gui.mekanism.issues.redstone_pulse_required",
+    })
+}
+
+/// `MekanismLang.ISSUES`, a primeira linha do tooltip da aba de avisos, em `EnumColor.YELLOW`.
+pub const ISSUES_LANG: &str = "gui.mekanism.issues";
+pub const ISSUES_COLOR: u32 = 0xFF_DD_4F;
+
 /// `warning.png` (16 por 16, `gui.scaling` do tipo `tile`): uma linha por entrada, o bit `x` aceso é a cor clara de `STRIPE_LIGHT`. O sprite do original é a fonte; o teste
 /// `dev/referencia/test_aba_redstone.py` o confere.
 pub const WARNING_ROWS: [u16; 16] = [
@@ -168,6 +193,27 @@ mod tests {
         assert!(!warning(sync(RedstoneControl::Low, false)));
         assert!(warning(sync(RedstoneControl::Low, true)));
         assert!(warning(sync(RedstoneControl::Pulse, false)));
+    }
+
+    #[test]
+    fn the_warning_tab_and_its_issue_follow_the_redstone_warning() {
+        assert_eq!(warning_tab_rect(176, true), [-26.0, 109.0, 26.0, 26.0]);
+        assert_eq!(warning_tab_rect(176, false), [176.0, 109.0, 26.0, 26.0]);
+        let sync = |control_type, powered| RedstoneSync {
+            control_type,
+            powered,
+            was_powered: false,
+        };
+        assert_eq!(issue_lang_key(sync(RedstoneControl::Disabled, false)), None);
+        assert_eq!(
+            issue_lang_key(sync(RedstoneControl::High, false)),
+            Some("gui.mekanism.issues.redstone_signal_absent")
+        );
+        assert_eq!(
+            issue_lang_key(sync(RedstoneControl::Low, true)),
+            Some("gui.mekanism.issues.redstone_signal_present")
+        );
+        assert_eq!(issue_lang_key(sync(RedstoneControl::Low, false)), None);
     }
 
     #[test]

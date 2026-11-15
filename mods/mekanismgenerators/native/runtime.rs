@@ -343,7 +343,8 @@ pub fn armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
 /// Os elementos da tela que ficam fora da imagem de 176 por 166 e recebem o mouse (`GuiMekanism.hasClickedOutside`): a aba de calor, os botões das abas de
 /// redstone e de segurança e a aba de energia, todos sempre ativos e visíveis.
 pub fn screen_elements() -> Vec<machinery_basis_core::screen_elements::Element> {
-    [
+    use machinery_basis_core::screen_elements::Element;
+    let always = [
         HEAT_TAB.rect,
         machinery_basis_core::redstone_tab::tab(SCREEN_IMAGE_WIDTH).button(),
         machinery_basis_core::side_tab::security_tab(
@@ -352,9 +353,14 @@ pub fn screen_elements() -> Vec<machinery_basis_core::screen_elements::Element> 
         )
         .button(),
         ENERGY_TAB.rect,
-    ]
-    .map(machinery_basis_core::screen_elements::Element::always)
-    .to_vec()
+    ];
+    let mut elements: Vec<Element> = always.map(Element::always).to_vec();
+    // `GuiWarningTab` à direita (`GuiHeatGenerator.addWarningTab`): visível só com o aviso de redstone.
+    elements.push(Element::when(
+        machinery_basis_core::redstone_tab::warning_tab_rect(SCREEN_IMAGE_WIDTH, false),
+        |mirror| machinery_basis_core::redstone_tab::warning(redstone(mirror)),
+    ));
+    elements
 }
 
 /// `GuiHeatTab.getResource`: `Mekanism.rl("tab/heat_info_" + type.getTabName())`, no atlas de sprites da tela.
