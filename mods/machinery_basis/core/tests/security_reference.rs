@@ -11,8 +11,9 @@ use std::path::PathBuf;
 const BLOCKS: [&str; 3] = ["crusher", "heat_generator", "basic_energy_cube"];
 
 fn rows(block: &str) -> Vec<Value> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("../../../dev/referencia/rastros/security_{block}.jsonl"));
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "../../../dev/referencia/rastros/security_{block}.jsonl"
+    ));
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
     let rows: Vec<Value> = text
@@ -217,7 +218,10 @@ fn the_tooltip_follows_who_looks() {
         let state = state_of(row);
         let owner = uuid(&row["owner"]);
         let name = row["owner_name"].as_str().expect("nome");
-        for (viewer, key) in [(owner, "tooltip_owner"), (uuid(&row["other"]), "tooltip_other")] {
+        for (viewer, key) in [
+            (owner, "tooltip_owner"),
+            (uuid(&row["other"]), "tooltip_other"),
+        ] {
             let tooltip = row["drops"][0][key].as_array().expect("tooltip");
             let lines = sec::tooltip_lines(config, Some(viewer), Some((owner, name)), state.mode);
             assert_eq!(lines.len(), 2);
@@ -298,12 +302,36 @@ fn the_tab_click_changes_the_mode_only_for_the_owner() {
             state.click(player, forward);
             state.mode.serialized_name().to_ascii_uppercase()
         };
-        assert_eq!(after(owner, true), clicks["owner_next"].as_str().unwrap(), "{tag}");
-        assert_eq!(after(owner, false), clicks["owner_previous"].as_str().unwrap(), "{tag}");
-        assert_eq!(after(other, true), clicks["other_next"].as_str().unwrap(), "{tag}");
-        assert_eq!(after(other, false), clicks["other_previous"].as_str().unwrap(), "{tag}");
-        assert_eq!(start.owner_matches(owner), clicks["owner_matches"] == true, "{tag}");
-        assert_eq!(start.owner_matches(other), clicks["other_matches"] == true, "{tag}");
+        assert_eq!(
+            after(owner, true),
+            clicks["owner_next"].as_str().unwrap(),
+            "{tag}"
+        );
+        assert_eq!(
+            after(owner, false),
+            clicks["owner_previous"].as_str().unwrap(),
+            "{tag}"
+        );
+        assert_eq!(
+            after(other, true),
+            clicks["other_next"].as_str().unwrap(),
+            "{tag}"
+        );
+        assert_eq!(
+            after(other, false),
+            clicks["other_previous"].as_str().unwrap(),
+            "{tag}"
+        );
+        assert_eq!(
+            start.owner_matches(owner),
+            clicks["owner_matches"] == true,
+            "{tag}"
+        );
+        assert_eq!(
+            start.owner_matches(other),
+            clicks["other_matches"] == true,
+            "{tag}"
+        );
         // O pacote da aba só sai do dono, com o botão esquerdo ou o direito.
         assert_eq!(sec::tab_click(&start, owner, 0), Some(true), "{tag}");
         assert_eq!(sec::tab_click(&start, owner, 1), Some(false), "{tag}");
@@ -341,13 +369,21 @@ fn the_menu_data_is_the_original_frequency_and_mode() {
         let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
         let tag = format!("{block} {}", row["mode"]);
         assert_eq!(hex, menu["bytes"].as_str().expect("bytes"), "{tag} bytes");
-        assert_eq!(i64::from(hash), menu["hash"].as_i64().expect("hash"), "{tag} hash");
+        assert_eq!(
+            i64::from(hash),
+            menu["hash"].as_i64().expect("hash"),
+            "{tag} hash"
+        );
         assert_eq!(
             mode_of(row).ordinal() as i64,
             menu["mode"].as_i64().expect("modo"),
             "{tag} modo"
         );
-        assert_eq!(sec::frequency_owner(&bytes), Some((owner, name.to_owned())), "{tag}");
+        assert_eq!(
+            sec::frequency_owner(&bytes),
+            Some((owner, name.to_owned())),
+            "{tag}"
+        );
     });
 }
 
@@ -355,4 +391,25 @@ fn the_menu_data_is_the_original_frequency_and_mode() {
 fn a_tile_without_owner_syncs_a_null_frequency() {
     assert_eq!(sec::frequency_sync(None, ""), (0, vec![0]));
     assert_eq!(sec::frequency_owner(&[0]), None);
+}
+
+/// `CommonWorldTickHandler.onBlockBreak`: o `BreakBlockEvent` é cancelado para quem não acessa, e `ServerPlayerGameMode.handleBlockBreakAction` o dispara também em criativo
+/// (`destroyAndAck`), então quem não acessa não quebra em nenhum modo de jogo (a decisão 251 supunha o contrário, pelo vanilla).
+#[test]
+fn creative_breaking_is_refused_to_who_cannot_access_like_survival() {
+    let config = SecurityConfig::default();
+    each(|block, row| {
+        let state = state_of(row);
+        for who in ["owner", "other"] {
+            let breaks = row["creative"][format!("{who}_creative_breaks")]
+                .as_bool()
+                .unwrap_or_else(|| panic!("{block} {}: sem {who}_creative_breaks", row["mode"]));
+            assert_eq!(
+                breaks,
+                state.can_break(config, uuid(&row[who]), false, &nobody),
+                "{block} {} {who}",
+                row["mode"]
+            );
+        }
+    });
 }

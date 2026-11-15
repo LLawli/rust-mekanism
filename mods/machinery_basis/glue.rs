@@ -2702,10 +2702,11 @@ pub(in crate::game) fn security_open(game: &mut Game<'_>, player: u128, pos: [i3
     true
 }
 
-/// `BlockMekanism.getDestroyProgress`: quem não acessa o tile não o quebra, e nenhuma mensagem sai (o progresso é zero). Um jogador em criativo quebra sem ler o progresso
-/// (`ServerPlayerGameMode.handleBlockBreakAction` destrói direto), então o original deixa o criativo quebrar. Devolve se a quebra deve ser cancelada.
+/// `BlockMekanism.getDestroyProgress` (progresso zero para quem não acessa, que vale na sobrevivência) e `CommonWorldTickHandler.onBlockBreak` (o `BreakBlockEvent` cancelado para quem
+/// não acessa, que vale em qualquer modo: `ServerPlayerGameMode.handleBlockBreakAction` destrói direto em criativo, e `destroyBlock` dispara o evento). O rastro
+/// (`creative_other_creative_breaks`) mostra que o criativo sem acesso também não quebra. Nenhuma mensagem sai. Devolve se a quebra deve ser cancelada.
 pub(in crate::game) fn security_break(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {
-    !is_creative(game) && acting_uuid(game).is_some_and(|player| !security_can_access(game, pos, is_ours, player))
+    acting_uuid(game).is_some_and(|player| !security_can_access(game, pos, is_ours, player))
 }
 
 /// O botão de menu que a aba de segurança manda ao servidor (`PacketGuiInteract(NEXT_SECURITY_MODE)`), e o do clique direito (`PREVIOUS_SECURITY_MODE`). Os ids ficam longe

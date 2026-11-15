@@ -37,7 +37,9 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.RegistryOps;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -194,7 +196,34 @@ public class SecurityTraceTest {
             }
             root.add("clicks", clicks(mode));
             root.add("menu", menu(tile));
+            root.add("creative", creative(mode));
             return root;
+        }
+
+        /// Quebrar em criativo: `ServerPlayerGameMode.handleBlockBreakAction` destrói direto (`destroyAndAck`, sem `getDestroyProgress`), e quem recusa é o `BreakBlockEvent` de
+        /// `CommonWorldTickHandler.onBlockBreak`. Um criativo que é o dono e um que não é tentam quebrar a máquina posta pelo dono no `mode`.
+        private JsonObject creative(SecurityMode mode) {
+            JsonObject out = new JsonObject();
+            ServerLevel level = helper.getLevel();
+            BlockPos abs = helper.absolutePos(SPOT);
+            ServerPlayer stranger = (ServerPlayer) helper.makeTickingMockServerPlayerInLevel(GameType.CREATIVE);
+            List<Object[]> players = new ArrayList<>();
+            players.add(new Object[]{"other", stranger});
+            if (this.owner instanceof ServerPlayer placer) {
+                placer.gameMode.setGameModeForPlayer(GameType.CREATIVE, null);
+                players.add(new Object[]{"owner", placer});
+            }
+            for (Object[] who : players) {
+                helper.setBlock(SPOT, Blocks.AIR.defaultBlockState());
+                helper.useOn(FLOOR, new ItemStack(spec.item.get()), this.owner, Direction.UP);
+                tile().getSecurity().setMode(mode);
+                ServerPlayer player = (ServerPlayer) who[1];
+                player.setPos(abs.getX() + 0.5, abs.getY(), abs.getZ() + 1.5);
+                player.gameMode.handleBlockBreakAction(abs, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, Direction.UP, level.getMaxY(), 1);
+                out.addProperty((String) who[0] + "_creative_breaks", level.getBlockState(abs).isAir());
+            }
+            helper.setBlock(SPOT, Blocks.AIR.defaultBlockState());
+            return out;
         }
 
         /// O que o menu sincroniza da segurança (`addContainerTrackers`): a frequência de segurança (`SyncableStreamCodec.frequency`: o `hashCode` do valor e os bytes que

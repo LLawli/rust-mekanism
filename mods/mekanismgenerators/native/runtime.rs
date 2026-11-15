@@ -928,7 +928,10 @@ static INDEXES: LazyLock<ScreenIndexes> =
 
 static SECURITY_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
     let list = heat_generator_trackers();
-    (position_of(&list, source::SECURITY_FREQUENCY), position_of(&list, source::SECURITY_MODE))
+    (
+        position_of(&list, source::SECURITY_FREQUENCY),
+        position_of(&list, source::SECURITY_MODE),
+    )
 });
 
 /// A segurança que o cliente lê do menu do Heat Generator (`GuiSecurityTab`).

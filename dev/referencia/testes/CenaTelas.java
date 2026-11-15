@@ -253,6 +253,9 @@ public class CenaTelas {
         // Como um jogador coloca a máquina: `applyImplicitComponents` recalcula os upgrades, e com eles a capacidade de energia.
         tile(server, caso).applyComponents(net.minecraft.core.component.DataComponentMap.EMPTY,
               net.minecraft.core.component.DataComponentPatch.EMPTY);
+        // `BlockMekanism.setPlacedBy`: quem põe a máquina é o dono (o port a põe pelo jogador, `place`), e a aba de segurança mostra o dono e o modo dele.
+        var owner = server.getPlayerList().getPlayers().getFirst();
+        tile(server, caso).setOwnerUUID(owner.getUUID(), null);
     }
 
     /// A configuração de lados e o ejetor (as janelas de lados e de transporte): `lados=items:front=output,top=none;energy:back=input` (um tipo, seguido de
@@ -455,7 +458,7 @@ public class CenaTelas {
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
     }
 
-    /// O port ainda não tem as abas de cadeado, livro e redstone (as de configuração e de transporte ficam visíveis desde 2026-11-11): no original da cena elas ficam invisíveis, para a
+    /// O port ainda não tem as abas de livro e redstone (as de configuração e de transporte ficam visíveis desde 2026-11-11): no original da cena elas ficam invisíveis, para a
     /// imagem mostrar o que o port tem. A aba de avisos, a de upgrades e a de xp ficam; a de xp vai para o log (`cena: ... xp_tab`) com a
     /// posição e a visibilidade que o original dá. O suporte da barra de armadura do Heat Generator (`GuiSideHolder.create(-26, 6, 98)`, `isArmorHolder`)
     /// também fica visível desde 2026-11-07, quando o port o desenhou: antes ficava oculto, e o comparador só via os slots.
@@ -489,6 +492,7 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.GuiWarningTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiUpgradeWindowTab)
                       && !(element instanceof mekanism.client.gui.element.tab.GuiXpContainmentTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.GuiSecurityTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiSideConfigurationTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiTransporterConfigTab)
                       && !isArmorHolder(screen, element)

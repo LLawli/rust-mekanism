@@ -271,10 +271,10 @@ class CompararTela(unittest.TestCase):
         self.assertEqual(com["elementos"]["tooltip"]["diferentes"], 1)
         self.assertGreater(imagem_diferenca[0], 176 * ESCALA)
         # Na coluna das abas que o port não tem, a região não conta.
-        x, y = na_tela(190, 40)
+        x, y = na_tela(190, 70)
         c = copia(a)
         pintar(c, x, y)
-        coluna = ct.comparar(a, c, "infuser", ESCALA, regioes={"tooltip": (180, 30, 60, 30)})[0]
+        coluna = ct.comparar(a, c, "infuser", ESCALA, regioes={"tooltip": (180, 60, 60, 30)})[0]
         self.assertEqual(coluna["diferentes"], 0)
         # Dentro da tela a região não rouba os pixels dos elementos.
         x, y = na_tela(165, 20)

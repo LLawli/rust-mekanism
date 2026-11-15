@@ -308,8 +308,9 @@ pub const FREQUENCY_NAME: &str = "Security";
 
 /// `String.hashCode` do Java: `s[0] * 31^(n-1) + ...` sobre as unidades UTF-16.
 pub fn java_string_hash(text: &str) -> i32 {
-    text.encode_utf16()
-        .fold(0i32, |hash, unit| hash.wrapping_mul(31).wrapping_add(i32::from(unit)))
+    text.encode_utf16().fold(0i32, |hash, unit| {
+        hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+    })
 }
 
 /// `UUID.hashCode`: `(int) (hilo >> 32) ^ (int) hilo`, com `hilo = most ^ least`.
@@ -411,7 +412,9 @@ pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
     }
     fn string(bytes: &[u8], at: &mut usize) -> Option<String> {
         let len = var_int(bytes, at)? as usize;
-        let text = std::str::from_utf8(bytes.get(*at..*at + len)?).ok()?.to_owned();
+        let text = std::str::from_utf8(bytes.get(*at..*at + len)?)
+            .ok()?
+            .to_owned();
         *at += len;
         Some(text)
     }
@@ -764,7 +767,10 @@ mod tests {
     #[test]
     fn the_frequency_of_the_menu_carries_the_owner_and_its_name() {
         let (hash, bytes) = frequency_sync(Some(7), "Alex");
-        assert_eq!(hash, (31 + java_string_hash(FREQUENCY_NAME)).wrapping_mul(31) + uuid_hash(7));
+        assert_eq!(
+            hash,
+            (31 + java_string_hash(FREQUENCY_NAME)).wrapping_mul(31) + uuid_hash(7)
+        );
         assert_eq!(bytes[0], 1);
         assert_eq!(frequency_owner(&bytes), Some((7, "Alex".to_owned())));
         assert_eq!(frequency_sync(None, "Alex"), (0, vec![0]));

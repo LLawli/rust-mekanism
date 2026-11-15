@@ -2007,7 +2007,10 @@ static CUBE_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
 
 static CUBE_SECURITY_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
     let list = cube_trackers();
-    (position_of(&list, source::SECURITY_FREQUENCY), position_of(&list, source::SECURITY_MODE))
+    (
+        position_of(&list, source::SECURITY_FREQUENCY),
+        position_of(&list, source::SECURITY_MODE),
+    )
 });
 
 /// A segurança que o cliente lê do menu do cubo (`GuiSecurityTab`).
@@ -2480,9 +2483,16 @@ fn infuser_indexes() -> &'static ScreenIndexes {
 }
 
 /// A segurança que o cliente lê do menu de uma máquina (`GuiSecurityTab`).
-pub fn machine_security(spec: &ScreenSpec, mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+pub fn machine_security(
+    spec: &ScreenSpec,
+    mirror: &Mirror,
+) -> machinery_basis_core::security::SecurityView {
     let indexes = (spec.indexes)();
-    machinery_basis_core::security::SecurityView::read(mirror, indexes.security_frequency, indexes.security_mode)
+    machinery_basis_core::security::SecurityView::read(
+        mirror,
+        indexes.security_frequency,
+        indexes.security_mode,
+    )
 }
 
 /// O que o cliente lê do espelho do menu de uma máquina.

@@ -110,6 +110,8 @@ FORA_DA_TELA = ("suporte_armadura",)
 # A aba de xp (`GuiXpContainmentTab`: 26 por 26 em `imageWidth`, 90), que as máquinas de receita têm com o upgrade `xp_containment`. O botão de
 # dentro, 18 por 18, começa em (179, 94).
 ABA_XP = (LARGURA, 90, 26, 26)
+# A aba de segurança (`GuiSecurityTab`: 26 por 26 em `imageWidth`, 34): todas as telas com dono a têm. O botão de dentro, 18 por 18, começa em (179, 38).
+ABA_SEGURANCA = (LARGURA, 34, 26, 26)
 
 # A janela de upgrades aberta no lugar padrão (`GuiUpgradeWindow` em (-11, 15), 198 por 94): cada filho no lugar dele, e a sombra em volta.
 # Valem antes dos elementos da tela, porque a janela cobre os dois. Em pixels de GUI relativos ao canto da tela.
@@ -311,6 +313,7 @@ def elementos_da_tela(tela):
     elementos = dict(TELAS[tela])
     elementos["aba_avisos"] = ABA_AVISOS[tela]
     elementos["aba_energia"] = ABA_ENERGIA
+    elementos["aba_seguranca"] = ABA_SEGURANCA
     if tela == "generator":
         elementos["aba_calor"] = ABA_CALOR
         elementos.update(FUNDOS_ARMADURA)
@@ -338,7 +341,7 @@ def dentro(rect, x, y):
 
 def mascara_das_abas(tela):
     """O que sai da conta: as colunas das abas que o port não tem, menos a aba de avisos, que ele tem."""
-    liberado = [ABA_AVISOS[tela], ABA_UPGRADES, ABA_ENERGIA]
+    liberado = [ABA_AVISOS[tela], ABA_UPGRADES, ABA_ENERGIA, ABA_SEGURANCA]
     liberado += [ABA_XP] if tela != "generator" else [ABA_CALOR, SUPORTE_ARMADURA]
     return [COLUNA_ESQUERDA, COLUNA_DIREITA], liberado
 
@@ -386,7 +389,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
         )
     recorte_largura, recorte_altura = direita - esquerda, base - topo
     saida = bytearray(recorte_largura * recorte_altura * 4)
-    cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP),
+    cantos = {"canto_aba_upgrades": cantos_do_suporte(ABA_UPGRADES), "canto_aba_xp": cantos_do_suporte(ABA_XP), "canto_aba_seguranca": cantos_do_suporte(ABA_SEGURANCA),
               "canto_aba_energia": cantos_do_sprite(ABA_ENERGIA, ENERGIA_PNG), "canto_aba_calor": cantos_do_sprite(ABA_CALOR, CALOR_PNG),
               "canto_suporte_armadura": (cantos_do_suporte(SUPORTE_ARMADURA_DIREITO, HOLDER) if tela == "cubo"
                                                          else cantos_do_suporte(SUPORTE_ARMADURA, HOLDER_ESQUERDA))}
@@ -412,7 +415,7 @@ def comparar(original, port, tela, escala, origem=None, margem=0, mascaras=(), t
                 if nome == "suporte_armadura" and (gx, gy) in cantos["canto_suporte_armadura"]:
                     # O suporte vindo da prioridade (sob a janela de upgrades) também tem os cantos transparentes, que mostram o mundo atrás.
                     nome = "canto_suporte_armadura"
-                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR),
+                for aba, rect in (("canto_aba_upgrades", ABA_UPGRADES), ("canto_aba_xp", ABA_XP), ("canto_aba_seguranca", ABA_SEGURANCA), ("canto_aba_energia", ABA_ENERGIA), ("canto_aba_calor", ABA_CALOR),
                                   ("canto_suporte_armadura", SUPORTE_ARMADURA_DIREITO if tela == "cubo" else SUPORTE_ARMADURA)):
                     if nome is None and aba[len("canto_"):] in elementos and (gx, gy) in cantos[aba]:
                         nome = aba

@@ -291,6 +291,26 @@ def casos_gerador():
     return out
 
 
+# A aba de segurança (`GuiSecurityTab`, 26 por 26 em (176, 34); o botão de 18 por 18 em (179, 38)): o cursor e o clique no centro do botão. O clique do dono avança o modo
+# (`PUBLIC`, `PRIVATE`, `TRUSTED`), e o tooltip diz o modo e o dono.
+ABA_SEGURANCA = (188, 47)
+
+
+def casos_seguranca():
+    out = []
+    for m in ("chamber", "infuser", "generator", "cubo"):
+        tela = MAQUINAS[m]["tela"]
+        extra = dict(lava="500") if m == "generator" else {}
+        out += [
+            caso(f"{m}_seg_publica", m, energia="0", **extra),
+            caso(f"{m}_seg_hover", m, energia="0", hover=ABA_SEGURANCA, **extra),
+            caso(f"{m}_seg_privada", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", **extra),
+            caso(f"{m}_seg_privada_hover", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", hover=ABA_SEGURANCA, **extra),
+            caso(f"{m}_seg_confiavel_hover", m, energia="0", clicar=f"{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]};{ABA_SEGURANCA[0]},{ABA_SEGURANCA[1]}", hover=ABA_SEGURANCA, **extra),
+        ]
+    return out
+
+
 def casos_cubo():
     """O Energy Cube (frente `cubo-pixel`): vazio, parcial, cheio, o criativo, a aba de energia, as janelas de lados e de transporte e o cursor sobre o medidor.
     As abas de segurança, redstone e livro ficam como o `CenaTelas` as deixa (as que o port não tem, ocultas)."""
@@ -506,7 +526,7 @@ def nbt_da_configuracao(c):
 
 
 def todos_os_casos():
-    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo()
+    return casos() + casos_aba() + casos_config() + casos_xp() + casos_energia() + casos_gerador() + casos_avisos() + casos_reabertas() + casos_infuser_entrada() + casos_cubo() + casos_seguranca()
 
 
 def casos_do_roteiro(so=None):
