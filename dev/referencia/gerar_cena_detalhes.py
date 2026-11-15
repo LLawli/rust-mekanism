@@ -25,7 +25,8 @@ def shots():
             cmds = ["#tela", "#tecla nenhuma"]
             if index == 0:
                 cmds += ["clear @a", f"item replace entity @a hotbar.0 with {item}", "#esperar 10", f"tp @a {stand}", "#esperar 10"]
-            cmds += [f"#tecla {tecla}", "#esperar 5", "#inventario 0", "#esperar 10"]
+            # A tecla vem depois de abrir o inventário: o cliente do original solta as teclas ao abrir uma tela (medido: com `#tecla` antes, os três estados saíam iguais).
+            cmds += ["#inventario 0", f"#tecla {tecla}", "#esperar 10"]
             out.append(dict(name=f"detalhe_{short}_{tecla}", cmds=cmds, tp=stand))
     out.append(dict(name="fim_detalhes", cmds=["#tela", "#tecla nenhuma", "clear @a", "#esperar 5"], tp=stand))
     return out

@@ -24,7 +24,7 @@ REGIOES = {
     # o corpo da tela da máquina (176 por 166 em (608, 208)); as abas à direita do original (segurança, cartão e redstone) são de outras frentes e ficam fora
     "tela": (500, 200, 810, 680),
     # a janela de upgrades (abre à esquerda e sobre a tela)
-    "aba": (608, 260, 752, 380),
+    "aba": (608, 260, 744, 380),
     # o medidor de lava do Heat Generator (frente `maquina-sobras`, `cenas/heat_lava.json`) e o que ele desenha acima de si quando o tanque passa da capacidade, até o topo da tela
     "lava_sobre": (830, 0, 260, 480),
     "lava": (830, 285, 260, 195),
