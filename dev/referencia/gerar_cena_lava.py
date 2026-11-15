@@ -12,22 +12,26 @@ from item_conteudo_dados import MACHINES  # noqa: E402
 
 Y = -60
 Z = 80
-NIVEIS = [("vazia", 0), ("meia", 500), ("cheia", 1000), ("sobre", 5000)]
+NIVEIS = [("vazia", 0), ("meia", 500), ("cheia", 1000), ("sobre", 5000), ("carvao", 500)]
 
 
-def componentes(total):
+def componentes(total, carvao=False):
     item, _pos, components, _label, _total = [m for m in MACHINES if m[0].endswith("heat_generator")][0]
     if total == 0:
         components = re.sub(r'mekanism:fluids=\{containers:\[\{type:\{id:"minecraft:lava"\},amount:\d+L\}\]\},', "", components)
     else:
         components = re.sub(r"amount:1500L", f"amount:{total}L", components)
+    # O carvão do item vira lava no tick (`FluidFuelInventorySlot.fillOrBurn`, 80 mB por carvão, enquanto houver espaço no tanque): com ele, 0 e 500 mB chegam a 1.000 mB
+    # antes do print, nos dois jogos. Sem carvão o nível do tiro é o que o tanque guarda.
+    if not carvao:
+        components = components.replace('{type:{id:"minecraft:coal"},amount:17L},', "")
     return item, components
 
 
 def shots():
     out = []
     for index, (nome, total) in enumerate(NIVEIS):
-        item, components = componentes(total)
+        item, components = componentes(total, nome == "carvao")
         x, y, z = 60 + 4 * index, Y, Z
         stand = f"{x + 0.5} {y} {z + 3.5} 180 20"
         place = f"#colocar {x} {y - 1} {z}"
