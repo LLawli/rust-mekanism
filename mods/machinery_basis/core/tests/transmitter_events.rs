@@ -531,6 +531,42 @@ fn a_clear_removed_waits_for_its_block_entity_and_gives_up_after_the_limit() {
     assert!(pending.is_empty());
 }
 
+/// Reabrir o mundo (frente `rede-reabrir`, decisão 235): o Horizon põe no mapa um block entity de id vazio antes de preenchê-lo. O `clearRemoved` do cabo ao sul do meio entregue nesse
+/// momento não achava o cabo no `cable_info`, a espera já tinha saído da fila, e o cabo nunca entrava no dono (o meio perdia o braço ao sul). O id tem de ser de um cabo para a espera acabar.
+#[test]
+fn a_clear_removed_keeps_waiting_while_the_block_entity_has_no_id_of_a_cable() {
+    let at = [0, 150, 1];
+    let mut pending = events::PendingClears::new();
+    pending.wait("overworld", at, 100);
+    let cable = |id: &str| id == "mekanism:basic_universal_cable";
+    let id_of = |id: &'static str| move |_pos: [i32; 3]| Some(id.to_owned());
+    // O block entity de id vazio já está no mapa: não é um cabo ainda, e a espera continua.
+    assert!(
+        pending
+            .retry_known("overworld", 101, id_of(""), cable)
+            .is_empty()
+    );
+    assert_eq!(pending.len(), 1);
+    // Sem block entity nenhum também.
+    assert!(
+        pending
+            .retry_known("overworld", 102, |_| None, cable)
+            .is_empty()
+    );
+    assert_eq!(pending.len(), 1);
+    // O id chega: sai para ser entregue.
+    assert_eq!(
+        pending.retry_known(
+            "overworld",
+            103,
+            id_of("mekanism:basic_universal_cable"),
+            cable
+        ),
+        vec![at]
+    );
+    assert!(pending.is_empty());
+}
+
 /// `ServerStoppedEvent`: um `clearRemoved` que esperava o block entity quando o mundo fechou não vale no mundo seguinte. O relógio do mundo novo recomeça perto de 0, e a espera, medida
 /// contra ele (`now - since < PENDING_TICKS`), nunca acabaria: o `clearRemoved` velho ficava na fila e entrava no mundo novo com o primeiro block entity que aparecesse na posição.
 #[test]

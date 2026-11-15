@@ -324,6 +324,12 @@ impl PendingClears {
         ready
     }
 
+    /// `retry` para quem só tem o block entity pelo id: o Horizon põe um block entity de id vazio no mapa antes de preenchê-lo (o cabo ao sul do meio, ao reabrir o mundo, entrava assim), e entregar o
+    /// `clearRemoved` nesse momento o perdia, porque o dono não reconhece o bloco e a espera já tinha saído da fila. Só está pronto o block entity cujo id `is_ours` reconhece; o resto segue esperando.
+    pub fn retry_known(&mut self, dim: &str, now: i64, id_of: impl Fn(Pos) -> Option<String>, is_ours: impl Fn(&str) -> bool) -> Vec<Pos> {
+        self.retry(dim, now, |pos| id_of(pos).is_some_and(|id| is_ours(&id)))
+    }
+
     /// O mundo fechou: o que esperava um block entity dele não vale no mundo seguinte (o relógio recomeça e a espera, medida contra ele, nunca acabaria).
     pub fn clear(&mut self) {
         self.waiting.clear();

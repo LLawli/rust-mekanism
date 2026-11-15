@@ -4786,6 +4786,9 @@ impl OwnerWorld for GameWorld<'_, '_> {
         if let Some(Tag::Long(exact)) = entity.nbt.get(&JavaString::from(ENERGY_AMOUNT)) {
             saved.insert(ENERGY_KEY.to_owned(), CableTag::Long(*exact));
         }
+        if TRANSMITTER_PROBE {
+            eprintln!("MBT {{\"t\":{},\"e\":\"cable_info\",\"p\":[{},{},{}],\"conn\":{:?},\"chunk\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), pos.x, pos.y, pos.z, saved.get(machinery_basis_core::transmission::transmitter::keys::CURRENT_CONNECTIONS), game.world.chunks.contains_key(&(pos.x >> 4, pos.z >> 4)));
+        }
         let from_save = saved.contains_key(machinery_basis_core::transmission::transmitter::keys::CONNECTION) || saved.contains_key(ENERGY_KEY);
         Some(CableInfo { capacity, saved: from_save.then_some(saved) })
     }
@@ -4890,7 +4893,15 @@ fn cables_event(game: &mut Game<'_>, event: &TransmitterEvent) {
         let _span = perf_span(PERF_CAB_RETRY);
         cables_retry_pending(game, dimension);
     }
+    if TRANSMITTER_PROBE && let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::Update, .. } = event {
+        let has = |p: [i32; 3]| with_owner(dimension, |owner| owner.cable_at(sim_pos(p)).is_some()).unwrap_or(false);
+        eprintln!("MBT {{\"t\":{},\"e\":\"cable_update_antes\",\"p\":[{},{},{}],\"self\":{},\"s\":{},\"n\":{}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), pos[0], pos[1], pos[2], has(*pos), has([pos[0], pos[1], pos[2] + 1]), has([pos[0], pos[1], pos[2] - 1]));
+    }
     cables_deliver(game, dimension, event);
+    if TRANSMITTER_PROBE {
+        let mask = |p: [i32; 3]| with_owner(dimension, |owner| owner.transmitter(sim_pos(p)).map(|tx| tx.get_all_current_connections())).flatten();
+        eprintln!("MBT {{\"t\":{},\"e\":\"cable_mask\",\"m\":{:?},\"s\":{:?}}}", TRANSMITTER_PASS.load(Ordering::Relaxed), mask([0, 150, 0]), mask([0, 150, 1]));
+    }
     // Um `ClearRemoved` sem block entity no mundo ainda: tenta de novo nos eventos seguintes.
     if let TransmitterEvent::Transmitter { pos, kind: TransmitterKind::ClearRemoved, .. } = event {
         let created = with_owner(dimension, |owner| owner.cable_at(sim_pos(*pos)).is_some()).unwrap_or(true);
@@ -4910,7 +4921,15 @@ fn cables_retry_pending(game: &mut Game<'_>, dimension: &'static str) {
     let ready = {
         let entities = &game.world.block_entities;
         CABLE_PENDING.with_borrow_mut(|pending| {
-            pending.retry(dimension, now, |pos| matches!(entities.get(&(pos[0], pos[1], pos[2])), Some(horizon_client::containers::BlockEntity::Mod(_))))
+            pending.retry_known(
+                dimension,
+                now,
+                |pos| match entities.get(&(pos[0], pos[1], pos[2])) {
+                    Some(horizon_client::containers::BlockEntity::Mod(entity)) => Some(entity.id.clone()),
+                    _ => None,
+                },
+                |id| cable_capacity(id).is_some(),
+            )
         })
     };
     if TRANSMITTER_PROBE && !ready.is_empty() {
