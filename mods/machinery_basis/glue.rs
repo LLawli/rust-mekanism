@@ -2597,17 +2597,47 @@ pub(in crate::game) fn security_loot(
     }
 }
 
+thread_local! {
+    /// `UsernameCache`: o último nome que o servidor viu de cada UUID (o jogador que age, o anfitrião e os convidados da LAN).
+    static USERNAMES: std::cell::RefCell<HashMap<u128, String>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// `MekanismUtils.getLastKnownUsername`: o nome do dono que o servidor sabe, ou `<uuid>`.
+fn server_username(game: &Game<'_>, uuid: u128) -> String {
+    let mut seen: Vec<(u128, String)> = Vec::new();
+    if let Some(player) = game.native_acting_player() {
+        seen.push((player.uuid, player.name));
+    }
+    if let Some(host) = game.lan.as_ref() {
+        seen.extend(host.hub.guests.iter().map(|guest| (guest.uuid, guest.name.clone())));
+    }
+    if game.remote.is_none() && let Some(own) = game.level.player_uuid {
+        seen.push((horizon_client::lan::playerdata::ints_uuid(own), game.options.player_name()));
+    }
+    USERNAMES.with_borrow_mut(|cache| {
+        cache.extend(seen);
+        cache.get(&uuid).cloned().unwrap_or_else(|| format!("<{}>", uuid_text(uuid)))
+    })
+}
+
+/// O que o menu de um tile leva da segurança (`TileComponentSecurity.addContainerTrackers`): o dono e o modo do NBT, e o nome do dono.
+pub(in crate::game) fn security_sync(game: &Game<'_>, entity: &ModBlockEntity) -> sec::SecuritySync {
+    let state = security_read(entity);
+    let owner_name = state.owner.map(|owner| server_username(game, owner)).unwrap_or_default();
+    sec::SecuritySync { state, owner_name }
+}
+
 /// O UUID de quem vê o tooltip: o jogador deste cliente (o perfil da sessão remota, ou o do mundo local).
 fn viewer_uuid(game: &Game<'_>) -> Option<u128> {
-    game.remote.as_ref().map(|remote| remote.profile).or_else(|| game.level.player_uuid.map(horizon_client::lan::playerdata::ints_uuid))
+    game.remote.as_ref().map(|remote| remote.profile()).or_else(|| game.level.player_uuid.map(horizon_client::lan::playerdata::ints_uuid))
 }
 
 /// `OwnerDisplay.getOwnerName` no cliente: o nome do jogador deste cliente se ele é o dono, o de um jogador que o cliente conhece, ou `<uuid>`.
 fn owner_name(game: &Game<'_>, owner: u128, viewer: Option<u128>) -> String {
     if viewer == Some(owner) {
-        return game.options.player_name();
+        return game.remote.as_ref().map_or_else(|| game.options.player_name(), |remote| remote.profile_name.clone());
     }
-    let known = game.remote.as_ref().and_then(|remote| remote.level_players.iter().find(|(_, uuid)| **uuid == owner).and_then(|(id, uuid)| remote.level_player_name(*id, uuid).map(str::to_owned)));
+    let known = game.remote_player_names().into_iter().find(|(id, _)| game.remote_player_uuid(*id) == Some(owner)).map(|(_, name)| name);
     known.unwrap_or_else(|| format!("<{}>", uuid_text(owner)))
 }
 
@@ -2620,21 +2650,12 @@ fn uuid_text(uuid: u128) -> String {
 /// `registerComponentAppenderBefore(OWNER, SECURITY, ...)` e `registerComponentAppenderBeforeAll(SECURITY, ...)`: as linhas `Owner:` e `Security:` do item, que vêm logo depois do nome
 /// (o rastro `item_content_*.jsonl`). A cor do rótulo é a de `EnumColor` e a do argumento depende do modo e de quem vê.
 pub(in crate::game) fn security_tooltip_lines(game: &Game<'_>, stack: &ItemStack) -> Vec<(horizon_client::mod_api::Text, u32)> {
-    use horizon_client::mod_api::Text;
-    use horizon_client::text::Style;
     let state = security_of_stack(game, stack);
     let viewer = viewer_uuid(game);
     let owner = state.owner.map(|owner| (owner, owner_name(game, owner, viewer)));
     sec::tooltip_lines(sec::SecurityConfig::default(), viewer, owner.as_ref().map(|(owner, name)| (*owner, name.as_str())), state.mode)
-        .into_iter()
-        .map(|line| {
-            let arg = match &line.arg {
-                sec::Arg::Literal(text) => Text::literal(text.as_str()),
-                sec::Arg::Translate(key) => Text::translate(key, &[]),
-            }
-            .with_style(&Style::color(line.arg_color));
-            (Text::translate(line.key, &[arg]).with_style(&Style::color(line.color)), u32::MAX)
-        })
+        .iter()
+        .map(|line| (security_line_text(line), u32::MAX))
         .collect()
 }
 
@@ -2673,6 +2694,85 @@ pub(in crate::game) fn security_open(game: &mut Game<'_>, player: u128, pos: [i3
 /// (`ServerPlayerGameMode.handleBlockBreakAction` destrói direto), então o original deixa o criativo quebrar. Devolve se a quebra deve ser cancelada.
 pub(in crate::game) fn security_break(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {
     !is_creative(game) && acting_uuid(game).is_some_and(|player| !security_can_access(game, pos, is_ours, player))
+}
+
+/// O botão de menu que a aba de segurança manda ao servidor (`PacketGuiInteract(NEXT_SECURITY_MODE)`), e o do clique direito (`PREVIOUS_SECURITY_MODE`). Os ids ficam longe
+/// dos botões de cada mod (o despejo e a experiência do Mekanism).
+pub const SECURITY_NEXT_BUTTON: i32 = 100;
+pub const SECURITY_PREVIOUS_BUTTON: i32 = 101;
+
+/// `GuiSecurityTab.onClick`: o clique esquerdo ou o direito no botão da aba (fora de uma janela por cima) vira o botão de menu; só o dono muda o modo, e o servidor
+/// confere isso de novo (`incrementSecurityMode`). `at` é o cursor relativo ao canto da tela.
+pub(in crate::game) fn security_screen_click(game: &Game<'_>, image_width: i32, at: [f32; 2], right: bool) -> Option<i32> {
+    let tab = machinery_basis_core::side_tab::security_tab(image_width);
+    (!game.mb_window_covers(at) && tab.is_mouse_over(true, true, at)).then_some(if right { SECURITY_PREVIOUS_BUTTON } else { SECURITY_NEXT_BUTTON })
+}
+
+/// O ícone da aba (`getOverlay`): o sprite do modo no atlas da tela.
+fn security_icon(mode: sec::SecurityMode) -> String {
+    format!("mekanism:gui/sprites/{}", sec::tab_overlay(mode).trim_start_matches("mekanism:"))
+}
+
+/// `GuiSecurityTab` desenhada: o suporte tingido, o botão e o sprite do modo (`getSecurityMode(..., true)`), com o fundo em foco sob o mouse.
+pub(in crate::game) fn security_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], view: &sec::SecurityView, image_width: i32) {
+    use machinery_basis_core::side_tab::{ButtonLook, SECURITY_TAB_TINT, security_tab};
+    let tab = security_tab(image_width);
+    let cursor = game.native_cursor();
+    let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
+    let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
+    let mode = if sec::SecurityConfig::default().allow_protection { view.mode } else { sec::SecurityMode::Public };
+    inset_tab(game, batch, "mekanism", tab, origin, SECURITY_TAB_TINT, &security_icon(mode), ButtonLook::of(true, hovered));
+}
+
+/// O texto de uma linha de tooltip de segurança: o rótulo na cor dele e o argumento na do argumento.
+fn security_line_text(line: &sec::TooltipLine) -> horizon_client::mod_api::Text {
+    use horizon_client::mod_api::Text;
+    use horizon_client::text::Style;
+    let arg = match &line.arg {
+        sec::Arg::Literal(text) => Text::literal(text.as_str()),
+        sec::Arg::Translate(key) => Text::translate(key, &[]),
+    }
+    .with_style(&Style::color(line.arg_color));
+    Text::translate(line.key, &[arg]).with_style(&Style::color(line.color))
+}
+
+/// `GuiSecurityTab.updateTooltip`: `Security: <modo>` e `Owner: <nome>`, sobre o botão. Devolve se desenhou.
+pub(in crate::game) fn security_widget_tooltip(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    view: &sec::SecurityView,
+    image_width: i32,
+    at: [f32; 2],
+    cursor: (f32, f32),
+) -> bool {
+    let tab = machinery_basis_core::side_tab::security_tab(image_width);
+    if game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
+        return false;
+    }
+    let owner = view.owner.as_ref().map(|(owner, name)| (*owner, name.as_str()));
+    let lines: Vec<_> = sec::tab_tooltip_lines(viewer_uuid(game), owner, view.mode).iter().map(security_line_text).collect();
+    let [bx, by, bw, bh] = tab.button();
+    menu_tooltip_rich(game, batch, &lines, cursor, [cursor.0 - at[0] + bx, cursor.1 - at[1] + by, bw, bh]);
+    true
+}
+
+/// `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE`, no servidor: `SecurityUtils.incrementSecurityMode(player, security, ...)`. Só o dono do tile
+/// troca o modo, e o jogador é o que age. Devolve se o botão era da segurança.
+pub(in crate::game) fn security_menu_button(game: &Game<'_>, entity: &mut ModBlockEntity, id: i32) -> bool {
+    let forward = match id {
+        SECURITY_NEXT_BUTTON => true,
+        SECURITY_PREVIOUS_BUTTON => false,
+        _ => return false,
+    };
+    if let Some(player) = acting_uuid(game) {
+        let mut state = security_read(entity);
+        let before = state.mode;
+        state.click(player, forward);
+        if state.mode != before {
+            security_write(entity, &state);
+        }
+    }
+    true
 }
 
 /// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor
@@ -2719,13 +2819,36 @@ fn menu_tooltip_with(
             (text, u32::MAX)
         })
         .collect();
+    menu_tooltip_texts(game, batch, &lines, mouse, widget, title_gap);
+}
+
+/// Como [`menu_tooltip_flat`], para linhas que já são `Text` (com mais de uma cor na mesma linha, como as da aba de segurança).
+pub(in crate::game) fn menu_tooltip_rich(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    lines: &[horizon_client::text::Text],
+    mouse: (f32, f32),
+    widget: [f32; 4],
+) {
+    let lines: Vec<(horizon_client::text::Text, u32)> = lines.iter().cloned().map(|text| (text, u32::MAX)).collect();
+    menu_tooltip_texts(game, batch, &lines, mouse, widget, false);
+}
+
+fn menu_tooltip_texts(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    lines: &[(horizon_client::text::Text, u32)],
+    mouse: (f32, f32),
+    widget: [f32; 4],
+    title_gap: bool,
+) {
     let atlas = &game.gui.atlas;
     // O tamanho não depende de onde o tooltip cai; a posição é a do `MenuTooltipPositioner`.
-    let (_, _, mut w, mut h) = Game::tooltip_geometry(atlas, &lines, (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+    let (_, _, mut w, mut h) = Game::tooltip_geometry(atlas, lines, (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
     if !title_gap {
         // Cada linha medida sozinha: a largura é a maior, e a altura 10 por linha menos 2.
         w = 0.0;
-        for line in &lines {
+        for line in lines {
             let (_, _, line_w, _) = Game::tooltip_geometry(atlas, std::slice::from_ref(line), (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
             w = w.max(line_w);
         }
@@ -2743,7 +2866,7 @@ fn menu_tooltip_with(
         horizon_client::ui::nine_slice(batch, atlas, sprite, x as f32 - 12.0, y as f32 - 12.0, w + 24.0, h + 24.0, u32::MAX);
     }
     if title_gap {
-        Game::tooltip_text(batch, atlas, &lines, x as f32, y as f32);
+        Game::tooltip_text(batch, atlas, lines, x as f32, y as f32);
     } else {
         for (n, line) in lines.iter().enumerate() {
             Game::tooltip_text(batch, atlas, std::slice::from_ref(line), x as f32, y as f32 + 10.0 * n as f32);

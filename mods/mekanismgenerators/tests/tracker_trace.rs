@@ -101,6 +101,7 @@ impl Scene {
             state: &self.state,
             last: &self.last,
             upgrades: &upgrades,
+            security: Default::default(),
         }));
         self.sync = Some(sync);
         self.client = Some(Mirror::new(&heat_generator_trackers()));
@@ -116,6 +117,7 @@ impl Scene {
                 state: &self.state,
                 last: &self.last,
                 upgrades: &upgrades,
+                security: Default::default(),
             },
         ));
         self.sync = Some(sync);
@@ -432,6 +434,7 @@ fn replay(
                 state: &scene.state,
                 last: &scene.last,
                 upgrades: &upgrades,
+                security: Default::default(),
             }),
             None => Vec::new(),
         };

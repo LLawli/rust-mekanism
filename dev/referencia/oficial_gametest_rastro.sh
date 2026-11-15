@@ -17,7 +17,8 @@ FIM=$SAIDA.fim
 rm -f "$FIM"
 mkdir -p "$SAIDA"
 trap 'echo $? > "$FIM"' EXIT
-until mkdir "$LOCK" 2>/dev/null; do sleep 5; done
+# `LOCK_MEU=1`: quem chama já pegou a trava (e a vaga) e a deixa para este script soltar; `SEM_LIM=1`: a vaga já é de quem chama (o `lim-jogo` a segura).
+if [ "${LOCK_MEU:-}" != 1 ]; then until mkdir "$LOCK" 2>/dev/null; do sleep 5; done; fi
 echo "$DONO" > "$LOCK/dono"
 echo "TRAVA $(date +%T)"
 restore() {
@@ -31,7 +32,8 @@ trap 'rc=$?; restore; echo $rc > "$FIM"' EXIT
 for t in InventoryNetworkTest TransmitterNetworkTest; do [ -e "$N/$t.java" ] && mv "$N/$t.java" "$C/$t.antes"; done
 rm -rf "$F/runs/gameTestServer/trace"
 cp "$JAVA" "$N/$NOME"
-"$C/lim-build" sh -c 'JOGO_CMD=true "$HOME/.local/bin/mekanism-ref" && docker update --cpus 4 --memory 6g --memory-swap 6g mekanism-ref && env JOGO_CMD="cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestServer" "$HOME/.local/bin/mekanism-ref"'
+LIM="$C/lim-build"; [ "${SEM_LIM:-}" = 1 ] && LIM=
+$LIM sh -c 'JOGO_CMD=true "$HOME/.local/bin/mekanism-ref" && docker update --cpus 4 --memory 6g --memory-swap 6g mekanism-ref && env JOGO_CMD="cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestServer" "$HOME/.local/bin/mekanism-ref"'
 echo "EXIT $?"
 cp "$F"/runs/gameTestServer/trace/$GLOB "$SAIDA"/ 2>/dev/null
 ls -la "$SAIDA"

@@ -859,18 +859,19 @@ pub struct HeatGeneratorSync<'a> {
     pub state: &'a State,
     pub last: &'a Produced,
     pub upgrades: &'a UpgradeSync,
+    /// A segurança do tile (`TileComponentSecurity`): o dono e o modo que o menu leva.
+    pub security: machinery_basis_core::security::SecuritySync,
 }
 
 impl TrackedSource for HeatGeneratorSync<'_> {
     fn value(&self, id: u16) -> Value {
         let redstone = self.state.tile.redstone_sync();
         match id {
-            // Sem o componente de segurança no port: sem dono, a frequência é `null` e o modo é `PUBLIC`.
-            source::SECURITY_FREQUENCY => Value::Codec {
-                hash: 0,
-                bytes: vec![0],
-            },
-            source::SECURITY_MODE => Value::Enum(0),
+            source::SECURITY_FREQUENCY => {
+                let (hash, bytes) = self.security.frequency();
+                Value::Codec { hash, bytes }
+            }
+            source::SECURITY_MODE => Value::Enum(self.security.mode()),
             source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
             source::POWERED => Value::Boolean(redstone.powered),
             source::WAS_POWERED => Value::Boolean(redstone.was_powered),
@@ -924,6 +925,17 @@ impl ScreenIndexes {
 
 static INDEXES: LazyLock<ScreenIndexes> =
     LazyLock::new(|| ScreenIndexes::of(&heat_generator_trackers()));
+
+static SECURITY_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
+    let list = heat_generator_trackers();
+    (position_of(&list, source::SECURITY_FREQUENCY), position_of(&list, source::SECURITY_MODE))
+});
+
+/// A segurança que o cliente lê do menu do Heat Generator (`GuiSecurityTab`).
+pub fn security(mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+    let (frequency, mode) = *SECURITY_INDEXES;
+    machinery_basis_core::security::SecurityView::read(mirror, frequency, mode)
+}
 
 /// O que o cliente lê do espelho do menu do Heat Generator.
 #[derive(Clone, Debug, Default, PartialEq)]

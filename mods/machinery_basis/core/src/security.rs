@@ -303,6 +303,134 @@ pub fn apply(
     SecurityState { owner, mode }
 }
 
+/// `SecurityFrequency.SECURITY`: o nome da frequência de segurança no pacote do menu.
+pub const FREQUENCY_NAME: &str = "Security";
+
+/// `String.hashCode` do Java: `s[0] * 31^(n-1) + ...` sobre as unidades UTF-16.
+pub fn java_string_hash(text: &str) -> i32 {
+    text.encode_utf16()
+        .fold(0i32, |hash, unit| hash.wrapping_mul(31).wrapping_add(i32::from(unit)))
+}
+
+/// `UUID.hashCode`: `(int) (hilo >> 32) ^ (int) hilo`, com `hilo = most ^ least`.
+pub fn uuid_hash(uuid: u128) -> i32 {
+    let hilo = (uuid >> 64) as u64 ^ uuid as u64;
+    ((hilo >> 32) as i32) ^ (hilo as i32)
+}
+
+fn put_var_int(out: &mut Vec<u8>, mut value: u32) {
+    while value & !0x7F != 0 {
+        out.push((value & 0x7F) as u8 | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+}
+
+fn put_string(out: &mut Vec<u8>, text: &str) {
+    put_var_int(out, text.len() as u32);
+    out.extend_from_slice(text.as_bytes());
+}
+
+/// O dado do menu da frequência de segurança (`SyncableStreamCodec.frequency(SECURITY, ...)`): o `hashCode` do valor (`Frequency.hashCode`, zero sem frequência) e os bytes de
+/// `getPropertyData` (um `boolean`, e com frequência o nome, o dono opcional, o nome do dono e o modo da frequência, que é sempre `PUBLIC`). A frequência existe só com dono.
+pub fn frequency_sync(owner: Option<u128>, owner_name: &str) -> (i32, Vec<u8>) {
+    let Some(owner) = owner else {
+        return (0, vec![0]);
+    };
+    // `Frequency.hashCode`: o nome e o dono (o modo só entra se o tipo não é `SECURITY`).
+    let hash = 31i32
+        .wrapping_add(java_string_hash(FREQUENCY_NAME))
+        .wrapping_mul(31)
+        .wrapping_add(uuid_hash(owner));
+    let mut bytes = vec![1];
+    put_string(&mut bytes, FREQUENCY_NAME);
+    bytes.push(1);
+    bytes.extend_from_slice(&owner.to_be_bytes());
+    put_string(&mut bytes, owner_name);
+    put_var_int(&mut bytes, SecurityMode::Public.ordinal() as u32);
+    (hash, bytes)
+}
+
+/// O que o menu leva da segurança de um tile: o estado e o nome do dono (`Frequency.getOwnerName`, que o servidor procura no cache de nomes).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SecuritySync {
+    pub state: SecurityState,
+    pub owner_name: String,
+}
+
+impl SecuritySync {
+    /// `TileComponentSecurity.addContainerTrackers`: a frequência de segurança (`SyncableStreamCodec.frequency`).
+    pub fn frequency(&self) -> (i32, Vec<u8>) {
+        frequency_sync(self.state.owner, &self.owner_name)
+    }
+
+    /// O `SyncableEnum` do modo.
+    pub fn mode(&self) -> i32 {
+        self.state.mode.ordinal() as i32
+    }
+}
+
+/// O que o cliente tem da segurança de um tile (`GuiSecurityTab`): o dono e o nome dele, lidos da frequência que o menu sincroniza, e o modo.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SecurityView {
+    pub owner: Option<(u128, String)>,
+    pub mode: SecurityMode,
+}
+
+impl SecurityView {
+    /// O que o espelho do menu tem nas posições `frequency` e `mode` (antes do primeiro pacote: sem dono, `PUBLIC`).
+    pub fn read(mirror: &crate::container_sync::Mirror, frequency: usize, mode: usize) -> Self {
+        Self {
+            owner: frequency_owner(mirror.bytes(frequency)),
+            mode: SecurityMode::by_id(mirror.enum_ordinal(mode)),
+        }
+    }
+
+    /// O estado que a conta de acesso e do clique usa.
+    pub fn state(&self) -> SecurityState {
+        SecurityState {
+            owner: self.owner.as_ref().map(|(owner, _)| *owner),
+            mode: self.mode,
+        }
+    }
+}
+
+/// O dono e o nome dele, lidos dos bytes de [`frequency_sync`] (o que `GuiSecurityTab` lê do tile do cliente).
+pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
+    fn var_int(bytes: &[u8], at: &mut usize) -> Option<u32> {
+        let mut value = 0u32;
+        for shift in (0..35).step_by(7) {
+            let byte = *bytes.get(*at)?;
+            *at += 1;
+            value |= u32::from(byte & 0x7F) << shift;
+            if byte & 0x80 == 0 {
+                return Some(value);
+            }
+        }
+        None
+    }
+    fn string(bytes: &[u8], at: &mut usize) -> Option<String> {
+        let len = var_int(bytes, at)? as usize;
+        let text = std::str::from_utf8(bytes.get(*at..*at + len)?).ok()?.to_owned();
+        *at += len;
+        Some(text)
+    }
+    let mut at = 0;
+    if *bytes.first()? == 0 {
+        return None;
+    }
+    at += 1;
+    string(bytes, &mut at)?;
+    if *bytes.get(at)? == 0 {
+        return None;
+    }
+    at += 1;
+    let owner = u128::from_be_bytes(bytes.get(at..at + 16)?.try_into().ok()?);
+    at += 16;
+    let name = string(bytes, &mut at)?;
+    Some((owner, name))
+}
+
 /// Uma linha do tooltip do item: a chave, a cor do rótulo, o argumento (texto literal ou chave de tradução) e a cor dele.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TooltipLine {
@@ -624,5 +752,22 @@ mod tests {
             tab_tooltip_lines(None, None, SecurityMode::Public)[1].key,
             "owner.mekanism.none"
         );
+    }
+
+    #[test]
+    fn the_java_hashes_are_the_ones_of_the_jdk() {
+        assert_eq!(java_string_hash("Security"), 1_013_767_008);
+        assert_eq!(java_string_hash("é"), 233);
+        assert_eq!(uuid_hash(0x0000_0001_0000_0002_0000_0004_0000_0008), 15);
+    }
+
+    #[test]
+    fn the_frequency_of_the_menu_carries_the_owner_and_its_name() {
+        let (hash, bytes) = frequency_sync(Some(7), "Alex");
+        assert_eq!(hash, (31 + java_string_hash(FREQUENCY_NAME)).wrapping_mul(31) + uuid_hash(7));
+        assert_eq!(bytes[0], 1);
+        assert_eq!(frequency_owner(&bytes), Some((7, "Alex".to_owned())));
+        assert_eq!(frequency_sync(None, "Alex"), (0, vec![0]));
+        assert_eq!(frequency_owner(&bytes[..10]), None);
     }
 }

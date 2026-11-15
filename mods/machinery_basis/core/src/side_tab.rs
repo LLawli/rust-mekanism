@@ -116,6 +116,16 @@ pub struct XpTab {
 
 /// O botão de `GuiXpContainmentTab`: 26 por 18, a altura do suporte.
 pub const XP_TAB_HEIGHT: i32 = 26;
+/// `GuiSecurityTab`: `new GuiSecurityTab(gui, tile)` usa `y = 34`, e o botão fica em (179, 38) (a mesma geometria do `GuiXpContainmentTab`: 26 de suporte, 18 de botão).
+pub const SECURITY_TAB_Y: i32 = 34;
+/// `SpecialColors.TAB_SECURITY`: a cor do suporte da aba de segurança.
+pub const SECURITY_TAB_TINT: u32 = 0xFF_FF_A1_60;
+
+/// A aba de segurança, na lateral direita.
+pub fn security_tab(image_width: i32) -> InsetTab {
+    InsetTab::right(image_width, SECURITY_TAB_Y, XP_TAB_HEIGHT)
+}
+
 /// `y -= 28` quando o livro de receitas não está na tela (`isRecipeBookDisabled() || !supportsRecipeBook`): a aba sobe para onde ele ficaria.
 pub const XP_TAB_RECIPE_BOOK_SHIFT: i32 = 28;
 

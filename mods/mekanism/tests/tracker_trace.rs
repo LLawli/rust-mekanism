@@ -693,6 +693,7 @@ fn the_capacity_data_never_reads_below_the_stored_energy() {
         machine,
         stored: capacity + 100,
         tank: None,
+        security: Default::default(),
     };
     assert_eq!(view.value(source::MAX_ENERGY), Value::Long(capacity + 100));
     assert_eq!(view.value(source::ENERGY), Value::Long(capacity + 100));

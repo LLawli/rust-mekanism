@@ -14,6 +14,8 @@ pub struct MachineSync<'a> {
     pub stored: i64,
     /// O tanque de químico (`SyncableLargeResourceStack.create(chemicalTank)`), nas máquinas que têm um.
     pub tank: Option<StackValue>,
+    /// A segurança do tile (`TileComponentSecurity`): o dono e o modo que o menu leva.
+    pub security: crate::security::SecuritySync,
 }
 
 impl<'a> MachineSync<'a> {
@@ -30,6 +32,7 @@ impl<'a> MachineSync<'a> {
             machine,
             stored: machine.energy().amount(),
             tank,
+            security: crate::security::SecuritySync::default(),
         }
     }
 }
@@ -40,13 +43,11 @@ impl TrackedSource for MachineSync<'_> {
         let tile = machine.tile();
         let redstone = tile.redstone_sync();
         match id {
-            // O port ainda não tem o componente de segurança: sem dono, a frequência é `null` (`hashCode` zero, um byte `false`) e o
-            // modo é `PUBLIC`.
-            source::SECURITY_FREQUENCY => Value::Codec {
-                hash: 0,
-                bytes: vec![0],
-            },
-            source::SECURITY_MODE => Value::Enum(0),
+            source::SECURITY_FREQUENCY => {
+                let (hash, bytes) = self.security.frequency();
+                Value::Codec { hash, bytes }
+            }
+            source::SECURITY_MODE => Value::Enum(self.security.mode()),
             source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
             source::POWERED => Value::Boolean(redstone.powered),
             source::WAS_POWERED => Value::Boolean(redstone.was_powered),

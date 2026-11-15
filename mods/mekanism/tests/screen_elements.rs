@@ -85,6 +85,11 @@ fn trace() -> Vec<Grid> {
         .collect()
 }
 
+/// O botão da aba de segurança (179, 38), 18 por 18.
+fn security_button(x: i32, y: i32) -> bool {
+    (179..197).contains(&x) && (38..56).contains(&y)
+}
+
 fn inside_image(x: i32, y: i32) -> bool {
     (0..IMAGE[0]).contains(&x) && (0..IMAGE[1]).contains(&y)
 }
@@ -136,6 +141,10 @@ fn the_declared_elements_are_the_ones_the_original_finds_under_the_mouse() {
         let mirror = mirror_of(spec, tracked, xp, warning);
         let mut outside_hits = 0;
         for (x, y) in original.points() {
+            // O rastro foi gravado com a aba de segurança oculta (a cena a esconde): o botão dela, que o port tem, fica fora da comparação.
+            if security_button(x, y) {
+                continue;
+            }
             let port = inside_image(x, y)
                 || screen_elements::over_element(&menu, [x as f32, y as f32], &mirror);
             assert_eq!(port, original.over(x, y), "{} em ({x}, {y})", original.case);
@@ -194,9 +203,9 @@ fn the_port_never_claims_more_than_the_original_has() {
             assert!(!port || full.over(x, y), "{} em ({x}, {y})", hidden.case);
             missing += usize::from(!inside_image(x, y) && full.over(x, y) && !port);
         }
-        // Falta de verdade: a configuração, o transporte, a segurança, o livro, a redstone e a aba de upgrades (que é da janela da lib).
+        // Falta de verdade: a configuração, o transporte, o livro, a redstone e a aba de upgrades (que é da janela da lib).
         assert!(
-            missing >= 6 * 18 * 18,
+            missing >= 5 * 18 * 18,
             "{} faltas em {}",
             missing,
             hidden.case

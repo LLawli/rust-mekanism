@@ -2005,6 +2005,17 @@ static CUBE_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
     )
 });
 
+static CUBE_SECURITY_INDEXES: LazyLock<(usize, usize)> = LazyLock::new(|| {
+    let list = cube_trackers();
+    (position_of(&list, source::SECURITY_FREQUENCY), position_of(&list, source::SECURITY_MODE))
+});
+
+/// A segurança que o cliente lê do menu do cubo (`GuiSecurityTab`).
+pub fn cube_security(mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+    let (frequency, mode) = *CUBE_SECURITY_INDEXES;
+    machinery_basis_core::security::SecurityView::read(mirror, frequency, mode)
+}
+
 /// O que o cliente lê do espelho do menu do cubo.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CubeScreenData {
@@ -2127,7 +2138,7 @@ pub fn xp_tab() -> machinery_basis_core::side_tab::XpTab {
 }
 
 /// Os elementos que a tela de uma máquina tem fora da imagem de 176 por 166 e que `GuiMekanism.findElementOver` acha (os que a tela do port
-/// desenha; a segurança, a redstone, a configuração de itens e de transporte e o livro de receitas do original ainda não existem aqui):
+/// desenha; a redstone, a configuração de itens e de transporte e o livro de receitas do original ainda não existem aqui):
 /// - `GuiEnergyTab` (`addGuiElements` de `GuiElectricMachine` e de `GuiMetallurgicInfuser`): -26, 137, 26 por 26, sempre ativa e visível.
 /// - `GuiWarningTab` (`GuiMekanism.addWarningTab`, à esquerda): -26, 109, 26 por 26, visível só com algum aviso (`updateVisibility`).
 /// - `GuiXpContainmentTab`: o botão de dentro (`GuiInsetElement.isMouseOver` só olha o botão de 18 por 18, não o suporte de 26), visível só
@@ -2143,6 +2154,8 @@ pub fn screen_elements(screen: ScreenSpec) -> Vec<machinery_basis_core::screen_e
         Element::when(xp_tab().tab.button(), move |mirror| {
             mirror.boolean((screen.indexes)().xp_containment)
         }),
+        // `GuiSecurityTab`: o botão de dentro, sempre ativo e visível (a máquina tem dono ou não).
+        Element::always(machinery_basis_core::side_tab::security_tab(SCREEN_IMAGE_WIDTH).button()),
         Element::always(ENERGY_TAB.rect),
     ]
 }
@@ -2416,6 +2429,9 @@ pub struct ScreenIndexes {
     /// `operatingTicks` e `ticksRequired`: com upgrades de velocidade a seta de progresso se enche por ele, não pelo de base.
     pub progress: usize,
     pub ticks_required: usize,
+    /// `TileComponentSecurity`: a frequência de segurança e o modo, que a aba de segurança lê.
+    pub security_frequency: usize,
+    pub security_mode: usize,
 }
 
 impl ScreenIndexes {
@@ -2439,6 +2455,8 @@ impl ScreenIndexes {
             xp_containment: at(source::HAS_XP_CONTAINMENT),
             progress: at(source::OPERATING_TICKS),
             ticks_required: at(source::TICKS_REQUIRED),
+            security_frequency: at(source::SECURITY_FREQUENCY),
+            security_mode: at(source::SECURITY_MODE),
         }
     }
 
@@ -2459,6 +2477,12 @@ fn electric_indexes() -> &'static ScreenIndexes {
 
 fn infuser_indexes() -> &'static ScreenIndexes {
     &INFUSER_INDEXES
+}
+
+/// A segurança que o cliente lê do menu de uma máquina (`GuiSecurityTab`).
+pub fn machine_security(spec: &ScreenSpec, mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+    let indexes = (spec.indexes)();
+    machinery_basis_core::security::SecurityView::read(mirror, indexes.security_frequency, indexes.security_mode)
 }
 
 /// O que o cliente lê do espelho do menu de uma máquina.

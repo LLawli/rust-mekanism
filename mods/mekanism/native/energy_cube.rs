@@ -868,15 +868,18 @@ fn add_upgrades(_: &mut Game<'_>, _: [i32; 3], _: &str, _: i32) -> i32 {
 /// Os dados do menu do cubo (`addContainerTrackers`), lidos do objeto.
 struct CubeSync<'a> {
     cube: &'a EnergyCube,
+    security: machinery_basis_core::security::SecuritySync,
 }
 
 impl TrackedSource for CubeSync<'_> {
     fn value(&self, id: u16) -> Value {
         let redstone = self.cube.tile().redstone_sync();
         match id {
-            // Sem o componente de segurança no port: sem dono, a frequência é `null` e o modo é `PUBLIC`.
-            source::SECURITY_FREQUENCY => Value::Codec { hash: 0, bytes: vec![0] },
-            source::SECURITY_MODE => Value::Enum(0),
+            source::SECURITY_FREQUENCY => {
+                let (hash, bytes) = self.security.frequency();
+                Value::Codec { hash, bytes }
+            }
+            source::SECURITY_MODE => Value::Enum(self.security.mode()),
             source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
             source::POWERED => Value::Boolean(redstone.powered),
             source::WAS_POWERED => Value::Boolean(redstone.was_powered),
@@ -902,6 +905,7 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
     let Some(tier) = tier_of(&entity.id) else {
         return false;
     };
+    let security = basis::security_sync(game, entity);
     let key = (game.native_dimension(), pos);
     let mut loaded = None;
     LIVE_CUBES.with_borrow_mut(|cubes| {
@@ -912,7 +916,7 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
         if let Some(powered) = power {
             cube.tile_mut().update_power(powered);
         }
-        act(&CubeSync { cube });
+        act(&CubeSync { cube, security });
         true
     })
 }

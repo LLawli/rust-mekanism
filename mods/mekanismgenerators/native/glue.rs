@@ -687,6 +687,7 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
         return false;
     };
     let energy = basis::stored_energy(entity);
+    let security = basis::security_sync(game, entity);
     let mut loaded = None;
     UPGRADES.with_borrow_mut(|tiles| {
         let live = tiles.get_mut(&key).and_then(|memory| memory.view.as_mut());
@@ -698,7 +699,7 @@ fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn Tr
         }
         let mut state = view.state.clone();
         state.energy = energy;
-        act(&rules::HeatGeneratorSync { state: &state, last: &view.last, upgrades: &view.upgrades });
+        act(&rules::HeatGeneratorSync { state: &state, last: &view.last, upgrades: &view.upgrades, security });
         true
     })
 }
@@ -981,6 +982,8 @@ pub(in crate::game) fn screen_draw(
     }
     // `GuiMekanismTile.addGenericTabs`: a aba de upgrades vem de `super.addGuiElements()`, antes do medidor e da barra.
     game.mb_window_draw_tab(batch, block, origin);
+    // `GuiMekanismTile.addGenericTabs`: a aba de segurança, depois a de upgrades (a de redstone, que vem entre as duas, o port ainda não tem).
+    basis::security_draw(game, batch, origin, &rules::security(&game.mb_mirror(block)), WIDTH as i32);
     // A ordem dos `addRenderableWidget` de `GuiHeatGenerator`: o medidor de lava e depois a barra de energia.
     let lava = read.lava;
     let scaled = gui::gauge_level(lava, heat_config().tank(), LAVA_GAUGE[3] as i32);
@@ -1009,6 +1012,22 @@ fn draw_armor_bar(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2]) {
     }
     for slot in armor_bar::slots(rules::MENU) {
         basis::slot(game, batch, origin, [slot.x as f32, slot.y as f32], Some(SLOT), None);
+    }
+}
+
+/// `GuiSecurityTab.onClick`: os dois botões do mouse na aba de segurança do Heat Generator viram o botão de menu do servidor.
+pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
+    if is_generator(block)
+        && let Some(id) = basis::security_screen_click(game, WIDTH as i32, at, right)
+    {
+        *button = Some(id);
+    }
+}
+
+/// `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE` no servidor: o dono do Heat Generator troca o modo.
+pub(in crate::game) fn menu_button(game: &mut Game<'_>, _pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) {
+    if is_generator_id(&entity.id) {
+        basis::security_menu_button(game, entity, id);
     }
 }
 
@@ -1055,8 +1074,12 @@ pub(in crate::game) fn widget_tooltip(
     if game.mb_window_tooltip(batch, block, at, cursor) {
         return true;
     }
-    let read = rules::ScreenData::read(&game.mb_mirror(block));
+    let mirror = game.mb_mirror(block);
+    let read = rules::ScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
+    if basis::security_widget_tooltip(game, batch, &rules::security(&mirror), WIDTH as i32, at, cursor) {
+        return true;
+    }
     // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
     if rules::ENERGY_TAB.is_mouse_over(at, false) {
         let production = u64::from(read.production);

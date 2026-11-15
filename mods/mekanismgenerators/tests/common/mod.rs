@@ -95,6 +95,7 @@ impl Server {
             state: &self.state,
             last: &self.last,
             upgrades: &self.upgrades,
+            security: Default::default(),
         }
     }
 }

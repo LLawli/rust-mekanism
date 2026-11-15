@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.lang.reflect.Field;
 import java.util.UUID;
 import java.util.function.Supplier;
 import mekanism.api.security.IBlockSecurityUtils;
@@ -16,6 +17,10 @@ import mekanism.api.security.ISecurityObject;
 import mekanism.api.security.ISecurityUtils;
 import mekanism.api.security.SecurityMode;
 import mekanism.common.MekanismLang;
+import mekanism.common.inventory.container.sync.ISyncableData;
+import mekanism.common.inventory.container.sync.SyncableStreamCodec;
+import mekanism.common.lib.frequency.FrequencyTypes;
+import mekanism.common.lib.security.SecurityFrequency;
 import mekanism.common.lib.security.SecurityUtils;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.common.tests.helpers.MekGameTestHelper;
@@ -188,7 +193,33 @@ public class SecurityTraceTest {
                 helper.setBlock(SPOT, Blocks.AIR.defaultBlockState());
             }
             root.add("clicks", clicks(mode));
+            root.add("menu", menu(tile));
             return root;
+        }
+
+        /// O que o menu sincroniza da segurança (`addContainerTrackers`): a frequência de segurança (`SyncableStreamCodec.frequency`: o `hashCode` do valor e os bytes que
+        /// `getPropertyData` escreve) e o modo (`SyncableEnum`, o ordinal).
+        private JsonObject menu(TileEntityMekanism tile) {
+            SecurityFrequency frequency = tile.getSecurity().getFrequency();
+            SyncableStreamCodec<SecurityFrequency> sync = SyncableStreamCodec.frequency(FrequencyTypes.SECURITY, () -> frequency, value -> {
+            });
+            JsonObject out = new JsonObject();
+            out.addProperty("hash", frequency == null ? 0 : frequency.hashCode());
+            try {
+                Object property = sync.getPropertyData(registries, (short) 0, ISyncableData.DirtyType.DIRTY);
+                Field field = property.getClass().getDeclaredField("value");
+                field.setAccessible(true);
+                StringBuilder hex = new StringBuilder();
+                for (byte b : (byte[]) field.get(property)) {
+                    hex.append(String.format("%02x", b));
+                }
+                out.addProperty("bytes", hex.toString());
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+            out.addProperty("mode", tile.getSecurity().getMode().ordinal());
+            out.addProperty("owner_name", frequency == null ? "" : frequency.getOwnerName());
+            return out;
         }
 
         /// O dono e o modo do tile que acabou de ser posto.
