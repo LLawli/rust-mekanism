@@ -165,10 +165,9 @@ fn opening_is_refused_to_who_cannot_access() {
             let player = uuid(&row[who]);
             let result = row["use"][key].as_str().expect("resultado");
             let allowed = state.can_access_player(config, player, false, false, &nobody);
-            assert_eq!(result == "SUCCESS", allowed, "{tag} {who}: {result}");
-            if !allowed {
-                assert_eq!(result, "FAIL", "{tag} {who}");
-            }
+            // `InteractionResult.Success[...]` (a tela abre) ou `Fail[]` (`canAccessOrDisplayError` recusou).
+            assert_eq!(result.starts_with("Success"), allowed, "{tag} {who}: {result}");
+            assert_eq!(result.starts_with("Fail"), !allowed, "{tag} {who}: {result}");
         }
     });
 }

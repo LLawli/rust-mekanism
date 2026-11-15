@@ -210,7 +210,6 @@ public class SecurityTraceTest {
             List<Object[]> players = new ArrayList<>();
             players.add(new Object[]{"other", stranger});
             if (this.owner instanceof ServerPlayer placer) {
-                placer.gameMode.setGameModeForPlayer(GameType.CREATIVE, null);
                 players.add(new Object[]{"owner", placer});
             }
             for (Object[] who : players) {

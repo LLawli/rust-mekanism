@@ -333,7 +333,8 @@ fn put_string(out: &mut Vec<u8>, text: &str) {
 }
 
 /// O dado do menu da frequência de segurança (`SyncableStreamCodec.frequency(SECURITY, ...)`): o `hashCode` do valor (`Frequency.hashCode`, zero sem frequência) e os bytes de
-/// `getPropertyData` (um `boolean`, e com frequência o nome, o dono opcional, o nome do dono e o modo da frequência, que é sempre `PUBLIC`). A frequência existe só com dono.
+/// `getPropertyData`: um `boolean` (há frequência) e `SecurityFrequency.STREAM_CODEC` (o dono opcional, o nome do dono, o modo da frequência, que é sempre `PUBLIC`, o `override`
+/// e a lista de nomes de confiança, vazia sem a Security Desk). A frequência existe só com dono.
 pub fn frequency_sync(owner: Option<u128>, owner_name: &str) -> (i32, Vec<u8>) {
     let Some(owner) = owner else {
         return (0, vec![0]);
@@ -343,13 +344,33 @@ pub fn frequency_sync(owner: Option<u128>, owner_name: &str) -> (i32, Vec<u8>) {
         .wrapping_add(java_string_hash(FREQUENCY_NAME))
         .wrapping_mul(31)
         .wrapping_add(uuid_hash(owner));
-    let mut bytes = vec![1];
-    put_string(&mut bytes, FREQUENCY_NAME);
-    bytes.push(1);
+    let mut bytes = vec![1, 1];
     bytes.extend_from_slice(&owner.to_be_bytes());
     put_string(&mut bytes, owner_name);
     put_var_int(&mut bytes, SecurityMode::Public.ordinal() as u32);
+    // `override` falso e nenhum nome de confiança.
+    bytes.extend_from_slice(&[0, 0]);
     (hash, bytes)
+}
+
+/// O dono e o nome dele, lidos dos bytes de [`frequency_sync`] (o que `GuiSecurityTab` lê do tile do cliente).
+pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
+    if bytes.len() < 2 || bytes[0] == 0 || bytes[1] == 0 {
+        return None;
+    }
+    let owner = u128::from_be_bytes(bytes.get(2..18)?.try_into().ok()?);
+    let mut at = 18;
+    let mut len = 0usize;
+    for shift in (0..35).step_by(7) {
+        let byte = *bytes.get(at)?;
+        at += 1;
+        len |= usize::from(byte & 0x7F) << shift;
+        if byte & 0x80 == 0 {
+            break;
+        }
+    }
+    let name = std::str::from_utf8(bytes.get(at..at + len)?).ok()?.to_owned();
+    Some((owner, name))
 }
 
 /// O que o menu leva da segurança de um tile: o estado e o nome do dono (`Frequency.getOwnerName`, que o servidor procura no cache de nomes).
@@ -394,44 +415,6 @@ impl SecurityView {
             mode: self.mode,
         }
     }
-}
-
-/// O dono e o nome dele, lidos dos bytes de [`frequency_sync`] (o que `GuiSecurityTab` lê do tile do cliente).
-pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
-    fn var_int(bytes: &[u8], at: &mut usize) -> Option<u32> {
-        let mut value = 0u32;
-        for shift in (0..35).step_by(7) {
-            let byte = *bytes.get(*at)?;
-            *at += 1;
-            value |= u32::from(byte & 0x7F) << shift;
-            if byte & 0x80 == 0 {
-                return Some(value);
-            }
-        }
-        None
-    }
-    fn string(bytes: &[u8], at: &mut usize) -> Option<String> {
-        let len = var_int(bytes, at)? as usize;
-        let text = std::str::from_utf8(bytes.get(*at..*at + len)?)
-            .ok()?
-            .to_owned();
-        *at += len;
-        Some(text)
-    }
-    let mut at = 0;
-    if *bytes.first()? == 0 {
-        return None;
-    }
-    at += 1;
-    string(bytes, &mut at)?;
-    if *bytes.get(at)? == 0 {
-        return None;
-    }
-    at += 1;
-    let owner = u128::from_be_bytes(bytes.get(at..at + 16)?.try_into().ok()?);
-    at += 16;
-    let name = string(bytes, &mut at)?;
-    Some((owner, name))
 }
 
 /// Uma linha do tooltip do item: a chave, a cor do rótulo, o argumento (texto literal ou chave de tradução) e a cor dele.
@@ -771,7 +754,7 @@ mod tests {
             hash,
             (31 + java_string_hash(FREQUENCY_NAME)).wrapping_mul(31) + uuid_hash(7)
         );
-        assert_eq!(bytes[0], 1);
+        assert_eq!(bytes[..2], [1, 1]);
         assert_eq!(frequency_owner(&bytes), Some((7, "Alex".to_owned())));
         assert_eq!(frequency_sync(None, "Alex"), (0, vec![0]));
         assert_eq!(frequency_owner(&bytes[..10]), None);
