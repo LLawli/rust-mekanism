@@ -481,6 +481,8 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
             used(game, hit.pos, stack)
         }
         rules::TileUse::PassToItem => match stack {
+            // `FAIL` sem acesso: toma o clique e não balança a mão (o `SUCCESS_SERVER` do cartão sim).
+            Some(stack) if &*stack.item == rules::CONFIGURATION_CARD_ITEM && !basis::security_access_or_error(game, hit.pos, &|id| is_mekanism_tile(id)) => ControlFlow::Break(Ok(false)),
             Some(stack) if card_use_on(game, &stack, hit.pos) => used(game, hit.pos, Some(stack)),
             _ => ControlFlow::Break(Ok(false)),
         },
@@ -574,6 +576,10 @@ fn card_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
     let block = game.native_block(pos);
     if !is_mekanism_tile(&block) {
         return false;
+    }
+    // `ItemConfigurationCard.useOn`: antes de copiar ou colar (agachado ou não), `IBlockSecurityUtils.canAccessOrDisplayError` devolve `FAIL` e a mensagem a quem não tem acesso (aqui `true`: o clique é do item).
+    if !basis::security_access_or_error(game, pos, &|id| is_mekanism_tile(id)) {
+        return true;
     }
     if game.native_sneaking() {
         let Some(config) = card_write(game, pos, &block) else {
