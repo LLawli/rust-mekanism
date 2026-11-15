@@ -189,12 +189,12 @@ pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod
 
 /// A linha `STORED_ENERGY` do tooltip do Heat Generator (`ContainerType.ENERGY`, a capacidade de `generator-storage.heatGenerator`).
 pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut Vec<(horizon_client::mod_api::Text, u32)>) {
-    if &*stack.item != rules::HEAT_GENERATOR {
+    if !rules::has_details(&stack.item) {
         return;
     }
     // `ItemTooltipUtils.shouldDisplayDetails`: os detalhes só aparecem com a tecla de detalhes (Left Shift) apertada, e a dica da descrição vem depois deles.
     let details = game.has_shift_down();
-    if details {
+    if details && &*stack.item == rules::HEAT_GENERATOR {
         // `registerComponentAppenderAfter`: os upgrades antes da energia, o fluido e `Inventory` depois.
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
         lines.push(basis::stored_energy_line(
@@ -213,7 +213,7 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         ));
         lines.extend(basis::content_stored_lines(game, stack, false, true));
     }
-    lines.extend(basis::content_hold_lines(game, details, &stack.item));
+    lines.extend(basis::content_hold_lines(game, details, &format!("description.{}", stack.item.replace([':', '/'], "."))));
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>) {

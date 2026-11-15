@@ -95,6 +95,32 @@ fn menu_offset(mouse_y: i32, widget_y: i32, widget_height: i32) -> i32 {
     (start + delta * (end - start) + 0.5).floor() as i32
 }
 
+/// As linhas de dica que o componente `DETAILS` e o `DESCRIPTION` de um item põem no fim do tooltip (`MekanismDataComponents.registerComponentAppenderAfterAll(DETAILS, ...)` e
+/// `registerComponentAppenderAfter(DESCRIPTION, ...)`): sem a tecla de detalhes a dica `Hold Left Shift for details.`; depois dela, com Shift mais N a descrição e sem eles a dica
+/// `Hold SHIFT + N for a description.`. Um item sem `DETAILS` não ganha a dica de detalhes e mostra a descrição ou a dica dela do mesmo jeito (o `DESCRIPTION` é outro componente).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoldLine {
+    /// `tooltip.mekanism.hold_for_details`.
+    DetailsHint,
+    /// `tooltip.mekanism.hold_for_description`.
+    DescriptionHint,
+    /// O texto da descrição do item.
+    Description,
+}
+
+/// Quais linhas de dica um item mostra: `has_details` (o item tem o componente `DETAILS`), `has_description` (tem o `DESCRIPTION`), `details_down` (a tecla de detalhes, Left Shift) e
+/// `description_down` (Shift mais N).
+pub fn hold_lines(has_details: bool, has_description: bool, details_down: bool, description_down: bool) -> Vec<HoldLine> {
+    let mut lines = Vec::new();
+    if has_details && !details_down {
+        lines.push(HoldLine::DetailsHint);
+    }
+    if has_description {
+        lines.push(if description_down { HoldLine::Description } else { HoldLine::DescriptionHint });
+    }
+    lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +194,17 @@ mod tests {
         assert_eq!(menu_offset(40, 10, 26), 5);
         // lerp(0.5, 23, 5) = 14.
         assert_eq!(menu_offset(23, 10, 26), 14);
+    }
+
+    #[test]
+    fn the_hold_lines_follow_the_details_and_description_keys() {
+        use HoldLine::*;
+        assert_eq!(hold_lines(true, true, false, false), [DetailsHint, DescriptionHint]);
+        assert_eq!(hold_lines(true, true, true, false), [DescriptionHint]);
+        assert_eq!(hold_lines(true, true, true, true), [Description]);
+        assert_eq!(hold_lines(true, true, false, true), [DetailsHint, Description]);
+        assert_eq!(hold_lines(false, true, false, false), [DescriptionHint]);
+        assert_eq!(hold_lines(true, false, false, false), [DetailsHint]);
+        assert!(hold_lines(false, false, false, false).is_empty());
     }
 }

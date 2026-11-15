@@ -3535,6 +3535,121 @@ pub fn ore_experience(block: &str, mut next_int_bound: impl FnMut(i32) -> i32) -
     })
 }
 
+/// Os itens do Mekanism com o componente `MekanismDataComponents.DETAILS` (`.component(MekanismDataComponents.DETAILS, Unit.INSTANCE)` nos `ItemBlock*` e em
+/// `BlockDeferredRegister.registerBlock`): o tooltip deles esconde os detalhes sem a tecla de detalhes e põe a dica `Hold Left Shift for details.`. A lista é a do rastro
+/// (`rastros/upgrade_history_details.jsonl`, `UpgradeHistoryTraceTest.detailsItems`), e o teste `details_items_trace` a confere.
+pub const DETAILS_ITEMS: [&str; 91] = [
+    "mekanism:basic_smelting_factory",
+    "mekanism:basic_enriching_factory",
+    "mekanism:basic_crushing_factory",
+    "mekanism:basic_compressing_factory",
+    "mekanism:basic_combining_factory",
+    "mekanism:basic_purifying_factory",
+    "mekanism:basic_injecting_factory",
+    "mekanism:basic_infusing_factory",
+    "mekanism:basic_sawing_factory",
+    "mekanism:advanced_smelting_factory",
+    "mekanism:advanced_enriching_factory",
+    "mekanism:advanced_crushing_factory",
+    "mekanism:advanced_compressing_factory",
+    "mekanism:advanced_combining_factory",
+    "mekanism:advanced_purifying_factory",
+    "mekanism:advanced_injecting_factory",
+    "mekanism:advanced_infusing_factory",
+    "mekanism:advanced_sawing_factory",
+    "mekanism:elite_smelting_factory",
+    "mekanism:elite_enriching_factory",
+    "mekanism:elite_crushing_factory",
+    "mekanism:elite_compressing_factory",
+    "mekanism:elite_combining_factory",
+    "mekanism:elite_purifying_factory",
+    "mekanism:elite_injecting_factory",
+    "mekanism:elite_infusing_factory",
+    "mekanism:elite_sawing_factory",
+    "mekanism:ultimate_smelting_factory",
+    "mekanism:ultimate_enriching_factory",
+    "mekanism:ultimate_crushing_factory",
+    "mekanism:ultimate_compressing_factory",
+    "mekanism:ultimate_combining_factory",
+    "mekanism:ultimate_purifying_factory",
+    "mekanism:ultimate_injecting_factory",
+    "mekanism:ultimate_infusing_factory",
+    "mekanism:ultimate_sawing_factory",
+    "mekanism:security_desk",
+    "mekanism:industrial_alarm",
+    "mekanism:enrichment_chamber",
+    "mekanism:osmium_compressor",
+    "mekanism:combiner",
+    "mekanism:crusher",
+    "mekanism:digital_miner",
+    "mekanism:metallurgic_infuser",
+    "mekanism:purification_chamber",
+    "mekanism:energized_smelter",
+    "mekanism:teleporter",
+    "mekanism:electric_pump",
+    "mekanism:personal_barrel",
+    "mekanism:personal_chest",
+    "mekanism:chargepad",
+    "mekanism:logistical_sorter",
+    "mekanism:rotary_condensentrator",
+    "mekanism:chemical_oxidizer",
+    "mekanism:chemical_infuser",
+    "mekanism:chemical_injection_chamber",
+    "mekanism:electrolytic_separator",
+    "mekanism:precision_sawmill",
+    "mekanism:chemical_dissolution_chamber",
+    "mekanism:chemical_washer",
+    "mekanism:chemical_crystallizer",
+    "mekanism:seismic_vibrator",
+    "mekanism:pressurized_reaction_chamber",
+    "mekanism:isotopic_centrifuge",
+    "mekanism:nutritional_liquifier",
+    "mekanism:fluidic_plenisher",
+    "mekanism:laser",
+    "mekanism:laser_amplifier",
+    "mekanism:laser_tractor_beam",
+    "mekanism:quantum_entangloporter",
+    "mekanism:solar_neutron_activator",
+    "mekanism:oredictionificator",
+    "mekanism:resistive_heater",
+    "mekanism:formulaic_assemblicator",
+    "mekanism:fuelwood_heater",
+    "mekanism:modification_station",
+    "mekanism:antiprotonic_nucleosynthesizer",
+    "mekanism:pigment_extractor",
+    "mekanism:pigment_mixer",
+    "mekanism:painting_machine",
+    "mekanism:dimensional_stabilizer",
+    "mekanism:qio_drive_array",
+    "mekanism:qio_dashboard",
+    "mekanism:qio_importer",
+    "mekanism:qio_exporter",
+    "mekanism:qio_redstone_adapter",
+    "mekanism:basic_energy_cube",
+    "mekanism:advanced_energy_cube",
+    "mekanism:elite_energy_cube",
+    "mekanism:ultimate_energy_cube",
+    "mekanism:creative_energy_cube",
+];
+
+/// Se o item tem o componente `DETAILS` (a dica de detalhes e o esconde-detalhes do tooltip).
+pub fn has_details(item: &str) -> bool {
+    DETAILS_ITEMS.contains(&item)
+}
+
+/// A chave da descrição de um item com `DETAILS` (`IHasDescription.getDescription`: a chave `description.mekanism.<nome>` do `MekanismLang`): a do id, menos as fábricas (as 36
+/// dividem `description.mekanism.factory`) e os cubos de energia (os 5 dividem `description.mekanism.energy_cube`).
+pub fn description_key(item: &str) -> String {
+    let name = item.strip_prefix("mekanism:").unwrap_or(item);
+    if name.ends_with("_factory") {
+        return "description.mekanism.factory".to_owned();
+    }
+    if name.ends_with("_energy_cube") {
+        return "description.mekanism.energy_cube".to_owned();
+    }
+    format!("description.mekanism.{name}")
+}
+
 /// A cor do nome de um item (`ItemRegistryObject.setNameColor`, `ItemDeferredRegister`: o componente `item_name` com a cor do tier ou do `EnumColor`): os quatro
 /// circuitos, os quatro discos do QIO e os quatro instaladores de tier (`BaseTier.getTextColor`, `BaseTier.java:22-25`; o instalador pela cor do tier de destino,
 /// `registerInstaller`, `MekanismItems.java:299-302`), os três pellets (`EnumColor.PURPLE`, `GRAY` e `INDIGO`, `EnumColor.java`) e o Configurator (`EnumColor.AQUA`, `MekanismItems.java:93-94`).

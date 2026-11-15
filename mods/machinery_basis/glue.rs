@@ -3647,23 +3647,22 @@ pub(in crate::game) fn description_key_down(game: &Game<'_>) -> bool {
 /// `MekanismDataComponents.registerComponentAppenderAfterAll(DETAILS, ...)` e `registerComponentAppenderAfter(DESCRIPTION, ...)`: sem a tecla de detalhes a dica `Hold Left Shift for details.`
 /// (`GRAY` com a tecla em `INDIGO`); depois dela, com Shift mais N a descrição do bloco (`description.<namespace>.<bloco>`, o componente sem estilo) e sem eles a dica
 /// `Hold SHIFT + N for a description.` (`GRAY`, a tecla em `AQUA`).
-pub(in crate::game) fn content_hold_lines(game: &Game<'_>, details: bool, block: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
+pub(in crate::game) fn content_hold_lines(game: &Game<'_>, details: bool, description_key: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
     use horizon_client::mod_api::Text;
+    use machinery_basis_core::tooltip::{HoldLine, hold_lines};
     let hint = |key: &str, key_name: &str, color: u32| {
         let template = horizon_client::lang::get(key).to_string();
         let (head, tail) = template.split_once("%1$s").unwrap_or((template.as_str(), ""));
         (Text::colored(head, CONTENT_GRAY).append(Text::colored(key_name, color)).append(Text::colored(tail, CONTENT_GRAY)), u32::MAX)
     };
-    let mut lines = Vec::new();
-    if !details {
-        lines.push(hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO));
-    }
-    if description_key_down(game) {
-        lines.push((Text::translate(&content_name_key("description", block), &[]), u32::MAX));
-    } else {
-        lines.push(hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA));
-    }
-    lines
+    hold_lines(true, true, details, description_key_down(game))
+        .into_iter()
+        .map(|line| match line {
+            HoldLine::DetailsHint => hint("tooltip.mekanism.hold_for_details", "Left Shift", CONTENT_INDIGO),
+            HoldLine::DescriptionHint => hint("tooltip.mekanism.hold_for_description", "SHIFT + N", CONTENT_AQUA),
+            HoldLine::Description => (Text::translate(description_key, &[]), u32::MAX),
+        })
+        .collect()
 }
 
 /// A capacidade de energia que o tooltip de uma máquina mostra: `UpgradeAware.getUpgradeCount(energy).getMaxEnergy(def)` (`ItemBlockTooltip`), a padrão `def` vezes o multiplicador máximo

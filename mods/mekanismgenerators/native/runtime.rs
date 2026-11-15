@@ -20,6 +20,23 @@ use machinery_basis_core::tile_trackers::{
 use machinery_basis_core::units::{energy_fraction, stored_mb};
 use std::sync::LazyLock;
 
+/// Os itens do Mekanism Generators com o componente `MekanismDataComponents.DETAILS` (o rastro `upgrade_history_details.jsonl`, conferido por `details_items_trace`).
+pub const DETAILS_ITEMS: [&str; 8] = [
+    "mekanismgenerators:heat_generator",
+    "mekanismgenerators:solar_generator",
+    "mekanismgenerators:gas_burning_generator",
+    "mekanismgenerators:bio_generator",
+    "mekanismgenerators:advanced_solar_generator",
+    "mekanismgenerators:wind_generator",
+    "mekanismgenerators:fission_reactor_logic_adapter",
+    "mekanismgenerators:fusion_reactor_logic_adapter",
+];
+
+/// Se o item tem o componente `DETAILS` (a dica de detalhes e o esconde-detalhes do tooltip).
+pub fn has_details(item: &str) -> bool {
+    DETAILS_ITEMS.contains(&item)
+}
+
 pub const HEAT_GENERATOR: &str = "mekanismgenerators:heat_generator";
 
 /// `GeneratorsBlockTypes.java:69`: `SMOKE` e `FLAME` em `(rand * 0,6 - 0,3, rand * 6/16, -0,52)` relativo ao centro do bloco, na face de trás (o

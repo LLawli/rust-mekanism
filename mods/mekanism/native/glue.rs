@@ -3001,7 +3001,9 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     let machine = machine_of(&stack.item);
     // `ItemTooltipUtils.shouldDisplayDetails`: o cliente só mostra os detalhes da máquina (os componentes de `registerComponentAppender*`) com a tecla de detalhes (Left Shift) apertada.
     let details = game.has_shift_down();
-    let hidden = machine.is_some() && !details;
+    // O componente `DETAILS` não é só das máquinas: os cubos de energia, os tanques, o Digital Miner e o resto dos 91 itens do rastro também o levam.
+    let has_details = rules::has_details(&stack.item);
+    let hidden = has_details && !details;
     if machine.is_some() && details {
         lines.extend(basis::content_upgrade_lines(game, stack, rules::enum_color));
         // `registerComponentAppenderAfter(FACTORY_TYPE, ...)`: a linha do tipo de receita vem depois dos upgrades e antes da energia (o rastro do original).
@@ -3017,8 +3019,8 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     if let Some(machine) = machine.filter(|_| details) {
         lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
     }
-    if machine.is_some() {
-        lines.extend(basis::content_hold_lines(game, details, &stack.item));
+    if has_details {
+        lines.extend(basis::content_hold_lines(game, details, &rules::description_key(&stack.item)));
     }
     // `setNameColor`: o nome do item (a primeira linha) com a cor do tier ou da cor do original.
     if let Some(rgb) = rules::name_color(&stack.item) {
