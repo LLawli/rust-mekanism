@@ -283,7 +283,10 @@ mod tests {
         assert_eq!(recipe_book_tab(176).button(), [179.0, 66.0, 18.0, 18.0]);
         // Without the book the xp tab climbs to where the book would be: 90 - 28.
         assert_eq!(XpTab::new(176, 90, false).tab.y, RECIPE_BOOK_TAB_Y);
-        assert_eq!(XpTab::new(176, 90, true).tab.y - RECIPE_BOOK_TAB_Y, XP_TAB_RECIPE_BOOK_SHIFT);
+        assert_eq!(
+            XpTab::new(176, 90, true).tab.y - RECIPE_BOOK_TAB_Y,
+            XP_TAB_RECIPE_BOOK_SHIFT
+        );
     }
 
     #[test]

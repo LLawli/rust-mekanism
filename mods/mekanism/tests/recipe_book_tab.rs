@@ -73,7 +73,8 @@ fn over_of(line: &Value) -> impl Fn(i64, i64) -> bool {
 /// são os de sempre.
 #[test]
 fn the_icon_is_the_one_of_the_original_byte_for_byte() {
-    let bytes = std::fs::read(content().join("textures/gui/sprites/button/recipe_book.png")).unwrap();
+    let bytes =
+        std::fs::read(content().join("textures/gui/sprites/button/recipe_book.png")).unwrap();
     assert_eq!((bytes.len(), fnv(&bytes)), (217, 0xd5c1_5b7a_9f85_ebea));
     assert_eq!(
         RECIPE_BOOK_TAB_ICON,
@@ -102,7 +103,10 @@ fn the_tooltip_is_the_text_of_the_original() {
     );
     if let Ok(original) = original {
         let original: Value = serde_json::from_str(&original).unwrap();
-        assert_eq!(original[RECIPE_BOOK_TAB_TOOLTIP], json[RECIPE_BOOK_TAB_TOOLTIP]);
+        assert_eq!(
+            original[RECIPE_BOOK_TAB_TOOLTIP],
+            json[RECIPE_BOOK_TAB_TOOLTIP]
+        );
     }
 }
 
@@ -129,7 +133,10 @@ fn the_tab_sits_where_the_original_puts_it_in_every_state() {
     assert_eq!(checked, 16);
     assert_eq!(RECIPE_BOOK_TAB_Y, 62);
     assert_eq!(RECIPE_BOOK_TAB_TINT, 0xFFFF_FFFF);
-    assert_eq!(recipe_book_tab(SCREEN_IMAGE_WIDTH).button(), [179.0, 66.0, 18.0, 18.0]);
+    assert_eq!(
+        recipe_book_tab(SCREEN_IMAGE_WIDTH).button(),
+        [179.0, 66.0, 18.0, 18.0]
+    );
 }
 
 /// A grade de `hasClickedOutside` do modo `completo`: o botão de 18 por 18 responde, e o suporte em volta (3 pixels à esquerda, 5 à direita, 4 em cima e embaixo), não.
@@ -148,14 +155,26 @@ fn the_button_is_what_the_original_finds_under_the_mouse() {
         screen_elements::declare(&menu, machine_elements(spec));
         let mirror = Live::default().mirror(&spec);
         for (x, y) in [(179, 66), (196, 83), (188, 75), (179, 83), (196, 66)] {
-            assert!(over(x, y), "{case} em ({x}, {y}): o original responde no botão");
+            assert!(
+                over(x, y),
+                "{case} em ({x}, {y}): o original responde no botão"
+            );
             assert!(
                 screen_elements::over_element(&menu, [x as f32, y as f32], &mirror),
                 "{case} em ({x}, {y}): o port declara o botão"
             );
         }
         // O suporte em volta não é elemento, nos dois jogos.
-        for (x, y) in [(177, 75), (198, 75), (188, 64), (188, 85), (178, 75), (197, 75), (188, 65), (188, 84)] {
+        for (x, y) in [
+            (177, 75),
+            (198, 75),
+            (188, 64),
+            (188, 85),
+            (178, 75),
+            (197, 75),
+            (188, 65),
+            (188, 84),
+        ] {
             assert!(!over(x, y), "{case} em ({x}, {y})");
             assert!(
                 !screen_elements::over_element(&menu, [x as f32, y as f32], &mirror),
@@ -171,7 +190,10 @@ fn the_button_is_what_the_original_finds_under_the_mouse() {
 #[test]
 fn the_screens_without_recipes_have_no_tab_in_the_original() {
     let mut checked = 0;
-    for line in trace().iter().filter(|line| line["mode"] == "completo" && !is_machine(line)) {
+    for line in trace()
+        .iter()
+        .filter(|line| line["mode"] == "completo" && !is_machine(line))
+    {
         let has = line["elements"]
             .as_array()
             .unwrap()
