@@ -631,6 +631,7 @@ const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Ve
     UpgradeWindowSpec {
         block,
         upgrades: true,
+        recipe_book: true,
         virtual_slots: [slots.upgrade, slots.upgrade_output],
         trackers,
         window_trackers: rules::upgrade_window_data,

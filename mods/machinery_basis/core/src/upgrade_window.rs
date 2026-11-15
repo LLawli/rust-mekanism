@@ -34,6 +34,9 @@ pub struct UpgradeWindowSpec {
     /// Se o bloco tem a aba e a janela de upgrades (`IUpgradeTile`). O cubo de energia tem as abas de lados e de transporte e não tem upgrades:
     /// sem eles não há aba à direita, slots virtuais nem o item de upgrade que entra.
     pub upgrades: bool,
+    /// Se a tela tem a aba do livro de receitas (`GuiMekanismTile.createRecipeBookComponent` devolve algo: o tile é `IRecipeLookupHandler`). O clique nela toca o som do botão
+    /// (`GuiInsetElement` usa `BUTTON_CLICK_SOUND`) e é da aba, não da tela; a janela do livro que ele abre no original ainda não está portada.
+    pub recipe_book: bool,
     /// Os índices dos dois slots virtuais (entrada e saída) no menu do bloco.
     pub virtual_slots: [usize; 2],
     /// Os dados que o contêiner sincroniza ao nascer (`addContainerTrackers`), na ordem do Java.

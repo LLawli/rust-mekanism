@@ -732,6 +732,15 @@ fn tab_hit(state: &Client, spec: &UpgradeWindowSpec, rel: [f64; 2]) -> Option<Ki
     None
 }
 
+/// O clique em `rel` cai no botão da aba do livro de receitas (`GuiInsetElement.isMouseOver`: só o botão de dentro, e a aba sempre ativa enquanto o port não tem a janela).
+fn recipe_book_hit(spec: &UpgradeWindowSpec, rel: [f64; 2]) -> bool {
+    let [x, y, w, h] = machinery_basis_core::side_tab::recipe_book_tab(RECIPE_BOOK_IMAGE_WIDTH).button();
+    spec.recipe_book && in_rect([x as i32, y as i32, w as i32, h as i32], rel)
+}
+
+/// `AbstractContainerScreen.imageWidth` das telas de máquina.
+const RECIPE_BOOK_IMAGE_WIDTH: i32 = 176;
+
 /// `screen_mouse_button_pressed_pre`: a aba abre a janela, e na janela o clique é dela. Fora, a tela o recebe.
 pub(in crate::game) fn mouse_pressed(
     game: &Game<'_>,
@@ -785,6 +794,10 @@ pub(in crate::game) fn mouse_pressed(
             && let Some(kind) = tab_hit(state, spec, rel)
         {
             state.pending.push(Action::Open(kind));
+            state.click_sound = true;
+            *canceled = true;
+        } else if button == 0 && recipe_book_hit(spec, rel) {
+            // `GuiRecipeBookWindowTab.onClick` abre a janela do livro, que o port ainda não tem; o som do botão (`AbstractWidget.mouseClicked`) e o clique ser da aba já valem.
             state.click_sound = true;
             *canceled = true;
         }

@@ -363,6 +363,8 @@ def casos_livro():
         caso("infuser_livro_xp", "infuser", energia="0", upgrades=XP),
         caso("chamber_livro_janela_atras", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_ATRAS_DA_JANELA),
         caso("chamber_livro_janela_fora", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_FORA_DA_JANELA),
+        # O clique abre a janela do livro (`GuiRecipeBookWindow`) no original; o port ainda não a tem (decisão 260), então o caso só roda no original, para medir o que ela mostra.
+        caso("chamber_livro_clique", "chamber", energia="0", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}", so_oficial="1"),
     ]
     return out
 

@@ -617,6 +617,7 @@ const STALE_TICKS: i64 = 100;
 static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
     block: rules::HEAT_GENERATOR,
     upgrades: true,
+    recipe_book: false,
     virtual_slots: [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT],
     trackers: rules::heat_generator_trackers,
     window_trackers: rules::upgrade_window_data,

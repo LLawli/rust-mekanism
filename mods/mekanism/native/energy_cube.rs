@@ -793,6 +793,7 @@ const fn window_spec_of(block: &'static str) -> UpgradeWindowSpec {
     UpgradeWindowSpec {
         block,
         upgrades: false,
+        recipe_book: false,
         virtual_slots: [SLOTS, SLOTS + 1],
         trackers: rules::cube_trackers,
         window_trackers: rules::upgrade_window_data,
