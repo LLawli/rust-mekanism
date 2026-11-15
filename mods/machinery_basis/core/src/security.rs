@@ -369,7 +369,9 @@ pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
             break;
         }
     }
-    let name = std::str::from_utf8(bytes.get(at..at + len)?).ok()?.to_owned();
+    let name = std::str::from_utf8(bytes.get(at..at + len)?)
+        .ok()?
+        .to_owned();
     Some((owner, name))
 }
 
@@ -770,7 +772,10 @@ mod tests {
             allow_protection: false,
             ops_bypass: false,
         };
-        assert_eq!(state.effective_mode(SecurityConfig::default()), SecurityMode::Private);
+        assert_eq!(
+            state.effective_mode(SecurityConfig::default()),
+            SecurityMode::Private
+        );
         assert_eq!(state.effective_mode(off), SecurityMode::Public);
     }
 }
