@@ -51,6 +51,7 @@ pub mod recipe;
 pub mod recipe_cache;
 pub mod recipe_data;
 pub mod recipe_handlers;
+pub mod recipe_book;
 pub mod recipe_monitor;
 pub mod redstone_tab;
 pub mod resource;
