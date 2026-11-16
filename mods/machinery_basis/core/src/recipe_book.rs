@@ -260,6 +260,11 @@ impl ClientBook {
         self.by_tab.get(category).map_or(&[], Vec::as_slice)
     }
 
+    /// Quantas coleções o livro tem (`getCollections().size()`).
+    pub fn collection_count(&self) -> usize {
+        self.collections.len()
+    }
+
     pub fn collection(&self, index: usize) -> &Collection {
         &self.collections[index]
     }
