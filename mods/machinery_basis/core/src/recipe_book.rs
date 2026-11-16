@@ -40,7 +40,12 @@ pub type Rect = [i32; 4];
 /// `RecipeBookPage.init`: o botão `i` da página, em cinco colunas de 25 a partir de (`xo + 11`, `yo + 31`).
 pub fn button_rect(xo: i32, yo: i32, index: usize) -> Rect {
     let (column, row) = ((index % COLUMNS) as i32, (index / COLUMNS) as i32);
-    [xo + 11 + 25 * column, yo + 31 + 25 * row, BUTTON_SIZE, BUTTON_SIZE]
+    [
+        xo + 11 + 25 * column,
+        yo + 31 + 25 * row,
+        BUTTON_SIZE,
+        BUTTON_SIZE,
+    ]
 }
 
 /// `new ImageButton(xo + 93, yo + 137, 12, 17, ...)`: a seta para a página seguinte.
@@ -72,7 +77,12 @@ pub fn filter_rect(xo: i32, yo: i32) -> Rect {
 
 /// `VirtualRecipeBookComponent.updateTabs`: a aba visível de índice `index`, em (`xo - 30`, `yo + 3 + 27 * index`).
 pub fn tab_rect(xo: i32, yo: i32, index: usize) -> Rect {
-    [xo - 30, yo + 3 + TAB_HEIGHT * index as i32, TAB_WIDTH, TAB_HEIGHT]
+    [
+        xo - 30,
+        yo + 3 + TAB_HEIGHT * index as i32,
+        TAB_WIDTH,
+        TAB_HEIGHT,
+    ]
 }
 
 /// `RecipeBookPage.extractRenderState`: o texto `Page n/m` centrado em `xo + 73`, em `yo + 141`.
@@ -82,7 +92,10 @@ pub fn page_text_x(xo: i32, text_width: i32) -> i32 {
 
 /// Se o ponto cai dentro do retângulo, como `AbstractWidget.isMouseOver` (`>=` na esquerda e em cima, `<` na direita e embaixo).
 pub fn contains(rect: Rect, x: f64, y: f64) -> bool {
-    x >= f64::from(rect[0]) && x < f64::from(rect[0] + rect[2]) && y >= f64::from(rect[1]) && y < f64::from(rect[1] + rect[3])
+    x >= f64::from(rect[0])
+        && x < f64::from(rect[0] + rect[2])
+        && y >= f64::from(rect[1])
+        && y < f64::from(rect[1] + rect[3])
 }
 
 /// `RecipeDisplayEntry`: o que o livro sabe de uma receita. `id` é o `RecipeDisplayId`; `group` é o `OptionalInt` do grupo, que
@@ -126,7 +139,11 @@ impl Collection {
 
     /// `MekanismRecipeBookComponent.selectMatchingRecipes(collection, stackedContents, selector)`: para cada receita, `selected` diz o
     /// `selector` e `craftable` é `selected` e o `can_craft`. Uma receita que deixa de ser escolhida sai dos dois conjuntos.
-    pub fn select(&mut self, selector: impl Fn(&Entry) -> bool, can_craft: impl Fn(&Entry) -> bool) {
+    pub fn select(
+        &mut self,
+        selector: impl Fn(&Entry) -> bool,
+        can_craft: impl Fn(&Entry) -> bool,
+    ) {
         for entry in &self.entries {
             let is_selected = selector(entry);
             if is_selected {
@@ -161,7 +178,9 @@ impl Collection {
             .filter(|entry| match status {
                 Craftable::Any => self.selected.contains(&entry.id),
                 Craftable::Craftable => self.craftable.contains(&entry.id),
-                Craftable::NotCraftable => self.selected.contains(&entry.id) && !self.craftable.contains(&entry.id),
+                Craftable::NotCraftable => {
+                    self.selected.contains(&entry.id) && !self.craftable.contains(&entry.id)
+                }
             })
             .collect()
     }
@@ -175,7 +194,8 @@ impl Collection {
             Some(colon) => {
                 let (namespace, path) = (query[..colon].trim(), query[colon + 1..].trim());
                 self.ids.iter().any(|(ns, _)| ns.contains(namespace))
-                    && (self.ids.iter().any(|(_, p)| p.contains(path)) || self.names.iter().any(|name| name.contains(path)))
+                    && (self.ids.iter().any(|(_, p)| p.contains(path))
+                        || self.names.iter().any(|name| name.contains(path)))
             }
         }
     }
@@ -231,24 +251,37 @@ impl ClientBook {
         let mut collections: Vec<Collection> = Vec::new();
         let mut by_tab: HashMap<String, Vec<usize>> = HashMap::new();
         for id in order {
-            let entry = self.known.iter().find(|entry| entry.id == id).expect("id vindo de known");
+            let entry = self
+                .known
+                .iter()
+                .find(|entry| entry.id == id)
+                .expect("id vindo de known");
             match entry.group {
                 None => {
-                    by_tab.entry(entry.category.clone()).or_default().push(collections.len());
+                    by_tab
+                        .entry(entry.category.clone())
+                        .or_default()
+                        .push(collections.len());
                     collections.push(Collection::new(vec![entry.clone()]));
                 }
                 Some(group) => match groups.get(&(entry.category.clone(), group)) {
                     Some(&index) => collections[index].entries.push(entry.clone()),
                     None => {
                         groups.insert((entry.category.clone(), group), collections.len());
-                        by_tab.entry(entry.category.clone()).or_default().push(collections.len());
+                        by_tab
+                            .entry(entry.category.clone())
+                            .or_default()
+                            .push(collections.len());
                         collections.push(Collection::new(vec![entry.clone()]));
                     }
                 },
             }
         }
         for (search, included) in search_categories {
-            let merged: Vec<usize> = included.iter().flat_map(|category| by_tab.get(category).cloned().unwrap_or_default()).collect();
+            let merged: Vec<usize> = included
+                .iter()
+                .flat_map(|category| by_tab.get(category).cloned().unwrap_or_default())
+                .collect();
             by_tab.insert(search.clone(), merged);
         }
         self.collections = collections;
@@ -275,12 +308,18 @@ impl ClientBook {
 
     /// `RecipeBookTabButton.updateVisibility`: a aba aparece se alguma coleção dela tem receita escolhida.
     pub fn tab_visible(&self, category: &str) -> bool {
-        self.tab(category).iter().any(|&index| self.collections[index].has_any_selected())
+        self.tab(category)
+            .iter()
+            .any(|&index| self.collections[index].has_any_selected())
     }
 
     /// `RecipeBookTabButton.startAnimation`: a aba pisca se alguma receita que ela mostraria está para ser destacada.
     pub fn tab_highlighted(&self, category: &str, filtering: bool) -> bool {
-        let status = if filtering { Craftable::Craftable } else { Craftable::Any };
+        let status = if filtering {
+            Craftable::Craftable
+        } else {
+            Craftable::Any
+        };
         self.tab(category).iter().any(|&index| {
             self.collections[index]
                 .selected_recipes(status)
@@ -316,7 +355,12 @@ pub struct Page {
 impl Page {
     /// `updateCollections(list, resetPage, isFiltering)`: `totalPages = ceil(size / 20.0)`; a página volta a 0 se pediram ou se ela
     /// deixou de existir.
-    pub fn update_collections(&mut self, collections: Vec<usize>, reset_page: bool, filtering: bool) {
+    pub fn update_collections(
+        &mut self,
+        collections: Vec<usize>,
+        reset_page: bool,
+        filtering: bool,
+    ) {
         self.total_pages = collections.len().div_ceil(ITEMS_PER_PAGE);
         self.collections = collections;
         self.filtering = filtering;
@@ -381,7 +425,10 @@ pub fn current_recipe_index(select_index: i32, selected: usize) -> usize {
 /// `RecipeButton.getDisplayStack`: o par (receita, item dentro do resultado dela) que o botão mostra agora.
 pub fn display_stack_index(select_index: i32, entries: usize) -> (usize, i32) {
     let offset = select_index / entries as i32;
-    (select_index.wrapping_sub(entries as i32 * offset) as usize, offset)
+    (
+        select_index.wrapping_sub(entries as i32 * offset) as usize,
+        offset,
+    )
 }
 
 #[cfg(test)]
@@ -428,18 +475,39 @@ mod tests {
     #[test]
     fn a_receita_sem_grupo_ganha_uma_colecao_e_as_de_um_grupo_dividem_a_primeira() {
         // A ordem do `HashMap` com ids pequenos é a numérica: 1, 2, 3, 4.
-        let book = book(&[entry(1, "a", None), entry(2, "a", Some(7)), entry(3, "a", Some(7)), entry(4, "b", Some(7))]);
-        let a: Vec<Vec<i32>> = book.tab("a").iter().map(|&i| book.collection(i).entries.iter().map(|e| e.id).collect()).collect();
+        let book = book(&[
+            entry(1, "a", None),
+            entry(2, "a", Some(7)),
+            entry(3, "a", Some(7)),
+            entry(4, "b", Some(7)),
+        ]);
+        let a: Vec<Vec<i32>> = book
+            .tab("a")
+            .iter()
+            .map(|&i| book.collection(i).entries.iter().map(|e| e.id).collect())
+            .collect();
         assert_eq!(a, vec![vec![1], vec![2, 3]]);
         // O mesmo grupo em outra categoria é outra coleção.
-        let b: Vec<Vec<i32>> = book.tab("b").iter().map(|&i| book.collection(i).entries.iter().map(|e| e.id).collect()).collect();
+        let b: Vec<Vec<i32>> = book
+            .tab("b")
+            .iter()
+            .map(|&i| book.collection(i).entries.iter().map(|e| e.id).collect())
+            .collect();
         assert_eq!(b, vec![vec![4]]);
     }
 
     #[test]
     fn a_categoria_de_busca_soma_as_mesmas_colecoes_na_ordem() {
-        let mut book = book(&[entry(1, "b", None), entry(2, "a", None), entry(3, "a", None)]);
-        let search: Vec<i32> = book.tab("search").iter().map(|&i| book.collection(i).entries[0].id).collect();
+        let mut book = book(&[
+            entry(1, "b", None),
+            entry(2, "a", None),
+            entry(3, "a", None),
+        ]);
+        let search: Vec<i32> = book
+            .tab("search")
+            .iter()
+            .map(|&i| book.collection(i).entries[0].id)
+            .collect();
         assert_eq!(search, vec![2, 3, 1]);
         // São as mesmas coleções: escolher por uma aba vale na outra.
         let first = book.tab("a")[0];
@@ -450,18 +518,51 @@ mod tests {
     #[test]
     fn a_ordem_das_colecoes_e_a_da_tabela_do_hashmap_e_nao_a_de_insercao() {
         // Ids que caem em baldes trocados numa tabela de 16: 17 vai ao balde 1 e 2 ao balde 2, 16 ao 0.
-        let book = book(&[entry(17, "a", None), entry(2, "a", None), entry(16, "a", None)]);
-        let order: Vec<i32> = book.tab("a").iter().map(|&i| book.collection(i).entries[0].id).collect();
+        let book = book(&[
+            entry(17, "a", None),
+            entry(2, "a", None),
+            entry(16, "a", None),
+        ]);
+        let order: Vec<i32> = book
+            .tab("a")
+            .iter()
+            .map(|&i| book.collection(i).entries[0].id)
+            .collect();
         assert_eq!(order, vec![16, 17, 2]);
     }
 
     #[test]
     fn selecionar_marca_as_receitas_e_o_que_da_para_fazer_e_desmarca_o_resto() {
-        let mut collection = Collection::new(vec![entry(1, "a", None), entry(2, "a", None), entry(3, "a", None)]);
+        let mut collection = Collection::new(vec![
+            entry(1, "a", None),
+            entry(2, "a", None),
+            entry(3, "a", None),
+        ]);
         collection.select(|e| e.id != 3, |e| e.id == 2 || e.id == 3);
-        assert_eq!(collection.selected_recipes(Craftable::Any).iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2]);
-        assert_eq!(collection.selected_recipes(Craftable::Craftable).iter().map(|e| e.id).collect::<Vec<_>>(), vec![2]);
-        assert_eq!(collection.selected_recipes(Craftable::NotCraftable).iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(
+            collection
+                .selected_recipes(Craftable::Any)
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(
+            collection
+                .selected_recipes(Craftable::Craftable)
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+        assert_eq!(
+            collection
+                .selected_recipes(Craftable::NotCraftable)
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
         // A 3 não é escolhida, então não é "dá para fazer" mesmo que o teste diga que sim.
         assert!(!collection.is_craftable(3));
         collection.select(|_| false, |_| true);
@@ -469,20 +570,36 @@ mod tests {
     }
 
     #[test]
-    fn a_lista_da_aba_tira_o_que_nao_e_escolhido_o_que_a_busca_nao_acha_e_o_que_nao_da_para_fazer() {
-        let mut book = book(&[entry(1, "a", None), entry(2, "a", None), entry(3, "a", None)]);
-        for (index, name, craftable) in [(0, "iron dust", true), (1, "gold dust", false), (2, "copper dust", true)] {
+    fn a_lista_da_aba_tira_o_que_nao_e_escolhido_o_que_a_busca_nao_acha_e_o_que_nao_da_para_fazer()
+    {
+        let mut book = book(&[
+            entry(1, "a", None),
+            entry(2, "a", None),
+            entry(3, "a", None),
+        ]);
+        for (index, name, craftable) in [
+            (0, "iron dust", true),
+            (1, "gold dust", false),
+            (2, "copper dust", true),
+        ] {
             let index = book.tab("a")[index];
             let collection = book.collection_mut(index);
             collection.names = vec![name.to_owned()];
             let id = collection.entries[0].id;
             collection.select(|e| e.id != 3, move |_| craftable && id != 3);
         }
-        let ids = |list: Vec<usize>| list.iter().map(|&i| book.collection(i).entries[0].id).collect::<Vec<_>>();
+        let ids = |list: Vec<usize>| {
+            list.iter()
+                .map(|&i| book.collection(i).entries[0].id)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(ids(book.visible_collections("a", "", false)), vec![1, 2]);
         assert_eq!(ids(book.visible_collections("a", "GOLD", false)), vec![2]);
         assert_eq!(ids(book.visible_collections("a", "dust", true)), vec![1]);
-        assert_eq!(ids(book.visible_collections("a", "copper", false)), Vec::<i32>::new());
+        assert_eq!(
+            ids(book.visible_collections("a", "copper", false)),
+            Vec::<i32>::new()
+        );
     }
 
     #[test]
@@ -507,7 +624,10 @@ mod tests {
         assert!(page.forward_visible() && !page.back_visible());
         assert_eq!(page.shown().len(), 20);
         assert!(page.forward() && page.forward());
-        assert_eq!((page.current_page, page.shown().to_vec()), (2, (40..45).collect::<Vec<_>>()));
+        assert_eq!(
+            (page.current_page, page.shown().to_vec()),
+            (2, (40..45).collect::<Vec<_>>())
+        );
         assert!(!page.forward_visible() && page.back_visible());
         assert!(!page.forward());
         // A lista encolhe: a página 2 deixa de existir e volta a 0, sem pedido de reset.
@@ -560,6 +680,10 @@ mod tests {
     fn the_point_test_is_open_on_the_right_and_at_the_bottom() {
         let rect = [10, 20, 5, 5];
         assert!(contains(rect, 10.0, 20.0) && contains(rect, 14.9, 24.9));
-        assert!(!contains(rect, 15.0, 22.0) && !contains(rect, 12.0, 25.0) && !contains(rect, 9.9, 22.0));
+        assert!(
+            !contains(rect, 15.0, 22.0)
+                && !contains(rect, 12.0, 25.0)
+                && !contains(rect, 9.9, 22.0)
+        );
     }
 }

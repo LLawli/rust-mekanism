@@ -11,8 +11,14 @@ use machinery_basis_core::recipe_book::{ClientBook, Entry};
 use serde_json::Value;
 
 fn read(name: &str) -> Vec<Value> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dev/referencia/rastros").join(name);
-    fs::read_to_string(path).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../dev/referencia/rastros")
+        .join(name);
+    fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
 }
 
 /// As linhas de tooltip que a busca lê e os ids do resultado, por id de display.
@@ -32,13 +38,19 @@ fn displays() -> Vec<Row> {
                 category: row["category"].as_str().unwrap().to_owned(),
                 group: row["group"].as_i64().map(|group| group as i32),
             },
-            names: row["tooltip"].as_array().unwrap().iter().map(|line| line.as_str().unwrap().to_lowercase()).collect(),
+            names: row["tooltip"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|line| line.as_str().unwrap().to_lowercase())
+                .collect(),
             ids: row["results"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .map(|result| {
-                    let (namespace, path) = result["item"].as_str().unwrap().split_once(':').unwrap();
+                    let (namespace, path) =
+                        result["item"].as_str().unwrap().split_once(':').unwrap();
                     (namespace.to_lowercase(), path.to_lowercase())
                 })
                 .collect(),
@@ -57,7 +69,12 @@ fn build(rows: &[Row], step: usize) -> ClientBook {
     book.rebuild_collections(&[]);
     let by_id: HashMap<i32, &Row> = rows.iter().map(|row| (row.entry.id, row)).collect();
     for index in 0..book.collection_count() {
-        let (names, ids): (Vec<_>, Vec<_>) = book.collection(index).entries.iter().map(|entry| (&by_id[&entry.id].names, &by_id[&entry.id].ids)).unzip();
+        let (names, ids): (Vec<_>, Vec<_>) = book
+            .collection(index)
+            .entries
+            .iter()
+            .map(|entry| (&by_id[&entry.id].names, &by_id[&entry.id].ids))
+            .unzip();
         let collection = book.collection_mut(index);
         collection.names = names.into_iter().flatten().cloned().collect();
         collection.ids = ids.into_iter().flatten().cloned().collect();
@@ -78,9 +95,26 @@ fn the_collections_of_each_tab_come_in_the_order_of_the_original() {
             let ours: Vec<Vec<i64>> = book
                 .tab(category)
                 .iter()
-                .map(|&index| book.collection(index).entries.iter().map(|entry| i64::from(entry.id)).collect())
+                .map(|&index| {
+                    book.collection(index)
+                        .entries
+                        .iter()
+                        .map(|entry| i64::from(entry.id))
+                        .collect()
+                })
                 .collect();
-            let theirs: Vec<Vec<i64>> = lists.as_array().unwrap().iter().map(|list| list.as_array().unwrap().iter().map(|id| id.as_i64().unwrap()).collect()).collect();
+            let theirs: Vec<Vec<i64>> = lists
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|list| {
+                    list.as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|id| id.as_i64().unwrap())
+                        .collect()
+                })
+                .collect();
             assert_eq!(ours, theirs, "step {step}, aba {category}");
             compared += theirs.len();
         }
@@ -98,7 +132,12 @@ fn the_search_finds_the_same_collections_as_the_original() {
         let book = build(&rows, step);
         for query in line["queries"].as_array().unwrap() {
             let text = query["q"].as_str().unwrap();
-            let theirs: BTreeSet<i64> = query["first_ids"].as_array().unwrap().iter().map(|id| id.as_i64().unwrap()).collect();
+            let theirs: BTreeSet<i64> = query["first_ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|id| id.as_i64().unwrap())
+                .collect();
             let ours: BTreeSet<i64> = (0..book.collection_count())
                 .filter(|&index| book.collection(index).matches_search(&text.to_lowercase()))
                 .map(|index| i64::from(book.collection(index).entries[0].id))
