@@ -3040,14 +3040,16 @@ pub(in crate::game) fn redstone_widget_tooltip(
 const REDSTONE_TOOLTIP_WRAP: i32 = 170;
 
 /// `GuiRecipeBookWindowTab` desenhada: o suporte (branco, `TAB_RECIPE_BOOK`), o botão e o ícone `button/recipe_book`, com o fundo em foco sob o mouse e nenhuma janela por cima.
-/// A aba só fica inativa com a janela do livro aberta (`disableTab`), que o port ainda não tem.
+/// A aba fica inativa com a janela do livro aberta.
 pub(in crate::game) fn recipe_book_draw(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], image_width: i32, icon: &str) {
     use machinery_basis_core::side_tab::{ButtonLook, RECIPE_BOOK_TAB_TINT, recipe_book_tab};
     let tab = recipe_book_tab(image_width);
     let cursor = game.native_cursor();
     let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
-    let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
-    inset_tab(game, batch, "mekanism", tab, origin, RECIPE_BOOK_TAB_TINT, icon, ButtonLook::of(true, hovered));
+    // `GuiWindowCreatorTab.setListenerTab`: a janela aberta deixa a aba inativa.
+    let active = !game.mb_recipe_book_open();
+    let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, active, at);
+    inset_tab(game, batch, "mekanism", tab, origin, RECIPE_BOOK_TAB_TINT, icon, ButtonLook::of(active, hovered));
 }
 
 /// `GuiRecipeBookWindowTab`: `setTooltip(MekanismLang.RECIPE_BOOK)`, que `Tooltip.create` quebra em 170 pixels, sobre o botão. `text` é o texto já traduzido. Devolve se desenhou.
@@ -3060,7 +3062,7 @@ pub(in crate::game) fn recipe_book_widget_tooltip(
     cursor: (f32, f32),
 ) -> bool {
     let tab = machinery_basis_core::side_tab::recipe_book_tab(image_width);
-    if game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
+    if game.mb_recipe_book_open() || game.mb_window_covers(at) || !tab.is_mouse_over(true, true, at) {
         return false;
     }
     let lines: Vec<(String, Option<u32>)> = machinery_basis_core::upgrade_window::wrap_lines(text, REDSTONE_TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece))

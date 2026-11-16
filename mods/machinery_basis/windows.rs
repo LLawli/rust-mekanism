@@ -16,6 +16,8 @@ use machinery_basis_core::container_sync::{Mirror, Property, TrackedSource, wire
 use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::machine_sync::read_upgrade_map;
+use machinery_basis_core::recipe_book as rb;
+use machinery_basis_core::recipe_book_data::Settings as BookSettings;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
 use machinery_basis_core::side_config::{DataType, RelativeSide, TileComponentConfig, TransmissionType};
@@ -191,12 +193,28 @@ enum Kind {
     Upgrade,
     Side,
     Transporter,
+    /// `GuiRecipeBookWindow`.
+    RecipeBook,
 }
 
 impl Kind {
     /// A ordem em que `initPinnedWindows` as abre (`GuiMekanismTile.addGenericTabs` põe a aba de upgrades, `GuiConfigurableTile`
     /// as duas de configuração depois).
-    const ALL: [Kind; 3] = [Kind::Upgrade, Kind::Side, Kind::Transporter];
+    const ALL: [Kind; 4] = [Kind::Upgrade, Kind::Side, Kind::Transporter, Kind::RecipeBook];
+
+    /// As duas janelas de configuração de lados (`ISideConfiguration`): as que o servidor acompanha com o estado do ejetor.
+    fn is_config(self) -> bool {
+        matches!(self, Kind::Side | Kind::Transporter)
+    }
+
+    /// Se a máquina tem a aba que abre esta janela.
+    fn offered(self, spec: &UpgradeWindowSpec) -> bool {
+        match self {
+            Kind::Upgrade => true,
+            Kind::Side | Kind::Transporter => has_config(spec),
+            Kind::RecipeBook => spec.recipe_book,
+        }
+    }
 
     fn selection(self, spec: &UpgradeWindowSpec) -> SelectedWindow {
         SelectedWindow::new(
@@ -204,6 +222,7 @@ impl Kind {
                 Kind::Upgrade => spec.window_type,
                 Kind::Side => spec.window_types[SIDE_CONFIG_ORDINAL],
                 Kind::Transporter => spec.window_types[TRANSPORTER_CONFIG_ORDINAL],
+                Kind::RecipeBook => spec.window_types[RECIPE_BOOK_ORDINAL],
             },
             0,
         )
@@ -213,6 +232,8 @@ impl Kind {
 /// `WindowType.SIDE_CONFIG` e `TRANSPORTER_CONFIG`: o `ordinal` no enum, que é o índice na tabela do mod.
 const SIDE_CONFIG_ORDINAL: usize = 7;
 const TRANSPORTER_CONFIG_ORDINAL: usize = 8;
+/// `WindowType.RECIPE_BOOK`.
+const RECIPE_BOOK_ORDINAL: usize = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
@@ -429,11 +450,15 @@ fn close_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind, tell_
             return;
         };
         let open = state.windows.remove(index);
+        if kind == Kind::RecipeBook && !open.window.pinned {
+            // `GuiRecipeBookWindow.close`: sem fixar, `toggleVisibility` fecha o livro nos dados.
+            set_book_open(spec, false);
+        }
         let positions = state.positions.get_or_insert_with(|| load_positions(spec));
         if open.window.close(positions) {
             save_positions(spec, positions);
         }
-        (state.screen_pos, kind != Kind::Upgrade && !state.windows.iter().any(|open| open.kind != Kind::Upgrade))
+        (state.screen_pos, kind.is_config() && !state.windows.iter().any(|open| open.kind.is_config()))
     };
     let (pos, last_config) = pos;
     if last_config {
@@ -488,6 +513,8 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
         // `GuiSideConfigurationTab.createWindow`: `(getGuiWidth() - 156) / 2` na horizontal e 15 na vertical.
         Kind::Side => ([(rect as i32 - cw::SIDE_SIZE[0]) / 2, 15], cw::SIDE_SIZE),
         Kind::Transporter => ([(rect as i32 - cw::TRANSPORTER_SIZE[0]) / 2, 15], cw::TRANSPORTER_SIZE),
+        // `GuiRecipeBookWindowTab.createWindow`: `((getGuiWidth() - WIDTH_WITH_TABS) / 2, HEIGHT)`, com `IMAGE_WIDTH` por `HEIGHT`.
+        Kind::RecipeBook => ([(rect as i32 - rb::WIDTH_WITH_TABS) / 2, rb::WINDOW_HEIGHT], [rb::IMAGE_WIDTH, rb::WINDOW_HEIGHT]),
     };
     let neighbours: [Option<ItemStack>; 6] = match (kind, config_view(game, spec)) {
         (Kind::Side | Kind::Transporter, Some(view)) => RelativeSide::VALUES.map(|side| neighbour_item(game, &view, side)),
@@ -513,7 +540,15 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             neighbours,
         },
     );
-    let first_config = kind != Kind::Upgrade && state.windows.iter().filter(|open| open.kind != Kind::Upgrade).count() == 1;
+    if kind == Kind::RecipeBook {
+        // `GuiRecipeBookWindow`: a janela que nasce com o livro aberto nos dados vale como fixada (antes de `adoptPosition`, que o abre).
+        let open = &mut state.windows[0];
+        if !open.window.pinned && book_open(spec) {
+            open.window.toggle_pinned();
+        }
+        set_book_open(spec, true);
+    }
+    let first_config = kind.is_config() && state.windows.iter().filter(|open| open.kind.is_config()).count() == 1;
     drop(guard);
     if first_config {
         send(game, vec![OP_CONFIG_TRACK, 1]);
@@ -581,7 +616,7 @@ fn left_tab(kind: Kind) -> Option<InsetTab> {
     let y = match kind {
         Kind::Side => 6,
         Kind::Transporter => 34,
-        Kind::Upgrade => return None,
+        Kind::Upgrade | Kind::RecipeBook => return None,
     };
     Some(InsetTab { x: -26, y, height: 26, left: true })
 }
@@ -632,7 +667,9 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             state.sent_selection = Some(None);
             let positions = state.positions.get_or_insert_with(|| load_positions(spec));
             for kind in Kind::ALL {
-                if (kind == Kind::Upgrade || has_config(spec)) && positions.was_pinned(kind.selection(spec)) {
+                // `GuiRecipeBookWindowTab.wasPinned`: o livro aberto nos dados.
+            let pinned = if kind == Kind::RecipeBook { book_open(spec) } else { positions.was_pinned(kind.selection(spec)) };
+            if kind.offered(spec) && pinned {
                     state.pending.push(Action::Open(kind));
                 }
             }
@@ -757,7 +794,7 @@ pub(in crate::game) fn mouse_pressed(
     };
     let mouse = mouse_of(view);
     let sync = read_sync(game);
-    let config = if client().windows.iter().any(|open| open.kind != Kind::Upgrade) {
+    let config = if client().windows.iter().any(|open| open.kind.is_config()) {
         config_view(game, spec)
     } else {
         None
@@ -797,9 +834,12 @@ pub(in crate::game) fn mouse_pressed(
             state.click_sound = true;
             *canceled = true;
         } else if button == 0 && recipe_book_hit(spec, rel) {
-            // `GuiRecipeBookWindowTab.onClick` abre a janela do livro, que o port ainda não tem; o som do botão (`AbstractWidget.mouseClicked`) e o clique ser da aba já valem.
-            state.click_sound = true;
-            *canceled = true;
+            // `GuiRecipeBookWindowTab.onClick` abre a janela do livro; com ela aberta a aba está inativa e o clique não é dela.
+            if index_of(state, Kind::RecipeBook).is_none() {
+                state.pending.push(Action::Open(Kind::RecipeBook));
+                state.click_sound = true;
+                *canceled = true;
+            }
         }
         return;
     };
@@ -839,6 +879,18 @@ pub(in crate::game) fn mouse_pressed(
                         open.selected_ms = now_ms();
                     }
                 }
+            }
+        }
+        Kind::RecipeBook => {
+            *canceled = true;
+            let pinned = state.windows[index].window.pinned;
+            if left_or_right && in_rect(PIN, rel) {
+                state.windows[index].window.toggle_pinned();
+            } else if left_or_right && in_rect(CLOSE, rel) {
+                state.pending.push(Action::Close(Kind::RecipeBook));
+            }
+            if state.windows[index].window.pinned != pinned || state.pending.contains(&Action::Close(Kind::RecipeBook)) {
+                state.click_sound = true;
             }
         }
         Kind::Side | Kind::Transporter => {
@@ -942,7 +994,7 @@ fn press_config(
                 }
             }
         }
-        Kind::Upgrade => {}
+        Kind::Upgrade | Kind::RecipeBook => {}
     }
 }
 
@@ -1292,6 +1344,7 @@ fn draw_windows(
             Kind::Side | Kind::Transporter => {
                 draw_config_window(game, spec, batch, &state, open, config.as_ref(), ox, oy);
             }
+            Kind::RecipeBook => draw_recipe_book_window(game, spec, batch, &state, open, ox, oy),
         }
         if index != 0 {
             let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
@@ -1538,6 +1591,68 @@ fn draw_screen_text(
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// A janela do livro de receitas (`GuiRecipeBookWindow`).
+
+/// Os `RecipeBookSettings` do jogador, só em memória nesta rodada (a persistência no NBT do jogador fica para a seguinte), por tipo de livro.
+static BOOK_SETTINGS: Mutex<Option<BookSettings>> = Mutex::new(None);
+
+/// O tipo de livro da máquina. No original é um `MekanismRecipeBookTypes` por tipo de receita; o port guarda por bloco até as receitas entrarem.
+fn book_type(spec: &UpgradeWindowSpec) -> &'static str {
+    spec.block
+}
+
+fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
+    let mut guard = BOOK_SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
+    act(guard.get_or_insert_with(BookSettings::default))
+}
+
+/// `book.isOpen(type)`.
+fn book_open(spec: &UpgradeWindowSpec) -> bool {
+    book_settings(|settings| settings.is_open(book_type(spec)))
+}
+
+/// `book.setOpen(type, open)`.
+fn set_book_open(spec: &UpgradeWindowSpec, open: bool) {
+    book_settings(|settings| settings.set_open(book_type(spec), open));
+}
+
+/// `GuiWindow.renderBackgroundOverlay` e `renderForeground` da janela do livro: a sombra, o painel, o fechar, o fixar e o título.
+fn draw_recipe_book_window(
+    game: &Game<'_>,
+    spec: &UpgradeWindowSpec,
+    batch: &mut HudBatch,
+    state: &Client,
+    open: &Open,
+    ox: f32,
+    oy: f32,
+) {
+    let (wx, wy) = (ox + open.window.relative_x as f32, oy + open.window.relative_y as f32);
+    let (w, h) = (open.window.width as f32, open.window.height as f32);
+    let cursor = game.native_cursor();
+    let mouse = (cursor[0], cursor[1]);
+    let under = state.windows.iter().position(|other| {
+        let rel = [mouse.0 - ox - other.window.relative_x as f32, mouse.1 - oy - other.window.relative_y as f32];
+        rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < other.window.width as f32 && rel[1] < other.window.height as f32
+    });
+    let own = state.windows.iter().position(|other| std::ptr::eq(other, open));
+    let hover_ok = under.is_some() && under == own;
+    let hov = |rect: [f32; 4]| hover_ok && hovering(rect, mouse);
+    let at = |rect: [i32; 4]| shifted(rect, wx, wy);
+
+    nine(game, batch, spec, "shadow", uw::SHADOW_SLICE, [wx - 3.0, wy - 3.0, w + 6.0, h + 6.0], SHADOW_TINT);
+    nine(game, batch, spec, "base", spec.base_slice, [wx, wy, w, h], WHITE);
+    let close = at(CLOSE);
+    button_background(game, batch, spec, close, true, hov(close));
+    plain(game, batch, spec, "button/close", [12.0, 12.0], close);
+    let pin = at(PIN);
+    button_background(game, batch, spec, pin, true, hov(pin));
+    plain(game, batch, spec, if open.window.pinned { "button/pinned" } else { "button/unpinned" }, [24.0, 12.0], pin);
+    // `drawTitleText(RECIPE_BOOK, 5)`: de `14 + GuiPinButton.WIDTH` até a largura da janela, menos o `maxLengthPad` de 4.
+    let title = lang::get("gui.mekanism.recipe_book");
+    scrolling_text(game, batch, &title, [wx + 30.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // As janelas de configuração de lados e de transporte (`GuiSideConfiguration`, `GuiTransporterConfig`).
 
 /// `SpecialColors.TAB_*_CONFIG`: o tom do suporte da aba de cada tipo de transmissão.
@@ -1744,7 +1859,7 @@ fn draw_config_window(
                     lang::get("boolean.mekanism.output"),
                 ));
             }
-            Kind::Upgrade => {}
+            Kind::Upgrade | Kind::RecipeBook => {}
         }
     }
     // O primeiro plano: o título e os rótulos.
@@ -1868,7 +1983,7 @@ fn config_tooltip(
             }
             None
         }
-        Kind::Upgrade => None,
+        Kind::Upgrade | Kind::RecipeBook => None,
     }
 }
 
@@ -1967,7 +2082,7 @@ pub(in crate::game) fn tooltip(
                 return false;
             }
         }
-        Some(open) if open.kind != Kind::Upgrade => {
+        Some(open) if open.kind.is_config() => {
             let rel = [f64::from(at[0] - open.window.relative_x as f32), f64::from(at[1] - open.window.relative_y as f32)];
             let Some((text, area, is_flat)) = config_tooltip(game, open, config.as_ref(), rel) else {
                 return false;
@@ -1976,6 +2091,21 @@ pub(in crate::game) fn tooltip(
             flat = is_flat;
             let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
             rect = [origin[0] + wx + area[0] as f32, origin[1] + wy + area[1] as f32, area[2] as f32, area[3] as f32];
+        }
+        Some(open) if open.kind == Kind::RecipeBook => {
+            let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
+            let rel = [f64::from(at[0] - wx), f64::from(at[1] - wy)];
+            let win = |r: [i32; 4]| shifted(r, origin[0] + wx, origin[1] + wy);
+            if in_rect(CLOSE, rel) {
+                lines.push((lang::get("gui.mekanism.close"), None));
+                rect = win(CLOSE);
+            } else if in_rect(PIN, rel) {
+                let key = if open.window.pinned { "gui.mekanism.unpin" } else { "gui.mekanism.pin" };
+                lines.push((lang::get(key), None));
+                rect = win(PIN);
+            } else {
+                return false;
+            }
         }
         Some(open) => {
             let [wx, wy] = [open.window.relative_x as f32, open.window.relative_y as f32];
@@ -2560,6 +2690,11 @@ impl Game<'_> {
     /// Se a janela de upgrades aberta cobre o ponto `at` (relativo ao canto da tela).
     pub(in crate::game) fn mb_window_covers(&self, at: [f32; 2]) -> bool {
         covers(at)
+    }
+
+    /// Se a janela do livro de receitas está aberta (a aba dela fica inativa, `setListenerTab`).
+    pub(in crate::game) fn mb_recipe_book_open(&self) -> bool {
+        index_of(&client(), Kind::RecipeBook).is_some()
     }
 
     /// Os tooltips da aba e da janela; devolve se mostrou algum.
