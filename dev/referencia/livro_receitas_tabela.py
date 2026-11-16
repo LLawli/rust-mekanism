@@ -37,7 +37,7 @@ def rust_str(text):
 
 
 def render():
-    lines = [BEGIN, "pub mod recipe_book_rows {"]
+    lines = [BEGIN, "#[rustfmt::skip]", "pub mod recipe_book_rows {"]
     lines.append(
         "    //! GERADO por `dev/referencia/livro_receitas_tabela.py` a partir de `rastros/recipe_book_displays.jsonl`: não edite à mão."
     )

@@ -6016,6 +6016,7 @@ pub mod network_reader {
 }
 
 // recipe-book-rows:inicio
+#[rustfmt::skip]
 pub mod recipe_book_rows {
     //! GERADO por `dev/referencia/livro_receitas_tabela.py` a partir de `rastros/recipe_book_displays.jsonl`: não edite à mão.
     /// Um display que o original manda ao livro: `(id, receita, tipo, grupo (-1 sem grupo), categoria, item do resultado, quantidade, tooltip)`.
