@@ -98,7 +98,6 @@ muda. Cada proposta tem sua ficha em [Hooks e pedidos propostos](#hooks-e-pedido
 | H26 mistura de sprites animados na GPU, em float | correção | `sprite_ties` (HEAD) e módulo `sprite-ties` | em uso (1 injeção, 1 módulo) |
 | H273 um blend `multiply` (`DST_COLOR`, `ZERO`) no `HudBatch` (`Blend::Multiply`) | correção | `multiply_prepare` e `multiply_draw` (HEAD) e o módulo `multiply-blend` | em uso (2 injeções, 1 módulo) |
 | H274 o `RecipeIndex` com as receitas de mod (ou um hook do `/recipe give|take`), para o comando e o livro as conhecerem | dado | `recipe_command` (HEAD de `change_recipes`) | em uso (1 injeção) |
-| H275 o `type` do `horizon-ctl` numa tela de mod sem caixa de texto do jogo (só o `screen_char_typed_pre`) | teste | nenhuma (o `type` já dispara o hook antes de recusar a tela; a recusa só vem se algum caractere sobra) | proposto |
 | H31 barra de armadura e mão no tipo de menu (`armorSideBar`) | dado + hook | `bar_slot_position`, `bar_slots`, `bar_slot_count`, `bar_menu_slot`, `bar_machine_menu`, `bar_quick_move`, `bar_answer_click`, `bar_resend_menu` e os módulos `armor-bar`, `bar-menu`, `bar-machine`, `bar-hub`, `bar-quick-move` | em uso (8 injeções, 5 módulos) |
 | H32 elementos da tela fora da imagem (`hasClickedOutside`) | dado | `bar_clicked_outside` | em uso (1) |
 | H33 `menu_data_sync` | hook | `server_tick` (fase `ServerTickStart`) da `machinery_basis`, que entra em cada nível por `enter_level` para ler o valor vivo e mandar o pacote do menu | em uso (1) |
