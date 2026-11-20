@@ -370,7 +370,11 @@ impl Unlocked {
     /// `ServerRecipeBook.sendInitialRecipeBook` (tudo, `replace` e sem aviso, destacado o que está em `highlight`); com ele, o
     /// `ClientboundRecipeBookRemovePacket` do que saiu (`removeRecipes`) e o `ClientboundRecipeBookAddPacket` do que entrou
     /// (`addRecipes`: com o aviso de `showNotification` e destacado).
-    pub fn sync(&self, sent: Option<&Unlocked>, entry: impl Fn(i32) -> Option<Entry>) -> Vec<ToClient> {
+    pub fn sync(
+        &self,
+        sent: Option<&Unlocked>,
+        entry: impl Fn(i32) -> Option<Entry>,
+    ) -> Vec<ToClient> {
         let added = |id: &i32, notification: bool| {
             entry(*id).map(|entry| AddedEntry {
                 entry,
@@ -380,7 +384,11 @@ impl Unlocked {
         };
         let Some(sent) = sent else {
             return vec![ToClient::Add {
-                entries: self.known.iter().filter_map(|id| added(id, false)).collect(),
+                entries: self
+                    .known
+                    .iter()
+                    .filter_map(|id| added(id, false))
+                    .collect(),
                 replace: true,
             }];
         };
@@ -688,7 +696,11 @@ mod tests {
                 group: None,
             })
         };
-        let server = Unlocked::from_recipes(table.iter().copied(), |name| name != "m:c", |name| name == "m:b");
+        let server = Unlocked::from_recipes(
+            table.iter().copied(),
+            |name| name != "m:c",
+            |name| name == "m:b",
+        );
         assert_eq!(server.known().collect::<Vec<_>>(), vec![10, 11, 20]);
         assert_eq!(server.highlighted().collect::<Vec<_>>(), vec![20]);
         // `sendInitialRecipeBook`: tudo, `replace`, sem aviso, destacado só o que o servidor guarda destacado.
@@ -700,7 +712,14 @@ mod tests {
             ToClient::Add { entries, replace } => {
                 assert!(*replace);
                 assert!(entries.iter().all(|added| !added.notification));
-                assert_eq!(entries.iter().filter(|added| added.highlight).map(|added| added.entry.id).collect::<Vec<_>>(), vec![20]);
+                assert_eq!(
+                    entries
+                        .iter()
+                        .filter(|added| added.highlight)
+                        .map(|added| added.entry.id)
+                        .collect::<Vec<_>>(),
+                    vec![20]
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -709,14 +728,20 @@ mod tests {
         }
         assert_eq!(client, server);
         // `removeRecipes` e `addRecipes`: só o que mudou, o que entra com aviso.
-        let next = Unlocked::from_recipes(table.iter().copied(), |name| name != "m:a", |name| name == "m:c");
+        let next = Unlocked::from_recipes(
+            table.iter().copied(),
+            |name| name != "m:a",
+            |name| name == "m:c",
+        );
         let delta = next.sync(Some(&server), entry);
         assert_eq!(delta[0], ToClient::Remove(vec![10, 11]));
         match &delta[1] {
             ToClient::Add { entries, replace } => {
                 assert!(!*replace);
                 assert_eq!(entries.len(), 1);
-                assert!(entries[0].notification && entries[0].highlight && entries[0].entry.id == 30);
+                assert!(
+                    entries[0].notification && entries[0].highlight && entries[0].entry.id == 30
+                );
             }
             other => panic!("{other:?}"),
         }

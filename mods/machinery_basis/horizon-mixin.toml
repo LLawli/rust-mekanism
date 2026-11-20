@@ -485,6 +485,21 @@ bindings = [
   { name = "data", ty = "&[u8]", value = "data" },
 ]
 
+# Os `RecipeBookSettings` dos tipos de livro de mod (`is<Tipo>GuiOpen`, `is<Tipo>FilteringCraftable`) no `recipeBook` do jogador: o
+# `Level::player_tag` reescreve o composto só com os quatro tipos do vanilla, então o helper devolve ao que é gravado os campos de mod que a
+# cola escreveu no composto cru do jogador (`player_extra`, o do convidado é o `Guest::saved`). O RETURN é recusado (`E_UNSUPPORTED_MACRO`: o
+# corpo tem um `vec![...]` com controle de fluxo), então é um HEAD cancelável que chama a função de novo com marca de reentrada. Alvo cru
+# (decisão 267, H275).
+[[injection]]
+id = "recipe_book_settings_save"
+target = "horizon_client_lib::save::Level::player_tag"
+kind = "HEAD"
+cancellable = true
+helper = "recipe_book_settings_save.rs"
+bindings = [
+  { name = "level", ty = "&Level", value = "&*self" },
+]
+
 # A ordem de desenho dos slots: itens, janela, itens virtuais, e o tooltip e o item no cursor por cima. Alvo cru.
 [[injection]]
 id = "window_draw_slots"

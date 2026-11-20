@@ -38,7 +38,12 @@ fn the_requirements_table_is_the_trace_of_the_original() {
         let req: Option<Vec<Vec<String>>> = serde_json::from_value(line["req"].clone()).unwrap();
         let ours = requirement.1.map(|list| {
             list.iter()
-                .map(|items| items.iter().map(|item| (*item).to_owned()).collect::<Vec<_>>())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| (*item).to_owned())
+                        .collect::<Vec<_>>()
+                })
                 .collect::<Vec<_>>()
         });
         assert_eq!(req, ours, "{}", row.1);
@@ -79,7 +84,10 @@ fn can_craft_marks_the_displays_the_original_marks() {
     }
     // Os cenários marcam de fato alguma coisa, e o de pilhas de um item só marca menos do que o de pilhas cheias.
     assert!(marked > 100, "{marked}");
-    assert!(scenarios[6]["craftable"].as_array().unwrap().len() < scenarios[5]["craftable"].as_array().unwrap().len());
+    assert!(
+        scenarios[6]["craftable"].as_array().unwrap().len()
+            < scenarios[5]["craftable"].as_array().unwrap().len()
+    );
 }
 
 #[test]
@@ -87,7 +95,11 @@ fn a_display_that_asks_for_several_of_an_item_needs_that_many() {
     // `mekanism:enriching/...` com `counts` maior que um: o ingrediente entra tantas vezes quantas o display pede.
     let several = REQUIREMENTS
         .iter()
-        .find(|requirement| requirement.2.is_some_and(|counts| counts.first().copied().unwrap_or(0) >= 3))
+        .find(|requirement| {
+            requirement
+                .2
+                .is_some_and(|counts| counts.first().copied().unwrap_or(0) >= 3)
+        })
         .expect("há displays que pedem três ou mais");
     let needed = several.2.unwrap()[0];
     let item = several.1.unwrap()[0][0];
@@ -98,21 +110,45 @@ fn a_display_that_asks_for_several_of_an_item_needs_that_many() {
     assert!(can_craft(several, &contents));
     // Sem a lista de requisitos não dá, e com a lista vazia (só químico ou fluido) dá.
     assert!(!can_craft(&(0, None, None), &contents));
-    assert!(can_craft(&(0, Some(&[]), Some(&[0])), &StackedContents::default()));
+    assert!(can_craft(
+        &(0, Some(&[]), Some(&[0])),
+        &StackedContents::default()
+    ));
 }
 
 #[test]
 fn the_settings_fields_in_the_player_nbt_are_the_ones_of_the_original() {
     let lines = trace("recipe_book_nbt.jsonl");
     let types: Vec<&str> = BOOKS.iter().map(|book| book.settings_type).collect();
-    assert_eq!(types, ["MEKANISM_ENRICHING", "MEKANISM_CRUSHING", "MEKANISM_SMELTING", "MEKANISM_METALLURGIC_INFUSING"]);
+    assert_eq!(
+        types,
+        [
+            "MEKANISM_ENRICHING",
+            "MEKANISM_CRUSHING",
+            "MEKANISM_SMELTING",
+            "MEKANISM_METALLURGIC_INFUSING"
+        ]
+    );
     // Cada tipo de livro do port é um `RecipeBookType` do original (os de mod que o NeoForge acrescenta ao enum).
-    let known: Vec<String> = serde_json::from_value(lines.last().unwrap()["types"].clone()).unwrap();
+    let known: Vec<String> =
+        serde_json::from_value(lines.last().unwrap()["types"].clone()).unwrap();
     for book in BOOKS {
-        assert!(known.iter().any(|name| name == book.settings_type), "{}", book.settings_type);
-        assert_eq!(book.settings_type, format!("MEKANISM_{}", book.book_type.to_uppercase()));
+        assert!(
+            known.iter().any(|name| name == book.settings_type),
+            "{}",
+            book.settings_type
+        );
+        assert_eq!(
+            book.settings_type,
+            format!("MEKANISM_{}", book.book_type.to_uppercase())
+        );
     }
-    let vanilla = ["isGuiOpen", "isFilteringCraftable", "isFurnaceGuiOpen", "isFurnaceFilteringCraftable"];
+    let vanilla = [
+        "isGuiOpen",
+        "isFilteringCraftable",
+        "isFurnaceGuiOpen",
+        "isFurnaceFilteringCraftable",
+    ];
     let mut cases = 0;
     for line in lines.iter().filter(|line| line.get("case").is_some()) {
         cases += 1;
@@ -129,25 +165,52 @@ fn the_settings_fields_in_the_player_nbt_are_the_ones_of_the_original() {
             }
         }
         // Na escrita o codec omite o campo que vale o padrão (`optionalFieldOf(nome, false)`): só os verdadeiros vão ao NBT.
-        let ours: BTreeMap<String, bool> = settings.write(&types).into_iter().filter(|(_, value)| *value).collect();
-        let fields: BTreeMap<String, bool> = serde_json::from_value(line["fields"].clone()).unwrap();
-        let theirs: BTreeMap<String, bool> = fields.iter().filter(|(name, _)| !vanilla.contains(&name.as_str())).map(|(name, value)| (name.clone(), *value)).collect();
+        let ours: BTreeMap<String, bool> = settings
+            .write(&types)
+            .into_iter()
+            .filter(|(_, value)| *value)
+            .collect();
+        let fields: BTreeMap<String, bool> =
+            serde_json::from_value(line["fields"].clone()).unwrap();
+        let theirs: BTreeMap<String, bool> = fields
+            .iter()
+            .filter(|(name, _)| !vanilla.contains(&name.as_str()))
+            .map(|(name, value)| (name.clone(), *value))
+            .collect();
         assert_eq!(ours, theirs, "caso {}", line["case"]);
         // Na leitura o campo ausente vale falso.
         let mut back = Settings::default();
         back.read(&types, |name| fields.get(name).copied());
         for book_type in &types {
             let read = &line["read"][book_type];
-            assert_eq!(back.is_open(book_type), read[0].as_bool().unwrap(), "{book_type}");
-            assert_eq!(back.is_filtering(book_type), read[1].as_bool().unwrap(), "{book_type}");
+            assert_eq!(
+                back.is_open(book_type),
+                read[0].as_bool().unwrap(),
+                "{book_type}"
+            );
+            assert_eq!(
+                back.is_filtering(book_type),
+                read[1].as_bool().unwrap(),
+                "{book_type}"
+            );
         }
         // As listas `recipes` e `toBeDisplayed` levam o id inteiro da receita, e a destacada é sempre conhecida.
         let recipes: Vec<String> = serde_json::from_value(line["recipes"].clone()).unwrap();
         let highlight: Vec<String> = serde_json::from_value(line["toBeDisplayed"].clone()).unwrap();
-        assert!(recipes.iter().all(|name| ROWS.iter().any(|row| row.1 == name)));
+        assert!(
+            recipes
+                .iter()
+                .all(|name| ROWS.iter().any(|row| row.1 == name))
+        );
         assert!(highlight.iter().all(|name| recipes.contains(name)));
     }
     assert_eq!(cases, 4);
-    assert_eq!(upper_camel("MEKANISM_METALLURGIC_INFUSING"), "MekanismMetallurgicInfusing");
-    assert_eq!(settings_fields("MEKANISM_SMELTING").0, "isMekanismSmeltingGuiOpen");
+    assert_eq!(
+        upper_camel("MEKANISM_METALLURGIC_INFUSING"),
+        "MekanismMetallurgicInfusing"
+    );
+    assert_eq!(
+        settings_fields("MEKANISM_SMELTING").0,
+        "isMekanismSmeltingGuiOpen"
+    );
 }

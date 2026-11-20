@@ -639,6 +639,7 @@ const fn window_spec_of(
         upgrades: true,
         recipe_book: true,
         book: Some(book),
+        book_slots: [slots.input, slots.output],
         virtual_slots: [slots.upgrade, slots.upgrade_output],
         trackers,
         window_trackers: rules::upgrade_window_data,
@@ -2729,23 +2730,34 @@ fn award_recipes(game: &mut Game<'_>, recipes: &[String], items: &[Option<ItemSt
     let index = &world_stations!(game).recipe_index;
     let (_, unlocked) = game.level.recipe_book.add_recipes(index, recipes);
     game.recipe_unlocked(&unlocked);
-    // Os displays do livro do Mekanism (o `RecipeIndex` do Horizon só numera as receitas do vanilla): a tabela do original tem os ids.
-    let displays: Vec<i32> = rules::recipe_book_rows::ROWS.iter().filter(|row| recipes.iter().any(|name| name == row.1)).map(|row| row.0).collect();
-    game.mb_book_award(&displays);
+    // As receitas do Mekanism ficam no mesmo `ServerRecipeBook` do jogador (`recipes` e `toBeDisplayed`, por nome), e a
+    // `machinery_basis` manda ao cliente dele os displays que entraram (`book_server_sync`).
     for recipe in recipes {
         game.trigger_recipe_crafted(recipe, items);
     }
 }
 
-/// `/recipe give|take <alvos> *` (`RecipeCommand.giveRecipes` e `takeRecipes` com `getRecipes()`, todas): os displays do livro do Mekanism
-/// entram ou saem com as do vanilla. O comando com uma receita só chega com a lista de uma (`recipes.len() == 1`) e não é o `*`: uma
-/// receita do Mekanism por nome o Horizon recusa antes (`recipe.notFound`, só conhece as do vanilla), e uma do vanilla não mexe aqui.
+/// `/recipe give|take <alvos> *` (`RecipeCommand.giveRecipes` e `takeRecipes` com `getRecipes()`, todas): as receitas do livro do
+/// Mekanism entram ou saem do `ServerRecipeBook` do jogador com as do vanilla (`addRecipes`: conhecida e destacada; `removeRecipes`: sai das
+/// duas listas). O jogo roda com o estado do alvo no lugar (`change_recipes` é chamado por jogador). O comando com uma receita só chega com a
+/// lista de uma (`recipes.len() == 1`) e não é o `*`: uma receita do Mekanism por nome o Horizon recusa antes (`recipe.notFound`, só conhece
+/// as do vanilla), e uma do vanilla não mexe aqui. As linhas `smelting` da tabela são receitas do vanilla, que o Horizon já trata.
 pub(in crate::game) fn recipe_command(game: &mut Game<'_>, give: bool, recipes: &[String]) {
     if recipes.len() <= 1 {
         return;
     }
-    let displays: Vec<i32> = rules::recipe_book_rows::ROWS.iter().map(|row| row.0).collect();
-    game.mb_book_change(&displays, give);
+    let index = &world_stations!(game).recipe_index;
+    let names: Vec<&str> = rules::recipe_book_rows::ROWS.iter().map(|row| row.1).filter(|name| !index.contains(name)).collect();
+    let book = &mut game.level.recipe_book;
+    for name in names {
+        if give {
+            if book.recipes.insert(name.to_owned()) {
+                book.to_be_displayed.insert(name.to_owned());
+            }
+        } else if book.recipes.remove(name) {
+            book.to_be_displayed.remove(name);
+        }
+    }
 }
 
 thread_local! {

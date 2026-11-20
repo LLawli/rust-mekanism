@@ -10,16 +10,17 @@ use horizon_client::hud::HudBatch;
 use horizon_client::items::ItemStack;
 use horizon_client::lang;
 use horizon_client::mod_api::NativeScreenView;
-use horizon_world::nbt::{JavaString, Tag};
+use horizon_world::nbt::{Compound, JavaString, Tag};
 use machinery_basis_core::config_window::{self as cw, ConfigPacket, ConfigView};
 use machinery_basis_core::container_sync::{Mirror, Property, TrackedSource, wire};
 use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::machine_sync::read_upgrade_map;
 use machinery_basis_core::recipe_book as rb;
-use machinery_basis_core::recipe_book_data::Unlocked;
-use machinery_basis_core::recipe_book_view as rbv;
 use machinery_basis_core::recipe_book_data::Settings as BookSettings;
+use machinery_basis_core::recipe_book_data::{ChangeSettings, ToClient, ToServer, Unlocked, settings_fields};
+use machinery_basis_core::recipe_book_view as rbv;
+use machinery_basis_core::stacked_contents::StackedContents;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
 use machinery_basis_core::side_config::{DataType, RelativeSide, TileComponentConfig, TransmissionType};
@@ -35,6 +36,7 @@ use machinery_basis_core::window_session::Sessions;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// `Tooltip.MAX_WIDTH`: a largura em que o jogo quebra o texto de um tooltip de widget.
@@ -264,6 +266,8 @@ struct Open {
     book_focus_ms: i64,
     /// O relógio do `SlotSelectTime`: o último quadro que somou ao `time`.
     book_clock_ms: i64,
+    /// O `stackedContents` da última conferência do que dá para fazer (`updateStackedContents`).
+    book_contents: StackedContents,
 }
 
 struct Client {
@@ -528,6 +532,7 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
         (Kind::Side | Kind::Transporter, Some(view)) => RelativeSide::VALUES.map(|side| neighbour_item(game, &view, side)),
         _ => Default::default(),
     };
+    let contents = if kind == Kind::RecipeBook { book_contents(game, spec) } else { StackedContents::default() };
     let mut guard = client();
     let state = &mut *guard;
     let positions = state.positions.get_or_insert_with(|| load_positions(spec));
@@ -546,9 +551,10 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             selected_ms: now,
             current: 0,
             neighbours,
-            book: (kind == Kind::RecipeBook).then(|| new_book_view(spec)).flatten(),
+            book: (kind == Kind::RecipeBook).then(|| new_book_view(spec, &contents)).flatten(),
             book_focus_ms: now,
             book_clock_ms: now,
+            book_contents: contents,
         },
     );
     if kind == Kind::RecipeBook {
@@ -657,6 +663,8 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
                 config_mirror(|table| table.remove(&pos));
             }
         }
+        // O que o fechamento da tela mudou no livro (`RecipeBookComponent.removed` não manda nada; o `toggleVisibility` do fechar, sim).
+        book_flush(game);
         return;
     };
     // Uma tela nova: `initPinnedWindows` reabre a que ficou fixa.
@@ -690,6 +698,11 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
     {
         let ctrl = game.has_control_down();
         let now = now_ms();
+        let book_window = index_of(&client(), Kind::RecipeBook).is_some();
+        // `RecipeBookComponent.tick`: o inventário mudou (`getTimesChanged`), então o que dá para fazer é conferido de novo; e o
+        // `recipesUpdated`, quando o servidor mandou ou tirou receitas.
+        let contents = book_window.then(|| book_contents(game, spec));
+        let dirty = BOOK_DIRTY.swap(false, Ordering::Relaxed);
         let mut guard = client();
         for open in guard.windows.iter_mut() {
             if let Some(view) = open.book.as_mut() {
@@ -699,9 +712,20 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
                 }
                 view.advance_animations(ticks);
                 open.book_clock_ms = now;
-                // `recipeShown`: o que os botões mostraram deixa de ser destacado no livro do jogador.
+                if let Some(contents) = &contents {
+                    let data = view.data();
+                    if dirty {
+                        let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
+                        view.update_book(known.into_iter(), highlighted.into_iter(), &|row| data.can_craft(row.0, contents));
+                        open.book_contents = contents.clone();
+                    } else if open.book_contents != *contents {
+                        view.reselect(&|row| data.can_craft(row.0, contents));
+                        open.book_contents = contents.clone();
+                    }
+                }
+                // `recipeShown`: o que os botões mostraram deixa de ser destacado no livro do jogador, aqui e no servidor.
                 for id in view.seen.drain(..) {
-                    unlocked(|book| book.seen(id));
+                    book_seen(id);
                 }
             }
         }
@@ -724,6 +748,7 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             }
         }
     }
+    book_flush(game);
     sync_selection(game, spec);
     place_virtual_slots(game, spec);
     // `MekanismButton`, `GuiInsetElement` e `GuiCloseButton` tocam `UI_BUTTON_CLICK` (volume 0,25) ao clicar.
@@ -1664,43 +1689,89 @@ fn draw_screen_text(
 // ---------------------------------------------------------------------------------------------------------------------------
 // A janela do livro de receitas (`GuiRecipeBookWindow`).
 
-/// Os `RecipeBookSettings` do jogador, só em memória nesta rodada (a persistência no NBT do jogador fica para a seguinte), por tipo de livro.
+/// O canal do livro de receitas: os pacotes de `machinery_basis_core::recipe_book_data` nos dois sentidos (os do vanilla são
+/// `ClientboundRecipeBookAddPacket`, `ClientboundRecipeBookRemovePacket`, `ClientboundRecipeBookSettingsPacket`,
+/// `ServerboundRecipeBookChangeSettingsPacket` e `ServerboundRecipeBookSeenRecipePacket`).
+const BOOK_CHANNEL: &str = "machinery_basis:recipe_book";
+
+/// `ClientRecipeBook.bookSettings`: os `RecipeBookSettings` do jogador neste cliente, por tipo de livro. Chegam do servidor ao entrar
+/// (`sendInitialRecipeBook`) e cada mudança volta a ele (`sendUpdateSettings`), que a grava no NBT do jogador.
 static BOOK_SETTINGS: Mutex<Option<BookSettings>> = Mutex::new(None);
 
-/// O tipo de livro da máquina: o do tipo de receita dela (`MekanismRecipeBookTypes`), compartilhado entre as máquinas que o usam.
+/// O tipo de livro da máquina: o `RecipeBookType` do tipo de receita dela (`MekanismRecipeType.getRecipeBookType`), compartilhado entre
+/// as máquinas que o usam.
 fn book_type(spec: &UpgradeWindowSpec) -> &'static str {
-    spec.book.map_or(spec.block, |book| book.book_type)
+    spec.book.map_or(spec.block, |book| book.settings_type)
 }
 
-/// As receitas que o jogador desbloqueou, por id de display. Só em memória: a persistência no NBT do jogador fica para a rodada que traz o
-/// pacote ao servidor (o `award_recipes` só alimenta este conjunto).
+/// `ClientRecipeBook.known` e `highlight`: os displays que o servidor disse que o jogador conhece, por id. O servidor é quem guarda
+/// (`ServerRecipeBook`, no NBT do jogador) e manda o que muda.
 static BOOK_UNLOCKED: Mutex<Option<Unlocked>> = Mutex::new(None);
+
+/// O livro do cliente mudou (um pacote do servidor): a janela aberta refaz as coleções (`RecipeBookComponent.recipesUpdated`).
+static BOOK_DIRTY: AtomicBool = AtomicBool::new(false);
+
+/// O que o cliente tem a dizer ao servidor (a configuração que mudou, a receita vista), mandado no quadro.
+static BOOK_OUTBOX: Mutex<Vec<ToServer>> = Mutex::new(Vec::new());
+
+/// No servidor: o livro que cada jogador já recebeu (0 é o anfitrião), para mandar só o que muda.
+static BOOK_SENT: Mutex<Option<HashMap<u128, Unlocked>>> = Mutex::new(None);
 
 fn unlocked<R>(act: impl FnOnce(&mut Unlocked) -> R) -> R {
     let mut guard = BOOK_UNLOCKED.lock().unwrap_or_else(|e| e.into_inner());
     act(guard.get_or_insert_with(Unlocked::default))
 }
 
-/// `ServerPlayer.awardRecipes` (`give`) e `resetRecipes`: os displays entram no livro (destacados, como `addRecipes`) ou saem dele.
-pub(in crate::game) fn book_change(ids: &[i32], give: bool) {
-    unlocked(|book| {
-        for &id in ids {
-            if give {
-                book.add(id, true);
-            } else {
-                book.remove(id);
-            }
-        }
-    });
+fn book_sent<R>(act: impl FnOnce(&mut HashMap<u128, Unlocked>) -> R) -> R {
+    let mut guard = BOOK_SENT.lock().unwrap_or_else(|e| e.into_inner());
+    act(guard.get_or_insert_with(HashMap::new))
 }
 
-fn new_book_view(spec: &UpgradeWindowSpec) -> Option<rbv::View> {
+/// Os livros que os mods registraram, um por tipo de livro, na ordem do registro (a mesma no servidor e no cliente).
+fn books() -> Vec<&'static rbv::BookData> {
+    let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut out: Vec<&'static rbv::BookData> = Vec::new();
+    for (spec, _) in specs.iter() {
+        if let Some(book) = spec.book
+            && !out.iter().any(|other| other.settings_type == book.settings_type)
+        {
+            out.push(book);
+        }
+    }
+    out
+}
+
+fn book_types() -> Vec<&'static str> {
+    books().iter().map(|book| book.settings_type).collect()
+}
+
+/// As linhas de todos os livros registrados: cada display com a receita dele.
+fn book_rows() -> Vec<&'static rbv::Row> {
+    books().into_iter().flat_map(|book| book.rows.iter().filter(move |row| row.2 == book.book_type)).collect()
+}
+
+/// `Inventory.fillStackedContents` e `MekanismContainer.fillCraftSlotsStackedContents`: os 36 slots do jogador (só o que serve para
+/// montar: sem dano, encanto ou nome) e os slots de item de entrada e de saída da máquina (`IRecipeLookupHandler.fillStackedContents`,
+/// que usa `accountStack`, sem esse filtro), cada pilha até o máximo do item.
+fn book_contents(game: &mut Game<'_>, spec: &UpgradeWindowSpec) -> StackedContents {
+    let mut contents = StackedContents::default();
+    let mut stacks: Vec<ItemStack> =
+        game.inventory.iter().take(36).flatten().filter(|stack| horizon_client::menu::place::usable_for_crafting(stack)).cloned().collect();
+    for index in spec.book_slots {
+        stacks.extend(game.slot_view(300 + index));
+    }
+    for stack in stacks {
+        let limit = basis::stack_limit(game, &stack) as i32;
+        contents.account_stack(&stack.item.to_string(), stack.count as i32, limit);
+    }
+    contents
+}
+
+fn new_book_view(spec: &UpgradeWindowSpec, contents: &StackedContents) -> Option<rbv::View> {
     let data = spec.book?;
     let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
-    let filtering = book_settings(|settings| settings.is_filtering(data.book_type));
-    // `MekanismRecipeBookComponent.canCraft`: sem ingrediente de item (`craftingRequirements` vazio) a receita vale como fazível; com ele, o
-    // jogador tem de ter o ingrediente, que esta rodada ainda não confere.
-    Some(rbv::View::new(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| row.8 == 0))
+    let filtering = book_settings(|settings| settings.is_filtering(data.settings_type));
+    Some(rbv::View::new(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents)))
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -1713,9 +1784,197 @@ fn book_open(spec: &UpgradeWindowSpec) -> bool {
     book_settings(|settings| settings.is_open(book_type(spec)))
 }
 
-/// `book.setOpen(type, open)`.
+/// `RecipeBookComponent.sendUpdateSettings`: o tipo de livro com o aberto e o filtro de agora, para o servidor.
+fn send_book_settings(book_type: &str) {
+    let change = book_settings(|settings| ChangeSettings {
+        book_type: book_type.to_owned(),
+        open: settings.is_open(book_type),
+        filtering: settings.is_filtering(book_type),
+    });
+    BOOK_OUTBOX.lock().unwrap_or_else(|e| e.into_inner()).push(ToServer::ChangeSettings(change));
+}
+
+/// `book.setOpen(type, open)` e o `sendUpdateSettings` que o segue (`RecipeBookComponent.setVisible`).
 fn set_book_open(spec: &UpgradeWindowSpec, open: bool) {
     book_settings(|settings| settings.set_open(book_type(spec), open));
+    send_book_settings(book_type(spec));
+}
+
+/// `book.setFiltering(type, filtering)` e o `sendUpdateSettings` do botão de filtro.
+fn set_book_filtering(spec: &UpgradeWindowSpec, filtering: bool) {
+    book_settings(|settings| settings.set_filtering(book_type(spec), filtering));
+    send_book_settings(book_type(spec));
+}
+
+/// `LocalPlayer.removeRecipeHighlight`: o destaque sai do livro do cliente e o servidor fica sabendo
+/// (`ServerboundRecipeBookSeenRecipePacket`).
+fn book_seen(id: i32) {
+    unlocked(|book| book.seen(id));
+    BOOK_OUTBOX.lock().unwrap_or_else(|e| e.into_inner()).push(ToServer::SeenRecipe(id));
+}
+
+/// O que o cliente guardou para o servidor vai: pelo canal quando há servidor remoto, e direto quando o jogador é o anfitrião.
+fn book_flush(game: &mut Game<'_>) {
+    let messages: Vec<ToServer> = std::mem::take(&mut *BOOK_OUTBOX.lock().unwrap_or_else(|e| e.into_inner()));
+    for message in messages {
+        let body = message.encode();
+        if game.remote.is_some() {
+            let _ = game.native_net_send_to_server(BOOK_CHANNEL, &body);
+        } else {
+            book_server_message(game, 0, &body);
+        }
+    }
+}
+
+/// O cliente recebe um pacote do livro: as configurações (`ClientRecipeBook.setBookSettings`) ou as receitas (`add`, `remove`).
+fn book_from_server(data: &[u8]) {
+    match ToClient::decode(data) {
+        Some(ToClient::Settings(bytes)) => match BookSettings::decode(&book_types(), &bytes) {
+            Some(settings) => {
+                book_settings(|mine| mine.replace_from(&settings));
+                BOOK_DIRTY.store(true, Ordering::Relaxed);
+            }
+            None => eprintln!("machinery_basis: o servidor mandou configurações do livro ilegíveis"),
+        },
+        Some(packet) => {
+            if unlocked(|book| book.apply(&packet)) {
+                BOOK_DIRTY.store(true, Ordering::Relaxed);
+            }
+        }
+        None => eprintln!("machinery_basis: o servidor mandou um pacote do livro ilegível"),
+    }
+}
+
+// O servidor: o livro de cada jogador mora no `recipe_book::Settings` do Horizon (as receitas conhecidas e as destacadas, por nome, que ele
+// grava em `recipeBook.recipes` e `toBeDisplayed` como o `ServerRecipeBook`) e, para os `RecipeBookSettings` dos tipos de livro de mod, no
+// composto cru do jogador (`Level::player_extra`, `Guest::saved`), que a injeção `recipe_book_settings_save` leva ao que é gravado.
+
+/// O livro do jogador `player` no servidor (0 é o anfitrião): o do nível quando é ele quem age, senão o do convidado guardado no hub.
+fn with_server_book<R>(
+    game: &mut Game<'_>,
+    player: u128,
+    act: impl FnOnce(&mut horizon_client::recipe_book::Settings, &mut Option<Tag>) -> R,
+) -> Option<R> {
+    if game.lan_acting_uuid == Some(player) || (player == 0 && game.lan_acting_uuid.is_none()) {
+        return Some(act(&mut game.level.recipe_book, &mut game.level.player_extra));
+    }
+    let guest = game.lan.as_mut()?.hub.guests.iter_mut().find(|guest| guest.uuid == player)?;
+    Some(act(&mut guest.recipe_book, &mut guest.saved))
+}
+
+/// O `recipeBook` do composto cru do jogador, criado se falta.
+fn extra_book(extra: &mut Option<Tag>) -> Option<&mut Compound> {
+    if !matches!(extra, Some(Tag::Compound(_))) {
+        *extra = Some(Tag::Compound(Compound::new()));
+    }
+    let Some(Tag::Compound(root)) = extra else {
+        return None;
+    };
+    let book = root.entry(JavaString::from("recipeBook")).or_insert_with(|| Tag::Compound(Compound::new()));
+    if !matches!(book, Tag::Compound(_)) {
+        *book = Tag::Compound(Compound::new());
+    }
+    match book {
+        Tag::Compound(map) => Some(map),
+        _ => None,
+    }
+}
+
+/// `RecipeBookSettings.MAP_CODEC` na leitura, para os tipos de livro de mod: o campo ausente vale falso.
+fn server_book_settings(extra: &Option<Tag>, types: &[&str]) -> BookSettings {
+    let book = extra.as_ref().and_then(|tag| tag.get("recipeBook"));
+    let mut settings = BookSettings::default();
+    settings.read(types, |name| book.and_then(|book| book.get(name)).map(|tag| matches!(tag, Tag::Byte(flag) if *flag != 0)));
+    settings
+}
+
+/// `ServerGamePacketListenerImpl.handleRecipeBookChangeSettingsPacket` (`setBookSetting`) e `handleRecipeBookSeenRecipePacket`
+/// (`removeHighlight` da receita do display).
+fn book_server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
+    match ToServer::decode(data) {
+        Some(ToServer::ChangeSettings(change)) => {
+            if !book_types().contains(&change.book_type.as_str()) {
+                return;
+            }
+            let (open, filtering) = settings_fields(&change.book_type);
+            with_server_book(game, player, |_, extra| {
+                let Some(book) = extra_book(extra) else {
+                    return;
+                };
+                // O codec omite o campo que vale o padrão (`optionalFieldOf(nome, false)`).
+                for (name, value) in [(open, change.open), (filtering, change.filtering)] {
+                    if value {
+                        book.insert(JavaString::from(name.as_str()), Tag::Byte(1));
+                    } else {
+                        book.remove(&JavaString::from(name.as_str()));
+                    }
+                }
+            });
+        }
+        Some(ToServer::SeenRecipe(id)) => {
+            let Some(recipe) = book_rows().into_iter().find(|row| row.0 == id).map(|row| row.1) else {
+                return;
+            };
+            with_server_book(game, player, |book, _| book.remove_highlight(recipe));
+        }
+        None => {}
+    }
+}
+
+/// O livro de cada jogador vai ao cliente dele: tudo na primeira vez (`ServerRecipeBook.sendInitialRecipeBook`: as configurações e as
+/// receitas com `replace`) e depois só o que mudou (`addRecipes` e `removeRecipes`), seja qual for o caminho que mudou o livro (a máquina
+/// que premiou, o `/recipe`, um avanço). Roda no começo do tick do servidor, fora do turno de um convidado.
+fn book_server_sync(game: &mut Game<'_>) {
+    if game.remote.is_some() || game.lan_acting_uuid.is_some() {
+        return;
+    }
+    let rows = book_rows();
+    if rows.is_empty() {
+        return;
+    }
+    let types = book_types();
+    let mut players: Vec<u128> = vec![0];
+    if let Some(host) = game.lan.as_ref() {
+        players.extend(host.hub.guests.iter().filter(|guest| guest.placed).map(|guest| guest.uuid));
+    }
+    book_sent(|sent| sent.retain(|player, _| players.contains(player)));
+    for player in players {
+        let state = with_server_book(game, player, |book, extra| {
+            let now = Unlocked::from_recipes(
+                rows.iter().map(|row| (row.0, row.1)),
+                |recipe| book.recipes.contains(recipe),
+                |recipe| book.to_be_displayed.contains(recipe),
+            );
+            (now, server_book_settings(extra, &types))
+        });
+        let Some((now, settings)) = state else {
+            continue;
+        };
+        let before = book_sent(|sent| sent.get(&player).cloned());
+        if before.as_ref() == Some(&now) {
+            continue;
+        }
+        let mut packets = Vec::new();
+        if before.is_none() {
+            packets.push(ToClient::Settings(settings.encode(&types)));
+        }
+        packets.extend(now.sync(before.as_ref(), |id| {
+            rows.iter().find(|row| row.0 == id).map(|row| rb::Entry {
+                id: row.0,
+                category: row.4.to_owned(),
+                group: (row.3 >= 0).then_some(row.3),
+            })
+        }));
+        book_sent(|sent| sent.insert(player, now));
+        for packet in packets {
+            let body = packet.encode();
+            if player == 0 {
+                book_from_server(&body);
+            } else if let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &body) {
+                eprintln!("machinery_basis: o livro de receitas não chegou a {player:032x}: {error}");
+            }
+        }
+    }
 }
 
 /// `GuiWindow.renderBackgroundOverlay` e `renderForeground` da janela do livro: a sombra, o painel, o fechar, o fixar e o título.
@@ -1819,7 +2078,7 @@ fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut boo
     view.focused = false;
     if left && inside(rb::filter_rect(xo, yo)) {
         let filtering = view.toggle_filtering();
-        book_settings(|settings| settings.set_filtering(book_type(spec), filtering));
+        set_book_filtering(spec, filtering);
         *click_sound = true;
         return BookClick::Handled;
     }
@@ -2591,6 +2850,8 @@ pub(in crate::game) fn acting(game: &Game<'_>) -> u128 {
 pub(in crate::game) fn net_from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]) {
     if channel == CHANNEL {
         server_message(game, player, data);
+    } else if channel == BOOK_CHANNEL {
+        book_server_message(game, player, data);
     }
 }
 
@@ -2633,6 +2894,7 @@ pub(in crate::game) fn container_open(game: &mut Game<'_>, player: u128, pos: [i
 /// tick do servidor (`ServerTickStart`), com o estado do fim do tick anterior, como o `ServerPlayer.tick` do original (que o lê antes dos
 /// block entities), e a cada passada com o servidor parado, porque o jogador continua andando nele.
 pub(in crate::game) fn broadcast(game: &mut Game<'_>) {
+    book_server_sync(game);
     adopt_open_menus(game);
     send_config_snapshots(game);
     let containers = sessions().as_ref().map(ContainerSessions::containers).unwrap_or_default();
@@ -2876,12 +3138,16 @@ fn send_types(game: &mut Game<'_>, player: u128) {
 /// `native_player_logged_in`: o registro vai para quem entrou.
 pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
     send_types(game, player);
+    // `PlayerList.placeNewPlayer`: `sendInitialRecipeBook`, no próximo `book_server_sync`.
+    book_sent(|sent| sent.remove(&player));
     game.mb_muffling_player_in(player);
     game.mb_view_player_in(player);
 }
 
 /// `native_server_data_loaded`: os dados mudaram (um `/reload`), então todos os que estão no servidor recebem de novo.
 pub(in crate::game) fn data_reloaded(game: &mut Game<'_>) {
+    // Um mundo que abre e um `/reload` (`PlayerList.reloadResources`): todos recebem o livro inteiro de novo.
+    book_sent(HashMap::clear);
     let players: Vec<u128> = game.native_server_players().iter().map(|p| p.uuid).collect();
     for player in players {
         send_types(game, player);
@@ -2897,6 +3163,7 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
         return;
     }
     match channel {
+        BOOK_CHANNEL => book_from_server(data),
         CONTAINER_CHANNEL => container_from_server(data),
         CONFIG_CHANNEL => {
             if data.len() > 12 {
@@ -2953,16 +3220,6 @@ impl Game<'_> {
     /// Se a tela de contêiner aberta é de uma máquina nossa, que o original desenha com o degradê do vanilla no fundo (injeção `container_dim`).
     pub(in crate::game) fn mb_screen_owns_dim(&self) -> bool {
         open_spec(self).is_some()
-    }
-
-    /// `ServerPlayer.awardRecipes`: os displays que entram no livro do jogador.
-    pub(in crate::game) fn mb_book_award(&self, ids: &[i32]) {
-        book_change(ids, true);
-    }
-
-    /// `/recipe give` e `/recipe take` com `*`: os displays do livro entram ou saem todos (o `RecipeIndex` do Horizon só conhece as do vanilla).
-    pub(in crate::game) fn mb_book_change(&self, ids: &[i32], give: bool) {
-        book_change(ids, give);
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {

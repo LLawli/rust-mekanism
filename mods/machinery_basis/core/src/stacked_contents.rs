@@ -70,7 +70,10 @@ impl Picker {
             .amounts
             .iter()
             .filter(|(name, amount)| {
-                *amount > 0 && ingredients.iter().any(|accepted| accepted.contains(&name.as_str()))
+                *amount > 0
+                    && ingredients
+                        .iter()
+                        .any(|accepted| accepted.contains(&name.as_str()))
             })
             .cloned()
             .collect();
@@ -160,7 +163,10 @@ impl Picker {
             if (length - 1) & 1 == 0 {
                 for ingredient in 0..self.ingredient_count {
                     let at = self.at(last, ingredient);
-                    if !self.visited_ingredient[ingredient] && self.connection[at] && !self.residual[at] {
+                    if !self.visited_ingredient[ingredient]
+                        && self.connection[at]
+                        && !self.residual[at]
+                    {
                         self.visited_ingredient[ingredient] = true;
                         path.push(ingredient);
                         break;

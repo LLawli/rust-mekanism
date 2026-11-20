@@ -39,6 +39,9 @@ pub struct UpgradeWindowSpec {
     pub recipe_book: bool,
     /// Os dados do livro que a janela mostra (as abas e as linhas), quando a tela tem a aba do livro.
     pub book: Option<&'static crate::recipe_book_view::BookData>,
+    /// Os slots de item dos `RecipeContainers` da máquina (a entrada e a saída), por índice no menu do bloco: o que o
+    /// `IRecipeLookupHandler.fillStackedContents` conta para o livro saber o que dá para fazer.
+    pub book_slots: [usize; 2],
     /// Os índices dos dois slots virtuais (entrada e saída) no menu do bloco.
     pub virtual_slots: [usize; 2],
     /// Os dados que o contêiner sincroniza ao nascer (`addContainerTrackers`), na ordem do Java.
