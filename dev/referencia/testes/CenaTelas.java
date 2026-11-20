@@ -203,6 +203,7 @@ public class CenaTelas {
             }
             click(minecraft, caso, "clicar", (caseTick - first) / CLICK_GAP);
             if (caseTick == last) {
+                type(minecraft, caso);
                 report(minecraft, caso, "depois dos cliques");
                 hover(minecraft, caso);
                 shotsTaken = 0;
@@ -371,6 +372,13 @@ public class CenaTelas {
 
     private static void state(MinecraftServer server, Caso caso) {
         TileEntityMekanism tile = tile(server, caso);
+        if (caso.args().containsKey("receitas")) {
+            // O livro de receitas com tudo desbloqueado (`/recipe give @a *`, o mesmo comando no port).
+            run(server, "recipe give @a *");
+        } else if (caso.name().contains("_livro_")) {
+            // Os outros casos do livro, com ele vazio, como o port (`cena_telas.monta_port`).
+            run(server, "recipe take @a *");
+        }
         if (caso.args().containsKey("ranhura")) {
             energySlot(tile, caso.args().get("ranhura"), false);
         }
@@ -496,6 +504,15 @@ public class CenaTelas {
         var info = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
         screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
+    }
+
+    /// `digitar=texto`: depois dos cliques, cada caractere pelo `charTyped` da tela, como o teclado faria (a caixa de busca do livro, focada por um clique).
+    private static void type(Minecraft minecraft, Caso caso) {
+        var screen = minecraft.gui.screen();
+        if (!caso.args().containsKey("digitar") || screen == null) {
+            return;
+        }
+        caso.args().get("digitar").codePoints().forEach(cp -> screen.charTyped(new net.minecraft.client.input.CharacterEvent(cp)));
     }
 
     /// O port tem as abas de livro, segurança, redstone, configuração e transporte (o livro desde 2026-11-15, frente `livro-receitas`): só as abas que ainda lhe faltam ficam invisíveis no original da cena, para a

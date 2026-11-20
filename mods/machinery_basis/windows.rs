@@ -260,6 +260,10 @@ struct Open {
     neighbours: [Option<ItemStack>; 6],
     /// A janela do livro: a aba, a busca, o filtro e a página (`VirtualRecipeBookComponent`).
     book: Option<rbv::View>,
+    /// `EditBox.focusedTime` da caixa de busca (o pisca do cursor).
+    book_focus_ms: i64,
+    /// O relógio do `SlotSelectTime`: o último quadro que somou ao `time`.
+    book_clock_ms: i64,
 }
 
 struct Client {
@@ -543,6 +547,8 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             current: 0,
             neighbours,
             book: (kind == Kind::RecipeBook).then(|| new_book_view(spec)).flatten(),
+            book_focus_ms: now,
+            book_clock_ms: now,
         },
     );
     if kind == Kind::RecipeBook {
@@ -680,6 +686,20 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             }
         }
     }
+    // `SlotSelectTime`: o `time` do livro soma o quadro (`extractRenderState`, `time += a`, em ticks) só sem o Ctrl.
+    {
+        let ctrl = game.has_control_down();
+        let now = now_ms();
+        let mut guard = client();
+        for open in guard.windows.iter_mut() {
+            if let Some(view) = open.book.as_mut() {
+                if !ctrl {
+                    view.time += (now - open.book_clock_ms) as f32 / 50.0;
+                }
+                open.book_clock_ms = now;
+            }
+        }
+    }
     let actions: Vec<Action> = std::mem::take(&mut client().pending);
     for action in actions {
         match action {
@@ -743,15 +763,39 @@ fn place_virtual_slots(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
 /// `screen_key_pressed_pre`: Esc fecha a janela que não está fixa e consome a tecla; fixa, a tecla segue para a de baixo
 /// (`GuiMekanism.keyPressed` oferece a tecla às janelas, da do topo para baixo) e, sem nenhuma, a tela fecha.
 pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bool) {
-    if open_spec(game).is_none() || key != "key.keyboard.escape" {
+    if open_spec(game).is_none() {
         return;
     }
     let mut guard = client();
     let state = &mut *guard;
+    // `GuiMekanism.keyPressed`: as janelas, da do topo para baixo; a do livro passa a tecla antes ao componente.
+    for open in state.windows.iter_mut() {
+        if open.kind == Kind::RecipeBook && book_key(open, key) {
+            *canceled = true;
+            return;
+        }
+    }
+    if key != "key.keyboard.escape" {
+        return;
+    }
     if let Some(open) = state.windows.iter().find(|open| open.window.escape()) {
         let kind = open.kind;
         state.pending.push(Action::Close(kind));
         *canceled = true;
+    }
+}
+
+/// `screen_char_typed_pre`: o caractere vai às janelas, da do topo para baixo (`GuiMekanism.charTyped`); a caixa de busca do livro o toma.
+pub(in crate::game) fn char_typed(game: &Game<'_>, ch: char, canceled: &mut bool) {
+    if open_spec(game).is_none() {
+        return;
+    }
+    let mut guard = client();
+    for open in guard.windows.iter_mut() {
+        if open.kind == Kind::RecipeBook && book_char(open, ch) {
+            *canceled = true;
+            return;
+        }
     }
 }
 
@@ -821,16 +865,18 @@ pub(in crate::game) fn mouse_pressed(
             return;
         }
     }
-    // `GuiRecipeBookWindow.isMouseOver`: as abas do livro ficam fora da janela, 30 à esquerda, e o clique nelas é da janela.
-    if button == 0
-        && let Some(book) = index_of(state, Kind::RecipeBook)
+    // `GuiMekanism.mouseClicked` oferece o clique a todas as janelas, da do topo para baixo, e `GuiRecipeBookWindow.mouseClicked` chama
+    // `RecipeBookComponent.mouseClicked` antes de olhar se o mouse está nela: o livro recebe o clique em qualquer lugar (as abas dele ficam
+    // fora da janela, 30 à esquerda), a menos que uma janela acima dele o tome.
+    if let Some(book) = index_of(state, Kind::RecipeBook)
+        && !(0..book).any(|above| state.windows[above].window.mouse_over(screen, mouse))
     {
         let rel = relative(&state.windows[book], screen, mouse);
-        let inside = rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < f64::from(state.windows[book].window.width) && rel[1] < f64::from(state.windows[book].window.height);
-        if !inside && book_tab_at(&state.windows[book], rel).is_some() {
-            book_click(&mut state.windows[book], rel, &mut state.click_sound, spec);
-            let open = state.windows.remove(book);
-            state.windows.insert(0, open);
+        if book_click(&mut state.windows[book], rel, button, &mut state.click_sound, spec) == BookClick::Handled {
+            if book != 0 {
+                let open = state.windows.remove(book);
+                state.windows.insert(0, open);
+            }
             *canceled = true;
             return;
         }
@@ -903,9 +949,6 @@ pub(in crate::game) fn mouse_pressed(
         Kind::RecipeBook => {
             *canceled = true;
             let pinned = state.windows[index].window.pinned;
-            if button == 0 && !in_rect(CLOSE, rel) && !in_rect(PIN, rel) {
-                book_click(&mut state.windows[index], rel, &mut state.click_sound, spec);
-            }
             if left_or_right && in_rect(PIN, rel) {
                 state.windows[index].window.toggle_pinned();
             } else if left_or_right && in_rect(CLOSE, rel) {
@@ -1632,30 +1675,22 @@ fn unlocked<R>(act: impl FnOnce(&mut Unlocked) -> R) -> R {
     act(guard.get_or_insert_with(Unlocked::default))
 }
 
-/// `ServerPlayer.awardRecipes`: os displays que a receita ganha entram no livro (destacados, como `addRecipes`).
-pub(in crate::game) fn book_award(ids: &[i32]) {
+/// `ServerPlayer.awardRecipes` (`give`) e `resetRecipes`: os displays entram no livro (destacados, como `addRecipes`) ou saem dele.
+pub(in crate::game) fn book_change(ids: &[i32], give: bool) {
     unlocked(|book| {
         for &id in ids {
-            book.add(id, true);
+            if give {
+                book.add(id, true);
+            } else {
+                book.remove(id);
+            }
         }
     });
 }
 
-/// Andaime de teste, fora do jogo normal: `MEKANISM_PORT_BOOK_UNLOCK=all` (ou `step3`, uma a cada três) desbloqueia os displays do livro,
-/// o que o `/recipe give @s *` faz no original (o comando do Horizon só conhece as receitas do vanilla).
-fn dev_unlock(data: &rbv::BookData) -> Vec<i32> {
-    let step = match std::env::var("MEKANISM_PORT_BOOK_UNLOCK").as_deref() {
-        Ok("all") => 1,
-        Ok("step3") => 3,
-        _ => return Vec::new(),
-    };
-    data.rows.iter().enumerate().filter(|(index, _)| index % step == 0).map(|(_, row)| row.0).collect()
-}
-
 fn new_book_view(spec: &UpgradeWindowSpec) -> Option<rbv::View> {
     let data = spec.book?;
-    let mut known: Vec<i32> = unlocked(|book| book.known().collect());
-    known.extend(dev_unlock(data));
+    let known: Vec<i32> = unlocked(|book| book.known().collect());
     let filtering = book_settings(|settings| settings.is_filtering(data.book_type));
     // `MekanismRecipeBookComponent.canCraft`: sem ingrediente de item (`craftingRequirements` vazio) a receita vale como fazível; com ele, o
     // jogador tem de ter o ingrediente, que esta rodada ainda não confere.
@@ -1712,7 +1747,7 @@ fn draw_recipe_book_window(
     let title = lang::get("gui.mekanism.recipe_book");
     scrolling_text(game, batch, &title, [wx + 30.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
     if let Some(view) = &open.book {
-        draw_book_contents(game, batch, view, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
+        draw_book_contents(game, batch, view, open.book_focus_ms, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
     }
 }
 
@@ -1729,36 +1764,107 @@ fn book_tab_at(open: &Open, rel: [f64; 2]) -> Option<rbv::Tab> {
 /// A origem do livro dentro da janela: `adoptPosition(getX(), getY() + Y_OFFSET)`.
 const BOOK_ORIGIN: [i32; 2] = [0, rb::Y_OFFSET];
 
-/// O clique esquerdo no livro (`VirtualRecipeBookComponent.mouseClicked`): a caixa de busca, o filtro, as abas, as setas e a receita.
-/// Os cliques nas receitas só ficam registrados nesta rodada (o esquerdo coloca e o direito abre o overlay: a rodada seguinte).
-fn book_click(open: &mut Open, rel: [f64; 2], click_sound: &mut bool, spec: &UpgradeWindowSpec) {
+/// O que o clique no livro fez (`RecipeBookComponent.mouseClicked`), para quem o chama.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BookClick {
+    /// O livro tratou o clique (`return true`): a janela vai para o topo e o clique não segue.
+    Handled,
+    /// Nada do livro sob o mouse: o clique segue para a janela (`GuiWindow.mouseClicked`).
+    Missed,
+}
+
+/// `RecipeBookComponent.mouseClicked` (`button` do Horizon: 0 esquerdo, 1 direito, 2 do meio; no Java 26.3 `MOUSE_BUTTON_LEFT` é 1 e
+/// `RIGHT` é 3), com `rel` relativo à janela. Na ordem do Java: a página (as setas e os botões das receitas), a lupa e a caixa de busca
+/// (o foco), o filtro e as abas. O `GuiMekanism` oferece todo clique a todas as janelas, então um clique em qualquer lugar fora da caixa
+/// tira o foco dela. Os cliques nas receitas só ficam registrados nesta rodada: o esquerdo (`getLastClickedRecipe` e `tryPlaceRecipe`)
+/// e o direito (o overlay das variantes, `isOnlyOption`) são da rodada seguinte.
+fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut bool, spec: &UpgradeWindowSpec) -> BookClick {
     let [xo, yo] = BOOK_ORIGIN;
-    if let Some(tab) = book_tab_at(open, rel) {
-        if let Some(view) = open.book.as_mut() {
-            view.select_tab(tab);
-        }
-        *click_sound = true;
-        return;
-    }
+    let left = button == 0;
+    let tab = book_tab_at(open, rel);
     let Some(view) = open.book.as_mut() else {
-        return;
+        return BookClick::Missed;
     };
     let inside = |rect: rb::Rect| rb::contains(rect, rel[0], rel[1]);
-    view.focused = inside(rb::search_rect(xo, yo)) || inside(rb::magnifier_rect(xo, yo));
-    if inside(rb::filter_rect(xo, yo)) {
+    // `RecipeBookPage.mouseClicked`: as setas só com o esquerdo e visíveis; os botões das receitas com o esquerdo e o direito (`isValidClickButton`).
+    if left && view.page.forward_visible() && inside(rb::forward_rect(xo, yo)) {
+        view.page.forward();
+        *click_sound = true;
+        return BookClick::Handled;
+    }
+    if left && view.page.back_visible() && inside(rb::back_rect(xo, yo)) {
+        view.page.back();
+        *click_sound = true;
+        return BookClick::Handled;
+    }
+    let shown = view.page.shown().len();
+    if (button == 0 || button == 1) && (0..shown).any(|index| inside(rb::button_rect(xo, yo, index))) {
+        *click_sound = true;
+        return BookClick::Handled;
+    }
+    // A lupa foca a caixa com qualquer botão (`magnifierIconPlacement.containsPoint`); a caixa, só com o esquerdo, e sem som (`EditBox.playDownSound`).
+    if inside(rb::magnifier_rect(xo, yo)) || (left && inside(rb::search_rect(xo, yo))) {
+        // `EditBox.setFocused(true)` reinicia o `focusedTime` (o pisca do cursor) a cada vez.
+        open.book_focus_ms = now_ms();
+        view.focused = true;
+        return BookClick::Handled;
+    }
+    view.focused = false;
+    if left && inside(rb::filter_rect(xo, yo)) {
         let filtering = view.toggle_filtering();
         book_settings(|settings| settings.set_filtering(book_type(spec), filtering));
         *click_sound = true;
-    } else if inside(rb::forward_rect(xo, yo)) {
-        *click_sound |= view.page.forward();
-    } else if inside(rb::back_rect(xo, yo)) {
-        *click_sound |= view.page.back();
+        return BookClick::Handled;
     }
+    if left && let Some(tab) = tab {
+        view.select_tab(tab);
+        *click_sound = true;
+        return BookClick::Handled;
+    }
+    BookClick::Missed
+}
+
+/// A tecla com o livro aberto (`GuiRecipeBookWindow.keyPressed` chama `RecipeBookComponent.keyPressed` antes do resto). Esc não é do
+/// livro (`isOffsetNextToMainGUI`: o componente virtual tem o `xOffset` de 86). Com a caixa focada, o Backspace apaga e as outras teclas
+/// param nela (`capturesInput`); sem foco, a tecla do chat (`T`) foca a caixa e o caractere dela não entra (`ignoreTextInput`).
+fn book_key(open: &mut Open, key: &str) -> bool {
+    let Some(view) = open.book.as_mut() else {
+        return false;
+    };
+    view.ignore_text = false;
+    if key == "key.keyboard.escape" {
+        return false;
+    }
+    if view.focused {
+        if key == "key.keyboard.backspace" {
+            view.backspace();
+        }
+        return true;
+    }
+    if key == "key.keyboard.t" {
+        view.ignore_text = true;
+        view.focused = true;
+        open.book_focus_ms = now_ms();
+        return true;
+    }
+    false
+}
+
+/// O caractere com o livro aberto (`RecipeBookComponent.charTyped`): entra na caixa focada.
+fn book_char(open: &mut Open, ch: char) -> bool {
+    let Some(view) = open.book.as_mut() else {
+        return false;
+    };
+    if view.ignore_text || !view.focused {
+        return false;
+    }
+    view.type_char(ch)
 }
 
 /// `VirtualRecipeBookComponent.extractRenderState`: o fundo recortado em 7, a caixa de busca, as abas, o botão de filtro e a página
 /// (`RecipeBookPage.extractRenderState`: a grade, o `Page n/m` e as setas), na origem (`xo`, `yo`) do livro.
-fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, xo: f32, yo: f32, hover_ok: bool, mouse: (f32, f32)) {
+#[allow(clippy::too_many_arguments)]
+fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, focus_ms: i64, xo: f32, yo: f32, hover_ok: bool, mouse: (f32, f32)) {
     let atlas = &game.gui.atlas;
     let (xi, yi) = (xo as i32, yo as i32);
     let over = |rect: rb::Rect| hover_ok && hovering([rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32], mouse);
@@ -1775,18 +1881,42 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, x
         [xo + offset as f32, yo + offset as f32, (rb::IMAGE_WIDTH - 2 * offset) as f32, (rb::IMAGE_HEIGHT - 2 * offset) as f32],
         WHITE,
     );
-    // A caixa de busca: só o desenho e a dica `Search...` (cinza, itálico) enquanto o texto está vazio e sem foco.
+    // A caixa de busca (`EditBox.extractWidgetRenderState`): o fundo `text_field` (`text_field_highlighted` com o foco), o texto em
+    // (`x + 4`, `y + (altura - 8) / 2`), branco com sombra, e o cursor `_` no fim, que pisca a cada 300 ms desde o foco; vazia e sem foco,
+    // a dica `Search...` (cinza e itálico, `SEARCH_HINT_STYLE`). O texto que não cabe nos 73 pixels de dentro mostra o fim (o cursor fica
+    // sempre no fim nesta rodada).
     let search = rb::search_rect(xi, yi);
-    horizon_client::ui::nine_slice(batch, atlas, "gui/sprites/widget/text_field", search[0] as f32, search[1] as f32, search[2] as f32, search[3] as f32, u32::MAX);
+    let field = if view.focused { "gui/sprites/widget/text_field_highlighted" } else { "gui/sprites/widget/text_field" };
+    horizon_client::ui::nine_slice(batch, atlas, field, search[0] as f32, search[1] as f32, search[2] as f32, search[3] as f32, u32::MAX);
     let text_at = [(search[0] + 4) as f32, (search[1] + (search[3] - 8) / 2) as f32];
-    if view.search.is_empty() {
+    let inner = (search[2] - 8) as f32;
+    let mut shown = view.search.as_str();
+    while game.native_text_width(shown) > inner {
+        let mut chars = shown.chars();
+        chars.next();
+        shown = chars.as_str();
+    }
+    let mut cursor_x = text_at[0];
+    if !shown.is_empty() {
+        game.native_text(batch, shown, text_at, WHITE, true);
+        cursor_x += game.native_text_width(shown) + 1.0;
+    }
+    if view.search.is_empty() && !view.focused {
         let hint = horizon_client::text::Text::styled(
             lang::get("gui.recipebook.search_hint"),
             horizon_client::text::Style { color: Some(0xAAAAAA), italic: Some(true), ..Default::default() },
         );
         batch.text_styled(atlas, &hint, text_at[0], text_at[1], WHITE, true);
-    } else {
-        game.native_text(batch, &view.search, text_at, WHITE, true);
+    }
+    // `insert` (o cursor de 1 pixel) só vale com o cursor antes do fim ou com os 50 caracteres; senão, o `_`.
+    let full = view.search.chars().count() >= rb::SEARCH_MAX_LENGTH;
+    if view.focused && ((now_ms() - focus_ms) / 300) % 2 == 0 {
+        if full {
+            let x = cursor_x - 1.0;
+            batch.fill(atlas, x, text_at[1] - 1.0, 1.0, 10.0, WHITE);
+        } else {
+            game.native_text(batch, "_", [cursor_x, text_at[1]], WHITE, true);
+        }
     }
     // As abas: a bússola e as categorias com receita, uma sobre a outra, a escolhida 2 para a esquerda.
     for (index, tab) in view.visible_tabs().into_iter().enumerate() {
@@ -2802,11 +2932,20 @@ impl Game<'_> {
 
     /// `ServerPlayer.awardRecipes`: os displays que entram no livro do jogador.
     pub(in crate::game) fn mb_book_award(&self, ids: &[i32]) {
-        book_award(ids);
+        book_change(ids, true);
+    }
+
+    /// `/recipe give` e `/recipe take` com `*`: os displays do livro entram ou saem todos (o `RecipeIndex` do Horizon só conhece as do vanilla).
+    pub(in crate::game) fn mb_book_change(&self, ids: &[i32], give: bool) {
+        book_change(ids, give);
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {
         key_pressed(self, key, canceled);
+    }
+
+    pub(in crate::game) fn mb_window_char(&self, ch: char, canceled: &mut bool) {
+        char_typed(self, ch, canceled);
     }
 
     pub(in crate::game) fn mb_window_press(

@@ -2737,6 +2737,17 @@ fn award_recipes(game: &mut Game<'_>, recipes: &[String], items: &[Option<ItemSt
     }
 }
 
+/// `/recipe give|take <alvos> *` (`RecipeCommand.giveRecipes` e `takeRecipes` com `getRecipes()`, todas): os displays do livro do Mekanism
+/// entram ou saem com as do vanilla. O comando com uma receita só chega com a lista de uma (`recipes.len() == 1`) e não é o `*`: uma
+/// receita do Mekanism por nome o Horizon recusa antes (`recipe.notFound`, só conhece as do vanilla), e uma do vanilla não mexe aqui.
+pub(in crate::game) fn recipe_command(game: &mut Game<'_>, give: bool, recipes: &[String]) {
+    if recipes.len() <= 1 {
+        return;
+    }
+    let displays: Vec<i32> = rules::recipe_book_rows::ROWS.iter().map(|row| row.0).collect();
+    game.mb_book_change(&displays, give);
+}
+
 thread_local! {
     /// As receitas de um jogador que ainda não deu para premiar (o jogo não tinha o servidor da conexão à mão), para o próximo tick.
     static DEFERRED_AWARDS: RefCell<Vec<(u32, Vec<String>, Vec<Option<ItemStack>>)>> = const { RefCell::new(Vec::new()) };

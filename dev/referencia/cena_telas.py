@@ -346,6 +346,10 @@ LIVRO_BORDA = (198, 75)
 # Com a janela de upgrades aberta (`ABA`), atrás dela o botão não tem foco nem tooltip (`isMouseOverCheckWindows`); fora dela tem.
 LIVRO_ATRAS_DA_JANELA = (183, 75)
 LIVRO_FORA_DA_JANELA = (192, 75)
+# Dentro do livro aberto (origem (0, 186) da tela): a caixa de busca (25, 13, 81 por 14), o filtro (110, 12, 26 por 16) e a seta da página seguinte (93, 137, 12 por 17).
+LIVRO_BUSCA = (60, 205)
+LIVRO_FILTRO = (120, 205)
+LIVRO_SETA = (98, 330)
 
 
 def casos_livro():
@@ -363,8 +367,18 @@ def casos_livro():
         caso("infuser_livro_xp", "infuser", energia="0", upgrades=XP),
         caso("chamber_livro_janela_atras", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_ATRAS_DA_JANELA),
         caso("chamber_livro_janela_fora", "chamber", energia="0", clicar=f"{ABA[0]},{ABA[1]}", hover=LIVRO_FORA_DA_JANELA),
-        # O clique abre a janela do livro (`GuiRecipeBookWindow`) no original; o port ainda não a tem (decisão 260), então o caso só roda no original, para medir o que ela mostra.
+        # O clique abre a janela do livro (`GuiRecipeBookWindow`), vazia: nenhuma receita desbloqueada.
         caso("chamber_livro_clique", "chamber", energia="0", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"),
+        # A janela do livro com todas as receitas desbloqueadas (`/recipe give @a *` nos dois jogos).
+        caso("chamber_livro_receitas", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"),
+        # A busca: o clique na caixa (o livro começa em (0, 186) da tela: a janela em (0, 176), `GuiRecipeBookWindowTab.createWindow`, e o
+        # `Y_OFFSET` de 10) e o texto `iron`.
+        caso("chamber_livro_busca", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_BUSCA[0]},{LIVRO_BUSCA[1]}", digitar="iron"),
+        # O filtro ligado (e desligado ao fim, porque o livro o guarda por tipo).
+        caso("chamber_livro_filtro", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}",
+             desfazer=f"{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}"),
+        # A segunda página (a seta fica abaixo da tela em guiScale 3: o clique vale nos dois jogos, fora da janela).
+        caso("chamber_livro_pagina", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_SETA[0]},{LIVRO_SETA[1]}"),
     ]
     return out
 
@@ -806,6 +820,12 @@ def monta_port(c, x, escala):
         ctl("wait", "6")
     if "reabrir" in c["args"]:
         reabre_no_port(pos, spec["block"])
+    # O livro de receitas com tudo desbloqueado, como o `CenaTelas`: o `/recipe give @a *` chega aos displays do Mekanism pela injeção
+    # `recipe_command` (decisão 263). Os outros casos do livro tiram tudo (`/recipe take @a *`), como o `CenaTelas`.
+    if "receitas" in c["args"]:
+        comando("recipe give @a *")
+    elif "_livro_" in c["nome"]:
+        comando("recipe take @a *")
     return x
 
 
@@ -901,6 +921,9 @@ def tira_port(c, x, escala, destino):
         cx, cy = (int(v) for v in clique.split(","))
         ctl("click-at", str(esquerda + cx), str(topo + cy))
         ctl("wait", "6")
+    if "digitar" in c["args"]:
+        ctl("type", c["args"]["digitar"])
+        ctl("wait", "4")
     if "hover" in c["args"]:
         # O Horizon dá o cursor em pixels de GUI da janela: o canto da tela mais o ponto dentro dela.
         hx, hy = c["args"]["hover"]

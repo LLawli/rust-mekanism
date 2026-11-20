@@ -77,6 +77,10 @@ pub struct View {
     pub filtering: bool,
     /// A caixa de busca tem o foco (o clique nela ou na lupa dá; o clique fora tira).
     pub focused: bool,
+    /// `ignoreTextInput`: a tecla do chat focou a caixa e o caractere dela não entra.
+    pub ignore_text: bool,
+    /// `lastSearch`: o texto da última busca, em minúsculas.
+    last_search: String,
     pub page: Page,
     /// `SlotSelectTime.time`: soma o quadro a cada desenho sem o Ctrl.
     pub time: f32,
@@ -139,6 +143,8 @@ impl View {
             search: String::new(),
             filtering,
             focused: false,
+            ignore_text: false,
+            last_search: String::new(),
             page: Page::default(),
             time: 0.0,
         };
@@ -189,10 +195,15 @@ impl View {
         }
     }
 
-    /// `RecipeBookComponent.tabButton` clicado: a aba muda, a página volta ao começo (a busca se mantém).
-    pub fn select_tab(&mut self, tab: Tab) {
+    /// `RecipeBookComponent.onTabButtonPress`: só a aba que não é a escolhida muda, e a página volta ao começo (a busca se mantém).
+    /// Devolve se mudou; o clique na escolhida só toca o som do botão.
+    pub fn select_tab(&mut self, tab: Tab) -> bool {
+        if self.tab == tab {
+            return false;
+        }
         self.tab = tab;
         self.refresh(true);
+        true
     }
 
     /// O botão do filtro (`toggleFiltering`), que a lista de dados guarda por tipo de livro; devolve o novo valor.
@@ -202,23 +213,37 @@ impl View {
         self.filtering
     }
 
-    /// `EditBox.charTyped` com o limite de `SEARCH_MAX_LENGTH`: o texto muda e a lista se refaz, de volta à primeira página.
+    /// `EditBox.charTyped` com o cursor no fim: só um caractere que o chat aceita (`StringUtil.isAllowedChatCharacter`: nem `§`, nem
+    /// controle, nem DEL) e só até `SEARCH_MAX_LENGTH` (`insertText` corta o que passa). O caractere aceito é consumido mesmo sem caber.
+    /// A lista se refaz sem voltar à primeira página (`checkSearchStringUpdate` chama `updateCollections(false, ...)`), e só se o texto
+    /// em minúsculas mudou (`lastSearch`).
     pub fn type_char(&mut self, ch: char) -> bool {
-        if ch.is_control() || self.search.chars().count() >= SEARCH_MAX_LENGTH {
+        if ch == '\u{a7}' || (ch as u32) < 0x20 || ch == '\u{7f}' {
             return false;
         }
-        self.search.push(ch);
-        self.refresh(true);
+        if self.search.chars().count() < SEARCH_MAX_LENGTH {
+            self.search.push(ch);
+            self.search_changed();
+        }
         true
     }
 
-    /// Apagar o último caractere (`EditBox.deleteText`, com o cursor no fim).
+    /// Backspace com o cursor no fim (`EditBox.deleteText(-1)`): apaga o último caractere.
     pub fn backspace(&mut self) -> bool {
         let changed = self.search.pop().is_some();
         if changed {
-            self.refresh(true);
+            self.search_changed();
         }
         changed
+    }
+
+    /// `checkSearchStringUpdate`: refaz a lista, sem voltar à primeira página, quando o texto em minúsculas difere do último.
+    fn search_changed(&mut self) {
+        let lower = self.search.to_lowercase();
+        if lower != self.last_search {
+            self.last_search = lower;
+            self.refresh(false);
+        }
     }
 
     /// Os botões da página de agora (`updateButtonsForPage` e `MekanismRecipeButton.init`), com o `SlotSelectTime` em `self.time`.

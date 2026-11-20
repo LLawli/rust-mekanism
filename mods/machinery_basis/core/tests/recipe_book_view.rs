@@ -161,3 +161,27 @@ fn the_slot_select_time_cycles_the_recipes_of_a_button() {
     }
     assert!(seen.contains(first));
 }
+
+#[test]
+fn typing_keeps_the_page_and_the_selected_tab_keeps_its_page() {
+    // `checkSearchStringUpdate` chama `updateCollections(false, ...)`: a página só volta a 0 se deixou de existir.
+    let mut view = view(false, true);
+    assert!(view.page.forward());
+    assert_eq!(view.page.current_page, 1);
+    // A busca por `e` ainda deixa mais de uma página.
+    assert!(view.type_char('e'));
+    assert!(view.page.total_pages > 1);
+    assert_eq!(view.page.current_page, 1, "a busca não volta à primeira página");
+    // `onTabButtonPress` ignora a aba já escolhida: a página fica.
+    assert!(!view.select_tab(Tab::Search));
+    assert_eq!(view.page.current_page, 1);
+    assert!(view.select_tab(Tab::Category(0)));
+    assert_eq!(view.page.current_page, 0);
+    // `isAllowedChatCharacter`: nem `§` nem controle entram, e o 51.º caractere é consumido sem entrar.
+    assert!(!view.type_char('\u{a7}'));
+    assert!(!view.type_char('\n'));
+    for _ in 0..60 {
+        assert!(view.type_char('x'));
+    }
+    assert_eq!(view.search.chars().count(), 50);
+}

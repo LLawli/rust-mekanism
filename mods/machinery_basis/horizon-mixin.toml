@@ -356,6 +356,19 @@ bindings = [
   { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
 ]
 
+# O caractere digitado na tela de máquina (`GuiMekanism.charTyped`): a caixa de busca do livro de receitas o toma.
+[[injection]]
+id = "window_char"
+hook = "screen_char_typed_pre"
+hook_version = 1
+kind = "HEAD"
+helper = "window_char.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "c", ty = "char", value = "c" },
+  { name = "canceled", ty = "&mut bool", value = "&mut *canceled" },
+]
+
 [[injection]]
 id = "window_press"
 hook = "screen_mouse_button_pressed_pre"

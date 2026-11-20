@@ -980,3 +980,17 @@ bindings = [
   { name = "command", ty = "&str", value = "command" },
   { name = "ran", ty = "&mut bool", value = "&mut *ran" },
 ]
+
+# `/recipe give` e `/recipe take` com `*` (`RecipeCommand`, `ServerPlayer.awardRecipes` e `resetRecipes` com todas as receitas): o `RecipeIndex`
+# do Horizon só numera as receitas do vanilla, então os displays do livro do Mekanism entram ou saem aqui, para o mesmo conjunto que o
+# `award_recipes` alimenta. Alvo cru, privado do módulo de comandos (decisão 263, H274).
+[[injection]]
+id = "recipe_command"
+target = "horizon_client::game::commands::world_cmds::Game<'_>::change_recipes"
+kind = "HEAD"
+helper = "recipe_command.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "give", ty = "bool", value = "give" },
+  { name = "recipes", ty = "&[String]", value = "recipes" },
+]
