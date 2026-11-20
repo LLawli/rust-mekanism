@@ -6646,17 +6646,41 @@ pub mod recipe_books {
     use super::recipe_book_rows::ROWS;
     use machinery_basis_core::recipe_book_view::{BookData, BookTab};
 
-    const fn tab(category: &'static str, primary: &'static str, secondary: Option<&'static str>) -> BookTab {
-        BookTab { category, primary, secondary }
+    const fn tab(
+        category: &'static str,
+        primary: &'static str,
+        secondary: Option<&'static str>,
+    ) -> BookTab {
+        BookTab {
+            category,
+            primary,
+            secondary,
+        }
     }
 
     pub static ENRICHING: BookData = BookData {
         book_type: "enriching",
         tabs: &[
-            tab("mekanism:enriching_building", "minecraft:polished_blackstone_bricks", None),
-            tab("mekanism:enriching_efficiency", "mekanism:enriched_diamond", Some("mekanism:dust_iron")),
-            tab("mekanism:enriching_decorative", "minecraft:magenta_dye", None),
-            tab("mekanism:enriching_misc", "minecraft:flint", Some("mekanism:hdpe_sheet")),
+            tab(
+                "mekanism:enriching_building",
+                "minecraft:polished_blackstone_bricks",
+                None,
+            ),
+            tab(
+                "mekanism:enriching_efficiency",
+                "mekanism:enriched_diamond",
+                Some("mekanism:dust_iron"),
+            ),
+            tab(
+                "mekanism:enriching_decorative",
+                "minecraft:magenta_dye",
+                None,
+            ),
+            tab(
+                "mekanism:enriching_misc",
+                "minecraft:flint",
+                Some("mekanism:hdpe_sheet"),
+            ),
         ],
         rows: ROWS,
     };
@@ -6664,9 +6688,21 @@ pub mod recipe_books {
     pub static CRUSHING: BookData = BookData {
         book_type: "crushing",
         tabs: &[
-            tab("mekanism:crushing_building", "minecraft:cracked_stone_bricks", None),
-            tab("mekanism:crushing_efficiency", "mekanism:dirty_dust_copper", None),
-            tab("mekanism:crushing_misc", "minecraft:prismarine_shard", Some("mekanism:dust_emerald")),
+            tab(
+                "mekanism:crushing_building",
+                "minecraft:cracked_stone_bricks",
+                None,
+            ),
+            tab(
+                "mekanism:crushing_efficiency",
+                "mekanism:dirty_dust_copper",
+                None,
+            ),
+            tab(
+                "mekanism:crushing_misc",
+                "minecraft:prismarine_shard",
+                Some("mekanism:dust_emerald"),
+            ),
         ],
         rows: ROWS,
     };
@@ -6674,8 +6710,16 @@ pub mod recipe_books {
     pub static METALLURGIC_INFUSING: BookData = BookData {
         book_type: "metallurgic_infusing",
         tabs: &[
-            tab("mekanism:metallurgic_infusing_building", "minecraft:mycelium", None),
-            tab("mekanism:metallurgic_infusing_misc", "mekanism:enriched_iron", Some("mekanism:basic_control_circuit")),
+            tab(
+                "mekanism:metallurgic_infusing_building",
+                "minecraft:mycelium",
+                None,
+            ),
+            tab(
+                "mekanism:metallurgic_infusing_misc",
+                "mekanism:enriched_iron",
+                Some("mekanism:basic_control_circuit"),
+            ),
         ],
         rows: ROWS,
     };
@@ -6686,7 +6730,11 @@ pub mod recipe_books {
         tabs: &[
             tab("minecraft:furnace_food", "minecraft:porkchop", None),
             tab("minecraft:furnace_blocks", "minecraft:stone", None),
-            tab("minecraft:furnace_misc", "minecraft:lava_bucket", Some("minecraft:emerald")),
+            tab(
+                "minecraft:furnace_misc",
+                "minecraft:lava_bucket",
+                Some("minecraft:emerald"),
+            ),
         ],
         rows: ROWS,
     };

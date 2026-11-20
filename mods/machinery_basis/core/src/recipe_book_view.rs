@@ -84,6 +84,23 @@ pub struct View {
     pub page: Page,
     /// `SlotSelectTime.time`: soma o quadro a cada desenho sem o Ctrl.
     pub time: f32,
+    /// `RecipeButton.animationTime` de cada um dos 20 botões: 15 quando o botão mostra uma receita destacada (`init`), e desce com o quadro
+    /// enquanto o botão é desenhado.
+    pub button_anim: [f32; crate::recipe_book::ITEMS_PER_PAGE],
+    /// `RecipeBookTabButton.animationTime` de cada aba de categoria (índice em [`BookData::tabs`]): 15 quando a janela abre com uma
+    /// receita destacada na aba (`startAnimation`).
+    pub tab_anim: Vec<f32>,
+    /// As receitas que um botão mostrou e deixaram de ser destacadas (`recipeShown`, `removeRecipeHighlight`), para quem guarda o
+    /// conjunto do jogador.
+    pub seen: Vec<i32>,
+}
+
+/// `ANIMATION_TIME` do botão e da aba.
+pub const ANIMATION_TIME: f32 = 15.0;
+
+/// O aperto da animação (`1 + 0.1 * sin(animationTime / 15 * PI)`), em `float` como o Java.
+pub fn squeeze(animation_time: f32) -> f32 {
+    1.0 + 0.1 * (animation_time / ANIMATION_TIME * std::f32::consts::PI).sin()
 }
 
 /// `getSearchCategory` do livro: o nome que a aba de busca tem em [`ClientBook`].
@@ -97,6 +114,7 @@ impl View {
     pub fn new(
         data: &'static BookData,
         unlocked: impl Iterator<Item = i32>,
+        highlighted: impl Iterator<Item = i32>,
         filtering: bool,
         can_craft: &dyn Fn(&Row) -> bool,
     ) -> Self {
@@ -118,12 +136,22 @@ impl View {
         }
         let search = (
             search_category(data),
-            data.tabs.iter().map(|tab| tab.category.to_owned()).collect(),
+            data.tabs
+                .iter()
+                .map(|tab| tab.category.to_owned())
+                .collect(),
         );
+        for id in highlighted {
+            book.add_highlight(id);
+        }
         book.rebuild_collections(&[search]);
         for index in 0..book.collection_count() {
             let collection = book.collection_mut(index);
-            let found: Vec<&Row> = collection.entries.iter().map(|entry| rows[&entry.id]).collect();
+            let found: Vec<&Row> = collection
+                .entries
+                .iter()
+                .map(|entry| rows[&entry.id])
+                .collect();
             collection.names = found
                 .iter()
                 .flat_map(|row| row.7.iter().map(|line| line.to_lowercase()))
@@ -147,7 +175,18 @@ impl View {
             last_search: String::new(),
             page: Page::default(),
             time: 0.0,
+            button_anim: [0.0; crate::recipe_book::ITEMS_PER_PAGE],
+            tab_anim: vec![0.0; data.tabs.len()],
+            seen: Vec::new(),
         };
+        // `initVisuals`: `updateTabs` (a animação das abas, antes de os botões tirarem o destaque) e depois `updateCollections`.
+        for (index, tab) in data.tabs.iter().enumerate() {
+            if view.book.tab_visible(tab.category)
+                && view.book.tab_highlighted(tab.category, filtering)
+            {
+                view.tab_anim[index] = ANIMATION_TIME;
+            }
+        }
         view.refresh(true);
         view
     }
@@ -171,6 +210,67 @@ impl View {
             .visible_collections(&self.category(), &self.search, self.filtering);
         self.page
             .update_collections(list, reset_page, self.filtering);
+        self.init_buttons();
+    }
+
+    /// `RecipeBookPage.updateButtonsForPage` e `RecipeButton.init`: o botão que mostra uma receita destacada tira o destaque dela
+    /// (`recipeShown`) e começa a animação.
+    fn init_buttons(&mut self) {
+        let status = if self.filtering {
+            Craftable::Craftable
+        } else {
+            Craftable::Any
+        };
+        let shown: Vec<usize> = self.page.shown().to_vec();
+        for (slot, index) in shown.into_iter().enumerate() {
+            let newly: Vec<i32> = self
+                .book
+                .collection(index)
+                .selected_recipes(status)
+                .iter()
+                .map(|entry| entry.id)
+                .filter(|&id| self.book.will_highlight(id))
+                .collect();
+            if !newly.is_empty() {
+                for id in newly {
+                    self.book.remove_highlight(id);
+                    self.seen.push(id);
+                }
+                self.button_anim[slot] = ANIMATION_TIME;
+            }
+        }
+    }
+
+    /// As setas (`forwardButton` e `backButton`): a página muda e os botões se refazem.
+    pub fn forward(&mut self) -> bool {
+        let moved = self.page.forward();
+        if moved {
+            self.init_buttons();
+        }
+        moved
+    }
+
+    pub fn back(&mut self) -> bool {
+        let moved = self.page.back();
+        if moved {
+            self.init_buttons();
+        }
+        moved
+    }
+
+    /// O quadro desenhado (`a`, em ticks): a animação de cada botão visível e de cada aba visível desce.
+    pub fn advance_animations(&mut self, ticks: f32) {
+        let shown = self.page.shown().len();
+        for anim in self.button_anim.iter_mut().take(shown) {
+            if *anim > 0.0 {
+                *anim -= ticks;
+            }
+        }
+        for (index, tab) in self.data.tabs.iter().enumerate() {
+            if self.tab_anim[index] > 0.0 && self.book.tab_visible(tab.category) {
+                self.tab_anim[index] -= ticks;
+            }
+        }
     }
 
     /// As abas que aparecem, na ordem: a bússola e as categorias que têm receita escolhida (`updateVisibility`).
@@ -191,7 +291,10 @@ impl View {
     pub fn icons(&self, tab: Tab) -> (&'static str, Option<&'static str>) {
         match tab {
             Tab::Search => (SEARCH_ICON, None),
-            Tab::Category(index) => (self.data.tabs[index].primary, self.data.tabs[index].secondary),
+            Tab::Category(index) => (
+                self.data.tabs[index].primary,
+                self.data.tabs[index].secondary,
+            ),
         }
     }
 

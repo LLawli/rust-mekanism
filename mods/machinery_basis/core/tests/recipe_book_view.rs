@@ -78,7 +78,13 @@ fn trace_step1() -> Value {
 }
 
 fn view(filtering: bool, craftable: bool) -> View {
-    View::new(crushing(), all_ids().into_iter(), filtering, &|_| craftable)
+    View::new(
+        crushing(),
+        all_ids().into_iter(),
+        std::iter::empty(),
+        filtering,
+        &|_| craftable,
+    )
 }
 
 #[test]
@@ -136,11 +142,23 @@ fn the_filter_keeps_only_what_can_be_crafted() {
 
 #[test]
 fn only_the_known_recipes_show_and_empty_tabs_hide() {
-    let view = View::new(crushing(), std::iter::empty(), false, &|_| true);
+    let view = View::new(
+        crushing(),
+        std::iter::empty(),
+        std::iter::empty(),
+        false,
+        &|_| true,
+    );
     assert_eq!(view.visible_tabs(), vec![Tab::Search]);
     assert!(view.buttons().is_empty());
     let one = rows().iter().find(|row| row.2 == "crushing").unwrap();
-    let view = View::new(crushing(), std::iter::once(one.0), false, &|_| true);
+    let view = View::new(
+        crushing(),
+        std::iter::once(one.0),
+        std::iter::empty(),
+        false,
+        &|_| true,
+    );
     assert_eq!(view.visible_tabs().len(), 2);
     assert_eq!(view.buttons().len(), 1);
 }
@@ -166,12 +184,15 @@ fn the_slot_select_time_cycles_the_recipes_of_a_button() {
 fn typing_keeps_the_page_and_the_selected_tab_keeps_its_page() {
     // `checkSearchStringUpdate` chama `updateCollections(false, ...)`: a página só volta a 0 se deixou de existir.
     let mut view = view(false, true);
-    assert!(view.page.forward());
+    assert!(view.forward());
     assert_eq!(view.page.current_page, 1);
     // A busca por `e` ainda deixa mais de uma página.
     assert!(view.type_char('e'));
     assert!(view.page.total_pages > 1);
-    assert_eq!(view.page.current_page, 1, "a busca não volta à primeira página");
+    assert_eq!(
+        view.page.current_page, 1,
+        "a busca não volta à primeira página"
+    );
     // `onTabButtonPress` ignora a aba já escolhida: a página fica.
     assert!(!view.select_tab(Tab::Search));
     assert_eq!(view.page.current_page, 1);
@@ -184,4 +205,32 @@ fn typing_keeps_the_page_and_the_selected_tab_keeps_its_page() {
         assert!(view.type_char('x'));
     }
     assert_eq!(view.search.chars().count(), 50);
+}
+
+#[test]
+fn highlighted_recipes_animate_the_buttons_that_show_them_and_their_tabs() {
+    // `/recipe give` destaca tudo: a janela abre com as abas animadas (`updateTabs` antes dos botões), e cada botão da página tira o
+    // destaque das receitas dele (`recipeShown`) e anima; a página seguinte, ainda destacada, anima ao aparecer.
+    let mut view = View::new(
+        crushing(),
+        all_ids().into_iter(),
+        all_ids().into_iter(),
+        false,
+        &|_| true,
+    );
+    assert!(view.tab_anim.iter().all(|&anim| anim == 15.0));
+    assert!(view.button_anim.iter().all(|&anim| anim == 15.0));
+    let first_page = view.seen.len();
+    assert!(first_page >= 20);
+    view.advance_animations(15.0);
+    assert!(view.button_anim.iter().all(|&anim| anim <= 0.0));
+    assert!(view.forward());
+    assert!(view.button_anim.iter().all(|&anim| anim == 15.0));
+    assert!(view.seen.len() > first_page);
+    // Voltar à primeira página não anima de novo: o destaque já saiu.
+    view.advance_animations(15.0);
+    assert!(view.back());
+    assert!(view.button_anim.iter().all(|&anim| anim <= 0.0));
+    // O aperto do Java: 1 no começo e no fim, 1,1 no meio.
+    assert_eq!(machinery_basis_core::recipe_book_view::squeeze(7.5), 1.1);
 }

@@ -693,10 +693,16 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
         let mut guard = client();
         for open in guard.windows.iter_mut() {
             if let Some(view) = open.book.as_mut() {
+                let ticks = (now - open.book_clock_ms) as f32 / 50.0;
                 if !ctrl {
-                    view.time += (now - open.book_clock_ms) as f32 / 50.0;
+                    view.time += ticks;
                 }
+                view.advance_animations(ticks);
                 open.book_clock_ms = now;
+                // `recipeShown`: o que os botões mostraram deixa de ser destacado no livro do jogador.
+                for id in view.seen.drain(..) {
+                    unlocked(|book| book.seen(id));
+                }
             }
         }
     }
@@ -1690,11 +1696,11 @@ pub(in crate::game) fn book_change(ids: &[i32], give: bool) {
 
 fn new_book_view(spec: &UpgradeWindowSpec) -> Option<rbv::View> {
     let data = spec.book?;
-    let known: Vec<i32> = unlocked(|book| book.known().collect());
+    let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
     let filtering = book_settings(|settings| settings.is_filtering(data.book_type));
     // `MekanismRecipeBookComponent.canCraft`: sem ingrediente de item (`craftingRequirements` vazio) a receita vale como fazível; com ele, o
     // jogador tem de ter o ingrediente, que esta rodada ainda não confere.
-    Some(rbv::View::new(data, known.into_iter(), filtering, &|row| row.8 == 0))
+    Some(rbv::View::new(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| row.8 == 0))
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -1743,9 +1749,10 @@ fn draw_recipe_book_window(
     let pin = at(PIN);
     button_background(game, batch, spec, pin, true, hov(pin));
     plain(game, batch, spec, if open.window.pinned { "button/pinned" } else { "button/unpinned" }, [24.0, 12.0], pin);
-    // `drawTitleText(RECIPE_BOOK, 5)`: de `14 + GuiPinButton.WIDTH` até a largura da janela, menos o `maxLengthPad` de 4.
+    // `drawTitleText(RECIPE_BOOK, 5)`: de `14 + GuiPinButton.WIDTH` até a largura da janela, com o `maxLengthPad` de 4 dos dois lados.
     let title = lang::get("gui.mekanism.recipe_book");
-    scrolling_text(game, batch, &title, [wx + 30.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
+    // `drawScrollingString(x + maxLengthPad, ..., x + width - maxLengthPad)`: a área vai de 34 a 143.
+    scrolling_text(game, batch, &title, [wx + 34.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
     if let Some(view) = &open.book {
         draw_book_contents(game, batch, view, open.book_focus_ms, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
     }
@@ -1788,12 +1795,12 @@ fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut boo
     let inside = |rect: rb::Rect| rb::contains(rect, rel[0], rel[1]);
     // `RecipeBookPage.mouseClicked`: as setas só com o esquerdo e visíveis; os botões das receitas com o esquerdo e o direito (`isValidClickButton`).
     if left && view.page.forward_visible() && inside(rb::forward_rect(xo, yo)) {
-        view.page.forward();
+        view.forward();
         *click_sound = true;
         return BookClick::Handled;
     }
     if left && view.page.back_visible() && inside(rb::back_rect(xo, yo)) {
-        view.page.back();
+        view.back();
         *click_sound = true;
         return BookClick::Handled;
     }
@@ -1918,11 +1925,13 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
             game.native_text(batch, "_", [cursor_x, text_at[1]], WHITE, true);
         }
     }
-    // As abas: a bússola e as categorias com receita, uma sobre a outra, a escolhida 2 para a esquerda.
+    // As abas: a bússola e as categorias com receita, uma sobre a outra, a escolhida 2 para a esquerda; a que abriu com receita destacada
+    // aperta na vertical em volta de (`x + 8`, `y + 12`) enquanto a animação dura (`RecipeBookTabButton.extractContents`).
     for (index, tab) in view.visible_tabs().into_iter().enumerate() {
         let rect = rb::tab_rect(xi, yi, index);
         let selected = tab == view.tab;
         let left = if selected { -2 } else { 0 };
+        let start = batch.vertices.len();
         sprite_at(batch, if selected { "recipe_book/tab_selected" } else { "recipe_book/tab" }, rect[0] + left, rect[1]);
         let (primary, secondary) = view.icons(tab);
         let item = |batch: &mut HudBatch, id: &str, x: i32| game.native_item_stack(batch, &ItemStack::new(id, 1), [x as f32, (rect[1] + 5) as f32], 16.0);
@@ -1932,6 +1941,11 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
         } else {
             item(batch, primary, rect[0] + 9 + left);
         }
+        if let rbv::Tab::Category(category) = tab
+            && view.tab_anim[category] > 0.0
+        {
+            batch.scale_since(start, (rect[0] + 8) as f32, (rect[1] + 12) as f32, 1.0, rbv::squeeze(view.tab_anim[category]));
+        }
     }
     // O filtro: os sprites do forno (`MekanismRecipeBookComponent.filterButtonTextures`).
     let filter = rb::filter_rect(xi, yi);
@@ -1939,7 +1953,12 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
     sprite_at(batch, &format!("recipe_book/{state}{}", if over(filter) { "_highlighted" } else { "" }), filter[0], filter[1]);
     // A página.
     if let Some((current, total)) = view.page_label() {
-        let label = lang::get("gui.recipebook.page").replacen("%1$s", &current.to_string(), 1).replacen("%2$s", &total.to_string(), 1);
+        // `gui.recipebook.page` é `%s/%s` (ou `%1$s`/`%2$s` numa tradução que os numera).
+        let label = lang::get("gui.recipebook.page")
+            .replacen("%1$s", &current.to_string(), 1)
+            .replacen("%2$s", &total.to_string(), 1)
+            .replacen("%s", &current.to_string(), 1)
+            .replacen("%s", &total.to_string(), 1);
         let x = rb::page_text_x(xi, game.native_text_width(&label) as i32);
         game.native_text(batch, &label, [x as f32, (yi + 141) as f32], WHITE, true);
     }
@@ -1951,6 +1970,8 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
             (false, true) => "slot_many_uncraftable",
             (false, false) => "slot_uncraftable",
         };
+        // `RecipeButton.extractWidgetRenderState`: o botão que mostrou uma receita destacada cresce e volta em volta de (`x + 8`, `y + 12`).
+        let start = batch.vertices.len();
         sprite_at(batch, &format!("recipe_book/{name}"), rect[0], rect[1]);
         let stack = ItemStack::new(button.item, 1);
         let mut at = 4;
@@ -1959,6 +1980,10 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
             at -= 1;
         }
         game.native_item_stack(batch, &stack, [(rect[0] + at) as f32, (rect[1] + at) as f32], 16.0);
+        if view.button_anim[index] > 0.0 {
+            let squeeze = rbv::squeeze(view.button_anim[index]);
+            batch.scale_since(start, (rect[0] + 8) as f32, (rect[1] + 12) as f32, squeeze, squeeze);
+        }
     }
     for (visible, rect, name) in [
         (view.page.forward_visible(), rb::forward_rect(xi, yi), "page_forward"),

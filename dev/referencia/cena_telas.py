@@ -346,10 +346,12 @@ LIVRO_BORDA = (198, 75)
 # Com a janela de upgrades aberta (`ABA`), atrás dela o botão não tem foco nem tooltip (`isMouseOverCheckWindows`); fora dela tem.
 LIVRO_ATRAS_DA_JANELA = (183, 75)
 LIVRO_FORA_DA_JANELA = (192, 75)
-# Dentro do livro aberto (origem (0, 186) da tela): a caixa de busca (25, 13, 81 por 14), o filtro (110, 12, 26 por 16) e a seta da página seguinte (93, 137, 12 por 17).
-LIVRO_BUSCA = (60, 205)
-LIVRO_FILTRO = (120, 205)
-LIVRO_SETA = (98, 330)
+# Dentro do livro aberto: a janela fica onde a última posição guardada a deixou (`SelectedWindowData.lastPosition`, `calculateTarget`), nos dois
+# jogos em (0, 88) da tela em guiScale 2 e (0, 87) em guiScale 3 (encostada embaixo), e o livro 10 abaixo (`Y_OFFSET`). Os pontos caem dentro
+# do elemento nas duas: a caixa de busca (25, 13, 81 por 14), o filtro (110, 12, 26 por 16) e a seta da página seguinte (93, 137, 12 por 17).
+LIVRO_BUSCA = (60, 117)
+LIVRO_FILTRO = (120, 117)
+LIVRO_SETA = (98, 243)
 
 
 def casos_livro():
@@ -370,15 +372,15 @@ def casos_livro():
         # O clique abre a janela do livro (`GuiRecipeBookWindow`), vazia: nenhuma receita desbloqueada.
         caso("chamber_livro_clique", "chamber", energia="0", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"),
         # A janela do livro com todas as receitas desbloqueadas (`/recipe give @a *` nos dois jogos).
-        caso("chamber_livro_receitas", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"),
-        # A busca: o clique na caixa (o livro começa em (0, 186) da tela: a janela em (0, 176), `GuiRecipeBookWindowTab.createWindow`, e o
-        # `Y_OFFSET` de 10) e o texto `iron`.
-        caso("chamber_livro_busca", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_BUSCA[0]},{LIVRO_BUSCA[1]}", digitar="iron"),
+        caso("chamber_livro_receitas", "chamber", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"),
+        # A busca: o clique na caixa e o texto `iron`.
+        caso("chamber_livro_busca", "chamber", energia="0", receitas="1", capturas_port="8", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_BUSCA[0]},{LIVRO_BUSCA[1]}", digitar="iron"),
         # O filtro ligado (e desligado ao fim, porque o livro o guarda por tipo).
-        caso("chamber_livro_filtro", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}",
+        caso("chamber_livro_filtro", "chamber", energia="0", receitas="1", capturas_port="8", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}",
              desfazer=f"{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}"),
-        # A segunda página (a seta fica abaixo da tela em guiScale 3: o clique vale nos dois jogos, fora da janela).
-        caso("chamber_livro_pagina", "chamber", energia="0", receitas="1", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_SETA[0]},{LIVRO_SETA[1]}"),
+        # A segunda página. Neste caso e no de cima o original também tira várias: os botões que mostram receitas destacadas crescem e voltam por
+        # 15 ticks depois de aparecer (`RecipeButton.animationTime`), e o primeiro print do original cai no meio da animação.
+        caso("chamber_livro_pagina", "chamber", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_SETA[0]},{LIVRO_SETA[1]}"),
     ]
     return out
 
@@ -932,7 +934,9 @@ def tira_port(c, x, escala, destino):
         ctl("scroll-at", "2", "2", "0")
     ctl("wait", "10")
     ciclo = ciclos(c, "port")
-    capturas = ciclo or int(c["args"].get("capturas", "1"))
+    # `capturas_port`: só o port tira várias (o livro troca o item dos botões de várias receitas a cada 30 ticks, `SlotSelectTime`, e o
+    # comparador escolhe a captura da mesma fase do original).
+    capturas = ciclo or int(c["args"].get("capturas_port", c["args"].get("capturas", "1")))
     for k in range(capturas):
         sufixo = f"_{k}" if capturas > 1 else ""
         if ciclo:
