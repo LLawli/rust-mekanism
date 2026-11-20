@@ -70,6 +70,37 @@ impl Settings {
             .filtering = filtering;
     }
 
+    /// O `TypeSettings` de um tipo, inteiro.
+    pub fn set(&mut self, book_type: &str, settings: TypeSettings) {
+        self.types.insert(book_type.to_owned(), settings);
+    }
+
+    /// As configurações dos tipos `book_types` com o nome de cada um, para o pacote ao cliente: os tipos de livro de mod são registrados
+    /// quando o bloco deles aparece, então o servidor e o cliente não têm a mesma lista nem a mesma ordem, e o nome vai junto.
+    pub fn encode_named(&self, book_types: &[&str]) -> Vec<u8> {
+        let mut bytes = vec![book_types.len() as u8];
+        for book_type in book_types {
+            let settings = self.get(book_type);
+            put_str(&mut bytes, book_type);
+            bytes.push(u8::from(settings.open));
+            bytes.push(u8::from(settings.filtering));
+        }
+        bytes
+    }
+
+    pub fn decode_named(bytes: &[u8]) -> Option<Vec<(String, TypeSettings)>> {
+        let mut reader = Reader(bytes);
+        let count = reader.u8()?;
+        let mut out = Vec::new();
+        for _ in 0..count {
+            let name = reader.str()?;
+            let open = reader.u8()? != 0;
+            let filtering = reader.u8()? != 0;
+            out.push((name, TypeSettings { open, filtering }));
+        }
+        reader.0.is_empty().then_some(out)
+    }
+
     /// `replaceFrom(other)`.
     pub fn replace_from(&mut self, other: &Settings) {
         self.types = other.types.clone();
@@ -751,5 +782,46 @@ mod tests {
         assert_eq!(client.known().collect::<Vec<_>>(), vec![20, 30]);
         assert_eq!(client.highlighted().collect::<Vec<_>>(), vec![20, 30]);
         assert!(next.sync(Some(&next), entry).is_empty());
+    }
+
+    #[test]
+    fn the_settings_packet_carries_the_type_names() {
+        let mut settings = Settings::default();
+        settings.set_open("MOD_B", true);
+        settings.set_filtering("MOD_A", true);
+        let bytes = settings.encode_named(&["MOD_B", "MOD_A", "MOD_C"]);
+        let read = Settings::decode_named(&bytes).unwrap();
+        assert_eq!(
+            read,
+            vec![
+                (
+                    "MOD_B".to_owned(),
+                    TypeSettings {
+                        open: true,
+                        filtering: false
+                    }
+                ),
+                (
+                    "MOD_A".to_owned(),
+                    TypeSettings {
+                        open: false,
+                        filtering: true
+                    }
+                ),
+                ("MOD_C".to_owned(), TypeSettings::default()),
+            ]
+        );
+        // Quem recebe junta ao que tem, sem depender da própria lista de tipos.
+        let mut client = Settings::default();
+        client.set_open("MOD_Z", true);
+        for (name, value) in read {
+            client.set(&name, value);
+        }
+        assert!(client.is_open("MOD_B") && client.is_filtering("MOD_A") && client.is_open("MOD_Z"));
+        assert_eq!(Settings::decode_named(&bytes[..bytes.len() - 1]), None);
+        assert_eq!(
+            Settings::decode_named(&[bytes.as_slice(), &[0]].concat()),
+            None
+        );
     }
 }

@@ -1714,20 +1714,23 @@ static BOOK_DIRTY: AtomicBool = AtomicBool::new(false);
 /// O que o cliente tem a dizer ao servidor (a configuração que mudou, a receita vista), mandado no quadro.
 static BOOK_OUTBOX: Mutex<Vec<ToServer>> = Mutex::new(Vec::new());
 
-/// No servidor: o livro que cada jogador já recebeu (0 é o anfitrião), para mandar só o que muda.
-static BOOK_SENT: Mutex<Option<HashMap<u128, Unlocked>>> = Mutex::new(None);
+/// O que [`book_restore`] já conferiu de cada jogador: quantas receitas os livros registrados têm e o tamanho da lista lida dele.
+static BOOK_RESTORED: Mutex<Option<HashMap<u128, (usize, usize)>>> = Mutex::new(None);
+
+/// No servidor: o livro que cada jogador já recebeu e os tipos de livro das configurações mandadas, para mandar só o que muda.
+static BOOK_SENT: Mutex<Option<HashMap<u128, (Unlocked, Vec<&'static str>)>>> = Mutex::new(None);
 
 fn unlocked<R>(act: impl FnOnce(&mut Unlocked) -> R) -> R {
     let mut guard = BOOK_UNLOCKED.lock().unwrap_or_else(|e| e.into_inner());
     act(guard.get_or_insert_with(Unlocked::default))
 }
 
-fn book_sent<R>(act: impl FnOnce(&mut HashMap<u128, Unlocked>) -> R) -> R {
+fn book_sent<R>(act: impl FnOnce(&mut HashMap<u128, (Unlocked, Vec<&'static str>)>) -> R) -> R {
     let mut guard = BOOK_SENT.lock().unwrap_or_else(|e| e.into_inner());
     act(guard.get_or_insert_with(HashMap::new))
 }
 
-/// Os livros que os mods registraram, um por tipo de livro, na ordem do registro (a mesma no servidor e no cliente).
+/// Os livros que os mods registraram até agora (cada um quando o bloco dele aparece), um por tipo de livro, na ordem do registro.
 fn books() -> Vec<&'static rbv::BookData> {
     let specs = SPECS.lock().unwrap_or_else(|e| e.into_inner());
     let mut out: Vec<&'static rbv::BookData> = Vec::new();
@@ -1829,9 +1832,13 @@ fn book_flush(game: &mut Game<'_>) {
 /// O cliente recebe um pacote do livro: as configurações (`ClientRecipeBook.setBookSettings`) ou as receitas (`add`, `remove`).
 fn book_from_server(data: &[u8]) {
     match ToClient::decode(data) {
-        Some(ToClient::Settings(bytes)) => match BookSettings::decode(&book_types(), &bytes) {
+        Some(ToClient::Settings(bytes)) => match BookSettings::decode_named(&bytes) {
             Some(settings) => {
-                book_settings(|mine| mine.replace_from(&settings));
+                book_settings(|mine| {
+                    for (book_type, value) in &settings {
+                        mine.set(book_type, *value);
+                    }
+                });
                 BOOK_DIRTY.store(true, Ordering::Relaxed);
             }
             None => eprintln!("machinery_basis: o servidor mandou configurações do livro ilegíveis"),
@@ -1849,13 +1856,14 @@ fn book_from_server(data: &[u8]) {
 // grava em `recipeBook.recipes` e `toBeDisplayed` como o `ServerRecipeBook`) e, para os `RecipeBookSettings` dos tipos de livro de mod, no
 // composto cru do jogador (`Level::player_extra`, `Guest::saved`), que a injeção `recipe_book_settings_save` leva ao que é gravado.
 
-/// O livro do jogador `player` no servidor (0 é o anfitrião): o do nível quando é ele quem age, senão o do convidado guardado no hub.
+/// O livro do jogador `player` no servidor: o do nível quando é ele quem age (o Horizon põe o estado dele no lugar, `as_guest`), senão o
+/// do convidado guardado no hub. Todo jogador é um convidado do hub, o da janela também; o 0 só vale sem hub.
 fn with_server_book<R>(
     game: &mut Game<'_>,
     player: u128,
     act: impl FnOnce(&mut horizon_client::recipe_book::Settings, &mut Option<Tag>) -> R,
 ) -> Option<R> {
-    if game.lan_acting_uuid == Some(player) || (player == 0 && game.lan_acting_uuid.is_none()) {
+    if game.lan_acting_uuid == Some(player) || (player == 0 && game.lan_acting_uuid.is_none() && game.lan.is_none()) {
         return Some(act(&mut game.level.recipe_book, &mut game.level.player_extra));
     }
     let guest = game.lan.as_mut()?.hub.guests.iter_mut().find(|guest| guest.uuid == player)?;
@@ -1921,6 +1929,66 @@ fn book_server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
     }
 }
 
+/// Ao abrir o mundo, o Horizon tira do livro do dono as receitas que o `RecipeIndex` dele não conhece (`Game::load_world`:
+/// `ServerRecipeBook.loadUntrusted` com o `RecipeIndex`, que só lê `data/minecraft/recipe`), e é desse livro cortado que o jogador da
+/// janela nasce no servidor (`lan::playerdata::load_owner`). No original o `RecipeManager` tem as do mod e elas ficam. O composto lido do
+/// jogador (`Guest::saved`) ainda tem as duas listas como estavam no arquivo: as receitas dos livros registrados que estão nele voltam
+/// ao livro e saem da lista lida (o `player_tag` a reescreve ao gravar), o que faz disto uma vez só por receita, sem depender de quando
+/// cada livro é registrado (decisão 267; o H274 tiraria isto). Para um convidado, que o Horizon lê sem cortar, isto não muda nada.
+fn book_restore(book: &mut horizon_client::recipe_book::Settings, extra: &mut Option<Tag>, names: &std::collections::HashSet<&str>, seen: &mut (usize, usize)) {
+    let Some(Tag::Compound(saved)) = extra.as_mut().and_then(|tag| tag.get_mut("recipeBook")) else {
+        return;
+    };
+    let length = match saved.get(&JavaString::from("recipes")) {
+        Some(Tag::List(list)) => list.len(),
+        _ => return,
+    };
+    // A lista lida é conferida de novo a cada livro novo registrado, e não a cada tick.
+    if *seen == (names.len(), length) {
+        return;
+    }
+    let mut take = |key: &str| -> Vec<String> {
+        let Some(Tag::List(list)) = saved.get_mut(&JavaString::from(key)) else {
+            return Vec::new();
+        };
+        let mut taken = Vec::new();
+        list.retain(|tag| match tag {
+            Tag::String(name) => {
+                let name = name.to_string_lossy();
+                let ours = names.contains(name.as_str());
+                if ours {
+                    taken.push(name);
+                }
+                !ours
+            }
+            _ => true,
+        });
+        taken
+    };
+    let known = take("recipes");
+    let highlight = take("toBeDisplayed");
+    *seen = (names.len(), length - known.len());
+    for name in highlight {
+        if known.contains(&name) {
+            book.to_be_displayed.insert(name);
+        }
+    }
+    book.recipes.extend(known);
+}
+
+/// `ServerRecipeBook.removeRecipes` de receitas de mod (o `/recipe take`): elas saem também das listas lidas do jogador que age, para o
+/// [`book_restore`] de um livro registrado depois não as trazer de volta.
+pub(in crate::game) fn book_forget_saved(game: &mut Game<'_>, names: &[&str]) {
+    let Some(Tag::Compound(saved)) = game.level.player_extra.as_mut().and_then(|tag| tag.get_mut("recipeBook")) else {
+        return;
+    };
+    for key in ["recipes", "toBeDisplayed"] {
+        if let Some(Tag::List(list)) = saved.get_mut(&JavaString::from(key)) {
+            list.retain(|tag| !matches!(tag, Tag::String(name) if names.contains(&name.to_string_lossy().as_str())));
+        }
+    }
+}
+
 /// O livro de cada jogador vai ao cliente dele: tudo na primeira vez (`ServerRecipeBook.sendInitialRecipeBook`: as configurações e as
 /// receitas com `replace`) e depois só o que mudou (`addRecipes` e `removeRecipes`), seja qual for o caminho que mudou o livro (a máquina
 /// que premiou, o `/recipe`, um avanço). Roda no começo do tick do servidor, fora do turno de um convidado.
@@ -1933,13 +2001,23 @@ fn book_server_sync(game: &mut Game<'_>) {
         return;
     }
     let types = book_types();
-    let mut players: Vec<u128> = vec![0];
-    if let Some(host) = game.lan.as_ref() {
-        players.extend(host.hub.guests.iter().filter(|guest| guest.placed).map(|guest| guest.uuid));
-    }
+    // Todo jogador é um convidado do hub no servidor, o da janela também (`Player[/127.0.0.1:0] logged in`).
+    let players: Vec<u128> = match game.lan.as_ref() {
+        Some(host) => host.hub.guests.iter().filter(|guest| guest.placed).map(|guest| guest.uuid).collect(),
+        None => return,
+    };
     book_sent(|sent| sent.retain(|player, _| players.contains(player)));
+    let names: std::collections::HashSet<&str> = rows.iter().map(|row| row.1).collect();
     for player in players {
+        let mut seen = BOOK_RESTORED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_or_insert_with(HashMap::new)
+            .get(&player)
+            .copied()
+            .unwrap_or((usize::MAX, usize::MAX));
         let state = with_server_book(game, player, |book, extra| {
+            book_restore(book, extra, &names, &mut seen);
             let now = Unlocked::from_recipes(
                 rows.iter().map(|row| (row.0, row.1)),
                 |recipe| book.recipes.contains(recipe),
@@ -1947,30 +2025,29 @@ fn book_server_sync(game: &mut Game<'_>) {
             );
             (now, server_book_settings(extra, &types))
         });
+        BOOK_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(player, seen);
         let Some((now, settings)) = state else {
             continue;
         };
         let before = book_sent(|sent| sent.get(&player).cloned());
-        if before.as_ref() == Some(&now) {
+        if before.as_ref().is_some_and(|(sent, sent_types)| *sent == now && *sent_types == types) {
             continue;
         }
         let mut packets = Vec::new();
-        if before.is_none() {
-            packets.push(ToClient::Settings(settings.encode(&types)));
+        // As configurações vão com o livro inteiro e de novo quando um tipo de livro novo é registrado (o bloco dele apareceu).
+        if before.as_ref().is_none_or(|(_, sent_types)| *sent_types != types) {
+            packets.push(ToClient::Settings(settings.encode_named(&types)));
         }
-        packets.extend(now.sync(before.as_ref(), |id| {
+        packets.extend(now.sync(before.as_ref().map(|(sent, _)| sent), |id| {
             rows.iter().find(|row| row.0 == id).map(|row| rb::Entry {
                 id: row.0,
                 category: row.4.to_owned(),
                 group: (row.3 >= 0).then_some(row.3),
             })
         }));
-        book_sent(|sent| sent.insert(player, now));
+        book_sent(|sent| sent.insert(player, (now, types.clone())));
         for packet in packets {
-            let body = packet.encode();
-            if player == 0 {
-                book_from_server(&body);
-            } else if let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &body) {
+            if let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &packet.encode()) {
                 eprintln!("machinery_basis: o livro de receitas não chegou a {player:032x}: {error}");
             }
         }
@@ -3140,6 +3217,7 @@ pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
     send_types(game, player);
     // `PlayerList.placeNewPlayer`: `sendInitialRecipeBook`, no próximo `book_server_sync`.
     book_sent(|sent| sent.remove(&player));
+    BOOK_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).remove(&player);
     game.mb_muffling_player_in(player);
     game.mb_view_player_in(player);
 }
@@ -3148,6 +3226,7 @@ pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
 pub(in crate::game) fn data_reloaded(game: &mut Game<'_>) {
     // Um mundo que abre e um `/reload` (`PlayerList.reloadResources`): todos recebem o livro inteiro de novo.
     book_sent(HashMap::clear);
+    *BOOK_RESTORED.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let players: Vec<u128> = game.native_server_players().iter().map(|p| p.uuid).collect();
     for player in players {
         send_types(game, player);
@@ -3220,6 +3299,11 @@ impl Game<'_> {
     /// Se a tela de contêiner aberta é de uma máquina nossa, que o original desenha com o degradê do vanilla no fundo (injeção `container_dim`).
     pub(in crate::game) fn mb_screen_owns_dim(&self) -> bool {
         open_spec(self).is_some()
+    }
+
+    /// O `/recipe take` de receitas de mod: saem também das listas lidas do jogador que age.
+    pub(in crate::game) fn mb_book_forget_saved(&mut self, names: &[&str]) {
+        book_forget_saved(self, names);
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {

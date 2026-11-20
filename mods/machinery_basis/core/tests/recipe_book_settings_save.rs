@@ -60,7 +60,9 @@ mod helper {
     impl Level {
         /// O alvo com a injeção no começo: o helper cancela ou deixa o corpo rodar.
         pub fn player_tag(&self) -> horizon_world::nbt::Tag {
-            if let core::ops::ControlFlow::Break(value) = machinery_basis_recipe_book_settings_save(self) {
+            if let core::ops::ControlFlow::Break(value) =
+                machinery_basis_recipe_book_settings_save(self)
+            {
                 return value;
             }
             self.calls.set(self.calls.get() + 1);
@@ -70,7 +72,10 @@ mod helper {
 
     include!("../../recipe_book_settings_save.rs");
 
-    pub fn save(extra: &Option<horizon_world::nbt::Tag>, value: horizon_world::nbt::Tag) -> horizon_world::nbt::Tag {
+    pub fn save(
+        extra: &Option<horizon_world::nbt::Tag>,
+        value: horizon_world::nbt::Tag,
+    ) -> horizon_world::nbt::Tag {
         let level = Level {
             player_extra: extra.clone(),
             written: value,

@@ -2426,6 +2426,12 @@ fn scan_incomplete_recipes(game: &Game<'_>) -> bool {
 /// `IncompleteRecipeScanner.serverStarted` (a carga de um mundo que abre) e `recipes` sem jogador (o `/reload`): a varredura, e no
 /// `/reload` a mensagem a todos os jogadores que estão no servidor.
 pub(in crate::game) fn server_data_loaded(game: &mut Game<'_>, reload: bool) {
+    // As janelas (e com elas o livro de receitas de cada tipo de máquina) valem no servidor desde que o mundo abre, e não só depois de o
+    // primeiro bloco de cada tipo aparecer: o livro do jogador, lido do arquivo dele, é conferido contra todos os livros de uma vez.
+    for spec in WINDOW_SPECS.iter() {
+        Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+        Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
+    }
     // As regras de saída dos slots (H2) leem os índices da última pergunta: com receitas novas, nenhum tick de máquina chegou ainda.
     for machine in MACHINES.iter() {
         indexes_of(game, machine);
@@ -2749,14 +2755,18 @@ pub(in crate::game) fn recipe_command(game: &mut Game<'_>, give: bool, recipes: 
     let index = &world_stations!(game).recipe_index;
     let names: Vec<&str> = rules::recipe_book_rows::ROWS.iter().map(|row| row.1).filter(|name| !index.contains(name)).collect();
     let book = &mut game.level.recipe_book;
-    for name in names {
+    for name in &names {
         if give {
-            if book.recipes.insert(name.to_owned()) {
-                book.to_be_displayed.insert(name.to_owned());
+            if book.recipes.insert((*name).to_owned()) {
+                book.to_be_displayed.insert((*name).to_owned());
             }
-        } else if book.recipes.remove(name) {
-            book.to_be_displayed.remove(name);
+        } else if book.recipes.remove(*name) {
+            book.to_be_displayed.remove(*name);
         }
+    }
+    if !give {
+        // As listas lidas do arquivo do jogador também as perdem (`machinery_basis`, `book_restore`).
+        game.mb_book_forget_saved(&names);
     }
 }
 
