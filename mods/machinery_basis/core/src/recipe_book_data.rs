@@ -350,6 +350,87 @@ impl Unlocked {
         self.highlight.iter().copied()
     }
 
+    /// O livro do servidor visto pela tabela dos displays: de cada linha `(id, receita)`, o display é conhecido se a receita está em
+    /// `ServerRecipeBook.known` e destacado se está em `highlight`.
+    pub fn from_recipes<'a>(
+        table: impl Iterator<Item = (i32, &'a str)>,
+        known: impl Fn(&str) -> bool,
+        highlight: impl Fn(&str) -> bool,
+    ) -> Unlocked {
+        let mut book = Unlocked::default();
+        for (id, recipe) in table {
+            if known(recipe) {
+                book.add(id, highlight(recipe));
+            }
+        }
+        book
+    }
+
+    /// O que falta mandar a um cliente que já recebeu `sent` para ele ficar com este livro. Sem `sent` é o
+    /// `ServerRecipeBook.sendInitialRecipeBook` (tudo, `replace` e sem aviso, destacado o que está em `highlight`); com ele, o
+    /// `ClientboundRecipeBookRemovePacket` do que saiu (`removeRecipes`) e o `ClientboundRecipeBookAddPacket` do que entrou
+    /// (`addRecipes`: com o aviso de `showNotification` e destacado).
+    pub fn sync(&self, sent: Option<&Unlocked>, entry: impl Fn(i32) -> Option<Entry>) -> Vec<ToClient> {
+        let added = |id: &i32, notification: bool| {
+            entry(*id).map(|entry| AddedEntry {
+                entry,
+                notification,
+                highlight: self.highlight.contains(id),
+            })
+        };
+        let Some(sent) = sent else {
+            return vec![ToClient::Add {
+                entries: self.known.iter().filter_map(|id| added(id, false)).collect(),
+                replace: true,
+            }];
+        };
+        let mut packets = Vec::new();
+        let removed: Vec<i32> = sent.known.difference(&self.known).copied().collect();
+        if !removed.is_empty() {
+            packets.push(ToClient::Remove(removed));
+        }
+        let entries: Vec<AddedEntry> = self
+            .known
+            .difference(&sent.known)
+            .filter_map(|id| added(id, true))
+            .collect();
+        if !entries.is_empty() {
+            packets.push(ToClient::Add {
+                entries,
+                replace: false,
+            });
+        }
+        packets
+    }
+
+    /// O cliente recebe um pacote do livro (`ClientRecipeBook.add`, `addHighlight`, `remove`, e o `clear` do `replace`). Devolve se
+    /// algo mudou. O pacote de configurações não é daqui.
+    pub fn apply(&mut self, packet: &ToClient) -> bool {
+        match packet {
+            ToClient::Add { entries, replace } => {
+                if *replace {
+                    self.known.clear();
+                    self.highlight.clear();
+                }
+                for added in entries {
+                    self.known.insert(added.entry.id);
+                    if added.highlight {
+                        self.highlight.insert(added.entry.id);
+                    }
+                }
+                *replace || !entries.is_empty()
+            }
+            ToClient::Remove(ids) => {
+                let mut changed = false;
+                for id in ids {
+                    changed |= self.remove(*id);
+                }
+                changed
+            }
+            ToClient::Settings(_) => false,
+        }
+    }
+
     /// `ServerRecipeBook.addRecipes` do que o jogador ganha: só as receitas novas entram no pacote, com aviso e destaque.
     pub fn award(&mut self, entries: &[Entry]) -> Option<ToClient> {
         let added: Vec<AddedEntry> = entries
@@ -595,5 +676,55 @@ mod tests {
         apply_to_client(&mut book, &replace, &mut settings, &types);
         book.rebuild_collections(&[]);
         assert_eq!(book.collection_count(), 0);
+    }
+
+    #[test]
+    fn the_server_book_reaches_the_client_by_the_initial_packet_and_then_by_what_changed() {
+        let table = [(10, "m:a"), (11, "m:a"), (20, "m:b"), (30, "m:c")];
+        let entry = |id: i32| {
+            Some(Entry {
+                id,
+                category: "c".to_owned(),
+                group: None,
+            })
+        };
+        let server = Unlocked::from_recipes(table.iter().copied(), |name| name != "m:c", |name| name == "m:b");
+        assert_eq!(server.known().collect::<Vec<_>>(), vec![10, 11, 20]);
+        assert_eq!(server.highlighted().collect::<Vec<_>>(), vec![20]);
+        // `sendInitialRecipeBook`: tudo, `replace`, sem aviso, destacado só o que o servidor guarda destacado.
+        let mut client = Unlocked::default();
+        client.add(99, true);
+        let initial = server.sync(None, entry);
+        assert_eq!(initial.len(), 1);
+        match &initial[0] {
+            ToClient::Add { entries, replace } => {
+                assert!(*replace);
+                assert!(entries.iter().all(|added| !added.notification));
+                assert_eq!(entries.iter().filter(|added| added.highlight).map(|added| added.entry.id).collect::<Vec<_>>(), vec![20]);
+            }
+            other => panic!("{other:?}"),
+        }
+        for packet in &initial {
+            assert!(client.apply(&ToClient::decode(&packet.encode()).unwrap()));
+        }
+        assert_eq!(client, server);
+        // `removeRecipes` e `addRecipes`: só o que mudou, o que entra com aviso.
+        let next = Unlocked::from_recipes(table.iter().copied(), |name| name != "m:a", |name| name == "m:c");
+        let delta = next.sync(Some(&server), entry);
+        assert_eq!(delta[0], ToClient::Remove(vec![10, 11]));
+        match &delta[1] {
+            ToClient::Add { entries, replace } => {
+                assert!(!*replace);
+                assert_eq!(entries.len(), 1);
+                assert!(entries[0].notification && entries[0].highlight && entries[0].entry.id == 30);
+            }
+            other => panic!("{other:?}"),
+        }
+        for packet in &delta {
+            client.apply(packet);
+        }
+        assert_eq!(client.known().collect::<Vec<_>>(), vec![20, 30]);
+        assert_eq!(client.highlighted().collect::<Vec<_>>(), vec![20, 30]);
+        assert!(next.sync(Some(&next), entry).is_empty());
     }
 }

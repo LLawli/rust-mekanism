@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use crate::recipe_book::{
     ClientBook, Craftable, Entry, Page, SEARCH_MAX_LENGTH, display_stack_index, slot_select_index,
 };
+use crate::stacked_contents::StackedContents;
 
 /// Uma linha da tabela dos displays: `(id, receita, tipo, grupo (-1 sem grupo), categoria, item do resultado, quantidade, tooltip,
 /// requisitos)`. `requisitos` é o tamanho de `craftingRequirements` (-1 sem a lista): zero quando só há químico ou fluido nas entradas.
@@ -31,13 +32,72 @@ pub struct BookTab {
     pub secondary: Option<&'static str>,
 }
 
+/// O que um display pede para ser feito: `(id, craftingRequirements, quantidades)`. `craftingRequirements` é a lista dos itens que
+/// cada `Ingredient` aceita (`None` sem a lista); `quantidades` é, para um `MekanismRecipeDisplay`, o
+/// `resolveForFirstStack(...).count()` de cada ingrediente do display (zero para químico e fluido), e `None` para os outros displays
+/// (o `FurnaceRecipeDisplay` do Energized Smelter).
+pub type Requirement = (
+    i32,
+    Option<&'static [&'static [&'static str]]>,
+    Option<&'static [i32]>,
+);
+
 /// O que o mod diz do livro de uma máquina: o tipo de livro (compartilhado entre as máquinas do mesmo tipo de receita), as abas
 /// depois da bússola, e as linhas de todos os displays (a lista filtra pelo tipo).
 #[derive(Debug)]
 pub struct BookData {
     pub book_type: &'static str,
+    /// O nome do `RecipeBookType` (`MEKANISM_ENRICHING`): a chave dos `RecipeBookSettings` e a origem dos campos do NBT do jogador.
+    pub settings_type: &'static str,
     pub tabs: &'static [BookTab],
     pub rows: &'static [Row],
+    /// Os requisitos de cada display, em ordem de id.
+    pub requirements: &'static [Requirement],
+}
+
+impl BookData {
+    /// Os requisitos do display `id`.
+    pub fn requirement(&self, id: i32) -> Option<&'static Requirement> {
+        self.requirements
+            .binary_search_by_key(&id, |requirement| requirement.0)
+            .ok()
+            .map(|index| &self.requirements[index])
+    }
+
+    /// `MekanismRecipeBookComponent.canCraft` do display `id` com o que o jogador e a máquina têm.
+    pub fn can_craft(&self, id: i32, contents: &StackedContents) -> bool {
+        self.requirement(id)
+            .is_some_and(|requirement| can_craft(requirement, contents))
+    }
+}
+
+/// `MekanismRecipeBookComponent.canCraft(entry, stackedContents, context)`: sem a lista de requisitos não dá; com a lista vazia (só
+/// químico ou fluido) dá; num `MekanismRecipeDisplay`, cada ingrediente de item entra tantas vezes quantas o display pede dele
+/// (`scaledRequirements`), e um ingrediente a mais do que a lista tem responde que não (`Failed to determine if ... could be crafted`).
+pub fn can_craft(requirement: &Requirement, contents: &StackedContents) -> bool {
+    let Some(requirements) = requirement.1 else {
+        return false;
+    };
+    if requirements.is_empty() {
+        return true;
+    }
+    let Some(counts) = requirement.2 else {
+        return contents.try_pick(requirements, 1);
+    };
+    let mut scaled: Vec<&[&str]> = Vec::new();
+    let mut item_index = 0;
+    for &required in counts {
+        if required > 0 {
+            let Some(ingredient) = requirements.get(item_index) else {
+                return false;
+            };
+            item_index += 1;
+            for _ in 0..required {
+                scaled.push(ingredient);
+            }
+        }
+    }
+    contents.try_pick(&scaled, 1)
 }
 
 /// O ícone da primeira aba, a de busca (`new ItemStack(Items.COMPASS)`).
@@ -108,6 +168,57 @@ fn search_category(data: &BookData) -> String {
     format!("{}:search", data.book_type)
 }
 
+/// O `ClientRecipeBook` de quem conhece `unlocked`: as coleções (`rebuildCollections`), o que a busca lê de cada uma e o
+/// `selectMatchingRecipes` com o `can_craft`.
+fn build_book(
+    data: &'static BookData,
+    rows: &HashMap<i32, &'static Row>,
+    unlocked: impl Iterator<Item = i32>,
+    highlighted: impl Iterator<Item = i32>,
+    can_craft: &dyn Fn(&Row) -> bool,
+) -> ClientBook {
+    let mut book = ClientBook::default();
+    for id in unlocked {
+        if let Some(row) = rows.get(&id) {
+            book.add(Entry {
+                id: row.0,
+                category: row.4.to_owned(),
+                group: (row.3 >= 0).then_some(row.3),
+            });
+        }
+    }
+    let search = (
+        search_category(data),
+        data.tabs
+            .iter()
+            .map(|tab| tab.category.to_owned())
+            .collect(),
+    );
+    for id in highlighted {
+        book.add_highlight(id);
+    }
+    book.rebuild_collections(&[search]);
+    for index in 0..book.collection_count() {
+        let collection = book.collection_mut(index);
+        let found: Vec<&Row> = collection
+            .entries
+            .iter()
+            .map(|entry| rows[&entry.id])
+            .collect();
+        collection.names = found
+            .iter()
+            .flat_map(|row| row.7.iter().map(|line| line.to_lowercase()))
+            .collect();
+        collection.ids = found
+            .iter()
+            .filter_map(|row| row.5.split_once(':'))
+            .map(|(namespace, path)| (namespace.to_lowercase(), path.to_lowercase()))
+            .collect();
+        collection.select(|_| true, |entry| can_craft(rows[&entry.id]));
+    }
+    book
+}
+
 impl View {
     /// O livro de quem conhece `unlocked` (os ids dos displays), com `can_craft` dizendo, por linha, se dá para fazê-la
     /// (`MekanismRecipeBookComponent.canCraft`: sem ingrediente de item a receita vale como fazível).
@@ -124,45 +235,7 @@ impl View {
             .filter(|row| row.2 == data.book_type)
             .map(|row| (row.0, row))
             .collect();
-        let mut book = ClientBook::default();
-        for id in unlocked {
-            if let Some(row) = rows.get(&id) {
-                book.add(Entry {
-                    id: row.0,
-                    category: row.4.to_owned(),
-                    group: (row.3 >= 0).then_some(row.3),
-                });
-            }
-        }
-        let search = (
-            search_category(data),
-            data.tabs
-                .iter()
-                .map(|tab| tab.category.to_owned())
-                .collect(),
-        );
-        for id in highlighted {
-            book.add_highlight(id);
-        }
-        book.rebuild_collections(&[search]);
-        for index in 0..book.collection_count() {
-            let collection = book.collection_mut(index);
-            let found: Vec<&Row> = collection
-                .entries
-                .iter()
-                .map(|entry| rows[&entry.id])
-                .collect();
-            collection.names = found
-                .iter()
-                .flat_map(|row| row.7.iter().map(|line| line.to_lowercase()))
-                .collect();
-            collection.ids = found
-                .iter()
-                .filter_map(|row| row.5.split_once(':'))
-                .map(|(namespace, path)| (namespace.to_lowercase(), path.to_lowercase()))
-                .collect();
-            collection.select(|_| true, |entry| can_craft(rows[&entry.id]));
-        }
+        let book = build_book(data, &rows, unlocked, highlighted, can_craft);
         let mut view = Self {
             data,
             book,
@@ -193,6 +266,30 @@ impl View {
 
     pub fn data(&self) -> &'static BookData {
         self.data
+    }
+
+    /// `RecipeBookComponent.recipesUpdated`: o livro do jogador mudou (o servidor mandou receitas ou tirou). As coleções são refeitas
+    /// e a lista da página também, sem voltar à primeira página (`updateCollections(false, ...)`).
+    pub fn update_book(
+        &mut self,
+        unlocked: impl Iterator<Item = i32>,
+        highlighted: impl Iterator<Item = i32>,
+        can_craft: &dyn Fn(&Row) -> bool,
+    ) {
+        self.book = build_book(self.data, &self.rows, unlocked, highlighted, can_craft);
+        self.refresh(false);
+    }
+
+    /// `RecipeBookComponent.updateStackedContents`: o inventário mudou, então o que dá para fazer é conferido de novo
+    /// (`selectMatchingRecipes`) e a lista refeita sem voltar a página.
+    pub fn reselect(&mut self, can_craft: &dyn Fn(&Row) -> bool) {
+        for index in 0..self.book.collection_count() {
+            let rows = &self.rows;
+            self.book
+                .collection_mut(index)
+                .select(|_| true, |entry| can_craft(rows[&entry.id]));
+        }
+        self.refresh(false);
     }
 
     /// A categoria que a aba escolhida lista no [`ClientBook`].

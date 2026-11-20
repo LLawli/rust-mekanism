@@ -69,6 +69,7 @@ pub mod sim;
 pub mod slot_rules;
 pub mod slot_view;
 pub mod sound;
+pub mod stacked_contents;
 pub mod status_overlay;
 pub mod tank;
 pub mod temperature;

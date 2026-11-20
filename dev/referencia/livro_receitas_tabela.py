@@ -7,7 +7,10 @@ Lê `rastros/recipe_book_displays.jsonl` (o que `testes/RecipeBookDisplaysTraceT
 `// recipe-book-rows:inicio` e `// recipe-book-rows:fim`, uma linha por display das quatro máquinas: o id (`RecipeDisplayId`, o índice na
 lista de todos os displays do jogo, que o Horizon não numera porque o `RecipeIndex` lê só `data/minecraft/recipe`), a receita, o tipo, o
 grupo (`bookInfo.group()`, também numerado em todas as receitas do jogo), a categoria do livro, o item do resultado e as linhas do
-tooltip dele. Com `--check` só confere se o arquivo já está igual ao que o gerador escreveria.
+tooltip dele. De `rastros/recipe_book_requirements.jsonl` (`testes/RecipeBookStateTraceTest.java`) sai a tabela `REQUIREMENTS`: os
+`craftingRequirements` de cada display (os itens que cada `Ingredient` aceita) e a quantidade que cada ingrediente do
+`MekanismRecipeDisplay` pede, que o `canCraft` do livro usa. Com `--check` só confere se o arquivo já está igual ao que o gerador
+escreveria.
 """
 import json
 import os
@@ -16,6 +19,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 TRACE = os.path.join(HERE, "rastros", "recipe_book_displays.jsonl")
+REQUIREMENTS = os.path.join(HERE, "rastros", "recipe_book_requirements.jsonl")
 RUNTIME = os.path.join(ROOT, "mods", "mekanism", "native", "runtime.rs")
 BEGIN = "// recipe-book-rows:inicio"
 END = "// recipe-book-rows:fim"
@@ -28,6 +32,15 @@ def rows():
             row = json.loads(line)
             if "id" in row:
                 out.append(row)
+    out.sort(key=lambda row: row["id"])
+    return out
+
+
+def requirements():
+    out = []
+    with open(REQUIREMENTS) as handle:
+        for line in handle:
+            out.append(json.loads(line))
     out.sort(key=lambda row: row["id"])
     return out
 
@@ -66,6 +79,22 @@ def render():
                 -1 if row["requirements"] is None else row["requirements"],
             )
         )
+    lines.append("    ];")
+    lines.append(
+        "    /// O que cada display pede: `(id, craftingRequirements (os itens de cada ingrediente), quantidades)`, com `quantidades` o `resolveForFirstStack(...).count()` de cada ingrediente de um `MekanismRecipeDisplay` (`None` nos outros displays)."
+    )
+    lines.append(
+        "    pub const REQUIREMENTS: &[machinery_basis_core::recipe_book_view::Requirement] = &["
+    )
+    for row in requirements():
+        if row["req"] is None:
+            req = "None"
+        else:
+            req = "Some(&[%s])" % ", ".join(
+                "&[%s]" % ", ".join(rust_str(item) for item in items) for items in row["req"]
+            )
+        counts = "None" if row["counts"] is None else "Some(&[%s])" % ", ".join(str(n) for n in row["counts"])
+        lines.append("        (%d, %s, %s)," % (row["id"], req, counts))
     lines.append("    ];")
     lines.append("}")
     lines.append(END)

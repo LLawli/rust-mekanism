@@ -61,8 +61,10 @@ fn crushing() -> &'static BookData {
         .collect();
     Box::leak(Box::new(BookData {
         book_type: "crushing",
+        settings_type: "MEKANISM_CRUSHING",
         tabs: Box::leak(tabs.into_boxed_slice()),
         rows: rows(),
+        requirements: &[],
     }))
 }
 
