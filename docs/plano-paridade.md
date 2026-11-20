@@ -373,6 +373,8 @@ demais seguem sem compilar, e injeção ou helper privado só valem depois de um
 
 242. **A descrição das máquinas com Shift mais N (2026-11-15).** Ver a decisão 234: o N é lido de `Game::physical_keys`, campo privado do `Game` lido de dentro do módulo do mod, sem injeção nova; o texto é o da datagen (`description.<namespace>.<bloco>`), sem estilo.
 
+266. **A ordem das frentes vai pela complexidade, da maior para a menor (2026-11-20, decisão do usuário).** Pedido dele ao retomar o port: "Priorize as frentes muito complexas quando terminar essa (fazer primeiro as muito complexas e depois faz as complexas e por ultimo as simples". Ao fechar a frente aberta (`janela-livro`), o coordenador classifica o que falta em "muito complexa", "complexa" e "simples" e abre nessa ordem, em vez da ordem das fases ou do inventário. A mesma classificação escolhe o modelo do subagente (pedido do mesmo dia): Fable com esforço medium para a muito complexa, Opus 5.5 com esforço medium para a complexa, Haiku ou Sonnet para a simples. Motivo: o que é difícil sai primeiro, enquanto há mais margem para rodadas e para decisões do usuário. Número usado: 266 (as faixas 263 a 265 estão com a `janela-livro`).
+
 
 ### Esperando decisão do usuário (Fase 5)
 
