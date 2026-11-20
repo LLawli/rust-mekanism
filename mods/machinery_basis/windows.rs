@@ -17,6 +17,8 @@ use machinery_basis_core::ejector::TileComponentEjector;
 use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::machine_sync::read_upgrade_map;
 use machinery_basis_core::recipe_book as rb;
+use machinery_basis_core::recipe_book_data::Unlocked;
+use machinery_basis_core::recipe_book_view as rbv;
 use machinery_basis_core::recipe_book_data::Settings as BookSettings;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
@@ -256,6 +258,8 @@ struct Open {
     current: usize,
     /// `SideDataButton.otherBlockItem`: o item do bloco vizinho de cada lado, tirado quando a janela abre (o construtor do botão o lê uma vez).
     neighbours: [Option<ItemStack>; 6],
+    /// A janela do livro: a aba, a busca, o filtro e a página (`VirtualRecipeBookComponent`).
+    book: Option<rbv::View>,
 }
 
 struct Client {
@@ -538,6 +542,7 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             selected_ms: now,
             current: 0,
             neighbours,
+            book: (kind == Kind::RecipeBook).then(|| new_book_view(spec)).flatten(),
         },
     );
     if kind == Kind::RecipeBook {
@@ -816,6 +821,20 @@ pub(in crate::game) fn mouse_pressed(
             return;
         }
     }
+    // `GuiRecipeBookWindow.isMouseOver`: as abas do livro ficam fora da janela, 30 à esquerda, e o clique nelas é da janela.
+    if button == 0
+        && let Some(book) = index_of(state, Kind::RecipeBook)
+    {
+        let rel = relative(&state.windows[book], screen, mouse);
+        let inside = rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < f64::from(state.windows[book].window.width) && rel[1] < f64::from(state.windows[book].window.height);
+        if !inside && book_tab_at(&state.windows[book], rel).is_some() {
+            book_click(&mut state.windows[book], rel, &mut state.click_sound, spec);
+            let open = state.windows.remove(book);
+            state.windows.insert(0, open);
+            *canceled = true;
+            return;
+        }
+    }
     // `GuiMekanism.mouseClicked`: as janelas, da do topo para baixo; a primeira que trata o clique vai para o topo.
     let mut hit = None;
     for index in 0..state.windows.len() {
@@ -884,6 +903,9 @@ pub(in crate::game) fn mouse_pressed(
         Kind::RecipeBook => {
             *canceled = true;
             let pinned = state.windows[index].window.pinned;
+            if button == 0 && !in_rect(CLOSE, rel) && !in_rect(PIN, rel) {
+                book_click(&mut state.windows[index], rel, &mut state.click_sound, spec);
+            }
             if left_or_right && in_rect(PIN, rel) {
                 state.windows[index].window.toggle_pinned();
             } else if left_or_right && in_rect(CLOSE, rel) {
@@ -1596,9 +1618,48 @@ fn draw_screen_text(
 /// Os `RecipeBookSettings` do jogador, só em memória nesta rodada (a persistência no NBT do jogador fica para a seguinte), por tipo de livro.
 static BOOK_SETTINGS: Mutex<Option<BookSettings>> = Mutex::new(None);
 
-/// O tipo de livro da máquina. No original é um `MekanismRecipeBookTypes` por tipo de receita; o port guarda por bloco até as receitas entrarem.
+/// O tipo de livro da máquina: o do tipo de receita dela (`MekanismRecipeBookTypes`), compartilhado entre as máquinas que o usam.
 fn book_type(spec: &UpgradeWindowSpec) -> &'static str {
-    spec.block
+    spec.book.map_or(spec.block, |book| book.book_type)
+}
+
+/// As receitas que o jogador desbloqueou, por id de display. Só em memória: a persistência no NBT do jogador fica para a rodada que traz o
+/// pacote ao servidor (o `award_recipes` só alimenta este conjunto).
+static BOOK_UNLOCKED: Mutex<Option<Unlocked>> = Mutex::new(None);
+
+fn unlocked<R>(act: impl FnOnce(&mut Unlocked) -> R) -> R {
+    let mut guard = BOOK_UNLOCKED.lock().unwrap_or_else(|e| e.into_inner());
+    act(guard.get_or_insert_with(Unlocked::default))
+}
+
+/// `ServerPlayer.awardRecipes`: os displays que a receita ganha entram no livro (destacados, como `addRecipes`).
+pub(in crate::game) fn book_award(ids: &[i32]) {
+    unlocked(|book| {
+        for &id in ids {
+            book.add(id, true);
+        }
+    });
+}
+
+/// Andaime de teste, fora do jogo normal: `MEKANISM_PORT_BOOK_UNLOCK=all` (ou `step3`, uma a cada três) desbloqueia os displays do livro,
+/// o que o `/recipe give @s *` faz no original (o comando do Horizon só conhece as receitas do vanilla).
+fn dev_unlock(data: &rbv::BookData) -> Vec<i32> {
+    let step = match std::env::var("MEKANISM_PORT_BOOK_UNLOCK").as_deref() {
+        Ok("all") => 1,
+        Ok("step3") => 3,
+        _ => return Vec::new(),
+    };
+    data.rows.iter().enumerate().filter(|(index, _)| index % step == 0).map(|(_, row)| row.0).collect()
+}
+
+fn new_book_view(spec: &UpgradeWindowSpec) -> Option<rbv::View> {
+    let data = spec.book?;
+    let mut known: Vec<i32> = unlocked(|book| book.known().collect());
+    known.extend(dev_unlock(data));
+    let filtering = book_settings(|settings| settings.is_filtering(data.book_type));
+    // `MekanismRecipeBookComponent.canCraft`: sem ingrediente de item (`craftingRequirements` vazio) a receita vale como fazível; com ele, o
+    // jogador tem de ter o ingrediente, que esta rodada ainda não confere.
+    Some(rbv::View::new(data, known.into_iter(), filtering, &|row| row.8 == 0))
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -1650,6 +1711,133 @@ fn draw_recipe_book_window(
     // `drawTitleText(RECIPE_BOOK, 5)`: de `14 + GuiPinButton.WIDTH` até a largura da janela, menos o `maxLengthPad` de 4.
     let title = lang::get("gui.mekanism.recipe_book");
     scrolling_text(game, batch, &title, [wx + 30.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
+    if let Some(view) = &open.book {
+        draw_book_contents(game, batch, view, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
+    }
+}
+
+/// A aba do livro sob `rel` (relativo à janela): o índice entre as visíveis.
+fn book_tab_at(open: &Open, rel: [f64; 2]) -> Option<rbv::Tab> {
+    let view = open.book.as_ref()?;
+    view.visible_tabs()
+        .into_iter()
+        .enumerate()
+        .find(|(index, _)| rb::contains(rb::tab_rect(BOOK_ORIGIN[0], BOOK_ORIGIN[1], *index), rel[0], rel[1]))
+        .map(|(_, tab)| tab)
+}
+
+/// A origem do livro dentro da janela: `adoptPosition(getX(), getY() + Y_OFFSET)`.
+const BOOK_ORIGIN: [i32; 2] = [0, rb::Y_OFFSET];
+
+/// O clique esquerdo no livro (`VirtualRecipeBookComponent.mouseClicked`): a caixa de busca, o filtro, as abas, as setas e a receita.
+/// Os cliques nas receitas só ficam registrados nesta rodada (o esquerdo coloca e o direito abre o overlay: a rodada seguinte).
+fn book_click(open: &mut Open, rel: [f64; 2], click_sound: &mut bool, spec: &UpgradeWindowSpec) {
+    let [xo, yo] = BOOK_ORIGIN;
+    if let Some(tab) = book_tab_at(open, rel) {
+        if let Some(view) = open.book.as_mut() {
+            view.select_tab(tab);
+        }
+        *click_sound = true;
+        return;
+    }
+    let Some(view) = open.book.as_mut() else {
+        return;
+    };
+    let inside = |rect: rb::Rect| rb::contains(rect, rel[0], rel[1]);
+    view.focused = inside(rb::search_rect(xo, yo)) || inside(rb::magnifier_rect(xo, yo));
+    if inside(rb::filter_rect(xo, yo)) {
+        let filtering = view.toggle_filtering();
+        book_settings(|settings| settings.set_filtering(book_type(spec), filtering));
+        *click_sound = true;
+    } else if inside(rb::forward_rect(xo, yo)) {
+        *click_sound |= view.page.forward();
+    } else if inside(rb::back_rect(xo, yo)) {
+        *click_sound |= view.page.back();
+    }
+}
+
+/// `VirtualRecipeBookComponent.extractRenderState`: o fundo recortado em 7, a caixa de busca, as abas, o botão de filtro e a página
+/// (`RecipeBookPage.extractRenderState`: a grade, o `Page n/m` e as setas), na origem (`xo`, `yo`) do livro.
+fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, xo: f32, yo: f32, hover_ok: bool, mouse: (f32, f32)) {
+    let atlas = &game.gui.atlas;
+    let (xi, yi) = (xo as i32, yo as i32);
+    let over = |rect: rb::Rect| hover_ok && hovering([rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32], mouse);
+    let sprite_at = |batch: &mut HudBatch, name: &str, x: i32, y: i32| {
+        batch.sprite(atlas, &format!("gui/sprites/{name}"), x as f32, y as f32);
+    };
+    // O fundo (`blit(RECIPE_BOOK_LOCATION, xo + 7, yo + 7, 1 + 7, 1 + 7, IMAGE_WIDTH - 14, IMAGE_HEIGHT - 14, 256, 256)`).
+    let offset = 7;
+    basis::sprite_tinted(
+        game,
+        batch,
+        "gui/recipe_book",
+        [(1 + offset) as f32, (1 + offset) as f32, (rb::IMAGE_WIDTH - 2 * offset) as f32, (rb::IMAGE_HEIGHT - 2 * offset) as f32],
+        [xo + offset as f32, yo + offset as f32, (rb::IMAGE_WIDTH - 2 * offset) as f32, (rb::IMAGE_HEIGHT - 2 * offset) as f32],
+        WHITE,
+    );
+    // A caixa de busca: só o desenho e a dica `Search...` (cinza, itálico) enquanto o texto está vazio e sem foco.
+    let search = rb::search_rect(xi, yi);
+    horizon_client::ui::nine_slice(batch, atlas, "gui/sprites/widget/text_field", search[0] as f32, search[1] as f32, search[2] as f32, search[3] as f32, u32::MAX);
+    let text_at = [(search[0] + 4) as f32, (search[1] + (search[3] - 8) / 2) as f32];
+    if view.search.is_empty() {
+        let hint = horizon_client::text::Text::styled(
+            lang::get("gui.recipebook.search_hint"),
+            horizon_client::text::Style { color: Some(0xAAAAAA), italic: Some(true), ..Default::default() },
+        );
+        batch.text_styled(atlas, &hint, text_at[0], text_at[1], WHITE, true);
+    } else {
+        game.native_text(batch, &view.search, text_at, WHITE, true);
+    }
+    // As abas: a bússola e as categorias com receita, uma sobre a outra, a escolhida 2 para a esquerda.
+    for (index, tab) in view.visible_tabs().into_iter().enumerate() {
+        let rect = rb::tab_rect(xi, yi, index);
+        let selected = tab == view.tab;
+        let left = if selected { -2 } else { 0 };
+        sprite_at(batch, if selected { "recipe_book/tab_selected" } else { "recipe_book/tab" }, rect[0] + left, rect[1]);
+        let (primary, secondary) = view.icons(tab);
+        let item = |batch: &mut HudBatch, id: &str, x: i32| game.native_item_stack(batch, &ItemStack::new(id, 1), [x as f32, (rect[1] + 5) as f32], 16.0);
+        if let Some(second) = secondary {
+            item(batch, second, rect[0] + 14 + left);
+            item(batch, primary, rect[0] + 3 + left);
+        } else {
+            item(batch, primary, rect[0] + 9 + left);
+        }
+    }
+    // O filtro: os sprites do forno (`MekanismRecipeBookComponent.filterButtonTextures`).
+    let filter = rb::filter_rect(xi, yi);
+    let state = if view.filtering { "furnace_filter_enabled" } else { "furnace_filter_disabled" };
+    sprite_at(batch, &format!("recipe_book/{state}{}", if over(filter) { "_highlighted" } else { "" }), filter[0], filter[1]);
+    // A página.
+    if let Some((current, total)) = view.page_label() {
+        let label = lang::get("gui.recipebook.page").replacen("%1$s", &current.to_string(), 1).replacen("%2$s", &total.to_string(), 1);
+        let x = rb::page_text_x(xi, game.native_text_width(&label) as i32);
+        game.native_text(batch, &label, [x as f32, (yi + 141) as f32], WHITE, true);
+    }
+    for (index, button) in view.buttons().iter().enumerate() {
+        let rect = rb::button_rect(xi, yi, index);
+        let name = match (button.craftable, button.many) {
+            (true, true) => "slot_many_craftable",
+            (true, false) => "slot_craftable",
+            (false, true) => "slot_many_uncraftable",
+            (false, false) => "slot_uncraftable",
+        };
+        sprite_at(batch, &format!("recipe_book/{name}"), rect[0], rect[1]);
+        let stack = ItemStack::new(button.item, 1);
+        let mut at = 4;
+        if button.stacked {
+            game.native_item_stack(batch, &stack, [(rect[0] + at + 1) as f32, (rect[1] + at + 1) as f32], 16.0);
+            at -= 1;
+        }
+        game.native_item_stack(batch, &stack, [(rect[0] + at) as f32, (rect[1] + at) as f32], 16.0);
+    }
+    for (visible, rect, name) in [
+        (view.page.forward_visible(), rb::forward_rect(xi, yi), "page_forward"),
+        (view.page.back_visible(), rb::back_rect(xi, yi), "page_backward"),
+    ] {
+        if visible {
+            sprite_at(batch, &format!("recipe_book/{name}{}", if over(rect) { "_highlighted" } else { "" }), rect[0], rect[1]);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -2610,6 +2798,11 @@ impl Game<'_> {
     /// Se a tela de contêiner aberta é de uma máquina nossa, que o original desenha com o degradê do vanilla no fundo (injeção `container_dim`).
     pub(in crate::game) fn mb_screen_owns_dim(&self) -> bool {
         open_spec(self).is_some()
+    }
+
+    /// `ServerPlayer.awardRecipes`: os displays que entram no livro do jogador.
+    pub(in crate::game) fn mb_book_award(&self, ids: &[i32]) {
+        book_award(ids);
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {

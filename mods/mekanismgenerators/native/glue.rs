@@ -618,6 +618,7 @@ static WINDOW_SPEC: UpgradeWindowSpec = UpgradeWindowSpec {
     block: rules::HEAT_GENERATOR,
     upgrades: true,
     recipe_book: false,
+    book: None,
     virtual_slots: [rules::UPGRADE_SLOT, rules::UPGRADE_OUTPUT_SLOT],
     trackers: rules::heat_generator_trackers,
     window_trackers: rules::upgrade_window_data,

@@ -37,6 +37,8 @@ pub struct UpgradeWindowSpec {
     /// Se a tela tem a aba do livro de receitas (`GuiMekanismTile.createRecipeBookComponent` devolve algo: o tile é `IRecipeLookupHandler`). O clique nela toca o som do botão
     /// (`GuiInsetElement` usa `BUTTON_CLICK_SOUND`) e é da aba, não da tela; a janela do livro que ele abre no original ainda não está portada.
     pub recipe_book: bool,
+    /// Os dados do livro que a janela mostra (as abas e as linhas), quando a tela tem a aba do livro.
+    pub book: Option<&'static crate::recipe_book_view::BookData>,
     /// Os índices dos dois slots virtuais (entrada e saída) no menu do bloco.
     pub virtual_slots: [usize; 2],
     /// Os dados que o contêiner sincroniza ao nascer (`addContainerTrackers`), na ordem do Java.

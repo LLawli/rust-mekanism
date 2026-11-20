@@ -11,6 +11,7 @@ use horizon_client::lang;
 use horizon_client::mod_api::NativeScreen;
 use horizon_world::nbt::{Compound, JavaString, Tag};
 use horizon_world::registry::BlockStateId;
+use machinery_basis_core::recipe_book_view::BookData;
 use machinery_basis_core::cached_recipe::{ItemIngredient, ItemOutput, ItemToItemCache, ItemToItemRecipe};
 use machinery_basis_core::chemical::{ChemicalConversion, ChemicalIngredient, ChemicalResource, ConversionCache, TankContents};
 use machinery_basis_core::composter::{self, ComposterBlock, ComposterWrapper};
@@ -627,11 +628,17 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
 }
 
 // A janela de upgrades de cada máquina: só dados. A mecânica (aba, janela, slots virtuais) é da machinery_basis.
-const fn window_spec_of(block: &'static str, slots: &Slots, trackers: fn() -> Vec<Tracked>) -> UpgradeWindowSpec {
+const fn window_spec_of(
+    block: &'static str,
+    book: &'static BookData,
+    slots: &Slots,
+    trackers: fn() -> Vec<Tracked>,
+) -> UpgradeWindowSpec {
     UpgradeWindowSpec {
         block,
         upgrades: true,
         recipe_book: true,
+        book: Some(book),
         virtual_slots: [slots.upgrade, slots.upgrade_output],
         trackers,
         window_trackers: rules::upgrade_window_data,
@@ -653,11 +660,12 @@ pub(in crate::game) fn window_upgrade_data() -> Rc<upgrade::UpgradeData> {
 }
 
 static WINDOW_SPECS: [UpgradeWindowSpec; 4] = [
-    window_spec_of(rules::ENRICHMENT_CHAMBER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
-    window_spec_of(rules::CRUSHER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
-    window_spec_of(rules::ENERGIZED_SMELTER, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
+    window_spec_of(rules::ENRICHMENT_CHAMBER, &rules::recipe_books::ENRICHING, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
+    window_spec_of(rules::CRUSHER, &rules::recipe_books::CRUSHING, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
+    window_spec_of(rules::ENERGIZED_SMELTER, &rules::recipe_books::SMELTING, &ELECTRIC_SLOT_LAYOUT, rules::electric_trackers),
     window_spec_of(
         rules::INFUSER,
+        &rules::recipe_books::METALLURGIC_INFUSING,
         &Slots {
             input: rules::INPUT_SLOT,
             output: rules::OUTPUT_SLOT,
@@ -2721,6 +2729,9 @@ fn award_recipes(game: &mut Game<'_>, recipes: &[String], items: &[Option<ItemSt
     let index = &world_stations!(game).recipe_index;
     let (_, unlocked) = game.level.recipe_book.add_recipes(index, recipes);
     game.recipe_unlocked(&unlocked);
+    // Os displays do livro do Mekanism (o `RecipeIndex` do Horizon só numera as receitas do vanilla): a tabela do original tem os ids.
+    let displays: Vec<i32> = rules::recipe_book_rows::ROWS.iter().filter(|row| recipes.iter().any(|name| name == row.1)).map(|row| row.0).collect();
+    game.mb_book_award(&displays);
     for recipe in recipes {
         game.trigger_recipe_crafted(recipe, items);
     }

@@ -42,10 +42,10 @@ def render():
         "    //! GERADO por `dev/referencia/livro_receitas_tabela.py` a partir de `rastros/recipe_book_displays.jsonl`: não edite à mão."
     )
     lines.append(
-        "    /// Um display que o original manda ao livro: `(id, receita, tipo, grupo (-1 sem grupo), categoria, item do resultado, quantidade, tooltip)`."
+        "    /// Um display que o original manda ao livro: `(id, receita, tipo, grupo (-1 sem grupo), categoria, item do resultado, quantidade, tooltip, requisitos)`, com `requisitos` o tamanho de `craftingRequirements` (-1 sem a lista)."
     )
     lines.append(
-        "    pub type Row = (i32, &'static str, &'static str, i32, &'static str, &'static str, i32, &'static [&'static str]);"
+        "    pub type Row = (i32, &'static str, &'static str, i32, &'static str, &'static str, i32, &'static [&'static str], i32);"
     )
     lines.append("    pub const ROWS: &[Row] = &[")
     for row in rows():
@@ -53,7 +53,7 @@ def render():
         result = row["results"][0]
         tooltip = ", ".join(rust_str(text) for text in row["tooltip"])
         lines.append(
-            "        (%d, %s, %s, %d, %s, %s, %d, &[%s]),"
+            "        (%d, %s, %s, %d, %s, %s, %d, &[%s], %d),"
             % (
                 row["id"],
                 rust_str(row["recipe"]),
@@ -63,6 +63,7 @@ def render():
                 rust_str(result["item"]),
                 result["count"],
                 tooltip,
+                -1 if row["requirements"] is None else row["requirements"],
             )
         )
     lines.append("    ];")
