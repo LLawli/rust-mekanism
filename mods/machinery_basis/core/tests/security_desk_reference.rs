@@ -4,7 +4,8 @@
 //! modo, no servidor e no cliente. Este teste refaz os passos na lib e compara tudo.
 //!
 //! O resolvedor de nomes do rastro é o do `GameTestServer` (`MockUserNameToIdResolver`, que diferencia maiúsculas): os pares nome e UUID entram aqui como o rastro os
-//! deu. O do servidor integrado (`CachedUserNameToIdResolver`) é `security_desk::resolve_name`, conferido à parte.
+//! deu. O do servidor integrado (`CachedUserNameToIdResolver`) é o `UserCache` do Horizon, que a cola usa com a consulta à Mojang de `profile_lookup.rs`
+//! (teste `profile_lookup`); daqui sai só o perfil offline (`offline_uuid`).
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::frequency::{FrequencyLookup, lookup_file, lookup_id};
 use machinery_basis_core::security::{
@@ -680,20 +681,6 @@ fn names_are_checked_as_the_text_field_and_the_packet_do() {
     assert_eq!(
         desk::offline_uuid("convidado"),
         uuid_and_name(&names["cache_lower"]).0
-    );
-    // O servidor integrado: quem ele já viu sai pelo nome sem diferenciar maiúsculas; quem nunca viu vira o perfil offline do nome em minúsculas.
-    let guest = uuid(&names["guest_uuid"]);
-    let known = |lower: &str| (lower == "convidado").then(|| (guest, "Convidado".to_owned()));
-    assert_eq!(
-        desk::resolve_name("CONVIDADO", &known),
-        (guest, "Convidado".to_owned())
-    );
-    assert_eq!(
-        desk::resolve_name("Zz_Nunca_Visto1", &known),
-        (
-            uuid(&unknown["offline_lower"]),
-            "zz_nunca_visto1".to_owned()
-        )
     );
 }
 

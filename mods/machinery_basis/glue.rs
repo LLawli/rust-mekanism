@@ -2787,7 +2787,7 @@ pub(in crate::game) fn security_loot(
 }
 
 thread_local! {
-    /// `UsernameCache`: o último nome que o servidor viu de cada UUID (o jogador que age, o anfitrião e os convidados da LAN).
+    /// `UsernameCache` do NeoForge: o último nome de cada jogador que entrou (o anfitrião, os convidados da LAN e quem age).
     static USERNAMES: std::cell::RefCell<HashMap<u128, String>> = std::cell::RefCell::new(HashMap::new());
 }
 
@@ -2796,10 +2796,35 @@ thread_local! {
     static USERNAMES_LOADED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Onde os nomes ficam entre uma execução e outra: `usernamecache.json` na pasta do jogo, um objeto de UUID para nome como o `UsernameCache` do NeoForge. O original tem
-/// dois arquivos nessa pasta (esse, com quem entrou, e o `usercache.json` do vanilla, com os nomes que o servidor resolveu); aqui os dois conjuntos ficam num só.
+thread_local! {
+    /// `Services.nameToIdCache` do servidor integrado: o `usercache.json` da pasta do jogo, pelo `UserCache` do Horizon (o porte dele do
+    /// `CachedUserNameToIdResolver`: a validade de um mês, os 1000 mais usados e o formato do arquivo).
+    static NAME_TO_ID: std::cell::RefCell<Option<horizon_client::server::user_cache::UserCache>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A pasta do jogo, onde o original guarda os dois arquivos de nomes (`FMLLoader.getGameDir()` e o `gameDirectory` de `Services.create`).
+fn names_dir() -> Option<std::path::PathBuf> {
+    Some(Game::native_config_dir().ok()?.parent()?.to_path_buf())
+}
+
+/// `usernamecache.json`: um objeto de UUID para nome, o formato do `UsernameCache` do NeoForge.
 fn usernames_path() -> Option<std::path::PathBuf> {
-    Some(Game::native_config_dir().ok()?.parent()?.join("usernamecache.json"))
+    Some(names_dir()?.join("usernamecache.json"))
+}
+
+/// O `nameToIdCache`, lido do `usercache.json` na primeira vez. Sem a pasta do jogo ele vale só na memória (o arquivo não se lê nem se grava).
+fn name_to_id<R>(run: impl FnOnce(&mut horizon_client::server::user_cache::UserCache) -> R) -> R {
+    NAME_TO_ID.with_borrow_mut(|cache| {
+        let cache = cache.get_or_insert_with(|| {
+            let file = names_dir().map(|dir| dir.join("usercache.json")).unwrap_or_default();
+            let (cache, warnings) = horizon_client::server::user_cache::UserCache::load(file);
+            for warning in warnings {
+                eprintln!("machinery_basis: {warning}");
+            }
+            cache
+        });
+        run(cache)
+    })
 }
 
 /// Lê o arquivo uma vez; o que a execução já sabe vale sobre ele.
@@ -2830,7 +2855,7 @@ fn usernames_save(cache: &HashMap<u128, String>) {
     }
 }
 
-/// Põe nomes no cache e grava o arquivo se algo mudou.
+/// `UsernameCache.setUsername`: põe nomes no cache e grava o arquivo se algo mudou.
 fn usernames_learn(seen: Vec<(u128, String)>) {
     USERNAMES.with_borrow_mut(|cache| {
         usernames_load(cache);
@@ -2847,7 +2872,8 @@ fn usernames_learn(seen: Vec<(u128, String)>) {
     });
 }
 
-/// `MekanismUtils.getLastKnownUsername`: o nome do dono que o servidor sabe (quem entrou, agora ou em outra execução, e os nomes que a Security Desk resolveu), ou `<uuid>`.
+/// `MekanismUtils.getLastKnownUsername` (`:403-421`): o nome de quem já entrou (`UsernameCache`) e, se ele não sabe, o do `nameToIdCache` do servidor (os nomes que
+/// a Security Desk resolveu, e quem entrou em outra execução); senão `<uuid>`.
 fn server_username(game: &Game<'_>, uuid: u128) -> String {
     let mut seen: Vec<(u128, String)> = Vec::new();
     if let Some(player) = game.native_acting_player() {
@@ -2860,7 +2886,23 @@ fn server_username(game: &Game<'_>, uuid: u128) -> String {
         seen.push((horizon_client::lan::playerdata::ints_uuid(own), game.options.player_name()));
     }
     usernames_learn(seen);
-    USERNAMES.with_borrow(|cache| cache.get(&uuid).cloned().unwrap_or_else(|| format!("<{}>", uuid_text(uuid))))
+    USERNAMES
+        .with_borrow(|cache| cache.get(&uuid).cloned())
+        .or_else(|| name_to_id(|cache| cache.get_by_id(uuid)).map(|profile| profile.name))
+        .unwrap_or_else(|| format!("<{}>", uuid_text(uuid)))
+}
+
+/// `PlayerList.placeNewPlayer` (`:147-152`): quem entra no servidor vai para o `nameToIdCache` (`profileCache.add(gameProfile)`), por um mês. `player == 0` é o
+/// anfitrião abrindo o mundo.
+fn name_to_id_joined(game: &Game<'_>, player: u128) {
+    let joined = if player == 0 || host_uuid(game) == Some(player) {
+        host_uuid(game).map(|uuid| (uuid, game.options.player_name()))
+    } else {
+        game.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|guest| guest.uuid == player).map(|guest| (guest.uuid, guest.name.clone())))
+    };
+    if let Some((id, name)) = joined {
+        name_to_id(|cache| cache.add(horizon_client::server::user_lists::NameAndId { id, name }));
+    }
 }
 
 /// O que o menu de um tile leva da segurança (`TileComponentSecurity.addContainerTrackers`): o dono e o modo do NBT, e o nome do dono.
@@ -3217,6 +3259,8 @@ pub(in crate::game) fn security_world_closed() {
 pub(in crate::game) fn security_world_opened(game: &mut Game<'_>) {
     if game.remote.is_none() {
         security_world_closed();
+        // O documento de descoberta dos serviços da Mojang: o original o pede ao abrir o jogo; aqui, na primeira vez que um mundo abre.
+        crate::game::machinery_profiles::services();
         security_player_in(game, 0);
     }
 }
@@ -3296,6 +3340,7 @@ fn security_batch_decode(data: &[u8]) -> Option<Vec<sf::SyncSecurity>> {
 
 /// `SyncAllSecurityData`: quem entra recebe todas as frequências com dono (`PacketBatchSecurityUpdate`). O anfitrião, ao abrir o mundo, também.
 pub(in crate::game) fn security_player_in(game: &mut Game<'_>, player: u128) {
+    name_to_id_joined(game, player);
     let Some(packets) = security_table(game, |table| sf::batch(table)) else {
         return;
     };
@@ -3324,20 +3369,17 @@ pub(in crate::game) fn security_client_data(owner: Option<u128>) -> sec::Securit
     SECURITY_CLIENT.with_borrow(|client| client.data(owner))
 }
 
-/// `nameToIdCache.get(name)` do servidor integrado: quem o servidor já viu (o anfitrião, os convidados e quem já passou pelo cache de nomes), sem diferenciar
-/// maiúsculas; quem nunca viu, o perfil offline do nome em minúsculas (decisão 270: sem a consulta à Mojang).
-fn security_resolve_name(game: &Game<'_>, name: &str) -> (u128, String) {
-    // Enche o cache com quem está aqui agora.
-    let _ = server_username(game, 0);
-    let resolved = desk::resolve_name(name, &|lower| {
-        USERNAMES.with_borrow(|cache| {
-            // Um nome com dois UUIDs no cache: o menor UUID, para a resposta não depender da ordem do mapa.
-            cache.iter().filter(|(_, known)| known.to_lowercase() == lower).min_by_key(|(uuid, _)| **uuid).map(|(uuid, known)| (*uuid, known.clone()))
+/// `nameToIdCache.get(name)` do servidor integrado (`CachedUserNameToIdResolver.get`, `:102-130`): quem está no `usercache.json` e não venceu (quem entrou e quem
+/// já foi resolvido), sem diferenciar maiúsculas; senão o nome válido é procurado na Mojang (`profileRepository.findProfileByName`, em minúsculas), nesta mesma
+/// thread, como o original faz na do servidor; e quem a Mojang não tem, ou não responde, vira o perfil offline do nome em minúsculas. O que sai entra no cache.
+fn security_resolve_name(name: &str) -> Option<(u128, String)> {
+    name_to_id(|cache| {
+        cache.get_by_name(name, |lower| {
+            let (id, name) = crate::game::machinery_profiles::services().find_profile_by_name(lower)?;
+            Some(horizon_client::server::user_lists::NameAndId { id, name })
         })
-    });
-    // `CachedUserNameToIdResolver.addInternal`: o perfil resolvido entra no cache e vai para o disco, e é dele que o nome de um UUID da lista sai depois de o mundo reabrir.
-    usernames_learn(vec![resolved.clone()]);
-    resolved
+    })
+    .map(|profile| (profile.id, profile.name))
 }
 
 /// A mesa em `pos` e o dono dela, se `player` pode mexer nela (`IBlockSecurityUtils.canAccess`).
@@ -3397,10 +3439,14 @@ pub(in crate::game) fn security_add_trusted(game: &mut Game<'_>, player: u128, p
     let Some(owner) = security_desk_owner(game, pos, player) else {
         return;
     };
-    let (uuid, known) = security_resolve_name(game, name);
+    // `getFreq()` nulo: o original nem chega a resolver o nome.
+    if security_table(game, |table| table.get(&Some(owner)).is_none()).unwrap_or(true) {
+        return;
+    }
+    let resolved = security_resolve_name(name);
     security_table(game, |table| {
         if let Some(frequency) = table.get_mut(&Some(owner)) {
-            desk::add_trusted(frequency, Some((uuid, &known)));
+            desk::add_trusted(frequency, resolved.as_ref().map(|(uuid, known)| (*uuid, known.as_str())));
         }
     });
 }

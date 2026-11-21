@@ -8,3 +8,8 @@ publish = false
 # Só crates que estão no Cargo.lock do Horizon: é a regra dos crates de um mod.
 [dependencies]
 serde_json = { version = "1", features = ["float_roundtrip"] }
+
+# Só para o teste `profile_lookup`, que compila o módulo `../profile_lookup.rs` do jogo contra um servidor HTTP local. A versão é a do Cargo.lock do Horizon
+# (o `horizon-client` a usa com `tls`); aqui sem TLS, porque o servidor de teste fala HTTP puro.
+[dev-dependencies]
+ureq = { version = "=2.12.1", default-features = false }

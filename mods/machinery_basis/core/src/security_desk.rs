@@ -143,15 +143,6 @@ fn md5(input: &[u8]) -> [u8; 16] {
     out
 }
 
-/// `CachedUserNameToIdResolver.get(name)` do servidor integrado, com o que o port sabe: quem o servidor já viu (`known`, que compara sem diferenciar maiúsculas e
-/// devolve o nome como foi visto) e, para quem nunca viu, o perfil offline do nome **em minúsculas** (`createUnknownProfile(userName)`, com `resolveOfflineUsers`
-/// ligado, o padrão do servidor integrado). A consulta à Mojang que o original faz antes disso (`profileRepository.findProfileByName`) não existe no port
-/// (decisão 270).
-pub fn resolve_name(name: &str, known: &dyn Fn(&str) -> Option<(u128, String)>) -> (u128, String) {
-    let lower = name.to_lowercase();
-    known(&lower).unwrap_or_else(|| (offline_uuid(&lower), lower))
-}
-
 /// O que um slot da mesa vê de um item: se ele tem dono (`ownerCapability`, todo item com o componente de dono ou de bloco com segurança), o dono, e o modo que o
 /// componente `security` traz (ausente: o padrão do item, `PUBLIC`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -19,6 +19,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_basis"
 source = "glue.rs"
 
+# A consulta de um nome de jogador aos serviços da Mojang (frente `mesa-seguranca`, 3.ª rodada, decisão 270): o documento de descoberta buscado numa thread própria e o
+# `getByName`, como o authlib do original. Código nosso, só com `std`, `ureq` e `serde_json`; o teste `core/tests/profile_lookup.rs` compila este mesmo arquivo.
+[[module]]
+id = "profile-lookup"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_profiles"
+source = "profile_lookup.rs"
+
 # Os canos mecânicos e os tubos pressurizados no jogo (frentes `cano-jogo` e `tubo-jogo`, unificados na `limpeza-rede`): o dono dos transmissores de recurso, genérico sobre o recurso
 # (fluido ou químico), o espelho dos tanques vizinhos e o NBT do cano e do tubo. Código nosso no `Game`, como a cola dos cabos.
 [[module]]
