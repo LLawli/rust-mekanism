@@ -4,6 +4,7 @@
 //!
 //! A lib não conhece nenhum recurso: o tipo `R` diz qual é (químico, fluido), e quem usa dá as regras como dados.
 use crate::containers::{AutomationType, InventorySlot};
+use crate::rate_limit::RateLimit;
 use crate::recipe_cache::{IngredientShape, InputIngredient, ShapedIngredient, TypedInstance};
 use crate::transaction::{Callback, JournalCell, Journaled, Transaction, fire};
 use std::collections::HashSet;
@@ -67,6 +68,9 @@ struct TankState<R: Resource> {
     can_extract: Rule<R>,
     can_insert: Rule<R>,
     validator: Validator<R>,
+    /// `insertionRateLimiter` e `extractionRateLimiter`: `None` é o `infiniteRateLimit`.
+    insertion_rate: Option<RateLimit>,
+    extraction_rate: Option<RateLimit>,
     listener: Option<Callback>,
 }
 
@@ -125,6 +129,27 @@ impl<R: Resource> ResourceTank<R> {
         validator: Validator<R>,
         listener: Option<Callback>,
     ) -> Self {
+        Self::create_rate_limited(
+            capacity,
+            can_extract,
+            can_insert,
+            validator,
+            None,
+            None,
+            listener,
+        )
+    }
+
+    /// `create(capacity, canExtract, canInsert, validator, insertionRateLimiter, extractionRateLimiter, listener)`.
+    pub fn create_rate_limited(
+        capacity: u64,
+        can_extract: Rule<R>,
+        can_insert: Rule<R>,
+        validator: Validator<R>,
+        insertion_rate: Option<RateLimit>,
+        extraction_rate: Option<RateLimit>,
+        listener: Option<Callback>,
+    ) -> Self {
         Self {
             cell: JournalCell::new(TankState {
                 contents: StackContents::default(),
@@ -132,6 +157,8 @@ impl<R: Resource> ResourceTank<R> {
                 can_extract,
                 can_insert,
                 validator,
+                insertion_rate,
+                extraction_rate,
                 listener,
             }),
         }
@@ -299,7 +326,11 @@ impl<R: Resource> ResourceTank<R> {
             state.contents.amount
         };
         let needed = saturated_cast(self.capacity(resource) as i64 - stored as i64);
-        let can_insert = self.cell.borrow().can_insert.clone();
+        let (can_insert, rate) = {
+            let state = self.cell.borrow();
+            (state.can_insert.clone(), state.insertion_rate.clone())
+        };
+        let needed = needed.min(rate.as_ref().map_or(i32::MAX, |rate| rate.remaining(automation)));
         if needed <= 0 || !can_insert(resource, automation) {
             return 0;
         }
@@ -309,6 +340,9 @@ impl<R: Resource> ResourceTank<R> {
             stored + to_add as u64,
             Some(transaction),
         );
+        if let Some(rate) = rate {
+            rate.consume(to_add, automation, transaction);
+        }
         to_add
     }
 
@@ -320,12 +354,13 @@ impl<R: Resource> ResourceTank<R> {
         transaction: &Transaction,
         automation: AutomationType,
     ) -> i32 {
-        let (stored, can_extract, current) = {
+        let (stored, can_extract, current, rate) = {
             let state = self.cell.borrow();
             (
                 state.contents.amount,
                 state.can_extract.clone(),
                 state.contents.resource.clone(),
+                state.extraction_rate.clone(),
             )
         };
         // `isCurrentValidForExtraction`: com o contêiner vazio a conta já não passa pelo `matches`.
@@ -333,12 +368,16 @@ impl<R: Resource> ResourceTank<R> {
             return 0;
         }
         let to_remove = amount.min(saturated_amount(stored));
+        let to_remove = to_remove.min(rate.as_ref().map_or(i32::MAX, |rate| rate.remaining(automation)));
         if to_remove > 0 {
             self.set_contents(
                 Some(resource.clone()),
                 stored - to_remove as u64,
                 Some(transaction),
             );
+            if let Some(rate) = rate {
+                rate.consume(to_remove, automation, transaction);
+            }
         }
         to_remove
     }

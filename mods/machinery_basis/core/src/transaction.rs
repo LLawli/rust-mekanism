@@ -96,20 +96,29 @@ impl Transaction {
                     "já há uma transação raiz ativa nesta thread"
                 );
             }
-            manager.current_depth += 1;
-            let depth = manager.current_depth as usize;
-            if manager.stack.len() == depth {
-                manager.stack.push(Frame {
-                    open: false,
-                    journals_to_close: Vec::new(),
-                });
-            }
-            manager.stack[depth].open = true;
-            Self {
-                depth,
-                done: Cell::new(false),
-            }
+            Self::push(manager)
         })
+    }
+
+    /// `TransactionHelper.openTransactionSafe`: filha da transação que estiver aberta nesta thread, ou uma raiz se não há nenhuma.
+    pub fn open_safe() -> Self {
+        MANAGER.with_borrow_mut(Self::push)
+    }
+
+    fn push(manager: &mut Manager) -> Self {
+        manager.current_depth += 1;
+        let depth = manager.current_depth as usize;
+        if manager.stack.len() == depth {
+            manager.stack.push(Frame {
+                open: false,
+                journals_to_close: Vec::new(),
+            });
+        }
+        manager.stack[depth].open = true;
+        Self {
+            depth,
+            done: Cell::new(false),
+        }
     }
 
     pub fn depth(&self) -> usize {
