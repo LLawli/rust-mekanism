@@ -3459,6 +3459,31 @@ pub(in crate::game) fn quick_move(
 }
 
 pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) {
+    // `ServerboundPlaceRecipePacket` do livro de receitas (`MekanismContainer.handlePlacement`): a `machinery_basis` coloca a receita com
+    // o `isValid` e o `canInsert(MANUAL)` do slot de entrada (`containsRecipe` na máquina elétrica; `containsRecipeA` e
+    // `containsRecipeAB` com o químico do tanque no Infuser) e com o tanque de infusão.
+    if machinery_basis_core::recipe_place::place_button_request(id).is_some() {
+        let Some(machine) = machine_of(&entity.id) else {
+            return;
+        };
+        let indexes = indexes_of(game, machine);
+        let contents = machine.slots.infusion.map(|_| read_tank(entity));
+        let chemical = contents.as_ref().and_then(|contents| contents.resource.clone());
+        let tank = contents
+            .as_ref()
+            .and_then(|contents| contents.resource.as_ref().map(|resource| (resource.id.to_string(), contents.amount as i64)))
+            .filter(|(_, amount)| *amount > 0);
+        let valid = |game: &Game<'_>, stack: &ItemStack| match &indexes {
+            Indexes::Electric { recipes, .. } => recipes.contains_input(&resource_of(game, stack)),
+            Indexes::Infuser { recipes, .. } => recipes.contains_input_a(&resource_of(game, stack)),
+        };
+        let can_insert = |game: &Game<'_>, stack: &ItemStack| match &indexes {
+            Indexes::Electric { .. } => true,
+            Indexes::Infuser { recipes, .. } => recipes.contains_input_ab(&resource_of(game, stack), &chemical),
+        };
+        game.mb_recipe_place_button(entity, id, tank, &valid, &can_insert);
+        return;
+    }
     // `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE`: a aba de segurança das máquinas e dos cubos.
     if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some()) && basis::security_menu_button(game, entity, id) {
         return;
@@ -3678,6 +3703,12 @@ fn draw_slots(game: &Game<'_>, batch: &mut HudBatch, origin: [f32; 2], machine: 
             machine.screen.slot_type(index).map(slot_sprite)
         };
         basis::slot(game, batch, origin, slot.item, frame, slot.overlay.and_then(overlay_sprite));
+        // `GuiSlot.drawContents`: o fantasma da receita nos slots que a tela registra no livro (`isRecipeCraftingSlot`): a entrada e a
+        // saída. As entradas do livro são o slot e, no Infuser, a barra de químico.
+        if index == machine.slots.input || index == machine.slots.output {
+            let inputs = if machine.slots.infusion.is_some() { 2 } else { 1 };
+            game.mb_recipe_ghost_slot(batch, [origin[0] + slot.item[0], origin[1] + slot.item[1]], inputs, index == machine.slots.output, 0);
+        }
     }
 }
 
@@ -3768,6 +3799,18 @@ fn draw_chemical_bar(
     let level = gui::divide_to_level(read.chemical.amount as f64, rules::TANK_CAPACITY as f64);
     // O cliente resolve o químico pelo registro dele (cor e sprite), como o do original resolve o `Chemical` do pacote.
     let registry = resource::current();
+    // `GuiChemicalBar.renderBarContents` com o fantasma de uma receita: a barra é a segunda entrada que a tela do Infuser registra no
+    // livro (depois do slot), e desenha o químico da receita no lugar do que o tanque guarda.
+    if let Some((name, ghost_level)) = game.mb_recipe_ghost_chemical(2, 1) {
+        let chemical = registry.get(name);
+        basis::vertical_bar_ghost(game, batch, &BAR_STYLE, rect, level, ghost_level, warning, &|game, batch, dst| {
+            let Some(icon) = rules::chemical_icon(chemical.and_then(|chemical| chemical.icon.as_deref())) else {
+                return;
+            };
+            basis::tank_bar_contents(game, batch, icon, [CHEMICAL_FRAME; 2], dst, chemical.map_or(0, |chemical| chemical.tint));
+        });
+        return;
+    }
     let chemical = registry.get(&read.chemical.resource);
     basis::vertical_bar(game, batch, &BAR_STYLE, rect, level, warning, &|game, batch, dst| {
         let Some(icon) = rules::chemical_icon(chemical.and_then(|chemical| chemical.icon.as_deref())) else {

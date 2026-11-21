@@ -372,6 +372,15 @@ public class CenaTelas {
 
     private static void state(MinecraftServer server, Caso caso) {
         TileEntityMekanism tile = tile(server, caso);
+        if (caso.name().contains("_livro_")) {
+            // O inventário de cada caso do livro começa vazio e leva o que `itens=slot:item:quantidade,...` diz (o `canCraft` e a colocação o leem).
+            run(server, "clear @a");
+            if (caso.args().containsKey("itens")) {
+                for (String item : caso.args().get("itens").split(",")) {
+                    giveItem(server, item);
+                }
+            }
+        }
         if (caso.args().containsKey("receitas")) {
             // O livro de receitas com tudo desbloqueado (`/recipe give @a *`, o mesmo comando no port).
             run(server, "recipe give @a *");
@@ -497,13 +506,39 @@ public class CenaTelas {
             return;
         }
         var screen = minecraft.gui.screen();
-        String[] xy = caso.args().get(key).split(";")[index].split(",");
+        String token = caso.args().get(key).split(";")[index];
+        // Entre os cliques: `t=texto` digita (o `_` vale um espaço), `k=enter` aperta o Enter e `i=slot:item:quantidade` põe um item no
+        // inventário do jogador (`item replace`), como o `itens=` faz antes de a tela abrir.
+        if (token.startsWith("t=")) {
+            token.substring(2).replace('_', ' ').codePoints().forEach(cp -> screen.charTyped(new net.minecraft.client.input.CharacterEvent(cp)));
+            return;
+        } else if (token.startsWith("k=")) {
+            screen.keyPressed(new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 0, 0));
+            return;
+        } else if (token.startsWith("i=")) {
+            MinecraftServer server = minecraft.getSingleplayerServer();
+            String item = token.substring(2);
+            server.execute(() -> giveItem(server, item));
+            return;
+        }
+        // `x,y`, `x,y,r` (o botão direito) ou `x,y,s` (o esquerdo com o shift).
+        String[] xy = token.split(",");
         double x = wrapper.getLeftPos() + Double.parseDouble(xy[0]) + 0.5;
         double y = wrapper.getTopPos() + Double.parseDouble(xy[1]) + 0.5;
         orderClientUpgrades(minecraft);
-        var info = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
+        boolean right = xy.length > 2 && xy[2].equals("r");
+        boolean shift = xy.length > 2 && xy[2].equals("s");
+        var info = new net.minecraft.client.input.MouseButtonInfo(right ? com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT
+                                                                        : com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, shift ? 1 : 0);
         screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
         screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
+    }
+
+    /// `slot:item:quantidade` (ou `slot:ns:item:quantidade`) no inventário de quem joga.
+    private static void giveItem(MinecraftServer server, String spec) {
+        String[] parts = spec.split(":");
+        String id = parts.length == 4 ? parts[1] + ":" + parts[2] : "minecraft:" + parts[1];
+        run(server, "item replace entity @a container." + parts[0] + " with " + id + " " + parts[parts.length - 1]);
     }
 
     /// `digitar=texto`: depois dos cliques, cada caractere pelo `charTyped` da tela, como o teclado faria (a caixa de busca do livro, focada por um clique).

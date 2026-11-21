@@ -2295,6 +2295,38 @@ pub(in crate::game) fn vertical_bar(
     }
 }
 
+/// [`vertical_bar`] com o fantasma de uma receita (`GuiBar.drawBackground` com `isRenderingGhost` e `GuiTankBar.renderBarGhostContents`):
+/// o miolo avermelhado, o conteúdo que `contents` desenha até `ghost_level` (entre um quarto e três quartos da barra) e o véu branco.
+/// O aviso continua pelo nível de verdade, `level`.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn vertical_bar_ghost(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    style: &BarStyle,
+    rect: [f32; 4],
+    level: f64,
+    ghost_level: f64,
+    warning: Option<&WarningSprites>,
+    contents: &dyn Fn(&Game<'_>, &mut HudBatch, [f32; 4]),
+) {
+    nine_slice(game, batch, style.frame, style.frame_slice, rect);
+    let warned = warning.map(|sprites| (sprites, gui::bar_warning(rect, level, false)));
+    if let Some((sprites, bar)) = &warned {
+        tiled_sprite(game, batch, sprites.background, sprites.tile, bar.background, None);
+    }
+    let inner = [rect[0] + 1.0, rect[1] + 1.0, rect[2] - 2.0, rect[3] - 2.0];
+    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], 0x30_FF_00_00);
+    if let Some(dst) = gui::bar_contents(rect, ghost_level) {
+        contents(game, batch, dst);
+    }
+    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], 0x30_FF_FF_FF);
+    if let Some((sprites, bar)) = &warned
+        && let Some(overlay) = bar.overlay
+    {
+        tiled_sprite(game, batch, sprites.overlay, sprites.tile, overlay.dst, Some(overlay.clip));
+    }
+}
+
 /// `GuiVerticalPowerBar.renderBarContents`: o sprite em mosaico (`tile`, o `gui.scaling` do `.mcmeta`) sobre `dst`, a partir do canto
 /// de cima e da esquerda.
 pub(in crate::game) fn power_bar_contents(

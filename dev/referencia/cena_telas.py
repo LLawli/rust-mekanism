@@ -354,6 +354,57 @@ LIVRO_FILTRO = (120, 117)
 LIVRO_SETA = (98, 243)
 
 
+# O primeiro botão da grade do livro (25 por 25 em (11, 31) do livro) e os dois primeiros botões do overlay das variantes que o direito
+# abre nele (24 por 24 em (15, 36) e (40, 36) do livro): os pontos caem dentro deles em guiScale 2 e 3.
+LIVRO_GRADE = (23, 141)
+LIVRO_OVERLAY_0 = (27, 146)
+LIVRO_OVERLAY_1 = (52, 146)
+# Um ponto do fundo do livro, sem botão (a última fila da grade, vazia depois de uma busca).
+LIVRO_FUNDO = (100, 215)
+
+
+def casos_livro_colocar():
+    abre = f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"
+    busca = f"{LIVRO_BUSCA[0]},{LIVRO_BUSCA[1]}"
+    grade = f"{LIVRO_GRADE[0]},{LIVRO_GRADE[1]}"
+
+    def livro(nome, maquina, texto, depois, **args):
+        return caso(nome, maquina, energia="0", receitas="1", capturas="6", capturas_port="6", clicar=";".join([abre, busca, f"t={texto}", *depois]), **args)
+
+    return [
+        # O clique esquerdo coloca 8 de serragem (a receita pede 8), e com o shift tudo o que há.
+        livro("chamber_livro_colocar", "chamber", "charcoal_dust", [grade], itens="9:mekanism:sawdust:20"),
+        livro("chamber_livro_colocar_shift", "chamber", "charcoal_dust", [grade + ",s"], itens="9:mekanism:sawdust:20"),
+        # Sem o ingrediente: o fantasma nos slots de entrada e de saída.
+        livro("chamber_livro_fantasma", "chamber", "charcoal_dust", [grade]),
+        # O clique no slot de entrada (um slot de receita) tira os fantasmas (`slotClicked`).
+        livro("chamber_livro_fantasma_slot", "chamber", "charcoal_dust", [grade, "%d,%d" % HOVER["electric"]["slot_entrada"]]),
+        # O fantasma, depois o ingrediente chega e o Enter repete a última receita. A caixa de busca continua focada depois do clique na
+        # receita e prenderia o Enter (`capturesInput`): um clique no fundo do livro (`LIVRO_FUNDO`) tira o foco dela.
+        livro("chamber_livro_enter", "chamber", "charcoal_dust", [grade, f"{LIVRO_FUNDO[0]},{LIVRO_FUNDO[1]}", "i=9:mekanism:sawdust:20", "k=enter"]),
+        # Com a caixa focada o Enter não é do livro: o fantasma fica.
+        livro("chamber_livro_enter_focado", "chamber", "charcoal_dust", [grade, "i=9:mekanism:sawdust:20", "k=enter"]),
+        # O direito num botão de várias receitas abre o overlay (uma fazível, com 5 de ferro bruto, e as outras não).
+        livro("chamber_livro_overlay", "chamber", "iron_dust", [grade + ",r"], itens="9:raw_iron:5"),
+        livro("chamber_livro_overlay_colocar", "chamber", "iron_dust", [grade + ",r", f"{LIVRO_OVERLAY_0[0]},{LIVRO_OVERLAY_0[1]}"], itens="9:raw_iron:5"),
+        livro("chamber_livro_overlay_fantasma", "chamber", "iron_dust", [grade + ",r", f"{LIVRO_OVERLAY_1[0]},{LIVRO_OVERLAY_1[1]}"], itens="9:raw_iron:5"),
+        # O filtro com itens no inventário (o que a 5.ª rodada mediu só no port).
+        caso("chamber_livro_filtro_itens", "chamber", energia="0", receitas="1", capturas="6", capturas_port="6", itens="9:iron_ore:3,10:redstone:5,11:cobblestone:2",
+             clicar=f"{abre};{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}", desfazer=f"{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}"),
+        # As outras máquinas: o livro de cada uma, a colocação e o fantasma.
+        caso("crusher_livro_receitas", "crusher", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=abre),
+        livro("crusher_livro_colocar", "crusher", "gravel", [grade], itens="9:cobblestone:10"),
+        livro("crusher_livro_fantasma", "crusher", "gravel", [grade]),
+        caso("smelter_livro_receitas", "smelter", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=abre),
+        caso("infuser_livro_receitas", "infuser", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=abre),
+        livro("infuser_livro_colocar", "infuser", "infused_alloy", [grade], itens="9:copper_ingot:5", quimico="redstone:100"),
+        # O tanque vazio: o fantasma no slot, na barra de químico e na saída.
+        livro("infuser_livro_fantasma", "infuser", "infused_alloy", [grade], itens="9:copper_ingot:5"),
+        # O Energized Smelter: no original a colocação lança `ClassCastException` no servidor (decisão 268); só o port roda este caso.
+        livro("smelter_livro_clique", "smelter", "baked_potato", [grade], itens="9:potato:5", so_port="1"),
+    ]
+
+
 def casos_livro():
     out = []
     for m in ("chamber", "crusher", "smelter", "infuser"):
@@ -381,6 +432,9 @@ def casos_livro():
         # A segunda página. Neste caso e no de cima o original também tira várias: os botões que mostram receitas destacadas crescem e voltam por
         # 15 ticks depois de aparecer (`RecipeButton.animationTime`), e o primeiro print do original cai no meio da animação.
         caso("chamber_livro_pagina", "chamber", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]};{LIVRO_SETA[0]},{LIVRO_SETA[1]}"),
+        # A 6.ª rodada: a colocação pelo livro, o fantasma e o overlay das variantes (decisão 268). A busca deixa na grade só o botão da
+        # receita (`LIVRO_GRADE`, o primeiro), para o clique não depender da fase do `SlotSelectTime`.
+        *casos_livro_colocar(),
     ]
     return out
 
@@ -680,6 +734,9 @@ def escreve_oficial(escalas, saida, so=None):
         linhas.append(f"escala {escala}")
         for c in casos_do_roteiro(so):
             args = dict(c["args"])
+            # `so_port=1`: o original não roda o caso (a colocação no Energized Smelter derruba o servidor dele).
+            if "so_port" in args:
+                continue
             if "hover" in args:
                 args["hover"] = "%d,%d" % tuple(args["hover"])
             pares = " ".join(f"{k}={v}" for k, v in args.items())
@@ -828,7 +885,17 @@ def monta_port(c, x, escala):
         comando("recipe give @a *")
     elif "_livro_" in c["nome"]:
         comando("recipe take @a *")
+    # O inventário de cada caso do livro começa vazio (o `clear` de cima) e leva o que `itens` diz, como no `CenaTelas`.
+    for item in filter(None, c["args"].get("itens", "").split(",")):
+        da_item(item)
     return x
+
+
+def da_item(spec):
+    """`slot:item:quantidade` (ou `slot:ns:item:quantidade`) no inventário de quem joga, como o `giveItem` do `CenaTelas`."""
+    partes = spec.split(":")
+    item = f"{partes[1]}:{partes[2]}" if len(partes) == 4 else f"minecraft:{partes[1]}"
+    comando(f"item replace entity @s container.{partes[0]} with {item} {partes[-1]}")
 
 
 def nbt_do_tile(pos):
@@ -920,8 +987,23 @@ def tira_port(c, x, escala, destino):
     esquerda = (gui_l - 176) // 2
     topo = (gui_a - 166) // 2
     for clique in filter(None, c["args"].get("clicar", "").split(";")):
-        cx, cy = (int(v) for v in clique.split(","))
-        ctl("click-at", str(esquerda + cx), str(topo + cy))
+        # Entre os cliques, como no `CenaTelas`: `t=texto` digita (o `_` vale um espaço), `k=enter` aperta o Enter, `i=slot:item:quantidade`
+        # põe um item no inventário; `x,y,r` é o botão direito e `x,y,s` o esquerdo com o shift.
+        if clique.startswith("t="):
+            ctl("type", clique[2:].replace("_", " "))
+        elif clique.startswith("k="):
+            ctl("key", clique[2:], "tap")
+        elif clique.startswith("i="):
+            da_item(clique[2:])
+        else:
+            partes = clique.split(",")
+            cx, cy = int(partes[0]), int(partes[1])
+            modo = partes[2] if len(partes) > 2 else ""
+            if modo == "s":
+                ctl("key", "shift", "down")
+            ctl("click-at", str(esquerda + cx), str(topo + cy), *(["right"] if modo == "r" else []))
+            if modo == "s":
+                ctl("key", "shift", "up")
         ctl("wait", "6")
     if "digitar" in c["args"]:
         ctl("type", c["args"]["digitar"])

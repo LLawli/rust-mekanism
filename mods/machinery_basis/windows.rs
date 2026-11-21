@@ -20,6 +20,7 @@ use machinery_basis_core::recipe_book as rb;
 use machinery_basis_core::recipe_book_data::Settings as BookSettings;
 use machinery_basis_core::recipe_book_data::{ChangeSettings, ToClient, ToServer, Unlocked, settings_fields};
 use machinery_basis_core::recipe_book_view as rbv;
+use machinery_basis_core::recipe_place as rp;
 use machinery_basis_core::stacked_contents::StackedContents;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
@@ -246,6 +247,8 @@ enum Action {
     Remove { index: u16, all: bool },
     /// O clique em um botão de uma janela de configuração: o pacote vai ao servidor.
     Config(ConfigPacket),
+    /// `MultiPlayerGameMode.handlePlaceRecipe`: o livro manda colocar o display, com o shift (`useMaxItems`).
+    PlaceRecipe { id: i32, max: bool },
 }
 
 struct Open {
@@ -283,6 +286,14 @@ struct Client {
     sent_selection: Option<Option<SelectedWindow>>,
     /// Um botão foi clicado neste quadro (`AbstractWidget.playDownSound`).
     click_sound: bool,
+    /// O que é do componente do livro da tela e não da janela (`RecipeBookComponent.time`, `lastPlacedRecipe`, `lastRecipe`): passa de
+    /// uma abertura da janela para a outra enquanto a tela é a mesma.
+    book_carry: Option<rbv::Carried>,
+    /// O display cujo fantasma está nos slots da tela (`IGhostRecipeComponent.setGhostData`), até um clique num slot de receita, outra
+    /// colocação ou a tela fechar.
+    ghost: Option<i32>,
+    /// `skipNextRelease`: o clique que já valeu ao apertar não vale de novo ao soltar.
+    skip_release: bool,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
@@ -293,6 +304,9 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
     pending: Vec::new(),
     sent_selection: None,
     click_sound: false,
+    book_carry: None,
+    ghost: None,
+    skip_release: false,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -558,6 +572,12 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
         },
     );
     if kind == Kind::RecipeBook {
+        // O componente do livro é da tela: o relógio e as últimas receitas continuam de onde a janela anterior os deixou.
+        if let Some(carry) = state.book_carry.clone()
+            && let Some(view) = state.windows[0].book.as_mut()
+        {
+            view.restore(&carry);
+        }
         // `GuiRecipeBookWindow`: a janela que nasce com o livro aberto nos dados vale como fixada (antes de `adoptPosition`, que o abre).
         let open = &mut state.windows[0];
         if !open.window.pinned && book_open(spec) {
@@ -657,6 +677,10 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             guard.screen_block = None;
             guard.pending.clear();
             guard.sent_selection = None;
+            // `GuiMekanism.removed`: o componente do livro e os fantasmas dos slots somem com a tela.
+            guard.book_carry = None;
+            guard.ghost = None;
+            guard.skip_release = false;
             // `MekanismContainer.removed`: o menu some com a tela.
             if let Some(pos) = guard.screen_pos.take() {
                 mirrors(|table| table.remove(&pos));
@@ -682,6 +706,9 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             state.screen_pos = at;
             state.windows.clear();
             state.pending.clear();
+            state.book_carry = None;
+            state.ghost = None;
+            state.skip_release = false;
             // Um menu novo começa sem janela escolhida no servidor.
             state.sent_selection = Some(None);
             let positions = state.positions.get_or_insert_with(|| load_positions(spec));
@@ -704,6 +731,7 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
         let contents = book_window.then(|| book_contents(game, spec));
         let dirty = BOOK_DIRTY.swap(false, Ordering::Relaxed);
         let mut guard = client();
+        let mut carry = None;
         for open in guard.windows.iter_mut() {
             if let Some(view) = open.book.as_mut() {
                 let ticks = (now - open.book_clock_ms) as f32 / 50.0;
@@ -727,7 +755,11 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
                 for id in view.seen.drain(..) {
                     book_seen(id);
                 }
+                carry = Some(view.carried());
             }
+        }
+        if carry.is_some() {
+            guard.book_carry = carry;
         }
     }
     let actions: Vec<Action> = std::mem::take(&mut client().pending);
@@ -746,6 +778,7 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             Action::Config(packet) => {
                 send(game, [&[OP_CONFIG][..], &packet.encode()].concat());
             }
+            Action::PlaceRecipe { id, max } => send_menu_button(game, rp::place_button(id, max)),
         }
     }
     book_flush(game);
@@ -797,14 +830,25 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
     if open_spec(game).is_none() {
         return;
     }
+    let shift = game.has_shift_down();
+    // `AbstractContainerScreen.keyPressed`: com o cursor vazio sobre um slot, as teclas da barra e a da outra mão trocam o item
+    // (`SWAP`), e a de largar joga o que o slot tem (`THROW`); todas passam por `slotClicked`.
+    let slot_key = !key_is_book_only(key) && game.carried.is_none() && crafting_slot_hovered(game, open_spec(game));
     let mut guard = client();
     let state = &mut *guard;
     // `GuiMekanism.keyPressed`: as janelas, da do topo para baixo; a do livro passa a tecla antes ao componente.
-    for open in state.windows.iter_mut() {
-        if open.kind == Kind::RecipeBook && book_key(open, key) {
+    for index in 0..state.windows.len() {
+        if state.windows[index].kind != Kind::RecipeBook {
+            continue;
+        }
+        let Client { windows, pending, click_sound, ghost, .. } = state;
+        if book_key(&mut windows[index], key, shift, pending, click_sound, ghost) {
             *canceled = true;
             return;
         }
+    }
+    if slot_key {
+        recipe_slot_clicked(state);
     }
     if key != "key.keyboard.escape" {
         return;
@@ -874,6 +918,8 @@ pub(in crate::game) fn mouse_pressed(
     };
     let mouse = mouse_of(view);
     let sync = read_sync(game);
+    let over_recipe_slot = crafting_slot_hovered(game, Some(spec));
+    let carrying = game.carried.is_some();
     let config = if client().windows.iter().any(|open| open.kind.is_config()) {
         config_view(game, spec)
     } else {
@@ -903,7 +949,8 @@ pub(in crate::game) fn mouse_pressed(
         && !(0..book).any(|above| state.windows[above].window.mouse_over(screen, mouse))
     {
         let rel = relative(&state.windows[book], screen, mouse);
-        if book_click(&mut state.windows[book], rel, button, &mut state.click_sound, spec) == BookClick::Handled {
+        let Client { windows, pending, click_sound, ghost, .. } = state;
+        if book_click(&mut windows[book], rel, button, shift, click_sound, pending, ghost, spec) == BookClick::Handled {
             if book != 0 {
                 let open = state.windows.remove(book);
                 state.windows.insert(0, open);
@@ -921,6 +968,16 @@ pub(in crate::game) fn mouse_pressed(
         }
     }
     let Some(index) = hit else {
+        // `AbstractContainerScreen.mouseClicked` sobre um slot com o cursor vazio: o clique vale ao apertar (`slotClicked`), e com um
+        // item no cursor, ao soltar. `VirtualRecipeBookComponent.slotClicked` de um slot de receita tira os fantasmas.
+        if over_recipe_slot {
+            if carrying {
+                state.skip_release = false;
+            } else {
+                recipe_slot_clicked(state);
+                state.skip_release = true;
+            }
+        }
         // `GuiInsetElement.isMouseOver`: só com a aba ativa e sobre o botão de dentro, e só o botão esquerdo.
         let rel = [mouse[0] - f64::from(screen.left), mouse[1] - f64::from(screen.top)];
         if button == 0
@@ -1119,10 +1176,16 @@ fn inset_rect(index: usize, open: &Open) -> [i32; 4] {
 
 /// `screen_mouse_button_released_pre`: solta o arrasto da janela e o da barra.
 pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
-    if open_spec(game).is_none() {
+    let Some(spec) = open_spec(game) else {
         return;
-    }
+    };
+    // `AbstractContainerScreen.mouseReleased`: com um item no cursor, o clique no slot sob o mouse vale agora (`slotClicked`), a não
+    // ser que já tenha valido ao apertar (`skipNextRelease`).
+    let over_recipe_slot = game.carried.is_some() && crafting_slot_hovered(game, Some(spec));
     let mut state = client();
+    if !std::mem::take(&mut state.skip_release) && over_recipe_slot && !state.windows.iter().any(|open| open.window.dragging() || open.list.dragging()) {
+        recipe_slot_clicked(&mut state);
+    }
     for open in state.windows.iter_mut() {
         let was_dragging = open.window.dragging() || open.list.dragging();
         open.window.release();
@@ -1843,6 +1906,13 @@ fn book_from_server(data: &[u8]) {
             }
             None => eprintln!("machinery_basis: o servidor mandou configurações do livro ilegíveis"),
         },
+        // `ClientPacketListener.handlePlaceRecipe`: a tela aberta mostra o fantasma (`GuiMekanism.fillGhostRecipe`); sem tela, nada.
+        Some(ToClient::PlaceGhost(id)) => {
+            let mut state = client();
+            if state.screen_block.is_some() {
+                state.ghost = Some(id);
+            }
+        }
         Some(packet) => {
             if unlocked(|book| book.apply(&packet)) {
                 BOOK_DIRTY.store(true, Ordering::Relaxed);
@@ -1939,39 +2009,29 @@ fn book_restore(book: &mut horizon_client::recipe_book::Settings, extra: &mut Op
     let Some(Tag::Compound(saved)) = extra.as_mut().and_then(|tag| tag.get_mut("recipeBook")) else {
         return;
     };
-    let length = match saved.get(&JavaString::from("recipes")) {
-        Some(Tag::List(list)) => list.len(),
-        _ => return,
-    };
-    // A lista lida é conferida de novo a cada livro novo registrado, e não a cada tick.
-    if *seen == (names.len(), length) {
+    if !matches!(saved.get(&JavaString::from("recipes")), Some(Tag::List(_))) {
         return;
     }
-    let mut take = |key: &str| -> Vec<String> {
-        let Some(Tag::List(list)) = saved.get_mut(&JavaString::from(key)) else {
-            return Vec::new();
-        };
-        let mut taken = Vec::new();
-        list.retain(|tag| match tag {
-            Tag::String(name) => {
-                let name = name.to_string_lossy();
-                let ours = names.contains(name.as_str());
-                if ours {
-                    taken.push(name);
-                }
-                !ours
-            }
-            _ => true,
-        });
-        taken
-    };
-    let known = take("recipes");
-    let highlight = take("toBeDisplayed");
-    *seen = (names.len(), length - known.len());
-    for name in highlight {
-        if known.contains(&name) {
-            book.to_be_displayed.insert(name);
+    // As duas listas como nomes; o que não é texto fica onde está.
+    let names_of = |saved: &Compound, key: &str| -> Vec<String> {
+        match saved.get(&JavaString::from(key)) {
+            Some(Tag::List(list)) => list.iter().filter_map(|tag| if let Tag::String(name) = tag { Some(name.to_string_lossy()) } else { None }).collect(),
+            _ => Vec::new(),
         }
+    };
+    let mut recipes = names_of(saved, "recipes");
+    let mut display = names_of(saved, "toBeDisplayed");
+    let Some((known, highlight)) = machinery_basis_core::recipe_book_data::restore_saved(&mut recipes, &mut display, names, seen) else {
+        return;
+    };
+    // O que voltou sai das listas lidas (o `player_tag` as reescreve ao gravar).
+    for key in ["recipes", "toBeDisplayed"] {
+        if let Some(Tag::List(list)) = saved.get_mut(&JavaString::from(key)) {
+            list.retain(|tag| !matches!(tag, Tag::String(name) if names.contains(name.to_string_lossy().as_str())));
+        }
+    }
+    for name in highlight {
+        book.to_be_displayed.insert(name);
     }
     book.recipes.extend(known);
 }
@@ -2030,21 +2090,23 @@ fn book_server_sync(game: &mut Game<'_>) {
             continue;
         };
         let before = book_sent(|sent| sent.get(&player).cloned());
-        if before.as_ref().is_some_and(|(sent, sent_types)| *sent == now && *sent_types == types) {
+        // As configurações vão com o livro inteiro e de novo quando um tipo de livro novo é registrado (o bloco dele apareceu).
+        let packets = machinery_basis_core::recipe_book_data::server_sync(
+            before.as_ref().map(|(sent, sent_types)| (sent, sent_types.as_slice())),
+            &now,
+            &types,
+            || settings.encode_named(&types),
+            |id| {
+                rows.iter().find(|row| row.0 == id).map(|row| rb::Entry {
+                    id: row.0,
+                    category: row.4.to_owned(),
+                    group: (row.3 >= 0).then_some(row.3),
+                })
+            },
+        );
+        if packets.is_empty() {
             continue;
         }
-        let mut packets = Vec::new();
-        // As configurações vão com o livro inteiro e de novo quando um tipo de livro novo é registrado (o bloco dele apareceu).
-        if before.as_ref().is_none_or(|(_, sent_types)| *sent_types != types) {
-            packets.push(ToClient::Settings(settings.encode_named(&types)));
-        }
-        packets.extend(now.sync(before.as_ref().map(|(sent, _)| sent), |id| {
-            rows.iter().find(|row| row.0 == id).map(|row| rb::Entry {
-                id: row.0,
-                category: row.4.to_owned(),
-                group: (row.3 >= 0).then_some(row.3),
-            })
-        }));
         book_sent(|sent| sent.insert(player, (now, types.clone())));
         for packet in packets {
             if let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &packet.encode()) {
@@ -2052,6 +2114,197 @@ fn book_server_sync(game: &mut Game<'_>) {
             }
         }
     }
+}
+
+/// O recurso de uma pilha para a colocação (`ItemResource`: o item e os componentes): o id, e o que distingue a pilha quando ela tem
+/// dano ou outros componentes.
+fn place_key(stack: &ItemStack) -> String {
+    if stack.damage == 0 && stack.extra.is_none() {
+        stack.item.to_string()
+    } else {
+        format!("{}#{}:{:?}", stack.item, stack.damage, stack.extra)
+    }
+}
+
+/// As regras dos dois slots de receita (0 a entrada, 1 a saída) com o que o dono do bloco diz da entrada.
+struct PlaceRules<'a, 'g> {
+    game: &'a Game<'g>,
+    stacks: &'a HashMap<String, ItemStack>,
+    valid: &'a dyn Fn(&Game<'_>, &ItemStack) -> bool,
+    can_insert: &'a dyn Fn(&Game<'_>, &ItemStack) -> bool,
+}
+
+impl rp::Rules for PlaceRules<'_, '_> {
+    fn max_stack(&self, resource: &str) -> i32 {
+        self.stacks.get(resource).map_or(64, |stack| basis::stack_limit(self.game, stack) as i32)
+    }
+
+    fn valid(&self, slot: usize, resource: &str) -> bool {
+        // `OutputInventorySlot`: o validador aceita tudo; quem barra é o `canInsert`.
+        slot != 0 || self.stacks.get(resource).is_some_and(|stack| (self.valid)(self.game, stack))
+    }
+
+    fn can_insert(&self, slot: usize, resource: &str) -> bool {
+        // `OutputInventorySlot`: `internalOnly`.
+        slot == 0 && self.stacks.get(resource).is_some_and(|stack| (self.can_insert)(self.game, stack))
+    }
+
+    fn can_extract(&self, _: usize, _: &str) -> bool {
+        // `InputInventorySlot` (`notExternal`) e `OutputInventorySlot` (`alwaysTrue`) com `AutomationType.MANUAL`.
+        true
+    }
+
+    fn hash(&self, resource: &str) -> i32 {
+        rp::item_resource_hash(resource)
+    }
+}
+
+/// `ServerGamePacketListenerImpl.handlePlaceRecipe` com `MekanismContainer.handlePlacement`, no turno de quem clicou (o botão de menu
+/// de `rp::place_button`): a receita é a do display no livro da máquina, o jogador tem de conhecê-la, e a colocação mexe no inventário
+/// dele e nos slots de entrada e de saída do bloco. `tank` é o tanque de químico da máquina (o químico e a quantidade), e `valid` e
+/// `can_insert` o `isValid` e o `canInsert(MANUAL)` do slot de entrada. Devolve se o botão era um pedido de colocação.
+pub(in crate::game) fn recipe_place_button(
+    game: &mut Game<'_>,
+    entity: &mut horizon_client::containers::ModBlockEntity,
+    id: i32,
+    tank: Option<(String, i64)>,
+    valid: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
+    can_insert: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
+) -> bool {
+    let Some((display, use_max)) = rp::place_button_request(id) else {
+        return false;
+    };
+    let Some(book) = spec_of(&entity.id).and_then(|spec| spec.book.map(|book| (book, spec.book_slots))) else {
+        return true;
+    };
+    let (book, [input, output]) = book;
+    // `getRecipeFromDisplay` e `player.getRecipeBook().contains(recipe.id())`. Um display de outro tipo de receita (que só um pacote
+    // forjado mandaria a esta máquina) é recusado aqui.
+    let Some(row) = book.rows.iter().find(|row| row.0 == display && row.2 == book.book_type) else {
+        return true;
+    };
+    if !game.level.recipe_book.recipes.contains(row.1) || entity.items.len() <= input.max(output) {
+        return true;
+    }
+    let mut stacks: HashMap<String, ItemStack> = HashMap::new();
+    let mut keyed = |stack: Option<&ItemStack>| -> rp::Stack {
+        let stack = stack.filter(|stack| stack.count > 0)?;
+        let key = place_key(stack);
+        stacks.entry(key.clone()).or_insert_with(|| stack.clone());
+        Some((key, stack.count as i32))
+    };
+    let before = rp::State {
+        main: (0..rp::MAIN_SLOTS).map(|slot| keyed(game.inventory.get(slot).and_then(Option::as_ref))).collect(),
+        offhand: keyed(game.offhand.as_ref()),
+        selected: game.selected,
+        slots: vec![keyed(entity.items[input].as_ref()), keyed(entity.items[output].as_ref())],
+        dropped: Vec::new(),
+    };
+    let Some(recipe) = book.placement(display, tank.as_ref().map(|(name, amount)| (name.as_str(), *amount))) else {
+        return true;
+    };
+    let mut now = before.clone();
+    // `player.isCreative()`: o `allowDroppingItemsToClear`.
+    let creative = game.mode_id() == 1;
+    let action = {
+        let rules = PlaceRules { game: &*game, stacks: &stacks, valid, can_insert };
+        rp::place_recipe(&mut now, &rules, &recipe, rp::Containers { inputs: &[0], outputs: &[1] }, use_max, creative)
+    };
+    let stack_of = |stack: &rp::Stack| -> Option<ItemStack> {
+        let (key, count) = stack.as_ref()?;
+        let mut stack = stacks.get(key)?.clone();
+        stack.count = *count as u32;
+        Some(stack)
+    };
+    for slot in 0..rp::MAIN_SLOTS {
+        if now.main[slot] != before.main[slot] {
+            if game.inventory.len() <= slot {
+                game.inventory.resize(slot + 1, None);
+            }
+            game.inventory[slot] = stack_of(&now.main[slot]);
+        }
+    }
+    if now.offhand != before.offhand {
+        game.offhand = stack_of(&now.offhand);
+    }
+    for (at, slot) in [input, output].into_iter().enumerate() {
+        if now.slots[at] != before.slots[at] {
+            entity.items[slot] = stack_of(&now.slots[at]);
+        }
+    }
+    // `PlayerInventoryWrapper.drop(resource, amount, false, false, ...)`: `player.drop(stack, false, false)`, sem o nome de quem largou.
+    for dropped in &now.dropped {
+        if let Some(stack) = stack_of(&Some(dropped.clone()))
+            && let Some(eye) = game.eye_position()
+        {
+            game.swing_hand(horizon_client::first_person::Hand::Main, horizon_client::first_person::SwingAnimation::DEFAULT);
+            game.throw_from_eyes(stack, eye, false);
+        }
+    }
+    match action {
+        rp::Action::Nothing => {}
+        // `ClientboundPlaceGhostRecipePacket(containerId, display)`.
+        rp::Action::PlaceGhostRecipe => {
+            if let Some(player) = game.lan_acting_uuid
+                && let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &ToClient::PlaceGhost(display).encode())
+            {
+                eprintln!("machinery_basis: o fantasma da receita não chegou a {player:032x}: {error}");
+            }
+        }
+        // No original o `ClassCastException` de `handlePlacement` derruba o servidor (`onPacketError` relança como `ReportedException`);
+        // aqui o pedido é recusado sem mexer em nada (decisão 268).
+        rp::Action::ClassCast => {
+            eprintln!("machinery_basis: a receita {} não é do tipo que a colocação pelo livro aceita (o original lança ClassCastException)", row.1);
+        }
+    }
+    true
+}
+
+/// O fantasma de um slot de receita da tela aberta (`GuiSlot.tryDrawGhost`), com o item em `at`: o fundo avermelhado, o item que o
+/// `SlotSelectTime` escolhe entre os que o ingrediente (ou a saída) mostra, o véu branco e a quantidade. `inputs` é quantos componentes
+/// de entrada a tela registrou no livro (`ghostInputs`: os slots de entrada e as barras ou medidores de tanque): com outro número de
+/// ingredientes no display as entradas ficam sem fantasma (`MekanismRecipeBookComponent.fillGhostRecipe`). Devolve se desenhou.
+fn ghost_slot(game: &Game<'_>, batch: &mut HudBatch, at: [f32; 2], inputs: usize, output: bool, index: usize) -> bool {
+    let Some((ghost, select)) = shown_ghost(game) else {
+        return false;
+    };
+    let lists = if output { ghost.2 } else { ghost.1 };
+    if !output && ghost.1.len() != inputs {
+        return false;
+    }
+    let Some((item, count)) = lists.get(index).and_then(|entries| rbv::ghost_shown(entries, select)) else {
+        return false;
+    };
+    let atlas = &game.gui.atlas;
+    batch.fill(atlas, at[0], at[1], 16.0, 16.0, 0x30_FF_00_00);
+    let stack = ItemStack::new(item, count.max(1) as u32);
+    // `fakeItem`: o item sem as decorações.
+    game.draw_item_model(batch, &stack, at[0], at[1]);
+    batch.fill(atlas, at[0], at[1], 16.0, 16.0, 0x30_FF_FF_FF);
+    // A saída desenha `itemDecorations` e a entrada só `itemCount`: num item de receita, sem dano, as duas dão a quantidade.
+    game.draw_item_decorations(batch, &stack, at[0], at[1], None);
+    true
+}
+
+/// O display do fantasma da tela aberta e o índice do `SlotSelectTime` de agora.
+fn shown_ghost(game: &Game<'_>) -> Option<(&'static rbv::GhostRow, i32)> {
+    let book = open_spec(game)?.book?;
+    let (id, time) = {
+        let state = client();
+        (state.ghost?, state.book_carry.as_ref().map_or(0.0, |carry| carry.time))
+    };
+    Some((book.ghost(id)?, rb::slot_select_index(time)))
+}
+
+/// O fantasma de uma barra de químico registrada como a entrada `index` (`GuiChemicalBar.setGhostData` com
+/// `GhostSlot.createWithMaxTank`): o químico que o `SlotSelectTime` escolhe e o nível que a barra desenha (`renderBarGhostContents`).
+fn ghost_chemical(game: &Game<'_>, inputs: usize, index: usize) -> Option<(&'static str, f64)> {
+    let (ghost, select) = shown_ghost(game)?;
+    if ghost.1.len() != inputs {
+        return None;
+    }
+    let (name, amount) = rbv::ghost_shown(ghost.3.get(index)?, select)?;
+    Some((name, rbv::ghost_bar_level(amount, rbv::ghost_max_tank(ghost))))
 }
 
 /// `GuiWindow.renderBackgroundOverlay` e `renderForeground` da janela do livro: a sombra, o painel, o fechar, o fixar e o título.
@@ -2117,11 +2370,21 @@ enum BookClick {
 }
 
 /// `RecipeBookComponent.mouseClicked` (`button` do Horizon: 0 esquerdo, 1 direito, 2 do meio; no Java 26.3 `MOUSE_BUTTON_LEFT` é 1 e
-/// `RIGHT` é 3), com `rel` relativo à janela. Na ordem do Java: a página (as setas e os botões das receitas), a lupa e a caixa de busca
-/// (o foco), o filtro e as abas. O `GuiMekanism` oferece todo clique a todas as janelas, então um clique em qualquer lugar fora da caixa
-/// tira o foco dela. Os cliques nas receitas só ficam registrados nesta rodada: o esquerdo (`getLastClickedRecipe` e `tryPlaceRecipe`)
-/// e o direito (o overlay das variantes, `isOnlyOption`) são da rodada seguinte.
-fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut bool, spec: &UpgradeWindowSpec) -> BookClick {
+/// `RIGHT` é 3), com `rel` relativo à janela. Na ordem do Java: a página (o overlay das variantes quando aberto, as setas e os botões das
+/// receitas), a lupa e a caixa de busca (o foco), o filtro e as abas. O `GuiMekanism` oferece todo clique a todas as janelas, então um
+/// clique em qualquer lugar fora da caixa tira o foco dela. O esquerdo numa receita a manda colocar (`tryPlaceRecipe`, com o shift para
+/// `useMaxItems`) e tira os fantasmas (`clearGhostValues`); o direito abre o overlay de um botão com mais de uma receita.
+#[allow(clippy::too_many_arguments)]
+fn book_click(
+    open: &mut Open,
+    rel: [f64; 2],
+    button: i32,
+    shift: bool,
+    click_sound: &mut bool,
+    pending: &mut Vec<Action>,
+    ghost: &mut Option<i32>,
+    spec: &UpgradeWindowSpec,
+) -> BookClick {
     let [xo, yo] = BOOK_ORIGIN;
     let left = button == 0;
     let tab = book_tab_at(open, rel);
@@ -2129,21 +2392,42 @@ fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut boo
         return BookClick::Missed;
     };
     let inside = |rect: rb::Rect| rb::contains(rect, rel[0], rel[1]);
-    // `RecipeBookPage.mouseClicked`: as setas só com o esquerdo e visíveis; os botões das receitas com o esquerdo e o direito (`isValidClickButton`).
-    if left && view.page.forward_visible() && inside(rb::forward_rect(xo, yo)) {
-        view.forward();
-        *click_sound = true;
-        return BookClick::Handled;
+    // `RecipeBookPage.mouseClicked`: com o overlay aberto o clique é dele; senão as setas, só com o esquerdo e visíveis, e depois os
+    // botões das receitas com o esquerdo e o direito (`isValidClickButton`).
+    if view.overlay.is_none() {
+        if left && view.page.forward_visible() && inside(rb::forward_rect(xo, yo)) {
+            view.forward();
+            *click_sound = true;
+            return BookClick::Handled;
+        }
+        if left && view.page.back_visible() && inside(rb::back_rect(xo, yo)) {
+            view.back();
+            *click_sound = true;
+            return BookClick::Handled;
+        }
     }
-    if left && view.page.back_visible() && inside(rb::back_rect(xo, yo)) {
-        view.back();
-        *click_sound = true;
-        return BookClick::Handled;
-    }
-    let shown = view.page.shown().len();
-    if (button == 0 || button == 1) && (0..shown).any(|index| inside(rb::button_rect(xo, yo, index))) {
-        *click_sound = true;
-        return BookClick::Handled;
+    let mouse = match button {
+        0 => rbv::Mouse::Left,
+        1 => rbv::Mouse::Right,
+        _ => rbv::Mouse::Other,
+    };
+    match view.click_page(xo, yo, rel[0], rel[1], mouse) {
+        rbv::PageClick::Place(id) => {
+            *click_sound = true;
+            *ghost = None;
+            pending.push(Action::PlaceRecipe { id, max: shift });
+            return BookClick::Handled;
+        }
+        // `tryPlaceRecipe` recusou e `mouseClicked` devolve falso: o clique segue para a janela, sem passar pela caixa de busca.
+        rbv::PageClick::Refused => {
+            *click_sound = true;
+            return BookClick::Missed;
+        }
+        rbv::PageClick::Handled { sound } => {
+            *click_sound |= sound;
+            return BookClick::Handled;
+        }
+        rbv::PageClick::Missed => {}
     }
     // A lupa foca a caixa com qualquer botão (`magnifierIconPlacement.containsPoint`); a caixa, só com o esquerdo, e sem som (`EditBox.playDownSound`).
     if inside(rb::magnifier_rect(xo, yo)) || (left && inside(rb::search_rect(xo, yo))) {
@@ -2169,8 +2453,9 @@ fn book_click(open: &mut Open, rel: [f64; 2], button: i32, click_sound: &mut boo
 
 /// A tecla com o livro aberto (`GuiRecipeBookWindow.keyPressed` chama `RecipeBookComponent.keyPressed` antes do resto). Esc não é do
 /// livro (`isOffsetNextToMainGUI`: o componente virtual tem o `xOffset` de 86). Com a caixa focada, o Backspace apaga e as outras teclas
-/// param nela (`capturesInput`); sem foco, a tecla do chat (`T`) foca a caixa e o caractere dela não entra (`ignoreTextInput`).
-fn book_key(open: &mut Open, key: &str) -> bool {
+/// param nela (`capturesInput`); sem foco, a tecla do chat (`T`) foca a caixa e o caractere dela não entra (`ignoreTextInput`), e o Enter,
+/// o Enter numérico e o espaço (`isSelection`) tocam o som do botão e mandam colocar de novo a última receita clicada.
+fn book_key(open: &mut Open, key: &str, shift: bool, pending: &mut Vec<Action>, click_sound: &mut bool, ghost: &mut Option<i32>) -> bool {
     let Some(view) = open.book.as_mut() else {
         return false;
     };
@@ -2190,7 +2475,67 @@ fn book_key(open: &mut Open, key: &str) -> bool {
         open.book_focus_ms = now_ms();
         return true;
     }
+    if key_is_selection(key)
+        && let Some(click) = view.place_last()
+    {
+        *click_sound = true;
+        if let rbv::PageClick::Place(id) = click {
+            *ghost = None;
+            pending.push(Action::PlaceRecipe { id, max: shift });
+            return true;
+        }
+    }
     false
+}
+
+/// `InputWithModifiers.isSelection`: Enter, espaço e o Enter do teclado numérico.
+fn key_is_selection(key: &str) -> bool {
+    matches!(key, "key.keyboard.enter" | "key.keyboard.space" | "key.keyboard.keypad.enter")
+}
+
+/// As teclas que não clicam num slot: só as da barra (1 a 9), a da outra mão (`F`) e a de largar (`Q`) clicam.
+fn key_is_book_only(key: &str) -> bool {
+    !matches!(
+        key,
+        "key.keyboard.1" | "key.keyboard.2" | "key.keyboard.3" | "key.keyboard.4" | "key.keyboard.5" | "key.keyboard.6" | "key.keyboard.7" | "key.keyboard.8"
+            | "key.keyboard.9" | "key.keyboard.f" | "key.keyboard.q"
+    )
+}
+
+/// Se o slot sob o cursor (`hoveredSlot`) é um slot de receita da máquina (`isRecipeCraftingSlot`: a entrada e a saída dos
+/// `RecipeContainers`). Pergunta ao jogo, que passa pelo filtro das janelas: chame sem segurar a trava do estado.
+fn crafting_slot_hovered(game: &Game<'_>, spec: Option<&UpgradeWindowSpec>) -> bool {
+    let Some(spec) = spec.filter(|spec| spec.book.is_some()) else {
+        return false;
+    };
+    let Some(renderer) = game.renderer.as_ref() else {
+        return false;
+    };
+    let batch = HudBatch::new([renderer.config.width, renderer.config.height]);
+    game.slot_at(&batch, game.cursor.0, game.cursor.1).is_some_and(|slot| spec.book_slots.iter().any(|index| slot == 300 + index))
+}
+
+/// `VirtualRecipeBookComponent.slotClicked` de um slot de receita: os fantasmas somem (`clearGhostValues`) e `lastPlacedRecipe` volta
+/// a nulo. O `updateStackedContents` que o segue acontece no quadro, quando o inventário muda.
+fn recipe_slot_clicked(state: &mut Client) {
+    state.ghost = None;
+    if let Some(carry) = state.book_carry.as_mut() {
+        carry.slot_clicked();
+    }
+    for open in state.windows.iter_mut() {
+        if let Some(view) = open.book.as_mut() {
+            view.slot_clicked();
+        }
+    }
+}
+
+/// `MultiPlayerGameMode.handleInventoryButtonClick` e `handlePlaceRecipe`: um botão do menu aberto vai ao servidor
+/// (`ServerboundContainerButtonClickPacket`), que o entrega ao dono do bloco (`menu_button`) no turno de quem clicou.
+fn send_menu_button(game: &mut Game<'_>, button: i32) {
+    let window = game.remote.as_ref().and_then(|remote| remote.menu.as_ref()).map(|(window, _)| *window);
+    if let Some(container) = window {
+        game.send(horizon_protocol::packets::play::Serverbound::ContainerButtonClick(horizon_protocol::packets::play::ContainerButtonClick { container, button }));
+    }
 }
 
 /// O caractere com o livro aberto (`RecipeBookComponent.charTyped`): entra na caixa focada.
@@ -2328,6 +2673,69 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
         if visible {
             sprite_at(batch, &format!("recipe_book/{name}{}", if over(rect) { "_highlighted" } else { "" }), rect[0], rect[1]);
         }
+    }
+    // `graphics.nextStratum(); overlay.extractRenderState(...)`: o overlay das variantes por cima de tudo da página. As coordenadas dele
+    // são as do clique, relativas à janela (a origem do livro fica em `BOOK_ORIGIN`).
+    if let Some(overlay) = &view.overlay {
+        let (wx, wy) = (xi - BOOK_ORIGIN[0], yi - BOOK_ORIGIN[1]);
+        let [x, y, w, h] = overlay.background();
+        horizon_client::ui::nine_slice(batch, atlas, "gui/sprites/recipe_book/overlay_recipe", (wx + x) as f32, (wy + y) as f32, w as f32, h as f32, u32::MAX);
+        let select = rb::slot_select_index(view.time);
+        for button in &overlay.buttons {
+            let rect = [wx + button.rect[0], wy + button.rect[1], button.rect[2], button.rect[3]];
+            draw_overlay_button(game, batch, view.data(), button, rect, over(rect), select);
+        }
+    }
+}
+
+/// `MekanismOverlayRecipeButton`: o sprite pelo número de entradas da máquina (uma, o do forno; mais, o da bancada, que é o que o
+/// original usa enquanto não tem os dele), com o estado de fazível e o de sob o mouse, e cada ingrediente a 0,375 do tamanho na grade
+/// do botão: o item com a quantidade, ou o químico em mosaico com a quantidade quando não é 1.
+fn draw_overlay_button(game: &Game<'_>, batch: &mut HudBatch, data: &rbv::BookData, button: &rbv::OverlayButton, rect: rb::Rect, hovered: bool, select: i32) {
+    let atlas = &game.gui.atlas;
+    let Some(ghost) = data.ghost(button.id) else {
+        return;
+    };
+    // `inputs.size()` dos `RecipeContainers`: nas máquinas portadas é o número de ingredientes do display.
+    let inputs = ghost.1.len();
+    let base = if inputs == 1 { "furnace_overlay" } else { "crafting_overlay" };
+    let name = match (button.craftable, hovered) {
+        (true, false) => base.to_owned(),
+        (false, false) => format!("{base}_disabled"),
+        (true, true) => format!("{base}_highlighted"),
+        (false, true) => format!("{base}_disabled_highlighted"),
+    };
+    batch.sprite(atlas, &format!("gui/sprites/recipe_book/{name}"), rect[0] as f32, rect[1] as f32);
+    const SCALE: f32 = 0.375;
+    for index in 0..inputs {
+        let (grid_x, grid_y) = match inputs {
+            1 => (1, 1),
+            2 => (if index == 0 { 0 } else { 2 }, 1),
+            3 => (index as i32, if index == 1 { 0 } else { 2 }),
+            _ => ((index % 3) as i32, (index / 3) as i32),
+        };
+        // `translate(gridPosX + pos.x, gridPosY + pos.y); scale(0.375); translate(-8, -8)`.
+        let pivot = [(rect[0] + 2 + 3 + grid_x * 7) as f32, (rect[1] + 2 + 3 + grid_y * 7) as f32];
+        let at = [pivot[0] - 8.0, pivot[1] - 8.0];
+        let start = batch.vertices.len();
+        if let Some((item, count)) = rbv::ghost_shown(ghost.1[index], select) {
+            let stack = ItemStack::new(item, count.max(1) as u32);
+            // `graphics.item(stack, 0, 0)` e `graphics.itemCount(font, stack, 0, 0, null)`.
+            game.draw_item_model(batch, &stack, at[0], at[1]);
+            game.draw_item_decorations(batch, &stack, at[0], at[1], None);
+        } else if let Some((chemical, amount)) = ghost.3.get(index).and_then(|entries| rbv::ghost_shown(entries, select)) {
+            let registry = resource::current();
+            if let Some(found) = registry.get(chemical)
+                && let Some(icon) = found.icon.as_deref()
+            {
+                basis::tank_bar_contents(game, batch, icon, [16.0, 16.0], [at[0], at[1], 16.0, 16.0], found.tint);
+            }
+            if amount != 1 {
+                let text = amount.to_string();
+                game.native_text(batch, &text, [at[0] + 17.0 - game.native_text_width(&text), at[1] + 9.0], WHITE, true);
+            }
+        }
+        batch.scale_since(start, pivot[0], pivot[1], SCALE, SCALE);
     }
 }
 
@@ -3388,6 +3796,28 @@ impl Game<'_> {
     /// Se a janela de upgrades aberta cobre o ponto `at` (relativo ao canto da tela).
     pub(in crate::game) fn mb_window_covers(&self, at: [f32; 2]) -> bool {
         covers(at)
+    }
+
+    /// O fantasma do slot de receita com o item em `at` (veja [`ghost_slot`]).
+    pub(in crate::game) fn mb_recipe_ghost_slot(&self, batch: &mut HudBatch, at: [f32; 2], inputs: usize, output: bool, index: usize) -> bool {
+        ghost_slot(self, batch, at, inputs, output, index)
+    }
+
+    /// O fantasma da barra de químico que é a entrada `index` da tela (veja [`ghost_chemical`]).
+    pub(in crate::game) fn mb_recipe_ghost_chemical(&self, inputs: usize, index: usize) -> Option<(&'static str, f64)> {
+        ghost_chemical(self, inputs, index)
+    }
+
+    /// O botão de menu da colocação de uma receita pelo livro (veja [`recipe_place_button`]).
+    pub(in crate::game) fn mb_recipe_place_button(
+        &mut self,
+        entity: &mut horizon_client::containers::ModBlockEntity,
+        id: i32,
+        tank: Option<(String, i64)>,
+        valid: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
+        can_insert: &dyn Fn(&Game<'_>, &ItemStack) -> bool,
+    ) -> bool {
+        recipe_place_button(self, entity, id, tank, valid, can_insert)
     }
 
     /// Se a janela do livro de receitas está aberta (a aba dela fica inativa, `setListenerTab`).
