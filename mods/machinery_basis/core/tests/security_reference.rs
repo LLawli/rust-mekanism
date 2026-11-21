@@ -194,6 +194,26 @@ fn the_no_access_message_is_the_red_translation() {
             text.contains(&format!("{:06X}", sec::COLOR_RED)),
             "{block}: {text} é vermelho"
         );
+        // `logFormat`: a cor de fora (o `[Mekanism]`) é a azul, e só o argumento da mensagem é vermelho.
+        assert_eq!(
+            component["translate"], "constants.mekanism.log_format",
+            "{block}"
+        );
+        assert_eq!(
+            component["color"],
+            format!("#{:06X}", sec::COLOR_DARK_BLUE),
+            "{block}: o prefixo"
+        );
+        assert_eq!(
+            component["with"][0],
+            serde_json::json!({"translate": "constants.mekanism.mod_name"}),
+            "{block}: o nome sem cor própria"
+        );
+        assert_eq!(
+            component["with"][1],
+            serde_json::json!({"translate": sec::NO_ACCESS_KEY, "color": format!("#{:06X}", sec::COLOR_RED)}),
+            "{block}: a mensagem"
+        );
     });
 }
 

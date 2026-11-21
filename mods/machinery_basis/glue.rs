@@ -2976,11 +2976,12 @@ pub(in crate::game) fn security_can_access(game: &Game<'_>, pos: [i32; 3], is_ou
     .unwrap_or_else(|| state.can_access_player(config, player, false, false, &|_, _| false))
 }
 
-/// `SecurityUtils.displayNoAccess`: a mensagem vermelha `[Mekanism] You don't have access.` ao jogador.
+/// `SecurityUtils.displayNoAccess`: `[Mekanism] You don't have access.` ao jogador, o prefixo azul e o texto vermelho (`MekanismUtils.logFormat(RED, ...)`).
 pub(in crate::game) fn security_deny(game: &mut Game<'_>, player: u128) {
     use horizon_client::mod_api::Text;
-    let line = Text::translate("constants.mekanism.log_format", &[Text::translate("constants.mekanism.mod_name", &[]), Text::translate(sec::NO_ACCESS_KEY, &[])])
-        .with_style(&horizon_client::text::Style::color(sec::COLOR_RED));
+    let message = Text::translate(sec::NO_ACCESS_KEY, &[]).with_style(&horizon_client::text::Style::color(sec::COLOR_RED));
+    let line = Text::translate("constants.mekanism.log_format", &[Text::translate("constants.mekanism.mod_name", &[]), message])
+        .with_style(&horizon_client::text::Style::color(sec::COLOR_DARK_BLUE));
     game.native_tell(player, line);
 }
 

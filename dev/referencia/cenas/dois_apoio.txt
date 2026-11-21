@@ -1,0 +1,81 @@
+# O bloco de apoio e o Configurator da Security Desk com um convidado sem acesso (frente `mesa-seguranca`, 3.ª rodada): o convidado clica no apoio e na mesa com a mão vazia,
+# usa o Configurator na mesa (`ROTATE` de pé e agachado, `CONFIGURATE_ITEMS` e `WRENCH` agachado) e em `ROTATE` numa máquina `PRIVATE` do anfitrião (`tryWrench`, `:552-554`).
+# `bloco` lê a direção (fica no estado); as fotos `conv_*` mostram a mensagem de recusa. Roda no original (`oficial_dois.sh testes/CenaDois.java cenas/dois_apoio.txt SAIDA`)
+# e no port (`H_NAME=horizon H2_HOST=Dev horizon2/h2_dois_roteiro.py cenas/dois_apoio.txt SAIDA`).
+lan 25599
+espera_convidado
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 20
+por Dev mekanism:security_desk 300
+por Dev mekanism:crusher 302
+espera 10
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 10
+anf escala 3
+conv escala 3
+anf painel 176 166
+anf abrir 302 -60 3
+espera 10
+anf clicar 188 47
+espera 5
+anf fechar
+espera 5
+nbt maquina 302 -60 3
+bloco mesa_antes 300 -60 3
+bloco maquina_antes 302 -60 3
+conv usar 300 -59 3
+espera 10
+conv ler conv_apoio
+conv foto conv_apoio
+conv fechar
+espera 5
+conv usar 300 -60 3
+espera 10
+conv ler conv_mesa
+conv fechar
+espera 5
+srv item replace entity Convidado weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+espera 10
+conv usar 300 -60 3
+espera 10
+bloco mesa_rotate 300 -60 3
+conv foto conv_rotate_mesa
+conv usar 300 -59 3
+espera 10
+bloco mesa_rotate_apoio 300 -60 3
+conv usar 302 -60 3
+espera 10
+bloco maquina_rotate 302 -60 3
+conv foto conv_rotate_maquina
+conv agachar 1
+espera 10
+conv usar 300 -60 3
+espera 10
+bloco mesa_rotate_agachado 300 -60 3
+srv item replace entity Convidado weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="configurate_items"]
+espera 10
+conv usar 300 -60 3
+espera 10
+conv foto conv_itens_agachado
+srv item replace entity Convidado weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="wrench"]
+espera 10
+conv usar 300 -60 3
+espera 10
+bloco mesa_wrench 300 -60 3
+bloco apoio_wrench 300 -59 3
+conv agachar 0
+espera 10
+srv item replace entity Dev weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+espera 10
+anf usar 302 -60 3
+espera 10
+bloco maquina_rotate_dono 302 -60 3
+fim

@@ -154,6 +154,13 @@ def act_client(who_name, a):
             if '"screen":"container"' in who("screen").replace(" ", ""):
                 break
         who("look", "0", "0")
+    elif verb == "usar":
+        # Um clique direito só (o `abrir` repete até a tela abrir: com o Configurator na mão ele giraria a cada tentativa).
+        say(f"usar {who_name} {' '.join(a[1:4])}: {who('interact', *a[1:4]).strip()[:200]}")
+        time.sleep(0.6)
+    elif verb == "agachar":
+        who("key", "shift", "down" if a[1] == "1" else "up")
+        time.sleep(0.3)
     elif verb == "fechar":
         who("close")
     elif verb == "foto":
@@ -265,6 +272,9 @@ def main():
             hcmd(f"clear {nome}")
         elif verb == "nbt":
             say(f"nbt {a[1]} " + str(hcmd(f"data get block {a[2]} {a[3]} {a[4]}")))
+        elif verb == "bloco":
+            # O estado do bloco no servidor (a direção fica no estado).
+            say(f"bloco {a[1]} " + d.host("block", a[2], a[3], a[4]).strip()[:300])
         elif verb == "freq":
             # A tabela das frequências no disco (o port não tem como mostrar a da memória): o arquivo do mundo, lido no desktop.
             arquivo = ssh(f"ls -t {SAVES}/*/data/mekanism/frequency/security/public.dat 2>/dev/null | head -1").strip()

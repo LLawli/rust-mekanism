@@ -173,6 +173,14 @@ public class CenaDois {
                 log("abrir " + pos + " -> " + result);
                 return "\"" + result + "\"";
             }
+            case "usar" -> {
+                // Um clique direito só, como o `abrir` (o do port repete até a tela abrir).
+                BlockPos pos = new BlockPos(Integer.parseInt(a[1]), Integer.parseInt(a[2]), Integer.parseInt(a[3]));
+                BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), Direction.NORTH, pos, false);
+                var result = minecraft.gameMode.useItemOn(minecraft.player, InteractionHand.MAIN_HAND, hit);
+                log("usar " + pos + " -> " + result);
+                return "\"" + result + "\"";
+            }
             case "fechar" -> {
                 minecraft.player.closeContainer();
                 return "true";
@@ -446,6 +454,11 @@ public class CenaDois {
                     var entity = server.overworld().getBlockEntity(at);
                     log("nbt " + a[1] + " " + (entity == null ? "null" : entity.saveWithFullMetadata(server.overworld().registryAccess())));
                 });
+            }
+            case "bloco" -> {
+                // `bloco NOME X Y Z`: o estado do bloco no servidor (a direção de um bloco do Mekanism fica no estado, não no tile).
+                BlockPos at = new BlockPos(Integer.parseInt(a[2]), Integer.parseInt(a[3]), Integer.parseInt(a[4]));
+                server.execute(() -> log("bloco " + a[1] + " " + server.overworld().getBlockState(at)));
             }
             case "por" -> {
                 // `por JOGADOR ITEM X`: o jogador põe o bloco do item em (X, -60, 3) clicando em cima do bloco de baixo (`ServerPlayerGameMode.useItemOn`), e fica o dono dele.

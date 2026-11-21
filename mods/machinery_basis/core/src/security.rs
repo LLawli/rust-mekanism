@@ -28,6 +28,8 @@ pub const COLOR_GRAY: u32 = 0xCFCFCF;
 pub const COLOR_DARK_GRAY: u32 = 0x7A7A7A;
 pub const COLOR_BRIGHT_GREEN: u32 = 0x75FF89;
 pub const COLOR_RED: u32 = 0xFF383C;
+/// `EnumColor.DARK_BLUE`: a cor do `[Mekanism]` de `MekanismUtils.logFormat`.
+pub const COLOR_DARK_BLUE: u32 = 0x366BD0;
 pub const COLOR_INDIGO: u32 = 0x559EFF;
 
 impl SecurityMode {
@@ -652,7 +654,8 @@ pub fn tab_click(state: &SecurityState, player: u128, button: u8) -> Option<bool
     (state.owner_matches(player) && (button == LEFT || button == RIGHT)).then_some(button == LEFT)
 }
 
-/// `SecurityUtils.displayNoAccess`: `MekanismUtils.logFormat(RED, NO_ACCESS)`, o texto que o jogador recebe ao ser recusado.
+/// `SecurityUtils.displayNoAccess`: `MekanismUtils.logFormat(RED, NO_ACCESS)`, o texto que o jogador recebe ao ser recusado: `LOG_FORMAT.translateColored(DARK_BLUE,
+/// MEKANISM, RED, NO_ACCESS)`, o `[Mekanism]` em `COLOR_DARK_BLUE` (a cor do `translatable` de fora) e só o texto em `COLOR_RED`.
 pub const NO_ACCESS_KEY: &str = "security.mekanism.no_access";
 
 #[cfg(test)]
