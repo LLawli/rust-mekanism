@@ -664,6 +664,200 @@ pub const TIERS_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
+        // `TierConfig.addFluidTankCategory`: a capacidade e a taxa de cada tier, como a dos cubos.
+        ClientSection {
+            name: "fluid_tanks",
+            comment: "Settings for configuring Fluid Tanks",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic fluid tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 32_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicOutput",
+                    comment: "Output rate in mB of Basic fluid tanks.",
+                    setting: ClientSetting::Int {
+                        default: 1_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced fluid tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 64_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedOutput",
+                    comment: "Output rate in mB of Advanced fluid tanks.",
+                    setting: ClientSetting::Int {
+                        default: 4_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite fluid tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 128_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteOutput",
+                    comment: "Output rate in mB of Elite fluid tanks.",
+                    setting: ClientSetting::Int {
+                        default: 16_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate fluid tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 256_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateOutput",
+                    comment: "Output rate in mB of Ultimate fluid tanks.",
+                    setting: ClientSetting::Int {
+                        default: 64_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeCapacity",
+                    comment: "Capacity of Creative fluid tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: i64::MAX,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeOutput",
+                    comment: "Output rate in mB of Creative fluid tanks.",
+                    setting: ClientSetting::Int {
+                        default: i32::MAX,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
+        // `TierConfig.addChemicalTankCategory`: a capacidade e a taxa de cada tier, como a dos cubos.
+        ClientSection {
+            name: "chemical_tanks",
+            comment: "Settings for configuring Chemical Tanks",
+            entries: &[
+                ClientEntry {
+                    key: "basicCapacity",
+                    comment: "Capacity of Basic chemical tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 64_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "basicOutput",
+                    comment: "Output rate in mB of Basic chemical tanks.",
+                    setting: ClientSetting::Int {
+                        default: 1_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedCapacity",
+                    comment: "Capacity of Advanced chemical tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 256_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "advancedOutput",
+                    comment: "Output rate in mB of Advanced chemical tanks.",
+                    setting: ClientSetting::Int {
+                        default: 16_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteCapacity",
+                    comment: "Capacity of Elite chemical tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 1_024_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "eliteOutput",
+                    comment: "Output rate in mB of Elite chemical tanks.",
+                    setting: ClientSetting::Int {
+                        default: 128_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateCapacity",
+                    comment: "Capacity of Ultimate chemical tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: 8_192_000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "ultimateOutput",
+                    comment: "Output rate in mB of Ultimate chemical tanks.",
+                    setting: ClientSetting::Int {
+                        default: 512_000,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeCapacity",
+                    comment: "Capacity of Creative chemical tanks in mB.",
+                    setting: ClientSetting::Long {
+                        default: i64::MAX,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "creativeOutput",
+                    comment: "Output rate in mB of Creative chemical tanks.",
+                    setting: ClientSetting::Int {
+                        default: i32::MAX,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+            ],
+        },
         // `TierConfig.addInductionCategory` (`:92-108`): a capacidade de cada célula (`<tier>Capacity`, `1..Long.MAX_VALUE`); a saída dos provedores, que vem depois, espera o provedor.
         ClientSection {
             name: "induction",
@@ -1412,6 +1606,12 @@ pub struct ServerConfig {
     /// `EnergyCubeTier.getTransferRate`, na mesma ordem.
     pub cube_rates: [i32; 5],
     pub cells: [i64; 4],
+    /// `FluidTankTier.getCapacity` e `getTransferRate`, na ordem de [`FLUID_TANK_TIERS`].
+    pub fluid_tanks: [i64; 5],
+    pub fluid_tank_rates: [i32; 5],
+    /// `ChemicalTankTier.getCapacity` e `getTransferRate`, na ordem de [`CHEMICAL_TANK_TIERS`].
+    pub chemical_tanks: [i64; 5],
+    pub chemical_tank_rates: [i32; 5],
     pub gear: Gear,
 }
 
@@ -1428,6 +1628,10 @@ impl ServerConfig {
         transporter_speeds: DEFAULT_TRANSPORTER_SPEEDS,
         cubes: DEFAULT_CUBE_CAPACITIES,
         cube_rates: DEFAULT_CUBE_RATES,
+        fluid_tanks: DEFAULT_FLUID_TANK_CAPACITIES,
+        fluid_tank_rates: DEFAULT_FLUID_TANK_RATES,
+        chemical_tanks: DEFAULT_CHEMICAL_TANK_CAPACITIES,
+        chemical_tank_rates: DEFAULT_CHEMICAL_TANK_RATES,
         cells: DEFAULT_CELL_CAPACITIES,
         gear: Gear::DEFAULT,
     };
@@ -1841,6 +2045,72 @@ pub fn filled_variant_energy(item: &str, config: &ServerConfig) -> Option<i64> {
     cube_tier(item)
         .filter(|tier| *tier < 4)
         .map(|tier| config.cubes[tier])
+}
+
+/// Os cinco Fluid Tanks, do básico ao criativo (`FluidTankTier`).
+pub const FLUID_TANK_TIERS: [&str; 5] = [
+    "mekanism:basic_fluid_tank",
+    "mekanism:advanced_fluid_tank",
+    "mekanism:elite_fluid_tank",
+    "mekanism:ultimate_fluid_tank",
+    "mekanism:creative_fluid_tank",
+];
+/// `FluidTankTier.getBaseCapacity` e `getBaseTransferRate` (`FluidTankTier.java:27-31`).
+pub const DEFAULT_FLUID_TANK_CAPACITIES: [i64; 5] = [32_000, 64_000, 128_000, 256_000, i64::MAX];
+pub const DEFAULT_FLUID_TANK_RATES: [i32; 5] = [1_000, 4_000, 16_000, 64_000, i32::MAX];
+/// Os cinco Chemical Tanks, do básico ao criativo (`ChemicalTankTier`).
+pub const CHEMICAL_TANK_TIERS: [&str; 5] = [
+    "mekanism:basic_chemical_tank",
+    "mekanism:advanced_chemical_tank",
+    "mekanism:elite_chemical_tank",
+    "mekanism:ultimate_chemical_tank",
+    "mekanism:creative_chemical_tank",
+];
+/// `ChemicalTankTier.getBaseCapacity` e `getBaseTransferRate` (`ChemicalTankTier.java:27-31`).
+pub const DEFAULT_CHEMICAL_TANK_CAPACITIES: [i64; 5] =
+    [64_000, 256_000, 1_024_000, 8_192_000, i64::MAX];
+pub const DEFAULT_CHEMICAL_TANK_RATES: [i32; 5] = [1_000, 16_000, 128_000, 512_000, i32::MAX];
+/// O tier criativo dos dois tanques.
+pub const TANK_CREATIVE: usize = 4;
+/// `MekanismDataComponents.EDIT_MODE` e `BUCKET_MODE`.
+pub const EDIT_MODE_COMPONENT: &str = "mekanism:edit_mode";
+pub const BUCKET_MODE_COMPONENT: &str = "mekanism:bucket_mode";
+/// `MekanismDataComponents.DUMP_MODE`.
+pub const DUMP_MODE_COMPONENT: &str = "mekanism:dump_mode";
+
+/// `MekanismConfig.general.blockDeactivationDelay` de agora: o atraso da luz de um Fluid Tank que esvazia.
+pub fn block_deactivation_delay_now() -> i32 {
+    settings::block_deactivation_delay()
+}
+
+/// O Fluid Tank que o bloco ou o item é, na ordem de [`FLUID_TANK_TIERS`].
+pub fn fluid_tank_tier(id: &str) -> Option<usize> {
+    FLUID_TANK_TIERS.iter().position(|tank| *tank == id)
+}
+
+/// O Chemical Tank que o bloco ou o item é, na ordem de [`CHEMICAL_TANK_TIERS`].
+pub fn chemical_tank_tier(id: &str) -> Option<usize> {
+    CHEMICAL_TANK_TIERS.iter().position(|tank| *tank == id)
+}
+
+/// A capacidade e a taxa dos cinco tiers de uma seção de tanques do `tiers.toml` (`fluid_tanks` ou `chemical_tanks`): o valor do arquivo, ou o padrão sem ele.
+pub fn tank_tiers(
+    loaded: &ClientLoaded,
+    section: &str,
+    capacities: [i64; 5],
+    rates: [i32; 5],
+) -> ([i64; 5], [i32; 5]) {
+    const TIERS: [&str; 5] = ["basic", "advanced", "elite", "ultimate", "creative"];
+    let (mut capacities, mut rates) = (capacities, rates);
+    for (index, tier) in TIERS.iter().enumerate() {
+        if let Some(value) = loaded.long(&TIERS_CONFIG, section, &format!("{tier}Capacity")) {
+            capacities[index] = value;
+        }
+        if let Some(value) = loaded.int(&TIERS_CONFIG, section, &format!("{tier}Output")) {
+            rates[index] = value;
+        }
+    }
+    (capacities, rates)
 }
 
 /// O cubo de energia que o item é, na ordem de [`CUBE_TIERS`].

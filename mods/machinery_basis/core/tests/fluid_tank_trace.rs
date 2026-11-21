@@ -553,3 +553,53 @@ fn changing_the_edit_mode_clears_the_direction_of_the_slot_like_the_original() {
 fn the_light_delay_follows_the_original() {
     replay("light");
 }
+
+/// `BlockFluidTank.useItemOn` -> `FluidUtil.interactWithFluidHandler`: primeiro o tanque enche o item da mão, e só se nada passou o item
+/// esvazia no tanque. Sem rastro: confere a ordem lida no NeoForge (`FluidUtil.java`, `ResourceHandlerUtil.moveFirst`).
+#[test]
+fn a_bucket_clicked_on_the_block_is_filled_first_and_emptied_only_if_nothing_moved() {
+    use machinery_basis_core::fluid_tank::FaceHandler;
+    use machinery_basis_core::item_access::{StackAccess, move_first};
+    let clock = Rc::new(Cell::new(1));
+    let items = lookup(clock);
+    let tile = FluidTankTile::new(FluidTankConfig {
+        capacity: 32_000,
+        rate: 1_000,
+        creative: false,
+        deactivation_delay: 60,
+        items: items.clone(),
+    });
+    tile.tank()
+        .inner()
+        .set_contents(Some(fluid("water")), 5_000, None);
+    let click = |hand: &StackAccess, top: bool| {
+        let block = FaceHandler { tile: &tile, top };
+        let held = items(hand).unwrap();
+        let transaction = Transaction::open_root();
+        let moved = move_first(&block, held.as_ref(), i32::MAX, Some(&transaction))
+            .map(|(_, amount)| -amount)
+            .or_else(|| {
+                move_first(held.as_ref(), &block, i32::MAX, Some(&transaction))
+                    .map(|(_, amount)| amount)
+            });
+        transaction.commit();
+        moved
+    };
+    // O balde vazio enche do tanque.
+    let hand = StackAccess::of(&item(BUCKET));
+    assert_eq!(click(&hand, false), Some(-1_000));
+    assert_eq!(&*hand.resource().unwrap().id, "minecraft:water_bucket");
+    assert_eq!(tile.tank().amount(), 4_000);
+    // O balde cheio não recebe mais nada, e esvazia no tanque; pelo topo a válvula marca.
+    assert_eq!(click(&hand, true), Some(1_000));
+    assert_eq!(&*hand.resource().unwrap().id, BUCKET);
+    assert_eq!(tile.tank().amount(), 5_000);
+    assert_eq!(tile.valve_fluid(), Some(fluid("water")));
+    // Lava num tanque de água não entra, e o balde de lava não recebe água.
+    let lava = StackAccess::of(&item("minecraft:lava_bucket"));
+    assert_eq!(click(&lava, false), None);
+    // Um item de tanque vazio recebe tudo o que o tanque tem: a mão é `MANUAL` só no uso do item no mundo, aqui o limite é o da taxa.
+    let tank_item = StackAccess::of(&ItemResource::new("mekanism:basic_fluid_tank", 64));
+    assert_eq!(click(&tank_item, false), Some(-1_000));
+    assert_eq!(tile.tank().amount(), 4_000);
+}

@@ -296,6 +296,7 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
     crate::game::mekanism_cube::block_entity(block, entity);
+    crate::game::mekanism_tank::block_entity(block, entity);
     crate::game::mekanism_desk::block_entity(block, entity);
     if is_machine(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
@@ -315,6 +316,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
+    crate::game::mekanism_tank::ticks(block, ticks);
     crate::game::mekanism_desk::ticks(block, ticks);
     if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block) {
         *ticks = true;
@@ -470,6 +472,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     crate::game::mekanism_cube::container(block, container);
+    crate::game::mekanism_tank::container(block, container);
     crate::game::mekanism_desk::container(block, container);
     // O transportador logístico: um slot que parece sempre vazio (`TransporterItemHandler.size() == 1`), só para um funil, um dropper e o ejetor de outra máquina o acharem como contêiner;
     // a inserção de verdade é do hook `transporter_insert` (`Game::move_in_item`), que a leva para o dono dos transportadores.
@@ -2040,6 +2043,7 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::CONFIGURATOR_MODE_COMPONENT.to_owned());
     types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
     types.push(rules::ENERGY_COMPONENT.to_owned());
+    crate::game::mekanism_tank::component_types(types);
     types.extend(basis::CONTENT_COMPONENTS.map(str::to_owned));
     types.extend(basis::SECURITY_COMPONENTS.map(str::to_owned));
 }
@@ -2173,7 +2177,7 @@ fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i3
 
 /// `hasAnalogOutputSignal`: toda máquina do mod tem `AttributeComparator`.
 pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
-    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some() || crate::game::mekanism_cube::is_cube(block)) {
+    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some() || crate::game::mekanism_cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block)) {
         *output = true;
     }
 }
@@ -2382,6 +2386,10 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             server.conductors = rules::conductor_values(&loaded);
             server.cubes = rules::cube_capacities(&loaded);
             server.cube_rates = rules::cube_rates(&loaded);
+            (server.fluid_tanks, server.fluid_tank_rates) =
+                rules::tank_tiers(&loaded, "fluid_tanks", rules::DEFAULT_FLUID_TANK_CAPACITIES, rules::DEFAULT_FLUID_TANK_RATES);
+            (server.chemical_tanks, server.chemical_tank_rates) =
+                rules::tank_tiers(&loaded, "chemical_tanks", rules::DEFAULT_CHEMICAL_TANK_CAPACITIES, rules::DEFAULT_CHEMICAL_TANK_RATES);
             server.cells = rules::cell_capacities(&loaded);
         }
         rules::GEAR_CONFIG_FILE => {
@@ -2552,11 +2560,20 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     let canceled_before = *canceled;
     let block = game.native_block(pos);
     // `BlockMekanism.getDestroyProgress`: quem não acessa o bloco não o quebra (progresso zero, sem mensagem).
-    if !canceled_before && (machine_of(&block).is_some() || crate::game::mekanism_cube::is_cube(&block)) && basis::security_break(game, pos, &is_machine_id) {
+    if !canceled_before
+        && (machine_of(&block).is_some() || crate::game::mekanism_cube::is_cube(&block) || crate::game::mekanism_tank::is_tank(&block))
+        && basis::security_break(game, pos, &is_machine_id)
+    {
         *canceled = true;
         return;
     }
     let canceled = canceled_before;
+    if !canceled && crate::game::mekanism_tank::is_tank(&block) {
+        basis::security_destroying(game, pos, &is_machine_id);
+        basis::name_destroying(game, pos, &is_machine_id);
+        crate::game::mekanism_tank::destroying(game, pos);
+        return;
+    }
     if !canceled && crate::game::mekanism_cube::is_cube(&game.native_block(pos)) {
         basis::security_destroying(game, pos, &is_machine_id);
         basis::name_destroying(game, pos, &is_machine_id);
@@ -2834,7 +2851,7 @@ pub(in crate::game) fn item_has_owner(item: &str) -> bool {
 }
 
 fn is_machine_id(id: &str) -> bool {
-    machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id)
+    machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id) || crate::game::mekanism_tank::is_tank(id)
 }
 
 fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client::text::Text {
@@ -3010,6 +3027,10 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
         crate::game::mekanism_cube::place_block(game, stack, pos);
         return;
     }
+    if crate::game::mekanism_tank::is_tank(&block) {
+        crate::game::mekanism_tank::place_block(game, stack, pos);
+        return;
+    }
     if is_machine_id(&block) {
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
@@ -3044,6 +3065,7 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     crate::game::mekanism_desk::loot_drops(game, context, drops);
+    crate::game::mekanism_tank::loot_drops(game, context, drops);
     basis::name_loot(game, context, drops, &is_machine_id);
     basis::security_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
@@ -3338,6 +3360,8 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         basis::cable_tick(game, pos, entity);
     } else if crate::game::mekanism_cube::is_cube(&entity.id) {
         crate::game::mekanism_cube::tick(game, pos, entity);
+    } else if crate::game::mekanism_tank::is_tank(&entity.id) {
+        crate::game::mekanism_tank::tick(game, pos, entity);
     } else if let Some(machine) = machine_of(&entity.id) {
         tick_machine(game, pos, entity, machine);
     }

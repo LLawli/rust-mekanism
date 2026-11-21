@@ -174,6 +174,51 @@ impl ResourceContainer<FluidResource> for FluidTankTank {
     }
 }
 
+/// A capability de fluido do bloco numa face (`ValveFluidTankWrapper` no topo, o tanque nas outras), como um handler de um contêiner
+/// só: o que `BlockFluidTank.useItemOn` entrega a `FluidUtil.interactWithFluidHandler`.
+pub struct FaceHandler<'a> {
+    pub tile: &'a FluidTankTile,
+    /// A face é a de cima.
+    pub top: bool,
+}
+
+impl crate::item_access::ItemResourceHandler<FluidResource> for FaceHandler<'_> {
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn resource(&self, _index: usize) -> Option<FluidResource> {
+        self.tile.tank.resource()
+    }
+
+    fn amount_as_int(&self, _index: usize) -> i32 {
+        self.tile.tank.amount_as_int()
+    }
+
+    fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        self.tile
+            .handler_insert(self.top, resource, amount, transaction)
+    }
+
+    fn extract(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        self.tile.handler_extract(resource, amount, transaction)
+    }
+
+    fn extract_at(
+        &self,
+        _index: usize,
+        resource: &FluidResource,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
+        self.tile.handler_extract(resource, amount, transaction)
+    }
+
+    fn is_full(&self) -> bool {
+        self.tile.tank.amount() >= self.tile.tank.capacity()
+    }
+}
+
 /// `ValveJournal`.
 struct ValveState {
     fluid: Option<FluidResource>,

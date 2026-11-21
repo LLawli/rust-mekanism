@@ -81,7 +81,7 @@ fn set_mode(game: &Game<'_>, stack: &mut ItemStack, mode: ConfiguratorMode) {
 
 /// Um `TileEntityMekanism` daqui: a máquina de progresso ou o Heat Generator.
 fn is_mekanism_tile(block: &str) -> bool {
-    glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block)
+    glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block)
 }
 
 /// Um `TileEntityMekanism` daqui, contando a Security Desk: ela tem dono, inventário e `facing`, mas não tem configuração de lados, a capability do cartão nem
@@ -208,8 +208,12 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
                 None => false,
             };
         }
+        if crate::game::mekanism_tank::is_tank(&block) {
+            // `IConfigurable` do Fluid Tank (`ItemConfigurator.java:143-149`): agachado liga e desliga o empurrão para baixo, e sem agachar o clique passa.
+            return crate::game::mekanism_tank::configurator_click(game, pos, sneaking);
+        }
         if !glue::is_machine_block(&block) {
-            // `IConfigurable`: nenhum bloco daqui a expõe (a lixeira, o tanque e a bomba não existem ainda), então o clique passa.
+            // `IConfigurable`: os outros blocos que a expõem (a lixeira e a bomba) não existem ainda, então o clique passa.
             return false;
         }
         let click = glue::with_machine(game, pos, |machine| {
@@ -485,7 +489,19 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
         None if game.offhand.is_some() => rules::HeldItem::Other,
         None => rules::HeldItem::Hands,
     };
+    let is_tank = crate::game::mekanism_tank::is_tank(&block);
+    // `BlockFluidTank.useItemOn` (`BlockFluidTank.java:52-67`): depois do `tryWrench`, sem agachar, o item da mão troca fluido com o tanque pela face clicada.
+    if is_tank && matches!(held, rules::HeldItem::Other) && stack.is_some() && !sneaking {
+        match crate::game::mekanism_tank::bucket_click(game, hit.pos, hit.face[1] == 1) {
+            Some(true) => return used(game, hit.pos, stack),
+            // `FAIL` sem acesso: toma o clique e não balança a mão.
+            Some(false) => return ControlFlow::Break(Ok(false)),
+            None => {}
+        }
+    }
     match rules::tile_use(held, sneaking) {
+        // O Fluid Tank ainda não tem tela (`GuiFluidTank` é da frente do visual): o clique que a abriria é consumido e nada abre.
+        rules::TileUse::Menu if is_tank => ControlFlow::Break(Ok(true)),
         rules::TileUse::Nothing if hands_full => ControlFlow::Continue(()),
         rules::TileUse::Nothing => ControlFlow::Break(Ok(false)),
         rules::TileUse::Rotate => {

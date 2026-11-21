@@ -303,3 +303,66 @@ impl<R: PartialEq> ItemResourceHandler<R> for AccessResourceHandler<'_, R> {
         }
     }
 }
+
+/// `ResourceHandlerUtil.moveFirst(from, to, _ -> true, amount, transaction)`: o primeiro recurso de `from` de que alguma quantidade passa
+/// para `to`, e quanto passou. É o que `FluidUtil.interactWithFluidHandler` faz com o item da mão e o tanque do bloco.
+pub fn move_first<R: Clone + PartialEq>(
+    from: &dyn ItemResourceHandler<R>,
+    to: &dyn ItemResourceHandler<R>,
+    amount: i32,
+    transaction: Option<&Transaction>,
+) -> Option<(R, i32)> {
+    for index in 0..from.size() {
+        let Some(resource) = from.resource(index) else {
+            continue;
+        };
+        let moved = move_matching(from, to, &resource, amount, transaction);
+        if moved > 0 {
+            return Some((resource, moved));
+        }
+    }
+    None
+}
+
+/// `ResourceHandlerUtil.move(from, to, resource::equals, amount, transaction)`: o que sai de `from` numa simulação entra em `to`, e só
+/// vale o que `from` entrega de verdade na mesma medida.
+fn move_matching<R: Clone + PartialEq>(
+    from: &dyn ItemResourceHandler<R>,
+    to: &dyn ItemResourceHandler<R>,
+    resource: &R,
+    amount: i32,
+    transaction: Option<&Transaction>,
+) -> i32 {
+    if amount == 0 {
+        return 0;
+    }
+    let sub = Transaction::open(transaction);
+    let mut total = 0;
+    for index in 0..from.size() {
+        let Some(found) = from.resource(index) else {
+            continue;
+        };
+        if &found != resource {
+            continue;
+        }
+        let max_extracted = {
+            let simulation = Transaction::open(Some(&sub));
+            from.extract_at(index, &found, amount - total, &simulation)
+        };
+        if max_extracted == 0 {
+            continue;
+        }
+        let transfer = Transaction::open(Some(&sub));
+        let inserted = to.insert(&found, max_extracted, &transfer);
+        if inserted != from.extract_at(index, &found, inserted, &transfer) {
+            continue;
+        }
+        total += inserted;
+        transfer.commit();
+        if total >= amount {
+            break;
+        }
+    }
+    sub.commit();
+    total
+}

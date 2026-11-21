@@ -30,6 +30,15 @@ file = "crates/horizon-client/src/game.rs"
 name = "mekanism_cube"
 source = "energy_cube.rs"
 
+# Os Fluid Tanks (`TileEntityFluidTank`, `BlockFluidTank`): o tile, os dois slots, o empurrão para baixo, o balde no bloco e o conteúdo no item, sobre o
+# `fluid_tank` e o `component_container` da `machinery_basis`. Lê `Game::world` (os block entities e os chunks alterados) e `Game::audio`, e chama
+# `Game::give_or_drop` (o item que sobra de uma troca na mão) e `Game::post_block_game_event`.
+[[module]]
+id = "tank"
+file = "crates/horizon-client/src/game.rs"
+name = "mekanism_tank"
+source = "fluid_tank.rs"
+
 # A Security Desk (`TileEntitySecurityDesk`): o tile, os dois slots, o bloco de apoio em cima e os pacotes da tela, sobre a frequência de segurança da
 # `machinery_basis`. Lê `Game::world` (os block entities e os chunks alterados) e chama `Game::break_block_as_player` (quebrar o apoio quebra o principal), H278.
 [[module]]
