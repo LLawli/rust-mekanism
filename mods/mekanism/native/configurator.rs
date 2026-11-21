@@ -538,8 +538,6 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
         }
     }
     match rules::tile_use(held, sneaking) {
-        // O Fluid Tank ainda não tem tela (`GuiFluidTank` é da frente do visual): o clique que a abriria é consumido e nada abre.
-        rules::TileUse::Menu if is_tank || is_chemical_tank => ControlFlow::Break(Ok(true)),
         rules::TileUse::Nothing if hands_full => ControlFlow::Continue(()),
         rules::TileUse::Nothing => ControlFlow::Break(Ok(false)),
         rules::TileUse::Rotate => {
@@ -561,8 +559,9 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
             Some(stack) if card_use_on(game, &stack, hit.pos) => used(game, hit.pos, Some(stack)),
             _ => ControlFlow::Break(Ok(false)),
         },
-        // O cubo e a Security Desk têm o gabarito de um bloco sem menu (`lodestone`): quem abre a tela é o mod.
-        rules::TileUse::Menu if cube::is_cube(&block) || crate::game::mekanism_desk::is_desk(&block) => {
+        // O cubo, a Security Desk e os dois tanques têm o gabarito de um bloco sem menu: quem abre a tela é o mod (`GuiFluidTank` e `GuiChemicalTank` desde a 5.ª rodada
+        // da frente `tanques`).
+        rules::TileUse::Menu if cube::is_cube(&block) || crate::game::mekanism_desk::is_desk(&block) || is_tank || is_chemical_tank => {
             game.open_menu(hit.pos);
             game.trigger_default_block_use(hit.pos);
             ControlFlow::Break(Ok(true))

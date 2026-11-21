@@ -232,6 +232,8 @@ fn overlay_sprite(overlay: SlotOverlay) -> Option<&'static str> {
         SlotOverlay::Power => Some("mekanism:gui/sprites/slot/overlay/power"),
         SlotOverlay::Plus => Some("mekanism:gui/sprites/slot/overlay/plus"),
         SlotOverlay::Minus => Some("mekanism:gui/sprites/slot/overlay/minus"),
+        SlotOverlay::Input => Some("mekanism:gui/sprites/slot/overlay/input"),
+        SlotOverlay::Output => Some("mekanism:gui/sprites/slot/overlay/output"),
         _ => None,
     }
 }
@@ -634,6 +636,40 @@ pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
             width: WIDTH,
             height: HEIGHT,
             slots: rules::CUBE_SLOTS_SPEC.iter().map(|slot| Some(slot.item)).collect(),
+            inventory_y: 84.0,
+            inventory_x: 8.0,
+            own_labels: true,
+            own_background: true,
+        });
+        return;
+    }
+    if crate::game::mekanism_tank::is_tank(block) || crate::game::mekanism_chemical_tank::is_tank(block) {
+        let chemical = crate::game::mekanism_chemical_tank::is_tank(block);
+        // `GuiFluidTank` e `GuiChemicalTank`: a barra de armadura à esquerda (`armorSideBar()`), os dois slots do tile e as abas da lateral; sem slots virtuais (os tanques
+        // não têm upgrades).
+        crate::game::machinery_armor_bar::declare(block, rules::tank_armor_bar_declaration);
+        machinery_basis_core::screen_elements::declare_once(block, || {
+            use machinery_basis_core::screen_elements::Element;
+            if chemical {
+                vec![
+                    Element::always(machinery_basis_core::redstone_tab::tab(rules::SCREEN_IMAGE_WIDTH).button()),
+                    Element::always(machinery_basis_core::side_tab::security_tab(rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y).button()),
+                    Element::when(machinery_basis_core::redstone_tab::warning_tab_rect(rules::SCREEN_IMAGE_WIDTH, false), |mirror| {
+                        machinery_basis_core::redstone_tab::warning(rules::chemical_tank_redstone(mirror))
+                    }),
+                ]
+            } else {
+                vec![
+                    Element::always(machinery_basis_core::side_tab::security_tab(rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y).button()),
+                    Element::always(rules::edit_mode_tab().button()),
+                ]
+            }
+        });
+        let slots = if chemical { &rules::CHEMICAL_TANK_SLOTS_SPEC } else { &rules::FLUID_TANK_SLOTS_SPEC };
+        *screen = Some(NativeScreen {
+            width: WIDTH,
+            height: HEIGHT,
+            slots: slots.iter().map(|slot| Some(slot.item)).collect(),
             inventory_y: 84.0,
             inventory_x: 8.0,
             own_labels: true,
@@ -2697,6 +2733,9 @@ fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
         crate::game::mekanism_cube::publish_slot_rules(game, pos, RULES_OWNER);
         return;
     }
+    if crate::game::mekanism_tank::publish_slot_rules(game, pos, RULES_OWNER) || crate::game::mekanism_chemical_tank::publish_slot_rules(game, pos, RULES_OWNER) {
+        return;
+    }
     // A Security Desk: os itens que têm dono são os dos blocos com segurança (as máquinas, os cubos e a própria mesa).
     if crate::game::mekanism_desk::publish_slot_rules(game, pos, RULES_OWNER, basis::security_ownable) {
         return;
@@ -3152,6 +3191,11 @@ fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
     with_content(&block, |spec| basis::content_destroying(game, pos, spec));
 }
 
+/// Um Fluid Tank ou um Chemical Tank.
+fn is_any_tank(block: &str) -> bool {
+    crate::game::mekanism_tank::is_tank(block) || crate::game::mekanism_chemical_tank::is_tank(block)
+}
+
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>, cancel: &mut bool) {
     // A Security Desk: só o dono a abre.
     if !*cancel
@@ -3164,7 +3208,7 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
     // `TileEntityMekanism.openGui`: sem acesso a mensagem sai e o menu não abre.
     if !*cancel
         && let Some(at) = pos
-        && (is_machine(&game.native_block(at)) || crate::game::mekanism_cube::is_cube(&game.native_block(at)))
+        && (is_machine(&game.native_block(at)) || crate::game::mekanism_cube::is_cube(&game.native_block(at)) || is_any_tank(&game.native_block(at)))
         && basis::security_open(game, player, at, &is_machine_id)
     {
         *cancel = true;
@@ -3174,7 +3218,7 @@ pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: 
     // `MekanismTileContainer.openInventory`: o jogador entra no `playersUsing` e recebe os dados do menu.
     if let Some(pos) = pos {
         let block = game.native_block(pos);
-        if is_machine(&block) || crate::game::mekanism_cube::is_cube(&block) {
+        if is_machine(&block) || crate::game::mekanism_cube::is_cube(&block) || is_any_tank(&block) {
             game.mb_container_open(player, pos, &block);
         }
     }
@@ -3622,11 +3666,15 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
         return;
     }
     // `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE`: a aba de segurança das máquinas e dos cubos.
-    if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some()) && basis::security_menu_button(game, entity, id) {
+    if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some() || is_any_tank(&entity.id)) && basis::security_menu_button(game, entity, id) {
+        return;
+    }
+    // `PacketGuiInteract.NEXT_MODE` e `PREVIOUS_MODE` (a aba do modo de edição do Fluid Tank) e `GAS_MODE_BUTTON` (o modo de descarte do Chemical Tank).
+    if crate::game::mekanism_tank::menu_button(game, pos, entity, id) || crate::game::mekanism_chemical_tank::menu_button(game, pos, entity, id) {
         return;
     }
     // `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`: a aba de redstone das máquinas e dos cubos; quem não tem acesso é ignorado.
-    if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some())
+    if (machine_of(&entity.id).is_some() || rules::cube_tier(&entity.id).is_some() || crate::game::mekanism_chemical_tank::is_tank(&entity.id))
         && let Some(change) = basis::redstone_menu_button(game, entity, id)
     {
         if let Some(forward) = change {
@@ -3652,6 +3700,10 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
 fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, forward: bool) {
     if rules::cube_tier(&entity.id).is_some() {
         crate::game::mekanism_cube::step_control(game, pos, entity, forward);
+        return;
+    }
+    if crate::game::mekanism_chemical_tank::is_tank(&entity.id) {
+        crate::game::mekanism_chemical_tank::step_control(game, pos, entity, forward);
         return;
     }
     let key = (game.native_dimension(), pos);
@@ -3694,6 +3746,10 @@ fn input_stacks_of(entity: &ModBlockEntity) -> Vec<Option<ItemStack>> {
 pub(in crate::game) fn screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool, button: &mut Option<i32>) {
     if is_infuser(block) && inside(DUMP_RECT, at) {
         *button = Some(DUMP_BUTTON);
+        return;
+    }
+    if is_any_tank(block) {
+        *button = tank_screen_click(game, block, at, right);
         return;
     }
     // `GuiSecurityTab.onClick`: os dois botões do mouse, na aba de segurança das máquinas e dos cubos.
@@ -3753,6 +3809,12 @@ pub(in crate::game) fn widget_tooltip(
 ) -> bool {
     if let Some(tier) = rules::cube_tier(block) {
         return cube_tooltip(game, batch, block, tier, at, cursor);
+    }
+    if let Some(tier) = crate::game::mekanism_tank::tier_of(block) {
+        return fluid_tank_tooltip(game, batch, block, tier, at, cursor);
+    }
+    if let Some(tier) = crate::game::mekanism_chemical_tank::tier_of(block) {
+        return chemical_tank_tooltip(game, batch, block, tier, at, cursor);
     }
     if let Some(drawn) = crate::game::mekanism_desk::widget_tooltip(game, batch, block, at, cursor) {
         return drawn;
@@ -4014,6 +4076,14 @@ pub(in crate::game) fn screen_draw(
         draw_cube(game, block, tier, batch, origin);
         return;
     }
+    if let Some(tier) = crate::game::mekanism_tank::tier_of(block) {
+        draw_fluid_tank(game, block, tier, batch, origin);
+        return;
+    }
+    if let Some(tier) = crate::game::mekanism_chemical_tank::tier_of(block) {
+        draw_chemical_tank(game, block, tier, batch, origin);
+        return;
+    }
     if crate::game::mekanism_desk::screen_draw(game, block, batch, origin, &PANEL) {
         return;
     }
@@ -4123,6 +4193,194 @@ fn cube_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, tier: usize,
         return true;
     }
     false
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// As telas dos tanques (`GuiFluidTank` e `GuiChemicalTank`).
+
+/// A capacidade do tanque no cliente: o contêiner dele nasce com a do tier (`tiers.toml`), e o criativo é `Long.MAX_VALUE`.
+fn fluid_tank_capacity(tier: usize) -> i64 {
+    server_config().fluid_tanks[tier]
+}
+
+fn chemical_tank_capacity(tier: usize) -> i64 {
+    server_config().chemical_tanks[tier]
+}
+
+/// O suporte da armadura (`GuiSideHolder.armorHolder`) e os slots dela, e os dois slots do tile com a moldura e o desenho de cada um.
+fn draw_tank_slots(game: &Game<'_>, batch: &mut HudBatch, block: &str, origin: [f32; 2], slots: &[machinery_basis_core::slot_view::SlotSpec; 2], config: Option<&machinery_basis_core::slot_view::ItemConfig>) {
+    let [x, y] = origin;
+    let [holder_x, holder_y, width, height] = rules::TANK_ARMOR_HOLDER;
+    for cell in gui::nine_slice_cells(machinery_basis_core::side_tab::HOLDER_SLICE, [x + holder_x, y + holder_y, width, height]) {
+        basis::sprite_tinted(game, batch, rules::TANK_ARMOR_HOLDER_SPRITE, cell.src, cell.dst, 0xFF_FF_FF_FF);
+    }
+    for slot in machinery_basis_core::armor_bar::slots(block) {
+        basis::slot(game, batch, origin, [slot.x as f32, slot.y as f32], Some(SLOT), None);
+    }
+    for (index, slot) in slots.iter().enumerate() {
+        let frame = machinery_basis_core::slot_view::slot_type(config, index, slot.container).map(slot_sprite);
+        basis::slot(game, batch, origin, slot.item, frame, slot.overlay.and_then(overlay_sprite));
+    }
+}
+
+/// O sprite parado e a cor de um fluido no atlas da tela (`MekanismRenderer.getFluidTexture(type, STILL)` e `MekanismRenderer.color`): os do jogo entram no atlas sem o
+/// namespace.
+fn gui_fluid(id: &str) -> Option<(String, u32)> {
+    let look = contents_fluid(id)?;
+    let sprite = look.sprite.strip_prefix("minecraft:").map(str::to_owned).unwrap_or(look.sprite);
+    Some((sprite, 0xFF_00_00_00 | look.rgb))
+}
+
+/// A ordem dos `addRenderableWidget` de `GuiFluidTank`: o suporte da armadura, os slots, a aba de segurança (`addGenericTabs`), a aba do modo de edição e o medidor largo.
+fn draw_fluid_tank(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, origin: [f32; 2]) {
+    use machinery_basis_core::side_tab::ButtonLook;
+    let [x, y] = origin;
+    let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
+    let mirror = game.mb_mirror(block);
+    let read = rules::FluidTankScreenData::read(&mirror);
+    let title = screen_title(game, &format!("container.mekanism.{}", block.trim_start_matches("mekanism:")));
+    basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
+    draw_tank_slots(game, batch, block, origin, &rules::FLUID_TANK_SLOTS_SPEC, None);
+    basis::security_draw(game, batch, origin, &rules::fluid_tank_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
+    let tab = rules::edit_mode_tab();
+    let cursor = game.native_cursor();
+    let rel = [cursor[0] - x, cursor[1] - y];
+    let hovered = !game.mb_window_covers(rel) && tab.is_mouse_over(true, true, rel);
+    basis::inset_tab(game, batch, "mekanism", tab, origin, rules::EDIT_MODE_TAB_TINT, rules::edit_mode_icon(read.mode), ButtonLook::of(true, hovered));
+    let gauge = rules::FLUID_TANK_GAUGE;
+    let scaled = gui::gauge_level(read.fluid.amount, fluid_tank_capacity(tier).max(0) as u64, gauge[3] as i32);
+    let look = (scaled > 0).then(|| gui_fluid(&read.fluid.resource)).flatten();
+    let fill = look.as_ref().map(|(sprite, tint)| (sprite.as_str(), [CHEMICAL_FRAME; 2], *tint));
+    basis::gauge(game, batch, &CUBE_GAUGE_STYLE, at(gauge), scaled, fill);
+}
+
+/// Os tooltips de `GuiFluidTank`: a aba de segurança, a aba do modo de edição (`ContainerEditMode.getTextComponent`) e o medidor (`GuiTankGauge.getContentsTooltips`).
+/// Devolve se desenhou.
+fn fluid_tank_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, _tier: usize, at: [f32; 2], cursor: (f32, f32)) -> bool {
+    let mirror = game.mb_mirror(block);
+    let read = rules::FluidTankScreenData::read(&mirror);
+    let translate = |key: &str| lang::get(key);
+    if basis::security_widget_tooltip(game, batch, &rules::fluid_tank_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
+        return true;
+    }
+    let here = |rect: [f32; 4]| [cursor.0 - at[0] + rect[0], cursor.1 - at[1] + rect[1], rect[2], rect[3]];
+    let tab = rules::edit_mode_tab();
+    if tab.is_mouse_over(true, true, at) {
+        basis::menu_tooltip_flat(game, batch, &[(translate(rules::edit_mode_lang(read.mode)), None)], cursor, here(tab.button()));
+        return true;
+    }
+    let gauge = rules::FLUID_TANK_GAUGE;
+    if gui::contains(gauge, at) {
+        let name = (read.fluid.amount > 0 && !read.fluid.resource.is_empty()).then(|| translate(&rules::fluid_lang_key(&read.fluid.resource)));
+        let text = rules::tank_contents_tooltip(name.as_deref(), read.fluid.amount, &translate);
+        basis::menu_tooltip(game, batch, &[(text, None)], cursor, here(gauge));
+        return true;
+    }
+    false
+}
+
+/// A ordem dos `addRenderableWidget` de `GuiChemicalTank`: o suporte da armadura, os slots, as abas de redstone e de segurança (`addGenericTabs`), as de lados e de
+/// transporte, a barra do químico, a tela interna e o botão do modo de descarte; depois a aba de avisos, à direita (`addWarningTab`), e os textos.
+fn draw_chemical_tank(game: &Game<'_>, block: &str, tier: usize, batch: &mut HudBatch, origin: [f32; 2]) {
+    use machinery_basis_core::side_tab::ButtonLook;
+    let [x, y] = origin;
+    let at = |rect: [f32; 4]| [x + rect[0], y + rect[1], rect[2], rect[3]];
+    let mirror = game.mb_mirror(block);
+    let read = rules::ChemicalTankScreenData::read(&mirror);
+    let translate = |key: &str| lang::get(key);
+    let title = screen_title(game, &format!("container.mekanism.{}", block.trim_start_matches("mekanism:")));
+    basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
+    draw_tank_slots(game, batch, block, origin, &rules::CHEMICAL_TANK_SLOTS_SPEC, Some(&rules::CHEMICAL_TANK_ITEM_CONFIG));
+    let redstone = rules::chemical_tank_redstone(&mirror);
+    basis::redstone_draw(game, batch, origin, redstone, rules::SCREEN_IMAGE_WIDTH);
+    basis::security_draw(game, batch, origin, &rules::chemical_tank_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y);
+    game.mb_window_draw_tab(batch, block, origin);
+    // `GuiChemicalBar` horizontal: a moldura e, com algo guardado, o sprite do químico em mosaico da esquerda para a direita, multiplicado pela cor dele.
+    let stored = read.chemical.amount > 0 && !read.chemical.resource.is_empty();
+    let bar = at(rules::CHEMICAL_TANK_BAR);
+    basis::nine_slice(game, batch, BAR_STYLE.frame, BAR_STYLE.frame_slice, bar);
+    let registry = resource::current();
+    let chemical = registry.get(&read.chemical.resource);
+    let level = if stored { rules::chemical_tank_bar_level(read.chemical.amount, chemical_tank_capacity(tier)) } else { 0.0 };
+    // `MekanismRenderer.getChemicalTexture`: o ícone de qualquer químico (os de infusão, os `mek_liquid` e as lamas), o mesmo que os tubos desenham.
+    if let Some(dst) = gui::bar_contents_horizontal(bar, level)
+        && let Some(look) = contents_chemical(&read.chemical.resource)
+    {
+        basis::tank_bar_contents(game, batch, &look.sprite, [CHEMICAL_FRAME; 2], dst, chemical.map_or(0, |chemical| chemical.tint));
+    }
+    // `GuiInnerScreen` com o formato padrão: as duas linhas em `TEXT_SCREEN`, a 0,8 do tamanho, centradas na vertical.
+    basis::nine_slice(game, batch, "mekanism:gui/sprites/inner_screen", machinery_basis_core::upgrade_window::INNER_SCREEN_SLICE, at(rules::CHEMICAL_TANK_SCREEN));
+    let name = stored.then(|| translate(&rules::chemical_lang_key(&read.chemical.resource)));
+    let lines = rules::chemical_tank_screen_lines(name.as_deref(), read.chemical.amount, chemical_tank_capacity(tier), tier == rules::TANK_CREATIVE, &translate);
+    let rows = gui::inner_screen_rows(rules::CHEMICAL_TANK_SCREEN, lines.len(), TEXT_LINE_HEIGHT as i32, gui::INNER_SCREEN_SPACING, gui::INNER_SCREEN_PADDING);
+    for (line, row) in lines.iter().zip(rows) {
+        let area = [x + row[0], y + row[1], x + row[2], y + row[3]];
+        game.mb_screen_text(batch, line, area, gui::TextAlignment::Left, rules::SCREEN_TEXT_COLOR, gui::INNER_SCREEN_TEXT_SCALE);
+    }
+    // `GuiGasMode`: o fundo do botão, o sprite do modo e, à esquerda, o texto do modo alinhado à direita.
+    let button = rules::CHEMICAL_TANK_MODE_BUTTON;
+    let cursor = game.native_cursor();
+    let rel = [cursor[0] - x, cursor[1] - y];
+    let hovered = !game.mb_window_covers(rel) && gui::contains(button, rel);
+    // `ButtonBackground.DEFAULT`, em literais para o teste dos sprites os ver.
+    let background = match ButtonLook::of(true, hovered) {
+        ButtonLook::Normal => "mekanism:gui/sprites/button",
+        ButtonLook::Focus => "mekanism:gui/sprites/button_focus",
+        ButtonLook::Inactive => "mekanism:gui/sprites/button_inactive",
+    };
+    basis::nine_slice(game, batch, background, machinery_basis_core::upgrade_window::BUTTON_SLICE, at(button));
+    game.native_sprite(batch, rules::gas_mode_icon(read.dumping), [0.0, 0.0, button[2], button[3]], at(button));
+    let area = rules::gas_mode_text_area(TEXT_LINE_HEIGHT);
+    game.mb_screen_text(batch, &translate(rules::gas_mode_lang(read.dumping)), [x + area[0], y + area[1], x + area[2], y + area[3]], gui::TextAlignment::Right, 0xFF_00_00_00 | gui::TITLE_TEXT_COLOR, 1.0);
+    // `GuiChemicalTank.addWarningTab`: a aba de avisos da direita, com o aviso de redstone que a aba de redstone tem.
+    basis::redstone_warning_tab_draw(game, batch, origin, redstone, rules::SCREEN_IMAGE_WIDTH, false);
+}
+
+/// `font().lineHeight`.
+const TEXT_LINE_HEIGHT: f32 = 9.0;
+
+/// Os tooltips de `GuiChemicalTank`: as janelas e as abas de lados, as de segurança e de redstone, a de avisos e a barra do químico
+/// (`GuiTankBar.getContentsTooltips`). O botão do modo de descarte não tem tooltip (`GuiGasMode` sem `dumpExcess`). Devolve se desenhou.
+fn chemical_tank_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, _tier: usize, at: [f32; 2], cursor: (f32, f32)) -> bool {
+    if game.mb_window_tooltip(batch, block, at, cursor) {
+        return true;
+    }
+    let mirror = game.mb_mirror(block);
+    let read = rules::ChemicalTankScreenData::read(&mirror);
+    let translate = |key: &str| lang::get(key);
+    if basis::security_widget_tooltip(game, batch, &rules::chemical_tank_security(&mirror), rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, cursor) {
+        return true;
+    }
+    let redstone = rules::chemical_tank_redstone(&mirror);
+    if basis::redstone_warning_tooltip(game, batch, redstone, rules::SCREEN_IMAGE_WIDTH, false, &translate, at, cursor) {
+        return true;
+    }
+    if basis::redstone_widget_tooltip(game, batch, &translate(machinery_basis_core::redstone_tab::tooltip_key(redstone.control_type)), rules::SCREEN_IMAGE_WIDTH, at, cursor) {
+        return true;
+    }
+    let bar = rules::CHEMICAL_TANK_BAR;
+    if gui::contains(bar, at) && !game.mb_window_covers(at) {
+        let name = (read.chemical.amount > 0 && !read.chemical.resource.is_empty()).then(|| translate(&rules::chemical_lang_key(&read.chemical.resource)));
+        let text = rules::tank_contents_tooltip(name.as_deref(), read.chemical.amount, &translate);
+        basis::menu_tooltip(game, batch, &[(text, None)], cursor, [cursor.0 - at[0] + bar[0], cursor.1 - at[1] + bar[1], bar[2], bar[3]]);
+        return true;
+    }
+    false
+}
+
+/// Os cliques das telas dos tanques que viram botão de menu: a aba de segurança dos dois, a aba do modo de edição do Fluid Tank (`GuiContainerEditModeTab.onClick`, os dois
+/// botões do mouse), e, no Chemical Tank, a aba de redstone e o botão do modo de descarte (`MekanismImageButton`: os dois botões do mouse fazem o mesmo).
+fn tank_screen_click(game: &Game<'_>, block: &str, at: [f32; 2], right: bool) -> Option<i32> {
+    if let Some(id) = basis::security_screen_click(game, rules::SCREEN_IMAGE_WIDTH, machinery_basis_core::side_tab::SECURITY_TAB_Y, at, right) {
+        return Some(id);
+    }
+    if crate::game::mekanism_tank::is_tank(block) {
+        return rules::edit_mode_tab().is_mouse_over(true, true, at).then(|| rules::edit_mode_click(right));
+    }
+    if let Some(id) = basis::redstone_screen_click(game, rules::SCREEN_IMAGE_WIDTH, at, right) {
+        return Some(id);
+    }
+    (!game.mb_window_covers(at) && gui::contains(rules::CHEMICAL_TANK_MODE_BUTTON, at)).then_some(rules::TANK_GAS_MODE_BUTTON)
 }
 
 /// `BucketItem.emptyContents` num transmissor: `BlockMekanism.canBeReplaced(state, fluid)` é falso, então o balde não derrama nele (o Horizon trocaria o cabo pelo fluido: o gabarito `chorus_plant` não

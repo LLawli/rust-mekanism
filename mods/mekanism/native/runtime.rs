@@ -3,6 +3,7 @@
 use machinery_basis_core::active_fx::{FxParticle, Particle, REDSTONE, face_position};
 use machinery_basis_core::cached_recipe::ItemToItemCache;
 use machinery_basis_core::chemical::{ChemicalResource, ConversionCache, can_fill_or_convert_with};
+use machinery_basis_core::chemical_tank::GasMode;
 use machinery_basis_core::client_config::{
     Entry as ClientEntry, Loaded as ClientLoaded, Section as ClientSection,
     Setting as ClientSetting, Spec as ClientSpec,
@@ -13,6 +14,7 @@ use machinery_basis_core::containers::{Access, AutomationType, InventorySlot, It
 use machinery_basis_core::energy_conversion::{EnergyConversion, EnergyConversionCache};
 use machinery_basis_core::energy_cube::{self, EnergyCubeConfig, ItemEnergy, ItemEnergySpec};
 use machinery_basis_core::gui::NineSlice;
+use machinery_basis_core::handler_slot::ContainerEditMode;
 use machinery_basis_core::item_instance::InstanceItems;
 use machinery_basis_core::operation_tracker::RecipeError;
 use machinery_basis_core::recipe::{ConversionFields, RecipeFields};
@@ -2220,6 +2222,362 @@ pub fn tank_tiers(
         }
     }
     (capacities, rates)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// As telas dos tanques (`GuiFluidTank` e `GuiChemicalTank`).
+
+/// `MekanismContainerTypes.FLUID_TANK` e `CHEMICAL_TANK`: `armorSideBar()` sem argumentos, que é `armorSideBar(-20, 67, 0)` (`ContainerTypeDeferredRegister.java:145-147`).
+pub fn tank_armor_bar_declaration() -> machinery_basis_core::armor_bar::Declaration {
+    machinery_basis_core::armor_bar::Declaration {
+        x: -20,
+        y: 67,
+        offhand_offset: 0,
+    }
+}
+
+/// `GuiSideHolder.armorHolder`: `create(gui, -26, 62, 98, true, true, SpecialColors.TAB_ARMOR_SLOTS)`, o suporte da armadura à esquerda (a cor é a branca do registro).
+pub const TANK_ARMOR_HOLDER: machinery_basis_core::gui::Rect = [-26.0, 62.0, 26.0, 98.0];
+pub const TANK_ARMOR_HOLDER_SPRITE: &str = "mekanism:gui/sprites/holder_left";
+
+/// Os dois slots do Fluid Tank, na ordem de `getInitialInventory` (`TileEntityFluidTank.java:125-128`): o de entrada (`FluidInventorySlot.input`, que nasce `EXTRA`, com
+/// `SlotOverlay.INPUT`) em (146, 19) e o de saída (`OutputInventorySlot.at`, `OUTPUT`, com `SlotOverlay.OUTPUT`) em (146, 51). O tanque não é `ISideConfiguration`: a moldura
+/// é a normal.
+pub const FLUID_TANK_SLOTS_SPEC: [SlotSpec; 2] = [
+    SlotSpec {
+        item: [146.0, 19.0],
+        container: ContainerSlotType::Extra,
+        overlay: Some(SlotOverlay::Input),
+    },
+    SlotSpec {
+        item: [146.0, 51.0],
+        container: ContainerSlotType::Output,
+        overlay: Some(SlotOverlay::Output),
+    },
+];
+
+/// `GuiFluidGauge(() -> tile.fluidTank, tile::getFluidTanks, GaugeType.WIDE, this, 48, 18)`: o medidor de 64 por 48 mais a moldura.
+pub const FLUID_TANK_GAUGE: [f32; 4] = [48.0, 18.0, 66.0, 50.0];
+
+/// `GuiContainerEditModeTab`: `super(BOTH, gui, tile, gui.getImageWidth(), 138, 26, 18, false)` e `SpecialColors.TAB_CONTAINER_EDIT_MODE`.
+pub const EDIT_MODE_TAB_Y: i32 = 138;
+pub const EDIT_MODE_TAB_HEIGHT: i32 = 26;
+pub const EDIT_MODE_TAB_TINT: u32 = 0xFF_36_6B_D0;
+
+pub fn edit_mode_tab() -> machinery_basis_core::side_tab::InsetTab {
+    machinery_basis_core::side_tab::InsetTab::right(
+        SCREEN_IMAGE_WIDTH,
+        EDIT_MODE_TAB_Y,
+        EDIT_MODE_TAB_HEIGHT,
+    )
+}
+
+/// `GuiContainerEditModeTab.getOverlay`: o sprite do modo de agora (`container_edit_mode/both`, `fill` e `empty`).
+pub fn edit_mode_icon(mode: ContainerEditMode) -> &'static str {
+    match mode {
+        ContainerEditMode::Both => "mekanism:gui/sprites/container_edit_mode/both",
+        ContainerEditMode::Fill => "mekanism:gui/sprites/container_edit_mode/fill",
+        ContainerEditMode::Empty => "mekanism:gui/sprites/container_edit_mode/empty",
+    }
+}
+
+/// `ContainerEditMode.getTextComponent` (`MekanismLang.FLUID_CONTAINER_BOTH`, `FILL` e `EMPTY`): o tooltip da aba.
+pub fn edit_mode_lang(mode: ContainerEditMode) -> &'static str {
+    match mode {
+        ContainerEditMode::Both => "fluid_container.mekanism.both",
+        ContainerEditMode::Fill => "fluid_container.mekanism.fill",
+        ContainerEditMode::Empty => "fluid_container.mekanism.empty",
+    }
+}
+
+/// Os botões de menu das telas dos tanques: `GuiInteraction.NEXT_MODE` e `PREVIOUS_MODE` (a aba do modo de edição do Fluid Tank) e `GAS_MODE_BUTTON` (o botão do modo de
+/// descarte do Chemical Tank). Os ids são do port e não se repetem nos das abas de segurança e de redstone (100 a 103).
+pub const TANK_NEXT_MODE_BUTTON: i32 = 110;
+pub const TANK_PREVIOUS_MODE_BUTTON: i32 = 111;
+pub const TANK_GAS_MODE_BUTTON: i32 = 112;
+
+/// `GuiContainerEditModeTab.onClick`: o botão esquerdo manda `NEXT_MODE` e o direito `PREVIOUS_MODE`.
+pub fn edit_mode_click(right: bool) -> i32 {
+    if right {
+        TANK_PREVIOUS_MODE_BUTTON
+    } else {
+        TANK_NEXT_MODE_BUTTON
+    }
+}
+
+/// `TileEntityFluidTank.nextMode` e `previousMode` pelo botão que chegou: `Some(modo novo)`, ou `None` se o botão não é da aba.
+pub fn edit_mode_button(mode: ContainerEditMode, button: i32) -> Option<ContainerEditMode> {
+    match button {
+        TANK_NEXT_MODE_BUTTON => Some(mode.next()),
+        TANK_PREVIOUS_MODE_BUTTON => Some(mode.previous()),
+        _ => None,
+    }
+}
+
+/// O dado próprio do menu de cada tanque: `SyncableEnum` do `editMode` (`TileEntityFluidTank.java:300`) e do `dumping` (`TileEntityChemicalTank.java:207`).
+pub const SOURCE_TANK_MODE: u16 = source::MOD;
+
+/// `TileEntityFluidTank.addContainerTrackers`: o que `TileEntityMekanism` sincroniza de um tile com segurança, sem redstone (`without(AttributeRedstone.class)`) e com um
+/// tanque de fluido, e depois o modo de edição.
+pub fn fluid_tank_trackers() -> Vec<Tracked> {
+    let mut list = TileTrackers {
+        security: true,
+        fluid_tanks: 1,
+        ..TileTrackers::default()
+    }
+    .trackers();
+    list.push(Tracked::new(
+        SOURCE_TANK_MODE,
+        machinery_basis_core::container_sync::Kind::Enum { default: 0 },
+    ));
+    list
+}
+
+/// `TileEntityChemicalTank.addContainerTrackers`: a segurança, a redstone, o tanque de químico e depois o modo de descarte.
+pub fn chemical_tank_trackers() -> Vec<Tracked> {
+    let mut list = TileTrackers {
+        security: true,
+        redstone: true,
+        chemical_tanks: 1,
+        ..TileTrackers::default()
+    }
+    .trackers();
+    list.push(Tracked::new(
+        SOURCE_TANK_MODE,
+        machinery_basis_core::container_sync::Kind::Enum { default: 0 },
+    ));
+    list
+}
+
+/// O que o cliente lê do espelho do menu do Fluid Tank.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FluidTankScreenData {
+    pub fluid: StackValue,
+    pub mode: ContainerEditMode,
+}
+
+impl FluidTankScreenData {
+    pub fn read(mirror: &Mirror) -> Self {
+        let list = fluid_tank_trackers();
+        // `ContainerEditMode.BY_ID` com `OutOfBoundsStrategy.ZERO`: um ordinal fora da lista é `BOTH`.
+        let ordinal = mirror.enum_ordinal(position_of(&list, SOURCE_TANK_MODE));
+        Self {
+            fluid: mirror.stack(position_of(&list, source::FLUID_TANK)),
+            mode: usize::try_from(ordinal)
+                .ok()
+                .filter(|ordinal| *ordinal < ContainerEditMode::VALUES.len())
+                .map_or(ContainerEditMode::Both, ContainerEditMode::from_ordinal),
+        }
+    }
+}
+
+/// A segurança que o cliente lê do menu do Fluid Tank (`GuiSecurityTab`).
+pub fn fluid_tank_security(mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+    let list = fluid_tank_trackers();
+    machinery_basis_core::security::SecurityView::read(
+        mirror,
+        position_of(&list, source::SECURITY_FREQUENCY),
+        position_of(&list, source::SECURITY_MODE),
+    )
+}
+
+/// O que o cliente lê do espelho do menu do Chemical Tank.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChemicalTankScreenData {
+    pub chemical: StackValue,
+    pub dumping: GasMode,
+}
+
+impl Default for ChemicalTankScreenData {
+    fn default() -> Self {
+        Self {
+            chemical: StackValue::default(),
+            dumping: GasMode::Idle,
+        }
+    }
+}
+
+impl ChemicalTankScreenData {
+    pub fn read(mirror: &Mirror) -> Self {
+        let list = chemical_tank_trackers();
+        // `GasMode.BY_ID` com `OutOfBoundsStrategy.ZERO`: um ordinal fora da lista é `IDLE`.
+        let ordinal = mirror.enum_ordinal(position_of(&list, SOURCE_TANK_MODE));
+        Self {
+            chemical: mirror.stack(position_of(&list, source::CHEMICAL_TANK)),
+            dumping: usize::try_from(ordinal)
+                .ok()
+                .filter(|ordinal| *ordinal < GasMode::VALUES.len())
+                .map_or(GasMode::Idle, GasMode::from_ordinal),
+        }
+    }
+}
+
+pub fn chemical_tank_security(mirror: &Mirror) -> machinery_basis_core::security::SecurityView {
+    let list = chemical_tank_trackers();
+    machinery_basis_core::security::SecurityView::read(
+        mirror,
+        position_of(&list, source::SECURITY_FREQUENCY),
+        position_of(&list, source::SECURITY_MODE),
+    )
+}
+
+/// O controle de redstone que o cliente lê do menu do Chemical Tank (`GuiRedstoneControlTab`).
+pub fn chemical_tank_redstone(mirror: &Mirror) -> RedstoneSync {
+    let list = chemical_tank_trackers();
+    machinery_basis_core::redstone_tab::read(
+        mirror,
+        position_of(&list, source::CONTROL_TYPE),
+        position_of(&list, source::POWERED),
+        position_of(&list, source::WAS_POWERED),
+    )
+}
+
+/// Os dois slots do Chemical Tank, na ordem de `getInitialInventory` (`TileEntityChemicalTank.java:104-109`): o de drenar (`ChemicalInventorySlot.drain`, posto como `OUTPUT`,
+/// com `SlotOverlay.PLUS`) em (16, 16) e o de encher (`fill`, posto como `INPUT`, com `SlotOverlay.MINUS`) em (16, 48). A moldura vem do papel que a configuração de itens dá
+/// ao slot ([`CHEMICAL_TANK_ITEM_CONFIG`]).
+pub const CHEMICAL_TANK_SLOTS_SPEC: [SlotSpec; 2] = [
+    SlotSpec {
+        item: [16.0, 16.0],
+        container: ContainerSlotType::Output,
+        overlay: Some(SlotOverlay::Plus),
+    },
+    SlotSpec {
+        item: [16.0, 48.0],
+        container: ContainerSlotType::Input,
+        overlay: Some(SlotOverlay::Minus),
+    },
+];
+
+/// `setupIOConfig(ITEM, drainSlot, fillSlot, true)`: a entrada é o slot de drenar, a saída o de encher, e os dois juntos.
+pub const CHEMICAL_TANK_ITEM_CONFIG: ItemConfig = ItemConfig {
+    entries: &[
+        (
+            DataType::Input,
+            &[machinery_basis_core::chemical_tank::DRAIN_SLOT],
+        ),
+        (
+            DataType::Output,
+            &[machinery_basis_core::chemical_tank::FILL_SLOT],
+        ),
+        (
+            DataType::InputOutput,
+            &[
+                machinery_basis_core::chemical_tank::DRAIN_SLOT,
+                machinery_basis_core::chemical_tank::FILL_SLOT,
+            ],
+        ),
+    ],
+};
+
+/// `GuiChemicalBar(.., 42, 16, 116, 10, true)`: a barra horizontal, com a moldura (`GuiBar` soma dois à largura e à altura).
+pub const CHEMICAL_TANK_BAR: [f32; 4] = [42.0, 16.0, 118.0, 12.0];
+/// `GuiInnerScreen(this, 42, 37, 118, 28, ..)`.
+pub const CHEMICAL_TANK_SCREEN: [f32; 4] = [42.0, 37.0, 118.0, 28.0];
+/// `GuiGasMode(this, 159, 72, true, ..)`: o botão de 10 por 10 e o texto do modo à esquerda dele.
+pub const CHEMICAL_TANK_MODE_BUTTON: [f32; 4] = [159.0, 72.0, 10.0, 10.0];
+/// `GuiGasMode.renderForeground` com o texto à esquerda: `drawScrollingString(.., -69, 1, RIGHT, titleTextColor(), 69, 2, false)`, relativo ao botão. A área vai de
+/// `x - 69 + 2` a `x - 2`, na linha que começa um pixel abaixo do topo.
+pub const GAS_MODE_TEXT_START: f32 = -69.0;
+pub const GAS_MODE_TEXT_WIDTH: f32 = 69.0;
+pub const GAS_MODE_TEXT_PAD: f32 = 2.0;
+pub const GAS_MODE_TEXT_Y: f32 = 1.0;
+
+/// A área `[min_x, min_y, max_x, max_y]` do texto do modo de descarte, relativa ao canto da tela (`line_height` é `font().lineHeight`).
+pub fn gas_mode_text_area(line_height: f32) -> [f32; 4] {
+    let [x, y, _, _] = CHEMICAL_TANK_MODE_BUTTON;
+    let start = x + GAS_MODE_TEXT_START;
+    [
+        start + GAS_MODE_TEXT_PAD,
+        y + GAS_MODE_TEXT_Y,
+        start + GAS_MODE_TEXT_WIDTH - GAS_MODE_TEXT_PAD,
+        y + GAS_MODE_TEXT_Y + line_height,
+    ]
+}
+
+/// `renderInventoryText(guiGraphics, 85)` de `GuiChemicalTank`: o rótulo do inventário rola numa área que acaba em `85 - inventoryLabelX - 6` depois do começo.
+pub const CHEMICAL_TANK_INVENTORY_TEXT_END: f32 = 85.0;
+
+/// `GuiGasMode.getResource`: o sprite do modo de agora (`chemical_mode/idle`, `dump_excess` e `dump`).
+pub fn gas_mode_icon(mode: GasMode) -> &'static str {
+    match mode {
+        GasMode::Idle => "mekanism:gui/sprites/chemical_mode/idle",
+        GasMode::DumpingExcess => "mekanism:gui/sprites/chemical_mode/dump_excess",
+        GasMode::Dumping => "mekanism:gui/sprites/chemical_mode/dump",
+    }
+}
+
+/// `GasMode.getTextComponent` (`MekanismLang.IDLE`, `DUMPING_EXCESS` e `DUMPING`): o texto ao lado do botão.
+pub fn gas_mode_lang(mode: GasMode) -> &'static str {
+    match mode {
+        GasMode::Idle => "chemical_mode.mekanism.idle",
+        GasMode::DumpingExcess => "chemical_mode.mekanism.dumping_excess",
+        GasMode::Dumping => "chemical_mode.mekanism.dumping",
+    }
+}
+
+/// `SpecialColors.TEXT_SCREEN`: a cor do texto de uma `GuiInnerScreen`.
+pub const SCREEN_TEXT_COLOR: u32 = 0xFF_3C_FE_9A;
+pub const CHEMICAL_LANG: &str = "gui.mekanism.chemical";
+pub const NONE_LANG: &str = "gui.mekanism.none";
+pub const STORED_LANG: &str = "generic.mekanism.stored";
+
+/// As duas linhas da tela interna de `GuiChemicalTank` (`GuiChemicalTank.java:36-53`): o químico (`None` sem nada) e a fração guardada. No criativo o máximo é
+/// `Infinite`, e com algo guardado a linha inteira é `Infinite`. `name` é o nome do químico já traduzido, `None` com o tanque vazio.
+pub fn chemical_tank_screen_lines(
+    name: Option<&str>,
+    amount: u64,
+    capacity: i64,
+    creative: bool,
+    translate: &dyn Fn(&str) -> String,
+) -> [String; 2] {
+    let format = |template: &str, args: &[&str]| {
+        machinery_basis_core::units::format_lang(&translate(template), args)
+    };
+    let infinite = translate(INFINITE_LANG);
+    let max = if creative {
+        infinite.clone()
+    } else {
+        machinery_basis_core::units::grouped(capacity.max(0) as u64)
+    };
+    match name {
+        None => [
+            format(CHEMICAL_LANG, &[&translate(NONE_LANG)]),
+            format(FRACTION_LANG, &["0", &max]),
+        ],
+        Some(name) => [
+            format(CHEMICAL_LANG, &[name]),
+            if creative {
+                infinite
+            } else {
+                format(
+                    FRACTION_LANG,
+                    &[&machinery_basis_core::units::grouped(amount), &max],
+                )
+            },
+        ],
+    }
+}
+
+/// A primeira linha do tooltip de um medidor ou de uma barra de tanque (`GuiTankGauge.getContentsTooltips` e `GuiTankBar.getContentsTooltips`): `Empty`, o nome e
+/// `Infinite` com `Long.MAX_VALUE` guardado, ou o nome e a quantidade em mB. `name` é o nome já traduzido, `None` com o tanque vazio.
+pub fn tank_contents_tooltip(
+    name: Option<&str>,
+    amount: u64,
+    translate: &dyn Fn(&str) -> String,
+) -> String {
+    match name {
+        None => translate(EMPTY_LANG),
+        Some(name) if amount == i64::MAX as u64 => machinery_basis_core::units::format_lang(
+            &translate(STORED_LANG),
+            &[name, &translate(INFINITE_LANG)],
+        ),
+        Some(name) => stored_mb(&translate(STORED_MB_LANG), name, amount),
+    }
+}
+
+/// O nível da barra do Chemical Tank (`ResourceTankInfoProvider.getLevel`: `MathUtils.divideToLevel(amountAsLong, capacityAsLong)`).
+pub fn chemical_tank_bar_level(amount: u64, capacity: i64) -> f64 {
+    machinery_basis_core::gui::divide_to_level(amount as f64, capacity as f64)
 }
 
 /// O cubo de energia que o item é, na ordem de [`CUBE_TIERS`].

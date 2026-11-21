@@ -8,7 +8,11 @@ use horizon_client::items::ItemStack;
 use horizon_world::nbt::{JavaString, Tag};
 use machinery_basis_core::component_container::{AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf};
 use machinery_basis_core::components::Components;
-use machinery_basis_core::containers::{InventorySlot, ItemResource};
+use machinery_basis_core::container_sync::{StackValue, TrackedSource, Value};
+use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
+use machinery_basis_core::slot_rules;
+use machinery_basis_core::tile_trackers::source;
+use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::fluid::FluidResource;
 use machinery_basis_core::fluid_tank::{self, BelowHandler, FaceHandler, FluidTankConfig, FluidTankTank, FluidTankTile};
 use machinery_basis_core::handler_slot::{ContainerEditMode, LastTransferDirection, ResourceContainer};
@@ -184,6 +188,11 @@ fn stack_fluids(game: &Game<'_>, stack: &ItemStack) -> StackContents<FluidResour
     let Ok(Some(tag)) = game.native_component(stack, basis::CONTENT_FLUIDS) else {
         return StackContents::default();
     };
+    tag_fluids(tag)
+}
+
+/// O que um tag de `mekanism:fluids` guarda.
+fn tag_fluids(tag: &Tag) -> StackContents<FluidResource> {
     let Some(list) = content::containers_apply(&basis::tag_value(tag), 1) else {
         return StackContents::default();
     };
@@ -346,6 +355,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, ho
     if is_tank(block) {
         // `AttributeRedstone`: o jogo avisa o bloco quando um vizinho muda.
         basis::watch_redstone(REDSTONE_OWNER, is_tank);
+        register_windows(block);
         if entity.is_none() {
             *entity = Some((block.to_owned(), horizon_world::nbt::Compound::default()));
         }
@@ -365,8 +375,8 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     if is_tank(block) {
-        // Os dois slots, sem face nenhuma: `TileEntityFluidTank` não expõe a capability de item.
-        *container = Some(ModContainer { slots: SLOTS, ..Default::default() });
+        // Os dois slots, sem face nenhuma: `TileEntityFluidTank` não expõe a capability de item. O menu é a tela `GuiFluidTank` (`screen` do glue).
+        *container = Some(ModContainer { slots: SLOTS, menu: Some(block.to_owned()), ..Default::default() });
     }
 }
 
@@ -1336,3 +1346,164 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::EDIT_MODE_COMPONENT.to_owned());
     types.push(rules::BUCKET_MODE_COMPONENT.to_owned());
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela (`GuiFluidTank`): o menu, os dados dele e a aba do modo de edição. O tanque não é `IUpgradeTile` nem `ISideConfiguration`: não há janela de upgrades nem abas de lados.
+
+/// A janela do tanque: só dados. A mecânica (as sessões do menu e o espelho) é da machinery_basis; `upgrades: false` tira a aba e os slots virtuais.
+const fn window_spec_of(block: &'static str) -> UpgradeWindowSpec {
+    UpgradeWindowSpec {
+        block,
+        upgrades: false,
+        recipe_book: false,
+        book: None,
+        book_slots: [0, 0],
+        virtual_slots: [SLOTS, SLOTS + 1],
+        trackers: rules::fluid_tank_trackers,
+        window_trackers: rules::upgrade_window_data,
+        ns: "mekanism",
+        window_type: rules::UPGRADE_WINDOW,
+        window_types: &rules::WINDOW_TYPES,
+        base_slice: rules::PANEL_SLICE,
+        max_multiplier: machinery_basis_core::settings::max_upgrade_multiplier,
+        client_config: rules::CLIENT_CONFIG_FILE,
+        data: glue::window_upgrade_data,
+        color: rules::enum_color,
+        item: rules::UPGRADE_ITEM,
+        item_component: rules::UPGRADE_TYPE_COMPONENT,
+    }
+}
+
+static WINDOW_SPECS: [UpgradeWindowSpec; 5] = [
+    window_spec_of(rules::FLUID_TANK_TIERS[0]),
+    window_spec_of(rules::FLUID_TANK_TIERS[1]),
+    window_spec_of(rules::FLUID_TANK_TIERS[2]),
+    window_spec_of(rules::FLUID_TANK_TIERS[3]),
+    window_spec_of(rules::FLUID_TANK_TIERS[4]),
+];
+
+fn register_windows(block: &str) {
+    if let Some(spec) = WINDOW_SPECS.iter().find(|spec| spec.block == block) {
+        Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+    }
+}
+
+/// O tanque não tem upgrades: o item de upgrade não entra e nada sai.
+fn remove_upgrade(_: &mut Game<'_>, _: [i32; 3], _: &str, _: bool) {}
+
+fn add_upgrades(_: &mut Game<'_>, _: [i32; 3], _: &str, _: i32) -> i32 {
+    0
+}
+
+/// Os dados do menu do tanque (`TileEntityFluidTank.addContainerTrackers`), lidos do objeto.
+struct TankSync<'a> {
+    tile: &'a FluidTankTile,
+    security: machinery_basis_core::security::SecuritySync,
+}
+
+impl TrackedSource for TankSync<'_> {
+    fn value(&self, id: u16) -> Value {
+        match id {
+            source::SECURITY_FREQUENCY => {
+                let (hash, bytes) = self.security.frequency();
+                Value::Codec { hash, bytes }
+            }
+            source::SECURITY_MODE => Value::Enum(self.security.mode()),
+            source::FLUID_TANK => {
+                let (resource, amount) = stored_of(self.tile.tank());
+                Value::Stack(StackValue { resource: resource.filter(|_| amount > 0).unwrap_or_default(), amount: if amount > 0 { amount } else { 0 } })
+            }
+            rules::SOURCE_TANK_MODE => Value::Enum(self.tile.edit_mode().ordinal() as i32),
+            other => panic!("fonte {other} desconhecida"),
+        }
+    }
+}
+
+/// O valor vivo dos dados do menu do tanque em `pos` (`MekanismContainer.broadcastChanges`): o objeto vivo, ou, até o primeiro tick do tile, um feito do NBT.
+fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return false;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let security = basis::security_sync(game, entity);
+    let dimension = game.native_dimension();
+    let cell = match live_at(&(dimension, pos)) {
+        Some(cell) => cell,
+        None => Rc::new(RefCell::new(born(game, dimension, pos, entity, tier))),
+    };
+    let Ok(live) = cell.try_borrow() else {
+        return false;
+    };
+    act(&TankSync { tile: &live.tile, security });
+    true
+}
+
+/// `PacketGuiInteract.NEXT_MODE` e `PREVIOUS_MODE` (`TileEntityFluidTank.nextMode` e `previousMode`, `:256-271`): o modo anda no objeto vivo, que também esquece a direção do
+/// slot de entrada (`editModeChanged`), e os dois vão ao NBT na hora, de onde um tile que ainda não andou os lê. Quem não tem acesso ao tile é ignorado
+/// (`PacketUtils.blockEntity`). Devolve se o botão é desta tela.
+pub(in crate::game) fn menu_button(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) -> bool {
+    if !is_tank(&entity.id) {
+        return false;
+    }
+    let Some(next) = rules::edit_mode_button(read_mode(entity), id) else {
+        return false;
+    };
+    if !basis::gui_interact_allowed(game, entity) {
+        return true;
+    }
+    let live = live_at(&(game.native_dimension(), pos)).and_then(|cell| {
+        let mut live = cell.try_borrow_mut().ok()?;
+        if id == rules::TANK_NEXT_MODE_BUTTON {
+            live.tile.next_mode();
+        } else {
+            live.tile.previous_mode();
+        }
+        let now = (live.tile.edit_mode(), live.tile.input_slot().last_transfer_direction());
+        if let Some(saved) = live.saved.as_mut() {
+            saved.0 = now.0;
+            saved.3 = now.1;
+        }
+        Some(now)
+    });
+    let (mode, direction) = live.unwrap_or((next, LastTransferDirection::Unknown));
+    glue::put(entity, EDIT_MODE, Tag::String(JavaString::from(mode.serialized_name())));
+    glue::put(entity, DIRECTION, Tag::String(JavaString::from(direction.serialized_name())));
+    true
+}
+
+/// `InventoryContainerSlot.mayPlace` do tanque aberto: o `isValidForInsertion(item, MANUAL)` do slot, com o fluido que a pilha do clique guarda. O hook do Horizon roda dentro
+/// do menu, sem o jogo: a regra leva um tile feito do NBT agora.
+pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner: &'static str) -> bool {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return false;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let tile = born(game, game.native_dimension(), pos, entity, tier).tile;
+    slot_rules::set(
+        owner,
+        &entity.id,
+        Rc::new(move |slot, item, stack| {
+            let resource = match stack.downcast_ref::<ItemStack>() {
+                Some(stack) => {
+                    let resource = basis::item_resource_with_limit(stack, UNKNOWN_STACK);
+                    // O fluido do item de tanque do clique, para o handler do item o achar pela chave dos componentes.
+                    if is_tank(&stack.item) && !resource.components.is_empty() {
+                        let contents = stack.data().and_then(|data| data.other(basis::CONTENT_FLUIDS)).map(tag_fluids).unwrap_or_default();
+                        ITEM_FLUIDS.with_borrow_mut(|table| table.insert(resource.components.key().to_owned(), (contents, stack.clone())));
+                    }
+                    resource
+                }
+                None => ItemResource::new(item, UNKNOWN_STACK),
+            };
+            tile.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource, AutomationType::Manual))
+        }),
+    );
+    true
+}
+
+/// O limite de pilha de um item que o hook do menu entrega sem o jogo: não entra na validação do slot.
+const UNKNOWN_STACK: u32 = 64;

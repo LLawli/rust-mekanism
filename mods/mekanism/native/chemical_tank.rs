@@ -11,7 +11,13 @@ use machinery_basis_core::chemical::{ChemicalResource, TankContents};
 use machinery_basis_core::chemical_tank::{self, ChemicalNeighbours, ChemicalTankConfig, ChemicalTankTile, GasMode};
 use machinery_basis_core::component_container::{AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf};
 use machinery_basis_core::components::Components;
+use machinery_basis_core::config_window::{self, ConfigPacket, ConfigView};
+use machinery_basis_core::container_sync::{StackValue, TrackedSource, Value};
 use machinery_basis_core::containers::{AutomationType, InventorySlot, ItemResource};
+use machinery_basis_core::ejector::TileComponentEjector;
+use machinery_basis_core::slot_rules;
+use machinery_basis_core::tile_trackers::source;
+use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::distribution::ResourceInsert;
 use machinery_basis_core::item_access::{ItemAccess, ItemHandlerLookup, ItemResourceHandler};
 use machinery_basis_core::item_content as content;
@@ -284,6 +290,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, ho
     if is_tank(block) {
         // `AttributeRedstone`: o jogo avisa o bloco quando um vizinho muda.
         basis::watch_redstone(REDSTONE_OWNER, is_tank);
+        register_windows(block);
         if entity.is_none() {
             *entity = Some((block.to_owned(), horizon_world::nbt::Compound::default()));
         }
@@ -302,8 +309,8 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     if is_tank(block) {
-        // Os dois slots; as faces, as entradas e as saídas são da instância (H2), pela configuração de lados de `ITEM`.
-        *container = Some(ModContainer { slots: SLOTS, ..Default::default() });
+        // Os dois slots; as faces, as entradas e as saídas são da instância (H2), pela configuração de lados de `ITEM`. O menu é a tela `GuiChemicalTank` (`screen` do glue).
+        *container = Some(ModContainer { slots: SLOTS, menu: Some(block.to_owned()), ..Default::default() });
     }
 }
 
@@ -781,4 +788,222 @@ pub(in crate::game) fn tooltip_lines(game: &Game<'_>, stack: &ItemStack) -> Vec<
 /// Os componentes do item do tanque que o jogo precisa conhecer.
 pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::DUMP_MODE_COMPONENT.to_owned());
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela (`GuiChemicalTank`): o menu, os dados dele, as abas de lados e de transporte e o botão do modo de descarte. O tanque não é `IUpgradeTile`: não há janela de upgrades.
+
+/// A janela do tanque: só dados. A mecânica (abas, janelas de configuração, sessões do menu) é da machinery_basis; `upgrades: false` tira a aba e os slots virtuais.
+const fn window_spec_of(block: &'static str) -> UpgradeWindowSpec {
+    UpgradeWindowSpec {
+        block,
+        upgrades: false,
+        recipe_book: false,
+        book: None,
+        book_slots: [0, 0],
+        virtual_slots: [SLOTS, SLOTS + 1],
+        trackers: rules::chemical_tank_trackers,
+        window_trackers: rules::upgrade_window_data,
+        ns: "mekanism",
+        window_type: rules::UPGRADE_WINDOW,
+        window_types: &rules::WINDOW_TYPES,
+        base_slice: rules::PANEL_SLICE,
+        max_multiplier: machinery_basis_core::settings::max_upgrade_multiplier,
+        client_config: rules::CLIENT_CONFIG_FILE,
+        data: glue::window_upgrade_data,
+        color: rules::enum_color,
+        item: rules::UPGRADE_ITEM,
+        item_component: rules::UPGRADE_TYPE_COMPONENT,
+    }
+}
+
+static WINDOW_SPECS: [UpgradeWindowSpec; 5] = [
+    window_spec_of(rules::CHEMICAL_TANK_TIERS[0]),
+    window_spec_of(rules::CHEMICAL_TANK_TIERS[1]),
+    window_spec_of(rules::CHEMICAL_TANK_TIERS[2]),
+    window_spec_of(rules::CHEMICAL_TANK_TIERS[3]),
+    window_spec_of(rules::CHEMICAL_TANK_TIERS[4]),
+];
+
+fn register_windows(block: &str) {
+    if let Some(spec) = WINDOW_SPECS.iter().find(|spec| spec.block == block) {
+        Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
+        Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
+    }
+}
+
+/// O tanque não tem upgrades: o item de upgrade não entra e nada sai.
+fn remove_upgrade(_: &mut Game<'_>, _: [i32; 3], _: &str, _: bool) {}
+
+fn add_upgrades(_: &mut Game<'_>, _: [i32; 3], _: &str, _: i32) -> i32 {
+    0
+}
+
+/// Os dados do menu do tanque (`TileEntityChemicalTank.addContainerTrackers`), lidos do objeto.
+struct TankSync<'a> {
+    tile: &'a ChemicalTankTile,
+    security: machinery_basis_core::security::SecuritySync,
+}
+
+impl TrackedSource for TankSync<'_> {
+    fn value(&self, id: u16) -> Value {
+        let redstone = self.tile.tile().redstone_sync();
+        match id {
+            source::SECURITY_FREQUENCY => {
+                let (hash, bytes) = self.security.frequency();
+                Value::Codec { hash, bytes }
+            }
+            source::SECURITY_MODE => Value::Enum(self.security.mode()),
+            source::CONTROL_TYPE => Value::Enum(redstone.control_type.ordinal()),
+            source::POWERED => Value::Boolean(redstone.powered),
+            source::WAS_POWERED => Value::Boolean(redstone.was_powered),
+            source::CHEMICAL_TANK => {
+                let stored = stored_of(self.tile);
+                Value::Stack(StackValue { resource: stored.resource.map(|resource| resource.id.to_string()).unwrap_or_default(), amount: stored.amount })
+            }
+            rules::SOURCE_TANK_MODE => Value::Enum(self.tile.dumping().ordinal() as i32),
+            other => panic!("fonte {other} desconhecida"),
+        }
+    }
+}
+
+/// O valor vivo dos dados do menu do tanque em `pos` (`MekanismContainer.broadcastChanges`): o objeto vivo, ou, até o primeiro tick do tile, um feito do NBT. Um aviso de
+/// redstone que o tile ainda não leu entra na hora, como o `updatePower` do Java.
+fn window_source(game: &mut Game<'_>, pos: [i32; 3], act: &mut dyn FnMut(&dyn TrackedSource)) -> bool {
+    let at = (pos[0], pos[1], pos[2]);
+    let ticked = match game.world.block_entities.get(&at) {
+        Some(BlockEntity::Mod(entity)) if is_tank(&entity.id) => !entity.data.is_empty(),
+        _ => return false,
+    };
+    let power = if ticked { basis::take_power(game, pos) } else { basis::peek_power(game, pos) };
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&at) else {
+        return false;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let security = basis::security_sync(game, entity);
+    let cell = match live_at(&(game.native_dimension(), pos)).filter(|_| ticked) {
+        Some(cell) => cell,
+        None => Rc::new(RefCell::new(born(game, pos, entity, tier))),
+    };
+    let Ok(mut live) = cell.try_borrow_mut() else {
+        return false;
+    };
+    if let Some(powered) = power {
+        live.tile.tile_mut().update_power(powered);
+    }
+    act(&TankSync { tile: &live.tile, security });
+    true
+}
+
+/// O que as janelas de configuração leem do tanque em `pos`: a configuração e o ejetor do NBT do tile, e a frente de agora.
+fn config_view(game: &Game<'_>, pos: [i32; 3]) -> Option<ConfigView> {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    tier_of(&entity.id)?;
+    let spec = chemical_tank::side_config_spec();
+    let mut config = TileComponentConfig::new(&spec.types);
+    (spec.setup)(&mut config);
+    let mut ejector = TileComponentEjector::new();
+    ejector.set_output_data(&config, &spec.eject);
+    let facing = basis::front(game, pos);
+    let nbt = basis::read_side_nbt(entity);
+    if let Some(data) = &nbt.config {
+        config.deserialize(data, facing, false);
+    }
+    if let Some(data) = &nbt.ejector {
+        ejector.deserialize(data);
+    }
+    Some(ConfigView { config, ejector, facing })
+}
+
+/// O estado vivo da configuração e do ejetor, que o servidor manda a quem tem uma janela de configuração aberta.
+fn config_snapshot(game: &mut Game<'_>, pos: [i32; 3]) -> Option<Vec<u8>> {
+    let live = live_at(&(game.native_dimension(), pos))
+        .and_then(|cell| cell.try_borrow().ok().map(|live| config_window::encode_snapshot(live.tile.side_config(), live.tile.ejector())));
+    if live.is_some() {
+        return live;
+    }
+    let view = config_view(game, pos)?;
+    Some(config_window::encode_snapshot(&view.config, &view.ejector))
+}
+
+/// O `handle` dos pacotes de configuração no servidor: aplica ao tanque (o objeto vivo, ou um feito do NBT) e grava a configuração no NBT na hora, como `sideChanged`.
+fn config_apply(game: &mut Game<'_>, pos: [i32; 3], packet: ConfigPacket) {
+    let facing = basis::front(game, pos);
+    with_tile(game, pos, |tile| {
+        tile.set_facing(facing);
+        let (config, ejector) = tile.side_parts_mut();
+        packet.apply(config, ejector, facing);
+    });
+}
+
+/// `PacketGuiInteract.GAS_MODE_BUTTON` (`TileEntityChemicalTank.nextMode(0)`, `:125-130`): o modo de descarte anda no objeto vivo e no NBT, de onde um tile que ainda não
+/// andou o lê. Quem não tem acesso ao tile é ignorado (`PacketUtils.blockEntity`). Devolve se o botão é desta tela.
+pub(in crate::game) fn menu_button(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, id: i32) -> bool {
+    if !is_tank(&entity.id) || id != rules::TANK_GAS_MODE_BUTTON {
+        return false;
+    }
+    if !basis::gui_interact_allowed(game, entity) {
+        return true;
+    }
+    let live = live_at(&(game.native_dimension(), pos)).and_then(|cell| {
+        let mut live = cell.try_borrow_mut().ok()?;
+        live.tile.next_mode();
+        let now = live.tile.dumping();
+        live.dumping = Some(now);
+        Some(now)
+    });
+    let mode = live.unwrap_or_else(|| read_dumping(entity).next());
+    glue::put(entity, DUMPING, Tag::String(JavaString::from(mode.serialized_name())));
+    true
+}
+
+/// `PacketGuiInteract.NEXT_REDSTONE_CONTROL` e `PREVIOUS_REDSTONE_CONTROL`: `setControlType(getControlType().getNext(supportsMode))` no objeto vivo do tanque, e no NBT, de
+/// onde um tanque que ainda não andou o lê.
+pub(in crate::game) fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, forward: bool) {
+    let live = live_at(&(game.native_dimension(), pos)).and_then(|cell| {
+        let mut live = cell.try_borrow_mut().ok()?;
+        let next = machinery_basis_core::redstone_tab::cycle(live.tile.tile().control_type(), forward);
+        live.tile.tile_mut().set_control_type(next);
+        if let Some(scalars) = live.scalars.as_mut() {
+            scalars.1 = next;
+        }
+        Some(next)
+    });
+    let next = live.unwrap_or_else(|| machinery_basis_core::redstone_tab::cycle(basis::redstone_read(entity), forward));
+    basis::redstone_write(entity, next);
+}
+
+/// O limite de pilha de um item que o hook do menu entrega sem o jogo: não entra na validação do slot.
+const UNKNOWN_STACK: u32 = 64;
+
+/// `InventoryContainerSlot.mayPlace` do tanque aberto: o `isValidForInsertion(item, MANUAL)` do slot, com o químico que a pilha do clique guarda. O hook do Horizon roda
+/// dentro do menu, sem o jogo: a regra leva um tile feito do NBT agora.
+pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner: &'static str) -> bool {
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return false;
+    };
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let tile = born(game, pos, entity, tier).tile;
+    slot_rules::set(
+        owner,
+        &entity.id,
+        Rc::new(move |slot, item, stack| {
+            let resource = match stack.downcast_ref::<ItemStack>() {
+                Some(stack) => {
+                    let resource = basis::item_resource_with_limit(stack, UNKNOWN_STACK);
+                    note_item(None, stack, &resource);
+                    resource
+                }
+                None => ItemResource::new(item, UNKNOWN_STACK),
+            };
+            tile.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource, AutomationType::Manual))
+        }),
+    );
+    true
 }
