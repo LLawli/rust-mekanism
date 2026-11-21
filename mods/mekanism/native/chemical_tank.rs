@@ -320,12 +320,23 @@ fn live_at(key: &Key) -> Option<Rc<RefCell<LiveTank>>> {
 
 /// O tanque como a rede de químico o vê por um lado: o contêiner do objeto vivo. `None` sem capability ali, ou com o tanque no próprio tick.
 fn probe(
-    _game: &Game<'_>,
+    game: &Game<'_>,
     dimension: &'static str,
     pos: [i32; 3],
     side: Face,
 ) -> Option<machinery_basis_core::transmission::host_resource::ResourceSnapshot<ChemicalResource>> {
     let cell = live_at(&(dimension, pos))?;
+    // Quem mexeu no NBT por fora depois do último tick do tanque (um comando de dados): quem lê o tanque antes do tick dele já vê o conteúdo novo, como o
+    // `loadAdditional` do original (ver o `probe` do Fluid Tank).
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        && let Ok(mut live) = cell.try_borrow_mut()
+    {
+        let in_nbt = read_stored(entity);
+        if in_nbt != live.seen {
+            set_stored(&live.tile, &in_nbt);
+            live.seen = in_nbt;
+        }
+    }
     let live = cell.try_borrow().ok()?;
     rules::chemical_tank_view(&live.tile, side)
 }

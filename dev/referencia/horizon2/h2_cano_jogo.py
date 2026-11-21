@@ -179,14 +179,18 @@ def lava_of(p):
         return 0
 
 
+# A fonte de lava: o Fluid Tank criativo cheio (decisão 138: o Fluid Tank de verdade no lugar do caldeirão).
+LAVA_SOURCE = 'mekanism:creative_fluid_tank{machinery_basis:{v:1,tanks:[{resource:"minecraft:lava",amount:9223372036854775807L}]}}'
+
+
 def montar_lava():
-    """A fonte (o caldeirão de lava da sonda) a oeste do primeiro de quatro canos, o Heat Generator a leste do último, com uma Enrichment Chamber ao lado dele para a energia ter para onde ir."""
+    """A fonte (um Fluid Tank criativo de lava: até a 9.ª rodada dos tanques era o caldeirão de lava da sonda) a oeste do primeiro de quatro canos, o Heat Generator a leste do último, com uma Enrichment Chamber ao lado dele para a energia ter para onde ir."""
     clear()
     cmd("gamemode creative @s")
     cmd("clear @s")
     cmd("tick unfreeze")
     # A fonte e o gerador antes dos canos: o cano pergunta pela capability do vizinho ao ligar, e um caldeirão (que não é block entity) não avisa que apareceu.
-    cmd("setblock %s minecraft:lava_cauldron" % txt(at(-1)))
+    cmd("setblock %s %s" % (txt(at(-1)), LAVA_SOURCE))
     cmd("setblock %s %s[facing=north]" % (txt(at(4)), GENERATOR))
     cmd("setblock %s mekanism:enrichment_chamber" % txt(at(4, 0, 1)))
     wait(10)
@@ -379,7 +383,7 @@ def montar_cena():
     cmd("gamemode creative @s")
     cmd("clear @s")
     cmd("tick unfreeze")
-    cmd("setblock %s minecraft:lava_cauldron" % txt(at(-1, 0, 0)))
+    cmd("setblock %s %s" % (txt(at(-1, 0, 0)), LAVA_SOURCE))
     cmd("setblock %s minecraft:water_cauldron[level=3]" % txt(at(-1, 0, 3)))
     cmd("setblock %s %s[facing=north]" % (txt(at(4, 0, 0)), GENERATOR))
     wait(20)

@@ -500,8 +500,18 @@ fn probe(
     };
     let tier = tier_of(&entity.id)?;
     let (capacity, _) = tier_values(tier);
-    let stored =
-        TANKS.with(|tanks| tanks.try_borrow().ok().and_then(|tanks| tanks.get(&(dimension, pos)).map(stored_of))).unwrap_or_else(|| read_stored(entity, capacity));
+    let in_nbt = read_stored(entity, capacity);
+    // Quem mexeu no NBT por fora depois do último tick do tanque (um comando de dados): o `loadAdditional` do original troca o contêiner na hora, e um cano que
+    // puxa do tanque no mesmo tick, antes do tick dele, já tira do conteúdo novo (medido no cliente do original, cenário `tank_valve_top`). Aqui o objeto vivo só lia
+    // o NBT no tick do tanque: quem o lê antes faz essa leitura.
+    if let Some(cell) = live_at(&(dimension, pos))
+        && let Ok(mut live) = cell.try_borrow_mut()
+        && in_nbt != live.seen
+    {
+        set_stored(live.tile.tank(), &in_nbt);
+        live.seen = in_nbt.clone();
+    }
+    let stored = TANKS.with(|tanks| tanks.try_borrow().ok().and_then(|tanks| tanks.get(&(dimension, pos)).map(stored_of))).unwrap_or(in_nbt);
     Some(machinery_basis_core::transmission::host_resource::ResourceSnapshot {
         contents: StackContents::new(stored.0.as_deref().map(FluidResource::new), stored.1),
         capacity,
@@ -529,7 +539,15 @@ fn write(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], contents: 
             set_stored(tank, &stored);
         }
     });
-    write_stored(entity, tier_values(tier).0, &stored);
+    let capacity = tier_values(tier).0;
+    write_stored(entity, capacity, &stored);
+    // O NBT e o objeto vivo ficam iguais: não é uma mudança de fora a absorver.
+    let written = read_stored(entity, capacity);
+    if let Some(cell) = live_at(&(dimension, pos))
+        && let Ok(mut live) = cell.try_borrow_mut()
+    {
+        live.seen = written;
+    }
     game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
 }
 

@@ -140,6 +140,10 @@ public class CenaBlocos {
             server.execute(() -> connection(server, command));
             return;
         }
+        if (command.startsWith("#agachado ")) {
+            server.execute(() -> sneakClick(server, command));
+            return;
+        }
         if (command.startsWith("#cor ")) {
             server.execute(() -> color(server, command));
             return;
@@ -220,6 +224,16 @@ public class CenaBlocos {
 
     /// `#conexao X Y Z lado=tipo [lado=tipo ...]`: o tipo cru de cada lado do transmissor em `x y z` (`Transmitter.setConnectionTypeRaw` e o resto do que o Configurator faz a cada clique): `normal`, `push`,
     /// `pull` ou `none`. O port faz o mesmo com o clique do Configurator (`horizon2/h2_cabo_modelo.py`).
+    /// `#agachado X Y Z`: o clique direito agachado do Configurator no Fluid Tank em `x y z` (`TileEntityFluidTank.onSneakRightClick`, o que o servidor roda quando o
+    /// jogador clica: liga ou desliga o tanque e toca o clique do botão para todos). O port faz o clique como jogador (`horizon2/h2_tanques9.py`).
+    private static void sneakClick(MinecraftServer server, String command) {
+        String[] words = command.split("\\s+");
+        var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
+        if (server.overworld().getBlockEntity(pos) instanceof mekanism.common.tile.TileEntityFluidTank tank && !server.getPlayerList().getPlayers().isEmpty()) {
+            tank.onSneakRightClick(server.overworld(), server.getPlayerList().getPlayers().get(0));
+        }
+    }
+
     private static void connection(MinecraftServer server, String command) {
         String[] words = command.split("\\s+");
         var pos = new net.minecraft.core.BlockPos(Integer.parseInt(words[1]), Integer.parseInt(words[2]), Integer.parseInt(words[3]));
