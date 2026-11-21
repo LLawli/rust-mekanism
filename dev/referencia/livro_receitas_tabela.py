@@ -10,7 +10,9 @@ grupo (`bookInfo.group()`, também numerado em todas as receitas do jogo), a cat
 tooltip dele. De `rastros/recipe_book_requirements.jsonl` (`testes/RecipeBookStateTraceTest.java`) sai a tabela `REQUIREMENTS`: os
 `craftingRequirements` de cada display (os itens que cada `Ingredient` aceita) e a quantidade que cada ingrediente do
 `MekanismRecipeDisplay` pede, que o `canCraft` do livro usa. Com `--check` só confere se o arquivo já está igual ao que o gerador
-escreveria.
+escreveria. A tabela `GHOSTS` (o que o fantasma de cada display desenha) sai dos itens que cada ingrediente e cada saída mostram
+(`ing` e `out` do mesmo rastro) e dos químicos deles (`chem` e `chem_out` de `rastros/recipe_place_info.jsonl`, de
+`testes/RecipePlaceTraceTest.java`).
 """
 import json
 import os
@@ -20,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 TRACE = os.path.join(HERE, "rastros", "recipe_book_displays.jsonl")
 REQUIREMENTS = os.path.join(HERE, "rastros", "recipe_book_requirements.jsonl")
+PLACE_INFO = os.path.join(HERE, "rastros", "recipe_place_info.jsonl")
 RUNTIME = os.path.join(ROOT, "mods", "mekanism", "native", "runtime.rs")
 BEGIN = "// recipe-book-rows:inicio"
 END = "// recipe-book-rows:fim"
@@ -43,6 +46,19 @@ def requirements():
             out.append(json.loads(line))
     out.sort(key=lambda row: row["id"])
     return out
+
+
+def place_info():
+    out = {}
+    with open(PLACE_INFO) as handle:
+        for line in handle:
+            row = json.loads(line)
+            out[row["id"]] = row
+    return out
+
+
+def shown(lists):
+    return "&[%s]" % ", ".join("&[%s]" % ", ".join("(%s, %d)" % (rust_str(name), count) for name, count in one) for one in lists)
 
 
 def rust_str(text):
@@ -95,6 +111,18 @@ def render():
             )
         counts = "None" if row["counts"] is None else "Some(&[%s])" % ", ".join(str(n) for n in row["counts"])
         lines.append("        (%d, %s, %s)," % (row["id"], req, counts))
+    lines.append("    ];")
+    lines.append(
+        "    /// O que o fantasma de cada display desenha: `(id, itens de cada ingrediente, itens de cada saída, químicos de cada ingrediente, químicos de cada saída)`."
+    )
+    lines.append("    pub const GHOSTS: &[machinery_basis_core::recipe_book_view::GhostRow] = &[")
+    info = place_info()
+    for row in requirements():
+        extra = info[row["id"]]
+        lines.append(
+            "        (%d, %s, %s, %s, %s),"
+            % (row["id"], shown(row["ing"]), shown(row["out"]), shown(extra["chem"]), shown(extra["chem_out"]))
+        )
     lines.append("    ];")
     lines.append("}")
     lines.append(END)

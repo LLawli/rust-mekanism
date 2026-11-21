@@ -190,6 +190,9 @@ pub enum ToClient {
     Remove(Vec<i32>),
     /// `ClientboundRecipeBookSettingsPacket(settings)`.
     Settings(Vec<u8>),
+    /// `ClientboundPlaceGhostRecipePacket(containerId, display)`: a receita não coube nos slots e o fantasma dela aparece na tela
+    /// aberta. O display vai pelo id (o cliente tem a tabela).
+    PlaceGhost(i32),
 }
 
 /// O que o cliente manda ao servidor.
@@ -203,6 +206,7 @@ pub enum ToServer {
 const ADD: u8 = 0;
 const REMOVE: u8 = 1;
 const SETTINGS: u8 = 2;
+const GHOST: u8 = 3;
 const CHANGE: u8 = 0;
 const SEEN: u8 = 1;
 
@@ -261,6 +265,10 @@ impl ToClient {
                 out.push(SETTINGS);
                 out.extend_from_slice(bytes);
             }
+            ToClient::PlaceGhost(id) => {
+                out.push(GHOST);
+                out.extend_from_slice(&id.to_be_bytes());
+            }
         }
         out
     }
@@ -298,6 +306,7 @@ impl ToClient {
                 Some(ToClient::Remove(ids))
             }
             SETTINGS => Some(ToClient::Settings(reader.0.to_vec())),
+            GHOST => Some(ToClient::PlaceGhost(reader.i32()?)),
             _ => None,
         }
     }
@@ -466,7 +475,7 @@ impl Unlocked {
                 }
                 changed
             }
-            ToClient::Settings(_) => false,
+            ToClient::Settings(_) | ToClient::PlaceGhost(_) => false,
         }
     }
 
@@ -543,6 +552,8 @@ pub fn apply_to_client(
                 settings.replace_from(&new);
             }
         }
+        // O fantasma é da tela aberta, não do livro.
+        ToClient::PlaceGhost(_) => {}
     }
     notified
 }

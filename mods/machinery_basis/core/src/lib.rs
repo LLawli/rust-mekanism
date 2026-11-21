@@ -51,6 +51,7 @@ pub mod recipe;
 pub mod recipe_book;
 pub mod recipe_book_data;
 pub mod recipe_book_view;
+pub mod recipe_place;
 pub mod recipe_cache;
 pub mod recipe_data;
 pub mod recipe_handlers;
