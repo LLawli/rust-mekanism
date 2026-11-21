@@ -32,15 +32,22 @@ pub(in crate::game) fn is_desk(block: &str) -> bool {
 }
 
 /// Os blocos desta parte que têm block entity: a mesa e o bloco de apoio (`TileEntityBoundingBlock`, que guarda o deslocamento até o principal).
+/// O que a mesa registra na `machinery_basis`. Chamado de novo não muda nada. Quem chama: o mundo que abre (`server_data_loaded`), o tique do cliente (o
+/// convidado de LAN) e o tile novo. Um tile lido do disco não passa pelo gancho `block_entity`: num mundo reaberto, sem isto, a mesa não era só do dono, o apoio
+/// não era apoio e os slots não conheciam os itens com dono até alguém pôr outra mesa.
+pub(in crate::game) fn register() {
+    // A mesa só tem dono (`ownerCapability`, sem `securityCapability`): só ele a abre, a quebra e a configura.
+    basis::security_owner_only_register(DESK);
+    // `ItemBlockTooltip.attachCapabilities`: os itens dos blocos com `AttributeSecurity` deste mod têm dono (as máquinas, os cubos e a própria mesa).
+    basis::security_ownable_register(OWNER, glue::item_has_owner);
+    basis::bounding_register(DESK, BOUNDING, ABOVE_ONLY);
+    Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
+    Game::mb_desk_register(DESK);
+}
+
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
     if is_desk(block) {
-        // A mesa só tem dono (`ownerCapability`, sem `securityCapability`): só ele a abre, a quebra e a configura.
-        basis::security_owner_only_register(DESK);
-        // `ItemBlockTooltip.attachCapabilities`: os itens dos blocos com `AttributeSecurity` deste mod têm dono (as máquinas, os cubos e a própria mesa).
-        basis::security_ownable_register(OWNER, glue::item_has_owner);
-        basis::bounding_register(DESK, BOUNDING, ABOVE_ONLY);
-        Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
-        Game::mb_desk_register(DESK);
+        register();
     }
     if (is_desk(block) || block == BOUNDING) && entity.is_none() {
         *entity = Some((block.to_owned(), Compound::default()));

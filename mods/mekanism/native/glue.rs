@@ -2438,6 +2438,8 @@ pub(in crate::game) fn server_data_loaded(game: &mut Game<'_>, reload: bool) {
         Game::mb_window_register(spec, remove_upgrade, add_upgrades, window_source);
         Game::mb_config_register(spec.block, config_view, config_apply, config_snapshot);
     }
+    // A Security Desk e o bloco de apoio dela também: o tile lido do disco não registra nada.
+    crate::game::mekanism_desk::register();
     // As regras de saída dos slots (H2) leem os índices da última pergunta: com receitas novas, nenhum tick de máquina chegou ainda.
     for machine in MACHINES.iter() {
         indexes_of(game, machine);
@@ -2498,6 +2500,8 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
     horizon_client::animate_tick::machinery_animate::register("mekanism", machine_animator);
     // O convidado de LAN não registra os blocos como o anfitrião (`block_registered`), e a forma de colisão dos transmissores que ele refaz do espelho precisa das medidas do mod.
     basis::transmitter_shape_register(transmitter_boxes_of);
+    // O mesmo para a mesa e o apoio dela (a forma do apoio, o clique passado ao principal, os itens com dono).
+    crate::game::mekanism_desk::register();
     sync_creative_energy(game);
     if !game.native_window() {
         return;
