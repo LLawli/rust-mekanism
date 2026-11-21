@@ -109,6 +109,131 @@ impl Journaled for StackState {
     }
 }
 
+/// O que a mão do jogador e o resto do inventário dele guardam no meio de uma troca: a pilha da mão e o que foi parar em outros slots.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HandState {
+    pub resource: Option<ItemResource>,
+    pub count: i32,
+    /// O que não coube na mão e foi para o inventário (`PlayerItemAccess`, que transborda para os outros slots), na ordem em que entrou.
+    pub extra: Vec<(ItemResource, i32)>,
+}
+
+impl Journaled for HandState {
+    type Snapshot = HandState;
+
+    fn revert_to_snapshot(&mut self, snapshot: Self::Snapshot) {
+        *self = snapshot;
+    }
+
+    fn on_root_commit(&mut self, _original: Self::Snapshot) -> Vec<Callback> {
+        Vec::new()
+    }
+}
+
+/// `ItemAccess.forPlayerInteraction(player, hand)`: o slot da mão, com o resto do inventário para o que não cabe nela (`forPlayerSlot`). Com `infinite` (o jogador em
+/// criativo) é `forInfiniteMaterials`: a mão nunca muda, toda inserção é aceita, e só um item entra no inventário, e só se o jogador ainda não tem um igual
+/// (`InfiniteMaterialsItemAccess.insert`: `!ResourceHandlerUtil.contains(mainSlots, resource)`).
+pub struct HandAccess {
+    cell: Rc<JournalCell<HandState>>,
+    infinite: bool,
+    /// Se os slots principais do jogador já têm o recurso (o item e os componentes), fora o que esta troca pôs.
+    owned: Rc<dyn Fn(&ItemResource) -> bool>,
+}
+
+impl HandAccess {
+    pub fn new(
+        resource: Option<ItemResource>,
+        count: i32,
+        infinite: bool,
+        owned: Rc<dyn Fn(&ItemResource) -> bool>,
+    ) -> Self {
+        Self {
+            cell: JournalCell::new(HandState {
+                resource,
+                count,
+                extra: Vec::new(),
+            }),
+            infinite,
+            owned,
+        }
+    }
+
+    /// A mão e o que foi para o inventário, agora.
+    pub fn state(&self) -> HandState {
+        self.cell.borrow().clone()
+    }
+
+    fn touch(&self, transaction: &Transaction) {
+        let snapshot = self.cell.borrow().clone();
+        self.cell.update_snapshots(transaction, || snapshot);
+    }
+}
+
+impl ItemAccess for HandAccess {
+    fn resource(&self) -> Option<ItemResource> {
+        self.cell.borrow().resource.clone()
+    }
+
+    fn amount(&self) -> i32 {
+        self.cell.borrow().count
+    }
+
+    fn insert(&self, resource: &ItemResource, amount: i32, transaction: &Transaction) -> i32 {
+        if amount <= 0 {
+            return 0;
+        }
+        if self.infinite {
+            let has = (self.owned)(resource)
+                || self
+                    .cell
+                    .borrow()
+                    .extra
+                    .iter()
+                    .any(|(held, _)| held == resource);
+            if !has {
+                self.touch(transaction);
+                self.cell.borrow_mut().extra.push((resource.clone(), 1));
+            }
+            return amount;
+        }
+        self.touch(transaction);
+        let mut state = self.cell.borrow_mut();
+        let fits_hand = match &state.resource {
+            None => true,
+            Some(held) => {
+                held == resource
+                    && state.count + amount
+                        <= i32::try_from(resource.max_stack_size).unwrap_or(i32::MAX)
+            }
+        };
+        if fits_hand {
+            state.resource = Some(resource.clone());
+            state.count += amount;
+        } else {
+            state.extra.push((resource.clone(), amount));
+        }
+        amount
+    }
+
+    fn extract(&self, resource: &ItemResource, amount: i32, transaction: &Transaction) -> i32 {
+        let held = self.cell.borrow().resource.clone();
+        if held.as_ref() != Some(resource) || amount <= 0 {
+            return 0;
+        }
+        if self.infinite {
+            return amount;
+        }
+        self.touch(transaction);
+        let mut state = self.cell.borrow_mut();
+        let taken = amount.min(state.count);
+        state.count -= taken;
+        if state.count == 0 {
+            state.resource = None;
+        }
+        taken
+    }
+}
+
 /// `SideEffectFreeItemAccess`: uma pilha solta, que não é de ninguém.
 pub struct StackAccess {
     cell: Rc<JournalCell<StackState>>,

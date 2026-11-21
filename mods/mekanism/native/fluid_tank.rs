@@ -12,12 +12,12 @@ use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::fluid::FluidResource;
 use machinery_basis_core::fluid_tank::{self, BelowHandler, FaceHandler, FluidTankConfig, FluidTankTank, FluidTankTile};
 use machinery_basis_core::handler_slot::{ContainerEditMode, LastTransferDirection, ResourceContainer};
-use machinery_basis_core::item_access::{AccessResourceHandler, ItemAccess, ItemHandlerLookup, ItemResourceHandler, OneByOne, PerItemRules, move_first};
+use machinery_basis_core::item_access::{AccessResourceHandler, HandAccess, ItemAccess, ItemHandlerLookup, ItemResourceHandler, OneByOne, PerItemRules, move_first};
 use machinery_basis_core::item_content as content;
 use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::tank::Tank;
 use machinery_basis_core::tile::RedstoneControl;
-use machinery_basis_core::transaction::{Callback, JournalCell, Journaled, Transaction};
+use machinery_basis_core::transaction::Transaction;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -643,89 +643,6 @@ pub(in crate::game) fn configurator_click(game: &mut Game<'_>, pos: [i32; 3], sn
     true
 }
 
-/// O item da mão do jogador, um por um (`ItemAccess.forPlayerInteraction(player, hand).oneByOne()`): o que sobra de uma troca numa pilha vai para o inventário, e no modo
-/// criativo a mão não muda e o item novo é dado à parte.
-struct HandState {
-    resource: Option<ItemResource>,
-    count: i32,
-    extra: Vec<(ItemResource, i32)>,
-}
-
-impl Journaled for HandState {
-    type Snapshot = (Option<ItemResource>, i32, Vec<(ItemResource, i32)>);
-
-    fn revert_to_snapshot(&mut self, snapshot: Self::Snapshot) {
-        (self.resource, self.count, self.extra) = snapshot;
-    }
-
-    fn on_root_commit(&mut self, _original: Self::Snapshot) -> Vec<Callback> {
-        Vec::new()
-    }
-}
-
-struct HandAccess {
-    cell: Rc<JournalCell<HandState>>,
-    infinite: bool,
-}
-
-impl HandAccess {
-    fn touch(&self, transaction: &Transaction) {
-        let snapshot = {
-            let state = self.cell.borrow();
-            (state.resource.clone(), state.count, state.extra.clone())
-        };
-        self.cell.update_snapshots(transaction, || snapshot);
-    }
-}
-
-impl ItemAccess for HandAccess {
-    fn resource(&self) -> Option<ItemResource> {
-        self.cell.borrow().resource.clone()
-    }
-
-    fn amount(&self) -> i32 {
-        self.cell.borrow().count
-    }
-
-    fn insert(&self, resource: &ItemResource, amount: i32, transaction: &Transaction) -> i32 {
-        if amount <= 0 {
-            return 0;
-        }
-        self.touch(transaction);
-        let mut state = self.cell.borrow_mut();
-        let fits_hand = !self.infinite
-            && match &state.resource {
-                None => true,
-                Some(held) => held == resource && state.count + amount <= i32::try_from(resource.max_stack_size).unwrap_or(i32::MAX),
-            };
-        if fits_hand {
-            state.resource = Some(resource.clone());
-            state.count += amount;
-        } else {
-            state.extra.push((resource.clone(), amount));
-        }
-        amount
-    }
-
-    fn extract(&self, resource: &ItemResource, amount: i32, transaction: &Transaction) -> i32 {
-        let held = self.cell.borrow().resource.clone();
-        if held.as_ref() != Some(resource) || amount <= 0 {
-            return 0;
-        }
-        if self.infinite {
-            return amount;
-        }
-        self.touch(transaction);
-        let mut state = self.cell.borrow_mut();
-        let taken = amount.min(state.count);
-        state.count -= taken;
-        if state.count == 0 {
-            state.resource = None;
-        }
-        taken
-    }
-}
-
 /// `BlockFluidTank.useItemOn` depois do `tryWrench`, sem agachar: `FluidUtil.interactWithFluidHandler` com a capability da face clicada. `Some(true)` se algo passou
 /// (`SUCCESS`), `Some(false)` para quem não tem acesso (`FAIL`), `None` se nada passou (`TRY_WITH_EMPTY_HAND`).
 pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: bool) -> Option<bool> {
@@ -735,10 +652,10 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
     }
     CLOCK.with(|clock| clock.set(game.world.game_time as u64));
     let infinite = game.native_acting_player().is_some_and(|player| player.game_mode == 1);
-    let hand = HandAccess {
-        cell: JournalCell::new(HandState { resource: Some(resource_of(game, &stack)), count: i32::try_from(stack.count).unwrap_or(i32::MAX), extra: Vec::new() }),
-        infinite,
-    };
+    // `ItemAccess.forPlayerInteraction(player, hand)`: o que sobra de uma troca numa pilha vai para o inventário; no modo criativo a mão não muda, e o item novo só é dado
+    // se os slots principais ainda não têm um igual (o item e os componentes: `ResourceHandlerUtil.contains(mainSlots, resource)`).
+    let main: Vec<ItemResource> = game.inventory.iter().flatten().map(|held| resource_of(game, held)).collect();
+    let hand = HandAccess::new(Some(resource_of(game, &stack)), i32::try_from(stack.count).unwrap_or(i32::MAX), infinite, Rc::new(move |resource| main.contains(resource)));
     let lookup = items();
     let moved = with_tile(game, pos, |_, tile| {
         let one = OneByOne(&hand);
@@ -769,17 +686,12 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
     };
     game.audio.play(&sound, Some([f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5]), 1.0, 1.0);
     game.post_block_game_event(if pickup { "minecraft:fluid_pickup" } else { "minecraft:fluid_place" }, pos, Some(horizon_client::mobs::Who::Player), None);
-    let (in_hand, count, extra) = {
-        let state = hand.cell.borrow();
-        (state.resource.clone(), state.count, state.extra.clone())
-    };
-    *game.held_mut() = in_hand.filter(|_| count > 0).map(|resource| stack_of(game, &resource, u32::try_from(count).unwrap_or(0)));
-    for (resource, count) in extra {
+    let state = hand.state();
+    if !infinite {
+        *game.held_mut() = state.resource.filter(|_| state.count > 0).map(|resource| stack_of(game, &resource, u32::try_from(state.count).unwrap_or(0)));
+    }
+    for (resource, count) in state.extra {
         let given = stack_of(game, &resource, u32::try_from(count).unwrap_or(0));
-        // `ItemAccess.forInfiniteMaterials`: no criativo o item novo só entra se o jogador ainda não tem um igual.
-        if infinite && game.native_count_items(&given.item) > 0 {
-            continue;
-        }
         game.give_or_drop(given);
     }
     Some(true)

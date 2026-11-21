@@ -80,6 +80,8 @@ pub struct ComponentBackedHandler<'a, R> {
     initial_item: Option<Rc<str>>,
     /// Os contêineres nascem na primeira vez em que são usados (`initializeContainer`).
     container: OnceCell<Container<R>>,
+    /// O `AutomationType` dos métodos sem ele: `EXTERNAL` (`defaultAutomationType`), ou `MANUAL` por dentro de `AutomatedResourceHandler.manual`.
+    automation: AutomationType,
 }
 
 fn saturated(value: u64) -> i32 {
@@ -101,7 +103,15 @@ impl<'a, R: Clone + PartialEq> ComponentBackedHandler<'a, R> {
             game_time,
             initial_item,
             container: OnceCell::new(),
+            automation: AutomationType::External,
         }
+    }
+
+    /// `AutomatedResourceHandler.manual(handler)`: o mesmo handler agindo como `MANUAL`, que passa pelo limite de taxa do contêiner (`createManualBypassRateLimit`): é como o
+    /// item do tanque serve de balde mesmo com a taxa do tier abaixo de um balde.
+    pub fn manual(mut self) -> Self {
+        self.automation = AutomationType::Manual;
+        self
     }
 
     /// `isAccessInvalid`: o acesso ficou sem item, ou o item dele deixou de ser o de quando o handler nasceu.
@@ -319,7 +329,7 @@ impl<R: Clone + PartialEq> ItemResourceHandler<R> for ComponentBackedHandler<'_,
             return 0;
         }
         let count = self.access.amount();
-        count * self.container_insert(resource, per_item, transaction, AutomationType::External)
+        count * self.container_insert(resource, per_item, transaction, self.automation)
     }
 
     fn extract(&self, resource: &R, amount: i32, transaction: &Transaction) -> i32 {
@@ -338,7 +348,7 @@ impl<R: Clone + PartialEq> ItemResourceHandler<R> for ComponentBackedHandler<'_,
             return 0;
         }
         let count = self.access.amount();
-        count * self.container_extract(resource, per_item, transaction, AutomationType::External)
+        count * self.container_extract(resource, per_item, transaction, self.automation)
     }
 
     fn is_full(&self) -> bool {

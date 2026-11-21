@@ -4,6 +4,7 @@ pub mod armor_bar;
 pub mod armor_slots;
 pub mod biome_temperature;
 pub mod bounding;
+pub mod bucket_item;
 pub mod cached_recipe;
 pub mod chemical;
 pub mod chemical_tank;
