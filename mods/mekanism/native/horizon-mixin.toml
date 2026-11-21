@@ -30,6 +30,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "mekanism_cube"
 source = "energy_cube.rs"
 
+# A Security Desk (`TileEntitySecurityDesk`): o tile, os dois slots, o bloco de apoio em cima e os pacotes da tela, sobre a frequência de segurança da
+# `machinery_basis`. Lê `Game::world` (os block entities e os chunks alterados) e chama `Game::break_block_as_player` (quebrar o apoio quebra o principal), H278.
+[[module]]
+id = "desk"
+file = "crates/horizon-client/src/game.rs"
+name = "mekanism_desk"
+source = "security_desk.rs"
+
 # `CommandMek` no jogo: o nó `/mek` (`debug`) sobre o registro de comandos da `machinery_basis` e os ganchos `register_commands` e `perform_command`.
 [[module]]
 id = "commands"

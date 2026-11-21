@@ -296,6 +296,7 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
     crate::game::mekanism_cube::block_entity(block, entity);
+    crate::game::mekanism_desk::block_entity(block, entity);
     if is_machine(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
         basis::watch_redstone(REDSTONE_OWNER, is_machine);
@@ -314,6 +315,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
+    crate::game::mekanism_desk::ticks(block, ticks);
     if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block) {
         *ticks = true;
     }
@@ -2531,6 +2533,10 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
 
 /// `TileEntityRecipeMachine.preRemoveSideEffects`: o jogador quebra a máquina e a experiência guardada cai, se tiver o upgrade.
 pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
+    // A Security Desk e o bloco de apoio dela.
+    if crate::game::mekanism_desk::destroy_block(game, pos, canceled) {
+        return;
+    }
     let canceled_before = *canceled;
     let block = game.native_block(pos);
     // `BlockMekanism.getDestroyProgress`: quem não acessa o bloco não o quebra (progresso zero, sem mensagem).
@@ -2973,6 +2979,7 @@ pub(in crate::game) fn set_configuration_data(game: &mut Game<'_>, pos: [i32; 3]
 }
 
 pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) {
+    crate::game::mekanism_desk::place_block(game, stack, pos);
     basis::name_placed(game, stack, pos, &is_machine_id);
     basis::security_placed(game, stack, pos, &is_machine_id);
     basis::side_placed(game, stack, pos, SIDE_COMPONENTS, &side_spec);
@@ -3014,6 +3021,7 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
 }
 
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
+    crate::game::mekanism_desk::loot_drops(game, context, drops);
     basis::name_loot(game, context, drops, &is_machine_id);
     basis::security_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
@@ -3075,6 +3083,14 @@ fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
 }
 
 pub(in crate::game) fn container_opened(game: &mut Game<'_>, player: u128, pos: Option<[i32; 3]>, cancel: &mut bool) {
+    // A Security Desk: só o dono a abre.
+    if !*cancel
+        && let Some(at) = pos
+        && crate::game::mekanism_desk::container_opened(game, player, at)
+    {
+        *cancel = true;
+        return;
+    }
     // `TileEntityMekanism.openGui`: sem acesso a mensagem sai e o menu não abre.
     if !*cancel
         && let Some(at) = pos
@@ -3287,6 +3303,15 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
 }
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
+    if crate::game::mekanism_desk::is_desk(&entity.id) {
+        // Os itens com dono possível (`IItemSecurityUtils.ownerCapability`): os dos blocos com segurança deste mod.
+        crate::game::mekanism_desk::tick(game, pos, entity, &|item| is_machine_id(item) || crate::game::mekanism_desk::is_desk(item));
+        return;
+    }
+    if is_machine_id(&entity.id) {
+        // `TileComponentFrequency.tickServer`: a frequência de segurança que o tile leu do NBT é validada pela tabela.
+        basis::security_tile_tick(game, pos, entity);
+    }
     if is_cable(&entity.id) {
         basis::cable_tick(game, pos, entity);
     } else if crate::game::mekanism_cube::is_cube(&entity.id) {
@@ -3488,6 +3513,10 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
             Indexes::Infuser { recipes, .. } => recipes.contains_input_ab(&resource_of(game, stack), &chemical),
         };
         game.mb_recipe_place_button(entity, id, tank, &valid, &can_insert);
+        return;
+    }
+    // `PacketGuiInteract.SECURITY_DESK_MODE`, `OVERRIDE_BUTTON` e `REMOVE_TRUSTED`: a Security Desk.
+    if crate::game::mekanism_desk::menu_button(game, pos, entity, id) {
         return;
     }
     // `PacketGuiInteract.NEXT_SECURITY_MODE` e `PREVIOUS_SECURITY_MODE`: a aba de segurança das máquinas e dos cubos.

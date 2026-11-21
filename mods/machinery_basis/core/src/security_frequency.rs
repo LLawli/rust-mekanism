@@ -12,9 +12,13 @@
 //!   índice em cada lista por conta própria;
 //! - nada disso suja a tabela (ver [`crate::frequency`]).
 
-use crate::frequency::{ControllerType, Frequency, FrequencyController, FrequencyIdentity, FrequencyLookup};
+use crate::frequency::{
+    ControllerType, Frequency, FrequencyController, FrequencyIdentity, FrequencyLookup,
+};
 use crate::recipe_data::SecurityMode;
-use crate::security::{OWNER_UUID, SECURITY_MODE, SecurityData, java_string_hash, owner_of, uuid_hash, uuid_ints};
+use crate::security::{
+    OWNER_UUID, SECURITY_MODE, SecurityData, java_string_hash, owner_of, uuid_hash, uuid_ints,
+};
 use serde_json::{Map, Value, json};
 
 /// `FrequencyTypes.SECURITY`: o nome do tipo (a chave no `component_frequency` do tile e a pasta do arquivo).
@@ -86,7 +90,9 @@ impl Reader<'_> {
 
     fn string(&mut self) -> Option<String> {
         let len = self.var_int()? as usize;
-        let text = std::str::from_utf8(self.bytes.get(self.at..self.at.checked_add(len)?)?).ok()?.to_owned();
+        let text = std::str::from_utf8(self.bytes.get(self.at..self.at.checked_add(len)?)?)
+            .ok()?
+            .to_owned();
         self.at += len;
         Some(text)
     }
@@ -100,18 +106,38 @@ impl Reader<'_> {
 
 /// `List.hashCode` de uma lista de `String`.
 fn names_hash(names: &[String]) -> i32 {
-    names.iter().fold(1i32, |hash, name| hash.wrapping_mul(31).wrapping_add(java_string_hash(name)))
+    names.iter().fold(1i32, |hash, name| {
+        hash.wrapping_mul(31).wrapping_add(java_string_hash(name))
+    })
 }
 
 impl SecurityFrequency {
     /// `new SecurityFrequency(uuid, securityMode)`: o nome do dono é o último que o servidor viu (`<???>` sem dono).
-    pub fn new(owner: Option<u128>, security_mode: SecurityMode, names: &dyn Fn(u128) -> String) -> Self {
+    pub fn new(
+        owner: Option<u128>,
+        security_mode: SecurityMode,
+        names: &dyn Fn(u128) -> String,
+    ) -> Self {
         let owner_name = owner.map_or_else(|| UNKNOWN_OWNER_NAME.to_owned(), names);
         Self::with_owner_name(owner, owner_name, security_mode)
     }
 
-    fn with_owner_name(owner: Option<u128>, owner_name: String, security_mode: SecurityMode) -> Self {
-        Self { owner, owner_name, security_mode, overridden: false, trusted: Vec::new(), trusted_cache: Vec::new(), trusted_cache_hash: 0, valid: true, removed: false }
+    fn with_owner_name(
+        owner: Option<u128>,
+        owner_name: String,
+        security_mode: SecurityMode,
+    ) -> Self {
+        Self {
+            owner,
+            owner_name,
+            security_mode,
+            overridden: false,
+            trusted: Vec::new(),
+            trusted_cache: Vec::new(),
+            trusted_cache_hash: 0,
+            valid: true,
+            removed: false,
+        }
     }
 
     pub fn owner(&self) -> Option<u128> {
@@ -142,7 +168,10 @@ impl SecurityFrequency {
 
     /// `new SecurityData(frequency)`.
     pub fn data(&self) -> SecurityData {
-        SecurityData { mode: self.security_mode, overridden: self.overridden }
+        SecurityData {
+            mode: self.security_mode,
+            overridden: self.overridden,
+        }
     }
 
     /// `Frequency.setSecurityMode`.
@@ -193,7 +222,9 @@ impl SecurityFrequency {
     /// `removeTrusted(index)`: tira o jogador e o nome daquela posição, cada lista conferindo o índice por si. Devolve quem saiu.
     pub fn remove_trusted(&mut self, index: i32) -> Option<u128> {
         let at = usize::try_from(index).ok();
-        let removed = at.filter(|at| *at < self.trusted.len()).map(|at| self.trusted.remove(at));
+        let removed = at
+            .filter(|at| *at < self.trusted.len())
+            .map(|at| self.trusted.remove(at));
         if let Some(at) = at.filter(|at| *at < self.trusted_cache.len()) {
             self.trusted_cache.remove(at);
             self.trusted_cache_hash = names_hash(&self.trusted_cache);
@@ -223,7 +254,11 @@ impl SecurityFrequency {
 
     /// `SecurityFrequency.getIdentity`: a chave e o dono são o dono, e o modo é sempre `PUBLIC`.
     pub fn identity(&self) -> FrequencyIdentity<Option<u128>> {
-        FrequencyIdentity { key: self.owner, security_mode: SecurityMode::Public, owner: self.owner }
+        FrequencyIdentity {
+            key: self.owner,
+            security_mode: SecurityMode::Public,
+            owner: self.owner,
+        }
     }
 
     /// `IdentitySerializer.UUID`, gravando: o que o tile guarda em `component_frequency.security`.
@@ -262,7 +297,11 @@ impl SecurityFrequency {
     /// `HashList`: um nome repetido no pacote entra uma vez.
     pub fn stream_decode(bytes: &[u8]) -> Option<Self> {
         let mut reader = Reader { bytes, at: 0 };
-        let owner = if reader.byte()? != 0 { Some(reader.uuid()?) } else { None };
+        let owner = if reader.byte()? != 0 {
+            Some(reader.uuid()?)
+        } else {
+            None
+        };
         let owner_name = reader.string()?;
         let mode = SecurityMode::by_id(reader.var_int()? as i32);
         let overridden = reader.byte()? != 0;
@@ -319,7 +358,12 @@ impl Frequency for SecurityFrequency {
         self.removed = true;
     }
 
-    fn create(_key: Option<u128>, owner: Option<u128>, security_mode: SecurityMode, names: &dyn Fn(u128) -> String) -> Self {
+    fn create(
+        _key: Option<u128>,
+        owner: Option<u128>,
+        security_mode: SecurityMode,
+        names: &dyn Fn(u128) -> String,
+    ) -> Self {
         Self::new(owner, security_mode, names)
     }
 
@@ -330,9 +374,20 @@ impl Frequency for SecurityFrequency {
             out.insert(OWNER_UUID.to_owned(), json!(uuid_ints(owner)));
         }
         if !self.trusted.is_empty() {
-            out.insert(TRUSTED.to_owned(), Value::Array(self.trusted.iter().map(|uuid| json!(uuid_ints(*uuid))).collect()));
+            out.insert(
+                TRUSTED.to_owned(),
+                Value::Array(
+                    self.trusted
+                        .iter()
+                        .map(|uuid| json!(uuid_ints(*uuid)))
+                        .collect(),
+                ),
+            );
         }
-        out.insert(SECURITY_MODE.to_owned(), json!(self.security_mode.serialized_name()));
+        out.insert(
+            SECURITY_MODE.to_owned(),
+            json!(self.security_mode.serialized_name()),
+        );
         out.insert(OVERRIDE.to_owned(), json!(u8::from(self.overridden)));
         Value::Object(out)
     }
@@ -369,13 +424,23 @@ pub fn server_data(lookup: Option<&SecurityLookup>, owner: Option<u128>) -> Secu
 
 /// O `isTrusted` que `canAccessObject` pergunta no servidor: sem frequência, como `PRIVATE`.
 pub fn server_trusted(lookup: Option<&SecurityLookup>, owner: u128, player: u128) -> bool {
-    lookup.and_then(|lookup| lookup.get(&Some(owner))).is_some_and(|frequency| frequency.is_trusted(player))
+    lookup
+        .and_then(|lookup| lookup.get(&Some(owner)))
+        .is_some_and(|frequency| frequency.is_trusted(player))
 }
 
 /// `TileComponentSecurity.setOwnerUUID` no servidor (`tile.setFrequency(SECURITY, FrequencyIdentity(owner, PUBLIC, owner), owner)`): a frequência do dono, criada se
 /// ainda não existe (a tabela fica suja).
-pub fn frequency_of_owner<'a>(lookup: &'a mut SecurityLookup, owner: u128, names: &dyn Fn(u128) -> String) -> &'a mut SecurityFrequency {
-    let identity = FrequencyIdentity { key: Some(owner), security_mode: SecurityMode::Public, owner: Some(owner) };
+pub fn frequency_of_owner<'a>(
+    lookup: &'a mut SecurityLookup,
+    owner: u128,
+    names: &dyn Fn(u128) -> String,
+) -> &'a mut SecurityFrequency {
+    let identity = FrequencyIdentity {
+        key: Some(owner),
+        security_mode: SecurityMode::Public,
+        owner: Some(owner),
+    };
     lookup.get_or_create(&identity, Some(owner), names)
 }
 
@@ -398,12 +463,20 @@ pub struct SyncSecurity {
 impl SyncSecurity {
     /// `new PacketSyncSecurity(frequency)`. Uma frequência sem dono não tem pacote (o original daria erro ao gravar o UUID nulo).
     pub fn of_frequency(frequency: &SecurityFrequency) -> Option<Self> {
-        Some(Self { player: frequency.owner()?, name: frequency.owner_name().to_owned(), data: Some(frequency.data()) })
+        Some(Self {
+            player: frequency.owner()?,
+            name: frequency.owner_name().to_owned(),
+            data: Some(frequency.data()),
+        })
     }
 
     /// `new PacketSyncSecurity(uuid)`: só o nome, quando alguém põe um bloco ou reclama um item.
     pub fn of_player(player: u128, names: &dyn Fn(u128) -> String) -> Self {
-        Self { player, name: names(player), data: None }
+        Self {
+            player,
+            name: names(player),
+            data: None,
+        }
     }
 
     /// `PacketSyncSecurity.STREAM_CODEC`, gravando.
@@ -428,7 +501,10 @@ impl SyncSecurity {
         let name = reader.string()?;
         let data = if reader.byte()? != 0 {
             let mode = SecurityMode::by_id(reader.var_int()? as i32);
-            Some(SecurityData { mode, overridden: reader.byte()? != 0 })
+            Some(SecurityData {
+                mode,
+                overridden: reader.byte()? != 0,
+            })
         } else {
             None
         };
@@ -438,7 +514,10 @@ impl SyncSecurity {
 
 /// `PacketBatchSecurityUpdate`: todas as frequências com dono, para quem entra no servidor (`SyncAllSecurityData`).
 pub fn batch(lookup: &SecurityLookup) -> Vec<SyncSecurity> {
-    lookup.frequencies().filter_map(SyncSecurity::of_frequency).collect()
+    lookup
+        .frequencies()
+        .filter_map(SyncSecurity::of_frequency)
+        .collect()
 }
 
 /// `MekanismClient.clientSecurityMap` e `clientUUIDMap`: o que o cliente sabe da segurança de cada dono.
@@ -476,7 +555,9 @@ impl ClientSecurity {
 
     /// `SecurityUtils.getData(uuid, true)`.
     pub fn data(&self, owner: Option<u128>) -> SecurityData {
-        owner.and_then(|owner| self.data.get(&owner).copied()).unwrap_or(SecurityData::DUMMY)
+        owner
+            .and_then(|owner| self.data.get(&owner).copied())
+            .unwrap_or(SecurityData::DUMMY)
     }
 
     /// `clientUUIDMap.get(uuid)`.

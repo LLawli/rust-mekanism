@@ -714,6 +714,11 @@ pub(in crate::game) fn state_for_placement(
     answer: &mut Option<Option<BlockStateId>>,
 ) {
     let pos = context.pos;
+    if bounding_refuses_placement(level, state, pos) {
+        // `BlockMekanism.getStateForPlacement` devolve `null`: o bloco não é posto.
+        *answer = Some(None);
+        return;
+    }
     let rules = placement::current();
     let rule = level.native_state_block(state).and_then(|block| rules.get(block));
     if is_cable_state(level, state) {
@@ -2707,7 +2712,18 @@ pub(in crate::game) fn security_placed(game: &mut Game<'_>, stack: &ItemStack, p
         return;
     }
     let mut state = security_of_stack(game, stack);
-    state.placed_by(acting_uuid(game));
+    let placer = acting_uuid(game);
+    let claimed = state.placed_by(placer);
+    if let Some(owner) = state.owner {
+        // `setOwnerUUID` no servidor: `tile.setFrequency(SECURITY, ...)` cria a frequência do dono na hora. Só quem ganhou o dono ao pôr o bloco avisa os clientes
+        // (`PacketSyncSecurity(placer)`: o nome, sem o dado).
+        security_owner_set(game, owner);
+        security_mark_validated(game, pos);
+        if claimed {
+            let packet = sf::SyncSecurity::of_player(owner, &|uuid| server_username(game, uuid));
+            security_broadcast(game, &packet);
+        }
+    }
     if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2])) {
         security_write(entity, &state);
         game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
@@ -2797,7 +2813,9 @@ fn server_username(game: &Game<'_>, uuid: u128) -> String {
 pub(in crate::game) fn security_sync(game: &Game<'_>, entity: &ModBlockEntity) -> sec::SecuritySync {
     let state = security_read(entity);
     let owner_name = state.owner.map(|owner| server_username(game, owner)).unwrap_or_default();
-    sec::SecuritySync { state, owner_name }
+    // A frequência que o tile tem: a da tabela, que `validate` já lhe deu (um tile lido do disco a recebe no primeiro tick).
+    let stream = state.owner.and_then(|owner| security_table(game, |table| table.get(&Some(owner)).map(sf::SecurityFrequency::stream_encode))).flatten();
+    sec::SecuritySync { state, owner_name, stream }
 }
 
 /// O UUID de quem vê o tooltip: o jogador deste cliente (o perfil da sessão remota, ou o do mundo local).
@@ -2807,11 +2825,22 @@ fn viewer_uuid(game: &Game<'_>) -> Option<u128> {
 
 /// `OwnerDisplay.getOwnerName` no cliente: o nome do jogador deste cliente se ele é o dono, o de um jogador que o cliente conhece, ou `<uuid>`.
 fn owner_name(game: &Game<'_>, owner: u128, viewer: Option<u128>) -> String {
-    if viewer == Some(owner) {
-        return game.remote.as_ref().map_or_else(|| game.options.player_name(), |remote| remote.profile_name.clone());
+    // `MekanismClient.clientUUIDMap` primeiro (o que o `PacketSyncSecurity` trouxe); o nome achado de outro jeito entra nele.
+    if let Some(name) = SECURITY_CLIENT.with_borrow(|client| client.name(owner).map(str::to_owned)) {
+        return name;
     }
-    let known = game.remote_player_names().into_iter().find(|(id, _)| game.remote_player_uuid(*id) == Some(owner)).map(|(_, name)| name);
-    known.unwrap_or_else(|| format!("<{}>", uuid_text(owner)))
+    let found = if viewer == Some(owner) {
+        Some(game.remote.as_ref().map_or_else(|| game.options.player_name(), |remote| remote.profile_name.clone()))
+    } else {
+        game.remote_player_names().into_iter().find(|(id, _)| game.remote_player_uuid(*id) == Some(owner)).map(|(_, name)| name)
+    };
+    match found {
+        Some(name) => {
+            SECURITY_CLIENT.with_borrow_mut(|client| client.sync(sf::SyncSecurity { player: owner, name: name.clone(), data: None }));
+            name
+        }
+        None => format!("<{}>", uuid_text(owner)),
+    }
 }
 
 /// `UUID.toString`: `8-4-4-4-12` em hexadecimal.
@@ -2826,13 +2855,15 @@ pub(in crate::game) fn security_tooltip_lines(game: &Game<'_>, stack: &ItemStack
     let state = security_of_stack(game, stack);
     let viewer = viewer_uuid(game);
     let owner = state.owner.map(|owner| (owner, owner_name(game, owner, viewer)));
-    sec::tooltip_lines(sec::SecurityConfig::default(), viewer, owner.as_ref().map(|(owner, name)| (*owner, name.as_str())), state.mode)
+    let data = SECURITY_CLIENT.with_borrow(|client| client.data(state.owner));
+    sec::tooltip_lines_with(sec::SecurityConfig::default(), viewer, owner.as_ref().map(|(owner, name)| (*owner, name.as_str())), state.mode, data)
         .iter()
         .map(|line| (security_line_text(line), u32::MAX))
         .collect()
 }
 
-/// `SecurityUtils.canAccess` do jogador que age sobre o tile em `pos`: o servidor não tem a lista de confiança (a Security Desk não existe no port) nem operadores com atalho
+/// `SecurityUtils.canAccess` do jogador que age sobre o tile em `pos`, no servidor: o modo efetivo (o do bloco, ou o da frequência do dono se a sobreposição da mesa
+/// vale) e, em `TRUSTED`, a lista de confiança da frequência. Um bloco que só tem dono (a Security Desk) é do dono. Os operadores não têm atalho
 /// (`opsBypassRestrictions` é falso por padrão). Um tile sem dono ou sem segurança sempre dá acesso.
 pub(in crate::game) fn security_can_access(game: &Game<'_>, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool, player: u128) -> bool {
     use horizon_client::containers::BlockEntity;
@@ -2842,7 +2873,16 @@ pub(in crate::game) fn security_can_access(game: &Game<'_>, pos: [i32; 3], is_ou
     if !is_ours(&entity.id) {
         return true;
     }
-    security_read(entity).can_access_player(sec::SecurityConfig::default(), player, false, false, &|_, _| false)
+    let state = security_read(entity);
+    let config = sec::SecurityConfig::default();
+    if SECURITY_OWNER_ONLY.with_borrow(|blocks| blocks.contains(entity.id.as_str())) {
+        return sec::owner_only_access(config, state.owner, Some(player));
+    }
+    security_table(game, |table| {
+        let data = sf::server_data(Some(table), state.owner);
+        state.can_access_player_with(config, player, false, false, data, &|owner, subject| sf::server_trusted(Some(table), owner, subject))
+    })
+    .unwrap_or_else(|| state.can_access_player(config, player, false, false, &|_, _| false))
 }
 
 /// `SecurityUtils.displayNoAccess`: a mensagem vermelha `[Mekanism] You don't have access.` ao jogador.
@@ -2949,7 +2989,8 @@ pub(in crate::game) fn security_draw(game: &Game<'_>, batch: &mut HudBatch, orig
     let cursor = game.native_cursor();
     let at = [cursor[0] - origin[0], cursor[1] - origin[1]];
     let hovered = !game.mb_window_covers(at) && tab.is_mouse_over(true, true, at);
-    let mode = if sec::SecurityConfig::default().allow_protection { view.mode } else { sec::SecurityMode::Public };
+    // `SecurityInfoProvider.securityMode()`: `getSecurityMode(..., true)`, o modo efetivo no cliente (o do `clientSecurityMap` se a sobreposição vale).
+    let mode = view.state().final_data(sec::SecurityConfig::default(), SECURITY_CLIENT.with_borrow(|client| client.data(view.state().owner))).mode;
     inset_tab(game, batch, "mekanism", tab, origin, SECURITY_TAB_TINT, security_icon(mode), ButtonLook::of(true, hovered));
 }
 
@@ -2980,7 +3021,8 @@ pub(in crate::game) fn security_widget_tooltip(
         return false;
     }
     let owner = view.owner.as_ref().map(|(owner, name)| (*owner, name.as_str()));
-    let lines: Vec<_> = sec::tab_tooltip_lines(viewer_uuid(game), owner, view.mode).iter().map(security_line_text).collect();
+    let data = SECURITY_CLIENT.with_borrow(|client| client.data(view.state().owner));
+    let lines: Vec<_> = sec::tab_tooltip_lines_with(sec::SecurityConfig::default(), viewer_uuid(game), owner, view.mode, data).iter().map(security_line_text).collect();
     let [bx, by, bw, bh] = tab.button();
     menu_tooltip_rich(game, batch, &lines, cursor, [cursor.0 - at[0] + bx, cursor.1 - at[1] + by, bw, bh]);
     true
@@ -3000,9 +3042,541 @@ pub(in crate::game) fn security_menu_button(game: &Game<'_>, entity: &mut ModBlo
         state.click(player, forward);
         if state.mode != before {
             security_write(entity, &state);
+            // `TileEntityMekanism.onSecurityChanged`: quem está com a tela aberta e perdeu o acesso sai (`BlockSecurityUtils.securityChanged`), no fim do tick.
+            if machinery_basis_core::recipe_data::more_restrictive(before, state.mode) {
+                SECURITY_REVALIDATE.with_borrow_mut(|pending| pending.push(None));
+            }
         }
     }
     true
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A frequência de segurança (`SecurityFrequency`, `FrequencyLookup`, frente `mesa-seguranca`): a tabela de todas as frequências do servidor, gravada onde o original
+// a grava (`data/<espaço>/frequency/security/public.dat` na pasta do mundo), o que o cliente sabe dela (`PacketSyncSecurity`, `PacketBatchSecurityUpdate`) e a Security
+// Desk, que a edita. A conta é `machinery_basis_core::{frequency, security_frequency, security_desk}`.
+
+use machinery_basis_core::security_desk as desk;
+use machinery_basis_core::security_frequency as sf;
+
+/// `PacketSyncSecurity`, `PacketBatchSecurityUpdate` e `PacketAddTrusted`, pelo canal de mod.
+const SECURITY_SYNC_CHANNEL: &str = "machinery_basis:sync_security";
+const SECURITY_BATCH_CHANNEL: &str = "machinery_basis:batch_security";
+const SECURITY_TRUSTED_CHANNEL: &str = "machinery_basis:add_trusted";
+
+thread_local! {
+    /// `FrequencyControllerManager.getController(SECURITY)` do servidor: nasce ao ser pedido pela primeira vez no mundo aberto e some quando ele fecha.
+    static SECURITY_TABLE: std::cell::RefCell<Option<sf::SecurityController>> = const { std::cell::RefCell::new(None) };
+    /// `MekanismClient.clientSecurityMap` e `clientUUIDMap`.
+    static SECURITY_CLIENT: std::cell::RefCell<sf::ClientSecurity> = std::cell::RefCell::new(sf::ClientSecurity::default());
+    /// Os blocos que só têm dono (`ownerCapability` sem `securityCapability`): a Security Desk.
+    static SECURITY_OWNER_ONLY: std::cell::RefCell<std::collections::HashSet<&'static str>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    /// Os tiles cuja frequência a tabela já validou (`TileComponentFrequency.updateFrequency`), por nível.
+    static SECURITY_VALIDATED: std::cell::RefCell<std::collections::HashSet<(&'static str, [i32; 3])>> = std::cell::RefCell::new(std::collections::HashSet::new());
+    /// Os pedidos de `validateAccess` (`None`: todos os jogadores) e de `closeIfNoAccess(jogador)` à espera do fim do tick do servidor.
+    static SECURITY_REVALIDATE: std::cell::RefCell<Vec<Option<u128>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// O mod diz que o bloco `block` só tem dono (a Security Desk): só o dono o abre, o quebra e o configura, em qualquer modo.
+pub(in crate::game) fn security_owner_only_register(block: &'static str) {
+    SECURITY_OWNER_ONLY.with_borrow_mut(|blocks| blocks.insert(block));
+}
+
+/// O espaço de nomes do arquivo das frequências: o dos componentes de segurança do item (`mekanism:owner`).
+fn security_namespace() -> &'static str {
+    sec::OWNER_COMPONENT.split_once(':').map_or(sec::OWNER_COMPONENT, |(namespace, _)| namespace)
+}
+
+/// O arquivo da tabela pública de segurança na pasta do mundo.
+fn security_table_file(game: &Game<'_>) -> Option<std::path::PathBuf> {
+    let id = machinery_basis_core::frequency::lookup_id(security_namespace(), sf::TYPE_NAME, None, sec::SecurityMode::Public);
+    Some(game.native_world_dir()?.join(machinery_basis_core::frequency::lookup_file(&id)))
+}
+
+/// O NBT de uma frequência ou da tabela, a partir do JSON da conta: os UUIDs são `IntArray` (`UUIDUtil.CODEC`), `trusted` é uma lista deles, `override` é um byte
+/// (`Codec.BOOL`) e `freq_list` uma lista de compostos.
+fn frequency_tag(key: &str, value: &serde_json::Value) -> Tag {
+    use serde_json::Value;
+    let ints = |list: &Vec<Value>| Tag::IntArray(list.iter().filter_map(|part| part.as_i64().and_then(|n| i32::try_from(n).ok())).collect());
+    match value {
+        Value::Array(list) if key == sec::OWNER_UUID => ints(list),
+        Value::Array(list) if key == sf::TRUSTED => Tag::List(list.iter().filter_map(Value::as_array).map(ints).collect()),
+        Value::Array(list) => Tag::List(list.iter().map(|item| frequency_tag("", item)).collect()),
+        Value::Object(map) => Tag::Compound(map.iter().map(|(name, item)| (JavaString::from(name.as_str()), frequency_tag(name, item))).collect()),
+        Value::Number(number) if key == sf::OVERRIDE => Tag::Byte(i8::from(number.as_i64() != Some(0))),
+        Value::Bool(flag) => Tag::Byte(i8::from(*flag)),
+        Value::String(text) => Tag::String(JavaString::from(text.as_str())),
+        other => value_tag(other, key),
+    }
+}
+
+/// A tabela de segurança do servidor, lida do disco na primeira vez (`SavedDataStorage.computeIfAbsent`). `None` num cliente de outro servidor ou sem mundo aberto.
+fn security_table<R>(game: &Game<'_>, act: impl FnOnce(&mut sf::SecurityLookup) -> R) -> Option<R> {
+    if game.remote.is_some() {
+        return None;
+    }
+    let missing = SECURITY_TABLE.with_borrow(Option::is_none);
+    if missing {
+        let file = security_table_file(game)?;
+        let names = |uuid: u128| server_username(game, uuid);
+        let loaded = horizon_client::save::read_dat(&file)
+            .and_then(|root| root.get("data").map(tag_value))
+            .and_then(|data| sf::SecurityLookup::decode(&data, sec::SecurityMode::Public, &names));
+        SECURITY_TABLE.with_borrow_mut(|table| *table = Some(sf::SecurityController::new(sf::CONTROLLER_TYPE, loaded)));
+    }
+    SECURITY_TABLE.with_borrow_mut(|table| table.as_mut().and_then(sf::SecurityController::public_mut).map(act))
+}
+
+/// O `SavedData` sujo vai para o disco junto do resto do mundo (`SavedDataStorage.scheduleSave`): `{data: <tabela>, DataVersion}`. Uma tabela que nada sujou não é
+/// gravada, e é só o que o original suja que a suja (ver `machinery_basis_core::frequency`).
+pub(in crate::game) fn security_table_save(game: &Game<'_>) {
+    let Some(file) = security_table_file(game) else {
+        return;
+    };
+    let encoded = SECURITY_TABLE.with_borrow_mut(|table| {
+        let lookup = table.as_mut()?.public_mut()?;
+        if !lookup.is_dirty() {
+            return None;
+        }
+        lookup.set_dirty(false);
+        Some(lookup.encode())
+    });
+    let Some(encoded) = encoded else {
+        return;
+    };
+    let root = Tag::compound([("data", frequency_tag("", &encoded)), ("DataVersion", Tag::Int(horizon_world::DATA_VERSION))]);
+    if let Err(error) = horizon_client::save::write_dat(&file, root) {
+        eprintln!("machinery_basis: a tabela de segurança não foi gravada em {}: {error}", file.display());
+    }
+}
+
+/// O mundo fechou (`FrequencyControllerManager.reset` e `MekanismClient.reset`): a tabela, o que o cliente sabia e os tiles validados somem.
+pub(in crate::game) fn security_world_closed() {
+    SECURITY_TABLE.with_borrow_mut(|table| *table = None);
+    SECURITY_CLIENT.with_borrow_mut(sf::ClientSecurity::reset);
+    SECURITY_VALIDATED.with_borrow_mut(std::collections::HashSet::clear);
+    SECURITY_REVALIDATE.with_borrow_mut(Vec::clear);
+}
+
+/// O mundo abriu: no anfitrião a tabela do mundo anterior some (a deste é lida no primeiro pedido) e o cliente dele recebe o lote que um convidado recebe ao entrar
+/// (`SyncAllSecurityData`). O cliente de um convidado recebe o lote pelo canal de mod e não é tocado aqui.
+pub(in crate::game) fn security_world_opened(game: &mut Game<'_>) {
+    if game.remote.is_none() {
+        security_world_closed();
+        security_player_in(game, 0);
+    }
+}
+
+/// `setOwnerUUID` no servidor: a frequência do dono existe (criada agora, se preciso, o que suja a tabela).
+fn security_owner_set(game: &Game<'_>, owner: u128) {
+    let names = |uuid: u128| server_username(game, uuid);
+    security_table(game, |table| {
+        sf::frequency_of_owner(table, owner, &names);
+    });
+}
+
+fn security_mark_validated(game: &Game<'_>, pos: [i32; 3]) {
+    let key = (game.native_dimension(), pos);
+    SECURITY_VALIDATED.with_borrow_mut(|validated| validated.insert(key));
+}
+
+/// `TileComponentFrequency.tickServer` de um tile com segurança: a frequência que ele leu do NBT (inválida) é trocada pela da tabela, e se a tabela não a tem ela
+/// entra (suja). O original faz isso no primeiro tick em que `gameTime % 5` bate com o desvio do tile (um contador global de tiles); o port faz no primeiro tick do
+/// tile (decisão 271).
+pub(in crate::game) fn security_tile_tick(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    if game.remote.is_some() {
+        return;
+    }
+    let key = (game.native_dimension(), pos);
+    if SECURITY_VALIDATED.with_borrow(|validated| validated.contains(&key)) {
+        return;
+    }
+    SECURITY_VALIDATED.with_borrow_mut(|validated| validated.insert(key));
+    if let Some(owner) = security_read(entity).owner {
+        let names = |uuid: u128| server_username(game, uuid);
+        security_table(game, |table| sf::validate_owner(table, owner, &names));
+    }
+}
+
+/// O UUID do anfitrião (o jogador do mundo local).
+pub(in crate::game) fn host_uuid(game: &Game<'_>) -> Option<u128> {
+    (game.remote.is_none()).then(|| game.level.player_uuid.map(horizon_client::lan::playerdata::ints_uuid)).flatten()
+}
+
+/// `PacketDistributor.sendToAllPlayers(packet)`: o anfitrião aplica na hora (o cliente dele é este processo) e cada convidado recebe pelo canal de mod.
+fn security_broadcast(game: &mut Game<'_>, packet: &sf::SyncSecurity) {
+    SECURITY_CLIENT.with_borrow_mut(|client| client.sync(packet.clone()));
+    let bytes = packet.encode();
+    let players: Vec<u128> = game.native_server_players().iter().map(|player| player.uuid).collect();
+    for player in players {
+        let _ = game.native_net_send_to_player(player, SECURITY_SYNC_CHANNEL, &bytes);
+    }
+}
+
+/// O lote de `PacketBatchSecurityUpdate`: a quantidade e cada `PacketSyncSecurity` com o tamanho na frente.
+fn security_batch_encode(packets: &[sf::SyncSecurity]) -> Vec<u8> {
+    let mut out = (packets.len() as u32).to_be_bytes().to_vec();
+    for packet in packets {
+        let bytes = packet.encode();
+        out.extend((bytes.len() as u32).to_be_bytes());
+        out.extend(bytes);
+    }
+    out
+}
+
+fn security_batch_decode(data: &[u8]) -> Option<Vec<sf::SyncSecurity>> {
+    fn take<'a>(data: &mut &'a [u8], len: usize) -> Option<&'a [u8]> {
+        let (head, rest) = data.split_at_checked(len)?;
+        *data = rest;
+        Some(head)
+    }
+    let mut rest = data;
+    let count = u32::from_be_bytes(take(&mut rest, 4)?.try_into().ok()?);
+    let mut packets = Vec::new();
+    for _ in 0..count {
+        let len = u32::from_be_bytes(take(&mut rest, 4)?.try_into().ok()?) as usize;
+        packets.push(sf::SyncSecurity::decode(take(&mut rest, len)?)?);
+    }
+    Some(packets)
+}
+
+/// `SyncAllSecurityData`: quem entra recebe todas as frequências com dono (`PacketBatchSecurityUpdate`). O anfitrião, ao abrir o mundo, também.
+pub(in crate::game) fn security_player_in(game: &mut Game<'_>, player: u128) {
+    let Some(packets) = security_table(game, |table| sf::batch(table)) else {
+        return;
+    };
+    if host_uuid(game) == Some(player) || player == 0 {
+        SECURITY_CLIENT.with_borrow_mut(|client| client.batch(packets));
+    } else {
+        let _ = game.native_net_send_to_player(player, SECURITY_BATCH_CHANNEL, &security_batch_encode(&packets));
+    }
+}
+
+/// `PacketSyncSecurity.handle` e `PacketBatchSecurityUpdate.handle`, no cliente de um convidado.
+pub(in crate::game) fn security_net_from_server(channel: &str, data: &[u8]) {
+    if channel == SECURITY_SYNC_CHANNEL {
+        if let Some(packet) = sf::SyncSecurity::decode(data) {
+            SECURITY_CLIENT.with_borrow_mut(|client| client.sync(packet));
+        }
+    } else if channel == SECURITY_BATCH_CHANNEL
+        && let Some(packets) = security_batch_decode(data)
+    {
+        SECURITY_CLIENT.with_borrow_mut(|client| client.batch(packets));
+    }
+}
+
+/// O que o cliente sabe da segurança do dono (`SecurityUtils.getData(uuid, true)`).
+pub(in crate::game) fn security_client_data(owner: Option<u128>) -> sec::SecurityData {
+    SECURITY_CLIENT.with_borrow(|client| client.data(owner))
+}
+
+/// `nameToIdCache.get(name)` do servidor integrado: quem o servidor já viu (o anfitrião, os convidados e quem já passou pelo cache de nomes), sem diferenciar
+/// maiúsculas; quem nunca viu, o perfil offline do nome em minúsculas (decisão 270: sem a consulta à Mojang).
+fn security_resolve_name(game: &Game<'_>, name: &str) -> (u128, String) {
+    // Enche o cache com quem está aqui agora.
+    let _ = server_username(game, 0);
+    desk::resolve_name(name, &|lower| {
+        USERNAMES.with_borrow(|cache| {
+            // Um nome com dois UUIDs no cache: o menor UUID, para a resposta não depender da ordem do mapa.
+            cache.iter().filter(|(_, known)| known.to_lowercase() == lower).min_by_key(|(uuid, _)| **uuid).map(|(uuid, known)| (*uuid, known.clone()))
+        })
+    })
+}
+
+/// A mesa em `pos` e o dono dela, se `player` pode mexer nela (`IBlockSecurityUtils.canAccess`).
+fn security_desk_owner(game: &Game<'_>, pos: [i32; 3], player: u128) -> Option<u128> {
+    use horizon_client::containers::BlockEntity;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    if !SECURITY_OWNER_ONLY.with_borrow(|blocks| blocks.contains(entity.id.as_str())) {
+        return None;
+    }
+    let owner = security_read(entity).owner;
+    sec::owner_only_access(sec::SecurityConfig::default(), owner, Some(player)).then_some(owner).flatten()
+}
+
+/// O que uma ação da mesa provocou: o tile marcado, o pacote a todos e as telas a conferir.
+fn security_desk_effects(game: &mut Game<'_>, pos: [i32; 3], owner: u128, effects: &[desk::DeskEffect]) {
+    for effect in effects {
+        match effect {
+            desk::DeskEffect::MarkForSave => {
+                game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+            }
+            desk::DeskEffect::SyncSecurity => {
+                let packet = security_table(game, |table| table.get(&Some(owner)).and_then(sf::SyncSecurity::of_frequency)).flatten();
+                if let Some(packet) = packet {
+                    security_broadcast(game, &packet);
+                }
+            }
+            desk::DeskEffect::ValidateAccess => SECURITY_REVALIDATE.with_borrow_mut(|pending| pending.push(None)),
+            desk::DeskEffect::CloseIfNoAccess(player) => SECURITY_REVALIDATE.with_borrow_mut(|pending| pending.push(Some(*player))),
+        }
+    }
+}
+
+/// Os três `GuiInteraction` da mesa (`SECURITY_DESK_MODE`, `OVERRIDE_BUTTON`, `REMOVE_TRUSTED`), no servidor. O original não confere o dono aqui; o botão de menu só
+/// chega de quem tem a tela da mesa aberta, que é o dono. Devolve se o botão era da mesa.
+pub(in crate::game) fn security_desk_button(game: &mut Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, id: i32) -> bool {
+    let Some(action) = desk::DeskAction::of_button(id) else {
+        return false;
+    };
+    let Some(owner) = security_read(entity).owner else {
+        return true;
+    };
+    // `getFreq()` nulo (o tile sem frequência): nada acontece.
+    let effects = security_table(game, |table| table.get_mut(&Some(owner)).map(|frequency| action.apply(frequency))).flatten();
+    if let Some(effects) = effects {
+        security_desk_effects(game, pos, owner, &effects);
+    }
+    true
+}
+
+/// `PacketAddTrusted.handle`: o nome válido, a mesa em `pos` e o acesso do jogador a ela (só o dono), e então `desk.addTrusted(name)`.
+pub(in crate::game) fn security_add_trusted(game: &mut Game<'_>, player: u128, pos: [i32; 3], name: &str) {
+    if !desk::server_accepts_name(name) {
+        return;
+    }
+    let Some(owner) = security_desk_owner(game, pos, player) else {
+        return;
+    };
+    let (uuid, known) = security_resolve_name(game, name);
+    security_table(game, |table| {
+        if let Some(frequency) = table.get_mut(&Some(owner)) {
+            desk::add_trusted(frequency, Some((uuid, &known)));
+        }
+    });
+}
+
+/// O corpo do `PacketAddTrusted`: a posição e o nome.
+fn security_trusted_encode(pos: [i32; 3], name: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(12 + name.len());
+    for part in pos {
+        out.extend(part.to_be_bytes());
+    }
+    out.extend(name.as_bytes());
+    out
+}
+
+/// `PacketUtils.sendToServer(new PacketAddTrusted(pos, name))`, do cliente: o anfitrião trata na hora, o convidado manda pelo canal de mod.
+pub(in crate::game) fn security_send_trusted(game: &mut Game<'_>, pos: [i32; 3], name: &str) {
+    if game.remote.is_some() {
+        let _ = game.native_net_send_to_server(SECURITY_TRUSTED_CHANNEL, &security_trusted_encode(pos, name));
+    } else if let Some(host) = host_uuid(game) {
+        security_add_trusted(game, host, pos, name);
+    }
+}
+
+/// `native_net_from_client`: o `PacketAddTrusted` de um convidado. Devolve se o canal era da segurança.
+pub(in crate::game) fn security_net_from_client(game: &mut Game<'_>, player: u128, channel: &str, data: &[u8]) -> bool {
+    if channel != SECURITY_TRUSTED_CHANNEL {
+        return false;
+    }
+    if data.len() >= 12
+        && let Ok(name) = std::str::from_utf8(&data[12..])
+    {
+        let part = |at: usize| i32::from_be_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]]);
+        security_add_trusted(game, player, [part(0), part(4), part(8)], name);
+    }
+    true
+}
+
+/// O que um slot da Security Desk vê do item (`ownerCapability` e `securityCapability`): `ownable` é do mod, que sabe quais itens têm dono.
+pub(in crate::game) fn security_item(game: &Game<'_>, stack: &ItemStack, ownable: bool) -> desk::ItemSecurity {
+    let component = |id: &str| game.native_component(stack, id).ok().flatten().map(|tag| security_json(&tag));
+    desk::ItemSecurity {
+        ownable,
+        securable: ownable,
+        owner: component(sec::OWNER_COMPONENT).as_ref().and_then(sec::owner_of),
+        mode: component(sec::SECURITY_COMPONENT).as_ref().and_then(serde_json::Value::as_str).and_then(sec::SecurityMode::from_name),
+    }
+}
+
+/// O que `lock` ou `unlock` mudou no item: o dono posto ou tirado, e o modo posto ou tirado (`resource.without(SECURITY)`).
+fn security_item_apply(game: &Game<'_>, stack: &mut ItemStack, before: &desk::ItemSecurity, change: desk::ItemChange) {
+    if change.owner != before.owner {
+        let result = match change.owner {
+            Some(owner) => game.native_set_component(stack, sec::OWNER_COMPONENT, security_tag(sec::OWNER_UUID, &serde_json::json!(sec::uuid_ints(owner)))),
+            None => game.native_remove_component(stack, sec::OWNER_COMPONENT).map(|_| ()),
+        };
+        if let Err(error) = result {
+            eprintln!("machinery_basis: o dono do item na Security Desk não mudou: {error}");
+        }
+    }
+    let result = match change.mode {
+        Some(Some(mode)) => game.native_set_component(stack, sec::SECURITY_COMPONENT, Tag::String(JavaString::from(mode.serialized_name()))),
+        Some(None) => game.native_remove_component(stack, sec::SECURITY_COMPONENT).map(|_| ()),
+        None => Ok(()),
+    };
+    if let Err(error) = result {
+        eprintln!("machinery_basis: o modo do item na Security Desk não mudou: {error}");
+    }
+}
+
+/// `TileEntitySecurityDesk.onUpdateServer`: com dono e frequência, o slot de cima destrava o item do dono e o de baixo trava o item com o dono e o modo da
+/// frequência. `items` são os dois slots do tile, e `ownable` diz se um item tem dono possível. Devolve se algum item mudou.
+pub(in crate::game) fn security_desk_tick(game: &Game<'_>, entity: &mut ModBlockEntity, ownable: &dyn Fn(&str) -> bool) -> bool {
+    let Some(owner) = security_read(entity).owner else {
+        return false;
+    };
+    let Some(mode) = security_table(game, |table| table.get(&Some(owner)).map(sf::SecurityFrequency::security)).flatten() else {
+        return false;
+    };
+    let mut changed = false;
+    for (index, slot) in [desk::DeskSlot::Unlock, desk::DeskSlot::Lock].into_iter().enumerate() {
+        let Some(Some(stack)) = entity.items.get(index) else {
+            continue;
+        };
+        let item = security_item(game, stack, ownable(&stack.item));
+        let change = match slot {
+            desk::DeskSlot::Unlock => desk::unlock(&item, owner),
+            desk::DeskSlot::Lock => desk::lock(&item, owner, mode),
+        };
+        if let Some(change) = change {
+            let mut stack = stack.clone();
+            security_item_apply(game, &mut stack, &item, change);
+            entity.items[index] = Some(stack);
+            changed = true;
+        }
+    }
+    changed
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O bloco de apoio (`AttributeHasBounding`, `BlockBounding`, `TileEntityBoundingBlock`): um bloco maior que um cubo ocupa as posições em volta com um bloco invisível
+// que aponta para o principal. O mod diz qual é o bloco principal, qual é o de apoio e onde ficam os apoios; a lib os põe, os tira e acha o principal.
+
+/// O bloco principal, o de apoio e os deslocamentos dos apoios em relação ao principal.
+struct BoundingSpec {
+    main: &'static str,
+    bounding: &'static str,
+    offsets: &'static [[i32; 3]],
+}
+
+static BOUNDING_SPECS: std::sync::Mutex<Vec<BoundingSpec>> = std::sync::Mutex::new(Vec::new());
+/// Os blocos principais que saíram do mundo e ainda têm apoios a tirar: o nível, a posição e os deslocamentos.
+static BOUNDING_REMOVED: std::sync::Mutex<Vec<(String, [i32; 3], &'static str, &'static [[i32; 3]])>> = std::sync::Mutex::new(Vec::new());
+
+/// `TileEntityBoundingBlock`: a chave do deslocamento até o principal no NBT do apoio (`SerializationConstants.OFFSET`, um `Vec3i`).
+const BOUNDING_OFFSET: &str = "offset";
+
+fn bounding_specs() -> std::sync::MutexGuard<'static, Vec<BoundingSpec>> {
+    BOUNDING_SPECS.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// O mod diz que `main` tem apoios (`AttributeHasBounding`) do bloco `bounding` nos `offsets`.
+pub(in crate::game) fn bounding_register(main: &'static str, bounding: &'static str, offsets: &'static [[i32; 3]]) {
+    let mut specs = bounding_specs();
+    if !specs.iter().any(|spec| spec.main == main) {
+        specs.push(BoundingSpec { main, bounding, offsets });
+    }
+}
+
+/// `BlockMekanism.getStateForPlacement`: o bloco com apoios só é posto se todas as posições dos apoios podem ser substituídas (`WorldUtils.isValidReplaceableBlock`).
+/// Devolve se a colocação deve ser recusada.
+pub(in crate::game) fn bounding_refuses_placement(level: &GameLevel<'_>, state: BlockStateId, pos: BlockPos) -> bool {
+    let Some(block) = level.native_state_block(state) else {
+        return false;
+    };
+    let specs = bounding_specs();
+    let Some(spec) = specs.iter().find(|spec| spec.main == block) else {
+        return false;
+    };
+    use horizon_world::level::LevelAccess;
+    spec.offsets.iter().any(|offset| !level.behaviours.is_replaceable(level.block_state(BlockPos::new(pos.x + offset[0], pos.y + offset[1], pos.z + offset[2]))))
+}
+
+/// `AttributeHasBounding.placeBoundingBlocks` (de `BlockMekanism.setPlacedBy`): cada posição ganha o bloco de apoio, com o deslocamento até o principal no tile.
+pub(in crate::game) fn bounding_placed(game: &mut Game<'_>, pos: [i32; 3]) {
+    use horizon_client::containers::BlockEntity;
+    let block = game.native_block(pos);
+    let found = bounding_specs().iter().find(|spec| spec.main == block).map(|spec| (spec.bounding, spec.offsets));
+    let Some((bounding, offsets)) = found else {
+        return;
+    };
+    let dimension = game.native_dimension();
+    let Some(state) = game.with_level(|_, level, _| level.registry.default_state(bounding)) else {
+        return;
+    };
+    for offset in offsets {
+        let at = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+        // `Level.setBlockAndUpdate`.
+        if !game.native_set_block(dimension, at, state, 3) {
+            eprintln!("machinery_basis: o bloco de apoio não foi posto em {at:?}");
+            continue;
+        }
+        if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(at[0], at[1], at[2])) {
+            // `mainPos.subtract(boundingPos)`.
+            entity.nbt.insert(JavaString::from(BOUNDING_OFFSET), Tag::IntArray(vec![-offset[0], -offset[1], -offset[2]]));
+            game.world.modified.insert((at[0] >> 4, at[2] >> 4));
+        }
+    }
+    transmitters_flush(game);
+}
+
+/// `BlockBounding.getMainBlockPos`: o principal do apoio em `pos`, pelo deslocamento que o tile dele guarda.
+pub(in crate::game) fn bounding_main(game: &Game<'_>, pos: [i32; 3]) -> Option<[i32; 3]> {
+    use horizon_client::containers::BlockEntity;
+    let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return None;
+    };
+    match entity.nbt.get(&JavaString::from(BOUNDING_OFFSET)) {
+        Some(Tag::IntArray(offset)) if offset.len() == 3 => Some([pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]]),
+        _ => None,
+    }
+}
+
+/// O gancho `block_changed`: um bloco principal que deixou de ser ele mesmo deixa os apoios para tirar (`BlockMekanism.preRemoveSideEffects`).
+pub(in crate::game) fn bounding_block_changed(level: &GameLevel<'_>, dimension: &str, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
+    let Some(block) = level.native_state_block(old) else {
+        return;
+    };
+    if level.native_state_block(new) == Some(block) {
+        return;
+    }
+    let found = bounding_specs().iter().find(|spec| spec.main == block).map(|spec| (spec.bounding, spec.offsets));
+    if let Some((bounding, offsets)) = found {
+        BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).push((dimension.to_owned(), [pos.x, pos.y, pos.z], bounding, offsets));
+    }
+}
+
+/// `AttributeHasBounding.removeBoundingBlocks`: os apoios dos principais que saíram viram ar (só se ainda são o bloco de apoio). O original os tira na mesma
+/// operação que tira o principal; aqui eles saem no fim da operação que os deixou na fila (quem quebra o bloco chama isto) ou no começo do tick do servidor.
+pub(in crate::game) fn bounding_flush(game: &mut Game<'_>) {
+    let pending = std::mem::take(&mut *BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()));
+    if pending.is_empty() {
+        return;
+    }
+    let dimension = game.native_dimension();
+    let Some(air) = game.with_level(|_, level, _| level.registry.default_state("minecraft:air")) else {
+        return;
+    };
+    let mut later = Vec::new();
+    for (level, pos, bounding, offsets) in pending {
+        if level != dimension {
+            later.push((level, pos, bounding, offsets));
+            continue;
+        }
+        for offset in offsets {
+            let at = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+            if game.native_block(at) == bounding {
+                // `level.removeBlockEntity(p)` e `level.removeBlock(p, false)`.
+                game.native_set_block(dimension, at, air, 3);
+            }
+        }
+    }
+    BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).extend(later);
+    transmitters_flush(game);
+}
+
+/// Os pedidos de `validateAccess` e `closeIfNoAccess` do tick, para quem fecha as telas (as sessões são da cola das janelas).
+pub(in crate::game) fn security_take_revalidations() -> Vec<Option<u128>> {
+    SECURITY_REVALIDATE.with_borrow_mut(std::mem::take)
+}
+
+/// A frequência que o menu da mesa (ou de qualquer tile com segurança) trouxe ao cliente, lida do espelho na posição `frequency`.
+pub(in crate::game) fn security_menu_frequency(mirror: &machinery_basis_core::container_sync::Mirror, frequency: usize) -> Option<sf::SecurityFrequency> {
+    sf::SecurityFrequency::menu_read(mirror.bytes(frequency))
 }
 
 /// O modo de controle de redstone que o NBT do tile guarda (`controlType`, `RedstoneControl.CODEC`).

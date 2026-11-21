@@ -142,12 +142,19 @@ pub struct SecurityData {
 
 impl SecurityData {
     /// `SecurityData.DUMMY`: `PUBLIC`, sem sobreposição.
-    pub const DUMMY: Self = Self { mode: SecurityMode::Public, overridden: false };
+    pub const DUMMY: Self = Self {
+        mode: SecurityMode::Public,
+        overridden: false,
+    };
 }
 
 /// `SecurityUtils.canAccess` de um objeto que só tem dono (`ownerCapability` sem `securityCapability`, como a Security Desk): sem dono, todos; com dono, só ele.
 /// Com a proteção desligada, todos.
-pub fn owner_only_access(config: SecurityConfig, owner: Option<u128>, player: Option<u128>) -> bool {
+pub fn owner_only_access(
+    config: SecurityConfig,
+    owner: Option<u128>,
+    player: Option<u128>,
+) -> bool {
     !config.allow_protection || owner.is_none() || owner == player
 }
 
@@ -209,7 +216,10 @@ impl SecurityState {
         if data.overridden && crate::recipe_data::more_restrictive(self.mode, data.mode) {
             return data;
         }
-        SecurityData { mode: self.mode, overridden: false }
+        SecurityData {
+            mode: self.mode,
+            overridden: false,
+        }
     }
 
     /// `canAccessObject(UUID, ISecurityObject, boolean isClient)` com a frequência do dono: como [`Self::can_access`], pelo modo efetivo de [`Self::final_data`].
@@ -221,7 +231,10 @@ impl SecurityState {
         data: SecurityData,
         trusted: &dyn Fn(u128, u128) -> bool,
     ) -> bool {
-        let effective = Self { owner: self.owner, mode: self.final_data(config, data).mode };
+        let effective = Self {
+            owner: self.owner,
+            mode: self.final_data(config, data).mode,
+        };
         effective.can_access(config, player, is_client, trusted)
     }
 
@@ -235,7 +248,8 @@ impl SecurityState {
         data: SecurityData,
         trusted: &dyn Fn(u128, u128) -> bool,
     ) -> bool {
-        (config.ops_bypass && is_op && !is_client) || self.can_access_with(config, Some(player), is_client, data, trusted)
+        (config.ops_bypass && is_op && !is_client)
+            || self.can_access_with(config, Some(player), is_client, data, trusted)
     }
 
     /// `getEffectiveSecurityMode`: o modo do bloco (sem a sobreposição da mesa), `PUBLIC` com a proteção desligada.
@@ -438,12 +452,24 @@ pub fn frequency_owner(bytes: &[u8]) -> Option<(u128, String)> {
 pub struct SecuritySync {
     pub state: SecurityState,
     pub owner_name: String,
+    /// Os bytes do `STREAM_CODEC` da frequência que o tile tem (a do dono, com o modo, a sobreposição e os nomes de confiança). `None`: a frequência de um dono sem
+    /// nada disso, montada de `owner_name`.
+    pub stream: Option<Vec<u8>>,
 }
 
 impl SecuritySync {
     /// `TileComponentSecurity.addContainerTrackers`: a frequência de segurança (`SyncableStreamCodec.frequency`).
     pub fn frequency(&self) -> (i32, Vec<u8>) {
-        frequency_sync(self.state.owner, &self.owner_name)
+        let (hash, bytes) = frequency_sync(self.state.owner, &self.owner_name);
+        match (&self.stream, self.state.owner) {
+            // O `hashCode` não muda com o conteúdo da frequência: só o dono e o nome dela entram nele.
+            (Some(stream), Some(_)) => {
+                let mut with_frequency = vec![1];
+                with_frequency.extend_from_slice(stream);
+                (hash, with_frequency)
+            }
+            _ => (hash, bytes),
+        }
     }
 
     /// O `SyncableEnum` do modo.
@@ -540,7 +566,12 @@ pub fn tooltip_lines(
 pub const OVERRIDDEN_KEY: &str = "security.mekanism.overridden";
 
 pub fn overridden_line() -> TooltipLine {
-    TooltipLine { key: OVERRIDDEN_KEY, color: COLOR_RED, arg: Arg::Literal(String::new()), arg_color: COLOR_RED }
+    TooltipLine {
+        key: OVERRIDDEN_KEY,
+        color: COLOR_RED,
+        arg: Arg::Literal(String::new()),
+        arg_color: COLOR_RED,
+    }
 }
 
 /// `ItemSecurityUtils.addSecurityTooltip` com a frequência do dono: [`tooltip_lines`] com o modo de [`SecurityState::final_data`] e, sobreposto, a linha `(Overridden)`
@@ -552,7 +583,10 @@ pub fn tooltip_lines_with(
     mode: SecurityMode,
     data: SecurityData,
 ) -> Vec<TooltipLine> {
-    let state = SecurityState { owner: owner.map(|(owner, _)| owner), mode };
+    let state = SecurityState {
+        owner: owner.map(|(owner, _)| owner),
+        mode,
+    };
     let data = state.final_data(config, data);
     let mut lines = tooltip_lines(config, viewer, owner, data.mode);
     if data.overridden {
@@ -569,7 +603,10 @@ pub fn tab_tooltip_lines_with(
     mode: SecurityMode,
     data: SecurityData,
 ) -> Vec<TooltipLine> {
-    let state = SecurityState { owner: owner.map(|(owner, _)| owner), mode };
+    let state = SecurityState {
+        owner: owner.map(|(owner, _)| owner),
+        mode,
+    };
     let data = state.final_data(config, data);
     let mut lines = tab_tooltip_lines(viewer, owner, data.mode);
     if data.overridden {

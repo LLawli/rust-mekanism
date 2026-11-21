@@ -25,7 +25,11 @@ pub enum DeskEffect {
 /// `TileEntitySecurityDesk.toggleOverride`.
 pub fn toggle_override(frequency: &mut SecurityFrequency) -> Vec<DeskEffect> {
     frequency.set_overridden(!frequency.is_overridden());
-    vec![DeskEffect::MarkForSave, DeskEffect::SyncSecurity, DeskEffect::ValidateAccess]
+    vec![
+        DeskEffect::MarkForSave,
+        DeskEffect::SyncSecurity,
+        DeskEffect::ValidateAccess,
+    ]
 }
 
 /// `TileEntitySecurityDesk.removeTrusted(index)`: o tile é marcado mesmo quando o índice não existe.
@@ -73,7 +77,9 @@ pub fn server_accepts_name(name: &str) -> bool {
 /// ou igual a 127): o nome vazio passa aqui e é o servidor que o recusa.
 pub fn client_sends_name(text: &str) -> Option<&str> {
     let name = text.trim();
-    (name.encode_utf16().count() <= MAX_NAME_LENGTH && name.encode_utf16().all(|unit| unit > 32 && unit < 127)).then_some(name)
+    (name.encode_utf16().count() <= MAX_NAME_LENGTH
+        && name.encode_utf16().all(|unit| unit > 32 && unit < 127))
+    .then_some(name)
 }
 
 /// `UUIDUtil.createOfflinePlayerUUID(name)`: `UUID.nameUUIDFromBytes("OfflinePlayer:" + name)` (MD5, versão 3).
@@ -87,10 +93,13 @@ pub fn offline_uuid(name: &str) -> u128 {
 /// MD5 (RFC 1321), para o UUID de nome do Java.
 fn md5(input: &[u8]) -> [u8; 16] {
     const S: [u32; 64] = [
-        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4,
-        11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5,
+        9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10,
+        15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
     ];
-    let k: Vec<u32> = (0..64).map(|i| (f64::from(i + 1).sin().abs() * 4_294_967_296.0) as u32).collect();
+    let k: Vec<u32> = (0..64)
+        .map(|i| (f64::from(i + 1).sin().abs() * 4_294_967_296.0) as u32)
+        .collect();
     let mut state: [u32; 4] = [0x6745_2301, 0xefcd_ab89, 0x98ba_dcfe, 0x1032_5476];
     let mut message = input.to_vec();
     message.push(0x80);
@@ -98,8 +107,13 @@ fn md5(input: &[u8]) -> [u8; 16] {
         message.push(0);
     }
     message.extend_from_slice(&((input.len() as u64).wrapping_mul(8)).to_le_bytes());
-    for chunk in message.chunks_exact(64) {
-        let words: Vec<u32> = chunk.chunks_exact(4).map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]])).collect();
+    for chunk in message.as_chunks::<64>().0 {
+        let words: Vec<u32> = chunk
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
         let [mut a, mut b, mut c, mut d] = state;
         for i in 0..64 {
             let (f, g) = match i / 16 {
@@ -108,14 +122,23 @@ fn md5(input: &[u8]) -> [u8; 16] {
                 2 => (b ^ c ^ d, (3 * i + 5) % 16),
                 _ => (c ^ (b | !d), (7 * i) % 16),
             };
-            let rotated = a.wrapping_add(f).wrapping_add(k[i]).wrapping_add(words[g]).rotate_left(S[i]);
+            let rotated = a
+                .wrapping_add(f)
+                .wrapping_add(k[i])
+                .wrapping_add(words[g])
+                .rotate_left(S[i]);
             (a, d, c, b) = (d, c, b, b.wrapping_add(rotated));
         }
-        state = [state[0].wrapping_add(a), state[1].wrapping_add(b), state[2].wrapping_add(c), state[3].wrapping_add(d)];
+        state = [
+            state[0].wrapping_add(a),
+            state[1].wrapping_add(b),
+            state[2].wrapping_add(c),
+            state[3].wrapping_add(d),
+        ];
     }
     let mut out = [0u8; 16];
-    for (slot, word) in out.chunks_exact_mut(4).zip(state) {
-        slot.copy_from_slice(&word.to_le_bytes());
+    for (slot, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(state) {
+        *slot = word.to_le_bytes();
     }
     out
 }
@@ -164,7 +187,12 @@ pub const SLOT_POSITIONS: [(i32, i32); 2] = [(146, 18), (146, 97)];
 
 /// `canInsert` do slot com o `VALIDATOR`: o item tem de ter dono possível; por dentro (`INTERNAL`) entra sempre; no de destravar entra o item do dono da mesa, no de
 /// travar o item sem dono.
-pub fn can_insert(slot: DeskSlot, item: &ItemSecurity, automation: AutomationType, desk_owner: Option<u128>) -> bool {
+pub fn can_insert(
+    slot: DeskSlot,
+    item: &ItemSecurity,
+    automation: AutomationType,
+    desk_owner: Option<u128>,
+) -> bool {
     if !item.ownable {
         return false;
     }
@@ -201,18 +229,32 @@ pub fn unlock(item: &ItemSecurity, desk_owner: u128) -> Option<ItemChange> {
     if !item.ownable || item.owner != Some(desk_owner) {
         return None;
     }
-    Some(ItemChange { owner: None, mode: set_item_mode(item, SecurityMode::Public) })
+    Some(ItemChange {
+        owner: None,
+        mode: set_item_mode(item, SecurityMode::Public),
+    })
 }
 
 /// `SecurityInventorySlot.lock(ownerUUID, frequency)`: o item sem dono ganha o dono da mesa, e o item do dono da mesa ganha o modo da frequência. `None` se nada
 /// muda.
-pub fn lock(item: &ItemSecurity, desk_owner: u128, frequency_mode: SecurityMode) -> Option<ItemChange> {
+pub fn lock(
+    item: &ItemSecurity,
+    desk_owner: u128,
+    frequency_mode: SecurityMode,
+) -> Option<ItemChange> {
     if !item.ownable {
         return None;
     }
     let owner = item.owner.unwrap_or(desk_owner);
-    let mode = if owner == desk_owner { set_item_mode(item, frequency_mode) } else { None };
-    (item.owner.is_none() || mode.is_some()).then_some(ItemChange { owner: Some(owner), mode })
+    let mode = if owner == desk_owner {
+        set_item_mode(item, frequency_mode)
+    } else {
+        None
+    };
+    (item.owner.is_none() || mode.is_some()).then_some(ItemChange {
+        owner: Some(owner),
+        mode,
+    })
 }
 
 /// `GuiSecurityLight`: a luz ao lado do botão de sobreposição.
@@ -261,7 +303,10 @@ impl DeskView<'_> {
     /// A lista que `updateButtons` põe no `GuiTextScrollList` (só mexe nela se o tile tem dono: `None` deixa a lista como estava).
     pub fn names(&self) -> Option<&[String]> {
         self.owner?;
-        Some(self.frequency.map_or(&[][..], SecurityFrequency::trusted_names))
+        Some(
+            self.frequency
+                .map_or(&[][..], SecurityFrequency::trusted_names),
+        )
     }
 
     /// O `GuiSecurityLight` em (144, 77).
@@ -301,7 +346,11 @@ pub const SECURITY_OFFLINE_KEY: &str = "security.mekanism.offline";
 pub const SECURITY_ADD_KEY: &str = "security.mekanism.add";
 pub const SECURITY_OVERRIDE_KEY: &str = "security.mekanism.override";
 pub const BUTTON_REMOVE_KEY: &str = "button.mekanism.remove";
-pub const MODE_TOOLTIP_KEYS: [&str; 3] = ["security.mekanism.public.mode", "security.mekanism.private.mode", "security.mekanism.trusted.mode"];
+pub const MODE_TOOLTIP_KEYS: [&str; 3] = [
+    "security.mekanism.public.mode",
+    "security.mekanism.private.mode",
+    "security.mekanism.trusted.mode",
+];
 
 /// Os botões de menu que a tela manda ao servidor: o modo (`SECURITY_DESK_MODE`, com o ordinal), a sobreposição (`OVERRIDE_BUTTON`) e tirar da lista
 /// (`REMOVE_TRUSTED`, com o índice). Os ids ficam longe dos da aba de segurança (100 e 101) e dos botões de receita.
@@ -328,7 +377,9 @@ impl DeskAction {
 
     pub fn of_button(button: i32) -> Option<Self> {
         match button {
-            b if (BUTTON_MODE..BUTTON_MODE + 3).contains(&b) => Some(Self::Mode(SecurityMode::by_id(b - BUTTON_MODE))),
+            b if (BUTTON_MODE..BUTTON_MODE + 3).contains(&b) => {
+                Some(Self::Mode(SecurityMode::by_id(b - BUTTON_MODE)))
+            }
             BUTTON_OVERRIDE => Some(Self::ToggleOverride),
             b if b >= BUTTON_REMOVE => Some(Self::Remove(b - BUTTON_REMOVE)),
             _ => None,

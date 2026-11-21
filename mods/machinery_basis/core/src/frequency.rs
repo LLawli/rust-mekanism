@@ -50,7 +50,12 @@ pub trait Frequency: Clone + std::fmt::Debug {
         false
     }
     /// `FrequencyType.create(key, owner, securityMode)`; `names` é `MekanismUtils.getLastKnownUsername`, que o construtor do `Frequency` chama para o nome do dono.
-    fn create(key: Self::Key, owner: Option<u128>, security_mode: SecurityMode, names: &dyn Fn(u128) -> String) -> Self;
+    fn create(
+        key: Self::Key,
+        owner: Option<u128>,
+        security_mode: SecurityMode,
+        names: &dyn Fn(u128) -> String,
+    ) -> Self;
     /// O `CODEC` do tipo.
     fn encode(&self) -> Value;
     /// O `CODEC` do tipo, lendo; `names` é `MekanismUtils.getLastKnownUsername`.
@@ -77,7 +82,12 @@ impl ControllerType {
 }
 
 /// `FrequencyLookup.getId`: `frequency/<tipo>/[<dono>/]<modo>` no espaço de nomes de quem usa.
-pub fn lookup_id(namespace: &str, type_name: &str, owner: Option<u128>, mode: SecurityMode) -> String {
+pub fn lookup_id(
+    namespace: &str,
+    type_name: &str,
+    owner: Option<u128>,
+    mode: SecurityMode,
+) -> String {
     let mut path = format!("{namespace}:frequency/{type_name}/");
     if let Some(owner) = owner {
         path.push_str(&uuid_text(owner));
@@ -96,7 +106,14 @@ pub fn lookup_file(id: &str) -> String {
 /// `UUID.toString`: os 32 dígitos em minúsculas, com os quatro hífens.
 pub fn uuid_text(uuid: u128) -> String {
     let hex = format!("{uuid:032x}");
-    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
 }
 
 /// `FrequencyLookup`: as frequências de um dono e de um modo, na ordem em que entraram (`LinkedHashMap`), e se há algo a gravar.
@@ -110,7 +127,12 @@ pub struct FrequencyLookup<F: Frequency> {
 
 impl<F: Frequency> FrequencyLookup<F> {
     pub fn new(owner: Option<u128>, security_mode: SecurityMode) -> Self {
-        Self { frequencies: Vec::new(), owner, security_mode, dirty: false }
+        Self {
+            frequencies: Vec::new(),
+            owner,
+            security_mode,
+            dirty: false,
+        }
     }
 
     pub fn owner(&self) -> Option<u128> {
@@ -132,7 +154,9 @@ impl<F: Frequency> FrequencyLookup<F> {
     }
 
     fn index(&self, key: &F::Key) -> Option<usize> {
-        self.frequencies.iter().position(|(stored, _)| stored == key)
+        self.frequencies
+            .iter()
+            .position(|(stored, _)| stored == key)
     }
 
     /// `getFrequency(key)`.
@@ -160,7 +184,9 @@ impl<F: Frequency> FrequencyLookup<F> {
 
     /// `remove(key, ownerUUID)`: só o dono tira a frequência.
     pub fn remove(&mut self, key: &F::Key, owner: u128) -> bool {
-        let Some(at) = self.index(key) else { return false };
+        let Some(at) = self.index(key) else {
+            return false;
+        };
         if self.frequencies[at].1.owner() != Some(owner) {
             return false;
         }
@@ -199,11 +225,19 @@ impl<F: Frequency> FrequencyLookup<F> {
     }
 
     /// `getOrCreateFrequency(identity, ownerUUID)`: a frequência da chave, criada (e a tabela suja) se não existe.
-    pub fn get_or_create(&mut self, identity: &FrequencyIdentity<F::Key>, owner: Option<u128>, names: &dyn Fn(u128) -> String) -> &mut F {
+    pub fn get_or_create(
+        &mut self,
+        identity: &FrequencyIdentity<F::Key>,
+        owner: Option<u128>,
+        names: &dyn Fn(u128) -> String,
+    ) -> &mut F {
         let at = match self.index(&identity.key) {
             Some(at) => at,
             None => {
-                self.frequencies.push((identity.key.clone(), F::create(identity.key.clone(), owner, identity.security_mode, names)));
+                self.frequencies.push((
+                    identity.key.clone(),
+                    F::create(identity.key.clone(), owner, identity.security_mode, names),
+                ));
                 self.dirty = true;
                 self.frequencies.len() - 1
             }
@@ -227,12 +261,19 @@ impl<F: Frequency> FrequencyLookup<F> {
         if let Some(owner) = self.owner {
             out.insert(OWNER_UUID.to_owned(), json!(uuid_ints(owner)));
         }
-        out.insert(FREQUENCY_LIST.to_owned(), Value::Array(self.frequencies().map(Frequency::encode).collect()));
+        out.insert(
+            FREQUENCY_LIST.to_owned(),
+            Value::Array(self.frequencies().map(Frequency::encode).collect()),
+        );
         Value::Object(out)
     }
 
     /// `FrequencyLookup.codec`, lendo: a frequência que não decodifica fica de fora (`promotePartial`), e a tabela lida não está suja.
-    pub fn decode(value: &Value, security_mode: SecurityMode, names: &dyn Fn(u128) -> String) -> Option<Self> {
+    pub fn decode(
+        value: &Value,
+        security_mode: SecurityMode,
+        names: &dyn Fn(u128) -> String,
+    ) -> Option<Self> {
         let list = value.get(FREQUENCY_LIST)?.as_array()?;
         let mut lookup = Self::new(value.get(OWNER_UUID).and_then(owner_of), security_mode);
         for frequency in list.iter().filter_map(|entry| F::decode(entry, names)) {
@@ -261,7 +302,12 @@ impl<F: Frequency> FrequencyController<F> {
         let public = controller_type
             .supports(SecurityMode::Public)
             .then(|| public.unwrap_or_else(|| FrequencyLookup::new(None, SecurityMode::Public)));
-        Self { controller_type, public, private: HashMap::new(), trusted: HashMap::new() }
+        Self {
+            controller_type,
+            public,
+            private: HashMap::new(),
+            trusted: HashMap::new(),
+        }
     }
 
     pub fn controller_type(&self) -> ControllerType {
@@ -294,7 +340,9 @@ impl<F: Frequency> FrequencyController<F> {
             SecurityMode::Trusted => &mut self.trusted,
         };
         let owner = owner?;
-        Some(table.entry(owner).or_insert_with(|| loaded(owner, mode).unwrap_or_else(|| FrequencyLookup::new(Some(owner), mode))))
+        Some(table.entry(owner).or_insert_with(|| {
+            loaded(owner, mode).unwrap_or_else(|| FrequencyLookup::new(Some(owner), mode))
+        }))
     }
 
     /// `FrequencyController.clear`: as tabelas privadas e de confiança somem (a pública fica).

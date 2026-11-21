@@ -915,6 +915,8 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
     basis::name_apply_pending(entity, pos);
     basis::security_apply_pending(entity, pos);
+    // `TileComponentFrequency.tickServer`: a frequência de segurança que o tile leu do NBT é validada pela tabela.
+    basis::security_tile_tick(game, pos, entity);
     // A capability de fluido do `lavaTank`: todo lado menos a frente (`RelativeSide.LEFT, RIGHT, BACK, TOP, BOTTOM`).
     let front = basis::front(game, pos);
     crate::game::machinery_resources::fluid_faces_set(game.native_dimension(), pos, &entity.id, Face::ALL.map(|face| face != front));

@@ -3703,6 +3703,43 @@ pub(in crate::game) fn recount(game: &Game<'_>) {
     }
 }
 
+/// `TileEntitySecurityDesk.validateAccess`, `closeIfNoAccess` e `BlockSecurityUtils.securityChanged`: quem tem a tela de um tile aberta e deixou de ter acesso a ele
+/// é posto para fora (`player.closeContainer()`). O Java fecha na hora da mudança; aqui os pedidos do tick são atendidos no começo da passada seguinte do servidor,
+/// antes de as sessões serem recontadas. Só as telas do nível em que o jogo está são conferidas.
+pub(in crate::game) fn security_revalidate(game: &mut Game<'_>) {
+    let requests = crate::game::machinery_basis::security_take_revalidations();
+    if requests.is_empty() {
+        return;
+    }
+    let level = game.native_dimension();
+    let open: Vec<([i32; 3], u128)> = {
+        let guard = sessions();
+        guard.as_ref().map_or_else(Vec::new, |table| {
+            table.containers().into_iter().filter(|(_, at)| at == level).flat_map(|(pos, _)| table.players_of(pos).into_iter().map(move |player| (pos, player))).collect()
+        })
+    };
+    for (pos, player) in open {
+        // O anfitrião é o 0 das sessões.
+        let uuid = if player == 0 { crate::game::machinery_basis::host_uuid(game) } else { Some(player) };
+        let Some(uuid) = uuid else {
+            continue;
+        };
+        if !requests.iter().any(|request| request.is_none_or(|only| only == uuid)) {
+            continue;
+        }
+        if crate::game::machinery_basis::security_can_access(game, pos, &|_| true, uuid) {
+            continue;
+        }
+        if player == 0 {
+            game.close_container();
+        } else if let Some(host) = game.lan.as_mut()
+            && let Some(conn) = host.hub.guests.iter().find(|guest| guest.uuid == player).map(|guest| guest.conn)
+        {
+            host.hub.close_container(conn);
+        }
+    }
+}
+
 fn server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
     let Some((&op, body)) = data.split_first() else {
         return;
@@ -4107,6 +4144,10 @@ impl Game<'_> {
     }
 
     /// Quem fechou o menu sai das sessões.
+    pub(in crate::game) fn mb_security_revalidate(&mut self) {
+        security_revalidate(self);
+    }
+
     pub(in crate::game) fn mb_container_recount(&self) {
         recount(self);
     }
