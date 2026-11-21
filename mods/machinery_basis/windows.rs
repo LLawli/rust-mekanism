@@ -3956,6 +3956,7 @@ pub(in crate::game) fn player_logged_in(game: &mut Game<'_>, player: u128) {
     BOOK_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).remove(&player);
     game.mb_muffling_player_in(player);
     game.mb_view_player_in(player);
+    game.mb_tank_view_player_in(player);
 }
 
 /// `native_server_data_loaded`: os dados mudaram (um `/reload`), então todos os que estão no servidor recebem de novo.
@@ -3974,6 +3975,7 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
     if crate::game::machinery_tile_sound::muffling_from_server(channel, data)
         || crate::game::machinery_tile_sound::name_from_server(channel, data)
         || crate::game::machinery_tile_sound::view_from_server(channel, data)
+        || crate::game::machinery_tile_sound::tank_view_from_server(channel, data)
     {
         return;
     }

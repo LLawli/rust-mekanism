@@ -7,6 +7,7 @@ use machinery_basis_core::sound::{
     DEFAULT_ATTENUATION_DISTANCE, SOUND_SOURCE_BLOCKS, SoundConfig, TILE_SOUND_CAN_START_SILENT, TILE_SOUND_DELAY, TILE_SOUND_LOOPING, TILE_SOUND_PITCH, TileSound, TileSoundEngine, TileTickableSound, TileView, player_in_range,
     sound_position,
 };
+use machinery_basis_core::fluid_tank_render::{TankView, decode_view as decode_tank_view, encode_view as encode_tank_view};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -96,6 +97,29 @@ pub(in crate::game) fn view_from_server(channel: &str, data: &[u8]) -> bool {
     }
     if let Some((dimension, pos, view)) = decode_view(data) {
         view_table(|table| table.insert((dimension, pos), view));
+    }
+    true
+}
+
+/// O que o desenho de um tanque de fluido precisa (`getReducedUpdateTag` do tile: a escala, o fluido e o fluido da válvula). Como o `sendUpdatePacket` do original, o servidor
+/// manda quando o tile pede, e a quem entra; no anfitrião os dois lados dividem a tabela.
+static TANK_VIEWS: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), TankView>>> = std::sync::Mutex::new(None);
+static TANK_VIEWS_SERVER: std::sync::Mutex<Option<HashMap<(String, [i32; 3]), TankView>>> = std::sync::Mutex::new(None);
+
+const TANK_VIEW_CHANNEL: &str = "machinery_basis:tank_view";
+
+/// O que o cliente sabe do tanque em `pos`.
+pub(in crate::game) fn tank_view(dimension: &str, pos: [i32; 3]) -> Option<TankView> {
+    TANK_VIEWS.lock().unwrap_or_else(|error| error.into_inner()).get_or_insert_with(HashMap::new).get(&(dimension.to_owned(), pos)).cloned()
+}
+
+/// `NativeNetFromServer`: o cliente guarda o tanque que o servidor mandou.
+pub(in crate::game) fn tank_view_from_server(channel: &str, data: &[u8]) -> bool {
+    if channel != TANK_VIEW_CHANNEL {
+        return false;
+    }
+    if let Some((dimension, pos, view)) = decode_tank_view(data) {
+        TANK_VIEWS.lock().unwrap_or_else(|error| error.into_inner()).get_or_insert_with(HashMap::new).insert((dimension, pos), view);
     }
     true
 }
@@ -353,6 +377,29 @@ impl Game<'_> {
         let players: Vec<u128> = self.native_server_players().iter().map(|player| player.uuid).collect();
         for player in players {
             let _ = self.native_net_send_to_player(player, VIEW_CHANNEL, &bytes);
+        }
+    }
+
+    /// O tanque em `pos` mandou o pacote de atualização (`sendUpdatePacket`): o servidor avisa os jogadores.
+    pub(in crate::game) fn mb_tank_view_changed(&mut self, dimension: &str, pos: [i32; 3], view: TankView) {
+        let bytes = encode_tank_view(dimension, pos, &view);
+        for table in [&TANK_VIEWS, &TANK_VIEWS_SERVER] {
+            table.lock().unwrap_or_else(|error| error.into_inner()).get_or_insert_with(HashMap::new).insert((dimension.to_owned(), pos), view.clone());
+        }
+        let players: Vec<u128> = self.native_server_players().iter().map(|player| player.uuid).collect();
+        for player in players {
+            let _ = self.native_net_send_to_player(player, TANK_VIEW_CHANNEL, &bytes);
+        }
+    }
+
+    /// Quem entrou depois recebe os tanques que o servidor tem.
+    pub(in crate::game) fn mb_tank_view_player_in(&mut self, player: u128) {
+        let entries: Vec<Vec<u8>> = {
+            let mut guard = TANK_VIEWS_SERVER.lock().unwrap_or_else(|error| error.into_inner());
+            guard.get_or_insert_with(HashMap::new).iter().map(|((dimension, pos), view)| encode_tank_view(dimension, *pos, view)).collect()
+        };
+        for bytes in entries {
+            let _ = self.native_net_send_to_player(player, TANK_VIEW_CHANNEL, &bytes);
         }
     }
 

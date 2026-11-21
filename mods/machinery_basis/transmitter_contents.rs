@@ -163,28 +163,37 @@ fn draw_groups(game: &Game<'_>, draw: &mut BlockEntityDraw, provider: &Provider,
     draw.light = kept;
 }
 
-/// Os cubos do cano (`RenderMechanicalPipe.submit`, `RenderResizableCuboid.renderCube`): o fluido parado, com a altura do estágio.
-fn draw_pipe_cubes(game: &Game<'_>, draw: &mut BlockEntityDraw, frame: &contents::PipeFrame, sprite: &str, argb: u32, light: u32) {
-    let Some(sprite) = sprite_key(game, sprite) else {
-        return;
-    };
-    let sprite = sprite.as_str();
+/// Um cubo do `RenderResizableCuboid.renderCube` dentro do bloco, com o sprite de cada lado (`TexturePicker`), a cor nos vértices e a luz dada.
+pub(in crate::game) fn draw_cuboid(game: &Game<'_>, draw: &mut BlockEntityDraw, cuboid: &contents::Cuboid, sprite_of: &dyn Fn(machinery_basis_core::sides::Face) -> Option<String>, argb: u32, light: u32) {
     let kept = draw.light;
     draw.light = light;
-    for cuboid in contents::pipe_cuboids(frame) {
-        for quad in contents::cuboid_quads(&cuboid) {
-            let start = draw.vertices_mut().len();
-            let [u0, v0] = [quad.uv[0][0], quad.uv[0][1]];
-            let [u1, v1] = [quad.uv[2][0], quad.uv[2][1]];
-            if game.native_draw_quad(draw, sprite, quad.corners, [u0 * 16.0, v0 * 16.0, u1 * 16.0, v1 * 16.0], 0xFF_FFFF) {
-                for vertex in &mut draw.vertices_mut()[start..] {
-                    vertex.color = vertex_color(argb, 1.0);
-                    vertex.normal = horizon_client::mesher::CULL_BACK;
-                }
+    for quad in contents::cuboid_quads(cuboid) {
+        let Some(sprite) = sprite_of(quad.side).and_then(|name| sprite_key(game, &name)) else {
+            continue;
+        };
+        let start = draw.vertices_mut().len();
+        let [u0, v0] = [quad.uv[0][0], quad.uv[0][1]];
+        let [u1, v1] = [quad.uv[2][0], quad.uv[2][1]];
+        if game.native_draw_quad(draw, &sprite, quad.corners, [u0 * 16.0, v0 * 16.0, u1 * 16.0, v1 * 16.0], 0xFF_FFFF) {
+            for vertex in &mut draw.vertices_mut()[start..] {
+                vertex.color = vertex_color(argb, 1.0);
+                vertex.normal = horizon_client::mesher::CULL_BACK;
             }
         }
     }
     draw.light = kept;
+}
+
+/// `LightCoordsUtil.lightCoordsWithEmission` sobre a luz do desenho, para quem desenha um conteúdo fora deste arquivo.
+pub(in crate::game) fn light_emitting(light: u32, emission: u32) -> u32 {
+    light_with_emission(light, emission)
+}
+
+/// Os cubos do cano (`RenderMechanicalPipe.submit`, `RenderResizableCuboid.renderCube`): o fluido parado, com a altura do estágio.
+fn draw_pipe_cubes(game: &Game<'_>, draw: &mut BlockEntityDraw, frame: &contents::PipeFrame, sprite: &str, argb: u32, light: u32) {
+    for cuboid in contents::pipe_cuboids(frame) {
+        draw_cuboid(game, draw, &cuboid, &|_| Some(sprite.to_owned()), argb, light);
+    }
 }
 
 /// `BlockEntityRenderer.submit` do conteúdo de um transmissor em `pos` (`block_entity_submit`).

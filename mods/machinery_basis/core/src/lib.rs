@@ -28,6 +28,7 @@ pub mod fluid;
 pub mod fluid_entity;
 pub mod fluid_logged;
 pub mod fluid_tank;
+pub mod fluid_tank_render;
 pub mod frequency;
 pub mod gui;
 pub mod handler_slot;
