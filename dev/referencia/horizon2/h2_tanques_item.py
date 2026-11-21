@@ -405,6 +405,103 @@ def cartao():
     h.command(f"kill @e[type=minecraft:item,{AQUI}]")
 
 
+SHOTS = "/home/luka/.local/share/jogo-isolado/horizon/data/shots/tanques4"
+
+
+def clima():
+    """Clima limpo e meio-dia, com os ciclos parados, antes de todo print e vídeo."""
+    for text in ("weather clear", "time set noon", "gamerule advance_time false", "gamerule advance_weather false"):
+        h.command(text)
+
+
+def tooltip(nome, item):
+    """O tooltip de um item na tela do inventário (os tanques não têm `DETAILS`: sai inteiro sem tecla)."""
+    h.command("clear @s")
+    h.command(f"item replace entity @s hotbar.0 with {item}")
+    h.ctl("select", "1")
+    h.command("gamemode survival")
+    h.ctl("open-inventory")
+    time.sleep(1.0)
+    name = item.split("[")[0].split(" ")[0]
+    slots = [w for w in json.loads(h.ctl("ui")).get("widgets", []) if w.get("kind") == "slot" and (w.get("stack") or {}).get("item") == name]
+    if not slots:
+        confere(f"print: o slot de {name}", False)
+    else:
+        x, y, _, _ = slots[0]["bounds"]
+        h.ctl("scroll-at", str(int(x + 8)), str(int(y + 8)), "0")
+        time.sleep(0.8)
+        h.ctl("screenshot", f"{SHOTS}/{nome}.png")
+    h.ctl("close")
+    h.command("gamemode creative")
+
+
+def prints():
+    """Os tooltips dos itens de tanque (o rastro `tank_fluid_item_use` tem os mesmos itens)."""
+    clima()
+    h.command(f"tp @s {X + 0.5} {Y + 1} {Z - 0.5} 0 20")
+    tooltip("tooltip_fluido_vazio", tank("basic", mode=False))
+    tooltip("tooltip_fluido_agua_balde", tank("basic", "water", 5000, mode=True))
+    tooltip("tooltip_fluido_criativo_cheio", tank("creative", "water", CREATIVE, mode=False))
+    tooltip("tooltip_quimico_hidrogenio", 'mekanism:basic_chemical_tank[mekanism:chemicals={containers:[{amount:5000L,type:"mekanism:hydrogen"}]}]')
+    tooltip("tooltip_quimico_ultimate_vazio", "mekanism:ultimate_chemical_tank")
+    h.command("clear @s")
+
+
+def video():
+    """O roteiro do vídeo (uns 40 s): a tecla do modo liga o modo balde, o primeiro uso toma posse, o item tira a água da poça, põe de volta agachado, enche o
+    caldeirão, esvazia o caldeirão, e o tooltip com a tecla de detalhes. A gravação roda no desktop em paralelo (`gravar-jogo rec`)."""
+    caldeirao_pos = f"{X + 1} {Y} {Z}"
+    clima()
+    h.command("gamemode survival")
+    h.command("clear @s")
+    h.command(f"setblock {TARGET} minecraft:water")
+    h.command(f"setblock {caldeirao_pos} minecraft:cauldron")
+    h.command(f"item replace entity @s hotbar.0 with {tank('basic')}")
+    h.ctl("select", "1")
+    stand(False)
+    time.sleep(2.0)
+    h.ctl("key", "n", "tap")  # o modo balde liga: o texto do modo sobre a barra
+    time.sleep(2.5)
+    h.ctl("use-item")  # a posse: a mensagem no chat
+    time.sleep(2.5)
+    h.ctl("look-at", str(X + 0.5), str(Y), str(Z + 0.5))
+    h.ctl("use-item")  # tira a água
+    time.sleep(2.5)
+    h.ctl("key", "shift", "down")
+    time.sleep(0.5)
+    h.ctl("look-at", str(X + 0.5), str(Y), str(Z + 0.5))
+    h.ctl("use-item")  # põe a água de volta
+    time.sleep(2.0)
+    h.ctl("key", "shift", "up")
+    time.sleep(0.6)
+    h.ctl("look-at", str(X + 0.5), str(Y), str(Z + 0.5))
+    h.ctl("use-item")  # tira de novo
+    time.sleep(2.5)
+    h.ctl("look-at", "block", str(X + 1), str(Y), str(Z))
+    time.sleep(0.8)
+    h.ctl("use-item")  # enche o caldeirão
+    time.sleep(2.5)
+    h.ctl("use-item")  # esvazia o caldeirão
+    time.sleep(2.5)
+    h.ctl("open-inventory")
+    time.sleep(1.0)
+    slots = [w for w in json.loads(h.ctl("ui")).get("widgets", []) if w.get("kind") == "slot" and (w.get("stack") or {}).get("item") == "mekanism:basic_fluid_tank"]
+    if slots:
+        x, y, _, _ = slots[0]["bounds"]
+        h.ctl("scroll-at", str(int(x + 8)), str(int(y + 8)), "0")
+        time.sleep(4.0)
+    h.ctl("close")
+    time.sleep(1.0)
+    _, text = hand()
+    print("vídeo: a mão ao fim", text[:220], flush=True)
+    h.command(f"setblock {caldeirao_pos} minecraft:glass")
+    h.command(f"setblock {TARGET} minecraft:air")
+    h.command("gamemode creative")
+    h.command("clear @s")
+    h.command("gamerule advance_time true")
+    h.command("gamerule advance_weather true")
+
+
 def main():
     quais = sys.argv[1:] or ["uso", "caldeirao", "dispensador", "leite", "modo", "posto", "coluna", "cartao"]
     antes = h.command("data get entity @s Pos")[0]

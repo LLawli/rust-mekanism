@@ -3214,10 +3214,12 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
         lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
     }
     // Os tanques: o que guardam, a capacidade do tier, o inventário e, no de fluido, o modo balde (os appenders de `ATTACHED_FLUIDS`/`ATTACHED_CHEMICALS`, do tier,
-    // de `ATTACHED_ITEMS` e de `BUCKET_MODE`), só com a tecla de detalhes.
-    if (fluid_tank || chemical_tank) && details {
+    // de `ATTACHED_ITEMS` e de `BUCKET_MODE`), e a descrição. Os itens dos tanques não têm o componente `DETAILS` (não estão no rastro `upgrade_history_details`):
+    // nada se esconde sem a tecla de detalhes, e as linhas saem sempre, como no rastro `tank_fluid_item_use`.
+    if fluid_tank || chemical_tank {
         let tank = if fluid_tank { crate::game::mekanism_tank::tooltip_lines(game, stack) } else { crate::game::mekanism_chemical_tank::tooltip_lines(game, stack) };
         lines.extend(tank.iter().map(|chat| (crate::game::mekanism_configurator::text(chat), u32::MAX)));
+        lines.push((horizon_client::mod_api::Text::translate(&rules::description_key(&stack.item), &[]), u32::MAX));
     }
     if has_details {
         lines.extend(basis::content_hold_lines(game, details, &rules::description_key(&stack.item)));
