@@ -2539,6 +2539,10 @@ pub(in crate::game) fn client_tick(game: &mut Game<'_>) {
 pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], canceled: &mut bool) {
     // A Security Desk e o bloco de apoio dela.
     if crate::game::mekanism_desk::destroy_block(game, pos, canceled) {
+        // A mesa que vai mesmo sair leva os dois slots no item (o apoio e a mesa de quem não é o dono saem dali com o clique cancelado).
+        if !*canceled {
+            crate::game::mekanism_desk::destroy_content(game, pos);
+        }
         return;
     }
     let canceled_before = *canceled;
@@ -2652,7 +2656,7 @@ fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
         return;
     }
     // A Security Desk: os itens que têm dono são os dos blocos com segurança (as máquinas, os cubos e a própria mesa).
-    if crate::game::mekanism_desk::publish_slot_rules(game, pos, RULES_OWNER, desk_ownable) {
+    if crate::game::mekanism_desk::publish_slot_rules(game, pos, RULES_OWNER, basis::security_ownable) {
         return;
     }
     let Some(machine) = machine_of(&entity.id) else {
@@ -2819,8 +2823,9 @@ fn flush_deferred_awards(game: &mut Game<'_>) {
 }
 
 /// O nome do tile é o da `machinery_basis` (`basis::name_*`): o componente inteiro, só para os blocos das máquinas daqui.
-/// Os itens que a Security Desk trava e destrava: os dos blocos com dono (as máquinas, os cubos e a própria mesa).
-fn desk_ownable(item: &str) -> bool {
+/// Os itens deste mod que têm dono possível (`ItemBlockTooltip.attachCapabilities`, os blocos com `AttributeSecurity`): as máquinas, os cubos e a Security Desk.
+/// Os dos outros mods (o Heat Generator) vêm do registro da `machinery_basis` (`security_ownable_register`).
+pub(in crate::game) fn item_has_owner(item: &str) -> bool {
     is_machine_id(item) || crate::game::mekanism_desk::is_desk(item)
 }
 
@@ -3317,8 +3322,8 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
 
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity) {
     if crate::game::mekanism_desk::is_desk(&entity.id) {
-        // Os itens com dono possível (`IItemSecurityUtils.ownerCapability`): os dos blocos com segurança deste mod.
-        crate::game::mekanism_desk::tick(game, pos, entity, &|item| is_machine_id(item) || crate::game::mekanism_desk::is_desk(item));
+        // Os itens com dono possível (`IItemSecurityUtils.ownerCapability`): os dos blocos com segurança de todos os mods que se registraram.
+        crate::game::mekanism_desk::tick(game, pos, entity, &basis::security_ownable);
         return;
     }
     if is_machine_id(&entity.id) {
@@ -3455,6 +3460,9 @@ pub(in crate::game) fn quick_move(
     stack: &mut ItemStack,
     handled: &mut bool,
 ) {
+    if crate::game::mekanism_desk::quick_move(game, entity, container_slots, slot, stack, handled) {
+        return;
+    }
     let Some(machine) = machine_of(&entity.id) else {
         return;
     };

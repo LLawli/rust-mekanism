@@ -460,6 +460,8 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
         // As faces, as entradas e as saídas são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
         basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
         basis::register_item_energy(RULES_OWNER, ENERGY_ITEMS);
+        // `ItemBlockTooltip.attachCapabilities`: o item do Heat Generator tem dono e modo, e a Security Desk do Mekanism o trava e destrava.
+        basis::security_ownable_register(RULES_OWNER, is_generator_id);
         *container = Some(ModContainer {
             slots: rules::MENU_SLOTS,
             menu: Some(rules::MENU.to_owned()),

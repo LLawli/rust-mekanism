@@ -84,8 +84,18 @@ fn is_mekanism_tile(block: &str) -> bool {
     glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block)
 }
 
+/// Um `TileEntityMekanism` daqui, contando a Security Desk: ela tem dono, inventário e `facing`, mas não tem configuração de lados, a capability do cartão nem
+/// `IConfigurable`.
+fn is_tile_or_desk(block: &str) -> bool {
+    is_mekanism_tile(block) || crate::game::mekanism_desk::is_desk(block)
+}
+
 /// `TileEntityMekanism.hasInventory` e os slots de `getInventorySlots`.
 fn inventory_slots(block: &str) -> Vec<usize> {
+    if crate::game::mekanism_desk::is_desk(block) {
+        // `TileEntitySecurityDesk.getInitialInventory`: o de destravar e o de travar.
+        return (0..crate::game::mekanism_desk::SLOTS).collect();
+    }
     if block == HEAT_GENERATOR {
         HEAT_SLOTS.to_vec()
     } else if cube::is_cube(block) {
@@ -169,12 +179,12 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     }
     // `IBlockSecurityUtils.canAccessOrDisplayError`: o jogador sem acesso a um tile do Mekanism não configura (agachado, que é quando troca o lado, ou sempre num tile sem
     // configuração de lados), não esvazia, não gira e não desmonta, e recebe a mensagem (`InteractionResult.FAIL`, que toma o clique).
-    let guarded = is_mekanism_tile(&block)
+    let guarded = is_tile_or_desk(&block)
         && match mode.transmission() {
             Some(_) => sneaking || !(cube::is_cube(&block) || glue::is_machine_block(&block)),
             None => matches!(mode, ConfiguratorMode::Empty | ConfiguratorMode::Rotate | ConfiguratorMode::Wrench),
         };
-    if guarded && !basis::security_access_or_error(game, pos, &|id| is_mekanism_tile(id)) {
+    if guarded && !basis::security_access_or_error(game, pos, &|id| is_tile_or_desk(id)) {
         return true;
     }
     if let Some(kind) = mode.transmission() {
@@ -223,7 +233,7 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     }
     match mode {
         ConfiguratorMode::Empty => {
-            if is_mekanism_tile(&block) {
+            if is_tile_or_desk(&block) {
                 empty(game, pos, &block, face);
                 return true;
             }
@@ -232,14 +242,14 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
         // Qualquer outro bloco responde `SUCCESS` (só um `TileEntityMekanism` que não gira passa), e o daqui gira para a face clicada, ou para a oposta
         // se o jogador está agachado (`ItemConfigurator.java:174`).
         ConfiguratorMode::Rotate => {
-            if is_mekanism_tile(&block) {
+            if is_tile_or_desk(&block) {
                 set_facing(game, pos, &block, if sneaking { face.opposite() } else { face });
             }
             true
         }
         ConfiguratorMode::Wrench => {
             // `doesSneakBypassUse`: com o jogador agachado o bloco age antes (`BlockTile.useItemOn` -> `tryWrench` -> `tryWrenchDismantle`).
-            if sneaking && is_mekanism_tile(&block) {
+            if sneaking && is_tile_or_desk(&block) {
                 dismantle(game, pos);
                 return true;
             }
@@ -482,7 +492,15 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
         rules::TileUse::Nothing if hands_full => ControlFlow::Continue(()),
         rules::TileUse::Nothing => ControlFlow::Break(Ok(false)),
         rules::TileUse::Rotate => {
-            let facing = rules::rotate_facing(basis::front(game, hit.pos), true);
+            // `TileEntityMekanism.tryWrench` (`:552-554`): quem não tem acesso recebe a mensagem e o bloco não gira; o resultado é `NO_SECURITY`, que
+            // `WrenchResult.getInteractionResult` dá como `SUCCESS` (a mão balança e a tela não abre).
+            if !basis::security_access_or_error(game, hit.pos, &|id| is_tile_or_desk(id)) {
+                return used(game, hit.pos, stack);
+            }
+            // `tryWrenchRotate`: `MekanismUtils.rotate(direção, facingProperty == FACING)`. A mesa tem `HORIZONTAL_FACING` (`new AttributeStateFacing()`), e gira
+            // no sentido do relógio, sem passar por cima e por baixo.
+            let support_y = !crate::game::mekanism_desk::is_desk(&block);
+            let facing = rules::rotate_facing(basis::front(game, hit.pos), support_y);
             set_facing(game, hit.pos, &block, facing);
             used(game, hit.pos, stack)
         }

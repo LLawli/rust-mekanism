@@ -3178,6 +3178,25 @@ pub(in crate::game) fn security_owner_only_register(block: &'static str) {
     SECURITY_OWNER_ONLY.with_borrow_mut(|blocks| blocks.insert(block));
 }
 
+/// Quem diz que itens têm dono possível (`IItemSecurityUtils.ownerCapability`, que cada mod registra para os itens dos blocos dele com `AttributeSecurity`): um
+/// predicado por mod. A Security Desk de um mod trava e destrava os itens de todos.
+static SECURITY_OWNABLE: Mutex<Vec<(&'static str, fn(&str) -> bool)>> = Mutex::new(Vec::new());
+
+/// Registra (ou troca) o predicado dos itens com dono de `owner`.
+pub(in crate::game) fn security_ownable_register(owner: &'static str, ownable: fn(&str) -> bool) {
+    let mut registered = SECURITY_OWNABLE.lock().unwrap_or_else(|error| error.into_inner());
+    match registered.iter_mut().find(|(name, _)| *name == owner) {
+        Some(entry) => entry.1 = ownable,
+        None => registered.push((owner, ownable)),
+    }
+}
+
+/// `SecurityInventorySlot.VALIDATOR`: o item tem a capability de dono, pelo mod que responde por ele.
+pub(in crate::game) fn security_ownable(item: &str) -> bool {
+    let registered: Vec<fn(&str) -> bool> = SECURITY_OWNABLE.lock().unwrap_or_else(|error| error.into_inner()).iter().map(|(_, ownable)| *ownable).collect();
+    registered.into_iter().any(|ownable| ownable(item))
+}
+
 /// O espaço de nomes do arquivo das frequências: o dos componentes de segurança do item (`mekanism:owner`).
 fn security_namespace() -> &'static str {
     sec::OWNER_COMPONENT.split_once(':').map_or(sec::OWNER_COMPONENT, |(namespace, _)| namespace)
@@ -3528,18 +3547,13 @@ pub(in crate::game) fn security_desk_slot_rules(game: &Game<'_>, pos: [i32; 3], 
         rules_owner,
         &entity.id,
         Rc::new(move |slot, item, stack| {
-            let which = match slot {
-                0 => desk::DeskSlot::Unlock,
-                1 => desk::DeskSlot::Lock,
-                _ => return false,
-            };
             let owner = stack
                 .downcast_ref::<ItemStack>()
                 .and_then(|stack| stack.data()?.other(sec::OWNER_COMPONENT).map(security_json))
                 .as_ref()
                 .and_then(sec::owner_of);
             let item = desk::ItemSecurity { ownable: ownable(item), securable: ownable(item), owner, mode: None };
-            desk::can_insert(which, &item, machinery_basis_core::containers::AutomationType::Manual, desk_owner)
+            desk::manual_accepts(slot, &item, desk_owner)
         }),
     );
 }

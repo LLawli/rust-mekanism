@@ -12,6 +12,7 @@ use horizon_client::containers::{BlockEntity, ModBlockEntity, ModContainer};
 use horizon_client::hud::HudBatch;
 use horizon_client::mod_api::NativeScreen;
 use machinery_basis_core::container_sync::{Tracked, TrackedSource, Value};
+use machinery_basis_core::quick_move::{self, QuickMenu, Region};
 use machinery_basis_core::security_desk_screen as layout;
 use machinery_basis_core::tile_trackers::{TileTrackers, source};
 use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
@@ -21,6 +22,8 @@ use horizon_world::nbt::Compound;
 /// `MekanismBlocks.SECURITY_DESK` e `BOUNDING_BLOCK`.
 pub(in crate::game) const DESK: &str = "mekanism:security_desk";
 pub(in crate::game) const BOUNDING: &str = "mekanism:bounding_block";
+/// O nome deste mod nos registros da `machinery_basis`.
+const OWNER: &str = "mekanism";
 /// `AttributeHasBounding.ABOVE_ONLY`: um apoio, em cima.
 const ABOVE_ONLY: &[[i32; 3]] = &[[0, 1, 0]];
 
@@ -33,6 +36,8 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
     if is_desk(block) {
         // A mesa só tem dono (`ownerCapability`, sem `securityCapability`): só ele a abre, a quebra e a configura.
         basis::security_owner_only_register(DESK);
+        // `ItemBlockTooltip.attachCapabilities`: os itens dos blocos com `AttributeSecurity` deste mod têm dono (as máquinas, os cubos e a própria mesa).
+        basis::security_ownable_register(OWNER, glue::item_has_owner);
         basis::bounding_register(DESK, BOUNDING, ABOVE_ONLY);
         Game::mb_window_register(&WINDOW_SPEC, remove_upgrade, add_upgrades, window_source);
         Game::mb_desk_register(DESK);
@@ -53,6 +58,7 @@ pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
 /// dono (`SecurityInventorySlot.VALIDATOR`).
 pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, ownable: &dyn Fn(&str) -> bool) {
     basis::security_apply_pending(entity, pos);
+    with_content(|spec| basis::content_apply_pending(entity, pos, spec));
     basis::security_tile_tick(game, pos, entity);
     if basis::security_desk_tick(game, entity, ownable) {
         game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
@@ -66,7 +72,23 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     }
     basis::name_placed(game, stack, pos, &is_desk);
     basis::security_placed(game, stack, pos, &is_desk);
+    // `applyImplicitComponents`: os dois slots que o item trouxe (`mekanism:items`) voltam ao tile.
+    with_content(|spec| basis::content_placed(game, stack, pos, spec));
     basis::bounding_placed(game, pos);
+}
+
+/// O que a mesa guarda no item (`loot_table/blocks/security_desk.json`: `copy_components` de `mekanism:owner`, `mekanism:security` e `mekanism:items`): os dois
+/// slots, pelo mesmo mecanismo das máquinas (`machinery_basis::ContentSpec`). O dono e o modo são de `security_loot`.
+fn with_content<R>(run: impl FnOnce(&basis::ContentSpec<'_>) -> R) -> R {
+    let spec = basis::ContentSpec { is_ours: &is_desk, item_slots: SLOTS, collect: &|_, _, _| Vec::new(), apply: &|_, _| {} };
+    run(&spec)
+}
+
+/// A mesa vai ser quebrada: os dois slots vão para o item e saem do tile (o original não os solta no chão). Quem chama já conferiu o acesso.
+pub(in crate::game) fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
+    if is_desk(&game.native_block(pos)) {
+        with_content(|spec| basis::content_destroying(game, pos, spec));
+    }
 }
 
 /// O jogador quebra a mesa ou o apoio dela. Devolve se o bloco era desta parte.
@@ -105,11 +127,11 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     true
 }
 
-/// `copy_name` e `copy_components` de `owner` e `security` do loot da mesa (`loot_table/blocks/security_desk.json`). O `mekanism:items` (os dois slots dentro do
-/// item) ainda não é copiado (inventário do plano, "Security Desk").
+/// `copy_name` e `copy_components` de `owner`, `security` e `items` do loot da mesa (`loot_table/blocks/security_desk.json`).
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_desk);
     basis::security_loot(game, context, drops, &is_desk);
+    with_content(|spec| basis::content_loot(game, context, drops, spec));
 }
 
 /// `TileEntityMekanism.openGui`: só o dono abre a mesa; os outros recebem a mensagem. Devolve se a abertura deve ser cancelada.
@@ -130,7 +152,7 @@ pub(in crate::game) fn menu_button(game: &mut Game<'_>, pos: [i32; 3], entity: &
 // A tela (`GuiSecurityDesk`) e o menu (`MekanismTileContainer<TileEntitySecurityDesk>`).
 
 /// Os dois slots do tile (`SecurityInventorySlot.unlock(..., 146, 18)` e `lock(..., 146, 97)`).
-const SLOTS: usize = 2;
+pub(in crate::game) const SLOTS: usize = 2;
 
 /// O contêiner do tipo de bloco: os dois slots e o menu. Nenhuma face: a mesa não tem configuração de lados, e o original não a expõe a funil nem a cano por aqui.
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
@@ -226,6 +248,117 @@ pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner:
         return false;
     }
     basis::security_desk_slot_rules(game, pos, owner, ownable);
+    true
+}
+
+/// O menu da mesa visto pelo `quickMoveStack` do Mekanism: os dois slots do tile e o inventário de quem clica. Um slot do tile tem o índice dele; o do jogador,
+/// `items.len() + índice no inventário` (a barra de atalhos é 0 a 8, o inventário 9 a 35).
+struct DeskMenu<'a, 'g> {
+    game: &'a Game<'g>,
+    entity: &'a mut ModBlockEntity,
+    inventory: &'a mut [Option<ItemStack>],
+    desk_owner: Option<u128>,
+}
+
+impl DeskMenu<'_, '_> {
+    fn first_player(&self) -> usize {
+        self.entity.items.len()
+    }
+
+    fn cell(&mut self, slot: usize) -> &mut Option<ItemStack> {
+        let first = self.first_player();
+        if slot < first { &mut self.entity.items[slot] } else { &mut self.inventory[slot - first] }
+    }
+}
+
+impl QuickMenu for DeskMenu<'_, '_> {
+    type Item = ItemStack;
+
+    fn slots_of(&self, region: Region) -> Vec<usize> {
+        let first = self.first_player();
+        match region {
+            // `getInitialInventory`: o de destravar e depois o de travar.
+            Region::Container => (0..SLOTS).collect(),
+            Region::Hotbar => (first..first + 9).collect(),
+            Region::Main => (first + 9..first + 36).collect(),
+            // A armadura só aceita o que se veste, e nenhum item com dono daqui se veste.
+            Region::Armor | Region::Offhand => Vec::new(),
+        }
+    }
+
+    fn region(&self, slot: usize) -> Region {
+        let first = self.first_player();
+        if slot < first {
+            Region::Container
+        } else if slot - first < 9 {
+            Region::Hotbar
+        } else {
+            Region::Main
+        }
+    }
+
+    fn exists(&self, slot: usize) -> bool {
+        // Os dois virtuais que a janela da `machinery_basis` põe no fim do tile não são da mesa.
+        slot < SLOTS || slot >= self.first_player()
+    }
+
+    fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
+        let first = self.first_player();
+        let held = if slot < first { self.entity.items[slot].as_ref() } else { self.inventory[slot - first].as_ref() };
+        held.filter(|stack| stack.count > 0).map(|stack| (stack.clone(), stack.count))
+    }
+
+    fn insert(&mut self, slot: usize, item: &ItemStack, amount: u32) -> u32 {
+        if slot < self.first_player() {
+            // `SecurityInventorySlot.canInsert` com `MANUAL`.
+            let seen = basis::security_item(self.game, item, basis::security_ownable(&item.item));
+            if !machinery_basis_core::security_desk::manual_accepts(slot, &seen, self.desk_owner) {
+                return 0;
+            }
+        }
+        basis::insert_into_cell(self.game, self.cell(slot), item, amount)
+    }
+
+    fn remove(&mut self, slot: usize, amount: u32) {
+        basis::remove_from_cell(self.cell(slot), amount);
+    }
+}
+
+/// Shift-clique no menu da mesa (`MekanismContainer.quickMoveStack`, `:274-328`): do inventário, o item do dono da mesa vai para o slot de destravar e o item sem
+/// dono para o de travar, e o que os dois recusam vai para a outra região do inventário; de um slot da mesa, para a barra de atalhos e depois o inventário.
+/// Devolve se o tile é a mesa.
+pub(in crate::game) fn quick_move(game: &mut Game<'_>, entity: &mut ModBlockEntity, container_slots: usize, slot: usize, stack: &mut ItemStack, handled: &mut bool) -> bool {
+    if !is_desk(&entity.id) {
+        return false;
+    }
+    if entity.items.len() < SLOTS {
+        entity.items.resize(SLOTS, None);
+    }
+    let desk_owner = basis::security_read(entity).owner;
+    let first = entity.items.len();
+    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8).
+    let from = if slot < container_slots {
+        slot
+    } else {
+        let n = slot - container_slots;
+        first + if n < 27 { 9 + n } else { n - 27 }
+    };
+    let mut inventory = std::mem::take(&mut game.inventory);
+    let left = {
+        let mut menu = DeskMenu { game: &*game, entity, inventory: &mut inventory, desk_owner };
+        let _ = quick_move::quick_move(&mut menu, from);
+        menu.stack(from)
+    };
+    game.inventory = inventory;
+    // O slot clicado guarda o que sobrou; `handled` impede o roteamento do jogo, que levaria o item a outros slots.
+    match left {
+        Some((remaining, count)) => {
+            *stack = remaining;
+            stack.count = count;
+        }
+        None => stack.count = 0,
+    }
+    *handled = true;
     true
 }
 

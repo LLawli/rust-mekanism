@@ -173,6 +173,24 @@ pub enum DeskSlot {
     Lock,
 }
 
+impl DeskSlot {
+    /// `TileEntitySecurityDesk.getInitialInventory` (`:62-67`): o de destravar é criado antes do de travar. É a ordem de `inventoryContainerSlots` no menu, e por
+    /// isso a ordem em que o shift-clique (`MekanismContainer.quickMoveStack`) tenta os dois.
+    pub const ORDER: [DeskSlot; 2] = [DeskSlot::Unlock, DeskSlot::Lock];
+
+    /// O slot do tile de índice `index`.
+    pub fn of_index(index: usize) -> Option<DeskSlot> {
+        Self::ORDER.get(index).copied()
+    }
+}
+
+/// `InventoryContainerSlot.insert` de quem clica (`MANUAL`), no slot de índice `index` do tile: o que o clique, a tecla numérica, o arrasto e o shift-clique
+/// perguntam antes de pôr um item num dos dois slots.
+pub fn manual_accepts(index: usize, item: &ItemSecurity, desk_owner: Option<u128>) -> bool {
+    DeskSlot::of_index(index)
+        .is_some_and(|slot| can_insert(slot, item, AutomationType::Manual, desk_owner))
+}
+
 /// As posições dos dois slots no menu (`SecurityInventorySlot.unlock(..., 146, 18)` e `lock(..., 146, 97)`).
 pub const SLOT_POSITIONS: [(i32, i32); 2] = [(146, 18), (146, 97)];
 
