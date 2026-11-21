@@ -297,6 +297,7 @@ fn sprite_rect(game: &Game<'_>, batch: &mut HudBatch, sprite: &str, rect: [f32; 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Compound)>) {
     crate::game::mekanism_cube::block_entity(block, entity);
     crate::game::mekanism_tank::block_entity(block, entity);
+    crate::game::mekanism_chemical_tank::block_entity(block, entity);
     crate::game::mekanism_desk::block_entity(block, entity);
     if is_machine(block) {
         // Os blocos do `TileEntityMekanism` com `supportsRedstone()`: o jogo os avisa quando um vizinho muda (`basis::neighbor_changed`).
@@ -317,12 +318,13 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
     crate::game::mekanism_cube::ticks(block, ticks);
     crate::game::mekanism_tank::ticks(block, ticks);
+    crate::game::mekanism_chemical_tank::ticks(block, ticks);
     crate::game::mekanism_desk::ticks(block, ticks);
     if is_machine(block) || is_cable(block) || is_pipe(block) || is_tube(block) || is_conductor(block) || is_transporter(block) {
         *ticks = true;
     }
-    // As máquinas e o cubo são `ISideConfiguration`: a entrada estrita e a cor de entrada de cada lado decidem o destino de uma pilha de transportador.
-    if is_machine(block) || crate::game::mekanism_cube::is_cube(block) {
+    // As máquinas, o cubo e o Chemical Tank são `ISideConfiguration`: a entrada estrita e a cor de entrada de cada lado decidem o destino de uma pilha de transportador.
+    if is_machine(block) || crate::game::mekanism_cube::is_cube(block) || crate::game::mekanism_chemical_tank::is_tank(block) {
         crate::game::machinery_transporters::side_config_register(block, side_config_view);
     }
     // Os transportadores logísticos: os eventos do jogo vão ao dono dos transportadores da `machinery_basis`.
@@ -473,6 +475,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     crate::game::mekanism_cube::container(block, container);
     crate::game::mekanism_tank::container(block, container);
+    crate::game::mekanism_chemical_tank::container(block, container);
     crate::game::mekanism_desk::container(block, container);
     // O transportador logístico: um slot que parece sempre vazio (`TransporterItemHandler.size() == 1`), só para um funil, um dropper e o ejetor de outra máquina o acharem como contêiner;
     // a inserção de verdade é do hook `transporter_insert` (`Game::move_in_item`), que a leva para o dono dos transportadores.
@@ -480,8 +483,8 @@ pub(in crate::game) fn container(block: &str, container: &mut Option<ModContaine
         *container = Some(ModContainer { slots: 1, faces: std::array::from_fn(|_| vec![0]), inputs: vec![0], ..Default::default() });
         return;
     }
-    if crate::game::mekanism_cube::is_cube(block) {
-        // As faces, as entradas e as saídas do cubo também são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
+    if crate::game::mekanism_cube::is_cube(block) || crate::game::mekanism_chemical_tank::is_tank(block) {
+        // As faces, as entradas e as saídas do cubo e do Chemical Tank também são da instância (H2, decisão 94): quem responde por elas é `ITEM_INSTANCES`.
         basis::register_item_instances(RULES_OWNER, ITEM_INSTANCES);
         basis::register_item_energy(RULES_OWNER, ENERGY_ITEMS);
         return;
@@ -531,6 +534,9 @@ fn item_faces(block: &str, entity: &ModBlockEntity, front: Face) -> Option<machi
     if crate::game::mekanism_cube::is_cube(block) {
         return crate::game::mekanism_cube::item_faces(block, entity, front);
     }
+    if crate::game::mekanism_chemical_tank::is_tank(block) {
+        return crate::game::mekanism_chemical_tank::item_faces(block, entity, front);
+    }
     let machine = machine_of(block)?;
     let spec = side_spec(block)?.spec;
     let mut config = TileComponentConfig::new(&spec.types);
@@ -555,6 +561,9 @@ fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &I
     if crate::game::mekanism_cube::is_cube(block) {
         return crate::game::mekanism_cube::item_extractable(block, entity, slot, stack, facts.max_stack);
     }
+    if crate::game::mekanism_chemical_tank::is_tank(block) {
+        return crate::game::mekanism_chemical_tank::item_extractable(block, entity, slot, stack, facts.max_stack);
+    }
     let Some(machine) = machine_of(block) else {
         return false;
     };
@@ -572,6 +581,9 @@ fn item_extractable(block: &str, entity: &ModBlockEntity, slot: usize, stack: &I
 fn item_accepts(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity, slot: usize, stack: &ItemStack, face: Option<Face>) -> Option<bool> {
     if crate::game::mekanism_cube::is_cube(&entity.id) {
         return Some(face.is_some_and(|face| crate::game::mekanism_cube::item_accepts(game, pos, entity, slot, stack, face)));
+    }
+    if crate::game::mekanism_chemical_tank::is_tank(&entity.id) {
+        return Some(face.is_some_and(|face| crate::game::mekanism_chemical_tank::item_accepts(game, pos, entity, slot, stack, face)));
     }
     let machine = machine_of(&entity.id)?;
     let Some(face) = face else {
@@ -1262,7 +1274,7 @@ fn write_scalars(entity: &mut ModBlockEntity, old: Option<&SavedState>, new: &Sa
 
 /// `readFrom` do `IListContainerType` para o tanque 0: as entradas com `container` 0, sem checar a capacidade (o Java lê o
 /// tanque "sem checar", para um conteúdo que deixou de ser válido não derrubar o carregamento). Uma entrada que não se lê vale vazio.
-fn read_tank(entity: &ModBlockEntity) -> TankContents {
+pub(in crate::game) fn read_tank(entity: &ModBlockEntity) -> TankContents {
     let Some(Tag::List(list)) = entity.nbt.get(&JavaString::from(CHEMICAL_TANKS)) else {
         return TankContents::default();
     };
@@ -1300,7 +1312,7 @@ fn stored_contents(stored: &Compound) -> TankContents {
 }
 
 /// `saveTo` do `IListContainerType` para o tanque 0, que só grava o que não está vazio.
-fn write_tank(entity: &mut ModBlockEntity, contents: &TankContents) {
+pub(in crate::game) fn write_tank(entity: &mut ModBlockEntity, contents: &TankContents) {
     let key = JavaString::from(CHEMICAL_TANKS);
     let Some(resource) = &contents.resource else {
         entity.nbt.remove(&key);
@@ -2044,6 +2056,7 @@ pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::CONFIGURATION_DATA_COMPONENT.to_owned());
     types.push(rules::ENERGY_COMPONENT.to_owned());
     crate::game::mekanism_tank::component_types(types);
+    crate::game::mekanism_chemical_tank::component_types(types);
     types.extend(basis::CONTENT_COMPONENTS.map(str::to_owned));
     types.extend(basis::SECURITY_COMPONENTS.map(str::to_owned));
 }
@@ -2177,7 +2190,7 @@ fn add_upgrades(game: &mut Game<'_>, pos: [i32; 3], upgrade: &str, available: i3
 
 /// `hasAnalogOutputSignal`: toda máquina do mod tem `AttributeComparator`.
 pub(in crate::game) fn has_analog_output(level: &GameLevel<'_>, state: BlockStateId, output: &mut bool) {
-    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some() || crate::game::mekanism_cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block)) {
+    if level.native_state_block(state).is_some_and(|block| machine_of(block).is_some() || crate::game::mekanism_cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block) || crate::game::mekanism_chemical_tank::is_tank(block)) {
         *output = true;
     }
 }
@@ -2561,7 +2574,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
     let block = game.native_block(pos);
     // `BlockMekanism.getDestroyProgress`: quem não acessa o bloco não o quebra (progresso zero, sem mensagem).
     if !canceled_before
-        && (machine_of(&block).is_some() || crate::game::mekanism_cube::is_cube(&block) || crate::game::mekanism_tank::is_tank(&block))
+        && is_machine_id(&block)
         && basis::security_break(game, pos, &is_machine_id)
     {
         *canceled = true;
@@ -2572,6 +2585,14 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
         basis::security_destroying(game, pos, &is_machine_id);
         basis::name_destroying(game, pos, &is_machine_id);
         crate::game::mekanism_tank::destroying(game, pos);
+        return;
+    }
+    if !canceled && crate::game::mekanism_chemical_tank::is_tank(&block) {
+        // O Chemical Tank: o dono, o nome, a configuração de lados e o conteúdo (o químico, os dois slots e o modo de descarte) vão para o item.
+        basis::security_destroying(game, pos, &is_machine_id);
+        basis::name_destroying(game, pos, &is_machine_id);
+        basis::side_destroying(game, pos, &side_spec);
+        crate::game::mekanism_chemical_tank::destroying(game, pos);
         return;
     }
     if !canceled && crate::game::mekanism_cube::is_cube(&game.native_block(pos)) {
@@ -2851,7 +2872,7 @@ pub(in crate::game) fn item_has_owner(item: &str) -> bool {
 }
 
 fn is_machine_id(id: &str) -> bool {
-    machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id) || crate::game::mekanism_tank::is_tank(id)
+    machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id) || crate::game::mekanism_tank::is_tank(id) || crate::game::mekanism_chemical_tank::is_tank(id)
 }
 
 fn screen_title(game: &Game<'_>, container_description: &str) -> horizon_client::text::Text {
@@ -2866,7 +2887,7 @@ const SIDE_COMPONENTS: basis::SideComponents = basis::SideComponents {
 
 /// Como a configuração de lados de uma máquina é montada e o padrão do item dela.
 fn side_spec(block: &str) -> Option<basis::SideSpec> {
-    if let Some(spec) = crate::game::mekanism_cube::side_spec(block) {
+    if let Some(spec) = crate::game::mekanism_cube::side_spec(block).or_else(|| crate::game::mekanism_chemical_tank::side_spec(block)) {
         return Some(spec);
     }
     let machine = machine_of(block)?;
@@ -3031,6 +3052,10 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
         crate::game::mekanism_tank::place_block(game, stack, pos);
         return;
     }
+    if crate::game::mekanism_chemical_tank::is_tank(&block) {
+        crate::game::mekanism_chemical_tank::place_block(game, stack, pos);
+        return;
+    }
     if is_machine_id(&block) {
         note_placed(game, pos);
         // `BlockMekanism.setPlacedBy` -> `onAdded` -> `updatePower`: só o bloco posto com um item lê o sinal ao nascer.
@@ -3066,6 +3091,7 @@ fn placed_capacity(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<i64> {
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     crate::game::mekanism_desk::loot_drops(game, context, drops);
     crate::game::mekanism_tank::loot_drops(game, context, drops);
+    crate::game::mekanism_chemical_tank::loot_drops(game, context, drops);
     basis::name_loot(game, context, drops, &is_machine_id);
     basis::security_loot(game, context, drops, &is_machine_id);
     basis::side_loot(game, context, drops, SIDE_COMPONENTS, &side_spec);
@@ -3094,14 +3120,14 @@ fn with_content<R>(block: &str, run: impl FnOnce(&basis::ContentSpec<'_>) -> R) 
 }
 
 /// `ContainerType.CHEMICAL`: o tanque de infusão no `chemical_tanks` do tile e no componente `mekanism:chemicals`.
-fn chemical_collect(entity: &ModBlockEntity) -> Vec<(&'static str, Tag)> {
+pub(in crate::game) fn chemical_collect(entity: &ModBlockEntity) -> Vec<(&'static str, Tag)> {
     use machinery_basis_core::item_content as content;
     let saved = entity.nbt.get(&JavaString::from(CHEMICAL_TANKS)).map(basis::tag_value);
     let containers = content::containers_from_saved(saved.as_ref(), 1);
     content::containers_collect(&containers).map(|value| (basis::CONTENT_CHEMICALS, basis::value_tag(&value, ""))).into_iter().collect()
 }
 
-fn chemical_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&str) -> Option<Tag>) {
+pub(in crate::game) fn chemical_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&str) -> Option<Tag>) {
     use machinery_basis_core::item_content as content;
     let Some(component) = of(basis::CONTENT_CHEMICALS) else {
         return;
@@ -3312,6 +3338,16 @@ const CHEMICALS_LISTENER: &str = "mekanism:chemicals";
 const CHEMICAL_TAGS_LISTENER: &str = "mekanism:chemical_tags";
 const UPGRADES_LISTENER: &str = "mekanism:upgrades";
 const UPGRADE_TAGS_LISTENER: &str = "mekanism:upgrade_tags";
+const CHEMICAL_ATTRIBUTES_LISTENER: &str = "mekanism:chemical_attributes";
+
+/// Os atributos dos químicos, dos mapas de dados `chemical_attribute_*` da última recarga.
+static CHEMICAL_ATTRIBUTE_MAP: std::sync::Mutex<Option<Arc<rules::ChemicalAttributeMap>>> = std::sync::Mutex::new(None);
+
+/// `Chemical.getAttributes` como a lib o pede: os atributos de cada químico, para o `ChemicalAttributeValidator` de um tanque.
+pub(in crate::game) fn chemical_attributes() -> machinery_basis_core::chemical::ChemicalAttributes {
+    let map = CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    rules::chemical_attributes_of(map)
+}
 
 /// As pastas do original. A lib não sabe delas: o mod lê os arquivos e entrega o resultado.
 pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener>) {
@@ -3319,6 +3355,7 @@ pub(in crate::game) fn reload_listeners(listeners: &mut Vec<NativeReloadListener
     listeners.push(NativeReloadListener::json(CHEMICAL_TAGS_LISTENER, rules::CHEMICAL_TAGS_FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADES_LISTENER, rules::UPGRADE_FOLDER));
     listeners.push(NativeReloadListener::json(UPGRADE_TAGS_LISTENER, rules::UPGRADE_TAGS_FOLDER));
+    listeners.push(NativeReloadListener::json(CHEMICAL_ATTRIBUTES_LISTENER, rules::CHEMICAL_ATTRIBUTE_FOLDER));
 }
 
 pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(String, serde_json::Value)]) {
@@ -3343,6 +3380,10 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
         upgrade::set_types_source(DATA_SOURCE, types);
     } else if listener.id == UPGRADE_TAGS_LISTENER {
         upgrade::set_tags_source(DATA_SOURCE, upgrade::UpgradeTags::load(files));
+    } else if listener.id == CHEMICAL_ATTRIBUTES_LISTENER {
+        let map = rules::chemical_attribute_maps(files, rules::RADIATION_ENABLED);
+        eprintln!("mekanism: {} químicos com atributos", map.len());
+        *CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(map));
     }
 }
 
@@ -3362,6 +3403,8 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         crate::game::mekanism_cube::tick(game, pos, entity);
     } else if crate::game::mekanism_tank::is_tank(&entity.id) {
         crate::game::mekanism_tank::tick(game, pos, entity);
+    } else if crate::game::mekanism_chemical_tank::is_tank(&entity.id) {
+        crate::game::mekanism_chemical_tank::tick(game, pos, entity);
     } else if let Some(machine) = machine_of(&entity.id) {
         tick_machine(game, pos, entity, machine);
     }

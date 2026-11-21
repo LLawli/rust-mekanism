@@ -2077,6 +2077,115 @@ pub const EDIT_MODE_COMPONENT: &str = "mekanism:edit_mode";
 pub const BUCKET_MODE_COMPONENT: &str = "mekanism:bucket_mode";
 /// `MekanismDataComponents.DUMP_MODE`.
 pub const DUMP_MODE_COMPONENT: &str = "mekanism:dump_mode";
+/// `MekanismConfig.general.dumpExcessKeepRatio` (`GeneralConfig.java:173`), o padrão: o port ainda não lê essa chave do arquivo.
+pub const DUMP_EXCESS_KEEP_RATIO: f64 = 0.85;
+/// `MekanismConfig.general.radiationEnabled` (`GeneralConfig.java:188`), o padrão: com a radiação ligada o atributo `radioactivity` pede validação.
+pub const RADIATION_ENABLED: bool = true;
+/// A pasta dos mapas de dados dos químicos (`IMekanismDataMapTypes`: `chemical_attribute_fuel`, `_radioactivity`, `_cooled_coolant` e `_heated_coolant`).
+pub const CHEMICAL_ATTRIBUTE_FOLDER: &str = "data_maps/mekanism/chemical";
+const CHEMICAL_ATTRIBUTE_PREFIX: &str = "chemical_attribute_";
+/// `ChemicalRadioactivity`, o único atributo que pede validação.
+pub const RADIOACTIVITY_ATTRIBUTE: &str = "radioactivity";
+
+/// Os atributos de cada químico (`IChemicalAttribute`), dos mapas de dados `chemical_attribute_*`: cada arquivo é um tipo de atributo, e as chaves de `values` são os
+/// químicos que o têm. Só `radioactivity` pede validação (`ChemicalRadioactivity.needsValidation`, com a radiação ligada). `remove` tira o químico do mapa, e uma chave
+/// de tag (`#`) fica de fora: a datagen do original só tem ids.
+pub fn chemical_attribute_maps(
+    files: &[(String, Value)],
+    radiation_enabled: bool,
+) -> ChemicalAttributeMap {
+    let mut out = ChemicalAttributeMap::new();
+    let mut sorted: Vec<&(String, Value)> = files.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    for (id, json) in sorted {
+        let path = id.split_once(':').map_or(id.as_str(), |(_, path)| path);
+        let Some(kind) = path.strip_prefix(CHEMICAL_ATTRIBUTE_PREFIX) else {
+            continue;
+        };
+        let needs_validation = kind == RADIOACTIVITY_ATTRIBUTE && radiation_enabled;
+        let removed: Vec<&str> = json
+            .get("remove")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let Some(values) = json.get("values").and_then(Value::as_object) else {
+            continue;
+        };
+        for chemical in values.keys() {
+            if chemical.starts_with('#') || removed.contains(&chemical.as_str()) {
+                continue;
+            }
+            out.entry(chemical.clone())
+                .or_default()
+                .push((kind.to_owned(), needs_validation));
+        }
+    }
+    out
+}
+
+/// O químico e os atributos dele: o tipo e se pede validação.
+pub type ChemicalAttributeMap = std::collections::HashMap<String, Vec<(String, bool)>>;
+
+/// Os atributos como a lib os pede (`ChemicalAttributes`), de um mapa já lido.
+pub fn chemical_attributes_of(
+    map: std::sync::Arc<ChemicalAttributeMap>,
+) -> machinery_basis_core::chemical::ChemicalAttributes {
+    Rc::new(move |chemical: &ChemicalResource| {
+        map.get(&*chemical.id)
+            .map(|list| {
+                list.iter()
+                    .map(|(kind, needs_validation)| {
+                        machinery_basis_core::chemical::ChemicalAttribute::new(
+                            kind,
+                            *needs_validation,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+
+/// O Chemical Tank como um tubo pressurizado vizinho o vê por um lado (`TileEntityMekanism.getCapability` com a capability de químico): `None` onde a configuração de
+/// lados desliga a capability, e senão o contêiner, o que ele aceita de fora (`ChemicalAttributeValidator`) e se o lado deixa entrar e sair. O criativo aceita e entrega
+/// sem mudar.
+pub fn chemical_tank_view(
+    tile: &machinery_basis_core::chemical_tank::ChemicalTankTile,
+    face: Face,
+) -> Option<ResourceSnapshot<ChemicalResource>> {
+    use machinery_basis_core::handler_slot::ResourceContainer;
+    let (can_insert, can_extract) = tile.chemical_face(face)?;
+    let tank = tile.tank().clone();
+    Some(ResourceSnapshot {
+        contents: tank.inner().contents(),
+        capacity: tank.inner().capacity_for(None),
+        accepts: {
+            let tank = tank.clone();
+            Rc::new(move |chemical: &ChemicalResource| {
+                tank.is_valid_for_insertion(chemical, AutomationType::External)
+            })
+        },
+        can_insert,
+        can_extract,
+        creative: tank.is_creative(),
+        increment: 1,
+    })
+}
+
+/// O que cada lado do Chemical Tank deixa fazer (`None` sem capability, e senão se entra e se sai), na ordem de `Face::ALL`.
+pub fn chemical_tank_faces(
+    tile: &machinery_basis_core::chemical_tank::ChemicalTankTile,
+) -> [Option<(bool, bool)>; 6] {
+    Face::ALL.map(|face| tile.chemical_face(face))
+}
+
+/// `ItemBlockChemicalTank.SIDE_CONFIG`, o padrão do item dos Chemical Tanks: a frente sai nos itens e no químico, e o químico ejeta.
+pub fn chemical_tank_default() -> AttachedSideConfig {
+    AttachedSideConfig::new(&[
+        (TransmissionType::Item, light_front_out(false)),
+        (TransmissionType::Chemical, light_front_out(true)),
+    ])
+}
 
 /// `MekanismConfig.general.blockDeactivationDelay` de agora: o atraso da luz de um Fluid Tank que esvazia.
 pub fn block_deactivation_delay_now() -> i32 {

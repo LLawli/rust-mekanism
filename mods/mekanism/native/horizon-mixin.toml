@@ -39,6 +39,14 @@ file = "crates/horizon-client/src/game.rs"
 name = "mekanism_tank"
 source = "fluid_tank.rs"
 
+# Os Chemical Tanks (`TileEntityChemicalTank`): o tile, os dois slots, o descarte, o ejetor de químico com a configuração de lados e o conteúdo no item, sobre o
+# `chemical_tank` e o `component_container` da `machinery_basis`. Lê `Game::world` (os block entities e os chunks alterados), H281.
+[[module]]
+id = "chemtank"
+file = "crates/horizon-client/src/game.rs"
+name = "mekanism_chemical_tank"
+source = "chemical_tank.rs"
+
 # A Security Desk (`TileEntitySecurityDesk`): o tile, os dois slots, o bloco de apoio em cima e os pacotes da tela, sobre a frequência de segurança da
 # `machinery_basis`. Lê `Game::world` (os block entities e os chunks alterados) e chama `Game::break_block_as_player` (quebrar o apoio quebra o principal), H278.
 [[module]]

@@ -1,6 +1,7 @@
 // O Configurator (`ItemConfigurator`) e o cartão de configuração (`ItemConfigurationCard`) no jogo. As regras (os modos, as mensagens, o que o clique faz
 // numa face) são de `mekanism_rules` e da `machinery_basis`; aqui fica a cola: ler e escrever o componente da pilha, achar a máquina, e o que o jogo
 // expõe (o clique, o bloco, a rede, o teclado). Cada função cita o Java.
+use crate::game::mekanism_chemical_tank as chem;
 use crate::game::mekanism_cube as cube;
 use crate::game::mekanism_glue as glue;
 use crate::game::mekanism_rules as rules;
@@ -81,7 +82,7 @@ fn set_mode(game: &Game<'_>, stack: &mut ItemStack, mode: ConfiguratorMode) {
 
 /// Um `TileEntityMekanism` daqui: a máquina de progresso ou o Heat Generator.
 fn is_mekanism_tile(block: &str) -> bool {
-    glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block)
+    glue::is_machine_block(block) || block == HEAT_GENERATOR || cube::is_cube(block) || crate::game::mekanism_tank::is_tank(block) || chem::is_tank(block)
 }
 
 /// Um `TileEntityMekanism` daqui, contando a Security Desk: ela tem dono, inventário e `facing`, mas não tem configuração de lados, a capability do cartão nem
@@ -100,6 +101,8 @@ fn inventory_slots(block: &str) -> Vec<usize> {
         HEAT_SLOTS.to_vec()
     } else if cube::is_cube(block) {
         vec![machinery_basis_core::energy_cube::DISCHARGE_SLOT, machinery_basis_core::energy_cube::CHARGE_SLOT]
+    } else if chem::is_tank(block) {
+        vec![machinery_basis_core::chemical_tank::DRAIN_SLOT, machinery_basis_core::chemical_tank::FILL_SLOT]
     } else {
         glue::inventory_slots(block)
     }
@@ -181,7 +184,7 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
     // configuração de lados), não esvazia, não gira e não desmonta, e recebe a mensagem (`InteractionResult.FAIL`, que toma o clique).
     let guarded = is_tile_or_desk(&block)
         && match mode.transmission() {
-            Some(_) => sneaking || !(cube::is_cube(&block) || glue::is_machine_block(&block)),
+            Some(_) => sneaking || !(cube::is_cube(&block) || chem::is_tank(&block) || glue::is_machine_block(&block)),
             None => matches!(mode, ConfiguratorMode::Empty | ConfiguratorMode::Rotate | ConfiguratorMode::Wrench),
         };
     if guarded && !basis::security_access_or_error(game, pos, &|id| is_tile_or_desk(id)) {
@@ -192,6 +195,27 @@ fn configurator_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], fa
             let click = cube::with_cube(game, pos, |cube| {
                 let facing = cube.facing();
                 cube.side_config_mut().configurator_click(kind, facing, face, sneaking)
+            })
+            .flatten();
+            return match click {
+                Some(SideClick::View(data_type)) => {
+                    overlay(game, &rules::configurator_side_message(false, kind, data_type));
+                    true
+                }
+                Some(SideClick::Toggled { old, new }) => {
+                    if old != new {
+                        overlay(game, &rules::configurator_side_message(true, kind, new));
+                    }
+                    true
+                }
+                None => false,
+            };
+        }
+        if chem::is_tank(&block) {
+            // `TileEntityConfigurableMachine`: o Configurator lê e troca o lado, como nas máquinas.
+            let click = chem::with_tile(game, pos, |tile| {
+                let facing = tile.facing();
+                tile.side_config_mut().configurator_click(kind, facing, face, sneaking)
             })
             .flatten();
             return match click {
@@ -372,6 +396,8 @@ fn set_facing(game: &mut Game<'_>, pos: [i32; 3], block: &str, facing: Face) {
         glue::with_machine(game, pos, |machine| machine.set_facing(facing));
     } else if cube::is_cube(block) {
         cube::with_cube(game, pos, |cube| cube.set_facing(facing));
+    } else if chem::is_tank(block) {
+        chem::with_tile(game, pos, |tile| tile.set_facing(facing));
     }
 }
 
@@ -490,6 +516,7 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
         None => rules::HeldItem::Hands,
     };
     let is_tank = crate::game::mekanism_tank::is_tank(&block);
+    let is_chemical_tank = chem::is_tank(&block);
     // `BlockFluidTank.useItemOn` (`BlockFluidTank.java:52-67`): depois do `tryWrench`, sem agachar, o item da mão troca fluido com o tanque pela face clicada.
     if is_tank && matches!(held, rules::HeldItem::Other) && stack.is_some() && !sneaking {
         match crate::game::mekanism_tank::bucket_click(game, hit.pos, hit.face[1] == 1) {
@@ -501,7 +528,7 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
     }
     match rules::tile_use(held, sneaking) {
         // O Fluid Tank ainda não tem tela (`GuiFluidTank` é da frente do visual): o clique que a abriria é consumido e nada abre.
-        rules::TileUse::Menu if is_tank => ControlFlow::Break(Ok(true)),
+        rules::TileUse::Menu if is_tank || is_chemical_tank => ControlFlow::Break(Ok(true)),
         rules::TileUse::Nothing if hands_full => ControlFlow::Continue(()),
         rules::TileUse::Nothing => ControlFlow::Break(Ok(false)),
         rules::TileUse::Rotate => {
@@ -586,6 +613,9 @@ fn card_write(game: &Game<'_>, pos: [i32; 3], block: &str) -> Option<Compound> {
     if cube::is_cube(block) {
         return cube::write_configuration_data(game, pos);
     }
+    if chem::is_tank(block) {
+        return chem::write_configuration_data(game, pos);
+    }
     glue::write_configuration_data(game, pos)
 }
 
@@ -602,6 +632,10 @@ fn card_read(game: &mut Game<'_>, pos: [i32; 3], block: &str, input: &Compound) 
     if cube::is_cube(block) {
         cube::set_configuration_data(game, pos, input);
         cube::with_cube(game, pos, |_| ());
+        return;
+    }
+    if chem::is_tank(block) {
+        chem::set_configuration_data(game, pos, input);
         return;
     }
     glue::set_configuration_data(game, pos, input);

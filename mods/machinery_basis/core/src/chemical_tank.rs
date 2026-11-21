@@ -12,17 +12,17 @@ use crate::containers::{
 use crate::distribution::{
     ResourceHandlerKind, ResourceInsert, Target, saturated_cast, send_to_acceptors,
 };
-use crate::ejector::{AttachedEjector, EjectEnv, TileComponentEjector};
+use crate::ejector::{AttachedEjector, EjectEnv, EjectorData, TileComponentEjector};
 use crate::handler_slot::{HandlerSlot, ResourceContainer, can_drain, can_fill};
 use crate::item_access::ItemHandlerLookup;
 use crate::item_handler::NoNeighbours;
 use crate::rate_limit::RateLimit;
 use crate::resource_tank::{ResourceTank, StackContents};
 use crate::side_config::{
-    AttachedSideConfig, DataType, RelativeSide, TileComponentConfig, TransmissionType,
+    AttachedSideConfig, ConfigData, DataType, RelativeSide, TileComponentConfig, TransmissionType,
 };
 use crate::sides::Face;
-use crate::tile::{SideConfigSpec, TileBase};
+use crate::tile::{ConfigurationData, SideConfigSpec, TileBase};
 use crate::transaction::{Callback, Transaction};
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::rc::Rc;
@@ -582,6 +582,61 @@ impl ChemicalTankTile {
         } else {
             0
         })
+    }
+
+    /// Se o bloco tem capability de químico na face (`TileComponentConfig.isCapabilityDisabled` ao contrário).
+    pub fn has_chemical_capability(&self, face: Face) -> bool {
+        self.chemical_side(face).is_some()
+    }
+
+    /// Se a face deixa o químico entrar e sair, ou `None` sem capability ali.
+    pub fn chemical_face(&self, face: Face) -> Option<(bool, bool)> {
+        Some((
+            self.slot_allows(face, true)?,
+            self.slot_allows(face, false)?,
+        ))
+    }
+
+    /// `ITileComponent.read` da configuração de lados e do ejetor (`component_config` e `component_ejector` do NBT).
+    pub fn restore_side_config(
+        &mut self,
+        config: Option<&ConfigData>,
+        ejector: Option<&EjectorData>,
+        loaded: bool,
+    ) {
+        if let Some(config) = config {
+            self.config.deserialize(config, self.facing, loaded);
+        }
+        if let Some(ejector) = ejector {
+            self.ejector.deserialize(ejector);
+        }
+    }
+
+    /// `writeConfigurationData`: o modo de redstone e o de descarte (`writeSustainedData`) e os dois componentes.
+    pub fn write_configuration_data(&self) -> (ConfigurationData, GasMode) {
+        let ejector = self.ejector.serialize();
+        (
+            ConfigurationData {
+                control_type: Some(self.tile.borrow().control_type()),
+                config: Some(self.config.serialize()),
+                ejector: (!ejector.is_empty()).then_some(ejector),
+            },
+            self.dumping.get(),
+        )
+    }
+
+    /// `setConfigurationData`: o modo de redstone volta a `DISABLED` e o de descarte a `IDLE` se faltavam (`readSustainedData`).
+    pub fn set_configuration_data(&mut self, data: &ConfigurationData, dumping: Option<GasMode>) {
+        self.tile
+            .borrow_mut()
+            .set_control_type(data.control_type.unwrap_or_default());
+        self.dumping.set(dumping.unwrap_or_default());
+        self.restore_side_config(data.config.as_ref(), data.ejector.as_ref(), true);
+    }
+
+    /// Quem foi mudando na configuração desde a última chamada.
+    pub fn take_side_changes(&mut self) -> Vec<crate::side_config::SideChange> {
+        self.config.take_changes()
     }
 
     /// `applyImplicitComponents` da configuração de lados e do ejetor (`mekanism:side_config` e `mekanism:ejector`).
