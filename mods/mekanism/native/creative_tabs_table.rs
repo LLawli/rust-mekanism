@@ -413,7 +413,7 @@ pub const VANILLA_TABS: [(&str, &[&str]); 7] = [
             "mekanism:advanced_tier_installer",
             "mekanism:elite_tier_installer",
             "mekanism:ultimate_tier_installer",
-            // Os tanques de fluido (`MekanismCreativeTabs.java:132-135`); os tanques cheios (`addFilledTanks`) esperam os fluidos nos tanques.
+            // Os tanques de fluido (`MekanismCreativeTabs.java:132-135`); os tanques cheios (`addFilledTanks`) entram depois dos baldes, em `additions`; antes esperavam os fluidos nos tanques.
             "mekanism:basic_fluid_tank",
             "mekanism:advanced_fluid_tank",
             "mekanism:elite_fluid_tank",
@@ -564,6 +564,133 @@ pub const VANILLA_TABS: [(&str, &[&str]); 7] = [
     ),
 ];
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// Os tanques cheios (`MekanismCreativeTabs.addFilledTanks`): um Fluid Tank criativo por fluido e um Chemical Tank criativo por químico.
+
+/// Os dois itens que `addFilledTanks` enche (`ContainerType.FLUID.getFilledVariant` e `ContainerType.CHEMICAL.getFilledVariant`).
+pub const CREATIVE_FLUID_TANK: &str = "mekanism:creative_fluid_tank";
+pub const CREATIVE_CHEMICAL_TANK: &str = "mekanism:creative_chemical_tank";
+/// O quanto o item cheio guarda: a capacidade do tanque criativo (`Long.MAX_VALUE`, `tiers.toml`).
+pub const FILLED_TANK_AMOUNT: i64 = i64::MAX;
+
+/// Os fluidos que ganham um tanque, na ordem do registro `Registries.FLUID` (`listElements`), só as fontes: a água e a lava do vanilla e os do Mekanism, na ordem em que
+/// `MekanismFluids` os registra (`rastros/fluids.jsonl`). Nenhum está em `c:hidden_from_recipe_viewers` (a datagen não tem a tag). Os de outro mod entram pelo mod deles.
+pub const FILLED_TANK_FLUIDS: [&str; 20] = [
+    "minecraft:water",
+    "minecraft:lava",
+    "mekanism:hydrogen",
+    "mekanism:oxygen",
+    "mekanism:chlorine",
+    "mekanism:sulfur_dioxide",
+    "mekanism:sulfur_trioxide",
+    "mekanism:sulfuric_acid",
+    "mekanism:hydrogen_chloride",
+    "mekanism:hydrofluoric_acid",
+    "mekanism:uranium_oxide",
+    "mekanism:uranium_hexafluoride",
+    "mekanism:ethene",
+    "mekanism:sodium",
+    "mekanism:superheated_sodium",
+    "mekanism:brine",
+    "mekanism:lithium",
+    "mekanism:steam",
+    "mekanism:heavy_water",
+    "mekanism:nutritional_paste",
+];
+
+/// Os químicos que ganham um tanque, na ordem do registro de dados `mekanism:chemical`: a dos arquivos, que o `RegistryDataLoader` lê de um `TreeMap` de `Identifier`
+/// (`MultiPackResourceManager.listResources`: ordem do caminho, e só depois do namespace). O `mekanism:empty` fica de fora (`!holder.is(ChemicalIds.EMPTY)`), e nenhum está
+/// em `mekanism:hidden_from_recipe_viewers` (a datagen não tem a tag).
+pub const FILLED_TANK_CHEMICALS: [&str; 64] = [
+    "mekanism:antimatter",
+    "mekanism:aqua",
+    "mekanism:bio",
+    "mekanism:black",
+    "mekanism:blue",
+    "mekanism:brine",
+    "mekanism:brown",
+    "mekanism:carbon",
+    "mekanism:chlorine",
+    "mekanism:clean_copper",
+    "mekanism:clean_gold",
+    "mekanism:clean_iron",
+    "mekanism:clean_lead",
+    "mekanism:clean_osmium",
+    "mekanism:clean_tin",
+    "mekanism:clean_uranium",
+    "mekanism:cyan",
+    "mekanism:dark_red",
+    "mekanism:diamond",
+    "mekanism:dirty_copper",
+    "mekanism:dirty_gold",
+    "mekanism:dirty_iron",
+    "mekanism:dirty_lead",
+    "mekanism:dirty_osmium",
+    "mekanism:dirty_tin",
+    "mekanism:dirty_uranium",
+    "mekanism:ethene",
+    "mekanism:fissile_fuel",
+    "mekanism:fungi",
+    "mekanism:gold",
+    "mekanism:gray",
+    "mekanism:green",
+    "mekanism:hydrofluoric_acid",
+    "mekanism:hydrogen",
+    "mekanism:hydrogen_chloride",
+    "mekanism:light_blue",
+    "mekanism:light_gray",
+    "mekanism:lime",
+    "mekanism:lithium",
+    "mekanism:magenta",
+    "mekanism:nuclear_waste",
+    "mekanism:orange",
+    "mekanism:osmium",
+    "mekanism:oxygen",
+    "mekanism:pink",
+    "mekanism:plutonium",
+    "mekanism:polonium",
+    "mekanism:purple",
+    "mekanism:red",
+    "mekanism:redstone",
+    "mekanism:refined_obsidian",
+    "mekanism:sodium",
+    "mekanism:spent_nuclear_waste",
+    "mekanism:steam",
+    "mekanism:sulfur_dioxide",
+    "mekanism:sulfur_trioxide",
+    "mekanism:sulfuric_acid",
+    "mekanism:superheated_sodium",
+    "mekanism:tin",
+    "mekanism:uranium_hexafluoride",
+    "mekanism:uranium_oxide",
+    "mekanism:water_vapor",
+    "mekanism:white",
+    "mekanism:yellow",
+];
+
+/// O Fluid Tank criativo cheio de `fluid`: o componente `mekanism:fluids` como o item do tanque o guarda.
+pub fn filled_fluid_tank(fluid: &str) -> String {
+    format!("{{count:1,id:\"{CREATIVE_FLUID_TANK}\",components:{{\"mekanism:fluids\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:{{id:\"{fluid}\"}}}}]}}}}}}")
+}
+
+/// O Chemical Tank criativo cheio de `chemical`: o componente `mekanism:chemicals`.
+pub fn filled_chemical_tank(chemical: &str) -> String {
+    format!("{{count:1,id:\"{CREATIVE_CHEMICAL_TANK}\",components:{{\"mekanism:chemicals\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:\"{chemical}\"}}]}}}}}}")
+}
+
+/// `addFilledTanks(parameters, output, chemical)`: os de fluido e, com `chemical`, os de químico depois. As duas opções do `general.toml` (`prefilledFluidTanks` e
+/// `prefilledChemicalTanks`) valem o padrão, ligadas: a aba é montada antes de o servidor ler os arquivos.
+pub fn filled_tanks(chemical: bool) -> Vec<String> {
+    let mut stacks: Vec<String> = FILLED_TANK_FLUIDS.iter().map(|fluid| filled_fluid_tank(fluid)).collect();
+    if chemical {
+        stacks.extend(FILLED_TANK_CHEMICALS.iter().map(|chemical| filled_chemical_tank(chemical)));
+    }
+    stacks
+}
+
+/// A aba do vanilla que ganha os tanques de fluido cheios, depois dos baldes (`MekanismCreativeTabs.java:137`).
+pub const FILLED_TANKS_TAB: &str = "minecraft:tools_and_utilities";
+
 /// As pilhas (no formato do Horizon) que a aba `tab` ganha no fim, na ordem do original: os itens da lista e, no lugar de `mekanism:upgrade`, uma pilha por tipo.
 pub fn additions(tab: &str) -> Vec<String> {
     let mut stacks = Vec::new();
@@ -583,6 +710,9 @@ pub fn additions(tab: &str) -> Vec<String> {
                 }
             }
         }
+    }
+    if tab == FILLED_TANKS_TAB {
+        stacks.extend(filled_tanks(false));
     }
     stacks
 }
@@ -612,6 +742,11 @@ pub fn edit_mod_tab(items: &mut Vec<String>) -> bool {
                 .trim_end_matches("\"}");
             edited.push(filled_stack(id, energy));
         }
+    }
+    // `addFilledTanks(displayParameters, output, true)`, depois dos itens, dos blocos e dos baldes.
+    let filled = filled_tanks(true);
+    if !edited.contains(&filled[0]) {
+        edited.extend(filled);
     }
     let changed = edited != *items;
     *items = edited;

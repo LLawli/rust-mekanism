@@ -141,3 +141,26 @@ fn the_vanilla_tabs_get_what_the_original_adds() {
     }
     let _ = datagen();
 }
+
+/// `MekanismCreativeTabs.addFilledTanks` percorre o registro de fluidos inteiro: os quatro do Generators ganham um Fluid Tank criativo cheio logo depois dos do Mekanism
+/// (a ordem do registro, `rastros/fluids.jsonl`), antes dos tanques de químico e do que vem depois na aba.
+#[test]
+fn the_filled_tanks_of_the_mekanism_tabs_get_the_generators_fluids() {
+    let fluids: Vec<String> = buckets().iter().map(|bucket| bucket.trim_end_matches("_bucket").to_owned()).collect();
+    assert_eq!(table::FLUIDS.to_vec(), fluids);
+    let tank = |fluid: &str| format!("{{count:1,id:\"mekanism:creative_fluid_tank\",components:{{\"mekanism:fluids\":{{containers:[{{amount:9223372036854775807L,type:{{id:\"{fluid}\"}}}}]}}}}}}");
+    let chemical = "{count:1,id:\"mekanism:creative_chemical_tank\",components:{\"mekanism:chemicals\":{containers:[{amount:9223372036854775807L,type:\"mekanism:antimatter\"}]}}}".to_owned();
+    let mut stacks = vec!["{count:1,id:\"mekanism:salt\"}".to_owned(), tank("minecraft:water"), tank("mekanism:nutritional_paste"), chemical.clone()];
+    assert!(table::edit_tab("mekanism:mekanism", &mut stacks));
+    assert_eq!(stacks.len(), 8);
+    assert_eq!(stacks[2], tank("mekanism:nutritional_paste"));
+    for (index, fluid) in table::FLUIDS.iter().enumerate() {
+        assert_eq!(stacks[3 + index], tank(fluid));
+    }
+    assert_eq!(stacks[7], chemical);
+    // Uma vez só, e nada numa aba sem os tanques cheios.
+    assert!(!table::edit_tab("mekanism:mekanism", &mut stacks));
+    let mut plain = vec!["{count:1,id:\"mekanism:salt\"}".to_owned()];
+    assert!(!table::edit_tab("minecraft:search", &mut plain));
+    assert_eq!(plain.len(), 1);
+}

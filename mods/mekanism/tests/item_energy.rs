@@ -317,6 +317,10 @@ fn the_creative_tab_shows_the_empty_and_the_filled_item_side_by_side() {
     .map(|id| table::plain_stack(id))
     .collect();
     assert!(table::edit_tab(table::MEKANISM_TAB, &mut tab));
+    // No fim da aba do mod vêm os tanques cheios (`addFilledTanks`, frente `tanques`), depois de tudo.
+    let tanks = table::filled_tanks(true);
+    assert_eq!(tab[tab.len() - tanks.len()..], tanks[..]);
+    tab.truncate(tab.len() - tanks.len());
     assert_eq!(
         tab,
         [
