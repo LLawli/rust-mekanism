@@ -3,6 +3,7 @@ pub mod active_fx;
 pub mod armor_bar;
 pub mod armor_slots;
 pub mod biome_temperature;
+pub mod bounding;
 pub mod cached_recipe;
 pub mod chemical;
 pub mod client_config;

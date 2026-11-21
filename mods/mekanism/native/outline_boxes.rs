@@ -2,6 +2,9 @@ fn mekanism_outline_boxes(game: &crate::game::Game<'_>, pos: [i32; 3]) -> core::
     if let Some(boxes) = crate::game::mekanism_configurator::partial_boxes(game, pos) {
         return core::ops::ControlFlow::Break(boxes);
     }
+    if let Some(boxes) = crate::game::machinery_basis::bounding_outline_boxes(game, pos) {
+        return core::ops::ControlFlow::Break(boxes);
+    }
     match crate::game::mekanism_cube::outline_boxes(game, pos) {
         Some(boxes) => core::ops::ControlFlow::Break(boxes),
         None => core::ops::ControlFlow::Continue(()),

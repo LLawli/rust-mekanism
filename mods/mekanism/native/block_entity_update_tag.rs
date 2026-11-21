@@ -4,4 +4,5 @@ fn mekanism_update_tag(
 ) {
     crate::game::mekanism_cube::update_tag(entity, tag);
     crate::game::machinery_transmitter_contents::update_tag(entity, tag);
+    crate::game::machinery_basis::bounding_update_tag(entity, tag);
 }

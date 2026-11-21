@@ -454,6 +454,10 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
     if !matches!(game.hand, Hand::Main) {
         return ControlFlow::Continue(());
     }
+    // `BlockBounding.useItemOn` e `useWithoutItem`: o clique no bloco de apoio é o clique no principal, no meio da mesma face dele (`withHitResultForMain`). O apoio
+    // sem principal devolve `FAIL` no original: o bloco não age e o despacho segue para o item, como aqui.
+    let proxied = basis::bounding_use_target(game, hit.pos, hit.face).map(|(pos, point)| crate::game::Hit { pos, face: hit.face, point });
+    let hit = proxied.as_ref().unwrap_or(hit);
     let block = game.native_block(hit.pos);
     // A Security Desk entra aqui só para abrir a tela (e girar com o Configurator em `ROTATE`): ela não tem configuração de lados nem a capability do cartão.
     if !is_mekanism_tile(&block) && !crate::game::mekanism_desk::is_desk(&block) {

@@ -1534,6 +1534,50 @@ bindings = [
   { name = "p", ty = "BlockPos", value = "p" },
 ]
 
+# O bloco de apoio (`BlockBounding` do Mekanism; frente `mesa-seguranca`, 3.ª rodada): a explosão que pega o apoio é passada ao principal (`onExplosionHit`), e o
+# pick block no apoio dá o item do principal (`getCloneItemStack`). O Horizon não tem gancho por bloco na explosão (o `explosion_detonate` só tira posições da lista)
+# nem no item do pick (o `player_pick_item` só cancela). Os dois HEAD canceláveis se chamam de novo com a posição do principal, que não é um apoio. Alvos crus, H280.
+[[injection]]
+id = "bounding_explosion_hit"
+target = "horizon_client::game::explosion::Game<'_>::explosion_hit_block"
+kind = "HEAD"
+cancellable = true
+helper = "bounding_explosion_hit.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "radius", ty = "f32", value = "radius" },
+  { name = "interaction", ty = "BlockInteraction", value = "interaction" },
+  { name = "stacks", ty = "&mut Vec<([i32; 3], horizon_client::items::ItemStack)>", value = "&mut *stacks" },
+]
+
+# `BlockBounding.getExplosionResistance`: a resistência do apoio à explosão é a do principal (a Security Desk tem -1, o apoio sozinho 4,8). O Horizon lê uma
+# resistência por estado dentro de `exploded_positions`, cujo corpo tem fechamentos (só o HEAD passa): o HEAD cancelável refaz o corpo com a resistência do principal,
+# e só quando há um apoio ao alcance da explosão. Alvo cru, H280.
+[[injection]]
+id = "bounding_exploded_positions"
+target = "horizon_client::game::explosion::Game<'_>::exploded_positions"
+kind = "HEAD"
+cancellable = true
+helper = "bounding_exploded_positions.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "center", ty = "[f64; 3]", value = "center" },
+  { name = "radius", ty = "f32", value = "radius" },
+  { name = "resists", ty = "Option<([i32; 3], f32)>", value = "resists" },
+]
+
+[[injection]]
+id = "bounding_picked_stack"
+target = "horizon_client::game::block_items::Game<'_>::picked_stack"
+kind = "HEAD"
+cancellable = true
+helper = "bounding_picked_stack.rs"
+bindings = [
+  { name = "game", ty = "&crate::game::Game<'_>", value = "&*self" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+]
+
 [[injection]]
 id = "transmitter_arrow_clip"
 target = "horizon_client_lib::arrows::ArrowScene<'_,'_>::clip"
