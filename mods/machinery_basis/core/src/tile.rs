@@ -210,6 +210,20 @@ impl TileBase {
         self.redstone_last_tick = was_powered;
     }
 
+    /// O trecho de `loadAdditional` (`TileEntityMekanism.java:760-762`) que um NBT vindo de fora (um comando de dados) traz para um tile vivo: `currentActive` e
+    /// `updateDelay` entram direto, e o estado do bloco não muda (só `setActive` e o fim do atraso em `tickServer` o trocam). Um tanque que recebe `active_state:1b`
+    /// por comando empurra para baixo com o bloco ainda apagado.
+    pub fn load_active(&mut self, active: bool, update_delay: i32) {
+        self.current_active = active;
+        self.update_delay = update_delay;
+    }
+
+    /// `getClientActive` lê o estado do bloco do mundo a cada chamada (`TileEntityMekanism.java:1388-1390`): quem guarda o tile vivo entre os ticks devolve aqui o
+    /// que o bloco tem agora (um `setblock` com outro estado do mesmo bloco não refaz o tile).
+    pub fn set_block_active(&mut self, block_active: bool) {
+        self.block_active = block_active;
+    }
+
     /// O estado do bloco, que atrasa em relação a [`TileBase::active`] ao desligar.
     pub fn block_active(&self) -> bool {
         self.block_active
@@ -1616,6 +1630,50 @@ mod tests {
             tile.tick_delay();
         }
         assert!(!tile.block_active());
+    }
+
+    /// `TileEntityMekanism.loadAdditional` (`:760-762`) só escreve `currentActive` e `updateDelay`; o bloco segue como estava até um `setActive` que mude o valor
+    /// (`:1393-1411`) ou o fim de um atraso armado (`:621-628`).
+    #[test]
+    fn a_loaded_active_state_does_not_touch_the_block() {
+        let mut tile = TileBase::new(3);
+        tile.load_active(true, 0);
+        assert!(tile.active());
+        assert!(!tile.block_active(), "o NBT não acende o bloco");
+        for _ in 0..5 {
+            tile.tick_delay();
+            assert!(!tile.block_active(), "sem atraso armado o bloco nunca alcança o tile");
+        }
+        tile.set_active(true);
+        assert!(!tile.block_active(), "`setActive` com o mesmo valor volta antes de olhar o bloco");
+        tile.set_active(false);
+        assert!(!tile.active());
+        assert!(!tile.block_active());
+        assert_eq!(tile.update_delay(), 0, "o bloco já estava apagado: o atraso não é armado");
+        // Com um atraso que veio no NBT, o fim dele acerta o bloco pelo tile.
+        tile.load_active(true, 2);
+        tile.tick_delay();
+        assert!(!tile.block_active());
+        tile.tick_delay();
+        assert!(tile.block_active());
+        // E o caminho inverso: o bloco aceso com o tile apagado pelo NBT.
+        tile.load_active(false, 0);
+        assert!(tile.block_active());
+        tile.set_active(true);
+        assert!(tile.block_active());
+        assert_eq!(tile.update_delay(), 0);
+        // O bloco trocado por fora (`setblock` com `active=false`) com o tile ativo: desligar não arma o atraso, porque o bloco já está apagado.
+        tile.set_block_active(false);
+        assert!(!tile.block_active());
+        tile.set_active(false);
+        assert_eq!(tile.update_delay(), 0);
+        // E com o bloco aceso por fora e o tile apagado: ligar não muda o bloco, e desligar em seguida o apaga na hora (não havia atraso) e arma o atraso.
+        tile.set_block_active(true);
+        tile.set_active(true);
+        assert!(tile.block_active());
+        tile.set_active(false);
+        assert!(!tile.block_active());
+        assert_eq!(tile.update_delay(), 3);
     }
 
     #[test]

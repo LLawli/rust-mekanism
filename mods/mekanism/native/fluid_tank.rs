@@ -48,6 +48,8 @@ const CURRENT_REDSTONE: &str = "current_redstone";
 const EDIT_MODE: &str = "edit_mode";
 const DELAY: &str = "delay";
 const ACTIVE_STATE: &str = "active_state";
+/// `SerializationConstants.UPDATE_DELAY`: o atraso do bloco ao desligar (`TileEntityMekanism.java:762, 789`).
+const UPDATE_DELAY: &str = "update_delay";
 const DIRECTION: &str = "last_transfer_direction";
 const ACTIVE_PROPERTY: &str = "active";
 const EMPTY_BUCKET: &str = "minecraft:bucket";
@@ -71,9 +73,10 @@ struct LiveTank {
     seen: Stored,
     /// `redstone`, o modo de controle e o nível do comparador que o NBT já tem.
     scalars: Option<(bool, RedstoneControl, i32)>,
-    /// O modo de edição, o atraso da luz, o estado ativo e a direção do slot que o NBT já tem.
-    saved: Option<(ContainerEditMode, i32, bool, LastTransferDirection)>,
-    /// A propriedade `active` que o bloco já tem.
+    /// O modo de edição, o atraso da luz, o estado ativo, a direção do slot e o atraso do bloco (`updateDelay`) que o NBT já tem.
+    saved: Option<(ContainerEditMode, i32, bool, LastTransferDirection, i32)>,
+    /// A propriedade `active` que o bloco já tem: o `getClientActive` do Java, que atrasa em relação ao `active_state` do tile ao desligar e não acompanha um
+    /// `active_state` que veio pelo NBT (`TileBase::load_active`).
     block_active: Option<bool>,
 }
 
@@ -343,7 +346,14 @@ fn born(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], entity: &ModBlo
     let scalars = read_scalars(entity);
     let active = glue::nbt_bool(entity, ACTIVE_STATE);
     tile.tile_mut().restore(
-        &machinery_basis_core::tile::SavedState { redstone: scalars.0, control_type: scalars.1, current_redstone: scalars.2, active, ..Default::default() },
+        &machinery_basis_core::tile::SavedState {
+            redstone: scalars.0,
+            control_type: scalars.1,
+            current_redstone: scalars.2,
+            active,
+            update_delay: glue::nbt_int(entity, UPDATE_DELAY),
+            ..Default::default()
+        },
         game.native_block_property(pos, ACTIVE_PROPERTY).as_deref() == Some("true"),
     );
     let seen = read_stored(entity, capacity);
@@ -622,14 +632,23 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         if mode != saved.0 {
             live.tile.restore_edit_mode(mode);
         }
+        // `loadAdditional` (`TileEntityMekanism.java:760-762`): o estado ativo e o atraso que vieram de fora entram no tile sem passar por `setActive`, e o bloco
+        // não muda (medido no cliente do original: um tanque com `active_state:1b` por comando segue com o vidro apagado).
         let active = glue::nbt_bool(entity, ACTIVE_STATE);
-        if active != saved.2 {
-            live.tile.tile_mut().set_active(active);
+        let update_delay = glue::nbt_int(entity, UPDATE_DELAY);
+        if active != saved.2 || update_delay != saved.4 {
+            live.tile.tile_mut().load_active(active, update_delay);
         }
         let direction = LastTransferDirection::from_serialized_name(&glue::nbt_string(entity, DIRECTION).unwrap_or_default());
         if direction != saved.3 {
             live.tile.input_slot().set_last_transfer_direction(direction, None);
         }
+    }
+    // `getClientActive` lê o estado do bloco a cada chamada: um `setblock` com outro `active` no mesmo bloco não refaz o tile.
+    let in_world = game.native_block_property(pos, ACTIVE_PROPERTY).as_deref() == Some("true");
+    if live.block_active.is_some_and(|known| known != in_world) {
+        live.tile.tile_mut().set_block_active(in_world);
+        live.block_active = Some(in_world);
     }
     if let Some(powered) = basis::take_power(game, pos) {
         live.tile.tile_mut().update_power(powered);
@@ -667,18 +686,27 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         write_scalars(entity, scalars);
         live.scalars = Some(scalars);
     }
-    let saved = (live.tile.edit_mode(), live.tile.light_update_delay(), live.tile.tile().active(), live.tile.input_slot().last_transfer_direction());
+    let saved = (
+        live.tile.edit_mode(),
+        live.tile.light_update_delay(),
+        live.tile.tile().active(),
+        live.tile.input_slot().last_transfer_direction(),
+        live.tile.tile().update_delay(),
+    );
     if live.saved != Some(saved) {
         glue::put(entity, EDIT_MODE, Tag::String(JavaString::from(saved.0.serialized_name())));
         glue::put(entity, DELAY, Tag::Int(saved.1));
         glue::put(entity, ACTIVE_STATE, Tag::Byte(i8::from(saved.2)));
         glue::put(entity, DIRECTION, Tag::String(JavaString::from(saved.3.serialized_name())));
+        glue::put(entity, UPDATE_DELAY, Tag::Int(saved.4));
         live.saved = Some(saved);
     }
-    // `setActive` -> `Attribute.setActive`: a propriedade `active` do bloco acompanha o tile.
-    if live.block_active != Some(saved.2) {
-        game.native_set_block_property(pos, ACTIVE_PROPERTY, if saved.2 { "true" } else { "false" });
-        live.block_active = Some(saved.2);
+    // `setActive` -> `Attribute.setActive` e o fim do atraso em `tickServer`: a propriedade `active` do bloco é a que o tile calcula (`block_active`), não o
+    // `currentActive`.
+    let block_active = live.tile.tile().block_active();
+    if live.block_active != Some(block_active) {
+        game.native_set_block_property(pos, ACTIVE_PROPERTY, if block_active { "true" } else { "false" });
+        live.block_active = Some(block_active);
     }
     if entity.data.is_empty() {
         entity.data = vec![1];
@@ -773,20 +801,25 @@ fn with_tile<R>(game: &mut Game<'_>, pos: [i32; 3], act: impl FnOnce(&mut Game<'
     let mut live = cell.try_borrow_mut().ok()?;
     let result = act(game, &mut live.tile);
     let stored = stored_of(live.tile.tank());
-    let active = live.tile.tile().active();
+    let (active, update_delay, block_active) = {
+        let tile = live.tile.tile();
+        (tile.active(), tile.update_delay(), tile.block_active())
+    };
     if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&at) {
         if stored != live.seen {
             write_stored(entity, tier_values(tier).0, &stored);
             live.seen = stored;
         }
         glue::put(entity, ACTIVE_STATE, Tag::Byte(i8::from(active)));
+        glue::put(entity, UPDATE_DELAY, Tag::Int(update_delay));
         if let Some(saved) = live.saved.as_mut() {
             saved.2 = active;
+            saved.4 = update_delay;
         }
     }
-    if live.block_active != Some(active) {
-        game.native_set_block_property(pos, ACTIVE_PROPERTY, if active { "true" } else { "false" });
-        live.block_active = Some(active);
+    if live.block_active != Some(block_active) {
+        game.native_set_block_property(pos, ACTIVE_PROPERTY, if block_active { "true" } else { "false" });
+        live.block_active = Some(block_active);
     }
     game.world.modified.insert((at.0 >> 4, at.2 >> 4));
     Some(result)
