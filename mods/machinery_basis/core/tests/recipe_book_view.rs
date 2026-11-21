@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use machinery_basis_core::recipe_book_view::{BookData, BookTab, Row, Tab, View};
+use machinery_basis_core::sim::java_hash::JavaIntMap;
 use serde_json::Value;
 
 fn read(name: &str) -> Vec<Value> {
@@ -66,6 +67,7 @@ fn crushing() -> &'static BookData {
         rows: rows(),
         requirements: &[],
         ghosts: &[],
+        displays: &[],
     }))
 }
 
@@ -83,7 +85,7 @@ fn trace_step1() -> Value {
 fn view(filtering: bool, craftable: bool) -> View {
     View::new(
         crushing(),
-        all_ids().into_iter(),
+        &JavaIntMap::from_keys(all_ids()),
         std::iter::empty(),
         filtering,
         &|_| craftable,
@@ -147,7 +149,7 @@ fn the_filter_keeps_only_what_can_be_crafted() {
 fn only_the_known_recipes_show_and_empty_tabs_hide() {
     let view = View::new(
         crushing(),
-        std::iter::empty(),
+        &JavaIntMap::from_keys(std::iter::empty()),
         std::iter::empty(),
         false,
         &|_| true,
@@ -157,7 +159,7 @@ fn only_the_known_recipes_show_and_empty_tabs_hide() {
     let one = rows().iter().find(|row| row.2 == "crushing").unwrap();
     let view = View::new(
         crushing(),
-        std::iter::once(one.0),
+        &JavaIntMap::from_keys(std::iter::once(one.0)),
         std::iter::empty(),
         false,
         &|_| true,
@@ -216,7 +218,7 @@ fn highlighted_recipes_animate_the_buttons_that_show_them_and_their_tabs() {
     // destaque das receitas dele (`recipeShown`) e anima; a página seguinte, ainda destacada, anima ao aparecer.
     let mut view = View::new(
         crushing(),
-        all_ids().into_iter(),
+        &JavaIntMap::from_keys(all_ids()),
         all_ids().into_iter(),
         false,
         &|_| true,
@@ -309,7 +311,7 @@ fn a_left_click_places_the_recipe_and_refuses_the_same_uncraftable_one_twice() {
 fn reopened(carried: &machinery_basis_core::recipe_book_view::Carried) -> View {
     View::reopened(
         crushing(),
-        all_ids().into_iter(),
+        &JavaIntMap::from_keys(all_ids()),
         std::iter::empty(),
         false,
         &|_| true,

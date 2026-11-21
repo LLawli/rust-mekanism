@@ -110,3 +110,43 @@ fn a_group_text_is_one_group_number() {
     assert!(by_number.values().all(|texts| texts.len() == 1));
     assert!(by_text.len() > 50);
 }
+
+/// A tabela de todos os displays do jogo (`DISPLAYS`, de `recipe_book_known_displays.jsonl`): os ids são seguidos, do zero aos 4.987
+/// do original, cada linha do livro das máquinas está nela com a mesma receita, e as contagens por mod são as medidas (decisão 269).
+#[test]
+fn the_table_of_every_display_of_the_game_has_the_numbering_of_the_original() {
+    use mekanism_rules::recipe_book_rows::DISPLAYS;
+    let mut next = 0;
+    let mut by_mod: BTreeMap<&str, i32> = BTreeMap::new();
+    for &(recipe, first, count) in DISPLAYS {
+        assert_eq!(first, next, "{recipe}");
+        assert!(count > 0, "{recipe}");
+        next += i32::from(count);
+        *by_mod.entry(recipe.split_once(':').unwrap().0).or_default() += i32::from(count);
+    }
+    assert_eq!(next, 4987);
+    assert_eq!(
+        by_mod,
+        BTreeMap::from([
+            ("mekanism", 1982),
+            ("mekanismadditions", 1114),
+            ("mekanismgenerators", 38),
+            ("mekanismtools", 107),
+            ("minecraft", 1746),
+        ])
+    );
+    let displays = machinery_basis_core::recipe_book_data::Displays(DISPLAYS);
+    let by_id: BTreeMap<i32, &str> = displays.ids().collect();
+    for row in ROWS {
+        assert_eq!(by_id[&row.0], row.1, "display {}", row.0);
+    }
+    // O que o port tem hoje do Mekanism e do Generators (o resto são máquinas ainda não portadas): com o vanilla, menos que os 3.072
+    // que levam a tabela do `HashMap` a 8.192; por isso o `/recipe give @s *` conta a tabela inteira do original (decisão 269).
+    let ported: i32 = DISPLAYS
+        .iter()
+        .filter(|row| !row.0.starts_with("minecraft:") && file_of(row.0).is_some())
+        .map(|row| i32::from(row.2))
+        .sum();
+    assert!(ported > 500, "{ported}");
+    assert!(1746 + ported < 3072, "{ported}");
+}

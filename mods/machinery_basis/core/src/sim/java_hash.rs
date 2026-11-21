@@ -103,6 +103,222 @@ pub fn hash_set_table<K: Copy>(
     (order, length)
 }
 
+/// Um `HashMap<K, V>` do Java que vive e muda: a chave é um inteiro cujo `hashCode` é ele mesmo (`Integer`, ou um record de um `int`
+/// como `RecipeDisplayId`). Guarda o que decide a ordem de `values()`: a tabela nasce com 16 no primeiro `put`, dobra quando o tamanho
+/// passa de 0,75 dela, nunca encolhe (`remove` tira o nó do balde e `clear` esvazia os baldes sem trocar a tabela), e cada balde fica
+/// na ordem em que as chaves chegaram. Trocar o valor de uma chave que já está não muda o lugar dela.
+#[derive(Clone, Debug)]
+pub struct JavaIntMap<V> {
+    buckets: Vec<Vec<(i32, V)>>,
+    size: usize,
+}
+
+impl<V> Default for JavaIntMap<V> {
+    fn default() -> Self {
+        Self {
+            buckets: Vec::new(),
+            size: 0,
+        }
+    }
+}
+
+impl JavaIntMap<()> {
+    /// Uma tabela nova com `keys` postas nessa ordem.
+    pub fn from_keys(keys: impl IntoIterator<Item = i32>) -> Self {
+        let mut map = Self::default();
+        for key in keys {
+            map.put(key, ());
+        }
+        map
+    }
+}
+
+impl<V> JavaIntMap<V> {
+    pub fn len(&self) -> usize {
+        self.size
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
+    }
+
+    /// `table.length` (0 antes do primeiro `put`).
+    pub fn capacity(&self) -> usize {
+        self.buckets.len()
+    }
+
+    fn index(&self, key: i32) -> usize {
+        spread(key) as usize & (self.buckets.len() - 1)
+    }
+
+    pub fn get(&self, key: i32) -> Option<&V> {
+        if self.buckets.is_empty() {
+            return None;
+        }
+        self.buckets[self.index(key)]
+            .iter()
+            .find(|(other, _)| *other == key)
+            .map(|(_, value)| value)
+    }
+
+    pub fn contains_key(&self, key: i32) -> bool {
+        self.get(key).is_some()
+    }
+
+    /// `HashMap.resize` com a tabela criada: cada balde se parte em dois sem trocar a ordem.
+    fn double(&mut self) {
+        let old = self.buckets.len();
+        let mut next: Vec<Vec<(i32, V)>> = (0..old * 2).map(|_| Vec::new()).collect();
+        for (index, bucket) in std::mem::take(&mut self.buckets).into_iter().enumerate() {
+            for (key, value) in bucket {
+                let target = if spread(key) as usize & old == 0 {
+                    index
+                } else {
+                    index + old
+                };
+                next[target].push((key, value));
+            }
+        }
+        self.buckets = next;
+    }
+
+    /// `HashMap.put`: devolve o valor que a chave tinha.
+    pub fn put(&mut self, key: i32, value: V) -> Option<V> {
+        if self.buckets.is_empty() {
+            self.buckets = (0..16).map(|_| Vec::new()).collect();
+        }
+        let index = self.index(key);
+        if let Some(slot) = self.buckets[index]
+            .iter_mut()
+            .find(|(other, _)| *other == key)
+        {
+            return Some(std::mem::replace(&mut slot.1, value));
+        }
+        self.buckets[index].push((key, value));
+        // `putVal`: `binCount >= TREEIFY_THRESHOLD - 1` ao ligar o nono nó.
+        if self.buckets[index].len() > TREEIFY_THRESHOLD {
+            assert!(
+                self.buckets.len() < MIN_TREEIFY_CAPACITY,
+                "HashMap com um balde de {} nós numa tabela de {}: a ordem da árvore não é portada",
+                self.buckets[index].len(),
+                self.buckets.len()
+            );
+            self.double();
+        }
+        self.size += 1;
+        if self.size > self.buckets.len() * 3 / 4 {
+            self.double();
+        }
+        None
+    }
+
+    /// `HashMap.remove`: o nó sai do balde e a tabela fica do tamanho que estava.
+    pub fn remove(&mut self, key: i32) -> Option<V> {
+        if self.buckets.is_empty() {
+            return None;
+        }
+        let index = self.index(key);
+        let at = self.buckets[index]
+            .iter()
+            .position(|(other, _)| *other == key)?;
+        self.size -= 1;
+        Some(self.buckets[index].remove(at).1)
+    }
+
+    /// `HashMap.clear`: os baldes ficam vazios e a tabela do tamanho que estava.
+    pub fn clear(&mut self) {
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+        self.size = 0;
+    }
+
+    /// A mesma tabela (o tamanho, os baldes e a ordem de cada um) com outro valor por chave.
+    pub fn map<W>(&self, value: impl Fn(i32, &V) -> W) -> JavaIntMap<W> {
+        JavaIntMap {
+            buckets: self
+                .buckets
+                .iter()
+                .map(|bucket| {
+                    bucket
+                        .iter()
+                        .map(|(key, old)| (*key, value(*key, old)))
+                        .collect()
+                })
+                .collect(),
+            size: self.size,
+        }
+    }
+
+    /// `entrySet()` na ordem da tabela.
+    pub fn iter(&self) -> impl Iterator<Item = (i32, &V)> {
+        self.buckets
+            .iter()
+            .flatten()
+            .map(|(key, value)| (*key, value))
+    }
+}
+
+/// A ordem em que um `Sets.newIdentityHashSet()` (um `IdentityHashMap` com a capacidade padrão) devolve as chaves depois de `add` em
+/// `keys`, com `identity` o `System.identityHashCode` de cada uma. Porta o `IdentityHashMap` do OpenJDK 21 no que decide a ordem: a
+/// tabela de 64 posições (32 chaves, uma a cada duas posições), o índice `((h << 1) - (h << 8)) & (length - 1)`, a sondagem de duas em
+/// duas posições com volta ao começo, e o `resize` que dobra a tabela quando `3 * (size + 1)` passa do comprimento dela e reinsere
+/// as chaves na ordem da tabela velha. Só `add`: quem tira chaves (`closeDeletion`) não é portado.
+pub fn identity_set_order<K: Copy + PartialEq>(
+    keys: impl IntoIterator<Item = K>,
+    identity: impl Fn(K) -> i32,
+) -> Vec<K> {
+    fn slot(hash: i32, length: usize) -> usize {
+        (hash.wrapping_shl(1).wrapping_sub(hash.wrapping_shl(8))) as u32 as usize & (length - 1)
+    }
+    fn place<K: Copy + PartialEq>(table: &mut [Option<(i32, K)>], hash: i32, key: K) -> bool {
+        let length = table.len();
+        let mut index = slot(hash, length);
+        while let Some((_, other)) = table[index] {
+            if other == key {
+                return false;
+            }
+            index = if index + 2 < length { index + 2 } else { 0 };
+        }
+        table[index] = Some((hash, key));
+        true
+    }
+    let mut table: Vec<Option<(i32, K)>> = vec![None; 64];
+    let mut size = 0_usize;
+    for key in keys {
+        let hash = identity(key);
+        // `put`: a chave que já está não muda nada; senão `s + (s << 1) > len` dobra a tabela antes de pôr.
+        let length = table.len();
+        let mut index = slot(hash, length);
+        let mut present = false;
+        while let Some((_, other)) = table[index] {
+            if other == key {
+                present = true;
+                break;
+            }
+            index = if index + 2 < length { index + 2 } else { 0 };
+        }
+        if present {
+            continue;
+        }
+        if 3 * (size + 1) > length {
+            let mut next: Vec<Option<(i32, K)>> = vec![None; length * 2];
+            for (old_hash, old_key) in table.iter().step_by(2).flatten() {
+                place(&mut next, *old_hash, *old_key);
+            }
+            table = next;
+        }
+        place(&mut table, hash, key);
+        size += 1;
+    }
+    table
+        .into_iter()
+        .step_by(2)
+        .flatten()
+        .map(|(_, key)| key)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

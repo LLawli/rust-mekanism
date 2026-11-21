@@ -11,6 +11,7 @@ use crate::recipe_book::{
     slot_select_index,
 };
 use crate::recipe_place::{Ingredient, Recipe, Tank};
+use crate::sim::java_hash::JavaIntMap;
 use crate::stacked_contents::StackedContents;
 
 /// Uma linha da tabela dos displays: `(id, receita, tipo, grupo (-1 sem grupo), categoria, item do resultado, quantidade, tooltip,
@@ -73,6 +74,9 @@ pub struct BookData {
     pub requirements: &'static [Requirement],
     /// O que o fantasma de cada display desenha, em ordem de id.
     pub ghosts: &'static [GhostRow],
+    /// Todas as receitas do jogo com display (a numeração do `RecipeManager`), as de outros livros e as do vanilla também: o que o
+    /// servidor conta como conhecido do jogador e manda ao `ClientRecipeBook`.
+    pub displays: &'static [crate::recipe_book_data::DisplayRow],
 }
 
 impl BookData {
@@ -422,20 +426,18 @@ fn search_category(data: &BookData) -> String {
 fn build_book(
     data: &'static BookData,
     rows: &HashMap<i32, &'static Row>,
-    unlocked: impl Iterator<Item = i32>,
+    known: &JavaIntMap<()>,
     highlighted: impl Iterator<Item = i32>,
     can_craft: &dyn Fn(&Row) -> bool,
 ) -> ClientBook {
-    let mut book = ClientBook::default();
-    for id in unlocked {
-        if let Some(row) = rows.get(&id) {
-            book.add(Entry {
-                id: row.0,
-                category: row.4.to_owned(),
-                group: (row.3 >= 0).then_some(row.3),
-            });
-        }
-    }
+    // A tabela de `known` como está no cliente: os displays de outros livros ficam nela, sem linha.
+    let mut book = ClientBook::with_known(known.map(|id, ()| {
+        rows.get(&id).map(|row| Entry {
+            id: row.0,
+            category: row.4.to_owned(),
+            group: (row.3 >= 0).then_some(row.3),
+        })
+    }));
     let search = (
         search_category(data),
         data.tabs
@@ -469,16 +471,16 @@ fn build_book(
 }
 
 impl View {
-    /// O livro de quem conhece `unlocked` (os ids dos displays), com `can_craft` dizendo, por linha, se dá para fazê-la
+    /// O livro de quem conhece `known` (os ids de todos os displays que o jogador conhece, na tabela do `ClientRecipeBook`), com `can_craft` dizendo, por linha, se dá para fazê-la
     /// (`MekanismRecipeBookComponent.canCraft`: sem ingrediente de item a receita vale como fazível).
     pub fn new(
         data: &'static BookData,
-        unlocked: impl Iterator<Item = i32>,
+        known: &JavaIntMap<()>,
         highlighted: impl Iterator<Item = i32>,
         filtering: bool,
         can_craft: &dyn Fn(&Row) -> bool,
     ) -> Self {
-        Self::reopened(data, unlocked, highlighted, filtering, can_craft, None)
+        Self::reopened(data, known, highlighted, filtering, can_craft, None)
     }
 
     /// [`View::new`] numa tela em que a janela já esteve aberta (`RecipeBookComponent.initVisuals` de novo): a caixa de busca nasce com o
@@ -486,7 +488,7 @@ impl View {
     /// últimas receitas seguem de onde estavam. A caixa nasce sem o foco.
     pub fn reopened(
         data: &'static BookData,
-        unlocked: impl Iterator<Item = i32>,
+        known: &JavaIntMap<()>,
         highlighted: impl Iterator<Item = i32>,
         filtering: bool,
         can_craft: &dyn Fn(&Row) -> bool,
@@ -498,7 +500,7 @@ impl View {
             .filter(|row| row.2 == data.book_type)
             .map(|row| (row.0, row))
             .collect();
-        let book = build_book(data, &rows, unlocked, highlighted, can_craft);
+        let book = build_book(data, &rows, known, highlighted, can_craft);
         let mut view = Self {
             data,
             book,
@@ -548,11 +550,11 @@ impl View {
     /// e a lista da página também, sem voltar à primeira página (`updateCollections(false, ...)`).
     pub fn update_book(
         &mut self,
-        unlocked: impl Iterator<Item = i32>,
+        known: &JavaIntMap<()>,
         highlighted: impl Iterator<Item = i32>,
         can_craft: &dyn Fn(&Row) -> bool,
     ) {
-        self.book = build_book(self.data, &self.rows, unlocked, highlighted, can_craft);
+        self.book = build_book(self.data, &self.rows, known, highlighted, can_craft);
         // As coleções são objetos novos: a última clicada e o overlay ficam com as antigas, que ninguém confere mais.
         if let Some(last) = self.last_recipe.as_mut() {
             last.2 = None;

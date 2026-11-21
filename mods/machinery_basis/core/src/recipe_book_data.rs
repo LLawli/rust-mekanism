@@ -9,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::recipe_book::Entry;
+use crate::sim::java_hash::{JavaIntMap, hash_set_order, identity_set_order};
 
 /// `RecipeBookSettings.TypeSettings`: o livro aberto e o filtro de receitas que dão para fazer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -344,6 +345,148 @@ impl ToServer {
     }
 }
 
+/// Uma receita do jogo e os displays dela: `(receita, id do primeiro display, quantos)`. Os ids de uma receita são seguidos
+/// (`RecipeManager.unpackRecipeInfo` numera os displays na ordem das receitas).
+pub type DisplayRow = (&'static str, i32, u8);
+
+/// Todos os displays do jogo, por receita, em ordem de id: a numeração do `RecipeManager` do original, de qualquer receita (as do
+/// vanilla e as de todo mod), que o servidor usa para dizer ao cliente tudo o que o jogador conhece.
+#[derive(Clone, Copy, Debug)]
+pub struct Displays(pub &'static [DisplayRow]);
+
+impl Displays {
+    /// Cada display com a receita dele, em ordem de id.
+    pub fn ids(&self) -> impl Iterator<Item = (i32, &'static str)> + '_ {
+        self.0
+            .iter()
+            .flat_map(|row| (0..i32::from(row.2)).map(move |n| (row.1 + n, row.0)))
+    }
+
+    /// A linha da receita do display `id`.
+    fn row_of(&self, id: i32) -> Option<usize> {
+        let index = self.0.partition_point(|row| row.1 <= id).checked_sub(1)?;
+        let row = self.0[index];
+        (id < row.1 + i32::from(row.2)).then_some(index)
+    }
+
+    /// As linhas das receitas de `ids`, sem repetir, na ordem do nome (a de `recipes` no que o Horizon grava do jogador), e os ids
+    /// que não são de receita nenhuma.
+    fn rows_of(&self, ids: impl Iterator<Item = i32>) -> (Vec<usize>, Vec<i32>) {
+        let mut rows = BTreeSet::new();
+        let mut strays = Vec::new();
+        for id in ids {
+            match self.row_of(id) {
+                Some(row) => {
+                    rows.insert((self.0[row].0, row));
+                }
+                None => strays.push(id),
+            }
+        }
+        (rows.into_iter().map(|(_, row)| row).collect(), strays)
+    }
+
+    fn expand(&self, rows: Vec<usize>, strays: Vec<i32>) -> Vec<i32> {
+        rows.into_iter()
+            .flat_map(|row| {
+                let (_, first, count) = self.0[row];
+                first..first + i32::from(count)
+            })
+            .chain(strays)
+            .collect()
+    }
+}
+
+/// A ordem em que os displays vão num pacote, que é a ordem em que entram no `HashMap` do `ClientRecipeBook` e decide a ordem dos que
+/// dividem um balde.
+pub struct SendOrder<'a> {
+    pub displays: Displays,
+    /// O `System.identityHashCode` da chave (`ResourceKey`) de uma receita.
+    pub identity: &'a dyn Fn(&str) -> i32,
+    /// O `hashCode` de quem premia uma receita fora de um comando (o `Listener` do avanço dela num `HashSet`, as receitas usadas de
+    /// uma fornalha num mapa de identidade): no original sai de hashes de identidade.
+    pub award: &'a dyn Fn(&str) -> i32,
+    /// O que entrou veio de um `/recipe give` com várias receitas (`RecipeCommand.giveRecipes` com `getRecipes()`), que as dá na
+    /// ordem do `RecipeManager`, a dos ids.
+    pub ascending: bool,
+}
+
+impl SendOrder<'_> {
+    /// `ServerRecipeBook.sendInitialRecipeBook`: as receitas conhecidas entram no `IdentityHashSet` na ordem em que foram lidas do
+    /// jogador e saem na ordem da tabela dele; cada uma manda os displays dela em ordem.
+    pub fn login(&self, known: &BTreeSet<i32>) -> Vec<i32> {
+        let (rows, strays) = self.displays.rows_of(known.iter().copied());
+        let ordered = identity_set_order(rows, |row| (self.identity)(self.displays.0[row].0));
+        self.displays.expand(ordered, strays)
+    }
+
+    /// `ServerRecipeBook.addRecipes` do que entrou desde o último envio: em ordem de id quando veio do comando, senão na ordem de um
+    /// `HashSet` dos hashes de quem premiou (que no original muda a cada execução).
+    pub fn awarded(&self, added: &[i32]) -> Vec<i32> {
+        if self.ascending {
+            return added.to_vec();
+        }
+        let (rows, strays) = self.displays.rows_of(added.iter().copied());
+        let ordered = hash_set_order(rows, |row| (self.award)(self.displays.0[row].0), 16);
+        self.displays.expand(ordered, strays)
+    }
+}
+
+/// O `ClientRecipeBook` do jogador no cliente, sem as linhas de livro nenhum: os ids de todos os displays que ele conhece, na tabela
+/// do `HashMap` do original (`known`), e os destacados.
+#[derive(Clone, Debug, Default)]
+pub struct ClientKnown {
+    known: JavaIntMap<()>,
+    highlight: BTreeSet<i32>,
+}
+
+impl ClientKnown {
+    /// `ClientPacketListener.handleRecipeBookAdd` e `handleRecipeBookRemove`. Devolve se algo mudou.
+    pub fn apply(&mut self, packet: &ToClient) -> bool {
+        match packet {
+            ToClient::Add { entries, replace } => {
+                if *replace {
+                    self.known.clear();
+                    self.highlight.clear();
+                }
+                for added in entries {
+                    self.known.put(added.entry.id, ());
+                    if added.highlight {
+                        self.highlight.insert(added.entry.id);
+                    }
+                }
+                *replace || !entries.is_empty()
+            }
+            ToClient::Remove(ids) => {
+                let mut changed = false;
+                for id in ids {
+                    self.highlight.remove(id);
+                    changed |= self.known.remove(*id).is_some();
+                }
+                changed
+            }
+            ToClient::Settings(_) | ToClient::PlaceGhost(_) => false,
+        }
+    }
+
+    /// `removeHighlight(id)`.
+    pub fn seen(&mut self, id: i32) {
+        self.highlight.remove(&id);
+    }
+
+    pub fn contains(&self, id: i32) -> bool {
+        self.known.contains_key(id)
+    }
+
+    /// `known`, com a tabela como está.
+    pub fn table(&self) -> &JavaIntMap<()> {
+        &self.known
+    }
+
+    pub fn highlighted(&self) -> impl Iterator<Item = i32> + '_ {
+        self.highlight.iter().copied()
+    }
+}
+
 /// `ServerRecipeBook`: as receitas que o jogador desbloqueou (por id de display) e as que ainda estão destacadas (`highlight`, as que
 /// ele ainda não viu). `add` e `remove` devolvem o que de fato mudou, que é o que o pacote leva.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -414,6 +557,7 @@ impl Unlocked {
         &self,
         sent: Option<&Unlocked>,
         entry: impl Fn(i32) -> Option<Entry>,
+        order: &SendOrder<'_>,
     ) -> Vec<ToClient> {
         let added = |id: &i32, notification: bool| {
             entry(*id).map(|entry| AddedEntry {
@@ -424,8 +568,8 @@ impl Unlocked {
         };
         let Some(sent) = sent else {
             return vec![ToClient::Add {
-                entries: self
-                    .known
+                entries: order
+                    .login(&self.known)
                     .iter()
                     .filter_map(|id| added(id, false))
                     .collect(),
@@ -437,9 +581,10 @@ impl Unlocked {
         if !removed.is_empty() {
             packets.push(ToClient::Remove(removed));
         }
-        let entries: Vec<AddedEntry> = self
-            .known
-            .difference(&sent.known)
+        let new: Vec<i32> = self.known.difference(&sent.known).copied().collect();
+        let entries: Vec<AddedEntry> = order
+            .awarded(&new)
+            .iter()
             .filter_map(|id| added(id, true))
             .collect();
         if !entries.is_empty() {
@@ -529,6 +674,7 @@ pub fn server_sync(
     types: &[&str],
     settings: impl FnOnce() -> Vec<u8>,
     entry: impl Fn(i32) -> Option<Entry>,
+    order: &SendOrder<'_>,
 ) -> Vec<ToClient> {
     if before.is_some_and(|(sent, sent_types)| sent == now && sent_types == types) {
         return Vec::new();
@@ -537,7 +683,7 @@ pub fn server_sync(
     if before.is_none_or(|(_, sent_types)| sent_types != types) {
         packets.push(ToClient::Settings(settings()));
     }
-    packets.extend(now.sync(before.map(|(sent, _)| sent), entry));
+    packets.extend(now.sync(before.map(|(sent, _)| sent), entry, order));
     packets
 }
 
@@ -627,12 +773,19 @@ mod tests {
                 group: None,
             })
         };
+        let order = SendOrder {
+            displays: Displays(&[("m:a", 1, 1), ("m:b", 2, 1), ("m:c", 3, 1)]),
+            identity: &|_| 1,
+            award: &|_| 1,
+            ascending: false,
+        };
+        let order = &order;
         let types = ["A", "B"];
         let mut now = Unlocked::default();
         now.add(1, true);
         now.add(2, false);
         // A primeira vez (`sendInitialRecipeBook`): as configurações e o livro inteiro com `replace`.
-        let first = server_sync(None, &now, &types, || vec![7], entry);
+        let first = server_sync(None, &now, &types, || vec![7], entry, order);
         assert_eq!(first.len(), 2);
         assert_eq!(first[0], ToClient::Settings(vec![7]));
         assert!(
@@ -646,7 +799,8 @@ mod tests {
                 &now,
                 &types,
                 || panic!("as configurações não mudaram"),
-                entry
+                entry,
+                order
             )
             .is_empty()
         );
@@ -659,6 +813,7 @@ mod tests {
             &types,
             || panic!("as configurações não mudaram"),
             entry,
+            order,
         );
         assert!(changed.iter().any(|packet| matches!(packet, ToClient::Add { entries, replace: false } if entries.len() == 1 && entries[0].entry.id == 3)));
         assert!(
@@ -681,7 +836,7 @@ mod tests {
         let sent = now.clone();
         let more = ["A", "B", "C"];
         assert_eq!(
-            server_sync(Some((&sent, &types)), &now, &more, || vec![9], entry),
+            server_sync(Some((&sent, &types)), &now, &more, || vec![9], entry, order),
             vec![ToClient::Settings(vec![9])]
         );
     }
@@ -890,6 +1045,13 @@ mod tests {
     #[test]
     fn the_server_book_reaches_the_client_by_the_initial_packet_and_then_by_what_changed() {
         let table = [(10, "m:a"), (11, "m:a"), (20, "m:b"), (30, "m:c")];
+        let order = SendOrder {
+            displays: Displays(&[("m:a", 10, 2), ("m:b", 20, 1), ("m:c", 30, 1)]),
+            identity: &|_| 1,
+            award: &|_| 1,
+            ascending: false,
+        };
+        let order = &order;
         let entry = |id: i32| {
             Some(Entry {
                 id,
@@ -907,7 +1069,7 @@ mod tests {
         // `sendInitialRecipeBook`: tudo, `replace`, sem aviso, destacado só o que o servidor guarda destacado.
         let mut client = Unlocked::default();
         client.add(99, true);
-        let initial = server.sync(None, entry);
+        let initial = server.sync(None, entry, order);
         assert_eq!(initial.len(), 1);
         match &initial[0] {
             ToClient::Add { entries, replace } => {
@@ -934,7 +1096,7 @@ mod tests {
             |name| name != "m:a",
             |name| name == "m:c",
         );
-        let delta = next.sync(Some(&server), entry);
+        let delta = next.sync(Some(&server), entry, order);
         assert_eq!(delta[0], ToClient::Remove(vec![10, 11]));
         match &delta[1] {
             ToClient::Add { entries, replace } => {
@@ -951,7 +1113,7 @@ mod tests {
         }
         assert_eq!(client.known().collect::<Vec<_>>(), vec![20, 30]);
         assert_eq!(client.highlighted().collect::<Vec<_>>(), vec![20, 30]);
-        assert!(next.sync(Some(&next), entry).is_empty());
+        assert!(next.sync(Some(&next), entry, order).is_empty());
     }
 
     #[test]

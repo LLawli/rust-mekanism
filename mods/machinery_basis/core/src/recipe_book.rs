@@ -9,7 +9,7 @@
 //! or book displays"). Por isso a janela é daqui.
 use std::collections::{BTreeSet, HashMap};
 
-use crate::sim::java_hash::hash_set_order;
+use crate::sim::java_hash::JavaIntMap;
 
 /// `RecipeBookComponent.IMAGE_WIDTH` e `IMAGE_HEIGHT`: o fundo `recipe_book.png` sem as abas.
 pub const IMAGE_WIDTH: i32 = 147;
@@ -201,10 +201,12 @@ impl Collection {
     }
 }
 
-/// `ClientRecipeBook`: as receitas que o jogador conhece e as coleções por aba.
+/// `ClientRecipeBook`: as receitas que o jogador conhece e as coleções por aba. `known` é o `HashMap<RecipeDisplayId, ...>` do
+/// original, com todos os displays que o jogador conhece, de qualquer receita do jogo: os que não são deste livro
+/// ([`ClientBook::add_other`]) ocupam a tabela, e com isso decidem o tamanho dela e a ordem das coleções, sem entrar em aba nenhuma.
 #[derive(Clone, Debug, Default)]
 pub struct ClientBook {
-    known: Vec<Entry>,
+    known: JavaIntMap<Option<Entry>>,
     highlight: BTreeSet<i32>,
     collections: Vec<Collection>,
     by_tab: HashMap<String, Vec<usize>>,
@@ -213,20 +215,46 @@ pub struct ClientBook {
 impl ClientBook {
     /// `add`: o `HashMap` troca a entrada de mesmo id sem mudar a posição dela na tabela.
     pub fn add(&mut self, entry: Entry) {
-        match self.known.iter_mut().find(|known| known.id == entry.id) {
-            Some(known) => *known = entry,
-            None => self.known.push(entry),
+        self.known.put(entry.id, Some(entry));
+    }
+
+    /// O livro sobre uma tabela de `known` já montada: cada id com a linha dele, ou sem linha se o display é de outro livro.
+    pub fn with_known(known: JavaIntMap<Option<Entry>>) -> Self {
+        Self {
+            known,
+            ..Self::default()
         }
     }
 
+    /// `add` de um display que este livro não mostra (o de outra receita do jogo).
+    pub fn add_other(&mut self, id: i32) {
+        self.known.put(id, None);
+    }
+
     pub fn remove(&mut self, id: i32) {
-        self.known.retain(|entry| entry.id != id);
+        self.known.remove(id);
         self.highlight.remove(&id);
     }
 
+    /// `clear`: a tabela do `HashMap` fica do tamanho que tinha.
     pub fn clear(&mut self) {
         self.known.clear();
         self.highlight.clear();
+    }
+
+    /// Quantos displays o jogador conhece (`known.size()`), os de outros livros também.
+    pub fn known_count(&self) -> usize {
+        self.known.len()
+    }
+
+    /// O tamanho da tabela de `known` (`table.length`).
+    pub fn known_capacity(&self) -> usize {
+        self.known.capacity()
+    }
+
+    /// Os ids de `known`, na ordem da tabela (`known.values()`).
+    pub fn known_order(&self) -> impl Iterator<Item = i32> + '_ {
+        self.known.iter().map(|(id, _)| id)
     }
 
     pub fn will_highlight(&self, id: i32) -> bool {
@@ -246,16 +274,13 @@ impl ClientBook {
     /// cada categoria de busca soma, em ordem, as coleções (as mesmas, não cópias) das categorias que inclui.
     /// `search_categories` é a lista de (categoria de busca, categorias incluídas).
     pub fn rebuild_collections(&mut self, search_categories: &[(String, Vec<String>)]) {
-        let order = hash_set_order(self.known.iter().map(|entry| entry.id), |id| id, 16);
         let mut groups: HashMap<(String, i32), usize> = HashMap::new();
         let mut collections: Vec<Collection> = Vec::new();
         let mut by_tab: HashMap<String, Vec<usize>> = HashMap::new();
-        for id in order {
-            let entry = self
-                .known
-                .iter()
-                .find(|entry| entry.id == id)
-                .expect("id vindo de known");
+        for (_, entry) in self.known.iter() {
+            let Some(entry) = entry else {
+                continue;
+            };
             match entry.group {
                 None => {
                     by_tab

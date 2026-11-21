@@ -2753,7 +2753,13 @@ pub(in crate::game) fn recipe_command(game: &mut Game<'_>, give: bool, recipes: 
         return;
     }
     let index = &world_stations!(game).recipe_index;
-    let names: Vec<&str> = rules::recipe_book_rows::ROWS.iter().map(|row| row.1).filter(|name| !index.contains(name)).collect();
+    // Todas as receitas com display da tabela do original que o `RecipeIndex` do Horizon não numera: as do livro das máquinas, as
+    // outras do Mekanism e do Generators e as dos mods do original medido que o port não tem (decisão 269).
+    let names: Vec<&str> = rules::recipe_book_rows::DISPLAYS.iter().map(|row| row.0).filter(|name| !index.contains(name)).collect();
+    if give {
+        // `RecipeCommand.giveRecipes` com `getRecipes()`: na ordem do `RecipeManager`, que é a dos ids.
+        game.mb_book_ordered_batch();
+    }
     let book = &mut game.level.recipe_book;
     for name in &names {
         if give {

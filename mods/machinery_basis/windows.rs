@@ -18,7 +18,7 @@ use machinery_basis_core::gui::NineSlice;
 use machinery_basis_core::machine_sync::read_upgrade_map;
 use machinery_basis_core::recipe_book as rb;
 use machinery_basis_core::recipe_book_data::Settings as BookSettings;
-use machinery_basis_core::recipe_book_data::{ChangeSettings, ToClient, ToServer, Unlocked, settings_fields};
+use machinery_basis_core::recipe_book_data::{ChangeSettings, ClientKnown, Displays, SendOrder, ToClient, ToServer, Unlocked, settings_fields};
 use machinery_basis_core::recipe_book_view as rbv;
 use machinery_basis_core::recipe_place as rp;
 use machinery_basis_core::stacked_contents::StackedContents;
@@ -740,8 +740,8 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
                 if let Some(contents) = &contents {
                     let data = view.data();
                     if dirty {
-                        let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
-                        view.update_book(known.into_iter(), highlighted.into_iter(), &|row| data.can_craft(row.0, contents));
+                        let (known, highlighted) = unlocked(|book| (book.table().clone(), book.highlighted().collect::<Vec<i32>>()));
+                        view.update_book(&known, highlighted.into_iter(), &|row| data.can_craft(row.0, contents));
                         open.book_contents = contents.clone();
                     } else if open.book_contents != *contents {
                         view.reselect(&|row| data.can_craft(row.0, contents));
@@ -1772,9 +1772,18 @@ fn book_type(spec: &UpgradeWindowSpec) -> &'static str {
     spec.book.map_or(spec.block, |book| book.settings_type)
 }
 
-/// `ClientRecipeBook.known` e `highlight`: os displays que o servidor disse que o jogador conhece, por id. O servidor é quem guarda
-/// (`ServerRecipeBook`, no NBT do jogador) e manda o que muda.
-static BOOK_UNLOCKED: Mutex<Option<Unlocked>> = Mutex::new(None);
+/// `ClientRecipeBook.known` e `highlight`: os displays que o servidor disse que o jogador conhece, por id, os de todas as receitas do
+/// jogo (as do vanilla e as de outros livros também), na tabela do `HashMap` do original, que decide a ordem das coleções. O servidor é
+/// quem guarda (`ServerRecipeBook`, no NBT do jogador) e manda o que muda.
+static BOOK_UNLOCKED: Mutex<Option<ClientKnown>> = Mutex::new(None);
+
+/// No servidor: as listas `recipes` e `toBeDisplayed` de cada jogador da última vez e os displays que saíram delas.
+#[allow(clippy::type_complexity)]
+static BOOK_DERIVED: Mutex<Option<HashMap<u128, (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>, Unlocked)>>> = Mutex::new(None);
+
+/// No servidor: os jogadores cujo próximo envio leva o que um `/recipe give` com várias receitas deu, em ordem de id
+/// (`RecipeCommand.giveRecipes` com `getRecipes()`); `None` na lista vale para todos (o alvo do comando não é quem age).
+static BOOK_ORDERED: Mutex<Vec<Option<u128>>> = Mutex::new(Vec::new());
 
 /// O livro do cliente mudou (um pacote do servidor): a janela aberta refaz as coleções (`RecipeBookComponent.recipesUpdated`).
 static BOOK_DIRTY: AtomicBool = AtomicBool::new(false);
@@ -1788,9 +1797,9 @@ static BOOK_RESTORED: Mutex<Option<HashMap<u128, (usize, usize)>>> = Mutex::new(
 /// No servidor: o livro que cada jogador já recebeu e os tipos de livro das configurações mandadas, para mandar só o que muda.
 static BOOK_SENT: Mutex<Option<HashMap<u128, (Unlocked, Vec<&'static str>)>>> = Mutex::new(None);
 
-fn unlocked<R>(act: impl FnOnce(&mut Unlocked) -> R) -> R {
+fn unlocked<R>(act: impl FnOnce(&mut ClientKnown) -> R) -> R {
     let mut guard = BOOK_UNLOCKED.lock().unwrap_or_else(|e| e.into_inner());
-    act(guard.get_or_insert_with(Unlocked::default))
+    act(guard.get_or_insert_with(ClientKnown::default))
 }
 
 fn book_sent<R>(act: impl FnOnce(&mut HashMap<u128, (Unlocked, Vec<&'static str>)>) -> R) -> R {
@@ -1821,6 +1830,20 @@ fn book_rows() -> Vec<&'static rbv::Row> {
     books().into_iter().flat_map(|book| book.rows.iter().filter(move |row| row.2 == book.book_type)).collect()
 }
 
+/// Todas as receitas do jogo com display (a numeração do `RecipeManager` do original), que o primeiro livro registrado traz: é uma
+/// tabela só para o jogo inteiro.
+fn book_displays() -> Displays {
+    Displays(books().first().map_or(&[], |book| book.displays))
+}
+
+/// O `/recipe give` com várias receitas: o que entrar no livro de quem age vai ao cliente em ordem de id no próximo envio.
+pub(in crate::game) fn book_ordered_batch(game: &mut Game<'_>) {
+    let mut list = BOOK_ORDERED.lock().unwrap_or_else(|e| e.into_inner());
+    if !list.contains(&game.lan_acting_uuid) {
+        list.push(game.lan_acting_uuid);
+    }
+}
+
 /// `Inventory.fillStackedContents` e `MekanismContainer.fillCraftSlotsStackedContents`: os 36 slots do jogador (só o que serve para
 /// montar: sem dano, encanto ou nome) e os slots de item de entrada e de saída da máquina (`IRecipeLookupHandler.fillStackedContents`,
 /// que usa `accountStack`, sem esse filtro), cada pilha até o máximo do item.
@@ -1840,9 +1863,9 @@ fn book_contents(game: &mut Game<'_>, spec: &UpgradeWindowSpec) -> StackedConten
 
 fn new_book_view(spec: &UpgradeWindowSpec, contents: &StackedContents, carried: Option<&rbv::Carried>) -> Option<rbv::View> {
     let data = spec.book?;
-    let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
+    let (known, highlighted) = unlocked(|book| (book.table().clone(), book.highlighted().collect::<Vec<i32>>()));
     let filtering = book_settings(|settings| settings.is_filtering(data.settings_type));
-    Some(rbv::View::reopened(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents), carried))
+    Some(rbv::View::reopened(data, &known, highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents), carried))
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -1919,6 +1942,11 @@ fn book_from_server(data: &[u8]) {
             }
         }
         Some(packet) => {
+            // O pacote com `replace` só vem na entrada (`sendInitialRecipeBook`), quando o cliente do original tem um
+            // `ClientRecipeBook` novo (`ClientPacketListener.handleLogin`): a tabela de `known` recomeça do zero.
+            if matches!(packet, ToClient::Add { replace: true, .. }) {
+                unlocked(|book| *book = ClientKnown::default());
+            }
             if unlocked(|book| book.apply(&packet)) {
                 BOOK_DIRTY.store(true, Ordering::Relaxed);
             }
@@ -1995,7 +2023,7 @@ fn book_server_message(game: &mut Game<'_>, player: u128, data: &[u8]) {
             });
         }
         Some(ToServer::SeenRecipe(id)) => {
-            let Some(recipe) = book_rows().into_iter().find(|row| row.0 == id).map(|row| row.1) else {
+            let Some(recipe) = book_displays().ids().find(|row| row.0 == id).map(|row| row.1) else {
                 return;
             };
             with_server_book(game, player, |book, _| book.remove_highlight(recipe));
@@ -2062,7 +2090,8 @@ fn book_server_sync(game: &mut Game<'_>) {
         return;
     }
     let rows = book_rows();
-    if rows.is_empty() {
+    let displays = book_displays();
+    if displays.0.is_empty() {
         return;
     }
     let types = book_types();
@@ -2072,7 +2101,13 @@ fn book_server_sync(game: &mut Game<'_>) {
         None => return,
     };
     book_sent(|sent| sent.retain(|player, _| players.contains(player)));
-    let names: std::collections::HashSet<&str> = rows.iter().map(|row| row.1).collect();
+    if let Some(derived) = BOOK_DERIVED.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        derived.retain(|player, _| players.contains(player));
+    }
+    let ordered: Vec<Option<u128>> = std::mem::take(&mut *BOOK_ORDERED.lock().unwrap_or_else(|e| e.into_inner()));
+    // O que o Horizon corta do livro do dono ao abrir o mundo e volta: toda receita da tabela (as dos livros registrados e as outras do
+    // jogo que o `RecipeIndex` dele não numera).
+    let names: std::collections::HashSet<&str> = displays.0.iter().map(|row| row.0).collect();
     for player in players {
         let mut seen = BOOK_RESTORED
             .lock()
@@ -2083,11 +2118,18 @@ fn book_server_sync(game: &mut Game<'_>) {
             .unwrap_or((usize::MAX, usize::MAX));
         let state = with_server_book(game, player, |book, extra| {
             book_restore(book, extra, &names, &mut seen);
-            let now = Unlocked::from_recipes(
-                rows.iter().map(|row| (row.0, row.1)),
-                |recipe| book.recipes.contains(recipe),
-                |recipe| book.to_be_displayed.contains(recipe),
-            );
+            // `ServerRecipeBook.known`: os displays de toda receita que o jogador conhece, as do vanilla também.
+            // A tabela tem todos os displays do jogo: só é percorrida de novo quando as listas do jogador mudam.
+            let mut derived = BOOK_DERIVED.lock().unwrap_or_else(|e| e.into_inner());
+            let derived = derived.get_or_insert_with(HashMap::new);
+            let now = match derived.get(&player) {
+                Some((recipes, display, now)) if *recipes == book.recipes && *display == book.to_be_displayed => now.clone(),
+                _ => {
+                    let now = Unlocked::from_recipes(displays.ids(), |recipe| book.recipes.contains(recipe), |recipe| book.to_be_displayed.contains(recipe));
+                    derived.insert(player, (book.recipes.clone(), book.to_be_displayed.clone(), now.clone()));
+                    now
+                }
+            };
             (now, server_book_settings(extra, &types))
         });
         BOOK_RESTORED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(player, seen);
@@ -2095,19 +2137,29 @@ fn book_server_sync(game: &mut Game<'_>) {
             continue;
         };
         let before = book_sent(|sent| sent.get(&player).cloned());
+        // A ordem dos displays no pacote é a ordem em que entram no `HashMap` do cliente: na entrada, a do `IdentityHashSet` das chaves
+        // das receitas (`sendInitialRecipeBook`), com o hash de identidade de cada chave sorteado por processo como no JVM; depois, a
+        // de quem premiou (decisão 269).
+        let order = SendOrder {
+            displays,
+            identity: &|recipe| machinery_basis_core::identity_hash::identity_hash(recipe),
+            award: &|recipe| machinery_basis_core::identity_hash::identity_hash(&format!("recipe-award:{recipe}")),
+            ascending: ordered.contains(&Some(player)) || ordered.contains(&None),
+        };
         // As configurações vão com o livro inteiro e de novo quando um tipo de livro novo é registrado (o bloco dele apareceu).
         let packets = machinery_basis_core::recipe_book_data::server_sync(
             before.as_ref().map(|(sent, sent_types)| (sent, sent_types.as_slice())),
             &now,
             &types,
             || settings.encode_named(&types),
+            // O display de um livro registrado vai com a categoria e o grupo; o de outra receita do jogo, só com o id.
             |id| {
-                rows.iter().find(|row| row.0 == id).map(|row| rb::Entry {
-                    id: row.0,
-                    category: row.4.to_owned(),
-                    group: (row.3 >= 0).then_some(row.3),
-                })
+                Some(rows.iter().find(|row| row.0 == id).map_or_else(
+                    || rb::Entry { id, category: String::new(), group: None },
+                    |row| rb::Entry { id: row.0, category: row.4.to_owned(), group: (row.3 >= 0).then_some(row.3) },
+                ))
             },
+            &order,
         );
         if packets.is_empty() {
             continue;
@@ -3724,6 +3776,11 @@ impl Game<'_> {
     /// O `/recipe take` de receitas de mod: saem também das listas lidas do jogador que age.
     pub(in crate::game) fn mb_book_forget_saved(&mut self, names: &[&str]) {
         book_forget_saved(self, names);
+    }
+
+    /// O `/recipe give` com várias receitas: o que entrar vai ao cliente de quem age em ordem de id.
+    pub(in crate::game) fn mb_book_ordered_batch(&mut self) {
+        book_ordered_batch(self);
     }
 
     pub(in crate::game) fn mb_window_key(&self, key: &str, canceled: &mut bool) {

@@ -12,7 +12,8 @@ tooltip dele. De `rastros/recipe_book_requirements.jsonl` (`testes/RecipeBookSta
 `MekanismRecipeDisplay` pede, que o `canCraft` do livro usa. Com `--check` só confere se o arquivo já está igual ao que o gerador
 escreveria. A tabela `GHOSTS` (o que o fantasma de cada display desenha) sai dos itens que cada ingrediente e cada saída mostram
 (`ing` e `out` do mesmo rastro) e dos químicos deles (`chem` e `chem_out` de `rastros/recipe_place_info.jsonl`, de
-`testes/RecipePlaceTraceTest.java`).
+`testes/RecipePlaceTraceTest.java`). A tabela `DISPLAYS` (todas as receitas do jogo com display, com o primeiro id e quantos) sai de
+`rastros/recipe_book_known_displays.jsonl` (`testes/RecipeBookKnownTraceTest.java`).
 """
 import json
 import os
@@ -23,6 +24,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 TRACE = os.path.join(HERE, "rastros", "recipe_book_displays.jsonl")
 REQUIREMENTS = os.path.join(HERE, "rastros", "recipe_book_requirements.jsonl")
 PLACE_INFO = os.path.join(HERE, "rastros", "recipe_place_info.jsonl")
+KNOWN = os.path.join(HERE, "rastros", "recipe_book_known_displays.jsonl")
 RUNTIME = os.path.join(ROOT, "mods", "mekanism", "native", "runtime.rs")
 BEGIN = "// recipe-book-rows:inicio"
 END = "// recipe-book-rows:fim"
@@ -54,6 +56,24 @@ def place_info():
         for line in handle:
             row = json.loads(line)
             out[row["id"]] = row
+    return out
+
+
+def known_displays():
+    """Cada receita do jogo com display, na ordem de `getRecipes()`: o nome, o primeiro id e quantos (os ids seguem a ordem, do zero)."""
+    out = []
+    first = 0
+    with open(KNOWN) as handle:
+        for line in handle:
+            row = json.loads(line)
+            if "header" in row:
+                assert row["ascending"] is True
+                total = row["displays"]
+                continue
+            if row["n"]:
+                out.append((row["recipe"], first, row["n"]))
+            first += row["n"]
+    assert first == total, (first, total)
     return out
 
 
@@ -123,6 +143,13 @@ def render():
             "        (%d, %s, %s, %s, %s),"
             % (row["id"], shown(row["ing"]), shown(row["out"]), shown(extra["chem"]), shown(extra["chem_out"]))
         )
+    lines.append("    ];")
+    lines.append(
+        "    /// Todas as receitas do jogo que têm display, na ordem do `RecipeManager` do original (`rastros/recipe_book_known_displays.jsonl`): `(receita, id do primeiro display, quantos)`. O `ClientRecipeBook` guarda os displays de todas as que o jogador conhece, e a tabela dele decide a ordem das coleções do livro."
+    )
+    lines.append("    pub const DISPLAYS: &[machinery_basis_core::recipe_book_data::DisplayRow] = &[")
+    for name, first, count in known_displays():
+        lines.append("        (%s, %d, %d)," % (rust_str(name), first, count))
     lines.append("    ];")
     lines.append("}")
     lines.append(END)

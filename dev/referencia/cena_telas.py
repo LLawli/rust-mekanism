@@ -408,6 +408,9 @@ def casos_livro_colocar():
         # O Energized Smelter: a colocação lança `ClassCastException` no servidor do original, que a registra e segue (decisão 268): nada
         # muda nos dois jogos.
         livro("smelter_livro_clique", "smelter", "baked_potato", [grade], itens="9:potato:5"),
+        # A 7.ª rodada: a segunda página do livro das outras máquinas (a ordem das coleções, decisão 269; a da Chamber é `chamber_livro_pagina`).
+        *[caso(f"{m}_livro_pagina", m, energia="0", receitas="1", capturas="8", capturas_port="8", clicar=f"{abre};{LIVRO_SETA[0]},{LIVRO_SETA[1]}")
+          for m in ("crusher", "smelter", "infuser")],
     ]
 
 
