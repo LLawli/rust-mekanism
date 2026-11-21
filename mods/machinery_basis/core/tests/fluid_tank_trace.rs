@@ -3,6 +3,10 @@
 //! válvula do topo, o criativo, a escala, o comparador, e o tanque quebrado e reposto pelo item.
 //!
 //! As ações de cada tick (`marks`) rodam antes do tick dos tiles, que andam de baixo para cima, e a linha é o estado depois deles.
+use machinery_basis_core::component_container::{
+    AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf,
+};
+use machinery_basis_core::components::Components;
 use machinery_basis_core::containers::{InventorySlot, ItemResource, SlotContents};
 use machinery_basis_core::fluid::FluidResource;
 use machinery_basis_core::fluid_tank::{
@@ -12,9 +16,10 @@ use machinery_basis_core::handler_slot::ResourceContainer;
 use machinery_basis_core::item_access::{
     AccessResourceHandler, ItemAccess, ItemHandlerLookup, ItemResourceHandler, PerItemRules,
 };
+use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::transaction::Transaction;
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -89,10 +94,78 @@ impl PerItemRules<FluidResource> for Buckets {
     }
 }
 
-fn lookup() -> ItemHandlerLookup<FluidResource> {
+/// O componente do item do tanque (`mekanism:fluids`), aqui como `fluido|mB`. Vazio é o padrão do item: o patch não o leva.
+const FLUIDS: &str = "mekanism:fluids";
+
+/// `FluidTankTier`: a capacidade e a taxa.
+fn tier_of(id: &str) -> Option<(u64, i32)> {
+    let tier = id.strip_prefix("mekanism:")?.strip_suffix("_fluid_tank")?;
+    Some(match tier {
+        "basic" => (32_000, 1_000),
+        "advanced" => (64_000, 4_000),
+        "elite" => (128_000, 16_000),
+        "ultimate" => (256_000, 64_000),
+        "creative" => (i64::MAX as u64, i32::MAX),
+        other => panic!("tier desconhecido: {other}"),
+    })
+}
+
+struct TankItems;
+
+impl AttachedCodec<FluidResource> for TankItems {
+    fn contents(&self, item: &ItemResource) -> StackContents<FluidResource> {
+        match item.components.get(FLUIDS) {
+            Some(text) => {
+                let (id, amount) = text.split_once('|').unwrap();
+                StackContents::new(Some(FluidResource::new(id)), amount.parse().unwrap())
+            }
+            None => StackContents::default(),
+        }
+    }
+
+    fn with_contents(
+        &self,
+        item: &ItemResource,
+        contents: &StackContents<FluidResource>,
+    ) -> Option<ItemResource> {
+        let components = match &contents.resource {
+            Some(resource) => Components::new([(
+                FLUIDS,
+                format!("{}|{}", resource.id, contents.amount).as_str(),
+            )]),
+            None => Components::none(),
+        };
+        Some(ItemResource::with_components(
+            &item.id,
+            item.max_stack_size,
+            components,
+        ))
+    }
+}
+
+/// O item de um Fluid Tank com `amount` de `fluid`.
+fn tank_item(tier: &str, held: &str, amount: u64) -> ItemResource {
+    let empty = ItemResource::new(&format!("mekanism:{tier}_fluid_tank"), 64);
+    TankItems
+        .with_contents(&empty, &StackContents::new(Some(fluid(held)), amount))
+        .unwrap()
+}
+
+fn lookup(clock: Rc<Cell<u64>>) -> ItemHandlerLookup<FluidResource> {
     let rules: Rc<dyn PerItemRules<FluidResource>> = Rc::new(Buckets);
+    let codec: Rc<dyn AttachedCodec<FluidResource>> = Rc::new(TankItems);
+    let spec_of: ComponentTankSpecOf<FluidResource> = Rc::new(|item: &ItemResource| {
+        let (capacity, rate) = tier_of(&item.id).unwrap();
+        ComponentTankSpec::open(capacity, rate, item.id.contains("creative"))
+    });
     Rc::new(move |access: &dyn ItemAccess| {
         let held = access.resource()?;
+        if tier_of(&held.id).is_some() {
+            let handler: Box<dyn ItemResourceHandler<FluidResource> + '_> = Box::new(
+                ComponentBackedHandler::new(access, codec.clone(), spec_of.clone(), clock.clone()),
+            );
+            return Some(handler);
+        }
         if &*held.id != BUCKET && !held.id.ends_with("_bucket") {
             return None;
         }
@@ -114,6 +187,8 @@ struct Column {
     tanks: Tanks,
     held: Vec<Option<FluidTankItem>>,
     time: u64,
+    /// `MekanismUtils.GAME_TIME_SUPPLIER`, para o limite de taxa do tanque que mora no item.
+    clock: Rc<Cell<u64>>,
 }
 
 /// A face de cima do Fluid Tank de baixo: o `ValveFluidTankWrapper`, que o `BelowContainerCache` não reconhece.
@@ -139,6 +214,7 @@ impl Column {
             tanks: Rc::new(RefCell::new(vec![None; metas.len()])),
             held: vec![None; metas.len()],
             time: 0,
+            clock: Rc::new(Cell::new(0)),
         };
         for index in 0..metas.len() {
             column.tiles.push(None);
@@ -154,7 +230,7 @@ impl Column {
             rate: i32::try_from(meta["rate"].as_i64().unwrap()).unwrap(),
             creative: meta["tier"] == "creative",
             deactivation_delay: 60,
-            items: lookup(),
+            items: lookup(self.clock.clone()),
         });
         let tanks = self.tanks.clone();
         tile.tank().set_above(Rc::new(move || {
@@ -197,6 +273,10 @@ impl Column {
                 let spec: Vec<&str> = part[2].split(':').collect();
                 if spec[0] == "none" {
                     slot.set_contents(None, 0, None);
+                } else if spec[0] == "ftank" {
+                    // `ftank:<tier>:<fluido>:<mB>:<quantidade>`.
+                    let held = tank_item(spec[1], spec[2], spec[3].parse().unwrap());
+                    slot.set_contents(Some(held), spec[4].parse().unwrap(), None);
                 } else {
                     let count = spec.get(1).map_or(1, |count| count.parse().unwrap());
                     slot.set_contents(Some(item(&format!("minecraft:{}", spec[0]))), count, None);
@@ -245,6 +325,7 @@ impl Column {
 
     fn tick(&mut self) {
         self.time += 1;
+        self.clock.set(self.time);
         for index in 0..self.tiles.len() {
             let Some(tile) = &self.tiles[index] else {
                 continue;
@@ -395,6 +476,27 @@ fn replay(name: &str) {
                     recorded[key][1].as_u64().unwrap(),
                     "{at}: quantidade do slot {key}"
                 );
+                // O que o item do slot guarda (por item, sem multiplicar pela pilha): o balde pelo que ele é, o tanque pelo componente.
+                let inside = match slot.contents().resource {
+                    Some(held) if tier_of(&held.id).is_some() => TankItems.contents(&held),
+                    Some(held) => match Buckets.resource_from(&held) {
+                        Some(resource) => StackContents::new(Some(resource), 1000),
+                        None => StackContents::default(),
+                    },
+                    None => StackContents::default(),
+                };
+                assert_eq!(
+                    inside
+                        .resource
+                        .map_or(String::new(), |resource| resource.id.to_string()),
+                    recorded[key][2].as_str().unwrap(),
+                    "{at}: fluido do item do slot {key}"
+                );
+                assert_eq!(
+                    inside.amount,
+                    recorded[key][3].as_u64().unwrap(),
+                    "{at}: mB do item do slot {key}"
+                );
             }
             compared += 1;
         }
@@ -430,4 +532,9 @@ fn the_creative_tank_follows_the_original() {
 #[test]
 fn the_tank_broken_and_placed_back_keeps_what_the_item_carries() {
     replay("item");
+}
+
+#[test]
+fn a_tank_item_in_the_slot_follows_the_original() {
+    replay("slots_tank_item");
 }

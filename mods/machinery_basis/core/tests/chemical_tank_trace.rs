@@ -7,17 +7,23 @@ use machinery_basis_core::chemical::{ChemicalAttributes, ChemicalResource};
 use machinery_basis_core::chemical_tank::{
     ChemicalNeighbours, ChemicalTankConfig, ChemicalTankItem, ChemicalTankTile,
 };
+use machinery_basis_core::component_container::{
+    AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf,
+};
+use machinery_basis_core::components::Components;
+use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::distribution::ResourceInsert;
 use machinery_basis_core::ejector::AttachedEjector;
 use machinery_basis_core::handler_slot::ResourceContainer;
-use machinery_basis_core::item_access::ItemHandlerLookup;
+use machinery_basis_core::item_access::{ItemAccess, ItemHandlerLookup, ItemResourceHandler};
+use machinery_basis_core::resource_tank::StackContents;
 use machinery_basis_core::side_config::{
     AttachedSideConfig, DataType, RelativeSide, TransmissionType,
 };
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::transaction::Transaction;
 use serde_json::Value;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 
@@ -50,9 +56,89 @@ fn face(name: &str) -> Face {
     .unwrap()
 }
 
-fn new_tile(meta: &Value) -> ChemicalTankTile {
-    // Nenhum cenário põe um item no slot: os que põem (`slots`, `creative`) esperam o contêiner do item do tanque.
-    let items: ItemHandlerLookup<ChemicalResource> = Rc::new(|_| None);
+/// O componente do item do tanque (`mekanism:chemicals`), aqui como `químico|mB`. Vazio é o padrão do item: o patch não o leva.
+const CHEMICALS: &str = "mekanism:chemicals";
+
+/// `ChemicalTankTier`: a capacidade e a taxa.
+fn tier_of(id: &str) -> Option<(u64, i32)> {
+    let tier = id
+        .strip_prefix("mekanism:")?
+        .strip_suffix("_chemical_tank")?;
+    Some(match tier {
+        "basic" => (64_000, 1_000),
+        "advanced" => (256_000, 16_000),
+        "elite" => (1_024_000, 128_000),
+        "ultimate" => (8_192_000, 512_000),
+        "creative" => (i64::MAX as u64, i32::MAX),
+        other => panic!("tier desconhecido: {other}"),
+    })
+}
+
+struct TankItems;
+
+impl AttachedCodec<ChemicalResource> for TankItems {
+    fn contents(&self, item: &ItemResource) -> StackContents<ChemicalResource> {
+        match item.components.get(CHEMICALS) {
+            Some(text) => {
+                let (id, amount) = text.split_once('|').unwrap();
+                StackContents::new(Some(ChemicalResource::new(id)), amount.parse().unwrap())
+            }
+            None => StackContents::default(),
+        }
+    }
+
+    fn with_contents(
+        &self,
+        item: &ItemResource,
+        contents: &StackContents<ChemicalResource>,
+    ) -> Option<ItemResource> {
+        let components = match &contents.resource {
+            Some(resource) => Components::new([(
+                CHEMICALS,
+                format!("{}|{}", resource.id, contents.amount).as_str(),
+            )]),
+            None => Components::none(),
+        };
+        Some(ItemResource::with_components(
+            &item.id,
+            item.max_stack_size,
+            components,
+        ))
+    }
+}
+
+/// `item`, ou `ctank:<tier>:<químico>:<mB>:<quantidade>` (o item do Chemical Tank).
+fn stack_of(spec: &str) -> (ItemResource, u32) {
+    let part: Vec<&str> = spec.split(':').collect();
+    if part[0] != "ctank" {
+        return (ItemResource::new(&format!("minecraft:{}", part[0]), 64), 1);
+    }
+    let empty = ItemResource::new(&format!("mekanism:{}_chemical_tank", part[1]), 64);
+    let amount: u64 = part[3].parse().unwrap();
+    let held = TankItems
+        .with_contents(&empty, &StackContents::new(Some(chemical(part[2])), amount))
+        .unwrap();
+    (held, part[4].parse().unwrap())
+}
+
+fn lookup(clock: Rc<Cell<u64>>) -> ItemHandlerLookup<ChemicalResource> {
+    let codec: Rc<dyn AttachedCodec<ChemicalResource>> = Rc::new(TankItems);
+    let spec_of: ComponentTankSpecOf<ChemicalResource> = Rc::new(|item: &ItemResource| {
+        let (capacity, rate) = tier_of(&item.id).unwrap();
+        ComponentTankSpec::open(capacity, rate, item.id.contains("creative"))
+    });
+    Rc::new(move |access: &dyn ItemAccess| {
+        let held = access.resource()?;
+        tier_of(&held.id)?;
+        let handler: Box<dyn ItemResourceHandler<ChemicalResource> + '_> = Box::new(
+            ComponentBackedHandler::new(access, codec.clone(), spec_of.clone(), clock.clone()),
+        );
+        Some(handler)
+    })
+}
+
+fn new_tile(meta: &Value, clock: &Rc<Cell<u64>>) -> ChemicalTankTile {
+    let items = lookup(clock.clone());
     let attributes: ChemicalAttributes = Rc::new(|_| Vec::new());
     ChemicalTankTile::new(ChemicalTankConfig {
         capacity: meta["capacity"].as_u64().unwrap(),
@@ -184,11 +270,35 @@ fn drop_components(held: &Held) -> Value {
     Value::Object(components)
 }
 
+/// O slot como o rastro o grava: `[item, quantidade, fluido do item, mB, químico do item, mB]`, por item.
+fn assert_slot(slot: &InventorySlot, recorded: &Value, at: &str) {
+    let contents = slot.contents();
+    let inside = contents
+        .resource
+        .as_ref()
+        .map_or_else(StackContents::default, |held| TankItems.contents(held));
+    let ours = serde_json::json!([
+        contents
+            .resource
+            .as_ref()
+            .map_or(String::new(), |held| held.id.to_string()),
+        contents.amount,
+        "",
+        0,
+        inside
+            .resource
+            .map_or(String::new(), |resource| resource.id.to_string()),
+        inside.amount,
+    ]);
+    assert_eq!(&ours, recorded, "{at}");
+}
+
 fn replay(name: &str) {
     let lines = read(&format!("tank_chemical_{name}.jsonl"));
     let meta = &lines[0]["meta"];
     let tank_meta = meta["tanks"][0].clone();
-    let mut tile = Some(new_tile(&tank_meta));
+    let clock = Rc::new(Cell::new(0));
+    let mut tile = Some(new_tile(&tank_meta, &clock));
     set_all(
         tile.as_mut().unwrap(),
         DataType::Output,
@@ -198,7 +308,7 @@ fn replay(name: &str) {
     );
     let mut receivers: Vec<(Face, Rc<RefCell<ChemicalTankTile>>)> = Vec::new();
     for receiver in meta["receivers"].as_array().unwrap() {
-        let mut other = new_tile(receiver);
+        let mut other = new_tile(receiver, &clock);
         set_all(
             &mut other,
             DataType::InputOutput,
@@ -246,6 +356,16 @@ fn replay(name: &str) {
                     set_chemical(&other.borrow(), part[2], part[3].parse().unwrap());
                 }
                 "dump" => tile.as_mut().unwrap().next_mode(),
+                "fillslot" | "drainslot" => {
+                    let tile = tile.as_ref().unwrap();
+                    let slot = if part[0] == "fillslot" {
+                        tile.fill_slot().slot()
+                    } else {
+                        tile.drain_slot().slot()
+                    };
+                    let (held, count) = stack_of(part[1]);
+                    slot.set_contents(Some(held), count, None);
+                }
                 "eject" => tile
                     .as_mut()
                     .unwrap()
@@ -285,7 +405,7 @@ fn replay(name: &str) {
                 }
                 "place" => {
                     let (item, sides, ejector) = held.take().unwrap();
-                    let mut placed = new_tile(&tank_meta);
+                    let mut placed = new_tile(&tank_meta, &clock);
                     placed.apply_item_side_config(Some(&sides), Some(&ejector), true);
                     placed.apply_item(&item);
                     tile = Some(placed);
@@ -294,6 +414,7 @@ fn replay(name: &str) {
             }
         }
         time += 1;
+        clock.set(time);
         if let Some(tile) = tile.as_mut() {
             tile.tick_server(time, &around);
         }
@@ -390,15 +511,12 @@ fn replay(name: &str) {
                 "{at}: lado"
             );
         }
-        assert!(
-            tile.drain_slot().slot().is_empty() && tile.fill_slot().slot().is_empty(),
-            "{at}: slots"
-        );
-        assert_eq!(
-            recorded["drain"][1], 0,
-            "{at}: o rastro pôs um item no slot"
-        );
-        assert_eq!(recorded["fill"][1], 0, "{at}: o rastro pôs um item no slot");
+        for (key, slot) in [
+            ("drain", tile.drain_slot().slot()),
+            ("fill", tile.fill_slot().slot()),
+        ] {
+            assert_slot(slot, &recorded[key], &format!("{at}: slot {key}"));
+        }
         compared += 1;
     }
     assert!(compared >= 96, "{name}: só {compared} estados comparados");
@@ -419,4 +537,14 @@ fn the_ejector_follows_the_original() {
 #[test]
 fn the_tank_broken_and_placed_back_and_the_faces_follow_the_original() {
     replay("item");
+}
+
+#[test]
+fn the_tank_items_in_the_two_slots_follow_the_original() {
+    replay("slots");
+}
+
+#[test]
+fn the_creative_tank_follows_the_original() {
+    replay("creative");
 }

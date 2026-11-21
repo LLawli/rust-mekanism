@@ -9,6 +9,7 @@ pub mod chemical;
 pub mod chemical_tank;
 pub mod client_config;
 pub mod commands;
+pub mod component_container;
 pub mod components;
 pub mod components_ingredient;
 pub mod composter;
