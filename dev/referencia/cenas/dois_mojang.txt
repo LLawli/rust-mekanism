@@ -1,0 +1,52 @@
+# A consulta à Mojang pela Security Desk (frente `mesa-seguranca`, 3.ª rodada, decisão 270): o dono põe a mesa e adiciona `Notch` (uma conta de verdade que nunca entrou
+# no mundo), um nome que não existe e o próprio nome em outra caixa; a tabela das frequências é lida depois de cada um, e o `usercache.json` da pasta do jogo é vigiado por
+# fora (a hora em que muda, contra a hora da linha `anf tecla` no log). Roda no original (`oficial_dois.sh testes/CenaDois.java cenas/dois_mojang.txt SAIDA`); no port a
+# mesma sequência é o `horizon2/port_mojang.sh`, com um cliente só.
+lan 25599
+espera_convidado
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 20
+por Dev mekanism:security_desk 300
+espera 10
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 10
+nbt mesa_posta 300 -60 3
+freq posta
+anf escala 3
+anf painel 176 230
+anf abrir 300 -60 3
+espera 10
+anf clicar 60 73
+anf digitar Notch
+anf tecla enter
+espera 1
+espera 200
+freq notch
+anf digitar zz_nao_existe_77
+anf tecla enter
+espera 1
+espera 200
+freq nao_existe
+anf digitar dev
+anf tecla enter
+espera 1
+espera 60
+freq dev
+anf fechar
+espera 5
+anf abrir 300 -60 3
+espera 10
+anf cursor 2 2
+espera 5
+anf foto mojang_lista_3
+anf fechar
+espera 5
+fim

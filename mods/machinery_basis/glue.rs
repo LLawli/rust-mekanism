@@ -2882,9 +2882,8 @@ fn server_username(game: &Game<'_>, uuid: u128) -> String {
     if let Some(host) = game.lan.as_ref() {
         seen.extend(host.hub.guests.iter().map(|guest| (guest.uuid, guest.name.clone())));
     }
-    if game.remote.is_none() && let Some(own) = game.level.player_uuid {
-        seen.push((horizon_client::lan::playerdata::ints_uuid(own), game.options.player_name()));
-    }
+    // O anfitrião está entre os jogadores do servidor com o UUID do nome dele. O `level.player_uuid` é outra coisa (o `singleplayer_uuid` do `level.dat`, o nome do
+    // arquivo do jogador do mundo): juntá-lo ao nome do anfitrião gravava um segundo UUID com o mesmo nome, que não é de ninguém (medido em jogo em 2026-11-21).
     usernames_learn(seen);
     USERNAMES
         .with_borrow(|cache| cache.get(&uuid).cloned())
@@ -2892,14 +2891,10 @@ fn server_username(game: &Game<'_>, uuid: u128) -> String {
         .unwrap_or_else(|| format!("<{}>", uuid_text(uuid)))
 }
 
-/// `PlayerList.placeNewPlayer` (`:147-152`): quem entra no servidor vai para o `nameToIdCache` (`profileCache.add(gameProfile)`), por um mês. `player == 0` é o
-/// anfitrião abrindo o mundo.
+/// `PlayerList.placeNewPlayer` (`:147-152`): quem entra no servidor vai para o `nameToIdCache` (`profileCache.add(gameProfile)`), por um mês. O anfitrião entra
+/// como os outros, com o UUID do nome dele (o gancho `window_player_in`); `player == 0` é só o mundo abrindo, e ninguém entra ali.
 fn name_to_id_joined(game: &Game<'_>, player: u128) {
-    let joined = if player == 0 || host_uuid(game) == Some(player) {
-        host_uuid(game).map(|uuid| (uuid, game.options.player_name()))
-    } else {
-        game.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|guest| guest.uuid == player).map(|guest| (guest.uuid, guest.name.clone())))
-    };
+    let joined = game.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|guest| guest.uuid == player).map(|guest| (guest.uuid, guest.name.clone())));
     if let Some((id, name)) = joined {
         name_to_id(|cache| cache.add(horizon_client::server::user_lists::NameAndId { id, name }));
     }
