@@ -500,6 +500,14 @@ fn the_names_are_the_originals() {
     for (key, value) in debug.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // Os do item dos tanques (a posse, o modo balde, a capacidade e o que o item guarda: a frente `tanques`, 4.ª rodada), copiados da datagen do original.
+    let tanks = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/tanques/lang.json"),
+    );
+    for (key, value) in tanks.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     // Os do tooltip do conteúdo guardado no item (`Inventory: yes`, `No fluid stored.`, `- Speed`: a frente `item-conteudo`), copiados da datagen do original.
     let content = json(
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -542,6 +550,7 @@ fn the_names_are_the_originals() {
             || cables.get(key).is_some()
             || reader.get(key).is_some()
             || debug.get(key).is_some()
+            || tanks.get(key).is_some()
         {
             continue;
         }
