@@ -2791,7 +2791,63 @@ thread_local! {
     static USERNAMES: std::cell::RefCell<HashMap<u128, String>> = std::cell::RefCell::new(HashMap::new());
 }
 
-/// `MekanismUtils.getLastKnownUsername`: o nome do dono que o servidor sabe, ou `<uuid>`.
+thread_local! {
+    /// O arquivo dos nomes já foi lido nesta execução.
+    static USERNAMES_LOADED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Onde os nomes ficam entre uma execução e outra: `usernamecache.json` na pasta do jogo, um objeto de UUID para nome como o `UsernameCache` do NeoForge. O original tem
+/// dois arquivos nessa pasta (esse, com quem entrou, e o `usercache.json` do vanilla, com os nomes que o servidor resolveu); aqui os dois conjuntos ficam num só.
+fn usernames_path() -> Option<std::path::PathBuf> {
+    Some(Game::native_config_dir().ok()?.parent()?.join("usernamecache.json"))
+}
+
+/// Lê o arquivo uma vez; o que a execução já sabe vale sobre ele.
+fn usernames_load(cache: &mut HashMap<u128, String>) {
+    if USERNAMES_LOADED.replace(true) {
+        return;
+    }
+    let Some(text) = usernames_path().and_then(|path| std::fs::read_to_string(path).ok()) else {
+        return;
+    };
+    let Ok(serde_json::Value::Object(entries)) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    for (key, name) in entries {
+        if let (Ok(uuid), Some(name)) = (u128::from_str_radix(&key.replace('-', ""), 16), name.as_str()) {
+            cache.entry(uuid).or_insert_with(|| name.to_owned());
+        }
+    }
+}
+
+fn usernames_save(cache: &HashMap<u128, String>) {
+    let Some(path) = usernames_path() else {
+        return;
+    };
+    let entries: std::collections::BTreeMap<String, &String> = cache.iter().map(|(uuid, name)| (uuid_text(*uuid), name)).collect();
+    if let Ok(text) = serde_json::to_string_pretty(&entries) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+/// Põe nomes no cache e grava o arquivo se algo mudou.
+fn usernames_learn(seen: Vec<(u128, String)>) {
+    USERNAMES.with_borrow_mut(|cache| {
+        usernames_load(cache);
+        let mut changed = false;
+        for (uuid, name) in seen {
+            if cache.get(&uuid) != Some(&name) {
+                cache.insert(uuid, name);
+                changed = true;
+            }
+        }
+        if changed {
+            usernames_save(cache);
+        }
+    });
+}
+
+/// `MekanismUtils.getLastKnownUsername`: o nome do dono que o servidor sabe (quem entrou, agora ou em outra execução, e os nomes que a Security Desk resolveu), ou `<uuid>`.
 fn server_username(game: &Game<'_>, uuid: u128) -> String {
     let mut seen: Vec<(u128, String)> = Vec::new();
     if let Some(player) = game.native_acting_player() {
@@ -2803,10 +2859,8 @@ fn server_username(game: &Game<'_>, uuid: u128) -> String {
     if game.remote.is_none() && let Some(own) = game.level.player_uuid {
         seen.push((horizon_client::lan::playerdata::ints_uuid(own), game.options.player_name()));
     }
-    USERNAMES.with_borrow_mut(|cache| {
-        cache.extend(seen);
-        cache.get(&uuid).cloned().unwrap_or_else(|| format!("<{}>", uuid_text(uuid)))
-    })
+    usernames_learn(seen);
+    USERNAMES.with_borrow(|cache| cache.get(&uuid).cloned().unwrap_or_else(|| format!("<{}>", uuid_text(uuid))))
 }
 
 /// O que o menu de um tile leva da segurança (`TileComponentSecurity.addContainerTrackers`): o dono e o modo do NBT, e o nome do dono.
@@ -3275,12 +3329,15 @@ pub(in crate::game) fn security_client_data(owner: Option<u128>) -> sec::Securit
 fn security_resolve_name(game: &Game<'_>, name: &str) -> (u128, String) {
     // Enche o cache com quem está aqui agora.
     let _ = server_username(game, 0);
-    desk::resolve_name(name, &|lower| {
+    let resolved = desk::resolve_name(name, &|lower| {
         USERNAMES.with_borrow(|cache| {
             // Um nome com dois UUIDs no cache: o menor UUID, para a resposta não depender da ordem do mapa.
             cache.iter().filter(|(_, known)| known.to_lowercase() == lower).min_by_key(|(uuid, _)| **uuid).map(|(uuid, known)| (*uuid, known.clone()))
         })
-    })
+    });
+    // `CachedUserNameToIdResolver.addInternal`: o perfil resolvido entra no cache e vai para o disco, e é dele que o nome de um UUID da lista sai depois de o mundo reabrir.
+    usernames_learn(vec![resolved.clone()]);
+    resolved
 }
 
 /// A mesa em `pos` e o dono dela, se `player` pode mexer nela (`IBlockSecurityUtils.canAccess`).

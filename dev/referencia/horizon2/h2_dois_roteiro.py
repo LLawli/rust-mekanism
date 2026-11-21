@@ -19,7 +19,7 @@ import h2_dois as d
 SHOTS = "/home/luka/.local/share/jogo-isolado/horizon/data/shots/dois"
 LOG_B = "~/.cache/rust-mekanism/dois-clientes/b.log"
 SAVES = "/home/luka/.local/share/jogo-isolado/horizon/data/horizon/saves"
-HOST = "Player90366"
+HOST = os.environ.get("H2_HOST", "Player90366")  # `H2_HOST=Dev` quando o anfitrião abre com `ANF_EXTRA="--name Dev"` (o nome do dono aparece na tela da Security Desk)
 Y, Z = -60, 3
 BLOCK = {"chamber": "mekanism:enrichment_chamber", "crusher": "mekanism:crusher", "smelter": "mekanism:energized_smelter", "infuser": "mekanism:metallurgic_infuser",
          "generator": "mekanismgenerators:heat_generator"}
@@ -267,7 +267,8 @@ def main():
             say(f"nbt {a[1]} " + str(hcmd(f"data get block {a[2]} {a[3]} {a[4]}")))
         elif verb == "freq":
             # A tabela das frequências no disco (o port não tem como mostrar a da memória): o arquivo do mundo, lido no desktop.
-            say(f"freq {a[1]} disco " + ssh(f"python3 -I ~/nbt.py $(ls {SAVES}/*/data/mekanism/frequency/security/public.dat 2>/dev/null | head -1) 2>&1 | head -c 3000"))
+            arquivo = ssh(f"ls -t {SAVES}/*/data/mekanism/frequency/security/public.dat 2>/dev/null | head -1").strip()
+            say(f"freq {a[1]} disco " + (ssh(f"python3 -I ~/.cache/rust-mekanism/nbt_ler.py '{arquivo}' 2>&1 | tail -1 | head -c 3000").strip() if arquivo else "nenhum arquivo"))
         elif verb == "estado":
             act_estado(int(a[1]), dict(p.split("=", 1) for p in a[2:]))
         elif verb == "silencio":

@@ -216,21 +216,22 @@ public class CenaDois {
                 return "true";
             }
             case "tecla" -> {
-                // Uma tecla apertada na tela (`keyPressed`), pelo nome ou pelo código do GLFW.
+                // Uma tecla apertada na tela (`keyPressed`), pelo nome ou pelo scancode.
                 var screen = minecraft.gui.screen();
                 if (screen == null) {
                     return "\"sem tela\"";
                 }
-                int key = switch (a[1]) {
-                    case "enter" -> 257;
-                    case "tab" -> 258;
-                    case "backspace" -> 259;
-                    case "escape" -> 256;
-                    case "space" -> 32;
-                    case "e" -> 69;
-                    default -> Integer.parseInt(a[1]);
+                // 26.3: a tecla é o scancode do SDL (`InputWithModifiers.isConfirmation`: 40 e 88) e o `keycode` o código da tecla (o Tab é o 9 em `Screen.keyPressed`).
+                int[] key = switch (a[1]) {
+                    case "enter" -> new int[] {40, 13};
+                    case "tab" -> new int[] {43, 9};
+                    case "backspace" -> new int[] {42, 8};
+                    case "escape" -> new int[] {41, 27};
+                    case "space" -> new int[] {44, 32};
+                    case "e" -> new int[] {8, 101};
+                    default -> new int[] {Integer.parseInt(a[1]), 0};
                 };
-                boolean handled = screen.keyPressed(new net.minecraft.client.input.KeyEvent(key, 0, 0));
+                boolean handled = screen.keyPressed(new net.minecraft.client.input.KeyEvent(key[0], key[1], 0));
                 return handled ? "true" : "false";
             }
             case "roda" -> {

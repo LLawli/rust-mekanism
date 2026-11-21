@@ -106,7 +106,7 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
 }
 
 /// `copy_name` e `copy_components` de `owner` e `security` do loot da mesa (`loot_table/blocks/security_desk.json`). O `mekanism:items` (os dois slots dentro do
-/// item) entra com a tela.
+/// item) ainda não é copiado (inventário do plano, "Security Desk").
 pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod_api::NativeLootDrops<'_>, drops: &mut [ItemStack]) {
     basis::name_loot(game, context, drops, &is_desk);
     basis::security_loot(game, context, drops, &is_desk);
