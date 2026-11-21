@@ -418,14 +418,9 @@ pub(in crate::game) fn item_contents(game: &Game<'_>, stack: &ItemStack, mut sta
         .map(|quad| ModelQuad {
             positions: quad.corners,
             uv: quad.uv,
-            facing: match quad.side {
-                Face::Down => Direction::Down,
-                Face::Up => Direction::Up,
-                Face::North => Direction::North,
-                Face::South => Direction::South,
-                Face::West => Direction::West,
-                Face::East => Direction::East,
-            },
+            // `RenderResizableCuboid.renderCube` dá a todas as faces a normal de cima (`pose.transformNormal(Direction.UP)`): o sombreado do item é o da face de cima
+            // em todos os lados, e não o de cada face.
+            facing: Direction::Up,
             cull: None,
             material: Material { sprite: look.sprite.clone(), force_translucent: true },
             tint_index: 0,

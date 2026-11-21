@@ -393,7 +393,12 @@ fn the_mod_tab_swaps_the_upgrade_item_for_one_stack_per_type() {
         table::plain_stack("mekanism:salt"),
     ];
     assert!(table::edit_tab(table::MEKANISM_TAB, &mut items));
-    assert_eq!(items.len(), 2 + table::UPGRADE_TYPES.len() + table::FILLED_TANK_FLUIDS.len() + table::FILLED_TANK_CHEMICALS.len());
+    assert_eq!(
+        items.len(),
+        2 + table::UPGRADE_TYPES.len()
+            + table::FILLED_TANK_FLUIDS.len()
+            + table::FILLED_TANK_CHEMICALS.len()
+    );
     assert_eq!(items[0], table::plain_stack("mekanism:module_base"));
     assert_eq!(items[1], table::upgrade_stack("anchor"));
     assert_eq!(items[8], table::upgrade_stack("xp_containment"));
@@ -420,7 +425,11 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     // levam o cheio depois do vazio (`addToDisplay(event, ..)` chama o `addItems` do `ICustomCreativeTabContents`).
     assert_eq!(
         tools.len(),
-        27 + 5 + table::UPGRADE_TYPES.len() + FLUID_BUCKETS.len() + 4 + table::FILLED_TANK_FLUIDS.len()
+        27 + 5
+            + table::UPGRADE_TYPES.len()
+            + FLUID_BUCKETS.len()
+            + 4
+            + table::FILLED_TANK_FLUIDS.len()
     );
     assert_eq!(tools[0], table::plain_stack("mekanism:configurator"));
     assert_eq!(tools[22 + 4], table::plain_stack("mekanism:cardboard_box"));
@@ -451,7 +460,10 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
         tools[tools.len() - 1 - table::FILLED_TANK_FLUIDS.len()],
         table::plain_stack("mekanism:nutritional_paste_bucket")
     );
-    assert_eq!(tools.last().unwrap(), &table::filled_fluid_tank("mekanism:nutritional_paste"));
+    assert_eq!(
+        tools.last().unwrap(),
+        &table::filled_fluid_tank("mekanism:nutritional_paste")
+    );
     let mut combat = vec![table::plain_stack("minecraft:bow")];
     assert!(table::edit_tab("minecraft:combat", &mut combat));
     // Os oito itens de energia da aba (o Atomic Disassembler, o arco, o Meka-Tool, as quatro peças do MekaSuit e o Free Runners blindado) levam o cheio depois do vazio.
@@ -466,20 +478,29 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
 /// Tank criativo por químico, na ordem do registro de dados (a dos arquivos da datagen, `TreeMap` de `Identifier`), sem o `mekanism:empty`.
 #[test]
 fn the_filled_tanks_follow_the_registries_of_the_original() {
-    let rastro = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros/fluids.jsonl");
+    let rastro = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/fluids.jsonl");
     let mut fluids = vec!["minecraft:water".to_owned(), "minecraft:lava".to_owned()];
-    for line in std::fs::read_to_string(rastro).unwrap().lines().filter(|line| !line.trim().is_empty()) {
+    for line in std::fs::read_to_string(rastro)
+        .unwrap()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+    {
         let row: serde_json::Value = serde_json::from_str(line).unwrap();
         if row["mod"] == "mekanism" {
             fluids.push(format!("mekanism:{}", row["name"].as_str().unwrap()));
         }
     }
     assert_eq!(table::FILLED_TANK_FLUIDS.to_vec(), fluids);
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("content/data/mekanism/mekanism/chemical");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("content/data/mekanism/mekanism/chemical");
     let mut chemicals: Vec<String> = std::fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter_map(|name| name.strip_suffix(".json").map(|name| format!("mekanism:{name}")))
+        .filter_map(|name| {
+            name.strip_suffix(".json")
+                .map(|name| format!("mekanism:{name}"))
+        })
         .filter(|id| id != "mekanism:empty")
         .collect();
     chemicals.sort_unstable();
@@ -505,19 +526,42 @@ fn the_filled_tanks_close_the_mod_tab_and_follow_the_buckets_in_the_tools_tab() 
     assert_eq!(items.len(), 1 + fluids + chemicals);
     assert_eq!(items[1], table::filled_fluid_tank("minecraft:water"));
     assert_eq!(items[2], table::filled_fluid_tank("minecraft:lava"));
-    assert_eq!(items[fluids], table::filled_fluid_tank("mekanism:nutritional_paste"));
-    assert_eq!(items[1 + fluids], table::filled_chemical_tank("mekanism:antimatter"));
-    assert_eq!(items[fluids + chemicals], table::filled_chemical_tank("mekanism:yellow"));
+    assert_eq!(
+        items[fluids],
+        table::filled_fluid_tank("mekanism:nutritional_paste")
+    );
+    assert_eq!(
+        items[1 + fluids],
+        table::filled_chemical_tank("mekanism:antimatter")
+    );
+    assert_eq!(
+        items[fluids + chemicals],
+        table::filled_chemical_tank("mekanism:yellow")
+    );
     assert!(!table::edit_tab(table::MEKANISM_TAB, &mut items));
     // As ferramentas: só os de fluido (`addFilledTanks(.., false)`), depois do último balde.
     let mut tools = Vec::new();
     assert!(table::edit_tab(table::FILLED_TANKS_TAB, &mut tools));
-    let first = tools.iter().position(|stack| *stack == table::filled_fluid_tank("minecraft:water")).unwrap();
-    assert_eq!(tools[first - 1], table::plain_stack("mekanism:nutritional_paste_bucket"));
+    let first = tools
+        .iter()
+        .position(|stack| *stack == table::filled_fluid_tank("minecraft:water"))
+        .unwrap();
+    assert_eq!(
+        tools[first - 1],
+        table::plain_stack("mekanism:nutritional_paste_bucket")
+    );
     assert_eq!(first + fluids, tools.len());
-    assert!(!tools.iter().any(|stack| stack.contains("creative_chemical_tank")));
+    assert!(
+        !tools
+            .iter()
+            .any(|stack| stack.contains("creative_chemical_tank"))
+    );
     // As outras abas do vanilla não ganham tanque cheio.
     let mut blocks = Vec::new();
     table::edit_tab("minecraft:functional_blocks", &mut blocks);
-    assert!(!blocks.iter().any(|stack| stack.contains("mekanism:fluids") || stack.contains("mekanism:chemicals")));
+    assert!(
+        !blocks
+            .iter()
+            .any(|stack| stack.contains("mekanism:fluids") || stack.contains("mekanism:chemicals"))
+    );
 }

@@ -123,11 +123,26 @@ fn a_fluid_shows_the_sprite_the_tint_and_the_light_of_the_original() {
         ("minecraft:block/water_still", 0x0D_14_55)
     );
     // `getFluidTexture(fluid, FLOWING)`, o lado da válvula do Fluid Tank.
-    assert_eq!(rules::flowing_sprite(&water.sprite), "minecraft:block/water_flow");
-    assert_eq!(rules::flowing_sprite(&lava.sprite), "minecraft:block/lava_flow");
-    assert_eq!(rules::flowing_sprite(&heavy_water.sprite), "minecraft:block/water_flow");
-    assert_eq!(rules::flowing_sprite(&steam.sprite), "mekanism:mek_liquid/steam_flow");
-    assert_eq!(rules::flowing_sprite(&hydrogen.sprite), "mekanism:mek_liquid/liquid_flow");
+    assert_eq!(
+        rules::flowing_sprite(&water.sprite),
+        "minecraft:block/water_flow"
+    );
+    assert_eq!(
+        rules::flowing_sprite(&lava.sprite),
+        "minecraft:block/lava_flow"
+    );
+    assert_eq!(
+        rules::flowing_sprite(&heavy_water.sprite),
+        "minecraft:block/water_flow"
+    );
+    assert_eq!(
+        rules::flowing_sprite(&steam.sprite),
+        "mekanism:mek_liquid/steam_flow"
+    );
+    assert_eq!(
+        rules::flowing_sprite(&hydrogen.sprite),
+        "mekanism:mek_liquid/liquid_flow"
+    );
     let sodium =
         rules::contents_fluid("mekanism:superheated_sodium", Some((0xFF_FF_FF, 15))).unwrap();
     assert_eq!(

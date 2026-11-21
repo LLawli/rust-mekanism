@@ -1,7 +1,7 @@
 //! O que se vê dentro de um tanque de fluido (`RenderFluidTank` e `RenderFluidTankItem`): a caixa do conteúdo, com a altura do estágio, a da válvula, a tinta, e o que o
 //! servidor manda ao cliente para o desenho (`getReducedUpdateTag`: a escala, o fluido e o fluido da válvula). Sem ids: o fluido entra como texto e a cor como número.
 use crate::sides::Face;
-use crate::transmitter_contents::{fluid_tint, side_bit, stage_of, Cuboid, ALL_FACES};
+use crate::transmitter_contents::{ALL_FACES, Cuboid, fluid_tint, side_bit, stage_of};
 
 /// `RenderFluidTank.stages`.
 pub const STAGES: i32 = 1_400;
@@ -47,31 +47,54 @@ pub struct TankFrame {
 }
 
 fn contents_cuboid(max_y: f32) -> Cuboid {
-    Cuboid { min: [CONTENTS_MIN_XZ, CONTENTS_MIN_Y, CONTENTS_MIN_XZ], max: [CONTENTS_MAX_XZ, max_y, CONTENTS_MAX_XZ], sides: NOT_DOWN }
+    Cuboid {
+        min: [CONTENTS_MIN_XZ, CONTENTS_MIN_Y, CONTENTS_MIN_XZ],
+        max: [CONTENTS_MAX_XZ, max_y, CONTENTS_MAX_XZ],
+        sides: NOT_DOWN,
+    }
 }
 
 /// `RenderFluidTank.extractRenderState` e os dois `if` do `submit`. `color` é a cor do fluido do tanque (`getColorARGB(FluidResource)`), `None` com o tanque vazio.
 ///
 /// A tinta é lida antes de `state.fluidScale` ser escrito, e o estado nasce a cada quadro (`BlockEntityRenderDispatcher`: `createRenderState`): o fluido mais leve que o ar
 /// leva sempre o alfa da escala 0 (0,2), qualquer que seja o nível. Fica como no original.
-pub fn tile_frame(color: Option<u32>, gaseous: bool, prev_scale: f32, has_valve: bool) -> TankFrame {
+pub fn tile_frame(
+    color: Option<u32>,
+    gaseous: bool,
+    prev_scale: f32,
+    has_valve: bool,
+) -> TankFrame {
     let tint = color.map_or(WHITE, |color| fluid_tint(color, gaseous, 0.0));
     let fluid_scale = if color.is_some() { prev_scale } else { 0.0 };
-    let contents = (fluid_scale > 0.0).then(|| contents_cuboid(contents_max_y(fluid_scale, gaseous)));
+    let contents =
+        (fluid_scale > 0.0).then(|| contents_cuboid(contents_max_y(fluid_scale, gaseous)));
     // `lighterThanAirGas` de um tanque vazio é falso: a válvula aparece mesmo sem fluido no tanque.
     let valve = (has_valve && !(gaseous && color.is_some())).then(|| Cuboid {
         min: [VALVE_MIN_XZ, valve_min_y(fluid_scale), VALVE_MIN_XZ],
         max: [VALVE_MAX_XZ, VALVE_MAX_Y, VALVE_MAX_XZ],
         sides: HORIZONTAL,
     });
-    TankFrame { tint, contents, valve }
+    TankFrame {
+        tint,
+        contents,
+        valve,
+    }
 }
 
 /// `RenderFluidTankItem.extractArgument` e o `if` do `submit`: a caixa do conteúdo do item e a tinta, que aqui leva a escala de verdade. `None` sem nada a desenhar.
 pub fn item_frame(color: u32, gaseous: bool, amount: i64, capacity: i64) -> Option<(u32, Cuboid)> {
     let fluid_scale = amount as f32 / capacity as f32;
-    let max_y = if fluid_scale > 0.0 { contents_max_y(fluid_scale, gaseous) } else { 0.0 };
-    (max_y > 0.0).then(|| (fluid_tint(color, gaseous, fluid_scale), contents_cuboid(max_y)))
+    let max_y = if fluid_scale > 0.0 {
+        contents_max_y(fluid_scale, gaseous)
+    } else {
+        0.0
+    };
+    (max_y > 0.0).then(|| {
+        (
+            fluid_tint(color, gaseous, fluid_scale),
+            contents_cuboid(max_y),
+        )
+    })
 }
 
 /// O que o cliente sabe do tanque em uma posição: o `getReducedUpdateTag` do tile (`scale`, `fluid` e `valve`).
@@ -89,7 +112,8 @@ fn put_text(bytes: &mut Vec<u8>, text: &str) {
 
 fn take_text<'a>(bytes: &mut &'a [u8]) -> Option<&'a str> {
     let (length, rest) = bytes.split_at_checked(2)?;
-    let (text, rest) = rest.split_at_checked(usize::from(u16::from_be_bytes([length[0], length[1]])))?;
+    let (text, rest) =
+        rest.split_at_checked(usize::from(u16::from_be_bytes([length[0], length[1]])))?;
     *bytes = rest;
     std::str::from_utf8(text).ok()
 }
@@ -110,11 +134,30 @@ pub fn encode_view(dimension: &str, pos: [i32; 3], view: &TankView) -> Vec<u8> {
 pub fn decode_view(mut bytes: &[u8]) -> Option<(String, [i32; 3], TankView)> {
     let dimension = take_text(&mut bytes)?.to_owned();
     let (numbers, mut rest) = bytes.split_at_checked(16)?;
-    let mut words = numbers.chunks_exact(4).map(|chunk| [chunk[0], chunk[1], chunk[2], chunk[3]]);
-    let pos = [i32::from_be_bytes(words.next()?), i32::from_be_bytes(words.next()?), i32::from_be_bytes(words.next()?)];
-    let scale = f32::from_be_bytes(words.next()?);
+    let word = |at: usize| {
+        [
+            numbers[at],
+            numbers[at + 1],
+            numbers[at + 2],
+            numbers[at + 3],
+        ]
+    };
+    let pos = [
+        i32::from_be_bytes(word(0)),
+        i32::from_be_bytes(word(4)),
+        i32::from_be_bytes(word(8)),
+    ];
+    let scale = f32::from_be_bytes(word(12));
     let some = |text: &str| (!text.is_empty()).then(|| text.to_owned());
     let fluid = some(take_text(&mut rest)?);
     let valve = some(take_text(&mut rest)?);
-    rest.is_empty().then_some((dimension, pos, TankView { scale, fluid, valve }))
+    rest.is_empty().then_some((
+        dimension,
+        pos,
+        TankView {
+            scale,
+            fluid,
+            valve,
+        },
+    ))
 }

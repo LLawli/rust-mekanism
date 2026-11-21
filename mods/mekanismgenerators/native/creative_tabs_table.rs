@@ -56,20 +56,34 @@ pub fn edit_tab(id: &str, stacks: &mut Vec<String>) -> bool {
 }
 
 /// Os fluidos do Generators, na ordem em que `GeneratorsFluids` os registra (`rastros/fluids.jsonl`).
-pub const FLUIDS: [&str; 4] = ["mekanismgenerators:bioethanol", "mekanismgenerators:deuterium", "mekanismgenerators:fusion_fuel", "mekanismgenerators:tritium"];
+pub const FLUIDS: [&str; 4] = [
+    "mekanismgenerators:bioethanol",
+    "mekanismgenerators:deuterium",
+    "mekanismgenerators:fusion_fuel",
+    "mekanismgenerators:tritium",
+];
 
 /// O começo da pilha de um Fluid Tank criativo cheio, como o Mekanism a escreve na aba (`MekanismCreativeTabs.addFilledTanks`).
-const FILLED_FLUID_TANK: &str = "{count:1,id:\"mekanism:creative_fluid_tank\",components:{\"mekanism:fluids\":";
+const FILLED_FLUID_TANK: &str =
+    "{count:1,id:\"mekanism:creative_fluid_tank\",components:{\"mekanism:fluids\":";
 
 /// `addFilledTanks` do Mekanism percorre o registro inteiro de fluidos: com o Generators instalado, os quatro fluidos dele ganham um tanque cheio logo depois dos do
 /// Mekanism (a ordem do registro é a dos mods), em toda aba que tem os tanques cheios. Devolve se mudou.
 pub fn add_filled_tanks(stacks: &mut Vec<String>) -> bool {
-    let Some(last) = stacks.iter().rposition(|stack| stack.starts_with(FILLED_FLUID_TANK)) else {
+    let Some(last) = stacks
+        .iter()
+        .rposition(|stack| stack.starts_with(FILLED_FLUID_TANK))
+    else {
         return false;
     };
     let ours: Vec<String> = FLUIDS
         .iter()
-        .map(|fluid| format!("{FILLED_FLUID_TANK}{{containers:[{{amount:{}L,type:{{id:\"{fluid}\"}}}}]}}}}}}", i64::MAX))
+        .map(|fluid| {
+            format!(
+                "{FILLED_FLUID_TANK}{{containers:[{{amount:{}L,type:{{id:\"{fluid}\"}}}}]}}}}}}",
+                i64::MAX
+            )
+        })
         .collect();
     if stacks.iter().any(|stack| *stack == ours[0]) {
         return false;

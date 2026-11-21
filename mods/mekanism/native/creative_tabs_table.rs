@@ -670,20 +670,31 @@ pub const FILLED_TANK_CHEMICALS: [&str; 64] = [
 
 /// O Fluid Tank criativo cheio de `fluid`: o componente `mekanism:fluids` como o item do tanque o guarda.
 pub fn filled_fluid_tank(fluid: &str) -> String {
-    format!("{{count:1,id:\"{CREATIVE_FLUID_TANK}\",components:{{\"mekanism:fluids\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:{{id:\"{fluid}\"}}}}]}}}}}}")
+    format!(
+        "{{count:1,id:\"{CREATIVE_FLUID_TANK}\",components:{{\"mekanism:fluids\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:{{id:\"{fluid}\"}}}}]}}}}}}"
+    )
 }
 
 /// O Chemical Tank criativo cheio de `chemical`: o componente `mekanism:chemicals`.
 pub fn filled_chemical_tank(chemical: &str) -> String {
-    format!("{{count:1,id:\"{CREATIVE_CHEMICAL_TANK}\",components:{{\"mekanism:chemicals\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:\"{chemical}\"}}]}}}}}}")
+    format!(
+        "{{count:1,id:\"{CREATIVE_CHEMICAL_TANK}\",components:{{\"mekanism:chemicals\":{{containers:[{{amount:{FILLED_TANK_AMOUNT}L,type:\"{chemical}\"}}]}}}}}}"
+    )
 }
 
 /// `addFilledTanks(parameters, output, chemical)`: os de fluido e, com `chemical`, os de químico depois. As duas opções do `general.toml` (`prefilledFluidTanks` e
 /// `prefilledChemicalTanks`) valem o padrão, ligadas: a aba é montada antes de o servidor ler os arquivos.
 pub fn filled_tanks(chemical: bool) -> Vec<String> {
-    let mut stacks: Vec<String> = FILLED_TANK_FLUIDS.iter().map(|fluid| filled_fluid_tank(fluid)).collect();
+    let mut stacks: Vec<String> = FILLED_TANK_FLUIDS
+        .iter()
+        .map(|fluid| filled_fluid_tank(fluid))
+        .collect();
     if chemical {
-        stacks.extend(FILLED_TANK_CHEMICALS.iter().map(|chemical| filled_chemical_tank(chemical)));
+        stacks.extend(
+            FILLED_TANK_CHEMICALS
+                .iter()
+                .map(|chemical| filled_chemical_tank(chemical)),
+        );
     }
     stacks
 }

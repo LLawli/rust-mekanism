@@ -146,11 +146,23 @@ fn the_vanilla_tabs_get_what_the_original_adds() {
 /// (a ordem do registro, `rastros/fluids.jsonl`), antes dos tanques de químico e do que vem depois na aba.
 #[test]
 fn the_filled_tanks_of_the_mekanism_tabs_get_the_generators_fluids() {
-    let fluids: Vec<String> = buckets().iter().map(|bucket| bucket.trim_end_matches("_bucket").to_owned()).collect();
+    let fluids: Vec<String> = buckets()
+        .iter()
+        .map(|bucket| bucket.trim_end_matches("_bucket").to_owned())
+        .collect();
     assert_eq!(table::FLUIDS.to_vec(), fluids);
-    let tank = |fluid: &str| format!("{{count:1,id:\"mekanism:creative_fluid_tank\",components:{{\"mekanism:fluids\":{{containers:[{{amount:9223372036854775807L,type:{{id:\"{fluid}\"}}}}]}}}}}}");
+    let tank = |fluid: &str| {
+        format!(
+            "{{count:1,id:\"mekanism:creative_fluid_tank\",components:{{\"mekanism:fluids\":{{containers:[{{amount:9223372036854775807L,type:{{id:\"{fluid}\"}}}}]}}}}}}"
+        )
+    };
     let chemical = "{count:1,id:\"mekanism:creative_chemical_tank\",components:{\"mekanism:chemicals\":{containers:[{amount:9223372036854775807L,type:\"mekanism:antimatter\"}]}}}".to_owned();
-    let mut stacks = vec!["{count:1,id:\"mekanism:salt\"}".to_owned(), tank("minecraft:water"), tank("mekanism:nutritional_paste"), chemical.clone()];
+    let mut stacks = vec![
+        "{count:1,id:\"mekanism:salt\"}".to_owned(),
+        tank("minecraft:water"),
+        tank("mekanism:nutritional_paste"),
+        chemical.clone(),
+    ];
     assert!(table::edit_tab("mekanism:mekanism", &mut stacks));
     assert_eq!(stacks.len(), 8);
     assert_eq!(stacks[2], tank("mekanism:nutritional_paste"));

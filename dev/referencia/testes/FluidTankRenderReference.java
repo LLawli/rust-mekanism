@@ -61,7 +61,7 @@ public class FluidTankRenderReference {
     }
 
     public static void main(String[] args) {
-        float[] scales = {0F, 1.0E-4F, 7.0E-4F, 7.2E-4F, 0.001F, 0.01F, 0.0625F, 0.1F, 0.25F, 1 / 3F, 0.5F, 0.6180339F, 0.75F, 0.9F, 0.99F, 0.9992F, 0.9993F, 0.99999F, 1F};
+        float[] scales = {0F, 1.0E-4F, 7.0E-4F, 7.2E-4F, 0.001F, 0.01F, 0.0625F, 0.1F, 0.25F, 1 / 3F, 0.5F, 0.6180339F, 0.75F, 0.9F, 0.99F, 0.9992F, 0.9993F, 0.99999F, 1F, 1.0001F, 1.5F};
         int[] colors = {0xFF3F76E4, 0xFFFFFFFF, 0xFF0D1455, 0x80FFFFFF};
         for (float scale : scales) {
             for (int color : colors) {
