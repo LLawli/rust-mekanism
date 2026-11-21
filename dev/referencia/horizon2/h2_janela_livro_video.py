@@ -83,12 +83,22 @@ def preparar6():
     c.ctl("options-set", "chatVisibility", "2")
     c.ctl("options-set", "guiScale", str(ESCALA))
     for maquina, x in MAQUINAS6:
-        c.monta_port(c.caso(f"{maquina}_livro_video", maquina, energia="0", receitas="1"), x, ESCALA)
+        # Longe da primeira caixa o cliente ainda não desenhou o chão novo quando o `place` procura uma face: espera e tenta de novo.
+        for tentativa in range(4):
+            # O `tp` do `horizon-ctl` não leva o jogador para longe com o servidor parado (responde `ok` e ele fica onde está): o comando leva.
+            c.comando(f"tp @s {x}.0 -60 0.0")
+            time.sleep(3)
+            try:
+                c.monta_port(c.caso(f"{maquina}_livro_video", maquina, energia="0", receitas="1"), x, ESCALA)
+                break
+            except RuntimeError:
+                if tentativa == 3:
+                    raise
     c.comando("clear @s")
 
 
 def abre(x):
-    c.ctl("tp", f"{x}.0", "-60.0", "0.0")
+    c.comando(f"tp @s {x}.0 -60 0.0")
     time.sleep(0.6)
     c.ctl("look", "0", "0")
     c.ctl("interact", str(x), "-60", "3")
@@ -103,14 +113,26 @@ def busca(texto):
 
 
 def rodar6():
-    """Uns 60 s, em paralelo com `gravar-jogo rec`: a Enrichment Chamber (o fantasma, o Enter, o shift e o overlay), o Crusher, o
-    Metallurgic Infuser (o fantasma na barra de químico e a colocação com o tanque cheio) e o livro do Energized Smelter."""
+    """Uns 60 s, em paralelo com `gravar-jogo rec`: a Enrichment Chamber (o overlay das variantes; depois o fantasma, o Enter e o shift), o
+    Crusher, o Metallurgic Infuser (o fantasma na barra de químico e a colocação com o tanque cheio) e o livro do Energized Smelter."""
+    gui_l, gui_a = -(-1920 // ESCALA), -(-1080 // ESCALA)
+    # O overlay das variantes do pó de ferro, com 5 de ferro bruto: uma que não dá vira fantasma, a fazível entra.
+    c.da_item("10:raw_iron:5")
     abre(3)
     clique(*c.LIVRO_BOTAO, espera=1.2)
+    busca("iron dust")
+    c.ctl("click-at", str((gui_l - 176) // 2 + c.LIVRO_GRADE[0]), str((gui_a - 166) // 2 + c.LIVRO_GRADE[1]), "right")
+    time.sleep(1.5)
+    clique(*c.LIVRO_OVERLAY_1, espera=1.8)
+    clique(*c.LIVRO_OVERLAY_0, espera=1.8)
+    c.ctl("close")
+    time.sleep(0.4)
+    # De novo na Chamber (a janela sem fixar fechou com a tela, e a aba a abre de novo): sem serragem, o fantasma; a serragem chega, um clique no fundo tira o foco da
+    # busca e o Enter coloca 8; o shift coloca tudo.
+    abre(3)
+    clique(*c.LIVRO_BOTAO, espera=1.0)
     busca("charcoal dust")
-    # Sem serragem: o fantasma.
     clique(*c.LIVRO_GRADE, espera=2.0)
-    # A serragem chega, um clique no fundo tira o foco da busca e o Enter coloca 8; o shift coloca tudo.
     c.da_item("9:mekanism:sawdust:20")
     clique(*c.LIVRO_FUNDO, espera=0.5)
     c.ctl("key", "enter", "tap")
@@ -119,20 +141,8 @@ def rodar6():
     clique(*c.LIVRO_GRADE, espera=0.2)
     c.ctl("key", "shift", "up")
     time.sleep(1.6)
-    # O overlay das variantes do pó de ferro, com 5 de ferro bruto: a fazível entra, outra vira fantasma.
-    c.da_item("10:raw_iron:5")
-    clique(*c.LIVRO_BUSCA, espera=0.2)
-    for _ in "charcoal dust":
-        c.ctl("key", "backspace", "tap")
-    c.ctl("type", "iron dust")
-    time.sleep(0.8)
-    gui_l, gui_a = -(-1920 // ESCALA), -(-1080 // ESCALA)
-    c.ctl("click-at", str((gui_l - 176) // 2 + c.LIVRO_GRADE[0]), str((gui_a - 166) // 2 + c.LIVRO_GRADE[1]), "right")
-    time.sleep(1.5)
-    clique(*c.LIVRO_OVERLAY_1, espera=1.8)
-    clique(*c.LIVRO_OVERLAY_0, espera=1.8)
     c.ctl("close")
-    time.sleep(0.5)
+    time.sleep(0.4)
     # O Crusher: pedregulho em cascalho.
     c.comando("clear @s")
     c.da_item("9:cobblestone:10")
@@ -142,18 +152,20 @@ def rodar6():
     clique(*c.LIVRO_GRADE, espera=1.8)
     c.ctl("close")
     time.sleep(0.5)
-    # O Infuser: sem químico no tanque, o fantasma no slot, na barra e na saída; com o tanque cheio, o cobre entra.
+    # O Infuser: sem químico no tanque, o fantasma no slot, na barra e na saída; com o tanque cheio (noutra abertura da tela), o cobre entra.
     c.comando("clear @s")
     c.da_item("9:copper_ingot:5")
     abre(37)
     clique(*c.LIVRO_BOTAO, espera=1.0)
     busca("infused alloy")
     clique(*c.LIVRO_GRADE, espera=2.0)
+    c.ctl("close")
+    # O `data merge` com o menu aberto o invalida no Horizon (os cliques seguintes não chegam ao bloco): o tanque enche com a tela fechada.
     c.comando('data merge block 37 -60 3 {chemical_tanks:[{container:0b,stored:{type:"mekanism:redstone",amount:100L}}]}')
-    time.sleep(1.0)
-    clique(*c.LIVRO_FUNDO, espera=0.4)
-    c.ctl("key", "enter", "tap")
-    time.sleep(1.8)
+    abre(37)
+    clique(*c.LIVRO_BOTAO, espera=0.8)
+    busca("infused alloy")
+    clique(*c.LIVRO_GRADE, espera=1.8)
     c.ctl("close")
     time.sleep(0.5)
     # O Energized Smelter: o livro dele (as receitas do forno).

@@ -552,6 +552,9 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
     let positions = state.positions.get_or_insert_with(|| load_positions(spec));
     let window = Window::new(kind.selection(spec), positions, screen, default, dimensions);
     let list = ScrollList::new(LIST[0], LIST[1], LIST[2], LIST[3]);
+    // O componente do livro é da tela: o relógio, as últimas receitas, a busca, a aba e a página continuam de onde a janela anterior
+    // os deixou (`RecipeBookComponent.initVisuals` de novo).
+    let carry = state.book_carry.clone();
     let now = now_ms();
     // `GuiMekanism.addWindow`: a nova fica no topo.
     state.windows.insert(
@@ -565,19 +568,13 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             selected_ms: now,
             current: 0,
             neighbours,
-            book: (kind == Kind::RecipeBook).then(|| new_book_view(spec, &contents)).flatten(),
+            book: (kind == Kind::RecipeBook).then(|| new_book_view(spec, &contents, carry.as_ref())).flatten(),
             book_focus_ms: now,
             book_clock_ms: now,
             book_contents: contents,
         },
     );
     if kind == Kind::RecipeBook {
-        // O componente do livro é da tela: o relógio e as últimas receitas continuam de onde a janela anterior os deixou.
-        if let Some(carry) = state.book_carry.clone()
-            && let Some(view) = state.windows[0].book.as_mut()
-        {
-            view.restore(&carry);
-        }
         // `GuiRecipeBookWindow`: a janela que nasce com o livro aberto nos dados vale como fixada (antes de `adoptPosition`, que o abre).
         let open = &mut state.windows[0];
         if !open.window.pinned && book_open(spec) {
@@ -833,7 +830,7 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
     let shift = game.has_shift_down();
     // `AbstractContainerScreen.keyPressed`: com o cursor vazio sobre um slot, as teclas da barra e a da outra mão trocam o item
     // (`SWAP`), e a de largar joga o que o slot tem (`THROW`); todas passam por `slotClicked`.
-    let slot_key = !key_is_book_only(key) && game.carried.is_none() && crafting_slot_hovered(game, open_spec(game));
+    let slot_key = !key_is_book_only(key) && game.carried.is_none() && crafting_slot_hovered(game, open_spec(game)).is_some();
     let mut guard = client();
     let state = &mut *guard;
     // `GuiMekanism.keyPressed`: as janelas, da do topo para baixo; a do livro passa a tecla antes ao componente.
@@ -970,8 +967,16 @@ pub(in crate::game) fn mouse_pressed(
     let Some(index) = hit else {
         // `AbstractContainerScreen.mouseClicked` sobre um slot com o cursor vazio: o clique vale ao apertar (`slotClicked`), e com um
         // item no cursor, ao soltar. `VirtualRecipeBookComponent.slotClicked` de um slot de receita tira os fantasmas.
-        if over_recipe_slot {
-            if carrying {
+        if let Some(which) = over_recipe_slot {
+            // O slot com fantasma toma o clique esquerdo antes da tela (`GuiSlot` ativo): com o cursor vazio nada acontece e o fantasma
+            // fica; com um item, o clique vale ao soltar (`mouseReleased` chama `slotClicked` com o cursor cheio), que é quando o
+            // fantasma some. O direito não é do `GuiSlot` e segue para o slot.
+            let ghosted = button == 0 && slot_ghosted(spec, state.ghost, which);
+            if ghosted && !carrying {
+                *canceled = true;
+                return;
+            }
+            if carrying || ghosted {
                 state.skip_release = false;
             } else {
                 recipe_slot_clicked(state);
@@ -1181,7 +1186,7 @@ pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
     };
     // `AbstractContainerScreen.mouseReleased`: com um item no cursor, o clique no slot sob o mouse vale agora (`slotClicked`), a não
     // ser que já tenha valido ao apertar (`skipNextRelease`).
-    let over_recipe_slot = game.carried.is_some() && crafting_slot_hovered(game, Some(spec));
+    let over_recipe_slot = game.carried.is_some() && crafting_slot_hovered(game, Some(spec)).is_some();
     let mut state = client();
     if !std::mem::take(&mut state.skip_release) && over_recipe_slot && !state.windows.iter().any(|open| open.window.dragging() || open.list.dragging()) {
         recipe_slot_clicked(&mut state);
@@ -1833,11 +1838,11 @@ fn book_contents(game: &mut Game<'_>, spec: &UpgradeWindowSpec) -> StackedConten
     contents
 }
 
-fn new_book_view(spec: &UpgradeWindowSpec, contents: &StackedContents) -> Option<rbv::View> {
+fn new_book_view(spec: &UpgradeWindowSpec, contents: &StackedContents, carried: Option<&rbv::Carried>) -> Option<rbv::View> {
     let data = spec.book?;
     let (known, highlighted): (Vec<i32>, Vec<i32>) = unlocked(|book| (book.known().collect(), book.highlighted().collect()));
     let filtering = book_settings(|settings| settings.is_filtering(data.settings_type));
-    Some(rbv::View::new(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents)))
+    Some(rbv::View::reopened(data, known.into_iter(), highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents), carried))
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -2251,10 +2256,10 @@ pub(in crate::game) fn recipe_place_button(
                 eprintln!("machinery_basis: o fantasma da receita não chegou a {player:032x}: {error}");
             }
         }
-        // No original o `ClassCastException` de `handlePlacement` derruba o servidor (`onPacketError` relança como `ReportedException`);
-        // aqui o pedido é recusado sem mexer em nada (decisão 268).
+        // No original o `ClassCastException` de `handlePlacement` é registrado e engolido (`ServerPacketListener.onPacketError`: `Failed to
+        // handle packet ..., suppressing error`), e nada muda: aqui também só o registro (decisão 268, medido em jogo).
         rp::Action::ClassCast => {
-            eprintln!("machinery_basis: a receita {} não é do tipo que a colocação pelo livro aceita (o original lança ClassCastException)", row.1);
+            eprintln!("machinery_basis: Failed to handle the recipe placement of {}, suppressing error: ClassCastException (not a MekanismRecipe)", row.1);
         }
     }
     true
@@ -2276,14 +2281,24 @@ fn ghost_slot(game: &Game<'_>, batch: &mut HudBatch, at: [f32; 2], inputs: usize
         return false;
     };
     let atlas = &game.gui.atlas;
-    batch.fill(atlas, at[0], at[1], 16.0, 16.0, 0x30_FF_00_00);
+    batch.fill(atlas, at[0], at[1], 16.0, 16.0, basis::GHOST_RED);
     let stack = ItemStack::new(item, count.max(1) as u32);
     // `fakeItem`: o item sem as decorações.
     game.draw_item_model(batch, &stack, at[0], at[1]);
-    batch.fill(atlas, at[0], at[1], 16.0, 16.0, 0x30_FF_FF_FF);
+    batch.fill(atlas, at[0], at[1], 16.0, 16.0, basis::GHOST_WHITE);
     // A saída desenha `itemDecorations` e a entrada só `itemCount`: num item de receita, sem dano, as duas dão a quantidade.
     game.draw_item_decorations(batch, &stack, at[0], at[1], None);
     true
+}
+
+/// Se o slot de receita `which` (0 a entrada, 1 a saída) da tela aberta tem fantasma: o `GuiSlot` dele fica ativo e toma o clique
+/// esquerdo (`GuiSlot.isActive` com `ghostRecipeData`, `AbstractWidget.mouseClicked`), sem som e sem chegar ao slot.
+fn slot_ghosted(spec: &UpgradeWindowSpec, ghost: Option<i32>, which: usize) -> bool {
+    let Some(row) = ghost.and_then(|id| spec.book.and_then(|book| book.ghost(id))) else {
+        return false;
+    };
+    let lists = if which == 0 { row.1 } else { row.2 };
+    lists.first().is_some_and(|entries| !entries.is_empty())
 }
 
 /// O display do fantasma da tela aberta e o índice do `SlotSelectTime` de agora.
@@ -2502,17 +2517,14 @@ fn key_is_book_only(key: &str) -> bool {
     )
 }
 
-/// Se o slot sob o cursor (`hoveredSlot`) é um slot de receita da máquina (`isRecipeCraftingSlot`: a entrada e a saída dos
+/// O slot de receita da máquina sob o cursor (`hoveredSlot` com `isRecipeCraftingSlot`: 0 a entrada e 1 a saída dos
 /// `RecipeContainers`). Pergunta ao jogo, que passa pelo filtro das janelas: chame sem segurar a trava do estado.
-fn crafting_slot_hovered(game: &Game<'_>, spec: Option<&UpgradeWindowSpec>) -> bool {
-    let Some(spec) = spec.filter(|spec| spec.book.is_some()) else {
-        return false;
-    };
-    let Some(renderer) = game.renderer.as_ref() else {
-        return false;
-    };
+fn crafting_slot_hovered(game: &Game<'_>, spec: Option<&UpgradeWindowSpec>) -> Option<usize> {
+    let spec = spec.filter(|spec| spec.book.is_some())?;
+    let renderer = game.renderer.as_ref()?;
     let batch = HudBatch::new([renderer.config.width, renderer.config.height]);
-    game.slot_at(&batch, game.cursor.0, game.cursor.1).is_some_and(|slot| spec.book_slots.iter().any(|index| slot == 300 + index))
+    let slot = game.slot_at(&batch, game.cursor.0, game.cursor.1)?;
+    spec.book_slots.iter().position(|index| slot == 300 + index)
 }
 
 /// `VirtualRecipeBookComponent.slotClicked` de um slot de receita: os fantasmas somem (`clearGhostValues`) e `lastPlacedRecipe` volta

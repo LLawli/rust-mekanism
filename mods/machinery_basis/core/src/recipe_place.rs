@@ -32,7 +32,9 @@ pub fn place_button(id: i32, use_max: bool) -> i32 {
 
 /// O display e o shift de um botão de menu de colocação; `None` para os outros botões.
 pub fn place_button_request(button: i32) -> Option<(i32, bool)> {
-    let packed = button.checked_sub(PLACE_BUTTON_BASE).filter(|packed| (0..PLACE_BUTTON_BASE).contains(packed))?;
+    let packed = button
+        .checked_sub(PLACE_BUTTON_BASE)
+        .filter(|packed| (0..PLACE_BUTTON_BASE).contains(packed))?;
     Some((packed >> 1, packed & 1 != 0))
 }
 
@@ -114,7 +116,8 @@ pub enum Recipe<'a> {
     /// `ItemStackChemicalToObjectRecipe` numa máquina com um slot e um tanque.
     ItemChemical(Ingredient<'a>, Tank),
     /// Uma receita que não é `MekanismRecipe` (a `SmeltingRecipe` do vanilla que o livro do Energized Smelter lista):
-    /// `MekanismContainer.handlePlacement` faz `(RECIPE) recipe.value()` e o JVM lança `ClassCastException`.
+    /// `MekanismContainer.handlePlacement` faz `(RECIPE) recipe.value()` e o JVM lança `ClassCastException`, que o servidor registra
+    /// e engole (`ServerPacketListener.onPacketError`): nada muda e nenhum fantasma vai.
     Foreign,
 }
 
@@ -153,7 +156,13 @@ fn needed(state: &State, rules: &dyn Rules, slot: usize, resource: &str) -> i32 
 }
 
 /// `BasicResourceContainer.insert` com `AutomationType.MANUAL`.
-fn slot_insert(state: &mut State, rules: &dyn Rules, slot: usize, resource: &str, count: i32) -> i32 {
+fn slot_insert(
+    state: &mut State,
+    rules: &dyn Rules,
+    slot: usize,
+    resource: &str,
+    count: i32,
+) -> i32 {
     if count == 0 {
         return 0;
     }
@@ -173,7 +182,13 @@ fn slot_insert(state: &mut State, rules: &dyn Rules, slot: usize, resource: &str
 }
 
 /// `BasicResourceContainer.extract` com `AutomationType.MANUAL`.
-fn slot_extract(state: &mut State, rules: &dyn Rules, slot: usize, resource: &str, count: i32) -> i32 {
+fn slot_extract(
+    state: &mut State,
+    rules: &dyn Rules,
+    slot: usize,
+    resource: &str,
+    count: i32,
+) -> i32 {
     let Some((current, stored)) = state.slots[slot].clone() else {
         return 0;
     };
@@ -252,7 +267,13 @@ fn main_insert_stacking(state: &mut State, rules: &dyn Rules, resource: &str, co
 /// `RecipeBookPlacementHelper.sendItemsToPlayerInventory`: no criativo, `PlayerInventoryWrapper.placeItemBackInInventory` (a mão
 /// principal e a outra mão quando guardam o recurso, depois os slots principais, e o resto cai no chão), que sempre dá certo; fora
 /// dele, o `insertStacking` nos slots principais, que só dá certo quando tudo coube.
-fn send_to_player(state: &mut State, rules: &dyn Rules, creative: bool, resource: &str, count: i32) -> bool {
+fn send_to_player(
+    state: &mut State,
+    rules: &dyn Rules,
+    creative: bool,
+    resource: &str,
+    count: i32,
+) -> bool {
     if !creative {
         return main_insert_stacking(state, rules, resource, count) == count;
     }
@@ -296,7 +317,13 @@ impl OpenKey for Key {
 type Solved = Vec<(usize, String, i32)>;
 
 /// `RecipeIngredientResolver.solveFor`: tudo dentro de uma simulação, que é abandonada no fim.
-fn solve_for(state: &State, rules: &dyn Rules, ingredients: &[Ingredient<'_>], slots: &[usize], use_max: bool) -> Solved {
+fn solve_for(
+    state: &State,
+    rules: &dyn Rules,
+    ingredients: &[Ingredient<'_>],
+    slots: &[usize],
+    use_max: bool,
+) -> Solved {
     let count = ingredients.len();
     let mut sim = state.clone();
     let mut previous: Vec<(String, i32)> = Vec::new();
@@ -310,7 +337,10 @@ fn solve_for(state: &State, rules: &dyn Rules, ingredients: &[Ingredient<'_>], s
                 }
                 return Vec::new();
             }
-            match previous.iter_mut().find(|(resource, _)| *resource == current) {
+            match previous
+                .iter_mut()
+                .find(|(resource, _)| *resource == current)
+            {
                 Some((_, had)) => *had += stored,
                 None => previous.push((current, stored)),
             }
@@ -342,7 +372,10 @@ fn solve_for(state: &State, rules: &dyn Rules, ingredients: &[Ingredient<'_>], s
             }
         }
         if max > 0 {
-            let had = previous.iter().find(|(name, _)| *name == resource).map_or(0, |(_, had)| *had);
+            let had = previous
+                .iter()
+                .find(|(name, _)| *name == resource)
+                .map_or(0, |(_, had)| *had);
             if had >= max {
                 valid.push((resource.clone(), had, valid_for));
             } else {
@@ -358,11 +391,12 @@ fn solve_for(state: &State, rules: &dyn Rules, ingredients: &[Ingredient<'_>], s
     let mut removed = vec![false; valid.len()];
     let mut remaining: Vec<usize> = (0..count).collect();
     let mut result: Solved = Vec::new();
-    let put = |result: &mut Solved, index: usize, resource: &str, stored: i32| {
-        match result.iter_mut().find(|(at, _, _)| *at == index) {
-            Some(entry) => *entry = (index, resource.to_owned(), stored),
-            None => result.push((index, resource.to_owned(), stored)),
-        }
+    let put = |result: &mut Solved, index: usize, resource: &str, stored: i32| match result
+        .iter_mut()
+        .find(|(at, _, _)| *at == index)
+    {
+        Some(entry) => *entry = (index, resource.to_owned(), stored),
+        None => result.push((index, resource.to_owned(), stored)),
     };
     loop {
         let mut removed_single = false;
@@ -434,23 +468,43 @@ fn solved_order(solved: &Solved) -> Vec<usize> {
         if *index == 0 {
             zero = Some(at);
         } else {
-            table.insert(Key { index: *index, hash: *index as i32 }, at);
+            table.insert(
+                Key {
+                    index: *index,
+                    hash: *index as i32,
+                },
+                at,
+            );
         }
     }
-    zero.into_iter().chain(table.entries_in_order().into_iter().map(|(_, at)| *at)).collect()
+    zero.into_iter()
+        .chain(table.entries_in_order().into_iter().map(|(_, at)| *at))
+        .collect()
 }
 
 /// `PlaceMekanismRecipe.tryTransfer`, na transação raiz: devolve se deu certo. O que mudou antes de um erro fica.
-fn try_transfer(state: &mut State, rules: &dyn Rules, slots: &[usize], solved: &Solved, creative: bool) -> bool {
+fn try_transfer(
+    state: &mut State,
+    rules: &dyn Rules,
+    slots: &[usize],
+    solved: &Solved,
+    creative: bool,
+) -> bool {
     // `resourcesToReturn`: um `Object2IntOpenHashMap<ItemResource>`.
     let mut names: Vec<String> = Vec::new();
     let mut limbo: OpenHashMap<Key, i32> = OpenHashMap::new();
     let key_of = |names: &mut Vec<String>, resource: &str| {
-        let index = names.iter().position(|name| name == resource).unwrap_or_else(|| {
-            names.push(resource.to_owned());
-            names.len() - 1
-        });
-        Key { index, hash: rules.hash(resource) }
+        let index = names
+            .iter()
+            .position(|name| name == resource)
+            .unwrap_or_else(|| {
+                names.push(resource.to_owned());
+                names.len() - 1
+            });
+        Key {
+            index,
+            hash: rules.hash(resource),
+        }
     };
     let order = solved_order(solved);
     let mut kept: Vec<usize> = Vec::new();
@@ -469,7 +523,9 @@ fn try_transfer(state: &mut State, rules: &dyn Rules, slots: &[usize], solved: &
                     return false;
                 }
             } else {
-                if slot_extract(state, rules, slot, &current, stored) < stored || state.slots[slot].is_some() {
+                if slot_extract(state, rules, slot, &current, stored) < stored
+                    || state.slots[slot].is_some()
+                {
                     return false;
                 }
                 let key = key_of(&mut names, &current);
@@ -500,11 +556,17 @@ fn try_transfer(state: &mut State, rules: &dyn Rules, slots: &[usize], solved: &
             }
             to_transfer -= in_limbo;
         }
-        if main_extract(state, resource, to_transfer) < to_transfer || slot_insert(state, rules, slot, resource, to_transfer) != to_transfer {
+        if main_extract(state, resource, to_transfer) < to_transfer
+            || slot_insert(state, rules, slot, resource, to_transfer) != to_transfer
+        {
             return false;
         }
     }
-    let back: Vec<(String, i32)> = limbo.entries_in_order().into_iter().map(|(key, count)| (names[key.index].clone(), *count)).collect();
+    let back: Vec<(String, i32)> = limbo
+        .entries_in_order()
+        .into_iter()
+        .map(|(key, count)| (names[key.index].clone(), *count))
+        .collect();
     for (resource, count) in back {
         if !send_to_player(state, rules, creative, &resource, count) {
             return false;
@@ -545,7 +607,9 @@ pub fn place_recipe(
         let Some((current, stored)) = sub.slots[slot].clone() else {
             continue;
         };
-        if slot_extract(&mut sub, rules, slot, &current, stored) != stored || sub.slots[slot].is_some() {
+        if slot_extract(&mut sub, rules, slot, &current, stored) != stored
+            || sub.slots[slot].is_some()
+        {
             return Action::Nothing;
         }
         if !send_to_player(&mut sub, rules, creative, &current, stored) {
@@ -585,10 +649,19 @@ mod tests {
         for (at, item, count) in main {
             slots[*at] = Some(((*item).to_owned(), *count));
         }
-        State { main: slots, offhand: None, selected: 0, slots: vec![input, None], dropped: Vec::new() }
+        State {
+            main: slots,
+            offhand: None,
+            selected: 0,
+            slots: vec![input, None],
+            dropped: Vec::new(),
+        }
     }
 
-    const BOTH: Containers<'static> = Containers { inputs: &[0], outputs: &[1] };
+    const BOTH: Containers<'static> = Containers {
+        inputs: &[0],
+        outputs: &[1],
+    };
 
     #[test]
     fn the_resource_hash_is_stable_within_a_process_and_differs_between_resources() {
@@ -599,8 +672,14 @@ mod tests {
 
     #[test]
     fn the_place_button_carries_the_display_and_the_shift() {
-        assert_eq!(place_button_request(place_button(3913, true)), Some((3913, true)));
-        assert_eq!(place_button_request(place_button(0, false)), Some((0, false)));
+        assert_eq!(
+            place_button_request(place_button(3913, true)),
+            Some((3913, true))
+        );
+        assert_eq!(
+            place_button_request(place_button(0, false)),
+            Some((0, false))
+        );
         assert_eq!(place_button_request(103), None);
         assert_eq!(place_button_request(-1), None);
     }
@@ -609,15 +688,24 @@ mod tests {
     fn a_foreign_recipe_changes_nothing() {
         let mut now = state(&[(0, "a", 5)], Some(("b".to_owned(), 2)));
         let before = now.clone();
-        assert_eq!(place_recipe(&mut now, &Plain, &Recipe::Foreign, BOTH, false, false), Action::ClassCast);
+        assert_eq!(
+            place_recipe(&mut now, &Plain, &Recipe::Foreign, BOTH, false, false),
+            Action::ClassCast
+        );
         assert_eq!(now, before);
     }
 
     #[test]
     fn too_few_items_without_shift_are_lost_as_in_the_original() {
         let mut now = state(&[(3, "a", 2)], None);
-        let recipe = Recipe::Item(Ingredient { items: &["a"], count: 3 });
-        assert_eq!(place_recipe(&mut now, &Plain, &recipe, BOTH, false, false), Action::PlaceGhostRecipe);
+        let recipe = Recipe::Item(Ingredient {
+            items: &["a"],
+            count: 3,
+        });
+        assert_eq!(
+            place_recipe(&mut now, &Plain, &recipe, BOTH, false, false),
+            Action::PlaceGhostRecipe
+        );
         assert!(now.main.iter().all(Option::is_none));
         assert_eq!(now.slots, vec![None, None]);
     }

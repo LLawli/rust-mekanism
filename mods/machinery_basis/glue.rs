@@ -2295,6 +2295,12 @@ pub(in crate::game) fn vertical_bar(
     }
 }
 
+/// `0x30FF0000` e `0x30FFFFFF` (ARGB) do fantasma de uma receita (`GuiSlot.tryDrawGhost`, `GuiTankBar.renderBarGhostContents`). O `fill`
+/// do lote leva a cor com o vermelho no byte baixo (medido por pixel: `0x30FF0000` saía azul), então o vermelho do Java se escreve
+/// `0x30_00_00_FF` aqui.
+pub(in crate::game) const GHOST_RED: u32 = 0x30_00_00_FF;
+pub(in crate::game) const GHOST_WHITE: u32 = 0x30_FF_FF_FF;
+
 /// [`vertical_bar`] com o fantasma de uma receita (`GuiBar.drawBackground` com `isRenderingGhost` e `GuiTankBar.renderBarGhostContents`):
 /// o miolo avermelhado, o conteúdo que `contents` desenha até `ghost_level` (entre um quarto e três quartos da barra) e o véu branco.
 /// O aviso continua pelo nível de verdade, `level`.
@@ -2315,11 +2321,11 @@ pub(in crate::game) fn vertical_bar_ghost(
         tiled_sprite(game, batch, sprites.background, sprites.tile, bar.background, None);
     }
     let inner = [rect[0] + 1.0, rect[1] + 1.0, rect[2] - 2.0, rect[3] - 2.0];
-    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], 0x30_FF_00_00);
+    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], GHOST_RED);
     if let Some(dst) = gui::bar_contents(rect, ghost_level) {
         contents(game, batch, dst);
     }
-    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], 0x30_FF_FF_FF);
+    batch.fill(&game.gui.atlas, inner[0], inner[1], inner[2], inner[3], GHOST_WHITE);
     if let Some((sprites, bar)) = &warned
         && let Some(overlay) = bar.overlay
     {

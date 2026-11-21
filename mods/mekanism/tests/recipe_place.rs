@@ -4,7 +4,9 @@
 //! o que caiu no chão são os do Java, com o `hashCode` de cada `ItemResource` que aquela execução deu (a ordem do `HashMap` do
 //! `RecipeIngredientResolver` sai dele). A tabela `GHOSTS` é o que os rastros dizem que cada display mostra.
 use machinery_basis_core::recipe_book_view::BookData;
-use machinery_basis_core::recipe_place::{Action, Containers, MAIN_SLOTS, Rules, Stack, State, item_of, place_recipe};
+use machinery_basis_core::recipe_place::{
+    Action, Containers, MAIN_SLOTS, Rules, Stack, State, item_of, place_recipe,
+};
 use mekanism_rules::recipe_book_rows::{GHOSTS, REQUIREMENTS};
 use mekanism_rules::recipe_books::{CRUSHING, ENRICHING, METALLURGIC_INFUSING, SMELTING};
 use serde_json::Value;
@@ -12,8 +14,14 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn trace(name: &str) -> Vec<Value> {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dev/referencia/rastros").join(name);
-    std::fs::read_to_string(file).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros")
+        .join(name);
+    std::fs::read_to_string(file)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
 }
 
 /// As regras dos slots com o que o rastro deu: o slot 0 é a entrada (aceita o que a máquina tem receita, e os cenários só põem ali
@@ -24,7 +32,11 @@ struct Traced {
 
 impl Rules for Traced {
     fn max_stack(&self, resource: &str) -> i32 {
-        if item_of(resource) == "minecraft:diamond_sword" { 1 } else { 64 }
+        if item_of(resource) == "minecraft:diamond_sword" {
+            1
+        } else {
+            64
+        }
     }
     fn valid(&self, slot: usize, _: &str) -> bool {
         slot == 0
@@ -52,7 +64,10 @@ fn state(value: &Value, selected: usize) -> (State, Option<(String, i64)>) {
     let mut offhand = None;
     for entry in value["inv"].as_array().unwrap() {
         let slot = entry[0].as_u64().unwrap() as usize;
-        let found = Some((entry[1].as_str().unwrap().to_owned(), entry[2].as_i64().unwrap() as i32));
+        let found = Some((
+            entry[1].as_str().unwrap().to_owned(),
+            entry[2].as_i64().unwrap() as i32,
+        ));
         match slot {
             40 => offhand = found,
             _ => main[slot] = found,
@@ -62,7 +77,16 @@ fn state(value: &Value, selected: usize) -> (State, Option<(String, i64)>) {
         let name = tank[0].as_str().unwrap();
         (!name.is_empty()).then(|| (name.to_owned(), tank[1].as_i64().unwrap()))
     });
-    (State { main, offhand, selected, slots: vec![stack(&value["input"]), stack(&value["output"])], dropped: Vec::new() }, tank)
+    (
+        State {
+            main,
+            offhand,
+            selected,
+            slots: vec![stack(&value["input"]), stack(&value["output"])],
+            dropped: Vec::new(),
+        },
+        tank,
+    )
 }
 
 fn machine(name: &str, book: &BookData, expected: usize) {
@@ -72,15 +96,23 @@ fn machine(name: &str, book: &BookData, expected: usize) {
     for case in &cases {
         let label = format!("{name} caso {}", case["case"]);
         let (mut now, tank) = state(&case["before"], case["selected"].as_u64().unwrap() as usize);
-        let rules = Traced { hashes: serde_json::from_value(case["hashes"].clone()).unwrap() };
+        let rules = Traced {
+            hashes: serde_json::from_value(case["hashes"].clone()).unwrap(),
+        };
         let recipe = book
-            .placement(case["display"].as_i64().unwrap() as i32, tank.as_ref().map(|(name, amount)| (name.as_str(), *amount)))
+            .placement(
+                case["display"].as_i64().unwrap() as i32,
+                tank.as_ref().map(|(name, amount)| (name.as_str(), *amount)),
+            )
             .unwrap_or_else(|| panic!("{label}: sem a receita"));
         let action = place_recipe(
             &mut now,
             &rules,
             &recipe,
-            Containers { inputs: &[0], outputs: &[1] },
+            Containers {
+                inputs: &[0],
+                outputs: &[1],
+            },
             case["max"].as_bool().unwrap(),
             case["creative"].as_bool().unwrap(),
         );
@@ -94,8 +126,17 @@ fn machine(name: &str, book: &BookData, expected: usize) {
         assert_eq!(now.main, after.main, "{label}: o inventário");
         assert_eq!(now.offhand, after.offhand, "{label}: a outra mão");
         assert_eq!(now.slots, after.slots, "{label}: os slots");
-        let dropped: Vec<(String, i32)> =
-            case["dropped"].as_array().unwrap().iter().map(|drop| (drop[0].as_str().unwrap().to_owned(), drop[1].as_i64().unwrap() as i32)).collect();
+        let dropped: Vec<(String, i32)> = case["dropped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|drop| {
+                (
+                    drop[0].as_str().unwrap().to_owned(),
+                    drop[1].as_i64().unwrap() as i32,
+                )
+            })
+            .collect();
         assert_eq!(now.dropped, dropped, "{label}: o que caiu");
         *seen.entry(named.to_owned()).or_default() += 1;
     }
@@ -132,12 +173,30 @@ fn shown(value: &Value) -> Vec<Vec<(String, i32)>> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|one| one.as_array().unwrap().iter().map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].as_i64().unwrap() as i32)).collect())
+        .map(|one| {
+            one.as_array()
+                .unwrap()
+                .iter()
+                .map(|pair| {
+                    (
+                        pair[0].as_str().unwrap().to_owned(),
+                        pair[1].as_i64().unwrap() as i32,
+                    )
+                })
+                .collect()
+        })
         .collect()
 }
 
 fn ours(lists: &[&[(&str, i32)]]) -> Vec<Vec<(String, i32)>> {
-    lists.iter().map(|one| one.iter().map(|(name, count)| ((*name).to_owned(), *count)).collect()).collect()
+    lists
+        .iter()
+        .map(|one| {
+            one.iter()
+                .map(|(name, count)| ((*name).to_owned(), *count))
+                .collect()
+        })
+        .collect()
 }
 
 #[test]
@@ -153,12 +212,27 @@ fn the_ghost_table_is_what_the_original_displays_resolve_to() {
         assert_eq!(shown(&line["ing"]), ours(ghost.1), "{}", line["recipe"]);
         assert_eq!(shown(&line["out"]), ours(ghost.2), "{}", line["recipe"]);
         assert_eq!(shown(&extra["chem"]), ours(ghost.3), "{}", line["recipe"]);
-        assert_eq!(shown(&extra["chem_out"]), ours(ghost.4), "{}", line["recipe"]);
+        assert_eq!(
+            shown(&extra["chem_out"]),
+            ours(ghost.4),
+            "{}",
+            line["recipe"]
+        );
         // Nenhuma receita dos quatro tipos é impossível de colocar (`placementInfo().isImpossibleToPlace()`).
         assert_eq!(extra["impossible"], false);
         // Só as do forno do vanilla não são `MekanismRecipe` (o `ClassCastException` de `handlePlacement`).
-        let foreign = REQUIREMENTS.iter().find(|row| row.0 == ghost.0).unwrap().2.is_none();
-        assert_eq!(extra["class"] == "SmeltingRecipe", foreign, "{}", line["recipe"]);
+        let foreign = REQUIREMENTS
+            .iter()
+            .find(|row| row.0 == ghost.0)
+            .unwrap()
+            .2
+            .is_none();
+        assert_eq!(
+            extra["class"] == "SmeltingRecipe",
+            foreign,
+            "{}",
+            line["recipe"]
+        );
     }
     assert!(GHOSTS.windows(2).all(|pair| pair[0].0 < pair[1].0));
     assert!(METALLURGIC_INFUSING.ghost(1838).is_some());

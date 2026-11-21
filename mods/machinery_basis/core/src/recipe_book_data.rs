@@ -555,7 +555,7 @@ pub fn restore_saved(
     if *seen == (names.len(), length) {
         return None;
     }
-    let mut take = |list: &mut Vec<String>| -> Vec<String> {
+    let take = |list: &mut Vec<String>| -> Vec<String> {
         let mut taken = Vec::new();
         list.retain(|name| {
             let ours = names.contains(name.as_str());
@@ -567,7 +567,10 @@ pub fn restore_saved(
         taken
     };
     let known = take(recipes);
-    let highlight: Vec<String> = take(to_be_displayed).into_iter().filter(|name| known.contains(name)).collect();
+    let highlight: Vec<String> = take(to_be_displayed)
+        .into_iter()
+        .filter(|name| known.contains(name))
+        .collect();
     *seen = (names.len(), length - known.len());
     Some((known, highlight))
 }
@@ -617,7 +620,13 @@ mod tests {
 
     #[test]
     fn the_server_sends_the_whole_book_once_and_then_only_what_changed() {
-        let entry = |id: i32| Some(Entry { id, category: "c".to_owned(), group: None });
+        let entry = |id: i32| {
+            Some(Entry {
+                id,
+                category: "c".to_owned(),
+                group: None,
+            })
+        };
         let types = ["A", "B"];
         let mut now = Unlocked::default();
         now.add(1, true);
@@ -626,17 +635,42 @@ mod tests {
         let first = server_sync(None, &now, &types, || vec![7], entry);
         assert_eq!(first.len(), 2);
         assert_eq!(first[0], ToClient::Settings(vec![7]));
-        assert!(matches!(&first[1], ToClient::Add { entries, replace: true } if entries.len() == 2));
+        assert!(
+            matches!(&first[1], ToClient::Add { entries, replace: true } if entries.len() == 2)
+        );
         // Nada mudou: nada vai, e as configurações nem são lidas.
         let sent = now.clone();
-        assert!(server_sync(Some((&sent, &types)), &now, &types, || panic!("as configurações não mudaram"), entry).is_empty());
+        assert!(
+            server_sync(
+                Some((&sent, &types)),
+                &now,
+                &types,
+                || panic!("as configurações não mudaram"),
+                entry
+            )
+            .is_empty()
+        );
         // Uma receita entra e outra sai: só elas, sem as configurações.
         now.add(3, true);
         now.remove(1);
-        let changed = server_sync(Some((&sent, &types)), &now, &types, || panic!("as configurações não mudaram"), entry);
+        let changed = server_sync(
+            Some((&sent, &types)),
+            &now,
+            &types,
+            || panic!("as configurações não mudaram"),
+            entry,
+        );
         assert!(changed.iter().any(|packet| matches!(packet, ToClient::Add { entries, replace: false } if entries.len() == 1 && entries[0].entry.id == 3)));
-        assert!(changed.iter().any(|packet| *packet == ToClient::Remove(vec![1])));
-        assert!(!changed.iter().any(|packet| matches!(packet, ToClient::Settings(_))));
+        assert!(
+            changed
+                .iter()
+                .any(|packet| *packet == ToClient::Remove(vec![1]))
+        );
+        assert!(
+            !changed
+                .iter()
+                .any(|packet| matches!(packet, ToClient::Settings(_)))
+        );
         // O cliente que aplica o que recebeu fica com o livro do servidor.
         let mut client = Unlocked::default();
         for packet in first.iter().chain(&changed) {
@@ -646,16 +680,25 @@ mod tests {
         // Um tipo de livro novo registrado: as configurações vão de novo, mesmo com o livro igual.
         let sent = now.clone();
         let more = ["A", "B", "C"];
-        assert_eq!(server_sync(Some((&sent, &types)), &now, &more, || vec![9], entry), vec![ToClient::Settings(vec![9])]);
+        assert_eq!(
+            server_sync(Some((&sent, &types)), &now, &more, || vec![9], entry),
+            vec![ToClient::Settings(vec![9])]
+        );
     }
 
     #[test]
     fn the_saved_lists_give_back_the_recipes_of_the_registered_books_once() {
         let names: std::collections::HashSet<&str> = ["m:a", "m:b", "m:c"].into_iter().collect();
-        let mut recipes = vec!["minecraft:x".to_owned(), "m:a".to_owned(), "m:b".to_owned(), "other:y".to_owned()];
+        let mut recipes = vec![
+            "minecraft:x".to_owned(),
+            "m:a".to_owned(),
+            "m:b".to_owned(),
+            "other:y".to_owned(),
+        ];
         let mut display = vec!["m:b".to_owned(), "m:c".to_owned(), "minecraft:x".to_owned()];
         let mut seen = (usize::MAX, usize::MAX);
-        let (known, highlight) = restore_saved(&mut recipes, &mut display, &names, &mut seen).unwrap();
+        let (known, highlight) =
+            restore_saved(&mut recipes, &mut display, &names, &mut seen).unwrap();
         assert_eq!(known, ["m:a", "m:b"]);
         // Só a destacada que também é conhecida volta destacada (`m:c` não está em `recipes`).
         assert_eq!(highlight, ["m:b"]);
@@ -664,10 +707,15 @@ mod tests {
         assert_eq!(display, ["minecraft:x"]);
         // Conferido: a mesma lista com os mesmos livros não é lida de novo.
         assert_eq!(seen, (3, 2));
-        assert_eq!(restore_saved(&mut recipes, &mut display, &names, &mut seen), None);
+        assert_eq!(
+            restore_saved(&mut recipes, &mut display, &names, &mut seen),
+            None
+        );
         // Um livro novo registrado (mais nomes) faz conferir de novo, e o que é dele volta.
-        let more: std::collections::HashSet<&str> = ["m:a", "m:b", "m:c", "other:y"].into_iter().collect();
-        let (known, highlight) = restore_saved(&mut recipes, &mut display, &more, &mut seen).unwrap();
+        let more: std::collections::HashSet<&str> =
+            ["m:a", "m:b", "m:c", "other:y"].into_iter().collect();
+        let (known, highlight) =
+            restore_saved(&mut recipes, &mut display, &more, &mut seen).unwrap();
         assert_eq!(known, ["other:y"]);
         assert!(highlight.is_empty());
         assert_eq!(recipes, ["minecraft:x"]);

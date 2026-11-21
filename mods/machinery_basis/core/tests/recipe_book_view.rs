@@ -257,36 +257,96 @@ fn a_left_click_places_the_recipe_and_refuses_the_same_uncraftable_one_twice() {
     let PageClick::Place(first) = view.click_page(0, 10, x, y, Mouse::Left) else {
         panic!("o primeiro clique não mandou colocar");
     };
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Left), PageClick::Refused);
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Left),
+        PageClick::Refused
+    );
     // O Enter repete a última clicada, com a mesma recusa.
     assert_eq!(view.place_last(), Some(PageClick::Refused));
     view.slot_clicked();
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Left), PageClick::Place(first));
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Left),
+        PageClick::Place(first)
+    );
     // Outra receita vai, e a primeira volta a valer depois dela.
     let (x1, y1) = middle(1);
     let PageClick::Place(second) = view.click_page(0, 10, x1, y1, Mouse::Left) else {
         panic!("o segundo botão não mandou colocar");
     };
     assert_ne!(first, second);
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Left), PageClick::Place(first));
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Left),
+        PageClick::Place(first)
+    );
     // Fora da grade o clique não é da página; o do meio também não.
-    assert_eq!(view.click_page(0, 10, 2.0, 2.0, Mouse::Left), PageClick::Missed);
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Other), PageClick::Missed);
+    assert_eq!(
+        view.click_page(0, 10, 2.0, 2.0, Mouse::Left),
+        PageClick::Missed
+    );
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Other),
+        PageClick::Missed
+    );
 
     // O que dá para fazer vai sempre.
     let mut view = self::view(false, true);
     let PageClick::Place(id) = view.click_page(0, 10, x, y, Mouse::Left) else {
         panic!("a receita fazível não foi");
     };
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Left), PageClick::Place(id));
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Left),
+        PageClick::Place(id)
+    );
     assert_eq!(view.place_last(), Some(PageClick::Place(id)));
     // O que é da tela passa para a janela seguinte.
     view.time = 95.0;
     let carried = view.carried();
-    let mut again = self::view(false, true);
-    again.restore(&carried);
+    let mut again = reopened(&carried);
     assert_eq!(again.time, 95.0);
     assert_eq!(again.place_last(), Some(PageClick::Place(id)));
+}
+
+fn reopened(carried: &machinery_basis_core::recipe_book_view::Carried) -> View {
+    View::reopened(
+        crushing(),
+        all_ids().into_iter(),
+        std::iter::empty(),
+        false,
+        &|_| true,
+        Some(carried),
+    )
+}
+
+#[test]
+fn the_window_reopens_with_the_search_the_tab_and_the_page_it_had() {
+    // `initVisuals` de novo na mesma tela: a caixa nasce com o texto antigo e sem o foco, a aba continua e a página fica.
+    let mut view = view(false, true);
+    view.select_tab(Tab::Category(0));
+    assert!(view.forward());
+    let page = view.page.current_page;
+    let shown = view.page.shown().to_vec();
+    let again = reopened(&view.carried());
+    assert_eq!(again.tab, Tab::Category(0));
+    assert_eq!(again.page.current_page, page);
+    assert_eq!(again.page.shown(), shown);
+    // A busca fica, e a página que deixou de existir volta à primeira.
+    view.focused = true;
+    for ch in "gravel".chars() {
+        view.type_char(ch);
+    }
+    let found = view.page.collections.clone();
+    assert!(!found.is_empty() && found.len() < 20);
+    let again = reopened(&view.carried());
+    assert_eq!(again.search, "gravel");
+    assert!(!again.focused);
+    assert_eq!(again.page.collections, found);
+    assert_eq!(again.page.current_page, 0);
+    // Sem nada guardado é a janela nova de sempre.
+    let fresh = self::view(false, true);
+    assert_eq!(
+        (fresh.tab, fresh.search.as_str(), fresh.page.current_page),
+        (Tab::Search, "", 0)
+    );
 }
 
 #[test]
@@ -297,7 +357,8 @@ fn the_click_places_the_recipe_the_button_shows_now() {
         .find(|&slot| {
             let (x, y) = middle(slot);
             let mut probe = self::view(false, true);
-            probe.click_page(0, 10, x, y, Mouse::Right) == PageClick::Handled { sound: true } && probe.overlay.is_some()
+            probe.click_page(0, 10, x, y, Mouse::Right) == PageClick::Handled { sound: true }
+                && probe.overlay.is_some()
         })
         .expect("a primeira página tem um botão de várias receitas");
     let (x, y) = middle(slot);
@@ -319,7 +380,10 @@ fn a_right_click_opens_the_overlay_of_a_button_with_more_than_one_recipe() {
     for slot in 0..20 {
         let (x, y) = middle(slot);
         let mut probe = self::view(false, true);
-        assert_eq!(probe.click_page(0, 10, x, y, Mouse::Right), PageClick::Handled { sound: true });
+        assert_eq!(
+            probe.click_page(0, 10, x, y, Mouse::Right),
+            PageClick::Handled { sound: true }
+        );
         match probe.overlay {
             Some(_) => many = many.or(Some(slot)),
             None => single = single.or(Some(slot)),
@@ -328,28 +392,49 @@ fn a_right_click_opens_the_overlay_of_a_button_with_more_than_one_recipe() {
     let (single, many) = (single.unwrap(), many.unwrap());
     // `isOnlyOption`: o botão de uma receita só toca o som.
     let (x, y) = middle(single);
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Right), PageClick::Handled { sound: true });
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Right),
+        PageClick::Handled { sound: true }
+    );
     assert!(view.overlay.is_none());
     let (x, y) = middle(many);
-    assert_eq!(view.click_page(0, 10, x, y, Mouse::Right), PageClick::Handled { sound: true });
+    assert_eq!(
+        view.click_page(0, 10, x, y, Mouse::Right),
+        PageClick::Handled { sound: true }
+    );
     let overlay = view.overlay.clone().unwrap();
     assert!(overlay.buttons.len() > 1);
     assert!(overlay.buttons.iter().all(|button| button.craftable));
     // O esquerdo num botão do overlay manda colocar a receita dele, e o overlay continua aberto.
     let last = *overlay.buttons.last().unwrap();
     let at = (f64::from(last.rect[0] + 3), f64::from(last.rect[1] + 3));
-    assert_eq!(view.click_page(0, 10, at.0, at.1, Mouse::Left), PageClick::Place(last.id));
+    assert_eq!(
+        view.click_page(0, 10, at.0, at.1, Mouse::Left),
+        PageClick::Place(last.id)
+    );
     assert!(view.overlay.is_some());
     // O direito, mesmo sobre um botão dele, e qualquer clique fora o fecham, sem som e sem chegar à grade.
-    assert_eq!(view.click_page(0, 10, at.0, at.1, Mouse::Right), PageClick::Handled { sound: false });
+    assert_eq!(
+        view.click_page(0, 10, at.0, at.1, Mouse::Right),
+        PageClick::Handled { sound: false }
+    );
     assert!(view.overlay.is_none());
     view.click_page(0, 10, x, y, Mouse::Right);
     assert!(view.overlay.is_some());
-    assert_eq!(view.click_page(0, 10, 2.0, 2.0, Mouse::Left), PageClick::Handled { sound: false });
+    assert_eq!(
+        view.click_page(0, 10, 2.0, 2.0, Mouse::Left),
+        PageClick::Handled { sound: false }
+    );
     assert!(view.overlay.is_none());
 
     // Sem nada fazível os botões do overlay são os não fazíveis; com o filtro ligado só os fazíveis entram.
     let mut none = self::view(false, false);
     none.click_page(0, 10, x, y, Mouse::Right);
-    assert!(none.overlay.unwrap().buttons.iter().all(|button| !button.craftable));
+    assert!(
+        none.overlay
+            .unwrap()
+            .buttons
+            .iter()
+            .all(|button| !button.craftable)
+    );
 }

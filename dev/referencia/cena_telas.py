@@ -359,6 +359,8 @@ LIVRO_SETA = (98, 243)
 LIVRO_GRADE = (23, 141)
 LIVRO_OVERLAY_0 = (27, 146)
 LIVRO_OVERLAY_1 = (52, 146)
+# O botão de fechar da janela do livro (8 por 8 em (6, 6) da janela).
+LIVRO_FECHAR = (10, 98)
 # Um ponto do fundo do livro, sem botão (a última fila da grade, vazia depois de uma busca).
 LIVRO_FUNDO = (100, 215)
 
@@ -377,6 +379,9 @@ def casos_livro_colocar():
         livro("chamber_livro_colocar_shift", "chamber", "charcoal_dust", [grade + ",s"], itens="9:mekanism:sawdust:20"),
         # Sem o ingrediente: o fantasma nos slots de entrada e de saída.
         livro("chamber_livro_fantasma", "chamber", "charcoal_dust", [grade]),
+        # A janela fechada no X e aberta de novo na mesma tela: a busca continua na caixa (`initVisuals` a refaz com o texto antigo).
+        caso("chamber_livro_reabrir", "chamber", energia="0", receitas="1", capturas="6", capturas_port="6",
+             clicar=";".join([abre, busca, "t=iron", f"{LIVRO_FECHAR[0]},{LIVRO_FECHAR[1]}", abre])),
         # O clique no slot de entrada (um slot de receita) tira os fantasmas (`slotClicked`).
         livro("chamber_livro_fantasma_slot", "chamber", "charcoal_dust", [grade, "%d,%d" % HOVER["electric"]["slot_entrada"]]),
         # O fantasma, depois o ingrediente chega e o Enter repete a última receita. A caixa de busca continua focada depois do clique na
@@ -397,11 +402,12 @@ def casos_livro_colocar():
         livro("crusher_livro_fantasma", "crusher", "gravel", [grade]),
         caso("smelter_livro_receitas", "smelter", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=abre),
         caso("infuser_livro_receitas", "infuser", energia="0", receitas="1", capturas="8", capturas_port="8", clicar=abre),
-        livro("infuser_livro_colocar", "infuser", "infused_alloy", [grade], itens="9:copper_ingot:5", quimico="redstone:100"),
+        livro("infuser_livro_colocar", "infuser", "infused_alloy", [grade], itens="9:copper_ingot:5", quimico="redstone:10"),
         # O tanque vazio: o fantasma no slot, na barra de químico e na saída.
         livro("infuser_livro_fantasma", "infuser", "infused_alloy", [grade], itens="9:copper_ingot:5"),
-        # O Energized Smelter: no original a colocação lança `ClassCastException` no servidor (decisão 268); só o port roda este caso.
-        livro("smelter_livro_clique", "smelter", "baked_potato", [grade], itens="9:potato:5", so_port="1"),
+        # O Energized Smelter: a colocação lança `ClassCastException` no servidor do original, que a registra e segue (decisão 268): nada
+        # muda nos dois jogos.
+        livro("smelter_livro_clique", "smelter", "baked_potato", [grade], itens="9:potato:5"),
     ]
 
 
@@ -734,7 +740,7 @@ def escreve_oficial(escalas, saida, so=None):
         linhas.append(f"escala {escala}")
         for c in casos_do_roteiro(so):
             args = dict(c["args"])
-            # `so_port=1`: o original não roda o caso (a colocação no Energized Smelter derruba o servidor dele).
+            # `so_port=1`: o original não roda o caso (hoje nenhum).
             if "so_port" in args:
                 continue
             if "hover" in args:

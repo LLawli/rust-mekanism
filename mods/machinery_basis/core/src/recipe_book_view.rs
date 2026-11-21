@@ -6,8 +6,9 @@
 use std::collections::HashMap;
 
 use crate::recipe_book::{
-    BUTTON_SIZE, ClientBook, Craftable, Entry, IMAGE_HEIGHT, IMAGE_WIDTH, Page, Rect, SEARCH_MAX_LENGTH, button_rect, contains,
-    current_recipe_index, display_stack_index, slot_select_index,
+    BUTTON_SIZE, ClientBook, Craftable, Entry, IMAGE_HEIGHT, IMAGE_WIDTH, Page, Rect,
+    SEARCH_MAX_LENGTH, button_rect, contains, current_recipe_index, display_stack_index,
+    slot_select_index,
 };
 use crate::recipe_place::{Ingredient, Recipe, Tank};
 use crate::stacked_contents::StackedContents;
@@ -51,7 +52,13 @@ pub type Shown = &'static [(&'static str, i32)];
 /// O que o fantasma de um display desenha: `(id, itens de cada ingrediente, itens de cada saída, químicos de cada ingrediente, químicos
 /// de cada saída)`. Num `MekanismRecipeDisplay` são `ingredients()` e `rawOutputs()`; num `FurnaceRecipeDisplay`, `ingredient()` e
 /// `result()`.
-pub type GhostRow = (i32, &'static [Shown], &'static [Shown], &'static [Shown], &'static [Shown]);
+pub type GhostRow = (
+    i32,
+    &'static [Shown],
+    &'static [Shown],
+    &'static [Shown],
+    &'static [Shown],
+);
 
 /// O que o mod diz do livro de uma máquina: o tipo de livro (compartilhado entre as máquinas do mesmo tipo de receita), as abas
 /// depois da bússola, e as linhas de todos os displays (a lista filtra pelo tipo).
@@ -278,17 +285,21 @@ impl Overlay {
         let right = (x + total.min(max_row) as i32 * OVERLAY_BUTTON_SIZE) as f32;
         let max_left = (center_x + 50) as f32;
         if right > max_left {
-            x = (x as f32 - button_width * ((right - max_left) / button_width) as i32 as f32) as i32;
+            x = (x as f32 - button_width * ((right - max_left) / button_width) as i32 as f32)
+                as i32;
         }
         let bottom = (y + rows * OVERLAY_BUTTON_SIZE) as f32;
         let max_bottom = (center_y + 50) as f32;
         if bottom > max_bottom {
-            y = (y as f32 - button_width * ((bottom - max_bottom) / button_width).ceil() as i32 as f32) as i32;
+            y = (y as f32
+                - button_width * ((bottom - max_bottom) / button_width).ceil() as i32 as f32)
+                as i32;
         }
         let top = y as f32;
         let max_top = (center_y - 100) as f32;
         if top < max_top {
-            y = (y as f32 - button_width * ((top - max_top) / button_width).ceil() as i32 as f32) as i32;
+            y = (y as f32 - button_width * ((top - max_top) / button_width).ceil() as i32 as f32)
+                as i32;
         }
         let buttons: Vec<OverlayButton> = craftable
             .iter()
@@ -338,12 +349,16 @@ pub enum PageClick {
 }
 
 /// O que a janela guarda entre uma abertura e outra, porque no Java é do componente da tela e não da janela: o relógio do
-/// `SlotSelectTime`, a última receita colocada e a última clicada.
+/// `SlotSelectTime`, a última receita colocada e a última clicada, e o que o `initVisuals` de cada abertura mantém (o texto da caixa
+/// de busca, a aba escolhida e a página).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Carried {
     pub time: f32,
     last_placed: Option<i32>,
     last_recipe: Option<(i32, bool)>,
+    search: String,
+    tab: Option<Tab>,
+    page: usize,
 }
 
 impl Carried {
@@ -463,6 +478,20 @@ impl View {
         filtering: bool,
         can_craft: &dyn Fn(&Row) -> bool,
     ) -> Self {
+        Self::reopened(data, unlocked, highlighted, filtering, can_craft, None)
+    }
+
+    /// [`View::new`] numa tela em que a janela já esteve aberta (`RecipeBookComponent.initVisuals` de novo): a caixa de busca nasce com o
+    /// texto que tinha, a aba escolhida continua, a página fica se ainda existe (`updateCollections(false, ...)`), e o relógio e as
+    /// últimas receitas seguem de onde estavam. A caixa nasce sem o foco.
+    pub fn reopened(
+        data: &'static BookData,
+        unlocked: impl Iterator<Item = i32>,
+        highlighted: impl Iterator<Item = i32>,
+        filtering: bool,
+        can_craft: &dyn Fn(&Row) -> bool,
+        carried: Option<&Carried>,
+    ) -> Self {
         let rows: HashMap<i32, &'static Row> = data
             .rows
             .iter()
@@ -497,7 +526,17 @@ impl View {
                 view.tab_anim[index] = ANIMATION_TIME;
             }
         }
-        view.refresh(true);
+        match carried {
+            None => view.refresh(true),
+            Some(carried) => {
+                view.restore(carried);
+                view.search = carried.search.clone();
+                view.last_search = view.search.to_lowercase();
+                view.tab = carried.tab.unwrap_or(Tab::Search);
+                view.page.current_page = carried.page;
+                view.refresh(false);
+            }
+        }
         view
     }
 
@@ -555,16 +594,24 @@ impl View {
             time: self.time,
             last_placed: self.last_placed,
             last_recipe: self.last_recipe.map(|(id, craftable, _)| (id, craftable)),
+            search: self.search.clone(),
+            tab: Some(self.tab),
+            page: self.page.current_page,
         }
     }
 
     /// A janela reabre na mesma tela: o relógio e as últimas receitas continuam de onde estavam.
-    pub fn restore(&mut self, carried: &Carried) {
+    fn restore(&mut self, carried: &Carried) {
         self.time = carried.time;
         self.last_placed = carried.last_placed;
         self.last_recipe = carried.last_recipe.map(|(id, craftable)| {
-            let collection = (0..self.book.collection_count())
-                .find(|&index| self.book.collection(index).entries.iter().any(|entry| entry.id == id));
+            let collection = (0..self.book.collection_count()).find(|&index| {
+                self.book
+                    .collection(index)
+                    .entries
+                    .iter()
+                    .any(|entry| entry.id == id)
+            });
             (id, craftable, collection)
         });
     }
@@ -915,7 +962,14 @@ mod tests {
         let overlay = Overlay::new(0, &[1, 2, 3, 4], &[5, 6], 11, 116, 73, 106, 25.0);
         assert_eq!((overlay.x, overlay.y), (11, 91));
         assert_eq!(overlay.background(), [11, 91, 108, 58]);
-        assert_eq!(overlay.buttons[4], OverlayButton { id: 5, craftable: false, rect: [15, 121, 24, 24] });
+        assert_eq!(
+            overlay.buttons[4],
+            OverlayButton {
+                id: 5,
+                craftable: false,
+                rect: [15, 121, 24, 24]
+            }
+        );
         // Com mais de 16 as linhas têm cinco; uma sobra menor que um botão não recua (`(int) (13 / 25)` é zero).
         let many: Vec<i32> = (0..17).collect();
         let overlay = Overlay::new(0, &many, &[], 11, 31, 73, 106, 25.0);
@@ -930,7 +984,13 @@ mod tests {
         assert_eq!(ghost_shown(entries, 0), Some(("a", 3)));
         assert_eq!(ghost_shown(entries, 3), Some(("b", 3)));
         assert_eq!(ghost_shown(&[], 1), None);
-        let ghost: GhostRow = (1, &[&[("a", 1)], &[]], &[&[("c", 1)]], &[&[], &[("x", 10)]], &[&[]]);
+        let ghost: GhostRow = (
+            1,
+            &[&[("a", 1)], &[]],
+            &[&[("c", 1)]],
+            &[&[], &[("x", 10)]],
+            &[&[]],
+        );
         assert_eq!(ghost_max_tank(&ghost), 10);
         assert_eq!(ghost_bar_level(10, 10), 0.75);
         assert_eq!(ghost_bar_level(5, 10), 0.5);
