@@ -147,8 +147,44 @@ pub fn hold_lines(
     lines
 }
 
+/// `DefaultTooltipPositioner.positionTooltip`: o tooltip 12 à direita e 12 acima do mouse; se passa da direita da tela, à esquerda do
+/// mouse (nunca antes de 4); se passa de baixo (com 3 de folga), encostado embaixo.
+pub fn default_position(screen: [i32; 2], mouse: [i32; 2], size: [i32; 2]) -> [i32; 2] {
+    let mut x = mouse[0] + 12;
+    let mut y = mouse[1] - 12;
+    if x + size[0] > screen[0] {
+        x = (x - 24 - size[0]).max(4);
+    }
+    let padded = size[1] + 3;
+    if y + padded > screen[1] {
+        y = screen[1] - padded;
+    }
+    [x, y]
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_default_tooltip_sits_right_of_the_mouse_and_flips_at_the_edges() {
+        use super::default_position;
+        assert_eq!(
+            default_position([960, 540], [100, 100], [50, 18]),
+            [112, 88]
+        );
+        // Passa da direita: vai para a esquerda do mouse.
+        assert_eq!(
+            default_position([960, 540], [930, 100], [50, 18]),
+            [868, 88]
+        );
+        // Largo demais para a esquerda: 4.
+        assert_eq!(default_position([960, 540], [40, 100], [950, 18]), [4, 88]);
+        // Passa de baixo: encosta com 3 de folga.
+        assert_eq!(
+            default_position([960, 540], [100, 535], [50, 18]),
+            [112, 519]
+        );
+    }
+
     use super::*;
 
     #[test]

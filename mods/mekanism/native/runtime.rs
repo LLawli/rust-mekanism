@@ -12858,6 +12858,7 @@ pub mod recipe_books {
     pub static ENRICHING: BookData = BookData {
         book_type: "enriching",
         settings_type: "MEKANISM_ENRICHING",
+        filter_name: "gui.mekanism.recipe_book.toggle_recipes.enriching",
         tabs: &[
             tab(
                 "mekanism:enriching_building",
@@ -12889,6 +12890,7 @@ pub mod recipe_books {
     pub static CRUSHING: BookData = BookData {
         book_type: "crushing",
         settings_type: "MEKANISM_CRUSHING",
+        filter_name: "gui.mekanism.recipe_book.toggle_recipes.crushing",
         tabs: &[
             tab(
                 "mekanism:crushing_building",
@@ -12915,6 +12917,7 @@ pub mod recipe_books {
     pub static METALLURGIC_INFUSING: BookData = BookData {
         book_type: "metallurgic_infusing",
         settings_type: "MEKANISM_METALLURGIC_INFUSING",
+        filter_name: "gui.mekanism.recipe_book.toggle_recipes.metallurgic_infusing",
         tabs: &[
             tab(
                 "mekanism:metallurgic_infusing_building",
@@ -12937,6 +12940,7 @@ pub mod recipe_books {
     pub static SMELTING: BookData = BookData {
         book_type: "smelting",
         settings_type: "MEKANISM_SMELTING",
+        filter_name: "gui.recipebook.toggleRecipes.smeltable",
         tabs: &[
             tab("minecraft:furnace_food", "minecraft:porkchop", None),
             tab("minecraft:furnace_blocks", "minecraft:stone", None),

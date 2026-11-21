@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::recipe_book::Entry;
-use crate::sim::java_hash::{JavaIntMap, hash_set_order, identity_set_order};
+use crate::sim::java_hash::{JavaIntMap, identity_set_order};
 
 /// `RecipeBookSettings.TypeSettings`: o livro aberto e o filtro de receitas que dão para fazer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -241,6 +241,48 @@ impl<'a> Reader<'a> {
 }
 
 impl ToClient {
+    /// O pacote em pedaços de até `max` bytes codificados, para um canal com teto de tamanho: o primeiro pedaço de um `Add` leva o
+    /// `replace` e os seguintes não, e a ordem das entradas é a mesma (o cliente que aplica os pedaços em ordem fica como ficaria com
+    /// o pacote inteiro). O livro de quem conhece tudo tem milhares de displays.
+    pub fn split(self, max: usize) -> Vec<ToClient> {
+        match self {
+            ToClient::Add { entries, replace } => {
+                let mut out = Vec::new();
+                let mut chunk: Vec<AddedEntry> = Vec::new();
+                let mut size = 6;
+                for added in entries {
+                    let bytes = 11 + added.entry.category.len();
+                    if size + bytes > max && !chunk.is_empty() {
+                        out.push(ToClient::Add {
+                            entries: std::mem::take(&mut chunk),
+                            replace: replace && out.is_empty(),
+                        });
+                        size = 6;
+                    }
+                    size += bytes;
+                    chunk.push(added);
+                }
+                if !chunk.is_empty() || out.is_empty() {
+                    out.push(ToClient::Add {
+                        entries: chunk,
+                        replace: replace && out.is_empty(),
+                    });
+                }
+                out
+            }
+            ToClient::Remove(ids) => {
+                let per = (max.saturating_sub(5) / 4).max(1);
+                if ids.len() <= per {
+                    return vec![ToClient::Remove(ids)];
+                }
+                ids.chunks(per)
+                    .map(|chunk| ToClient::Remove(chunk.to_vec()))
+                    .collect()
+            }
+            other => vec![other],
+        }
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         let mut out = Vec::new();
         match self {
@@ -426,8 +468,23 @@ impl SendOrder<'_> {
             return added.to_vec();
         }
         let (rows, strays) = self.displays.rows_of(added.iter().copied());
-        let ordered = hash_set_order(rows, |row| (self.award)(self.displays.0[row].0), 16);
-        self.displays.expand(ordered, strays)
+        // A tabela de um `HashSet` novo: 16, dobrando quando o tamanho passa de 0,75 dela, cada balde na ordem de chegada. (Um balde
+        // com nove nós viraria árvore no Java; com hashes sorteados isso não acontece na prática, e aqui ele só segue na ordem de
+        // chegada, sem derrubar o servidor como o `hash_set_order` faria.)
+        let mut capacity = 16_usize;
+        while rows.len() > capacity * 3 / 4 {
+            capacity *= 2;
+        }
+        let mut ordered: Vec<(usize, usize)> = rows
+            .into_iter()
+            .map(|row| {
+                let hash = (self.award)(self.displays.0[row].0) as u32;
+                ((hash ^ (hash >> 16)) as usize & (capacity - 1), row)
+            })
+            .collect();
+        ordered.sort_by_key(|(bucket, _)| *bucket);
+        self.displays
+            .expand(ordered.into_iter().map(|(_, row)| row).collect(), strays)
     }
 }
 
@@ -839,6 +896,61 @@ mod tests {
             server_sync(Some((&sent, &types)), &now, &more, || vec![9], entry, order),
             vec![ToClient::Settings(vec![9])]
         );
+    }
+
+    #[test]
+    fn a_big_packet_goes_in_pieces_that_fit_and_leave_the_client_the_same() {
+        let entries: Vec<AddedEntry> = (0..5000)
+            .map(|id| AddedEntry {
+                entry: Entry {
+                    id,
+                    category: if id % 9 == 0 {
+                        "mekanism:metallurgic_infusing_building".to_owned()
+                    } else {
+                        String::new()
+                    },
+                    group: None,
+                },
+                notification: false,
+                highlight: id % 7 == 0,
+            })
+            .collect();
+        let whole = ToClient::Add {
+            entries: entries.clone(),
+            replace: true,
+        };
+        assert!(whole.encode().len() > 30_000);
+        let pieces = whole.clone().split(24_000);
+        assert!(pieces.len() > 1);
+        let mut joined = Vec::new();
+        for (index, piece) in pieces.iter().enumerate() {
+            assert!(piece.encode().len() <= 24_000);
+            assert_eq!(ToClient::decode(&piece.encode()).as_ref(), Some(piece));
+            let ToClient::Add { entries, replace } = piece else {
+                panic!("pedaço de outro tipo");
+            };
+            assert_eq!(*replace, index == 0);
+            joined.extend(entries.iter().cloned());
+        }
+        assert_eq!(joined, entries);
+        let (mut one, mut many) = (ClientKnown::default(), ClientKnown::default());
+        one.apply(&whole);
+        for piece in &pieces {
+            many.apply(piece);
+        }
+        assert_eq!(
+            one.table().iter().map(|(id, ())| id).collect::<Vec<_>>(),
+            many.table().iter().map(|(id, ())| id).collect::<Vec<_>>()
+        );
+        assert_eq!(one.table().capacity(), 8192);
+        // Um pacote pequeno e o vazio com `replace` seguem inteiros.
+        let empty = ToClient::Add {
+            entries: Vec::new(),
+            replace: true,
+        };
+        assert_eq!(empty.clone().split(24_000), vec![empty]);
+        let removed = ToClient::Remove((0..10_000).collect()).split(24_000);
+        assert!(removed.len() > 1 && removed.iter().all(|piece| piece.encode().len() <= 24_000));
     }
 
     #[test]

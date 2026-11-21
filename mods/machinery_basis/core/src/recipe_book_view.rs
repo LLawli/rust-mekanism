@@ -68,6 +68,8 @@ pub struct BookData {
     pub book_type: &'static str,
     /// O nome do `RecipeBookType` (`MEKANISM_ENRICHING`): a chave dos `RecipeBookSettings` e a origem dos campos do NBT do jogador.
     pub settings_type: &'static str,
+    /// A chave de idioma de `getRecipeFilterName` (`MekanismRecipeBookTypes.filterName`): o tooltip do botão de filtro ligado.
+    pub filter_name: &'static str,
     pub tabs: &'static [BookTab],
     pub rows: &'static [Row],
     /// Os requisitos de cada display, em ordem de id.
@@ -366,6 +368,11 @@ pub struct Carried {
 }
 
 impl Carried {
+    /// O texto que a caixa de busca tinha (`oldEdit` de `initVisuals`).
+    pub fn search(&self) -> &str {
+        &self.search
+    }
+
     /// `VirtualRecipeBookComponent.slotClicked` de um slot de receita com a janela fechada: `lastPlacedRecipe` volta a nulo.
     pub fn slot_clicked(&mut self) {
         self.last_placed = None;
@@ -880,6 +887,14 @@ impl View {
             self.search_changed();
         }
         true
+    }
+
+    /// O texto da caixa de busca mudou (`EditBox` com cursor e seleção, que a cola guarda): `checkSearchStringUpdate`.
+    pub fn set_search(&mut self, text: &str) {
+        if self.search != text {
+            self.search = text.to_owned();
+        }
+        self.search_changed();
     }
 
     /// Backspace com o cursor no fim (`EditBox.deleteText(-1)`): apaga o último caractere.

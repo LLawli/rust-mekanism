@@ -3184,6 +3184,29 @@ pub(in crate::game) fn menu_tooltip_rich(
     menu_tooltip_texts(game, batch, &lines, mouse, widget, false);
 }
 
+/// Um tooltip no mouse (`DefaultTooltipPositioner`) sem o intervalo de dois pixels depois da primeira linha: o de
+/// `GuiGraphicsExtractor.setComponentTooltipForNextFrame`, que o livro de receitas usa para o item de uma receita (o tooltip de um slot,
+/// `setTooltipForNextFrame(font, stack, ...)`, é que pede o intervalo, `extraSpaceAfterFirstLine`).
+pub(in crate::game) fn mouse_tooltip_flat(game: &Game<'_>, batch: &mut HudBatch, lines: &[(horizon_client::text::Text, u32)], mouse: (f32, f32)) {
+    if lines.is_empty() {
+        return;
+    }
+    let atlas = &game.gui.atlas;
+    let mut w = 0.0_f32;
+    for line in lines {
+        let (_, _, line_w, _) = Game::tooltip_geometry(atlas, std::slice::from_ref(line), (0.0, 0.0), (batch.width, batch.height), [0.0; 2]);
+        w = w.max(line_w);
+    }
+    let h = 10.0 * lines.len() as f32 - 2.0;
+    let [x, y] = tooltip::default_position([batch.width as i32, batch.height as i32], [mouse.0 as i32, mouse.1 as i32], [w as i32, h as i32]);
+    for sprite in ["gui/sprites/tooltip/background", "gui/sprites/tooltip/frame"] {
+        horizon_client::ui::nine_slice(batch, atlas, sprite, x as f32 - 12.0, y as f32 - 12.0, w + 24.0, h + 24.0, u32::MAX);
+    }
+    for (n, line) in lines.iter().enumerate() {
+        Game::tooltip_text(batch, atlas, std::slice::from_ref(line), x as f32, y as f32 + 10.0 * n as f32);
+    }
+}
+
 fn menu_tooltip_texts(
     game: &Game<'_>,
     batch: &mut HudBatch,

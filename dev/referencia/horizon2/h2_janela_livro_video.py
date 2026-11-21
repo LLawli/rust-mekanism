@@ -5,6 +5,8 @@
     H_NAME=horizon h2_janela_livro_video.py rodar      abre a tela e o livro, troca de aba, busca, liga e desliga o filtro e vira a página
     H_NAME=horizon h2_janela_livro_video.py preparar6  monta as quatro máquinas (6.ª rodada)
     H_NAME=horizon h2_janela_livro_video.py rodar6     a colocação pelo livro, o fantasma, o Enter, o shift e o overlay, nas quatro máquinas
+    H_NAME=horizon h2_janela_livro_video.py preparar7  as quatro máquinas, como `preparar6` (7.ª rodada)
+    H_NAME=horizon h2_janela_livro_video.py rodar7     o livro na ordem do original, os tooltips e a caixa de busca com cursor e seleção
 
 `rodar` dura uns 30 s e roda em paralelo com `gravar-jogo rec`. A janela fica onde a posição guardada a deixa (veja `LIVRO_BUSCA` em `cena_telas.py`).
 """
@@ -175,5 +177,62 @@ def rodar6():
     time.sleep(0.8)
 
 
+def paira(x, y, espera=1.6):
+    """O cursor num ponto da tela (em pixels de GUI relativos ao canto dela), sem clicar."""
+    gui_l, gui_a = -(-1920 // ESCALA), -(-1080 // ESCALA)
+    c.ctl("scroll-at", str((gui_l - 176) // 2 + x), str((gui_a - 166) // 2 + y), "0")
+    time.sleep(espera)
+
+
+def tecla(nome, *seguradas, espera=0.35):
+    for segurada in seguradas:
+        c.ctl("key", segurada, "down")
+    c.ctl("key", nome, "tap")
+    for segurada in seguradas:
+        c.ctl("key", segurada, "up")
+    time.sleep(espera)
+
+
+def rodar7():
+    """Uns 55 s, em paralelo com `gravar-jogo rec` (7.ª rodada): o livro da Enrichment Chamber na ordem do original, página a página; os
+    tooltips (a receita com `Right Click for More`, as setas, o filtro desligado e ligado); a caixa de busca com o cursor no meio do
+    texto, a seleção com o shift, a palavra apagada com o Ctrl e o texto trocado por cima de tudo selecionado; e os livros do Crusher e do
+    Energized Smelter."""
+    abre(3)
+    clique(*c.LIVRO_BOTAO, espera=1.5)
+    for _ in range(3):
+        clique(*c.LIVRO_SETA, espera=1.0)
+    paira(*c.LIVRO_SETA)
+    paira(*c.LIVRO_SETA_VOLTA)
+    paira(*c.LIVRO_GRADE, espera=2.0)
+    paira(*c.LIVRO_FILTRO)
+    clique(*c.LIVRO_FILTRO, espera=1.6)
+    clique(*c.LIVRO_FILTRO, espera=0.8)
+    busca("iron dust")
+    for _ in range(4):
+        tecla("left")
+    for _ in range(3):
+        tecla("left", "shift")
+    time.sleep(1.0)
+    # (O `horizon-ctl key` não conhece End: o Ctrl com a seta leva ao fim, palavra a palavra.)
+    tecla("right", "ctrl")
+    tecla("right", "ctrl")
+    tecla("backspace", "ctrl", espera=0.8)
+    tecla("a", "ctrl", espera=0.8)
+    c.ctl("type", "gold")
+    time.sleep(1.2)
+    paira(*c.LIVRO_GRADE, espera=2.0)
+    c.ctl("close")
+    time.sleep(0.4)
+    # O Crusher e o Energized Smelter: o livro de cada um, página a página.
+    for x in (20, 54):
+        abre(x)
+        clique(*c.LIVRO_BOTAO, espera=1.5)
+        for _ in range(3):
+            clique(*c.LIVRO_SETA, espera=1.0)
+        c.ctl("close")
+        time.sleep(0.5)
+
+
 if __name__ == "__main__":
-    {"preparar": preparar, "rodar": rodar, "preparar6": preparar6, "rodar6": rodar6}[sys.argv[1]]()
+    {"preparar": preparar, "rodar": rodar, "preparar6": preparar6, "rodar6": rodar6, "preparar7": preparar6, "rodar7": rodar7}[sys.argv[1]]()

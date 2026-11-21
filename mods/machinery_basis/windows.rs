@@ -249,6 +249,8 @@ enum Action {
     Config(ConfigPacket),
     /// `MultiPlayerGameMode.handlePlaceRecipe`: o livro manda colocar o display, com o shift (`useMaxItems`).
     PlaceRecipe { id: i32, max: bool },
+    /// Ctrl+C (0), Ctrl+V (1) e Ctrl+X (2) na caixa de busca do livro (`EditBox.keyPressed`): mexem na área de transferência do jogo.
+    BookShortcut(u8),
 }
 
 struct Open {
@@ -265,6 +267,9 @@ struct Open {
     neighbours: [Option<ItemStack>; 6],
     /// A janela do livro: a aba, a busca, o filtro e a página (`VirtualRecipeBookComponent`).
     book: Option<rbv::View>,
+    /// A caixa de busca do livro (`EditBox`, pelo `TextField` do Horizon, que é o porte dele): o texto, o cursor, a seleção e o primeiro
+    /// caractere à mostra. A posição dela é relativa à janela.
+    book_field: horizon_client::screen_draw::TextField,
     /// `EditBox.focusedTime` da caixa de busca (o pisca do cursor).
     book_focus_ms: i64,
     /// O relógio do `SlotSelectTime`: o último quadro que somou ao `time`.
@@ -294,6 +299,11 @@ struct Client {
     ghost: Option<i32>,
     /// `skipNextRelease`: o clique que já valeu ao apertar não vale de novo ao soltar.
     skip_release: bool,
+    /// O botão esquerdo está apertado (o arrasto que a caixa de busca do livro segue).
+    drag_left: bool,
+    /// `MouseHandler.lastClick` e `lastClickButton`: quando e com que botão foi o último clique na tela (o duplo clique é outro do
+    /// mesmo botão em menos de 250 ms).
+    last_click: Option<(i64, i32)>,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
@@ -307,6 +317,8 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
     book_carry: None,
     ghost: None,
     skip_release: false,
+    drag_left: false,
+    last_click: None,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -569,6 +581,7 @@ fn open_window(game: &mut Game<'_>, spec: &UpgradeWindowSpec, kind: Kind) {
             current: 0,
             neighbours,
             book: (kind == Kind::RecipeBook).then(|| new_book_view(spec, &contents, carry.as_ref())).flatten(),
+            book_field: new_book_field(game, carry.as_ref().filter(|_| kind == Kind::RecipeBook)),
             book_focus_ms: now,
             book_clock_ms: now,
             book_contents: contents,
@@ -731,7 +744,9 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
         let mut carry = None;
         for open in guard.windows.iter_mut() {
             if let Some(view) = open.book.as_mut() {
-                let ticks = (now - open.book_clock_ms) as f32 / 50.0;
+                // O `a` do `extractRenderState`: `DeltaTracker.getGameTimeDeltaTicks`, os milissegundos do quadro pelo tick do jogo
+                // (`Minecraft.getTickTargetMillis`: o do nível quando ele anda normalmente e é mais lento que 50 ms).
+                let ticks = rb::delta_ticks(now - open.book_clock_ms, game.clock.runs_normally(), game.clock.tick_duration().as_secs_f32() * 1000.0);
                 if !ctrl {
                     view.time += ticks;
                 }
@@ -776,6 +791,21 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
                 send(game, [&[OP_CONFIG][..], &packet.encode()].concat());
             }
             Action::PlaceRecipe { id, max } => send_menu_button(game, rp::place_button(id, max)),
+            Action::BookShortcut(which) => {
+                let shortcut = match which {
+                    0 => horizon_client::clipboard::EditShortcut::Copy,
+                    1 => horizon_client::clipboard::EditShortcut::Paste,
+                    _ => horizon_client::clipboard::EditShortcut::Cut,
+                };
+                let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+                let mut guard = client();
+                if let Some(open) = guard.windows.iter_mut().find(|open| open.kind == Kind::RecipeBook) {
+                    open.book_field.shortcut(&m, shortcut, &mut game.clipboard);
+                    if let Some(view) = open.book.as_mut() {
+                        view.set_search(&open.book_field.value);
+                    }
+                }
+            }
         }
     }
     book_flush(game);
@@ -830,7 +860,11 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
     let shift = game.has_shift_down();
     // `AbstractContainerScreen.keyPressed`: com o cursor vazio sobre um slot, as teclas da barra e a da outra mão trocam o item
     // (`SWAP`), e a de largar joga o que o slot tem (`THROW`); todas passam por `slotClicked`.
-    let slot_key = !key_is_book_only(key) && game.carried.is_none() && crafting_slot_hovered(game, open_spec(game)).is_some();
+    // Um slot com fantasma não é o `hoveredSlot` (o `GuiSlot` ativo o cobre): a tecla não clica nele.
+    let ghost = client().ghost;
+    let slot_key = !key_is_book_only(game, key)
+        && game.carried.is_none()
+        && crafting_slot_hovered(game, open_spec(game)).is_some_and(|which| !open_spec(game).is_some_and(|spec| slot_ghosted(spec, ghost, which)));
     let mut guard = client();
     let state = &mut *guard;
     // `GuiMekanism.keyPressed`: as janelas, da do topo para baixo; a do livro passa a tecla antes ao componente.
@@ -839,7 +873,7 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
             continue;
         }
         let Client { windows, pending, click_sound, ghost, .. } = state;
-        if book_key(&mut windows[index], key, shift, pending, click_sound, ghost) {
+        if book_key(game, &mut windows[index], key, shift, pending, click_sound, ghost) {
             *canceled = true;
             return;
         }
@@ -864,7 +898,7 @@ pub(in crate::game) fn char_typed(game: &Game<'_>, ch: char, canceled: &mut bool
     }
     let mut guard = client();
     for open in guard.windows.iter_mut() {
-        if open.kind == Kind::RecipeBook && book_char(open, ch) {
+        if open.kind == Kind::RecipeBook && book_char(game, open, ch) {
             *canceled = true;
             return;
         }
@@ -925,6 +959,11 @@ pub(in crate::game) fn mouse_pressed(
     let mut guard = client();
     let state = &mut *guard;
     let shift = modifiers & 1 != 0;
+    // `MouseHandler.onButton`: o duplo clique é o segundo do mesmo botão em menos de 250 ms.
+    let now = now_ms();
+    let mut double = state.last_click.is_some_and(|(at, last)| now - at < 250 && last == button);
+    state.last_click = Some((now, button));
+    state.drag_left = button == 0;
     // As abas dos tipos são filhas da janela de lados e ficam fora dela: o clique nelas é da janela.
     if button == 0
         && let Some(view) = config.as_ref()
@@ -947,7 +986,8 @@ pub(in crate::game) fn mouse_pressed(
     {
         let rel = relative(&state.windows[book], screen, mouse);
         let Client { windows, pending, click_sound, ghost, .. } = state;
-        if book_click(&mut windows[book], rel, button, shift, click_sound, pending, ghost, spec) == BookClick::Handled {
+        let double = std::mem::take(&mut double);
+        if book_click(game, &mut windows[book], rel, button, shift, double, click_sound, pending, ghost, spec) == BookClick::Handled {
             if book != 0 {
                 let open = state.windows.remove(book);
                 state.windows.insert(0, open);
@@ -1188,6 +1228,7 @@ pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
     // ser que já tenha valido ao apertar (`skipNextRelease`).
     let over_recipe_slot = game.carried.is_some() && crafting_slot_hovered(game, Some(spec)).is_some();
     let mut state = client();
+    state.drag_left = false;
     if !std::mem::take(&mut state.skip_release) && over_recipe_slot && !state.windows.iter().any(|open| open.window.dragging() || open.list.dragging()) {
         recipe_slot_clicked(&mut state);
     }
@@ -1211,6 +1252,18 @@ pub(in crate::game) fn mouse_dragged(game: &Game<'_>, view: &NativeScreenView<'_
     };
     let mouse = mouse_of(view);
     let mut state = client();
+    // `GuiRecipeBookWindow.mouseDragged` passa antes pelo livro: com a caixa de busca focada, todo arrasto com o botão esquerdo é dela
+    // (`AbstractWidget.mouseDragged`, `EditBox.onDrag`: o cursor segue o mouse e a seleção se estende), e a janela não anda.
+    if state.drag_left
+        && let Some(book) = index_of(&state, Kind::RecipeBook)
+        && state.windows[book].book.as_ref().is_some_and(|view| view.focused)
+    {
+        let rel = relative(&state.windows[book], screen, mouse);
+        let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+        state.windows[book].book_field.click(&m, rel[0], true);
+        *canceled = true;
+        return;
+    }
     for open in state.windows.iter_mut() {
         if open.window.dragging() {
             open.window.drag_to(screen, mouse);
@@ -1287,6 +1340,16 @@ pub(in crate::game) fn slot_at(game: &Game<'_>, found: Option<usize>, x: f32, y:
         return found;
     };
     let state = client();
+    // Um slot de receita com fantasma tem o `GuiSlot` ativo por cima (`GuiSlot.isActive` com `ghostRecipeData`), e o slot do vanilla
+    // debaixo dele não é alvo (`GuiMekanism.isHovering`): sem realce e sem tooltip do slot. Quem pergunta pelo slot de receita sob o
+    // cursor ([`crafting_slot_hovered`]) o recebe assim mesmo.
+    if !RAW_SLOT.with(std::cell::Cell::get)
+        && let Some(id) = found
+        && let Some(which) = spec.book_slots.iter().position(|index| id == 300 + index)
+        && slot_ghosted(spec, state.ghost, which)
+    {
+        return None;
+    }
     if state.windows.is_empty() {
         return found;
     }
@@ -1777,6 +1840,9 @@ fn book_type(spec: &UpgradeWindowSpec) -> &'static str {
 /// quem guarda (`ServerRecipeBook`, no NBT do jogador) e manda o que muda.
 static BOOK_UNLOCKED: Mutex<Option<ClientKnown>> = Mutex::new(None);
 
+/// O tamanho de um pedaço do livro no canal do mod, abaixo do teto dele.
+const BOOK_PACKET_MAX: usize = 24_000;
+
 /// No servidor: as listas `recipes` e `toBeDisplayed` de cada jogador da última vez e os displays que saíram delas.
 #[allow(clippy::type_complexity)]
 static BOOK_DERIVED: Mutex<Option<HashMap<u128, (std::collections::BTreeSet<String>, std::collections::BTreeSet<String>, Unlocked)>>> = Mutex::new(None);
@@ -1866,6 +1932,33 @@ fn new_book_view(spec: &UpgradeWindowSpec, contents: &StackedContents, carried: 
     let (known, highlighted) = unlocked(|book| (book.table().clone(), book.highlighted().collect::<Vec<i32>>()));
     let filtering = book_settings(|settings| settings.is_filtering(data.settings_type));
     Some(rbv::View::reopened(data, &known, highlighted.into_iter(), filtering, &|row| data.can_craft(row.0, contents), carried))
+}
+
+/// `RecipeBookComponent.initVisuals`: a caixa de busca nova (`new EditBox(font, xo + 25, yo + 13, 81, 14, ...)`, `setMaxLength(50)`,
+/// `setTextColor(-1)`, `setValue(oldEdit)`, `setHint(SEARCH_HINT)`), com o texto que a caixa anterior desta tela tinha e o cursor no fim.
+fn new_book_field(game: &Game<'_>, carried: Option<&rbv::Carried>) -> horizon_client::screen_draw::TextField {
+    let [xo, yo] = BOOK_ORIGIN;
+    let rect = rb::search_rect(xo, yo);
+    let mut field = horizon_client::screen_draw::TextField::new(rect[0], rect[1], rect[2], rect[3]);
+    field.max_length = rb::SEARCH_MAX_LENGTH;
+    field.text_color = -1;
+    field.hint = Some(horizon_client::text::Text::styled(
+        lang::get("gui.recipebook.search_hint"),
+        horizon_client::text::Style { color: Some(0xAAAAAA), italic: Some(true), ..Default::default() },
+    ));
+    if let Some(carried) = carried {
+        field.set_value(&horizon_client::screen_draw::Measure(&game.gui.atlas.font), carried.search());
+    }
+    field
+}
+
+/// `EditBox.selectWord`: a palavra sob o clique (o duplo clique na caixa).
+fn book_select_word(field: &mut horizon_client::screen_draw::TextField, m: &horizon_client::screen_draw::Measure<'_>, x: f64) {
+    field.click(m, x, false);
+    let clicked = field.cursor;
+    let (start, end) = (field.word_position(-1, clicked), field.word_position(1, clicked));
+    field.move_cursor_to(m, start, false);
+    field.move_cursor_to(m, end, true);
 }
 
 fn book_settings<R>(act: impl FnOnce(&mut BookSettings) -> R) -> R {
@@ -2165,7 +2258,8 @@ fn book_server_sync(game: &mut Game<'_>) {
             continue;
         }
         book_sent(|sent| sent.insert(player, (now, types.clone())));
-        for packet in packets {
+        // O canal do mod leva até 30.000 bytes por mensagem (`horizon_protocol::mod_net::MAX_DATA`): o livro de quem conhece tudo vai em pedaços.
+        for packet in packets.into_iter().flat_map(|packet| packet.split(BOOK_PACKET_MAX)) {
             if let Err(error) = game.native_net_send_to_player(player, BOOK_CHANNEL, &packet.encode()) {
                 eprintln!("machinery_basis: o livro de receitas não chegou a {player:032x}: {error}");
             }
@@ -2363,6 +2457,12 @@ fn shown_ghost(game: &Game<'_>) -> Option<(&'static rbv::GhostRow, i32)> {
     Some((book.ghost(id)?, rb::slot_select_index(time)))
 }
 
+/// [`shown_ghost`] com o estado já na mão.
+fn shown_ghost_of(spec: &UpgradeWindowSpec, state: &Client) -> Option<(&'static rbv::GhostRow, i32)> {
+    let book = spec.book?;
+    Some((book.ghost(state.ghost?)?, rb::slot_select_index(state.book_carry.as_ref().map_or(0.0, |carry| carry.time))))
+}
+
 /// O fantasma de uma barra de químico registrada como a entrada `index` (`GuiChemicalBar.setGhostData` com
 /// `GhostSlot.createWithMaxTank`): o químico que o `SlotSelectTime` escolhe e o nível que a barra desenha (`renderBarGhostContents`).
 fn ghost_chemical(game: &Game<'_>, inputs: usize, index: usize) -> Option<(&'static str, f64)> {
@@ -2410,7 +2510,7 @@ fn draw_recipe_book_window(
     // `drawScrollingString(x + maxLengthPad, ..., x + width - maxLengthPad)`: a área vai de 34 a 143.
     scrolling_text(game, batch, &title, [wx + 34.0, wy + 5.0, wx + w - 4.0, wy + 5.0 + LINE_HEIGHT], true, TITLE_COLOR, 1.0, open.opened_ms);
     if let Some(view) = &open.book {
-        draw_book_contents(game, batch, view, open.book_focus_ms, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
+        draw_book_contents(game, batch, view, &open.book_field, open.book_focus_ms, wx, wy + rb::Y_OFFSET as f32, hover_ok, mouse);
     }
 }
 
@@ -2443,10 +2543,12 @@ enum BookClick {
 /// `useMaxItems`) e tira os fantasmas (`clearGhostValues`); o direito abre o overlay de um botão com mais de uma receita.
 #[allow(clippy::too_many_arguments)]
 fn book_click(
+    game: &Game<'_>,
     open: &mut Open,
     rel: [f64; 2],
     button: i32,
     shift: bool,
+    double: bool,
     click_sound: &mut bool,
     pending: &mut Vec<Action>,
     ghost: &mut Option<i32>,
@@ -2455,7 +2557,8 @@ fn book_click(
     let [xo, yo] = BOOK_ORIGIN;
     let left = button == 0;
     let tab = book_tab_at(open, rel);
-    let Some(view) = open.book.as_mut() else {
+    let Open { book, book_field: field, book_focus_ms, .. } = open;
+    let Some(view) = book.as_mut() else {
         return BookClick::Missed;
     };
     let inside = |rect: rb::Rect| rb::contains(rect, rel[0], rel[1]);
@@ -2497,9 +2600,19 @@ fn book_click(
         rbv::PageClick::Missed => {}
     }
     // A lupa foca a caixa com qualquer botão (`magnifierIconPlacement.containsPoint`); a caixa, só com o esquerdo, e sem som (`EditBox.playDownSound`).
-    if inside(rb::magnifier_rect(xo, yo)) || (left && inside(rb::search_rect(xo, yo))) {
+    let magnifier = inside(rb::magnifier_rect(xo, yo));
+    if magnifier || (left && inside(rb::search_rect(xo, yo))) {
+        if !magnifier {
+            // `EditBox.onClick`: o cursor vai para onde o mouse está (o shift estende a seleção), e o duplo clique escolhe a palavra.
+            let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+            if double {
+                book_select_word(field, &m, rel[0]);
+            } else {
+                field.click(&m, rel[0], shift);
+            }
+        }
         // `EditBox.setFocused(true)` reinicia o `focusedTime` (o pisca do cursor) a cada vez.
-        open.book_focus_ms = now_ms();
+        *book_focus_ms = now_ms();
         view.focused = true;
         return BookClick::Handled;
     }
@@ -2522,8 +2635,9 @@ fn book_click(
 /// livro (`isOffsetNextToMainGUI`: o componente virtual tem o `xOffset` de 86). Com a caixa focada, o Backspace apaga e as outras teclas
 /// param nela (`capturesInput`); sem foco, a tecla do chat (`T`) foca a caixa e o caractere dela não entra (`ignoreTextInput`), e o Enter,
 /// o Enter numérico e o espaço (`isSelection`) tocam o som do botão e mandam colocar de novo a última receita clicada.
-fn book_key(open: &mut Open, key: &str, shift: bool, pending: &mut Vec<Action>, click_sound: &mut bool, ghost: &mut Option<i32>) -> bool {
-    let Some(view) = open.book.as_mut() else {
+fn book_key(game: &Game<'_>, open: &mut Open, key: &str, shift: bool, pending: &mut Vec<Action>, click_sound: &mut bool, ghost: &mut Option<i32>) -> bool {
+    let Open { book, book_field: field, .. } = open;
+    let Some(view) = book.as_mut() else {
         return false;
     };
     view.ignore_text = false;
@@ -2531,12 +2645,38 @@ fn book_key(open: &mut Open, key: &str, shift: bool, pending: &mut Vec<Action>, 
         return false;
     }
     if view.focused {
-        if key == "key.keyboard.backspace" {
-            view.backspace();
+        // `EditBox.keyPressed`: Backspace e Delete apagam (a palavra com o Ctrl), Home, End e as setas movem o cursor (com o shift
+        // estendem a seleção, com o Ctrl pulam a palavra), Ctrl+A seleciona tudo e Ctrl+C, Ctrl+V e Ctrl+X usam a área de
+        // transferência. A caixa focada prende as outras teclas (`capturesInput`).
+        use winit::keyboard::KeyCode as K;
+        let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+        let ctrl = game.has_control_down_with_quirk();
+        let code = match key {
+            "key.keyboard.backspace" => Some(K::Backspace),
+            "key.keyboard.delete" => Some(K::Delete),
+            "key.keyboard.home" => Some(K::Home),
+            "key.keyboard.end" => Some(K::End),
+            "key.keyboard.left" => Some(K::ArrowLeft),
+            "key.keyboard.right" => Some(K::ArrowRight),
+            "key.keyboard.a" => Some(K::KeyA),
+            _ => None,
+        };
+        let alt = game.modifiers.alt_key();
+        if let Some(code) = code.filter(|code| *code != K::KeyA || !alt) {
+            field.key(&m, code, shift, ctrl);
+            view.set_search(&field.value);
+        } else if ctrl && !shift && !alt {
+            match key {
+                "key.keyboard.c" => pending.push(Action::BookShortcut(0)),
+                "key.keyboard.v" => pending.push(Action::BookShortcut(1)),
+                "key.keyboard.x" => pending.push(Action::BookShortcut(2)),
+                _ => {}
+            }
         }
         return true;
     }
-    if key == "key.keyboard.t" {
+    // `minecraft.options.keyChat.matches(event)`: a tecla do chat configurada.
+    if key == game.settings.keys.get("key.chat") {
         view.ignore_text = true;
         view.focused = true;
         open.book_focus_ms = now_ms();
@@ -2560,13 +2700,12 @@ fn key_is_selection(key: &str) -> bool {
     matches!(key, "key.keyboard.enter" | "key.keyboard.space" | "key.keyboard.keypad.enter")
 }
 
-/// As teclas que não clicam num slot: só as da barra (1 a 9), a da outra mão (`F`) e a de largar (`Q`) clicam.
-fn key_is_book_only(key: &str) -> bool {
-    !matches!(
-        key,
-        "key.keyboard.1" | "key.keyboard.2" | "key.keyboard.3" | "key.keyboard.4" | "key.keyboard.5" | "key.keyboard.6" | "key.keyboard.7" | "key.keyboard.8"
-            | "key.keyboard.9" | "key.keyboard.f" | "key.keyboard.q"
-    )
+/// As teclas que não clicam num slot: só as da barra (`keyHotbarSlots`), a da outra mão (`keySwapOffhand`) e a de largar (`keyDrop`)
+/// clicam (`AbstractContainerScreen.keyPressed` e `checkHotbarKeyPressed`), as que o jogador configurou.
+fn key_is_book_only(game: &Game<'_>, key: &str) -> bool {
+    let keys = &game.settings.keys;
+    let hotbar = (1..=9).any(|slot| keys.get(&format!("key.hotbar.{slot}")) == key);
+    !(hotbar || keys.get("key.swapOffhand") == key || keys.get("key.drop") == key)
 }
 
 /// O slot de receita da máquina sob o cursor (`hoveredSlot` com `isRecipeCraftingSlot`: 0 a entrada e 1 a saída dos
@@ -2575,8 +2714,16 @@ fn crafting_slot_hovered(game: &Game<'_>, spec: Option<&UpgradeWindowSpec>) -> O
     let spec = spec.filter(|spec| spec.book.is_some())?;
     let renderer = game.renderer.as_ref()?;
     let batch = HudBatch::new([renderer.config.width, renderer.config.height]);
-    let slot = game.slot_at(&batch, game.cursor.0, game.cursor.1)?;
+    RAW_SLOT.with(|raw| raw.set(true));
+    let slot = game.slot_at(&batch, game.cursor.0, game.cursor.1);
+    RAW_SLOT.with(|raw| raw.set(false));
+    let slot = slot?;
     spec.book_slots.iter().position(|index| slot == 300 + index)
+}
+
+thread_local! {
+    /// [`crafting_slot_hovered`] está perguntando: o filtro [`slot_at`] não esconde o slot com fantasma.
+    static RAW_SLOT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// `VirtualRecipeBookComponent.slotClicked` de um slot de receita: os fantasmas somem (`clearGhostValues`) e `lastPlacedRecipe` volta
@@ -2603,20 +2750,37 @@ fn send_menu_button(game: &mut Game<'_>, button: i32) {
 }
 
 /// O caractere com o livro aberto (`RecipeBookComponent.charTyped`): entra na caixa focada.
-fn book_char(open: &mut Open, ch: char) -> bool {
-    let Some(view) = open.book.as_mut() else {
+fn book_char(game: &Game<'_>, open: &mut Open, ch: char) -> bool {
+    let Open { book, book_field: field, .. } = open;
+    let Some(view) = book.as_mut() else {
         return false;
     };
     if view.ignore_text || !view.focused {
         return false;
     }
-    view.type_char(ch)
+    // `EditBox.charTyped`: só um caractere que o chat aceita (`isAllowedChatCharacter`), no lugar da seleção (`insertText`).
+    if ch == '\u{a7}' || (ch as u32) < 0x20 || ch == '\u{7f}' {
+        return false;
+    }
+    field.insert_text(&horizon_client::screen_draw::Measure(&game.gui.atlas.font), &ch.to_string());
+    view.set_search(&field.value);
+    true
 }
 
 /// `VirtualRecipeBookComponent.extractRenderState`: o fundo recortado em 7, a caixa de busca, as abas, o botão de filtro e a página
 /// (`RecipeBookPage.extractRenderState`: a grade, o `Page n/m` e as setas), na origem (`xo`, `yo`) do livro.
 #[allow(clippy::too_many_arguments)]
-fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, focus_ms: i64, xo: f32, yo: f32, hover_ok: bool, mouse: (f32, f32)) {
+fn draw_book_contents(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    view: &rbv::View,
+    field: &horizon_client::screen_draw::TextField,
+    focus_ms: i64,
+    xo: f32,
+    yo: f32,
+    hover_ok: bool,
+    mouse: (f32, f32),
+) {
     let atlas = &game.gui.atlas;
     let (xi, yi) = (xo as i32, yo as i32);
     let over = |rect: rb::Rect| hover_ok && hovering([rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32], mouse);
@@ -2635,41 +2799,15 @@ fn draw_book_contents(game: &Game<'_>, batch: &mut HudBatch, view: &rbv::View, f
     );
     // A caixa de busca (`EditBox.extractWidgetRenderState`): o fundo `text_field` (`text_field_highlighted` com o foco), o texto em
     // (`x + 4`, `y + (altura - 8) / 2`), branco com sombra, e o cursor `_` no fim, que pisca a cada 300 ms desde o foco; vazia e sem foco,
-    // a dica `Search...` (cinza e itálico, `SEARCH_HINT_STYLE`). O texto que não cabe nos 73 pixels de dentro mostra o fim (o cursor fica
-    // sempre no fim nesta rodada).
-    let search = rb::search_rect(xi, yi);
-    let field = if view.focused { "gui/sprites/widget/text_field_highlighted" } else { "gui/sprites/widget/text_field" };
-    horizon_client::ui::nine_slice(batch, atlas, field, search[0] as f32, search[1] as f32, search[2] as f32, search[3] as f32, u32::MAX);
-    let text_at = [(search[0] + 4) as f32, (search[1] + (search[3] - 8) / 2) as f32];
-    let inner = (search[2] - 8) as f32;
-    let mut shown = view.search.as_str();
-    while game.native_text_width(shown) > inner {
-        let mut chars = shown.chars();
-        chars.next();
-        shown = chars.as_str();
-    }
-    let mut cursor_x = text_at[0];
-    if !shown.is_empty() {
-        game.native_text(batch, shown, text_at, WHITE, true);
-        cursor_x += game.native_text_width(shown) + 1.0;
-    }
-    if view.search.is_empty() && !view.focused {
-        let hint = horizon_client::text::Text::styled(
-            lang::get("gui.recipebook.search_hint"),
-            horizon_client::text::Style { color: Some(0xAAAAAA), italic: Some(true), ..Default::default() },
-        );
-        batch.text_styled(atlas, &hint, text_at[0], text_at[1], WHITE, true);
-    }
-    // `insert` (o cursor de 1 pixel) só vale com o cursor antes do fim ou com os 50 caracteres; senão, o `_`.
-    let full = view.search.chars().count() >= rb::SEARCH_MAX_LENGTH;
-    if view.focused && ((now_ms() - focus_ms) / 300) % 2 == 0 {
-        if full {
-            let x = cursor_x - 1.0;
-            batch.fill(atlas, x, text_at[1] - 1.0, 1.0, 10.0, WHITE);
-        } else {
-            game.native_text(batch, "_", [cursor_x, text_at[1]], WHITE, true);
-        }
-    }
+    // a dica `Search...` (cinza e itálico, `SEARCH_HINT_STYLE`). O cursor no meio do texto é a barra de 1 pixel (`insert`), a seleção o
+    // realce invertido (`textHighlight`), e o texto que não cabe nos 73 pixels de dentro rola com o cursor (`scrollTo`).
+    let mut search = field.clone();
+    search.x += xi - BOOK_ORIGIN[0];
+    search.y += yi - BOOK_ORIGIN[1];
+    search.focused = view.focused;
+    let mut draws = Vec::new();
+    search.draw(&mut draws, &horizon_client::screen_draw::Measure(&atlas.font), (now_ms() - focus_ms).max(0) as u64, None);
+    horizon_client::screen_draw::paint(batch, atlas, &draws);
     // As abas: a bússola e as categorias com receita, uma sobre a outra, a escolhida 2 para a esquerda; a que abriu com receita destacada
     // aperta na vertical em volta de (`x + 8`, `y + 12`) enquanto a animação dura (`RecipeBookTabButton.extractContents`).
     for (index, tab) in view.visible_tabs().into_iter().enumerate() {
@@ -3175,7 +3313,9 @@ pub(in crate::game) fn draw_tab(game: &Game<'_>, batch: &mut HudBatch, block: &s
 fn covered(state: &Client, at: [f32; 2]) -> bool {
     state.windows.iter().any(|open| {
         let rel = [at[0] - open.window.relative_x as f32, at[1] - open.window.relative_y as f32];
-        rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < open.window.width as f32 && rel[1] < open.window.height as f32
+        // `GuiRecipeBookWindow.isMouseOver`: a janela ou uma aba do livro, que fica fora dela (`isMouseOverTab`).
+        (rel[0] >= 0.0 && rel[1] >= 0.0 && rel[0] < open.window.width as f32 && rel[1] < open.window.height as f32)
+            || (open.kind == Kind::RecipeBook && book_tab_at(open, [f64::from(rel[0]), f64::from(rel[1])]).is_some())
     })
 }
 
@@ -3195,6 +3335,8 @@ pub(in crate::game) fn tooltip(
         return false;
     };
     let config = config_view(game, spec);
+    // O slot de receita sob o mouse, perguntado ao jogo antes de segurar o estado (a pergunta passa pelo filtro das janelas).
+    let ghost_slot_hovered = crafting_slot_hovered(game, Some(spec));
     let state = client();
     let origin = [cursor.0 - at[0], cursor.1 - at[1]];
     let mut lines: Vec<(String, Option<u32>)> = Vec::new();
@@ -3229,6 +3371,15 @@ pub(in crate::game) fn tooltip(
                 let r = inset_rect(tab, open);
                 rect = [origin[0] + (open.window.relative_x + r[0]) as f32, origin[1] + (open.window.relative_y + r[1]) as f32, r[2] as f32, r[3] as f32];
                 flat = true;
+            } else if let Some(which) = ghost_slot_hovered
+                && let Some((ghost, select)) = shown_ghost_of(spec, &state)
+                && let Some((item, count)) = (if which == 0 { ghost.1 } else { ghost.2 }).first().and_then(|entries| rbv::ghost_shown(entries, select))
+            {
+                // `GuiSlot.renderToolTip` de um slot com fantasma: o tooltip do item que o fantasma mostra agora, no mouse.
+                drop(state);
+                let item_lines = game.stack_tooltip(&ItemStack::new(item, count.max(1) as u32));
+                basis::mouse_tooltip_flat(game, batch, &item_lines, cursor);
+                return true;
             } else {
                 return false;
             }
@@ -3254,6 +3405,41 @@ pub(in crate::game) fn tooltip(
                 let key = if open.window.pinned { "gui.mekanism.unpin" } else { "gui.mekanism.pin" };
                 lines.push((lang::get(key), None));
                 rect = win(PIN);
+            } else if let Some(view) = open.book.as_ref() {
+                let [xo, yo] = BOOK_ORIGIN;
+                let inside = |r: rb::Rect| rb::contains(r, rel[0], rel[1]);
+                // `VirtualRecipeBookComponent.extractTooltip`: o botão de receita sob o mouse, sem o overlay das variantes, mostra o
+                // tooltip do item que ele mostra agora (`Screen.getTooltipFromItem`) e, com mais de uma receita, `Right Click for
+                // More` (`RecipeButton.getTooltipText`), no mouse.
+                let hovered = view.overlay.is_none().then(|| view.buttons().into_iter().enumerate().find(|(index, _)| inside(rb::button_rect(xo, yo, *index)))).flatten();
+                if let Some((_, button)) = hovered {
+                    // O estado solto antes de pedir o tooltip do item ao jogo.
+                    drop(state);
+                    let mut item_lines = game.stack_tooltip(&ItemStack::new(button.item, button.count.max(1) as u32));
+                    if button.many {
+                        item_lines.push((horizon_client::text::Text::literal(lang::get("gui.recipebook.moreRecipes")), u32::MAX));
+                    }
+                    basis::mouse_tooltip_flat(game, batch, &item_lines, cursor);
+                    return true;
+                }
+                // Os botões do vanilla dentro do livro têm `Tooltip.create`: o filtro (o nome do filtro do livro quando ligado,
+                // `Showing All` desligado) e as setas (`Next Page`, `Previous Page`). As abas não têm tooltip.
+                let widget = if inside(rb::filter_rect(xo, yo)) {
+                    let key = if view.filtering { view.data().filter_name } else { "gui.recipebook.toggleRecipes.all" };
+                    Some((key, rb::filter_rect(xo, yo)))
+                } else if view.page.forward_visible() && inside(rb::forward_rect(xo, yo)) {
+                    Some(("gui.recipebook.next_page", rb::forward_rect(xo, yo)))
+                } else if view.page.back_visible() && inside(rb::back_rect(xo, yo)) {
+                    Some(("gui.recipebook.previous_page", rb::back_rect(xo, yo)))
+                } else {
+                    None
+                };
+                let Some((key, area)) = widget else {
+                    return false;
+                };
+                lines.push((lang::get(key), None));
+                rect = win(area);
+                flat = true;
             } else {
                 return false;
             }

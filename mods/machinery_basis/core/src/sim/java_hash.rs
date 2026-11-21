@@ -111,6 +111,7 @@ pub fn hash_set_table<K: Copy>(
 pub struct JavaIntMap<V> {
     buckets: Vec<Vec<(i32, V)>>,
     size: usize,
+    treeified: bool,
 }
 
 impl<V> Default for JavaIntMap<V> {
@@ -118,6 +119,7 @@ impl<V> Default for JavaIntMap<V> {
         Self {
             buckets: Vec::new(),
             size: 0,
+            treeified: false,
         }
     }
 }
@@ -195,15 +197,16 @@ impl<V> JavaIntMap<V> {
             return Some(std::mem::replace(&mut slot.1, value));
         }
         self.buckets[index].push((key, value));
-        // `putVal`: `binCount >= TREEIFY_THRESHOLD - 1` ao ligar o nono nó.
+        // `putVal`: `binCount >= TREEIFY_THRESHOLD - 1` ao ligar o nono nó. Com a tabela menor que 64 o `treeifyBin` só a dobra. Com 64 ou
+        // mais o balde vira árvore no Java, e a ordem dela (a raiz na frente, o nó novo depois do pai) não é portada: aqui o balde segue
+        // na ordem de chegada. Este mapa vive no cliente de quem joga, então não derruba o jogo como o `hash_set_order` faz num teste;
+        // [`JavaIntMap::treeified`] diz que aconteceu.
         if self.buckets[index].len() > TREEIFY_THRESHOLD {
-            assert!(
-                self.buckets.len() < MIN_TREEIFY_CAPACITY,
-                "HashMap com um balde de {} nós numa tabela de {}: a ordem da árvore não é portada",
-                self.buckets[index].len(),
-                self.buckets.len()
-            );
-            self.double();
+            if self.buckets.len() < MIN_TREEIFY_CAPACITY {
+                self.double();
+            } else {
+                self.treeified = true;
+            }
         }
         self.size += 1;
         if self.size > self.buckets.len() * 3 / 4 {
@@ -247,7 +250,13 @@ impl<V> JavaIntMap<V> {
                 })
                 .collect(),
             size: self.size,
+            treeified: self.treeified,
         }
+    }
+
+    /// Algum balde chegou a nove nós numa tabela de 64 ou mais: no Java ele virou árvore, e a ordem deste mapa pode não ser a dele.
+    pub fn treeified(&self) -> bool {
+        self.treeified
     }
 
     /// `entrySet()` na ordem da tabela.
@@ -322,6 +331,42 @@ pub fn identity_set_order<K: Copy + PartialEq>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `HashMap` do Java com chaves `Integer`: 1, 17, 33 e 49 dividem o balde 1 de uma tabela de 16 na ordem em que chegam; tirar uma
+    /// deixa as outras como estavam, trocar o valor não muda o lugar, e a tabela dobra ao passar de 12 (33 e 49 ficam no balde 1 de 32
+    /// só se o bit 16 está apagado: 1 e 33 ficam, 17 e 49 vão para o 17).
+    #[test]
+    fn the_int_map_keeps_the_order_of_arrival_in_a_bucket() {
+        let mut map = JavaIntMap::default();
+        for key in [49, 1, 33, 17, 2] {
+            map.put(key, key * 10);
+        }
+        assert_eq!(
+            map.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            [49, 1, 33, 17, 2]
+        );
+        assert_eq!(map.put(1, 7), Some(10));
+        assert_eq!(map.remove(1), Some(7));
+        assert_eq!(
+            map.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            [49, 33, 17, 2]
+        );
+        assert_eq!(map.remove(49), Some(490));
+        assert_eq!(
+            map.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            [33, 17, 2]
+        );
+        for key in 100..110 {
+            map.put(key, 0);
+        }
+        // 13 chaves: a tabela dobrou para 32.
+        assert_eq!(map.capacity(), 32);
+        let order: Vec<i32> = map.iter().map(|(key, _)| key).collect();
+        assert!(order.iter().position(|&key| key == 33) < order.iter().position(|&key| key == 17));
+        map.clear();
+        assert_eq!((map.len(), map.capacity()), (0, 32));
+        assert!(!map.treeified());
+    }
 
     // Saídas do `RefHash.java` da verificação: o mesmo `HashSet` no JDK 21 (Temurin 21.0.12), com chaves `Vec3i` e a semente
     // dada. Os casos 2, 3 e 5 passam pelo `resize` e por baldes com mais de um nó.

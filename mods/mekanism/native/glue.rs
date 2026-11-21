@@ -3657,7 +3657,9 @@ pub(in crate::game) fn widget_tooltip(
         return true;
     }
     // `GuiEnergyTab.updateTooltip`: `Tooltip.create` de uma lista de linhas, que quebra cada uma em 170 pixels.
-    if rules::ENERGY_TAB.is_mouse_over(at, false) {
+    // Uma janela por cima (ou uma aba do livro de receitas, que fica à esquerda da tela) esconde o resto (`isMouseOverCheckWindows`).
+    let covered = game.mb_window_covers(at);
+    if rules::ENERGY_TAB.is_mouse_over(at, covered) {
         // `tile.getActive()` no cliente é o estado `lit` do bloco.
         let active = game.mb_open_screen_pos().is_some_and(|pos| game.native_block_property(pos, "lit").as_deref() == Some("true"));
         // Antes do primeiro valor do servidor o contêiner do cliente tem o consumo de base.
@@ -3672,6 +3674,9 @@ pub(in crate::game) fn widget_tooltip(
         let [x, y, w, h] = rules::ENERGY_TAB.rect;
         basis::menu_tooltip_flat(game, batch, &lines, cursor, [cursor.0 - at[0] + x, cursor.1 - at[1] + y, w, h]);
         return true;
+    }
+    if covered {
+        return false;
     }
     let (widget, lines): ([f32; 4], Vec<(String, Option<u32>)>) = if gui::contains(gui::WARNING_TAB_LEFT, at) {
         let view = machine.screen.view(&mirror);

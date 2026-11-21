@@ -63,6 +63,7 @@ fn crushing() -> &'static BookData {
     Box::leak(Box::new(BookData {
         book_type: "crushing",
         settings_type: "MEKANISM_CRUSHING",
+        filter_name: "gui.mekanism.recipe_book.toggle_recipes.crushing",
         tabs: Box::leak(tabs.into_boxed_slice()),
         rows: rows(),
         requirements: &[],

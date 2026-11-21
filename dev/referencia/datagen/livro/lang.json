@@ -1,3 +1,6 @@
 {
-  "gui.mekanism.recipe_book": "Recipe Book"
+  "gui.mekanism.recipe_book": "Recipe Book",
+  "gui.mekanism.recipe_book.toggle_recipes.crushing": "Showing Crushable",
+  "gui.mekanism.recipe_book.toggle_recipes.enriching": "Showing Enrichable",
+  "gui.mekanism.recipe_book.toggle_recipes.metallurgic_infusing": "Showing Metallurgic Infusible"
 }

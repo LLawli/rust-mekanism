@@ -437,6 +437,18 @@ impl Page {
     }
 }
 
+/// `DeltaTracker.Timer.advanceGameTime`: os ticks de um quadro de `elapsed_ms` milissegundos, que o livro soma ao `time` e tira das
+/// animações (`extractRenderState(..., a)` com `getGameTimeDeltaTicks`). O tick tem os 50 ms de sempre, ou os do nível quando ele anda
+/// normalmente e é mais lento (`Minecraft.getTickTargetMillis`: `max(50, millisecondsPerTick)`; parado ou em passos, 50).
+pub fn delta_ticks(elapsed_ms: i64, runs_normally: bool, level_mspt: f32) -> f32 {
+    let target = if runs_normally {
+        50.0_f32.max(level_mspt)
+    } else {
+        50.0
+    };
+    elapsed_ms as f32 / target
+}
+
 /// `SlotSelectTime`: `Mth.floor(time / 30.0F)`, com o `time` que cresce a cada quadro sem o Ctrl.
 pub fn slot_select_index(time: f32) -> i32 {
     (time / SLOT_SWAP_TICKS).floor() as i32
@@ -458,6 +470,18 @@ pub fn display_stack_index(select_index: i32, entries: usize) -> (usize, i32) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_frame_counts_ticks_by_the_level_tick_when_it_is_slower() {
+        // 20 por segundo: 100 ms são 2 ticks.
+        assert_eq!(super::delta_ticks(100, true, 50.0), 2.0);
+        // `/tick rate 10`: o tick tem 100 ms e o mesmo quadro vale 1.
+        assert_eq!(super::delta_ticks(100, true, 100.0), 1.0);
+        // Mais rápido que 20 não encurta o tick do cliente.
+        assert_eq!(super::delta_ticks(100, true, 25.0), 2.0);
+        // Parado (`/tick freeze`): 50 ms.
+        assert_eq!(super::delta_ticks(100, false, 100.0), 2.0);
+    }
+
     use super::*;
 
     fn entry(id: i32, category: &str, group: Option<i32>) -> Entry {

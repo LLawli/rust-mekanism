@@ -352,6 +352,10 @@ LIVRO_FORA_DA_JANELA = (192, 75)
 LIVRO_BUSCA = (60, 117)
 LIVRO_FILTRO = (120, 117)
 LIVRO_SETA = (98, 243)
+# A seta de voltar (55 à esquerda da de avançar: `backButton` em `x + 38` e `forwardButton` em `x + 93`) e a primeira aba de categoria (35 por
+# 27, 30 à esquerda do livro, 27 abaixo da bússola).
+LIVRO_SETA_VOLTA = (43, 243)
+LIVRO_ABA = (-15, 140)
 
 
 # O primeiro botão da grade do livro (25 por 25 em (11, 31) do livro) e os dois primeiros botões do overlay das variantes que o direito
@@ -414,6 +418,42 @@ def casos_livro_colocar():
     ]
 
 
+def casos_livro_dicas():
+    """A 7.ª rodada: os tooltips do livro (a receita, com `Right Click for More` quando há várias; o filtro; as setas; a aba, que não tem; o
+    slot com fantasma) e a caixa de busca com cursor e seleção (`EditBox`)."""
+    abre = f"{LIVRO_BOTAO[0]},{LIVRO_BOTAO[1]}"
+    busca = f"{LIVRO_BUSCA[0]},{LIVRO_BUSCA[1]}"
+    grade = f"{LIVRO_GRADE[0]},{LIVRO_GRADE[1]}"
+    fundo = f"{LIVRO_FUNDO[0]},{LIVRO_FUNDO[1]}"
+    filtro = f"{LIVRO_FILTRO[0]},{LIVRO_FILTRO[1]}"
+    seta = f"{LIVRO_SETA[0]},{LIVRO_SETA[1]}"
+
+    def livro(nome, passos, **args):
+        return caso(nome, "chamber", energia="0", receitas="1", capturas="6", capturas_port="6", clicar=";".join([abre, *passos]), **args)
+
+    return [
+        livro("chamber_livro_dica_receita", [busca, "t=charcoal_dust", fundo], hover=LIVRO_GRADE),
+        livro("chamber_livro_dica_varias", [busca, "t=iron_dust", fundo], hover=LIVRO_GRADE),
+        livro("chamber_livro_dica_filtro", [], hover=LIVRO_FILTRO),
+        livro("chamber_livro_dica_filtro_ligado", [filtro], hover=LIVRO_FILTRO, desfazer=filtro),
+        livro("chamber_livro_dica_seta", [], hover=LIVRO_SETA),
+        livro("chamber_livro_dica_seta_volta", [seta], hover=LIVRO_SETA_VOLTA),
+        livro("chamber_livro_dica_aba", [], hover=LIVRO_ABA),
+        livro("chamber_livro_dica_fantasma", [busca, "t=charcoal_dust", grade, fundo], hover=HOVER["electric"]["slot_entrada"]),
+        # A caixa de busca: o cursor no meio do texto (a barra de 1 pixel), a seleção (o realce invertido), a palavra apagada com o Ctrl,
+        # o texto que rola com o cursor, a seleção por arrasto e o texto trocado por cima de tudo selecionado.
+        livro("chamber_livro_busca_cursor", [busca, "t=iron_dust", "k=left", "k=left", "k=left"]),
+        livro("chamber_livro_busca_selecao", [busca, "t=iron_dust", "k=left", "k=s-left", "k=s-left", "k=s-left"]),
+        # (O `horizon-ctl key` não conhece Home, End nem Delete: os casos usam as setas, o Ctrl, o shift e o Backspace.)
+        livro("chamber_livro_busca_inicio", [busca, "t=iron_dust", "k=cs-left", "k=cs-left"]),
+        livro("chamber_livro_busca_palavra", [busca, "t=iron_and_gold", "k=c-backspace", "k=c-left"]),
+        livro("chamber_livro_busca_rolagem", [busca, "t=block_of_raw_iron_and_more", *["k=c-left"] * 6, "k=right", "k=right"]),
+        livro("chamber_livro_busca_rolagem_fim", [busca, "t=block_of_raw_iron_and_more", *["k=c-left"] * 6, *["k=c-right"] * 6, "k=s-left", "k=s-left"]),
+        livro("chamber_livro_busca_arrasto", [busca, "t=iron_dust", f"d={LIVRO_BUSCA[0] + 20},{LIVRO_BUSCA[1]},{LIVRO_BUSCA[0] - 28},{LIVRO_BUSCA[1]}"]),
+        livro("chamber_livro_busca_tudo", [busca, "t=iron_dust", "k=c-a", "t=gold", "k=left", "k=backspace"]),
+    ]
+
+
 def casos_livro():
     out = []
     for m in ("chamber", "crusher", "smelter", "infuser"):
@@ -444,6 +484,7 @@ def casos_livro():
         # A 6.ª rodada: a colocação pelo livro, o fantasma e o overlay das variantes (decisão 268). A busca deixa na grade só o botão da
         # receita (`LIVRO_GRADE`, o primeiro), para o clique não depender da fase do `SlotSelectTime`.
         *casos_livro_colocar(),
+        *casos_livro_dicas(),
     ]
     return out
 
@@ -995,13 +1036,31 @@ def tira_port(c, x, escala, destino):
     gui_a = -(-1080 // escala)
     esquerda = (gui_l - 176) // 2
     topo = (gui_a - 166) // 2
+    # O livro com o Ctrl apertado: o `SlotSelectTime` não anda (`if (!hasControlDown()) time += a`, nos dois jogos) e todo botão de várias
+    # receitas mostra o primeiro item, como nas primeiras capturas do original (os ciclos de 2, 3 e 4 itens só voltam juntos à mesma fase
+    # depois de uma volta inteira, e os comandos do port por ssh levam mais que os 30 ticks da primeira troca). Só nos casos sem teclas,
+    # porque na caixa de busca o Ctrl muda o que a tecla faz.
+    ctrl_do_livro = "_livro_" in c["nome"] and "k=" not in c["args"].get("clicar", "")
+    if ctrl_do_livro:
+        ctl("key", "ctrl", "down")
     for clique in filter(None, c["args"].get("clicar", "").split(";")):
         # Entre os cliques, como no `CenaTelas`: `t=texto` digita (o `_` vale um espaço), `k=enter` aperta o Enter, `i=slot:item:quantidade`
         # põe um item no inventário; `x,y,r` é o botão direito e `x,y,s` o esquerdo com o shift.
         if clique.startswith("t="):
             ctl("type", clique[2:].replace("_", " "))
         elif clique.startswith("k="):
-            ctl("key", clique[2:], "tap")
+            # `k=tecla` ou `k=mods-tecla` (`s` o shift, `c` o ctrl), como no `CenaTelas`.
+            mods, _, tecla = clique[2:].rpartition("-")
+            seguradas = [nome for letra, nome in (("s", "shift"), ("c", "ctrl")) if letra in mods]
+            for nome in seguradas:
+                ctl("key", nome, "down")
+            ctl("key", tecla, "tap")
+            for nome in seguradas:
+                ctl("key", nome, "up")
+        elif clique.startswith("d="):
+            # `d=x1,y1,x2,y2`: o esquerdo apertado no primeiro ponto, arrastado até o segundo e solto.
+            x1, y1, x2, y2 = (int(v) for v in clique[2:].split(","))
+            ctl("drag-at", str(esquerda + x1), str(topo + y1), str(esquerda + x2), str(topo + y2))
         elif clique.startswith("i="):
             da_item(clique[2:])
         else:
@@ -1049,6 +1108,8 @@ def tira_port(c, x, escala, destino):
         cx, cy = (int(v) for v in clique.split(","))
         ctl("click-at", str(esquerda + cx), str(topo + cy))
         ctl("wait", "3")
+    if ctrl_do_livro:
+        ctl("key", "ctrl", "up")
     ctl("close")
 
 

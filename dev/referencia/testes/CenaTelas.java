@@ -513,7 +513,38 @@ public class CenaTelas {
             token.substring(2).replace('_', ' ').codePoints().forEach(cp -> screen.charTyped(new net.minecraft.client.input.CharacterEvent(cp)));
             return;
         } else if (token.startsWith("k=")) {
-            screen.keyPressed(new net.minecraft.client.input.KeyEvent(com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 0, 0));
+            // `k=tecla` ou `k=mods-tecla`, com `s` (shift) e `c` (ctrl) em `mods`: `k=enter`, `k=left`, `k=s-home`, `k=c-backspace`, `k=cs-right`.
+            String name = token.substring(2);
+            int modifiers = 0;
+            int dash = name.indexOf('-');
+            if (dash > 0) {
+                String mods = name.substring(0, dash);
+                name = name.substring(dash + 1);
+                modifiers = (mods.contains("s") ? com.mojang.blaze3d.platform.InputConstants.MOD_SHIFT : 0)
+                            | (mods.contains("c") ? com.mojang.blaze3d.platform.InputConstants.MOD_CONTROL : 0);
+            }
+            // A tecla (`key`, o código físico) e o `keycode` (o do SDL, que `EditBox.keyPressed` lê por `shortcutKey`).
+            int[] code = switch (name) {
+                case "left" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_LEFT, 1073741904};
+                case "right" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_RIGHT, 1073741903};
+                case "home" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_HOME, 1073741898};
+                case "end" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_END, 1073741901};
+                case "backspace" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_BACKSPACE, 8};
+                case "delete" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_DELETE, 127};
+                case "a" -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_A, com.mojang.blaze3d.platform.InputConstants.KEYCODE_A};
+                default -> new int[] {com.mojang.blaze3d.platform.InputConstants.KEY_RETURN, 13};
+            };
+            screen.keyPressed(new net.minecraft.client.input.KeyEvent(code[0], code[1], modifiers));
+            return;
+        } else if (token.startsWith("d=")) {
+            // `d=x1,y1,x2,y2`: o botão esquerdo apertado no primeiro ponto, arrastado até o segundo e solto lá.
+            String[] p = token.substring(2).split(",");
+            double x1 = wrapper.getLeftPos() + Double.parseDouble(p[0]) + 0.5, y1 = wrapper.getTopPos() + Double.parseDouble(p[1]) + 0.5;
+            double x2 = wrapper.getLeftPos() + Double.parseDouble(p[2]) + 0.5, y2 = wrapper.getTopPos() + Double.parseDouble(p[3]) + 0.5;
+            var left = new net.minecraft.client.input.MouseButtonInfo(com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 0);
+            screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x1, y1, left), false);
+            screen.mouseDragged(new net.minecraft.client.input.MouseButtonEvent(x2, y2, left), x2 - x1, y2 - y1);
+            screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x2, y2, left));
             return;
         } else if (token.startsWith("i=")) {
             MinecraftServer server = minecraft.getSingleplayerServer();

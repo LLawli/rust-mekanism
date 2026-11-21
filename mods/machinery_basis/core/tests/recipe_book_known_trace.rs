@@ -130,7 +130,7 @@ fn the_collections_follow_the_table_of_everything_the_player_knows() {
             other => panic!("operação {other}"),
         }
     }
-    assert_eq!(snaps, 14);
+    assert_eq!(snaps, 22);
     assert!(listed > 3500, "só {listed} displays comparados");
     // Os cenários passam pelas tabelas de 64 a 8.192.
     assert!(capacities.contains(&8192) && capacities.contains(&4096) && capacities.contains(&2048));
@@ -154,8 +154,16 @@ fn knowing_only_the_machine_books_gives_another_order() {
     assert_eq!(all, snap("all_shuffled"));
     let mut differ = 0;
     for (category, lists) in all.as_object().unwrap() {
-        let firsts: Vec<i32> = lists.as_array().unwrap().iter().map(|list| ids(list)[0]).collect();
-        assert!(firsts.windows(2).all(|pair| pair[0] < pair[1]), "{category} fora de ordem");
+        let firsts: Vec<i32> = lists
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|list| ids(list)[0])
+            .collect();
+        assert!(
+            firsts.windows(2).all(|pair| pair[0] < pair[1]),
+            "{category} fora de ordem"
+        );
         if only[category] != *lists {
             differ += 1;
         }
@@ -185,11 +193,17 @@ fn the_login_order_is_the_identity_set_of_the_recipe_keys() {
             .as_array()
             .unwrap()
             .iter()
-            .map(|pair| (pair[0].as_u64().unwrap() as usize, pair[1].as_i64().unwrap() as i32))
+            .map(|pair| {
+                (
+                    pair[0].as_u64().unwrap() as usize,
+                    pair[1].as_i64().unwrap() as i32,
+                )
+            })
             .collect();
         let hashes: HashMap<usize, i32> = inserted.iter().copied().collect();
         // A tabela do `IdentityHashMap`, direto.
-        let order = identity_set_order(inserted.iter().map(|pair| pair.0), |recipe| hashes[&recipe]);
+        let order =
+            identity_set_order(inserted.iter().map(|pair| pair.0), |recipe| hashes[&recipe]);
         let theirs: Vec<usize> = line["iterated"]
             .as_array()
             .unwrap()
@@ -219,7 +233,10 @@ fn the_login_order_is_the_identity_set_of_the_recipe_keys() {
         let sent = ids(&lines[index + 1]["ids"]);
         assert_eq!(lines[index + 1]["op"], "add");
         assert_eq!(ours.len(), sent.len());
-        assert_eq!(ours.iter().collect::<BTreeSet<_>>(), sent.iter().collect::<BTreeSet<_>>());
+        assert_eq!(
+            ours.iter().collect::<BTreeSet<_>>(),
+            sent.iter().collect::<BTreeSet<_>>()
+        );
         // O port insere pela ordem do nome (a do que o Horizon grava), o rastro por outra: as posições ocupadas são as mesmas e só
         // muda quem fica com qual dentro de uma sondagem.
         let name_order: Vec<usize> = {
@@ -242,14 +259,19 @@ fn the_login_order_is_the_identity_set_of_the_recipe_keys() {
         assert_eq!(ours, expanded);
         scenes += 1;
     }
-    assert_eq!(scenes, 3);
+    assert_eq!(scenes, 6);
 }
 
 /// O que entra fora de um comando vai na ordem de um `HashSet` dos hashes de quem premiou; o do `/recipe give` com várias, em ordem
 /// de id.
 #[test]
 fn what_is_awarded_goes_in_hash_order_and_a_command_in_id_order() {
-    let displays = Displays(&[("m:a", 10, 1), ("m:b", 11, 2), ("m:c", 13, 1), ("m:d", 14, 1)]);
+    let displays = Displays(&[
+        ("m:a", 10, 1),
+        ("m:b", 11, 2),
+        ("m:c", 13, 1),
+        ("m:d", 14, 1),
+    ]);
     let hash = |name: &str| match name {
         "m:a" => 3,
         "m:b" => 18,

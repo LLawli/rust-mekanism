@@ -256,11 +256,48 @@ public class RecipeBookKnownTraceTest {
         scene = new Scene("replace", displays, categories, out);
         scene.add(all);
         scene.clear();
-        scene.add(shuffled(all, new Lcg(66)).subList(0, 400));
+        List<Integer> after = new ArrayList<>(shuffled(bookIds, new Lcg(66)).subList(0, 300));
+        after.addAll(shuffled(otherIds, new Lcg(67)).subList(0, 100));
+        scene.add(shuffled(after, new Lcg(68)));
+        scene.snap();
+
+        // As do livro numa tabela de 1.024 (até cinco por balde), e 250 delas saem: quem fica mantém a ordem do balde.
+        scene = new Scene("book_remove", displays, categories, out);
+        scene.add(shuffled(bookIds, new Lcg(71)));
+        scene.remove(shuffled(bookIds, new Lcg(72)).subList(0, 250));
+        scene.snap();
+
+        // Quatro displays da mesma aba no mesmo balde de uma tabela de 16 (o mesmo `id % 16`), na ordem em que chegam; o primeiro sai e os
+        // outros ficam na ordem em que estavam.
+        scene = new Scene("bucket_order", displays, categories, out);
+        java.util.Map<String, List<Integer>> sameBucket = new java.util.HashMap<>();
+        List<Integer> bucket = null;
+        for (int id : shuffled(bookIds, new Lcg(81))) {
+            List<Integer> list = sameBucket.computeIfAbsent(BuiltInRegistries.RECIPE_BOOK_CATEGORY.getKey(displays.get(id).category()) + "/" + (id % 16), key -> new ArrayList<>());
+            list.add(id);
+            if (list.size() == 4) {
+                bucket = list;
+                break;
+            }
+        }
+        scene.add(bucket);
+        scene.snap();
+        scene.remove(List.of(bucket.get(0)));
+        scene.snap();
+
+        // Exatamente 768 (0,75 de 1.024): a tabela ainda não dobra; com mais uma, dobra.
+        scene = new Scene("threshold_768", displays, categories, out);
+        List<Integer> exact = new ArrayList<>(bookIds);
+        List<Integer> extra = shuffled(otherIds, new Lcg(73));
+        exact.addAll(extra.subList(0, 768 - bookIds.size()));
+        scene.add(shuffled(exact, new Lcg(74)));
+        scene.snap();
+        scene.add(extra.subList(768 - bookIds.size(), 768 - bookIds.size() + 1));
         scene.snap();
 
         // A entrada no mundo: `ServerRecipeBook.sendInitialRecipeBook` percorre o `IdentityHashSet` das chaves.
-        for (int size : new int[] {40, 700, 2600}) {
+        // 21 e 22 chaves ficam dos dois lados do primeiro `resize` do `IdentityHashMap` (64 posições: dobra ao pôr a 22.ª), 42 e 43 do segundo.
+        for (int size : new int[] {21, 22, 42, 43, 700, 2600}) {
             scene = new Scene("login_" + size, displays, categories, out);
             List<Integer> picks = shuffled(range(holders.size()), new Lcg(77 + size)).subList(0, size);
             Set<ResourceKey<Recipe<?>>> known = Sets.newIdentityHashSet();
