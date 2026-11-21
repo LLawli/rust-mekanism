@@ -3240,6 +3240,13 @@ fn security_table<R>(game: &Game<'_>, act: impl FnOnce(&mut sf::SecurityLookup) 
 /// O `SavedData` sujo vai para o disco junto do resto do mundo (`SavedDataStorage.scheduleSave`): `{data: <tabela>, DataVersion}`. Uma tabela que nada sujou não é
 /// gravada, e é só o que o original suja que a suja (ver `machinery_basis_core::frequency`).
 pub(in crate::game) fn security_table_save(game: &Game<'_>) {
+    // O `SavedData` das frequências é do servidor (`FrequencyControllerManager`: `server.getDataStorage()`) e vai ao disco quando o servidor salva (o autosave, a
+    // pausa, o fechamento). O `save_level` do Horizon também roda quando um nível sem ninguém é fechado segundos depois de o mundo abrir (`levels.rs`, o nível
+    // estacionado que sai): gravar ali limpava o `dirty` cedo, e o que a mesa mudasse depois (que não suja a tabela, como no original) se perdia. Só o salvamento
+    // do nível principal conta.
+    if game.native_dimension() != "minecraft:overworld" {
+        return;
+    }
     let Some(file) = security_table_file(game) else {
         return;
     };
