@@ -218,6 +218,11 @@ de energia só marcam para salvar, a saída despausa).
 | `chemical::ChemicalAttributeValidator` | `ChemicalAttributeValidator` (`DEFAULT`, `ALWAYS_ALLOW`, `create`, `createStrict` e o `process` sobrescrito) |
 | `chemical::fill_tank_or_convert`, `fill_tank_from_slot` | `ChemicalInventorySlot.fillTankOrConvert` e `fillTankFromSlot` |
 | `energy_conversion::EnergyConversion`, `energy_cube::ItemEnergy`, `SlotEnergy` | `ItemStackToEnergyRecipe` (o índice `SingleItem` do tipo `energy_conversion`) e `EnergyInventorySlot` inteiro: `canFill`, `canDrain`, `canFillOrConvert`, `fillContainerFromSlot`, `fillContainerOrConvert` e `drainContainerIntoSlot`, contra o handler de energia do item (`ItemEnergySpec`) e qualquer contêiner de energia (`SlotEnergy`) |
+| `fluid_tank::FluidTankTile`, `FluidTankTank`, `BelowHandler` | `TileEntityFluidTank`, `FluidTankFluidTank`, `ValveJournal` e `BelowContainerCache`: o tanque com limite de taxa interno, o criativo, o que transborda para cima, a válvula, o empurrão para baixo, a escala, o comparador e o item. Só a lib (2026-11-21); a cola no jogo falta. |
+| `chemical_tank::ChemicalTankTile`, `ChemicalTankTank`, `GasMode`, `dump`, `emit_chemical` | `TileEntityChemicalTank`, `ChemicalTankChemicalTank`, `ChemicalUtils.dump` e o ejetor de químico (`ResourceUtils.emit`). Só a lib (2026-11-21). |
+| `handler_slot::HandlerSlot`, `ResourceContainer`, `ContainerEditMode`, `can_input`, `can_fill`, `can_drain` | `ResourceHandlerSlot` (`handleContainer`, `tryFillOrMove`, `LastTransferDirection`) e `InOutSlotResourceItemAccess`: o slot de fluido ou de químico que troca com o item. |
+| `item_access::ItemAccess`, `SlotAccess`, `OneByOne`, `StackAccess`, `AccessResourceHandler`, `PerItemRules` | `ItemAccess` do NeoForge e os acessos do Mekanism, e o `ItemAccessResourceHandler` de um contêiner (o balde). |
+| `rate_limit::RateLimit` | `RateLimitIntegerJournal` com `createInternalOnlyRateLimit`; `ResourceTank::create_rate_limited` o usa. |
 | `resource_tank::fill_container_from_slot` | `ResourceHandlerSlot.fillContainerFromSlot`, sobre a capability de recurso do item |
 | `recipe_handlers` | `InputResourceHandler`, `IOutputHandler` e o `OutputHelper` de slot, de tanque de químico e de tanque de fluido |
 | `two_input_recipe` | `TwoInputCachedRecipe` e `CachedRecipeHelper.twoInputCalculateOperationsThisTick` |
