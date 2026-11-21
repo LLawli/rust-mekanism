@@ -461,6 +461,11 @@ fn replay(name: &str) {
                 .valve_fluid()
                 .map_or(String::new(), |resource| resource.id.to_string());
             assert_eq!(valve, recorded["valve"].as_str().unwrap(), "{at}: válvula");
+            assert_eq!(
+                i64::from(tile.light_update_delay()),
+                recorded["light"].as_i64().unwrap(),
+                "{at}: atraso da luz"
+            );
             for (key, slot) in [
                 ("in", tile.input_slot().slot()),
                 ("out", tile.output_slot()),
@@ -537,4 +542,14 @@ fn the_tank_broken_and_placed_back_keeps_what_the_item_carries() {
 #[test]
 fn a_tank_item_in_the_slot_follows_the_original() {
     replay("slots_tank_item");
+}
+
+#[test]
+fn changing_the_edit_mode_clears_the_direction_of_the_slot_like_the_original() {
+    replay("mode_reset");
+}
+
+#[test]
+fn the_light_delay_follows_the_original() {
+    replay("light");
 }

@@ -107,13 +107,21 @@ impl AttachedCodec<ChemicalResource> for TankItems {
     }
 }
 
-/// `item`, ou `ctank:<tier>:<químico>:<mB>:<quantidade>` (o item do Chemical Tank).
+/// `item`, `ctank:<tier>:<químico>:<mB>:<quantidade>` (o item do Chemical Tank) ou `ctankfull`.
 fn stack_of(spec: &str) -> (ItemResource, u32) {
     let part: Vec<&str> = spec.split(':').collect();
-    if part[0] != "ctank" {
+    if part[0] != "ctank" && part[0] != "ctankfull" {
         return (ItemResource::new(&format!("minecraft:{}", part[0]), 64), 1);
     }
     let empty = ItemResource::new(&format!("mekanism:{}_chemical_tank", part[1]), 64);
+    if part[0] == "ctankfull" {
+        // `ctankfull:<tier>:<químico>:<quantidade>`: cheio como a aba criativa o faz, direto no contêiner.
+        let full = StackContents::new(Some(chemical(part[2])), tier_of(&empty.id).unwrap().0);
+        return (
+            TankItems.with_contents(&empty, &full).unwrap(),
+            part[3].parse().unwrap(),
+        );
+    }
     let amount: u64 = part[3].parse().unwrap();
     let held = TankItems
         .with_contents(&empty, &StackContents::new(Some(chemical(part[2])), amount))
@@ -547,4 +555,9 @@ fn the_tank_items_in_the_two_slots_follow_the_original() {
 #[test]
 fn the_creative_tank_follows_the_original() {
     replay("creative");
+}
+
+#[test]
+fn the_ejector_with_two_receivers_and_a_creative_item_follow_the_original() {
+    replay("eject_two");
 }

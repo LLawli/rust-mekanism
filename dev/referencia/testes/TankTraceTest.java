@@ -17,6 +17,16 @@ import mekanism.api.chemical.ChemicalResource;
 import mekanism.api.inventory.IInventorySlot;
 import mekanism.api.resource.LargeResourceStack;
 import mekanism.common.capabilities.Capabilities;
+import mekanism.common.component.containers.type.ContainerType;
+import mekanism.common.registries.MekanismDataComponents;
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.GameType;
 import mekanism.common.lib.transmitter.TransmissionType;
 import mekanism.common.registries.MekanismBlocks;
 import mekanism.api.MekanismRegistries;
@@ -178,6 +188,19 @@ public class TankTraceTest {
                 stack.setCount(Integer.parseInt(part[4]));
                 return stack;
             }
+            case "ftankfull" -> {
+                // `ftankfull:<tier>:<fluido>:<quantidade>`: o item cheio como a aba criativa o faz (`getFilledVariant`, direto no contêiner).
+                Holder<Item> holder = BuiltInRegistries.ITEM.wrapAsHolder(fluidTankBlock(part[1]).asItem());
+                ItemStack stack = ContainerType.FLUID.getFilledVariant(holder, FluidResource.of(fluidOf(part[2])), null);
+                stack.setCount(Integer.parseInt(part[3]));
+                return stack;
+            }
+            case "ctankfull" -> {
+                Holder<Item> holder = BuiltInRegistries.ITEM.wrapAsHolder(chemicalTankBlock(part[1]).asItem());
+                ItemStack stack = ContainerType.CHEMICAL.getFilledVariant(holder, chemicalOf(part[2]), null);
+                stack.setCount(Integer.parseInt(part[3]));
+                return stack;
+            }
             default -> {
                 Item item = switch (part[0]) {
                     case "water_bucket" -> Items.WATER_BUCKET;
@@ -192,6 +215,17 @@ public class TankTraceTest {
         }
     }
 
+    /// `lightUpdateDelay`, que é privado.
+    private static int lightDelay(TileEntityFluidTank tile) {
+        try {
+            java.lang.reflect.Field field = TileEntityFluidTank.class.getDeclaredField("lightUpdateDelay");
+            field.setAccessible(true);
+            return field.getInt(tile);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private static void setSlot(IInventorySlot slot, ItemStack stack) {
         if (stack.isEmpty()) {
             slot.setContents(LargeResourceStack.ITEM_HELPER.empty(), null);
@@ -202,7 +236,10 @@ public class TankTraceTest {
 
     /// `[item, quantidade, fluido do item, mB, químico do item, mB]`: o conteúdo é o do primeiro contêiner da capability do item, lido numa cópia de um só.
     private static JsonArray slotJson(IInventorySlot slot) {
-        ItemStack stack = slot.asItemStack();
+        return stackJson(slot.asItemStack());
+    }
+
+    private static JsonArray stackJson(ItemStack stack) {
         JsonArray array = new JsonArray();
         array.add(stack.isEmpty() ? "" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
         array.add(stack.getCount());
@@ -323,6 +360,163 @@ public class TankTraceTest {
         scene.run(test);
     }
 
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tank")
+    @TestHolder(description = "The edit mode change clears the last transfer direction of the input slot.")
+    public static void fluidModeReset(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene("fluid", "mode_reset", "One basic fluid tank in mode FILL from 0 (nextMode). 500 of water and an empty basic tank item in the input slot at 1 (the 500 go into the "
+              + "item, the direction is DRAIN_INTO_ITEM and the item stays). previousMode at 10 (BOTH): with the direction cleared the tank tries to drain, cannot, and the item is emptied "
+              + "back into the tank and then moved to the output slot; with DRAIN_INTO_ITEM kept the item would stay with its 500.");
+        scene.fluidTanks("basic");
+        scene.at(0, "mode 0 next").at(1, "fluid 0 water 500").at(1, "in 0 ftank:basic:water:0:1").at(10, "mode 0 previous");
+        scene.run(test);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tank")
+    @TestHolder(description = "The light update delay of a fluid tank that fills and empties.")
+    public static void fluidLight(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene("fluid", "light", "One basic fluid tank. 5000 of lava at 5 (the delay goes to 1), emptied at 20 (the delay goes to blockDeactivationDelay, 60), 100 of lava at 30 and "
+              + "emptied at 40 (the delay is running: it is not set again), 8000 of water at 90.");
+        scene.fluidTanks("basic");
+        scene.at(5, "fluid 0 lava 5000").at(20, "fluid 0 none 0").at(30, "fluid 0 lava 100").at(40, "fluid 0 none 0").at(90, "fluid 0 water 8000");
+        scene.run(test);
+    }
+
+    /// O item do Fluid Tank usado no mundo (`ItemBlockFluidTank.use`) e o tooltip dos itens dos dois tanques. Tudo num tick só: cada passo monta o bloco alvo em `(2,1,2)`, sobre a
+    /// pedra de `(2,0,2)`, põe a pilha na mão de um jogador de teste que olha para baixo, de `(2.5, 3.2, 2.5)`, e chama `use`.
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tank")
+    @TestHolder(description = "The fluid tank item used in the world in bucket mode, and the tooltips of the tank items.")
+    public static void fluidItemUse(final DynamicTest test) {
+        template(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence().thenExecute(() -> {
+            List<String> lines = new ArrayList<>();
+            RegistryOps<JsonElement> json = RegistryOps.create(JsonOps.INSTANCE, helper.getLevel().registryAccess());
+            JsonObject meta = new JsonObject();
+            meta.addProperty("commit", COMMIT);
+            meta.addProperty("date", DATE);
+            meta.addProperty("file", "tank_fluid_item_use.jsonl");
+            meta.addProperty("scenario", "ItemBlockFluidTank.use, one step per line, all in one tick. step: name; block: what is at the target before (air, water, lava: a source); stack: the spec of the "
+                  + "stack in the main hand; mode: mekanism:bucket_mode; sneak; creative: the game mode of the player. first: the result of a first use, which in bucket mode only claims the item (tryClaimItem); result: the one of the second use, success, fail or pass; hand and inventory (the other "
+                  + "non-empty slots, [slot, ...]) as [item, count, fluid of the item, mB, chemical, mB]; after: the block and the fluid state at the target. Then one line per tooltip: "
+                  + "{tooltip: spec, mode, lines: the components of getTooltipLines(NORMAL) as ComponentSerialization.CODEC writes them}.");
+            JsonObject root = new JsonObject();
+            root.add("meta", meta);
+            lines.add(root.toString());
+            // nome, bloco, pilha, modo balde, agachado, jogador criativo
+            String[][] steps = {
+                  {"mode_off_water", "water", "ftank:basic:water:0:1", "false", "false", "false"},
+                  {"pickup_water", "water", "ftank:basic:water:0:1", "true", "false", "false"},
+                  {"pickup_lava_into_water", "lava", "ftank:basic:water:5000:1", "true", "false", "false"},
+                  {"pickup_nearly_full", "water", "ftank:basic:water:31500:1", "true", "false", "false"},
+                  {"pickup_full", "water", "ftank:basic:water:32000:1", "true", "false", "false"},
+                  {"pickup_air", "air", "ftank:basic:water:0:1", "true", "false", "false"},
+                  {"pickup_stack_of_2", "water", "ftank:basic:water:0:2", "true", "false", "false"},
+                  {"pickup_creative_item", "water", "ftank:creative:water:0:1", "true", "false", "false"},
+                  {"pickup_creative_player", "water", "ftank:basic:water:0:1", "true", "false", "true"},
+                  {"place_water", "air", "ftank:basic:water:5000:1", "true", "true", "false"},
+                  {"place_lava", "air", "ftank:advanced:lava:2000:1", "true", "true", "false"},
+                  {"place_empty", "air", "ftank:basic:water:0:1", "true", "true", "false"},
+                  {"place_partial", "air", "ftank:basic:water:500:1", "true", "true", "false"},
+                  {"place_into_water", "water", "ftank:basic:water:5000:1", "true", "true", "false"},
+                  {"place_water_into_lava", "lava", "ftank:basic:water:5000:1", "true", "true", "false"},
+                  {"place_stack_of_2", "air", "ftank:basic:water:3000:2", "true", "true", "false"},
+                  {"place_creative_item", "air", "ftankfull:creative:water:1", "true", "true", "false"},
+                  {"place_creative_player", "air", "ftank:basic:water:5000:1", "true", "true", "true"},
+                  {"place_mode_off", "air", "ftank:basic:water:5000:1", "false", "true", "false"},
+            };
+            BlockPos target = new BlockPos(2, 1, 2);
+            BlockPos absolute = helper.absolutePos(target);
+            ServerLevel level = helper.getLevel();
+            Player survival = helper.makeTickingMockServerPlayerInLevel(GameType.SURVIVAL);
+            Player creative = helper.makeTickingMockServerPlayerInLevel(GameType.CREATIVE);
+            for (String[] step : steps) {
+                Player player = Boolean.parseBoolean(step[5]) ? creative : survival;
+                player.getInventory().clearContent();
+                player.snapTo(absolute.getX() + 0.5, absolute.getY() + 2.2 - player.getEyeHeight(), absolute.getZ() + 0.5, 0, 90);
+                player.setShiftKeyDown(Boolean.parseBoolean(step[4]));
+                helper.setBlock(target, switch (step[1]) {
+                    case "water" -> Blocks.WATER.defaultBlockState();
+                    case "lava" -> Blocks.LAVA.defaultBlockState();
+                    default -> Blocks.AIR.defaultBlockState();
+                });
+                ItemStack stack = stackOf(step[2]);
+                stack.set(MekanismDataComponents.BUCKET_MODE, Boolean.parseBoolean(step[3]));
+                player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+                // O primeiro uso no modo balde só toma posse do item (`tryClaimItem`); o segundo é o que age.
+                InteractionResult first = stack.use(level, player, InteractionHand.MAIN_HAND);
+                InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND).use(level, player, InteractionHand.MAIN_HAND);
+                JsonObject line = new JsonObject();
+                line.addProperty("first", first instanceof InteractionResult.Success ? "success" : first instanceof InteractionResult.Fail ? "fail"
+                                                                                                 : first instanceof InteractionResult.Pass ? "pass" : first.toString());
+                line.addProperty("step", step[0]);
+                line.addProperty("block", step[1]);
+                line.addProperty("stack", step[2]);
+                line.addProperty("mode", Boolean.parseBoolean(step[3]));
+                line.addProperty("sneak", Boolean.parseBoolean(step[4]));
+                line.addProperty("creative", Boolean.parseBoolean(step[5]));
+                line.addProperty("result", result instanceof InteractionResult.Success ? "success" : result instanceof InteractionResult.Fail ? "fail"
+                                                                                                    : result instanceof InteractionResult.Pass ? "pass" : result.toString());
+                if (result instanceof InteractionResult.Success success && success.heldItemTransformedTo() != null) {
+                    line.add("transformed", stackJson(success.heldItemTransformedTo()));
+                }
+                int selected = player.getInventory().getSelectedSlot();
+                line.add("hand", stackJson(player.getInventory().getItem(selected)));
+                JsonArray inventory = new JsonArray();
+                for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+                    ItemStack other = player.getInventory().getItem(slot);
+                    if (slot != selected && !other.isEmpty()) {
+                        JsonArray entry = stackJson(other);
+                        JsonArray withSlot = new JsonArray();
+                        withSlot.add(slot);
+                        withSlot.addAll(entry);
+                        inventory.add(withSlot);
+                    }
+                }
+                line.add("inventory", inventory);
+                BlockState after = level.getBlockState(absolute);
+                JsonArray afterJson = new JsonArray();
+                afterJson.add(BuiltInRegistries.BLOCK.getKey(after.getBlock()).toString());
+                afterJson.add(after.getFluidState().isEmpty() ? "" : BuiltInRegistries.FLUID.getKey(after.getFluidState().getType()).toString());
+                afterJson.add(after.getFluidState().isSource());
+                line.add("after", afterJson);
+                lines.add(line.toString());
+            }
+            helper.setBlock(target, Blocks.AIR.defaultBlockState());
+            survival.setShiftKeyDown(false);
+            // especificação da pilha, modo balde
+            String[][] tips = {
+                  {"ftank:basic:water:0:1", "false"}, {"ftank:basic:water:5000:1", "false"}, {"ftank:basic:water:5000:1", "true"}, {"ftank:ultimate:lava:256000:1", "false"},
+                  {"ftank:creative:water:0:1", "false"}, {"ftankfull:creative:water:1", "false"},
+                  {"ctank:basic:hydrogen:0:1", ""}, {"ctank:basic:hydrogen:5000:1", ""}, {"ctank:ultimate:oxygen:8192000:1", ""}, {"ctank:creative:hydrogen:0:1", ""},
+                  {"ctankfull:creative:hydrogen:1", ""},
+            };
+            Item.TooltipContext context = Item.TooltipContext.of(level.registryAccess());
+            for (String[] tip : tips) {
+                ItemStack stack = stackOf(tip[0]);
+                if (!tip[1].isEmpty()) {
+                    stack.set(MekanismDataComponents.BUCKET_MODE, Boolean.parseBoolean(tip[1]));
+                }
+                JsonObject line = new JsonObject();
+                line.addProperty("tooltip", tip[0]);
+                line.addProperty("mode", tip[1]);
+                JsonArray out = new JsonArray();
+                for (Component text : stack.getTooltipLines(context, survival, TooltipFlag.Default.NORMAL)) {
+                    out.add(ComponentSerialization.CODEC.encodeStart(json, text).getOrThrow());
+                }
+                line.add("lines", out);
+                lines.add(line.toString());
+            }
+            try {
+                Path file = Path.of("trace", "tank_fluid_item_use.jsonl");
+                Files.createDirectories(file.getParent());
+                Files.write(file, lines);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }).thenSucceed());
+    }
+
     // ------------------------------------------------------------------------------------------------------------------------------------------------
     // Cenários de químico
     // ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -357,6 +551,22 @@ public class TankTraceTest {
               + "DUMPING_EXCESS again at 80; set to 1 unit over 90 % of the capacity at 90.");
         scene.chemicalTank(tier);
         scene.at(0, "eject false").at(0, "chem hydrogen -1").at(10, "dump").at(40, "dump").at(70, "dump").at(75, "chem hydrogen -1").at(80, "dump").at(90, "chem hydrogen -90");
+        scene.run(test);
+    }
+
+    @GameTest(setupTicks = SharedConstants.TICKS_PER_SECOND, timeoutTicks = TIMEOUT, batch = "trace_tank")
+    @TestHolder(description = "The ejector of a chemical tank with two real receivers, and the dumping mode that stops it with room in the receivers.")
+    public static void chemicalEjectTwo(final DynamicTest test) {
+        template(test);
+        Scene scene = new Scene("chemical", "eject_two", "An advanced chemical tank (256000 mB, 16000 per tick) facing north with the item default (front OUTPUT, ejecting on), 200000 of hydrogen. "
+              + "Receivers: a basic chemical tank north (the front) and one east (the LEFT side of a tank facing north). The left side goes OUTPUT at 10, ejecting off at 20 with the two "
+              + "receivers emptied, on at 30 (the split between two), DUMPING_EXCESS at 40 and DUMPING at 50, both with the receivers emptied and the tank back to 200000 (in DUMPING the "
+              + "ejector stops with room in the receivers), IDLE at 60. A creative tank item full of hydrogen in the fill slot at 80, with the tank and the receivers emptied and ejecting off.");
+        scene.chemicalTank("advanced").receiver(Direction.NORTH, "basic").receiver(Direction.EAST, "basic");
+        scene.at(0, "chem hydrogen 200000").at(10, "side left output").at(20, "eject false").at(20, "recv north none 0").at(20, "recv east none 0").at(30, "eject true")
+              .at(40, "recv north none 0").at(40, "recv east none 0").at(40, "chem hydrogen 200000").at(40, "dump")
+              .at(50, "recv north none 0").at(50, "recv east none 0").at(50, "chem hydrogen 200000").at(50, "dump").at(60, "dump")
+              .at(80, "eject false").at(80, "recv north none 0").at(80, "recv east none 0").at(80, "chem none 0").at(80, "fillslot ctankfull:creative:hydrogen:1");
         scene.run(test);
     }
 
@@ -647,7 +857,7 @@ public class TankTraceTest {
                     tanks.add(tank);
                 }
                 meta.addProperty("fields", "t; marks (the actions of the tick, run in ServerTickEvent.Pre); results (what each push and pull moved, in mark order; -1 with no capability on that side); "
-                      + "tanks, bottom first: fluid, amount, scale (prevScale), comparator (getCurrentRedstoneLevel), active, mode (ContainerEditMode), valve (getValveFluid), "
+                      + "tanks, bottom first: fluid, amount, scale (prevScale), comparator (getCurrentRedstoneLevel), active, mode (ContainerEditMode), valve (getValveFluid), light (lightUpdateDelay), "
                       + "in and out as [item, count, fluid of the item, mB, chemical of the item, mB] (null when the tile is gone); drops: {t, nbt (saveWithFullMetadata), stacks (ItemStack.CODEC)} of each break.");
             } else {
                 placeChemical(new ItemStack(chemicalTankBlock(chemicalTier).asItem()));
@@ -740,6 +950,7 @@ public class TankTraceTest {
                     out.addProperty("comparator", tile.getCurrentRedstoneLevel());
                     out.addProperty("active", tile.getActive());
                     out.addProperty("mode", tile.getContainerEditMode().getSerializedName());
+                    out.addProperty("light", lightDelay(tile));
                     out.addProperty("valve", tile.getValveFluid().isEmpty() ? "" : tile.getValveFluid().typeHolder().getRegisteredName());
                     out.add("in", slotJson(tile.getInventorySlots().get(0)));
                     out.add("out", slotJson(tile.getInventorySlots().get(1)));
