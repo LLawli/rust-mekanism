@@ -5350,7 +5350,7 @@ pub(in crate::game) fn content_hold_lines(game: &Game<'_>, details: bool, descri
 
 /// A descrição do item (`DESCRIPTION`) cortada como o NeoForge corta o tooltip de um item (`ClientHooks.gatherTooltipComponentsFromElements`): o Horizon desenha as linhas como o
 /// mod as entrega, e a descrição é a linha mais larga, então o corte (`tooltip::item_wrap_width`, pelo cursor e pela largura da tela) vale para ela. O cursor de `Game` já está em pixels de GUI.
-fn description_lines(game: &Game<'_>, key: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
+pub(in crate::game) fn description_lines(game: &Game<'_>, key: &str) -> Vec<(horizon_client::mod_api::Text, u32)> {
     use horizon_client::mod_api::Text;
     let whole = vec![(Text::translate(key, &[]), u32::MAX)];
     let Some(renderer) = game.renderer.as_ref() else { return whole };

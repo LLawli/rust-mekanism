@@ -3219,7 +3219,7 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     if fluid_tank || chemical_tank {
         let tank = if fluid_tank { crate::game::mekanism_tank::tooltip_lines(game, stack) } else { crate::game::mekanism_chemical_tank::tooltip_lines(game, stack) };
         lines.extend(tank.iter().map(|chat| (crate::game::mekanism_configurator::text(chat), u32::MAX)));
-        lines.push((horizon_client::mod_api::Text::translate(&rules::description_key(&stack.item), &[]), u32::MAX));
+        lines.extend(basis::description_lines(game, &rules::description_key(&stack.item)));
     }
     if has_details {
         lines.extend(basis::content_hold_lines(game, details, &rules::description_key(&stack.item)));
