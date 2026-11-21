@@ -1557,6 +1557,217 @@ pub(in crate::game) fn remove_from_cell(cell: &mut Option<ItemStack>, amount: u3
     }
 }
 
+/// `EquipmentSlot.getName()`, como o catálogo de itens do jogo o escreve em `equip_slot`.
+fn equipment_name(slot: machinery_basis_core::armor_slots::EquipmentSlot) -> &'static str {
+    use machinery_basis_core::armor_slots::EquipmentSlot;
+    match slot {
+        EquipmentSlot::Feet => "feet",
+        EquipmentSlot::Legs => "legs",
+        EquipmentSlot::Chest => "chest",
+        EquipmentSlot::Head => "head",
+    }
+}
+
+/// `ItemStack.canEquip(slot, player)`: o item se veste nesse slot e o jogador está entre os que o `equippable` dele permite. É a conta
+/// que o motor de menus do Horizon faz para o `ArmorSlot` (`Menu::may_place`).
+pub(in crate::game) fn can_equip(game: &Game<'_>, stack: &ItemStack, slot: machinery_basis_core::armor_slots::EquipmentSlot) -> bool {
+    game.items().get(&stack.item).is_some_and(|info| {
+        info.equip_slot.as_deref() == Some(equipment_name(slot))
+            && info.equip_allowed.as_ref().is_none_or(|allowed| allowed.contains("minecraft:player"))
+    })
+}
+
+/// O menu de um bloco com a barra de armadura visto pelo `quickMoveStack` do Mekanism (`machinery_basis_core::quick_move`): os slots do bloco
+/// (`entity.items`), o inventário do jogador (`items.len() + índice`, a barra de atalhos de 0 a 8 e o principal de 9 a 35) e a barra de armadura
+/// depois dos 36. Para o bloco sem slot virtual de janela: `order` é a ordem do Java dos slots do bloco (`inventoryContainerSlots`) e `accepts`
+/// o `isValidForInsertion(.., MANUAL)` de cada um.
+struct BarMenu<'a, 'g> {
+    game: &'a Game<'g>,
+    entity: &'a mut ModBlockEntity,
+    inventory: &'a mut [Option<ItemStack>],
+    armor: &'a mut [Option<ItemStack>],
+    offhand: &'a mut Option<ItemStack>,
+    bar: Vec<machinery_basis_core::armor_slots::PlacedSlot>,
+    order: &'a [usize],
+    accepts: &'a dyn Fn(usize, &ItemStack) -> bool,
+}
+
+impl BarMenu<'_, '_> {
+    fn first_player(&self) -> usize {
+        self.entity.items.len()
+    }
+
+    /// O slot da barra (`0` a `bar.len() - 1`) que um índice do menu é.
+    fn bar_index(&self, slot: usize) -> Option<usize> {
+        let k = slot.checked_sub(self.first_player() + machinery_basis_core::armor_bar::PLAYER_SLOTS)?;
+        (k < self.bar.len()).then_some(k)
+    }
+
+    fn cell(&mut self, slot: usize) -> &mut Option<ItemStack> {
+        let first = self.first_player();
+        if slot < first {
+            &mut self.entity.items[slot]
+        } else if let Some(k) = self.bar_index(slot) {
+            if k < self.armor.len() { &mut self.armor[k] } else { &mut *self.offhand }
+        } else {
+            &mut self.inventory[slot - first]
+        }
+    }
+
+    /// `TransactionalSlot.insert` do `ArmorSlot` e do `OffhandSlot` da barra: a regra é de `armor_slots::insert`, o jogo só diz o que sabe
+    /// do item (em que slot se veste, o tamanho da pilha).
+    fn insert_into_bar(&mut self, k: usize, item: &ItemStack, amount: u32) -> u32 {
+        let kind = self.bar[k].kind;
+        let item_max = stack_limit(self.game, item);
+        let game = self.game;
+        let cell = if k < self.armor.len() { &mut self.armor[k] } else { &mut *self.offhand };
+        let held = cell.as_ref().map_or(0, |held| held.count);
+        let same = cell.as_ref().is_some_and(|held| held.same_item_same_components(item));
+        let moved = machinery_basis_core::armor_slots::insert(kind, held, same, amount, item_max, |slot| can_equip(game, item, slot));
+        if moved == 0 {
+            return 0;
+        }
+        match cell {
+            Some(held) => held.count += moved,
+            empty => {
+                let mut placed = item.clone();
+                placed.count = moved;
+                *empty = Some(placed);
+            }
+        }
+        moved
+    }
+}
+
+impl machinery_basis_core::quick_move::QuickMenu for BarMenu<'_, '_> {
+    type Item = ItemStack;
+
+    fn slots_of(&self, region: machinery_basis_core::quick_move::Region) -> Vec<usize> {
+        use machinery_basis_core::armor_slots::SlotKind;
+        use machinery_basis_core::quick_move::Region;
+        let first = self.first_player();
+        let bar = |wanted: fn(SlotKind) -> bool| -> Vec<usize> {
+            let base = first + machinery_basis_core::armor_bar::PLAYER_SLOTS;
+            self.bar.iter().enumerate().filter(|(_, slot)| wanted(slot.kind)).map(|(k, _)| base + k).collect()
+        };
+        match region {
+            Region::Container => self.order.to_vec(),
+            Region::Hotbar => (first..first + 9).collect(),
+            Region::Main => (first + 9..first + 36).collect(),
+            Region::Armor => bar(|kind| matches!(kind, SlotKind::Armor(_))),
+            Region::Offhand => bar(|kind| kind == SlotKind::Offhand),
+        }
+    }
+
+    fn region(&self, slot: usize) -> machinery_basis_core::quick_move::Region {
+        use machinery_basis_core::armor_slots::SlotKind;
+        use machinery_basis_core::quick_move::Region;
+        let first = self.first_player();
+        if slot < first {
+            Region::Container
+        } else if let Some(k) = self.bar_index(slot) {
+            match self.bar[k].kind {
+                SlotKind::Armor(_) => Region::Armor,
+                SlotKind::Offhand => Region::Offhand,
+            }
+        } else if slot - first < 9 {
+            Region::Hotbar
+        } else {
+            Region::Main
+        }
+    }
+
+    fn exists(&self, _slot: usize) -> bool {
+        true
+    }
+
+    fn stack(&self, slot: usize) -> Option<(ItemStack, u32)> {
+        let first = self.first_player();
+        let held = if slot < first {
+            self.entity.items[slot].as_ref()
+        } else if let Some(k) = self.bar_index(slot) {
+            if k < self.armor.len() { self.armor[k].as_ref() } else { self.offhand.as_ref() }
+        } else {
+            self.inventory[slot - first].as_ref()
+        };
+        held.filter(|stack| stack.count > 0).map(|stack| (stack.clone(), stack.count))
+    }
+
+    fn insert(&mut self, slot: usize, item: &ItemStack, amount: u32) -> u32 {
+        if let Some(k) = self.bar_index(slot) {
+            return self.insert_into_bar(k, item, amount);
+        }
+        if slot < self.first_player() && !(self.accepts)(slot, item) {
+            return 0;
+        }
+        insert_into_cell(self.game, self.cell(slot), item, amount)
+    }
+
+    fn remove(&mut self, slot: usize, amount: u32) {
+        remove_from_cell(self.cell(slot), amount);
+    }
+}
+
+/// O shift-clique do menu de um bloco com a barra de armadura e sem slot virtual (`MekanismContainer.quickMoveStack`, `:276-328`): do inventário
+/// vai para o slot do bloco que aceita o item (primeiro empilhando, depois nos vazios) e, não cabendo, para a armadura e a outra região do
+/// inventário; do bloco vai para a armadura, a barra de atalhos e o inventário; da barra de armadura, para o bloco e depois a barra de atalhos e o
+/// inventário. `menu` é o tipo de menu que declarou a barra, `slot` o índice do menu do servidor (os `container_slots` do bloco, o inventário
+/// principal, a barra de atalhos e a barra de armadura). O que sobra fica em `stack`.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::game) fn bar_menu_quick_move(
+    game: &mut Game<'_>,
+    entity: &mut ModBlockEntity,
+    menu: &str,
+    container_slots: usize,
+    slot: usize,
+    stack: &mut ItemStack,
+    order: &[usize],
+    accepts: &dyn Fn(usize, &ItemStack) -> bool,
+) {
+    let first = entity.items.len();
+    // O menu numera o inventário do jogador depois dos slots do bloco: o principal (9 a 35), depois a barra de atalhos (0 a 8), e então a
+    // barra de armadura (a armadura da cabeça aos pés e a mão).
+    let from = if slot < container_slots {
+        slot
+    } else {
+        let n = slot - container_slots;
+        first
+            + match n {
+                0..27 => 9 + n,
+                27..36 => n - 27,
+                _ => n,
+            }
+    };
+    let mut inventory = std::mem::take(&mut game.inventory);
+    let mut armor = std::mem::take(&mut game.armor);
+    let mut offhand = game.offhand.take();
+    let left = {
+        let mut view = BarMenu {
+            game: &*game,
+            entity,
+            inventory: &mut inventory,
+            armor: &mut armor,
+            offhand: &mut offhand,
+            bar: machinery_basis_core::armor_bar::slots(menu),
+            order,
+            accepts,
+        };
+        machinery_basis_core::quick_move::quick_move(&mut view, from);
+        machinery_basis_core::quick_move::QuickMenu::stack(&view, from)
+    };
+    game.inventory = inventory;
+    game.armor = armor;
+    game.offhand = offhand;
+    // O slot clicado guarda o que sobrou; quem chama marca o clique como tratado, o que impede o roteamento do jogo.
+    match left {
+        Some((remaining, count)) => {
+            *stack = remaining;
+            stack.count = count;
+        }
+        None => stack.count = 0,
+    }
+}
+
 /// Leva o que couber de `stack` para o slot da máquina: o resto fica em `stack`. O slot só junta o que é o mesmo recurso, o item e
 /// os componentes (`ItemStack.isSameItemSameComponents`).
 pub(in crate::game) fn move_into_slot(
@@ -4229,6 +4440,19 @@ pub(in crate::game) fn machine_panel(
     rect: [f32; 4],
     title: &horizon_client::text::Text,
 ) {
+    machine_panel_until(game, batch, style, rect, title, rect[2]);
+}
+
+/// [`machine_panel`] para a tela que divide a linha do rótulo do inventário com outro elemento (`renderInventoryText(guiGraphics, end)`): o rótulo vai até 6
+/// pixels antes de `inventory_end` e rola se não cabe.
+pub(in crate::game) fn machine_panel_until(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    style: &PanelStyle,
+    rect: [f32; 4],
+    title: &horizon_client::text::Text,
+    inventory_end: f32,
+) {
     let [x, y, width, height] = rect;
     nine_slice(game, batch, style.base, style.base_slice, rect);
     for row in 0..=INVENTORY_ROWS {
@@ -4241,13 +4465,12 @@ pub(in crate::game) fn machine_panel(
         }
     }
     // O título é o componente inteiro (`drawScrollingString` com `text.getVisualOrderText()`): a cor e o negrito do próprio texto valem
-    // sobre `TEXT_TITLE`, e a largura que o centra é a do texto com o estilo.
-    let atlas = &game.gui.atlas;
-    let title_x = x + gui::title_x(width, atlas.font.width_text(title));
-    batch.text_styled(atlas, title, title_x, y + gui::TITLE_LABEL_Y, hud_color(0xFF_00_00_00 | gui::TITLE_TEXT_COLOR), false);
+    // sobre `TEXT_TITLE`, e a largura que o centra é a do texto com o estilo. Mais largo que a área (um nome dado na bigorna), rola.
+    game.mb_screen_title(batch, title, [x, y], width, hud_color(0xFF_00_00_00 | gui::TITLE_TEXT_COLOR));
+    // `renderInventoryText`: o rótulo alinhado à esquerda na área dele, rolando se não cabe (um idioma de nome mais longo).
     let inventory = horizon_client::lang::get("container.inventory");
-    let label = [x + gui::INVENTORY_LABEL_X, y + gui::inventory_label_y(height)];
-    game.native_text(batch, &inventory, label, gui::TITLE_TEXT_COLOR, false);
+    let [min_x, min_y, max_x, max_y] = gui::inventory_label_area(inventory_end, height);
+    game.mb_screen_text(batch, &inventory, [x + min_x, y + min_y, x + max_x, y + max_y], gui::TextAlignment::Left, gui::TITLE_TEXT_COLOR, 1.0);
 }
 
 /// Liga a instrumentação de medida da comparação das opções B e C: `MEKTRACE` a cada tick de uma máquina e `MEKBENCH` a

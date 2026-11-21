@@ -561,3 +561,53 @@ fn the_creative_tank_follows_the_original() {
 fn the_ejector_with_two_receivers_and_a_creative_item_follow_the_original() {
     replay("eject_two");
 }
+
+mod tank_menu;
+
+/// Um item do rastro do shift-clique: `id`, ou `id{químico:quantidade}` no item de Chemical Tank cheio.
+fn menu_item(item: &tank_menu::Item) -> ItemResource {
+    let (id, held) = match item.id.split_once('{') {
+        Some((id, rest)) => (id, Some(rest.trim_end_matches('}'))),
+        None => (item.id.as_str(), None),
+    };
+    if !id.ends_with("_chemical_tank") {
+        return ItemResource::new(&format!("minecraft:{id}"), item.max_stack);
+    }
+    let empty = ItemResource::new(&format!("mekanism:{id}"), item.max_stack);
+    match held {
+        Some(held) => {
+            let (name, amount) = held.split_once(':').unwrap();
+            TankItems
+                .with_contents(
+                    &empty,
+                    &StackContents::new(Some(chemical(name)), amount.parse().unwrap()),
+                )
+                .unwrap()
+        }
+        None => empty,
+    }
+}
+
+/// `MekanismContainer.quickMoveStack` no menu do Chemical Tank, caso a caso (`TankQuickMoveTraceTest`, `tank_quick_move_chemical.jsonl`): do inventário e da barra
+/// de atalhos para os dois slots do tile (com o tanque vazio, com hidrogênio, com oxigênio e cheio, e com um item já num dos slots), para a armadura e para a outra
+/// região; dos dois slots do tile, da armadura e da mão. Os slots do tile aceitam o que o `isValidForInsertion(.., MANUAL)` do tile deixa.
+#[test]
+fn the_shift_click_on_the_menu_follows_the_original() {
+    use machinery_basis_core::containers::AutomationType;
+    let rows = read("tank_quick_move_chemical.jsonl");
+    let checked = tank_menu::replay(&rows, &|row| {
+        let clock = Rc::new(Cell::new(1));
+        let tile = new_tile(
+            &serde_json::json!({"capacity": 64_000, "rate": 1_000, "tier": "basic"}),
+            &clock,
+        );
+        if let Some((name, amount)) = row["tank"].as_str().unwrap().split_once(':') {
+            set_chemical(&tile, name, amount.parse().unwrap());
+        }
+        Box::new(move |slot, item| {
+            tile.inventory_slots()[slot]
+                .is_valid_for_insertion(&menu_item(item), AutomationType::Manual)
+        })
+    });
+    assert_eq!(checked, 1_310, "os casos do rastro");
+}

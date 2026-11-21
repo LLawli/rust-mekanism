@@ -1318,25 +1318,6 @@ struct GeneratorMenu<'a, 'g> {
     upgrades: Rc<upgrade::UpgradeData>,
 }
 
-/// `EquipmentSlot.getName()`, como o catálogo de itens do jogo o escreve em `equip_slot`.
-fn equipment_name(slot: EquipmentSlot) -> &'static str {
-    match slot {
-        EquipmentSlot::Feet => "feet",
-        EquipmentSlot::Legs => "legs",
-        EquipmentSlot::Chest => "chest",
-        EquipmentSlot::Head => "head",
-    }
-}
-
-/// `ItemStack.canEquip(slot, player)`: o item se veste nesse slot e o jogador está entre os que o `equippable` dele permite. É a conta
-/// que o motor de menus do Horizon faz para o `ArmorSlot` (`Menu::may_place`).
-fn can_equip(game: &Game<'_>, stack: &ItemStack, slot: EquipmentSlot) -> bool {
-    game.items().get(&stack.item).is_some_and(|info| {
-        info.equip_slot.as_deref() == Some(equipment_name(slot))
-            && info.equip_allowed.as_ref().is_none_or(|allowed| allowed.contains("minecraft:player"))
-    })
-}
-
 impl GeneratorMenu<'_, '_> {
     fn first_player(&self) -> usize {
         self.entity.items.len()
@@ -1392,7 +1373,7 @@ impl GeneratorMenu<'_, '_> {
         let cell = self.cell_of_bar(k);
         let held = cell.as_ref().map_or(0, |held| held.count);
         let same = cell.as_ref().is_some_and(|held| held.same_item_same_components(item));
-        let moved = armor_slots::insert(kind, held, same, amount, item_max, |slot| can_equip(game, item, slot));
+        let moved = armor_slots::insert(kind, held, same, amount, item_max, |slot| basis::can_equip(game, item, slot));
         if moved == 0 {
             return 0;
         }

@@ -4706,6 +4706,21 @@ impl Game<'_> {
         aligned_scrolling_text(self, batch, text, area, alignment, color, scale, since);
     }
 
+    /// O título de uma tela de bloco (`GuiMekanism.renderTitleText`, `IFancyFontRenderer.drawTitleText`): o componente inteiro, com o estilo dele, centrado na
+    /// área do título ou, se não cabe, rolando desde que a tela abriu e cortado nela. `origin` é o canto da tela e `color` a cor de quem não tem estilo.
+    pub(in crate::game) fn mb_screen_title(&self, batch: &mut HudBatch, title: &horizon_client::text::Text, origin: [f32; 2], image_width: f32, color: u32) {
+        let [min_x, min_y, max_x, max_y] = machinery_basis_core::gui::title_area(image_width);
+        let atlas = &self.gui.atlas;
+        let since = client().screen_opened_ms;
+        let (x, scrolls) =
+            machinery_basis_core::gui::scrolling_text_x(min_x, max_x, atlas.font.width_text(title), machinery_basis_core::gui::TextAlignment::Center, now_ms() - since);
+        let start = batch.vertices.len();
+        batch.text_styled(atlas, title, origin[0] + x, origin[1] + (min_y + max_y - LINE_HEIGHT) / 2.0, color, false);
+        if scrolls {
+            batch.clip_since(start, origin[0] + min_x, origin[1] + min_y, origin[0] + max_x, origin[1] + max_y);
+        }
+    }
+
     /// O bloco da tela de mod aberta.
     pub(in crate::game) fn mb_open_screen_pos(&self) -> Option<[i32; 3]> {
         self.mod_screen.as_ref().and_then(|screen| screen.pos())

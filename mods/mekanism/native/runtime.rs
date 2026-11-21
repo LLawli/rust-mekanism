@@ -2148,6 +2148,224 @@ pub fn chemical_attributes_of(
     })
 }
 
+/// O que os mapas de dados `chemical_attribute_*` dizem de um químico, com os valores que o tooltip mostra. Os campos estão na ordem de
+/// `MekanismDataMapTypes.ATTRIBUTE_TYPES` (`:45-50`): a radioatividade, o combustível, o refrigerante frio e o quente.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChemicalAttributeData {
+    /// `ChemicalRadioactivity.radioactivity`, em Sv/h.
+    pub radioactivity: Option<f64>,
+    /// `ChemicalFuel`: `maxBurnPerTick` e `energy`.
+    pub fuel: Option<(i32, i32)>,
+    /// `CooledCoolant`: `thermal_enthalpy` e `conductivity` (o padrão é 1).
+    pub cooled: Option<(f64, f64)>,
+    /// `HeatedCoolant`: `thermal_enthalpy`, `conductivity` (o padrão é 0,4) e `temperature` (o padrão é 100.000 K).
+    pub heated: Option<(f64, f64, f64)>,
+}
+
+/// `CooledCoolant.CODEC`: a condutividade que falta vale 1.
+const COOLED_CONDUCTIVITY: f64 = 1.0;
+/// `HeatedCoolant.BASE_COOLING_EFFICIENCY` e `BASE_COOLANT_TEMP`.
+const HEATED_CONDUCTIVITY: f64 = 0.4;
+const HEATED_TEMPERATURE: f64 = 100_000.0;
+/// `MekanismAPITags.Chemicals.WASTE_BARREL_DECAY_BLACKLIST`.
+pub const DECAY_BLACKLIST_TAG: &str = "mekanism:waste_barrel_decay_blacklist";
+/// `RadiationUnit.SVH`.
+const RADIATION_RATE_SYMBOL: &str = "Sv/h";
+/// As casas de `TooltipHelper.getRadioactivityDisplayShort` (`UnitDisplayUtils.getRadiationDisplay(radioactivity, SVH, 2)`).
+const RADIATION_DECIMALS: i32 = 2;
+
+/// Os valores dos atributos de cada químico, dos mesmos arquivos de [`chemical_attribute_maps`] e com as mesmas regras (`remove`, as chaves de tag de fora).
+pub fn chemical_attribute_data(
+    files: &[(String, Value)],
+) -> std::collections::HashMap<String, ChemicalAttributeData> {
+    let mut out: std::collections::HashMap<String, ChemicalAttributeData> =
+        std::collections::HashMap::new();
+    for (id, json) in files {
+        let path = id.split_once(':').map_or(id.as_str(), |(_, path)| path);
+        let Some(kind) = path.strip_prefix(CHEMICAL_ATTRIBUTE_PREFIX) else {
+            continue;
+        };
+        let removed: Vec<&str> = json
+            .get("remove")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let Some(values) = json.get("values").and_then(Value::as_object) else {
+            continue;
+        };
+        for (chemical, value) in values {
+            if chemical.starts_with('#') || removed.contains(&chemical.as_str()) {
+                continue;
+            }
+            let number = |key: &str| value.get(key).and_then(Value::as_f64);
+            let whole = |key: &str| {
+                value
+                    .get(key)
+                    .and_then(Value::as_i64)
+                    .and_then(|n| i32::try_from(n).ok())
+            };
+            let entry = out.entry(chemical.clone()).or_default();
+            match kind {
+                // `ChemicalRadioactivity.CODEC` aceita o objeto e o número sozinho (`Codec.withAlternative`).
+                RADIOACTIVITY_ATTRIBUTE => {
+                    entry.radioactivity = number("radioactivity").or_else(|| value.as_f64());
+                }
+                "fuel" => {
+                    entry.fuel = whole("maxBurnPerTick").zip(whole("energy"));
+                }
+                "cooled_coolant" => {
+                    entry.cooled = number("thermal_enthalpy").map(|enthalpy| {
+                        (
+                            enthalpy,
+                            number("conductivity").unwrap_or(COOLED_CONDUCTIVITY),
+                        )
+                    });
+                }
+                "heated_coolant" => {
+                    entry.heated = number("thermal_enthalpy").map(|enthalpy| {
+                        (
+                            enthalpy,
+                            number("conductivity").unwrap_or(HEATED_CONDUCTIVITY),
+                            number("temperature").unwrap_or(HEATED_TEMPERATURE),
+                        )
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// O que o cliente tem ao montar as linhas dos atributos.
+pub struct AttributeTooltip<'a> {
+    /// `IRadiationManager.isRadiationEnabled`.
+    pub radiation_enabled: bool,
+    /// O químico está em [`DECAY_BLACKLIST_TAG`].
+    pub decay_immune: bool,
+    /// `MekanismConfig.local.tempUnit` e `compactEnergyDisplay`.
+    pub temperature_unit: machinery_basis_core::temperature::TemperatureUnit,
+    pub compact_energy: bool,
+    pub translate: &'a dyn Fn(&str) -> String,
+}
+
+/// `Math.round(double)`: o piso de `x + 0,5`.
+fn java_round(value: f64) -> i64 {
+    (value + 0.5).floor() as i64
+}
+
+/// `MathUtils.clampToLong(double)`.
+fn clamp_to_long(value: f64) -> i64 {
+    value as i64
+}
+
+/// As linhas que os atributos de um químico acrescentam ao tooltip (`ChemicalStack.getTooltipLines`, `:262-280`, sem a primeira, o nome, e sem a do nome de
+/// registro, que é [`chemical_registry_line`]): cada atributo de `ATTRIBUTE_TYPES`, na ordem, escreve as dele por `collectTooltips`. Todas são
+/// `translateColored(GRAY, INDIGO, valor)`, menos a do barril (`DECAY_IMMUNE`, `AQUA`).
+pub fn chemical_attribute_lines(
+    data: &ChemicalAttributeData,
+    tip: &AttributeTooltip<'_>,
+) -> Vec<Chat> {
+    let line = |key: &str, value: Chat| Chat::new(key, vec![value], Some(TIP_GRAY));
+    let value = |text: &str| Chat::literal(text, TIP_INDIGO);
+    let wrapped = |key: &str, text: &str| Chat::new(key, vec![value(text)], Some(TIP_INDIGO));
+    // `UnitDisplayUtils.getEnergyDisplay` (`:42-48`).
+    let energy = |amount: i64| {
+        let unit = (tip.translate)(ENERGY_UNIT_LANG);
+        if tip.compact_energy {
+            machinery_basis_core::units::display_base(amount as f64, Some(&unit), 2, true)
+        } else {
+            format!(
+                "{} {unit}",
+                machinery_basis_core::units::grouped(amount.max(0) as u64)
+            )
+        }
+    };
+    let mut lines = Vec::new();
+    // `ChemicalRadioactivity.collectTooltips` (`:55-64`): só com a radiação ligada.
+    if let Some(radioactivity) = data.radioactivity.filter(|_| tip.radiation_enabled) {
+        let text = machinery_basis_core::units::display_base(
+            radioactivity,
+            Some(RADIATION_RATE_SYMBOL),
+            RADIATION_DECIMALS,
+            true,
+        );
+        lines.push(line("chemical.mekanism.attribute.radiation", value(&text)));
+        if tip.decay_immune {
+            lines.push(Chat::new(
+                "tooltip.mekanism.decay_immune",
+                Vec::new(),
+                Some(TIP_AQUA),
+            ));
+        }
+    }
+    // `ChemicalFuel.collectTooltips` (`:54-61`).
+    if let Some((max_burn, energy_per_tick)) = data.fuel {
+        lines.push(line(
+            "chemical.mekanism.attribute.fuel.max_burn",
+            wrapped(
+                PER_TICK_LANG,
+                &machinery_basis_core::units::grouped(max_burn.max(0) as u64),
+            ),
+        ));
+        lines.push(line(
+            "chemical.mekanism.attribute.fuel.energy_density",
+            wrapped(PER_MB_LANG, &energy(i64::from(energy_per_tick))),
+        ));
+        // `MathUtils.multiplyClamped(int, int)`.
+        let total = (i64::from(max_burn) * i64::from(energy_per_tick))
+            .clamp(i64::from(i32::MIN), i64::from(i32::MAX));
+        lines.push(line(
+            "chemical.mekanism.attribute.fuel.energy_max_total",
+            wrapped(PER_TICK_LANG, &energy(total)),
+        ));
+    }
+    // `IChemicalCoolant.collectTooltips` (`:38-43`), e a temperatura do quente (`HeatedCoolant.java:61-64`).
+    let mut coolant = |enthalpy: f64, conductivity: f64| {
+        lines.push(line(
+            "chemical.mekanism.attribute.coolant.efficiency",
+            wrapped(
+                "generic.mekanism.percent",
+                &java_round(conductivity * 100.0).to_string(),
+            ),
+        ));
+        lines.push(line(
+            "chemical.mekanism.attribute.coolant.heat_capacity",
+            wrapped(PER_MB_LANG, &energy(clamp_to_long(enthalpy))),
+        ));
+    };
+    if let Some((enthalpy, conductivity)) = data.cooled {
+        coolant(enthalpy, conductivity);
+    }
+    if let Some((enthalpy, conductivity, temperature)) = data.heated {
+        coolant(enthalpy, conductivity);
+        let text = machinery_basis_core::temperature::local_display(
+            temperature,
+            machinery_basis_core::temperature::TemperatureUnit::Kelvin,
+            tip.temperature_unit,
+            true,
+        );
+        lines.push(line(
+            "chemical.mekanism.attribute.coolant.temperature",
+            value(&text),
+        ));
+    }
+    lines
+}
+
+/// `MekanismLang.GENERIC_PER_TICK` e `GENERIC_PER_MB`.
+const PER_TICK_LANG: &str = "generic.mekanism.per_tick";
+const PER_MB_LANG: &str = "generic.mekanism.per_mb";
+
+/// A última linha de `ChemicalStack.getTooltipLines` com os tooltips avançados ligados (`:275-278`): o nome de registro, em `DARK_GRAY` do vanilla
+/// (`ChatFormatting.DARK_GRAY`).
+pub fn chemical_registry_line(id: &str) -> Chat {
+    Chat::literal(id, VANILLA_DARK_GRAY)
+}
+
+/// `ChatFormatting.DARK_GRAY`.
+const VANILLA_DARK_GRAY: u32 = 0x55_55_55;
+
 /// O Chemical Tank como um tubo pressurizado vizinho o vê por um lado (`TileEntityMekanism.getCapability` com a capability de químico): `None` onde a configuração de
 /// lados desliga a capability, e senão o contêiner, o que ele aceita de fora (`ChemicalAttributeValidator`) e se o lado deixa entrar e sair. O criativo aceita e entrega
 /// sem mudar.
@@ -2574,6 +2792,9 @@ pub fn tank_contents_tooltip(
         Some(name) => stored_mb(&translate(STORED_MB_LANG), name, amount),
     }
 }
+
+/// `GuiChemicalTank.drawForegroundText` (`:60`): `renderInventoryText(guiGraphics, 85)`.
+pub const CHEMICAL_TANK_INVENTORY_END: f32 = 85.0;
 
 /// O nível da barra do Chemical Tank (`ResourceTankInfoProvider.getLevel`: `MathUtils.divideToLevel(amountAsLong, capacityAsLong)`).
 pub fn chemical_tank_bar_level(amount: u64, capacity: i64) -> f64 {

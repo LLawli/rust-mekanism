@@ -3397,6 +3397,67 @@ const CHEMICAL_ATTRIBUTES_LISTENER: &str = "mekanism:chemical_attributes";
 /// Os atributos dos químicos, dos mapas de dados `chemical_attribute_*` da última recarga.
 static CHEMICAL_ATTRIBUTE_MAP: std::sync::Mutex<Option<Arc<rules::ChemicalAttributeMap>>> = std::sync::Mutex::new(None);
 
+/// Os valores dos atributos de cada químico (o que o tooltip mostra), dos mesmos arquivos.
+static CHEMICAL_ATTRIBUTE_DATA: std::sync::Mutex<Option<Arc<std::collections::HashMap<String, rules::ChemicalAttributeData>>>> = std::sync::Mutex::new(None);
+
+/// `ChemicalStack.getTooltipLines` sem a primeira linha (`MekanismUtils.appendAllButFirst`): as linhas dos atributos do químico e, com os tooltips avançados
+/// (`Options.advancedItemTooltips`, F3 + H), o nome de registro.
+fn chemical_extra_lines(game: &Game<'_>, chemical: &str) -> Vec<horizon_client::text::Text> {
+    let data = CHEMICAL_ATTRIBUTE_DATA.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let translate = |key: &str| lang::get(key);
+    let mut lines = Vec::new();
+    if let Some(data) = data.get(chemical) {
+        let tip = rules::AttributeTooltip {
+            radiation_enabled: rules::RADIATION_ENABLED,
+            decay_immune: resource::current_tags().contains(rules::DECAY_BLACKLIST_TAG, chemical),
+            temperature_unit: basis::temperature_unit(rules::LOCAL_CONFIG_NAMESPACE),
+            compact_energy: basis::compact_energy_display(rules::LOCAL_CONFIG_NAMESPACE),
+            translate: &translate,
+        };
+        lines.extend(rules::chemical_attribute_lines(data, &tip));
+    }
+    if game.settings.file.bool("advancedItemTooltips") {
+        lines.push(rules::chemical_registry_line(chemical));
+    }
+    // `Tooltip.create` quebra cada linha em 170 pixels (`Tooltip.MAX_WIDTH`). Das linhas dos atributos só a do barril, de uma cor só, passa disso: as outras são um
+    // rótulo curto e um valor que `getDisplayBase` abrevia.
+    let width = |piece: &str| game.native_text_width(piece);
+    let mut out = Vec::new();
+    for chat in &lines {
+        if chat.with.is_empty() && chat.literal.is_none() {
+            let rgb = chat.color.unwrap_or(0xFF_FFFF);
+            for piece in machinery_basis_core::tooltip::split_lines(&translate(&chat.translate), machinery_basis_core::tooltip::MAX_WIDTH, &width) {
+                out.push(horizon_client::text::Text::colored(piece, rgb));
+            }
+        } else {
+            out.push(crate::game::mekanism_configurator::text(chat));
+        }
+    }
+    out
+}
+
+/// `FluidStack.getTooltipLines` do NeoForge sem a primeira linha: com os tooltips avançados, o nome de registro do fluido em `DARK_GRAY` (`FluidStack.java:401-402`;
+/// o fluido de um tanque não tem componentes, e a linha `item.components` não sai).
+fn fluid_extra_lines(game: &Game<'_>, fluid: &str) -> Vec<horizon_client::text::Text> {
+    if game.settings.file.bool("advancedItemTooltips") {
+        vec![crate::game::mekanism_configurator::text(&rules::chemical_registry_line(fluid))]
+    } else {
+        Vec::new()
+    }
+}
+
+/// O tooltip de um medidor ou de uma barra de tanque (`TooltipUtils.create(List)`): a primeira linha e as que o conteúdo acrescenta. Uma linha só é o
+/// `Tooltip.create(Component)` de antes.
+fn contents_tooltip(game: &Game<'_>, batch: &mut HudBatch, first: String, extra: Vec<horizon_client::text::Text>, cursor: (f32, f32), widget: [f32; 4]) {
+    if extra.is_empty() {
+        basis::menu_tooltip(game, batch, &[(first, None)], cursor, widget);
+        return;
+    }
+    let mut lines = vec![horizon_client::text::Text::literal(first.as_str())];
+    lines.extend(extra);
+    basis::menu_tooltip_rich(game, batch, &lines, cursor, widget);
+}
+
 /// `Chemical.getAttributes` como a lib o pede: os atributos de cada químico, para o `ChemicalAttributeValidator` de um tanque.
 pub(in crate::game) fn chemical_attributes() -> machinery_basis_core::chemical::ChemicalAttributes {
     let map = CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
@@ -3438,6 +3499,7 @@ pub(in crate::game) fn reload_apply(listener: &NativeReloadListener, files: &[(S
         let map = rules::chemical_attribute_maps(files, rules::RADIATION_ENABLED);
         eprintln!("mekanism: {} químicos com atributos", map.len());
         *CHEMICAL_ATTRIBUTE_MAP.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(map));
+        *CHEMICAL_ATTRIBUTE_DATA.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(rules::chemical_attribute_data(files)));
     }
 }
 
@@ -3586,6 +3648,11 @@ pub(in crate::game) fn quick_move(
     handled: &mut bool,
 ) {
     if crate::game::mekanism_desk::quick_move(game, entity, container_slots, slot, stack, handled) {
+        return;
+    }
+    // Os tanques: os dois slots do tile, a barra de armadura e o inventário, pela mesma regra.
+    if crate::game::mekanism_tank::quick_move(game, pos, entity, container_slots, slot, stack) || crate::game::mekanism_chemical_tank::quick_move(game, pos, entity, container_slots, slot, stack) {
+        *handled = true;
         return;
     }
     let Some(machine) = machine_of(&entity.id) else {
@@ -4273,7 +4340,9 @@ fn fluid_tank_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, _tier:
     if gui::contains(gauge, at) {
         let name = (read.fluid.amount > 0 && !read.fluid.resource.is_empty()).then(|| translate(&rules::fluid_lang_key(&read.fluid.resource)));
         let text = rules::tank_contents_tooltip(name.as_deref(), read.fluid.amount, &translate);
-        basis::menu_tooltip(game, batch, &[(text, None)], cursor, here(gauge));
+        // `GuiFluidGauge.getContentsTooltips`: `appendAllButFirst` de `stack.getTooltipLines`, se a pilha não é vazia.
+        let extra = if name.is_some() { fluid_extra_lines(game, &read.fluid.resource) } else { Vec::new() };
+        contents_tooltip(game, batch, text, extra, cursor, here(gauge));
         return true;
     }
     false
@@ -4289,7 +4358,8 @@ fn draw_chemical_tank(game: &Game<'_>, block: &str, tier: usize, batch: &mut Hud
     let read = rules::ChemicalTankScreenData::read(&mirror);
     let translate = |key: &str| lang::get(key);
     let title = screen_title(game, &format!("container.mekanism.{}", block.trim_start_matches("mekanism:")));
-    basis::machine_panel(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title);
+    // `GuiChemicalTank.drawForegroundText`: `renderInventoryText(guiGraphics, 85)`, o rótulo divide a linha com o texto do modo de descarte.
+    basis::machine_panel_until(game, batch, &PANEL, [x, y, WIDTH, HEIGHT], &title, rules::CHEMICAL_TANK_INVENTORY_END);
     draw_tank_slots(game, batch, block, origin, &rules::CHEMICAL_TANK_SLOTS_SPEC, Some(&rules::CHEMICAL_TANK_ITEM_CONFIG));
     let redstone = rules::chemical_tank_redstone(&mirror);
     basis::redstone_draw(game, batch, origin, redstone, rules::SCREEN_IMAGE_WIDTH);
@@ -4362,7 +4432,9 @@ fn chemical_tank_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, _ti
     if gui::contains(bar, at) && !game.mb_window_covers(at) {
         let name = (read.chemical.amount > 0 && !read.chemical.resource.is_empty()).then(|| translate(&rules::chemical_lang_key(&read.chemical.resource)));
         let text = rules::tank_contents_tooltip(name.as_deref(), read.chemical.amount, &translate);
-        basis::menu_tooltip(game, batch, &[(text, None)], cursor, [cursor.0 - at[0] + bar[0], cursor.1 - at[1] + bar[1], bar[2], bar[3]]);
+        // `GuiChemicalBar.getContentsTooltips` (`:50-53`): `appendAllButFirst` de `stack.getTooltipLines`, se a pilha não é vazia.
+        let extra = if name.is_some() { chemical_extra_lines(game, &read.chemical.resource) } else { Vec::new() };
+        contents_tooltip(game, batch, text, extra, cursor, [cursor.0 - at[0] + bar[0], cursor.1 - at[1] + bar[1], bar[2], bar[3]]);
         return true;
     }
     false

@@ -107,6 +107,51 @@ public class CenaTelas {
         }
     }
 
+    /// O rastro dos tooltips dos químicos (frente `tanques`, 7.ª rodada): `ChemicalStack.getTooltipLines` de cada químico do registro, no cliente (as unidades vêm da
+    /// configuração local), sem e com os tooltips avançados. Cada linha é uma lista de trechos `[texto, cor]` (a cor que o estilo herdado dá, `null` sem cor), com os
+    /// vizinhos de mesma cor juntos. Vai para `chemical_tooltips.jsonl`, na pasta do cliente.
+    private static void chemicalTooltips(Minecraft minecraft) {
+        StringBuilder out = new StringBuilder();
+        var registry = minecraft.level.registryAccess().lookupOrThrow(mekanism.api.MekanismRegistries.Keys.CHEMICAL);
+        var context = net.minecraft.world.item.Item.TooltipContext.of(minecraft.level, minecraft.player);
+        registry.listElements().sorted(java.util.Comparator.comparing(holder -> holder.key().identifier().toString())).forEach(holder -> {
+            mekanism.api.chemical.ChemicalStack stack = new mekanism.api.chemical.ChemicalStack(holder, 1_000);
+            out.append("{\"id\":\"").append(holder.key().identifier()).append('"');
+            for (var flag : List.of(net.minecraft.world.item.TooltipFlag.Default.NORMAL, net.minecraft.world.item.TooltipFlag.Default.ADVANCED)) {
+                out.append(",\"").append(flag.isAdvanced() ? "advanced" : "normal").append("\":[");
+                List<net.minecraft.network.chat.Component> lines = stack.getTooltipLines(context, minecraft.player, flag);
+                for (int i = 0; i < lines.size(); i++) {
+                    List<String[]> pieces = new ArrayList<>();
+                    lines.get(i).visit((style, text) -> {
+                        String color = style.getColor() == null ? null : String.format("#%06X", style.getColor().getValue());
+                        if (!text.isEmpty()) {
+                            if (!pieces.isEmpty() && java.util.Objects.equals(pieces.getLast()[1], color)) {
+                                pieces.getLast()[0] += text;
+                            } else {
+                                pieces.add(new String[]{text, color});
+                            }
+                        }
+                        return java.util.Optional.empty();
+                    }, net.minecraft.network.chat.Style.EMPTY);
+                    out.append(i == 0 ? "[" : ",[");
+                    for (int j = 0; j < pieces.size(); j++) {
+                        String color = pieces.get(j)[1];
+                        out.append(j == 0 ? "[" : ",[").append(new com.google.gson.JsonPrimitive(pieces.get(j)[0])).append(',')
+                              .append(color == null ? "null" : "\"" + color + "\"").append(']');
+                    }
+                    out.append(']');
+                }
+                out.append(']');
+            }
+            out.append("}\n");
+        });
+        try {
+            Files.writeString(Path.of("chemical_tooltips.jsonl"), out.toString());
+        } catch (IOException e) {
+            Mekanism.logger.error("cena: sem o rastro dos tooltips", e);
+        }
+    }
+
     private static BlockState block(String machine) {
         return switch (machine) {
             case "chamber" -> MekanismBlocks.ENRICHMENT_CHAMBER.defaultState();
@@ -158,6 +203,7 @@ public class CenaTelas {
                 server.execute(() -> run(server, "clear @a"));
                 // O Horizon não mostra o retorno dos comandos no chat; o original mostraria `[Server: ...]` no canto do print.
                 minecraft.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
+                chemicalTooltips(minecraft);
             }
             return;
         }

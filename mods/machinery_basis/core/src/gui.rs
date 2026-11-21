@@ -443,19 +443,51 @@ pub fn slot_frame(item: [f32; 2]) -> Rect {
     [item[0] - 1.0, item[1] - 1.0, SLOT_SIZE, SLOT_SIZE]
 }
 
-/// Onde o título cai (`GuiMekanism.renderTitleText`): `drawScrollingString` centrado entre `maxLengthPad` (4) de cada lado da
-/// largura da tela. Texto mais largo que isso rola no Java, partindo do começo dele.
-pub fn title_x(image_width: f32, text_width: f32) -> f32 {
+/// A área `[min_x, min_y, max_x, max_y]` do título (`IFancyFontRenderer.drawTitleText`: `drawScrollingString(text, 0, y, CENTER, cor, 4, false)`, com a largura
+/// da tela e a altura de uma linha): 4 pixels de cada lado.
+pub fn title_area(image_width: f32) -> [f32; 4] {
     const PAD: f32 = 4.0;
-    let (min_x, max_x) = (PAD, image_width - PAD);
-    let area = max_x - min_x;
-    if text_width > area {
-        return min_x;
-    }
-    min_x + (area - text_width) / 2.0
+    [
+        PAD,
+        TITLE_LABEL_Y,
+        image_width - PAD,
+        TITLE_LABEL_Y + FONT_LINE_HEIGHT,
+    ]
 }
 
-/// `AbstractContainerScreen.titleLabelY` e `inventoryLabelX`.
+/// A área do rótulo do inventário (`GuiMekanism.renderInventoryText(guiGraphics, end)`: `drawScrollingString(.., inventoryLabelX, inventoryLabelY, LEFT, cor,
+/// end - inventoryLabelX - 6, 0, false)`): de `inventoryLabelX` até 6 pixels antes de `end`. `end` é a largura da tela, menos em quem divide a linha com outro
+/// elemento (85 no Chemical Tank, `GuiChemicalTank.java:60`).
+pub fn inventory_label_area(end: f32, image_height: f32) -> [f32; 4] {
+    const END_GAP: f32 = 6.0;
+    let y = inventory_label_y(image_height);
+    [INVENTORY_LABEL_X, y, end - END_GAP, y + FONT_LINE_HEIGHT]
+}
+
+/// `font().lineHeight`.
+pub const FONT_LINE_HEIGHT: f32 = 9.0;
+
+/// Onde o texto de um `drawScrollingString` começa (`IFancyFontRenderer.java:95-117`), e se ele rola: cabendo na área, o alvo do alinhamento; mais largo que
+/// ela, `min_x` menos o quanto já rolou desde que a tela abriu (`getOverflowedBy`), e quem desenha corta na área (`enableScissor`).
+pub fn scrolling_text_x(
+    min_x: f32,
+    max_x: f32,
+    text_width: f32,
+    alignment: TextAlignment,
+    millis_visible: i64,
+) -> (f32, bool) {
+    let area_width = max_x - min_x;
+    if text_width > area_width {
+        let overflow = crate::upgrade_window::scroll_overflow(
+            f64::from(text_width - area_width),
+            millis_visible,
+        );
+        (min_x - overflow as f32, true)
+    } else {
+        (alignment.target(min_x, max_x, text_width), false)
+    }
+}
+
 pub const TITLE_LABEL_Y: f32 = 6.0;
 pub const INVENTORY_LABEL_X: f32 = 8.0;
 
@@ -803,15 +835,49 @@ mod tests {
 
     #[test]
     fn the_labels_sit_where_the_container_screen_puts_them() {
-        // Centrado entre os 4 pixels de cada lado: o mesmo que centrar na tela inteira.
-        assert_eq!(title_x(176.0, 100.0), 38.0);
-        assert_eq!(title_x(176.0, 99.0), 38.5);
-        // Mais largo que a área: começa do começo dela.
-        assert_eq!(title_x(176.0, 200.0), 4.0);
         assert_eq!(inventory_label_y(166.0), 72.0);
         assert_eq!(TITLE_LABEL_Y, 6.0);
         assert_eq!(INVENTORY_LABEL_X, 8.0);
         assert_eq!(TITLE_TEXT_COLOR, 0x40_40_40);
+    }
+
+    /// `IFancyFontRenderer.drawScrollingString` (`:95-117`) e `getOverflowedBy` (`:187-206`): o título e o rótulo do inventário cabem alinhados, e mais largos
+    /// que a área rolam a partir do começo dela, num vaivém cujo período cresce com o que sobra.
+    #[test]
+    fn a_label_wider_than_its_area_scrolls_from_the_start_of_it() {
+        assert_eq!(title_area(176.0), [4.0, 6.0, 172.0, 15.0]);
+        assert_eq!(inventory_label_area(176.0, 166.0), [8.0, 72.0, 170.0, 81.0]);
+        // `GuiChemicalTank`: `renderInventoryText(guiGraphics, 85)`.
+        assert_eq!(inventory_label_area(85.0, 166.0), [8.0, 72.0, 79.0, 81.0]);
+        let [min_x, _, max_x, _] = title_area(176.0);
+        // Cabendo (a largura da área inclusive), o alvo do alinhamento.
+        assert_eq!(
+            scrolling_text_x(min_x, max_x, 100.0, TextAlignment::Center, 1_234),
+            (38.0, false)
+        );
+        assert_eq!(
+            scrolling_text_x(min_x, max_x, 168.0, TextAlignment::Center, 1_234),
+            (4.0, false)
+        );
+        assert_eq!(
+            scrolling_text_x(8.0, 79.0, 49.0, TextAlignment::Left, 1_234),
+            (8.0, false)
+        );
+        // 200 de largura em 168: sobram 32, o período é de 16 s (0,5 s por pixel). Começa no começo, chega ao fim na metade e volta.
+        assert_eq!(
+            scrolling_text_x(min_x, max_x, 200.0, TextAlignment::Center, 0),
+            (4.0, true)
+        );
+        let (middle, _) = scrolling_text_x(min_x, max_x, 200.0, TextAlignment::Center, 4_000);
+        assert!((middle - (4.0 - 16.0)).abs() < 1e-4, "{middle}");
+        let (end, _) = scrolling_text_x(min_x, max_x, 200.0, TextAlignment::Center, 8_000);
+        assert!((end - (4.0 - 32.0)).abs() < 1e-4, "{end}");
+        let (back, _) = scrolling_text_x(min_x, max_x, 200.0, TextAlignment::Center, 16_000);
+        assert!((back - 4.0).abs() < 1e-4, "{back}");
+        // Um pixel a mais: o período mínimo é de 3 s.
+        let (short, scrolls) = scrolling_text_x(min_x, max_x, 169.0, TextAlignment::Center, 1_500);
+        assert!(scrolls);
+        assert!((short - 3.0).abs() < 1e-4, "{short}");
     }
 
     #[test]

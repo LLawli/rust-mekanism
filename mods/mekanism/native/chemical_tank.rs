@@ -980,6 +980,23 @@ pub(in crate::game) fn step_control(game: &Game<'_>, pos: [i32; 3], entity: &mut
 /// O limite de pilha de um item que o hook do menu entrega sem o jogo: não entra na validação do slot.
 const UNKNOWN_STACK: u32 = 64;
 
+/// O shift-clique no menu do Chemical Tank (`MekanismContainer.quickMoveStack`): os dois slots do tile na ordem de `getInitialInventory` (o de esvaziar e o de
+/// encher), com o `isValidForInsertion(item, MANUAL)` de cada um, a barra de armadura e o inventário. Devolve se o bloco é daqui.
+pub(in crate::game) fn quick_move(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, container_slots: usize, slot: usize, stack: &mut ItemStack) -> bool {
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let tile = born(game, pos, entity, tier).tile;
+    let accepts = |slot: usize, stack: &ItemStack| {
+        let resource = basis::item_resource_with_limit(stack, UNKNOWN_STACK);
+        note_item(None, stack, &resource);
+        tile.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource, AutomationType::Manual))
+    };
+    let menu = entity.id.clone();
+    basis::bar_menu_quick_move(game, entity, &menu, container_slots, slot, stack, &[chemical_tank::DRAIN_SLOT, chemical_tank::FILL_SLOT], &accepts);
+    true
+}
+
 /// `InventoryContainerSlot.mayPlace` do tanque aberto: o `isValidForInsertion(item, MANUAL)` do slot, com o químico que a pilha do clique guarda. O hook do Horizon roda
 /// dentro do menu, sem o jogo: a regra leva um tile feito do NBT agora.
 pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner: &'static str) -> bool {

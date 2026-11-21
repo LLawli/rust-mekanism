@@ -1642,14 +1642,24 @@ mod tests {
         assert!(!tile.block_active(), "o NBT não acende o bloco");
         for _ in 0..5 {
             tile.tick_delay();
-            assert!(!tile.block_active(), "sem atraso armado o bloco nunca alcança o tile");
+            assert!(
+                !tile.block_active(),
+                "sem atraso armado o bloco nunca alcança o tile"
+            );
         }
         tile.set_active(true);
-        assert!(!tile.block_active(), "`setActive` com o mesmo valor volta antes de olhar o bloco");
+        assert!(
+            !tile.block_active(),
+            "`setActive` com o mesmo valor volta antes de olhar o bloco"
+        );
         tile.set_active(false);
         assert!(!tile.active());
         assert!(!tile.block_active());
-        assert_eq!(tile.update_delay(), 0, "o bloco já estava apagado: o atraso não é armado");
+        assert_eq!(
+            tile.update_delay(),
+            0,
+            "o bloco já estava apagado: o atraso não é armado"
+        );
         // Com um atraso que veio no NBT, o fim dele acerta o bloco pelo tile.
         tile.load_active(true, 2);
         tile.tick_delay();

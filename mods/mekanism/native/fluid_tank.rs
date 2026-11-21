@@ -1649,5 +1649,25 @@ pub(in crate::game) fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3], owner:
     true
 }
 
+/// O shift-clique no menu do Fluid Tank (`MekanismContainer.quickMoveStack`): os dois slots do tile na ordem de `getInitialInventory` (a entrada e a saída), com o
+/// `isValidForInsertion(item, MANUAL)` de cada um, a barra de armadura e o inventário. Devolve se o bloco é daqui.
+pub(in crate::game) fn quick_move(game: &mut Game<'_>, pos: [i32; 3], entity: &mut ModBlockEntity, container_slots: usize, slot: usize, stack: &mut ItemStack) -> bool {
+    let Some(tier) = tier_of(&entity.id) else {
+        return false;
+    };
+    let tile = born(game, game.native_dimension(), pos, entity, tier).tile;
+    let accepts = |slot: usize, stack: &ItemStack| {
+        let resource = basis::item_resource_with_limit(stack, UNKNOWN_STACK);
+        if is_tank(&stack.item) && !resource.components.is_empty() {
+            let contents = stack.data().and_then(|data| data.other(basis::CONTENT_FLUIDS)).map(tag_fluids).unwrap_or_default();
+            ITEM_FLUIDS.with_borrow_mut(|table| table.insert(resource.components.key().to_owned(), (contents, stack.clone())));
+        }
+        tile.inventory_slots().get(slot).is_some_and(|held| held.is_valid_for_insertion(&resource, AutomationType::Manual))
+    };
+    let menu = entity.id.clone();
+    basis::bar_menu_quick_move(game, entity, &menu, container_slots, slot, stack, &[fluid_tank::INPUT_SLOT, fluid_tank::OUTPUT_SLOT], &accepts);
+    true
+}
+
 /// O limite de pilha de um item que o hook do menu entrega sem o jogo: não entra na validação do slot.
 const UNKNOWN_STACK: u32 = 64;
