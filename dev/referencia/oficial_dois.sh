@@ -3,7 +3,7 @@
 # o ANFITRIÃO é o `runGameTestClient` de sempre, com a `CenaDois` e o roteiro `cena-dois` (ele abre o mundo à LAN na porta 25599), e o CONVIDADO é outro processo do
 # mesmo cliente, lançado com a linha de comando do primeiro (o classpath do moddev só existe nela) trocando a pasta de jogo (`runs/clientB`), o nome (`Convidado`) e o
 # destino (`--quickPlayMultiplayer 127.0.0.1:25599`), com o roteiro `cena-convidado`. Devolve a árvore como estava.
-# Uso: oficial_dois.sh CenaDois.java cena-dois.txt SAIDA_DIR
+# Uso: oficial_dois.sh CenaDois.java cena-dois.txt SAIDA_DIR   (`FPS=30` para um vídeo: o `-r` do gamescope, 15 por padrão)
 #   `cena-dois.txt` é o roteiro do anfitrião (veja o cabeçalho da `CenaDois.java`); o convidado só obedece (um arquivo `cena-convidado` vazio basta).
 #   SAIDA_DIR recebe os prints (`oficial_dois_*.png`, dos dois), `anfitriao.log` e `convidado.log` (as linhas `dois:`) e os logs do gradle.
 # Pega `~/.cache/rust-mekanism/mekanism-ref.lock` com `mkdir`, espera em laço de `test -d` a cada 60 s (nunca `pgrep`) e a solta ao sair. O gradle passa pelo `lim-build`.
@@ -57,7 +57,7 @@ cp "$JAVA" "$N/CenaDois.java"
 cp "$ROTEIRO" "$R/cena-dois"
 JANELA="-W 1920 -H 1080 -w 1920 -h 1080"
 # O anfitrião: o gradle compila, abre o mundo e roda a cena. O PID guardado é o do `lim-build` (o `exec` o troca pelo `flock` e depois pelo `docker exec`).
-( $LIM env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_anfitriao.log" 2>&1 & echo $! > "$W/anfitriao.pid"; wait )  &
+( $LIM env JOGO_CMD='gamescope --backend headless '"$JANELA"' -r '"${FPS:-15}"' -- env -u WAYLAND_DISPLAY sh -c "cd \"\$FONTE\" && ./gradlew --no-daemon --max-workers=4 runGameTestClient"' "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_anfitriao.log" 2>&1 & echo $! > "$W/anfitriao.pid"; wait )  &
 ESPERA=$!
 # Espera a LAN abrir (o log do anfitrião), no máximo 25 minutos, de 10 em 10 s, por arquivo.
 for i in $(seq 150); do
@@ -97,7 +97,7 @@ for a in args:
         out.append(a)
 open(saida, "w").write(f"cd {shlex.quote(rb)} && exec " + " ".join(shlex.quote(a) for a in out) + "\n")
 PY
-  ( JOGO_CMD='gamescope --backend headless '"$JANELA"' -r 15 -- env -u WAYLAND_DISPLAY sh '"$G/convidado.sh" "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_convidado.log" 2>&1 & echo $! > "$W/convidado.pid"; wait ) &
+  ( JOGO_CMD='gamescope --backend headless '"$JANELA"' -r '"${FPS:-15}"' -- env -u WAYLAND_DISPLAY sh '"$G/convidado.sh" "$HOME/.local/bin/mekanism-ref" > "$SAIDA/gradle_convidado.log" 2>&1 & echo $! > "$W/convidado.pid"; wait ) &
 fi
 # O anfitrião fecha o jogo no `fim` do roteiro (ou o `restore` o mata): espera por PID, no máximo 40 minutos.
 for i in $(seq 240); do kill -0 "$ESPERA" 2>/dev/null || break; sleep 10; done

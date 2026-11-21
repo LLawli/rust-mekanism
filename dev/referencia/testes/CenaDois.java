@@ -276,8 +276,9 @@ public class CenaDois {
             case "slot" -> {
                 int slot = Integer.parseInt(a[1]);
                 int button = a.length > 2 && a[2].equals("d") ? 1 : 0;
-                minecraft.gameMode.handleContainerInput(minecraft.player.containerMenu.containerId, slot, button, net.minecraft.world.inventory.ContainerInput.PICKUP,
-                      minecraft.player);
+                // `slot N shift`: o shift-clique (`QUICK_MOVE`).
+                var input = a.length > 2 && a[2].equals("shift") ? net.minecraft.world.inventory.ContainerInput.QUICK_MOVE : net.minecraft.world.inventory.ContainerInput.PICKUP;
+                minecraft.gameMode.handleContainerInput(minecraft.player.containerMenu.containerId, slot, button, input, minecraft.player);
                 return "true";
             }
             case "tipos" -> {
@@ -399,6 +400,11 @@ public class CenaDois {
         MinecraftServer server = minecraft.getSingleplayerServer();
         if (server == null || ticks < WARMUP) {
             return;
+        }
+        // O vídeo com som: quem grava cria `som-video-mudo` se algum som sair do sink de teste, e o volume mestre volta a 0 na hora.
+        if (Files.exists(SYNC.resolve("som-video-mudo")) && minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).get() > 0) {
+            minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
+            log("volume mudo");
         }
         if (roteiro == null) {
             carrega();
@@ -550,6 +556,33 @@ public class CenaDois {
             case "fim" -> {
                 log("fim");
                 minecraft.stop();
+            }
+            case "volume_se_ok" -> {
+                // `volume_se_ok CATEGORIA...`: o mestre e as categorias pedidas em 1, só se quem grava já conferiu que o som do jogo está no sink de teste (`som-video-ok`).
+                boolean ok = Files.exists(SYNC.resolve("som-video-ok")) && !Files.exists(SYNC.resolve("som-video-mudo"));
+                if (ok) {
+                    for (int i = 1; i < a.length; i++) {
+                        minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.valueOf(a[i].toUpperCase(java.util.Locale.ROOT))).set(1.0);
+                    }
+                    minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(1.0);
+                }
+                log("volume " + ok);
+            }
+            case "mudo" -> {
+                minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
+                log("mudo");
+            }
+            case "itens" -> {
+                // `itens NOME X Y Z`: os itens soltos num raio de 8 de (X, Y, Z) no servidor, com a posição relativa a esse bloco.
+                BlockPos at = new BlockPos(Integer.parseInt(a[2]), Integer.parseInt(a[3]), Integer.parseInt(a[4]));
+                server.execute(() -> {
+                    StringBuilder out = new StringBuilder();
+                    for (var entity : server.overworld().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, new net.minecraft.world.phys.AABB(at).inflate(8))) {
+                        out.append(BuiltInRegistries.ITEM.getKey(entity.getItem().getItem())).append(' ').append(entity.getItem().getCount()).append(" @ ")
+                              .append(entity.getX() - at.getX()).append(' ').append(entity.getY() - at.getY()).append(' ').append(entity.getZ() - at.getZ()).append("; ");
+                    }
+                    log("itens " + a[1] + " " + out);
+                });
             }
             default -> log("acao desconhecida " + a[0]);
         }

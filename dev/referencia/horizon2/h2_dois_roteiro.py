@@ -313,6 +313,24 @@ def main():
             if a[1] == "observar":
                 end_observation()
             act_client(verb, a[1:])
+        elif verb == "itens":
+            # Os itens soltos perto do anfitrião (o `entities` do `horizon-ctl`), com a posição relativa ao bloco (X, Y, Z) do roteiro.
+            base = [float(v) for v in a[2:5]]
+            bruto = d.host("entities", "16", "item")
+            say(f"itens {a[1]} bruto " + bruto.replace("\n", " ")[:800])
+            try:
+                ents = json.loads(bruto)
+                ents = ents.get("entities", ents) if isinstance(ents, dict) else ents
+            except (ValueError, TypeError):
+                ents = []
+            partes = []
+            for e in ents:
+                pos = e.get("position") or e.get("pos") or [0, 0, 0]
+                partes.append(f"{e.get('item') or e.get('type')} {e.get('count', '')} @ " + " ".join(str(p - b) for p, b in zip(pos, base)))
+            say(f"itens {a[1]} " + "; ".join(partes))
+        elif verb in ("volume_se_ok", "mudo"):
+            # Só para o vídeo do original (a `CenaDois` liga o som depois de quem grava conferir o sink); o port grava pelos seus próprios roteiros.
+            say(f"{verb} ignorado no port")
         elif verb == "fim":
             break
         else:

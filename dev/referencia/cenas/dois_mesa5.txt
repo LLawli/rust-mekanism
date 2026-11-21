@@ -1,0 +1,195 @@
+# A 5.ª rodada da `mesa-seguranca` com dois jogadores: o contorno desenhado do apoio (a foto `contorno_apoio`, o anfitrião mirando o monitor, que está no apoio),
+# o Configurator em `ROTATE` do convidado sem acesso e do dono nas quatro máquinas, no cubo e no Heat Generator (`TileEntityMekanism.tryWrench:552-554`; a mesa do dono
+# em `PRIVATE` com a sobreposição ligada tira o acesso do convidado a tudo do dono), e a TNT de força 1 encostada no apoio, com obsidiana entre ela e a mesa (`fuse:0s`:
+# o Horizon só lê o `fuse` curto). Roda no original (`oficial_dois.sh testes/CenaDois.java cenas/dois_mesa5.txt SAIDA`) e no port
+# (`H_NAME=horizon H2_HOST=Dev horizon2/h2_dois_roteiro.py cenas/dois_mesa5.txt SAIDA`). Toda coordenada x fica entre 300 e 399, que o roteiro do port desloca.
+lan 25599
+espera_convidado
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv gamerule advance_time false
+srv gamerule advance_weather false
+srv clear @a
+caixa 300
+srv tp Convidado 300.0 -60.0 -5.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 20
+por Dev mekanism:security_desk 300
+espera 10
+anf escala 2
+srv tp Convidado 300.5 -60.0 -5.0 0 0
+srv tp Dev 300.5 -60.0 0.5 0 6.5
+espera 40
+anf foto contorno_apoio
+bloco mira_mesa 300 -60 3
+srv tp Dev 300.5 -60.0 0.5 0 0
+espera 10
+anf escala 3
+anf painel 176 230
+anf abrir 300 -60 3
+espera 10
+anf clicar 74 121
+espera 5
+anf clicar 154 67
+espera 5
+anf fechar
+espera 10
+srv clear @a
+srv tp Dev 302.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanism:enrichment_chamber 302
+espera 10
+srv tp Dev 303.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanism:crusher 303
+espera 10
+srv tp Dev 304.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanism:energized_smelter 304
+espera 10
+srv tp Dev 305.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanism:metallurgic_infuser 305
+espera 10
+srv item replace entity Convidado weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+srv item replace entity Dev weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+espera 10
+srv tp Convidado 302.5 -60.0 0.5 0 0
+srv tp Dev 302.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_enrichment_chamber 302 -60 3
+conv usar 302 -60 3
+espera 10
+bloco conv_enrichment_chamber 302 -60 3
+conv fechar
+espera 5
+srv tp Convidado 302.5 -60.0 -4.0 0 0
+srv tp Dev 302.5 -60.0 0.5 0 0
+espera 20
+anf usar 302 -60 3
+espera 10
+bloco dono_enrichment_chamber 302 -60 3
+anf fechar
+espera 5
+srv tp Convidado 303.5 -60.0 0.5 0 0
+srv tp Dev 303.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_crusher 303 -60 3
+conv usar 303 -60 3
+espera 10
+bloco conv_crusher 303 -60 3
+conv fechar
+espera 5
+srv tp Convidado 303.5 -60.0 -4.0 0 0
+srv tp Dev 303.5 -60.0 0.5 0 0
+espera 20
+anf usar 303 -60 3
+espera 10
+bloco dono_crusher 303 -60 3
+anf fechar
+espera 5
+srv tp Convidado 304.5 -60.0 0.5 0 0
+srv tp Dev 304.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_energized_smelter 304 -60 3
+conv usar 304 -60 3
+espera 10
+bloco conv_energized_smelter 304 -60 3
+conv fechar
+espera 5
+srv tp Convidado 304.5 -60.0 -4.0 0 0
+srv tp Dev 304.5 -60.0 0.5 0 0
+espera 20
+anf usar 304 -60 3
+espera 10
+bloco dono_energized_smelter 304 -60 3
+anf fechar
+espera 5
+srv tp Convidado 305.5 -60.0 0.5 0 0
+srv tp Dev 305.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_metallurgic_infuser 305 -60 3
+conv usar 305 -60 3
+espera 10
+bloco conv_metallurgic_infuser 305 -60 3
+conv fechar
+espera 5
+srv tp Convidado 305.5 -60.0 -4.0 0 0
+srv tp Dev 305.5 -60.0 0.5 0 0
+espera 20
+anf usar 305 -60 3
+espera 10
+bloco dono_metallurgic_infuser 305 -60 3
+anf fechar
+espera 5
+srv setblock 302 -60 3 minecraft:air
+srv setblock 303 -60 3 minecraft:air
+srv setblock 304 -60 3 minecraft:air
+srv setblock 305 -60 3 minecraft:air
+srv clear @a
+srv tp Dev 302.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanism:basic_energy_cube 302
+espera 10
+srv tp Dev 303.5 -60.0 0.5 0 0
+espera 10
+por Dev mekanismgenerators:heat_generator 303
+espera 10
+srv item replace entity Convidado weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+srv item replace entity Dev weapon.mainhand with mekanism:configurator[mekanism:configurator_mode="rotate"]
+espera 10
+srv tp Convidado 302.5 -60.0 0.5 0 0
+srv tp Dev 302.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_basic_energy_cube 302 -60 3
+conv usar 302 -60 3
+espera 10
+bloco conv_basic_energy_cube 302 -60 3
+conv fechar
+espera 5
+srv tp Convidado 302.5 -60.0 -4.0 0 0
+srv tp Dev 302.5 -60.0 0.5 0 0
+espera 20
+anf usar 302 -60 3
+espera 10
+bloco dono_basic_energy_cube 302 -60 3
+anf fechar
+espera 5
+srv tp Convidado 303.5 -60.0 0.5 0 0
+srv tp Dev 303.5 -60.0 -1.5 0 0
+espera 20
+bloco antes_heat_generator 303 -60 3
+conv usar 303 -60 3
+espera 10
+bloco conv_heat_generator 303 -60 3
+conv fechar
+espera 5
+srv tp Convidado 303.5 -60.0 -4.0 0 0
+srv tp Dev 303.5 -60.0 0.5 0 0
+espera 20
+anf usar 303 -60 3
+espera 10
+bloco dono_heat_generator 303 -60 3
+anf fechar
+espera 5
+srv setblock 302 -60 3 minecraft:air
+srv setblock 303 -60 3 minecraft:air
+srv tp Convidado 300.5 -60.0 -5.0 0 0
+srv tp Dev 300.5 -60.0 -1.5 0 0
+srv clear @a
+srv kill @e[type=item]
+srv setblock 301 -60 3 minecraft:obsidian
+espera 10
+bloco tnt_mesa_antes 300 -60 3
+bloco tnt_apoio_antes 300 -59 3
+srv summon minecraft:tnt 301.5 -59.0 3.5 {fuse:0s,explosion_power:1.0f}
+espera 20
+bloco tnt_mesa 300 -60 3
+bloco tnt_apoio 300 -59 3
+bloco tnt_obsidiana 301 -60 3
+itens tnt 300 -60 3
+srv gamerule advance_time true
+srv gamerule advance_weather true
+fim

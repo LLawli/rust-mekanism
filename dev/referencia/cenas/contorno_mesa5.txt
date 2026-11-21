@@ -1,0 +1,26 @@
+# O contorno desenhado do bloco de apoio no original (frente `mesa-seguranca`, 5.ª rodada): a caixa da `CenaDois` com o teto aberto em cima da mesa (a luz do céu ao
+# meio-dia) e dois blocos de luz invisíveis diante da mesa, para o contorno escuro aparecer, a mesa posta pelo dono e o anfitrião mirando o monitor, que está no apoio, em guiScale 2. A foto `contorno_apoio` tem o
+# mesmo enquadramento do quadro `contorno_port.png` de `horizon2/port_mesa5.sh`. Um jogador só: `oficial_dois.sh testes/CenaDois.java cenas/contorno_mesa5.txt SAIDA`.
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv gamerule advance_time false
+srv gamerule advance_weather false
+srv clear @a
+caixa 300
+srv fill 300 -50 -5 305 -50 9 minecraft:air
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 20
+por Dev mekanism:security_desk 300
+espera 10
+srv setblock 301 -59 1 minecraft:light[level=15]
+srv setblock 299 -59 1 minecraft:light[level=15]
+anf escala 2
+srv tp Dev 300.5 -60.0 0.5 0 6.5
+espera 60
+anf foto contorno_apoio
+bloco mira_mesa 300 -60 3
+srv gamerule advance_time true
+srv gamerule advance_weather true
+fim
