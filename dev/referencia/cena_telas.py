@@ -60,6 +60,11 @@ MAQUINAS = {
     "cubo": dict(block="mekanism:basic_energy_cube", tela="cubo", cap=4_000_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
     "cubo_ultimate": dict(block="mekanism:ultimate_energy_cube", tela="cubo", cap=256_000_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
     "cubo_criativo": dict(block="mekanism:creative_energy_cube", tela="cubo", cap=9223372036854775807, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    # Os tanques (frente `tanques`, 5.ª rodada): `cap` é a capacidade do tanque em mB (`FluidTankTier` e `ChemicalTankTier`), sem energia, upgrades nem receita.
+    "tanque": dict(block="mekanism:basic_fluid_tank", tela="tanque", cap=32_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    "tanque_criativo": dict(block="mekanism:creative_fluid_tank", tela="tanque", cap=9223372036854775807, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    "tanque_quimico": dict(block="mekanism:basic_chemical_tank", tela="tanque_quimico", cap=64_000, entrada=None, slots=(0, 1), upgrade=(0, 0)),
+    "tanque_quimico_criativo": dict(block="mekanism:creative_chemical_tank", tela="tanque_quimico", cap=9223372036854775807, entrada=None, slots=(0, 1), upgrade=(0, 0)),
 }
 
 # O que sai do slot de saída "cheio" e o item que não é o da receita.
@@ -67,7 +72,7 @@ SAIDA_CHEIA = {"chamber": "clay_ball", "crusher": "gravel", "smelter": "glass", 
 
 
 # Os índices do slot que enche (`ranhura`) e do de carga (`carga`) em cada tela: o cubo tem o de descarga no 0 e o de carga no 1; o gerador, a energia no 1; as máquinas, no 2 (o infuser, no 3).
-SLOT_DE_ENERGIA = {"electric": (2, None), "infuser": (3, None), "generator": (1, None), "cubo": (0, 1)}
+SLOT_DE_ENERGIA = {"electric": (2, None), "infuser": (3, None), "generator": (1, None), "cubo": (0, 1), "tanque": (None, None), "tanque_quimico": (None, None)}
 
 
 def caso(identificador, maquina, /, **args):
@@ -648,6 +653,47 @@ def casos_infuser_entrada():
 
 # As abas de configuração de lados e de transporte (`GuiConfigurableTile`) e as duas janelas: o centro do botão de dentro de cada aba (-21, 10) e (-21, 38),
 # 18 por 18, em pixels de GUI relativos ao canto da tela. As janelas abrem em ((176 - 156) / 2, 15) = (10, 15).
+# As telas dos tanques (frente `tanques`, 5.ª rodada). O cursor: o meio do medidor largo do Fluid Tank (48, 18, 66 por 50), o botão da aba do modo de edição
+# (179, 142, 18 por 18), a barra do Chemical Tank (42, 16, 118 por 12) e o botão do modo de descarte (159, 72, 10 por 10).
+TANQUE_MEDIDOR = (81, 43)
+TANQUE_ABA_MODO = (188, 151)
+TANQUE_BARRA = (101, 22)
+TANQUE_BOTAO = (164, 77)
+
+
+def casos_tanques():
+    """Os dois tanques: vazios, com fluido e com químico, o criativo, cada modo (posto no tile e pelo clique na tela) e os tooltips do medidor, da barra e da aba.
+    O fluido e o químico são sprites animados nos dois jogos: `ciclo` tira vários prints, e `comparar_tanques.py` casa cada print do original com o do port mais parecido."""
+    out = [
+        caso("tanque_vazio", "tanque"),
+        caso("tanque_agua", "tanque", fluido="water:16000", ciclo="4", ciclo_port="64"),
+        caso("tanque_lava_cheio", "tanque", fluido="lava:cap", ciclo="2", ciclo_port="64"),
+        caso("tanque_criativo_agua", "tanque_criativo", fluido="water:cap", ciclo="2", ciclo_port="64"),
+        caso("tanque_modo_fill", "tanque", modo="fill"),
+        caso("tanque_modo_empty", "tanque", modo="empty"),
+        caso("tanque_clique_modo", "tanque", clicar="%d,%d" % TANQUE_ABA_MODO),
+        caso("tanque_clique_modo_direito", "tanque", clicar="%d,%d,r" % TANQUE_ABA_MODO),
+        caso("tanque_hover_medidor_vazio", "tanque", hover=TANQUE_MEDIDOR),
+        caso("tanque_hover_medidor_agua", "tanque", fluido="water:16000", hover=TANQUE_MEDIDOR, ciclo="2", ciclo_port="64"),
+        caso("tanque_hover_medidor_criativo", "tanque_criativo", fluido="water:cap", hover=TANQUE_MEDIDOR, ciclo="2", ciclo_port="64"),
+        caso("tanque_hover_aba_modo", "tanque", hover=TANQUE_ABA_MODO),
+        caso("tanque_hover_aba_modo_fill", "tanque", modo="fill", hover=TANQUE_ABA_MODO),
+        caso("tanque_quimico_vazio", "tanque_quimico"),
+        caso("tanque_quimico_hidrogenio", "tanque_quimico", quimico="hydrogen:5000", ciclo="4", ciclo_port="64"),
+        caso("tanque_quimico_cheio", "tanque_quimico", quimico="oxygen:cap", ciclo="2", ciclo_port="64"),
+        caso("tanque_quimico_criativo_vazio", "tanque_quimico_criativo"),
+        caso("tanque_quimico_criativo_cheio", "tanque_quimico_criativo", quimico="hydrogen:cap", ciclo="2", ciclo_port="64"),
+        caso("tanque_quimico_descarte_excesso", "tanque_quimico", descarte="dumping_excess"),
+        caso("tanque_quimico_descarte", "tanque_quimico", descarte="dumping"),
+        caso("tanque_quimico_clique_botao", "tanque_quimico", clicar="%d,%d" % TANQUE_BOTAO),
+        caso("tanque_quimico_hover_botao", "tanque_quimico", hover=TANQUE_BOTAO),
+        caso("tanque_quimico_hover_barra_vazia", "tanque_quimico", hover=TANQUE_BARRA),
+        caso("tanque_quimico_hover_barra", "tanque_quimico", quimico="oxygen:5000", hover=TANQUE_BARRA, ciclo="2", ciclo_port="64"),
+        caso("tanque_quimico_lados", "tanque_quimico", clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}"),
+    ]
+    return out
+
+
 ABA_LADOS = (-12, 19)
 ABA_TRANSPORTE = (-12, 47)
 JANELA = (10, 15)
@@ -735,7 +781,7 @@ def todos_os_casos():
 def casos_do_roteiro(so=None):
     """Os casos que os dois jogos rodam: a tabela (`todos_os_casos`) e, só se `so` os pede pelo nome, os controles da luz (`casos_controle`), que não
     entram no lote porque comparam o mundo sem tela e a luz, não a tela."""
-    tudo = todos_os_casos() + (casos_controle() + casos_fora() + casos_slot_energia() if so else [])
+    tudo = todos_os_casos() + (casos_controle() + casos_fora() + casos_slot_energia() + casos_tanques() if so else [])
     return [c for c in tudo if not so or c["nome"] in so]
 
 
@@ -908,9 +954,18 @@ def monta_port(c, x, escala):
         nbt.append("Items:[" + ",".join(itens) + "]")
     if "quimico" in c["args"]:
         tipo, n = c["args"]["quimico"].split(":")
+        n = spec["cap"] if n == "cap" else n
         nbt.append(f'chemical_tanks:[{{container:0b,stored:{{type:"mekanism:{tipo}",amount:{n}L}}}}]')
     if "lava" in c["args"]:
         nbt.append(f'machinery_basis:{{v:1,tanks:[{{resource:"minecraft:lava",amount:{c["args"]["lava"]}L}}]}}')
+    if "fluido" in c["args"]:
+        # O Fluid Tank: o fluido no tanque da `machinery_basis` e, com `modo`, o modo de edição, nas chaves do tile.
+        tipo, n = c["args"]["fluido"].split(":")
+        nbt.append(f'machinery_basis:{{v:1,tanks:[{{resource:"minecraft:{tipo}",amount:{spec["cap"] if n == "cap" else int(n)}L}}]}}')
+    if "modo" in c["args"]:
+        nbt.append(f'edit_mode:"{c["args"]["modo"]}"')
+    if "descarte" in c["args"]:
+        nbt.append(f'dumping:"{c["args"]["descarte"]}"')
     nbt += nbt_da_configuracao(c)
     if "nome" in c["args"]:
         # O `CustomName` do tile é o componente em NBT (`ComponentSerialization`): o JSON sem espaços é também SNBT.
@@ -1094,7 +1149,12 @@ def tira_port(c, x, escala, destino):
             comando("tick step 1")
             ctl("wait", "2")
         alvo = f"{destino}/port_{c['nome']}_e{escala}{sufixo}.png"
-        if c["args"].get("clicar"):
+        if c["args"].get("clicar") and c["maquina"].startswith("tanque"):
+            # Os tanques: o texto do modo de descarte (`Dumping Excess`) não cabe ao lado do botão e rola nos dois jogos, e a tela nunca fica parada. O clique
+            # já foi ao servidor e voltou no espelho do menu depois de 20 quadros.
+            ctl("wait", "20")
+            ctl("screenshot", alvo)
+        elif c["args"].get("clicar"):
             # O cubo: só a tela e as abas valem (o núcleo atrás gira).
             recorte = ((gui_l - 176) // 2 - 28, (gui_a - 166) // 2, (gui_l - 176) // 2 + 204, (gui_a - 166) // 2 + 166) if c["maquina"].startswith("cubo") or c["maquina"] == "generator" else None
             if recorte:

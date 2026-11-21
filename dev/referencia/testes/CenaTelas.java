@@ -117,9 +117,15 @@ public class CenaTelas {
             case "cubo" -> MekanismBlocks.BASIC_ENERGY_CUBE.defaultState();
             case "cubo_ultimate" -> MekanismBlocks.ULTIMATE_ENERGY_CUBE.defaultState();
             case "cubo_criativo" -> MekanismBlocks.CREATIVE_ENERGY_CUBE.defaultState();
+            case "tanque" -> MekanismBlocks.BASIC_FLUID_TANK.defaultState();
+            case "tanque_criativo" -> MekanismBlocks.CREATIVE_FLUID_TANK.defaultState();
+            case "tanque_quimico" -> MekanismBlocks.BASIC_CHEMICAL_TANK.defaultState();
+            case "tanque_quimico_criativo" -> MekanismBlocks.CREATIVE_CHEMICAL_TANK.defaultState();
             default -> throw new IllegalArgumentException(machine);
         };
     }
+
+    private static final java.nio.file.Path SOM = java.nio.file.Path.of("/home/luka/.local/share/jogo-isolado/mekanism-ref/dois-sync");
 
     @SubscribeEvent
     public static void onTick(ClientTickEvent.Post event) {
@@ -127,6 +133,19 @@ public class CenaTelas {
         MinecraftServer server = minecraft.getSingleplayerServer();
         if (minecraft.level == null || minecraft.player == null || server == null || !Files.exists(ATIVA)) {
             return;
+        }
+        // O vídeo com som (frente `tanques`, 5.ª rodada), como a `CenaDois`: o jogo abre mudo, e o volume mestre e o da categoria `ui` só sobem quando quem grava já
+        // conferiu que o som do jogo está no sink de teste (`dois-sync/som-video-ok`); `som-video-mudo` (algum som saiu do sink de teste, ou a gravação acabou) o
+        // devolve a 0 na hora.
+        var master = minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER);
+        if (Files.exists(SOM.resolve("som-video-mudo"))) {
+            if (master.get() > 0) {
+                master.set(0.0);
+            }
+        } else if (Files.exists(SOM.resolve("som-video-ok")) && master.get() == 0) {
+            for (var source : net.minecraft.sounds.SoundSource.values()) {
+                minecraft.options.getSoundSourceOptionInstance(source).set(source == net.minecraft.sounds.SoundSource.UI || source == net.minecraft.sounds.SoundSource.MASTER ? 1.0 : 0.0);
+            }
         }
         if (CASOS == null) {
             load();
@@ -416,6 +435,30 @@ public class CenaTelas {
             Holder<Chemical> chemical = server.overworld().registryAccess().getOrThrow(key);
             machine.infusionTank.setContents(ChemicalResource.of(chemical), Long.parseLong(parts[1]), null);
         }
+        // Os tanques (frente `tanques`, 5.ª rodada): `fluido=water:16000` (ou `lava`, ou `cap` no lugar da quantidade) no Fluid Tank, `modo=fill|empty` (o modo de edição,
+        // pelo `nextMode` da aba), `quimico=hydrogen:5000` no Chemical Tank e `descarte=dumping_excess|dumping`.
+        if (caso.args().containsKey("fluido") && tile instanceof mekanism.common.tile.TileEntityFluidTank tank) {
+            String[] parts = caso.args().get("fluido").split(":");
+            FluidResource fluid = FluidResource.of(parts[0].equals("lava") ? Fluids.LAVA : Fluids.WATER);
+            tank.fluidTank.setContents(fluid, parts[1].equals("cap") ? tank.fluidTank.capacityAsLong(fluid) : Long.parseLong(parts[1]), null);
+        }
+        if (caso.args().containsKey("modo") && tile instanceof mekanism.common.tile.TileEntityFluidTank tank) {
+            for (int i = caso.args().get("modo").equals("fill") ? 1 : 2; i > 0; i--) {
+                tank.nextMode();
+            }
+        }
+        if (caso.args().containsKey("quimico") && tile instanceof mekanism.common.tile.TileEntityChemicalTank tank) {
+            String[] parts = caso.args().get("quimico").split(":");
+            Holder<Chemical> chemical = server.overworld().registryAccess().getOrThrow(
+                  net.minecraft.resources.ResourceKey.create(mekanism.api.MekanismRegistries.Keys.CHEMICAL, Mekanism.rl(parts[0])));
+            ChemicalResource resource = ChemicalResource.of(chemical);
+            tank.getChemicalTank().setContents(resource, parts[1].equals("cap") ? tank.getChemicalTank().capacityAsLong(resource) : Long.parseLong(parts[1]), null);
+        }
+        if (caso.args().containsKey("descarte") && tile instanceof mekanism.common.tile.TileEntityChemicalTank tank) {
+            for (int i = caso.args().get("descarte").equals("dumping_excess") ? 1 : 2; i > 0; i--) {
+                tank.nextMode(0);
+            }
+        }
         if (caso.args().containsKey("lava") && tile instanceof TileEntityHeatGenerator generator) {
             generator.lavaTank.setContents(FluidResource.of(Fluids.LAVA), Long.parseLong(caso.args().get("lava")), null);
         }
@@ -620,6 +663,7 @@ public class CenaTelas {
                       && !(element instanceof mekanism.client.gui.element.tab.GuiRedstoneControlTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiSideConfigurationTab)
                       && !(element instanceof mekanism.client.gui.element.tab.window.GuiTransporterConfigTab)
+                      && !(element instanceof mekanism.client.gui.element.tab.GuiContainerEditModeTab)
                       && !isArmorHolder(screen, element)
                       && element instanceof mekanism.client.gui.element.GuiSideHolder) {
                     element.visible = false;
@@ -697,6 +741,10 @@ public class CenaTelas {
         // O Energy Cube tem o suporte da armadura à direita (`GuiSideHolder.create(this, imageWidth, 36, 98, false, true, ...)`), que o port desenha desde 2026-11-11.
         if (screen instanceof mekanism.client.gui.GuiEnergyCube) {
             return element.getX() - screen.getLeftPos() == 176 && element.getY() - screen.getTopPos() == 36;
+        }
+        // Os dois tanques têm o suporte do `GuiSideHolder.armorHolder` (-26, 62, 98), que o port desenha desde 2026-11-21.
+        if (screen instanceof mekanism.client.gui.GuiFluidTank || screen instanceof mekanism.client.gui.GuiChemicalTank) {
+            return element.getX() - screen.getLeftPos() == -26 && element.getY() - screen.getTopPos() == 62;
         }
         return screen instanceof mekanism.generators.client.gui.GuiHeatGenerator && element.getX() - screen.getLeftPos() == -26
               && element.getY() - screen.getTopPos() == 6;

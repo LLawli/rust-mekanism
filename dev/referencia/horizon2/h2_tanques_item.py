@@ -205,6 +205,11 @@ def caldeirao():
         if "bucket_mode=true" in item:
             h.ctl("use-item")  # toma posse (a mira está no caldeirão; a posse vem antes de tudo no `use`, e o caldeirão responde antes dela)
             time.sleep(0.5)
+        else:
+            # Fora do modo balde o `FluidTankCauldronInteraction` devolve `TRY_WITH_EMPTY_HAND` e o `useOn` do item põe o bloco na face clicada, em cima do
+            # caldeirão. Até a 4.ª rodada este passo não clicava (o `use-item` só saía no modo balde), e a conferência falhava sem o port ter sido testado.
+            h.ctl("use-item")
+            time.sleep(0.6)
         got, text = hand()
         # O caldeirão responde no `useItemOn` do bloco, antes do `use` do item: o primeiro clique já troca.
         ok_block = "passed" in " ".join(h.command(f"execute if block {TARGET} {depois}")).lower()
@@ -214,6 +219,9 @@ def caldeirao():
             got, text = hand()
             ok_block = "passed" in " ".join(h.command(f"execute if block {TARGET} {depois}")).lower()
         certo = (got is None if mao is None else bool(got) and got[2:] == mao) and ok_block
+        if "bucket_mode=false" in item:
+            em_cima = " ".join(h.command(f"execute if block {X} {Y + 1} {Z} mekanism:basic_fluid_tank")).lower()
+            certo = certo and "passed" in em_cima
         confere(f"caldeirão: {nome}", certo, f"mão {got}, bloco {'certo' if ok_block else 'errado'}")
         release()
         h.command(f"setblock {X} {Y + 1} {Z} minecraft:air")
