@@ -403,6 +403,51 @@ impl<K: Kind> Replay<K> {
                 let tank = self.world.place_tank(pos, tier, content);
                 self.actors.push((words[1].to_owned(), tank));
             }
+            // `rtank nome x y z tier recurso quantidade`: o tanque com o tile de verdade.
+            "rtank" => {
+                let origin = self.world.origin;
+                let pos = BlockPos::new(
+                    origin.x + number(2),
+                    origin.y + number(3),
+                    origin.z + number(4),
+                );
+                let amount = words[7].parse::<i64>().unwrap();
+                let content = (words[6] != "empty" && amount != 0)
+                    .then(|| (words[6], (amount >= 0).then_some(amount as u64)));
+                let tank = self.world.place_real_tank(pos, words[5], content);
+                self.actors.push((words[1].to_owned(), tank));
+            }
+            // `machine nome x y z capacidade aceitos`: uma máquina com um tanque que só aceita de fora os recursos da lista.
+            "machine" => {
+                let origin = self.world.origin;
+                let pos = BlockPos::new(
+                    origin.x + number(2),
+                    origin.y + number(3),
+                    origin.z + number(4),
+                );
+                let accepted = words[6]
+                    .split(',')
+                    .filter(|id| *id != "none")
+                    .map(str::to_owned)
+                    .collect();
+                let tank = self
+                    .world
+                    .place_machine(pos, words[5].parse().unwrap(), accepted);
+                self.actors.push((words[1].to_owned(), tank));
+            }
+            // `active nome true|false`, `eject nome true|false` e `dump nome`: o que mexe no tile de verdade.
+            "active" | "eject" | "dump" => {
+                let tank = self
+                    .actors
+                    .iter()
+                    .find(|(name, _)| name == words[1])
+                    .unwrap()
+                    .1
+                    .clone();
+                tank.real.as_deref().expect("tanque de verdade").act(&words);
+                let pos = self.world.tank_pos(&tank);
+                self.world.real_block_update(pos, &tank);
+            }
             // `generator nome x y z`: o Heat Generator.
             "generator" => {
                 let origin = self.world.origin;
@@ -582,11 +627,15 @@ fn port_estate<K: Kind>(replay: &Replay<K>) -> Value {
         .iter()
         .map(|(name, tank)| {
             let contents = tank.tank.contents();
-            serde_json::json!({
+            let mut row = serde_json::json!({
                 "name": name,
                 K::KEY: resource_id::<K>(&contents),
                 "amount": contents.amount,
-            })
+            });
+            if let Some(real) = &tank.real {
+                real.estate(row.as_object_mut().unwrap());
+            }
+            row
         })
         .collect();
     serde_json::json!({ "pipes": cables, "nets": nets, "actors": actors })
@@ -640,6 +689,12 @@ pub fn run<K: Kind>(run: &str, scenario: &str) {
             // é do gerador, não da rede, então entra de fora.
             for (_, tank) in &replay.actors {
                 tank.energy_full.set(t >= 31);
+            }
+        }
+        if scenario == "tank_push_generator" {
+            // O mesmo com o Fluid Tank em cima do gerador: ele queima do tick 7 ao 31 do rastro (25 ticks, como no `heat_generator`).
+            for (_, tank) in &replay.actors {
+                tank.energy_full.set(t >= 32);
             }
         }
         replay.world.tick_level();

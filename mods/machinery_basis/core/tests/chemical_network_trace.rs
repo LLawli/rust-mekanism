@@ -22,6 +22,25 @@ const SCENARIOS: [&str; 13] = [
     "reopen",
 ];
 
+/// Os vizinhos que empurram (frente `tanques`, 9.ª rodada): o Chemical Tank que ejeta para uma linha de tubos, pelos três modos de descarte, e para uma máquina
+/// (o tanque de infusão do Metallurgic Infuser), e o `incompatible` com tanques de verdade (decisão 144). O tanque é o `ChemicalTankTile` da lib e chega ao tubo
+/// por `capability_insert_container`.
+const TANK_SCENARIOS: [&str; 4] = [
+    "tank_eject_tube",
+    "tank_eject_alone",
+    "tank_eject_machine",
+    "tank_incompatible",
+];
+
+#[test]
+fn the_tanks_that_eject_match_the_two_runs_of_the_original() {
+    for run in ["", "run2"] {
+        for scenario in TANK_SCENARIOS {
+            network_trace::run::<ChemicalKind>(run, scenario);
+        }
+    }
+}
+
 #[test]
 fn every_scenario_matches_the_first_run_of_the_original() {
     for scenario in SCENARIOS {

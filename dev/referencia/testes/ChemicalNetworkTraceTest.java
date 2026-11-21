@@ -32,6 +32,7 @@ import mekanism.common.tests.MekanismTests;
 import mekanism.common.tests.helpers.MekGameTestHelper;
 import mekanism.common.lib.transmitter.TransmissionType;
 import mekanism.common.tile.TileEntityChemicalTank;
+import mekanism.common.tile.machine.TileEntityMetallurgicInfuser;
 import mekanism.common.tile.base.TileEntityMekanism;
 import mekanism.common.tile.component.config.ConfigInfo;
 import mekanism.common.tile.component.config.DataType;
@@ -115,6 +116,7 @@ public class ChemicalNetworkTraceTest {
     private static final String HYDROGEN = "mekanism:hydrogen";
     private static final String OXYGEN = "mekanism:oxygen";
     private static final String WASTE = "mekanism:nuclear_waste";
+    private static final String CARBON = "mekanism:carbon";
 
     //Note: lazy so the mechanical pipes are registered, and so the traced block entity is in place before the structure is placed
     @RegisterStructureTemplate(EMPTY14)
@@ -172,6 +174,60 @@ public class ChemicalNetworkTraceTest {
 
     private static void atMode(MekGameTestHelper helper, int tick, int x, int z, Direction side, ConnectionType type) {
         at(tick, "mode " + x + " " + z + " " + side.getName() + " " + type.getSerializedName(), () -> mode(helper, x, z, side, type));
+    }
+
+    /// `rtank`: the same Chemical Tank of `tank` (the six sides `INPUT_OUTPUT`, not ejecting), but the replay uses the tile itself (the ejector and the dump
+    /// mode), and the `estate` of that actor also says `ejecting` and `dumping`.
+    private static void rtankNow(MekGameTestHelper helper, String name, int x, int y, int z, String tier, String chemical, long amount) {
+        Recorder.mark("rtank " + name + " " + x + " " + y + " " + z + " " + tier + " " + chemical + " " + amount);
+        tank(helper, name, x, y, z, tier, chemical, amount);
+        Recorder.watch(name);
+    }
+
+    private static void atRtank(MekGameTestHelper helper, int tick, String name, int x, int y, int z, String tier, String chemical, long amount) {
+        at(tick, "rtank " + name + " " + x + " " + y + " " + z + " " + tier + " " + chemical + " " + amount, () -> {
+            tank(helper, name, x, y, z, tier, chemical, amount);
+            Recorder.watch(name);
+        });
+    }
+
+    /// `eject nome true|false`: the eject button of the side configuration screen (`ConfigInfo.setEjecting`).
+    private static void atEject(MekGameTestHelper helper, int tick, String name, boolean ejecting) {
+        at(tick, "eject " + name + " " + ejecting, () -> {
+            if (Recorder.actorTile(name) instanceof TileEntityChemicalTank tank) {
+                tank.getConfig().getConfig(TransmissionType.CHEMICAL).setEjecting(ejecting);
+            }
+        });
+    }
+
+    /// `dump nome`: the button of the dump mode (`TileEntityChemicalTank.nextMode(0)`).
+    private static void atDump(MekGameTestHelper helper, int tick, String name) {
+        at(tick, "dump " + name, () -> {
+            if (Recorder.actorTile(name) instanceof TileEntityChemicalTank tank) {
+                tank.nextMode(0);
+            }
+        });
+    }
+
+    /// `machine nome x y z capacidade aceitos`: a Metallurgic Infuser with the chemical in `INPUT` on the six sides; the actor is its infusion tank. The mark
+    /// carries what the replay needs of the machine: the capacity of the tank and which of the probed chemicals the capability takes from outside.
+    private static void machineNow(MekGameTestHelper helper, String name, int x, int y, int z) {
+        helper.setBlock(x, y, z, MekanismBlocks.METALLURGIC_INFUSER.defaultState());
+        TileEntityMetallurgicInfuser tile = WorldUtils.getTileEntity(TileEntityMetallurgicInfuser.class, helper.getLevel(), helper.absolutePos(new BlockPos(x, y, z)));
+        ConfigInfo info = tile.getConfig().getConfig(TransmissionType.CHEMICAL);
+        for (RelativeSide relative : RelativeSide.VALUES) {
+            info.setDataType(DataType.INPUT, relative);
+            tile.getConfig().sideChanged(TransmissionType.CHEMICAL, relative);
+        }
+        StringBuilder accepted = new StringBuilder();
+        for (String chemical : new String[]{CARBON, HYDROGEN, OXYGEN, "mekanism:redstone", "mekanism:diamond"}) {
+            if (handlerMask(helper, x, y, z, true, chemical) == 63) {
+                accepted.append(accepted.isEmpty() ? "" : ",").append(chemical);
+            }
+        }
+        Recorder.mark("machine " + name + " " + x + " " + y + " " + z + " " + tile.infusionTank.capacityAsLong(ChemicalResource.EMPTY) + " " + (accepted.isEmpty() ? "none" : accepted));
+        Recorder.event("capdiag", "\"name\":\"" + name + "\",\"io\":" + capabilityMask(helper, x, y, z) + ",\"ext\":" + handlerMask(helper, x, y, z, false, CARBON));
+        Recorder.actor(name, new BlockPos(x, y, z));
     }
 
     private static void atPlace(MekGameTestHelper helper, int tick, Block block, int x, int z) {
@@ -463,6 +519,100 @@ public class ChemicalNetworkTraceTest {
 
     /// The last tube of a network being broken with a radioactive chemical inside: `disperse` is called (`onLastTransmitterRemoved`) and dumps radiation. A
     /// network of three tubes is split by the middle one, and the two halves lose their only tube one after the other.
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_chemical_tank_incompatible")
+    @TestHolder(description = "Records two lines that pull different contents out of two tanks, a bridge between them, a tank that empties one line and the bridge put back.")
+    public static void tankIncompatible(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_incompatible", helper, WIDTH, DEPTH);
+                  for (int x : new int[]{0, 1, 2, 4, 5, 6}) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "W", 0, 0, 1, "basic", HYDROGEN, 5000);
+                  rtankNow(helper, "L", 4, 0, 1, "basic", OXYGEN, 5000);
+                  atPull(helper, 4, 0, 0, Direction.SOUTH);
+                  atPull(helper, 4, 4, 0, Direction.SOUTH);
+                  atPlace(helper, 30, basic(), 3, 0);
+                  atRtank(helper, 36, "C", 6, 0, 1, "basic", "empty", 0);
+                  atBreak(helper, 48, 3, 0);
+                  atPlace(helper, 50, basic(), 3, 0);
+                  atRtank(helper, 56, "D", 2, 0, 1, "basic", "empty", 0);
+                  at(66, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_chemical_tank_eject_tube")
+    @TestHolder(description = "Records a Chemical Tank that ejects into a line of tubes with another tank at the end, through the three dump modes.")
+    public static void tankEjectTube(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_eject_tube", helper, WIDTH, DEPTH);
+                  for (int x = 1; x < 4; x++) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "T", 0, 0, 0, "basic", HYDROGEN, 60000);
+                  rtankNow(helper, "D", 4, 0, 0, "advanced", "empty", 0);
+                  atEject(helper, 6, "T", true);
+                  atDump(helper, 18, "T");
+                  atDump(helper, 26, "T");
+                  atDump(helper, 32, "T");
+                  atEject(helper, 38, "T", false);
+                  at(46, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_chemical_tank_eject_alone")
+    @TestHolder(description = "Records a Chemical Tank that ejects into a line of tubes with no other acceptor, another tank that shows up later, the line broken and the side of the tube closed.")
+    public static void tankEjectAlone(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_eject_alone", helper, WIDTH, DEPTH);
+                  for (int x = 1; x < 4; x++) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "T", 0, 0, 0, "basic", HYDROGEN, 20000);
+                  atEject(helper, 6, "T", true);
+                  atRtank(helper, 18, "D", 4, 0, 0, "basic", "empty", 0);
+                  atBreak(helper, 30, 2, 0);
+                  atMode(helper, 38, 1, 0, Direction.WEST, ConnectionType.NONE);
+                  at(46, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_chemical_tank_eject_machine")
+    @TestHolder(description = "Records a Chemical Tank that ejects into a Metallurgic Infuser: carbon goes into the infusion tank, hydrogen does not.")
+    public static void tankEjectMachine(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_eject_machine", helper, WIDTH, DEPTH);
+                  machineNow(helper, "M", 1, 0, 0);
+                  rtankNow(helper, "T", 0, 0, 0, "basic", CARBON, 5000);
+                  atEject(helper, 6, "T", true);
+                  atSetChem(helper, 14, "M", "empty", 0);
+                  atSetChem(helper, 14, "T", HYDROGEN, 5000);
+                  atSetChem(helper, 22, "T", CARBON, 300);
+                  atDump(helper, 28, "T");
+                  atSetChem(helper, 30, "M", "empty", 0);
+                  at(40, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
     @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_chemical_radioactive")
     @TestHolder(description = "Records a network with a radioactive chemical losing its tubes until the last one, and the disperse calls that follow.")
     public static void radioactive(final DynamicTest test) {
@@ -936,6 +1086,21 @@ public class ChemicalNetworkTraceTest {
 
         private final java.util.Map<String, BlockPos> actors = new java.util.LinkedHashMap<>();
 
+        private final java.util.Set<String> watched = new java.util.HashSet<>();
+
+        static void watch(String name) {
+            Recorder recorder = current;
+            if (recorder != null) {
+                recorder.watched.add(name);
+            }
+        }
+
+        static net.minecraft.world.level.block.entity.BlockEntity actorTile(String name) {
+            Recorder recorder = current;
+            BlockPos relative = recorder == null ? null : recorder.actors.get(name);
+            return relative == null ? null : recorder.level.getBlockEntity(recorder.origin.offset(relative.getX(), relative.getY(), relative.getZ()));
+        }
+
         static void actor(String name, BlockPos relative) {
             Recorder recorder = current;
             if (recorder != null) {
@@ -956,6 +1121,8 @@ public class ChemicalNetworkTraceTest {
             BlockPos pos = origin.offset(relative.getX(), relative.getY(), relative.getZ());
             if (level.getBlockEntity(pos) instanceof TileEntityChemicalTank tank) {
                 return tank.getChemicalTank();
+            } else if (level.getBlockEntity(pos) instanceof TileEntityMetallurgicInfuser infuser) {
+                return infuser.infusionTank;
             }
             return null;
         }
@@ -1039,7 +1206,14 @@ public class ChemicalNetworkTraceTest {
             for (Map.Entry<String, BlockPos> entry : actors.entrySet()) {
                 IChemicalTank tank = tankAt(entry.getValue());
                 actorList.append(actorList.isEmpty() ? "" : ",").append("{\"name\":\"").append(entry.getKey()).append("\",\"chem\":\"")
-                      .append(tank == null ? "" : id(tank.resource())).append("\",\"amount\":").append(tank == null ? -1 : tank.amountAsLong()).append('}');
+                      .append(tank == null ? "" : id(tank.resource())).append("\",\"amount\":").append(tank == null ? -1 : tank.amountAsLong());
+                BlockPos relative = entry.getValue();
+                if (watched.contains(entry.getKey())
+                    && level.getBlockEntity(origin.offset(relative.getX(), relative.getY(), relative.getZ())) instanceof TileEntityChemicalTank tile) {
+                    actorList.append(",\"ejecting\":").append(tile.getConfig().getConfig(TransmissionType.CHEMICAL).isEjecting())
+                          .append(",\"dumping\":\"").append(tile.dumping.getSerializedName()).append('"');
+                }
+                actorList.append('}');
             }
             add("estate", "\"pipes\":[" + pipes + "],\"nets\":[" + networks + "],\"actors\":[" + actorList + "]");
         }

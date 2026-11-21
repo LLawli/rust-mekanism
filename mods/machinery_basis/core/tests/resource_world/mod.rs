@@ -5,11 +5,16 @@
 //! É genérico sobre o [`Kind`]: o recurso, o tipo de transmissão, os valores dos tiers do cano e os tanques. [`FluidKind`] e
 //! [`ChemicalKind`] são os dois que existem.
 #![allow(dead_code, type_alias_bounds)]
-use machinery_basis_core::chemical::ChemicalResource;
+use machinery_basis_core::chemical::{ChemicalAttributes, ChemicalResource};
+use machinery_basis_core::chemical_tank::{
+    ChemicalNeighbours, ChemicalTankConfig, ChemicalTankTile,
+};
 use machinery_basis_core::containers::AutomationType;
 use machinery_basis_core::distribution::ResourceInsert;
 use machinery_basis_core::fluid::FluidResource;
+use machinery_basis_core::fluid_tank::{BelowHandler, FluidTankConfig, FluidTankTile};
 use machinery_basis_core::resource_tank::{Resource, ResourceTank, StackContents};
+use machinery_basis_core::side_config::{DataType, RelativeSide, TransmissionType as SideKind};
 use machinery_basis_core::sides::Face;
 use machinery_basis_core::sim::chunks::{BlockPos, ChunkHooks, ChunkPos, LevelView, SimLevel};
 use machinery_basis_core::transaction::Transaction;
@@ -73,6 +78,9 @@ pub trait Kind: 'static {
     where
         Self: Sized;
     /// O Heat Generator (`generator` do rastro): só o fluido tem.
+    /// O tile de verdade do tanque do tier (`rtank` no rastro): o contêiner dele e o tile.
+    fn real_tank(tier: &str) -> (ResourceTank<Self::R>, Box<dyn RealTile<Self>>);
+
     fn place_generator(_world: &mut World<Self>, _pos: BlockPos) -> Rc<Tank<Self>>
     where
         Self: Sized,
@@ -127,6 +135,32 @@ impl Kind for FluidKind {
         FluidFamily::new()
     }
 
+    /// `FluidTankTier`: a capacidade e a taxa.
+    fn real_tank(tier: &str) -> (ResourceTank<FluidResource>, Box<dyn RealTile<Self>>) {
+        let rate = match tier {
+            "basic" => 1_000,
+            "advanced" => 4_000,
+            "elite" => 16_000,
+            "ultimate" => 64_000,
+            other => panic!("tier de tanque desconhecido: {other}"),
+        };
+        let tile = FluidTankTile::new(FluidTankConfig {
+            capacity: Self::tank_capacity(tier),
+            rate,
+            creative: false,
+            deactivation_delay: BLOCK_DEACTIVATION_DELAY,
+            items: Rc::new(|_| None),
+        });
+        let tank = tile.tank().inner().clone();
+        (
+            tank,
+            Box::new(RealFluidTank {
+                tile: RefCell::new(tile),
+                block_active: Default::default(),
+            }),
+        )
+    }
+
     fn place_generator(world: &mut World<Self>, pos: BlockPos) -> Rc<Tank<Self>> {
         world.place_generator(pos)
     }
@@ -173,6 +207,42 @@ impl Kind for ChemicalKind {
     fn family() -> Family<Self> {
         ChemicalFamily::chemical()
     }
+
+    /// `ChemicalTankTier`: a capacidade e a taxa. Os seis lados nascem `INPUT_OUTPUT` e o ejetor desligado, como o `tank` do rastro os deixa.
+    fn real_tank(tier: &str) -> (ResourceTank<ChemicalResource>, Box<dyn RealTile<Self>>) {
+        let rate = match tier {
+            "basic" => 1_000,
+            "advanced" => 16_000,
+            "elite" => 128_000,
+            "ultimate" => 512_000,
+            other => panic!("tier de tanque desconhecido: {other}"),
+        };
+        let attributes: ChemicalAttributes = Rc::new(|_| Vec::new());
+        let mut tile = ChemicalTankTile::new(ChemicalTankConfig {
+            capacity: Self::tank_capacity(tier),
+            rate,
+            creative: false,
+            dump_excess_keep_ratio: 0.85,
+            attributes,
+            items: Rc::new(|_| None),
+        });
+        let info = tile
+            .side_config_mut()
+            .config_mut(SideKind::Chemical)
+            .unwrap();
+        for side in RelativeSide::VALUES {
+            info.set_data_type(DataType::InputOutput, side);
+        }
+        info.set_ejecting(false);
+        tile.take_side_changes();
+        let tank = tile.tank().inner().clone();
+        (
+            tank,
+            Box::new(RealChemicalTank {
+                tile: RefCell::new(tile),
+            }),
+        )
+    }
 }
 
 /// O aceitador que o vizinho dá ao cano (`ResourceHandler<RESOURCE>`).
@@ -205,6 +275,282 @@ pub struct Tank<K: Kind> {
     /// O contêiner de energia do gerador está cheio (`EnergyHandlerUtil.isFull`): vem de fora, porque a conta de calor e de energia é do
     /// gerador e não da rede.
     pub energy_full: std::cell::Cell<bool>,
+    /// O tile de verdade (`rtank`): a capability de cada face, o tick e o que ele empurra passam por ele.
+    pub real: Option<Box<dyn RealTile<K>>>,
+}
+
+/// O tile de verdade de um tanque posto por `rtank`: o `FluidTankTile` ou o `ChemicalTankTile` da lib.
+pub trait RealTile<K: Kind> {
+    /// Se o bloco tem a capability na face.
+    fn exposes(&self, side: Face) -> bool;
+    /// O `insert` e o `extract` do handler da capability na face.
+    fn insert(&self, side: Face, resource: &K::R, amount: i32, transaction: &Transaction) -> i32;
+    fn extract(&self, side: Face, resource: &K::R, amount: i32, transaction: &Transaction) -> i32;
+    /// `onUpdateServer`: `neighbour` dá o handler da capability do bloco do outro lado da face, pela face oposta, como o
+    /// `BlockCapabilityCache` do tile o lê.
+    fn tick(
+        &self,
+        game_time: u64,
+        neighbour: &mut dyn FnMut(Face) -> Option<Rc<dyn ResourceInsert<K::R>>>,
+    );
+    /// Uma marca do rastro que mexe no tile: `active`, `eject`, `dump`.
+    fn act(&self, words: &[&str]);
+    /// O que o `estate` do rastro diz do ator além do conteúdo.
+    fn estate(&self, row: &mut serde_json::Map<String, serde_json::Value>);
+    /// Se o estado do bloco mudou desde a última pergunta (`setActive` e o fim do atraso de desligar trocam a propriedade `active` com
+    /// `setBlockAndUpdate`, e os vizinhos recebem `neighborChanged`).
+    fn block_changed(&self) -> bool {
+        false
+    }
+}
+
+/// `TileEntityFluidTank`.
+struct RealFluidTank {
+    tile: RefCell<FluidTankTile>,
+    /// O `active` que o bloco tinha na última pergunta.
+    block_active: std::cell::Cell<bool>,
+}
+
+/// O handler do bloco de baixo de um Fluid Tank que não é outro Fluid Tank (`BelowContainerCache.getHandler`).
+struct BelowOther(Rc<dyn ResourceInsert<FluidResource>>);
+
+impl BelowHandler for BelowOther {
+    fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        self.0.insert(resource, amount, transaction)
+    }
+
+    fn fluid_tank_needed(&self) -> Option<i32> {
+        None
+    }
+}
+
+impl RealTile<FluidKind> for RealFluidTank {
+    fn exposes(&self, _: Face) -> bool {
+        true
+    }
+
+    fn insert(
+        &self,
+        side: Face,
+        resource: &FluidResource,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
+        self.tile
+            .borrow()
+            .handler_insert(side == Face::Up, resource, amount, transaction)
+    }
+
+    fn extract(
+        &self,
+        _: Face,
+        resource: &FluidResource,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
+        self.tile
+            .borrow()
+            .handler_extract(resource, amount, transaction)
+    }
+
+    /// O handler de baixo vai sempre: quem decide se o tanque empurra é o tile (`getActive`, `TileEntityFluidTank.java:171`). A cola só o pede com o tile ativo.
+    fn tick(
+        &self,
+        game_time: u64,
+        neighbour: &mut dyn FnMut(Face) -> Option<Rc<dyn ResourceInsert<FluidResource>>>,
+    ) {
+        let below = neighbour(Face::Down).map(BelowOther);
+        self.tile.borrow_mut().tick_server(
+            game_time,
+            below.as_ref().map(|below| below as &dyn BelowHandler),
+        );
+    }
+
+    fn act(&self, words: &[&str]) {
+        match words[0] {
+            "active" => self.tile.borrow().tile_mut().set_active(words[2] == "true"),
+            other => panic!("marca desconhecida para o Fluid Tank: {other}"),
+        }
+    }
+
+    fn estate(&self, row: &mut serde_json::Map<String, serde_json::Value>) {
+        let tile = self.tile.borrow();
+        row.insert("active".into(), tile.tile().active().into());
+        row.insert(
+            "valve".into(),
+            tile.valve_fluid()
+                .map_or(String::new(), |fluid| fluid.id.to_string())
+                .into(),
+        );
+    }
+
+    fn block_changed(&self) -> bool {
+        let now = self.tile.borrow().tile().block_active();
+        self.block_active.replace(now) != now
+    }
+}
+
+/// `TileEntityChemicalTank`.
+struct RealChemicalTank {
+    tile: RefCell<ChemicalTankTile>,
+}
+
+/// A função que dá o handler da capability do vizinho de uma face.
+type NeighbourOf<'b, R> = dyn FnMut(Face) -> Option<Rc<dyn ResourceInsert<R>>> + 'b;
+
+/// Os vizinhos do Chemical Tank, pela função do mundo de teste.
+struct Around<'a, 'b>(RefCell<&'a mut NeighbourOf<'b, ChemicalResource>>);
+
+impl ChemicalNeighbours for Around<'_, '_> {
+    fn handler(&self, side: Face) -> Option<Rc<dyn ResourceInsert<ChemicalResource>>> {
+        (self.0.borrow_mut())(side)
+    }
+}
+
+impl RealTile<ChemicalKind> for RealChemicalTank {
+    fn exposes(&self, side: Face) -> bool {
+        self.tile.borrow().has_chemical_capability(side)
+    }
+
+    fn insert(
+        &self,
+        side: Face,
+        resource: &ChemicalResource,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
+        self.tile
+            .borrow()
+            .handler_insert(side, resource, amount, transaction)
+            .unwrap_or(0)
+    }
+
+    fn extract(
+        &self,
+        side: Face,
+        resource: &ChemicalResource,
+        amount: i32,
+        transaction: &Transaction,
+    ) -> i32 {
+        self.tile
+            .borrow()
+            .handler_extract(side, resource, amount, transaction)
+            .unwrap_or(0)
+    }
+
+    fn tick(
+        &self,
+        game_time: u64,
+        neighbour: &mut dyn FnMut(Face) -> Option<Rc<dyn ResourceInsert<ChemicalResource>>>,
+    ) {
+        let around = Around(RefCell::new(neighbour));
+        let mut tile = self.tile.borrow_mut();
+        tile.tick_server(game_time, &around);
+        tile.take_side_changes();
+    }
+
+    fn act(&self, words: &[&str]) {
+        let mut tile = self.tile.borrow_mut();
+        match words[0] {
+            "eject" => tile
+                .side_config_mut()
+                .config_mut(SideKind::Chemical)
+                .unwrap()
+                .set_ejecting(words[2] == "true"),
+            "dump" => tile.next_mode(),
+            other => panic!("marca desconhecida para o Chemical Tank: {other}"),
+        }
+    }
+
+    fn estate(&self, row: &mut serde_json::Map<String, serde_json::Value>) {
+        let tile = self.tile.borrow();
+        let ejecting = tile
+            .side_config()
+            .config(SideKind::Chemical)
+            .is_some_and(|info| info.is_ejecting());
+        row.insert("ejecting".into(), ejecting.into());
+        row.insert("dumping".into(), tile.dumping().serialized_name().into());
+    }
+}
+
+/// A capability de uma face de um tanque de verdade, como o cano a guarda.
+struct RealFace<K: Kind> {
+    tank: Rc<Tank<K>>,
+    side: Face,
+}
+
+impl<K: Kind> RealFace<K> {
+    fn real(&self) -> &dyn RealTile<K> {
+        self.tank.real.as_deref().expect("tanque de verdade")
+    }
+}
+
+impl<K: Kind> ResourceInsert<K::R> for RealFace<K> {
+    fn insert(&self, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
+        self.real().insert(self.side, resource, amount, transaction)
+    }
+}
+
+impl<K: Kind> ResourceExtract<K::R> for RealFace<K> {
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn resource_at(&self, _: usize) -> Option<K::R> {
+        self.tank.tank.resource()
+    }
+
+    fn amount_as_int_at(&self, _: usize) -> i32 {
+        self.tank.tank.amount_as_int()
+    }
+
+    fn extract_at(&self, _: usize, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
+        self.extract(resource, amount, transaction)
+    }
+
+    fn extract(&self, resource: &K::R, amount: i32, transaction: &Transaction) -> i32 {
+        self.real()
+            .extract(self.side, resource, amount, transaction)
+    }
+}
+
+impl<K: Kind> ResourceAcceptor<K::R> for RealFace<K> {}
+
+/// O aceitador de um tanque vizinho, visto por quem empurra (só o `insert`).
+struct Inserter<R: Resource>(Rc<dyn ResourceAcceptor<R>>);
+
+impl<R: Resource> ResourceInsert<R> for Inserter<R> {
+    fn insert(&self, resource: &R, amount: i32, transaction: &Transaction) -> i32 {
+        self.0.insert(resource, amount, transaction)
+    }
+}
+
+/// O contêiner que a capability de um transmissor entrega a quem empurra (`PushTarget::Transmitter` na cola): de fora, `EXTERNAL`.
+struct Pushed<R: Resource>(ResourceTank<R>);
+
+impl<R: Resource> ResourceInsert<R> for Pushed<R> {
+    fn insert(&self, resource: &R, amount: i32, transaction: &Transaction) -> i32 {
+        self.0
+            .insert(resource, amount, transaction, AutomationType::External)
+    }
+}
+
+/// A capability do tanque em `pos` pela face `side` dele, para o cano e para um vizinho que empurra.
+fn tank_handler<K: Kind>(
+    tanks: &BTreeMap<BlockPos, Rc<Tank<K>>>,
+    pos: BlockPos,
+    side: Face,
+) -> Option<Acceptor<K>> {
+    let tank = tanks.get(&pos)?;
+    match &tank.real {
+        Some(real) => real.exposes(side).then(|| {
+            Rc::new(RealFace {
+                tank: tank.clone(),
+                side,
+            }) as Acceptor<K>
+        }),
+        None => tank.exposes(side).then(|| tank.clone() as Acceptor<K>),
+    }
 }
 
 impl<K: Kind> Tank<K> {
@@ -357,8 +703,7 @@ impl<K: Kind> ResourceOwnerWorld<K::R> for Game<'_, K> {
         if self.level.block_if_loaded(pos) != Some(TANK) {
             return None;
         }
-        let tank = self.tanks.get(&pos)?;
-        tank.exposes(side).then(|| tank.clone() as Acceptor<K>)
+        tank_handler(self.tanks, pos, side)
     }
 
     fn pipe_info(&mut self, pos: BlockPos) -> Option<PipeInfo<K::R>> {
@@ -592,8 +937,142 @@ impl<K: Kind> World<K> {
                 client_active: Default::default(),
                 update_delay: Default::default(),
                 energy_full: Default::default(),
+                real: None,
             },
         )
+    }
+
+    /// O tanque de verdade do tier em `pos` (`rtank`), com o recurso (`None` é vazio) e a quantidade (`None` é a capacidade).
+    pub fn place_real_tank(
+        &mut self,
+        pos: BlockPos,
+        tier: &str,
+        content: Option<(&str, Option<u64>)>,
+    ) -> Rc<Tank<K>> {
+        let (tank, real) = K::real_tank(tier);
+        if let Some((id, amount)) = content {
+            tank.set_contents(
+                Some(K::resource(id)),
+                amount.unwrap_or(K::tank_capacity(tier)),
+                None,
+            );
+        }
+        self.put_tank(
+            pos,
+            Tank {
+                tank,
+                sides: [true; 6],
+                creative: false,
+                burn: 0,
+                active: Default::default(),
+                client_active: Default::default(),
+                update_delay: Default::default(),
+                energy_full: Default::default(),
+                real: Some(real),
+            },
+        )
+    }
+
+    /// Uma máquina com um tanque que só aceita de fora os recursos de `accepted` e de onde quem está fora sempre pode tirar (o tanque de
+    /// infusão do Metallurgic Infuser, `TileEntityMetallurgicInfuser.java:135`), exposto nos seis lados.
+    pub fn place_machine(
+        &mut self,
+        pos: BlockPos,
+        capacity: u64,
+        accepted: Vec<String>,
+    ) -> Rc<Tank<K>> {
+        let tank = ResourceTank::create(
+            capacity,
+            Rc::new(|_, _| true),
+            Rc::new(move |resource: &K::R, automation| {
+                automation != AutomationType::External || accepted.contains(&K::id(resource))
+            }),
+            Rc::new(|_| true),
+            None,
+        );
+        self.put_tank(
+            pos,
+            Tank {
+                tank,
+                sides: [true; 6],
+                creative: false,
+                burn: 0,
+                active: Default::default(),
+                client_active: Default::default(),
+                update_delay: Default::default(),
+                energy_full: Default::default(),
+                real: None,
+            },
+        )
+    }
+
+    /// O tick dos tanques de verdade: cada um pede a capability do vizinho como a cola faz (`PushTarget`: o contêiner da capability de um
+    /// transmissor, por `capability_insert_container`, ou o handler de um tanque) e, depois do commit dele, a rede processa o que o
+    /// contêiner dela avisou (`flush_external`).
+    fn tick_real_tanks(&mut self) {
+        let game_time = self.family().game_time;
+        let reals: Vec<(BlockPos, Rc<Tank<K>>)> = self
+            .level
+            .hooks
+            .tanks
+            .iter()
+            .filter(|(_, tank)| tank.real.is_some())
+            .map(|(pos, tank)| (*pos, tank.clone()))
+            .collect();
+        for (pos, tank) in reals {
+            self.level.with_hooks(|hooks, level| {
+                let mut neighbour = |side: Face| -> Option<Rc<dyn ResourceInsert<K::R>>> {
+                    let other = pos.relative(side);
+                    let opposite = side.opposite();
+                    if hooks.owner.container_at(other).is_some() {
+                        let game = Game {
+                            level,
+                            tanks: &hooks.tanks,
+                            pending: &mut hooks.pending,
+                        };
+                        let container = hooks
+                            .owner
+                            .capability_insert_container(&game, other, opposite)?;
+                        return Some(Rc::new(Pushed(container)));
+                    }
+                    if level.block_if_loaded(other) != Some(TANK) {
+                        return None;
+                    }
+                    let handler = tank_handler(&hooks.tanks, other, opposite)?;
+                    Some(Rc::new(Inserter(handler)))
+                };
+                tank.real
+                    .as_deref()
+                    .unwrap()
+                    .tick(game_time as u64, &mut neighbour);
+                hooks.owner.flush_external();
+            });
+            self.real_block_update(pos, &tank);
+        }
+    }
+
+    /// `level.setBlockAndUpdate(pos, state com `active`)` de um tanque de verdade cujo estado do bloco mudou: os vizinhos recebem
+    /// `neighborChanged`.
+    pub fn real_block_update(&mut self, pos: BlockPos, tank: &Tank<K>) {
+        if tank
+            .real
+            .as_deref()
+            .is_some_and(|real| real.block_changed())
+        {
+            self.level.update_neighbors_at(pos);
+        }
+    }
+
+    /// A posição de um tanque posto.
+    pub fn tank_pos(&self, tank: &Rc<Tank<K>>) -> BlockPos {
+        *self
+            .level
+            .hooks
+            .tanks
+            .iter()
+            .find(|(_, known)| Rc::ptr_eq(known, tank))
+            .expect("tanque posto")
+            .0
     }
 
     fn put_tank(&mut self, pos: BlockPos, tank: Tank<K>) -> Rc<Tank<K>> {
@@ -638,6 +1117,7 @@ impl<K: Kind> World<K> {
             // `level.setBlockAndUpdate(pos, state com `active`)`: os vizinhos recebem `neighborChanged`.
             self.level.update_neighbors_at(pos);
         }
+        self.tick_real_tanks();
         self.level.tick_level();
     }
 
@@ -690,6 +1170,7 @@ impl World<FluidKind> {
                 client_active: Default::default(),
                 update_delay: Default::default(),
                 energy_full: Default::default(),
+                real: None,
             },
         )
     }

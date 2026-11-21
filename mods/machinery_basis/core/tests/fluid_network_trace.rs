@@ -20,6 +20,26 @@ const SCENARIOS: [&str; 13] = [
     "reopen",
 ];
 
+/// Os vizinhos que empurram (frente `tanques`, 9.ª rodada): o Fluid Tank ativo sobre uma linha de canos e sobre o Heat Generator, e o tanque debaixo de um cano (a
+/// válvula do topo), e o `incompatible` com tanques de verdade (duas linhas que puxam água e lava de dois tanques, a ponte entre elas, o tanque que esvazia uma e
+/// a ponte posta de novo; decisão 138). O tanque é o `FluidTankTile` da lib e chega ao cano por `capability_insert_container`.
+const TANK_SCENARIOS: [&str; 5] = [
+    "tank_push_pipe",
+    "tank_push_alone",
+    "tank_push_generator",
+    "tank_valve_top",
+    "tank_incompatible",
+];
+
+#[test]
+fn the_tanks_that_push_match_the_two_runs_of_the_original() {
+    for run in ["", "run2"] {
+        for scenario in TANK_SCENARIOS {
+            network_trace::run::<FluidKind>(run, scenario);
+        }
+    }
+}
+
 #[test]
 fn every_scenario_matches_the_first_run_of_the_original() {
     for scenario in SCENARIOS {

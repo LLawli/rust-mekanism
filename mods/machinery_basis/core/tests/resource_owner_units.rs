@@ -39,6 +39,8 @@ struct Level {
     overlays: Vec<Overlay>,
     /// Cada posição por que o dono perguntou `is_block_loaded`, na ordem.
     asked: RefCell<Vec<BlockPos>>,
+    /// O sinal de redstone que chega a todo bloco.
+    powered: std::cell::Cell<bool>,
 }
 
 impl ResourceOwnerWorld<FluidResource> for Level {
@@ -48,7 +50,7 @@ impl ResourceOwnerWorld<FluidResource> for Level {
     }
 
     fn is_getting_powered(&self, _: BlockPos) -> bool {
-        false
+        self.powered.get()
     }
 
     fn handler(&self, pos: BlockPos, _: Face) -> Option<FluidHandler> {
@@ -339,7 +341,12 @@ fn the_capability_of_a_pipe_gives_its_container_only_through_a_side_that_accepts
         300
     );
     transaction.commit();
+    // O contêiner da rede só avisou: a rede guarda o tipo (`lastType`) quando o dono processa o aviso, depois do commit de quem empurrou.
+    let network = sim.owner.network_of(Sim::pos(0)).unwrap();
+    let last_type = |sim: &Sim| sim.owner.family().network(network).unwrap().last_type();
+    assert_eq!(last_type(&sim), None);
     sim.owner.flush_external();
+    assert_eq!(last_type(&sim), Some(water()));
     assert_eq!(sim.network_amount(0), 300);
     for (kind, given) in [
         (ConnectionType::None, false),
@@ -374,6 +381,30 @@ fn the_capability_of_a_pipe_gives_its_container_only_through_a_side_that_accepts
         sim.owner
             .capability_insert_container(&sim.level, Sim::pos(7), Face::West)
             .is_none()
+    );
+    // O cano sensível a redstone (o clique direito do Configurator) com sinal não tem contêiner em lado nenhum (`isRedstoneActivated`,
+    // `TileEntityResourceTransmitter.java:42`); sem o sinal, volta a ter.
+    assert!(sim.owner.right_click(&mut sim.level, Sim::pos(0)));
+    assert!(
+        sim.owner
+            .capability_insert_container(&sim.level, Sim::pos(0), Face::East)
+            .is_some()
+    );
+    sim.level.powered.set(true);
+    sim.owner
+        .handle(&mut sim.level, Event::Neighbor(Sim::pos(0)));
+    assert!(
+        sim.owner
+            .capability_insert_container(&sim.level, Sim::pos(0), Face::East)
+            .is_none()
+    );
+    sim.level.powered.set(false);
+    sim.owner
+        .handle(&mut sim.level, Event::Neighbor(Sim::pos(0)));
+    assert!(
+        sim.owner
+            .capability_insert_container(&sim.level, Sim::pos(0), Face::East)
+            .is_some()
     );
 }
 

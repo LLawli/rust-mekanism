@@ -163,6 +163,32 @@ public class FluidNetworkTraceTest {
         at(tick, "mode " + x + " " + z + " " + side.getName() + " " + type.getSerializedName(), () -> mode(helper, x, z, side, type));
     }
 
+    /// `rtank`: the same Fluid Tank of `tank`, but the replay uses the tile itself (the valve of the top face, the overflow to the tank above and the push
+    /// down of an active tank), and the `estate` of that actor also says `active` (`getActive`) and `valve` (`getValveFluid`).
+    private static void rtankNow(MekGameTestHelper helper, String name, int x, int y, int z, String tier, String fluid, long amount) {
+        Recorder.mark("rtank " + name + " " + x + " " + y + " " + z + " " + tier + " " + fluid + " " + amount);
+        Recorder.below(helper, new BlockPos(x, y, z));
+        tank(helper, name, x, y, z, tier, fluid, amount);
+        Recorder.watch(name);
+    }
+
+    private static void atRtank(MekGameTestHelper helper, int tick, String name, int x, int y, int z, String tier, String fluid, long amount) {
+        at(tick, "rtank " + name + " " + x + " " + y + " " + z + " " + tier + " " + fluid + " " + amount, () -> {
+            Recorder.below(helper, new BlockPos(x, y, z));
+            tank(helper, name, x, y, z, tier, fluid, amount);
+            Recorder.watch(name);
+        });
+    }
+
+    /// `active nome true|false`: `TileEntityFluidTank.setActive`, what the sneak right click of the Configurator does (`onSneakRightClick`).
+    private static void atActive(MekGameTestHelper helper, int tick, String name, boolean active) {
+        at(tick, "active " + name + " " + active, () -> {
+            if (Recorder.actorTile(name) instanceof TileEntityFluidTank tank) {
+                tank.setActive(active);
+            }
+        });
+    }
+
     private static void atPlace(MekGameTestHelper helper, int tick, Block block, int x, int z) {
         at(tick, "place " + x + " " + z + " " + tierOf(block), () -> place(helper, block, x, z));
     }
@@ -444,6 +470,120 @@ public class FluidNetworkTraceTest {
                   atBreak(helper, 14, 0, 0);
                   atBreak(helper, 20, 2, 0);
                   at(28, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_fluid_tank_incompatible")
+    @TestHolder(description = "Records two lines that pull different contents out of two tanks, a bridge between them, a tank that empties one line and the bridge put back.")
+    public static void tankIncompatible(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_incompatible", helper, WIDTH, DEPTH);
+                  for (int x : new int[]{0, 1, 2, 4, 5, 6}) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "W", 0, 0, 1, "basic", WATER, 5000);
+                  rtankNow(helper, "L", 4, 0, 1, "basic", LAVA, 5000);
+                  atPull(helper, 4, 0, 0, Direction.SOUTH);
+                  atPull(helper, 4, 4, 0, Direction.SOUTH);
+                  atPlace(helper, 30, basic(), 3, 0);
+                  atRtank(helper, 36, "C", 6, 0, 1, "basic", "empty", 0);
+                  atBreak(helper, 48, 3, 0);
+                  atPlace(helper, 50, basic(), 3, 0);
+                  atRtank(helper, 56, "D", 2, 0, 1, "basic", "empty", 0);
+                  at(66, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_fluid_tank_push_pipe")
+    @TestHolder(description = "Records an active Fluid Tank on top of a line of pipes with another tank at the end: the push down into the pipe below.")
+    public static void tankPushPipe(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_push_pipe", helper, WIDTH, DEPTH);
+                  for (int x = 0; x < 3; x++) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "T", 0, 1, 0, "basic", WATER, 20000);
+                  rtankNow(helper, "D", 3, 0, 0, "advanced", "empty", 0);
+                  atActive(helper, 6, "T", true);
+                  atActive(helper, 26, "T", false);
+                  atSetFluid(helper, 30, "D", WATER, 63500);
+                  atActive(helper, 32, "T", true);
+                  atMode(helper, 40, 0, 0, Direction.UP, ConnectionType.PUSH);
+                  at(46, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_fluid_tank_push_alone")
+    @TestHolder(description = "Records an active Fluid Tank on top of a line of pipes with no other acceptor, another tank that shows up later, and the line broken.")
+    public static void tankPushAlone(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_push_alone", helper, WIDTH, DEPTH);
+                  for (int x = 0; x < 3; x++) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "T", 0, 1, 0, "basic", WATER, 20000);
+                  atActive(helper, 6, "T", true);
+                  atRtank(helper, 18, "D", 3, 0, 0, "basic", "empty", 0);
+                  atBreak(helper, 30, 1, 0);
+                  atMode(helper, 38, 0, 0, Direction.UP, ConnectionType.NONE);
+                  at(46, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_fluid_tank_push_generator")
+    @TestHolder(description = "Records an active Fluid Tank on top of a Heat Generator: lava goes into the lava tank, water does not.")
+    public static void tankPushGenerator(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_push_generator", helper, WIDTH, DEPTH);
+                  generatorNow(helper, "G", 1, 0, 0);
+                  rtankNow(helper, "T", 1, 1, 0, "basic", LAVA, 20000);
+                  atActive(helper, 6, "T", true);
+                  atSetFluid(helper, 20, "T", WATER, 5000);
+                  atSetFluid(helper, 26, "T", LAVA, 700);
+                  at(40, "finish", Recorder::finish);
+              })
+              .thenWaitUntil(() -> waitFinished(helper))
+              .thenSucceed()
+        );
+    }
+
+    @GameTest(template = EMPTY14, setupTicks = SETUP, timeoutTicks = TIMEOUT, batch = "trace_fluid_tank_valve_top")
+    @TestHolder(description = "Records a Fluid Tank under a pipe: what the network puts in goes through the valve of the top face, and a full tank has no tank above to overflow to.")
+    public static void tankValveTop(final DynamicTest test) {
+        listen(test);
+        test.onGameTest(MekGameTestHelper.class, helper -> helper.startSequence()
+              .thenExecute(() -> {
+                  Recorder.begin("tank_valve_top", helper, WIDTH, DEPTH);
+                  for (int x = 0; x < 3; x++) {
+                      placeNow(helper, basic(), x, 0);
+                  }
+                  rtankNow(helper, "B", 1, -1, 0, "basic", WATER, 29500);
+                  atSource(helper, 6, "S", 0, 0, 1, WATER);
+                  atPull(helper, 6, 0, 0, Direction.SOUTH);
+                  atSetFluid(helper, 20, "B", "empty", 0);
+                  atSetFluid(helper, 28, "B", LAVA, 100);
+                  atActive(helper, 34, "B", true);
+                  at(44, "finish", Recorder::finish);
               })
               .thenWaitUntil(() -> waitFinished(helper))
               .thenSucceed()
@@ -874,6 +1014,31 @@ public class FluidNetworkTraceTest {
 
         private final java.util.Map<String, BlockPos> actors = new java.util.LinkedHashMap<>();
 
+        private final java.util.Set<String> watched = new java.util.HashSet<>();
+        private final java.util.Map<BlockPos, BlockState> below = new java.util.LinkedHashMap<>();
+
+        static void watch(String name) {
+            Recorder recorder = current;
+            if (recorder != null) {
+                recorder.watched.add(name);
+            }
+        }
+
+        /// A block put under the structure (y < 0) is not cleared by the test: the recorder puts back what was there when the scenario finishes.
+        static void below(MekGameTestHelper helper, BlockPos relative) {
+            Recorder recorder = current;
+            if (recorder != null && relative.getY() < 0) {
+                BlockPos pos = helper.absolutePos(relative);
+                recorder.below.putIfAbsent(pos, helper.getLevel().getBlockState(pos));
+            }
+        }
+
+        static net.minecraft.world.level.block.entity.BlockEntity actorTile(String name) {
+            Recorder recorder = current;
+            BlockPos relative = recorder == null ? null : recorder.actors.get(name);
+            return relative == null ? null : recorder.level.getBlockEntity(recorder.origin.offset(relative.getX(), relative.getY(), relative.getZ()));
+        }
+
         static void actor(String name, BlockPos relative) {
             Recorder recorder = current;
             if (recorder != null) {
@@ -979,7 +1144,13 @@ public class FluidNetworkTraceTest {
             for (Map.Entry<String, BlockPos> entry : actors.entrySet()) {
                 IFluidTank tank = tankAt(entry.getValue());
                 actorList.append(actorList.isEmpty() ? "" : ",").append("{\"name\":\"").append(entry.getKey()).append("\",\"fluid\":\"")
-                      .append(tank == null ? "" : id(tank.resource())).append("\",\"amount\":").append(tank == null ? -1 : tank.amountAsLong()).append('}');
+                      .append(tank == null ? "" : id(tank.resource())).append("\",\"amount\":").append(tank == null ? -1 : tank.amountAsLong());
+                BlockPos relative = entry.getValue();
+                if (watched.contains(entry.getKey())
+                    && level.getBlockEntity(origin.offset(relative.getX(), relative.getY(), relative.getZ())) instanceof TileEntityFluidTank tile) {
+                    actorList.append(",\"active\":").append(tile.getActive()).append(",\"valve\":\"").append(id(tile.getValveFluid())).append('"');
+                }
+                actorList.append('}');
             }
             add("estate", "\"pipes\":[" + pipes + "],\"nets\":[" + networks + "],\"actors\":[" + actorList + "]");
         }
@@ -1041,6 +1212,9 @@ public class FluidNetworkTraceTest {
             if (recorder != null && !recorder.finished) {
                 recorder.finished = true;
                 recorder.flush();
+                for (Map.Entry<BlockPos, BlockState> entry : recorder.below.entrySet()) {
+                    recorder.level.setBlockAndUpdate(entry.getKey(), entry.getValue());
+                }
             }
         }
 
