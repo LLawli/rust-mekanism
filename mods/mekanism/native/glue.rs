@@ -4423,7 +4423,7 @@ fn conductor_heat_capacity(block: &str) -> f64 {
 }
 
 /// O fluido do cano para o desenho: o sprite e a cor do original (`rules::contents_fluid`), com a cor e a luz do arquivo do fluido.
-fn contents_fluid(id: &str) -> Option<crate::game::machinery_transmitter_contents::FluidLook> {
+pub(in crate::game) fn contents_fluid(id: &str) -> Option<crate::game::machinery_transmitter_contents::FluidLook> {
     let liquids = machinery_basis_core::liquid_data::current();
     let spec = liquids.iter().find(|spec| spec.id == id).map(|spec| (spec.color, u32::from(spec.light)));
     let fluid = rules::contents_fluid(id, spec)?;

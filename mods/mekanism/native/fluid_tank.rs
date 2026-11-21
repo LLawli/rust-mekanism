@@ -15,6 +15,16 @@ use machinery_basis_core::tile_trackers::source;
 use machinery_basis_core::upgrade_window::UpgradeWindowSpec;
 use machinery_basis_core::fluid::FluidResource;
 use machinery_basis_core::fluid_tank::{self, BelowHandler, FaceHandler, FluidTankConfig, FluidTankTank, FluidTankTile};
+use machinery_basis_core::fluid_tank_render::{self as render, TankView};
+use machinery_basis_core::sides::Face;
+use crate::game::native_block_entity_draw::BlockEntityDraw;
+use crate::item_render::{ItemRenderState, LayerGeometry, LayerRender};
+use horizon_assets::bake::ModelQuad;
+use horizon_assets::item_bake::BakedItemModel;
+use horizon_assets::item_model::FoilType;
+use horizon_assets::model::{Direction, Material};
+use std::sync::Arc;
+use crate::game::machinery_transmitter_contents as drawn;
 use machinery_basis_core::handler_slot::{ContainerEditMode, LastTransferDirection, ResourceContainer};
 use machinery_basis_core::bucket_item::{CauldronHandler, CauldronLevel, CauldronOutcome, UseHit, UseOutcome, cauldron_interact, dispense_as_bucket, use_as_bucket};
 use machinery_basis_core::item_access::{AccessResourceHandler, HandAccess, ItemAccess, ItemHandlerLookup, ItemResourceHandler, OneByOne, PerItemRules, move_first};
@@ -349,6 +359,100 @@ fn born(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], entity: &ModBlo
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// O que se vê dentro do bloco (`RenderFluidTank`).
+
+/// O cliente só tem a block entity do tanque, e então a desenha, se o servidor mandar uma cópia. O que o desenho precisa vai pelo canal do tanque da `machinery_basis`.
+pub(in crate::game) fn update_tag(entity: &ModBlockEntity, tag: &mut Option<horizon_world::nbt::Compound>) {
+    if is_tank(&entity.id) {
+        *tag = Some(horizon_world::nbt::Compound::default());
+    }
+}
+
+/// `BlockEntityRenderer.submit` do tanque (`block_entity_submit`): o fluido parado até a altura do estágio e, com a válvula marcada, a coluna que desce do teto, com o
+/// sprite corrente nos lados (`ValveTextureGetter`). As duas caixas levam a tinta e a luz do fluido do tanque (`lightCoordsWithEmission`).
+pub(in crate::game) fn submit(game: &Game<'_>, pos: [i32; 3], draw: &mut BlockEntityDraw) {
+    if !is_tank(&game.native_block(pos)) {
+        return;
+    }
+    let Some(view) = crate::game::machinery_tile_sound::tank_view(game.native_dimension(), pos) else {
+        return;
+    };
+    let look = view.fluid.as_deref().and_then(glue::contents_fluid);
+    let frame = render::tile_frame(
+        look.as_ref().map(|look| look.rgb | 0xFF00_0000),
+        look.as_ref().is_some_and(|look| look.lighter_than_air),
+        view.scale,
+        view.valve.is_some(),
+    );
+    let light = look.as_ref().map_or(draw.light, |look| drawn::light_emitting(draw.light, look.light));
+    if let (Some(cuboid), Some(look)) = (&frame.contents, &look) {
+        drawn::draw_cuboid(game, draw, cuboid, &|_| Some(look.sprite.clone()), frame.tint, light);
+    }
+    if let (Some(cuboid), Some(valve)) = (&frame.valve, view.valve.as_deref().and_then(glue::contents_fluid)) {
+        let flowing = rules::flowing_sprite(&valve.sprite);
+        let sprite_of = |side: Face| Some(if matches!(side, Face::Up | Face::Down) { valve.sprite.clone() } else { flowing.clone() });
+        drawn::draw_cuboid(game, draw, cuboid, &sprite_of, frame.tint, light);
+    }
+}
+
+/// `RenderFluidTankItem.submit`: o fluido do item, translúcido (`Sheets.translucentBlockItemSheet`), desenhado antes do bloco, na mesma pose dele. A caixa é a do tile com a
+/// escala do que o item guarda (`amount / capacity`), a tinta leva essa escala e a luz é a do fluido (`lightCoordsWithEmission(lightCoords, fluidLight)`).
+pub(in crate::game) fn item_contents(game: &Game<'_>, stack: &ItemStack, mut state: ItemRenderState) -> ItemRenderState {
+    let Some(tier) = tier_of(&stack.item) else {
+        return state;
+    };
+    let Some(frame) = state.layers.first() else {
+        return state;
+    };
+    let contents = stack_fluids(game, stack);
+    let Some(look) = contents.resource.as_ref().and_then(|fluid| glue::contents_fluid(&fluid.id)) else {
+        return state;
+    };
+    let capacity = tier_values(tier).0;
+    let Some((tint, cuboid)) = render::item_frame(look.rgb | 0xFF00_0000, look.lighter_than_air, contents.amount.min(i64::MAX as u64) as i64, capacity.min(i64::MAX as u64) as i64) else {
+        return state;
+    };
+    let light = look.light.min(15) as u8;
+    let quads = machinery_basis_core::transmitter_contents::cuboid_quads(&cuboid)
+        .into_iter()
+        .map(|quad| ModelQuad {
+            positions: quad.corners,
+            uv: quad.uv,
+            facing: match quad.side {
+                Face::Down => Direction::Down,
+                Face::Up => Direction::Up,
+                Face::North => Direction::North,
+                Face::South => Direction::South,
+                Face::West => Direction::West,
+                Face::East => Direction::East,
+            },
+            cull: None,
+            material: Material { sprite: look.sprite.clone(), force_translucent: true },
+            tint_index: 0,
+            shade_direction_override: None,
+            light_emission: light,
+            light: [light, 0],
+            color: None,
+            ambient_occlusion: None,
+            render_type: None,
+            shade: true,
+        })
+        .collect();
+    let model = BakedItemModel { quads, uses_block_light: frame.uses_block_light, particle: Material { sprite: frame.particle.clone(), force_translucent: false }, transforms: Default::default() };
+    let fluid = LayerRender {
+        geometry: LayerGeometry::Quads(Arc::new(model)),
+        tints: vec![tint as i32],
+        foil: FoilType::None,
+        matrix: frame.matrix,
+        particle: frame.particle.clone(),
+        uses_block_light: frame.uses_block_light,
+        extents: frame.extents.clone(),
+    };
+    state.layers.insert(0, fluid);
+    state
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // O que o Horizon deixa ver.
 
 pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, horizon_world::nbt::Compound)>) {
@@ -497,9 +601,11 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
     CLOCK.with(|clock| clock.set(now as u64));
     let (capacity, _) = tier_values(tier);
+    let mut newborn = false;
     let cell = match live_at(&key) {
         Some(cell) if cell.borrow().last_seen + 1 == now && glue::has_saved(entity) => cell,
         _ => {
+            newborn = true;
             let cell = Rc::new(RefCell::new(born(game, dimension, pos, entity, tier)));
             TANKS.with_borrow_mut(|tanks| tanks.insert(key, cell.borrow().tile.tank().clone()));
             LIVE.with_borrow_mut(|live| live.insert(key, cell.clone()));
@@ -540,6 +646,16 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     let below = live_at(&(dimension, [pos[0], pos[1] - 1, pos[2]])).filter(|below| now - below.borrow().last_seen <= 1).map(Below);
     let result = live.tile.tick_server(now as u64, below.as_ref().map(|below| below as &dyn BelowHandler));
     glue::publish_comparator(game, dimension, pos, live.tile.tile().current_redstone_level(), result.comparator_changed);
+    // `sendUpdatePacket(this)`: o `getReducedUpdateTag` (a escala, o fluido e o fluido da válvula) vai ao cliente quando o tile pede. Um tile que acabou de nascer manda o
+    // dele, como o pacote do bloco de entidade que o cliente recebe com o chunk e com o bloco posto.
+    if newborn || result.send_update {
+        let view = TankView {
+            scale: live.tile.scale(),
+            fluid: live.tile.tank().resource().map(|fluid| fluid.id.to_string()),
+            valve: live.tile.valve_fluid().map(|fluid| fluid.id.to_string()),
+        };
+        game.mb_tank_view_changed(dimension, pos, view);
+    }
 
     slot_to_entity(game, entity, fluid_tank::INPUT_SLOT, live.tile.input_slot().slot());
     slot_to_entity(game, entity, fluid_tank::OUTPUT_SLOT, live.tile.output_slot());

@@ -5738,6 +5738,18 @@ pub const GENERATORS_FLUIDS: [&str; 4] = ["bioethanol", "deuterium", "fusion_fue
 /// `MekanismUtils.lighterThanAirGas`: o fluido da tag `c:gaseous` com `isLighterThanAir`, só o vapor.
 pub const LIGHTER_THAN_AIR_FLUIDS: [&str; 1] = ["mekanism:steam"];
 
+/// A água pesada, o único fluido do Mekanism com a textura de outro (`MekanismFluids.java:42-44`).
+pub const HEAVY_WATER: &str = "mekanism:heavy_water";
+
+/// `getFluidTexture(fluid, FLOWING)` a partir do sprite parado: a água e a lava do vanilla (`block/<nome>_still` e `block/<nome>_flow`) e os fluidos do Mekanism
+/// (`mek_liquid/<nome>` e `mek_liquid/<nome>_flow`: `FluidDeferredRegister.LIQUID_FLOW`, o vapor em `MekanismFluids.java:41`, e as texturas próprias do port, que têm as duas).
+pub fn flowing_sprite(still: &str) -> String {
+    match still.strip_suffix("_still") {
+        Some(base) => format!("{base}_flow"),
+        None => format!("{still}_flow"),
+    }
+}
+
 /// O fluido de um cano como o desenho o lê.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContentsFluid {
@@ -5776,6 +5788,16 @@ pub fn contents_fluid(id: &str, spec: Option<(u32, u32)>) -> Option<ContentsFlui
         _ => {}
     }
     let (color, light) = spec?;
+    // `MekanismFluids.HEAVY_WATER`: a água do vanilla com a tinta 0xFF0D1455 (`texture(block/water_still, block/water_flow).tint(..)`). O desenho tinge no vértice, então
+    // aqui a textura é a do original (o bloco no mundo e o balde ficam como o inventário diz, H48).
+    if id == HEAVY_WATER {
+        return Some(ContentsFluid {
+            sprite: "minecraft:block/water_still".to_owned(),
+            rgb: color,
+            light,
+            lighter_than_air: false,
+        });
+    }
     let lighter_than_air = LIGHTER_THAN_AIR_FLUIDS.contains(&id);
     if let Some(name) = id
         .strip_prefix("mekanismgenerators:")

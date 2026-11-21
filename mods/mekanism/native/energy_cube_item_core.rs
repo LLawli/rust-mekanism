@@ -3,5 +3,6 @@ fn mekanism_item_core(
     stack: &horizon_client::items::ItemStack,
     state: ItemRenderState,
 ) -> ItemRenderState {
-    crate::game::mekanism_cube::item_core(game, stack, state)
+    let state = crate::game::mekanism_cube::item_core(game, stack, state);
+    crate::game::mekanism_tank::item_contents(game, stack, state)
 }
