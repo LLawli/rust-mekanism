@@ -132,6 +132,25 @@ impl Default for SecurityConfig {
     }
 }
 
+/// `SecurityData`: o modo da frequência de segurança de um dono e se ela se sobrepõe ao modo dos blocos dele. É o que o `PacketSyncSecurity` leva ao cliente
+/// (`MekanismClient.clientSecurityMap`) e o que `SecurityUtils.getData` lê da tabela no servidor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct SecurityData {
+    pub mode: SecurityMode,
+    pub overridden: bool,
+}
+
+impl SecurityData {
+    /// `SecurityData.DUMMY`: `PUBLIC`, sem sobreposição.
+    pub const DUMMY: Self = Self { mode: SecurityMode::Public, overridden: false };
+}
+
+/// `SecurityUtils.canAccess` de um objeto que só tem dono (`ownerCapability` sem `securityCapability`, como a Security Desk): sem dono, todos; com dono, só ele.
+/// Com a proteção desligada, todos.
+pub fn owner_only_access(config: SecurityConfig, owner: Option<u128>, player: Option<u128>) -> bool {
+    !config.allow_protection || owner.is_none() || owner == player
+}
+
 /// O dono e o modo de um bloco (o `TileComponentSecurity`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct SecurityState {
@@ -178,6 +197,45 @@ impl SecurityState {
     ) -> bool {
         (config.ops_bypass && is_op && !is_client)
             || self.can_access(config, Some(player), is_client, trusted)
+    }
+
+    /// `SecurityUtils.getFinalData(securityObject, isClient)`: o modo e a sobreposição que valem para o bloco. `data` é a da frequência do dono (`getData`: a da
+    /// tabela no servidor, a do `clientSecurityMap` no cliente, [`SecurityData::DUMMY`] sem dono ou sem frequência): ela vale, com a marca de sobreposta, se a
+    /// sobreposição está ligada e o modo dela é mais restritivo que o do bloco. Com a proteção desligada é `DUMMY`.
+    pub fn final_data(&self, config: SecurityConfig, data: SecurityData) -> SecurityData {
+        if !config.allow_protection {
+            return SecurityData::DUMMY;
+        }
+        if data.overridden && crate::recipe_data::more_restrictive(self.mode, data.mode) {
+            return data;
+        }
+        SecurityData { mode: self.mode, overridden: false }
+    }
+
+    /// `canAccessObject(UUID, ISecurityObject, boolean isClient)` com a frequência do dono: como [`Self::can_access`], pelo modo efetivo de [`Self::final_data`].
+    pub fn can_access_with(
+        &self,
+        config: SecurityConfig,
+        player: Option<u128>,
+        is_client: bool,
+        data: SecurityData,
+        trusted: &dyn Fn(u128, u128) -> bool,
+    ) -> bool {
+        let effective = Self { owner: self.owner, mode: self.final_data(config, data).mode };
+        effective.can_access(config, player, is_client, trusted)
+    }
+
+    /// `SecurityUtils.canAccess(Player, ...)` com a frequência do dono.
+    pub fn can_access_player_with(
+        &self,
+        config: SecurityConfig,
+        player: u128,
+        is_op: bool,
+        is_client: bool,
+        data: SecurityData,
+        trusted: &dyn Fn(u128, u128) -> bool,
+    ) -> bool {
+        (config.ops_bypass && is_op && !is_client) || self.can_access_with(config, Some(player), is_client, data, trusted)
     }
 
     /// `getEffectiveSecurityMode`: o modo do bloco (sem a sobreposição da mesa), `PUBLIC` com a proteção desligada.
@@ -475,6 +533,48 @@ pub fn tooltip_lines(
     } else {
         SecurityMode::Public
     }));
+    lines
+}
+
+/// `MekanismLang.SECURITY_OVERRIDDEN.translateColored(RED)`: a linha `(Overridden)` que a aba e o item ganham quando a sobreposição da mesa vale.
+pub const OVERRIDDEN_KEY: &str = "security.mekanism.overridden";
+
+pub fn overridden_line() -> TooltipLine {
+    TooltipLine { key: OVERRIDDEN_KEY, color: COLOR_RED, arg: Arg::Literal(String::new()), arg_color: COLOR_RED }
+}
+
+/// `ItemSecurityUtils.addSecurityTooltip` com a frequência do dono: [`tooltip_lines`] com o modo de [`SecurityState::final_data`] e, sobreposto, a linha `(Overridden)`
+/// depois de `Security:`.
+pub fn tooltip_lines_with(
+    config: SecurityConfig,
+    viewer: Option<u128>,
+    owner: Option<(u128, &str)>,
+    mode: SecurityMode,
+    data: SecurityData,
+) -> Vec<TooltipLine> {
+    let state = SecurityState { owner: owner.map(|(owner, _)| owner), mode };
+    let data = state.final_data(config, data);
+    let mut lines = tooltip_lines(config, viewer, owner, data.mode);
+    if data.overridden {
+        lines.push(overridden_line());
+    }
+    lines
+}
+
+/// `GuiSecurityTab.updateTooltip` com a frequência do dono: `Security: <modo efetivo>`, `Owner: <nome>` e, sobreposto, `(Overridden)` por último.
+pub fn tab_tooltip_lines_with(
+    config: SecurityConfig,
+    viewer: Option<u128>,
+    owner: Option<(u128, &str)>,
+    mode: SecurityMode,
+    data: SecurityData,
+) -> Vec<TooltipLine> {
+    let state = SecurityState { owner: owner.map(|(owner, _)| owner), mode };
+    let data = state.final_data(config, data);
+    let mut lines = tab_tooltip_lines(viewer, owner, data.mode);
+    if data.overridden {
+        lines.push(overridden_line());
+    }
     lines
 }
 
