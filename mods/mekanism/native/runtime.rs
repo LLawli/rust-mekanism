@@ -2793,6 +2793,24 @@ pub fn tank_contents_tooltip(
     }
 }
 
+/// `tank.capacityAsLong(resource)` como a tela e a barra do Chemical Tank o leem (`GuiChemicalTank.java:49`, `ResourceTankInfoProvider.getLevel`): a capacidade do
+/// tier, ou zero para o químico que o tanque não aceita (`BasicChemicalTank.isValid`: o `ChemicalAttributeValidator.DEFAULT` recusa o atributo que pede
+/// validação, a radioatividade; o criativo aceita tudo). Um tanque comum com polônio posto por comando mostra `5,000/0` e a barra cheia (medido no cliente do
+/// original, frente `tanques`, 7.ª rodada).
+pub fn chemical_tank_shown_capacity(
+    tier_capacity: i64,
+    creative: bool,
+    chemical: &str,
+    attributes: &machinery_basis_core::chemical::ChemicalAttributes,
+) -> i64 {
+    if creative || chemical.is_empty() {
+        return tier_capacity;
+    }
+    let valid = machinery_basis_core::chemical::ChemicalAttributeValidator::default_rule()
+        .process(&ChemicalResource::new(chemical), attributes);
+    if valid { tier_capacity } else { 0 }
+}
+
 /// `GuiChemicalTank.drawForegroundText` (`:60`): `renderInventoryText(guiGraphics, 85)`.
 pub const CHEMICAL_TANK_INVENTORY_END: f32 = 85.0;
 

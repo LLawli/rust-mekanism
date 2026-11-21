@@ -144,3 +144,35 @@ fn a_tube_sees_the_tank_by_the_side_configuration_and_the_attribute_validator() 
     assert!(chemical_tank_view(&bare, Face::South).is_none());
     assert_eq!(chemical_tank_faces(&bare), [None; 6]);
 }
+
+/// `tank.capacityAsLong(resource)` na tela (`GuiChemicalTank.java:49`): o tanque comum com um químico radioativo (posto por comando: ele o recusa) tem capacidade
+/// zero para ele, e a barra enche (`MathUtils.divideToLevel` com zero); o criativo e os outros químicos seguem a capacidade do tier. Medido no cliente do original
+/// com polônio num tanque básico: `5,000/0` e a barra cheia.
+#[test]
+fn a_tank_shows_no_capacity_for_a_chemical_it_refuses() {
+    use mekanism_rules::{chemical_tank_bar_level, chemical_tank_shown_capacity};
+    let attributes = chemical_attributes_of(Arc::new(chemical_attribute_maps(&files(), true)));
+    assert_eq!(
+        chemical_tank_shown_capacity(64_000, false, "mekanism:polonium", &attributes),
+        0
+    );
+    assert_eq!(
+        chemical_tank_shown_capacity(64_000, false, "mekanism:hydrogen", &attributes),
+        64_000
+    );
+    assert_eq!(
+        chemical_tank_shown_capacity(64_000, false, "", &attributes),
+        64_000
+    );
+    assert_eq!(
+        chemical_tank_shown_capacity(i64::MAX, true, "mekanism:polonium", &attributes),
+        i64::MAX
+    );
+    assert_eq!(chemical_tank_bar_level(5_000, 0), 1.0);
+    // Com a radiação desligada o atributo não pede validação.
+    let off = chemical_attributes_of(Arc::new(chemical_attribute_maps(&files(), false)));
+    assert_eq!(
+        chemical_tank_shown_capacity(64_000, false, "mekanism:polonium", &off),
+        64_000
+    );
+}

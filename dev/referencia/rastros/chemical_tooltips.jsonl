@@ -1,0 +1,68 @@
+{"id":"mekanism:antimatter","normal":[[["Antimatter",null]]],"advanced":[[["Antimatter",null]],[["mekanism:antimatter","#555555"]]]}
+{"id":"mekanism:aqua","normal":[[["Aqua Pigment",null]]],"advanced":[[["Aqua Pigment",null]],[["mekanism:aqua","#555555"]]]}
+{"id":"mekanism:bio","normal":[[["Biomass",null]]],"advanced":[[["Biomass",null]],[["mekanism:bio","#555555"]]]}
+{"id":"mekanism:black","normal":[[["Black Pigment",null]]],"advanced":[[["Black Pigment",null]],[["mekanism:black","#555555"]]]}
+{"id":"mekanism:blue","normal":[[["Blue Pigment",null]]],"advanced":[[["Blue Pigment",null]],[["mekanism:blue","#555555"]]]}
+{"id":"mekanism:brine","normal":[[["Gaseous Brine",null]]],"advanced":[[["Gaseous Brine",null]],[["mekanism:brine","#555555"]]]}
+{"id":"mekanism:brown","normal":[[["Brown Pigment",null]]],"advanced":[[["Brown Pigment",null]],[["mekanism:brown","#555555"]]]}
+{"id":"mekanism:carbon","normal":[[["Carbon",null]]],"advanced":[[["Carbon",null]],[["mekanism:carbon","#555555"]]]}
+{"id":"mekanism:chlorine","normal":[[["Chlorine",null]]],"advanced":[[["Chlorine",null]],[["mekanism:chlorine","#555555"]]]}
+{"id":"mekanism:clean_copper","normal":[[["Clean Copper Slurry",null]]],"advanced":[[["Clean Copper Slurry",null]],[["mekanism:clean_copper","#555555"]]]}
+{"id":"mekanism:clean_gold","normal":[[["Clean Gold Slurry",null]]],"advanced":[[["Clean Gold Slurry",null]],[["mekanism:clean_gold","#555555"]]]}
+{"id":"mekanism:clean_iron","normal":[[["Clean Iron Slurry",null]]],"advanced":[[["Clean Iron Slurry",null]],[["mekanism:clean_iron","#555555"]]]}
+{"id":"mekanism:clean_lead","normal":[[["Clean Lead Slurry",null]]],"advanced":[[["Clean Lead Slurry",null]],[["mekanism:clean_lead","#555555"]]]}
+{"id":"mekanism:clean_osmium","normal":[[["Clean Osmium Slurry",null]]],"advanced":[[["Clean Osmium Slurry",null]],[["mekanism:clean_osmium","#555555"]]]}
+{"id":"mekanism:clean_tin","normal":[[["Clean Tin Slurry",null]]],"advanced":[[["Clean Tin Slurry",null]],[["mekanism:clean_tin","#555555"]]]}
+{"id":"mekanism:clean_uranium","normal":[[["Clean Uranium Slurry",null]]],"advanced":[[["Clean Uranium Slurry",null]],[["mekanism:clean_uranium","#555555"]]]}
+{"id":"mekanism:cyan","normal":[[["Cyan Pigment",null]]],"advanced":[[["Cyan Pigment",null]],[["mekanism:cyan","#555555"]]]}
+{"id":"mekanism:dark_red","normal":[[["Dark Red Pigment",null]]],"advanced":[[["Dark Red Pigment",null]],[["mekanism:dark_red","#555555"]]]}
+{"id":"mekanism:diamond","normal":[[["Diamond",null]]],"advanced":[[["Diamond",null]],[["mekanism:diamond","#555555"]]]}
+{"id":"mekanism:dirty_copper","normal":[[["Dirty Copper Slurry",null]]],"advanced":[[["Dirty Copper Slurry",null]],[["mekanism:dirty_copper","#555555"]]]}
+{"id":"mekanism:dirty_gold","normal":[[["Dirty Gold Slurry",null]]],"advanced":[[["Dirty Gold Slurry",null]],[["mekanism:dirty_gold","#555555"]]]}
+{"id":"mekanism:dirty_iron","normal":[[["Dirty Iron Slurry",null]]],"advanced":[[["Dirty Iron Slurry",null]],[["mekanism:dirty_iron","#555555"]]]}
+{"id":"mekanism:dirty_lead","normal":[[["Dirty Lead Slurry",null]]],"advanced":[[["Dirty Lead Slurry",null]],[["mekanism:dirty_lead","#555555"]]]}
+{"id":"mekanism:dirty_osmium","normal":[[["Dirty Osmium Slurry",null]]],"advanced":[[["Dirty Osmium Slurry",null]],[["mekanism:dirty_osmium","#555555"]]]}
+{"id":"mekanism:dirty_tin","normal":[[["Dirty Tin Slurry",null]]],"advanced":[[["Dirty Tin Slurry",null]],[["mekanism:dirty_tin","#555555"]]]}
+{"id":"mekanism:dirty_uranium","normal":[[["Dirty Uranium Slurry",null]]],"advanced":[[["Dirty Uranium Slurry",null]],[["mekanism:dirty_uranium","#555555"]]]}
+{"id":"mekanism:empty","normal":[[["Empty",null]]],"advanced":[[["Empty",null]],[["mekanism:empty","#555555"]]]}
+{"id":"mekanism:ethene","normal":[[["Ethene",null]],[[" - Maximum Burn: ","#CFCFCF"],["10/t","#559EFF"]],[[" - Energy Density: ","#CFCFCF"],["8 FE/mB","#559EFF"]],[[" - Maximum Output: ","#CFCFCF"],["80 FE/t","#559EFF"]]],"advanced":[[["Ethene",null]],[[" - Maximum Burn: ","#CFCFCF"],["10/t","#559EFF"]],[[" - Energy Density: ","#CFCFCF"],["8 FE/mB","#559EFF"]],[[" - Maximum Output: ","#CFCFCF"],["80 FE/t","#559EFF"]],[["mekanism:ethene","#555555"]]]}
+{"id":"mekanism:fissile_fuel","normal":[[["Fissile Fuel",null]]],"advanced":[[["Fissile Fuel",null]],[["mekanism:fissile_fuel","#555555"]]]}
+{"id":"mekanism:fungi","normal":[[["Fungi",null]]],"advanced":[[["Fungi",null]],[["mekanism:fungi","#555555"]]]}
+{"id":"mekanism:gold","normal":[[["Gold",null]]],"advanced":[[["Gold",null]],[["mekanism:gold","#555555"]]]}
+{"id":"mekanism:gray","normal":[[["Gray Pigment",null]]],"advanced":[[["Gray Pigment",null]],[["mekanism:gray","#555555"]]]}
+{"id":"mekanism:green","normal":[[["Green Pigment",null]]],"advanced":[[["Green Pigment",null]],[["mekanism:green","#555555"]]]}
+{"id":"mekanism:hydrofluoric_acid","normal":[[["Hydrofluoric Acid",null]]],"advanced":[[["Hydrofluoric Acid",null]],[["mekanism:hydrofluoric_acid","#555555"]]]}
+{"id":"mekanism:hydrogen","normal":[[["Hydrogen",null]],[[" - Maximum Burn: ","#CFCFCF"],["10/t","#559EFF"]],[[" - Energy Density: ","#CFCFCF"],["2 FE/mB","#559EFF"]],[[" - Maximum Output: ","#CFCFCF"],["20 FE/t","#559EFF"]]],"advanced":[[["Hydrogen",null]],[[" - Maximum Burn: ","#CFCFCF"],["10/t","#559EFF"]],[[" - Energy Density: ","#CFCFCF"],["2 FE/mB","#559EFF"]],[[" - Maximum Output: ","#CFCFCF"],["20 FE/t","#559EFF"]],[["mekanism:hydrogen","#555555"]]]}
+{"id":"mekanism:hydrogen_chloride","normal":[[["Hydrogen Chloride",null]]],"advanced":[[["Hydrogen Chloride",null]],[["mekanism:hydrogen_chloride","#555555"]]]}
+{"id":"mekanism:light_blue","normal":[[["Light Blue Pigment",null]]],"advanced":[[["Light Blue Pigment",null]],[["mekanism:light_blue","#555555"]]]}
+{"id":"mekanism:light_gray","normal":[[["Light Gray Pigment",null]]],"advanced":[[["Light Gray Pigment",null]],[["mekanism:light_gray","#555555"]]]}
+{"id":"mekanism:lime","normal":[[["Lime Pigment",null]]],"advanced":[[["Lime Pigment",null]],[["mekanism:lime","#555555"]]]}
+{"id":"mekanism:lithium","normal":[[["Lithium",null]]],"advanced":[[["Lithium",null]],[["mekanism:lithium","#555555"]]]}
+{"id":"mekanism:magenta","normal":[[["Magenta Pigment",null]]],"advanced":[[["Magenta Pigment",null]],[["mekanism:magenta","#555555"]]]}
+{"id":"mekanism:nuclear_waste","normal":[[["Nuclear Waste",null]],[[" - Radioactivity: ","#CFCFCF"],["10 mSv/h","#559EFF"]]],"advanced":[[["Nuclear Waste",null]],[[" - Radioactivity: ","#CFCFCF"],["10 mSv/h","#559EFF"]],[["mekanism:nuclear_waste","#555555"]]]}
+{"id":"mekanism:orange","normal":[[["Orange Pigment",null]]],"advanced":[[["Orange Pigment",null]],[["mekanism:orange","#555555"]]]}
+{"id":"mekanism:osmium","normal":[[["Osmium",null]]],"advanced":[[["Osmium",null]],[["mekanism:osmium","#555555"]]]}
+{"id":"mekanism:oxygen","normal":[[["Oxygen",null]]],"advanced":[[["Oxygen",null]],[["mekanism:oxygen","#555555"]]]}
+{"id":"mekanism:pink","normal":[[["Pink Pigment",null]]],"advanced":[[["Pink Pigment",null]],[["mekanism:pink","#555555"]]]}
+{"id":"mekanism:plutonium","normal":[[["Plutonium",null]],[[" - Radioactivity: ","#CFCFCF"],["20 mSv/h","#559EFF"]],[["Will not decay inside a Radioactive Waste Barrel","#30FFF9"]]],"advanced":[[["Plutonium",null]],[[" - Radioactivity: ","#CFCFCF"],["20 mSv/h","#559EFF"]],[["Will not decay inside a Radioactive Waste Barrel","#30FFF9"]],[["mekanism:plutonium","#555555"]]]}
+{"id":"mekanism:polonium","normal":[[["Polonium",null]],[[" - Radioactivity: ","#CFCFCF"],["50 mSv/h","#559EFF"]],[["Will not decay inside a Radioactive Waste Barrel","#30FFF9"]]],"advanced":[[["Polonium",null]],[[" - Radioactivity: ","#CFCFCF"],["50 mSv/h","#559EFF"]],[["Will not decay inside a Radioactive Waste Barrel","#30FFF9"]],[["mekanism:polonium","#555555"]]]}
+{"id":"mekanism:purple","normal":[[["Purple Pigment",null]]],"advanced":[[["Purple Pigment",null]],[["mekanism:purple","#555555"]]]}
+{"id":"mekanism:red","normal":[[["Red Pigment",null]]],"advanced":[[["Red Pigment",null]],[["mekanism:red","#555555"]]]}
+{"id":"mekanism:redstone","normal":[[["Redstone",null]]],"advanced":[[["Redstone",null]],[["mekanism:redstone","#555555"]]]}
+{"id":"mekanism:refined_obsidian","normal":[[["Refined Obsidian",null]]],"advanced":[[["Refined Obsidian",null]],[["mekanism:refined_obsidian","#555555"]]]}
+{"id":"mekanism:sodium","normal":[[["Sodium",null]],[[" - Coolant Efficiency: ","#CFCFCF"],["100%","#559EFF"]],[[" - Thermal Enthalpy: ","#CFCFCF"],["5 FE/mB","#559EFF"]]],"advanced":[[["Sodium",null]],[[" - Coolant Efficiency: ","#CFCFCF"],["100%","#559EFF"]],[[" - Thermal Enthalpy: ","#CFCFCF"],["5 FE/mB","#559EFF"]],[["mekanism:sodium","#555555"]]]}
+{"id":"mekanism:spent_nuclear_waste","normal":[[["Spent Nuclear Waste",null]],[[" - Radioactivity: ","#CFCFCF"],["10 mSv/h","#559EFF"]]],"advanced":[[["Spent Nuclear Waste",null]],[[" - Radioactivity: ","#CFCFCF"],["10 mSv/h","#559EFF"]],[["mekanism:spent_nuclear_waste","#555555"]]]}
+{"id":"mekanism:steam","normal":[[["Steam",null]]],"advanced":[[["Steam",null]],[["mekanism:steam","#555555"]]]}
+{"id":"mekanism:sulfur_dioxide","normal":[[["Sulfur Dioxide",null]]],"advanced":[[["Sulfur Dioxide",null]],[["mekanism:sulfur_dioxide","#555555"]]]}
+{"id":"mekanism:sulfur_trioxide","normal":[[["Sulfur Trioxide",null]]],"advanced":[[["Sulfur Trioxide",null]],[["mekanism:sulfur_trioxide","#555555"]]]}
+{"id":"mekanism:sulfuric_acid","normal":[[["Sulfuric Acid",null]]],"advanced":[[["Sulfuric Acid",null]],[["mekanism:sulfuric_acid","#555555"]]]}
+{"id":"mekanism:superheated_sodium","normal":[[["Superheated Sodium",null]],[[" - Coolant Efficiency: ","#CFCFCF"],["40%","#559EFF"]],[[" - Thermal Enthalpy: ","#CFCFCF"],["5 FE/mB","#559EFF"]],[[" - Temperature: ","#CFCFCF"],["100kK","#559EFF"]]],"advanced":[[["Superheated Sodium",null]],[[" - Coolant Efficiency: ","#CFCFCF"],["40%","#559EFF"]],[[" - Thermal Enthalpy: ","#CFCFCF"],["5 FE/mB","#559EFF"]],[[" - Temperature: ","#CFCFCF"],["100kK","#559EFF"]],[["mekanism:superheated_sodium","#555555"]]]}
+{"id":"mekanism:tin","normal":[[["Tin",null]]],"advanced":[[["Tin",null]],[["mekanism:tin","#555555"]]]}
+{"id":"mekanism:uranium_hexafluoride","normal":[[["Uranium Hexafluoride",null]]],"advanced":[[["Uranium Hexafluoride",null]],[["mekanism:uranium_hexafluoride","#555555"]]]}
+{"id":"mekanism:uranium_oxide","normal":[[["Uranium Oxide",null]]],"advanced":[[["Uranium Oxide",null]],[["mekanism:uranium_oxide","#555555"]]]}
+{"id":"mekanism:water_vapor","normal":[[["Water Vapor",null]]],"advanced":[[["Water Vapor",null]],[["mekanism:water_vapor","#555555"]]]}
+{"id":"mekanism:white","normal":[[["White Pigment",null]]],"advanced":[[["White Pigment",null]],[["mekanism:white","#555555"]]]}
+{"id":"mekanism:yellow","normal":[[["Yellow Pigment",null]]],"advanced":[[["Yellow Pigment",null]],[["mekanism:yellow","#555555"]]]}
+{"id":"mekanismgenerators:deuterium","normal":[[["Deuterium",null]]],"advanced":[[["Deuterium",null]],[["mekanismgenerators:deuterium","#555555"]]]}
+{"id":"mekanismgenerators:fusion_fuel","normal":[[["D-T Fuel",null]]],"advanced":[[["D-T Fuel",null]],[["mekanismgenerators:fusion_fuel","#555555"]]]}
+{"id":"mekanismgenerators:tritium","normal":[[["Tritium",null]]],"advanced":[[["Tritium",null]],[["mekanismgenerators:tritium","#555555"]]]}

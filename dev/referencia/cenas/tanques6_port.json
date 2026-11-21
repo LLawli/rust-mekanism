@@ -115,10 +115,47 @@
    "tp": "61.5 141.6 78.6 0 27"
   },
   {
+   "name": "ativos",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 141 82 mekanism:basic_fluid_tank[active=true]",
+    "setblock 60 141 82 mekanism:basic_fluid_tank",
+    "setblock 61 141 82 mekanism:basic_fluid_tank[active=true]",
+    "setblock 62 141 82 mekanism:basic_fluid_tank",
+    "setblock 63 141 82 mekanism:basic_fluid_tank[active=true]",
+    "#esperar 30",
+    "data merge block 60 141 82 {active_state:1b}",
+    "data merge block 62 141 82 {active_state:1b}",
+    "#esperar 40"
+   ],
+   "tp": "61.5 141.6 78.6 0 27"
+  },
+  {
+   "name": "quebrados",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 141 82 mekanism:basic_fluid_tank",
+    "setblock 60 141 82 mekanism:basic_fluid_tank",
+    "setblock 61 141 82 mekanism:basic_fluid_tank",
+    "setblock 62 141 82 mekanism:basic_fluid_tank",
+    "setblock 63 141 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "#fluido 61 141 82 minecraft:lava 16000",
+    "#fluido 59 141 82 minecraft:water 32000",
+    "#esperar 20",
+    "setblock 63 141 82 minecraft:air destroy",
+    "setblock 61 141 82 minecraft:air destroy",
+    "setblock 59 141 82 minecraft:air destroy",
+    "#esperar 60"
+   ],
+   "tp": "61.5 141.6 78.6 0 27"
+  },
+  {
    "name": "item_agua",
    "cmds": [
     "tick unfreeze",
     "clear @a",
+    "kill @e[type=minecraft:item]",
     "#esperar 20",
     "item replace entity @a hotbar.0 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:water\"},amount:16000L}]}]",
     "item replace entity @a hotbar.1 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:32000L}]}]",

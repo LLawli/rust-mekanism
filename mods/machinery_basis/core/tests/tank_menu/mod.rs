@@ -50,7 +50,10 @@ impl<'a> Menu<'a> {
     pub fn new(layout: &Value, accepts: &'a dyn Fn(usize, &Item) -> bool) -> Self {
         let slots = layout["slots"].as_array().unwrap();
         Menu {
-            classes: slots.iter().map(|slot| slot[1].as_str().unwrap().to_owned()).collect(),
+            classes: slots
+                .iter()
+                .map(|slot| slot[1].as_str().unwrap().to_owned())
+                .collect(),
             inventory: slots.iter().map(|slot| slot[2].as_i64().unwrap()).collect(),
             contents: vec![None; slots.len()],
             accepts,
@@ -58,15 +61,21 @@ impl<'a> Menu<'a> {
     }
 
     fn of_class(&self, class: &str) -> Vec<usize> {
-        (0..self.classes.len()).filter(|&slot| self.classes[slot] == class).collect()
+        (0..self.classes.len())
+            .filter(|&slot| self.classes[slot] == class)
+            .collect()
     }
 
     /// Os slots de uma lista `[[índice, id, quantidade, pilha], ..]` do rastro.
     pub fn load(&mut self, slots: &Value) {
         self.contents.iter_mut().for_each(|slot| *slot = None);
         for entry in slots.as_array().unwrap() {
-            let item = Item { id: entry[1].as_str().unwrap().to_owned(), max_stack: entry[3].as_u64().unwrap() as u32 };
-            self.contents[entry[0].as_u64().unwrap() as usize] = Some((item, entry[2].as_u64().unwrap() as u32));
+            let item = Item {
+                id: entry[1].as_str().unwrap().to_owned(),
+                max_stack: entry[3].as_u64().unwrap() as u32,
+            };
+            self.contents[entry[0].as_u64().unwrap() as usize] =
+                Some((item, entry[2].as_u64().unwrap() as u32));
         }
     }
 
@@ -74,7 +83,10 @@ impl<'a> Menu<'a> {
         self.contents
             .iter()
             .enumerate()
-            .filter_map(|(slot, held)| held.as_ref().map(|(item, count)| (slot, item.id.clone(), *count)))
+            .filter_map(|(slot, held)| {
+                held.as_ref()
+                    .map(|(item, count)| (slot, item.id.clone(), *count))
+            })
             .collect()
     }
 }
@@ -84,7 +96,13 @@ pub fn recorded(slots: &Value) -> Vec<(usize, String, u32)> {
         .as_array()
         .unwrap()
         .iter()
-        .map(|entry| (entry[0].as_u64().unwrap() as usize, entry[1].as_str().unwrap().to_owned(), entry[2].as_u64().unwrap() as u32))
+        .map(|entry| {
+            (
+                entry[0].as_u64().unwrap() as usize,
+                entry[1].as_str().unwrap().to_owned(),
+                entry[2].as_u64().unwrap() as u32,
+            )
+        })
         .collect()
 }
 
@@ -122,19 +140,49 @@ impl QuickMenu for Menu<'_> {
 
     fn insert(&mut self, slot: usize, item: &Item, amount: u32) -> u32 {
         let held = self.contents[slot].as_ref().map_or(0, |(_, count)| *count);
-        let same = self.contents[slot].as_ref().is_none_or(|(held_item, _)| held_item == item);
-        let plain = |limit: u32| if held >= limit || !same { 0 } else { amount.min(limit - held) };
+        let same = self.contents[slot]
+            .as_ref()
+            .is_none_or(|(held_item, _)| held_item == item);
+        let plain = |limit: u32| {
+            if held >= limit || !same {
+                0
+            } else {
+                amount.min(limit - held)
+            }
+        };
         let moved = match self.region(slot) {
             Region::Container => {
-                let index = self.of_class("InventoryContainerSlot").iter().position(|&other| other == slot).unwrap();
-                if (self.accepts)(index, item) { plain(item.max_stack.min(TILE_SLOT_LIMIT)) } else { 0 }
+                let index = self
+                    .of_class("InventoryContainerSlot")
+                    .iter()
+                    .position(|&other| other == slot)
+                    .unwrap();
+                if (self.accepts)(index, item) {
+                    plain(item.max_stack.min(TILE_SLOT_LIMIT))
+                } else {
+                    0
+                }
             }
             Region::Main | Region::Hotbar => plain(item.max_stack),
             Region::Armor => {
                 let kind = armor_of(self.inventory[slot]);
-                armor_slots::insert(SlotKind::Armor(kind), held, same, amount, item.max_stack, |equip| equips(item, equip))
+                armor_slots::insert(
+                    SlotKind::Armor(kind),
+                    held,
+                    same,
+                    amount,
+                    item.max_stack,
+                    |equip| equips(item, equip),
+                )
             }
-            Region::Offhand => armor_slots::insert(SlotKind::Offhand, held, same, amount, item.max_stack, |_| false),
+            Region::Offhand => armor_slots::insert(
+                SlotKind::Offhand,
+                held,
+                same,
+                amount,
+                item.max_stack,
+                |_| false,
+            ),
         };
         if moved > 0 {
             self.contents[slot] = Some((item.clone(), held + moved));
@@ -151,8 +199,11 @@ impl QuickMenu for Menu<'_> {
     }
 }
 
+/// A regra dos dois slots do tile de um caso: o slot (0 ou 1) aceita o item.
+pub type Accepts = Box<dyn Fn(usize, &Item) -> bool>;
+
 /// Repete os casos de um rastro: `accepts_of(caso)` devolve a regra dos dois slots do tile para o tanque daquele caso. Devolve quantos casos conferiu.
-pub fn replay(rows: &[Value], accepts_of: &dyn Fn(&Value) -> Box<dyn Fn(usize, &Item) -> bool>) -> usize {
+pub fn replay(rows: &[Value], accepts_of: &dyn Fn(&Value) -> Accepts) -> usize {
     let layout = &rows[0];
     assert_eq!(layout["group"], "layout");
     let mut checked = 0;
@@ -163,7 +214,14 @@ pub fn replay(rows: &[Value], accepts_of: &dyn Fn(&Value) -> Box<dyn Fn(usize, &
         let from = row["from"].as_u64().unwrap() as usize;
         let at = format!(
             "{} {} {} tanque {} slots [{}] [{}] inventário {} armadura {}",
-            row["mode"], row["source"], row["item"], row["tank"], row["slot0"], row["slot1"], row["inventory"], row["armor"]
+            row["mode"],
+            row["source"],
+            row["item"],
+            row["tank"],
+            row["slot0"],
+            row["slot1"],
+            row["inventory"],
+            row["armor"]
         );
         if row["mode"] == "direct" {
             let source = menu.stack(from);
@@ -173,7 +231,14 @@ pub fn replay(rows: &[Value], accepts_of: &dyn Fn(&Value) -> Box<dyn Fn(usize, &
                 (Some(moved), Some((item, _))) => (item.id, u64::from(moved)),
                 _ => (String::new(), 0),
             };
-            assert_eq!(returned, (row["returned"][0].as_str().unwrap().to_owned(), row["returned"][1].as_u64().unwrap()), "{at}: devolvido");
+            assert_eq!(
+                returned,
+                (
+                    row["returned"][0].as_str().unwrap().to_owned(),
+                    row["returned"][1].as_u64().unwrap()
+                ),
+                "{at}: devolvido"
+            );
         } else {
             // `AbstractContainerMenu.doClick` com `QUICK_MOVE`: repete enquanto algo saiu e o slot ainda tem o mesmo item.
             while quick_move(&mut menu, from).is_some() && menu.stack(from).is_some() {}

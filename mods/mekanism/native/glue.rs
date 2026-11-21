@@ -4371,7 +4371,9 @@ fn draw_chemical_tank(game: &Game<'_>, block: &str, tier: usize, batch: &mut Hud
     basis::nine_slice(game, batch, BAR_STYLE.frame, BAR_STYLE.frame_slice, bar);
     let registry = resource::current();
     let chemical = registry.get(&read.chemical.resource);
-    let level = if stored { rules::chemical_tank_bar_level(read.chemical.amount, chemical_tank_capacity(tier)) } else { 0.0 };
+    // `capacityAsLong(resource)`: zero para o químico que este tanque não aceita.
+    let capacity = rules::chemical_tank_shown_capacity(chemical_tank_capacity(tier), tier == rules::TANK_CREATIVE, &read.chemical.resource, &chemical_attributes());
+    let level = if stored { rules::chemical_tank_bar_level(read.chemical.amount, capacity) } else { 0.0 };
     // `MekanismRenderer.getChemicalTexture`: o ícone de qualquer químico (os de infusão, os `mek_liquid` e as lamas), o mesmo que os tubos desenham.
     if let Some(dst) = gui::bar_contents_horizontal(bar, level)
         && let Some(look) = contents_chemical(&read.chemical.resource)
@@ -4381,7 +4383,7 @@ fn draw_chemical_tank(game: &Game<'_>, block: &str, tier: usize, batch: &mut Hud
     // `GuiInnerScreen` com o formato padrão: as duas linhas em `TEXT_SCREEN`, a 0,8 do tamanho, centradas na vertical.
     basis::nine_slice(game, batch, "mekanism:gui/sprites/inner_screen", machinery_basis_core::upgrade_window::INNER_SCREEN_SLICE, at(rules::CHEMICAL_TANK_SCREEN));
     let name = stored.then(|| translate(&rules::chemical_lang_key(&read.chemical.resource)));
-    let lines = rules::chemical_tank_screen_lines(name.as_deref(), read.chemical.amount, chemical_tank_capacity(tier), tier == rules::TANK_CREATIVE, &translate);
+    let lines = rules::chemical_tank_screen_lines(name.as_deref(), read.chemical.amount, if stored { capacity } else { chemical_tank_capacity(tier) }, tier == rules::TANK_CREATIVE, &translate);
     let rows = gui::inner_screen_rows(rules::CHEMICAL_TANK_SCREEN, lines.len(), TEXT_LINE_HEIGHT as i32, gui::INNER_SCREEN_SPACING, gui::INNER_SCREEN_PADDING);
     for (line, row) in lines.iter().zip(rows) {
         let area = [x + row[0], y + row[1], x + row[2], y + row[3]];

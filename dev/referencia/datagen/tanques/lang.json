@@ -78,5 +78,15 @@
   "chemical.mekanism.uranium_oxide": "Uranium Oxide",
   "chemical.mekanism.water_vapor": "Water Vapor",
   "chemical.mekanism.white": "White Pigment",
-  "chemical.mekanism.yellow": "Yellow Pigment"
+  "chemical.mekanism.yellow": "Yellow Pigment",
+  "chemical.mekanism.attribute.coolant.efficiency": " - Coolant Efficiency: %1$s",
+  "chemical.mekanism.attribute.coolant.heat_capacity": " - Thermal Enthalpy: %1$s",
+  "chemical.mekanism.attribute.coolant.temperature": " - Temperature: %1$s",
+  "chemical.mekanism.attribute.fuel.energy_density": " - Energy Density: %1$s",
+  "chemical.mekanism.attribute.fuel.energy_max_total": " - Maximum Output: %1$s",
+  "chemical.mekanism.attribute.fuel.max_burn": " - Maximum Burn: %1$s",
+  "chemical.mekanism.attribute.radiation": " - Radioactivity: %1$s",
+  "generic.mekanism.per_mb": "%1$s/mB",
+  "tooltip.mekanism.decay_immune": "Will not decay inside a Radioactive Waste Barrel",
+  "fluid_type.minecraft.milk": "Milk"
 }

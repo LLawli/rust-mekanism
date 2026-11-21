@@ -659,6 +659,8 @@ TANQUE_MEDIDOR = (81, 43)
 TANQUE_ABA_MODO = (188, 151)
 TANQUE_BARRA = (101, 22)
 TANQUE_BOTAO = (164, 77)
+# O primeiro slot do inventário principal (o índice 9 do jogador) numa tela de 176 por 166: o canto em (8, 84).
+SLOT_INVENTARIO_9 = (16, 92)
 
 
 def casos_tanques():
@@ -690,6 +692,14 @@ def casos_tanques():
         caso("tanque_quimico_hover_barra_vazia", "tanque_quimico", hover=TANQUE_BARRA),
         caso("tanque_quimico_hover_barra", "tanque_quimico", quimico="oxygen:5000", hover=TANQUE_BARRA, ciclo="2", ciclo_port="64"),
         caso("tanque_quimico_lados", "tanque_quimico", clicar=f"{ABA_LADOS[0]},{ABA_LADOS[1]}"),
+        # 7.ª rodada: as linhas dos atributos no tooltip da barra (`ChemicalStack.getTooltipLines`: o combustível, a radioatividade com a linha do barril, que quebra em
+        # 170 pixels, e o refrigerante quente), o título que não cabe e rola (`nome=`), e o tooltip do item do tanque no inventário (a quebra da descrição).
+        caso("tanque_quimico_hover_barra_hidrogenio", "tanque_quimico", quimico="hydrogen:5000", hover=TANQUE_BARRA, ciclo="2", ciclo_port="64"),
+        caso("tanque_quimico_hover_barra_polonio", "tanque_quimico", quimico="polonium:5000", hover=TANQUE_BARRA, ciclo="2", ciclo_port="64"),
+        caso("tanque_quimico_hover_barra_sodio", "tanque_quimico", quimico="superheated_sodium:5000", hover=TANQUE_BARRA, ciclo="2", ciclo_port="64"),
+        caso("tanque_nome_longo", "tanque", nome='{"text":"An_Unreasonably_Long_Name_For_A_Basic_Fluid_Tank"}', capturas="3", capturas_port="3"),
+        caso("tanque_tooltip_item", "tanque", itens="9:mekanism:basic_fluid_tank:1", hover=SLOT_INVENTARIO_9),
+        caso("tanque_quimico_tooltip_item", "tanque_quimico", itens="9:mekanism:basic_chemical_tank:1", hover=SLOT_INVENTARIO_9),
     ]
     return out
 

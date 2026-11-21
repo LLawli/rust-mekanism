@@ -32,6 +32,8 @@ fim() {
     [ -e "$SAIDA/options.txt.antes" ] && cp "$SAIDA/options.txt.antes" "$R/options.txt" && rm -f "$SAIDA/options.txt.antes"
     mkdir -p "$SAIDA/prints"
     mv "$R"/screenshots/oficial_*.png "$SAIDA/prints/" 2>/dev/null
+    # Os rastros que a `CenaTelas` grava na pasta do cliente (7.ª rodada): os tooltips dos químicos e as abas criativas com os tanques cheios.
+    mv "$R/chemical_tooltips.jsonl" "$R/creative_tab_tanks.jsonl" "$SAIDA/" 2>/dev/null
     rm -rf "$C/mekanism-ref.lock"
   fi
   echo "$rc" > "$SAIDA/oficial.fim"

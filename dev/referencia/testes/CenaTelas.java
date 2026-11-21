@@ -152,6 +152,39 @@ public class CenaTelas {
         }
     }
 
+    /// O rastro das abas criativas com os tanques cheios (frente `tanques`, 7.ª rodada): a aba do Mekanism e a Tools & Utilities como o cliente as monta
+    /// (`CreativeModeTabs.tryRebuildTabContents`), um item por linha na ordem da aba, com o fluido ou o químico que a pilha guarda. Vai para `creative_tab_tanks.jsonl`.
+    private static void creativeTabs(Minecraft minecraft) {
+        StringBuilder out = new StringBuilder();
+        net.minecraft.world.item.CreativeModeTabs.tryRebuildTabContents(minecraft.player.connection.enabledFeatures(), true, minecraft.level.registryAccess());
+        for (var entry : BuiltInRegistries.CREATIVE_MODE_TAB.entrySet()) {
+            String tab = entry.getKey().identifier().toString();
+            if (!tab.equals("mekanism:mekanism") && !tab.equals("minecraft:tools_and_utilities")) {
+                continue;
+            }
+            int index = 0;
+            for (ItemStack stack : entry.getValue().getDisplayItems()) {
+                out.append("{\"tab\":\"").append(tab).append("\",\"index\":").append(index++).append(",\"item\":\"").append(BuiltInRegistries.ITEM.getKey(stack.getItem())).append('"');
+                var fluids = stack.get(mekanism.common.registries.MekanismDataComponents.ATTACHED_FLUIDS);
+                if (fluids != null && fluids.hasNonEmptyContents()) {
+                    var held = fluids.containers().getFirst();
+                    out.append(",\"fluid\":\"").append(BuiltInRegistries.FLUID.getKey(held.resource().getFluid())).append("\",\"amount\":").append(held.amount());
+                }
+                var chemicals = stack.get(mekanism.common.registries.MekanismDataComponents.ATTACHED_CHEMICALS);
+                if (chemicals != null && chemicals.hasNonEmptyContents()) {
+                    var held = chemicals.containers().getFirst();
+                    out.append(",\"chemical\":\"").append(held.resource().typeHolder().getRegisteredName()).append("\",\"amount\":").append(held.amount());
+                }
+                out.append("}\n");
+            }
+        }
+        try {
+            Files.writeString(Path.of("creative_tab_tanks.jsonl"), out.toString());
+        } catch (IOException e) {
+            Mekanism.logger.error("cena: sem o rastro das abas", e);
+        }
+    }
+
     private static BlockState block(String machine) {
         return switch (machine) {
             case "chamber" -> MekanismBlocks.ENRICHMENT_CHAMBER.defaultState();
@@ -204,6 +237,7 @@ public class CenaTelas {
                 // O Horizon não mostra o retorno dos comandos no chat; o original mostraria `[Server: ...]` no canto do print.
                 minecraft.options.chatVisibility().set(net.minecraft.world.entity.player.ChatVisiblity.HIDDEN);
                 chemicalTooltips(minecraft);
+                creativeTabs(minecraft);
             }
             return;
         }
@@ -444,6 +478,13 @@ public class CenaTelas {
                 for (String item : caso.args().get("itens").split(",")) {
                     giveItem(server, item);
                 }
+            }
+        }
+        if (!caso.name().contains("_livro_") && caso.args().containsKey("itens")) {
+            // Fora do livro (frente `tanques`, 7.ª rodada): o item no inventário para o tooltip dele, com o cursor no slot.
+            run(server, "clear @a");
+            for (String item : caso.args().get("itens").split(",")) {
+                giveItem(server, item);
             }
         }
         if (caso.args().containsKey("receitas")) {

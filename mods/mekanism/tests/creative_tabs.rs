@@ -462,7 +462,7 @@ fn a_vanilla_tab_gets_the_items_at_the_end_and_other_tabs_are_left_alone() {
     );
     assert_eq!(
         tools.last().unwrap(),
-        &table::filled_fluid_tank("mekanism:nutritional_paste")
+        &table::filled_fluid_tank("minecraft:milk")
     );
     let mut combat = vec![table::plain_stack("minecraft:bow")];
     assert!(table::edit_tab("minecraft:combat", &mut combat));
@@ -491,6 +491,8 @@ fn the_filled_tanks_follow_the_registries_of_the_original() {
             fluids.push(format!("mekanism:{}", row["name"].as_str().unwrap()));
         }
     }
+    // O leite do NeoForge vem depois dos fluidos do Mekanism (`rastros/creative_tab_tanks.jsonl`, do cliente do original).
+    fluids.push("minecraft:milk".to_owned());
     assert_eq!(table::FILLED_TANK_FLUIDS.to_vec(), fluids);
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("content/data/mekanism/mekanism/chemical");
@@ -527,9 +529,10 @@ fn the_filled_tanks_close_the_mod_tab_and_follow_the_buckets_in_the_tools_tab() 
     assert_eq!(items[1], table::filled_fluid_tank("minecraft:water"));
     assert_eq!(items[2], table::filled_fluid_tank("minecraft:lava"));
     assert_eq!(
-        items[fluids],
+        items[fluids - 1],
         table::filled_fluid_tank("mekanism:nutritional_paste")
     );
+    assert_eq!(items[fluids], table::filled_fluid_tank("minecraft:milk"));
     assert_eq!(
         items[1 + fluids],
         table::filled_chemical_tank("mekanism:antimatter")
@@ -564,4 +567,74 @@ fn the_filled_tanks_close_the_mod_tab_and_follow_the_buckets_in_the_tools_tab() 
             .iter()
             .any(|stack| stack.contains("mekanism:fluids") || stack.contains("mekanism:chemicals"))
     );
+}
+
+/// As duas abas como o cliente do original as monta (`rastros/creative_tab_tanks.jsonl`, gravado pela `CenaTelas` depois de
+/// `CreativeModeTabs.tryRebuildTabContents`, um item por linha na ordem da aba): os tanques criativos cheios do Mekanism e do vanilla saem na ordem das duas tabelas
+/// do port, cheios até `Long.MAX_VALUE`; na aba do mod eles fecham a aba (os de fluido e depois os de químico), e a Tools & Utilities só tem os de fluido. O cliente
+/// do original roda com o Generators, que acrescenta os fluidos e os químicos dele no meio da ordem: ficam de fora desta conta (os fluidos estão na tabela do
+/// Generators; os químicos dele o port ainda não tem na aba).
+#[test]
+fn the_filled_tanks_come_in_the_order_the_original_client_shows() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../dev/referencia/rastros/creative_tab_tanks.jsonl");
+    let rows: Vec<Value> = std::fs::read_to_string(path)
+        .expect("o rastro das abas criativas")
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let ours = |id: &str| id.starts_with("minecraft:") || id.starts_with("mekanism:");
+    for (tab, with_chemicals) in [
+        ("mekanism:mekanism", true),
+        ("minecraft:tools_and_utilities", false),
+    ] {
+        let of_tab: Vec<&Value> = rows.iter().filter(|row| row["tab"] == tab).collect();
+        assert!(of_tab.len() > 20, "{tab}: {}", of_tab.len());
+        let filled = |key: &str, item: &str| -> Vec<String> {
+            of_tab
+                .iter()
+                // Outros itens também trazem fluido ou químico (o cantil cheio, o tanque de mergulho): só os tanques criativos contam.
+                .filter(|row| row.get(key).is_some() && row["item"] == item)
+                .map(|row| {
+                    assert_eq!(
+                        row["amount"].as_i64(),
+                        Some(table::FILLED_TANK_AMOUNT),
+                        "{tab}"
+                    );
+                    row[key].as_str().unwrap().to_owned()
+                })
+                .filter(|id| ours(id))
+                .collect()
+        };
+        assert_eq!(
+            filled("fluid", "mekanism:creative_fluid_tank"),
+            table::FILLED_TANK_FLUIDS.to_vec(),
+            "{tab}"
+        );
+        let chemicals = filled("chemical", "mekanism:creative_chemical_tank");
+        if with_chemicals {
+            assert_eq!(chemicals, table::FILLED_TANK_CHEMICALS.to_vec(), "{tab}");
+        } else {
+            assert!(chemicals.is_empty(), "{tab}");
+        }
+        // Os tanques cheios vêm juntos, os de fluido antes dos de químico. Na aba do mod eles a fecham; na do vanilla, os outros mods do cliente do original
+        // (o Generators, o Additions e o Tools) ainda põem os itens deles depois.
+        let is_filled = |row: &&Value| {
+            (row["item"] == "mekanism:creative_fluid_tank" && row.get("fluid").is_some())
+                || (row["item"] == "mekanism:creative_chemical_tank"
+                    && row.get("chemical").is_some())
+        };
+        let first = of_tab.iter().position(&is_filled).unwrap();
+        let count = of_tab.iter().filter(|row| is_filled(row)).count();
+        let block = &of_tab[first..first + count];
+        assert!(block.iter().all(is_filled), "{tab}");
+        let kinds: Vec<bool> = block
+            .iter()
+            .map(|row| row.get("chemical").is_some())
+            .collect();
+        assert!(kinds.windows(2).all(|pair| pair[0] <= pair[1]), "{tab}");
+        if with_chemicals {
+            assert_eq!(first + count, of_tab.len(), "{tab}");
+        }
+    }
 }

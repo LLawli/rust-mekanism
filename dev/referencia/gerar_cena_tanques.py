@@ -60,10 +60,20 @@ def roteiro(port):
     for x, fluid in zip((59, 61, 63), ("minecraft:water", "minecraft:lava", "mekanism:heavy_water")):
         cmds += fluido(port, x, Y + 1, fluid, 32000, "active_state:1b")
     shots.append({"name": "valvula", "cmds": cmds + ["#esperar 10", "tick step 6", "#esperar 60"], "tp": CAMERA})
+    # O estado ativo (7.ª rodada): o `active=true` posto no estado do bloco acende o vidro, e o `active_state` que só chega pelo NBT (`loadAdditional`) não muda o bloco:
+    # os tanques de x 63, 61 e 59 nascem acesos, e os de 62 e 60 recebem `active_state:1b` e seguem apagados, nos dois jogos.
+    cmds = ["tick unfreeze"] + ["setblock %d %d %d mekanism:basic_fluid_tank%s" % (x, Y, Z, "[active=true]" if i % 2 == 0 else "") for i, x in enumerate(XS)] + ["#esperar 30"]
+    cmds += ["data merge block %d %d %d {active_state:1b}" % (x, Y, Z) for i, x in enumerate(XS) if i % 2 == 1]
+    shots.append({"name": "ativos", "cmds": cmds + ["#esperar 40"], "tp": CAMERA})
+    # Os tanques quebrados (`setblock ... destroy`, a tabela de loot do bloco): o item solto no chão leva o fluido e o mostra. O giro do item solto parte de um ângulo
+    # sorteado em cada cliente: o tiro serve para ver o item, não para contar pixels.
+    cmds = postos(Y) + fluido(port, 61, Y, "minecraft:lava", 16000) + fluido(port, 59, Y, "minecraft:water", 32000) + ["#esperar 20"]
+    cmds += ["setblock %d %d %d minecraft:air destroy" % (x, Y, Z) for x in (63, 61, 59)] + ["#esperar 60"]
+    shots.append({"name": "quebrados", "cmds": cmds, "tp": CAMERA})
     # O item na mão e na barra: metade de água na mão, e na barra a lava cheia, a água pesada, o vapor e um vazio.
     barra = [item("basic", "minecraft:water", 16000), item("basic", "minecraft:lava", 32000), item("advanced", "mekanism:heavy_water", 32000),
              item("ultimate", "mekanism:steam", 64000), "mekanism:elite_fluid_tank"]
-    cmds = ["tick unfreeze", "clear @a", "#esperar 20"] + ["item replace entity @a hotbar.%d with %s" % (i, stack) for i, stack in enumerate(barra)] + ["#esperar 40"]
+    cmds = ["tick unfreeze", "clear @a", "kill @e[type=minecraft:item]", "#esperar 20"] + ["item replace entity @a hotbar.%d with %s" % (i, stack) for i, stack in enumerate(barra)] + ["#esperar 40"]
     shots.append({"name": "item_agua", "cmds": cmds, "tp": MAO})
     barra = [barra[1], barra[0]] + barra[2:]
     cmds = ["clear @a", "#esperar 20"] + ["item replace entity @a hotbar.%d with %s" % (i, stack) for i, stack in enumerate(barra)] + ["#esperar 40"]

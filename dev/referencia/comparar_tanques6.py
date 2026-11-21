@@ -26,6 +26,8 @@ RECORTES = {
     "fluidos": {"fila": FILA},
     "animando": {"fila": FILA},
     "valvula": {"coluna": COLUNA},
+    "ativos": {"fila": FILA},
+    "quebrados": {"fila": FILA},
     "item_agua": {"barra": BARRA, "mao": MAO},
     "item_lava": {"barra": BARRA, "mao": MAO},
 }
@@ -44,6 +46,17 @@ def recorta(img, caixa):
 
 def diferenca(a, b):
     return np.abs(a - b).max(axis=2)
+
+
+# As marcas do tier do vidro do tanque básico, com o sombreado das faces norte e sul (0,8): a textura apagada (`fluid_tank_side_off`: 188 e 210 vezes a cor do tier,
+# (95, 255, 184)) e a acesa (`fluid_tank_side_on`: 225 e 227).
+MARCAS = {"apagadas": ((56, 150, 109), (62, 168, 122)), "acesas": ((67, 180, 130), (68, 182, 131))}
+
+
+def marcas(img, caixa):
+    """Quantos pixels do recorte têm a cor das marcas apagadas e a das acesas (até 3 níveis de cada canal)."""
+    parte = recorta(img, caixa)
+    return {nome: int(sum((np.abs(parte - np.array(cor)).max(axis=2) <= 3).sum() for cor in cores)) for nome, cores in MARCAS.items()}
 
 
 def topo(img, vazio):
@@ -81,7 +94,10 @@ def main():
             faixa = np.full((6, d.shape[1], 3), 255, dtype=np.int16)
             pilha = np.concatenate([recorta(p, caixa), faixa, recorta(o, caixa), faixa, mascara]).astype(np.uint8)
             Image.fromarray(pilha).save(os.path.join(saida, f"lado_{tiro}_{nome}.png"))
-            if nome == "fila" and tiro != "vazios":
+            if tiro in ("valvula", "ativos"):
+                linha["marcas_original"] = marcas(o, caixa)
+                linha["marcas_port"] = marcas(p, caixa)
+            if nome == "fila" and tiro not in ("vazios", "ativos", "quebrados"):
                 linha["topo_original"] = topo(o, vazio_o)
                 linha["topo_port"] = topo(p, vazio_p)
     json.dump(resumo, open(os.path.join(saida, "resumo.json"), "w"), indent=1)

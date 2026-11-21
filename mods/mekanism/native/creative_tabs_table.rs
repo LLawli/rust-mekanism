@@ -574,8 +574,10 @@ pub const CREATIVE_CHEMICAL_TANK: &str = "mekanism:creative_chemical_tank";
 pub const FILLED_TANK_AMOUNT: i64 = i64::MAX;
 
 /// Os fluidos que ganham um tanque, na ordem do registro `Registries.FLUID` (`listElements`), só as fontes: a água e a lava do vanilla e os do Mekanism, na ordem em que
-/// `MekanismFluids` os registra (`rastros/fluids.jsonl`). Nenhum está em `c:hidden_from_recipe_viewers` (a datagen não tem a tag). Os de outro mod entram pelo mod deles.
-pub const FILLED_TANK_FLUIDS: [&str; 20] = [
+/// `MekanismFluids` os registra (`rastros/fluids.jsonl`), e por último o leite do NeoForge (`minecraft:milk`, que o Mekanism liga com `NeoForgeMod.enableMilkFluid`
+/// para a ordenha: medido no cliente do original, `rastros/creative_tab_tanks.jsonl`, entre o `nutritional_paste` e os do Generators). Nenhum está em
+/// `c:hidden_from_recipe_viewers` (a datagen não tem a tag). Os de outro mod entram pelo mod deles.
+pub const FILLED_TANK_FLUIDS: [&str; 21] = [
     "minecraft:water",
     "minecraft:lava",
     "mekanism:hydrogen",
@@ -596,6 +598,7 @@ pub const FILLED_TANK_FLUIDS: [&str; 20] = [
     "mekanism:steam",
     "mekanism:heavy_water",
     "mekanism:nutritional_paste",
+    "minecraft:milk",
 ];
 
 /// Os químicos que ganham um tanque, na ordem do registro de dados `mekanism:chemical`: a dos arquivos, que o `RegistryDataLoader` lê de um `TreeMap` de `Identifier`

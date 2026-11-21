@@ -18,6 +18,7 @@
   "chemical.mekanism.attribute.fuel.energy_max_total": " - Maximum Output: %1$s",
   "chemical.mekanism.attribute.fuel.max_burn": " - Maximum Burn: %1$s",
   "chemical.mekanism.attribute.radiation": " - Radioactivity: %1$s",
+  "fluid_type.minecraft.milk": "Milk",
   "generic.mekanism.per_mb": "%1$s/mB",
   "tooltip.mekanism.decay_immune": "Will not decay inside a Radioactive Waste Barrel",
   "generic.mekanism.per_tick": "%1$s/t",
