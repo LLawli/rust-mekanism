@@ -1,7 +1,8 @@
 //! O item do Fluid Tank usado como balde no mundo, contra o rastro do original (`tank_fluid_item_use.jsonl`, de `TankTraceTest.fluidItemUse`): 19 usos de
 //! `ItemBlockFluidTank.use`, cada um com o resultado, a mão, o que foi para o inventário e o bloco do alvo depois.
 use machinery_basis_core::bucket_item::{
-    BUCKET_VOLUME, FluidWorld, UseHit, UseOutcome, use_as_bucket,
+    BUCKET_VOLUME, CauldronHandler, CauldronLevel, CauldronOutcome, FluidWorld, UseHit, UseOutcome,
+    cauldron_interact, dispense_as_bucket, use_as_bucket,
 };
 use machinery_basis_core::component_container::{
     AttachedCodec, ComponentBackedHandler, ComponentTankSpec, ComponentTankSpecOf,
@@ -432,4 +433,258 @@ fn a_creative_player_who_already_has_the_result_gets_nothing_more() {
     }
     assert_eq!(hand.state().extra.len(), 1);
     assert_eq!(hand.state().extra[0].1, 1);
+}
+
+/// O handler `MANUAL` de um item de tanque na mão, como `getOneByOneFluidHandler`.
+fn with_handler<R>(
+    hand: &HandAccess,
+    act: impl FnOnce(&ComponentBackedHandler<'_, FluidResource>) -> R,
+) -> R {
+    let codec: Rc<dyn AttachedCodec<FluidResource>> = Rc::new(TankItems);
+    let one = OneByOne(hand);
+    let handler =
+        ComponentBackedHandler::new(&one, codec, spec_of(None), Rc::new(Cell::new(1))).manual();
+    act(&handler)
+}
+
+fn water() -> FluidResource {
+    FluidResource::new("minecraft:water")
+}
+
+fn lava() -> FluidResource {
+    FluidResource::new("minecraft:lava")
+}
+
+fn cauldron(fluid: Option<FluidResource>, level: i32) -> CauldronHandler {
+    CauldronHandler::new(CauldronLevel { fluid, level })
+}
+
+/// O item no caldeirão, e o que fica na mão e no caldeirão. Confirma a transação só num `Success`, como `tryTransfer`.
+fn at_cauldron(spec: &str, cauldron: &CauldronHandler) -> (CauldronOutcome, u64) {
+    let (item, count) = stack_of(spec);
+    let hand = HandAccess::new(Some(item), count, false, Rc::new(|_| false));
+    let outcome = with_handler(&hand, |handler| {
+        let transaction = Transaction::open_safe();
+        let outcome = cauldron_interact(Some(handler), cauldron, &transaction);
+        if outcome != CauldronOutcome::TryWithEmptyHand {
+            transaction.commit();
+        }
+        outcome
+    });
+    (
+        outcome,
+        TankItems.contents(&hand.resource().unwrap()).amount,
+    )
+}
+
+/// `FluidTankCauldronInteraction.interact` (`ItemBlockFluidTank.java:283-336`) sobre o `CauldronWrapper` do NeoForge. Sem rastro: confere a leitura do Java.
+#[test]
+fn the_item_trades_with_a_cauldron_like_the_original() {
+    // O caldeirão cheio de água esvazia no item, um balde inteiro.
+    let full = cauldron(Some(water()), 3);
+    let (outcome, held) = at_cauldron("ftank:basic:water:0:1", &full);
+    assert_eq!(
+        outcome,
+        CauldronOutcome::Success {
+            fluid: water(),
+            filled_cauldron: false
+        }
+    );
+    assert_eq!((held, full.state()), (1000, CauldronLevel::default()));
+    // Um nível de água vale 333 mB, que o item aceitaria; mas o caldeirão só solta em passos de um balde (o máximo divisor comum de 3 níveis e 1.000 mB é 1): a troca
+    // não fecha e nada muda.
+    let third = cauldron(Some(water()), 1);
+    assert_eq!(
+        at_cauldron("ftank:basic:water:0:1", &third),
+        (CauldronOutcome::TryWithEmptyHand, 0)
+    );
+    assert_eq!(
+        third.state(),
+        CauldronLevel {
+            fluid: Some(water()),
+            level: 1
+        }
+    );
+    // O item esvazia no caldeirão vazio: um balde, e o caldeirão fica com os três níveis.
+    let empty = cauldron(None, 0);
+    let (outcome, held) = at_cauldron("ftank:basic:water:5000:1", &empty);
+    assert_eq!(
+        outcome,
+        CauldronOutcome::Success {
+            fluid: water(),
+            filled_cauldron: true
+        }
+    );
+    assert_eq!(
+        (held, empty.state()),
+        (
+            4000,
+            CauldronLevel {
+                fluid: Some(water()),
+                level: 3
+            }
+        )
+    );
+    // A lava só entra inteira, e o caldeirão de lava tem um nível só.
+    let empty = cauldron(None, 0);
+    let (outcome, held) = at_cauldron("ftank:advanced:lava:2000:1", &empty);
+    assert_eq!(
+        outcome,
+        CauldronOutcome::Success {
+            fluid: lava(),
+            filled_cauldron: true
+        }
+    );
+    assert_eq!(
+        (held, empty.state()),
+        (
+            1000,
+            CauldronLevel {
+                fluid: Some(lava()),
+                level: 1
+            }
+        )
+    );
+    // Menos de um balde não enche nada, nem de lava nem de água.
+    for spec in ["ftank:basic:lava:999:1", "ftank:basic:water:999:1"] {
+        let empty = cauldron(None, 0);
+        assert_eq!(
+            at_cauldron(spec, &empty),
+            (CauldronOutcome::TryWithEmptyHand, 999)
+        );
+        assert_eq!(empty.state(), CauldronLevel::default());
+    }
+    // O caldeirão vem primeiro: com água nos dois, o item recebe, não entrega.
+    let full = cauldron(Some(water()), 3);
+    let (outcome, held) = at_cauldron("ftank:basic:water:5000:1", &full);
+    assert_eq!(
+        outcome,
+        CauldronOutcome::Success {
+            fluid: water(),
+            filled_cauldron: false
+        }
+    );
+    assert_eq!((held, full.state()), (6000, CauldronLevel::default()));
+    // O item com outro fluido não recebe o do caldeirão, e o caldeirão não recebe o dele: nada muda.
+    let full = cauldron(Some(lava()), 1);
+    assert_eq!(
+        at_cauldron("ftank:basic:water:5000:1", &full),
+        (CauldronOutcome::TryWithEmptyHand, 5000)
+    );
+    assert_eq!(
+        full.state(),
+        CauldronLevel {
+            fluid: Some(lava()),
+            level: 1
+        }
+    );
+    // O item cheio diante de um caldeirão de dois níveis: não recebe (está cheio) e não completa o caldeirão (falta menos de um balde).
+    let two = cauldron(Some(water()), 2);
+    assert_eq!(
+        at_cauldron("ftank:basic:water:32000:1", &two),
+        (CauldronOutcome::TryWithEmptyHand, 32_000)
+    );
+    assert_eq!(
+        two.state(),
+        CauldronLevel {
+            fluid: Some(water()),
+            level: 2
+        }
+    );
+    // Vazio contra vazio, e sem handler: a mão vazia tenta.
+    let empty = cauldron(None, 0);
+    assert_eq!(
+        at_cauldron("ftank:basic:water:0:1", &empty).0,
+        CauldronOutcome::TryWithEmptyHand
+    );
+    let transaction = Transaction::open_safe();
+    assert_eq!(
+        cauldron_interact(None, &empty, &transaction),
+        CauldronOutcome::TryWithEmptyHand
+    );
+}
+
+/// Uma troca que não fecha (o que entrou de um lado não saiu inteiro do outro) fica sem confirmar, e os dois lados voltam.
+#[test]
+fn a_cauldron_trade_that_is_not_committed_goes_back() {
+    let full = cauldron(Some(water()), 3);
+    let (item, _) = stack_of("ftank:basic:water:0:1");
+    let hand = HandAccess::new(Some(item), 1, false, Rc::new(|_| false));
+    with_handler(&hand, |handler| {
+        let transaction = Transaction::open_safe();
+        assert_ne!(
+            cauldron_interact(Some(handler), &full, &transaction),
+            CauldronOutcome::TryWithEmptyHand
+        );
+        assert_eq!(full.state(), CauldronLevel::default());
+    });
+    assert_eq!(
+        full.state(),
+        CauldronLevel {
+            fluid: Some(water()),
+            level: 3
+        }
+    );
+    assert_eq!(TankItems.contents(&hand.resource().unwrap()).amount, 0);
+    assert_eq!(full.amount(), 1000);
+    assert_eq!(cauldron(Some(water()), 2).amount(), 666);
+}
+
+/// `FluidTankItemDispenseBehavior.execute` (`ItemBlockFluidTank.java:240-249`): diante de uma fonte o item a pega; diante do resto ele põe um balde. Sem rastro.
+#[test]
+fn the_dispenser_picks_a_source_up_and_places_otherwise() {
+    let dispense = |spec: &str, target: Option<FluidResource>, source: bool| {
+        let (item, count) = stack_of(spec);
+        let hand = HandAccess::new(Some(item), count, false, Rc::new(|_| false));
+        let mut scene = Scene {
+            target,
+            sounds: Vec::new(),
+        };
+        let moved = with_handler(&hand, |handler| {
+            let transaction = Transaction::open_safe();
+            let moved = dispense_as_bucket(handler, &mut scene, TARGET, source, &transaction);
+            if moved.is_some() {
+                transaction.commit();
+            }
+            moved
+        });
+        let state = hand.state();
+        (
+            moved,
+            TankItems.contents(state.resource.as_ref().unwrap()).amount,
+            state.count,
+            state.extra.len(),
+            scene.target,
+        )
+    };
+    // Uma fonte na frente: o item a pega.
+    assert_eq!(
+        dispense("ftank:basic:water:0:1", Some(water()), true),
+        (Some(water()), 1000, 1, 0, None)
+    );
+    // Ar na frente: o item põe um balde.
+    assert_eq!(
+        dispense("ftank:basic:water:5000:1", None, false),
+        (Some(water()), 4000, 1, 0, Some(water()))
+    );
+    // Fluido correndo na frente (não é fonte): o item põe por cima, não pega.
+    assert_eq!(
+        dispense("ftank:basic:water:5000:1", Some(lava()), false),
+        (Some(water()), 4000, 1, 0, Some(water()))
+    );
+    // Uma fonte na frente e o item cheio de outro fluido: nada passa (e não tenta pôr).
+    assert_eq!(
+        dispense("ftank:basic:water:5000:1", Some(lava()), true),
+        (None, 5000, 1, 0, Some(lava()))
+    );
+    // Vazio diante do ar: nada.
+    assert_eq!(
+        dispense("ftank:basic:water:0:1", None, false),
+        (None, 0, 1, 0, None)
+    );
+    // Uma pilha de dois: um item muda e vai para o slot de sobra, o outro fica.
+    assert_eq!(
+        dispense("ftank:basic:water:0:2", Some(water()), true),
+        (Some(water()), 0, 1, 1, None)
+    );
 }

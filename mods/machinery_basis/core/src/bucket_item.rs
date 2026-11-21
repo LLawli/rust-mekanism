@@ -5,7 +5,8 @@
 //! agindo como `MANUAL`).
 use crate::fluid::FluidResource;
 use crate::item_access::ItemResourceHandler;
-use crate::transaction::Transaction;
+use crate::transaction::{Callback, JournalCell, Journaled, Transaction};
+use std::rc::Rc;
 
 /// `FluidType.BUCKET_VOLUME`.
 pub const BUCKET_VOLUME: i32 = 1000;
@@ -121,4 +122,239 @@ pub fn use_as_bucket(
         return UseOutcome::Fail;
     }
     UseOutcome::Success
+}
+
+/// `FluidTankItemDispenseBehavior.execute` depois do handler (`ItemBlockFluidTank.java:240-249`): diante de uma fonte o item tira um
+/// balde dela, e diante de qualquer outra coisa (ar, fluido correndo, um bloco) ele tenta pôr um. `source` é
+/// `!fluidState.isEmpty() && fluidState.isSource()` da célula da frente. Quem chama confirma `transaction` se algo passou.
+pub fn dispense_as_bucket(
+    handler: &dyn ItemResourceHandler<FluidResource>,
+    world: &mut dyn FluidWorld,
+    pos: [i32; 3],
+    source: bool,
+    transaction: &Transaction,
+) -> Option<FluidResource> {
+    if source {
+        try_pickup_fluid(handler, world, pos, transaction)
+    } else {
+        try_place_fluid(handler, world, pos, true, transaction)
+    }
+}
+
+/// `CauldronFluidContent`: o fluido de um caldeirão, o total em mB e o número de níveis. Os do vanilla
+/// (`CauldronFluidContent.init`): a água em três níveis e a lava num só, um balde cada.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CauldronContent {
+    pub fluid: &'static str,
+    pub total_amount: i32,
+    pub max_level: i32,
+}
+
+pub const CAULDRON_CONTENTS: [CauldronContent; 2] = [
+    CauldronContent {
+        fluid: "minecraft:water",
+        total_amount: BUCKET_VOLUME,
+        max_level: 3,
+    },
+    CauldronContent {
+        fluid: "minecraft:lava",
+        total_amount: BUCKET_VOLUME,
+        max_level: 1,
+    },
+];
+
+fn cauldron_content(fluid: &FluidResource) -> Option<CauldronContent> {
+    CAULDRON_CONTENTS
+        .into_iter()
+        .find(|content| content.fluid == &*fluid.id)
+}
+
+/// O estado de um caldeirão: o fluido (`None` é o caldeirão vazio) e o nível (`currentLevel`: 0 no vazio, 1 no sem níveis).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CauldronLevel {
+    pub fluid: Option<FluidResource>,
+    pub level: i32,
+}
+
+impl Journaled for CauldronLevel {
+    type Snapshot = CauldronLevel;
+
+    fn revert_to_snapshot(&mut self, snapshot: Self::Snapshot) {
+        *self = snapshot;
+    }
+
+    fn on_root_commit(&mut self, _original: Self::Snapshot) -> Vec<Callback> {
+        Vec::new()
+    }
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+/// `CauldronWrapper` (NeoForge): a capability de fluido de um caldeirão, sobre o estado do bloco. Quem chama grava o estado final
+/// no mundo depois de confirmar a transação (`onRootCommit`).
+pub struct CauldronHandler {
+    cell: Rc<JournalCell<CauldronLevel>>,
+}
+
+impl CauldronHandler {
+    pub fn new(state: CauldronLevel) -> Self {
+        Self {
+            cell: JournalCell::new(state),
+        }
+    }
+
+    pub fn state(&self) -> CauldronLevel {
+        self.cell.borrow().clone()
+    }
+
+    /// `getResource(0)`.
+    pub fn resource(&self) -> Option<FluidResource> {
+        self.cell.borrow().fluid.clone()
+    }
+
+    /// `getAmountAsInt(0)`: `totalAmount * currentLevel / maxLevel`, arredondado para baixo.
+    pub fn amount(&self) -> i32 {
+        let state = self.cell.borrow();
+        match state.fluid.as_ref().and_then(cauldron_content) {
+            Some(content) => content.total_amount * state.level / content.max_level,
+            None => 0,
+        }
+    }
+
+    fn set(&self, fluid: Option<FluidResource>, level: i32, transaction: &Transaction) {
+        let snapshot = self.cell.borrow().clone();
+        self.cell.update_snapshots(transaction, || snapshot);
+        *self.cell.borrow_mut() = if level == 0 {
+            CauldronLevel::default()
+        } else {
+            CauldronLevel { fluid, level }
+        };
+    }
+
+    /// `insert`: só entra em passos do máximo divisor comum entre os níveis e o total (um terço de balde na água, um balde
+    /// na lava), e só o fluido que o caldeirão já tem.
+    pub fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        let Some(content) = cauldron_content(resource) else {
+            return 0;
+        };
+        let state = self.state();
+        if state.fluid.as_ref().is_some_and(|fluid| fluid != resource) {
+            return 0;
+        }
+        let d = gcd(content.max_level, content.total_amount);
+        let amount_increments = content.total_amount / d;
+        let level_increments = content.max_level / d;
+        let inserted =
+            (amount / amount_increments).min((content.max_level - state.level) / level_increments);
+        if inserted > 0 {
+            self.set(
+                Some(resource.clone()),
+                state.level + inserted * level_increments,
+                transaction,
+            );
+        }
+        inserted * amount_increments
+    }
+
+    /// `extract`: os mesmos passos, só do fluido que está lá.
+    pub fn extract(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        let state = self.state();
+        if state.fluid.as_ref() != Some(resource) {
+            return 0;
+        }
+        let Some(content) = cauldron_content(resource) else {
+            return 0;
+        };
+        let d = gcd(content.max_level, content.total_amount);
+        let level_increments = content.max_level / d;
+        let amount_increments = content.total_amount / d;
+        let extracted = (amount / amount_increments).min(state.level / level_increments);
+        if extracted > 0 {
+            self.set(
+                Some(resource.clone()),
+                state.level - extracted * level_increments,
+                transaction,
+            );
+        }
+        extracted * amount_increments
+    }
+}
+
+/// O que `FluidTankCauldronInteraction.interact` devolve: `TRY_WITH_EMPTY_HAND`, ou `SUCCESS` com o fluido que passou e para onde
+/// (o som e o evento são `BUCKET_EMPTY` e `FLUID_PLACE` se o caldeirão encheu, `BUCKET_FILL` e `FLUID_PICKUP` se esvaziou).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CauldronOutcome {
+    TryWithEmptyHand,
+    Success {
+        fluid: FluidResource,
+        filled_cauldron: bool,
+    },
+}
+
+/// `FluidTankCauldronInteraction.interact` depois do modo balde (`ItemBlockFluidTank.java:283-336`): primeiro o caldeirão
+/// esvazia no item, pelo que o item aceita do que ele tem; com o caldeirão vazio, o item esvazia nele, pelo que o item entrega.
+/// `tryTransfer` só vale se o que entrou de um lado saiu inteiro do outro. Quem chama confirma `transaction` num `Success`.
+pub fn cauldron_interact(
+    handler: Option<&dyn ItemResourceHandler<FluidResource>>,
+    cauldron: &CauldronHandler,
+    transaction: &Transaction,
+) -> CauldronOutcome {
+    let Some(handler) = handler.filter(|handler| handler.size() > 0) else {
+        return CauldronOutcome::TryWithEmptyHand;
+    };
+    let mut target = None;
+    if let Some(resource) = cauldron.resource() {
+        let simulation = Transaction::open(Some(transaction));
+        let amount = handler.insert(&resource, cauldron.amount(), &simulation);
+        drop(simulation);
+        if amount > 0 {
+            target = Some((resource, amount));
+        }
+    }
+    let (fluid, amount, filled_cauldron) = match target {
+        Some((fluid, amount)) => (fluid, amount, false),
+        None => {
+            let Some(resource) = handler.resource(0) else {
+                return CauldronOutcome::TryWithEmptyHand;
+            };
+            let simulation = Transaction::open(Some(transaction));
+            let amount = handler.extract(&resource, handler.amount_as_int(0), &simulation);
+            drop(simulation);
+            if amount <= 0 {
+                return CauldronOutcome::TryWithEmptyHand;
+            }
+            (resource, amount, true)
+        }
+    };
+    let (inserted, extracted) = if filled_cauldron {
+        let inserted = cauldron.insert(&fluid, amount, transaction);
+        (
+            inserted,
+            if inserted > 0 {
+                handler.extract(&fluid, inserted, transaction)
+            } else {
+                0
+            },
+        )
+    } else {
+        let inserted = handler.insert(&fluid, amount, transaction);
+        (
+            inserted,
+            if inserted > 0 {
+                cauldron.extract(&fluid, inserted, transaction)
+            } else {
+                0
+            },
+        )
+    };
+    if inserted > 0 && extracted == inserted {
+        CauldronOutcome::Success {
+            fluid,
+            filled_cauldron,
+        }
+    } else {
+        CauldronOutcome::TryWithEmptyHand
+    }
 }

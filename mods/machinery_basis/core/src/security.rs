@@ -657,6 +657,8 @@ pub fn tab_click(state: &SecurityState, player: u128, button: u8) -> Option<bool
 /// `SecurityUtils.displayNoAccess`: `MekanismUtils.logFormat(RED, NO_ACCESS)`, o texto que o jogador recebe ao ser recusado: `LOG_FORMAT.translateColored(DARK_BLUE,
 /// MEKANISM, RED, NO_ACCESS)`, o `[Mekanism]` em `COLOR_DARK_BLUE` (a cor do `translatable` de fora) e só o texto em `COLOR_RED`.
 pub const NO_ACCESS_KEY: &str = "security.mekanism.no_access";
+/// `MekanismLang.NOW_OWN`: o que o jogador lê ao tomar posse de um item (`ItemSecurityUtils.tryClaimItem`).
+pub const NOW_OWN_KEY: &str = "owner.mekanism.now_own";
 
 #[cfg(test)]
 mod tests {

@@ -2997,6 +2997,49 @@ pub(in crate::game) fn security_access_or_error(game: &mut Game<'_>, pos: [i32; 
     false
 }
 
+/// `ItemSecurityUtils.tryClaimItem` (`ItemSecurityUtils.java:102-113`): o item que pode ter dono e ainda não tem ganha o jogador que age como dono, os clientes recebem
+/// o nome dele (`PacketSyncSecurity(player)`) e ele a mensagem `[Mekanism] You now own this item.` (`logFormat(NOW_OWN)`: o prefixo azul e o texto cinza). Devolve se
+/// tomou posse; quem chama grava a pilha de volta.
+pub(in crate::game) fn security_item_claim(game: &mut Game<'_>, stack: &mut ItemStack) -> bool {
+    use horizon_client::mod_api::Text;
+    if security_of_stack(game, stack).owner.is_some() {
+        return false;
+    }
+    let Some(player) = acting_uuid(game) else {
+        return false;
+    };
+    if let Err(error) = game.native_set_component(stack, sec::OWNER_COMPONENT, security_tag(sec::OWNER_UUID, &serde_json::json!(sec::uuid_ints(player)))) {
+        eprintln!("machinery_basis: o item não ganhou dono: {error}");
+        return false;
+    }
+    let packet = sf::SyncSecurity::of_player(player, &|uuid| server_username(game, uuid));
+    security_broadcast(game, &packet);
+    let message = Text::translate(sec::NOW_OWN_KEY, &[]).with_style(&horizon_client::text::Style::color(sec::COLOR_GRAY));
+    let line = Text::translate("constants.mekanism.log_format", &[Text::translate("constants.mekanism.mod_name", &[]), message])
+        .with_style(&horizon_client::text::Style::color(sec::COLOR_DARK_BLUE));
+    game.native_tell(player, line);
+    true
+}
+
+/// `IItemSecurityUtils.canAccessOrDisplayError(player, itemAccess)`: o acesso do jogador que age ao item, pelo dono e pelo modo dele (com a frequência do dono, como no
+/// bloco); sem acesso, a mensagem vermelha e `false`.
+pub(in crate::game) fn security_item_access_or_error(game: &mut Game<'_>, stack: &ItemStack) -> bool {
+    let Some(player) = acting_uuid(game) else {
+        return true;
+    };
+    let state = security_of_stack(game, stack);
+    let config = sec::SecurityConfig::default();
+    let allowed = security_table(game, |table| {
+        let data = sf::server_data(Some(table), state.owner);
+        state.can_access_player_with(config, player, false, false, data, &|owner, subject| sf::server_trusted(Some(table), owner, subject))
+    })
+    .unwrap_or_else(|| state.can_access_player(config, player, false, false, &|_, _| false));
+    if !allowed {
+        security_deny(game, player);
+    }
+    allowed
+}
+
 /// `TileEntityMekanism.openGui`: o menu de um tile com dono recusa quem não tem acesso (`canAccessOrDisplayError`: a mensagem e nada abre). Devolve se a abertura deve ser
 /// cancelada.
 pub(in crate::game) fn security_open(game: &mut Game<'_>, player: u128, pos: [i32; 3], is_ours: &dyn Fn(&str) -> bool) -> bool {

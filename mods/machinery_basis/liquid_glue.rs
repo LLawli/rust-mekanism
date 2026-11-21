@@ -494,7 +494,7 @@ fn use_filled(game: &mut Game<'_>, stack: &ItemStack, spec: &LiquidSpec, claimed
 }
 
 /// O raio do balde vazio (`ClipContext.Fluid.SOURCE_ONLY`): a primeira fonte de fluido de mod antes do primeiro bloco com forma.
-fn source_hit(game: &Game<'_>) -> Option<[i32; 3]> {
+pub(in crate::game) fn source_hit(game: &Game<'_>) -> Option<[i32; 3]> {
     let (origin, dir) = game.aim()?;
     let reach = game.reach();
     let block_distance = game
@@ -570,6 +570,180 @@ pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed:
     } else if &*stack.item == EMPTY_BUCKET {
         use_empty(game, stack, claimed);
     }
+}
+
+// ---- O mundo para um item que serve de balde (`machinery_basis_core::bucket_item`) ----
+
+/// O mundo do jogo como `FluidWorld`: `FluidUtil.tryPickupFluid` e `tryPlaceFluid` do NeoForge (`FluidUtil.java:224-374`) sobre a água e a lava do Horizon
+/// (`Behaviours::bucket_pickup` e `bucket_empty`, sem bloco ao lado e sem agachar: `tryPlaceFluid` não tem nenhum dos dois) e sobre os fluidos de mod. `by_player` é o
+/// `player` não nulo (o dispensador não tem).
+pub(in crate::game) struct BucketWorld<'a, 'g> {
+    pub game: &'a mut Game<'g>,
+    pub by_player: bool,
+}
+
+impl BucketWorld<'_, '_> {
+    fn center(pos: [i32; 3]) -> [f64; 3] {
+        [pos[0] as f64 + 0.5, pos[1] as f64 + 0.5, pos[2] as f64 + 0.5]
+    }
+
+    fn who(&self) -> Option<horizon_client::mobs::Who> {
+        self.by_player.then_some(horizon_client::mobs::Who::Player)
+    }
+
+    fn creative(&self) -> bool {
+        self.by_player && is_creative(self.game)
+    }
+}
+
+impl machinery_basis_core::bucket_item::FluidWorld for BucketWorld<'_, '_> {
+    fn fluid_to_pick(&self, pos: [i32; 3]) -> Option<machinery_basis_core::fluid::FluidResource> {
+        fluid_to_pick(self.game, pos)
+    }
+
+    fn pick_up(&mut self, pos: [i32; 3]) -> Option<machinery_basis_core::fluid::FluidResource> {
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        if mod_source(self.game, pos).is_some() {
+            let taken = self.game.with_level(|_, level, ticks| {
+                let mut world = LevelLiquids::new(level, ticks);
+                flow::pickup_block(&mut world, core_pos(at))
+            });
+            let _ = self.game.process_level_events();
+            let spec = liquid_data::current().iter().nth(taken?.0 as usize).cloned()?;
+            return Some(machinery_basis_core::fluid::FluidResource::new(&spec.id));
+        }
+        let creative = self.creative();
+        let filled = self.game.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
+        let _ = self.game.process_level_events();
+        match filled? {
+            "minecraft:water_bucket" => Some(machinery_basis_core::fluid::FluidResource::new(WATER)),
+            "minecraft:lava_bucket" => Some(machinery_basis_core::fluid::FluidResource::new(LAVA)),
+            _ => None,
+        }
+    }
+
+    fn place(&mut self, resource: &machinery_basis_core::fluid::FluidResource, pos: [i32; 3], validate_placed: bool) -> bool {
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        let kind = match &*resource.id {
+            WATER => horizon_world::fluid::FluidKind::Water,
+            LAVA => horizon_world::fluid::FluidKind::Lava,
+            other => {
+                // Um fluido sem bloco (`FluidType.canBePlacedInLevel` falso) não é posto.
+                let Some(spec) = liquid_data::current().iter().find(|spec| spec.id == other).cloned() else {
+                    return false;
+                };
+                return empty_contents(self.game, &spec, pos);
+            }
+        };
+        let water = &*resource.id == WATER;
+        let nether = self.game.native_dimension() == "minecraft:the_nether";
+        let state = self.game.world.block(pos[0], pos[1], pos[2]);
+        // `validatePlaced`: um bloco que guarda líquido e já está alagado recusa (`SimpleWaterloggedBlock.placeLiquid` devolve falso), e o fluido não é posto; a água que
+        // evapora (`isVaporizedOnPlacement`) vem antes disso.
+        if validate_placed && water && !nether && self.game.res.facts().get(state).waterlogged && self.game.res.behaviours().is_liquid_container(state) {
+            return false;
+        }
+        let creative = self.creative();
+        let sound = if water { "minecraft:item.bucket.empty" } else { "minecraft:item.bucket.empty_lava" };
+        let emptied = self.game.with_level(|b, level, ticks| {
+            b.bucket_empty(level, ticks, at, None, horizon_world::level::BucketContent::Fluid(kind), sound, false, creative)
+        });
+        let _ = self.game.process_level_events();
+        let Some(emptied) = emptied else {
+            return false;
+        };
+        if nether && water {
+            self.game.evaporation_smoke([emptied.x, emptied.y, emptied.z]);
+        }
+        true
+    }
+
+    fn picked_up(&mut self, resource: &machinery_basis_core::fluid::FluidResource, pos: [i32; 3]) {
+        let sound = match &*resource.id {
+            LAVA => "minecraft:item.bucket.fill_lava".to_owned(),
+            other => liquid_data::current().iter().find(|spec| spec.id == other).map_or_else(|| "minecraft:item.bucket.fill".to_owned(), |spec| spec.fill_sound.clone()),
+        };
+        self.game.audio.play(&sound, Some(Self::center(pos)), 1.0, 1.0);
+        let who = self.who();
+        self.game.post_block_game_event("minecraft:fluid_pickup", pos, who, None);
+    }
+}
+
+/// A fonte de fluido de mod em `pos`.
+fn mod_source(game: &Game<'_>, pos: [i32; 3]) -> Option<LiquidSpec> {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let block = game.pack.assets.registry.state(state)?;
+    if block.properties.get(LEVEL_PROPERTY).map(String::as_str) != Some("0") {
+        return None;
+    }
+    liquid_data::current().by_block(&block.name).cloned()
+}
+
+/// `level.getFluidState(pos).getType()` de um `BucketPickup`: a fonte de um bloco de líquido (do vanilla ou de mod), ou a água de um bloco alagado. O fluido que corre tem
+/// outro tipo (`FLOWING_*`), que `pickupBlock` não entrega: o resultado é o mesmo de não haver nada.
+fn fluid_to_pick(game: &Game<'_>, pos: [i32; 3]) -> Option<machinery_basis_core::fluid::FluidResource> {
+    use horizon_client::blocks::Fluid as GameFluid;
+    if let Some(spec) = mod_source(game, pos) {
+        return Some(machinery_basis_core::fluid::FluidResource::new(&spec.id));
+    }
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let facts = game.res.facts().get(state);
+    if facts.fluid_level != 8 || facts.fluid_falling {
+        return None;
+    }
+    match facts.fluid {
+        GameFluid::Water => Some(machinery_basis_core::fluid::FluidResource::new(WATER)),
+        GameFluid::Lava => Some(machinery_basis_core::fluid::FluidResource::new(LAVA)),
+        GameFluid::None => None,
+    }
+}
+
+/// O mundo do cliente para a previsão de um uso (`ItemStack.use` roda também no cliente, e o resultado dele decide se a mão balança): lê e não muda nada. O servidor
+/// é quem age.
+pub(in crate::game) struct DryBucketWorld<'a, 'g> {
+    pub game: &'a Game<'g>,
+}
+
+impl machinery_basis_core::bucket_item::FluidWorld for DryBucketWorld<'_, '_> {
+    fn fluid_to_pick(&self, pos: [i32; 3]) -> Option<machinery_basis_core::fluid::FluidResource> {
+        fluid_to_pick(self.game, pos)
+    }
+
+    fn pick_up(&mut self, pos: [i32; 3]) -> Option<machinery_basis_core::fluid::FluidResource> {
+        fluid_to_pick(self.game, pos)
+    }
+
+    fn place(&mut self, resource: &machinery_basis_core::fluid::FluidResource, pos: [i32; 3], validate_placed: bool) -> bool {
+        let water = &*resource.id == WATER;
+        if !water && &*resource.id != LAVA && !liquid_data::current().iter().any(|spec| spec.id == &*resource.id) {
+            return false;
+        }
+        let state = self.game.world.block(pos[0], pos[1], pos[2]);
+        let behaviours = self.game.res.behaviours();
+        if behaviours.is_air(state) || behaviours.is_replaceable(state) || !behaviours.is_solid(state) {
+            return true;
+        }
+        // `LiquidBlockContainer.canPlaceLiquid` e, com `validatePlaced`, o `placeLiquid` de um bloco que já está alagado.
+        water
+            && behaviours.is_liquid_container(state)
+            && behaviours.can_place_liquid(state, horizon_world::fluid::FluidKind::Water, self.game.creative)
+            && !(validate_placed && self.game.res.facts().get(state).waterlogged)
+    }
+
+    fn picked_up(&mut self, _resource: &machinery_basis_core::fluid::FluidResource, _pos: [i32; 3]) {}
+}
+
+/// Se a célula tem uma fonte de fluido (`!fluidState.isEmpty() && fluidState.isSource()`), do vanilla ou de mod: o que o dispensador pergunta antes de escolher entre
+/// pegar e pôr.
+pub(in crate::game) fn is_source(game: &Game<'_>, pos: [i32; 3]) -> bool {
+    let state = game.world.block(pos[0], pos[1], pos[2]);
+    let facts = game.res.facts().get(state);
+    if facts.fluid != horizon_client::blocks::Fluid::None {
+        return facts.fluid_level == 8 && !facts.fluid_falling;
+    }
+    game.pack.assets.registry.state(state).is_some_and(|block| {
+        block.properties.get(LEVEL_PROPERTY).map(String::as_str) == Some("0") && liquid_data::current().by_block(&block.name).is_some()
+    })
 }
 
 /// `FluidDeferredRegister.BUCKET_DISPENSE_BEHAVIOR`: o dispensador esvazia o balde na célula da frente; se não der, solta o item.
