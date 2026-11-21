@@ -330,7 +330,10 @@ impl<R: Resource> ResourceTank<R> {
             let state = self.cell.borrow();
             (state.can_insert.clone(), state.insertion_rate.clone())
         };
-        let needed = needed.min(rate.as_ref().map_or(i32::MAX, |rate| rate.remaining(automation)));
+        let needed = needed.min(
+            rate.as_ref()
+                .map_or(i32::MAX, |rate| rate.remaining(automation)),
+        );
         if needed <= 0 || !can_insert(resource, automation) {
             return 0;
         }
@@ -368,7 +371,10 @@ impl<R: Resource> ResourceTank<R> {
             return 0;
         }
         let to_remove = amount.min(saturated_amount(stored));
-        let to_remove = to_remove.min(rate.as_ref().map_or(i32::MAX, |rate| rate.remaining(automation)));
+        let to_remove = to_remove.min(
+            rate.as_ref()
+                .map_or(i32::MAX, |rate| rate.remaining(automation)),
+        );
         if to_remove > 0 {
             self.set_contents(
                 Some(resource.clone()),
