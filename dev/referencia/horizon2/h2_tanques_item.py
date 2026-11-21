@@ -235,7 +235,8 @@ def dispensador():
         h.command(f"kill @e[type=minecraft:item,{AQUI}]")
         h.command(f"setblock {disp} minecraft:dispenser[facing=south]")
         h.command(f"setblock {TARGET} minecraft:{antes}")
-        time.sleep(0.4)
+        # O block entity do dispensador nasce uns ticks depois do `setblock`: um item posto antes disso se perde.
+        time.sleep(1.2)
         h.command(f"item replace block {disp} container.0 with {item}")
         h.command(f"setblock {X} {Y + 1} {Z - 1} minecraft:redstone_block")
         time.sleep(1.2)
