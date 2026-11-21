@@ -38,12 +38,27 @@ public class CenaBlocos {
     private static final List<net.minecraft.core.BlockPos> WATCH = new ArrayList<>();
     private static int ticks;
 
+    private static final Path SOM = Path.of("/home/luka/.local/share/jogo-isolado/mekanism-ref/dois-sync");
+
     @SubscribeEvent
     public static void onTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         MinecraftServer server = minecraft.getSingleplayerServer();
         if (minecraft.level == null || minecraft.player == null || server == null || !Files.exists(ATIVA)) {
             return;
+        }
+        // O vídeo com som (frente `tanques`, 6.ª rodada), como a `CenaTelas`: o jogo abre mudo, e o volume mestre e os das categorias `block` e `ui` só sobem quando quem
+        // grava já conferiu que o som do jogo está no sink de teste (`dois-sync/som-video-ok`); `som-video-mudo` o devolve a 0 na hora.
+        var master = minecraft.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER);
+        if (Files.exists(SOM.resolve("som-video-mudo"))) {
+            if (master.get() > 0) {
+                master.set(0.0);
+            }
+        } else if (Files.exists(SOM.resolve("som-video-ok")) && master.get() == 0) {
+            for (var source : net.minecraft.sounds.SoundSource.values()) {
+                boolean on = source == net.minecraft.sounds.SoundSource.UI || source == net.minecraft.sounds.SoundSource.BLOCKS || source == net.minecraft.sounds.SoundSource.MASTER;
+                minecraft.options.getSoundSourceOptionInstance(source).set(on ? 1.0 : 0.0);
+            }
         }
         if (plan == null) {
             plan = build(minecraft, server);

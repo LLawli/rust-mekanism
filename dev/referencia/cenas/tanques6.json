@@ -1,0 +1,154 @@
+{
+ "setup": [
+  "difficulty peaceful",
+  "time set 6000",
+  "weather clear",
+  "gamemode creative",
+  "fill 45 -60 70 77 -60 110 minecraft:smooth_stone",
+  "fill 52 -59 76 70 -54 88 minecraft:air"
+ ],
+ "clear": "fill 55 -59 80 67 -56 84 minecraft:air",
+ "hud": true,
+ "shots": [
+  {
+   "name": "vazios",
+   "cmds": [
+    "clear @a",
+    "tick unfreeze",
+    "setblock 59 -59 82 mekanism:basic_fluid_tank",
+    "setblock 60 -59 82 mekanism:basic_fluid_tank",
+    "setblock 61 -59 82 mekanism:basic_fluid_tank",
+    "setblock 62 -59 82 mekanism:basic_fluid_tank",
+    "setblock 63 -59 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "#esperar 40"
+   ],
+   "tp": "61.5 -58.4 78.6 0 27"
+  },
+  {
+   "name": "agua_niveis",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 -59 82 mekanism:basic_fluid_tank",
+    "setblock 60 -59 82 mekanism:basic_fluid_tank",
+    "setblock 61 -59 82 mekanism:basic_fluid_tank",
+    "setblock 62 -59 82 mekanism:basic_fluid_tank",
+    "setblock 63 -59 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "data merge block 59 -59 82 {fluid_tanks:[{container:0,stored:{amount:1000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 60 -59 82 {fluid_tanks:[{container:0,stored:{amount:8000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 61 -59 82 {fluid_tanks:[{container:0,stored:{amount:16000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 62 -59 82 {fluid_tanks:[{container:0,stored:{amount:24000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 63 -59 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:water\"}}}]}",
+    "#esperar 240"
+   ],
+   "tp": "61.5 -58.4 78.6 0 27"
+  },
+  {
+   "name": "fluidos",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 -59 82 mekanism:basic_fluid_tank",
+    "setblock 60 -59 82 mekanism:basic_fluid_tank",
+    "setblock 61 -59 82 mekanism:basic_fluid_tank",
+    "setblock 62 -59 82 mekanism:basic_fluid_tank",
+    "setblock 63 -59 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "data merge block 59 -59 82 {fluid_tanks:[{container:0,stored:{amount:16000L,type:{id:\"minecraft:lava\"}}}]}",
+    "data merge block 60 -59 82 {fluid_tanks:[{container:0,stored:{amount:16000L,type:{id:\"mekanism:heavy_water\"}}}]}",
+    "data merge block 61 -59 82 {fluid_tanks:[{container:0,stored:{amount:8000L,type:{id:\"mekanism:steam\"}}}]}",
+    "data merge block 62 -59 82 {fluid_tanks:[{container:0,stored:{amount:24000L,type:{id:\"mekanism:hydrogen\"}}}]}",
+    "data merge block 63 -59 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"mekanism:brine\"}}}]}",
+    "#esperar 240"
+   ],
+   "tp": "61.5 -58.4 78.6 0 27"
+  },
+  {
+   "name": "animando",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 -59 82 mekanism:basic_fluid_tank",
+    "setblock 60 -59 82 mekanism:basic_fluid_tank",
+    "setblock 61 -59 82 mekanism:basic_fluid_tank",
+    "setblock 62 -59 82 mekanism:basic_fluid_tank",
+    "setblock 63 -59 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "tick freeze",
+    "#esperar 10",
+    "data merge block 59 -59 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 60 -59 82 {fluid_tanks:[{container:0,stored:{amount:16000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 61 -59 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 62 -59 82 {fluid_tanks:[{container:0,stored:{amount:8000L,type:{id:\"minecraft:water\"}}}]}",
+    "data merge block 63 -59 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:water\"}}}]}",
+    "#esperar 10",
+    "tick step 10",
+    "#esperar 60"
+   ],
+   "tp": "61.5 -58.4 78.6 0 27"
+  },
+  {
+   "name": "valvula",
+   "cmds": [
+    "tick unfreeze",
+    "setblock 59 -59 82 mekanism:ultimate_fluid_tank",
+    "setblock 60 -59 82 mekanism:ultimate_fluid_tank",
+    "setblock 61 -59 82 mekanism:ultimate_fluid_tank",
+    "setblock 62 -59 82 mekanism:ultimate_fluid_tank",
+    "setblock 63 -59 82 mekanism:ultimate_fluid_tank",
+    "#esperar 30",
+    "setblock 59 -58 82 mekanism:basic_fluid_tank",
+    "setblock 61 -58 82 mekanism:basic_fluid_tank",
+    "setblock 63 -58 82 mekanism:basic_fluid_tank",
+    "#esperar 30",
+    "tick freeze",
+    "#esperar 10",
+    "data merge block 59 -58 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:water\"}}}],active_state:1b}",
+    "data merge block 61 -58 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"minecraft:lava\"}}}],active_state:1b}",
+    "data merge block 63 -58 82 {fluid_tanks:[{container:0,stored:{amount:32000L,type:{id:\"mekanism:heavy_water\"}}}],active_state:1b}",
+    "#esperar 10",
+    "tick step 6",
+    "#esperar 60"
+   ],
+   "tp": "61.5 -58.4 78.6 0 27"
+  },
+  {
+   "name": "item_agua",
+   "cmds": [
+    "tick unfreeze",
+    "clear @a",
+    "#esperar 20",
+    "item replace entity @a hotbar.0 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:water\"},amount:16000L}]}]",
+    "item replace entity @a hotbar.1 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:32000L}]}]",
+    "item replace entity @a hotbar.2 with mekanism:advanced_fluid_tank[mekanism:fluids={containers:[{type:{id:\"mekanism:heavy_water\"},amount:32000L}]}]",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_fluid_tank[mekanism:fluids={containers:[{type:{id:\"mekanism:steam\"},amount:64000L}]}]",
+    "item replace entity @a hotbar.4 with mekanism:elite_fluid_tank",
+    "#esperar 40"
+   ],
+   "tp": "62.5 -58 78.5 0 0"
+  },
+  {
+   "name": "item_lava",
+   "cmds": [
+    "clear @a",
+    "#esperar 20",
+    "item replace entity @a hotbar.0 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:lava\"},amount:32000L}]}]",
+    "item replace entity @a hotbar.1 with mekanism:basic_fluid_tank[mekanism:fluids={containers:[{type:{id:\"minecraft:water\"},amount:16000L}]}]",
+    "item replace entity @a hotbar.2 with mekanism:advanced_fluid_tank[mekanism:fluids={containers:[{type:{id:\"mekanism:heavy_water\"},amount:32000L}]}]",
+    "item replace entity @a hotbar.3 with mekanism:ultimate_fluid_tank[mekanism:fluids={containers:[{type:{id:\"mekanism:steam\"},amount:64000L}]}]",
+    "item replace entity @a hotbar.4 with mekanism:elite_fluid_tank",
+    "#esperar 40"
+   ],
+   "tp": "62.5 -58 78.5 0 0"
+  },
+  {
+   "name": "limpeza",
+   "cmds": [
+    "tick unfreeze",
+    "clear @a",
+    "fill 45 -60 70 77 -60 110 minecraft:air",
+    "#esperar 10"
+   ],
+   "tp": "62.5 -58 78.5 0 0"
+  }
+ ]
+}
