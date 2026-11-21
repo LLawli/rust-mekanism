@@ -69,7 +69,11 @@ import net.neoforged.neoforge.transfer.item.ItemResource;
 /// Ações de cliente (nas duas pontas): `abrir X Y Z` (o `useItemOn` do clique direito), `fechar`, `foto NOME` (`oficial_dois_NOME.png`), `clicar X Y [d]` (pixels de GUI
 /// relativos à tela; `d` é o botão direito), `cursor X Y`, `escala N`, `ler NOME` (o estado do cliente em uma linha JSON no log e na resposta), `observar N NOME` (uma
 /// linha `ler` por tick durante N ticks, e com `X Y Z` o tile do mundo do cliente em vez do da tela), `slot N BOTAO` (`handleContainerInput`), `tipos` (os tipos
-/// de upgrade do registro que o cliente tem), `tile NOME X Y Z` (o tile do mundo do cliente: aceso, fator de volume, silenciado).
+/// de upgrade do registro que o cliente tem), `tile NOME X Y Z` (o tile do mundo do cliente: aceso, fator de volume, silenciado), `digitar TEXTO` (um `charTyped` por
+/// caractere), `tecla NOME` (`keyPressed`: enter, tab, backspace, escape, space, e), `roda X Y N` (a roda do mouse no ponto) e `painel L A` (só o port o usa).
+///
+/// Do anfitrião, para a Security Desk (frente `mesa-seguranca`): `por JOGADOR ITEM X` (o jogador põe o bloco e fica o dono) e `freq NOME` (a tabela das frequências de
+/// segurança na memória e no disco).
 @EventBusSubscriber(modid = MekanismTests.MODID, value = Dist.CLIENT)
 public class CenaDois {
 
@@ -200,6 +204,47 @@ public class CenaDois {
                 var screen = minecraft.gui.screen();
                 screen.mouseClicked(new net.minecraft.client.input.MouseButtonEvent(x, y, info), false);
                 screen.mouseReleased(new net.minecraft.client.input.MouseButtonEvent(x, y, info));
+                return "true";
+            }
+            case "digitar" -> {
+                // O texto pelo teclado: um `charTyped` da tela por caractere (o que o `KeyboardHandler` entrega).
+                var screen = minecraft.gui.screen();
+                if (screen == null) {
+                    return "\"sem tela\"";
+                }
+                a[1].codePoints().forEach(codepoint -> screen.charTyped(new net.minecraft.client.input.CharacterEvent(codepoint)));
+                return "true";
+            }
+            case "tecla" -> {
+                // Uma tecla apertada na tela (`keyPressed`), pelo nome ou pelo código do GLFW.
+                var screen = minecraft.gui.screen();
+                if (screen == null) {
+                    return "\"sem tela\"";
+                }
+                int key = switch (a[1]) {
+                    case "enter" -> 257;
+                    case "tab" -> 258;
+                    case "backspace" -> 259;
+                    case "escape" -> 256;
+                    case "space" -> 32;
+                    case "e" -> 69;
+                    default -> Integer.parseInt(a[1]);
+                };
+                boolean handled = screen.keyPressed(new net.minecraft.client.input.KeyEvent(key, 0, 0));
+                return handled ? "true" : "false";
+            }
+            case "roda" -> {
+                // A roda do mouse num ponto da tela (pixels de GUI relativos a ela), `N` passos (negativo desce).
+                if (!(minecraft.gui.screen() instanceof mekanism.client.gui.IGuiWrapper wrapper)) {
+                    return "\"sem tela\"";
+                }
+                double x = wrapper.getLeftPos() + Double.parseDouble(a[1]) + 0.5;
+                double y = wrapper.getTopPos() + Double.parseDouble(a[2]) + 0.5;
+                minecraft.gui.screen().mouseScrolled(x, y, 0, Double.parseDouble(a[3]));
+                return "true";
+            }
+            case "painel" -> {
+                // Só o port precisa do tamanho da tela (o original o lê da própria tela).
                 return "true";
             }
             case "cursor" -> {
@@ -399,6 +444,42 @@ public class CenaDois {
                 server.execute(() -> {
                     var entity = server.overworld().getBlockEntity(at);
                     log("nbt " + a[1] + " " + (entity == null ? "null" : entity.saveWithFullMetadata(server.overworld().registryAccess())));
+                });
+            }
+            case "por" -> {
+                // `por JOGADOR ITEM X`: o jogador põe o bloco do item em (X, -60, 3) clicando em cima do bloco de baixo (`ServerPlayerGameMode.useItemOn`), e fica o dono dele.
+                int x = Integer.parseInt(a[3]);
+                server.execute(() -> {
+                    var player = server.getPlayerList().getPlayerByName(a[1]);
+                    BlockPos pos = new BlockPos(x, Y, Z);
+                    ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.getValue(Identifier.parse(a[2])));
+                    player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+                    BlockHitResult hit = new BlockHitResult(Vec3.atBottomCenterOf(pos), Direction.UP, pos.below(), false);
+                    var result = player.gameMode.useItemOn(player, player.level(), stack, InteractionHand.MAIN_HAND, hit);
+                    player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+                    log("por " + a[1] + " " + a[2] + " " + pos + " -> " + result);
+                });
+            }
+            case "freq" -> {
+                // `freq NOME`: a tabela das frequências de segurança na memória do servidor (com o `dirty` dela) e o arquivo dela no disco.
+                server.execute(() -> {
+                    var lookup = mekanism.common.lib.frequency.FrequencyTypes.SECURITY.getLookup(null, mekanism.api.security.SecurityMode.PUBLIC);
+                    var codec = mekanism.common.lib.frequency.FrequencyLookup.codec(mekanism.common.lib.frequency.FrequencyTypes.SECURITY,
+                          mekanism.common.lib.frequency.FrequencyLookup.baseCodec(mekanism.common.lib.frequency.FrequencyTypes.SECURITY), mekanism.api.security.SecurityMode.PUBLIC);
+                    var ops = net.minecraft.resources.RegistryOps.create(net.minecraft.nbt.NbtOps.INSTANCE, server.registryAccess());
+                    log("freq " + a[1] + " memoria dirty=" + lookup.isDirty() + " " + codec.encodeStart(ops, lookup).getOrThrow());
+                    Path raiz = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data");
+                    try (var arquivos = Files.walk(raiz)) {
+                        List<Path> achados = arquivos.filter(caminho -> caminho.toString().contains("frequency") && caminho.toString().endsWith(".dat")).toList();
+                        if (achados.isEmpty()) {
+                            log("freq " + a[1] + " disco nenhum arquivo");
+                        }
+                        for (Path caminho : achados) {
+                            log("freq " + a[1] + " disco " + raiz.relativize(caminho) + " " + net.minecraft.nbt.NbtIo.readCompressed(caminho, net.minecraft.nbt.NbtAccounter.unlimitedHeap()));
+                        }
+                    } catch (IOException e) {
+                        log("freq " + a[1] + " disco erro " + e);
+                    }
                 });
             }
             case "congela" -> server.execute(() -> run(server, "tick freeze"));

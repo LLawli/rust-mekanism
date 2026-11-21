@@ -24,6 +24,7 @@ use machinery_basis_core::recipe_place as rp;
 use machinery_basis_core::stacked_contents::StackedContents;
 use machinery_basis_core::resource;
 use machinery_basis_core::scroll_list::ScrollList;
+use machinery_basis_core::security_desk_screen as dsk;
 use machinery_basis_core::side_config::{DataType, RelativeSide, TileComponentConfig, TransmissionType};
 use machinery_basis_core::side_tab::InsetTab;
 use machinery_basis_core::sides::Face;
@@ -304,6 +305,8 @@ struct Client {
     /// `MouseHandler.lastClick` e `lastClickButton`: quando e com que botão foi o último clique na tela (o duplo clique é outro do
     /// mesmo botão em menos de 250 ms).
     last_click: Option<(i64, i32)>,
+    /// A tela da Security Desk aberta (`GuiSecurityDesk`), enquanto o bloco da tela é uma mesa.
+    desk: Option<DeskUi>,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
@@ -319,6 +322,7 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
     skip_release: false,
     drag_left: false,
     last_click: None,
+    desk: None,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -670,6 +674,7 @@ fn left_tab(kind: Kind) -> Option<InsetTab> {
 
 /// O hook `frame`: cuida do que a entrada pediu, põe os slots virtuais onde a janela está e esconde-os quando ela fecha.
 pub(in crate::game) fn frame(game: &mut Game<'_>) {
+    desk_frame(game);
     let Some(spec) = open_spec(game) else {
         // A tela fechou: `GuiMekanism.removed` fecha as janelas e grava a posição, sem precisar avisar o servidor, que larga o menu.
         let had_window = {
@@ -854,6 +859,9 @@ fn place_virtual_slots(game: &mut Game<'_>, spec: &UpgradeWindowSpec) {
 /// `screen_key_pressed_pre`: Esc fecha a janela que não está fixa e consome a tecla; fixa, a tecla segue para a de baixo
 /// (`GuiMekanism.keyPressed` oferece a tecla às janelas, da do topo para baixo) e, sem nenhuma, a tela fecha.
 pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bool) {
+    if desk_key(game, key, canceled) {
+        return;
+    }
     if open_spec(game).is_none() {
         return;
     }
@@ -893,6 +901,9 @@ pub(in crate::game) fn key_pressed(game: &Game<'_>, key: &str, canceled: &mut bo
 
 /// `screen_char_typed_pre`: o caractere vai às janelas, da do topo para baixo (`GuiMekanism.charTyped`); a caixa de busca do livro o toma.
 pub(in crate::game) fn char_typed(game: &Game<'_>, ch: char, canceled: &mut bool) {
+    if desk_char(game, ch, canceled) {
+        return;
+    }
     if open_spec(game).is_none() {
         return;
     }
@@ -941,6 +952,9 @@ pub(in crate::game) fn mouse_pressed(
     modifiers: u32,
     canceled: &mut bool,
 ) {
+    if desk_press(game, view, button, modifiers, canceled) {
+        return;
+    }
     let Some(spec) = open_spec(game) else {
         return;
     };
@@ -1221,6 +1235,9 @@ fn inset_rect(index: usize, open: &Open) -> [i32; 4] {
 
 /// `screen_mouse_button_released_pre`: solta o arrasto da janela e o da barra.
 pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
+    if desk_release(game) {
+        return;
+    }
     let Some(spec) = open_spec(game) else {
         return;
     };
@@ -1244,6 +1261,9 @@ pub(in crate::game) fn mouse_released(game: &Game<'_>, canceled: &mut bool) {
 
 /// `screen_mouse_dragged_pre`: a janela anda pela faixa de cima, e a barra da lista pelo polegar.
 pub(in crate::game) fn mouse_dragged(game: &Game<'_>, view: &NativeScreenView<'_>, canceled: &mut bool) {
+    if desk_drag(game, view, canceled) {
+        return;
+    }
     if open_spec(game).is_none() {
         return;
     }
@@ -1284,6 +1304,9 @@ pub(in crate::game) fn mouse_scrolled(
     scroll: [f64; 2],
     canceled: &mut bool,
 ) {
+    if desk_scroll(game, view, scroll, canceled) {
+        return;
+    }
     if open_spec(game).is_none() {
         return;
     }
@@ -3964,7 +3987,535 @@ pub(in crate::game) fn net_from_server(channel: &str, data: &[u8]) {
 // ---------------------------------------------------------------------------------------------------------------------------
 // A porta de entrada: métodos de `Game`, que os arquivos dos hooks e o glue do mod chamam sem precisar do caminho deste módulo.
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// A tela da Security Desk (`GuiSecurityDesk`): os elementos, o mouse, o teclado e os pacotes. A lógica é da lib (`security_desk_screen`); aqui ficam o `EditBox` da
+// caixa de nome (o `TextField` do Horizon), o desenho e a ligação com o jogo. A tela é de quem registra o bloco (`mb_desk_register`).
+
+static DESKS: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+fn is_desk_screen(block: &str) -> bool {
+    DESKS.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|desk| *desk == block)
+}
+
+/// O que a tela pede e só o quadro pode fazer (o `&mut Game`).
+enum DeskPending {
+    Menu(i32),
+    AddTrusted(String),
+    /// Ctrl+C (0), Ctrl+V (1) e Ctrl+X (2) na caixa de nome.
+    Shortcut(u8),
+}
+
+struct DeskUi {
+    pos: Option<[i32; 3]>,
+    screen: dsk::DeskScreen,
+    /// O `EditBox` de dentro do `GuiTextField`: sem borda, até 16 caracteres (`SharedConstants.MAX_PLAYER_NAME_LENGTH`).
+    field: horizon_client::screen_draw::TextField,
+    /// `EditBox.focusedTime`.
+    focus_ms: i64,
+    /// `GuiMekanism.lastMSInitialized`: de quando os textos que não cabem contam a rolagem.
+    opened_ms: i64,
+    /// O último `containerTick` (a cada 50 ms).
+    tick_ms: i64,
+    pending: Vec<DeskPending>,
+    left_down: bool,
+}
+
+/// `MekanismLang.SECURITY_OVERRIDE`, `OnOff`, e os sprites.
+const DESK_ON_KEY: &str = "boolean.mekanism.on";
+const DESK_OFF_KEY: &str = "boolean.mekanism.off";
+const DESK_TITLE_KEY_PREFIX: &str = "container.";
+/// `CommonColors.LIGHT_GRAY`, o texto de um botão desligado (`TEXT_INACTIVE_BUTTON`).
+const INACTIVE_BUTTON_TEXT: u32 = 0xFF_A0_A0_A0;
+/// `Tooltip.create`: a largura em que o texto de um tooltip quebra.
+const DESK_TOOLTIP_WRAP: i32 = 170;
+/// O `containerTick` do cliente: 20 por segundo.
+const DESK_TICK_MS: i64 = 50;
+
+/// O que a tela lê do tile do cliente: o dono e a frequência que o menu trouxe ao abrir (posição 0 de `TileTrackers { security }`), e quem olha.
+struct DeskData {
+    owner: Option<(u128, String)>,
+    frequency: Option<machinery_basis_core::security_frequency::SecurityFrequency>,
+    viewer: Option<u128>,
+}
+
+impl DeskData {
+    fn read(game: &Game<'_>, block: &str) -> Self {
+        let mirror = game.mb_mirror(block);
+        let frequency = basis::security_menu_frequency(&mirror, 0);
+        let viewer = basis::viewer_uuid(game);
+        // `tile.getOwnerName()` no cliente: o nome que o cliente sabe do dono (`OwnerDisplay.getOwnerName`), como na aba de segurança.
+        let owner = machinery_basis_core::security::SecurityView::read(&mirror, 0, 1).owner.map(|(owner, _)| (owner, basis::owner_name(game, owner, viewer)));
+        Self { owner, frequency, viewer }
+    }
+
+    fn view(&self) -> machinery_basis_core::security_desk::DeskView<'_> {
+        machinery_basis_core::security_desk::DeskView { owner: self.owner.as_ref().map(|(owner, _)| *owner), frequency: self.frequency.as_ref(), viewer: self.viewer }
+    }
+}
+
+fn new_desk_field() -> horizon_client::screen_draw::TextField {
+    let [x, y, width, height] = dsk::EDIT_BOX;
+    let mut field = horizon_client::screen_draw::TextField::new(x, y, width, height);
+    field.bordered = false;
+    field.max_length = machinery_basis_core::security_desk::MAX_NAME_LENGTH;
+    field
+}
+
+/// O bloco da tela aberta, se é uma mesa.
+fn open_desk(game: &Game<'_>) -> Option<&'static str> {
+    let spec = open_spec(game)?;
+    is_desk_screen(spec.block).then_some(spec.block)
+}
+
+fn desk_apply(ui: &mut DeskUi, game: &Game<'_>, outputs: Vec<dsk::DeskOutput>, click_sound: &mut bool, shift: bool) {
+    let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+    for output in outputs {
+        match output {
+            dsk::DeskOutput::Menu(button) => ui.pending.push(DeskPending::Menu(button)),
+            dsk::DeskOutput::AddTrusted(name) => ui.pending.push(DeskPending::AddTrusted(name)),
+            dsk::DeskOutput::ClearField => ui.field.set_value(&m, ""),
+            dsk::DeskOutput::ClickSound => *click_sound = true,
+            dsk::DeskOutput::FieldCursor(x) => ui.field.click(&m, x, shift),
+            dsk::DeskOutput::FieldFocused => ui.focus_ms = now_ms(),
+        }
+    }
+}
+
+/// O quadro: a tela nasce com o menu, o `containerTick` roda o `updateButtons`, e o que o clique pediu vai ao servidor.
+fn desk_frame(game: &mut Game<'_>) {
+    let Some(block) = open_desk(game) else {
+        client().desk = None;
+        return;
+    };
+    let pos = game.mb_open_screen_pos();
+    let data = DeskData::read(game, block);
+    let now = now_ms();
+    let pending = {
+        let mut guard = client();
+        if guard.desk.as_ref().is_none_or(|ui| ui.pos != pos) {
+            guard.desk = Some(DeskUi {
+                pos,
+                screen: dsk::DeskScreen::new(&data.view()),
+                field: new_desk_field(),
+                focus_ms: now,
+                opened_ms: now,
+                tick_ms: now,
+                pending: Vec::new(),
+                left_down: false,
+            });
+        }
+        let Some(ui) = guard.desk.as_mut() else {
+            return;
+        };
+        if now - ui.tick_ms >= DESK_TICK_MS {
+            ui.tick_ms = now;
+            ui.screen.update_buttons(&data.view());
+        }
+        std::mem::take(&mut ui.pending)
+    };
+    for action in pending {
+        match action {
+            DeskPending::Menu(button) => send_menu_button(game, button),
+            DeskPending::AddTrusted(name) => {
+                if let Some(pos) = pos {
+                    basis::security_send_trusted(game, pos, &name);
+                }
+            }
+            DeskPending::Shortcut(which) => {
+                use horizon_client::clipboard::Clipboard as _;
+                let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+                let mut guard = client();
+                let Some(ui) = guard.desk.as_mut() else {
+                    continue;
+                };
+                match which {
+                    0 => {
+                        ui.field.shortcut(&m, horizon_client::clipboard::EditShortcut::Copy, &mut game.clipboard);
+                    }
+                    1 => {
+                        // `GuiTextField.keyPressed` com `isPaste`: um caractere que o `InputValidator` recusa barra o texto inteiro.
+                        let text = game.clipboard.get();
+                        if dsk::DeskScreen::paste_accepted(&text) {
+                            ui.field.insert_text(&m, &text);
+                        }
+                    }
+                    _ => {
+                        ui.field.shortcut(&m, horizon_client::clipboard::EditShortcut::Cut, &mut game.clipboard);
+                    }
+                }
+                let DeskUi { screen, field, .. } = ui;
+                screen.text_changed(&field.value);
+            }
+        }
+    }
+}
+
+/// O clique: devolve se a tela da mesa está aberta (o clique não segue para as janelas) e põe `canceled` quando um elemento ficou com ele.
+fn desk_press(game: &Game<'_>, view: &NativeScreenView<'_>, button: i32, modifiers: u32, canceled: &mut bool) -> bool {
+    let Some(block) = open_desk(game) else {
+        return false;
+    };
+    let data = DeskData::read(game, block);
+    let mouse = mouse_of(view);
+    let rel = [mouse[0] - f64::from(view.rect[0]), mouse[1] - f64::from(view.rect[1])];
+    let mut guard = client();
+    let state = &mut *guard;
+    let Some(ui) = state.desk.as_mut() else {
+        return true;
+    };
+    // `MouseHandler.onButton`: o duplo clique é o segundo do mesmo botão em menos de 250 ms.
+    let now = now_ms();
+    let double = state.last_click.is_some_and(|(at, last)| now - at < 250 && last == button);
+    state.last_click = Some((now, button));
+    ui.left_down = button == 0;
+    let text = ui.field.value.clone();
+    let (taken, outputs) = ui.screen.click(&data.view(), rel, button, &text);
+    let on_box = outputs.iter().any(|output| matches!(output, dsk::DeskOutput::FieldCursor(_)));
+    desk_apply(ui, game, outputs, &mut state.click_sound, modifiers & 1 != 0);
+    if on_box && double {
+        // `EditBox.onClick` com o duplo clique: a palavra sob o mouse.
+        let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+        book_select_word(&mut ui.field, &m, rel[0]);
+    }
+    let DeskUi { screen, field, .. } = ui;
+    screen.text_changed(&field.value);
+    if taken {
+        *canceled = true;
+    }
+    true
+}
+
+fn desk_release(game: &Game<'_>) -> bool {
+    if open_desk(game).is_none() {
+        return false;
+    }
+    if let Some(ui) = client().desk.as_mut() {
+        ui.left_down = false;
+        ui.screen.release();
+    }
+    true
+}
+
+fn desk_drag(game: &Game<'_>, view: &NativeScreenView<'_>, canceled: &mut bool) -> bool {
+    if open_desk(game).is_none() {
+        return false;
+    }
+    let mouse = mouse_of(view);
+    let rel = [mouse[0] - f64::from(view.rect[0]), mouse[1] - f64::from(view.rect[1])];
+    if let Some(ui) = client().desk.as_mut()
+        && ui.left_down
+        && ui.screen.list.dragging()
+    {
+        ui.screen.drag(rel);
+        *canceled = true;
+    }
+    true
+}
+
+fn desk_scroll(game: &Game<'_>, view: &NativeScreenView<'_>, scroll: [f64; 2], canceled: &mut bool) -> bool {
+    if open_desk(game).is_none() {
+        return false;
+    }
+    let mouse = mouse_of(view);
+    let rel = [mouse[0] - f64::from(view.rect[0]), mouse[1] - f64::from(view.rect[1])];
+    if let Some(ui) = client().desk.as_mut()
+        && ui.screen.scroll(rel, scroll[1])
+    {
+        *canceled = true;
+    }
+    true
+}
+
+fn desk_key(game: &Game<'_>, key: &str, canceled: &mut bool) -> bool {
+    let Some(block) = open_desk(game) else {
+        return false;
+    };
+    let data = DeskData::read(game, block);
+    let mut guard = client();
+    let state = &mut *guard;
+    let Some(ui) = state.desk.as_mut() else {
+        return true;
+    };
+    let desk_key = match key {
+        "key.keyboard.enter" | "key.keyboard.keypad.enter" => dsk::DeskKey::Enter,
+        "key.keyboard.space" => dsk::DeskKey::Space,
+        "key.keyboard.escape" => dsk::DeskKey::Escape,
+        "key.keyboard.tab" => dsk::DeskKey::Tab,
+        _ => dsk::DeskKey::Other,
+    };
+    let text = ui.field.value.clone();
+    let (result, outputs) = ui.screen.key(&data.view(), desk_key, &text);
+    desk_apply(ui, game, outputs, &mut state.click_sound, false);
+    if result == dsk::KeyResult::Field {
+        // `EditBox.keyPressed`, como a caixa de busca do livro: apagar, mover o cursor, selecionar tudo e a área de transferência.
+        use winit::keyboard::KeyCode as K;
+        let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+        let shift = game.has_shift_down();
+        let ctrl = game.has_control_down_with_quirk();
+        let alt = game.modifiers.alt_key();
+        let code = match key {
+            "key.keyboard.backspace" => Some(K::Backspace),
+            "key.keyboard.delete" => Some(K::Delete),
+            "key.keyboard.home" => Some(K::Home),
+            "key.keyboard.end" => Some(K::End),
+            "key.keyboard.left" => Some(K::ArrowLeft),
+            "key.keyboard.right" => Some(K::ArrowRight),
+            "key.keyboard.a" => Some(K::KeyA),
+            _ => None,
+        };
+        if let Some(code) = code.filter(|code| *code != K::KeyA || !alt) {
+            ui.field.key(&m, code, shift, ctrl);
+        } else if ctrl && !shift && !alt {
+            match key {
+                "key.keyboard.c" => ui.pending.push(DeskPending::Shortcut(0)),
+                "key.keyboard.v" => ui.pending.push(DeskPending::Shortcut(1)),
+                "key.keyboard.x" => ui.pending.push(DeskPending::Shortcut(2)),
+                _ => {}
+            }
+        }
+    }
+    let DeskUi { screen, field, .. } = ui;
+    screen.text_changed(&field.value);
+    if result != dsk::KeyResult::Pass {
+        *canceled = true;
+    }
+    true
+}
+
+fn desk_char(game: &Game<'_>, ch: char, canceled: &mut bool) -> bool {
+    if open_desk(game).is_none() {
+        return false;
+    }
+    let mut guard = client();
+    let Some(ui) = guard.desk.as_mut() else {
+        return true;
+    };
+    if ui.screen.field_focused() {
+        // `GuiTextField.charTyped`: a caixa focada fica com o caractere se o validador o aceita; o `EditBox` ainda recusa o que o chat não aceita.
+        if ui.screen.char_typed(ch) {
+            let m = horizon_client::screen_draw::Measure(&game.gui.atlas.font);
+            ui.field.insert_text(&m, &ch.to_string());
+            let DeskUi { screen, field, .. } = ui;
+            screen.text_changed(&field.value);
+        }
+        *canceled = true;
+    }
+    true
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Align {
+    Left,
+    Center,
+    Right,
+}
+
+/// `IFancyFontRenderer.drawScrollingString` de um componente: o texto na área `[min_x, min_y, max_x, max_y]`, alinhado, ou rolando se não cabe.
+#[allow(clippy::too_many_arguments)]
+fn desk_text(game: &Game<'_>, batch: &mut HudBatch, text: &horizon_client::text::Text, area: [f32; 4], align: Align, argb: u32, shadow: bool, since: i64) {
+    let [min_x, min_y, max_x, max_y] = area;
+    let atlas = &game.gui.atlas;
+    let width = atlas.font.width_text(text);
+    let area_width = max_x - min_x;
+    let scrolls = width > area_width;
+    let y = (min_y + max_y - LINE_HEIGHT) / 2.0;
+    let x = if scrolls {
+        min_x - uw::scroll_overflow(f64::from(width - area_width), now_ms() - since) as f32
+    } else {
+        match align {
+            Align::Left => min_x,
+            Align::Center => min_x + (area_width - width) / 2.0,
+            Align::Right => max_x - width,
+        }
+    };
+    let start = batch.vertices.len();
+    batch.text_styled(atlas, text, x, y, basis::hud_color(argb), shadow);
+    if scrolls {
+        batch.clip_since(start, min_x, min_y, max_x, max_y);
+    }
+}
+
+/// A área de um `drawScrollingString(text, x, y, alinhamento, cor, width, maxLengthPad, ...)` com a altura de uma linha.
+fn desk_line(origin: [f32; 2], [x, y, width, pad]: [i32; 4]) -> [f32; 4] {
+    [origin[0] + (x + pad) as f32, origin[1] + y as f32, origin[0] + (x + width - pad) as f32, origin[1] + y as f32 + LINE_HEIGHT]
+}
+
+fn desk_literal(text: &str) -> horizon_client::text::Text {
+    horizon_client::text::Text::literal(text)
+}
+
+/// `GuiSecurityDesk`: o fundo de cada elemento na ordem dos `addRenderableWidget`, e depois os textos (`renderForeground` e `drawForegroundText`).
+pub(in crate::game) fn desk_draw(game: &Game<'_>, batch: &mut HudBatch, block: &str, origin: [f32; 2], panel: &basis::PanelStyle) {
+    use horizon_client::text::{Style, Text};
+    let Some(spec) = spec_of(block) else {
+        return;
+    };
+    let data = DeskData::read(game, block);
+    let view = data.view();
+    let guard = client();
+    let fresh;
+    let (screen, field, focus_ms, opened_ms) = match guard.desk.as_ref() {
+        Some(ui) => (&ui.screen, ui.field.clone(), ui.focus_ms, ui.opened_ms),
+        // O primeiro quadro, antes de o estado nascer: a tela como `addGuiElements` a monta.
+        None => {
+            fresh = dsk::DeskScreen::new(&view);
+            (&fresh, new_desk_field(), now_ms(), now_ms())
+        }
+    };
+    let [ox, oy] = origin;
+    let at = |rect: [i32; 4]| shifted(rect, ox, oy);
+    let cursor = game.native_cursor();
+    let mouse = [f64::from(cursor[0] - ox), f64::from(cursor[1] - oy)];
+    let hovered = screen.hovered(mouse);
+    let active = screen.active();
+    // O painel e os três suportes.
+    basis::nine_slice(game, batch, panel.base, panel.base_slice, [ox, oy, dsk::IMAGE_WIDTH as f32, dsk::IMAGE_HEIGHT as f32]);
+    for holder in dsk::HOLDERS {
+        nine(game, batch, spec, "element_holder", uw::ELEMENT_HOLDER_SLICE, at(holder), WHITE);
+    }
+    // `addSlots` (`dynamicSlots`): os dois slots do tile e os 36 do jogador, e por cima dos do tile os dois `INNER_HOLDER_SLOT`.
+    let slot = machinery_basis_core::gui::SLOT_SIZE;
+    for [x, y] in dsk::INNER_SLOTS {
+        game.native_sprite(batch, panel.slot, [0.0, 0.0, slot, slot], [ox + x as f32, oy + y as f32, slot, slot]);
+    }
+    for row in 0..4 {
+        let y = dsk::INVENTORY_Y - 1 + row * 18 + if row == 3 { 4 } else { 0 };
+        for column in 0..9 {
+            game.native_sprite(batch, panel.slot, [0.0, 0.0, slot, slot], [ox + (7 + column * 18) as f32, oy + y as f32, slot, slot]);
+        }
+    }
+    for [x, y] in dsk::INNER_SLOTS {
+        plain(game, batch, spec, "slot/inner_holder_slot", [18.0, 18.0], [ox + x as f32, oy + y as f32, 18.0, 18.0]);
+    }
+    // `GuiSecurityLight`: a tela interna de 8 por 8 e a luz de 6 por 6.
+    nine(game, batch, spec, "inner_screen", uw::INNER_SCREEN_SLICE, at(dsk::LIGHT), WHITE);
+    let light = match view.light() {
+        machinery_basis_core::security_desk::SecurityLight::Enabled => "light/security/enabled",
+        machinery_basis_core::security_desk::SecurityLight::Disabled => "light/security/disabled",
+        machinery_basis_core::security_desk::SecurityLight::NotApplicable => "light/security/not_applicable",
+    };
+    let [lx, ly, lw, lh] = dsk::LIGHT;
+    plain(game, batch, spec, light, [6.0, 6.0], at([lx + 1, ly + 1, lw - 2, lh - 2]));
+    plain(game, batch, spec, "security/public", [18.0, 18.0], at(dsk::PUBLIC_ICON));
+    plain(game, batch, spec, "security/private", [18.0, 18.0], at(dsk::PRIVATE_ICON));
+    // `GuiTextScrollList`: a tela interna, a moldura da barra, o polegar e a linha escolhida.
+    let list = &screen.list;
+    nine(game, batch, spec, "inner_screen", uw::INNER_SCREEN_SLICE, at(dsk::LIST), WHITE);
+    let bar_x = list.x + list.bar_x_shift();
+    nine(game, batch, spec, "scroll/list_border", uw::LIST_BORDER_SLICE, at([bar_x - 1, list.y + 1, 6, list.height - 2]), WHITE);
+    plain(game, batch, spec, "scroll/list_bar", [4.0, 4.0], at(list.thumb_rect()));
+    if let Some(row) = screen.selected_row() {
+        let rect = [list.x + 1, list.y + 1 + row as i32 * list.element_height(), list.bar_x_shift() - 2, list.element_height()];
+        plain(game, batch, spec, "scroll/list_selection", [2.0, 2.0], at(rect));
+    }
+    // O botão de tirar.
+    button_background(game, batch, spec, at(dsk::REMOVE), active.remove, hovered == Some(dsk::DeskWidget::Remove));
+    // A caixa de nome: a tela interna um pixel maior, o `EditBox` e o botão de confirmar.
+    let [fx, fy, fw, fh] = dsk::FIELD;
+    nine(game, batch, spec, "inner_screen", uw::INNER_SCREEN_SLICE, at([fx - 1, fy - 1, fw + 2, fh + 2]), WHITE);
+    let mut drawn = field;
+    drawn.x += ox as i32;
+    drawn.y += oy as i32;
+    drawn.focused = screen.field_focused();
+    let mut draws = Vec::new();
+    drawn.draw(&mut draws, &horizon_client::screen_draw::Measure(&game.gui.atlas.font), (now_ms() - focus_ms).max(0) as u64, None);
+    horizon_client::screen_draw::paint(batch, &game.gui.atlas, &draws);
+    button_background(game, batch, spec, at(dsk::CHECKMARK), active.checkmark, screen.checkmark_hovered(mouse));
+    plain(game, batch, spec, "button/checkmark", [12.0, 12.0], at(dsk::CHECKMARK));
+    // Os três botões de modo e o de sobreposição.
+    for (index, name) in ["security/button_public", "security/button_private", "security/button_trusted"].into_iter().enumerate() {
+        let mode = machinery_basis_core::security::SecurityMode::by_id(index as i32);
+        button_background(game, batch, spec, at(dsk::MODE_BUTTONS[index]), active.modes[index], hovered == Some(dsk::DeskWidget::Mode(mode)));
+        plain(game, batch, spec, name, [40.0, 16.0], at(dsk::MODE_BUTTONS[index]));
+    }
+    button_background(game, batch, spec, at(dsk::OVERRIDE), active.override_button, hovered == Some(dsk::DeskWidget::Override));
+    plain(game, batch, spec, "button/exclamation", [16.0, 16.0], at(dsk::OVERRIDE));
+    // Os textos dos elementos: os nomes da lista (0,8 da altura, na cor da tela) e o do botão de tirar (com sombra).
+    for (row, _, name) in screen.visible_rows() {
+        let y = oy + (list.y + 2 + list.element_height() * row as i32) as f32;
+        let area = [ox + (list.x + 2) as f32, y, ox + (list.x + list.bar_x_shift() - 2) as f32, y + LINE_HEIGHT];
+        scrolling_text(game, batch, name, area, false, SCREEN_COLOR, 0.8, opened_ms);
+    }
+    let [rx, ry, rw, rh] = dsk::REMOVE;
+    let remove_area = [ox + (rx + 2) as f32, oy + ry as f32, ox + (rx + rw - 2) as f32, oy + (ry + rh + 1) as f32];
+    let remove_color = if active.remove { WHITE } else { INACTIVE_BUTTON_TEXT };
+    desk_text(game, batch, &desk_literal(&lang::get(machinery_basis_core::security_desk::BUTTON_REMOVE_KEY)), remove_area, Align::Center, remove_color, true, opened_ms);
+    // `drawForegroundText`: o título, "Inventory" e o dono, "Trusted Players", o modo e "Add:".
+    let title = basis::screen_title(game, &format!("{DESK_TITLE_KEY_PREFIX}{}", block.replace(':', ".")));
+    desk_text(game, batch, &title, desk_line(origin, [0, dsk::TITLE_LABEL_Y, dsk::IMAGE_WIDTH, 4]), Align::Center, TITLE_COLOR, false, opened_ms);
+    let inventory_y = dsk::IMAGE_HEIGHT - 94;
+    desk_text(game, batch, &desk_literal(&lang::get("container.inventory")), desk_line(origin, [8, inventory_y, dsk::INVENTORY_TEXT_WIDTH, 0]), Align::Left, TITLE_COLOR, false, opened_ms);
+    // `OwnerDisplay.of(uuid, nome).getTextComponent()`: sem jogador, o texto inteiro em `DARK_GRAY`; sem dono, `No Owner` em vermelho.
+    let owner = match &data.owner {
+        Some((_, name)) => Text::translate("owner.mekanism.format", &[desk_literal(name)]).with_style(&Style::color(machinery_basis_core::security::COLOR_DARK_GRAY)),
+        None => Text::translate("owner.mekanism.none", &[]).with_style(&Style::color(machinery_basis_core::security::COLOR_RED)),
+    };
+    let owner_line = [dsk::OWNER_TEXT_START, inventory_y, dsk::IMAGE_WIDTH - dsk::OWNER_TEXT_START, dsk::OWNER_TEXT_PAD];
+    desk_text(game, batch, &owner, desk_line(origin, owner_line), Align::Right, TITLE_COLOR, false, opened_ms);
+    let trusted = desk_literal(&lang::get(machinery_basis_core::security_desk::TRUSTED_PLAYERS_KEY));
+    desk_text(game, batch, &trusted, desk_line(origin, dsk::TRUSTED_PLAYERS_TEXT), Align::Center, SUBHEADING_COLOR, false, opened_ms);
+    let mode = match view.mode_text() {
+        Some(mode) => {
+            let line = machinery_basis_core::security::security_line(mode);
+            let arg = match &line.arg {
+                machinery_basis_core::security::Arg::Literal(text) => Text::literal(text.as_str()),
+                machinery_basis_core::security::Arg::Translate(key) => Text::translate(key, &[]),
+            }
+            .with_style(&Style::color(line.arg_color));
+            Text::translate(line.key, &[arg])
+        }
+        None => Text::translate(machinery_basis_core::security_desk::SECURITY_OFFLINE_KEY, &[]).with_style(&Style::color(machinery_basis_core::security::COLOR_RED)),
+    };
+    desk_text(game, batch, &mode, desk_line(origin, dsk::MODE_TEXT), Align::Left, TITLE_COLOR, false, opened_ms);
+    let add = desk_literal(&lang::get(machinery_basis_core::security_desk::SECURITY_ADD_KEY));
+    desk_text(game, batch, &add, desk_line(origin, dsk::ADD_TEXT), Align::Right, TITLE_COLOR, false, opened_ms);
+}
+
+/// Os tooltips da tela: os três botões de modo (`setTooltip`) e o de sobreposição (`TooltipToggleButton`), só ligados (`findElementOver` pede `isMouseOver`), sobre
+/// o botão (`MenuTooltipPositioner`). Devolve se desenhou.
+pub(in crate::game) fn desk_tooltip(game: &Game<'_>, batch: &mut HudBatch, block: &str, at: [f32; 2], cursor: (f32, f32)) -> bool {
+    if !is_desk_screen(block) {
+        return false;
+    }
+    let data = DeskData::read(game, block);
+    let guard = client();
+    let Some(ui) = guard.desk.as_ref() else {
+        return false;
+    };
+    let (text, rect) = match ui.screen.hovered([f64::from(at[0]), f64::from(at[1])]) {
+        Some(dsk::DeskWidget::Mode(mode)) => (lang::get(machinery_basis_core::security_desk::MODE_TOOLTIP_KEYS[mode.ordinal()]), dsk::MODE_BUTTONS[mode.ordinal()]),
+        Some(dsk::DeskWidget::Override) => {
+            let state = lang::get(if data.view().override_on() { DESK_ON_KEY } else { DESK_OFF_KEY });
+            (lang::get(machinery_basis_core::security_desk::SECURITY_OVERRIDE_KEY).replace("%1$s", &state), dsk::OVERRIDE)
+        }
+        _ => return false,
+    };
+    let lines: Vec<(String, Option<u32>)> =
+        uw::wrap_lines(&text, DESK_TOOLTIP_WRAP, &|piece: &str| game.native_text_width(piece)).into_iter().map(|line| (line, None)).collect();
+    let widget = [cursor.0 - at[0] + rect[0] as f32, cursor.1 - at[1] + rect[1] as f32, rect[2] as f32, rect[3] as f32];
+    basis::menu_tooltip(game, batch, &lines, cursor, widget);
+    true
+}
+
 impl Game<'_> {
+    /// O mod diz que a tela do bloco é a da Security Desk (`GuiSecurityDesk`); o bloco também registra a janela dele (`mb_window_register`), que dá o menu.
+    pub(in crate::game) fn mb_desk_register(block: &'static str) {
+        let mut desks = DESKS.lock().unwrap_or_else(|e| e.into_inner());
+        if !desks.contains(&block) {
+            desks.push(block);
+        }
+    }
+
+    /// A tela da mesa, desenhada inteira (o painel, os elementos e os textos).
+    pub(in crate::game) fn mb_desk_draw(&self, batch: &mut HudBatch, block: &str, origin: [f32; 2], panel: &basis::PanelStyle) {
+        desk_draw(self, batch, block, origin, panel);
+    }
+
+    /// Os tooltips dos botões da mesa; devolve se mostrou algum.
+    pub(in crate::game) fn mb_desk_tooltip(&self, batch: &mut HudBatch, block: &str, at: [f32; 2], cursor: (f32, f32)) -> bool {
+        desk_tooltip(self, batch, block, at, cursor)
+    }
+
     /// O mod registra a janela de um bloco.
     pub(in crate::game) fn mb_window_register(spec: &'static UpgradeWindowSpec, remove: RemoveFn, add: AddFn, source: SourceFn) {
         register(spec, remove, add, source);

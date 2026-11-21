@@ -1,0 +1,234 @@
+# A Security Desk com dois jogadores (frente `mesa-seguranca`, 2.ª rodada): o dono (o anfitrião) põe a mesa e uma máquina, adiciona o convidado pela tela, e o convidado
+# abre a máquina em `TRUSTED`; o dono o tira com a tela dele aberta; a sobreposição; a mesa de outro dono; a tabela das frequências na memória e no disco. O mesmo roteiro roda no
+# original (`oficial_dois.sh`, `testes/CenaDois.java`) e no port (`horizon2/h2_dois_roteiro.py`). As fotos `mesa_*` são do anfitrião (`comparar_tela.py`).
+lan 25599
+espera_convidado
+srv gamemode survival @a
+srv difficulty peaceful
+srv time set 6000
+srv weather clear
+srv clear @a
+caixa 300
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 20
+por Dev mekanism:security_desk 300
+por Dev mekanism:enrichment_chamber 302
+espera 10
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 300.0 -60.0 0.0 0 0
+espera 10
+nbt mesa_posta 300 -60 3
+freq posta
+anf escala 3
+anf painel 176 230
+anf abrir 300 -60 3
+espera 10
+anf cursor 2 2
+espera 5
+anf foto mesa_vazia_3
+# O nome do convidado em outra caixa, pelo teclado e o Enter; a tela não mostra o nome até ser reaberta.
+anf clicar 60 73
+anf digitar convidado
+anf tecla enter
+espera 10
+anf clicar 5 5
+espera 5
+anf foto mesa_nome_sem_reabrir_3
+anf ler anf_mesa_aberta
+freq um_nome
+anf fechar
+espera 5
+anf abrir 300 -60 3
+espera 10
+anf cursor 2 2
+espera 5
+anf foto mesa_um_nome_3
+# Um nome que nunca entrou, pelo botão de confirmar, e mais cinco para a lista rolar.
+anf clicar 60 73
+anf digitar zz_nunca_visto1
+anf clicar 128 73
+espera 5
+anf digitar Nome_B
+anf tecla enter
+espera 3
+anf digitar nome_c
+anf tecla enter
+espera 3
+anf digitar NOME_D
+anf tecla enter
+espera 3
+anf digitar nome_e5
+anf tecla enter
+espera 3
+anf digitar nome-g
+anf tecla enter
+espera 3
+anf digitar nome_f
+anf tecla enter
+espera 10
+anf fechar
+espera 5
+freq sete_nomes
+anf abrir 300 -60 3
+espera 10
+anf cursor 2 2
+espera 5
+anf foto mesa_lista_3
+anf roda 60 30 -1
+anf roda 60 30 -1
+espera 3
+anf foto mesa_rolada_3
+anf clicar 40 29
+espera 5
+anf foto mesa_escolhida_3
+anf roda 60 30 1
+anf roda 60 30 1
+espera 3
+# Os modos e a sobreposição: cada clique só aparece ao reabrir.
+anf clicar 74 121
+espera 5
+anf foto mesa_private_sem_reabrir_3
+anf fechar
+espera 5
+anf abrir 300 -60 3
+espera 10
+anf cursor 33 121
+espera 5
+anf foto mesa_private_dica_public_3
+anf cursor 2 2
+anf clicar 115 121
+espera 5
+anf fechar
+espera 5
+anf abrir 300 -60 3
+espera 10
+anf cursor 154 67
+espera 5
+anf foto mesa_trusted_dica_sobreposicao_3
+anf clicar 154 67
+espera 5
+anf fechar
+espera 5
+anf abrir 300 -60 3
+espera 10
+anf cursor 154 67
+espera 5
+anf foto mesa_sobreposta_dica_3
+anf cursor 2 2
+espera 5
+anf foto mesa_sobreposta_3
+anf escala 2
+espera 10
+anf cursor 2 2
+espera 5
+anf foto mesa_sobreposta_2
+anf clicar 40 19
+espera 5
+anf foto mesa_escolhida_2
+anf cursor 74 121
+espera 5
+anf foto mesa_dica_private_2
+anf cursor 2 2
+anf clicar 154 67
+espera 5
+anf fechar
+anf escala 3
+espera 10
+freq trusted_sem_sobreposicao
+# A máquina do dono em TRUSTED (dois cliques na aba dela): o convidado, que está na lista, abre.
+anf painel 176 166
+anf abrir 302 -60 3
+espera 10
+anf clicar 188 47
+espera 5
+anf clicar 188 47
+espera 5
+anf fechar
+espera 5
+nbt maquina_trusted 302 -60 3
+conv abrir 302 -60 3
+espera 10
+conv ler conv_na_lista
+# O dono tira o convidado (a linha 0) com a tela do convidado aberta: ela fecha, e ele não abre mais.
+anf painel 176 230
+anf abrir 300 -60 3
+espera 10
+anf clicar 40 19
+espera 5
+anf clicar 70 91
+espera 10
+anf fechar
+espera 5
+conv ler conv_tirado
+conv abrir 302 -60 3
+espera 10
+conv ler conv_fora_da_lista
+conv fechar
+freq convidado_tirado
+# A sobreposição: a máquina volta a PUBLIC (um clique na aba), a mesa vai a PRIVATE com a sobreposição ligada, e o convidado não abre; desligada, abre.
+anf painel 176 166
+anf abrir 302 -60 3
+espera 10
+anf clicar 188 47
+espera 5
+anf fechar
+espera 5
+nbt maquina_public 302 -60 3
+conv abrir 302 -60 3
+espera 10
+conv ler conv_public
+conv fechar
+anf painel 176 230
+anf abrir 300 -60 3
+espera 10
+anf clicar 74 121
+espera 5
+anf clicar 154 67
+espera 10
+anf fechar
+espera 5
+conv abrir 302 -60 3
+espera 10
+conv ler conv_sobreposto
+conv fechar
+anf abrir 300 -60 3
+espera 10
+anf clicar 154 67
+espera 10
+anf fechar
+espera 5
+conv abrir 302 -60 3
+espera 10
+conv ler conv_sem_sobreposicao
+conv fechar
+# A mesa de outro dono: o convidado põe a dele, e o anfitrião não a abre.
+por Convidado mekanism:security_desk 304
+espera 10
+srv tp Convidado 301.0 -60.0 0.0 0 0
+srv tp Dev 302.0 -60.0 0.0 0 0
+espera 10
+anf abrir 304 -60 3
+espera 10
+anf ler anf_mesa_do_convidado
+anf fechar
+conv abrir 300 -60 3
+espera 10
+conv ler conv_mesa_do_anfitriao
+conv fechar
+# O disco: a tabela salva agora, um nome a mais depois do save, e outro save.
+srv save-all flush
+espera 60
+freq salvo
+anf abrir 300 -60 3
+espera 10
+anf clicar 60 73
+anf digitar depois_do_save
+anf tecla enter
+espera 10
+anf fechar
+espera 5
+srv save-all flush
+espera 60
+freq depois_do_save
+fim

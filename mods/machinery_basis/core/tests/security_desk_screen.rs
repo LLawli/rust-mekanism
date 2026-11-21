@@ -3,7 +3,9 @@
 //! tela é do cliente e o `GameTestServer` não a roda; a comparação em jogo com o original é por pixel.
 use machinery_basis_core::security::SecurityMode;
 use machinery_basis_core::security_desk::{BUTTON_MODE, BUTTON_OVERRIDE, BUTTON_REMOVE, DeskView};
-use machinery_basis_core::security_desk_screen::{self as screen, DeskActive, DeskKey, DeskOutput, DeskScreen, DeskWidget, KeyResult};
+use machinery_basis_core::security_desk_screen::{
+    self as screen, DeskActive, DeskKey, DeskOutput, DeskScreen, DeskWidget, KeyResult,
+};
 use machinery_basis_core::security_frequency::SecurityFrequency;
 
 const OWNER: u128 = 0x11;
@@ -18,17 +20,27 @@ fn frequency(mode: SecurityMode, names: &[&str]) -> SecurityFrequency {
 }
 
 fn view(frequency: &SecurityFrequency, viewer: u128) -> DeskView<'_> {
-    DeskView { owner: Some(OWNER), frequency: Some(frequency), viewer: Some(viewer) }
+    DeskView {
+        owner: Some(OWNER),
+        frequency: Some(frequency),
+        viewer: Some(viewer),
+    }
 }
 
 /// O meio de um retângulo.
 fn middle(rect: [i32; 4]) -> [f64; 2] {
-    [f64::from(rect[0]) + f64::from(rect[2]) / 2.0, f64::from(rect[1]) + f64::from(rect[3]) / 2.0]
+    [
+        f64::from(rect[0]) + f64::from(rect[2]) / 2.0,
+        f64::from(rect[1]) + f64::from(rect[3]) / 2.0,
+    ]
 }
 
 /// O ponto da linha `row` da lista (linhas de 10 a partir de `y + 1`).
 fn row_point(row: i32) -> [f64; 2] {
-    [f64::from(screen::LIST[0] + 20), f64::from(screen::LIST[1] + 1 + screen::LIST_ELEMENT_HEIGHT * row + 4)]
+    [
+        f64::from(screen::LIST[0] + 20),
+        f64::from(screen::LIST[1] + 1 + screen::LIST_ELEMENT_HEIGHT * row + 4),
+    ]
 }
 
 #[test]
@@ -52,17 +64,48 @@ fn the_layout_is_the_one_of_the_java_screen() {
 fn the_buttons_start_as_update_buttons_leaves_them() {
     let public = frequency(SecurityMode::Public, &["a"]);
     let desk = DeskScreen::new(&view(&public, OWNER));
-    assert_eq!(desk.active(), DeskActive { remove: false, modes: [false, true, true], override_button: true, checkmark: false });
+    assert_eq!(
+        desk.active(),
+        DeskActive {
+            remove: false,
+            modes: [false, true, true],
+            override_button: true,
+            checkmark: false
+        }
+    );
     assert_eq!(desk.names(), ["a".to_owned()]);
     let trusted = frequency(SecurityMode::Trusted, &[]);
-    assert_eq!(DeskScreen::new(&view(&trusted, OWNER)).active().modes, [true, true, false]);
+    assert_eq!(
+        DeskScreen::new(&view(&trusted, OWNER)).active().modes,
+        [true, true, false]
+    );
     // Quem não é o dono: nenhum botão de modo nem o de sobreposição; a lista aparece do mesmo jeito.
     let stranger = DeskScreen::new(&view(&public, OTHER));
-    assert_eq!(stranger.active(), DeskActive { remove: false, modes: [false; 3], override_button: false, checkmark: false });
+    assert_eq!(
+        stranger.active(),
+        DeskActive {
+            remove: false,
+            modes: [false; 3],
+            override_button: false,
+            checkmark: false
+        }
+    );
     assert_eq!(stranger.names().len(), 1);
     // Sem dono no tile, `updateButtons` não toca na lista nem no botão de tirar, que fica como nasceu (ligado).
-    let ownerless = DeskScreen::new(&DeskView { owner: None, frequency: None, viewer: Some(OWNER) });
-    assert_eq!(ownerless.active(), DeskActive { remove: true, modes: [false; 3], override_button: false, checkmark: false });
+    let ownerless = DeskScreen::new(&DeskView {
+        owner: None,
+        frequency: None,
+        viewer: Some(OWNER),
+    });
+    assert_eq!(
+        ownerless.active(),
+        DeskActive {
+            remove: true,
+            modes: [false; 3],
+            override_button: false,
+            checkmark: false
+        }
+    );
 }
 
 #[test]
@@ -71,9 +114,21 @@ fn each_button_sends_its_packet_with_the_click_sound() {
     let view = view(&frequency, OWNER);
     let mut desk = DeskScreen::new(&view);
     for (mode, button) in [(SecurityMode::Private, 0), (SecurityMode::Trusted, 1)] {
-        let (taken, out) = desk.click(&view, middle(screen::MODE_BUTTONS[mode.ordinal()]), button, "");
+        let (taken, out) = desk.click(
+            &view,
+            middle(screen::MODE_BUTTONS[mode.ordinal()]),
+            button,
+            "",
+        );
         assert!(taken);
-        assert_eq!(out, [DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_MODE + mode.ordinal() as i32)], "{mode:?}");
+        assert_eq!(
+            out,
+            [
+                DeskOutput::ClickSound,
+                DeskOutput::Menu(BUTTON_MODE + mode.ordinal() as i32)
+            ],
+            "{mode:?}"
+        );
         assert_eq!(desk.focus(), Some(DeskWidget::Mode(mode)));
     }
     // O botão do modo em que a frequência está fica desligado: o clique não é dele, e o foco some.
@@ -83,11 +138,17 @@ fn each_button_sends_its_packet_with_the_click_sound() {
     assert_eq!(desk.focus(), None);
     let (taken, out) = desk.click(&view, middle(screen::OVERRIDE), 0, "");
     assert!(taken);
-    assert_eq!(out, [DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_OVERRIDE)]);
+    assert_eq!(
+        out,
+        [DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_OVERRIDE)]
+    );
     // A tela não muda com o clique: o menu só traz a frequência nova ao reabrir, e o botão de `PRIVATE` segue ligado.
     assert_eq!(desk.active().modes, [false, true, true]);
     // O botão do meio do mouse não é de ninguém.
-    assert_eq!(desk.click(&view, middle(screen::OVERRIDE), 2, ""), (false, vec![]));
+    assert_eq!(
+        desk.click(&view, middle(screen::OVERRIDE), 2, ""),
+        (false, vec![])
+    );
 }
 
 #[test]
@@ -96,7 +157,10 @@ fn the_list_selects_a_row_and_the_remove_button_sends_its_index() {
     let view = view(&frequency, OWNER);
     let mut desk = DeskScreen::new(&view);
     // Sem seleção o botão de tirar está desligado.
-    assert_eq!(desk.click(&view, middle(screen::REMOVE), 0, ""), (false, vec![]));
+    assert_eq!(
+        desk.click(&view, middle(screen::REMOVE), 0, ""),
+        (false, vec![])
+    );
     let (taken, out) = desk.click(&view, row_point(1), 0, "");
     assert!(taken);
     assert_eq!(out, []);
@@ -107,7 +171,10 @@ fn the_list_selects_a_row_and_the_remove_button_sends_its_index() {
     assert!(!desk.active().remove);
     let (taken, out) = desk.click(&view, middle(screen::REMOVE), 1, "");
     assert!(taken);
-    assert_eq!(out, [DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_REMOVE + 1)]);
+    assert_eq!(
+        out,
+        [DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_REMOVE + 1)]
+    );
     assert_eq!(desk.selected(), None);
     assert!(!desk.active().remove);
     // A linha vazia dentro da área limpa a seleção; o clique direito na lista não é dela.
@@ -142,7 +209,11 @@ fn the_list_scrolls_with_the_wheel_and_the_thumb() {
     let frequency = frequency(SecurityMode::Public, &refs);
     let view = view(&frequency, OWNER);
     let mut desk = DeskScreen::new(&view);
-    let rows = |desk: &DeskScreen| desk.visible_rows().map(|(_, index, _)| index).collect::<Vec<_>>();
+    let rows = |desk: &DeskScreen| {
+        desk.visible_rows()
+            .map(|(_, index, _)| index)
+            .collect::<Vec<_>>()
+    };
     assert_eq!(rows(&desk), [0, 1, 2, 3]);
     // Fora da lista a roda não é dela.
     assert!(!desk.scroll(middle(screen::REMOVE), -1.0));
@@ -188,25 +259,51 @@ fn the_field_takes_the_focus_the_cursor_and_the_right_click() {
     assert!(!desk.field_focused());
     assert!(!desk.char_typed('a'));
     let at = middle(screen::EDIT_BOX);
-    assert_eq!(desk.click(&view, at, 0, ""), (true, vec![DeskOutput::FieldCursor(at[0]), DeskOutput::FieldFocused]));
+    assert_eq!(
+        desk.click(&view, at, 0, ""),
+        (
+            true,
+            vec![DeskOutput::FieldCursor(at[0]), DeskOutput::FieldFocused]
+        )
+    );
     assert!(desk.field_focused());
     // Já focada: o cursor anda, o pisca não recomeça.
-    assert_eq!(desk.click(&view, at, 0, "ab"), (true, vec![DeskOutput::FieldCursor(at[0])]));
+    assert_eq!(
+        desk.click(&view, at, 0, "ab"),
+        (true, vec![DeskOutput::FieldCursor(at[0])])
+    );
     // O clique direito no `EditBox` limpa o texto.
     desk.text_changed("ab");
     assert!(desk.active().checkmark);
-    assert_eq!(desk.click(&view, at, 1, "ab"), (true, vec![DeskOutput::ClearField]));
+    assert_eq!(
+        desk.click(&view, at, 1, "ab"),
+        (true, vec![DeskOutput::ClearField])
+    );
     assert!(!desk.active().checkmark);
     // As duas linhas de cima da caixa não são do `EditBox` (ele começa em y + 2): focam sem mexer no cursor, e só com o esquerdo.
     desk.click(&view, middle(screen::LIGHT), 0, "");
     assert_eq!(desk.focus(), Some(DeskWidget::Light));
-    assert_eq!(desk.click(&view, [50.0, 68.5], 0, ""), (true, vec![DeskOutput::FieldFocused]));
+    assert_eq!(
+        desk.click(&view, [50.0, 68.5], 0, ""),
+        (true, vec![DeskOutput::FieldFocused])
+    );
     assert_eq!(desk.click(&view, [50.0, 68.5], 1, ""), (false, vec![]));
     assert!(!desk.field_focused());
     // As duas linhas abaixo da caixa (79 e 80) ainda são do `EditBox`, que tem 11 de altura a partir de 70.
-    assert_eq!(desk.click(&view, [50.0, 80.5], 0, ""), (true, vec![DeskOutput::FieldCursor(50.0), DeskOutput::FieldFocused]));
+    assert_eq!(
+        desk.click(&view, [50.0, 80.5], 0, ""),
+        (
+            true,
+            vec![DeskOutput::FieldCursor(50.0), DeskOutput::FieldFocused]
+        )
+    );
     // Só os caracteres de `USERNAME` chegam à caixa.
-    assert!(desk.char_typed('a') && desk.char_typed('Z') && desk.char_typed('7') && desk.char_typed('_'));
+    assert!(
+        desk.char_typed('a')
+            && desk.char_typed('Z')
+            && desk.char_typed('7')
+            && desk.char_typed('_')
+    );
     assert!(!desk.char_typed(' ') && !desk.char_typed('-') && !desk.char_typed('é'));
     assert!(DeskScreen::paste_accepted("Abc_1") && !DeskScreen::paste_accepted("a b"));
     // Um clique fora de tudo tira o foco e segue para os slots.
@@ -220,23 +317,51 @@ fn enter_and_the_checkmark_send_the_name_and_clear_the_field() {
     let owner = view(&frequency, OWNER);
     let mut desk = DeskScreen::new(&owner);
     // Sem texto o botão de confirmar está desligado: o clique nele é da caixa.
-    assert_eq!(desk.click(&owner, middle(screen::CHECKMARK), 0, ""), (true, vec![DeskOutput::FieldFocused]));
+    assert_eq!(
+        desk.click(&owner, middle(screen::CHECKMARK), 0, ""),
+        (true, vec![DeskOutput::FieldFocused])
+    );
     desk.text_changed(" Steve");
     assert!(desk.checkmark_hovered(middle(screen::CHECKMARK)));
     // O nome com espaço não é mandado (`isValidPlayerName` depois do `trim`, que o tira: " Steve" vira "Steve").
     let (taken, out) = desk.click(&owner, middle(screen::CHECKMARK), 0, " Steve");
     assert!(taken);
-    assert_eq!(out, [DeskOutput::ClickSound, DeskOutput::AddTrusted("Steve".to_owned()), DeskOutput::ClearField]);
+    assert_eq!(
+        out,
+        [
+            DeskOutput::ClickSound,
+            DeskOutput::AddTrusted("Steve".to_owned()),
+            DeskOutput::ClearField
+        ]
+    );
     assert!(desk.field_focused());
     assert!(!desk.active().checkmark);
     // O Enter na caixa faz o mesmo, sem som; o nome longo demais limpa a caixa e não manda nada.
-    assert_eq!(desk.key(&owner, DeskKey::Enter, "Alex"), (KeyResult::Consumed, vec![DeskOutput::AddTrusted("Alex".to_owned()), DeskOutput::ClearField]));
-    assert_eq!(desk.key(&owner, DeskKey::Enter, "abcdefghijklmnopq"), (KeyResult::Consumed, vec![DeskOutput::ClearField]));
+    assert_eq!(
+        desk.key(&owner, DeskKey::Enter, "Alex"),
+        (
+            KeyResult::Consumed,
+            vec![
+                DeskOutput::AddTrusted("Alex".to_owned()),
+                DeskOutput::ClearField
+            ]
+        )
+    );
+    assert_eq!(
+        desk.key(&owner, DeskKey::Enter, "abcdefghijklmnopq"),
+        (KeyResult::Consumed, vec![DeskOutput::ClearField])
+    );
     // Quem não é o dono: o Enter e o botão não fazem nada, e a caixa fica com o texto.
     let stranger = view(&frequency, OTHER);
-    assert_eq!(desk.key(&stranger, DeskKey::Enter, "Alex"), (KeyResult::Consumed, vec![]));
+    assert_eq!(
+        desk.key(&stranger, DeskKey::Enter, "Alex"),
+        (KeyResult::Consumed, vec![])
+    );
     desk.text_changed("Alex");
-    assert_eq!(desk.click(&stranger, middle(screen::CHECKMARK), 0, "Alex"), (true, vec![DeskOutput::ClickSound]));
+    assert_eq!(
+        desk.click(&stranger, middle(screen::CHECKMARK), 0, "Alex"),
+        (true, vec![DeskOutput::ClickSound])
+    );
     assert!(desk.active().checkmark);
 }
 
@@ -246,25 +371,58 @@ fn the_keyboard_goes_to_the_focused_element() {
     let view = view(&frequency, OWNER);
     let mut desk = DeskScreen::new(&view);
     // Sem foco as teclas são do jogo, e o Tab leva o foco à caixa.
-    assert_eq!(desk.key(&view, DeskKey::Other, ""), (KeyResult::Pass, vec![]));
-    assert_eq!(desk.key(&view, DeskKey::Enter, ""), (KeyResult::Pass, vec![]));
-    assert_eq!(desk.key(&view, DeskKey::Tab, ""), (KeyResult::Consumed, vec![DeskOutput::FieldFocused]));
+    assert_eq!(
+        desk.key(&view, DeskKey::Other, ""),
+        (KeyResult::Pass, vec![])
+    );
+    assert_eq!(
+        desk.key(&view, DeskKey::Enter, ""),
+        (KeyResult::Pass, vec![])
+    );
+    assert_eq!(
+        desk.key(&view, DeskKey::Tab, ""),
+        (KeyResult::Consumed, vec![DeskOutput::FieldFocused])
+    );
     // Com a caixa focada, toda tecla é dela (a do inventário não fecha a tela), menos o Escape.
-    assert_eq!(desk.key(&view, DeskKey::Other, ""), (KeyResult::Field, vec![]));
-    assert_eq!(desk.key(&view, DeskKey::Space, ""), (KeyResult::Field, vec![]));
-    assert_eq!(desk.key(&view, DeskKey::Escape, ""), (KeyResult::Pass, vec![]));
-    assert_eq!(desk.key(&view, DeskKey::Tab, ""), (KeyResult::Consumed, vec![]));
+    assert_eq!(
+        desk.key(&view, DeskKey::Other, ""),
+        (KeyResult::Field, vec![])
+    );
+    assert_eq!(
+        desk.key(&view, DeskKey::Space, ""),
+        (KeyResult::Field, vec![])
+    );
+    assert_eq!(
+        desk.key(&view, DeskKey::Escape, ""),
+        (KeyResult::Pass, vec![])
+    );
+    assert_eq!(
+        desk.key(&view, DeskKey::Tab, ""),
+        (KeyResult::Consumed, vec![])
+    );
     // Um botão clicado fica focado: o Enter e o espaço o apertam de novo, com o som.
     desk.click(&view, middle(screen::MODE_BUTTONS[2]), 0, "");
     for key in [DeskKey::Enter, DeskKey::Space] {
-        assert_eq!(desk.key(&view, key, ""), (KeyResult::Consumed, vec![DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_MODE + 2)]));
+        assert_eq!(
+            desk.key(&view, key, ""),
+            (
+                KeyResult::Consumed,
+                vec![DeskOutput::ClickSound, DeskOutput::Menu(BUTTON_MODE + 2)]
+            )
+        );
     }
-    assert_eq!(desk.key(&view, DeskKey::Other, ""), (KeyResult::Pass, vec![]));
+    assert_eq!(
+        desk.key(&view, DeskKey::Other, ""),
+        (KeyResult::Pass, vec![])
+    );
     // O botão de tirar focado e já desligado (a seleção saiu com o clique) não é apertado.
     desk.click(&view, row_point(0), 0, "");
     desk.click(&view, middle(screen::REMOVE), 0, "");
     assert_eq!(desk.focus(), Some(DeskWidget::Remove));
-    assert_eq!(desk.key(&view, DeskKey::Enter, ""), (KeyResult::Pass, vec![]));
+    assert_eq!(
+        desk.key(&view, DeskKey::Enter, ""),
+        (KeyResult::Pass, vec![])
+    );
 }
 
 #[test]
@@ -272,11 +430,17 @@ fn the_hover_only_sees_active_elements() {
     let frequency = frequency(SecurityMode::Private, &[]);
     let view = view(&frequency, OWNER);
     let desk = DeskScreen::new(&view);
-    assert_eq!(desk.hovered(middle(screen::MODE_BUTTONS[0])), Some(DeskWidget::Mode(SecurityMode::Public)));
+    assert_eq!(
+        desk.hovered(middle(screen::MODE_BUTTONS[0])),
+        Some(DeskWidget::Mode(SecurityMode::Public))
+    );
     // O botão desligado não tem foco nem tooltip.
     assert_eq!(desk.hovered(middle(screen::MODE_BUTTONS[1])), None);
     assert_eq!(desk.hovered(middle(screen::REMOVE)), None);
-    assert_eq!(desk.hovered(middle(screen::OVERRIDE)), Some(DeskWidget::Override));
+    assert_eq!(
+        desk.hovered(middle(screen::OVERRIDE)),
+        Some(DeskWidget::Override)
+    );
     assert_eq!(desk.hovered(middle(screen::LIST)), Some(DeskWidget::List));
     assert_eq!(desk.hovered(middle(screen::FIELD)), Some(DeskWidget::Field));
     assert_eq!(desk.hovered(middle(screen::LIGHT)), Some(DeskWidget::Light));

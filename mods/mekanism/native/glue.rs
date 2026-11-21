@@ -470,6 +470,7 @@ pub(in crate::game) fn energy(block: &str, energy: &mut Option<ModEnergyBuffer>)
 
 pub(in crate::game) fn container(block: &str, container: &mut Option<ModContainer>) {
     crate::game::mekanism_cube::container(block, container);
+    crate::game::mekanism_desk::container(block, container);
     // O transportador logístico: um slot que parece sempre vazio (`TransporterItemHandler.size() == 1`), só para um funil, um dropper e o ejetor de outra máquina o acharem como contêiner;
     // a inserção de verdade é do hook `transporter_insert` (`Game::move_in_item`), que a leva para o dono dos transportadores.
     if is_transporter(block) {
@@ -598,6 +599,9 @@ fn native_screen(machine: &Machine) -> NativeScreen {
 }
 
 pub(in crate::game) fn screen(block: &str, screen: &mut Option<NativeScreen>) {
+    if crate::game::mekanism_desk::screen(block, screen) {
+        return;
+    }
     if crate::game::mekanism_cube::is_cube(block) {
         // `GuiEnergyCube`: a barra de armadura à direita e a aba de energia. Os dois slots do cubo; sem slots virtuais (o cubo não tem upgrades).
         crate::game::machinery_armor_bar::declare(block, rules::cube_armor_bar_declaration);
@@ -2647,6 +2651,10 @@ fn publish_slot_rules(game: &Game<'_>, pos: [i32; 3]) {
         crate::game::mekanism_cube::publish_slot_rules(game, pos, RULES_OWNER);
         return;
     }
+    // A Security Desk: os itens que têm dono são os dos blocos com segurança (as máquinas, os cubos e a própria mesa).
+    if crate::game::mekanism_desk::publish_slot_rules(game, pos, RULES_OWNER, desk_ownable) {
+        return;
+    }
     let Some(machine) = machine_of(&entity.id) else {
         return;
     };
@@ -2811,6 +2819,11 @@ fn flush_deferred_awards(game: &mut Game<'_>) {
 }
 
 /// O nome do tile é o da `machinery_basis` (`basis::name_*`): o componente inteiro, só para os blocos das máquinas daqui.
+/// Os itens que a Security Desk trava e destrava: os dos blocos com dono (as máquinas, os cubos e a própria mesa).
+fn desk_ownable(item: &str) -> bool {
+    is_machine_id(item) || crate::game::mekanism_desk::is_desk(item)
+}
+
 fn is_machine_id(id: &str) -> bool {
     machine_of(id).is_some() || crate::game::mekanism_cube::is_cube(id)
 }
@@ -3652,6 +3665,9 @@ pub(in crate::game) fn widget_tooltip(
     if let Some(tier) = rules::cube_tier(block) {
         return cube_tooltip(game, batch, block, tier, at, cursor);
     }
+    if let Some(drawn) = crate::game::mekanism_desk::widget_tooltip(game, batch, block, at, cursor) {
+        return drawn;
+    }
     let Some(machine) = machine_of(block) else {
         return false;
     };
@@ -3907,6 +3923,9 @@ pub(in crate::game) fn screen_draw(
 ) {
     if let Some(tier) = rules::cube_tier(block) {
         draw_cube(game, block, tier, batch, origin);
+        return;
+    }
+    if crate::game::mekanism_desk::screen_draw(game, block, batch, origin, &PANEL) {
         return;
     }
     if let Some(machine) = machine_of(block) {

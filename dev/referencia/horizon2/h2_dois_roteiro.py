@@ -18,6 +18,7 @@ import h2_dois as d
 
 SHOTS = "/home/luka/.local/share/jogo-isolado/horizon/data/shots/dois"
 LOG_B = "~/.cache/rust-mekanism/dois-clientes/b.log"
+SAVES = "/home/luka/.local/share/jogo-isolado/horizon/data/horizon/saves"
 HOST = "Player90366"
 Y, Z = -60, 3
 BLOCK = {"chamber": "mekanism:enrichment_chamber", "crusher": "mekanism:crusher", "smelter": "mekanism:energized_smelter", "infuser": "mekanism:metallurgic_infuser",
@@ -51,9 +52,12 @@ def who_of(name):
     return d.host if name == "anf" else d.guest
 
 
+panel_size = [176, 166]
+
+
 def panel():
     gl, ga = -(-1920 // scale), -(-1080 // scale)
-    return (gl - 176) // 2, (ga - 166) // 2
+    return (gl - panel_size[0]) // 2, (ga - panel_size[1]) // 2
 
 
 def xp_of(name):
@@ -165,6 +169,16 @@ def act_client(who_name, a):
         who("click-at", str(left + int(a[1])), str(top + int(a[2])), *(["right"] if len(a) > 3 and a[3] == "d" else []))
     elif verb == "cursor":
         who("scroll-at", str(left + int(a[1])), str(top + int(a[2])), "0")
+    elif verb == "digitar":
+        for ch in a[1]:
+            who("type", ch)
+            time.sleep(0.05)
+    elif verb == "tecla":
+        say(f"tecla {who_name} {a[1]}: {who('key', a[1], 'tap').strip()}")
+    elif verb == "roda":
+        who("scroll-at", str(left + int(a[1])), str(top + int(a[2])), a[3])
+    elif verb == "painel":
+        panel_size[:] = [int(a[1]), int(a[2])]
     elif verb == "ler":
         try:
             scr = json.loads(who("screen"))
@@ -234,6 +248,26 @@ def main():
             hcmd(f"fillbiome {x - 6} -61 -6 {x + 6} -50 10 minecraft:plains")
         elif verb == "montar":
             act_montar(a[1], int(a[2]))
+        elif verb == "por":
+            # `por JOGADOR ITEM X`: o jogador põe o bloco (o `place` do `horizon-ctl`, que é o clique dele) e fica o dono.
+            quem, nome = (d.host, HOST) if a[1] == "Dev" else (d.guest, d.GUEST_NAME)
+            hcmd(f"clear {nome}")
+            time.sleep(0.6)
+            hcmd(f"give {nome} {a[2]} 1")
+            time.sleep(0.6)
+            for _ in range(4):
+                out = quem("place", a[3], str(Y), str(Z), "--item", a[2]).strip()
+                if '"error"' not in out:
+                    break
+                time.sleep(0.6)
+            say(f"por {a[1]} {a[2]}: {out[:160]}")
+            time.sleep(0.3)
+            hcmd(f"clear {nome}")
+        elif verb == "nbt":
+            say(f"nbt {a[1]} " + str(hcmd(f"data get block {a[2]} {a[3]} {a[4]}")))
+        elif verb == "freq":
+            # A tabela das frequências no disco (o port não tem como mostrar a da memória): o arquivo do mundo, lido no desktop.
+            say(f"freq {a[1]} disco " + ssh(f"python3 -I ~/nbt.py $(ls {SAVES}/*/data/mekanism/frequency/security/public.dat 2>/dev/null | head -1) 2>&1 | head -c 3000"))
         elif verb == "estado":
             act_estado(int(a[1]), dict(p.split("=", 1) for p in a[2:]))
         elif verb == "silencio":

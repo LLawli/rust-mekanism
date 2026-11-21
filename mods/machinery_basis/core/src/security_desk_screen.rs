@@ -38,7 +38,12 @@ pub const FIELD: [i32; 4] = [TRUSTED_X, 68, 99, 11];
 /// `ButtonType.NORMAL`: o botão de confirmar, `field.getRelativeRight() - field.getHeight()`, do tamanho da altura da caixa.
 pub const CHECKMARK: [i32; 4] = [FIELD[0] + FIELD[2] - FIELD[3], FIELD[1], FIELD[3], FIELD[3]];
 /// O `EditBox` de dentro (`GuiTextField.updateTextField`): `x + 2`, `y + 1 + (int) (height / 2F - 4)`, a largura menos a do botão de confirmar e 2, e a altura da caixa.
-pub const EDIT_BOX: [i32; 4] = [FIELD[0] + 2, FIELD[1] + 1 + 1, FIELD[2] - (FIELD[3] + 2), FIELD[3]];
+pub const EDIT_BOX: [i32; 4] = [
+    FIELD[0] + 2,
+    FIELD[1] + 1 + 1,
+    FIELD[2] - (FIELD[3] + 2),
+    FIELD[3],
+];
 /// Os três `MekanismImageButton` de modo, na ordem de `SecurityMode`.
 pub const MODE_BUTTONS: [[i32; 4]; 3] = [[13, 113, 40, 16], [54, 113, 40, 16], [95, 113, 40, 16]];
 /// `TooltipToggleButton(this, 146, 59, 16, ...)`.
@@ -128,17 +133,26 @@ pub struct DeskScreen {
 }
 
 fn contains(rect: [i32; 4], at: [f64; 2]) -> bool {
-    at[0] >= f64::from(rect[0]) && at[1] >= f64::from(rect[1]) && at[0] < f64::from(rect[0] + rect[2]) && at[1] < f64::from(rect[1] + rect[3])
+    at[0] >= f64::from(rect[0])
+        && at[1] >= f64::from(rect[1])
+        && at[0] < f64::from(rect[0] + rect[2])
+        && at[1] < f64::from(rect[1] + rect[3])
 }
 
 impl DeskScreen {
     /// `addGuiElements`: os botões nascem ligados (o de confirmar, desligado: `addCheckmarkButton`), e o `updateButtons()` do fim os acerta.
     pub fn new(view: &DeskView<'_>) -> Self {
         let mut screen = Self {
-            list: ScrollList::new(LIST[0], LIST[1], LIST[2], LIST[3]).with_element_height(LIST_ELEMENT_HEIGHT),
+            list: ScrollList::new(LIST[0], LIST[1], LIST[2], LIST[3])
+                .with_element_height(LIST_ELEMENT_HEIGHT),
             names: Vec::new(),
             selected: None,
-            active: DeskActive { remove: true, modes: [true; 3], override_button: true, checkmark: false },
+            active: DeskActive {
+                remove: true,
+                modes: [true; 3],
+                override_button: true,
+                checkmark: false,
+            },
             focus: None,
         };
         screen.update_buttons(view);
@@ -168,7 +182,10 @@ impl DeskScreen {
 
     /// `GuiTextScrollList.setText`: a seleção que não cabe mais some, e a lista que deixa de precisar da barra volta ao começo.
     fn set_text(&mut self, names: &[String]) {
-        if self.selected.is_some_and(|selected| selected >= names.len()) {
+        if self
+            .selected
+            .is_some_and(|selected| selected >= names.len())
+        {
             self.selected = None;
         }
         self.names = names.to_vec();
@@ -197,14 +214,19 @@ impl DeskScreen {
     /// As linhas visíveis: o índice na lista e o nome, da primeira à última que cabe (`renderForeground`).
     pub fn visible_rows(&self) -> impl Iterator<Item = (usize, usize, &str)> {
         let first = self.list.first_visible(self.names.len());
-        (0..self.list.focused() as usize).filter_map(move |row| self.names.get(first + row).map(|name| (row, first + row, name.as_str())))
+        (0..self.list.focused() as usize).filter_map(move |row| {
+            self.names
+                .get(first + row)
+                .map(|name| (row, first + row, name.as_str()))
+        })
     }
 
     /// `renderElements`: a linha (entre as visíveis) que leva o sprite de seleção.
     pub fn selected_row(&self) -> Option<usize> {
         let first = self.list.first_visible(self.names.len());
         let selected = self.selected?;
-        (selected >= first && selected < first + self.list.focused() as usize).then(|| selected - first)
+        (selected >= first && selected < first + self.list.focused() as usize)
+            .then(|| selected - first)
     }
 
     /// `setTrusted(field)`: o Enter na caixa e o botão de confirmar. Só para o dono: manda o nome (se o cliente o manda), limpa a caixa e `updateButtons`.
@@ -224,7 +246,9 @@ impl DeskScreen {
         match widget {
             DeskWidget::Remove => {
                 if let (Some(_), Some(selected)) = (view.frequency, self.selected) {
-                    out.push(DeskOutput::Menu(DeskAction::Remove(selected as i32).button()));
+                    out.push(DeskOutput::Menu(
+                        DeskAction::Remove(selected as i32).button(),
+                    ));
                     self.selected = None;
                     self.update_buttons(view);
                 }
@@ -245,7 +269,11 @@ impl DeskScreen {
         if self.active.override_button && contains(OVERRIDE, at) {
             return Some(DeskWidget::Override);
         }
-        for mode in [SecurityMode::Trusted, SecurityMode::Private, SecurityMode::Public] {
+        for mode in [
+            SecurityMode::Trusted,
+            SecurityMode::Private,
+            SecurityMode::Public,
+        ] {
             if self.active.modes[mode.ordinal()] && contains(MODE_BUTTONS[mode.ordinal()], at) {
                 return Some(DeskWidget::Mode(mode));
             }
@@ -275,7 +303,13 @@ impl DeskScreen {
 
     /// `GuiSecurityDesk.mouseClicked`: `updateButtons()` e depois o clique vai aos elementos, do último posto ao primeiro (`GuiMekanism.mouseClicked`). `button` é 0
     /// para o esquerdo e 1 para o direito; `text` é o que a caixa tem. Devolve se um elemento ficou com o clique (senão ele segue para os slots) e o que fazer.
-    pub fn click(&mut self, view: &DeskView<'_>, at: [f64; 2], button: i32, text: &str) -> (bool, Vec<DeskOutput>) {
+    pub fn click(
+        &mut self,
+        view: &DeskView<'_>,
+        at: [f64; 2],
+        button: i32,
+        text: &str,
+    ) -> (bool, Vec<DeskOutput>) {
         let mut out = Vec::new();
         self.update_buttons(view);
         let left = button == 0;
@@ -341,7 +375,10 @@ impl DeskScreen {
 
     /// `GuiMekanism.mouseDragged`: só o elemento focado, com o botão esquerdo; aqui só a lista arrasta (o polegar).
     pub fn drag(&mut self, at: [f64; 2]) {
-        if self.focus == Some(DeskWidget::List) && self.list.dragging() && self.list.needs_scroll_bars(self.names.len()) {
+        if self.focus == Some(DeskWidget::List)
+            && self.list.dragging()
+            && self.list.needs_scroll_bars(self.names.len())
+        {
             self.list.drag_to(at[1]);
         }
     }
@@ -359,7 +396,12 @@ impl DeskScreen {
     /// `GuiMekanism.keyPressed`: os elementos antes da tela. A caixa focada fica com tudo menos o Escape e o Tab, e o Enter nela é o `setTrusted`; um botão focado e
     /// ligado é apertado pelo Enter e pelo espaço (`MekanismButton.keyPressed`, com o som). O Tab que ninguém quis leva o foco à caixa, o único elemento que aceita a
     /// navegação por Tab (`supportsTabNavigation`).
-    pub fn key(&mut self, view: &DeskView<'_>, key: DeskKey, text: &str) -> (KeyResult, Vec<DeskOutput>) {
+    pub fn key(
+        &mut self,
+        view: &DeskView<'_>,
+        key: DeskKey,
+        text: &str,
+    ) -> (KeyResult, Vec<DeskOutput>) {
         let mut out = Vec::new();
         if self.field_focused() {
             match key {
@@ -373,7 +415,8 @@ impl DeskScreen {
             }
         }
         if matches!(key, DeskKey::Enter | DeskKey::Space)
-            && let Some(widget @ (DeskWidget::Remove | DeskWidget::Mode(_) | DeskWidget::Override)) = self.focus
+            && let Some(widget @ (DeskWidget::Remove | DeskWidget::Mode(_) | DeskWidget::Override)) =
+                self.focus
         {
             let on = match widget {
                 DeskWidget::Remove => self.active.remove,

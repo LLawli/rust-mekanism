@@ -455,7 +455,8 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
         return ControlFlow::Continue(());
     }
     let block = game.native_block(hit.pos);
-    if !is_mekanism_tile(&block) {
+    // A Security Desk entra aqui só para abrir a tela (e girar com o Configurator em `ROTATE`): ela não tem configuração de lados nem a capability do cartão.
+    if !is_mekanism_tile(&block) && !crate::game::mekanism_desk::is_desk(&block) {
         return ControlFlow::Continue(());
     }
     // `use_hand` zera o `use_failed` ao começar; aqui ele ainda traz o do clique anterior.
@@ -466,7 +467,8 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
     let held = match &stack {
         Some(stack) => match &*stack.item {
             rules::CONFIGURATOR_ITEM => rules::HeldItem::Configurator(mode_of(game, stack)),
-            rules::CONFIGURATION_CARD_ITEM => rules::HeldItem::Card,
+            // A Security Desk não tem a capability do cartão (`Capabilities.CONFIG_CARD`): `openGui` não passa a vez a ele, e a tela abre.
+            rules::CONFIGURATION_CARD_ITEM if !crate::game::mekanism_desk::is_desk(&block) => rules::HeldItem::Card,
             _ => rules::HeldItem::Other,
         },
         None if game.offhand.is_some() => rules::HeldItem::Other,
@@ -486,7 +488,8 @@ pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::H
             Some(stack) if card_use_on(game, &stack, hit.pos) => used(game, hit.pos, Some(stack)),
             _ => ControlFlow::Break(Ok(false)),
         },
-        rules::TileUse::Menu if cube::is_cube(&block) => {
+        // O cubo e a Security Desk têm o gabarito de um bloco sem menu (`lodestone`): quem abre a tela é o mod.
+        rules::TileUse::Menu if cube::is_cube(&block) || crate::game::mekanism_desk::is_desk(&block) => {
             game.open_menu(hit.pos);
             game.trigger_default_block_use(hit.pos);
             ControlFlow::Break(Ok(true))

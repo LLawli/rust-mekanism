@@ -2193,7 +2193,7 @@ pub(in crate::game) fn set_temperature_unit(ns: &'static str, unit: temperature:
 }
 
 /// O `ARGB` de uma cor do Java na ordem dos vértices do HUD (`hud::rgba`).
-fn hud_color(argb: u32) -> u32 {
+pub(in crate::game) fn hud_color(argb: u32) -> u32 {
     let [a, r, g, b] = argb.to_be_bytes();
     horizon_client::hud::rgba(r, g, b, a)
 }
@@ -2819,12 +2819,12 @@ pub(in crate::game) fn security_sync(game: &Game<'_>, entity: &ModBlockEntity) -
 }
 
 /// O UUID de quem vê o tooltip: o jogador deste cliente (o perfil da sessão remota, ou o do mundo local).
-fn viewer_uuid(game: &Game<'_>) -> Option<u128> {
+pub(in crate::game) fn viewer_uuid(game: &Game<'_>) -> Option<u128> {
     game.remote.as_ref().map(|remote| remote.profile()).or_else(|| game.level.player_uuid.map(horizon_client::lan::playerdata::ints_uuid))
 }
 
 /// `OwnerDisplay.getOwnerName` no cliente: o nome do jogador deste cliente se ele é o dono, o de um jogador que o cliente conhece, ou `<uuid>`.
-fn owner_name(game: &Game<'_>, owner: u128, viewer: Option<u128>) -> String {
+pub(in crate::game) fn owner_name(game: &Game<'_>, owner: u128, viewer: Option<u128>) -> String {
     // `MekanismClient.clientUUIDMap` primeiro (o que o `PacketSyncSecurity` trouxe); o nome achado de outro jeito entra nele.
     if let Some(name) = SECURITY_CLIENT.with_borrow(|client| client.name(owner).map(str::to_owned)) {
         return name;
@@ -3411,6 +3411,34 @@ fn security_item_apply(game: &Game<'_>, stack: &mut ItemStack, before: &desk::It
     if let Err(error) = result {
         eprintln!("machinery_basis: o modo do item na Security Desk não mudou: {error}");
     }
+}
+
+/// `InventoryContainerSlot.mayPlace` dos dois slots da mesa aberta (`SecurityInventorySlot.canInsert` com `MANUAL`): o de cima aceita o item do dono da mesa, o de baixo o
+/// item sem dono, e os dois só o item que pode ter dono (`ownable`, que o mod sabe). O hook do Horizon roda dentro do menu, sem o jogo: a regra leva o dono da mesa
+/// de agora e lê o dono do item da pilha do clique.
+pub(in crate::game) fn security_desk_slot_rules(game: &Game<'_>, pos: [i32; 3], rules_owner: &'static str, ownable: fn(&str) -> bool) {
+    let Some(horizon_client::containers::BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return;
+    };
+    let desk_owner = security_read(entity).owner;
+    machinery_basis_core::slot_rules::set(
+        rules_owner,
+        &entity.id,
+        Rc::new(move |slot, item, stack| {
+            let which = match slot {
+                0 => desk::DeskSlot::Unlock,
+                1 => desk::DeskSlot::Lock,
+                _ => return false,
+            };
+            let owner = stack
+                .downcast_ref::<ItemStack>()
+                .and_then(|stack| stack.data()?.other(sec::OWNER_COMPONENT).map(security_json))
+                .as_ref()
+                .and_then(sec::owner_of);
+            let item = desk::ItemSecurity { ownable: ownable(item), securable: ownable(item), owner, mode: None };
+            desk::can_insert(which, &item, machinery_basis_core::containers::AutomationType::Manual, desk_owner)
+        }),
+    );
 }
 
 /// `TileEntitySecurityDesk.onUpdateServer`: com dono e frequência, o slot de cima destrava o item do dono e o de baixo trava o item com o dono e o modo da
