@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- O Fluid Tank no modo ativo empurra o fluido para o cano mecânico ou a máquina de baixo, e o Chemical Tank ejeta e despeja para o tubo pressurizado ou a máquina vizinha, não só para outro tanque (Fase 6, frente `tanques`, 8.ª rodada; `ResourceUtils.emit`, a capability do transmissor por lado).
 - O tooltip da barra do Chemical Tank mostra o que o químico tem de especial (Fase 6, frente `tanques`, 7.ª rodada; `ChemicalStack.getTooltipLines`): o combustível (hidrogênio, eteno) com `Maximum Burn`, `Energy Density` e `Maximum Output`, o radioativo com `Radioactivity` e, no plutônio e no polônio, a linha do barril de rejeito, e os refrigerantes com `Coolant Efficiency`, `Thermal Enthalpy` e, no quente, `Temperature`, nas unidades da configuração local. Com os tooltips avançados (F3 + H) a última linha é o nome de registro, também no medidor do Fluid Tank.
 - O tanque criativo cheio de leite (`minecraft:milk`) nas abas criativas, depois do de `nutritional_paste`, como no cliente do original (o leite ainda não tem textura dentro do tanque).
 - O título e o rótulo `Inventory` das telas de máquina rolam quando não cabem (um nome longo dado na bigorna), cortados na área deles, como no original.
@@ -39,6 +40,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - O componente de segurança dos blocos (Fase 5, frente `seguranca`, decisões 250 e 251): quem põe uma máquina, o Heat Generator ou um cubo de energia vira o dono; o dono e o modo vão no item solto (`mekanism:owner` e `mekanism:security`) e voltam ao bloco posto; o tooltip ganha `Owner:` e `Security:` depois do nome (com Left Shift); quem não tem acesso a um bloco `PRIVATE` (ou `TRUSTED`, sem a Security Desk) não abre a tela, e recebe `[Mekanism] You don't have access.`, nem o quebra (em nenhum modo de jogo). Falta a Security Desk (a lista de confiança).
 
 ### Fixed
+- O bloco de máquina destruído por comando (`setblock ... destroy`, `fill ... destroy`) ou levado pela água solta o item com o que guardava (o fluido, o químico, a energia, os slots, os lados, o dono), como na quebra pelo jogador; antes o item saía vazio e os slots caíam no chão (Fase 6, frente `tanques`, 8.ª rodada). Numa explosão, os slots de um tanque não caem mais no chão além de irem no item.
 - Um Fluid Tank que recebe `active_state` por comando de dados (ou por um NBT de estrutura) não acende mais o vidro: como no original, só o Configurator agachado (`setActive`) troca o estado do bloco, e o `update_delay` do tile agora é salvo.
 - Um Chemical Tank comum com um químico que ele recusa (um radioativo posto por comando) mostra capacidade 0 e a barra cheia, como no original (`capacityAsLong` do recurso).
 - O shift-clique nas telas do Fluid Tank e do Chemical Tank segue o `quickMoveStack` do Mekanism: do inventário o item vai para o slot do tanque que o aceita (empilhando primeiro), depois para a armadura e para a outra parte do inventário; dos slots do tanque vai para a armadura, a barra de atalhos e o inventário; a armadura e a mão da barra lateral também respondem.

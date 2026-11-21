@@ -43,7 +43,7 @@ fn face_of(direction: Direction) -> Face {
     }
 }
 
-fn dimension_of(dimension: LevelDimension) -> &'static str {
+pub(in crate::game) fn dimension_of(dimension: LevelDimension) -> &'static str {
     match dimension {
         LevelDimension::Overworld => "minecraft:overworld",
         LevelDimension::Nether => "minecraft:the_nether",

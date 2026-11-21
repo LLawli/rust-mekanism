@@ -318,6 +318,7 @@ pub(in crate::game) fn block_entity(block: &str, entity: &mut Option<(String, Co
 }
 
 pub(in crate::game) fn ticks(block: &str, ticks: &mut bool) {
+    basis::level_drop_register(level_drop_owner());
     crate::game::mekanism_cube::ticks(block, ticks);
     crate::game::mekanism_tank::ticks(block, ticks);
     crate::game::mekanism_chemical_tank::ticks(block, ticks);
@@ -2658,7 +2659,18 @@ pub(in crate::game) fn destroy_block(game: &mut Game<'_>, pos: [i32; 3], cancele
 pub(in crate::game) fn explosion_detonate(game: &mut Game<'_>, blocks: &[[i32; 3]]) {
     let dimension = game.native_dimension();
     for &pos in blocks {
-        if machine_of(&game.native_block(pos)).is_none() {
+        let block = game.native_block(pos);
+        // Os tanques: o conteúdo, os dois slots e o modo vão para o item (o dono, o nome e os lados saem do tile, que ainda existe quando o loot roda). Sem isto o
+        // Horizon soltava os slots no chão ao tirar o tile, e o item os levava também.
+        if crate::game::mekanism_tank::is_tank(&block) {
+            crate::game::mekanism_tank::destroying(game, pos);
+            continue;
+        }
+        if crate::game::mekanism_chemical_tank::is_tank(&block) {
+            crate::game::mekanism_chemical_tank::destroying(game, pos);
+            continue;
+        }
+        if machine_of(&block).is_none() {
             continue;
         }
         destroy_content(game, pos);
@@ -3182,6 +3194,51 @@ pub(in crate::game) fn chemical_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&
         None => {
             entity.nbt.remove(&key);
         }
+    }
+}
+
+/// Os tiles do Mekanism que o nível destrói (`Level.destroyBlock(pos, true)`), para a `machinery_basis` passar o item deles pelo loot com o que o tile guardava.
+pub(in crate::game) fn level_drop_owner() -> basis::LevelDropOwner {
+    basis::LevelDropOwner { name: "mekanism", is_ours: level_drop_ours, keeps_items: level_drop_keeps_items, leaving: level_leaving }
+}
+
+fn level_drop_ours(id: &str) -> bool {
+    is_machine_id(id) || crate::game::mekanism_desk::is_desk(id)
+}
+
+/// Os tiles cujos slots vão no item (os mesmos que a quebra pelo jogador esvazia): a mesa, os tanques e as máquinas.
+fn level_drop_keeps_items(id: &str) -> bool {
+    crate::game::mekanism_desk::is_desk(id) || is_any_tank(id) || machine_of(id).is_some()
+}
+
+/// O que `destroy_block` guarda para o item, para o tile que já saiu do mundo: `entity` é a cópia tirada antes de o nível o esvaziar.
+fn level_leaving(game: &mut Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    let block = entity.id.to_string();
+    if crate::game::mekanism_desk::is_desk(&block) {
+        crate::game::mekanism_desk::leaving(game, pos, entity);
+        return;
+    }
+    basis::security_leaving(entity, pos);
+    basis::name_leaving(entity, pos);
+    if crate::game::mekanism_tank::is_tank(&block) {
+        crate::game::mekanism_tank::leaving(game, pos, entity);
+        return;
+    }
+    basis::side_leaving(entity, pos, &side_spec);
+    if crate::game::mekanism_chemical_tank::is_tank(&block) {
+        crate::game::mekanism_chemical_tank::leaving(game, pos, entity);
+        return;
+    }
+    basis::energy_leaving(entity, pos);
+    if machine_of(&block).is_none() {
+        return;
+    }
+    with_content(&block, |spec| basis::content_leaving(game, entity, pos, spec));
+    // `TileEntityRecipeMachine.preRemoveSideEffects`: a experiência guardada sai com o tile, como na quebra pelo jogador e na explosão.
+    let key = (game.native_dimension(), pos);
+    let drops = LIVE_MACHINES.with_borrow(|machines| machines.get(&key).map(|live| live.machine.recipes_to_award_on_removal().drops));
+    if let Some(drops) = drops {
+        pop_experience(game, center_of(pos), &drops);
     }
 }
 

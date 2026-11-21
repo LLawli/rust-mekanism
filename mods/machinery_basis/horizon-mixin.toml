@@ -780,6 +780,21 @@ bindings = [
   { name = "level", ty = "&GameLevel<'_>", value = "self" },
 ]
 
+# O bloco com tile destruído pelo nível (`Level.destroyBlock(pos, true)`: `setblock ... destroy`, `fill ... destroy`, a água que leva o bloco). O original rola a
+# tabela de loot com o tile (`Block.dropResources(state, level, pos, blockEntity, ..)`), e o `copy_components` leva o conteúdo para o item; o Horizon rola a tabela
+# desse caminho dentro do nível, sem o `native_loot_drops` dos mods. O HEAD guarda a cópia do tile enquanto ele existe e tira os slots que vão no item; o
+# `flush_signals` (o fim da operação) passa os itens do bloco pelo `native_block_drops`. Alvo cru, H284.
+[[injection]]
+id = "level_drop"
+target = "horizon_client::game::spill::GameLevel<'_>::drop_resources_now"
+kind = "HEAD"
+helper = "level_drop.rs"
+bindings = [
+  { name = "level", ty = "&mut GameLevel<'_>", value = "&mut *self" },
+  { name = "pos", ty = "BlockPos", value = "pos" },
+  { name = "state", ty = "BlockStateId", value = "state" },
+]
+
 # O fim de cada operação no mundo (`with_level` chama `flush_spill` por último): onde o sinal dos vizinhos avisados é lido, com o mundo como
 # ele ficou depois da operação que avisou. O Java lê dentro do aviso (`level.hasNeighborSignal(pos)`); a diferença só aparece se a mesma
 # operação avisa um bloco e depois muda o sinal dele sem avisar (nenhuma do jogo ou dos mods daqui faz isso). Também onde saem o principal e os apoios que

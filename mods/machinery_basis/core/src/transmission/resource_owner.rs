@@ -1018,6 +1018,35 @@ impl<R: Resource> ResourceTransmitters<R> {
         )
     }
 
+    /// O contêiner que a capability do transmissor em `pos` entrega a quem quer inserir pelo lado `side` dele (o `ResourceHandlerManager` de
+    /// `TileEntityResourceTransmitter`, `:38-58`): nenhum quando o lado é `NONE` ou o transmissor está ativado por redstone (`getContainers`), e nenhum para inserir
+    /// quando o tipo visto do lado não aceita (`canInsert(side)`, um lado `PUSH`). Quem empurra (o `ResourceUtils.emit` de um tanque) insere nele dentro da própria
+    /// transação e chama [`Self::flush_external`] depois do commit.
+    pub fn capability_insert_container<W: ResourceOwnerWorld<R>>(
+        &self,
+        world: &W,
+        pos: BlockPos,
+        side: Face,
+    ) -> Option<crate::resource_tank::ResourceTank<R>> {
+        let id = self.st.live(pos)?;
+        let tx = self.st.tx(id);
+        if tx.get_connection_type_raw(side) == ConnectionType::None
+            || tx.is_redstone_activated(&View {
+                st: &self.st,
+                world,
+            })
+            || !tx.can_insert(Some(side))
+        {
+            return None;
+        }
+        self.container_at(pos)
+    }
+
+    /// Os avisos que os contêineres das redes deixaram num commit que outro abriu (o de quem empurrou por [`Self::capability_insert_container`]).
+    pub fn flush_external(&mut self) {
+        self.st.family.flush_contents();
+    }
+
     /// `getContainer().insert(resource, amount, transaction, EXTERNAL)`: o que o vizinho empurrou para o transmissor.
     pub fn insert_external(&mut self, pos: BlockPos, resource: &R, amount: i32) -> i32 {
         let Some(container) = self.container_at(pos) else {

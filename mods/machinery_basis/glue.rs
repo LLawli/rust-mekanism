@@ -2807,6 +2807,12 @@ pub(in crate::game) fn name_destroying(game: &Game<'_>, pos: [i32; 3], is_ours: 
     BROKEN_NAME.with_borrow_mut(|slot| *slot = Some((pos, name)));
 }
 
+/// [`name_destroying`] para o tile que já saiu do mundo (o bloco destruído pelo nível, [`level_drop_flush`]).
+pub(in crate::game) fn name_leaving(entity: &ModBlockEntity, pos: [i32; 3]) {
+    let name = name_of_tag(entity.nbt.get(&JavaString::from(CUSTOM_NAME)));
+    BROKEN_NAME.with_borrow_mut(|slot| *slot = Some((pos, name)));
+}
+
 /// `copy_name` da tabela de loot: o item solto leva o componente de nome do tile, inteiro. Um tile que ainda está no mundo dá o nome dele;
 /// o que foi quebrado, o que [`name_destroying`] guardou.
 pub(in crate::game) fn name_loot(
@@ -2826,7 +2832,8 @@ pub(in crate::game) fn name_loot(
         Some((at, _)) if *at == pos => slot.take().and_then(|(_, name)| name),
         _ => None,
     });
-    let Some(name) = saved_name(game, pos, is_ours).or(kept) else {
+    let live = if level_drop_at(pos).is_some() { None } else { saved_name(game, pos, is_ours) };
+    let Some(name) = live.or(kept) else {
         return;
     };
     for stack in drops.iter_mut().filter(|stack| is_ours(&stack.item)) {
@@ -2961,6 +2968,11 @@ pub(in crate::game) fn security_destroying(game: &Game<'_>, pos: [i32; 3], is_ou
     }
 }
 
+/// [`security_destroying`] para o tile que já saiu do mundo (o bloco destruído pelo nível, [`level_drop_flush`]).
+pub(in crate::game) fn security_leaving(entity: &ModBlockEntity, pos: [i32; 3]) {
+    BROKEN_SECURITY.with_borrow_mut(|slot| *slot = Some((pos, security_read(entity))));
+}
+
 /// `copy_components` de `owner` e `security`: o item solto leva o dono e o modo (o modo só se não é `PUBLIC`, o padrão do item).
 pub(in crate::game) fn security_loot(
     game: &Game<'_>,
@@ -2979,7 +2991,7 @@ pub(in crate::game) fn security_loot(
         _ => None,
     });
     let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(horizon_client::containers::BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(security_read(entity)),
+        Some(horizon_client::containers::BlockEntity::Mod(entity)) if is_ours(&entity.id) && level_drop_at(pos).is_none() => Some(security_read(entity)),
         _ => None,
     };
     let Some(state) = live.or(kept) else {
@@ -4508,6 +4520,107 @@ pub(in crate::game) fn trace(json: &str) {
 
 type PowerKey = (&'static str, [i32; 3]);
 
+// ---------------------------------------------------------------------------------------------------------------------------
+// O bloco com tile destruído pelo nível (`Level.destroyBlock(pos, true)`: `setblock ... destroy`, `fill ... destroy`, a água que leva o bloco, o pistão).
+//
+// O original rola a tabela de loot com o tile (`Block.dropResources(state, level, pos, blockEntity, ..)`, `Level.java`), e o `copy_components` dela leva para o item
+// o que o tile guarda, como na quebra pelo jogador. O Horizon rola a tabela desse caminho dentro do nível (`GameLevel::drop_resources_now`, `spill.rs`), sem passar pelo
+// `native_loot_drops` dos mods, e o item saía sem nada. A injeção HEAD nesse ponto guarda uma cópia do tile enquanto ele existe; o fim da operação
+// (`Game::flush_spill`, onde os itens ainda estão na fila) passa os itens do bloco pelo mesmo `native_block_drops` da quebra pelo jogador.
+
+/// Um tile que o nível destruiu e cujos itens ainda estão na fila do `flush_spill`.
+struct LevelDrop {
+    dimension: &'static str,
+    pos: [i32; 3],
+    state: BlockStateId,
+    facing: Face,
+    entity: ModBlockEntity,
+}
+
+/// Um mod diz quais tiles são dele, quais levam os slots no item (o original não os solta no chão) e o que guardar para o item de um tile que já saiu.
+#[derive(Clone, Copy)]
+pub(in crate::game) struct LevelDropOwner {
+    pub name: &'static str,
+    pub is_ours: fn(&str) -> bool,
+    pub keeps_items: fn(&str) -> bool,
+    pub leaving: fn(&mut Game<'_>, [i32; 3], &ModBlockEntity),
+}
+
+static LEVEL_DROP_OWNERS: Mutex<Vec<LevelDropOwner>> = Mutex::new(Vec::new());
+
+thread_local! {
+    /// Os tiles que a operação em andamento destruiu. Quem anota e quem lê são a mesma thread: o `flush_spill` é o último passo do `with_level` que destruiu.
+    static LEVEL_DROPS: std::cell::RefCell<Vec<LevelDrop>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// O bloco destruído pelo nível cujos itens estão passando pelo loot dos mods, e a frente do estado que saiu.
+    static LEVEL_DROP_AT: std::cell::Cell<Option<([i32; 3], Face)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Pode ser dito mais de uma vez.
+pub(in crate::game) fn level_drop_register(owner: LevelDropOwner) {
+    let mut owners = LEVEL_DROP_OWNERS.lock().unwrap_or_else(|e| e.into_inner());
+    if !owners.iter().any(|known| known.name == owner.name) {
+        owners.push(owner);
+    }
+}
+
+fn level_drop_owner(id: &str) -> Option<LevelDropOwner> {
+    LEVEL_DROP_OWNERS.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|owner| (owner.is_ours)(id)).copied()
+}
+
+/// A frente do estado que saiu, se `pos` é o bloco destruído pelo nível cujo loot está rodando: o tile que estiver em `pos` agora é outro.
+fn level_drop_at(pos: [i32; 3]) -> Option<Face> {
+    LEVEL_DROP_AT.get().filter(|(at, _)| *at == pos).map(|(_, facing)| facing)
+}
+
+/// O começo de `GameLevel::drop_resources_now`: o tile ainda está no mundo. Guarda a cópia dele e tira os slots que vão no item, para o Horizon não os soltar no chão
+/// quando o tile sair (`remove_entity`, `PreRemove::Contents`).
+pub(in crate::game) fn level_drop_note(level: &mut GameLevel<'_>, pos: BlockPos, state: BlockStateId) {
+    use horizon_client::containers::BlockEntity;
+    let Some(BlockEntity::Mod(entity)) = level.world.block_entities.get_mut(&(pos.x, pos.y, pos.z)) else {
+        return;
+    };
+    let Some(owner) = level_drop_owner(&entity.id) else {
+        return;
+    };
+    let copy = ModBlockEntity::clone(entity);
+    if (owner.keeps_items)(&entity.id) {
+        for slot in entity.items.iter_mut() {
+            *slot = None;
+        }
+    }
+    let facing = front_of(level.registry.state(state).and_then(|state| state.properties.get("facing")).map(String::as_str));
+    let dimension = crate::game::machinery_liquid::dimension_of(level.dimension);
+    LEVEL_DROPS.with_borrow_mut(|drops| drops.push(LevelDrop { dimension, pos: [pos.x, pos.y, pos.z], state, facing, entity: copy }));
+}
+
+/// O fim da operação: os itens que cada bloco destruído pelo nível soltou passam pelo `native_loot_drops` dos mods, com o que o tile guardava.
+pub(in crate::game) fn level_drop_flush(game: &mut Game<'_>) {
+    let pending = LEVEL_DROPS.with_borrow_mut(std::mem::take);
+    if pending.is_empty() {
+        return;
+    }
+    let here = game.native_dimension();
+    for drop in pending {
+        let Some(owner) = level_drop_owner(&drop.entity.id).filter(|_| drop.dimension == here) else {
+            continue;
+        };
+        // Os itens do bloco: os da tabela de loot dele, que nasceram dentro dele. Saem da fila enquanto os mods falam (o que eles fizerem no mundo acaba noutro
+        // `flush_spill`) e voltam para os mesmos lugares.
+        let spawns = std::mem::take(&mut game.spill.spawns);
+        let (mine, rest) = machinery_basis_core::level_drop::split(spawns, drop.pos, |spawn| spawn.pos, |spawn| (owner.is_ours)(&spawn.stack.item));
+        game.spill.spawns = rest;
+        if mine.is_empty() {
+            continue;
+        }
+        let mut drops: Vec<ItemStack> = mine.iter().map(|spawn| spawn.stack.clone()).collect();
+        (owner.leaving)(game, drop.pos, &drop.entity);
+        LEVEL_DROP_AT.set(Some((drop.pos, drop.facing)));
+        game.native_block_drops(drop.pos, drop.state, None, None, None, &mut drops);
+        LEVEL_DROP_AT.set(None);
+        game.spill.spawns.extend(machinery_basis_core::level_drop::retell(mine, drops, |spawn, stack| spawn.stack = stack));
+    }
+}
+
 /// Quem o jogo avisou desde a última leitura, na ordem em que avisou. Quem avisa e quem lê podem ser threads diferentes (o servidor de
 /// um jogador só), por isso não é `thread_local!`.
 static NOTIFIED: Mutex<Vec<PowerKey>> = Mutex::new(Vec::new());
@@ -4555,6 +4668,8 @@ pub(in crate::game) fn neighbor_changed(
 /// mundo (`Game::flush_spill`, o último passo de `with_level`) e antes de o dono ler o `redstone`, então o valor é o do mundo no fim da
 /// operação que avisou, e não o de um tick depois. Um aviso de outra dimensão espera a vez dela.
 pub(in crate::game) fn flush_neighbor_signals(game: &mut Game<'_>) {
+    // Antes de tudo: o que vem depois abre o nível de novo, e o `flush_spill` de dentro soltaria os itens sem os componentes.
+    level_drop_flush(game);
     crate::game::machinery_liquid::flush(game);
     transmitters_flush_operation(game);
     bounding_flush(game);
@@ -5065,6 +5180,12 @@ pub(in crate::game) fn side_destroying(game: &Game<'_>, pos: [i32; 3], spec_of: 
     BROKEN_SIDES.with_borrow_mut(|slot| *slot = Some((pos, nbt)));
 }
 
+/// [`side_destroying`] para o tile que já saiu do mundo (o bloco destruído pelo nível, [`level_drop_flush`]).
+pub(in crate::game) fn side_leaving(entity: &ModBlockEntity, pos: [i32; 3], spec_of: &dyn Fn(&str) -> Option<SideSpec>) {
+    let nbt = spec_of(&entity.id).map(|_| read_side_nbt(entity));
+    BROKEN_SIDES.with_borrow_mut(|slot| *slot = Some((pos, nbt)));
+}
+
 /// `copy_components` da tabela de loot: o item solto leva `side_config` e `ejector` do tile, os que não são o padrão. Um tile ainda
 /// no mundo dá o que ele tem; o que foi quebrado, o que [`side_destroying`] guardou.
 pub(in crate::game) fn side_loot(
@@ -5085,14 +5206,16 @@ pub(in crate::game) fn side_loot(
         Some((at, _)) if *at == pos => slot.take().and_then(|(_, nbt)| nbt),
         _ => None,
     });
+    // O bloco destruído pelo nível já saiu do mundo: o que está em `pos` agora é outro, e a frente é a do estado que saiu.
+    let level_drop = level_drop_at(pos);
     let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(BlockEntity::Mod(entity)) if spec_of(&entity.id).is_some() => Some(read_side_nbt(entity)),
+        Some(BlockEntity::Mod(entity)) if spec_of(&entity.id).is_some() && level_drop.is_none() => Some(read_side_nbt(entity)),
         _ => None,
     };
     let Some(nbt) = live.or(kept) else {
         return;
     };
-    let facing = front(game, pos);
+    let facing = level_drop.unwrap_or_else(|| front(game, pos));
     for stack in drops.iter_mut() {
         let Some(side) = spec_of(&stack.item) else {
             continue;
@@ -5179,6 +5302,11 @@ pub(in crate::game) fn energy_destroying(game: &Game<'_>, pos: [i32; 3], is_ours
     BROKEN_ENERGY.with_borrow_mut(|slot| *slot = Some((pos, energy)));
 }
 
+/// [`energy_destroying`] para o tile que já saiu do mundo (o bloco destruído pelo nível, [`level_drop_flush`]).
+pub(in crate::game) fn energy_leaving(entity: &ModBlockEntity, pos: [i32; 3]) {
+    BROKEN_ENERGY.with_borrow_mut(|slot| *slot = Some((pos, Some(stored_energy_long(entity)))));
+}
+
 /// `copy_components` da tabela de loot: o item solto leva a energia do tile (`collectImplicitComponents` -> `copyFromTile` -> `attachedCopyOf`, sem limitar à capacidade do item). Um tile
 /// ainda no mundo dá a que ele tem; o que foi quebrado, a que [`energy_destroying`] guardou.
 pub(in crate::game) fn energy_loot(
@@ -5201,7 +5329,7 @@ pub(in crate::game) fn energy_loot(
         _ => None,
     });
     let live = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) => Some(stored_energy_long(entity)),
+        Some(BlockEntity::Mod(entity)) if is_ours(&entity.id) && level_drop_at(pos).is_none() => Some(stored_energy_long(entity)),
         _ => None,
     };
     let Some(energy) = live.or(kept) else {
@@ -5470,6 +5598,15 @@ pub(in crate::game) fn content_destroying(game: &mut Game<'_>, pos: [i32; 3], sp
         for slot in entity.items.iter_mut() {
             *slot = None;
         }
+    }
+}
+
+/// [`content_destroying`] para o tile que já saiu do mundo (o bloco destruído pelo nível, [`level_drop_flush`]): `entity` é a cópia tirada antes de o nível o
+/// esvaziar.
+pub(in crate::game) fn content_leaving(game: &Game<'_>, entity: &ModBlockEntity, pos: [i32; 3], spec: &ContentSpec<'_>) {
+    if (spec.is_ours)(&entity.id) {
+        let components = content_components(game, entity, pos, spec);
+        BROKEN_CONTENT.with_borrow_mut(|broken| broken.insert(pos, components));
     }
 }
 

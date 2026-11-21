@@ -615,6 +615,85 @@ fn handlers_flush<F: Family>(game: &mut Game<'_>, dimension: &'static str) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// A capability de fluido ou de químico de um bloco, para um vizinho que empurra (`ResourceUtils.emit` de um tanque, o ejetor): o contêiner do próprio transmissor
+// (`TileEntityResourceTransmitter`, o `ResourceHandlerManager`), ou o espelho do contêiner de um vizinho com tanque. É a parte do H2 que a decisão 137 deixou para o
+// primeiro bloco que empurra: quem empurra é código do mod, que chega ao dono dos transmissores por aqui, sem passar pela capability de fluido do Horizon.
+
+/// Onde um vizinho que empurra insere.
+pub(in crate::game) enum PushTarget<R: Resource> {
+    /// O contêiner da capability de um transmissor (o da rede, ou o buffer dele sem rede).
+    Transmitter(machinery_basis_core::resource_tank::ResourceTank<R>),
+    /// O espelho do contêiner de um vizinho com tanque, com as regras dele.
+    Host(Rc<HostHandler<R>>),
+}
+
+impl<R: Resource> PushTarget<R> {
+    /// `ResourceHandler.insert(resource, amount, transaction)`, de fora (`AutomationType.EXTERNAL`).
+    pub(in crate::game) fn insert(&self, resource: &R, amount: i32, transaction: &machinery_basis_core::transaction::Transaction) -> i32 {
+        use machinery_basis_core::distribution::ResourceInsert;
+        match self {
+            Self::Transmitter(container) => container.insert(resource, amount, transaction, machinery_basis_core::containers::AutomationType::External),
+            Self::Host(handler) => handler.insert(resource, amount, transaction),
+        }
+    }
+}
+
+/// `getCapability(pos, side)` para inserir: `None` se o bloco em `pos` não tem a capability pelo lado `side` dele.
+fn push_target<F: Family>(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<PushTarget<F::R>> {
+    let transmitter = with_owner::<F, _>(dimension, |owner| {
+        // Não é um transmissor desta família.
+        owner.container_at(sim_pos(pos))?;
+        let world = GameWorld::<F>::new(game, dimension);
+        Some(owner.capability_insert_container(&world, sim_pos(pos), side))
+    })
+    .flatten();
+    if let Some(container) = transmitter {
+        // Um transmissor sem a capability nesse lado (o lado `NONE`, o `PUSH`, o redstone) não tem outra.
+        return container.map(PushTarget::Transmitter);
+    }
+    let snapshot = snapshot::<F>(game, dimension, pos, side)?;
+    Some(PushTarget::Host(Rc::new(HostHandler::new(snapshot))))
+}
+
+/// Depois do commit de quem empurrou: a rede processa o que o contêiner dela avisou, e o espelho de um vizinho grava o conteúdo novo no jogo.
+fn push_flush<F: Family>(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], target: &PushTarget<F::R>) {
+    match target {
+        PushTarget::Transmitter(_) => {
+            with_owner::<F, _>(dimension, |owner| owner.flush_external());
+        }
+        PushTarget::Host(handler) => {
+            let Some(contents) = handler.changed() else {
+                return;
+            };
+            let block = game.native_block(pos);
+            if !F::vanilla_write(game, dimension, &block, pos, &contents) {
+                let write = lock(F::shared()).neighbors.iter().find(|known| known.block == &*block).map(|known| known.write);
+                if let Some(write) = write {
+                    write(game, dimension, pos, contents);
+                }
+            }
+            handler.settle();
+        }
+    }
+}
+
+pub(in crate::game) fn fluid_push_target(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<PushTarget<FluidResource>> {
+    push_target::<Pipes>(game, dimension, pos, side)
+}
+
+pub(in crate::game) fn fluid_push_flush(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], target: &PushTarget<FluidResource>) {
+    push_flush::<Pipes>(game, dimension, pos, target);
+}
+
+pub(in crate::game) fn chemical_push_target(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], side: Face) -> Option<PushTarget<ChemicalResource>> {
+    push_target::<Tubes>(game, dimension, pos, side)
+}
+
+pub(in crate::game) fn chemical_push_flush(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3], target: &PushTarget<ChemicalResource>) {
+    push_flush::<Tubes>(game, dimension, pos, target);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // O jogo visto pelo dono durante um evento.
 
 struct GameWorld<'a, 'g, F: Family> {

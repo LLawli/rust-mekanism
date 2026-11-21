@@ -307,6 +307,76 @@ fn the_configurator_cycles_the_arm_and_none_takes_it_away_from_both_pipes() {
     assert!(sim.view(0).connected[Face::East as usize]);
 }
 
+/// A capability do próprio cano para um vizinho que empurra (`TileEntityResourceTransmitter.java:38-58`): o lado `NONE` não tem contêiner, o lado `PUSH` não aceita
+/// inserção, e o que entra por um lado que aceita vai para o contêiner da rede dentro da transação de quem empurrou.
+#[test]
+fn the_capability_of_a_pipe_gives_its_container_only_through_a_side_that_accepts() {
+    use machinery_basis_core::containers::AutomationType;
+    use machinery_basis_core::transaction::Transaction;
+    let mut sim = Sim::new();
+    // O vizinho que empurra à esquerda (um tanque: o cano liga nele), dois canos.
+    sim.place_tank(-1, lava_tank(0));
+    line(&mut sim, 2);
+    for _ in 0..3 {
+        sim.tick();
+    }
+    let container = sim
+        .owner
+        .capability_insert_container(&sim.level, Sim::pos(0), Face::West)
+        .expect("o lado normal entrega o contêiner");
+    // Quem empurra abre a transação, simula e desfaz: nada fica.
+    let transaction = Transaction::open_root();
+    assert_eq!(
+        container.insert(&water(), 300, &transaction, AutomationType::External),
+        300
+    );
+    drop(transaction);
+    sim.owner.flush_external();
+    assert_eq!(sim.network_amount(0), 0);
+    let transaction = Transaction::open_root();
+    assert_eq!(
+        container.insert(&water(), 300, &transaction, AutomationType::External),
+        300
+    );
+    transaction.commit();
+    sim.owner.flush_external();
+    assert_eq!(sim.network_amount(0), 300);
+    for (kind, given) in [
+        (ConnectionType::None, false),
+        (ConnectionType::Push, false),
+        (ConnectionType::Pull, true),
+        (ConnectionType::Normal, true),
+    ] {
+        sim.owner
+            .set_mode(&mut sim.level, Sim::pos(0), Face::West, kind);
+        assert_eq!(
+            sim.owner
+                .capability_insert_container(&sim.level, Sim::pos(0), Face::West)
+                .is_some(),
+            given,
+            "{kind:?}"
+        );
+        // O lado do outro cano segue como estava (`NORMAL`, uma ligação de transmissor).
+        assert!(
+            sim.owner
+                .capability_insert_container(&sim.level, Sim::pos(0), Face::East)
+                .is_some()
+        );
+    }
+    // O lado sem ligação é visto como `NONE` (`getConnectionType`): não aceita.
+    assert!(
+        sim.owner
+            .capability_insert_container(&sim.level, Sim::pos(0), Face::Up)
+            .is_none()
+    );
+    // Onde não há cano não há capability.
+    assert!(
+        sim.owner
+            .capability_insert_container(&sim.level, Sim::pos(7), Face::West)
+            .is_none()
+    );
+}
+
 #[test]
 fn a_pulling_pipe_carries_lava_from_a_source_to_the_generator_tank_and_stops_when_it_is_full() {
     let mut sim = Sim::new();

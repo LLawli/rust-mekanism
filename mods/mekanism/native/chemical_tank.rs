@@ -435,11 +435,58 @@ impl ResourceInsert<ChemicalResource> for Receiver {
     }
 }
 
-struct Around([Option<Rc<dyn ResourceInsert<ChemicalResource>>>; 6]);
+type Inserter = Rc<dyn ResourceInsert<ChemicalResource>>;
 
-impl ChemicalNeighbours for Around {
-    fn handler(&self, side: Face) -> Option<Rc<dyn ResourceInsert<ChemicalResource>>> {
-        self.0[side as usize].clone()
+/// A capability de químico de cada vizinho, pela face dele que olha para o tanque (`BlockCapabilityCache`), pedida só quando o tile a usa: outro Chemical Tank (o
+/// objeto vivo dele), um tubo pressurizado (o contêiner da rede dele) ou uma máquina com tanque de químico, pela capability que a `machinery_basis` dá a quem empurra.
+struct Around<'a, 'g> {
+    game: RefCell<&'a mut Game<'g>>,
+    dimension: &'static str,
+    pos: [i32; 3],
+    now: i64,
+    /// O que cada lado já respondeu neste tick: o espelho de um vizinho só vale enquanto ninguém o refaz.
+    made: RefCell<[Option<Option<Inserter>>; 6]>,
+    /// Os vizinhos que não são tanques e receberam um handler: o que entrou neles vai ao jogo depois do tick.
+    pushed: RefCell<Vec<([i32; 3], Rc<Pushed>)>>,
+}
+
+/// O handler de um tubo ou de uma máquina vizinha.
+struct Pushed(crate::game::machinery_resources::PushTarget<ChemicalResource>);
+
+impl ResourceInsert<ChemicalResource> for Pushed {
+    fn insert(&self, resource: &ChemicalResource, amount: i32, transaction: &Transaction) -> i32 {
+        self.0.insert(resource, amount, transaction)
+    }
+}
+
+impl Around<'_, '_> {
+    fn make(&self, side: Face) -> Option<Inserter> {
+        let mut game = self.game.borrow_mut();
+        let other = offset(self.pos, side);
+        let opposite = side.opposite();
+        if is_tank(&game.native_block(other)) {
+            let cell = neighbour(&**game, self.dimension, other, self.now)?;
+            if !cell.try_borrow().is_ok_and(|live| live.tile.has_chemical_capability(opposite)) {
+                return None;
+            }
+            let handler: Inserter = Rc::new(Receiver { tank: cell, face: opposite });
+            return Some(handler);
+        }
+        let target = crate::game::machinery_resources::chemical_push_target(&mut **game, self.dimension, other, opposite)?;
+        let pushed = Rc::new(Pushed(target));
+        self.pushed.borrow_mut().push((other, pushed.clone()));
+        Some(pushed)
+    }
+}
+
+impl ChemicalNeighbours for Around<'_, '_> {
+    fn handler(&self, side: Face) -> Option<Inserter> {
+        if let Some(known) = &self.made.borrow()[side as usize] {
+            return known.clone();
+        }
+        let made = self.make(side);
+        self.made.borrow_mut()[side as usize] = Some(made.clone());
+        made
     }
 }
 
@@ -480,18 +527,6 @@ fn neighbour(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], now: i64) 
         }
     });
     Some(cell)
-}
-
-fn around(game: &Game<'_>, dimension: &'static str, pos: [i32; 3], now: i64) -> Around {
-    Around(Face::ALL.map(|face| {
-        let cell = neighbour(game, dimension, offset(pos, face), now)?;
-        let opposite = face.opposite();
-        if !cell.try_borrow().is_ok_and(|live| live.tile.has_chemical_capability(opposite)) {
-            return None;
-        }
-        let handler: Rc<dyn ResourceInsert<ChemicalResource>> = Rc::new(Receiver { tank: cell, face: opposite });
-        Some(handler)
-    }))
 }
 
 /// O que este tick pôs nos tanques vizinhos vai ao NBT deles agora: o objeto vivo de cada um só o gravaria no próprio tick, e até lá o mundo salvo teria o químico que saiu
@@ -575,10 +610,14 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         live.side_nbt = side_in_nbt;
     }
 
-    let result = {
-        let neighbours = around(game, dimension, pos, now);
-        live.tile.tick_server(now as u64, &neighbours)
+    let (result, pushed) = {
+        let neighbours = Around { game: RefCell::new(&mut *game), dimension, pos, now, made: RefCell::new(Default::default()), pushed: RefCell::new(Vec::new()) };
+        let result = live.tile.tick_server(now as u64, &neighbours);
+        (result, neighbours.pushed.into_inner())
     };
+    for (other, target) in &pushed {
+        crate::game::machinery_resources::chemical_push_flush(game, dimension, *other, &target.0);
+    }
     live.tile.take_side_changes();
     glue::publish_comparator(game, dimension, pos, live.tile.tile().current_redstone_level(), result.comparator_changed);
 
@@ -755,6 +794,13 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
 /// O tile vai ser quebrado: o conteúdo fica guardado para o item, e o objeto vivo sai.
 pub(in crate::game) fn destroying(game: &mut Game<'_>, pos: [i32; 3]) {
     basis::content_destroying(game, pos, &content_spec());
+    let key = (game.native_dimension(), pos);
+    LIVE.with_borrow_mut(|live| live.remove(&key));
+}
+
+/// [`destroying`] para o tile que o nível destruiu e já saiu do mundo (`basis::level_drop_flush`): `entity` é a cópia tirada antes.
+pub(in crate::game) fn leaving(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    basis::content_leaving(game, entity, pos, &content_spec());
     let key = (game.native_dimension(), pos);
     LIVE.with_borrow_mut(|live| live.remove(&key));
 }

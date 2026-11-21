@@ -98,6 +98,13 @@ pub(in crate::game) fn destroy_content(game: &mut Game<'_>, pos: [i32; 3]) {
     }
 }
 
+/// [`destroy_content`] para a mesa que o nível destruiu e já saiu do mundo (`basis::level_drop_flush`): o dono, o nome e os dois slots vão para o item.
+pub(in crate::game) fn leaving(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    basis::security_leaving(entity, pos);
+    basis::name_leaving(entity, pos);
+    with_content(|spec| basis::content_leaving(game, entity, pos, spec));
+}
+
 /// O jogador quebra a mesa ou o apoio dela. Devolve se o bloco era desta parte.
 ///
 /// A mesa: quem não é o dono não a quebra (`BlockMekanism.getDestroyProgress` e o `BreakBlockEvent`); o dono e o nome ficam guardados para o item solto. O apoio

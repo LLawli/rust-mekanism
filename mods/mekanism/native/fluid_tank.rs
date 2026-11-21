@@ -581,6 +581,20 @@ impl BelowHandler for Below {
     }
 }
 
+/// A capability de fluido de outro bloco de baixo, pela face de cima dele (`BelowContainerCache.getHandler`): um cano mecânico (o contêiner da rede dele) ou uma
+/// máquina com tanque. Não é um `FluidTankFluidTank`: o que sai é a taxa do tier (`TileEntityFluidTank.java:178-185`).
+struct BelowOther(crate::game::machinery_resources::PushTarget<FluidResource>);
+
+impl BelowHandler for BelowOther {
+    fn insert(&self, resource: &FluidResource, amount: i32, transaction: &Transaction) -> i32 {
+        self.0.insert(resource, amount, transaction)
+    }
+
+    fn fluid_tank_needed(&self) -> Option<i32> {
+        None
+    }
+}
+
 fn live_at(key: &Key) -> Option<Rc<RefCell<LiveTank>>> {
     LIVE.with(|live| live.try_borrow().ok().and_then(|live| live.get(key).cloned()))
 }
@@ -654,11 +668,25 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
         live.tile.tile_mut().update_power(powered);
     }
 
-    // `BelowContainerCache`: o handler de fluido do bloco de baixo, pela face de cima dele. Só o Fluid Tank de baixo é alcançado aqui; os outros vizinhos ficam para a frente
-    // dos vizinhos que empurram.
+    // `BelowContainerCache`: o handler de fluido do bloco de baixo, pela face de cima dele. O Fluid Tank de baixo é alcançado pelo objeto vivo dele; um cano mecânico
+    // e uma máquina com tanque, pela capability que a `machinery_basis` dá a quem empurra (só quando o tanque está ativo: é quando o original a usa).
     reconcile_column(game, dimension, pos);
-    let below = live_at(&(dimension, [pos[0], pos[1] - 1, pos[2]])).filter(|below| now - below.borrow().last_seen <= 1).map(Below);
-    let result = live.tile.tick_server(now as u64, below.as_ref().map(|below| below as &dyn BelowHandler));
+    let below_pos = [pos[0], pos[1] - 1, pos[2]];
+    let below = live_at(&(dimension, below_pos)).filter(|below| now - below.borrow().last_seen <= 1).map(Below);
+    let below_other = if below.is_none() && live.tile.tile().active() && !is_tank(&game.native_block(below_pos)) {
+        crate::game::machinery_resources::fluid_push_target(game, dimension, below_pos, Face::Up).map(BelowOther)
+    } else {
+        None
+    };
+    let handler = match (&below, &below_other) {
+        (Some(below), _) => Some(below as &dyn BelowHandler),
+        (None, Some(other)) => Some(other as &dyn BelowHandler),
+        (None, None) => None,
+    };
+    let result = live.tile.tick_server(now as u64, handler);
+    if let Some(other) = &below_other {
+        crate::game::machinery_resources::fluid_push_flush(game, dimension, below_pos, &other.0);
+    }
     glue::publish_comparator(game, dimension, pos, live.tile.tile().current_redstone_level(), result.comparator_changed);
     // `sendUpdatePacket(this)`: o `getReducedUpdateTag` (a escala, o fluido e o fluido da válvula) vai ao cliente quando o tile pede. Um tile que acabou de nascer manda o
     // dele, como o pacote do bloco de entidade que o cliente recebe com o chunk e com o bloco posto.
@@ -1460,6 +1488,15 @@ pub(in crate::game) fn destroying(game: &mut Game<'_>, pos: [i32; 3]) {
         let mode = read_mode(entity);
         BROKEN_MODE.with_borrow_mut(|broken| broken.insert(pos, mode));
     }
+    let key = (game.native_dimension(), pos);
+    LIVE.with_borrow_mut(|live| live.remove(&key));
+    TANKS.with_borrow_mut(|tanks| tanks.remove(&key));
+}
+
+/// [`destroying`] para o tile que o nível destruiu e já saiu do mundo (`basis::level_drop_flush`): `entity` é a cópia tirada antes.
+pub(in crate::game) fn leaving(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    basis::content_leaving(game, entity, pos, &content_spec());
+    BROKEN_MODE.with_borrow_mut(|broken| broken.insert(pos, read_mode(entity)));
     let key = (game.native_dimension(), pos);
     LIVE.with_borrow_mut(|live| live.remove(&key));
     TANKS.with_borrow_mut(|tanks| tanks.remove(&key));
