@@ -6,6 +6,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Added
 - O tooltip da barra do Chemical Tank mostra o que o químico tem de especial (Fase 6, frente `tanques`, 7.ª rodada; `ChemicalStack.getTooltipLines`): o combustível (hidrogênio, eteno) com `Maximum Burn`, `Energy Density` e `Maximum Output`, o radioativo com `Radioactivity` e, no plutônio e no polônio, a linha do barril de rejeito, e os refrigerantes com `Coolant Efficiency`, `Thermal Enthalpy` e, no quente, `Temperature`, nas unidades da configuração local. Com os tooltips avançados (F3 + H) a última linha é o nome de registro, também no medidor do Fluid Tank.
+- O tanque criativo cheio de leite (`minecraft:milk`) nas abas criativas, depois do de `nutritional_paste`, como no cliente do original (o leite ainda não tem textura dentro do tanque).
 - O título e o rótulo `Inventory` das telas de máquina rolam quando não cabem (um nome longo dado na bigorna), cortados na área deles, como no original.
 - O fluido aparece dentro do Fluid Tank (Fase 6, frente `tanques`, 6.ª rodada; `RenderFluidTank`): o bloco mostra o fluido parado até a altura do que guarda, e a altura sobe e desce aos poucos quando o tanque enche ou esvazia (a escala animada do tile, que o servidor manda ao cliente); a lava e os outros fluidos que brilham são desenhados com a luz deles; o vapor ocupa o tanque inteiro, quase transparente; e o tanque que recebe fluido por cima mostra a coluna que desce do teto (a válvula), com a textura corrente nos lados.
 - O item do Fluid Tank mostra o fluido que guarda (`RenderFluidTankItem`) na mão, na barra, no inventário e no chão.
@@ -39,6 +40,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 ### Fixed
 - Um Fluid Tank que recebe `active_state` por comando de dados (ou por um NBT de estrutura) não acende mais o vidro: como no original, só o Configurator agachado (`setActive`) troca o estado do bloco, e o `update_delay` do tile agora é salvo.
+- Um Chemical Tank comum com um químico que ele recusa (um radioativo posto por comando) mostra capacidade 0 e a barra cheia, como no original (`capacityAsLong` do recurso).
 - O shift-clique nas telas do Fluid Tank e do Chemical Tank segue o `quickMoveStack` do Mekanism: do inventário o item vai para o slot do tanque que o aceita (empilhando primeiro), depois para a armadura e para a outra parte do inventário; dos slots do tanque vai para a armadura, a barra de atalhos e o inventário; a armadura e a mão da barra lateral também respondem.
 - A água pesada dentro de um cano é desenhada com a textura da água do vanilla tingida de 0xFF0D1455, como no original (`MekanismFluids.HEAVY_WATER`); antes saía com a textura lisa do líquido do Mekanism.
 - Um Fluid Tank cujo NBT é mexido por fora (um comando de dados) no tick em que o tanque de cima empurra para ele ficava com o conteúdo antigo somado ao que chegou; agora vale o que o comando pôs (o mesmo caso corrigido no Chemical Tank na 3.ª rodada).
