@@ -307,6 +307,8 @@ struct Client {
     last_click: Option<(i64, i32)>,
     /// A tela da Security Desk aberta (`GuiSecurityDesk`), enquanto o bloco da tela é uma mesa.
     desk: Option<DeskUi>,
+    /// `GuiMekanism.getTimeOpened`: quando a tela de agora abriu, de onde os textos que rolam contam.
+    screen_opened_ms: i64,
 }
 
 static CLIENT: Mutex<Client> = Mutex::new(Client {
@@ -323,6 +325,7 @@ static CLIENT: Mutex<Client> = Mutex::new(Client {
     drag_left: false,
     last_click: None,
     desk: None,
+    screen_opened_ms: 0,
 });
 
 fn client() -> std::sync::MutexGuard<'static, Client> {
@@ -719,6 +722,7 @@ pub(in crate::game) fn frame(game: &mut Game<'_>) {
             }
             state.screen_block = Some(spec.block.to_owned());
             state.screen_pos = at;
+            state.screen_opened_ms = now_ms();
             state.windows.clear();
             state.pending.clear();
             state.book_carry = None;
@@ -1505,6 +1509,22 @@ fn scrolling_text(
     scale: f32,
     since: i64,
 ) {
+    let alignment = if center { machinery_basis_core::gui::TextAlignment::Center } else { machinery_basis_core::gui::TextAlignment::Left };
+    aligned_scrolling_text(game, batch, text, area, alignment, color, scale, since);
+}
+
+/// [`scrolling_text`] com o alinhamento do original (`TextAlignment.getTarget`): à esquerda, centrado ou à direita.
+#[allow(clippy::too_many_arguments)]
+fn aligned_scrolling_text(
+    game: &Game<'_>,
+    batch: &mut HudBatch,
+    text: &str,
+    area: [f32; 4],
+    alignment: machinery_basis_core::gui::TextAlignment,
+    color: u32,
+    scale: f32,
+    since: i64,
+) {
     let [min_x, min_y, max_x, max_y] = area;
     let width = game.native_text_width(text) * scale;
     let area_width = max_x - min_x;
@@ -1512,10 +1532,8 @@ fn scrolling_text(
     let target_y = (min_y + max_y - LINE_HEIGHT) / 2.0;
     let target_x = if scrolls {
         min_x - uw::scroll_overflow(f64::from(width - area_width), now_ms() - since) as f32
-    } else if center {
-        min_x + (area_width - width) / 2.0
     } else {
-        min_x
+        alignment.target(min_x, max_x, width)
     };
     let start = batch.vertices.len();
     let y = if (scale - 1.0).abs() < f32::EPSILON {
@@ -4677,6 +4695,13 @@ impl Game<'_> {
         cursor: (f32, f32),
     ) -> bool {
         tooltip(self, batch, block, at, cursor)
+    }
+
+    /// Um texto de um elemento da tela do bloco (`GuiElement.drawScaledScrollingString` com `getTimeOpened()`): alinhado na área `[min_x, min_y, max_x, max_y]`, em
+    /// pixels de GUI da janela, ou rolando desde que a tela abriu se não cabe.
+    pub(in crate::game) fn mb_screen_text(&self, batch: &mut HudBatch, text: &str, area: [f32; 4], alignment: machinery_basis_core::gui::TextAlignment, color: u32, scale: f32) {
+        let since = client().screen_opened_ms;
+        aligned_scrolling_text(self, batch, text, area, alignment, color, scale, since);
     }
 
     /// O bloco da tela de mod aberta.

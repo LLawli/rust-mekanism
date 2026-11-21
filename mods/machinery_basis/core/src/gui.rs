@@ -151,6 +151,71 @@ pub fn bar_contents(rect: Rect, level: f64) -> Option<Rect> {
     Some([x + 1.0, y + h - 1.0 - size, w - 2.0, size])
 }
 
+/// O preenchimento de uma barra horizontal (`GuiTankBar.renderBarContentsDirect` com `horizontal`): da esquerda para a direita, dentro
+/// da moldura, com a altura toda. `rect` é o elemento inteiro, com a moldura. Sem nível não há nada (`handlerLevel > 0`).
+pub fn bar_contents_horizontal(rect: Rect, level: f64) -> Option<Rect> {
+    if level <= 0.0 {
+        return None;
+    }
+    let [x, y, w, h] = rect;
+    let size = bar_size(level, w as i32 - 2) as f32;
+    Some([x + 1.0, y + 1.0, size, h - 2.0])
+}
+
+/// `IFancyFontRenderer.TextAlignment`: onde o texto que cabe na área começa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextAlignment {
+    Left,
+    Center,
+    Right,
+}
+
+impl TextAlignment {
+    /// `TextAlignment.getTarget`.
+    pub fn target(self, min_x: f32, max_x: f32, text_width: f32) -> f32 {
+        match self {
+            Self::Left => min_x,
+            Self::Center => min_x + ((max_x - min_x) - text_width) / 2.0,
+            Self::Right => max_x - text_width,
+        }
+    }
+}
+
+/// `GuiInnerScreen.defaultFormat`: `padding(5).spacing(2).textScale(0.8F)` e o texto centrado na vertical.
+pub const INNER_SCREEN_PADDING: i32 = 5;
+pub const INNER_SCREEN_SPACING: i32 = 2;
+pub const INNER_SCREEN_TEXT_SCALE: f32 = 0.8;
+
+/// As linhas de texto de um `GuiInnerScreen` com `VerticalPositioning.CENTERED` (`renderForeground`): a área `[min_x, min_y, max_x, max_y]` de
+/// cada linha, relativa ao canto da tela, que o `drawScaledScrollingString` recebe. `rect` é o elemento, `line_height` é `font().lineHeight`.
+/// O centro que não é inteiro arredonda para baixo no começo e para cima no fim, e é a média dos dois que dá a posição do texto.
+pub fn inner_screen_rows(
+    rect: Rect,
+    lines: usize,
+    line_height: i32,
+    spacing: i32,
+    padding: i32,
+) -> Vec<Rect> {
+    if lines == 0 {
+        return Vec::new();
+    }
+    let [x, y, w, h] = rect;
+    let to_next = line_height + spacing;
+    let total = to_next * lines as i32 - spacing;
+    let center = (h - total as f32) / 2.0;
+    let mut min_y = y + center.floor();
+    let mut max_y = y + line_height as f32 + center.ceil();
+    let (min_x, max_x) = (x + padding as f32, x + w - padding as f32);
+    (0..lines)
+        .map(|_| {
+            let row = [min_x, min_y, max_x, max_y];
+            min_y += to_next as f32;
+            max_y += to_next as f32;
+            row
+        })
+        .collect()
+}
+
 /// `GuiUtils.TilingDirection`: de que canto o mosaico de um preenchimento começa.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TilingDirection {
@@ -470,6 +535,55 @@ mod tests {
         assert_eq!(cells.len(), 6);
         assert_eq!(cells[2].src, [0.0, 0.0, 8.0, 16.0]);
         assert_eq!(cells[5].src, [0.0, 0.0, 8.0, 4.0]);
+    }
+
+    /// `GuiTankBar.renderBarContentsDirect` horizontal, na barra de 116 por 10 do Chemical Tank (`calculateSize(level, 116)`).
+    #[test]
+    fn the_horizontal_bar_fills_from_the_left() {
+        let rect = [42.0, 16.0, 118.0, 12.0];
+        assert_eq!(bar_contents_horizontal(rect, 0.0), None);
+        assert_eq!(
+            bar_contents_horizontal(rect, 1.0),
+            Some([43.0, 17.0, 116.0, 10.0])
+        );
+        // `Mth.ceil(0.5 * 115) + 1` = 59.
+        assert_eq!(
+            bar_contents_horizontal(rect, 0.5),
+            Some([43.0, 17.0, 59.0, 10.0])
+        );
+        // Um resto qualquer já tem dois pixels: `ceil(1e-6 * 115) + 1`.
+        assert_eq!(
+            bar_contents_horizontal(rect, 1e-6),
+            Some([43.0, 17.0, 2.0, 10.0])
+        );
+    }
+
+    #[test]
+    fn the_alignment_targets_follow_the_java() {
+        assert_eq!(TextAlignment::Left.target(10.0, 50.0, 12.0), 10.0);
+        assert_eq!(TextAlignment::Center.target(10.0, 50.0, 12.0), 24.0);
+        assert_eq!(TextAlignment::Right.target(10.0, 50.0, 12.0), 38.0);
+    }
+
+    /// `GuiInnerScreen.renderForeground` com o formato padrão na tela de 118 por 28 do Chemical Tank: duas linhas de 9 com 2 de espaço somam 20, o
+    /// centro é 4, e cada linha anda 11.
+    #[test]
+    fn the_inner_screen_rows_are_centred() {
+        let rows = inner_screen_rows(
+            [42.0, 37.0, 118.0, 28.0],
+            2,
+            9,
+            INNER_SCREEN_SPACING,
+            INNER_SCREEN_PADDING,
+        );
+        assert_eq!(
+            rows,
+            vec![[47.0, 41.0, 155.0, 50.0], [47.0, 52.0, 155.0, 61.0]]
+        );
+        // Um centro de meio pixel: o começo desce e o fim sobe (`Mth.floor` e `Mth.ceil`).
+        let rows = inner_screen_rows([0.0, 0.0, 80.0, 12.0], 1, 9, 2, 5);
+        assert_eq!(rows, vec![[5.0, 1.0, 75.0, 11.0]]);
+        assert!(inner_screen_rows([0.0, 0.0, 80.0, 12.0], 0, 9, 2, 5).is_empty());
     }
 
     #[test]

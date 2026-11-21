@@ -4087,8 +4087,13 @@ pub(in crate::game) fn redstone_menu_button(game: &Game<'_>, entity: &ModBlockEn
         REDSTONE_PREVIOUS_BUTTON => false,
         _ => return None,
     };
-    let allowed = acting_uuid(game).is_some_and(|player| machinery_basis_core::redstone_tab::can_click(&security_read(entity), player));
-    Some(allowed.then_some(forward))
+    Some(gui_interact_allowed(game, entity).then_some(forward))
+}
+
+/// `PacketGuiInteract.handle`: `PacketUtils.blockEntity` só entrega o tile a quem passa em `canAccess`; o pacote de quem não passa é ignorado, sem mensagem. Vale para todo
+/// botão de tela que vira um `GuiInteraction` (a redstone, o modo de edição de um tanque, o modo de descarte).
+pub(in crate::game) fn gui_interact_allowed(game: &Game<'_>, entity: &ModBlockEntity) -> bool {
+    acting_uuid(game).is_some_and(|player| machinery_basis_core::redstone_tab::can_click(&security_read(entity), player))
 }
 
 /// O tooltip de um widget (`WidgetTooltipHolder`): `lines`, cada uma com a cor própria (`None` é a do padrão), ao lado do cursor
