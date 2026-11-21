@@ -15,6 +15,8 @@ pub struct ScrollList {
     scroll: f32,
     /// `dragOffset`, e se a barra está sendo arrastada.
     drag_offset: Option<i32>,
+    /// `elementHeight`: 12 nas listas de upgrades (`GuiInstallableScrollList`), 10 na de texto (`GuiTextScrollList`).
+    element_height: i32,
 }
 
 /// `GuiScrollList`: `barXShift = width - 6`, `barYShift = 2`, a barra tem 4 por 4 e `maxBarHeight = height - 4`.
@@ -32,7 +34,24 @@ impl ScrollList {
             height,
             scroll: 0.0,
             drag_offset: None,
+            element_height: ELEMENT_HEIGHT,
         }
+    }
+
+    /// A mesma lista com outra altura de linha (`GuiScrollList(..., elementHeight, ...)`).
+    pub fn with_element_height(mut self, element_height: i32) -> Self {
+        self.element_height = element_height;
+        self
+    }
+
+    /// `elementHeight`.
+    pub fn element_height(&self) -> i32 {
+        self.element_height
+    }
+
+    /// `scroll = 0`: o que `GuiTextScrollList.setText` faz quando a lista deixa de precisar da barra.
+    pub fn reset_scroll(&mut self) {
+        self.scroll = 0.0;
     }
 
     /// `barXShift`.
@@ -55,7 +74,7 @@ impl ScrollList {
 
     /// `getFocusedElements`: quantas linhas cabem.
     pub fn focused(&self) -> i32 {
-        (self.height - 2) / ELEMENT_HEIGHT
+        (self.height - 2) / self.element_height
     }
 
     /// `needsScrollBars`.
@@ -159,8 +178,8 @@ impl ScrollList {
             return None;
         }
         (0..self.focused()).find(|i| {
-            let top = f64::from(self.y + 1 + ELEMENT_HEIGHT * i);
-            mouse[1] >= top && mouse[1] < top + f64::from(ELEMENT_HEIGHT)
+            let top = f64::from(self.y + 1 + self.element_height * i);
+            mouse[1] >= top && mouse[1] < top + f64::from(self.element_height)
         })
     }
 
@@ -179,8 +198,8 @@ impl ScrollList {
             if first + i >= total {
                 break;
             }
-            let top = f64::from(self.y + 1 + ELEMENT_HEIGHT * i as i32);
-            if mouse[1] >= top && mouse[1] <= top + f64::from(ELEMENT_HEIGHT) {
+            let top = f64::from(self.y + 1 + self.element_height * i as i32);
+            if mouse[1] >= top && mouse[1] <= top + f64::from(self.element_height) {
                 return Some(Some(first + i));
             }
         }

@@ -64,6 +64,7 @@ pub mod screen_elements;
 pub mod scroll_list;
 pub mod security;
 pub mod security_desk;
+pub mod security_desk_screen;
 pub mod security_frequency;
 pub mod settings;
 pub mod side_config;
