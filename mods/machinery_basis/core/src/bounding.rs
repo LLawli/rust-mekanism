@@ -77,10 +77,13 @@ pub struct Spec {
 /// O que um principal ou um apoio que saiu do mundo deixa para tirar: os apoios do principal que saiu (`BlockMekanism.preRemoveSideEffects`,
 /// `removeBoundingBlocks`) e o principal do apoio trocado direto por outro bloco (`TileEntityBoundingBlock.preRemoveSideEffects`, `:74-85`). O original tira na
 /// mesma chamada de `setBlock`; o port ouve a troca num gancho que só lê o nível e tira no fim da operação no mundo ([`flush`]).
+/// Um principal que saiu: o nível, a posição, o bloco de apoio e os lugares dos apoios.
+type Removed = (String, [i32; 3], &'static str, &'static [[i32; 3]]);
+
 #[derive(Debug, Default)]
 pub struct Queue {
     /// Os principais que saíram: o nível, a posição, o bloco de apoio e os lugares.
-    removed: Vec<(String, [i32; 3], &'static str, &'static [[i32; 3]])>,
+    removed: Vec<Removed>,
     /// Os principais de apoios trocados: o nível, a posição e o bloco principal.
     mains: Vec<(String, [i32; 3], &'static str)>,
     /// Quantos [`flush`] estão tirando apoios agora: esses apoios não pedem a saída do principal (no original o tile deles sai antes, `level.removeBlockEntity(p)`).
@@ -89,7 +92,11 @@ pub struct Queue {
 
 impl Queue {
     pub const fn new() -> Self {
-        Self { removed: Vec::new(), mains: Vec::new(), flushing: 0 }
+        Self {
+            removed: Vec::new(),
+            mains: Vec::new(),
+            flushing: 0,
+        }
     }
 
     /// O bloco em `pos` deixou de ser `old` e passou a `new` (o gancho `block_changed`).
@@ -98,13 +105,18 @@ impl Queue {
             return;
         }
         if let Some(spec) = specs.iter().find(|spec| spec.main == old) {
-            self.removed.push((level.to_owned(), pos, spec.bounding, spec.offsets));
+            self.removed
+                .push((level.to_owned(), pos, spec.bounding, spec.offsets));
         }
         // O tile do apoio pode já ter saído aqui, então o principal é procurado pelos lugares de apoio de cada bloco registrado; quem não é mais o principal é
         // pulado na hora de tirar.
         if self.flushing == 0 {
             for spec in specs.iter().filter(|spec| spec.bounding == old) {
-                self.mains.extend(main_candidates(pos, spec.offsets).into_iter().map(|main| (level.to_owned(), main, spec.main)));
+                self.mains.extend(
+                    main_candidates(pos, spec.offsets)
+                        .into_iter()
+                        .map(|main| (level.to_owned(), main, spec.main)),
+                );
             }
         }
     }

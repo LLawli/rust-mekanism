@@ -162,15 +162,29 @@ const BOUNDING: &str = "mekanism:bounding_block";
 /// A mesa e um segundo principal com o mesmo apoio no mesmo lugar (como os outros seis blocos com apoio do original).
 const OTHER: &str = "mekanism:other_main";
 const SPECS: [bounding::Spec; 2] = [
-    bounding::Spec { main: DESK, bounding: BOUNDING, offsets: &[[0, 1, 0]] },
-    bounding::Spec { main: OTHER, bounding: BOUNDING, offsets: &[[0, 1, 0]] },
+    bounding::Spec {
+        main: DESK,
+        bounding: BOUNDING,
+        offsets: &[[0, 1, 0]],
+    },
+    bounding::Spec {
+        main: OTHER,
+        bounding: BOUNDING,
+        offsets: &[[0, 1, 0]],
+    },
 ];
 
 impl Level<'_> {
     /// `level.setBlock(pos, block, 3)`: uma operação no mundo.
     fn set(&mut self, pos: [i32; 3], block: &str) {
-        let old = self.blocks.insert(pos, block.to_owned()).unwrap_or_else(|| "minecraft:air".to_owned());
-        self.queue.lock().unwrap().changed(&SPECS, "minecraft:overworld", pos, &old, block);
+        let old = self
+            .blocks
+            .insert(pos, block.to_owned())
+            .unwrap_or_else(|| "minecraft:air".to_owned());
+        self.queue
+            .lock()
+            .unwrap()
+            .changed(&SPECS, "minecraft:overworld", pos, &old, block);
         if !self.busy {
             self.busy = true;
             bounding::flush(self.queue, self);
@@ -179,7 +193,9 @@ impl Level<'_> {
     }
 
     fn at(&self, pos: [i32; 3]) -> &str {
-        self.blocks.get(&pos).map_or("minecraft:air", String::as_str)
+        self.blocks
+            .get(&pos)
+            .map_or("minecraft:air", String::as_str)
     }
 }
 
@@ -205,10 +221,17 @@ fn block_name(value: &Value) -> &str {
 fn the_main_block_leaves_in_the_same_operation_that_replaces_the_bounding_block() {
     // `TileEntityBoundingBlock.preRemoveSideEffects` (`:74-85`): o `setBlock` que troca o apoio já tira o principal; o rastro lê a mesa logo depois dele.
     let rows = rows();
-    for (step, with) in [("bounding_replaced_by_air", "minecraft:air"), ("bounding_replaced_by_stone", "minecraft:stone")] {
+    for (step, with) in [
+        ("bounding_replaced_by_air", "minecraft:air"),
+        ("bounding_replaced_by_stone", "minecraft:stone"),
+    ] {
         let trace = row(&rows, step);
         let queue = std::sync::Mutex::new(bounding::Queue::new());
-        let mut level = Level { queue: &queue, blocks: Default::default(), busy: false };
+        let mut level = Level {
+            queue: &queue,
+            blocks: Default::default(),
+            busy: false,
+        };
         let desk = [3, -60, 3];
         level.blocks.insert(desk, DESK.to_owned());
         level.blocks.insert([3, -59, 3], BOUNDING.to_owned());
@@ -216,7 +239,10 @@ fn the_main_block_leaves_in_the_same_operation_that_replaces_the_bounding_block(
         level.set([3, -59, 3], with);
         assert_eq!(block_name(&trace["desk"]), level.at(desk), "{step}");
         assert_eq!(block_name(&trace["above"]), level.at([3, -59, 3]), "{step}");
-        assert!(queue.lock().unwrap().is_empty(), "{step}: nada fica para a passada seguinte");
+        assert!(
+            queue.lock().unwrap().is_empty(),
+            "{step}: nada fica para a passada seguinte"
+        );
     }
 }
 
@@ -225,7 +251,11 @@ fn the_main_block_that_leaves_takes_its_bounding_block_in_the_same_operation() {
     // `BlockMekanism.preRemoveSideEffects` com `removeBoundingBlocks`: a mesa trocada por pedra leva o apoio; o apoio que sai assim não procura o principal (no
     // original o tile dele sai antes), então um bloco que já está no lugar do principal fica.
     let queue = std::sync::Mutex::new(bounding::Queue::new());
-    let mut level = Level { queue: &queue, blocks: Default::default(), busy: false };
+    let mut level = Level {
+        queue: &queue,
+        blocks: Default::default(),
+        busy: false,
+    };
     level.blocks.insert([0, 0, 0], DESK.to_owned());
     level.blocks.insert([0, 1, 0], BOUNDING.to_owned());
     level.set([0, 0, 0], "minecraft:stone");
@@ -238,7 +268,11 @@ fn the_main_block_that_leaves_takes_its_bounding_block_in_the_same_operation() {
     level.blocks.insert([0, -1, 0], DESK.to_owned());
     level.set([0, 1, 0], "minecraft:stone");
     assert_eq!(level.at([0, 0, 0]), "minecraft:air");
-    assert_eq!(level.at([0, -1, 0]), DESK, "o principal só é procurado pelos lugares de apoio de quem o bloco era");
+    assert_eq!(
+        level.at([0, -1, 0]),
+        DESK,
+        "o principal só é procurado pelos lugares de apoio de quem o bloco era"
+    );
     // A mesa trocada direto por outro principal (`setBlock`, sem `setPlacedBy`): o apoio dela sai e não leva o bloco novo, porque o apoio que sai pela fila não
     // procura principal.
     level.blocks.clear();
@@ -268,8 +302,14 @@ fn the_bounding_block_saves_the_redstone_it_was_told_about() {
     let powered = bounding::redstone_change(before, 15).unwrap();
     assert_eq!(trace["powered_nbt"]["redstone"], powered);
     assert_eq!(trace["powered_update_tag"]["redstone"], powered);
-    assert_eq!(trace["powered_update_tag"]["offset"], serde_json::json!([0, -1, 0]));
-    assert_eq!(trace["unpowered_nbt"]["redstone"], bounding::redstone_change(powered, 0).unwrap());
+    assert_eq!(
+        trace["powered_update_tag"]["offset"],
+        serde_json::json!([0, -1, 0])
+    );
+    assert_eq!(
+        trace["unpowered_nbt"]["redstone"],
+        bounding::redstone_change(powered, 0).unwrap()
+    );
 }
 
 #[test]
@@ -281,13 +321,54 @@ fn ctrl_pick_on_the_bounding_block_carries_the_data_of_the_bounding_tile() {
     let without = &trace["without_data"]["components"];
     let with = &trace["with_data"]["components"];
     assert!(without.get("minecraft:block_entity_data").is_none());
-    assert_eq!(with["mekanism:owner"], without["mekanism:owner"], "o resto do item é o do principal");
+    assert_eq!(
+        with["mekanism:owner"], without["mekanism:owner"],
+        "o resto do item é o do principal"
+    );
     let data = &with["minecraft:block_entity_data"];
     assert_eq!(data["id"], "mekanism:bounding_block");
     assert_eq!(data["offset"], serde_json::json!([0, -1, 0]));
-    assert_eq!(data["redstone"], 15, "o bloco de redstone ainda estava encostado");
-    let keys: std::collections::BTreeSet<&str> = data.as_object().unwrap().keys().map(String::as_str).collect();
-    assert_eq!(keys, ["id", "offset", "redstone"].into_iter().collect(), "sem x, y, z nem components");
+    assert_eq!(
+        data["redstone"], 15,
+        "o bloco de redstone ainda estava encostado"
+    );
+    let keys: std::collections::BTreeSet<&str> = data
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        ["id", "offset", "redstone"].into_iter().collect(),
+        "sem x, y, z nem components"
+    );
     // O pick com o Ctrl na mesa não traz `block_entity_data` (o que a mesa copia ao item é a frente do pick block da base).
-    assert!(trace["desk_with_data"]["components"].get("minecraft:block_entity_data").is_none());
+    assert!(
+        trace["desk_with_data"]["components"]
+            .get("minecraft:block_entity_data")
+            .is_none()
+    );
+}
+
+#[test]
+fn the_configurator_in_empty_drops_the_item_out_of_the_clicked_face() {
+    // `empty_sneak`: o Crusher do slot sai pela face norte da mesa (`Block.popResourceFromFace`), na posição relativa à mesa que o rastro grava. Os dois sorteios
+    // (x e y) saem da própria posição pela conta do Java; a face dá o resto.
+    let rows = rows();
+    let pos: Vec<f64> = row(&rows, "empty_sneak")["entities"][0]["pos"]
+        .as_str()
+        .unwrap()
+        .split(' ')
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let draws = [(pos[0] - 0.25) / 0.5, (pos[1] + 0.125 - 0.25) / 0.5];
+    assert!(draws.iter().all(|d| (0.0..1.0).contains(d)), "{draws:?}");
+    let mut next = draws.into_iter().chain([0.5, 0.5]);
+    let (at, _) = machinery_basis_core::pop_resource::from_face([0, 0, 0], [0, 0, -1], || {
+        next.next().unwrap()
+    });
+    for axis in 0..3 {
+        assert!((at[axis] - pos[axis]).abs() < 1e-12, "{at:?} {pos:?}");
+    }
 }

@@ -47,6 +47,7 @@ pub mod neighbors;
 pub mod network;
 pub mod operation_tracker;
 pub mod placement;
+pub mod pop_resource;
 pub mod quick_move;
 pub mod radial;
 pub mod recipe;

@@ -399,13 +399,10 @@ fn empty(game: &mut Game<'_>, pos: [i32; 3], block: &str, face: Face) {
             left -= count;
             let mut one = stack.clone();
             one.count = count;
-            // `Block.popResourceFromFace`: 0,65 para fora na face, e um sorteio de -0,25 a 0,25 nos outros eixos.
+            // `Block.popResourceFromFace` (`Block.java:416-430`): 0,625 para fora na face, meia altura abaixo, e os sorteios do `level.getRandom()` na ordem do
+            // Java; o atraso de 10 ticks é o `setDefaultPickUpDelay`.
             let random = &mut game.world.random;
-            let mut at = [0.0; 3];
-            for axis in 0..3 {
-                at[axis] = if step[axis] == 0 { f64::from(pos[axis]) + 0.5 + (random.next_double() * 0.5 - 0.25) } else { f64::from(pos[axis]) + 0.5 + f64::from(step[axis]) * 0.65 };
-            }
-            let motion = [f64::from(step[0]) * 0.1, f64::from(step[1]) * 0.1, f64::from(step[2]) * 0.1];
+            let (at, motion) = machinery_basis_core::pop_resource::from_face(pos, step, || random.next_double());
             game.spawn_item(one, at, motion, 10);
         }
     }
