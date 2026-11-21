@@ -46,7 +46,7 @@ anf abrir 300 -60 3
 espera 10
 anf cursor 2 2
 espera 5
-anf foto mojang_lista_3
+anf foto mesa_mojang_3
 anf fechar
 espera 5
 fim

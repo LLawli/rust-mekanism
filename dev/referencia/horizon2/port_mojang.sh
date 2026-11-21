@@ -45,7 +45,7 @@ nome dev 3
 ctl close; sleep 0.8; abrir; sleep 1
 ctl scroll-at $((L+2)) $((T+2)) 0 >/dev/null; sleep 0.6
 mkdir -p $HOME/.local/share/jogo-isolado/horizon/data/shots/mesa3
-ctl screenshot $HOME/.local/share/jogo-isolado/horizon/data/shots/mesa3/port_mojang_lista_3.png; sleep 0.6
+ctl screenshot $HOME/.local/share/jogo-isolado/horizon/data/shots/mesa3/port_anf_mesa_mojang_3.png; sleep 0.6
 say "tela: $(ctl screen | head -c 400)"
 ctl close; sleep 0.5
 # Passo 4: o mesmo anfitrião com o mundo aberto à LAN: que UUID é o dono de uma mesa posta agora, e quem `dev` vira.
