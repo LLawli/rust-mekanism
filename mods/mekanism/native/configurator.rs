@@ -40,7 +40,10 @@ const MOD_ID: &str = "mekanism";
 const MODE_KEY_NAME: &str = "mode";
 const MODE_KEY_DEFAULT: &str = "key.keyboard.n";
 
-fn text(chat: &rules::Chat) -> Text {
+pub(in crate::game) fn text(chat: &rules::Chat) -> Text {
+    if let Some(literal) = &chat.literal {
+        return Text::colored(literal.clone(), chat.color.unwrap_or(0xFF_FFFF));
+    }
     let args: Vec<Text> = chat.with.iter().map(text).collect();
     let mut out = Text::translate(&chat.translate, &args);
     if let Some(rgb) = chat.color {
@@ -116,6 +119,10 @@ pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: 
     if basis::transmitter_probe_enabled() {
         eprintln!("MBL {{\"e\":\"use_item_on\",\"item\":{:?},\"claimed\":{}}}", &*stack.item, *claimed);
     }
+    if *claimed {
+        return;
+    }
+    crate::game::mekanism_tank::use_item_on(game, stack, pos, claimed);
     if *claimed {
         return;
     }
@@ -485,6 +492,10 @@ fn dismantle(game: &mut Game<'_>, pos: [i32; 3]) {
 /// `Break(Ok(true))` encerra o clique (agiu), `Break(Ok(false))` é o `PASS` (a outra mão tem a vez) e `Continue` deixa o despacho do Horizon seguir. Quem age balança a
 /// mão para todo jogador (`swing_arm`, e o servidor avisa o convidado de LAN) e dispara `ITEM_USED_ON_BLOCK`, como `ServerPlayerGameMode.useItemOn` com um resultado que consome.
 pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::Hit>) -> ControlFlow<crate::game::Result<bool>> {
+    // O item do Fluid Tank no modo balde: o turno roda por dentro, e o `FAIL` e o `PASS` do item voltam a ser o que são.
+    if let Some(flow) = crate::game::mekanism_tank::use_hand(game, hit) {
+        return flow;
+    }
     let Some(hit) = hit else {
         return ControlFlow::Continue(());
     };
@@ -695,6 +706,7 @@ fn card_use_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
 
 /// `ItemConfigurationCard.use`: agachado no ar (ou sobre um bloco que não age), o cartão esvazia.
 pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+    crate::game::mekanism_tank::use_item(game, stack, claimed);
     if *claimed || &*stack.item != rules::CONFIGURATION_CARD_ITEM || !game.native_sneaking() {
         return;
     }
@@ -743,7 +755,8 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
 
 /// `IModeItem.isModeItem(instance, slotType, allowRadial)`: o Configurator é um item de modo, e tem menu radial (`getRadialData` não é nulo).
 fn is_mode_item(stack: &ItemStack, allow_radial: bool) -> bool {
-    &*stack.item == rules::CONFIGURATOR_ITEM && (allow_radial || !has_radial(stack))
+    // `ItemBlockFluidTank` é um `IModeItem` sem menu radial (`IAttachmentBasedModeItem<Boolean>`).
+    crate::game::mekanism_tank::is_tank(&stack.item) || &*stack.item == rules::CONFIGURATOR_ITEM && (allow_radial || !has_radial(stack))
 }
 
 /// `IGenericRadialModeItem.getRadialData(instance) != null`.
@@ -826,6 +839,16 @@ fn change_mode(game: &mut Game<'_>, player: u128, shift: i32, display: DisplayCh
         return;
     };
     if !is_mode_item(&stack, true) {
+        return;
+    }
+    if crate::game::mekanism_tank::is_tank(&stack.item) {
+        let change = crate::game::mekanism_tank::change_mode(game, &stack, shift, display);
+        if let Some(chat) = &change.overlay {
+            game.native_action_bar(player, text(chat));
+        }
+        if change.show {
+            let _ = game.native_net_send_to_player(player, SHOW_CHANNEL, &[]);
+        }
         return;
     }
     let change = rules::change_mode(mode_of(game, &stack), shift, display);
@@ -1039,7 +1062,13 @@ fn draw_status(game: &mut Game<'_>, batch: &mut HudBatch) {
         active: game.player.is_some() && !is_spectator(game) && !game.ui.hide_gui,
     };
     // `IModeItem.isModeItem(stack, MAINHAND)` e `getScrollTextComponent`.
-    let scroll_text = main_hand(game).filter(|stack| is_mode_item(stack, true)).map(|stack| text(&mode_of(game, stack).scroll_text()));
+    let scroll_text = main_hand(game).filter(|stack| is_mode_item(stack, true)).map(|stack| {
+        if crate::game::mekanism_tank::is_tank(&stack.item) {
+            text(&rules::bucket_mode_scroll_text(crate::game::mekanism_tank::bucket_mode(game, stack)))
+        } else {
+            text(&mode_of(game, stack).scroll_text())
+        }
+    });
     let width = scroll_text.as_ref().map(|text| game.gui.atlas.font.width_text(text) as i32);
     let Some(draw) = effects().status.render(&around, width) else {
         return;

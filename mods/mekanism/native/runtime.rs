@@ -4117,6 +4117,12 @@ pub fn description_key(item: &str) -> String {
     if name.ends_with("_energy_cube") {
         return "description.mekanism.energy_cube".to_owned();
     }
+    // Os cinco Fluid Tanks e os cinco Chemical Tanks dividem uma descrição cada (o rastro `tank_fluid_item_use`).
+    for shared in ["fluid_tank", "chemical_tank"] {
+        if name.ends_with(shared) {
+            return format!("description.mekanism.{shared}");
+        }
+    }
     format!("description.mekanism.{name}")
 }
 
@@ -4124,7 +4130,11 @@ pub fn description_key(item: &str) -> String {
 /// `0xFF806A`, Elite `0x4BF8FF`, Ultimate `0xF787FF`, Creative `0x585858`). Aqui os blocos com tier que têm `DETAILS`: as 36 fábricas e os 5 cubos de energia.
 pub fn tier_block_color(item: &str) -> Option<u32> {
     let name = item.strip_prefix("mekanism:")?;
-    if !(name.ends_with("_factory") || name.ends_with("_energy_cube")) {
+    if !(name.ends_with("_factory")
+        || name.ends_with("_energy_cube")
+        || name.ends_with("_fluid_tank")
+        || name.ends_with("_chemical_tank"))
+    {
         return None;
     }
     match name.split('_').next()? {
@@ -4822,6 +4832,8 @@ pub struct Chat {
     pub translate: String,
     pub with: Vec<Chat>,
     pub color: Option<u32>,
+    /// Um texto literal (`Component.literal`, o `text` do JSON) no lugar da tradução: os números de um tooltip.
+    pub literal: Option<String>,
 }
 
 impl Chat {
@@ -4830,6 +4842,17 @@ impl Chat {
             translate: translate.to_owned(),
             with,
             color,
+            literal: None,
+        }
+    }
+
+    /// `TextComponentUtil.build(color, texto)`: um literal na cor `rgb`.
+    fn literal(text: &str, rgb: u32) -> Chat {
+        Chat {
+            translate: String::new(),
+            with: Vec::new(),
+            color: Some(rgb),
+            literal: Some(text.to_owned()),
         }
     }
 
@@ -4840,7 +4863,10 @@ impl Chat {
 
     /// O JSON de componente, como o Java o grava.
     pub fn to_json(&self) -> serde_json::Value {
-        let mut json = serde_json::json!({ "translate": self.translate });
+        let mut json = match &self.literal {
+            Some(text) => serde_json::json!({ "text": text }),
+            None => serde_json::json!({ "translate": self.translate }),
+        };
         if !self.with.is_empty() {
             json["with"] = serde_json::Value::Array(self.with.iter().map(Chat::to_json).collect());
         }
@@ -5109,6 +5135,159 @@ pub fn change_mode(mode: ConfiguratorMode, shift: i32, display: DisplayChange) -
             .then(|| new.configure_state_message()),
         show: changed && display == DisplayChange::MainHand,
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O item dos tanques: o modo balde do Fluid Tank e as linhas do tooltip dos dez tanques.
+
+/// `MekanismLang.BUCKET_MODE`.
+pub const BUCKET_MODE_LANG: &str = "tooltip.mekanism.bucket_mode";
+/// `EnumColor.getRgb` das cores que o tooltip dos tanques usa, como o `ComponentSerialization.CODEC` as grava no rastro `tank_fluid_item_use`.
+const TIP_GRAY: u32 = 0xCFCFCF;
+const TIP_DARK_RED: u32 = 0xC9071F;
+const TIP_PINK: u32 = 0xD55ECB;
+const TIP_ORANGE: u32 = 0xFFA160;
+const TIP_AQUA: u32 = 0x30FFF9;
+const TIP_INDIGO: u32 = 0x559EFF;
+const TIP_BRIGHT_GREEN: u32 = 0x75FF89;
+const TIP_RED: u32 = 0xFF383C;
+/// `BaseTier.getColor` dos cinco tiers (`IStorageTier.getTextColor`).
+pub const TANK_TIER_COLORS: [u32; 5] = [0x5FFFB8, 0xFF806A, 0x4BF8FF, 0xF787FF, 0x585858];
+
+/// O que `ItemBlockFluidTank.changeMode` faz (`:186-195`): um `shift` ímpar inverte o modo, um par não muda nada. `overlay` é a mensagem do `DisplayChange.OTHER`
+/// (`BUCKET_MODE.translate(OnOff.of(novo, true))`) e `show` o aviso do `MAIN_HAND` (o texto do modo sobre a barra).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BucketModeChange {
+    pub mode: bool,
+    pub changed: bool,
+    pub overlay: Option<Chat>,
+    pub show: bool,
+}
+
+/// `OnOff.of(valor, true)`: `boolean.mekanism.on` em verde ou `off` em vermelho.
+fn on_off_colored(value: bool) -> Chat {
+    if value {
+        Chat::new("boolean.mekanism.on", Vec::new(), Some(TIP_BRIGHT_GREEN))
+    } else {
+        Chat::new("boolean.mekanism.off", Vec::new(), Some(TIP_RED))
+    }
+}
+
+pub fn bucket_mode_change(mode: bool, shift: i32, display: DisplayChange) -> BucketModeChange {
+    if shift.unsigned_abs() % 2 != 1 {
+        return BucketModeChange {
+            mode,
+            changed: false,
+            overlay: None,
+            show: false,
+        };
+    }
+    let new = !mode;
+    BucketModeChange {
+        mode: new,
+        changed: true,
+        overlay: (display == DisplayChange::Other)
+            .then(|| Chat::new(BUCKET_MODE_LANG, vec![on_off_colored(new)], None)),
+        show: display == DisplayChange::MainHand,
+    }
+}
+
+/// `ItemBlockFluidTank.getScrollTextComponent`: `BUCKET_MODE.translateColored(GRAY, OnOff.of(modo, true))`.
+pub fn bucket_mode_scroll_text(mode: bool) -> Chat {
+    Chat::new(BUCKET_MODE_LANG, vec![on_off_colored(mode)], Some(TIP_GRAY))
+}
+
+/// O que o tooltip de um item de tanque mostra entre a linha da segurança e a descrição.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TankTooltip<'a> {
+    /// `true` no Chemical Tank (`ATTACHED_CHEMICALS`, laranja), `false` no Fluid Tank (`ATTACHED_FLUIDS`, rosa).
+    pub chemical: bool,
+    /// O tier, de 0 (basic) a 4 (creative).
+    pub tier: usize,
+    /// O id do que o item guarda e quanto; `None` é o contêiner vazio.
+    pub stored: Option<(&'a str, u64)>,
+    /// `IStorageTier.getCapacity` de agora.
+    pub capacity: u64,
+    /// `ATTACHED_ITEMS` com alguma pilha.
+    pub inventory: bool,
+    /// `mekanism:bucket_mode`, que só o Fluid Tank tem.
+    pub bucket_mode: Option<bool>,
+}
+
+/// As linhas dos appenders de `MekanismDataComponents` para um item de tanque, na ordem em que saem (`ATTACHED_CHEMICALS` ou `ATTACHED_FLUIDS`, o tier, `ATTACHED_ITEMS` e
+/// `BUCKET_MODE`): `ResourceContainerType.addStoredResource` (`:140-177`), `IStorageTier.addCapacityTooltip` (`:27-33`), `HAS_INVENTORY` e `BUCKET_MODE` com `YesNo`.
+pub fn tank_tooltip_lines(tip: &TankTooltip<'_>) -> Vec<Chat> {
+    let creative = tip.tier == TANK_CREATIVE;
+    let infinite = || Chat::new("gui.mekanism.infinite", Vec::new(), Some(TIP_GRAY));
+    let mut lines = Vec::new();
+    match tip.stored {
+        Some((id, amount)) => {
+            let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
+            let kind = if tip.chemical { "chemical" } else { "block" };
+            let name = Chat::new(
+                &format!("{kind}.{namespace}.{}", path.replace('/', ".")),
+                Vec::new(),
+                None,
+            );
+            let color = Some(if tip.chemical { TIP_ORANGE } else { TIP_PINK });
+            lines.push(if creative {
+                Chat::new("generic.mekanism.stored", vec![name, infinite()], color)
+            } else {
+                Chat::new(
+                    STORED_MB_LANG,
+                    vec![
+                        name,
+                        Chat::literal(&machinery_basis_core::units::grouped(amount), TIP_GRAY),
+                    ],
+                    color,
+                )
+            });
+        }
+        None => lines.push(Chat::new(
+            if tip.chemical {
+                "tooltip.mekanism.no_chemical"
+            } else {
+                "tooltip.mekanism.no_fluid"
+            },
+            Vec::new(),
+            Some(TIP_DARK_RED),
+        )),
+    }
+    let tier_color = Some(TANK_TIER_COLORS[tip.tier.min(TANK_CREATIVE)]);
+    lines.push(if creative {
+        Chat::new("capacity.mekanism.generic", vec![infinite()], tier_color)
+    } else {
+        Chat::new(
+            "capacity.mekanism.mb",
+            vec![Chat::literal(
+                &machinery_basis_core::units::grouped(tip.capacity),
+                TIP_GRAY,
+            )],
+            tier_color,
+        )
+    });
+    lines.push(Chat::new(
+        "tooltip.mekanism.inventory",
+        vec![Chat::new(
+            if tip.inventory {
+                "boolean.mekanism.yes"
+            } else {
+                "boolean.mekanism.no"
+            },
+            Vec::new(),
+            Some(TIP_GRAY),
+        )],
+        Some(TIP_AQUA),
+    ));
+    if let Some(mode) = tip.bucket_mode {
+        let answer = if mode {
+            Chat::new("boolean.mekanism.yes", Vec::new(), Some(TIP_BRIGHT_GREEN))
+        } else {
+            Chat::new("boolean.mekanism.no", Vec::new(), Some(TIP_RED))
+        };
+        lines.push(Chat::new(BUCKET_MODE_LANG, vec![answer], Some(TIP_INDIGO)));
+    }
+    lines
 }
 
 /// `BlockMekanism.canBeReplaced(state, fluid)` (falso) contra o balde (`BucketItem.emptyContents`: `blockState.canBeReplaced(this.content)`): o balde cheio que não derrama no bloco do Mekanism que o

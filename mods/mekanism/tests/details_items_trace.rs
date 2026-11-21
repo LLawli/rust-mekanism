@@ -89,7 +89,10 @@ fn the_tiered_blocks_with_details_get_the_color_of_the_tier() {
         .filter(|row| of_mekanism(row) && row["details"] == true)
     {
         let item = row["item"].as_str().unwrap();
-        let expected = item.ends_with("_factory") || item.ends_with("_energy_cube");
+        let expected = item.ends_with("_factory")
+            || item.ends_with("_energy_cube")
+            || item.ends_with("_fluid_tank")
+            || item.ends_with("_chemical_tank");
         assert_eq!(tier_block_color(item).is_some(), expected, "{item}");
         if expected {
             tiered += 1;

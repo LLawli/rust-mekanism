@@ -14,6 +14,9 @@ fn mekanism_command_component(state: &mut ItemState<'_, '_>) -> core::ops::Contr
                 | "mekanism:redstone_control"
                 | "mekanism:owner"
                 | "mekanism:security"
+                | "mekanism:dump_mode"
+                | "mekanism:edit_mode"
+                | "mekanism:bucket_mode"
         )
     {
         return core::ops::ControlFlow::Break(Ok(id));

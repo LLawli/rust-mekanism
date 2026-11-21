@@ -737,5 +737,11 @@
   "transmission.mekanism.energy": "Energy",
   "transmission.mekanism.fluids": "Fluids",
   "transmission.mekanism.heat": "Heat",
-  "transmission.mekanism.items": "Items"
+  "transmission.mekanism.items": "Items",
+  "owner.mekanism.now_own": "You now own this item.",
+  "tooltip.mekanism.bucket_mode": "Bucket Mode: %1$s",
+  "capacity.mekanism.generic": "Capacity: %1$s",
+  "capacity.mekanism.mb": "Capacity: %1$s mB",
+  "tooltip.mekanism.no_chemical": "No chemicals stored.",
+  "generic.mekanism.stored": "%1$s: %2$s"
 }

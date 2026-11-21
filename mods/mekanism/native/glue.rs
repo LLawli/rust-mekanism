@@ -3192,7 +3192,9 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     let has_details = rules::has_details(&stack.item);
     let hidden = has_details && !details;
     // `OWNER` e `SECURITY` (`createSimpleAppender`, `TooltipHideType.ANY`): o item com `DETAILS` só mostra as duas linhas com a tecla de detalhes, e elas vêm logo depois do nome.
-    if (machine.is_some() || crate::game::mekanism_cube::is_cube(&stack.item)) && (!has_details || details) {
+    let fluid_tank = crate::game::mekanism_tank::is_tank(&stack.item);
+    let chemical_tank = crate::game::mekanism_chemical_tank::is_tank(&stack.item);
+    if (machine.is_some() || crate::game::mekanism_cube::is_cube(&stack.item) || fluid_tank || chemical_tank) && (!has_details || details) {
         let at = lines.len().min(1);
         lines.splice(at..at, basis::security_tooltip_lines(game, stack));
     }
@@ -3210,6 +3212,12 @@ pub(in crate::game) fn tooltip(game: &Game<'_>, stack: &ItemStack, lines: &mut V
     }
     if let Some(machine) = machine.filter(|_| details) {
         lines.extend(basis::content_stored_lines(game, stack, machine.slots.infusion.is_some(), false));
+    }
+    // Os tanques: o que guardam, a capacidade do tier, o inventário e, no de fluido, o modo balde (os appenders de `ATTACHED_FLUIDS`/`ATTACHED_CHEMICALS`, do tier,
+    // de `ATTACHED_ITEMS` e de `BUCKET_MODE`), só com a tecla de detalhes.
+    if (fluid_tank || chemical_tank) && details {
+        let tank = if fluid_tank { crate::game::mekanism_tank::tooltip_lines(game, stack) } else { crate::game::mekanism_chemical_tank::tooltip_lines(game, stack) };
+        lines.extend(tank.iter().map(|chat| (crate::game::mekanism_configurator::text(chat), u32::MAX)));
     }
     if has_details {
         lines.extend(basis::content_hold_lines(game, details, &rules::description_key(&stack.item)));

@@ -688,6 +688,61 @@ bindings = [
   { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
 ]
 
+# O item do Fluid Tank no modo balde (`ItemBlockFluidTank`): a ordenha (`interactLivingEntity`) e o dispensador (`FluidTankItemDispenseBehavior`). Hooks do catálogo usados
+# com estrutura privada do jogo (`mekanism_tank`: `game.mobs`, `world.block_entities`). O clique no mundo entra pelos `use_item_on`, `use_item` e `use_hand` acima e abaixo.
+[[injection]]
+id = "interact_entity"
+hook = "interact_entity"
+hook_version = 1
+kind = "HEAD"
+helper = "interact_entity.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "entity", ty = "i32", value = "entity" },
+  { name = "stack", ty = "Option<&horizon_client::items::ItemStack>", value = "stack" },
+  { name = "claimed", ty = "&mut bool", value = "&mut *claimed" },
+]
+
+[[injection]]
+id = "dispense_item"
+hook = "dispense_item"
+hook_version = 1
+kind = "HEAD"
+helper = "dispense_item.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "pos", ty = "[i32; 3]", value = "pos" },
+  { name = "facing", ty = "Direction", value = "facing" },
+  { name = "stack", ty = "&horizon_client::items::ItemStack", value = "stack" },
+  { name = "answer", ty = "&mut Option<horizon_client::mod_api::NativeDispensed>", value = "&mut *answer" },
+]
+
+# O item do Fluid Tank no modo balde no cliente (H282): `MultiPlayerGameMode.useItemOn` passa (o `useOn` do item não põe o bloco) e o `useItem` segue, com o resultado
+# do `use` decidindo se a mão balança. O cliente do Horizon encerra o clique de um item de bloco com a previsão do bloco posto (`remote_use_item_on`) e não prevê o uso
+# de um item de mod (`remote_use_item`). Os dois HEAD canceláveis rodam a função de novo por dentro, com marca de reentrada. Alvos crus.
+[[injection]]
+id = "tank_use_item_on"
+target = "horizon_client::game::remote::Game<'_>::remote_use_item_on"
+kind = "HEAD"
+cancellable = true
+helper = "tank_use_item_on.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "hand", ty = "Hand", value = "hand" },
+]
+
+[[injection]]
+id = "tank_use_item"
+target = "horizon_client::game::remote::Game<'_>::remote_use_item"
+kind = "HEAD"
+cancellable = true
+helper = "tank_use_item.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "hand", ty = "Hand", value = "hand" },
+]
+
 # O item e o bloco no clique (decisão 47, H72). O original deixa o Configurator em `ROTATE` e o cartão agirem antes da tela (`TileEntityMekanism.openGui` devolve
 # `TRY_WITH_EMPTY_HAND`) e passa o resultado adiante (`SUCCESS`, `SUCCESS_SERVER` ou `PASS`). `Game::use_hand` é o turno de uma mão no despacho de uso do bloco, no
 # servidor (e no servidor integrado): o HEAD cancelável responde por ele nos blocos de Mekanism e devolve o resultado do clique (`Ok(true)` agiu, `Ok(false)` passa, e o

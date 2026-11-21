@@ -12,6 +12,7 @@ use machinery_basis_core::containers::{InventorySlot, ItemResource};
 use machinery_basis_core::fluid::FluidResource;
 use machinery_basis_core::fluid_tank::{self, BelowHandler, FaceHandler, FluidTankConfig, FluidTankTank, FluidTankTile};
 use machinery_basis_core::handler_slot::{ContainerEditMode, LastTransferDirection, ResourceContainer};
+use machinery_basis_core::bucket_item::{CauldronHandler, CauldronLevel, CauldronOutcome, UseHit, UseOutcome, cauldron_interact, dispense_as_bucket, use_as_bucket};
 use machinery_basis_core::item_access::{AccessResourceHandler, HandAccess, ItemAccess, ItemHandlerLookup, ItemResourceHandler, OneByOne, PerItemRules, move_first};
 use machinery_basis_core::item_content as content;
 use machinery_basis_core::resource_tank::StackContents;
@@ -21,6 +22,7 @@ use machinery_basis_core::transaction::Transaction;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::ops::ControlFlow;
 
 /// Os slots do tile, na ordem de `getInitialInventory`: o de entrada e o de saída.
 const SLOTS: usize = 2;
@@ -36,6 +38,8 @@ const DIRECTION: &str = "last_transfer_direction";
 const ACTIVE_PROPERTY: &str = "active";
 const EMPTY_BUCKET: &str = "minecraft:bucket";
 const BUCKET_VOLUME: i32 = 1000;
+/// `NeoForgeMod.MILK`.
+const MILK: &str = "minecraft:milk";
 /// Um objeto vivo que não anda por tantos ticks sai da tabela (o bloco foi quebrado ou o chunk descarregado).
 const STALE_TICKS: i64 = 100;
 const SWEEP_TICKS: i64 = 200;
@@ -71,6 +75,10 @@ thread_local! {
     /// O modo de edição do item que acabou de ser posto, para o tile que o Horizon ainda não criou, e o do tile que vai ser quebrado.
     static PENDING_MODE: RefCell<HashMap<[i32; 3], ContainerEditMode>> = RefCell::new(HashMap::new());
     static BROKEN_MODE: RefCell<HashMap<[i32; 3], ContainerEditMode>> = RefCell::new(HashMap::new());
+    /// O que o último `ItemBlockFluidTank.use` (ou o caldeirão) devolveu no turno desta mão, para o invólucro de [`use_hand`].
+    static USE_RESULT: Cell<Option<UseOutcome>> = const { Cell::new(None) };
+    /// A marca de reentrada do invólucro de [`use_hand`].
+    static IN_USE_HAND: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(in crate::game) fn tier_of(block: &str) -> Option<usize> {
@@ -229,6 +237,11 @@ fn stack_of(game: &Game<'_>, resource: &ItemResource, count: u32) -> ItemStack {
 
 /// `Capabilities.FLUID.item()`.
 fn items() -> ItemHandlerLookup<FluidResource> {
+    items_as(false)
+}
+
+/// O mesmo, com o handler do item do tanque agindo como `MANUAL` (`AutomatedResourceHandler.manual`, o de `getOneByOneFluidHandler`) quando `manual`.
+fn items_as(manual: bool) -> ItemHandlerLookup<FluidResource> {
     let buckets: Rc<dyn PerItemRules<FluidResource>> = Rc::new(Buckets);
     let codec: Rc<dyn AttachedCodec<FluidResource>> = Rc::new(TankItems);
     // `ComponentBackedFluidTankFluidTank.create`: o tier do item dá a capacidade, a taxa e o criativo.
@@ -241,7 +254,8 @@ fn items() -> ItemHandlerLookup<FluidResource> {
     Rc::new(move |access: &dyn ItemAccess| {
         let held = access.resource()?;
         if is_tank(&held.id) {
-            let handler: Box<dyn ItemResourceHandler<FluidResource> + '_> = Box::new(ComponentBackedHandler::new(access, codec.clone(), spec_of.clone(), clock.clone()));
+            let handler = ComponentBackedHandler::new(access, codec.clone(), spec_of.clone(), clock.clone());
+            let handler: Box<dyn ItemResourceHandler<FluidResource> + '_> = Box::new(if manual { handler.manual() } else { handler });
             return Some(handler);
         }
         if &*held.id != EMPTY_BUCKET && bucket_fluid(&held.id).is_none() {
@@ -512,6 +526,7 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
 
     // `BelowContainerCache`: o handler de fluido do bloco de baixo, pela face de cima dele. Só o Fluid Tank de baixo é alcançado aqui; os outros vizinhos ficam para a frente
     // dos vizinhos que empurram.
+    reconcile_column(game, dimension, pos);
     let below = live_at(&(dimension, [pos[0], pos[1] - 1, pos[2]])).filter(|below| now - below.borrow().last_seen <= 1).map(Below);
     let result = live.tile.tick_server(now as u64, below.as_ref().map(|below| below as &dyn BelowHandler));
     glue::publish_comparator(game, dimension, pos, live.tile.tile().current_redstone_level(), result.comparator_changed);
@@ -558,16 +573,45 @@ pub(in crate::game) fn tick(game: &mut Game<'_>, pos: [i32; 3], entity: &mut Mod
     }
 }
 
-/// O que este tick pôs nos outros tanques da coluna (o de baixo, e os de cima por onde subiu o que não coube) vai ao NBT deles agora: o objeto vivo de cada um só o
-/// gravaria no próprio tick, e até lá o mundo salvo teria o fluido que saiu daqui sem o que chegou lá.
-fn sync_column(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+/// Os outros tanques da coluna que o tick deste alcança: o de baixo, e os de cima por onde sobe o que não coube.
+fn column_others(dimension: &'static str, pos: [i32; 3]) -> Vec<[i32; 3]> {
     let mut others = vec![[pos[0], pos[1] - 1, pos[2]]];
     let mut y = pos[1] + 1;
     while live_at(&(dimension, [pos[0], y, pos[2]])).is_some() {
         others.push([pos[0], y, pos[2]]);
         y += 1;
     }
-    for other in others {
+    others
+}
+
+/// Quem mexeu no NBT de outro tanque da coluna por fora depois do último tick dele (um comando de dados) vale antes do que este tick põe nele: sem isto, o
+/// [`sync_column`] gravaria por cima a soma do conteúdo antigo com o que chegou, e o tick do outro não veria a mudança (o mesmo caso do `neighbour()` do Chemical Tank).
+fn reconcile_column(game: &Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    for other in column_others(dimension, pos) {
+        let Some(cell) = live_at(&(dimension, other)) else {
+            continue;
+        };
+        let Ok(mut live) = cell.try_borrow_mut() else {
+            continue;
+        };
+        let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(other[0], other[1], other[2])) else {
+            continue;
+        };
+        let Some(tier) = tier_of(&entity.id) else {
+            continue;
+        };
+        let in_nbt = read_stored(entity, tier_values(tier).0);
+        if in_nbt != live.seen {
+            set_stored(live.tile.tank(), &in_nbt);
+            live.seen = in_nbt;
+        }
+    }
+}
+
+/// O que este tick pôs nos outros tanques da coluna (o de baixo, e os de cima por onde subiu o que não coube) vai ao NBT deles agora: o objeto vivo de cada um só o
+/// gravaria no próprio tick, e até lá o mundo salvo teria o fluido que saiu daqui sem o que chegou lá.
+fn sync_column(game: &mut Game<'_>, dimension: &'static str, pos: [i32; 3]) {
+    for other in column_others(dimension, pos) {
         let Some(cell) = live_at(&(dimension, other)) else {
             continue;
         };
@@ -651,11 +695,8 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
         return Some(false);
     }
     CLOCK.with(|clock| clock.set(game.world.game_time as u64));
-    let infinite = game.native_acting_player().is_some_and(|player| player.game_mode == 1);
-    // `ItemAccess.forPlayerInteraction(player, hand)`: o que sobra de uma troca numa pilha vai para o inventário; no modo criativo a mão não muda, e o item novo só é dado
-    // se os slots principais ainda não têm um igual (o item e os componentes: `ResourceHandlerUtil.contains(mainSlots, resource)`).
-    let main: Vec<ItemResource> = game.inventory.iter().flatten().map(|held| resource_of(game, held)).collect();
-    let hand = HandAccess::new(Some(resource_of(game, &stack)), i32::try_from(stack.count).unwrap_or(i32::MAX), infinite, Rc::new(move |resource| main.contains(resource)));
+    let infinite = creative(game);
+    let hand = hand_access(game, &stack, infinite, false);
     let lookup = items();
     let moved = with_tile(game, pos, |_, tile| {
         let one = OneByOne(&hand);
@@ -674,7 +715,23 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
     .flatten();
     let (resource, pickup) = moved?;
     // `FluidUtil.triggerSoundAndGameEvent`: o som do balde do fluido e o evento, no centro do bloco.
-    let sound = match (&*resource.id, pickup) {
+    game.audio.play(&bucket_sound(&resource.id, pickup), Some(center(pos)), 1.0, 1.0);
+    game.post_block_game_event(if pickup { "minecraft:fluid_pickup" } else { "minecraft:fluid_place" }, pos, Some(horizon_client::mobs::Who::Player), None);
+    hand_apply(game, &hand, infinite);
+    Some(true)
+}
+
+fn center(pos: [i32; 3]) -> [f64; 3] {
+    [f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5]
+}
+
+fn creative(game: &Game<'_>) -> bool {
+    game.native_acting_player().is_some_and(|player| player.game_mode == 1)
+}
+
+/// `FluidType.getSound(BUCKET_FILL)` e `BUCKET_EMPTY` de um fluido.
+fn bucket_sound(fluid: &str, pickup: bool) -> String {
+    match (fluid, pickup) {
         ("minecraft:lava", true) => "minecraft:item.bucket.fill_lava".to_owned(),
         ("minecraft:lava", false) => "minecraft:item.bucket.empty_lava".to_owned(),
         (other, _) => match machinery_basis_core::liquid_data::current().iter().find(|spec| spec.id == other) {
@@ -683,9 +740,24 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
             None if pickup => "minecraft:item.bucket.fill".to_owned(),
             None => "minecraft:item.bucket.empty".to_owned(),
         },
-    };
-    game.audio.play(&sound, Some([f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5]), 1.0, 1.0);
-    game.post_block_game_event(if pickup { "minecraft:fluid_pickup" } else { "minecraft:fluid_place" }, pos, Some(horizon_client::mobs::Who::Player), None);
+    }
+}
+
+/// `ItemAccess.forPlayerInteraction(player, hand)`: o que sobra de uma troca numa pilha vai para o inventário; no modo criativo (`infinite`) a mão não muda, e o item novo
+/// só é dado se os slots principais ainda não têm um igual (o item e os componentes: `ResourceHandlerUtil.contains(mainSlots, resource)`). Com `side_effect_free`
+/// (`ItemAccessUtils.sideEffectFreeAccess`, o do caldeirão no criativo) nada é dado.
+fn hand_access(game: &Game<'_>, stack: &ItemStack, infinite: bool, side_effect_free: bool) -> HandAccess {
+    let main: Vec<ItemResource> = game.inventory.iter().flatten().map(|held| resource_of(game, held)).collect();
+    HandAccess::new(
+        Some(resource_of(game, stack)),
+        i32::try_from(stack.count).unwrap_or(i32::MAX),
+        infinite,
+        Rc::new(move |resource| side_effect_free || main.contains(resource)),
+    )
+}
+
+/// O que a troca deixou na mão e o que transbordou para o inventário.
+fn hand_apply(game: &mut Game<'_>, hand: &HandAccess, infinite: bool) {
     let state = hand.state();
     if !infinite {
         *game.held_mut() = state.resource.filter(|_| state.count > 0).map(|resource| stack_of(game, &resource, u32::try_from(state.count).unwrap_or(0)));
@@ -694,7 +766,473 @@ pub(in crate::game) fn bucket_click(game: &mut Game<'_>, pos: [i32; 3], top: boo
         let given = stack_of(game, &resource, u32::try_from(count).unwrap_or(0));
         game.give_or_drop(given);
     }
-    Some(true)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// O item usado no mundo (`ItemBlockFluidTank`): o modo balde.
+
+/// `getMode(stack)`: o `mekanism:bucket_mode` de um item de Fluid Tank.
+pub(in crate::game) fn bucket_mode(game: &Game<'_>, stack: &ItemStack) -> bool {
+    is_tank(&stack.item) && matches!(game.native_component(stack, rules::BUCKET_MODE_COMPONENT), Ok(Some(Tag::Byte(value))) if *value != 0)
+}
+
+/// `setMode`: o padrão do item (`false`) é a falta do componente.
+pub(in crate::game) fn set_bucket_mode(game: &Game<'_>, stack: &mut ItemStack, mode: bool) {
+    let result = if mode { game.native_set_component(stack, rules::BUCKET_MODE_COMPONENT, Tag::Byte(1)) } else { game.native_remove_component(stack, rules::BUCKET_MODE_COMPONENT).map(|_| ()) };
+    if let Err(error) = result {
+        eprintln!("mekanism: o item do tanque não leva {}: {error}", rules::BUCKET_MODE_COMPONENT);
+    }
+}
+
+/// `tryClaimItem` e `canAccessOrDisplayError` no começo de `use` e de `interactLivingEntity` (`ItemBlockFluidTank.java:82-87` e `:141-146`): `Some` encerra o uso.
+fn claim_or_refuse(game: &mut Game<'_>, stack: &ItemStack) -> Option<UseOutcome> {
+    let mut owned = stack.clone();
+    if basis::security_item_claim(game, &mut owned) {
+        *game.held_mut() = Some(owned);
+        return Some(UseOutcome::Success);
+    }
+    if !basis::security_item_access_or_error(game, stack) {
+        return Some(UseOutcome::Fail);
+    }
+    None
+}
+
+/// `ItemBlockFluidTank.use` (`:135-181`) com o item no modo balde: o primeiro uso só toma posse; depois, agachado o item põe um balde no bloco da mira (ou no vizinho
+/// da face), e em pé tira um balde da fonte da mira.
+fn item_use(game: &mut Game<'_>, stack: &ItemStack) -> UseOutcome {
+    if let Some(outcome) = claim_or_refuse(game, stack) {
+        return outcome;
+    }
+    let sneaking = game.native_sneaking();
+    // `getPlayerPOVHitResult`: `ClipContext.Fluid.NONE` agachado, `SOURCE_ONLY` em pé (a fonte do vanilla ou a de um fluido de mod, a que vier antes do bloco).
+    let hit = if sneaking {
+        game.pick().map(|hit| UseHit { pos: hit.pos, offset: hit.beside() })
+    } else {
+        match crate::game::machinery_liquid::source_hit(game) {
+            Some(cell) => Some(UseHit { pos: cell, offset: [cell[0], cell[1] + 1, cell[2]] }),
+            None => game.bucket_hit().map(|hit| UseHit { pos: hit.pos, offset: hit.beside() }),
+        }
+    };
+    // `level.mayInteract` e `player.mayUseItemAt`, como o balde do Horizon os confere.
+    let may_use = game.may_build();
+    CLOCK.with(|clock| clock.set(game.world.game_time as u64));
+    let infinite = creative(game);
+    let hand = hand_access(game, stack, infinite, false);
+    let lookup = items_as(true);
+    let outcome = {
+        let one = OneByOne(&hand);
+        let held = lookup(&one);
+        let mut world = crate::game::machinery_liquid::BucketWorld { game: &mut *game, by_player: true };
+        let transaction = Transaction::open_safe();
+        let outcome = use_as_bucket(held.as_deref(), sneaking, hit, may_use, &mut world, &transaction);
+        if outcome == UseOutcome::Success {
+            transaction.commit();
+        }
+        outcome
+    };
+    if outcome == UseOutcome::Success {
+        hand_apply(game, &hand, infinite);
+    }
+    outcome
+}
+
+/// `FluidTankCauldronInteraction.interact` (`ItemBlockFluidTank.java:283-357`): o item no modo balde troca fluido com o caldeirão em `pos`. Devolve se algo passou
+/// (`SUCCESS`); sem isso é `TRY_WITH_EMPTY_HAND`, e o clique segue.
+fn cauldron_use(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3]) -> bool {
+    let Some(before) = cauldron_level(game, pos) else {
+        return false;
+    };
+    CLOCK.with(|clock| clock.set(game.world.game_time as u64));
+    let infinite = creative(game);
+    let hand = hand_access(game, stack, infinite, true);
+    let cauldron = CauldronHandler::new(before);
+    let lookup = items_as(true);
+    let outcome = {
+        let one = OneByOne(&hand);
+        let held = lookup(&one);
+        let transaction = Transaction::open_safe();
+        let outcome = cauldron_interact(held.as_deref(), &cauldron, &transaction);
+        if outcome != CauldronOutcome::TryWithEmptyHand {
+            transaction.commit();
+        }
+        outcome
+    };
+    let CauldronOutcome::Success { fluid, filled_cauldron } = outcome else {
+        return false;
+    };
+    // `CauldronWrapper.onRootCommit`: o estado novo do caldeirão vai ao mundo.
+    let after = cauldron.state();
+    let (block, level) = match after.fluid.as_ref().map(|fluid| &*fluid.id) {
+        None => ("minecraft:cauldron", None),
+        Some("minecraft:water") => ("minecraft:water_cauldron", Some(after.level.to_string())),
+        Some(_) => ("minecraft:lava_cauldron", None),
+    };
+    let new = game.with_level(|_, world, _| {
+        let base = world.registry.default_state(block)?;
+        match &level {
+            Some(level) => world.native_state_with_property(base, "level", level),
+            None => Some(base),
+        }
+    });
+    if let Some(new) = new {
+        let _ = game.level_set(pos, new);
+    }
+    game.award_custom_stat(if filled_cauldron { "fill_cauldron" } else { "use_cauldron" }, 1);
+    game.award_stat("used", &stack.item, 1);
+    game.audio.play(&bucket_sound(&fluid.id, !filled_cauldron), Some(center(pos)), 1.0, 1.0);
+    game.post_block_game_event(if filled_cauldron { "minecraft:fluid_place" } else { "minecraft:fluid_pickup" }, pos, None, None);
+    hand_apply(game, &hand, infinite);
+    true
+}
+
+/// O gancho `use_item_on` (onde começa `ItemStack.useOn`, depois de o bloco ter a vez): o caldeirão responde ao item no modo balde (`CauldronInteraction`, que no original
+/// é do `useItemOn` do bloco), e `ItemBlockFluidTank.useOn` passa (`:126-133`: no modo balde o item não põe o bloco). O clique de um convidado só chega até aqui (o `use`
+/// vem no pacote seguinte): o gancho o toma para o bloco não ser posto, e o invólucro de [`use_hand`] desfaz o balanço da mão.
+pub(in crate::game) fn use_item_on(game: &mut Game<'_>, stack: &ItemStack, pos: [i32; 3], claimed: &mut bool) {
+    if *claimed || !bucket_mode(game, stack) {
+        return;
+    }
+    // `Player.isSecondaryUseActive`: agachado com algo na mão o bloco não tem a vez.
+    if !game.native_sneaking() && cauldron_use(game, stack, pos) {
+        USE_RESULT.set(Some(UseOutcome::Success));
+        *claimed = true;
+        return;
+    }
+    if matches!(game.guest_use, Some(crate::game::GuestUse::OnBlock(_))) {
+        USE_RESULT.set(Some(UseOutcome::Pass));
+        *claimed = true;
+    }
+}
+
+/// O gancho `use_item` (onde começa `Item.use`): o item no modo balde age como balde e nunca põe o bloco.
+pub(in crate::game) fn use_item(game: &mut Game<'_>, stack: &ItemStack, claimed: &mut bool) {
+    if *claimed || !bucket_mode(game, stack) {
+        return;
+    }
+    let outcome = item_use(game, stack);
+    USE_RESULT.set(Some(outcome));
+    // `PASS` só sai sem bloco na mira, e então o Horizon não tem bloco para pôr; com um bloco na mira o gancho toma o clique de qualquer jeito.
+    *claimed = outcome != UseOutcome::Pass || game.pick().is_some();
+}
+
+/// O invólucro do turno de uma mão (`Game::use_hand`, o HEAD cancelável do Configurator, H72), para o item no modo balde: o gancho `use_item` só sabe tomar o clique, e
+/// quem o toma balança a mão. O turno roda de novo por dentro, com a marca de reentrada, e aqui o `FAIL` (`use_failed`, sem balançar a mão) e o `PASS` (a outra mão tem a
+/// vez) do original voltam a ser o que são.
+pub(in crate::game) fn use_hand(game: &mut Game<'_>, hit: Option<&crate::game::Hit>) -> Option<ControlFlow<crate::game::Result<bool>>> {
+    if IN_USE_HAND.get() || !game.held().is_some_and(|stack| bucket_mode(game, stack)) {
+        return None;
+    }
+    IN_USE_HAND.set(true);
+    USE_RESULT.set(None);
+    let swing = (game.swing, game.swings_started);
+    let result = game.use_hand(hit);
+    IN_USE_HAND.set(false);
+    let outcome = USE_RESULT.take();
+    Some(ControlFlow::Break(match (outcome, result) {
+        (Some(UseOutcome::Fail), Ok(_)) => {
+            (game.swing, game.swings_started) = swing;
+            game.use_failed = true;
+            Ok(true)
+        }
+        (Some(UseOutcome::Pass), Ok(_)) => {
+            (game.swing, game.swings_started) = swing;
+            Ok(false)
+        }
+        (_, result) => result,
+    }))
+}
+
+// O cliente. `MultiPlayerGameMode.useItemOn` e `useItem` rodam o item também no cliente: o `useOn` do item no modo balde passa (o bloco não é posto e o `UseItem` segue),
+// e o resultado do `use` decide se a mão balança. O cliente do Horizon só prevê os itens dele: um item de bloco encerra o clique com a previsão do bloco posto, e o
+// `UseItem` nunca sai. As duas injeções cruas `tank_use_item_on` e `tank_use_item` (HEAD canceláveis de `remote_use_item_on` e `remote_use_item`, com marca de reentrada)
+// rodam a função de novo por dentro e respondem pelo item.
+
+thread_local! {
+    static IN_CLIENT_USE_ON: Cell<bool> = const { Cell::new(false) };
+    static IN_CLIENT_USE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Um item que não é de bloco, não se usa e a que nenhum bloco do vanilla responde: fica na mão do cliente só durante a chamada de dentro de `remote_use_item_on`, para
+/// ela não prever o bloco posto (`BlockItem.useOn`). Nenhum pacote leva o item da mão.
+const CLIENT_STAND_IN: &str = "minecraft:stick";
+
+/// O nível do caldeirão em `pos` (`CauldronFluidContent`): o vazio, a água em três níveis e a lava; o de neve em pó não tem capability de fluido.
+fn cauldron_level(game: &Game<'_>, pos: [i32; 3]) -> Option<CauldronLevel> {
+    let (state, _) = game.cauldron_at(pos)?;
+    let name: &str = &state.name;
+    match name {
+        "minecraft:cauldron" => Some(CauldronLevel::default()),
+        "minecraft:water_cauldron" => {
+            Some(CauldronLevel { fluid: Some(FluidResource::new("minecraft:water")), level: state.properties.get("level").and_then(|level| level.parse().ok()).unwrap_or(0) })
+        }
+        "minecraft:lava_cauldron" => Some(CauldronLevel { fluid: Some(FluidResource::new("minecraft:lava")), level: 1 }),
+        _ => None,
+    }
+}
+
+/// O que `ItemBlockFluidTank.use` devolveria no cliente, sem mudar nada: a posse no primeiro uso, e depois o balde sobre o mundo que o cliente vê.
+fn client_use_outcome(game: &Game<'_>, stack: &ItemStack) -> UseOutcome {
+    if !matches!(game.native_component(stack, machinery_basis_core::security::OWNER_COMPONENT), Ok(Some(_))) {
+        return UseOutcome::Success;
+    }
+    let sneaking = game.native_sneaking();
+    let hit = if sneaking {
+        game.pick().map(|hit| UseHit { pos: hit.pos, offset: hit.beside() })
+    } else {
+        match crate::game::machinery_liquid::source_hit(game) {
+            Some(cell) => Some(UseHit { pos: cell, offset: [cell[0], cell[1] + 1, cell[2]] }),
+            None => game.bucket_hit().map(|hit| UseHit { pos: hit.pos, offset: hit.beside() }),
+        }
+    };
+    let hand = hand_access(game, stack, game.creative, false);
+    let lookup = items_as(true);
+    let one = OneByOne(&hand);
+    let held = lookup(&one);
+    let mut world = crate::game::machinery_liquid::DryBucketWorld { game };
+    // A transação não é confirmada: nada do que o item mudou fica.
+    let transaction = Transaction::open_safe();
+    use_as_bucket(held.as_deref(), sneaking, hit, game.may_build(), &mut world, &transaction)
+}
+
+/// `FluidTankCauldronInteraction.interact` no cliente: se a troca com o caldeirão da mira fecharia (`SUCCESS`: a mão balança e o `UseItem` não sai).
+fn client_cauldron_succeeds(game: &Game<'_>, stack: &ItemStack) -> bool {
+    if game.native_sneaking() {
+        return false;
+    }
+    let Some(level) = game.pick().and_then(|hit| cauldron_level(game, hit.pos)) else {
+        return false;
+    };
+    let hand = hand_access(game, stack, game.creative, true);
+    let cauldron = CauldronHandler::new(level);
+    let lookup = items_as(true);
+    let one = OneByOne(&hand);
+    let held = lookup(&one);
+    let transaction = Transaction::open_safe();
+    cauldron_interact(held.as_deref(), &cauldron, &transaction) != CauldronOutcome::TryWithEmptyHand
+}
+
+/// O começo de `tank_use_item_on`: com o item no modo balde na mão `hand`, guarda a pilha, deixa o substituto no lugar e diz se o caldeirão responderia. `None` fora
+/// do caso (ou na chamada de dentro).
+pub(in crate::game) fn client_use_on_begin(game: &mut Game<'_>, hand: horizon_client::first_person::Hand) -> Option<(ItemStack, bool)> {
+    if IN_CLIENT_USE_ON.get() {
+        return None;
+    }
+    let stack = game.with_hand(hand, |game| game.held().cloned()).filter(|stack| bucket_mode(game, stack))?;
+    let cauldron = game.with_hand(hand, |game| client_cauldron_succeeds(game, &stack));
+    IN_CLIENT_USE_ON.set(true);
+    game.with_hand(hand, |game| *game.held_mut() = Some(ItemStack::new(CLIENT_STAND_IN, 1)));
+    Some((stack, cauldron))
+}
+
+/// O fim de `tank_use_item_on`: a pilha volta à mão. Devolve se o clique acaba aqui: o bloco respondeu (`done`), ou o caldeirão trocou (a mão balança).
+pub(in crate::game) fn client_use_on_end(game: &mut Game<'_>, hand: horizon_client::first_person::Hand, saved: (ItemStack, bool), done: bool) -> bool {
+    IN_CLIENT_USE_ON.set(false);
+    let (stack, cauldron) = saved;
+    game.with_hand(hand, |game| *game.held_mut() = Some(stack));
+    if !done && cauldron {
+        game.with_hand(hand, Game::swing_arm);
+        return true;
+    }
+    done
+}
+
+/// O começo de `tank_use_item`: com o item no modo balde na mão `hand`, o que o `use` devolveria. `None` fora do caso (ou na chamada de dentro).
+pub(in crate::game) fn client_use_begin(game: &mut Game<'_>, hand: horizon_client::first_person::Hand) -> Option<UseOutcome> {
+    if IN_CLIENT_USE.get() {
+        return None;
+    }
+    let stack = game.with_hand(hand, |game| game.held().cloned()).filter(|stack| bucket_mode(game, stack))?;
+    let outcome = game.with_hand(hand, |game| client_use_outcome(game, &stack));
+    IN_CLIENT_USE.set(true);
+    Some(outcome)
+}
+
+/// O fim de `tank_use_item`: um `SUCCESS` balança a mão e encerra o clique (`SwingSource.CLIENT`); o `FAIL` e o `PASS` deixam a outra mão ter a vez.
+pub(in crate::game) fn client_use_end(game: &mut Game<'_>, hand: horizon_client::first_person::Hand, outcome: UseOutcome, done: bool) -> bool {
+    IN_CLIENT_USE.set(false);
+    if done {
+        return true;
+    }
+    if outcome == UseOutcome::Success {
+        game.with_hand(hand, Game::swing_arm);
+        return true;
+    }
+    false
+}
+
+/// `ItemBlockFluidTank.interactLivingEntity` (`:77-109`): o item no modo balde ordenha a vaca, o cogumelo-vaca e a cabra adultos. O primeiro uso só toma posse; depois o
+/// leite (`NeoForgeMod.MILK`) entra no item, um balde ou o que couber, com o som do bicho.
+pub(in crate::game) fn interact_entity(game: &mut Game<'_>, entity: i32, stack: Option<&ItemStack>, claimed: &mut bool) {
+    use horizon_client::mobs::Species;
+    let Some(stack) = stack else {
+        return;
+    };
+    if *claimed || !bucket_mode(game, stack) {
+        return;
+    }
+    let Some((species, baby, screaming)) = u32::try_from(entity).ok().and_then(|id| game.mobs.iter().find(|mob| mob.id == id)).map(|mob| (mob.species(), mob.is_baby(), mob.extra.screaming)) else {
+        return;
+    };
+    if baby {
+        return;
+    }
+    match claim_or_refuse(game, stack) {
+        Some(UseOutcome::Success) => {
+            *claimed = true;
+            return;
+        }
+        // `FAIL` não consome a ação: o clique segue.
+        Some(_) => return,
+        None => {}
+    }
+    // `getMilkSound`.
+    let sound = match species {
+        Species::Goat if screaming => "minecraft:entity.goat.screaming.milk",
+        Species::Goat => "minecraft:entity.goat.milk",
+        Species::Mooshroom => "minecraft:entity.mooshroom.milk",
+        Species::Cow => "minecraft:entity.cow.milk",
+        _ => return,
+    };
+    CLOCK.with(|clock| clock.set(game.world.game_time as u64));
+    let infinite = creative(game);
+    let hand = hand_access(game, stack, infinite, false);
+    let lookup = items_as(true);
+    let inserted = {
+        let one = OneByOne(&hand);
+        let Some(held) = lookup(&one) else {
+            return;
+        };
+        let transaction = Transaction::open_safe();
+        let inserted = held.insert(&FluidResource::new(MILK), BUCKET_VOLUME, &transaction);
+        if inserted > 0 {
+            transaction.commit();
+        }
+        inserted
+    };
+    // "Fail if we can't insert any, we allow partial bucket amounts for milking though".
+    if inserted == 0 {
+        return;
+    }
+    let at = game.native_acting_player().map(|player| player.position);
+    game.audio.play(sound, at, 1.0, 1.0);
+    hand_apply(game, &hand, infinite);
+    *claimed = true;
+}
+
+/// `FluidTankItemDispenseBehavior.execute` (`:223-266`): no dispensador o item no modo balde pega a fonte da frente ou põe um balde ali; se nada passa, ou fora do modo
+/// balde, ele é solto como um item comum.
+pub(in crate::game) fn dispense(
+    game: &mut Game<'_>,
+    dimension: &str,
+    pos: [i32; 3],
+    facing: horizon_core::geometry::Direction,
+    stack: &ItemStack,
+    answer: &mut Option<horizon_client::mod_api::NativeDispensed>,
+) {
+    use horizon_core::geometry::Direction;
+    if answer.is_some() || !is_tank(&stack.item) {
+        return;
+    }
+    if !bucket_mode(game, stack) {
+        *answer = Some((game.native_dispense_default(dimension, pos, facing, stack.clone()), 1000));
+        return;
+    }
+    let offset = match facing {
+        Direction::Down => [0, -1, 0],
+        Direction::Up => [0, 1, 0],
+        Direction::North => [0, 0, -1],
+        Direction::South => [0, 0, 1],
+        Direction::West => [-1, 0, 0],
+        Direction::East => [1, 0, 0],
+    };
+    let target = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
+    CLOCK.with(|clock| clock.set(game.world.game_time as u64));
+    // `ItemStacksResourceHandler(2)` com a pilha no primeiro slot: o que não cabe nele vai para o de sobra.
+    let hand = HandAccess::new(Some(resource_of(game, stack)), i32::try_from(stack.count).unwrap_or(i32::MAX), false, Rc::new(|_| false));
+    let source = crate::game::machinery_liquid::is_source(game, target);
+    let lookup = items_as(true);
+    let moved = {
+        let one = OneByOne(&hand);
+        let Some(held) = lookup(&one) else {
+            return;
+        };
+        let mut world = crate::game::machinery_liquid::BucketWorld { game: &mut *game, by_player: false };
+        let transaction = Transaction::open_safe();
+        let moved = dispense_as_bucket(held.as_ref(), &mut world, target, source, &transaction);
+        if moved.is_some() {
+            transaction.commit();
+        }
+        moved
+    };
+    if moved.is_none() {
+        *answer = Some((game.native_dispense_default(dimension, pos, facing, stack.clone()), 1000));
+        return;
+    }
+    // `consumeWithRemainder(source, stack0, stack1)` com o `stack0.grow(1)` antes: o primeiro slot fica como está, e o de sobra entra no dispensador ou é solto.
+    let state = hand.state();
+    let kept = state.resource.filter(|_| state.count > 0).map(|resource| stack_of(game, &resource, u32::try_from(state.count).unwrap_or(0)));
+    for (resource, count) in state.extra {
+        let extra = stack_of(game, &resource, u32::try_from(count).unwrap_or(0));
+        if let Some(left) = dispenser_insert(game, pos, extra) {
+            let _ = game.native_dispense_default(dimension, pos, facing, left);
+        }
+    }
+    *answer = Some((kept, 1000));
+}
+
+/// `DispenserBlockEntity.insertItem` (o de `addToInventoryOrDispense`): a pilha entra nos slots do dispensador, e o que não coube volta.
+fn dispenser_insert(game: &mut Game<'_>, pos: [i32; 3], stack: ItemStack) -> Option<ItemStack> {
+    let max = game.res.items().get(&stack.item).map_or(64, |item| item.max_stack).max(1);
+    let mut rest = stack;
+    let entity = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))?;
+    for cell in entity.slots_mut() {
+        if rest.count == 0 {
+            break;
+        }
+        match cell {
+            None => {
+                let moved = rest.count.min(max);
+                *cell = Some(ItemStack { count: moved, ..rest.clone() });
+                rest.count -= moved;
+            }
+            Some(held) if held.same_item_same_components(&rest) => {
+                let moved = rest.count.min(max.saturating_sub(held.count));
+                held.count += moved;
+                rest.count -= moved;
+            }
+            Some(_) => {}
+        }
+    }
+    (rest.count > 0).then_some(rest)
+}
+
+/// `ItemBlockFluidTank.changeMode` na pilha da mão: devolve a mudança, com a pilha já trocada.
+pub(in crate::game) fn change_mode(game: &mut Game<'_>, stack: &ItemStack, shift: i32, display: rules::DisplayChange) -> rules::BucketModeChange {
+    let change = rules::bucket_mode_change(bucket_mode(game, stack), shift, display);
+    if change.changed {
+        let mut next = stack.clone();
+        set_bucket_mode(game, &mut next, change.mode);
+        *game.held_mut() = Some(next);
+    }
+    change
+}
+
+/// As linhas dos appenders do item do Fluid Tank (o fluido, a capacidade do tier, o inventário e o modo balde), entre a segurança e a descrição.
+pub(in crate::game) fn tooltip_lines(game: &Game<'_>, stack: &ItemStack) -> Vec<rules::Chat> {
+    let Some(tier) = tier_of(&stack.item) else {
+        return Vec::new();
+    };
+    let contents = stack_fluids(game, stack);
+    let stored = contents.resource.as_ref().filter(|_| contents.amount > 0).map(|resource| (&*resource.id, contents.amount));
+    let items = game.native_component(stack, basis::CONTENT_ITEMS).ok().flatten().map(basis::tag_value);
+    rules::tank_tooltip_lines(&rules::TankTooltip {
+        chemical: false,
+        tier,
+        stored,
+        capacity: tier_values(tier).0,
+        inventory: content::has_inventory(items.as_ref()),
+        bucket_mode: Some(bucket_mode(game, stack)),
+    })
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

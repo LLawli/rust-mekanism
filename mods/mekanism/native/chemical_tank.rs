@@ -760,6 +760,24 @@ pub(in crate::game) fn loot_drops(game: &Game<'_>, context: &horizon_client::mod
     basis::content_loot(game, context, drops, &content_spec());
 }
 
+/// As linhas dos appenders do item do Chemical Tank (o químico, a capacidade do tier e o inventário), entre a segurança e a descrição.
+pub(in crate::game) fn tooltip_lines(game: &Game<'_>, stack: &ItemStack) -> Vec<rules::Chat> {
+    let Some(tier) = tier_of(&stack.item) else {
+        return Vec::new();
+    };
+    let contents = stack_chemicals(Some(game), stack);
+    let stored = contents.resource.as_ref().filter(|_| contents.amount > 0).map(|resource| (&*resource.id, contents.amount));
+    let items = game.native_component(stack, basis::CONTENT_ITEMS).ok().flatten().map(basis::tag_value);
+    rules::tank_tooltip_lines(&rules::TankTooltip {
+        chemical: true,
+        tier,
+        stored,
+        capacity: tier_values(tier).0,
+        inventory: machinery_basis_core::item_content::has_inventory(items.as_ref()),
+        bucket_mode: None,
+    })
+}
+
 /// Os componentes do item do tanque que o jogo precisa conhecer.
 pub(in crate::game) fn component_types(types: &mut Vec<String>) {
     types.push(rules::DUMP_MODE_COMPONENT.to_owned());
