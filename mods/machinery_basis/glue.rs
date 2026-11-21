@@ -3594,25 +3594,21 @@ pub(in crate::game) fn security_desk_tick(game: &Game<'_>, entity: &mut ModBlock
 // O bloco de apoio (`AttributeHasBounding`, `BlockBounding`, `TileEntityBoundingBlock`): um bloco maior que um cubo ocupa as posições em volta com um bloco invisível
 // que aponta para o principal. O mod diz qual é o bloco principal, qual é o de apoio e onde ficam os apoios; a lib os põe, os tira e acha o principal.
 
-/// O bloco principal, o de apoio e os deslocamentos dos apoios em relação ao principal.
-struct BoundingSpec {
-    main: &'static str,
-    bounding: &'static str,
-    offsets: &'static [[i32; 3]],
-}
+use machinery_basis_core::bounding::Spec as BoundingSpec;
 
 static BOUNDING_SPECS: std::sync::Mutex<Vec<BoundingSpec>> = std::sync::Mutex::new(Vec::new());
-/// Os blocos principais que saíram do mundo e ainda têm apoios a tirar: o nível, a posição e os deslocamentos.
-static BOUNDING_REMOVED: std::sync::Mutex<Vec<(String, [i32; 3], &'static str, &'static [[i32; 3]])>> = std::sync::Mutex::new(Vec::new());
-
-/// Os principais cujo apoio foi trocado por outro bloco e que ainda têm de sair (`TileEntityBoundingBlock.preRemoveSideEffects`): o nível, a posição e o bloco.
-static BOUNDING_MAIN_REMOVED: std::sync::Mutex<Vec<(String, [i32; 3], &'static str)>> = std::sync::Mutex::new(Vec::new());
-/// O `bounding_flush` está tirando apoios de um principal que saiu: esses apoios não pedem a saída de principal nenhum (senão um bloco posto no lugar do
-/// principal antes da próxima passada sairia junto).
-static BOUNDING_FLUSHING: AtomicBool = AtomicBool::new(false);
+/// O que os principais e os apoios que saíram do mundo deixaram para tirar (`machinery_basis_core::bounding::Queue`).
+static BOUNDING_QUEUE: std::sync::Mutex<machinery_basis_core::bounding::Queue> = std::sync::Mutex::new(machinery_basis_core::bounding::Queue::new());
+/// Um [`bounding_flush`] está rodando (as trocas que ele faz acabam num `flush_spill`, que o chamaria de novo).
+static BOUNDING_FLUSH_BUSY: AtomicBool = AtomicBool::new(false);
 
 /// `TileEntityBoundingBlock`: a chave do deslocamento até o principal no NBT do apoio (`SerializationConstants.OFFSET`, um `Vec3i`).
 const BOUNDING_OFFSET: &str = "offset";
+/// `TileEntityBoundingBlock`: a chave do nível de redstone dos vizinhos no NBT do apoio (`SerializationConstants.REDSTONE`, `currentRedstoneLevel`), gravada
+/// sempre (`putInt`), também no que vai ao cliente (`writeReducedUpdatedTag`).
+const BOUNDING_REDSTONE: &str = "redstone";
+/// Os apoios que o jogo avisou desde a última leitura (`BlockBounding.neighborChanged`): o nível e a posição.
+static BOUNDING_NOTIFIED: std::sync::Mutex<Vec<(&'static str, [i32; 3])>> = std::sync::Mutex::new(Vec::new());
 
 fn bounding_specs() -> std::sync::MutexGuard<'static, Vec<BoundingSpec>> {
     BOUNDING_SPECS.lock().unwrap_or_else(|error| error.into_inner())
@@ -3662,6 +3658,8 @@ pub(in crate::game) fn bounding_placed(game: &mut Game<'_>, pos: [i32; 3]) {
         if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(at[0], at[1], at[2])) {
             // `mainPos.subtract(boundingPos)`.
             entity.nbt.insert(JavaString::from(BOUNDING_OFFSET), Tag::IntArray(vec![-offset[0], -offset[1], -offset[2]]));
+            // `currentRedstoneLevel` nasce 0 e só muda num aviso de vizinho (o apoio posto não é avisado).
+            entity.nbt.insert(JavaString::from(BOUNDING_REDSTONE), Tag::Int(0));
             game.world.modified.insert((at[0] >> 4, at[2] >> 4));
             // O cliente lê o deslocamento da cópia dele do tile (`writeReducedUpdatedTag`): a forma e o clique do apoio dependem dele.
             game.native_block_entity_sync(at);
@@ -3687,8 +3685,7 @@ fn bounding_is(block: &str) -> bool {
     bounding_specs().iter().any(|spec| spec.bounding == block)
 }
 
-/// `TileEntityBoundingBlock.writeReducedUpdatedTag`: o cliente recebe o deslocamento até o principal. (O nível de redstone, que o original manda junto, o port não
-/// guarda: nenhum principal portado o usa.)
+/// `TileEntityBoundingBlock.writeReducedUpdatedTag`: o cliente recebe o deslocamento até o principal e o nível de redstone (`getIntOr(REDSTONE, 0)`).
 pub(in crate::game) fn bounding_update_tag(entity: &ModBlockEntity, tag: &mut Option<Compound>) {
     if !bounding_is(&entity.id) {
         return;
@@ -3697,6 +3694,54 @@ pub(in crate::game) fn bounding_update_tag(entity: &ModBlockEntity, tag: &mut Op
     let out = tag.get_or_insert_with(Compound::default);
     if let Some(offset) = entity.nbt.get(&key) {
         out.insert(key, offset.clone());
+    }
+    out.insert(JavaString::from(BOUNDING_REDSTONE), Tag::Int(bounding_redstone(entity)));
+}
+
+/// O nível de redstone que o tile do apoio guarda (`input.getIntOr(REDSTONE, 0)`).
+fn bounding_redstone(entity: &ModBlockEntity) -> i32 {
+    match entity.nbt.get(&JavaString::from(BOUNDING_REDSTONE)) {
+        Some(Tag::Int(level)) => *level,
+        _ => 0,
+    }
+}
+
+/// `BlockBounding.neighborChanged`: o jogo avisou um apoio. Só anota; o sinal é lido no fim da operação ([`bounding_flush_redstone`]), como o das máquinas.
+fn bounding_neighbor_changed(level: &GameLevel<'_>, dimension: &'static str, pos: BlockPos, state: BlockStateId) {
+    if level.native_state_block(state).is_some_and(bounding_is) {
+        BOUNDING_NOTIFIED.lock().unwrap_or_else(|error| error.into_inner()).push((dimension, [pos.x, pos.y, pos.z]));
+    }
+}
+
+/// `TileEntityBoundingBlock.onNeighborChange` (`:94-105`) de cada apoio avisado: o sinal dos vizinhos (`getBestNeighborSignal`) vira o `redstone` do tile quando
+/// difere. Sem `setChanged` e sem pacote, como o original. O `onBoundingBlockPowerChange` do principal não faz nada nos principais portados (só o Digital Miner o
+/// usa). Um aviso de outro nível espera a vez dele.
+fn bounding_flush_redstone(game: &mut Game<'_>) {
+    use horizon_client::containers::BlockEntity;
+    let notified = std::mem::take(&mut *BOUNDING_NOTIFIED.lock().unwrap_or_else(|error| error.into_inner()));
+    if notified.is_empty() {
+        return;
+    }
+    let here = game.native_dimension();
+    let mut later = Vec::new();
+    for (dimension, pos) in notified {
+        if dimension != here {
+            later.push((dimension, pos));
+            continue;
+        }
+        let current = match game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+            Some(BlockEntity::Mod(entity)) if bounding_is(&entity.id) => bounding_redstone(entity),
+            _ => continue,
+        };
+        let power = game.native_neighbor_signal(dimension, pos);
+        if let Some(level) = machinery_basis_core::bounding::redstone_change(current, power)
+            && let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        {
+            entity.nbt.insert(JavaString::from(BOUNDING_REDSTONE), Tag::Int(level));
+        }
+    }
+    if !later.is_empty() {
+        BOUNDING_NOTIFIED.lock().unwrap_or_else(|error| error.into_inner()).extend(later);
     }
 }
 
@@ -3752,6 +3797,38 @@ pub(in crate::game) fn bounding_proxy(game: &Game<'_>, pos: [i32; 3]) -> Option<
     Some(bounding_main(game, pos).filter(|main| !bounding_is(&game.native_block(*main))))
 }
 
+/// `BlockBounding.getCloneItemStack` e, com o Ctrl no criativo, o `ServerGamePacketListenerImpl.addBlockDataToItem` (`:751-762`) da posição mirada: o item do
+/// principal em `main`, com o `block_entity_data` do tile do apoio em `pos` (`saveCustomOnly`, do tipo `mekanism:bounding_block`: o deslocamento e o `redstone`) e
+/// os componentes dele (`collectComponents`, nenhum). Os dados que o próprio principal copia ao item (`BlockMekanism.getCloneItemStack` com `copyBlockData`) são da
+/// frente do pick block da base, não daqui. Ao pôr o item, o `block_entity_data` de outro tipo é ignorado (`BlockItem.updateCustomBlockEntityTag`).
+pub(in crate::game) fn bounding_picked_stack(game: &Game<'_>, pos: [i32; 3], main: [i32; 3], include_data: bool) -> Option<ItemStack> {
+    use horizon_client::containers::BlockEntity;
+    let mut stack = game.picked_stack(main, false)?;
+    if !include_data {
+        return Some(stack);
+    }
+    let Some(entity) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) else {
+        return Some(stack);
+    };
+    if !matches!(entity, BlockEntity::Mod(_)) {
+        return Some(stack);
+    }
+    let block = game.native_block(pos);
+    // O tile salvo como o jogo salva um tile de mod (`id`, `x`, `y`, `z` e o NBT dele); o `block_entity_nbt::canonical` do Horizon só conhece os tipos do vanilla
+    // (devolve `None` para o de um mod), então o tile vai a `pick` como está.
+    let saved = horizon_client::save::encode_block_entity((pos[0], pos[1], pos[2]), entity, &block);
+    let patch = horizon_client::block_entity_item::pick(&saved);
+    if !patch.is_empty() {
+        let mut all = match encode_components(&stack) {
+            Some(Tag::Compound(all)) => all,
+            _ => Compound::new(),
+        };
+        all.extend(patch);
+        (stack.damage, stack.extra) = decode_components(Some(&Tag::Compound(all)));
+    }
+    Some(stack)
+}
+
 /// `BlockBounding.getExplosionResistance`: a resistência do apoio em `pos` é a do principal dele (`world.getBlockState(mainPos).getExplosionResistance`). `None`
 /// se o bloco não é um apoio com principal (vale a do estado, 4,8).
 pub(in crate::game) fn bounding_explosion_resistance(game: &Game<'_>, pos: [i32; 3]) -> Option<f32> {
@@ -3788,74 +3865,56 @@ pub(in crate::game) fn bounding_near(game: &Game<'_>, center: [f64; 3], radius: 
     false
 }
 
-/// O gancho `block_changed`: um bloco principal que deixou de ser ele mesmo deixa os apoios para tirar (`BlockMekanism.preRemoveSideEffects`).
+/// O gancho `block_changed`: um bloco principal que deixou de ser ele mesmo deixa os apoios para tirar (`BlockMekanism.preRemoveSideEffects`), e um apoio trocado
+/// direto por outro bloco (um comando, um pistão de outro mod) deixa o principal para tirar, sem item (`TileEntityBoundingBlock.preRemoveSideEffects`, `:74-85`,
+/// `level.removeBlock(mainPos, false)`). Saem no fim da mesma operação ([`bounding_flush`] no `flush_spill`).
 pub(in crate::game) fn bounding_block_changed(level: &GameLevel<'_>, dimension: &str, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
     let Some(block) = level.native_state_block(old) else {
         return;
     };
-    if level.native_state_block(new) == Some(block) {
-        return;
+    let new = level.native_state_block(new).unwrap_or("minecraft:air");
+    let specs = bounding_specs();
+    BOUNDING_QUEUE.lock().unwrap_or_else(|error| error.into_inner()).changed(&specs, dimension, [pos.x, pos.y, pos.z], block, new);
+}
+
+/// O nível em que o jogo está, para a fila do apoio: trocar um bloco por ar é um `native_set_block`, que avisa o gancho e acaba num `flush_spill` (que pode
+/// esvaziar a fila de novo antes de voltar, como o `setBlock` aninhado do original).
+struct BoundingLevel<'g, 'a> {
+    game: &'g mut Game<'a>,
+    dimension: &'static str,
+    air: BlockStateId,
+}
+
+impl machinery_basis_core::bounding::World for BoundingLevel<'_, '_> {
+    fn level(&self) -> String {
+        self.dimension.to_owned()
     }
-    let found = bounding_specs().iter().find(|spec| spec.main == block).map(|spec| (spec.bounding, spec.offsets));
-    if let Some((bounding, offsets)) = found {
-        BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).push((dimension.to_owned(), [pos.x, pos.y, pos.z], bounding, offsets));
+    fn block(&self, pos: [i32; 3]) -> String {
+        self.game.native_block(pos)
     }
-    // `TileEntityBoundingBlock.preRemoveSideEffects` (`:74-85`): o apoio trocado direto por outro bloco (um comando, um pistão de outro mod) tira o principal, sem
-    // item (`level.removeBlock(mainPos, false)`). O tile do apoio pode já ter saído aqui, então o principal é procurado pelos lugares de apoio de cada bloco
-    // registrado; quem não é mais o principal (o apoio que saiu porque o principal saiu) é pulado na hora de tirar.
-    let mains: Vec<([i32; 3], &'static str)> = bounding_specs()
-        .iter()
-        .filter(|spec| spec.bounding == block)
-        .flat_map(|spec| {
-            let name = spec.main;
-            machinery_basis_core::bounding::main_candidates([pos.x, pos.y, pos.z], spec.offsets).into_iter().map(move |main| (main, name))
-        })
-        .collect();
-    if !mains.is_empty() && !BOUNDING_FLUSHING.load(Ordering::Relaxed) {
-        let mut queue = BOUNDING_MAIN_REMOVED.lock().unwrap_or_else(|error| error.into_inner());
-        queue.extend(mains.into_iter().map(|(main, block)| (dimension.to_owned(), main, block)));
+    fn remove(&mut self, pos: [i32; 3]) {
+        // `level.removeBlock(p, false)`.
+        self.game.native_set_block(self.dimension, pos, self.air, 3);
     }
 }
 
-/// `AttributeHasBounding.removeBoundingBlocks`: os apoios dos principais que saíram viram ar (só se ainda são o bloco de apoio). O original os tira na mesma
-/// operação que tira o principal; aqui eles saem no fim da operação que os deixou na fila (quem quebra o bloco chama isto) ou no começo do tick do servidor.
+/// `AttributeHasBounding.removeBoundingBlocks` e o principal do apoio trocado: o que a fila tem no nível do jogo sai agora. Roda no fim de cada operação no mundo
+/// (o `flush_spill`, por `flush_neighbor_signals`), então sai na mesma operação que tirou o principal ou o apoio, como no original; quem quebra o bloco também
+/// chama, e o começo do tick do servidor esvazia o que outro nível deixou.
 pub(in crate::game) fn bounding_flush(game: &mut Game<'_>) {
-    if BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).is_empty() && BOUNDING_MAIN_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).is_empty() {
+    if BOUNDING_QUEUE.lock().unwrap_or_else(|error| error.into_inner()).is_empty() {
+        return;
+    }
+    // Cada `with_level` daqui (a leitura do ar, cada troca por ar) acaba num `flush_spill`, que chama esta função de novo: a passada de dentro volta na hora, e a
+    // de fora tira na volta o que as trocas deixaram na fila (o `flush` do `core` lê a fila de novo depois dos principais).
+    if BOUNDING_FLUSH_BUSY.swap(true, Ordering::Relaxed) {
         return;
     }
     let dimension = game.native_dimension();
-    let Some(air) = game.with_level(|_, level, _| level.registry.default_state("minecraft:air")) else {
-        return;
-    };
-    // Primeiro os principais dos apoios trocados: ao sair, cada um deixa os outros apoios dele na fila de baixo.
-    let mains = std::mem::take(&mut *BOUNDING_MAIN_REMOVED.lock().unwrap_or_else(|error| error.into_inner()));
-    let mut mains_later = Vec::new();
-    for (level, main, block) in mains {
-        if level != dimension {
-            mains_later.push((level, main, block));
-        } else if game.native_block(main) == block {
-            game.native_set_block(dimension, main, air, 3);
-        }
+    if let Some(air) = game.with_level(|_, level, _| level.registry.default_state("minecraft:air")) {
+        machinery_basis_core::bounding::flush(&BOUNDING_QUEUE, &mut BoundingLevel { game: &mut *game, dimension, air });
     }
-    BOUNDING_MAIN_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).extend(mains_later);
-    let pending = std::mem::take(&mut *BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()));
-    let mut later = Vec::new();
-    BOUNDING_FLUSHING.store(true, Ordering::Relaxed);
-    for (level, pos, bounding, offsets) in pending {
-        if level != dimension {
-            later.push((level, pos, bounding, offsets));
-            continue;
-        }
-        for offset in offsets {
-            let at = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]];
-            if game.native_block(at) == bounding {
-                // `level.removeBlockEntity(p)` e `level.removeBlock(p, false)`.
-                game.native_set_block(dimension, at, air, 3);
-            }
-        }
-    }
-    BOUNDING_FLUSHING.store(false, Ordering::Relaxed);
-    BOUNDING_REMOVED.lock().unwrap_or_else(|error| error.into_inner()).extend(later);
+    BOUNDING_FLUSH_BUSY.store(false, Ordering::Relaxed);
     transmitters_flush(game);
 }
 
@@ -4212,6 +4271,7 @@ pub(in crate::game) fn neighbor_changed(
 ) {
     crate::game::machinery_liquid::note(level, dimension, pos, state);
     transmitters_neighbor(dimension, pos);
+    bounding_neighbor_changed(level, dimension, pos, state);
     if level.native_state_block(state).is_some_and(takes_redstone) {
         NOTIFIED
             .lock()
@@ -4226,6 +4286,8 @@ pub(in crate::game) fn neighbor_changed(
 pub(in crate::game) fn flush_neighbor_signals(game: &mut Game<'_>) {
     crate::game::machinery_liquid::flush(game);
     transmitters_flush_operation(game);
+    bounding_flush(game);
+    bounding_flush_redstone(game);
     let notified = std::mem::take(&mut *NOTIFIED.lock().unwrap_or_else(|e| e.into_inner()));
     if notified.is_empty() {
         return;

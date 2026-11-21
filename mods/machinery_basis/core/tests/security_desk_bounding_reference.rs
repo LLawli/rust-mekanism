@@ -148,3 +148,146 @@ fn shift_click_goes_through_the_two_slots_in_the_order_of_the_menu() {
     // Da barra (slot 1) para a primeira vaga do inventário (slot 9): a pedra não cabe na mesa e troca de região.
     assert_eq!(stone, 9);
 }
+
+/// Um nível simulado para a fila do apoio: os blocos por posição, cada troca avisa a fila (o gancho `block_changed`) e, como o `with_level` do jogo, acaba com
+/// a fila esvaziada (`flush_spill`, o fim de cada operação no mundo); a troca feita de dentro do `flush` não o chama de novo (`BOUNDING_FLUSH_BUSY` da cola).
+struct Level<'a> {
+    queue: &'a std::sync::Mutex<bounding::Queue>,
+    blocks: std::collections::HashMap<[i32; 3], String>,
+    busy: bool,
+}
+
+const DESK: &str = "mekanism:security_desk";
+const BOUNDING: &str = "mekanism:bounding_block";
+/// A mesa e um segundo principal com o mesmo apoio no mesmo lugar (como os outros seis blocos com apoio do original).
+const OTHER: &str = "mekanism:other_main";
+const SPECS: [bounding::Spec; 2] = [
+    bounding::Spec { main: DESK, bounding: BOUNDING, offsets: &[[0, 1, 0]] },
+    bounding::Spec { main: OTHER, bounding: BOUNDING, offsets: &[[0, 1, 0]] },
+];
+
+impl Level<'_> {
+    /// `level.setBlock(pos, block, 3)`: uma operação no mundo.
+    fn set(&mut self, pos: [i32; 3], block: &str) {
+        let old = self.blocks.insert(pos, block.to_owned()).unwrap_or_else(|| "minecraft:air".to_owned());
+        self.queue.lock().unwrap().changed(&SPECS, "minecraft:overworld", pos, &old, block);
+        if !self.busy {
+            self.busy = true;
+            bounding::flush(self.queue, self);
+            self.busy = false;
+        }
+    }
+
+    fn at(&self, pos: [i32; 3]) -> &str {
+        self.blocks.get(&pos).map_or("minecraft:air", String::as_str)
+    }
+}
+
+impl bounding::World for Level<'_> {
+    fn level(&self) -> String {
+        "minecraft:overworld".to_owned()
+    }
+    fn block(&self, pos: [i32; 3]) -> String {
+        self.at(pos).to_owned()
+    }
+    fn remove(&mut self, pos: [i32; 3]) {
+        self.set(pos, "minecraft:air");
+    }
+}
+
+/// O nome do bloco como o rastro o escreve (`Block{mekanism:security_desk}[...]`).
+fn block_name(value: &Value) -> &str {
+    let text = value.as_str().unwrap();
+    text.trim_start_matches("Block{").split('}').next().unwrap()
+}
+
+#[test]
+fn the_main_block_leaves_in_the_same_operation_that_replaces_the_bounding_block() {
+    // `TileEntityBoundingBlock.preRemoveSideEffects` (`:74-85`): o `setBlock` que troca o apoio já tira o principal; o rastro lê a mesa logo depois dele.
+    let rows = rows();
+    for (step, with) in [("bounding_replaced_by_air", "minecraft:air"), ("bounding_replaced_by_stone", "minecraft:stone")] {
+        let trace = row(&rows, step);
+        let queue = std::sync::Mutex::new(bounding::Queue::new());
+        let mut level = Level { queue: &queue, blocks: Default::default(), busy: false };
+        let desk = [3, -60, 3];
+        level.blocks.insert(desk, DESK.to_owned());
+        level.blocks.insert([3, -59, 3], BOUNDING.to_owned());
+        assert_eq!(block_name(&trace["desk_before"]), level.at(desk), "{step}");
+        level.set([3, -59, 3], with);
+        assert_eq!(block_name(&trace["desk"]), level.at(desk), "{step}");
+        assert_eq!(block_name(&trace["above"]), level.at([3, -59, 3]), "{step}");
+        assert!(queue.lock().unwrap().is_empty(), "{step}: nada fica para a passada seguinte");
+    }
+}
+
+#[test]
+fn the_main_block_that_leaves_takes_its_bounding_block_in_the_same_operation() {
+    // `BlockMekanism.preRemoveSideEffects` com `removeBoundingBlocks`: a mesa trocada por pedra leva o apoio; o apoio que sai assim não procura o principal (no
+    // original o tile dele sai antes), então um bloco que já está no lugar do principal fica.
+    let queue = std::sync::Mutex::new(bounding::Queue::new());
+    let mut level = Level { queue: &queue, blocks: Default::default(), busy: false };
+    level.blocks.insert([0, 0, 0], DESK.to_owned());
+    level.blocks.insert([0, 1, 0], BOUNDING.to_owned());
+    level.set([0, 0, 0], "minecraft:stone");
+    assert_eq!(level.at([0, 0, 0]), "minecraft:stone");
+    assert_eq!(level.at([0, 1, 0]), "minecraft:air");
+    assert!(queue.lock().unwrap().is_empty());
+    // Outra mesa posta no lugar, com o apoio de outra mesa abaixo trocado: só a mesa de baixo sai.
+    level.blocks.insert([0, 0, 0], DESK.to_owned());
+    level.blocks.insert([0, 1, 0], BOUNDING.to_owned());
+    level.blocks.insert([0, -1, 0], DESK.to_owned());
+    level.set([0, 1, 0], "minecraft:stone");
+    assert_eq!(level.at([0, 0, 0]), "minecraft:air");
+    assert_eq!(level.at([0, -1, 0]), DESK, "o principal só é procurado pelos lugares de apoio de quem o bloco era");
+    // A mesa trocada direto por outro principal (`setBlock`, sem `setPlacedBy`): o apoio dela sai e não leva o bloco novo, porque o apoio que sai pela fila não
+    // procura principal.
+    level.blocks.clear();
+    level.blocks.insert([0, 0, 0], DESK.to_owned());
+    level.blocks.insert([0, 1, 0], BOUNDING.to_owned());
+    level.set([0, 0, 0], OTHER);
+    assert_eq!(level.at([0, 0, 0]), OTHER);
+    assert_eq!(level.at([0, 1, 0]), "minecraft:air");
+}
+
+#[test]
+fn the_redstone_of_the_bounding_block_follows_the_neighbor_signal() {
+    // `TileEntityBoundingBlock.onNeighborChange`: só muda quando o sinal é outro.
+    assert_eq!(bounding::redstone_change(0, 15), Some(15));
+    assert_eq!(bounding::redstone_change(15, 15), None);
+    assert_eq!(bounding::redstone_change(15, 0), Some(0));
+}
+
+#[test]
+fn the_bounding_block_saves_the_redstone_it_was_told_about() {
+    // `bounding_redstone`: um bloco de redstone encostado no apoio avisa o apoio (`BlockBounding.neighborChanged`), o tile guarda 15 no NBT e no que vai ao
+    // cliente; tirado, volta a 0.
+    let rows = rows();
+    let trace = row(&rows, "bounding_redstone");
+    let before = trace["before_nbt"]["redstone"].as_i64().unwrap() as i32;
+    assert_eq!(before, 0, "o apoio nasce com 0");
+    let powered = bounding::redstone_change(before, 15).unwrap();
+    assert_eq!(trace["powered_nbt"]["redstone"], powered);
+    assert_eq!(trace["powered_update_tag"]["redstone"], powered);
+    assert_eq!(trace["powered_update_tag"]["offset"], serde_json::json!([0, -1, 0]));
+    assert_eq!(trace["unpowered_nbt"]["redstone"], bounding::redstone_change(powered, 0).unwrap());
+}
+
+#[test]
+fn ctrl_pick_on_the_bounding_block_carries_the_data_of_the_bounding_tile() {
+    // `ctrl_pick_bounding`: `handlePickItemFromBlock` com `includeData` dá o item do principal (`BlockBounding.getCloneItemStack`) e acrescenta o
+    // `block_entity_data` do tile da posição mirada, o apoio (`addBlockDataToItem`: `saveCustomOnly`, sem posição nem componentes, com o tipo).
+    let rows = rows();
+    let trace = row(&rows, "ctrl_pick_bounding");
+    let without = &trace["without_data"]["components"];
+    let with = &trace["with_data"]["components"];
+    assert!(without.get("minecraft:block_entity_data").is_none());
+    assert_eq!(with["mekanism:owner"], without["mekanism:owner"], "o resto do item é o do principal");
+    let data = &with["minecraft:block_entity_data"];
+    assert_eq!(data["id"], "mekanism:bounding_block");
+    assert_eq!(data["offset"], serde_json::json!([0, -1, 0]));
+    assert_eq!(data["redstone"], 15, "o bloco de redstone ainda estava encostado");
+    let keys: std::collections::BTreeSet<&str> = data.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, ["id", "offset", "redstone"].into_iter().collect(), "sem x, y, z nem components");
+    // O pick com o Ctrl na mesa não traz `block_entity_data` (o que a mesa copia ao item é a frente do pick block da base).
+    assert!(trace["desk_with_data"]["components"].get("minecraft:block_entity_data").is_none());
+}

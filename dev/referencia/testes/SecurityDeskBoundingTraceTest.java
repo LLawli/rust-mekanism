@@ -30,6 +30,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
+import net.minecraft.network.protocol.game.ServerboundPickItemFromBlockPacket;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -103,6 +104,8 @@ public class SecurityDeskBoundingTraceTest {
                   .thenExecute(() -> scene.safe("configurator", scene::configurator))
                   .thenIdle(2)
                   .thenExecute(() -> scene.safe("strangers", scene::strangers))
+                  .thenExecute(() -> scene.safe("redstone_and_pick", scene::redstoneAndPick))
+                  .thenIdle(2)
                   .thenExecute(() -> scene.safe("replaced", scene::replaced))
                   .thenIdle(2)
                   .thenExecute(() -> scene.safe("explosion", scene::explosion))
@@ -577,6 +580,42 @@ public class SecurityDeskBoundingTraceTest {
             after.add("entities", entities(true));
             add(after);
             owner.getInventory().clearContent();
+        }
+
+        /// O `redstone` do tile do apoio (`TileEntityBoundingBlock.onNeighborChange`) e o Ctrl + pick no apoio pelo pacote de verdade
+        /// (`handlePickItemFromBlock`, que chama `addBlockDataToItem` com a posição mirada).
+        void redstoneAndPick() {
+            // A mesa foi desmontada no fim de `strangers`: posta de novo pelo dono.
+            level.setBlock(desk, Blocks.AIR.defaultBlockState(), 3);
+            level.setBlock(desk.above(), Blocks.AIR.defaultBlockState(), 3);
+            entities(true);
+            place();
+            BlockPos side = desk.above().east();
+            JsonObject out = line("bounding_redstone");
+            out.add("before_nbt", tileNbt(desk.above()));
+            level.setBlock(side, Blocks.REDSTONE_BLOCK.defaultBlockState(), 3);
+            out.add("powered_nbt", tileNbt(desk.above()));
+            out.add("powered_update_tag", nbt(level.getBlockEntity(desk.above()).getUpdateTag(level.registryAccess())));
+            out.addProperty("powered_chunk_unsaved", level.getChunkAt(desk.above()).isUnsaved());
+            level.setBlock(side, Blocks.AIR.defaultBlockState(), 3);
+            out.add("unpowered_nbt", tileNbt(desk.above()));
+            add(out);
+
+            stand(owner);
+            JsonObject pick = line("ctrl_pick_bounding");
+            for (boolean data : new boolean[]{false, true}) {
+                owner.getInventory().clearContent();
+                owner.getInventory().setSelectedSlot(0);
+                level.setBlock(side, data ? Blocks.REDSTONE_BLOCK.defaultBlockState() : Blocks.AIR.defaultBlockState(), 3);
+                owner.connection.handlePickItemFromBlock(new ServerboundPickItemFromBlockPacket(desk.above(), data));
+                pick.add(data ? "with_data" : "without_data", stack(owner.getInventory().getSelectedItem()));
+            }
+            owner.getInventory().clearContent();
+            owner.connection.handlePickItemFromBlock(new ServerboundPickItemFromBlockPacket(desk, true));
+            pick.add("desk_with_data", stack(owner.getInventory().getSelectedItem()));
+            owner.getInventory().clearContent();
+            level.setBlock(side, Blocks.AIR.defaultBlockState(), 3);
+            add(pick);
         }
 
         void replaced() {
