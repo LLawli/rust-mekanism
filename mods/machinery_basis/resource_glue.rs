@@ -971,6 +971,14 @@ fn deliver<F: Family>(game: &mut Game<'_>, dimension: &'static str, event: &Tran
         if post { owner.family_mut().take_dirty_chunks() } else { Vec::new() }
     });
     drop(handle_span);
+    // `ChemicalNetwork.disperse` (`IRadiationManager.dumpRadiation(level, trigger.getBlockPos(), resource, amount)`): o que a rede jogou fora (o contêiner
+    // do último tubo que sai, o que as shares não aceitaram) vira radiação no tubo que disparou, no fim da operação que o causou (decisão 107). A família
+    // de fluido não registra despejo (o `disperse` vazio do original).
+    let dispersals = with_owner::<F, _>(dimension, |owner| owner.family_mut().take_dispersals()).unwrap_or_default();
+    for dispersal in dispersals {
+        let amount = u64::try_from(dispersal.amount).unwrap_or(0);
+        crate::game::machinery_radiation::dump(game, dimension, arr(dispersal.pos), F::resource_id(&dispersal.resource), amount);
+    }
     let flush_span = basis::perf_span(basis::PERF_RES_FLUSH);
     handlers_flush::<F>(game, dimension);
     drop(flush_span);

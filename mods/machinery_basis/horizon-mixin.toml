@@ -35,6 +35,15 @@ file = "crates/horizon-client/src/game.rs"
 name = "machinery_resources"
 source = "resource_glue.rs"
 
+# A radiação no jogo (frente `radiacao`, 2.ª rodada): o `RadiationManager` do servidor (a attachment de cada nível e o arquivo `data_attachments.dat` de cada
+# dimensão), o sorteio do decaimento, a dose de cada entidade viva no NBT dela e o que a dose faz. Código nosso no `Game`, como a cola dos canos; lê o
+# composto guardado de cada mob (`persist.raw`) e o do jogador (`level.player_extra`), onde a attachment da dose vive.
+[[module]]
+id = "radiation-glue"
+file = "crates/horizon-client/src/game.rs"
+name = "machinery_radiation"
+source = "radiation_glue.rs"
+
 # Os condutores termodinâmicos no jogo (frente `condutor-jogo`): o dono dos condutores, o calor dos tiles vizinhos (o Heat Generator) e o NBT do condutor. Código nosso no `Game`, como `resource-glue`.
 [[module]]
 id = "heat-glue"
@@ -1737,4 +1746,42 @@ helper = "position_light_submit.rs"
 bindings = [
   { name = "streaming", ty = "&Streaming", value = "&*self" },
   { name = "job", ty = "&Job", value = "&job" },
+]
+
+# `PlayerExposure.onLivingTick` (`EntityTickEvent.Post`, frente `radiacao`, 2.ª rodada): a exposição, o decaimento e o efeito da dose de cada mob que ticou.
+# Hook do catálogo (`entity_tick_post`), usado só com o contrato dele.
+[[injection]]
+id = "radiation_mob"
+hook = "entity_tick_post"
+hook_version = 1
+kind = "HEAD"
+helper = "radiation_mob.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+  { name = "dimension", ty = "&str", value = "dimension" },
+  { name = "entity", ty = "u32", value = "entity" },
+]
+
+# `PlayerExposure.tickServer` (`PlayerTickEvent.Post` do servidor, frente `radiacao`, 2.ª rodada): a exposição, o dano e a exaustão do jogador que ticou.
+# Hook do catálogo (`player_tick`), usado só com o contrato dele.
+[[injection]]
+id = "radiation_player"
+hook = "player_tick"
+hook_version = 1
+kind = "HEAD"
+helper = "radiation_player.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
+]
+
+# `PlayerEvent.Clone` da morte (frente `radiacao`, 2.ª rodada): a dose não passa ao corpo novo (a attachment `radiation` não é `copyOnDeath`). Hook do
+# catálogo (`player_respawned`), usado só com o contrato dele.
+[[injection]]
+id = "radiation_respawn"
+hook = "player_respawned"
+hook_version = 1
+kind = "HEAD"
+helper = "radiation_respawn.rs"
+bindings = [
+  { name = "game", ty = "&mut crate::game::Game<'_>", value = "&mut *self" },
 ]
