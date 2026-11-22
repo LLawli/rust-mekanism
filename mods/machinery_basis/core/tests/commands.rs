@@ -104,3 +104,61 @@ fn every_node_is_a_usage_with_its_own_level_parent_first() {
         ]
     );
 }
+
+fn tree_with_arguments() -> CommandNode<u32> {
+    CommandNode::literal("mek", LEVEL_ALL).then(
+        CommandNode::literal("radiation", LEVEL_GAMEMASTERS)
+            .then(
+                CommandNode::literal("heal", LEVEL_GAMEMASTERS)
+                    .executes(1)
+                    .arguments("<targets>", 2),
+            )
+            .then(CommandNode::literal("add", LEVEL_GAMEMASTERS).arguments("<magnitude>", 3)),
+    )
+}
+
+#[test]
+fn a_node_with_arguments_hands_the_rest_of_the_line_to_its_reader() {
+    let tree = tree_with_arguments();
+    let run = |line: &'static str| match parse(&tree, line, 2) {
+        Some(Parsed::Run(run)) => Some((*run, None)),
+        Some(Parsed::RunArgs(run, rest)) => Some((*run, Some(rest))),
+        _ => None,
+    };
+    assert_eq!(run("mek radiation heal"), Some((1, None)));
+    assert_eq!(
+        run("mek radiation heal @e[type=cow]"),
+        Some((2, Some("@e[type=cow]")))
+    );
+    assert_eq!(
+        run("mek radiation add 0.5 1 2 3"),
+        Some((3, Some("0.5 1 2 3")))
+    );
+    // Sem argumento, o nó que só os lê não roda: `command.unknown.command` no fim da linha.
+    match parse(&tree, "mek radiation add", 2) {
+        Some(Parsed::Error(error)) => {
+            assert_eq!(error.key, UNKNOWN_COMMAND);
+            assert_eq!(error.cursor, "mek radiation add".len());
+        }
+        _ => panic!("add sem argumento"),
+    }
+    // Um operador abaixo do nível não chega nem ao literal.
+    assert!(matches!(
+        parse(&tree, "mek radiation heal @s", 0),
+        Some(Parsed::Error(_))
+    ));
+    assert_eq!(
+        usages(&tree)
+            .into_iter()
+            .map(|usage| usage.text)
+            .collect::<Vec<_>>(),
+        [
+            "mek",
+            "mek radiation",
+            "mek radiation heal",
+            "mek radiation heal <targets>",
+            "mek radiation add",
+            "mek radiation add <magnitude>",
+        ]
+    );
+}

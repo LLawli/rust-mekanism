@@ -40,11 +40,15 @@ pub fn java_double_to_string(value: f64) -> String {
     }
     let scientific = format!("{value:e}");
     let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
-    let mantissa = if mantissa.contains('.') {
-        mantissa.to_owned()
-    } else {
-        format!("{mantissa}.0")
-    };
+    if !mantissa.contains('.') {
+        // Com um dígito só, o Java escolhe o decimal de dois dígitos mais perto do valor exato (`4.9E-324` para `Double.MIN_VALUE`, que o Rust
+        // escreve `5e-324`); quando o segundo dígito é zero, é o mesmo número com `.0`.
+        let two = format!("{value:.1e}");
+        if let Some((two_mantissa, two_exponent)) = two.split_once('e') {
+            return format!("{two_mantissa}E{two_exponent}");
+        }
+        return format!("{mantissa}.0E{exponent}");
+    }
     format!("{mantissa}E{exponent}")
 }
 

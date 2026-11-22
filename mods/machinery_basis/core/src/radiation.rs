@@ -623,6 +623,138 @@ impl ClientSync {
     }
 }
 
+/// O que `/mek radiation reduce` faz com a dose: `max(fundo, dose - magnitude)` e quanto saiu (`radiation - newValue`), o número que a mensagem mostra.
+pub fn reduce_dose(dose: f64, magnitude: f64) -> (f64, f64) {
+    let new_value = f64::max(BASELINE, dose - magnitude);
+    (new_value, dose - new_value)
+}
+
+/// A attachment da dose (`MekanismAttachmentTypes.RADIATION`): só grava o valor acima do fundo (`radiation > baselineRadiation()`), e o
+/// mesmo predicado decide se a cópia (`copyHandler`, uma conversão) leva a dose.
+pub fn dose_saved(dose: f64) -> Option<f64> {
+    (dose > BASELINE).then_some(dose)
+}
+
+/// O `RadiationManager` de um servidor: a attachment `radiation_data` de cada nível (só os que já a criaram: `getData` devolve `null` num nível que
+/// nunca recebeu radiação nem a leu do disco) e o sorteio do decaimento do tick (`shouldDecayThisTick`).
+#[derive(Debug, Default)]
+pub struct RadiationManager {
+    levels: BTreeMap<String, RadiationLevelData>,
+    should_decay: bool,
+}
+
+impl RadiationManager {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `getExistingDataOrNull(RADIATION_LEVEL_DATA)`.
+    pub fn data(&self, level: &str) -> Option<&RadiationLevelData> {
+        self.levels.get(level)
+    }
+
+    /// A attachment lida do disco (`deserialize`): a chave gravada, mesmo vazia, cria a attachment.
+    pub fn loaded(&mut self, level: &str, data: RadiationLevelData) {
+        self.levels.insert(level.to_owned(), data);
+    }
+
+    /// O nível fechou: a attachment sai com ele.
+    pub fn unload(&mut self, level: &str) {
+        self.levels.remove(level);
+    }
+
+    /// `radiate(level, pos, magnitude)`: com a radiação ligada, cria a attachment se preciso (`getOrCreateData`) e soma a fonte.
+    pub fn radiate(
+        &mut self,
+        config: &RadiationConfig,
+        level: &str,
+        pos: BlockPos,
+        magnitude: f64,
+    ) -> bool {
+        if !config.enabled {
+            return false;
+        }
+        self.levels.entry(level.to_owned()).or_default().radiate(
+            pos,
+            magnitude,
+            config.block_range(),
+        );
+        true
+    }
+
+    /// `getRadiationLevel(level, pos)`: o fundo num nível sem a attachment.
+    pub fn level_at(&self, level: &str, pos: BlockPos) -> f64 {
+        self.level_and_max(level, pos).level
+    }
+
+    /// `getRadiationLevelAndMaxMagnitude`.
+    pub fn level_and_max(&self, level: &str, pos: BlockPos) -> LevelAndMaxMagnitude {
+        self.levels
+            .get(level)
+            .map_or(LevelAndMaxMagnitude::BASELINE, |data| {
+                data.level_and_max(pos)
+            })
+    }
+
+    /// `dumpRadiation(level, pos, type, amount)`: devolve se despejou (a fonte entrou).
+    pub fn dump(
+        &mut self,
+        config: &RadiationConfig,
+        level: &str,
+        pos: BlockPos,
+        empty: bool,
+        amount: u64,
+        radioactivity: f64,
+    ) -> bool {
+        match dump_magnitude(config.enabled, empty, amount, radioactivity) {
+            Some(magnitude) => self.radiate(config, level, pos, magnitude),
+            None => false,
+        }
+    }
+
+    /// `onTickPre` (`ServerTickEvent.Pre`).
+    pub fn tick_pre(
+        &mut self,
+        config: &RadiationConfig,
+        runs_normally: bool,
+        random: &mut dyn RadiationRandom,
+    ) {
+        self.should_decay = should_decay_this_tick(config, runs_normally, random);
+    }
+
+    /// `tickServerWorld` (`LevelTickEvent.Post` de cada nível): decai as fontes do nível se o sorteio do tick saiu e ele tem alguma. Devolve se decaiu.
+    pub fn tick_level(&mut self, config: &RadiationConfig, level: &str) -> bool {
+        if !self.should_decay {
+            return false;
+        }
+        match self.levels.get_mut(level) {
+            Some(data) if !data.is_empty() => {
+                data.decay(config.source_decay_rate);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// `clearSources`: toda attachment fica vazia (e continua existindo). Devolve se alguma tinha fonte.
+    pub fn clear_sources(&mut self) -> bool {
+        let mut had = false;
+        for data in self.levels.values_mut() {
+            if !data.is_empty() {
+                had = true;
+                data.clear();
+            }
+        }
+        had
+    }
+
+    /// O servidor parou: nada passa ao próximo mundo.
+    pub fn reset(&mut self) {
+        self.levels.clear();
+        self.should_decay = false;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -716,5 +848,69 @@ mod tests {
         );
         let (_, effect) = entity_tick(&config, sick, || BASELINE, &mut Fixed(1, 0.99, true));
         assert_eq!(effect, DoseEffect::default());
+    }
+
+    #[test]
+    fn the_manager_creates_the_level_data_only_with_radiation_on_and_decays_only_on_the_drawn_tick()
+    {
+        let on = RadiationConfig::default();
+        let off = RadiationConfig {
+            enabled: false,
+            ..on
+        };
+        let mut manager = RadiationManager::new();
+        assert!(!manager.radiate(&off, "minecraft:overworld", [0, 64, 0], 1.0));
+        assert!(manager.data("minecraft:overworld").is_none());
+        assert_eq!(
+            manager.level_at("minecraft:overworld", [0, 64, 0]),
+            BASELINE
+        );
+        assert!(manager.radiate(&on, "minecraft:overworld", [0, 64, 0], 1.0));
+        assert_eq!(
+            manager.level_at("minecraft:overworld", [0, 64, 0]),
+            BASELINE + 1.0
+        );
+        assert_eq!(
+            manager.level_at("minecraft:the_nether", [0, 64, 0]),
+            BASELINE
+        );
+        // O sorteio só acontece com a radiação ligada e o tick andando; o decaimento só no nível que tem fonte.
+        manager.tick_pre(&on, true, &mut Fixed(1, 0.0, false));
+        assert!(!manager.tick_level(&on, "minecraft:overworld"));
+        manager.tick_pre(&on, false, &mut Fixed(0, 0.0, false));
+        assert!(!manager.tick_level(&on, "minecraft:overworld"));
+        manager.tick_pre(&on, true, &mut Fixed(0, 0.0, false));
+        assert!(manager.tick_level(&on, "minecraft:overworld"));
+        assert!(!manager.tick_level(&on, "minecraft:the_nether"));
+        assert_eq!(
+            manager.data("minecraft:overworld").unwrap().sources()[0].magnitude,
+            0.9995
+        );
+        // `clearSources` esvazia e a attachment continua (o arquivo grava `{}`).
+        assert!(manager.clear_sources());
+        assert!(manager.data("minecraft:overworld").unwrap().is_empty());
+        assert!(!manager.clear_sources());
+        // O despejo: só um recurso radioativo com quantidade.
+        assert!(!manager.dump(&on, "minecraft:overworld", [1, 2, 3], false, 1000, 0.0));
+        assert!(!manager.dump(&on, "minecraft:overworld", [1, 2, 3], true, 1000, 0.05));
+        assert!(manager.dump(&on, "minecraft:overworld", [1, 2, 3], false, 1000, 0.05));
+        assert_eq!(
+            manager.level_at("minecraft:overworld", [1, 2, 3]),
+            BASELINE + 0.05 * 1000.0
+        );
+    }
+
+    #[test]
+    fn reduce_keeps_the_dose_at_the_baseline_and_says_how_much_left() {
+        assert_eq!(
+            reduce_dose(0.0050002, 0.0005),
+            (0.0050002 - 0.0005, 0.0050002 - (0.0050002 - 0.0005))
+        );
+        assert_eq!(
+            reduce_dose(0.0045002, 5.0),
+            (BASELINE, 0.0045002 - BASELINE)
+        );
+        assert_eq!(dose_saved(BASELINE), None);
+        assert_eq!(dose_saved(0.5), Some(0.5));
     }
 }

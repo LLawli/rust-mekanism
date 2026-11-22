@@ -17,6 +17,9 @@ pub struct CommandNode<E> {
     /// O nível de operador que o nó pede (`requires`, o `fallbackLevel` do `CommandPermissionNode`).
     pub level: u8,
     pub executes: Option<E>,
+    /// Os argumentos depois do literal (`.then(Commands.argument(..))`): o texto dos usos (`<magnitude> [<location>]`) e quem lê o resto da linha. A
+    /// conta dos tipos de argumento (número, coordenadas, seletor) é de quem roda: aqui só se sabe que a linha continua.
+    pub arguments: Option<(&'static str, E)>,
     pub children: Vec<CommandNode<E>>,
 }
 
@@ -26,12 +29,19 @@ impl<E> CommandNode<E> {
             name,
             level,
             executes: None,
+            arguments: None,
             children: Vec::new(),
         }
     }
 
     pub fn executes(mut self, run: E) -> Self {
         self.executes = Some(run);
+        self
+    }
+
+    /// O nó aceita argumentos depois do literal: `run` recebe o resto da linha (sem o separador). `usage` é o que o uso anuncia depois do caminho.
+    pub fn arguments(mut self, usage: &'static str, run: E) -> Self {
+        self.arguments = Some((usage, run));
         self
     }
 
@@ -60,6 +70,12 @@ pub fn usages<E>(root: &CommandNode<E>) -> Vec<Usage> {
             text: text.clone(),
             level: node.level,
         });
+        if let Some((usage, _)) = &node.arguments {
+            out.push(Usage {
+                text: format!("{text} {usage}"),
+                level: node.level,
+            });
+        }
         for child in &node.children {
             walk(child, &text, out);
         }
@@ -86,11 +102,17 @@ pub const UNKNOWN_ARGUMENT: &str = "command.unknown.argument";
 pub enum Parsed<'a, E> {
     /// Um nó que roda: o `executes` dele.
     Run(&'a E),
+    /// Um nó com argumentos: quem os lê e o resto da linha, depois do separador.
+    RunArgs(&'a E, &'a str),
     Error(SyntaxError),
 }
 
 /// `CommandDispatcher.parse` e `execute` para a linha (sem a barra) de um jogador com `permission` (o nível de operador). `None` se a primeira palavra não é a raiz.
-pub fn parse<'a, E>(root: &'a CommandNode<E>, line: &str, permission: u8) -> Option<Parsed<'a, E>> {
+pub fn parse<'a, E>(
+    root: &'a CommandNode<E>,
+    line: &'a str,
+    permission: u8,
+) -> Option<Parsed<'a, E>> {
     if !word_is(line, 0, root.name) {
         return None;
     }
@@ -124,6 +146,7 @@ pub fn parse<'a, E>(root: &'a CommandNode<E>, line: &str, permission: u8) -> Opt
         }
         cursor += 1;
         // Só os filhos que a origem pode usar (`CommandNode.canUse`).
+        // O Brigadier tenta os literais antes dos argumentos.
         match node
             .children
             .iter()
@@ -133,7 +156,10 @@ pub fn parse<'a, E>(root: &'a CommandNode<E>, line: &str, permission: u8) -> Opt
                 node = child;
                 cursor += child.name.len();
             }
-            None => return error(UNKNOWN_ARGUMENT, cursor),
+            None => match &node.arguments {
+                Some((_, run)) => return Some(Parsed::RunArgs(run, &line[cursor..])),
+                None => return error(UNKNOWN_ARGUMENT, cursor),
+            },
         }
     }
 }

@@ -7,8 +7,9 @@ use horizon_client::text::{self, Style, Text};
 use machinery_basis_core::commands::{CommandNode, Parsed, SyntaxError, parse, usages};
 use std::sync::{Arc, Mutex};
 
-/// O que um nó que roda faz: o `executes` do Brigadier (o valor de volta é `Command.SINGLE_SUCCESS`).
-pub type Run = fn(&mut Game<'_>, &NativeServerPlayer) -> bool;
+/// O que um nó que roda faz: o `executes` do Brigadier (o valor de volta é `Command.SINGLE_SUCCESS`). O `&str` é o resto da linha de um nó com argumentos
+/// (`CommandNode::arguments`), vazio num nó sem eles.
+pub type Run = fn(&mut Game<'_>, &NativeServerPlayer, &str) -> bool;
 
 /// A raiz de cada mod (`dono`), um comando por mod.
 static ROOTS: Mutex<Vec<(&'static str, Arc<CommandNode<Run>>)>> = Mutex::new(Vec::new());
@@ -41,7 +42,11 @@ pub(in crate::game) fn perform(owner: &'static str, game: &mut Game<'_>, player:
         None => {}
         Some(Parsed::Run(run)) => {
             *ran = true;
-            run(game, player);
+            run(game, player, "");
+        }
+        Some(Parsed::RunArgs(run, rest)) => {
+            *ran = true;
+            run(game, player, rest);
         }
         Some(Parsed::Error(error)) => {
             *ran = true;
@@ -67,9 +72,13 @@ pub(in crate::game) fn send_failure(game: &mut Game<'_>, message: Text) {
 /// O erro de `Commands.performCommand` para uma `CommandSyntaxException`: a mensagem em vermelho e a linha de contexto (o trecho lido, o que sobra em vermelho sublinhado e
 /// `command.context.here`), que sugere o comando ao clicar. É a mesma conta que o Horizon faz nos comandos dele.
 fn syntax_failure(game: &mut Game<'_>, error: &SyntaxError) {
-    game.command_failure(Text::translate(error.key, &[]));
-    let input = &error.input;
-    let cursor = error.cursor.min(input.len());
+    argument_failure(game, Text::translate(error.key, &[]), &error.input, error.cursor);
+}
+
+/// Um erro de sintaxe com a linha de contexto (`CommandSyntaxException` com a entrada e o cursor): o de um nó, ou o de um argumento que o mod leu.
+pub(in crate::game) fn argument_failure(game: &mut Game<'_>, message: Text, input: &str, cursor: usize) {
+    game.command_failure(message);
+    let cursor = cursor.min(input.len());
     let suggest = Style {
         click: Some(text::ClickEvent::SuggestCommand(format!("/{input}"))),
         ..Style::default()
