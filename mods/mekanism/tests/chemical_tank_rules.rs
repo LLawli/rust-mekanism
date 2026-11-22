@@ -205,8 +205,10 @@ fn the_files_of_every_pack_stack_as_the_loader_stacks_them() {
     // Só o de cima, como o gancho do Horizon entrega sem a injeção: o hidrogênio do de baixo nem chega a existir, e o eteno do de baixo se perde.
     let data = chemical_attribute_data(&vec![(id.clone(), vec![top.clone()])], &no_tags);
     assert_eq!(data.len(), 2);
+    // Com `replace` (e sem o `remove`, para o hidrogênio do de baixo só sair por ele), o de cima larga os de baixo.
     let replacing = DataMapFile {
         replace: true,
+        removals: Vec::new(),
         ..top
     };
     let data = chemical_attribute_data(&vec![(id, vec![bottom, replacing])], &no_tags);
