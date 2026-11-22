@@ -508,6 +508,14 @@ fn the_names_are_the_originals() {
     for (key, value) in tanks.as_object().unwrap() {
         assert_eq!(ours.get(key), Some(value), "{key}");
     }
+    // As mensagens de `/mek radiation` e a morte por radiação (a frente `radiacao`), copiadas da datagen do original.
+    let radiation = json(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dev/referencia/datagen/radiacao/lang.json"),
+    );
+    for (key, value) in radiation.as_object().unwrap() {
+        assert_eq!(ours.get(key), Some(value), "{key}");
+    }
     // Os do tooltip do conteúdo guardado no item (`Inventory: yes`, `No fluid stored.`, `- Speed`: a frente `item-conteudo`), copiados da datagen do original.
     let content = json(
         &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -551,6 +559,7 @@ fn the_names_are_the_originals() {
             || reader.get(key).is_some()
             || debug.get(key).is_some()
             || tanks.get(key).is_some()
+            || radiation.get(key).is_some()
         {
             continue;
         }

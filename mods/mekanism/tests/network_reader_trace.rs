@@ -363,7 +363,15 @@ fn the_toggle_message_is_the_one_of_the_original() {
 #[test]
 fn the_mek_tree_answers_every_line_and_level_like_the_original() {
     use machinery_basis_core::commands::{Parsed, parse};
-    let tree = mekanism_rules::command::tree(());
+    let runs = mekanism_rules::command::RadiationRuns {
+        add: (),
+        add_entity: (),
+        get: (),
+        heal: (),
+        reduce: (),
+        remove_all: (),
+    };
+    let tree = mekanism_rules::command::tree((), runs);
     let mut lines = 0;
     for row in debug_rows() {
         let Some(command) = row["command"].as_str() else {
@@ -391,6 +399,7 @@ fn the_mek_tree_answers_every_line_and_level_like_the_original() {
                 assert_eq!(chat.len(), 1, "{case}");
                 assert!(chat[0]["translate"] == "command.mekanism.debug", "{case}");
             }
+            Parsed::RunArgs(..) => panic!("{case}: o `/mek debug` não tem argumentos"),
             Parsed::Error(error) => {
                 assert_eq!(chat.len(), 2, "{case}");
                 // `sendFailure(Component.literal(message))` e a linha de contexto: o trecho lido, o que sobra em vermelho sublinhado e o `command.context.here`.

@@ -443,15 +443,80 @@ pub const GENERAL_CONFIG: ClientSpec = ClientSpec {
                 },
             ],
         },
-        // `GeneralConfig.java:187-189`: da seção `radiation`, só `enabled` (o resto entra com a radiação).
+        // `GeneralConfig.java:187-203`: a seção `radiation` (`MekanismConfigTranslations.java:169-183`).
         ClientSection {
             name: "radiation",
             comment: "Settings for configuring Radiation",
-            entries: &[ClientEntry {
-                key: "enabled",
-                comment: "Enable worldwide radiation effects.",
-                setting: ClientSetting::Bool { default: true },
-            }],
+            entries: &[
+                ClientEntry {
+                    key: "enabled",
+                    comment: "Enable worldwide radiation effects.",
+                    setting: ClientSetting::Bool { default: true },
+                },
+                ClientEntry {
+                    key: "chunkCheckRadius",
+                    comment: "The radius of chunks checked when running radiation calculations. The algorithm is efficient, but don't abuse it by making this crazy high.",
+                    setting: ClientSetting::Int {
+                        default: 5,
+                        min: 1,
+                        max: 100,
+                    },
+                },
+                ClientEntry {
+                    key: "sourceDecayRate",
+                    comment: "Radiation sources are multiplied by this constant roughly once per second to represent their emission decay. At the default rate, it takes roughly 10 hours to remove a 1,000 Sv/h (crazy high) source.",
+                    setting: ClientSetting::Float {
+                        default: 0.9995,
+                        min: 0.0,
+                        max: 1.0,
+                    },
+                },
+                ClientEntry {
+                    key: "targetDecayRate",
+                    comment: "Radiated objects and entities are multiplied by this constant roughly once per second to represent their dosage decay.",
+                    setting: ClientSetting::Float {
+                        default: 0.9995,
+                        min: 0.0,
+                        max: 1.0,
+                    },
+                },
+                ClientEntry {
+                    key: "negativeEffectsMinSeverity",
+                    comment: "Defines the minimum severity radiation dosage severity (scale of 0 to 1) for which negative effects can take place. Set to 1 to disable negative effects completely.",
+                    setting: ClientSetting::Float {
+                        default: 0.1,
+                        min: 0.0,
+                        max: 1.0,
+                    },
+                },
+                ClientEntry {
+                    key: "wasteBarrelCapacity",
+                    comment: "Amount of chemical (mB) that can be stored in a Radioactive Waste Barrel.",
+                    setting: ClientSetting::Long {
+                        default: 512 * 1000,
+                        min: 1,
+                        max: i64::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "wasteBarrelProcessTicks",
+                    comment: "Number of ticks required for radioactive chemical stored in a Radioactive Waste Barrel to decay radioactiveWasteBarrelDecayAmount mB.",
+                    setting: ClientSetting::Int {
+                        default: 20,
+                        min: 1,
+                        max: i32::MAX,
+                    },
+                },
+                ClientEntry {
+                    key: "wasteBarrelDecayAmount",
+                    comment: "Number of mB of chemical that decay every radioactiveWasteBarrelProcessTicks ticks when stored in a Radioactive Waste Barrel. Set to zero to disable decay all together. (Chemicals in the mekanism:waste_barrel_decay_blacklist tag will not decay).",
+                    setting: ClientSetting::Int {
+                        default: 1,
+                        min: 0,
+                        max: i32::MAX,
+                    },
+                },
+            ],
         },
         // `GeneralConfig.java:262-267`: a seção `nutritional_paste` (`MekanismConfigTranslations.GENERAL_PASTE`), depois da `security`, que o port ainda não tem.
         ClientSection {
@@ -550,6 +615,53 @@ pub fn tank_settings(loaded: &ClientLoaded) -> TankSettings {
         prefilled_chemical_tanks: loaded
             .bool(&GENERAL_CONFIG, "prefilled", "chemicalTanks")
             .unwrap_or(defaults.prefilled_chemical_tanks),
+    }
+}
+
+/// `MekanismAttachmentTypes.RADIATION_LEVEL_DATA` e `RADIATION`, e `MekanismDamageTypes.RADIATION`.
+pub const RADIATION_LEVEL_ATTACHMENT: &str = "mekanism:radiation_data";
+pub const RADIATION_ENTITY_ATTACHMENT: &str = "mekanism:radiation";
+pub const RADIATION_DAMAGE_TYPE: &str = "mekanism:radiation";
+
+/// `ItemHazmatSuitArmor.getShieldingByArmor`: a proteção de cada peça do traje de hazmat (`RadiationShieldingHandler`), 0 para o resto.
+pub fn radiation_shielding(item: &str) -> f64 {
+    match item {
+        "mekanism:hazmat_mask" => 0.25,
+        "mekanism:hazmat_gown" => 0.4,
+        "mekanism:hazmat_pants" => 0.2,
+        "mekanism:hazmat_boots" => 0.15,
+        _ => 0.0,
+    }
+}
+
+/// `MekanismAPITags.Entities.MEK_RADIATION_IMMUNE` da datagen (`#c:radiation_immune`, que é o `mekanism:robit`, o `iron_golem` e o `snow_golem`).
+pub fn radiation_immune(entity_type: &str) -> bool {
+    matches!(
+        entity_type,
+        "mekanism:robit" | "minecraft:iron_golem" | "minecraft:snow_golem"
+    )
+}
+
+/// A seção `radiation` de `general.toml` como a radiação da lib a lê (`radiationEnabled`, `radiationChunkCheckRadius`, `radiationSourceDecayRate`,
+/// `radiationTargetDecayRate` e `radiationNegativeEffectsMinSeverity`).
+pub fn radiation_config(loaded: &ClientLoaded) -> machinery_basis_core::radiation::RadiationConfig {
+    let defaults = machinery_basis_core::radiation::RadiationConfig::default();
+    machinery_basis_core::radiation::RadiationConfig {
+        enabled: loaded
+            .bool(&GENERAL_CONFIG, "radiation", "enabled")
+            .unwrap_or(defaults.enabled),
+        chunk_check_radius: loaded
+            .int(&GENERAL_CONFIG, "radiation", "chunkCheckRadius")
+            .unwrap_or(defaults.chunk_check_radius),
+        source_decay_rate: loaded
+            .float(&GENERAL_CONFIG, "radiation", "sourceDecayRate")
+            .unwrap_or(defaults.source_decay_rate),
+        target_decay_rate: loaded
+            .float(&GENERAL_CONFIG, "radiation", "targetDecayRate")
+            .unwrap_or(defaults.target_decay_rate),
+        negative_effects_min_severity: loaded
+            .float(&GENERAL_CONFIG, "radiation", "negativeEffectsMinSeverity")
+            .unwrap_or(defaults.negative_effects_min_severity),
     }
 }
 
@@ -6882,10 +6994,49 @@ pub mod command {
     /// `Commands.literal("mek")`.
     pub const ROOT: &str = "mek";
 
-    /// `CommandMek.register`: `mek` (`MekanismPermissions.COMMAND`, `Commands.LEVEL_ALL`) e `debug` (`COMMAND_DEBUG`, `nodeOpCommand`: `Commands.LEVEL_GAMEMASTERS`), que roda `debug`.
-    pub fn tree<E>(debug: E) -> CommandNode<E> {
+    /// Quem roda cada subcomando de `radiation` (`RadiationCommand.register`).
+    pub struct RadiationRuns<E> {
+        pub add: E,
+        pub add_entity: E,
+        pub get: E,
+        pub heal: E,
+        pub reduce: E,
+        pub remove_all: E,
+    }
+
+    /// `CommandMek.register`: `mek` (`MekanismPermissions.COMMAND`, `Commands.LEVEL_ALL`), `debug` (`COMMAND_DEBUG`, `nodeOpCommand`: `Commands.LEVEL_GAMEMASTERS`)
+    /// e `radiation` (`COMMAND_RADIATION`, `nodeOpCommand`, e os subcomandos com o nível do pai, `nodeSubCommand`). Os argumentos de cada subcomando
+    /// (`magnitude`, `location`, `dimension`, `targets`) são lidos por quem roda: `get` e `heal` também rodam sem eles.
+    pub fn tree<E: Clone>(debug: E, radiation: RadiationRuns<E>) -> CommandNode<E> {
+        let sub = |name| CommandNode::literal(name, LEVEL_GAMEMASTERS);
         CommandNode::literal(ROOT, LEVEL_ALL)
             .then(CommandNode::literal("debug", LEVEL_GAMEMASTERS).executes(debug))
+            .then(
+                sub("radiation")
+                    .then(
+                        sub("add")
+                            .arguments("<magnitude> [<location>] [<dimension>]", radiation.add),
+                    )
+                    .then(
+                        sub("addEntity")
+                            .arguments("<magnitude> | <targets> <magnitude>", radiation.add_entity),
+                    )
+                    .then(
+                        sub("get")
+                            .executes(radiation.get.clone())
+                            .arguments("[<location>] [<dimension>]", radiation.get),
+                    )
+                    .then(
+                        sub("heal")
+                            .executes(radiation.heal.clone())
+                            .arguments("<targets>", radiation.heal),
+                    )
+                    .then(
+                        sub("reduce")
+                            .arguments("<magnitude> | <targets> <magnitude>", radiation.reduce),
+                    )
+                    .then(sub("removeAll").executes(radiation.remove_all)),
+            )
     }
 }
 
@@ -6936,6 +7087,12 @@ pub mod network_reader {
         Translate { key: String, with: Vec<Arg> },
         /// `Component.literal(text)` com os irmãos (`extra`).
         Text { text: String, extra: Vec<Arg> },
+        /// `Component.translatableWithFallback(key, fallback)`: o nome de uma dimensão (`dimension.minecraft.overworld`, que nenhuma língua traduz).
+        TranslateFallback { key: String, fallback: String },
+        /// Um componente já pronto, em JSON (os testes, com o nome que o rastro do original gravou).
+        Raw(Value),
+        /// O componente `n` que quem escreve a mensagem dá à parte (o nome de uma entidade, que o jogo monta).
+        Slot(usize),
     }
 
     impl Comp {
@@ -6983,6 +7140,17 @@ pub mod network_reader {
                         );
                     }
                 }
+                Body::TranslateFallback { key, fallback } => {
+                    object.insert("translate".to_owned(), json!(key));
+                    object.insert("fallback".to_owned(), json!(fallback));
+                }
+                Body::Raw(value) => match value {
+                    Value::Object(raw) => object.extend(raw.clone()),
+                    other => {
+                        object.insert("text".to_owned(), other.clone());
+                    }
+                },
+                Body::Slot(_) => return Value::Null,
                 Body::Text { text, extra } => {
                     if extra.is_empty() && self.color.is_none() {
                         return json!(text);
@@ -7354,6 +7522,224 @@ pub mod network_reader {
     /// `displayBorder(MEKANISM, true)`, a temperatura e o fim: o clique numa máquina com a capability `HEAT`.
     pub fn heat_machine_messages(temp: f64, local: LocalConfig) -> Vec<Comp> {
         vec![start_border(), temperature_line(temp, local), end_border()]
+    }
+}
+
+/// As mensagens de `/mek radiation` (`RadiationCommand`): as chaves, as cores (`EnumColor`) e o texto da radiação (`UnitDisplayUtils.getRadiationDisplay(x, SVH, 3)`).
+/// O comando em si (os argumentos, as entidades, a dose) é da cola; aqui só o `Component` de cada resposta, como o original o monta.
+pub mod radiation_command {
+    use super::ENUM_COLOR_RGB;
+    use super::network_reader::{Arg, Body, Comp};
+    use machinery_basis_core::radiation::SeverityColor;
+    use machinery_basis_core::units::display_number;
+
+    /// `EnumColor.GRAY` e `INDIGO` pelo `ordinal`.
+    const GRAY: u8 = 7;
+    const INDIGO: u8 = 9;
+    /// `RadiationUnit.SVH` e as casas de `getRadiationDisplay(magnitude, SVH, 3)`.
+    const RATE_SYMBOL: &str = "Sv/h";
+    const DECIMALS: i32 = 3;
+
+    /// O `ordinal` do `EnumColor` de `RadiationScale.getSeverityColor`.
+    pub fn severity_ordinal(color: SeverityColor) -> u8 {
+        match color {
+            SeverityColor::BrightGreen => 10,
+            SeverityColor::Gray => 7,
+            SeverityColor::Yellow => 14,
+            SeverityColor::Orange => 6,
+            SeverityColor::Red => 12,
+            SeverityColor::DarkRed => 4,
+        }
+    }
+
+    fn colored(body: Body, ordinal: Option<u8>) -> Comp {
+        Comp {
+            body,
+            color: ordinal.map(|ordinal| ENUM_COLOR_RGB[usize::from(ordinal)]),
+        }
+    }
+
+    fn translate(key: &str, with: Vec<Arg>, ordinal: Option<u8>) -> Comp {
+        colored(
+            Body::Translate {
+                key: key.to_owned(),
+                with,
+            },
+            ordinal,
+        )
+    }
+
+    /// `getRadiationDisplay(magnitude, SVH, 3)`: o número com a medida, e o símbolo como irmão.
+    fn display(magnitude: f64, ordinal: Option<u8>) -> Arg {
+        Arg::Comp(colored(
+            Body::Text {
+                text: display_number(magnitude, DECIMALS, true),
+                extra: vec![Arg::Str(RATE_SYMBOL.to_owned())],
+            },
+            ordinal,
+        ))
+    }
+
+    /// O texto com a cor da severidade (`translateColored(.., getSeverityColor(magnitude), display)`).
+    fn severity_display(magnitude: f64) -> Arg {
+        display(
+            magnitude,
+            Some(severity_ordinal(SeverityColor::get(magnitude))),
+        )
+    }
+
+    /// `getPosition(pos)`: `GENERIC_BLOCK_POS` com os três números, na cor que vem antes dele.
+    fn block_pos(pos: [i32; 3]) -> Arg {
+        Arg::Comp(translate(
+            "generic.mekanism.block_pos",
+            pos.iter().map(|&n| Arg::Int(i64::from(n))).collect(),
+            Some(INDIGO),
+        ))
+    }
+
+    /// O nível como argumento (`TextComponentUtil`: `translatableWithFallback("dimension.<ns>.<caminho>", id)`).
+    fn dimension(id: &str) -> Arg {
+        let key = format!("dimension.{}", id.replace(':', "."));
+        Arg::Comp(colored(
+            Body::TranslateFallback {
+                key,
+                fallback: id.to_owned(),
+            },
+            Some(INDIGO),
+        ))
+    }
+
+    /// Um componente com a cor que vem antes dele: o nome de uma entidade, ou a contagem.
+    fn indigo(arg: Arg) -> Arg {
+        match arg {
+            Arg::Comp(mut comp) => {
+                comp.color = Some(ENUM_COLOR_RGB[usize::from(INDIGO)]);
+                Arg::Comp(comp)
+            }
+            Arg::Int(number) => Arg::Comp(colored(
+                Body::Text {
+                    text: number.to_string(),
+                    extra: Vec::new(),
+                },
+                Some(INDIGO),
+            )),
+            other => other,
+        }
+    }
+
+    /// `COMMAND_RADIATION_ADD`: `translateColored(GRAY, cor, texto, INDIGO, posição, INDIGO, nível)`.
+    pub fn add(magnitude: f64, pos: [i32; 3], level: &str) -> Comp {
+        translate(
+            "command.mekanism.radiation.add",
+            vec![
+                severity_display(magnitude),
+                block_pos(pos),
+                dimension(level),
+            ],
+            Some(GRAY),
+        )
+    }
+
+    /// `COMMAND_RADIATION_GET`: `translateColored(GRAY, INDIGO, posição, INDIGO, nível, cor, texto)`.
+    pub fn get(pos: [i32; 3], level: &str, magnitude: f64) -> Comp {
+        translate(
+            "command.mekanism.radiation.get",
+            vec![
+                block_pos(pos),
+                dimension(level),
+                severity_display(magnitude),
+            ],
+            Some(GRAY),
+        )
+    }
+
+    /// `COMMAND_RADIATION_ADD_ENTITY`.
+    pub fn add_entity(magnitude: f64) -> Comp {
+        translate(
+            "command.mekanism.radiation.add_entity",
+            vec![severity_display(magnitude)],
+            Some(GRAY),
+        )
+    }
+
+    /// `RADIATE_RESPONSE`: `translate` (sem `Colored`) com `EnumColor.GRAY` primeiro, então o cinza pinta o nome da cor da severidade, que vira o primeiro
+    /// argumento, o texto sai sem cor e o nome (ou a contagem) em `INDIGO`. É o original (ver "Comportamento do original que parece bug e fica").
+    fn radiate_response(key: &str, magnitude: f64, who: Arg) -> Comp {
+        let color = SeverityColor::get(magnitude);
+        let color_name = translate(
+            &format!("color.mekanism.{}", color.name().to_lowercase()),
+            Vec::new(),
+            Some(GRAY),
+        );
+        translate(
+            key,
+            vec![Arg::Comp(color_name), display(magnitude, None), indigo(who)],
+            None,
+        )
+    }
+
+    /// `COMMAND_RADIATION_ADD_ENTITY_TARGET` (uma entidade) e `_MULTIPLE` (`CommandResponseTracker`: qualquer outra contagem, zero inclusive).
+    pub fn add_entity_targets(magnitude: f64, count: usize, single: Option<Arg>) -> Comp {
+        match single.filter(|_| count == 1) {
+            Some(name) => radiate_response(
+                "command.mekanism.radiation.add_entity.target",
+                magnitude,
+                name,
+            ),
+            None => radiate_response(
+                "command.mekanism.radiation.add_entity.target.multiple",
+                magnitude,
+                Arg::Int(count as i64),
+            ),
+        }
+    }
+
+    /// `COMMAND_RADIATION_REDUCE`.
+    pub fn reduce(reduced: f64) -> Comp {
+        translate(
+            "command.mekanism.radiation.reduce",
+            vec![severity_display(reduced)],
+            Some(GRAY),
+        )
+    }
+
+    /// `COMMAND_RADIATION_REDUCE_TARGET`: uma por entidade.
+    pub fn reduce_target(name: Arg, reduced: f64) -> Comp {
+        translate(
+            "command.mekanism.radiation.reduce.target",
+            vec![indigo(name), severity_display(reduced)],
+            Some(GRAY),
+        )
+    }
+
+    /// `COMMAND_RADIATION_CLEAR`.
+    pub fn clear() -> Comp {
+        translate("command.mekanism.radiation.clear", Vec::new(), Some(GRAY))
+    }
+
+    /// `HEAL_RESPONSE`: `COMMAND_RADIATION_CLEAR_ENTITY` (uma entidade) e `_MULTIPLE`.
+    pub fn clear_targets(count: usize, single: Option<Arg>) -> Comp {
+        match single.filter(|_| count == 1) {
+            Some(name) => translate(
+                "command.mekanism.radiation.clear.entity",
+                vec![indigo(name)],
+                Some(GRAY),
+            ),
+            None => translate(
+                "command.mekanism.radiation.clear.entity.multiple",
+                vec![indigo(Arg::Int(count as i64))],
+                Some(GRAY),
+            ),
+        }
+    }
+
+    /// `COMMAND_RADIATION_REMOVE_ALL`.
+    pub fn remove_all() -> Comp {
+        translate(
+            "command.mekanism.radiation.remove_all",
+            Vec::new(),
+            Some(GRAY),
+        )
     }
 }
 

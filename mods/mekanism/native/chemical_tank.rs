@@ -761,7 +761,12 @@ fn content_spec() -> basis::ContentSpec<'static> {
 /// O químico do tile (`ContainerType.CHEMICAL`, o componente `mekanism:chemicals`) e o modo de descarte (`collectImplicitComponents`), que só sai do padrão do item
 /// (`IDLE`) quando o tile tem outro.
 fn content_collect(_: &Game<'_>, entity: &ModBlockEntity, _: [i32; 3]) -> Vec<(&'static str, Tag)> {
-    let mut out = glue::chemical_collect(entity);
+    // `ChemicalContainerType.copyFromTile`: com a radiação ligada e um tanque que despeja radiação (`shouldDumpRadiation`, todo tier menos o criativo), o
+    // químico radioativo não vai para o item (ele virou radiação no `preRemoveSideEffects`).
+    let skip = crate::game::machinery_radiation::enabled()
+        && dumps_radiation(&entity.id)
+        && glue::chemical_stored(entity).is_some_and(|(chemical, _)| glue::chemical_radioactivity(&chemical) > 0.0);
+    let mut out = if skip { Vec::new() } else { glue::chemical_collect(entity) };
     let dumping = read_dumping(entity);
     if dumping != GasMode::Idle {
         out.push((rules::DUMP_MODE_COMPONENT, Tag::String(JavaString::from(dumping.serialized_name()))));
@@ -804,8 +809,28 @@ pub(in crate::game) fn place_block(game: &mut Game<'_>, stack: &ItemStack, pos: 
     glue::publish_comparator(game, dimension, pos, 0, false);
 }
 
-/// O tile vai ser quebrado: o conteúdo fica guardado para o item, e o objeto vivo sai.
+/// `TileEntityChemicalTank.shouldDumpRadiation`: todo tier menos o criativo.
+fn dumps_radiation(block: &str) -> bool {
+    // O quinto tier de `CHEMICAL_TANK_TIERS` é o criativo.
+    tier_of(block).is_some_and(|tier| tier < 4)
+}
+
+/// `TileEntityMekanism.preRemoveSideEffects`: no servidor, com a radiação ligada, o químico radioativo do tanque vira uma fonte no bloco
+/// (`dumpRadiation(level, worldPosition, getChemicalTanks(), false, null)`); o item perde o químico depois, em [`content_collect`].
+fn dump_radiation(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    if game.remote.is_some() || !crate::game::machinery_radiation::enabled() || !dumps_radiation(&entity.id) {
+        return;
+    }
+    if let Some((chemical, amount)) = glue::chemical_stored(entity) {
+        crate::game::machinery_radiation::dump(game, game.native_dimension(), pos, &chemical, amount);
+    }
+}
+
+/// O tile vai ser quebrado: a radiação sai, o conteúdo fica guardado para o item, e o objeto vivo sai.
 pub(in crate::game) fn destroying(game: &mut Game<'_>, pos: [i32; 3]) {
+    if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        dump_radiation(game, pos, entity);
+    }
     basis::content_destroying(game, pos, &content_spec());
     let key = (game.native_dimension(), pos);
     LIVE.with_borrow_mut(|live| live.remove(&key));
@@ -813,6 +838,7 @@ pub(in crate::game) fn destroying(game: &mut Game<'_>, pos: [i32; 3]) {
 
 /// [`destroying`] para o tile que o nível destruiu e já saiu do mundo (`basis::level_drop_flush`): `entity` é a cópia tirada antes.
 pub(in crate::game) fn leaving(game: &Game<'_>, pos: [i32; 3], entity: &ModBlockEntity) {
+    dump_radiation(game, pos, entity);
     basis::content_leaving(game, entity, pos, &content_spec());
     let key = (game.native_dimension(), pos);
     LIVE.with_borrow_mut(|live| live.remove(&key));

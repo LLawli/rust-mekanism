@@ -66,6 +66,8 @@ import net.neoforged.neoforge.transfer.item.ItemResource;
 ///   espera N                      N ticks do cliente
 ///   fim                           fecha o jogo
 ///   teste NOME COMANDO...         o número que o comando devolve no servidor (um `execute if ...`), na linha `teste NOME -> N` do log
+///   msg NOME COMANDO...           o comando como o jogador: o número que devolve e o texto das mensagens dele, na linha `msg NOME -> N [...]` do log
+///   chat COMANDO...               o comando como o jogador, com as mensagens no chat dele
 ///
 /// Ações de cliente (nas duas pontas): `abrir X Y Z` (o `useItemOn` do clique direito), `fechar`, `foto NOME` (`oficial_dois_NOME.png`), `clicar X Y [d]` (pixels de GUI
 /// relativos à tela; `d` é o botão direito), `cursor X Y`, `escala N`, `ler NOME` (o estado do cliente em uma linha JSON no log e na resposta), `observar N NOME` (uma
@@ -510,6 +512,48 @@ public class CenaDois {
                     }
                     log("teste " + a[1] + " -> " + result);
                 });
+            }
+            case "msg" -> {
+                // `msg NOME COMANDO...` (frente `radiacao`, 2.ª rodada): o comando como o jogador (a posição, a rotação e o nível dele), com o texto de cada
+                // mensagem que ele receberia e o número que o comando devolve, numa linha do log (`msg NOME -> N ["texto", ...]`). Nada vai ao chat.
+                String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 2, a.length));
+                server.execute(() -> {
+                    List<String> textos = new ArrayList<>();
+                    net.minecraft.commands.CommandSource fonte = new net.minecraft.commands.CommandSource() {
+                        @Override
+                        public void sendSystemMessage(net.minecraft.network.chat.Component message) {
+                            textos.add(message.getString());
+                        }
+
+                        @Override
+                        public boolean acceptsSuccess() {
+                            return true;
+                        }
+
+                        @Override
+                        public boolean acceptsFailure() {
+                            return true;
+                        }
+
+                        @Override
+                        public boolean shouldInformAdmins() {
+                            return false;
+                        }
+                    };
+                    int result;
+                    try {
+                        result = server.getCommands().getDispatcher().execute(comando, server.getPlayerList().getPlayers().get(0).createCommandSourceStack().withSource(fonte));
+                    } catch (Exception e) {
+                        textos.add("ERRO " + e.getMessage());
+                        result = -1;
+                    }
+                    log("msg " + a[1] + " -> " + result + " " + new com.google.gson.Gson().toJson(textos));
+                });
+            }
+            case "chat" -> {
+                // `chat COMANDO...` (frente `radiacao`): o comando como o jogador, com as mensagens no chat dele (para os prints).
+                String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length));
+                server.execute(() -> server.getCommands().performPrefixedCommand(server.getPlayerList().getPlayers().get(0).createCommandSourceStack(), comando));
             }
             case "srv" -> {
                 String comando = String.join(" ", java.util.Arrays.copyOfRange(a, 1, a.length));

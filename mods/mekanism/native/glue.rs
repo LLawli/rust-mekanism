@@ -2451,6 +2451,8 @@ pub(in crate::game) fn config_loaded(config: &NativeConfigFile) {
             let loaded = basis::read_config(config, &rules::GENERAL_CONFIG, None);
             machinery_basis_core::settings::set_machine_settings(rules::machine_settings(&loaded));
             *PASTE.write().unwrap_or_else(|error| error.into_inner()) = rules::paste_settings(&loaded);
+            crate::game::machinery_radiation::register(radiation_spec());
+            crate::game::machinery_radiation::set_config(rules::radiation_config(&loaded));
             let tanks = rules::tank_settings(&loaded);
             *TANK_SETTINGS.write().unwrap_or_else(|error| error.into_inner()) = tanks;
             horizon_client::creative::mekanism_prefilled::configure(tanks.prefilled_fluid_tanks, tanks.prefilled_chemical_tanks);
@@ -3215,6 +3217,22 @@ pub(in crate::game) fn chemical_collect(entity: &ModBlockEntity) -> Vec<(&'stati
     content::containers_collect(&containers).map(|value| (basis::CONTENT_CHEMICALS, basis::value_tag(&value, ""))).into_iter().collect()
 }
 
+/// O químico do tanque único de um tile (`chemical_tanks`): o id e a quantidade, `None` vazio.
+pub(in crate::game) fn chemical_stored(entity: &ModBlockEntity) -> Option<(String, u64)> {
+    use machinery_basis_core::item_content as content;
+    let saved = entity.nbt.get(&JavaString::from(CHEMICAL_TANKS)).map(basis::tag_value);
+    let containers = content::containers_from_saved(saved.as_ref(), 1);
+    let stored = containers.first()?;
+    let id = stored.get("type").or_else(|| stored.get("id")).and_then(|id| id.as_str())?;
+    let amount = stored.get("amount").and_then(|amount| amount.as_u64()).unwrap_or(0);
+    (amount > 0).then(|| (id.to_owned(), amount))
+}
+
+/// `Chemical.getRadioactivity` do mapa de dados de agora (0 sem o atributo).
+pub(in crate::game) fn chemical_radioactivity(chemical: &str) -> f64 {
+    (radiation_spec().radioactivity)(chemical)
+}
+
 pub(in crate::game) fn chemical_apply(entity: &mut ModBlockEntity, of: &dyn Fn(&str) -> Option<Tag>) {
     use machinery_basis_core::item_content as content;
     let Some(component) = of(basis::CONTENT_CHEMICALS) else {
@@ -3551,6 +3569,33 @@ fn contents_tooltip(game: &Game<'_>, batch: &mut HudBatch, first: String, extra:
     let mut lines = vec![horizon_client::text::Text::literal(first.as_str())];
     lines.extend(extra);
     basis::menu_tooltip_rich(game, batch, &lines, cursor, widget);
+}
+
+/// A radiação do Mekanism para a da `machinery_basis`: as attachments `mekanism:radiation_data` e `mekanism:radiation`, o dano `mekanism:radiation`
+/// (`data/mekanism/damage_type/radiation.json` e as tags dele que o Horizon lê), a proteção do traje de hazmat, a tag `mekanism:radiation_immune` e a
+/// radioatividade do mapa de dados `chemical_attribute_radioactivity`.
+fn radiation_spec() -> crate::game::machinery_radiation::RadiationSpec {
+    use horizon_client::mobs::NamedDamage;
+    crate::game::machinery_radiation::RadiationSpec {
+        level_attachment: rules::RADIATION_LEVEL_ATTACHMENT,
+        entity_attachment: rules::RADIATION_ENTITY_ATTACHMENT,
+        // `bypasses_armor`, `no_knockback`, `bypasses_effects`, `bypasses_resistance` e `panic_environmental_causes`; as outras tags do tipo
+        // (`bypasses_shield`, `bypasses_enchantments`, `bypasses_wolf_armor`, `always_hurts_ender_dragons`) o mob do Horizon não lê de um tipo nomeado.
+        damage: NamedDamage::new(
+            rules::RADIATION_DAMAGE_TYPE,
+            NamedDamage::BYPASSES_ARMOR | NamedDamage::NO_KNOCKBACK | NamedDamage::BYPASSES_EFFECTS | NamedDamage::BYPASSES_RESISTANCE | NamedDamage::PANIC_CAUSES,
+        ),
+        shielding: rules::radiation_shielding,
+        immune: rules::radiation_immune,
+        radioactivity: |chemical| {
+            CHEMICAL_ATTRIBUTE_DATA
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_ref()
+                .and_then(|data| data.get(chemical).and_then(|entry| entry.radioactivity))
+                .unwrap_or(0.0)
+        },
+    }
 }
 
 /// `Chemical.getAttributes` como a lib o pede: os atributos de cada químico, para o `ChemicalAttributeValidator` de um tanque.

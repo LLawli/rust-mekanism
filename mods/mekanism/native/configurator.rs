@@ -1465,12 +1465,21 @@ pub(in crate::game) fn block_highlight(pos: [i32; 3], canceled: &mut bool) {
 
 /// O `Component` das mensagens como o jogo o escreve: a chave de tradução com os argumentos, ou o texto com os irmãos, e a cor do estilo.
 pub(in crate::game) fn network_text(comp: &Comp) -> Text {
+    network_text_with(comp, &[])
+}
+
+/// [`network_text`] com os componentes que a mensagem deixou para quem a escreve (`Body::Slot`): o nome de uma entidade.
+pub(in crate::game) fn network_text_with(comp: &Comp, slots: &[Text]) -> Text {
+    let arg = |arg: &network_reader::Arg| network_arg(arg, slots);
     let mut out = match &comp.body {
         network_reader::Body::Translate { key, with } => {
-            let args: Vec<Text> = with.iter().map(network_arg).collect();
+            let args: Vec<Text> = with.iter().map(arg).collect();
             Text::translate(key, &args)
         }
-        network_reader::Body::Text { text, extra } => extra.iter().fold(Text::literal(text.clone()), |text, sibling| text.append(network_arg(sibling))),
+        network_reader::Body::Text { text, extra } => extra.iter().fold(Text::literal(text.clone()), |text, sibling| text.append(arg(sibling))),
+        network_reader::Body::TranslateFallback { key, fallback } => Text::translate_with_fallback(key, fallback, &[]),
+        network_reader::Body::Raw(value) => Text::literal(value.to_string()),
+        network_reader::Body::Slot(index) => slots.get(*index).cloned().unwrap_or_else(Text::empty),
     };
     if let Some(rgb) = comp.color {
         out = out.with_style(&horizon_client::text::Style::color(rgb));
@@ -1479,12 +1488,12 @@ pub(in crate::game) fn network_text(comp: &Comp) -> Text {
 }
 
 /// Um argumento de `Component.translatable`: o número e o texto cru entram como texto (`String.valueOf`, como o cliente os escreve).
-fn network_arg(arg: &network_reader::Arg) -> Text {
+fn network_arg(arg: &network_reader::Arg, slots: &[Text]) -> Text {
     match arg {
         network_reader::Arg::Str(text) => Text::literal(text.clone()),
         network_reader::Arg::Int(number) => Text::literal(number.to_string()),
         network_reader::Arg::Float(number) => Text::literal(machinery_basis_core::units::java_float_to_string(*number)),
-        network_reader::Arg::Comp(comp) => network_text(comp),
+        network_reader::Arg::Comp(comp) => network_text_with(comp, slots),
     }
 }
 
