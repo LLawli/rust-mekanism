@@ -113,17 +113,30 @@ def inventory():
     return stacks
 
 
+# O chão em volta do alvo, na altura de `FLOOR`, mais comprido para o sul: o dispensador solta o item para o sul com velocidade, e ele sai da célula do alvo; sem
+# chão caía no vazio antes da leitura (a falha do roteiro na 10.ª rodada da frente `tanques`). Uma caixa só, conferida antes do `fill`.
+CHAO = (X - 3, Y - 1, Z - 3, X + 3, Y - 1, Z + 6)
+
+
 def scene():
     for where in [TARGET, FLOOR] + RING + [f"{X} {Y + 1} {Z - 1}", f"{X} {Y + 2} {Z - 1}", f"{X} {Y + 1} {Z}"]:
         if not is_air(where):
             raise SystemExit(f"{where} não é ar: a cena não é montada")
-    for where in [FLOOR] + RING:
+    x1, y1, z1, x2, y2, z2 = CHAO
+    # A caixa do chão é igual à caixa 12 blocos acima dela, e os cantos e o meio das duas são ar.
+    igual = " ".join(h.command(f"execute if blocks {x1} {y1} {z1} {x2} {y2} {z2} {x1} {y1 + 12} {z1} all"))
+    pontos = [(x1, y1, z1), (x2, y2, z2), (x1, y2, z2), (x2, y1, z1), (X, y1, Z + 3)]
+    if "passed" not in igual.lower() or not all(is_air(f"{x} {y + dy} {z}") for x, y, z in pontos for dy in (0, 12)):
+        raise SystemExit(f"a caixa do chão {CHAO} não é ar: a cena não é montada")
+    h.command(f"fill {x1} {y1} {z1} {x2} {y2} {z2} minecraft:glass")
+    for where in RING:
         h.command(f"setblock {where} minecraft:glass")
 
 
 def clear_scene():
-    for where in [TARGET, FLOOR] + RING:
+    for where in [TARGET] + RING:
         h.command(f"setblock {where} minecraft:air")
+    h.command("fill %d %d %d %d %d %d minecraft:air" % CHAO)
 
 
 def stand(sneak):
@@ -233,6 +246,8 @@ def caldeirao():
 def dispensador():
     # O dispensador no lugar do vidro do norte, virado para o sul (o alvo).
     disp = f"{X} {Y} {Z - 1}"
+    # O jogador sai de perto: em cima do anel ele apanha o item solto (o atraso de coleta é de 10 ticks) antes da leitura.
+    h.command(f"tp @s {X - 2.5} {Y} {Z - 2.5} -45 20")
     passos = [
         ("pega a fonte da frente", "water", tank("basic", mode=True), ["mekanism:basic_fluid_tank", 1, "minecraft:water", 1000], ["minecraft:air", False]),
         ("põe um balde no ar", "air", tank("basic", "water", 5000, mode=True), ["mekanism:basic_fluid_tank", 1, "minecraft:water", 4000], ["minecraft:water", True]),
